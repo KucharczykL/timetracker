@@ -109,6 +109,43 @@ def test_the_clock_reads_the_viewers_zone(owned_user, owned_library, set_user_se
     assert activity_clock(owned_library).zone == ZoneInfo("Pacific/Kiritimati")
 
 
+@pytest.mark.django_db(transaction=True)
+def test_the_clock_reads_the_calendar(owned_user, owned_library, set_user_setting):
+    from games.commands.calendar import SetCalendarDayZone
+
+    set_user_setting(owned_user, "DISPLAY_TIME_ZONE", "UTC")
+    dispatch(
+        SetCalendarDayZone(day_zone="Pacific/Kiritimati"),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="calendar",
+    )
+
+    clock = activity_clock(owned_library)
+
+    assert clock.zone == ZoneInfo("Pacific/Kiritimati")
+    assert clock.boundary_day == _today_in(clock.zone) - timedelta(
+        days=clock.threshold_days
+    )
+
+
+@pytest.mark.django_db
+def test_a_read_naming_the_condition_without_a_clock_is_refused(owned_library):
+    from games.reads.playthrough_activity import UnscopedActivityRead
+
+    unscoped = Playthrough.objects.annotated_for_filtering()
+
+    with pytest.raises(UnscopedActivityRead):
+        list(unscoped.filter(activity=RunActivity.PLAYING))
+    with pytest.raises(UnscopedActivityRead):
+        list(unscoped.order_by("activity_day"))
+
+
+@pytest.mark.django_db
+def test_a_read_naming_no_alias_executes_without_a_clock(owned_library):
+    assert list(Playthrough.objects.annotated_for_filtering()) == []
+
+
 @pytest.mark.parametrize(
     ("day", "expected"),
     [

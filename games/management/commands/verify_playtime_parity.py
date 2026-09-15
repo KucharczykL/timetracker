@@ -7,10 +7,10 @@ from games.management.library_scope import (
     resolve_libraries,
     resolve_zone,
 )
+from games.reads.calendar import calendar_day_zone
 from games.reads.playtime_parity import (
     UNCOMPARED_MEMBERS,
     differing,
-    display_zone,
     playtime_figures,
     projection_day_zones,
 )
@@ -34,7 +34,7 @@ class Command(BaseCommand):
 
         compared = differing_count = 0
         for library in libraries:
-            zone = override if override is not None else display_zone(library)
+            zone = override if override is not None else calendar_day_zone(library)
             figures = playtime_figures(library, zone)
             differences = differing(figures)
             compared += len(figures)

@@ -894,25 +894,30 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
 
 
 def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext:
-    """Resolve every compiler subquery from the current library's visibility."""
+    """Resolve every compiler subquery from the current library's visibility.
+
+    Each scope is built when a filter names it: the runs' scope reads
+    the library's clock, and a list that never descends into runs
+    should not pay for it.
+    """
     from games.models import Device, Game, Platform, Playthrough, Purchase, Session
     from games.reads.playthrough_runs import runs_with_condition
 
-    scoped_querysets: dict[builtins.type, QuerySet] = {
+    scoped_querysets: dict[builtins.type, Callable[[], QuerySet]] = {
         #: tracked_by, not for_library: a nested game filter resolves
         #: from the games this library tracks, and its criteria read
         #: the projection through the `tracked` alias.
-        Game: Game.objects.tracked_by(library),
-        Session: Session.objects.for_library(library),
-        Purchase: Purchase.objects.for_library(library),
-        Playthrough: runs_with_condition(library),
-        Device: Device.objects.for_library(library),
+        Game: lambda: Game.objects.tracked_by(library),
+        Session: lambda: Session.objects.for_library(library),
+        Purchase: lambda: Purchase.objects.for_library(library),
+        Playthrough: lambda: runs_with_condition(library),
+        Device: lambda: Device.objects.for_library(library),
         # Related Platform selection supports the shared catalogue plus this
         # library's private rows. Top-level Platform management remains the
         # private-only base returned by filter_queryset_for_library().
-        Platform: Platform.objects.visible_to(library),
+        Platform: lambda: Platform.objects.visible_to(library),
     }
-    return FilterQueryContext(scoped_querysets.__getitem__)
+    return FilterQueryContext(lambda model: scoped_querysets[model]())
 
 
 def reachable_models(root_model: ModelKey) -> dict[ModelKey, type[OperatorFilter]]:

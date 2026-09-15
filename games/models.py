@@ -1603,11 +1603,17 @@ class PlaythroughQuerySet(models.QuerySet["Playthrough"]):
         no-op `with_filter_aliases` needs; one naming another
         clock is a read that cannot state which threshold it
         answered, and is refused.
+
+        Without a clock the two names compile and refuse to
+        execute: filter validation resolves them, and a read
+        that names one without a clock raises rather than
+        counting days in a zone nobody stated.
         """
         from games.reads.playthrough_activity import (
+            UnscopedActivity,
+            UnscopedActivityDay,
             activity_day_expression,
             activity_expression,
-            default_activity_clock,
         )
 
         annotated = self.query.annotations.keys() & {"activity", "activity_day"}
@@ -1619,11 +1625,14 @@ class PlaythroughQuerySet(models.QuerySet["Playthrough"]):
                     "that states the scope"
                 )
             return self
-        resolved = clock if clock is not None else default_activity_clock()
-        queryset = self.annotate(
-            activity_day=activity_day_expression(resolved)
-        ).annotate(activity=activity_expression(resolved))
-        queryset._activity_clock = resolved
+        if clock is None:
+            return self.alias(
+                activity_day=UnscopedActivityDay(), activity=UnscopedActivity()
+            )
+        queryset = self.annotate(activity_day=activity_day_expression(clock)).annotate(
+            activity=activity_expression(clock)
+        )
+        queryset._activity_clock = clock
         return queryset
 
 

@@ -23,7 +23,6 @@ from games.reads.playtime.source import (
     PlatformPlaytime,
     PlaytimeSource,
 )
-from timetracker.settings_resolver import resolve_str_for_user
 
 ZERO = timedelta(0)
 UNSPECIFIED_PLATFORM = "Unspecified"
@@ -100,11 +99,6 @@ class GameSums(TypedDict):
 type FigureRead = Callable[[PlaytimeSource], timedelta]
 #: Each scope's figure from one source.
 type FiguresByScope = dict[FigureScope, timedelta]
-
-
-def display_zone(library: UserLibrary) -> ZoneInfo:
-    """The zone the viewer reads days in."""
-    return ZoneInfo(resolve_str_for_user(library.user, "DISPLAY_TIME_ZONE"))
 
 
 def projection_day_zones(library: UserLibrary) -> list[str]:

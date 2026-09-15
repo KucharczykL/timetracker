@@ -38,6 +38,7 @@ from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import Device, PlayerSession, PlayerSessionTimingMode, Playthrough
 from games.projectors.playersession import TimingColumns, columns_for_timing
+from games.reads.calendar import calendar_day_zone
 
 logger = logging.getLogger("games")
 
@@ -491,6 +492,24 @@ def _check_zones(day_zone: ZoneName, *endpoint_zones: ZoneName | None) -> None:
             )
 
 
+def _check_calendar(context: CommandContext, payload: TimingPayload) -> None:
+    """A stated day zone is the library's calendar.
+
+    The statement carries the zone because the event does, and the
+    calendar is what every row's zone equals; a statement off it
+    would put one session on a day the library does not count.
+    """
+    if payload["mode"] == "duration_only":
+        return
+    calendar = calendar_day_zone(context.library).key
+    if ZoneInfo(payload["day_zone"]).key != calendar:
+        raise CommandRejected(
+            f"This statement reads its day in {payload['day_zone']!r}, and the "
+            f"library counts days in {calendar}.",
+            sentence=f"This library counts days in {calendar}.",
+        )
+
+
 def _check_endpoints_representable(
     day_zone: ZoneName,
     started_at: datetime,
@@ -551,10 +570,12 @@ class CreateSession(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
         device = _library_device(context, self.device_id)
+        payload = timing_payload(self.timing)
+        _check_calendar(context, payload)
         return [
             playersession_created(
                 run.pk,
-                timing=timing_payload(self.timing),
+                timing=payload,
                 device=None if device is None else capture_reference(device),
                 release=None,
                 note=self.note,
@@ -644,6 +665,7 @@ class CorrectSessionTiming(Command):
         session = _live_session(context, self.session_id)
         #: Rules run before the comparison.
         payload = timing_payload(self.timing)
+        _check_calendar(context, payload)
         stated = columns_for_timing(payload)
         #: The projector's mapping; never copy it here.
         #:

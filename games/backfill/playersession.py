@@ -63,7 +63,7 @@ from games.preflight.session import (
     classify_timing,
     preflight_library,
 )
-from games.reads.playtime_parity import differing, display_zone, playtime_figures
+from games.reads.playtime_parity import differing, playtime_figures
 from timetracker.settings_resolver import resolve_str_for_user
 
 #: Named in every key and metadata value.
@@ -192,7 +192,10 @@ def assignment_counts(outcome: AssignmentOutcome) -> ConversionCounts:
 
 
 def display_zone_name(library: UserLibrary) -> ZoneName:
-    """The library's day zone, or a refusal."""
+    """The library's day zone, or a refusal.
+
+    The setting, not the calendar: 0004 runs before its table.
+    """
     name = resolve_str_for_user(library.user, "DISPLAY_TIME_ZONE")
     if not known_zone(name):
         raise ConversionRefused(
@@ -886,7 +889,10 @@ def _census_mismatches(
     library: UserLibrary, counts: ConversionCounts
 ) -> list[Mismatch[MismatchCode]]:
     """Check 2: pass and census agree."""
-    census = preflight_library(library, sample_size=0).counts.as_dict()
+    #: The zone the pass seeded; the calendar's table comes after 0004.
+    census = preflight_library(
+        library, sample_size=0, day_zone=ZoneInfo(display_zone_name(library))
+    ).counts.as_dict()
     converted = counts.as_dict()
     mismatches = [
         Mismatch(
@@ -938,7 +944,9 @@ def _playtime_mismatches(library: UserLibrary) -> list[Mismatch[MismatchCode]]:
             subject=str(figure.scope),
             detail=f"legacy {figure.legacy}, projection {figure.projection}",
         )
-        for figure in differing(playtime_figures(library, display_zone(library)))
+        for figure in differing(
+            playtime_figures(library, ZoneInfo(display_zone_name(library)))
+        )
     ]
 
 

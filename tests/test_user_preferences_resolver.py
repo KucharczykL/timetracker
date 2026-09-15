@@ -277,6 +277,8 @@ def test_theme_pref_round_trips_through_typed_column(
     assert resolve_for_user(user, "THEME") == "dark"
 
 
+#: The display zone commits a calendar event under its own transaction.
+@pytest.mark.django_db(transaction=True)
 def test_presentation_preferences_round_trip_through_typed_columns(
     user, django_capture_on_commit_callbacks
 ):
@@ -319,6 +321,7 @@ def test_datetime_format_rejects_unsupported_values(user, value):
         ("DATE_FORMAT_LOCALE", "de-de"),
     ],
 )
+@pytest.mark.django_db(transaction=True)
 def test_presentation_preferences_reject_unsupported_values(user, key, value):
     from games.models import UserPreferences
 

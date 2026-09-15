@@ -47,6 +47,7 @@ from games.events.rebuild import (
 from games.events.targets import SHADOW_SUFFIX
 from games.models import (
     Game,
+    LibraryCalendar,
     LibraryEvent,
     LibraryEventReference,
     LibraryEventStreamHead,
@@ -424,6 +425,9 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
     #: written and names no statement at all; its swap still runs.
     session_live = PlayerSession._meta.db_table
     session_shadow = f"{session_live}{SHADOW_SUFFIX}"
+    #: Nor a calendar: the seed states no zone.
+    calendar_live = LibraryCalendar._meta.db_table
+    calendar_shadow = f"{calendar_live}{SHADOW_SUFFIX}"
     assert replay.statements_per_table[shadow] == 10
     assert replay.statements_per_table[run_shadow] == 10
     #: Every shadow, and every swap beside it.
@@ -434,6 +438,8 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
         + replay.statements_per_table[run_live]
         + replay.statements_per_table.get(session_shadow, 0)
         + replay.statements_per_table[session_live]
+        + replay.statements_per_table.get(calendar_shadow, 0)
+        + replay.statements_per_table[calendar_live]
     )
 
 
@@ -633,6 +639,7 @@ def test_a_seeded_library_rebuilds_both_tables_with_no_row_differing(owned_libra
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in report.tables
     ] == [
+        ("games_librarycalendar", 0, 0, 0),
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),

@@ -6,13 +6,13 @@ from zoneinfo import ZoneInfo
 
 from django.db import models
 from django.db.models import Case, F, OuterRef, Subquery, Value, When
-from django.db.models.expressions import Combinable
+from django.db.models.expressions import Combinable, Expression
 from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone as django_timezone
 
 from games.models import Session, UserLibrary
-from timetracker.settings_registry import DEFAULT_DORMANT_AFTER_DAYS
-from timetracker.settings_resolver import resolve_for_user, resolve_str_for_user
+from games.reads.calendar import calendar_day_zone
+from timetracker.settings_resolver import resolve_for_user
 
 
 class RunActivity(models.TextChoices):
@@ -40,13 +40,28 @@ def activity_clock(library: UserLibrary) -> ActivityClock:
         raise TypeError(
             f"DORMANT_AFTER_DAYS resolved to {threshold_days!r}, not a day count"
         )
-    zone = ZoneInfo(resolve_str_for_user(user, "DISPLAY_TIME_ZONE"))
-    return _clock(threshold_days, zone)
+    return _clock(threshold_days, calendar_day_zone(library))
 
 
-def default_activity_clock() -> ActivityClock:
-    """The registry default in UTC, no viewer."""
-    return _clock(DEFAULT_DORMANT_AFTER_DAYS, ZoneInfo("UTC"))
+class UnscopedActivityRead(RuntimeError):
+    """A condition alias executed without a clock."""
+
+
+class _Unscoped(Expression):
+    """Compiles for validation; refuses to execute."""
+
+    def as_sql(self, compiler, connection):
+        raise UnscopedActivityRead(
+            "An activity read was executed without a clock; state one."
+        )
+
+
+class UnscopedActivityDay(_Unscoped):
+    output_field = models.DateField()
+
+
+class UnscopedActivity(_Unscoped):
+    output_field = models.CharField(null=True)
 
 
 def _clock(threshold_days: int, zone: ZoneInfo) -> ActivityClock:

@@ -233,6 +233,7 @@ def test_a_rebuild_reproduces_the_tracked_rows(owned_user, owned_library, tracke
     ]
     #: Every projection table agrees with its rebuild.
     assert drift == [
+        ("games_librarycalendar", 0, 0, 0),
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
@@ -338,6 +339,7 @@ def test_a_rebuild_reproduces_the_status(owned_user, owned_library, tracked_game
     ]
     #: Every projection table agrees with its rebuild.
     assert drift == [
+        ("games_librarycalendar", 0, 0, 0),
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
@@ -451,6 +453,7 @@ def test_a_rebuild_reproduces_the_mastery(owned_user, owned_library, tracked_gam
     ]
     #: Every projection table agrees with its rebuild.
     assert drift == [
+        ("games_librarycalendar", 0, 0, 0),
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
@@ -566,6 +569,7 @@ def test_a_rebuild_reproduces_the_exclusion(owned_user, owned_library, tracked_g
     ]
     #: Every projection table agrees with its rebuild.
     assert drift == [
+        ("games_librarycalendar", 0, 0, 0),
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
@@ -705,6 +709,7 @@ def test_a_rebuild_reproduces_the_removal(owned_user, owned_library, tracked_gam
     ]
     #: Every projection table agrees with its rebuild.
     assert drift == [
+        ("games_librarycalendar", 0, 0, 0),
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),

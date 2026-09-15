@@ -64,7 +64,7 @@ from games.preflight.session import (
     TimingVerdict,
     report_zones,
 )
-from games.reads.playtime_parity import display_zone
+from games.reads.calendar import calendar_day_zone
 from games.removal import remove
 from timetracker.temporal import TemporalValue
 
@@ -997,7 +997,7 @@ def test_the_display_zone_the_census_reads_is_the_one_the_conversion_seeds(
     assert report_zones(owned_library).secondary == ZoneInfo(
         display_zone_name(owned_library)
     )
-    assert display_zone(owned_library) == ZoneInfo("Asia/Tokyo")
+    assert calendar_day_zone(owned_library) == ZoneInfo("Asia/Tokyo")
 
 
 @pytest.mark.untracked_games
