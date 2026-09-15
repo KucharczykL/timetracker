@@ -146,6 +146,7 @@ def test_text_select_and_clear_site_defaults(
         "source": "database",
         "locked": False,
         "namespace": "site",
+        "calendar": None,
     }
     expect(currency).to_have_value("EUR")
     currency_badge = _source_badge(page, "DEFAULT_PURCHASE_CURRENCY")
@@ -177,6 +178,7 @@ def test_text_select_and_clear_site_defaults(
         "source": "default",
         "locked": False,
         "namespace": "site",
+        "calendar": None,
     }
     expect(currency).to_have_value("CZK")
     expect(currency_badge).to_have_attribute("data-setting-origin", "default")

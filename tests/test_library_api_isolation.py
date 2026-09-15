@@ -5,6 +5,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.utils import timezone
+from session_rows import session_row
 
 from common.criteria import (
     AggregateCriterion,
@@ -19,8 +20,8 @@ from common.filter_execution import execute_filter
 from games.filters import (
     GameFilter,
     PlatformFilter,
+    PlayerSessionFilter,
     PurchaseFilter,
-    SessionFilter,
     filter_query_context_for_library,
 )
 from games.models import (
@@ -31,7 +32,6 @@ from games.models import (
     PlayerGameStatus,
     Playthrough,
     Purchase,
-    Session,
 )
 from games.views.stats_data import compute_stats
 from timetracker.temporal import TemporalValue
@@ -102,17 +102,17 @@ def two_libraries(db):
     device_a = Device.objects.create(library=library_a, name="Library A Device")
     device_b = Device.objects.create(library=library_b, name="Library B Device")
 
-    session_a = Session.objects.create(
-        game=game_a,
+    row_a = session_row(
+        game_a,
         device=device_a,
-        timestamp_start=datetime(YEAR, 6, 1, 10, tzinfo=UTC),
-        timestamp_end=datetime(YEAR, 6, 1, 12, tzinfo=UTC),
+        started_at=datetime(YEAR, 6, 1, 10, tzinfo=UTC),
+        ended_at=datetime(YEAR, 6, 1, 12, tzinfo=UTC),
     )
-    session_b = Session.objects.create(
-        game=game_b,
+    row_b = session_row(
+        game_b,
         device=device_b,
-        timestamp_start=datetime(YEAR, 6, 2, 10, tzinfo=UTC),
-        timestamp_end=datetime(YEAR, 6, 2, 13, tzinfo=UTC),
+        started_at=datetime(YEAR, 6, 2, 10, tzinfo=UTC),
+        ended_at=datetime(YEAR, 6, 2, 13, tzinfo=UTC),
     )
     #: The run holds the note and completion.
     for game, note, day in (
@@ -163,8 +163,8 @@ def two_libraries(db):
         "shared_game_b": shared_game_b,
         "device_a": device_a,
         "device_b": device_b,
-        "session_a": session_a,
-        "session_b": session_b,
+        "row_a": row_a,
+        "row_b": row_b,
         "purchase_a": purchase_a,
         "purchase_b": purchase_b,
     }
@@ -315,22 +315,19 @@ def test_playthrough_crud_is_library_scoped(two_libraries):
     assert foreign.note == "Library B event"
 
 
+@pytest.mark.django_db(transaction=True)
 def test_session_reads_and_mutations_are_library_scoped(two_libraries):
     world = two_libraries
     client = world["client_a"]
-    foreign = world["session_b"]
-    own = world["session_a"]
+    foreign = world["row_b"]
+    own = world["row_a"]
 
     payload = client.get("/api/session/").json()
     assert payload["count"] == 1
     assert [row["id"] for row in payload["items"]] == [str(own.id)]
     assert client.get(f"/api/session/{foreign.id}").status_code == 404
     assert (
-        _patch(
-            client,
-            f"/api/session/{foreign.id}",
-            {"timestamp_end": f"{YEAR}-06-02T14:00:00Z"},
-        ).status_code
+        _patch(client, f"/api/session/{foreign.id}", {"note": "theirs"}).status_code
         == 404
     )
     assert (
@@ -344,7 +341,7 @@ def test_session_reads_and_mutations_are_library_scoped(two_libraries):
     own.refresh_from_db()
     foreign.refresh_from_db()
     assert own.device_id == world["device_a"].pk
-    assert foreign.timestamp_end == datetime(YEAR, 6, 2, 13, tzinfo=UTC)
+    assert foreign.note == ""
 
 
 @pytest.mark.parametrize(
@@ -352,7 +349,7 @@ def test_session_reads_and_mutations_are_library_scoped(two_libraries):
     [
         ("game", {"name": {"value": "Library A", "modifier": "INCLUDES"}}, 2),
         (
-            "session",
+            "playersession",
             {"game_filter": {"name": {"value": "Library A", "modifier": "INCLUDES"}}},
             1,
         ),
@@ -438,7 +435,7 @@ def test_nested_filter_cannot_match_shared_platform_from_foreign_game(two_librar
 def test_aggregate_filter_subqueries_are_library_scoped(two_libraries):
     world = two_libraries
     criterion = AggregateCriterion(value=1)
-    criterion.scope = SessionFilter(
+    criterion.scope = PlayerSessionFilter(
         note=StringCriterion(value="Library", modifier=Modifier.INCLUDES)
     )
     filter_object = GameFilter(session_count=criterion)
@@ -457,8 +454,8 @@ def test_multivalued_comparison_subquery_is_library_scoped(two_libraries):
     filter_object = GameFilter(
         field_comparisons=[
             FieldComparisonCriterion(
-                left="sessions__timestamp_end",
-                right="sessions__timestamp_start",
+                left="purchases__date_refunded",
+                right="purchases__date_purchased",
                 modifier=Modifier.GREATER_THAN,
                 quantifier=RelationMatch.ANY,
             )

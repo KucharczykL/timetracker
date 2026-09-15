@@ -5,6 +5,7 @@ import re
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from session_rows import session_row
 from stated_runs import state_run
 
 from games.commands.playthrough import ActStatement
@@ -13,9 +14,9 @@ from games.models import (
     LibraryEvent,
     PlayerGame,
     PlayerGameStatus,
+    PlayerSession,
     Playthrough,
     Purchase,
-    Session,
 )
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 
@@ -167,13 +168,16 @@ def test_a_failed_status_write_answers_409_with_a_toast(
 
 def _session_payload(game, **overrides):
     started = timezone.now().replace(microsecond=0)
+    tracked = PlayerGame.objects.filter(game=game).first()
+    run = None if tracked is None else tracked.playthroughs.first()
     return {
         "game": str(game.id),
-        "timestamp_start": started.strftime("%Y-%m-%d %H:%M"),
-        "timestamp_start_timezone": "",
-        "timestamp_end": "",
-        "timestamp_end_timezone": "",
-        "duration_manual": "",
+        "playthrough": "" if run is None else str(run.pk),
+        "started_at": started.strftime("%Y-%m-%d %H:%M"),
+        "started_at_zone": "",
+        "ended_at": "",
+        "ended_at_zone": "",
+        "duration": "",
         "note": "",
         "mark_as_played": "on",
         **overrides,
@@ -191,7 +195,7 @@ def test_adding_a_session_records_played(logged_in, owned_library, tracked_game)
 def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_game):
     #: An edit binds the checkbox too, so it re-applies the
     #: flip. A Session derives its library.
-    session = Session.objects.create(game=tracked_game, timestamp_start=timezone.now())
+    session = session_row(tracked_game, started_at=timezone.now())
 
     logged_in.post(
         reverse("games:edit_session", args=[session.id]),
@@ -202,27 +206,16 @@ def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_session_on_an_untracked_game_tracks_it_and_records_played(
-    logged_in, owned_library
-):
-    #: A missing row is a defect.
-    #: record_facts() tracks the game and records.
+@pytest.mark.untracked_games
+def test_a_session_on_an_untracked_game_is_refused_on_the_run(logged_in, owned_library):
+    """A session names a run, and a game nothing tracks holds none."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
 
-    logged_in.post(reverse("games:add_session"), _session_payload(game))
+    response = logged_in.post(reverse("games:add_session"), _session_payload(game))
 
-    assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_session_on_an_untracked_game_ignores_the_letter(logged_in, owned_library):
-    #: The letter once held the session back.
-    #: Nothing maintains it, so the row wins.
-    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="f")
-
-    logged_in.post(reverse("games:add_session"), _session_payload(game))
-
-    assert PlayerGame.objects.get().status == PlayerGameStatus.PLAYED
+    assert response.status_code == 200
+    assert not PlayerSession.objects.exists()
+    assert not PlayerGame.objects.exists()
 
 
 @pytest.mark.django_db
@@ -241,11 +234,12 @@ def test_an_unticked_box_records_nothing_and_tracks_nothing(logged_in, owned_lib
     #: The checkbox owns the tracking, not sessions.
     game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
 
-    logged_in.post(
+    response = logged_in.post(
         reverse("games:add_session"), _session_payload(game, mark_as_played="")
     )
 
-    assert Session.objects.filter(game=game).exists()
+    assert response.status_code == 200
+    assert not PlayerSession.objects.exists()
     assert not PlayerGame.objects.exists()
 
 

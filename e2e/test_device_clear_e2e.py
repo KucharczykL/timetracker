@@ -6,6 +6,7 @@ ts/elements/behaviors/select.ts.
 """
 
 import json
+from datetime import UTC, datetime
 
 import pytest
 from django.urls import reverse
@@ -25,14 +26,14 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
 def test_no_device_option_clears_device(
     authenticated_page: Page, live_server, e2e_library
 ):
-    from games.models import Device, Game, Session
+    from session_rows import session_row as seed_session
+
+    from games.models import Device, Game
 
     game = Game.objects.create(library=e2e_library, name="Test Game")
     desktop = Device.objects.create(library=e2e_library, name="Desktop")
-    session = Session.objects.create(
-        game=game,
-        device=desktop,
-        timestamp_start="2025-01-01 00:00:00+00:00",
+    session = seed_session(
+        game, device=desktop, started_at=datetime(2025, 1, 1, tzinfo=UTC)
     )
 
     page = authenticated_page

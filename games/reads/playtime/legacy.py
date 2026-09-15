@@ -1,4 +1,7 @@
-"""Legacy playtime; days read in active zone."""
+"""Legacy playtime; days read in active zone.
+
+No filtered sum: the session filter speaks the projection's words.
+"""
 
 from datetime import datetime, time, timedelta
 
@@ -6,7 +9,6 @@ from django.db.models import DateField, DurationField, OuterRef, Subquery, Sum, 
 from django.db.models.functions import Coalesce, TruncDate, TruncMonth
 from django.utils.timezone import make_aware
 
-from games.filters import SessionFilter, filter_query_context_for_library
 from games.models import Game, Session, SessionQuerySet, UserLibrary
 from games.reads.playthrough_completions import YearScope
 from games.reads.playtime.source import (
@@ -43,8 +45,24 @@ def _summed(sessions: SessionQuerySet) -> PlaytimeSum:
     )
 
 
+def _within(sessions: SessionQuerySet, days: DayInterval) -> SessionQuerySet:
+    """Midnight to midnight, in the active zone."""
+    return sessions.filter(
+        timestamp_start__gte=make_aware(datetime.combine(days.first, time.min)),
+        timestamp_start__lt=make_aware(
+            datetime.combine(days.last + timedelta(days=1), time.min)
+        ),
+    )
+
+
 def game_playtime(library: UserLibrary, game: Game) -> timedelta:
     return _total(_sessions(library).filter(game=game))
+
+
+def game_playtime_between(
+    library: UserLibrary, game: Game, days: DayInterval
+) -> timedelta:
+    return _total(_within(_sessions(library).filter(game=game), days))
 
 
 def summed_by_game(
@@ -60,27 +78,12 @@ def summed_by_game(
     return _summed(_sessions(library, year))
 
 
-def summed_by_game_matching(
-    library: UserLibrary, session_filter: SessionFilter, *, year: YearScope = None
-) -> PlaytimeSum:
-    context = filter_query_context_for_library(library)
-    return _summed(_sessions(library, year).filter(session_filter.to_q(context)))
-
-
 def total_playtime(library: UserLibrary, *, year: YearScope = None) -> timedelta:
     return _total(_sessions(library, year))
 
 
 def playtime_between(library: UserLibrary, days: DayInterval) -> timedelta:
-    """Midnight to midnight, in the active zone."""
-    return _total(
-        _sessions(library).filter(
-            timestamp_start__gte=make_aware(datetime.combine(days.first, time.min)),
-            timestamp_start__lt=make_aware(
-                datetime.combine(days.last + timedelta(days=1), time.min)
-            ),
-        )
-    )
+    return _total(_within(_sessions(library), days))
 
 
 def playtime_by_platform(

@@ -147,9 +147,9 @@ urlpatterns = [
         name="add_session_for_game",
     ),
     path(
-        "session/add/from-list/<uuidv7:session_id>",
-        session.new_session_from_existing_session,
-        name="list_sessions_start_session_from_session",
+        "session/add/resume/<uuidv7:game_id>",
+        session.resume_session,
+        name="resume_session",
     ),
     path("session/<uuidv7:session_id>/edit", session.edit_session, name="edit_session"),
     path(

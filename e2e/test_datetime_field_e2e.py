@@ -10,14 +10,23 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Browser, expect
+from session_rows import session_row
 
-from games.models import Game, Session, UserPreferences
+from games.models import Game, PlayerSession, UserPreferences
+from games.reads.calendar import calendar_day_zone
+
+
+def _row(game, **columns):
+    """A projection row whose day is counted in the library's calendar."""
+    library = game.library
+    return session_row(game, day_zone=calendar_day_zone(library).key, **columns)
+
 
 ACCOUNT_TIME_ZONE = "Pacific/Kiritimati"  # UTC+14 year-round, no DST
 BROWSER_TIME_ZONE = "Pacific/Honolulu"  # UTC-10 year-round — 24 hours apart
 
-START_FIELD = 'date-time-field[field-name="timestamp_start"]'
-END_FIELD = 'date-time-field[field-name="timestamp_end"]'
+START_FIELD = 'date-time-field[field-name="started_at"]'
+END_FIELD = 'date-time-field[field-name="ended_at"]'
 
 
 def _login(page, live_server, username="tester", password="secret123"):
@@ -45,6 +54,8 @@ def _select_first_game(page):
     games = page.locator('search-select[name="game"]')
     games.locator("[data-search-select-search]").click()
     games.locator("[data-search-select-option]").first.click()
+    #: The run picker fills from the API once the game is picked.
+    expect(page.locator('select[name="playthrough"] option')).to_have_count(1)
 
 
 def _fill_segments(page, container: str, values: dict) -> None:
@@ -91,9 +102,7 @@ def test_typed_wall_clock_means_the_picked_zone(
             START_FIELD,
             {"year": "2026", "month": "07", "day": "28", "hour": "15", "minute": "37"},
         )
-        start_zone_row = page.locator(
-            'time-zone-row[field-name="timestamp_start_timezone"]'
-        )
+        start_zone_row = page.locator('time-zone-row[field-name="started_at_zone"]')
         start_zone_row.locator('button[aria-haspopup="dialog"]').click()
         start_zone_row.locator("input[data-search-select-search]").fill("Tokyo")
         start_zone_row.locator(
@@ -106,12 +115,12 @@ def test_typed_wall_clock_means_the_picked_zone(
         with page.expect_navigation():
             page.get_by_role("button", name="Submit", exact=True).click()
 
-        session = Session.objects.get()
-        assert session.timestamp_start_timezone == "Asia/Tokyo"
-        assert session.timestamp_start == dt.datetime(2026, 7, 28, 6, 37, tzinfo=dt.UTC)
-        assert session.timestamp_start != dt.datetime(
-            2026, 7, 28, 13, 37, tzinfo=dt.UTC
-        ), "digits were interpreted in the account zone, not the picked zone"
+        session = PlayerSession.objects.get()
+        assert session.started_at_zone == "Asia/Tokyo"
+        assert session.started_at == dt.datetime(2026, 7, 28, 6, 37, tzinfo=dt.UTC)
+        assert session.started_at != dt.datetime(2026, 7, 28, 13, 37, tzinfo=dt.UTC), (
+            "digits were interpreted in the account zone, not the picked zone"
+        )
     finally:
         context.close()
 
@@ -144,12 +153,12 @@ def test_capture_default_makes_typed_digits_mean_the_browser_zone(
         with page.expect_navigation():
             page.get_by_role("button", name="Submit", exact=True).click()
 
-        session = Session.objects.get()
-        assert session.timestamp_start_timezone == "Asia/Tokyo"
-        assert session.timestamp_start == dt.datetime(2026, 7, 28, 6, 37, tzinfo=dt.UTC)
-        assert session.timestamp_start != dt.datetime(
-            2026, 7, 28, 13, 37, tzinfo=dt.UTC
-        ), "the capture default's zone never reached the datetime field"
+        session = PlayerSession.objects.get()
+        assert session.started_at_zone == "Asia/Tokyo"
+        assert session.started_at == dt.datetime(2026, 7, 28, 6, 37, tzinfo=dt.UTC)
+        assert session.started_at != dt.datetime(2026, 7, 28, 13, 37, tzinfo=dt.UTC), (
+            "the capture default's zone never reached the datetime field"
+        )
     finally:
         context.close()
 
@@ -178,11 +187,9 @@ def test_typed_session_timestamp_persists_as_the_instant_it_shows(
         with page.expect_navigation():
             page.get_by_role("button", name="Submit", exact=True).click()
 
-        session = Session.objects.get()
+        session = PlayerSession.objects.get()
         # 14:30 in Prague on 2026-03-15 is CET (+01:00).
-        assert session.timestamp_start == dt.datetime(
-            2026, 3, 15, 13, 30, tzinfo=dt.UTC
-        )
+        assert session.started_at == dt.datetime(2026, 3, 15, 13, 30, tzinfo=dt.UTC)
     finally:
         context.close()
 
@@ -299,11 +306,7 @@ def test_editing_a_session_without_touching_it_keeps_its_microseconds(
     page, user = authenticated_page
     game = Game.objects.create(library=user.library, name="Alpha Game")
     started = dt.datetime(2026, 3, 15, 13, 30, 41, 123456, tzinfo=dt.UTC)
-    session = Session.objects.create(
-        game=game,
-        timestamp_start=started,
-        timestamp_end=started + dt.timedelta(hours=1),
-    )
+    session = _row(game, started_at=started, ended_at=started + dt.timedelta(hours=1))
 
     page.goto(f"{live_server.url}{reverse('games:edit_session', args=[session.id])}")
     expect(page.locator(f'{START_FIELD} input[data-date-part="minute"]')).to_have_value(
@@ -313,14 +316,14 @@ def test_editing_a_session_without_touching_it_keeps_its_microseconds(
         page.get_by_role("button", name="Submit", exact=True).click()
 
     session.refresh_from_db()
-    assert session.timestamp_start == started
+    assert session.started_at == started
 
 
 def test_a_typed_edit_keeps_the_stored_microseconds(authenticated_page, live_server):
     page, user = authenticated_page
     game = Game.objects.create(library=user.library, name="Alpha Game")
     started = dt.datetime(2026, 3, 15, 13, 30, 41, 123456, tzinfo=dt.UTC)
-    session = Session.objects.create(game=game, timestamp_start=started)
+    session = _row(game, started_at=started)
 
     page.goto(f"{live_server.url}{reverse('games:edit_session', args=[session.id])}")
     _fill_segments(page, START_FIELD, {"minute": "45"})
@@ -328,4 +331,4 @@ def test_a_typed_edit_keeps_the_stored_microseconds(authenticated_page, live_ser
         page.get_by_role("button", name="Submit", exact=True).click()
 
     session.refresh_from_db()
-    assert session.timestamp_start == started.replace(minute=45)
+    assert session.started_at == started.replace(minute=45)

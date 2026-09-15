@@ -8,6 +8,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
+from session_rows import session_row, timed_row, tracked_run
 
 from common.duration_presentation import duration_presentation_for_request
 from common.layout import recent_session_resumes
@@ -16,9 +17,9 @@ from games.models import (
     Device,
     Game,
     Platform,
+    PlayerSession,
     Playthrough,
     Purchase,
-    Session,
 )
 from games.views.general import model_counts
 
@@ -37,10 +38,19 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
         username="library-owner", password="p"
     )
     other = django_user_model.objects.create_user(username="other-owner", password="p")
-    Game.objects.create(library=owner.library, name="Owned game")
-    Game.objects.create(library=other.library, name="Foreign game")
+    owned_game = Game.objects.create(library=owner.library, name="Owned game")
+    foreign_game = Game.objects.create(library=other.library, name="Foreign game")
     Device.objects.create(library=owner.library, name="Owned device")
     Device.objects.create(library=other.library, name="Foreign device")
+    started_at = timezone.now() - timedelta(hours=2)
+    timed_row(tracked_run(owner.library, owned_game), started_at, None)
+    timed_row(
+        tracked_run(owner.library, owned_game),
+        started_at,
+        None,
+        removed_at=timezone.now(),
+    )
+    timed_row(tracked_run(other.library, foreign_game), started_at, None)
     client.force_login(owner)
 
     response = client.get("/tracker/library")
@@ -52,6 +62,7 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
     assert "Games currently includes every game in your library." in body
     assert str(owner.library.pk) in body
     assert "1 Games" in body
+    assert "1 Sessions" in body
     assert "1 Devices" in body
     assert 'data-setting-key="default-device"' in body
     assert 'data-setting-source="library"' in body
@@ -122,18 +133,23 @@ def world(client, django_user_model):
         hour=0, minute=0, second=0, microsecond=0
     )
     own_start = max(now - timedelta(hours=1), start_of_today)
-    own_session = Session.objects.create(
-        game=own_game,
-        device=own_device,
-        timestamp_start=own_start,
-        timestamp_end=own_start + timedelta(hours=1),
-    )
     foreign_start = max(now - timedelta(hours=6), start_of_today)
-    foreign_session = Session.objects.create(
-        game=foreign_game,
+    #: The projection's twins, which the navbar and the counts read.
+    own_row = session_row(
+        own_game,
+        device=own_device,
+        started_at=own_start,
+        ended_at=own_start + timedelta(hours=1),
+    )
+    foreign_row = session_row(
+        foreign_game,
         device=foreign_device,
-        timestamp_start=foreign_start,
-        timestamp_end=foreign_start + timedelta(hours=6),
+        started_at=foreign_start,
+        ended_at=foreign_start + timedelta(hours=6),
+    )
+    #: Earlier than own_row, so the resume still names that one.
+    own_running = session_row(
+        own_game, device=own_device, started_at=own_start - timedelta(hours=3)
     )
     own_purchase = Purchase.objects.create(
         library=owner_library,
@@ -206,9 +222,9 @@ def _object_url(url_name, obj):
         ("games:view_game", "foreign_game"),
         ("games:edit_game", "foreign_game"),
         ("games:remove_game", "foreign_game"),
-        ("games:edit_session", "foreign_session"),
-        ("games:reset_session", "foreign_session"),
-        ("games:remove_session", "foreign_session"),
+        ("games:edit_session", "foreign_row"),
+        ("games:reset_session", "foreign_row"),
+        ("games:remove_session", "foreign_row"),
         ("games:view_purchase", "foreign_purchase"),
         ("games:edit_purchase", "foreign_purchase"),
         ("games:remove_purchase", "foreign_purchase"),
@@ -236,9 +252,9 @@ def test_foreign_detail_edit_and_delete_reads_return_404(world, url_name, object
         ("games:view_game", "own_game"),
         ("games:edit_game", "own_game"),
         ("games:remove_game", "own_game"),
-        ("games:edit_session", "own_session"),
-        ("games:reset_session", "own_session"),
-        ("games:remove_session", "own_session"),
+        ("games:edit_session", "own_row"),
+        ("games:reset_session", "own_running"),
+        ("games:remove_session", "own_row"),
         ("games:view_purchase", "own_purchase"),
         ("games:edit_purchase", "own_purchase"),
         ("games:remove_purchase", "own_purchase"),
@@ -262,7 +278,7 @@ def test_owned_detail_edit_and_remove_reads_work(world, url_name, object_name):
     ("url_name", "object_name", "model"),
     [
         ("games:remove_game", "foreign_game", Game),
-        ("games:remove_session", "foreign_session", Session),
+        ("games:remove_session", "foreign_row", PlayerSession),
         ("games:remove_purchase", "foreign_purchase", Purchase),
         ("games:remove_device", "foreign_device", Device),
         ("games:remove_platform", "foreign_platform", Platform),
@@ -283,7 +299,7 @@ def test_foreign_removal_posts_return_404_without_mutation(
 @pytest.mark.parametrize(
     ("url_name", "object_name", "model"),
     [
-        ("games:remove_session", "own_session", Session),
+        ("games:remove_session", "own_row", PlayerSession),
         ("games:remove_purchase", "own_purchase", Purchase),
         ("games:remove_device", "own_device", Device),
         ("games:remove_platform", "own_platform", Platform),
@@ -291,6 +307,7 @@ def test_foreign_removal_posts_return_404_without_mutation(
         #: so test_removal_confirmation.py owns that assertion.
     ],
 )
+@pytest.mark.django_db(transaction=True)
 @pytest.mark.untracked_games
 def test_owned_removal_posts_work(world, url_name, object_name, model):
     obj = getattr(world, object_name)
@@ -298,7 +315,8 @@ def test_owned_removal_posts_work(world, url_name, object_name, model):
     response = world.client.post(reverse(url_name, args=[obj.pk]))
 
     assert response.status_code == 302
-    assert not model.objects.for_library(world.owner_library).filter(pk=obj.pk).exists()
+    model.objects.filter(pk=obj.pk).get()
+    assert model.objects.get(pk=obj.pk).removed_at is not None
 
 
 #: A dispatch opens its own transaction.
@@ -328,13 +346,13 @@ def test_foreign_game_chained_add_pages_return_404(world, url_name):
 
 
 def test_foreign_session_action_posts_return_404_without_mutation(world):
-    session = world.foreign_session
-    original_start = session.timestamp_start
-    original_end = session.timestamp_end
-    before = Session.objects.count()
+    session = world.foreign_row
+    original_start = session.started_at
+    original_end = session.ended_at
+    before = PlayerSession.objects.count()
 
-    clone_response = world.client.post(
-        reverse("games:list_sessions_start_session_from_session", args=[session.pk])
+    resume_response = world.client.post(
+        reverse("games:resume_session", args=[world.foreign_game.pk])
     )
     finish_response = world.client.post(
         reverse("games:finish_session", args=[session.pk])
@@ -345,7 +363,7 @@ def test_foreign_session_action_posts_return_404_without_mutation(world):
 
     session.refresh_from_db()
     assert (
-        clone_response.status_code,
+        resume_response.status_code,
         finish_response.status_code,
         reset_response.status_code,
     ) == (
@@ -353,9 +371,9 @@ def test_foreign_session_action_posts_return_404_without_mutation(world):
         404,
         404,
     )
-    assert Session.objects.count() == before
-    assert session.timestamp_start == original_start
-    assert session.timestamp_end == original_end
+    assert PlayerSession.objects.count() == before
+    assert session.started_at == original_start
+    assert session.ended_at == original_end
 
 
 def test_foreign_purchase_action_posts_return_404_without_mutation(world):
@@ -381,7 +399,7 @@ def test_navbar_recent_resumes_are_scoped_to_the_authenticated_library(world):
 
     resumes = recent_session_resumes(request)
 
-    assert [session.pk for session in resumes] == [world.own_session.pk]
+    assert [session.pk for session in resumes] == [world.own_row.pk]
 
 
 def test_navbar_playtime_is_scoped_to_the_authenticated_library(world):

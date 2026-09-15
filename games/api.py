@@ -1,8 +1,8 @@
 import json
 import logging
 from collections.abc import Mapping
-from datetime import UTC, date, datetime
-from typing import Annotated, Any, Final, NoReturn, cast
+from datetime import UTC, date, datetime, timedelta
+from typing import Annotated, Any, Final, NoReturn, assert_never, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
@@ -22,6 +22,7 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce, Greatest
+from django.http import HttpResponse
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, NinjaAPI, Query, Router, Schema, Status
 from ninja.errors import HttpError
@@ -31,6 +32,13 @@ from pydantic import BeforeValidator, ConfigDict, PlainSerializer, WithJsonSchem
 from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_api
+from games.commands.playersession import (
+    CorrectedTiming,
+    DurationOnlyTiming,
+    StatedDevice,
+    TimedTiming,
+    TimingStatement,
+)
 from games.commands.playthrough import ActStatement
 from games.filters import (
     MODE_PARSERS,
@@ -47,15 +55,18 @@ from games.models import (
     Game,
     Platform,
     PlayerGameStatus,
+    PlayerSession,
     Playthrough,
     PlaythroughKind,
     Purchase,
     PurchaseConversionState,
-    Session,
     UserLibrary,
 )
 from games.ownership import owned_or_404
+from games.reads.calendar import calendar_day_zone, calendar_sentence
+from games.reads.player_sessions import readable_sessions
 from games.reads.playthrough_endpoints import days_to_finish
+from games.reads.playthrough_numbering import display_name, with_display_number
 from games.reads.playthrough_runs import library_runs
 from games.removal import remove
 from games.sorting import (
@@ -66,12 +77,14 @@ from games.sorting import (
     parse_find_filter,
     parse_per_page_override,
 )
-from games.writes.answers import CommandFailed
+from games.writes.answers import CommandFailed, answered
 from games.writes.playergame import new_correlation_id, record_facts
+from games.writes.playersession import correct_session, describe_session, move_session
 from games.writes.playthrough import RunDraft, record_run, remove_run, restate_run
 from timetracker.config import SettingSource
 from timetracker.settings_commands import (
     SettingLockedError,
+    SettingMutation,
     SettingNamespace,
     change_library_default_device,
     change_site_setting,
@@ -177,6 +190,8 @@ class PlaythroughOut(Schema):
     game: str = Field(..., alias="player_game.game.name")
     game_id: UUIDv7 = Field(..., alias="player_game.game.id")
     name: str
+    #: What a screen calls the run: its name, else "Playthrough N".
+    display_name: str
     note: str
     started: str | None
     started_lower: date | None
@@ -190,6 +205,10 @@ class PlaythroughOut(Schema):
     completion_note: str
     days_to_finish: int | None
     created_at: datetime
+
+    @staticmethod
+    def resolve_display_name(run: Playthrough) -> str:
+        return display_name(run)
 
     @staticmethod
     def resolve_started(run: Playthrough) -> str | None:
@@ -268,8 +287,10 @@ def partial_update_game(request, game_id: UUIDv7, payload: GameStatusUpdate):
 
 
 def _readable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
-    """What the two GET routes answer about."""
-    return library_runs(library).select_related("player_game__game")
+    """What the two GET routes answer about, each row numbered."""
+    return with_display_number(library_runs(library)).select_related(
+        "player_game__game"
+    )
 
 
 def _writable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
@@ -291,15 +312,22 @@ def _writable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
 
 @playthrough_router.get("/", response=list[PlaythroughOut])
 def list_playthroughs(
-    request, limit: int = Query(100, ge=0), offset: int = Query(0, ge=0)
+    request,
+    game: UUIDv7 | None = None,
+    limit: int = Query(100, ge=0),
+    offset: int = Query(0, ge=0),
 ):
     """The library's live ordinary runs, newest first.
 
-    `limit=0` is unbounded, as on presets. The order ends on
-    the key, so an offset reads a stable page.
+    `game` narrows to one game's runs. `limit=0` is unbounded,
+    as on presets. The order ends on the key, so an offset
+    reads a stable page.
     """
     library = cast(User, request.user).library
-    runs = _readable_runs(library).order_by("-created_at", "id")[offset:]
+    runs = _readable_runs(library)
+    if game is not None:
+        runs = runs.filter(player_game__game_id=game)
+    runs = runs.order_by("-created_at", "id")[offset:]
     return runs if limit == 0 else runs[:limit]
 
 
@@ -375,9 +403,13 @@ def search_devices(request, q: str = "", limit: int = 10):
     if q:
         qs = qs.filter(name__icontains=q).order_by("name")
     else:
-        qs = qs.annotate(last_used=Max("session__timestamp_start")).order_by(
-            F("last_used").desc(nulls_last=True), "-created_at", "name"
-        )
+        #: The live rows, on the base manager: a removed one moves nothing.
+        qs = qs.annotate(
+            last_used=Max(
+                "player_sessions__sort_instant",
+                filter=Q(player_sessions__removed_at__isnull=True),
+            )
+        ).order_by(F("last_used").desc(nulls_last=True), "-created_at", "name")
     return [{"value": d.id, "label": d.name, "data": {}} for d in qs[:limit]]
 
 
@@ -519,41 +551,48 @@ def _endpoint_zone_label(
 
 
 class SessionOut(Schema):
+    """The projection row, the game reached through its run."""
+
     id: UUIDv7
-    game: GameOut | None = None
+    playthrough_id: UUIDv7
+    game: GameOut | None = Field(None, alias="playthrough.player_game.game")
     device: DeviceOut | None = None
-    timestamp_start: datetime
-    timestamp_end: datetime | None = None
-    timestamp_start_timezone: str | None = None
-    timestamp_end_timezone: str | None = None
-    timestamp_start_timezone_label: str | None = None
-    timestamp_end_timezone_label: str | None = None
-    duration_manual_seconds: int
-    is_manual: bool
+    timing_mode: str
+    started_at: datetime | None = None
+    ended_at: datetime | None = None
+    started_at_zone: str | None = None
+    ended_at_zone: str | None = None
+    started_at_zone_label: str | None = None
+    ended_at_zone_label: str | None = None
+    #: The written day of a Duration-only row; null otherwise.
+    stated_day: date | None = None
+    #: The hand-stated duration: whole for Duration-only, an override for
+    #: Corrected; null on a Timed row.
+    stated_duration_seconds: int | None = None
+    #: The day in the library's calendar, and the counted duration.
+    day: date = Field(..., alias="effective_day")
+    duration_seconds: int
     note: str
     emulated: bool
     created_at: datetime
-    modified_at: datetime
 
     @staticmethod
-    def resolve_duration_manual_seconds(obj: Session) -> int:
-        return int(obj.duration_manual.total_seconds()) if obj.duration_manual else 0
+    def resolve_stated_duration_seconds(obj: PlayerSession) -> int | None:
+        if obj.stated_duration is None:
+            return None
+        return int(obj.stated_duration.total_seconds())
 
     @staticmethod
-    def resolve_is_manual(obj: Session) -> bool:
-        return obj.is_manual()
+    def resolve_duration_seconds(obj: PlayerSession) -> int:
+        return int(obj.effective_duration.total_seconds())
 
     @staticmethod
-    def resolve_timestamp_start_timezone_label(obj: Session, context) -> str | None:
-        return _endpoint_zone_label(
-            obj.timestamp_start, obj.timestamp_start_timezone, context
-        )
+    def resolve_started_at_zone_label(obj: PlayerSession, context) -> str | None:
+        return _endpoint_zone_label(obj.started_at, obj.started_at_zone, context)
 
     @staticmethod
-    def resolve_timestamp_end_timezone_label(obj: Session, context) -> str | None:
-        return _endpoint_zone_label(
-            obj.timestamp_end, obj.timestamp_end_timezone, context
-        )
+    def resolve_ended_at_zone_label(obj: PlayerSession, context) -> str | None:
+        return _endpoint_zone_label(obj.ended_at, obj.ended_at_zone, context)
 
 
 class SessionListOut(Schema):
@@ -568,9 +607,7 @@ class SessionListOut(Schema):
 @regex_timeout_api
 def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
     library = cast(User, request.user).library
-    sessions = Session.objects.for_library(library).select_related(
-        "game", "game__platform", "device"
-    )
+    sessions: QuerySet[PlayerSession] = readable_sessions(library)
     if filter:
         try:
             session_filter = parse_session_filter(filter)
@@ -619,13 +656,7 @@ def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
 @session_router.get("/{session_id}", response=SessionOut)
 def get_session(request, session_id: UUIDv7):
     library = cast(User, request.user).library
-    return owned_or_404(
-        Session.objects.for_library(library).select_related(
-            "game", "game__platform", "device"
-        ),
-        library,
-        id=session_id,
-    )
+    return owned_or_404(readable_sessions(library), library, id=session_id)
 
 
 class SessionDeviceUpdate(Schema):
@@ -634,67 +665,161 @@ class SessionDeviceUpdate(Schema):
     device_id: UUIDv7 | None
 
 
+def _answered_or_http(failure: CommandFailed) -> NoReturn:
+    """A refused command, as the API says it."""
+    raise HttpError(failure.status_code, failure.message)
+
+
+def _library_device_or_404(library: UserLibrary, device_id: UUIDv7 | None) -> None:
+    """A stale id, or another library's, is absent: it discloses nothing.
+
+    The command would refuse it with a sentence; the API answers 404 as
+    it did before, and a stale id (a device removed in another tab) never
+    surfaces as a refusal the client's retry toast cannot resolve.
+    """
+    if device_id is not None:
+        owned_or_404(Device.objects.for_library(library), library, id=device_id)
+
+
 @session_router.patch("/{session_id}/device", response={204: None})
 def partial_update_session_device(
     request, session_id: UUIDv7, payload: SessionDeviceUpdate
 ):
     library = cast(User, request.user).library
-    session = owned_or_404(Session.objects.for_library(library), library, id=session_id)
-    device = None
-    if payload.device_id is not None:
-        # A stale id (device deleted in another tab) must 404, not surface as
-        # an IntegrityError 500 the client's retry toast can never resolve.
-        device = owned_or_404(
-            Device.objects.for_library(library), library, id=payload.device_id
+    session = owned_or_404(readable_sessions(library), library, id=session_id)
+    _library_device_or_404(library, payload.device_id)
+    try:
+        describe_session(
+            cast(User, request.user),
+            session,
+            device=StatedDevice(payload.device_id),
+            correlation_id=new_correlation_id(),
         )
-    session.device = device
-    session.save()
+    except CommandFailed as failure:
+        _answered_or_http(failure)
     messages.success(request, "Device updated")
     return Status(204, None)
 
 
+class TimedIn(Schema):
+    """A start, an optional end, each with an optional zone."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    started_at: datetime
+    started_at_zone: str | None = None
+    ended_at: datetime | None = None
+    ended_at_zone: str | None = None
+
+
+class DurationOnlyIn(Schema):
+    """A written day and how long it lasted."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    day: date
+    duration_seconds: int
+
+
+class CorrectedIn(Schema):
+    """Both instants and a duration that replaces the elapsed time."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    started_at: datetime
+    ended_at: datetime
+    duration_seconds: int
+    started_at_zone: str | None = None
+    ended_at_zone: str | None = None
+
+
+#: Told apart by shape: each refuses the others' keys.
+type TimingIn = CorrectedIn | TimedIn | DurationOnlyIn
+
+
 class SessionUpdate(Schema):
-    # All optional: a partial update only touches the fields the client sends.
-    # The client supplies its own ISO-UTC "now" for finish/reset. GeneratedFields
-    # (duration_calculated/duration_total) are intentionally absent and thus
-    # unwriteable.
-    timestamp_start: datetime | None = None
-    timestamp_end: datetime | None = None
-    # IANA zone each timestamp was committed in; present-null clears to NULL
-    # ("assume the display zone").
-    timestamp_start_timezone: str | None = None
-    timestamp_end_timezone: str | None = None
+    """Each named key is one act; an omitted key states nothing.
+
+    `timing` is a correction of the whole statement; `note`, `device_id`
+    and `emulated` a description; `playthrough_id` a move. A key the
+    body does not know is refused, so the old `timestamp_end` cannot
+    pass unread.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    timing: TimingIn | None = None
+    note: str | None = None
+    #: Present-null clears the device.
+    device_id: UUIDv7 | None = None
+    emulated: bool | None = None
+    playthrough_id: UUIDv7 | None = None
+
+
+def _timing_statement(timing: TimingIn, day_zone: str) -> TimingStatement:
+    match timing:
+        case CorrectedIn():
+            return CorrectedTiming(
+                started_at=timing.started_at,
+                ended_at=timing.ended_at,
+                duration=timedelta(seconds=timing.duration_seconds),
+                day_zone=day_zone,
+                started_at_zone=timing.started_at_zone,
+                ended_at_zone=timing.ended_at_zone,
+            )
+        case TimedIn():
+            return TimedTiming(
+                started_at=timing.started_at,
+                day_zone=day_zone,
+                started_at_zone=timing.started_at_zone,
+                ended_at=timing.ended_at,
+                ended_at_zone=timing.ended_at_zone,
+            )
+        case DurationOnlyIn():
+            return DurationOnlyTiming(
+                day=timing.day, duration=timedelta(seconds=timing.duration_seconds)
+            )
+        case _:
+            assert_never(timing)
 
 
 @session_router.patch("/{session_id}", response={200: SessionOut})
 def partial_update_session(request, session_id: UUIDv7, payload: SessionUpdate):
     library = cast(User, request.user).library
-    session = owned_or_404(
-        Session.objects.for_library(library).select_related(
-            "game", "game__platform", "device"
-        ),
-        library,
-        id=session_id,
-    )
-    data = payload.dict(exclude_unset=True)  # omitted fields are left untouched
-    for zone_field in ("timestamp_start_timezone", "timestamp_end_timezone"):
-        if zone_field in data and data[zone_field] is not None:
-            try:
-                data[zone_field] = ZoneInfo(data[zone_field]).key
-            except (ZoneInfoNotFoundError, ValueError) as exc:
-                raise HttpError(
-                    422, f"{zone_field} must be an IANA time zone name"
-                ) from exc
-    new_start = data.get("timestamp_start", session.timestamp_start)
-    new_end = data.get("timestamp_end", session.timestamp_end)
-    if new_start is not None and new_end is not None and new_end < new_start:
-        raise HttpError(422, "timestamp_end must be on or after timestamp_start")
-    for field, value in data.items():
-        setattr(session, field, value)
-    session.save()
-    session.refresh_from_db()  # reload DB-computed GeneratedFields + modified_at
+    actor = cast(User, request.user)
+    session = owned_or_404(readable_sessions(library), library, id=session_id)
+    stated = payload.dict(exclude_unset=True)
+    if "device_id" in stated:
+        _library_device_or_404(library, payload.device_id)
+    correlation_id = new_correlation_id()
+    try:
+        if payload.timing is not None:
+            correct_session(
+                actor,
+                session,
+                _timing_statement(payload.timing, calendar_day_zone(library).key),
+                correlation_id=correlation_id,
+            )
+        described = {key for key in ("note", "device_id", "emulated") if key in stated}
+        if described:
+            describe_session(
+                actor,
+                session,
+                note=payload.note,
+                device=StatedDevice(payload.device_id)
+                if "device_id" in stated
+                else None,
+                emulated=payload.emulated,
+                correlation_id=correlation_id,
+            )
+        if payload.playthrough_id is not None:
+            move_session(
+                actor, session, payload.playthrough_id, correlation_id=correlation_id
+            )
+    except CommandFailed as failure:
+        _answered_or_http(failure)
     messages.success(request, "Session updated.")
-    return session
+    return readable_sessions(library).get(pk=session.pk)
 
 
 api.add_router("/session", session_router)
@@ -947,6 +1072,22 @@ class SettingOut(Schema):
     namespace: SettingNamespace
 
 
+class CalendarDeltaOut(Schema):
+    """What a display-zone change moved, over the live sessions."""
+
+    day_zone: str
+    sessions: int
+    day_moved: int
+    month_moved: int
+    year_moved: int
+
+
+class SettingChangeOut(SettingOut):
+    """A change's answer: the resolved setting, and the calendar it moved."""
+
+    calendar: CalendarDeltaOut | None = None
+
+
 class SettingValueIn(Schema):
     # ``None`` means "clear this setting" (unset → falls through to lower layers).
     value: Any = None
@@ -1016,8 +1157,42 @@ def list_user_settings(request):
     ]
 
 
-@settings_router.patch("/user/{key}", response=SettingOut)
-def update_user_setting(request, key: str, payload: SettingValueIn):
+def _setting_change_out(
+    key: SettingKey,
+    mutation: SettingMutation,
+    *,
+    locked: bool | None = None,
+    namespace: SettingNamespace,
+) -> dict:
+    return {
+        **_setting_out(key, mutation.effective, locked=locked, namespace=namespace),
+        "calendar": (
+            None if mutation.calendar is None else mutation.calendar._asdict()
+        ),
+    }
+
+
+def _report_saved(
+    request, response: HttpResponse, key: SettingKey, mutation: SettingMutation
+) -> None:
+    """One toast: the calendar's sentence when its zone moved, else "saved".
+
+    A setting that reloads the page after a save reads the toast on
+    the page it lands on, so the header rides no response the browser
+    discards.
+    """
+    if get_definition(key).reload_after_save:
+        response["HX-Refresh"] = "true"
+    if mutation.calendar is not None:
+        messages.success(request, calendar_sentence(mutation.calendar))
+        return
+    messages.success(request, f"{get_definition(key).label} saved")
+
+
+@settings_router.patch("/user/{key}", response=SettingChangeOut)
+def update_user_setting(
+    request, response: HttpResponse, key: str, payload: SettingValueIn
+):
     """Set (or clear, with ``value: null``) one of the user's prefs.
 
     Return the freshly resolved value and origin so live controls can update their
@@ -1030,12 +1205,13 @@ def update_user_setting(request, key: str, payload: SettingValueIn):
     if definition.scope is not SettingScope.USER:
         raise HttpError(400, f"{key} is not a user-scoped setting.")
     try:
-        mutation = change_user_setting(request.user, key, payload.value)
+        with answered("time zone"):
+            mutation = change_user_setting(request.user, key, payload.value)
     except (ValidationError, ValueError, TypeError) as error:
         _raise_400(error)
-    messages.success(request, f"{definition.label} saved")
-    return _setting_out(
-        key, mutation.effective, locked=False, namespace=SettingNamespace.USER
+    _report_saved(request, response, key, mutation)
+    return _setting_change_out(
+        key, mutation, locked=False, namespace=SettingNamespace.USER
     )
 
 
@@ -1076,14 +1252,17 @@ def list_site_settings(request):
     ]
 
 
-@settings_router.patch("/site/{key}", response=SettingOut)
-def update_site_setting(request, key: str, payload: SettingValueIn):
+@settings_router.patch("/site/{key}", response=SettingChangeOut)
+def update_site_setting(
+    request, response: HttpResponse, key: str, payload: SettingValueIn
+):
     """Set (or clear, with ``value: null``) a site setting's DB value.
     Superuser-only."""
     if not request.user.is_superuser:
         raise HttpError(403, "Superuser required.")
     try:
-        mutation = change_site_setting(key, payload.value)
+        with answered("time zone"):
+            mutation = change_site_setting(key, payload.value, actor=request.user)
     except SettingLockedError as error:
         raise HttpError(
             409,
@@ -1093,9 +1272,8 @@ def update_site_setting(request, key: str, payload: SettingValueIn):
         raise HttpError(400, f"Unknown setting {key!r}.")
     except (ValidationError, ValueError, TypeError) as error:
         _raise_400(error)
-    definition = get_definition(key)
-    messages.success(request, f"{definition.label} saved")
-    return _setting_out(key, mutation.effective, namespace=SettingNamespace.SITE)
+    _report_saved(request, response, key, mutation)
+    return _setting_change_out(key, mutation, namespace=SettingNamespace.SITE)
 
 
 api.add_router("/settings", settings_router)

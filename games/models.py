@@ -1500,6 +1500,10 @@ class ProjectionModel(models.Model):
 
     #: Relations the comparison-operand walk never follows.
     comparison_scoping_relations: ClassVar[tuple[str, ...]] = ("library",)
+    #: `(path, label)` pairs the walk treats as one hop: a to-one path
+    #: at every segment, which `games.E011` checks, offered under the
+    #: label. A projection reaches the catalog through its parents.
+    comparison_through: ClassVar[tuple[tuple[str, str], ...]] = ()
 
     class Meta:
         abstract = True
@@ -1603,11 +1607,15 @@ class PlaythroughQuerySet(models.QuerySet["Playthrough"]):
         no-op `with_filter_aliases` needs; one naming another
         clock is a read that cannot state which threshold it
         answered, and is refused.
+
+        Without a clock both names resolve and refuse to compile:
+        a query naming either raises when compiled, one naming
+        neither executes.
         """
         from games.reads.playthrough_activity import (
+            UnscopedActivityAlias,
             activity_day_expression,
             activity_expression,
-            default_activity_clock,
         )
 
         annotated = self.query.annotations.keys() & {"activity", "activity_day"}
@@ -1619,11 +1627,17 @@ class PlaythroughQuerySet(models.QuerySet["Playthrough"]):
                     "that states the scope"
                 )
             return self
-        resolved = clock if clock is not None else default_activity_clock()
-        queryset = self.annotate(
-            activity_day=activity_day_expression(resolved)
-        ).annotate(activity=activity_expression(resolved))
-        queryset._activity_clock = resolved
+        if clock is None:
+            return self.alias(
+                activity_day=UnscopedActivityAlias(output_field=models.DateField()),
+                activity=UnscopedActivityAlias(
+                    output_field=models.CharField(null=True)
+                ),
+            )
+        queryset = self.annotate(activity_day=activity_day_expression()).annotate(
+            activity=activity_expression(clock)
+        )
+        queryset._activity_clock = clock
         return queryset
 
 
@@ -1776,6 +1790,9 @@ class PlayerSession(ProjectionModel):
     """One session a library recorded, projected from its events."""
 
     objects = PlayerSessionQuerySet.as_manager()
+
+    #: The game is two parents away; the filter compares against it.
+    comparison_through = (("playthrough__player_game__game", "Game"),)
 
     id = UUIDv7Field(
         primary_key=True,
@@ -1964,6 +1981,28 @@ class PlayerSession(ProjectionModel):
 
     def __str__(self) -> str:
         return f"Session {self.pk} of run {self.playthrough_id}"
+
+
+class LibraryCalendar(ProjectionModel):
+    """The zone a library counts days in, projected from its events."""
+
+    id = UUIDv7Field(
+        primary_key=True,
+        editable=False,
+        #: The library's id: one calendar per library.
+        default=models.NOT_PROVIDED,
+        db_default=models.NOT_PROVIDED,
+    )
+    day_zone = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = (
+            #: The pk is the library's id; uniqueness per library follows.
+            models.CheckConstraint(
+                condition=Q(id=F("library")),
+                name="games_librarycalendar_id_is_library",
+            ),
+        )
 
 
 class UserLibraryPreferences(models.Model):

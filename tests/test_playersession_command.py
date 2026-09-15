@@ -13,6 +13,7 @@ from games.commands import playersession as playersession_commands
 from games.commands.playergame import TrackGame
 from games.commands.playersession import (
     INCONSISTENT_SESSION,
+    INTO_THE_BUCKET,
     CorrectedTiming,
     CorrectSessionTiming,
     CreateSession,
@@ -51,6 +52,12 @@ from games.writes.answers import CommandFailed, answered
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
 
 START = datetime(2026, 1, 1, 23, 30, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def prague_calendar(owned_user, set_user_setting):
+    """Every statement below counts days in Prague, as the library does."""
+    set_user_setting(owned_user, "DISPLAY_TIME_ZONE", "Europe/Prague")
 
 
 @pytest.fixture
@@ -308,6 +315,40 @@ def test_it_refuses_a_note_jsonb_cannot_store(owned_user, owned_library, run):
     to no answer at all.
     """
     refused(owned_library, owned_user, run, a_timed(), note="hi\x00there")
+
+
+OFF_CALENDAR = "This library counts days in Europe/Prague."
+
+
+def test_it_refuses_a_day_zone_the_calendar_does_not_state(
+    owned_user, owned_library, run
+):
+    refusal = refused(owned_library, owned_user, run, a_timed(day_zone="Asia/Tokyo"))
+
+    assert refusal.sentence == OFF_CALENDAR
+    assert not PlayerSession.objects.exists()
+
+
+def test_a_correction_off_the_calendar_is_refused(owned_user, owned_library, run):
+    session = record(owned_library, owned_user, run, a_timed())
+
+    refused_correction(
+        owned_library,
+        owned_user,
+        session.pk,
+        a_timed(day_zone="Asia/Tokyo"),
+        saying=OFF_CALENDAR,
+    )
+
+
+def test_a_corrected_statement_off_the_calendar_is_refused(
+    owned_user, owned_library, run
+):
+    refusal = refused(
+        owned_library, owned_user, run, a_corrected(day_zone="Asia/Tokyo")
+    )
+
+    assert refusal.sentence == OFF_CALENDAR
 
 
 def test_it_refuses_a_session_with_no_day_zone(owned_user, owned_library, run):
@@ -916,7 +957,6 @@ def test_restating_the_row_changes_nothing(owned_user, owned_library, run, state
             "stated_day",
             date(2026, 3, 6),
         ),
-        (a_timed(), a_timed(day_zone="Asia/Tokyo"), "day_zone", "Asia/Tokyo"),
         (
             TIMING_STATES["timed-finished"],
             a_timed(ended_at=AN_END, ended_at_zone="Europe/Prague"),
@@ -924,7 +964,7 @@ def test_restating_the_row_changes_nothing(owned_user, owned_library, run, state
             "Europe/Prague",
         ),
     ],
-    ids=["override", "written-day", "day-zone", "end-zone"],
+    ids=["override", "written-day", "end-zone"],
 )
 def test_a_correction_within_one_mode_is_recorded(
     owned_user, owned_library, run, before, after, column, value
@@ -2064,7 +2104,10 @@ def test_an_end_its_own_zone_cannot_hold_is_refused(owned_user, owned_library, r
     assert refusal.sentence == OUT_OF_RANGE
 
 
-def test_an_end_its_day_zone_cannot_hold_is_refused(owned_user, owned_library, run):
+def test_an_end_its_day_zone_cannot_hold_is_refused(
+    owned_user, owned_library, run, set_user_setting
+):
+    set_user_setting(owned_user, "DISPLAY_TIME_ZONE", "Pacific/Kiritimati")
     session = record(
         owned_library,
         owned_user,
@@ -2090,3 +2133,18 @@ def test_a_command_with_two_keys_takes_them_by_name():
         MoveSessionToPlaythrough(uuid.uuid7(), uuid.uuid7())  # type: ignore[misc]
     with pytest.raises(TypeError):
         CreateSession(uuid.uuid7(), a_timed())  # type: ignore[misc]
+
+
+def test_it_refuses_recording_a_session_on_the_bucket(owned_user, owned_library, run):
+    history = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+
+    refusal = refused(owned_library, owned_user, history, a_timed())
+
+    assert refusal.sentence == INTO_THE_BUCKET
+    assert not PlayerSession.objects.exists()

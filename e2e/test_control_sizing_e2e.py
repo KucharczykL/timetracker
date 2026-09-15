@@ -12,8 +12,9 @@ import datetime as dt
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
+from session_rows import session_row
 
-from games.models import Device, Game, Platform, Session
+from games.models import Device, Game, Platform, PlayerSession
 
 
 @pytest.fixture
@@ -26,16 +27,16 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     return page
 
 
-def _make_session(library) -> Session:
+def _make_session(library) -> PlayerSession:
     platform = Platform.objects.create(
         library=library, name="PC", icon="pc", group="PC"
     )
     game = Game.objects.create(library=library, name="Sized Game", platform=platform)
     Device.objects.create(library=library, name="Handheld", type=Device.HANDHELD)
     # running (no end) so the row shows the finish/reset icon actions
-    return Session.objects.create(
-        game=game,
-        timestamp_start=dt.datetime(2020, 1, 1, 10, 0, tzinfo=dt.UTC),
+    return session_row(
+        game,
+        started_at=dt.datetime(2020, 1, 1, 10, 0, tzinfo=dt.UTC),
     )
 
 

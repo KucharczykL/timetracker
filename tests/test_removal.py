@@ -4,9 +4,10 @@ from datetime import timedelta
 
 import pytest
 from django.utils import timezone
+from session_rows import session_row
 from stated_runs import another_run
 
-from games.models import Game, Playthrough, Session
+from games.models import Game, PlayerSession, Playthrough, Session
 from games.reads.playtime import game_playtime
 from games.removal import remove, restore
 
@@ -53,14 +54,13 @@ def test_a_session_removed_by_itself_stays_removed(owned_library):
 
 
 def test_removing_a_session_drops_the_playtime(owned_library):
+    """The projector's mark, as `RemoveSession` leaves it."""
     game = make_game(owned_library)
     started = timezone.now()
-    Session.objects.create(
-        game=game, timestamp_start=started, timestamp_end=started + timedelta(hours=2)
-    )
+    row = session_row(game, started_at=started, ended_at=started + timedelta(hours=2))
     assert game_playtime(owned_library, game) == timedelta(hours=2)
 
-    remove(Session.objects.get(game=game))
+    PlayerSession.objects.filter(pk=row.pk).update(removed_at=timezone.now())
 
     assert game_playtime(owned_library, game) == timedelta(0)
 

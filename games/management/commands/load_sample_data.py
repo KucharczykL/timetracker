@@ -14,6 +14,13 @@ from django.core.serializers.base import DeserializationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 
+from games.backfill.playersession import (
+    ConversionRefused,
+    convert_library,
+    ordering_violations,
+    reconcile,
+)
+from games.backfill.reporting import ReportPrefixes, emit_report, failure_sentence
 from games.conversion import _request_conversion_for_locked_state
 from games.events.rebuild import (
     RebuildMode,
@@ -39,6 +46,10 @@ from games.models import (
 )
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "sample.yaml.gz"
+SAMPLE_REPORT_PREFIXES = ReportPrefixes(
+    machine="SAMPLE_SESSION_CONVERSION_RECONCILIATION_JSON=",
+    human="Sample session conversion reconciliation:",
+)
 TARGET_LIBRARY_MARKER = "__target_library__"
 
 PRIVATE_MODELS = {
@@ -178,6 +189,33 @@ class Command(BaseCommand):
                     "Sample fixture could not be projected: "
                     f"{report.attempts[-1].conflict}"
                 )
+            #: The deployment holds the projection; so here.
+            try:
+                converted = convert_library(user.library)
+            except ConversionRefused as refusal:
+                raise CommandError(
+                    f"Sample sessions could not be converted: {refusal}"
+                ) from refusal
+            #: The identity audit reads every library, not the sample's.
+            mismatches = [
+                *reconcile(user.library, converted),
+                *ordering_violations(),
+            ]
+            if mismatches:
+                entries = emit_report(
+                    converted.as_dict() | {"mismatches": len(mismatches)},
+                    mismatches,
+                    prefixes=SAMPLE_REPORT_PREFIXES,
+                    summary_keys=tuple(converted.as_dict()),
+                    stdout=self.stdout,
+                    stderr=self.stderr,
+                )
+                sentence = failure_sentence(
+                    entries, subject="Sample session conversion"
+                )
+                raise CommandError(
+                    f"{sentence} (the identity audit reads every library)"
+                )
             #: The fixture predates #896: no reference rows.
             try:
                 backfilled = backfill_wikidata_references(user.library)
@@ -210,7 +248,8 @@ class Command(BaseCommand):
                 + ", ".join(
                     f"{diff.rebuilt_rows} {diff.table}" for diff in report.tables
                 )
-                + "."
+                + f", and {converted.live_rows + converted.rows_removed_converted} "
+                "session(s) converted."
             )
         )
 

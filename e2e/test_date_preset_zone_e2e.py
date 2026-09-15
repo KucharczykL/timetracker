@@ -11,8 +11,10 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
+from session_rows import session_row
 
-from games.models import Game, Platform, Session
+from games.models import Game, Platform
+from games.reads.calendar import calendar_day_zone
 from timetracker.settings_commands import change_user_setting
 
 DISPLAY_ZONE = "Pacific/Kiritimati"
@@ -41,8 +43,11 @@ def test_today_preset_uses_the_display_zone(
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
     game = Game.objects.create(library=e2e_library, name="Doom", platform=platform)
     now = dt.datetime.now(dt.UTC)
-    session = Session.objects.create(
-        game=game, timestamp_start=now, timestamp_end=now + dt.timedelta(minutes=30)
+    session = session_row(
+        game,
+        started_at=now,
+        ended_at=now + dt.timedelta(minutes=30),
+        day_zone=calendar_day_zone(e2e_library).key,
     )
 
     page = authenticated_page
@@ -54,8 +59,8 @@ def test_today_preset_uses_the_display_zone(
         == BROWSER_ZONE
     )
 
-    page.locator("#quick-timestamp_start-dropdownLink").click()
-    panel = page.locator("#quick-timestamp_start-dropdown")
+    page.locator("#quick-day-dropdownLink").click()
+    panel = page.locator("#quick-day-dropdown")
     panel.locator('[data-date-range-preset="today"]').click()
 
     display_today = now.astimezone(ZoneInfo(DISPLAY_ZONE)).date().isoformat()

@@ -4,12 +4,22 @@ from datetime import UTC, datetime
 
 import pytest
 from django.urls import reverse
+from session_rows import session_row
 
 from common.returns import action_url
-from games.models import Game, Platform, Session
+from games.models import Game, Platform
+
+#: Every route dispatches, which opens its own transaction.
+pytestmark = pytest.mark.django_db(transaction=True)
 
 BROWSER_ZONE = "Asia/Tokyo"
 STARTED_AT = datetime(2024, 6, 1, 12, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def _prague_calendar(owned_user, set_user_setting):
+    """The rows `session_rows` seeds count their days in Prague."""
+    set_user_setting(owned_user, "DISPLAY_TIME_ZONE", "Europe/Prague")
 
 
 @pytest.fixture
@@ -25,10 +35,10 @@ def open_session(owned_library):
         name="Test Game",
         platform=Platform.objects.create(name="PC"),
     )
-    return Session.objects.create(game=game, timestamp_start=STARTED_AT)
+    return session_row(game, started_at=STARTED_AT)
 
 
-def test_finish_sets_timestamp_end_and_redirects_to_origin(logged_in, open_session):
+def test_finish_sets_ended_at_and_redirects_to_origin(logged_in, open_session):
     origin = f"{reverse('games:list_sessions')}?page=2"
 
     response = logged_in.post(
@@ -36,7 +46,7 @@ def test_finish_sets_timestamp_end_and_redirects_to_origin(logged_in, open_sessi
     )
 
     open_session.refresh_from_db()
-    assert open_session.timestamp_end is not None
+    assert open_session.ended_at is not None
     assert response["Location"] == origin
 
 
@@ -47,7 +57,7 @@ def test_finish_records_the_posted_browser_time_zone(logged_in, open_session):
     )
 
     open_session.refresh_from_db()
-    assert open_session.timestamp_end_timezone == BROWSER_ZONE
+    assert open_session.ended_at_zone == BROWSER_ZONE
 
 
 def test_finish_ignores_an_unknown_time_zone(logged_in, open_session):
@@ -58,8 +68,8 @@ def test_finish_ignores_an_unknown_time_zone(logged_in, open_session):
 
     open_session.refresh_from_db()
     assert response.status_code == 302
-    assert open_session.timestamp_end is not None
-    assert not open_session.timestamp_end_timezone
+    assert open_session.ended_at is not None
+    assert open_session.ended_at_zone is None
 
 
 def test_finish_get_renders_a_confirmation_and_does_not_mutate(logged_in, open_session):
@@ -68,7 +78,7 @@ def test_finish_get_renders_a_confirmation_and_does_not_mutate(logged_in, open_s
     open_session.refresh_from_db()
     assert response.status_code == 200
     assert "Test Game" in response.content.decode()
-    assert open_session.timestamp_end is None
+    assert open_session.ended_at is None
 
 
 def test_reset_get_renders_a_confirmation_and_does_not_mutate(logged_in, open_session):
@@ -77,14 +87,14 @@ def test_reset_get_renders_a_confirmation_and_does_not_mutate(logged_in, open_se
     open_session.refresh_from_db()
     assert response.status_code == 200
     assert "Test Game" in response.content.decode()
-    assert open_session.timestamp_start == STARTED_AT
+    assert open_session.started_at == STARTED_AT
 
 
-def test_reset_post_moves_timestamp_start_to_now_and_redirects(logged_in, open_session):
+def test_reset_post_moves_started_at_to_now_and_redirects(logged_in, open_session):
     response = logged_in.post(reverse("games:reset_session", args=[open_session.pk]))
 
     open_session.refresh_from_db()
-    assert open_session.timestamp_start > STARTED_AT
+    assert open_session.started_at > STARTED_AT
     assert response["Location"] == reverse("games:list_sessions")
 
 
@@ -95,7 +105,7 @@ def test_reset_records_the_posted_browser_time_zone(logged_in, open_session):
     )
 
     open_session.refresh_from_db()
-    assert open_session.timestamp_start_timezone == BROWSER_ZONE
+    assert open_session.started_at_zone == BROWSER_ZONE
 
 
 @pytest.mark.parametrize("url_name", ["games:finish_session", "games:reset_session"])
@@ -105,5 +115,21 @@ def test_both_routes_require_login(client, open_session, url_name):
     open_session.refresh_from_db()
     assert response.status_code == 302
     assert "/login" in response["Location"]
-    assert open_session.timestamp_end is None
-    assert open_session.timestamp_start == STARTED_AT
+    assert open_session.ended_at is None
+    assert open_session.started_at == STARTED_AT
+
+
+def test_reset_is_not_offered_on_a_finished_row(logged_in, owned_library):
+    game = Game.objects.create(library=owned_library, name="Done Game")
+    finished = session_row(
+        game, started_at=STARTED_AT, ended_at=datetime(2024, 6, 1, 14, tzinfo=UTC)
+    )
+
+    assert (
+        logged_in.get(reverse("games:reset_session", args=[finished.pk])).status_code
+        == 404
+    )
+    assert (
+        logged_in.post(reverse("games:reset_session", args=[finished.pk])).status_code
+        == 404
+    )

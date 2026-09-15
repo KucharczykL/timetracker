@@ -11,10 +11,10 @@ from django.contrib.messages import get_messages
 from django.db.models import Case, DateField, Value, When
 from django.test import RequestFactory
 from django.urls import reverse
-from session_rows import tracked_run
+from session_rows import session_row, tracked_run
 
 from common.criteria import filter_to_json
-from games.filters import FindFilter, GameFilter, SessionFilter
+from games.filters import FindFilter, GameFilter, PlayerSessionFilter
 from games.models import (
     Device,
     Game,
@@ -22,7 +22,6 @@ from games.models import (
     PlayerGame,
     PlayerGameStatus,
     Purchase,
-    Session,
     UserPreferences,
 )
 from games.reads.playtime import playtime_sort_key
@@ -220,15 +219,15 @@ class TestApplySortGames:
         self, owned_library, two_games
     ):
         alpha, _ = two_games
-        Session.objects.create(
-            game=alpha,
-            timestamp_start=datetime(2022, 1, 1, 10, tzinfo=ZONEINFO),
-            timestamp_end=datetime(2022, 1, 1, 12, tzinfo=ZONEINFO),
+        session_row(
+            alpha,
+            started_at=datetime(2022, 1, 1, 10, tzinfo=ZONEINFO),
+            ended_at=datetime(2022, 1, 1, 12, tzinfo=ZONEINFO),
         )
-        Session.objects.create(
-            game=alpha,
-            timestamp_start=datetime(2022, 1, 2, 10, tzinfo=ZONEINFO),
-            timestamp_end=datetime(2022, 1, 2, 11, tzinfo=ZONEINFO),
+        session_row(
+            alpha,
+            started_at=datetime(2022, 1, 2, 10, tzinfo=ZONEINFO),
+            ended_at=datetime(2022, 1, 2, 11, tzinfo=ZONEINFO),
         )
         #: The alias list_games registers.
         games = Game.objects.tracked_by(owned_library).alias(
@@ -450,15 +449,14 @@ class TestListGamesSort:
         tracked_run(owned_library, shared)
         tracked_run(stranger.library, shared)
         start = datetime(2022, 1, 1, 10, tzinfo=ZONEINFO)
-        Session.objects.create(
-            game=alpha, timestamp_start=start, timestamp_end=start.replace(hour=12)
-        )
-        Session.objects.create(
-            game=beta, timestamp_start=start, timestamp_end=start.replace(hour=11)
-        )
-        #: Shared-game legacy sessions count in no library.
-        Session.objects.create(
-            game=shared, timestamp_start=start, timestamp_end=start.replace(hour=20)
+        session_row(alpha, started_at=start, ended_at=start.replace(hour=12))
+        session_row(beta, started_at=start, ended_at=start.replace(hour=11))
+        #: The stranger's ten hours at the shared game are theirs alone.
+        session_row(
+            shared,
+            started_at=start,
+            ended_at=start.replace(hour=20),
+            library=stranger.library,
         )
 
         response = logged_client.get(reverse("games:list_games"), {"sort": "-playtime"})
@@ -481,14 +479,14 @@ class TestListGamesSort:
             (alpha, desktop, 3),
             (beta, handheld, 2),
         ):
-            Session.objects.create(
-                game=game,
+            session_row(
+                game,
                 device=device,
-                timestamp_start=start,
-                timestamp_end=start.replace(hour=10 + hours),
+                started_at=start,
+                ended_at=start.replace(hour=10 + hours),
             )
         on_the_handheld = GameFilter(
-            session_filter=SessionFilter.where(device=[handheld.pk])
+            session_filter=PlayerSessionFilter.where(device=[handheld.pk])
         )
 
         response = logged_client.get(
@@ -505,9 +503,7 @@ class TestListGamesSort:
     ):
         alpha, _beta = two_games
         start = datetime(2022, 1, 1, 10, tzinfo=ZONEINFO)
-        Session.objects.create(
-            game=alpha, timestamp_start=start, timestamp_end=start.replace(hour=12)
-        )
+        session_row(alpha, started_at=start, ended_at=start.replace(hour=12))
         sort = f"-{key}" if descending else key
 
         response = logged_client.get(reverse("games:list_games"), {"sort": sort})
@@ -566,17 +562,15 @@ class TestListGamesSort:
 class TestListSessionsSort:
     def test_sort_by_duration_descending(self, logged_client, two_games):
         alpha, beta = two_games
-        Session.objects.create(
-            game=alpha,
-            timestamp_start=datetime(2022, 1, 1, 10, tzinfo=ZONEINFO),
-            timestamp_end=datetime(
-                2022, 1, 1, 13, tzinfo=ZONEINFO
-            ),  # 3 h, earlier date
+        session_row(
+            alpha,
+            started_at=datetime(2022, 1, 1, 10, tzinfo=ZONEINFO),
+            ended_at=datetime(2022, 1, 1, 13, tzinfo=ZONEINFO),  # 3 h, earlier date
         )
-        Session.objects.create(
-            game=beta,
-            timestamp_start=datetime(2022, 1, 2, 10, tzinfo=ZONEINFO),
-            timestamp_end=datetime(
+        session_row(
+            beta,
+            started_at=datetime(2022, 1, 2, 10, tzinfo=ZONEINFO),
+            ended_at=datetime(
                 2022, 1, 2, 10, 30, tzinfo=ZONEINFO
             ),  # 30 min, later date
         )

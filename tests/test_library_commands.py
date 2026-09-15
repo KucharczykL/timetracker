@@ -15,6 +15,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.utils import timezone
+from session_rows import timed_row, tracked_run
 
 from games.models import (
     Device,
@@ -22,6 +23,7 @@ from games.models import (
     Game,
     Platform,
     PlayerGame,
+    PlayerSession,
     Playthrough,
     PlaythroughKind,
     Purchase,
@@ -61,11 +63,8 @@ def _owned_graph(owner):
         platform=platform,
     )
     purchase.games.add(game)
-    Session.objects.create(
-        game=game,
-        device=device,
-        timestamp_start=datetime(2025, 1, 1, tzinfo=UTC),
-    )
+    started_at = datetime(2025, 1, 1, tzinfo=UTC)
+    timed_row(tracked_run(owner.library, game), started_at, None, device=device)
     return platform, device, game, purchase
 
 
@@ -125,8 +124,8 @@ def test_audit_exits_nonzero_and_names_an_injected_cross_library_link(owner, out
         library=outsider.library,
         name="Foreign device",
     )
-    session = game.sessions.get()
-    Session.objects.filter(pk=session.pk).update(device=foreign_device)
+    session = PlayerSession.objects.get(playthrough__player_game__game=game)
+    PlayerSession.objects.filter(pk=session.pk).update(device=foreign_device)
     output = StringIO()
 
     with pytest.raises(CommandError, match="violation"):
@@ -137,7 +136,10 @@ def test_audit_exits_nonzero_and_names_an_injected_cross_library_link(owner, out
             stdout=output,
         )
 
-    assert "Session.device" in output.getvalue()
+    assert (
+        f"PlayerSession.device: {session.pk} names Device {foreign_device.pk}"
+        in output.getvalue()
+    )
 
 
 @pytest.mark.django_db
@@ -541,7 +543,9 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
     )
     _, owner_device, owner_game, _ = _owned_graph(owner)
     _, _, outsider_game, outsider_purchase = _owned_graph(outsider)
-    outsider_session = outsider_game.sessions.get()
+    outsider_session = PlayerSession.objects.get(
+        playthrough__player_game__game=outsider_game
+    )
 
     Game.objects.filter(pk=outsider_game.pk).update(platform=owner_platform)
     Purchase.objects.filter(pk=outsider_purchase.pk).update(
@@ -552,7 +556,7 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
         purchase_id=outsider_purchase.pk,
         game_id=owner_game.pk,
     )
-    Session.objects.filter(pk=outsider_session.pk).update(device=owner_device)
+    PlayerSession.objects.filter(pk=outsider_session.pk).update(device=owner_device)
     UserLibraryPreferences.objects.filter(library=outsider.library).update(
         default_device=owner_device
     )
@@ -585,16 +589,17 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
         "Purchase.platform",
         "Purchase.related_game",
         "Purchase.games",
-        "Session.device",
+        "PlayerSession.device",
         "UserLibraryPreferences.default_device",
         "Playthrough.player_game",
         "PlayerGame.game",
     ):
         assert relation in report
     assert (
-        f"Session.device: session {outsider_session.pk}, device {owner_device.pk}"
+        f"PlayerSession.device: {outsider_session.pk} names Device {owner_device.pk}"
         in report
     )
+    assert "Session.device: session" not in report
     assert (
         "UserLibraryPreferences.default_device: "
         f"library {outsider.library.pk}, device {owner_device.pk}" in report

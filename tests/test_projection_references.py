@@ -11,7 +11,7 @@ from django.utils import timezone
 from test_projection_targets import declare_projection_models
 
 from games import projections
-from games.checks import check_projection_references
+from games.checks import check_comparison_through, check_projection_references
 from games.models import Game, PlayerGame, Playthrough, ProjectionModel
 from games.projections import (
     AUDITED_PROJECTION_REFERENCES,
@@ -308,3 +308,36 @@ def test_a_pair_another_registry_holds_is_not_stale():
     shelf, _ = declare_projection_models()
 
     assert stale_projection_references(apps=shelf._meta.apps) == ()
+
+
+@isolate_apps("games")
+def test_a_declared_through_path_must_be_to_one_at_every_hop():
+    """`games.E011` names the hop that is not."""
+    shelf, entry_model = declare_projection_models()
+
+    class Note(ProjectionModel):
+        id = models.UUIDField(primary_key=True)
+        entry = models.ForeignKey(
+            entry_model, on_delete=models.CASCADE, related_name="+"
+        )
+        comparison_through = (
+            ("entry__shelf", "Shelf"),
+            ("entry__shelf__entries", "Entries"),
+            ("entry__missing", "Nothing"),
+            ("entry__position", "Position"),
+        )
+
+        class Meta:
+            app_label = "games"
+
+    messages = check_comparison_through(apps=shelf._meta.apps)
+
+    assert [str(message.id) for message in messages] == ["games.E011"] * 3
+    assert "entry__shelf__entries" in messages[0].msg
+    assert "entries" in messages[0].msg
+    assert "entry__missing" in messages[1].msg
+    assert "entry__position" in messages[2].msg
+
+
+def test_the_shipped_through_paths_pass_the_check():
+    assert check_comparison_through() == []

@@ -6,20 +6,21 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.urls import reverse
 from django.utils.html import escape
+from session_rows import session_row
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
 from games.filters import (
+    PlayerSessionFilter,
     PlaythroughFilter,
     PurchaseFilter,
-    SessionFilter,
     filter_query_context_for_library,
     filter_url,
 )
 from games.formatting import session_time_range
-from games.models import Game, Platform, Playthrough, Purchase, Session
+from games.models import Game, Platform, PlayerSession, Playthrough, Purchase
 from games.reads.playthrough_runs import library_runs
 from games.views.game import view_game
 
@@ -41,7 +42,7 @@ def game(owned_library):
         platform=platform,
         status=Game.Status.PLAYED,
     )
-    Session.objects.create(game=game, timestamp_start=_dt(1), timestamp_end=_dt(1, 13))
+    session_row(game, started_at=_dt(1), ended_at=_dt(1, 13))
     Purchase.objects.create(
         library=owned_library,
         price_currency="CZK",
@@ -60,7 +61,7 @@ def rendered(game, rf, owned_user):
 
 
 def test_sessions_section_links_to_filtered_sessions(game, rendered):
-    href = escape(filter_url(SessionFilter.where(game=[game.id])))
+    href = escape(filter_url(PlayerSessionFilter.where(game=[game.id])))
     assert href in rendered
 
 
@@ -81,7 +82,7 @@ def test_link_filters_scope_to_game(game):
     other = Game.objects.create(
         library=game.library, name="Other", platform=game.platform
     )
-    Session.objects.create(game=other, timestamp_start=_dt(3), timestamp_end=_dt(3, 13))
+    session_row(other, started_at=_dt(3), ended_at=_dt(3, 13))
     Purchase.objects.create(
         library=game.library,
         price_currency="CZK",
@@ -89,8 +90,12 @@ def test_link_filters_scope_to_game(game):
         type=Purchase.GAME,
     ).games.set([other])
     context = filter_query_context_for_library(game.library)
-    sessions = Session.objects.filter(SessionFilter.where(game=[game.id]).to_q(context))
-    assert list(sessions) == list(game.sessions.all())
+    sessions = PlayerSession.objects.filter(
+        PlayerSessionFilter.where(game=[game.id]).to_q(context)
+    )
+    assert list(sessions) == list(
+        PlayerSession.objects.filter(playthrough__player_game__game=game)
+    )
 
     purchases = Purchase.objects.filter(
         PurchaseFilter.where(games=[game.id]).to_q(context)
@@ -113,7 +118,7 @@ def test_game_header_has_log_this_game_link(game, rendered):
 def test_sessions_section_is_read_only(game, rendered):
     """Game-detail sessions table is plain data: no interactive row swap, no
     per-row action buttons, no section-header add/resume buttons (#55)."""
-    session = game.sessions.first()
+    session = PlayerSession.objects.get(playthrough__player_game__game=game)
     # No canonical interactive list row (id + htmx device-changed swap)
     assert "session-row-" not in rendered
     assert "device-changed" not in rendered
@@ -124,7 +129,7 @@ def test_sessions_section_is_read_only(game, rendered):
     # dropdown legitimately carries per-game resume links (#419), which are
     # chrome, not part of this read-only section.
     body = rendered.split("</nav>", 1)[-1]
-    assert "/session/add/from-list/" not in body
+    assert "/session/add/resume/" not in body
     # Device shown as a plain column (the column header, not an incidental match)
     assert ">Device<" in rendered
 
@@ -136,9 +141,7 @@ def test_sessions_section_shows_last_five(owned_user, rf):
         library=owned_user.library, name="Many", platform=platform
     )
     sessions = [
-        Session.objects.create(
-            game=many, timestamp_start=_dt(day), timestamp_end=_dt(day, 13)
-        )
+        session_row(many, started_at=_dt(day), ended_at=_dt(day, 13))
         for day in range(1, 7)  # six sessions, days 1..6
     ]
     request = rf.get(f"/game/{many.id}/")

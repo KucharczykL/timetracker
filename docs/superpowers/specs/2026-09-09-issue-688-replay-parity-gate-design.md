@@ -1,7 +1,7 @@
 # The PlayerGame and Playthrough replay-parity gate
 
 Issue [#688](https://github.com/KucharczykL/timetracker/issues/688). The code is
-in `tests/test_playergame_playthrough_gate.py`.
+in `tests/test_projection_replay_gate.py`.
 
 A projection must agree with the events it was written from. The gate replays
 one stream that carries every registered type of both `CURRENT_STATE` families,

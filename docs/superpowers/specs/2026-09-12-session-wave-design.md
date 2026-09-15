@@ -531,7 +531,7 @@ what it settled, and what the rest of this wave inherits:
   refuses that line until the projection source implements
   `summed_by_game_matching`, which needs `SessionFilter` restated in the
   projection's fields.
-- **The parity instrument.** `make verify-playtime-parity` compares every figure
+- **The parity instrument.** `make verify-session-parity` compares every figure
   of both sources through the protocol. #700 reconciles against it and #704
   gates on it.
 - **Rehearsed on the 2026-09-12 dump.** Of 883 rendered pages, 879 were
@@ -559,6 +559,16 @@ row cannot be written without one.
 
 Converts removed rows too, stating the removal as a fact.
 
+**Delivered.** Design in
+[Convert legacy Sessions](2026-09-14-issue-700-session-conversion-design.md).
+Four decisions the later issues inherit: a running row converts as a Timed
+row with no end only when it is removed, and refuses the migration while
+live; the bucket is one imported-history run per game, minted at the
+migration's instant, and `MoveSessionToPlaythrough` is the only way out of
+it; a row whose game has no live tracking row refuses the migration by name
+rather than being skipped; and the migration is member 1 of the wave's
+`gh stack` (#700 → #1047 → #702 → #704), never merged alone.
+
 ### #1047 — the zone a library counts days in
 
 One statement of the zone every day-grained reader reads — `effective_day`, the
@@ -572,6 +582,24 @@ rebuild) register on that act and do not choose their own trigger. Where a
 figure moves under the decision, the delta is enumerated against restored
 production data rather than asserted equal.
 
+**Delivered.** The design is
+[The zone a library counts days in](2026-09-15-issue-1047-library-calendar-design.md);
+what it settled, and what the rest of this wave inherits:
+
+- **The stored row zone is the library's answer.** `effective_day` is the day;
+  no reader computes one from a zone of its own. `default_activity_clock()` is
+  gone, and `activity_clock` reads `calendar_day_zone(library)`.
+- **The setting is the act, and it is automatic.** Changing `DISPLAY_TIME_ZONE`
+  appends `library.calendar.day_zone_changed` in the same transaction as the
+  preference row and reports the delta after. The projector rewrites every
+  Timed and Corrected row: one library-wide event, which answers #1054's open
+  question. #748 registers as a Journal projector handling the same event.
+- **The delta on the 2026-09-12 dump** is 9 of 2,663 Timed and Corrected sessions to another
+  day under Prague→UTC, none to another month or year; the round trip is
+  exact and the replay check clean.
+- **#702's surfaces seed `day_zone` from `calendar_day_zone(library)`**, and a
+  statement off the calendar is refused, so a wrong seed is loud.
+
 ### #702 — the cutover
 
 Absorbs #703. One issue, delivered as a stack, one pull request per surface
@@ -584,8 +612,8 @@ intermediate state ever runs anywhere real.
 The surfaces, each one a stack member:
 
 1. **The run pickers and the write path.** The four creation surfaces — the add
-   form, add-for-game, the purchase form's Submit & Create Session, Game
-   detail's link — each name a run. `clone_session_by_id` and
+   form, add-for-game, the Add Game and Add Purchase forms' Submit & Create
+   Session, Game detail's link — each name a run. `clone_session_by_id` and
    `new_session_from_existing_session` copy the source's run. `mark_as_played`
    stays a companion dispatch beside creation under its own `correlation_id`,
    the shape #683 settled for Playthrough. `returns.py` classifies every route
@@ -655,6 +683,33 @@ none naming a session field — so the conclusion holds, but the reason is "none
 names a dying field", not "the table is empty". #767 keeps the versioned
 registry if a later wave wants one.
 
+**Delivered.** The design is
+[Switch Session writes and every read surface](2026-09-15-issue-702-session-cutover-design.md);
+three members (#1075, #1076, #1077), what they settled, and what
+#704 inherits:
+
+- **The form derives the mode from what is filled.** No mode control; two
+  shapes are refused naming the shapes that work. A duration beside two
+  instants replaces elapsed time, which is what Corrected means.
+- **The filter is `PlayerSessionFilter`, in projection words**, under model
+  key `playersession`; the four dying fields are replaced, not aliased, and a
+  key no field answers is refused rather than dropped.
+- **The bucket takes no new session.** Clone and resume name the game's
+  latest live ordinary run, keyed on the game, never the source's run. A
+  session on a game nothing tracks is refused on the run.
+- **Aggregates always take the context scope**, so a shared catalog game
+  counts one library's rows whether or not a scope filter is stated.
+- **Superlatives read `effective_duration`**, so a Corrected row enters at its
+  override and a Duration-only row at its stated duration. #704's equality
+  gate measures against that, not against elapsed time alone.
+- **The dormancy clock asks when the run was last played**, so a run whose
+  play sits in the bucket reads Never played until the sessions are moved.
+- **A foreign device on the API answers 404**, ahead of the command's 409.
+- **The legacy table has one guard**: `tests/test_session_import_guard.py`
+  fails on an import outside the conversion, the census, the legacy playtime
+  source, the removal registry and the fixture commands. #772 empties its
+  list.
+
 ### #704 — the gates
 
 Replay parity for the projections, statistics parity against the legacy reads,
@@ -670,7 +725,7 @@ group days in, which is what makes strict equality reachable; seeding from
 month and 5 to another year, and this gate would have failed by exactly that
 amount. Equality holds while the viewer's zone is the one the rows were seeded
 in, and #704 states the zone each of its figures was measured in. #697 ships
-the gate's instrument, `make verify-playtime-parity`.
+the gate's instrument, `make verify-session-parity`.
 
 The performance gate states a **budget** rather than a verdict. It names a
 per-read threshold measured on restored production data for the reads that grow
@@ -683,6 +738,48 @@ document, are the baseline.
 Two branches have no production data and are covered synthetically: Corrected
 mode, which no legacy row converts into, and arbitration between two dated
 overlapping run intervals, which no production session encounters.
+
+**Delivered.** The design is
+[Pass the Session replay, statistics and budget gates](2026-09-15-issue-704-session-gates-design.md);
+member 4 of the stack, with `render_pages` ahead of it on `main` (#1078).
+The gates ran on the 2026-09-12 dump, one library, migrated through the
+conversion: 2,807 legacy rows became 2,807 projection rows, 2,745 on a sole
+live run, 61 contained by one dated run, 1 in the bucket, 142 Duration-only,
+0 mismatches.
+
+- **Replay.** 7,057 events through four tables, no row only live, only
+  rebuilt or differing. The in-suite gate replays every session event type
+  through commands, including a Corrected row, and the two-dated-claimers
+  conversion case reconciles clean.
+- **Statistics.** 0 of 4,649 figures differ: 4,501 playtime figures and 148
+  session figures, legacy days read in `Europe/Prague`, the zone every
+  projection row fixes its day in.
+- **Pages.** 1,700 read-only pages rendered at `main` and at the stack head
+  on one database. 1,697 differ raw; with #702's two navbar changes
+  normalised -- the resume route keyed on the game rather than the source
+  session, and the navbar links spelling `day` -- and the filter builder's
+  `playersession` key, 153 remain, every one attributed: 124 game pages
+  where a Duration-only row prints its day with no clock, because the
+  projection holds no instant for a manual entry and the legacy row carried a
+  stamped midnight; 18 stats pages where the longest session and the highest
+  average moved to `effective_duration` -- the legacy page counted a manual
+  entry as zero and, its NULL elapsed time sorting first, printed 0 h as the
+  longest session on every one of them; the session list's facets and the
+  filter builders, which speak the projection's words; and the settings
+  pages, whose field rows #1047 named. No first or last play moved, and no
+  tie printed the other way. No defect.
+- **Budget.** Six reads on production shape, each judged at 20 ms p95:
+  `session_page` 3.6 ms, `game_playtime_sort` 8.1 ms, `stats_totals` 6.4 ms,
+  `stats_by_platform` 3.0 ms, `stats_by_month` 4.2 ms, `stats_superlatives`
+  12.6 ms. The last first measured 20.4 ms; its three aggregating readers
+  were regrouped on the session table, which halved each, before any cell
+  was materialised. On the scratch seed -- 33,543 sessions on as many games,
+  a shape no library has -- the reads are recorded and not gated; the
+  numbers are in `docs/event-benchmarks.md`.
+
+**The deployment constraint is lifted.** With the three gates green on the
+dump, the projection is the record and the legacy table is inert; #772 takes
+it.
 
 ### #772 — remove legacy Session storage
 

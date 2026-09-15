@@ -6,8 +6,9 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
+from session_rows import session_row
 
-from games.models import Device, Game, Platform, Purchase, Session, UserPreferences
+from games.models import Device, Game, Platform, Purchase, UserPreferences
 from timetracker import settings_resolver
 
 
@@ -175,10 +176,10 @@ def test_session_edit_uses_user_device_only_when_existing_value_is_empty(
         library=user.library, name="Desktop", type=Device.PC
     )
     user.library.preferences.set_default_device(preferred)
-    empty = Session.objects.create(game=game, timestamp_start=timezone.now())
-    existing = Session.objects.create(
-        game=game,
-        timestamp_start=timezone.now(),
+    empty = session_row(game, started_at=timezone.now())
+    existing = session_row(
+        game,
+        started_at=timezone.now(),
         device=existing_device,
     )
 

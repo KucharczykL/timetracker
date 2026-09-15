@@ -193,8 +193,8 @@ class QuickFilterBarRenderingTest(TestCase):
         editable sessions bar with the values prefilled."""
         filter_json = json.dumps(
             {
-                "duration_total_hours": {"value": 2, "modifier": "GREATER_THAN"},
-                "timestamp_start": {
+                "duration_hours": {"value": 2, "modifier": "GREATER_THAN"},
+                "day": {
                     "value": "2026-01-01",
                     "value2": "2026-02-01",
                     "modifier": "BETWEEN",

@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any, NamedTuple, cast
 from uuid import UUID
 
@@ -41,10 +41,10 @@ from games.models import (
     Game,
     PlayerGameStatus,
     Playthrough,
-    Session,
     UserLibrary,
 )
 from games.ownership import owned_or_404
+from games.reads.player_sessions import game_session_days
 from games.reads.playthrough_endpoints import (
     StatedEndpoint,
     restatable_days,
@@ -57,6 +57,7 @@ from games.reads.playthrough_runs import (
     runs_with_condition,
     tracked_game,
 )
+from games.reads.playtime import DayInterval, game_playtime_between
 from games.sorting import (
     PLAYTHROUGH_DEFAULT_SORT,
     PLAYTHROUGH_SORTS,
@@ -84,40 +85,45 @@ from timetracker.temporal import TemporalValue
 logger = logging.getLogger("games")
 
 
-def _get_formatted_playtime_for_game_sessions_in_range(
-    game: Game,
-    start_timestamp: datetime | None = None,
-    end_timestamp: datetime | None = None,
-) -> str:
+#: What the note seeds for a game never played, as it always has.
+NO_SESSIONS_NOTE = "0h 00m"
+
+
+class SeededRun(NamedTuple):
+    """What the Add Playthrough page fills in for a game."""
+
+    started: date | None
+    ended: date | None
+    note: str
+
+
+def _seeded_run(library: UserLibrary, game: Game) -> SeededRun:
+    """The day after the last finish, else the first session day.
+
+    The note seeds text a person then saves, so it is stored
+    text rather than display: a per-viewer duration preference
+    must not leak into it.
     """
-    Calculates and formats the total playtime for a game's sessions
-    between specified start and end timestamps. If timestamps are not provided,
-    it uses the earliest and latest session start times for the game.
-    Returns "0h 00m" if no sessions exist for the game or if the range is invalid.
-    """
-    sessions_queryset = game.sessions.alive()
-
-    if not sessions_queryset.exists():
-        return "0h 00m"
-
-    actual_start_ts = (
-        start_timestamp
-        if start_timestamp is not None
-        else sessions_queryset.earliest("timestamp_start").timestamp_start
-    )
-    actual_end_ts = (
-        end_timestamp
-        if end_timestamp is not None
-        else sessions_queryset.latest("timestamp_start").timestamp_start
-    )
-
-    sessions_in_range = sessions_queryset.filter(
-        timestamp_start__gte=actual_start_ts, timestamp_start__lte=actual_end_ts
-    )
-    # This seeds a note the user then saves, so it is stored text rather than
-    # display: a per-viewer duration preference must not leak into it.
     fixed = DurationPresentation(duration_format_profile("hours_minutes"), "en-us")
-    return fixed.format(sessions_in_range.total_duration_unformatted())
+    played = game_session_days(library, game)
+    if played is None:
+        return SeededRun(None, None, NO_SESSIONS_NOTE)
+    tracked = tracked_game(library, game)
+    last_finish = (
+        live_ordinary_runs(library, tracked).aggregate(latest=Max("completed_upper"))[
+            "latest"
+        ]
+        if tracked is not None
+        else None
+    )
+    started = played.first if last_finish is None else last_finish + timedelta(days=1)
+    #: A finish after the last session leaves no day to sum.
+    playtime = (
+        timedelta(0)
+        if played.last < started
+        else game_playtime_between(library, game, DayInterval(started, played.last))
+    )
+    return SeededRun(started, played.last, fixed.format(playtime))
 
 
 @login_required
@@ -200,46 +206,7 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
         game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
         offered_game = game
         initial["game"] = game
-        try:
-            # First, try to get the latest session. If no sessions, then no playtime.
-            latest_session = game.sessions.alive().latest("timestamp_start")
-            latest_session_ts = latest_session.timestamp_start
-
-            #: The greatest finish day a run states.
-            tracked = tracked_game(library, game)
-            last_finish = (
-                live_ordinary_runs(library, tracked).aggregate(
-                    latest=Max("completed_upper")
-                )["latest"]
-                if tracked is not None
-                else None
-            )
-
-            if last_finish is not None:
-                new_playthrough_start_date = last_finish + timedelta(days=1)
-                initial["started"] = new_playthrough_start_date
-                playtime_calc_start_ts = datetime.combine(
-                    new_playthrough_start_date, datetime.min.time()
-                )
-            else:
-                #: No finish day, so the earliest session.
-                earliest_session_ts = (
-                    game.sessions.alive().earliest("timestamp_start").timestamp_start
-                )
-                initial["started"] = earliest_session_ts.date()
-                playtime_calc_start_ts = earliest_session_ts
-
-            #: The end day, and the playtime span's.
-            initial["ended"] = latest_session_ts.date()
-            playtime_calc_end_ts = latest_session_ts
-
-            initial["note"] = _get_formatted_playtime_for_game_sessions_in_range(
-                game, playtime_calc_start_ts, playtime_calc_end_ts
-            )
-        except Session.DoesNotExist:
-            initial["started"] = None
-            initial["ended"] = None
-            initial["note"] = "0h 00m"
+        initial |= _seeded_run(library, game)._asdict()
     form = PlaythroughForm(
         request.POST or None,
         initial=initial,

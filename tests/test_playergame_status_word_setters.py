@@ -5,6 +5,7 @@ import uuid
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from session_rows import run_id
 
 from games.models import Game, PlayerGame, PlayerGameStatus
 
@@ -131,11 +132,12 @@ def test_a_session_marks_an_unplayed_game_played(logged_in, owned_library):
         reverse("games:add_session"),
         {
             "game": str(game.pk),
-            "timestamp_start": started.strftime("%Y-%m-%d %H:%M"),
-            "timestamp_start_timezone": "",
-            "timestamp_end": "",
-            "timestamp_end_timezone": "",
-            "duration_manual": "",
+            "playthrough": run_id(owned_library, game),
+            "started_at": started.strftime("%Y-%m-%d %H:%M"),
+            "started_at_zone": "",
+            "ended_at": "",
+            "ended_at_zone": "",
+            "duration": "",
             "note": "",
             "mark_as_played": "on",
         },

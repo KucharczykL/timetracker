@@ -1,11 +1,11 @@
-"""Every event type of both families, replayed.
+"""Every event type of the three families, replayed.
 
 The dispatches need real transactions, and the conftest tracking
 fixture would otherwise write projection rows no event states.
 """
 
 from collections.abc import Mapping
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, NamedTuple
 
 import pytest
@@ -19,6 +19,19 @@ from games.commands.playergame import (
     SetPlayerGameStatus,
     TrackGame,
 )
+from games.commands.playersession import (
+    CorrectedTiming,
+    CorrectSessionTiming,
+    CreateSession,
+    DescribeSession,
+    DurationOnlyTiming,
+    EndSession,
+    MoveSessionToPlaythrough,
+    RemoveSession,
+    RestoreSession,
+    StatedDevice,
+    TimedTiming,
+)
 from games.commands.playthrough import (
     CompletePlaythrough,
     CorrectPlaythroughCompletion,
@@ -29,21 +42,25 @@ from games.commands.playthrough import (
     RestorePlaythrough,
     StartPlaythrough,
 )
-from games.events.dispatch import Command, CommandOutcome, dispatch
+from games.events.dispatch import Command, CommandOutcome, CommandResult, dispatch
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.events.replay import replay
 from games.models import (
+    Device,
     Game,
     LibraryEvent,
     LibraryEventStreamHead,
     LibraryIdempotencyRecord,
     PlayerGame,
     PlayerGameStatus,
+    PlayerSession,
     Playthrough,
     PlaythroughKind,
 )
 from games.projectors.playergame import PlayerGames
+from games.projectors.playersession import PlayerSessions
 from games.projectors.playthrough import Playthroughs
+from games.reads.calendar import calendar_day_zone
 from games.reads.playthrough_numbering import DISPLAY_ORDER
 from timetracker.temporal import TemporalValue
 
@@ -63,8 +80,16 @@ class DispatchedCommand(NamedTuple):
     key: str
 
 
+def _created_id(result: CommandResult) -> Any:
+    """The row a creation wrote: its event's aggregate id."""
+    assert result.sequences is not None
+    return LibraryEvent.objects.get(
+        stream_id=result.stream_id, sequence=result.sequences.first
+    ).aggregate_id
+
+
 def build_stream(user, library) -> list[DispatchedCommand]:
-    """Every type of both families, through commands.
+    """Every type of the three families, through commands.
 
     Nothing appends by hand: the gate is a claim about what the write
     path produces, and an event this module wrote itself would prove
@@ -75,12 +100,13 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     third = Game.objects.create(library=library, name="Hades")
     dispatched: list[DispatchedCommand] = []
 
-    def run(command: Command, key: str) -> None:
+    def run(command: Command, key: str) -> CommandResult:
         result = dispatch(command, actor=user, library=library, idempotency_key=key)
         assert result.outcome is CommandOutcome.APPENDED, (
             f"{key} recorded nothing, so the stream misses its event types."
         )
         dispatched.append(DispatchedCommand(command, key))
+        return result
 
     run(TrackGame(game_id=first.pk), "track-first")
     run(TrackGame(game_id=second.pk), "track-second")
@@ -197,6 +223,86 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     )
     run(RemovePlaythrough(playthrough_id=third_run.pk), "remove-third-run")
 
+    #: Sessions: one per mode, then every act on one.
+    zone = calendar_day_zone(library).key
+    device = Device.objects.create(library=library, name="Deck")
+    noon = datetime(2024, 1, 5, 12, tzinfo=UTC)
+    timed = _created_id(
+        run(
+            CreateSession(
+                playthrough_id=first_run.pk,
+                timing=TimedTiming(started_at=noon, day_zone=zone),
+            ),
+            "create-timed-session",
+        )
+    )
+    duration_only = _created_id(
+        run(
+            CreateSession(
+                playthrough_id=first_run.pk,
+                timing=DurationOnlyTiming(
+                    day=date(2024, 1, 3), duration=timedelta(minutes=45)
+                ),
+                note="From memory",
+            ),
+            "create-duration-only-session",
+        )
+    )
+    corrected = _created_id(
+        run(
+            CreateSession(
+                playthrough_id=first_run.pk,
+                timing=CorrectedTiming(
+                    started_at=noon + timedelta(days=1),
+                    ended_at=noon + timedelta(days=1, hours=3),
+                    duration=timedelta(hours=2),
+                    day_zone=zone,
+                ),
+                device_id=device.pk,
+            ),
+            "create-corrected-session",
+        )
+    )
+    run(
+        EndSession(
+            session_id=timed, ended_at=noon + timedelta(hours=1), ended_at_zone=None
+        ),
+        "end-timed-session",
+    )
+    #: A correction that changes the mode and every timing column.
+    run(
+        CorrectSessionTiming(
+            session_id=duration_only,
+            timing=TimedTiming(
+                started_at=noon + timedelta(days=2),
+                day_zone=zone,
+                ended_at=noon + timedelta(days=2, minutes=30),
+            ),
+        ),
+        "correct-duration-only-session",
+    )
+    #: Three facts at once: three events.
+    run(
+        DescribeSession(
+            session_id=corrected,
+            note="Long one",
+            device=StatedDevice(None),
+            emulated=True,
+        ),
+        "describe-corrected-session",
+    )
+    second_game_run = Playthrough.objects.get(player_game__game=second)
+    run(
+        MoveSessionToPlaythrough(
+            session_id=corrected, playthrough_id=second_game_run.pk
+        ),
+        "move-corrected-session",
+    )
+    run(RemoveSession(session_id=timed), "remove-timed-session")
+    run(RestoreSession(session_id=timed), "restore-timed-session")
+    #: Left removed, as the third run and the third game are.
+    run(RemoveSession(session_id=duration_only), "remove-duration-only-session")
+
     run(RemovePlayerGame(game_id=second.pk), "remove-second-game")
     run(RestorePlayerGame(game_id=second.pk), "restore-second-game")
     #: Left removed, for the same reason as the third run.
@@ -205,10 +311,14 @@ def build_stream(user, library) -> list[DispatchedCommand]:
 
 
 def registered_event_types() -> set[str]:
-    """Every type the two CURRENT_STATE projectors read."""
+    """Every type the three CURRENT_STATE projectors read."""
     return {
         spec.event_type
-        for handles in (PlayerGames.handles, Playthroughs.handles)
+        for handles in (
+            PlayerGames.handles,
+            Playthroughs.handles,
+            PlayerSessions.handles,
+        )
         for spec in handles
     }
 
@@ -231,7 +341,7 @@ def test_the_stream_carries_every_registered_event_type(owned_user, owned_librar
 
 
 def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_library):
-    """A real stream, short of thirteen of its types."""
+    """A real stream, short of twenty-two of its types."""
     game = Game.objects.create(library=owned_library, name="Celeste")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -247,7 +357,7 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
         "library.playergame.created",
         "library.playthrough.created",
     }
-    assert len(missing) == 13
+    assert len(missing) == 22
 
 
 def build_neighbour(user, library) -> None:
@@ -267,6 +377,20 @@ def build_neighbour(user, library) -> None:
     ):
         result = dispatch(command, actor=user, library=library, idempotency_key=key)
         assert result.outcome is CommandOutcome.APPENDED, key
+    #: One row in the third table, so its xmin is watched too.
+    run = Playthrough.objects.get(player_game__game=game)
+    result = dispatch(
+        CreateSession(
+            playthrough_id=run.pk,
+            timing=DurationOnlyTiming(
+                day=date(2024, 3, 1), duration=timedelta(hours=1)
+            ),
+        ),
+        actor=user,
+        library=library,
+        idempotency_key="neighbour-session",
+    )
+    assert result.outcome is CommandOutcome.APPENDED, "neighbour-session"
 
 
 @pytest.fixture
@@ -279,12 +403,12 @@ def neighbour(django_user_model):
     return user.library
 
 
-#: Both tables' rows, as `.values()` answers them.
+#: One table's rows, as `.values()` answers them.
 type ProjectionRows = list[Mapping[str, Any]]
 
 
-def rows_of(library) -> tuple[ProjectionRows, ProjectionRows]:
-    """Both tables' whole rows, in key order.
+def rows_of(library) -> tuple[ProjectionRows, ProjectionRows, ProjectionRows]:
+    """The three tables' whole rows, in key order.
 
     `.values()` rather than a column list, so a column added later is
     in the comparison the day it lands. Refuses an empty table, because
@@ -297,8 +421,13 @@ def rows_of(library) -> tuple[ProjectionRows, ProjectionRows]:
     runs: ProjectionRows = list(
         Playthrough.objects.filter(library=library).order_by("pk").values()
     )
-    assert tracked and runs, f"Library {library.pk} holds no rows to compare."
-    return (tracked, runs)
+    sessions: ProjectionRows = list(
+        PlayerSession.objects.filter(library=library).order_by("pk").values()
+    )
+    assert tracked and runs and sessions, (
+        f"Library {library.pk} holds no rows to compare."
+    )
+    return (tracked, runs, sessions)
 
 
 def row_versions(library) -> list[tuple[str, str]]:
@@ -314,20 +443,23 @@ def row_versions(library) -> list[tuple[str, str]]:
             SELECT id::text, xmin::text FROM games_playergame WHERE library_id = %s
             UNION ALL
             SELECT id::text, xmin::text FROM games_playthrough WHERE library_id = %s
+            UNION ALL
+            SELECT id::text, xmin::text FROM games_playersession WHERE library_id = %s
             ORDER BY 1
             """,
-            [library.pk, library.pk],
+            [library.pk, library.pk, library.pk],
         )
         return cursor.fetchall()
 
 
 def empty_projections(library) -> None:
-    """Scoped by library, child first for RESTRICT."""
+    """Scoped by library, children first for RESTRICT."""
+    PlayerSession.objects.filter(library=library).delete()
     Playthrough.objects.filter(library=library).delete()
     PlayerGame.objects.filter(library=library).delete()
 
 
-def test_replaying_an_emptied_library_reproduces_both_tables(
+def test_replaying_an_emptied_library_reproduces_every_table(
     owned_user, owned_library, neighbour
 ):
     """Every column, including the clock-derived ones."""
@@ -348,7 +480,7 @@ def test_replaying_an_emptied_library_reproduces_both_tables(
     assert row_versions(neighbour) == unwritten
 
 
-def test_a_rebuild_swaps_both_tables_with_an_empty_diff(
+def test_a_rebuild_swaps_every_table_with_an_empty_diff(
     owned_user, owned_library, neighbour
 ):
     """The rebuild's own diff, not this module's."""
@@ -362,6 +494,7 @@ def test_a_rebuild_swaps_both_tables_with_an_empty_diff(
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in report.tables
     ] == [
+        ("games_librarycalendar", 0, 0, 0),
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
@@ -421,6 +554,9 @@ def test_the_stream_leaves_a_removed_row_in_each_table(owned_user, owned_library
         library=owned_library, removed_at__isnull=False
     ).exists()
     assert Playthrough.objects.filter(
+        library=owned_library, removed_at__isnull=False
+    ).exists()
+    assert PlayerSession.objects.filter(
         library=owned_library, removed_at__isnull=False
     ).exists()
 

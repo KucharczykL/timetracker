@@ -5,10 +5,10 @@ from datetime import timedelta
 from django.db.models import DurationField, Value
 from django.db.models.functions import Coalesce
 
-from games.filters import SessionFilter
+from games.filters import PlayerSessionFilter
 from games.models import Game, UserLibrary
 from games.reads.playthrough_completions import YearScope
-from games.reads.playtime import legacy
+from games.reads.playtime import projection
 from games.reads.playtime.source import (
     DayInterval,
     FullPlaytimeSource,
@@ -25,6 +25,7 @@ __all__ = [
     "PlatformPlaytime",
     "UnscopedPlaytimeRead",
     "game_playtime",
+    "game_playtime_between",
     "playtime_between",
     "playtime_by_game",
     "playtime_by_month",
@@ -34,8 +35,8 @@ __all__ = [
     "total_playtime",
 ]
 
-#: Legacy table until writes reach the projection.
-SOURCE: FullPlaytimeSource = legacy
+#: Every figure reads the projection.
+SOURCE: FullPlaytimeSource = projection
 
 
 def playtime_by_game(
@@ -55,7 +56,7 @@ def playtime_sort_key(library: UserLibrary) -> PlaytimeSum:
 
 
 def playtime_matching(
-    library: UserLibrary, session_filter: SessionFilter | None
+    library: UserLibrary, session_filter: PlayerSessionFilter | None
 ) -> PlaytimeSum:
     """Matching sessions' sum, NULL when none match."""
     if session_filter is None:
@@ -65,6 +66,13 @@ def playtime_matching(
 
 def game_playtime(library: UserLibrary, game: Game) -> timedelta:
     return SOURCE.game_playtime(library, game)
+
+
+def game_playtime_between(
+    library: UserLibrary, game: Game, days: DayInterval
+) -> timedelta:
+    """One game's playtime over inclusive days."""
+    return SOURCE.game_playtime_between(library, game, days)
 
 
 def total_playtime(library: UserLibrary, *, year: YearScope = None) -> timedelta:

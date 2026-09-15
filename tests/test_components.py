@@ -1,3 +1,4 @@
+import datetime
 import re
 import unittest
 from typing import get_args
@@ -10,9 +11,10 @@ from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, override_settings
 from django.test.client import RequestFactory
 from django.utils.safestring import SafeText, mark_safe
+from session_rows import session_row
 
 from common import components
-from games.models import Game, Platform, Purchase, Session
+from games.models import Game, Platform, Purchase
 
 # Component builders return lazy ``Node`` objects; these tests assert on rendered
 # HTML, so node-returning calls are wrapped in ``str(...)`` at the call site
@@ -455,13 +457,18 @@ class SessionActionsTest(unittest.TestCase):
 
     SESSION_ID = UUID("018f5e66-e800-7000-8000-000000000001")
 
-    def _session(self, *, pk=SESSION_ID, timestamp_end=None, game_name="Hades"):
+    def _session(
+        self, *, pk=SESSION_ID, ended_at=None, timing_mode="timed", game_name="Hades"
+    ):
         from types import SimpleNamespace
 
         return SimpleNamespace(
             pk=pk,
-            timestamp_end=timestamp_end,
-            game=SimpleNamespace(name=game_name),
+            ended_at=ended_at,
+            timing_mode=timing_mode,
+            playthrough=SimpleNamespace(
+                player_game=SimpleNamespace(game=SimpleNamespace(name=game_name))
+            ),
         )
 
     def test_open_session_posts_to_finish_and_links_to_reset(self):
@@ -483,7 +490,7 @@ class SessionActionsTest(unittest.TestCase):
         from common.components.domain import SessionActions
 
         ended = self._session(
-            timestamp_end=datetime.datetime(2026, 6, 24, 19, 0, tzinfo=datetime.UTC)
+            ended_at=datetime.datetime(2026, 6, 24, 19, 0, tzinfo=datetime.UTC)
         )
         html = str(SessionActions(ended, "tok123", None))
         self.assertNotIn(f"/session/{self.SESSION_ID}/finish", html)
@@ -1633,9 +1640,9 @@ class ModelDependentComponentsTest(django.test.TestCase):
     def test_name_with_icon_emulated_flag(self):
         platform = self._create_platform(icon="steam")
         game = self._create_game(platform)
-        session = Session.objects.create(
-            game=game,
-            timestamp_start="2025-01-01 00:00:00+00:00",
+        session = session_row(
+            game,
+            started_at=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC),
             emulated=True,
         )
         result = str(components.NameWithIcon(session=session, linkify=True))
@@ -1651,9 +1658,8 @@ class ModelDependentComponentsTest(django.test.TestCase):
     def test_name_with_icon_session_fetches_game(self):
         platform = self._create_platform(icon="egs")
         game = self._create_game(platform, name="Epic Game")
-        session = Session.objects.create(
-            game=game,
-            timestamp_start="2025-01-01 00:00:00+00:00",
+        session = session_row(
+            game, started_at=datetime.datetime(2025, 1, 1, tzinfo=datetime.UTC)
         )
         result = str(components.NameWithIcon(session=session, linkify=True))
         self.assertIsInstance(result, SafeText)
@@ -1801,7 +1807,7 @@ class ResolveNameWithIconTest(unittest.TestCase):
         self.mock_game.get_absolute_url.return_value = "/game/test-game"
 
         self.mock_session = MagicMock()
-        self.mock_session.game = self.mock_game
+        self.mock_session.playthrough.player_game.game = self.mock_game
         self.mock_session.emulated = False
         self.mock_session.pk = 1
 

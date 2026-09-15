@@ -36,8 +36,8 @@ from games.models import (
     Platform,
     Purchase,
     PurchaseConversionState,
-    Session,
 )
+from games.reads.player_sessions import library_sessions
 from games.views import stats_links
 from timetracker.settings_commands import SettingNamespace
 
@@ -58,7 +58,7 @@ def library(request: HttpRequest) -> HttpResponse:
     origin = request.get_full_path()
     presentation = date_time_presentation_for_request(request)
     games = Game.objects.for_library(library)
-    sessions = Session.objects.for_library(library)
+    sessions = library_sessions(library)
     purchases = Purchase.objects.for_library(library)
     devices = Device.objects.for_library(library)
     platforms = Platform.objects.for_library(library)

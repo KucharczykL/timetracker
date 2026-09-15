@@ -19,6 +19,7 @@ from uuid import UUID
 import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from session_rows import session_row
 
 from common.criteria import FilterQueryContext, with_filter_aliases
 from games.filters import (
@@ -26,7 +27,7 @@ from games.filters import (
     parse_purchase_filter,
     parse_session_filter,
 )
-from games.models import Device, Game, Platform, Playthrough, Purchase, Session
+from games.models import Device, Game, Platform, PlayerSession, Playthrough, Purchase
 from timetracker.temporal import TemporalValue
 
 UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
@@ -55,7 +56,7 @@ def _session_ids(filter_json: str) -> set[UUID]:
     parsed = parse_session_filter(filter_json)
     assert parsed is not None
     return set(
-        Session.objects.filter(parsed.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        PlayerSession.objects.filter(parsed.to_q(UNRESTRICTED_FILTER_CONTEXT))
         .distinct()
         .values_list("id", flat=True)
     )
@@ -94,8 +95,8 @@ def device_world(db):
     on_deck = Game.objects.create(name="OnDeck", platform=pc)
     on_desktop = Game.objects.create(name="OnDesktop", platform=pc)
     Game.objects.create(name="NoSessions", platform=pc)
-    Session.objects.create(game=on_deck, timestamp_start=_dt(), device=deck)
-    Session.objects.create(game=on_desktop, timestamp_start=_dt(), device=desktop)
+    session_row(on_deck, started_at=_dt(), device=deck)
+    session_row(on_desktop, started_at=_dt(), device=desktop)
     return {"deck": deck, "on_deck": on_deck.id, "on_desktop": on_desktop.id}
 
 
@@ -307,8 +308,8 @@ def emulated_world(db):
     emulated = Game.objects.create(name="Emulated", platform=pc)
     native = Game.objects.create(name="Native", platform=pc)
     no_sessions = Game.objects.create(name="NoSessions", platform=pc)
-    Session.objects.create(game=emulated, timestamp_start=_dt(), emulated=True)
-    Session.objects.create(game=native, timestamp_start=_dt(), emulated=False)
+    session_row(emulated, started_at=_dt(), emulated=True)
+    session_row(native, started_at=_dt(), emulated=False)
     return {
         "emulated": emulated.id,
         "native": native.id,

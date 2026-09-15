@@ -1,4 +1,4 @@
-"""Playtime figures compared across both tables."""
+"""Playtime and session figures compared across both tables."""
 
 from datetime import UTC, date, datetime, time, timedelta
 from io import StringIO
@@ -26,6 +26,15 @@ from games.reads.playtime_parity import (
     SourcePair,
     differing,
     playtime_figures,
+)
+from games.reads.session_parity import (
+    COMPARED_SESSION_MEMBERS,
+    SESSION_SOURCES,
+    UNCOMPARED_SESSION_MEMBERS,
+    SessionFigureSource,
+    SessionSourcePair,
+    differing_session_figures,
+    session_figures,
 )
 
 pytestmark = pytest.mark.django_db
@@ -104,7 +113,7 @@ def test_the_command_exits_non_zero_on_a_difference(owned_user, owned_library, g
 
     with pytest.raises(CommandError, match="figures differ"):
         call_command(
-            "verify_playtime_parity",
+            "verify_session_parity",
             "--user",
             owned_user.username,
             "--day-zone",
@@ -121,7 +130,7 @@ def test_the_command_passes_when_every_figure_agrees(owned_user, owned_library, 
     output = StringIO()
 
     call_command(
-        "verify_playtime_parity",
+        "verify_session_parity",
         "--user",
         owned_user.username,
         "--day-zone",
@@ -142,7 +151,7 @@ def test_the_command_reads_the_day_zone_override(owned_user, game):
     for zone, output in (("UTC", in_utc), ("Asia/Tokyo", in_tokyo)):
         with pytest.raises(CommandError):
             call_command(
-                "verify_playtime_parity",
+                "verify_session_parity",
                 "--user",
                 owned_user.username,
                 "--day-zone",
@@ -158,7 +167,7 @@ def test_the_command_reads_the_day_zone_override(owned_user, game):
 def test_the_command_refuses_a_zone_it_does_not_know(owned_user):
     with pytest.raises(CommandError, match="names no time zone"):
         call_command(
-            "verify_playtime_parity",
+            "verify_session_parity",
             "--user",
             owned_user.username,
             "--day-zone",
@@ -181,7 +190,47 @@ def test_a_session_on_another_game_is_named(owned_library, game):
         for figure in differing(playtime_figures(owned_library, TWIN_ZONE))
     }
 
-    assert kinds == {FigureKind.GAME, FigureKind.GAME_DETAIL, FigureKind.GAME_IN_YEAR}
+    assert kinds == {
+        FigureKind.GAME,
+        FigureKind.GAME_DETAIL,
+        FigureKind.GAME_IN_WINDOW,
+        FigureKind.GAME_IN_YEAR,
+    }
+
+
+def test_a_games_window_is_its_days_in_the_projection(owned_library, game):
+    """Legacy time outside the projection's own span is named."""
+    day = date(2026, 3, 5)
+    timed_twin(owned_library, game, prague(10, day), prague(11, day))
+    Session.objects.create(
+        game=game,
+        timestamp_start=prague(10, date(2026, 3, 1)),
+        timestamp_end=prague(11, date(2026, 3, 1)),
+    )
+
+    figures = playtime_figures(owned_library, TWIN_ZONE)
+
+    windows = [
+        figure for figure in figures if figure.scope.kind == FigureKind.GAME_IN_WINDOW
+    ]
+    assert [str(figure.scope) for figure in windows] == [
+        f"game Outer Wilds {game.pk} between 2026-03-05 and 2026-03-05"
+    ]
+    assert windows[0].legacy == windows[0].projection == timedelta(hours=1)
+    assert FigureKind.GAME in {figure.scope.kind for figure in differing(figures)}
+
+
+def test_a_game_the_projection_holds_no_session_for_has_no_window(owned_library, game):
+    Session.objects.create(
+        game=game,
+        timestamp_start=prague(10, date(2026, 3, 1)),
+        timestamp_end=prague(11, date(2026, 3, 1)),
+    )
+
+    kinds = {figure.scope.kind for figure in playtime_figures(owned_library, TWIN_ZONE)}
+
+    assert FigureKind.GAME in kinds
+    assert FigureKind.GAME_IN_WINDOW not in kinds
 
 
 def test_a_day_moved_within_its_month_is_named(owned_library, game):
@@ -195,7 +244,11 @@ def test_a_day_moved_within_its_month_is_named(owned_library, game):
         for figure in differing(playtime_figures(owned_library, TWIN_ZONE))
     }
 
-    assert scopes == {"day 2026-03-05", "day 2026-03-06"}
+    assert scopes == {
+        "day 2026-03-05",
+        "day 2026-03-06",
+        f"game Outer Wilds {game.pk} between 2026-03-06 and 2026-03-06",
+    }
 
 
 def test_every_protocol_member_is_compared_or_exempt():
@@ -233,7 +286,7 @@ def test_every_compared_member_is_read(owned_library, game):
 
 def test_the_command_refuses_an_empty_scope():
     with pytest.raises(CommandError, match="No library matched"):
-        call_command("verify_playtime_parity", "--all-libraries", stdout=StringIO())
+        call_command("verify_session_parity", "--all-libraries", stdout=StringIO())
 
 
 def test_the_command_reads_the_library_display_zone(owned_user, game, set_user_setting):
@@ -246,7 +299,7 @@ def test_the_command_reads_the_library_display_zone(owned_user, game, set_user_s
 
     with pytest.raises(CommandError):
         call_command(
-            "verify_playtime_parity", "--user", owned_user.username, stdout=output
+            "verify_session_parity", "--user", owned_user.username, stdout=output
         )
 
     assert "year 2026" in output.getvalue()
@@ -255,7 +308,7 @@ def test_the_command_reads_the_library_display_zone(owned_user, game, set_user_s
 
 def test_the_command_refuses_an_empty_username():
     with pytest.raises(CommandError, match="username is not empty"):
-        call_command("verify_playtime_parity", "--user", "", stdout=StringIO())
+        call_command("verify_session_parity", "--user", "", stdout=StringIO())
 
 
 @pytest.mark.django_db(transaction=True)
@@ -264,6 +317,125 @@ def test_the_command_reads_one_snapshot_outside_a_transaction(owned_user, game):
     timed_twin(owned_user.library, game, prague(10, day), prague(12, day))
     output = StringIO()
 
-    call_command("verify_playtime_parity", "--user", owned_user.username, stdout=output)
+    call_command("verify_session_parity", "--user", owned_user.username, stdout=output)
 
     assert "0 of " in output.getvalue()
+
+
+# ── Session figures ──────────────────────────────────────────────────────────
+
+
+def test_every_session_figure_agrees_for_a_twin_of_each_mode(owned_library, game):
+    day = date(2026, 3, 5)
+    timed_twin(owned_library, game, prague(10, day), prague(12, day))
+    duration_only_twin(owned_library, game, date(2025, 11, 2), timedelta(minutes=90))
+    corrected_twin(
+        owned_library, game, prague(20, day), prague(21, day), timedelta(minutes=30)
+    )
+
+    figures = session_figures(owned_library, TWIN_ZONE)
+
+    assert differing_session_figures(figures) == []
+    scopes = {str(figure.scope) for figure in figures}
+    assert {
+        "session count all-time",
+        "longest session year 2026",
+        "first play year 2025",
+        "has sessions",
+    } <= scopes
+
+
+def test_the_empty_projection_differs_on_every_non_empty_session_figure(
+    owned_library, game
+):
+    start = prague(10, date(2026, 3, 5))
+    Session.objects.create(
+        game=game, timestamp_start=start, timestamp_end=start + timedelta(hours=2)
+    )
+
+    figures = session_figures(owned_library, TWIN_ZONE)
+
+    assert all(figure.projection in (0, None, False) for figure in figures)
+    assert differing_session_figures(figures) == figures
+
+
+def test_a_manual_row_counts_its_stated_time_on_both_sides(owned_library, game):
+    """The legacy page counted it as zero; the gate does not."""
+    day = date(2026, 3, 5)
+    timed_twin(owned_library, game, prague(10, day), prague(11, day))
+    manual = duration_only_twin(owned_library, game, day, timedelta(hours=3))
+
+    figures = {str(f.scope): f for f in session_figures(owned_library, TWIN_ZONE)}
+
+    longest = figures["longest session all-time"]
+    assert longest.legacy == longest.projection
+    assert longest.legacy.session_id == manual.legacy.pk
+    assert longest.legacy.duration == timedelta(hours=3)
+
+
+def test_a_tie_is_broken_the_same_way_on_both_sides(owned_library, game):
+    #: The fixture game's sort name is blank, and blank sorts first.
+    Game.objects.filter(pk=game.pk).update(sort_name="outer wilds")
+    other = Game.objects.create(
+        library=owned_library, name="Aardvark", sort_name="aardvark"
+    )
+    day = date(2026, 3, 5)
+    for row_game in (game, other):
+        timed_twin(owned_library, row_game, prague(10, day), prague(12, day))
+
+    figures = {str(f.scope): f for f in session_figures(owned_library, TWIN_ZONE)}
+
+    for scope in ("longest session all-time", "most sessions all-time"):
+        assert figures[scope].legacy == figures[scope].projection
+        assert figures[scope].legacy.game_id == other.pk
+
+
+def test_every_session_protocol_member_is_compared_or_exempt():
+    members = get_protocol_members(SessionFigureSource)
+
+    assert members == COMPARED_SESSION_MEMBERS | UNCOMPARED_SESSION_MEMBERS.keys()
+    assert not COMPARED_SESSION_MEMBERS & UNCOMPARED_SESSION_MEMBERS.keys()
+
+
+def test_every_compared_session_member_is_read(owned_library, game):
+    day = date(2026, 3, 5)
+    timed_twin(owned_library, game, prague(10, day), prague(12, day))
+    read: set[str] = set()
+
+    session_figures(
+        owned_library,
+        TWIN_ZONE,
+        sources=SessionSourcePair(
+            _Recording(SESSION_SOURCES.legacy, read),
+            _Recording(SESSION_SOURCES.projection, read),
+        ),
+    )
+
+    assert read == COMPARED_SESSION_MEMBERS
+
+
+def test_the_command_prints_and_fails_on_a_session_difference(
+    owned_user, owned_library, game
+):
+    day = date(2026, 3, 5)
+    twin = timed_twin(owned_library, game, prague(10, day), prague(12, day))
+    #: Every playtime figure still agrees; only the count differs.
+    Session.objects.create(
+        game=game, timestamp_start=prague(14, day), timestamp_end=prague(14, day)
+    )
+    output = StringIO()
+
+    with pytest.raises(CommandError, match="figures differ"):
+        call_command(
+            "verify_session_parity",
+            "--user",
+            owned_user.username,
+            "--day-zone",
+            TWIN_ZONE.key,
+            stdout=output,
+        )
+
+    assert (
+        "session count all-time: legacy 2, projection 1 [DIFFERS]" in output.getvalue()
+    )
+    assert f"session_id=UUID('{twin.projection.pk}')" in output.getvalue()

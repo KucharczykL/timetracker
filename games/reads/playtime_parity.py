@@ -14,7 +14,7 @@ from django.utils import timezone
 from django_stubs_ext import WithAnnotations
 
 from games.models import Game, UserLibrary
-from games.reads.player_sessions import library_sessions
+from games.reads.player_sessions import game_session_days, library_sessions
 from games.reads.playtime import legacy, projection
 from games.reads.playtime.source import (
     DayInterval,
@@ -23,7 +23,6 @@ from games.reads.playtime.source import (
     PlatformPlaytime,
     PlaytimeSource,
 )
-from timetracker.settings_resolver import resolve_str_for_user
 
 ZERO = timedelta(0)
 UNSPECIFIED_PLATFORM = "Unspecified"
@@ -32,6 +31,7 @@ UNSPECIFIED_PLATFORM = "Unspecified"
 COMPARED_MEMBERS: Final = frozenset(
     {
         "game_playtime",
+        "game_playtime_between",
         "summed_by_game",
         "total_playtime",
         "playtime_between",
@@ -43,7 +43,10 @@ COMPARED_MEMBERS: Final = frozenset(
 )
 #: Members no figure reads, and why.
 UNCOMPARED_MEMBERS: Final[dict[str, str]] = {
-    "summed_by_game_matching": "the projection has no session filter yet",
+    "summed_by_game_matching": (
+        "the session filter speaks the projection's words; the legacy "
+        "source has no sum it can narrow"
+    ),
 }
 
 
@@ -53,12 +56,22 @@ class FigureKind(StrEnum):
     GAME = "game"
     GAME_IN_YEAR = "game in year"
     GAME_DETAIL = "game detail"
+    GAME_IN_WINDOW = "game in window"
     PLATFORM = "platform"
     PLATFORM_IN_YEAR = "platform in year"
     MONTH = "month"
     DAY = "day"
     TODAY = "today"
     LAST_SEVEN_DAYS = "last 7 days"
+    #: The session figures, in games/reads/session_parity.py.
+    SESSION_COUNT = "session count"
+    DISTINCT_DAYS = "distinct days"
+    LONGEST_SESSION = "longest session"
+    MOST_SESSIONS = "most sessions"
+    HIGHEST_AVERAGE = "highest average"
+    FIRST_PLAY = "first play"
+    LAST_PLAY = "last play"
+    HAS_SESSIONS = "has sessions"
 
 
 #: A figure's identity within its kind.
@@ -102,11 +115,6 @@ type FigureRead = Callable[[PlaytimeSource], timedelta]
 type FiguresByScope = dict[FigureScope, timedelta]
 
 
-def display_zone(library: UserLibrary) -> ZoneInfo:
-    """The zone the viewer reads days in."""
-    return ZoneInfo(resolve_str_for_user(library.user, "DISPLAY_TIME_ZONE"))
-
-
 def projection_day_zones(library: UserLibrary) -> list[str]:
     """Zones the projection's rows fix days in."""
     zones = (
@@ -122,7 +130,7 @@ def playtime_figures(
     library: UserLibrary, zone: ZoneInfo, *, sources: SourcePair = SOURCES
 ) -> list[PlaytimeFigure]:
     """Each figure once; missing ones read zero."""
-    with _one_snapshot(), timezone.override(zone):
+    with one_snapshot(), timezone.override(zone):
         years = sorted(
             set(sources.legacy.played_years(library))
             | set(sources.projection.played_years(library))
@@ -177,7 +185,7 @@ def differing(figures: Sequence[PlaytimeFigure]) -> list[PlaytimeFigure]:
 
 
 @contextmanager
-def _one_snapshot() -> Iterator[None]:
+def one_snapshot() -> Iterator[None]:
     """Both sources read one committed state."""
     if connection.in_atomic_block:
         yield
@@ -206,10 +214,14 @@ def _game_detail(library: UserLibrary, game: Game) -> FigureRead:
     return lambda source: source.game_playtime(library, game)
 
 
+def _game_between(library: UserLibrary, game: Game, days: DayInterval) -> FigureRead:
+    return lambda source: source.game_playtime_between(library, game, days)
+
+
 def _game_figures(
     library: UserLibrary, sources: SourcePair, years: Sequence[int]
 ) -> list[PlaytimeFigure]:
-    """Per game: all-time, detail, each year."""
+    """Per game: all-time, detail, its window, each year."""
     figures: list[PlaytimeFigure] = []
     for game in _counted_games(library, sources, year=None):
         key = (str(game.pk),)
@@ -228,6 +240,22 @@ def _game_figures(
                 _game_detail(library, game),
             )
         )
+        #: The projection's own span: legacy time outside it
+        #: shows here, and in the per-game figure above.
+        span = game_session_days(library, game)
+        if span is not None:
+            days = DayInterval(span.first, span.last)
+            figures.append(
+                _figure(
+                    sources,
+                    FigureScope(
+                        FigureKind.GAME_IN_WINDOW,
+                        key,
+                        f"game {label} between {days.first} and {days.last}",
+                    ),
+                    _game_between(library, game, days),
+                )
+            )
     for year in years:
         for game in _counted_games(library, sources, year=year):
             figures.append(
@@ -248,8 +276,11 @@ def _counted_games(
     library: UserLibrary, sources: SourcePair, *, year: int | None
 ) -> Iterable[WithAnnotations[Game, GameSums]]:
     """Games either source counts, by sort name."""
+    #: Named columns: the conversion's gate runs this read
+    #: inside migration 0004, against the concrete models.
     return (
         Game.objects.visible_to(library)
+        .only("id", "name", "sort_name")
         .annotate(
             legacy_sum=sources.legacy.summed_by_game(library, year=year),
             projection_sum=sources.projection.summed_by_game(library, year=year),

@@ -13,8 +13,9 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from django.urls import Resolver404, resolve, reverse
+from session_rows import session_row
 
-from games.models import Device, Game, Platform, Purchase, Session
+from games.models import Device, Game, Platform, Purchase
 from games.views.returns import CONFIRMATION, ORIGIN_AWARE
 
 LINK_ATTRIBUTE = re.compile(r'\b(?:href|hx-get|hx-post|action)="([^"]*)"')
@@ -34,9 +35,9 @@ def world(owned_library):
         type=Purchase.GAME,
     )
     purchase.games.set([game])
-    Session.objects.create(
-        game=game,
-        timestamp_start=datetime(2024, 6, 1, 12, tzinfo=UTC),
+    session_row(
+        game,
+        started_at=datetime(2024, 6, 1, 12, tzinfo=UTC),
         device=Device.objects.create(library=owned_library, name="Desk"),
     )
     #: Tracking states a run of its own, so the playthrough

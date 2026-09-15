@@ -2,6 +2,7 @@
 
 import json
 import uuid
+from datetime import timedelta
 from io import StringIO
 
 import pytest
@@ -18,6 +19,7 @@ from games.events.benchmark import (
     BenchmarkReport,
     BudgetVerdict,
     Environment,
+    ReadTimings,
     RebuildDiffNotEmpty,
     SeedReport,
     StatementCounter,
@@ -25,7 +27,9 @@ from games.events.benchmark import (
     command_budget,
     environment,
     nearest_rank,
+    read_budget,
     rebuild_budget,
+    session_command_budget,
     summarize,
 )
 from games.events.benchmark_run import run_benchmark
@@ -33,8 +37,11 @@ from games.events.benchmark_workload import (
     purge_scratch_user,
     run_amplification_scenario,
     run_command_scenario,
+    run_read_scenario,
     run_rebuild_scenario,
+    run_session_command_scenario,
     seed_library,
+    seeded_runs,
     spare_games,
 )
 from games.events.dispatch import dispatch
@@ -47,6 +54,7 @@ from games.events.rebuild import (
 from games.events.targets import SHADOW_SUFFIX
 from games.models import (
     Game,
+    LibraryCalendar,
     LibraryEvent,
     LibraryEventReference,
     LibraryEventStreamHead,
@@ -55,6 +63,7 @@ from games.models import (
     PlayerSession,
     Playthrough,
 )
+from games.reads.calendar import calendar_day_zone
 
 pytestmark = pytest.mark.untracked_games
 
@@ -215,6 +224,41 @@ def test_too_few_samples_is_not_gated_but_is_still_measured():
     budget = command_budget(timings(0.15, samples=19))
     assert budget.verdict is BudgetVerdict.NOT_GATED
     assert budget.measured == 0.15
+    read = read_budget(
+        ReadTimings("stats_totals", timings(0.05, samples=19)), on_real_library=True
+    )
+    assert read.verdict is BudgetVerdict.NOT_GATED
+
+
+def test_the_session_command_budget_is_the_charters():
+    budget = session_command_budget(timings(0.05))
+    assert (budget.name, budget.limit) == ("session command p95", 0.100)
+    assert budget.verdict is BudgetVerdict.PASSED
+    assert session_command_budget(timings(0.15)).verdict is BudgetVerdict.MISSED
+
+
+def test_a_read_inside_the_budget_passes():
+    budget = read_budget(
+        ReadTimings("session_page", timings(0.019)), on_real_library=True
+    )
+    assert (budget.name, budget.limit) == ("read session_page p95", 0.020)
+    assert budget.verdict is BudgetVerdict.PASSED
+
+
+def test_a_read_over_the_budget_misses():
+    budget = read_budget(
+        ReadTimings("session_page", timings(0.021)), on_real_library=True
+    )
+    assert budget.verdict is BudgetVerdict.MISSED
+
+
+def test_a_scratch_read_is_measured_and_never_gated():
+    """The seed is no library's shape; the number is recorded, not judged."""
+    budget = read_budget(
+        ReadTimings("session_page", timings(0.5)), on_real_library=False
+    )
+    assert budget.verdict is BudgetVerdict.NOT_GATED
+    assert budget.measured == 0.5
 
 
 def test_the_rebuild_budget_scales_to_the_events_actually_replayed():
@@ -261,16 +305,35 @@ def test_a_rebuild_below_the_gating_floor_is_not_gated():
 
 @pytest.mark.django_db
 def test_seeding_writes_both_creation_events_and_both_projection_rows(owned_library):
-    """A pair per game, as TrackGame appends."""
+    """A pair per game, as TrackGame appends, then a session."""
     report = seed_library(owned_library, actor=owned_library.user, games=25, spares=4)
     assert isinstance(report, SeedReport)
     assert report.games == 25
-    assert report.events == 50
+    assert report.events == 75
     assert report.catalog_rows == 29
-    assert LibraryEvent.objects.filter(library=owned_library).count() == 50
+    assert LibraryEvent.objects.filter(library=owned_library).count() == 75
     #: append() runs inline; the rows exist already.
     assert PlayerGame.objects.filter(library=owned_library).count() == 25
     assert Playthrough.objects.filter(library=owned_library).count() == 25
+
+
+@pytest.mark.django_db
+def test_seeding_writes_a_session_on_each_seeded_run(owned_library):
+    """One finished hour a run, on a day of its own."""
+    seed_library(owned_library, actor=owned_library.user, games=25, spares=0)
+    sessions = PlayerSession.objects.filter(library=owned_library)
+    assert sessions.count() == 25
+    assert set(sessions.values_list("playthrough_id", flat=True)) == set(
+        Playthrough.objects.filter(library=owned_library).values_list("pk", flat=True)
+    )
+    assert set(sessions.values_list("timing_mode", flat=True)) == {"timed"}
+    assert set(sessions.values_list("effective_duration", flat=True)) == {
+        timedelta(hours=1)
+    }
+    assert set(sessions.values_list("day_zone", flat=True)) == {
+        calendar_day_zone(owned_library).key
+    }
+    assert sessions.values("effective_day").distinct().count() == 25
 
 
 @pytest.mark.django_db
@@ -394,7 +457,7 @@ def test_replaying_one_event_costs_one_statement(django_user_model):
 
     A rebuild also pays a fixed cost, so a small one averages more.
     The slope between two sizes is the per-event number, and it is
-    exact. A game is two events, so twenty more games are forty more.
+    exact. A game is three events, so twenty more games are sixty more.
     """
     totals: dict[int, int] = {}
     for games in (10, 30):
@@ -405,7 +468,7 @@ def test_replaying_one_event_costs_one_statement(django_user_model):
         )
         assert replay is not None
         totals[games] = replay.statements
-    assert (totals[30] - totals[10]) / 40 == pytest.approx(1.0, abs=0.01)
+    assert (totals[30] - totals[10]) / 60 == pytest.approx(1.0, abs=0.01)
 
 
 @pytest.mark.django_db
@@ -424,6 +487,9 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
     #: written and names no statement at all; its swap still runs.
     session_live = PlayerSession._meta.db_table
     session_shadow = f"{session_live}{SHADOW_SUFFIX}"
+    #: Nor a calendar: the seed states no zone.
+    calendar_live = LibraryCalendar._meta.db_table
+    calendar_shadow = f"{calendar_live}{SHADOW_SUFFIX}"
     assert replay.statements_per_table[shadow] == 10
     assert replay.statements_per_table[run_shadow] == 10
     #: Every shadow, and every swap beside it.
@@ -434,14 +500,16 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
         + replay.statements_per_table[run_live]
         + replay.statements_per_table.get(session_shadow, 0)
         + replay.statements_per_table[session_live]
+        + replay.statements_per_table.get(calendar_shadow, 0)
+        + replay.statements_per_table[calendar_live]
     )
 
 
 @pytest.mark.django_db(transaction=True)
 def test_a_run_replays_the_events_both_write_paths_produced():
     report = run_benchmark(seed=30, iterations=3, warmup=1, keep=True)
-    #: 30 seeded, 8 dispatched, 6 amplified.
-    assert report.rebuild.replayed_through == 44
+    #: 30 seeded, 8 tracked, 6 amplified, 4 sessions recorded.
+    assert report.rebuild.replayed_through == 48
     assert all(
         table.only_live == table.only_rebuilt == table.differing == 0
         for table in report.rebuild.tables
@@ -526,18 +594,79 @@ def test_a_non_empty_rebuild_diff_fails_the_run(owned_library):
         run_benchmark(seed=0, iterations=0, warmup=0, library=owned_library)
 
 
+@pytest.mark.django_db
+def test_the_read_scenario_times_every_named_read(owned_library):
+    seed_library(owned_library, actor=owned_library.user, games=10, spares=0)
+
+    reads = run_read_scenario(owned_library, iterations=2, warmup=1)
+
+    assert [read.name for read in reads] == [
+        "session_page",
+        "game_playtime_sort",
+        "stats_totals",
+        "stats_by_platform",
+        "stats_by_month",
+        "stats_superlatives",
+    ]
+    assert all(read.timings.samples == 2 for read in reads)
+
+
+@pytest.mark.django_db
+def test_the_read_scenario_runs_on_an_empty_library(owned_library):
+    reads = run_read_scenario(owned_library, iterations=1, warmup=0)
+
+    assert len(reads) == 6
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_session_command_scenario_records_on_the_seeded_runs(owned_library):
+    seed_library(owned_library, actor=owned_library.user, games=5, spares=0)
+    before = PlayerSession.objects.filter(library=owned_library).count()
+
+    timings = run_session_command_scenario(
+        owned_library,
+        actor=owned_library.user,
+        runs=seeded_runs(owned_library),
+        iterations=3,
+        warmup=1,
+    )
+
+    assert timings.samples == 3
+    assert PlayerSession.objects.filter(library=owned_library).count() == before + 4
+
+
+@pytest.mark.django_db(transaction=True)
+def test_library_mode_reads_without_dispatching(owned_library):
+    seed_library(owned_library, actor=owned_library.user, games=6, spares=0)
+    events_before = LibraryEvent.objects.filter(library=owned_library).count()
+
+    report = run_benchmark(seed=0, iterations=2, warmup=0, library=owned_library)
+
+    assert report.command is None
+    assert report.session_command is None
+    assert len(report.reads) == 6
+    assert LibraryEvent.objects.filter(library=owned_library).count() == events_before
+    assert [budget.name for budget in report.budgets][-1] == "rebuild"
+    assert len(report.budgets) == 7
+
+
 @pytest.mark.django_db(transaction=True)
 def test_the_report_carries_every_scenario_and_a_schema():
     report = run_benchmark(seed=25, iterations=3, warmup=1)
     assert isinstance(report, BenchmarkReport)
-    assert report.schema == 2
+    assert report.schema == 3
     assert report.seed is not None
     assert report.command is not None
+    assert report.session_command is not None
+    assert len(report.reads) == 6
+    assert {
+        budget.verdict for budget in report.budgets if budget.name.startswith("read ")
+    } == {BudgetVerdict.NOT_GATED}
     assert report.amplification is not None
     assert report.replay is not None
     assert report.teardown_seconds is not None
     parsed = json.loads(report.as_json())
-    assert parsed["schema"] == 2
+    assert parsed["schema"] == 3
     assert set(parsed) >= {
         "environment",
         "scratch_username",
@@ -594,7 +723,7 @@ def test_gate_is_silent_when_every_budget_passes():
 @pytest.mark.django_db(transaction=True)
 def test_json_output_parses_and_carries_the_schema():
     parsed = json.loads(run_command(seed=25, iterations=2, warmup=1, json=True))
-    assert parsed["schema"] == 2
+    assert parsed["schema"] == 3
 
 
 @pytest.mark.django_db(transaction=True)
@@ -605,11 +734,11 @@ def test_keep_names_the_scratch_user_it_leaves_behind():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_an_odd_seed_seeds_one_event_fewer():
-    """An odd count cannot be a pair."""
+def test_a_seed_not_divisible_by_three_seeds_fewer_events():
+    """Seven is two games and a remainder."""
     report = run_benchmark(seed=7, iterations=1, warmup=0, keep=True)
     assert report.seed is not None
-    assert report.seed.games == 3
+    assert report.seed.games == 2
     assert report.seed.events == 6
 
 
@@ -633,6 +762,7 @@ def test_a_seeded_library_rebuilds_both_tables_with_no_row_differing(owned_libra
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in report.tables
     ] == [
+        ("games_librarycalendar", 0, 0, 0),
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
@@ -640,10 +770,11 @@ def test_a_seeded_library_rebuilds_both_tables_with_no_row_differing(owned_libra
 
 
 @pytest.mark.django_db
-def test_a_seed_of_one_is_refused():
-    """A game is two events; one seeds none."""
+@pytest.mark.parametrize("seed", [1, 2])
+def test_a_seed_under_three_is_refused(seed):
+    """A game is three events; one or two seeds none."""
     with pytest.raises(CommandError, match="smallest seeded run"):
-        run_command(seed=1, iterations=1, warmup=0)
+        run_command(seed=seed, iterations=1, warmup=0)
 
 
 @pytest.mark.django_db
@@ -654,8 +785,8 @@ def test_a_negative_seed_is_refused():
 
 @pytest.mark.django_db(transaction=True)
 def test_the_notice_counts_the_spare_games_the_scenarios_take():
-    """Half the seed, plus what each scenario consumes."""
+    """A third of the seed, plus what each scenario consumes."""
     output = run_command(seed=24, iterations=2, warmup=1)
 
-    #: 12 seeded, 2 scenarios of 2, 1 warmup.
-    assert "17 catalog row(s)" in output
+    #: 8 seeded, 2 scenarios of 2, 1 warmup.
+    assert "13 catalog row(s)" in output

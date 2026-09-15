@@ -10,6 +10,7 @@ from games.events.benchmark import (
     Budget,
     BudgetVerdict,
     RebuildDiffNotEmpty,
+    Timings,
     WorkPerEvent,
 )
 from games.events.benchmark_run import run_benchmark
@@ -19,9 +20,9 @@ from games.models import UserLibrary
 DEFAULT_SEED_EVENTS = 100_000
 
 #: Measured; see docs/event-benchmarks.md.
-SECONDS_PER_SEEDED_EVENT = 32 / 100_000
-SECONDS_PER_REBUILT_EVENT = 16 / 100_000
-SECONDS_PER_PURGED_EVENT = 50 / 100_000
+SECONDS_PER_SEEDED_EVENT = 35 / 100_000
+SECONDS_PER_REBUILT_EVENT = 29 / 100_000
+SECONDS_PER_PURGED_EVENT = 12 / 100_000
 
 CURSOR_UNDER_A_POOLER = (
     "A server-side cursor did not survive. A transaction-pooling connection "
@@ -35,7 +36,8 @@ class Command(BaseCommand):
     help = (
         "Measure command latency, rebuild time, and per-event write cost "
         "against the real TrackGame workload. Seeds a scratch library and "
-        "removes it again, unless --library names one to check read-only. "
+        "removes it again, unless --library names one to time its reads and "
+        "check its replay without writing. "
         "Exits non-zero on a rebuild diff, and -- with --gate -- on a missed "
         "budget."
     )
@@ -46,9 +48,10 @@ class Command(BaseCommand):
             type=int,
             default=None,
             help=(
-                f"Events to seed (default {DEFAULT_SEED_EVENTS}). Two events "
-                "are seeded per game, so an odd count seeds one event fewer. "
-                "0 seeds nothing and measures the commands alone."
+                f"Events to seed (default {DEFAULT_SEED_EVENTS}). Three events "
+                "are seeded per game, so a count not divisible by three seeds "
+                "one or two events fewer. 0 seeds nothing and measures the "
+                "commands alone."
             ),
         )
         parser.add_argument("--library", help="Check this library instead; read-only.")
@@ -77,12 +80,12 @@ class Command(BaseCommand):
         #: Here, so --library sees an unset seed.
         seed = DEFAULT_SEED_EVENTS if options["seed"] is None else options["seed"]
         if library is None:
-            #: Zero is the stated no-seed run; one is a typo.
-            if seed < 0 or seed == 1:
+            #: Zero is the stated no-seed run; one or two is a typo.
+            if seed < 0 or seed in (1, 2):
                 raise CommandError(
-                    f"--seed {seed} seeds no game, because a game is two "
+                    f"--seed {seed} seeds no game, because a game is three "
                     "events, and it does not say so the way --seed 0 does. "
-                    "The smallest seeded run is --seed 2."
+                    "The smallest seeded run is --seed 3."
                 )
             self._write_estimate(
                 seed=seed,
@@ -148,8 +151,8 @@ class Command(BaseCommand):
             + SECONDS_PER_REBUILT_EVENT
             + SECONDS_PER_PURGED_EVENT
         )
-        #: Two events a game: half the rows.
-        catalog_rows = seed // 2 + 2 * iterations + warmup
+        #: Three events a game: a third of the rows.
+        catalog_rows = seed // 3 + 2 * iterations + warmup
         notice = (
             f"About to create a scratch user, {seed} events and "
             f"{catalog_rows} catalog rows, then remove them. "
@@ -174,12 +177,11 @@ class Command(BaseCommand):
             #: An append, not a command; no budget.
             self.stdout.write("  The event/s figure is a bulk append, not a command.")
         if report.command is not None:
-            self.stdout.write(
-                f"Command: {report.command.samples} sample(s), p50 "
-                f"{report.command.p50 * 1000:.1f}ms, p95 "
-                f"{report.command.p95 * 1000:.1f}ms, max "
-                f"{report.command.maximum * 1000:.1f}ms."
-            )
+            self._write_timings("Command", report.command)
+        if report.session_command is not None:
+            self._write_timings("Session command", report.session_command)
+        for read in report.reads:
+            self._write_timings(f"Read {read.name}", read.timings)
         if report.amplification is not None:
             self._write_work("Per command", report.amplification)
         if report.replay is not None:
@@ -190,6 +192,13 @@ class Command(BaseCommand):
             self.stdout.write(f"Teardown: {report.teardown_seconds:.2f}s.")
         for budget in report.budgets:
             self._write_budget(budget)
+
+    def _write_timings(self, label: str, timings: Timings) -> None:
+        self.stdout.write(
+            f"{label}: {timings.samples} sample(s), p50 "
+            f"{timings.p50 * 1000:.1f}ms, p95 {timings.p95 * 1000:.1f}ms, max "
+            f"{timings.maximum * 1000:.1f}ms."
+        )
 
     def _write_environment(self, report: BenchmarkReport) -> None:
         captured = report.environment

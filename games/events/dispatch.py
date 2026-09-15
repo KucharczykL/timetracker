@@ -31,11 +31,13 @@ from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass, fields, is_dataclass
 from enum import StrEnum
+from functools import partial
 from typing import Any, ClassVar, NamedTuple, cast
 
 from django.contrib.auth.models import User
+from django.db import router, transaction
 
-from games.events.append import AppendResult, LockedStream, SourceMetadata
+from games.events.append import LockedStream, SourceMetadata
 from games.events.idempotency import (
     IdempotencyKey,
     ReplayedAppend,
@@ -102,6 +104,7 @@ class CommandName(CommandVocabulary):
     PLAYERSESSION_MOVE = "library.playersession.move"
     PLAYERSESSION_REMOVE = "library.playersession.remove"
     PLAYERSESSION_RESTORE = "library.playersession.restore"
+    CALENDAR_SET_DAY_ZONE = "library.calendar.set_day_zone"
 
 
 @dataclass(frozen=True, slots=True)
@@ -309,6 +312,73 @@ def canonical_command_input(command: Command) -> dict[str, Any]:
     }
 
 
+def append_command(
+    command: Command,
+    *,
+    actor: User,
+    library: UserLibrary,
+    idempotency_key: IdempotencyKey,
+    correlation_id: uuid.UUID,
+    source_metadata: SourceMetadata | None = None,
+    wiring: EventWiring = DEFAULT_WIRING,
+) -> CommandResult:
+    """Build and append `command` inside a transaction the caller holds.
+
+    No `authorize`: the caller vouches for `actor`, so a site-level act
+    appends as the operator. No transaction of its own: the caller's holds
+    the head lock until its other writes commit beside the events.
+    """
+    alias = router.db_for_write(LibraryEvent)
+    if not transaction.get_connection(alias).in_atomic_block:
+        raise RuntimeError(
+            "append_command appends inside a transaction the caller holds; "
+            "none is open. Dispatch, or decorate the caller with "
+            "retried_transaction."
+        )
+    validate_idempotency_key(idempotency_key)
+    #: Required, never minted: one act's attempts share one.
+    resolved_correlation_id = parse_uuidv7(correlation_id)
+    command_input = canonical_command_input(command)
+
+    def build(stream: LockedStream) -> Sequence[NewEvent] | Unchanged:
+        #: The stream is required by this signature and deliberately dropped:
+        #: withholding it is what stops a command appending on its own and
+        #: leaving events outside the range its key replays.
+        #: The context is built here, per attempt, so a rolled-back attempt
+        #: cannot hand its model instances to the next one.
+        return command.build(CommandContext(library=library, actor=actor))
+
+    outcome = idempotent_append(
+        library,
+        idempotency_key=idempotency_key,
+        command_input=command_input,
+        build=build,
+        actor=actor,
+        correlation_id=resolved_correlation_id,
+        source_metadata=source_metadata,
+        wiring=wiring,
+    )
+    if isinstance(outcome, UnchangedAppend):
+        return CommandResult(
+            stream_id=outcome.stream_id,
+            outcome=CommandOutcome.UNCHANGED,
+            sequences=None,
+            reason=outcome.reason,
+            correlation_id=resolved_correlation_id,
+        )
+    return CommandResult(
+        stream_id=outcome.stream_id,
+        outcome=(
+            CommandOutcome.REPLAYED
+            if isinstance(outcome, ReplayedAppend)
+            else CommandOutcome.APPENDED
+        ),
+        sequences=SequenceRange(outcome.first_sequence, outcome.last_sequence),
+        reason=None,
+        correlation_id=resolved_correlation_id,
+    )
+
+
 def dispatch(
     command: Command,
     *,
@@ -330,45 +400,16 @@ def dispatch(
     validate_idempotency_key(idempotency_key)
     #: Once per dispatch, so every attempt of a retried command shares one.
     resolved_correlation_id = resolve_correlation_id(correlation_id)
-    command_input = canonical_command_input(command)
-
-    def build(stream: LockedStream) -> Sequence[NewEvent] | Unchanged:
-        #: The stream is required by this signature and deliberately dropped:
-        #: withholding it is what stops a command appending on its own and
-        #: leaving events outside the range its key replays.
-        #: The context is built here, per attempt, so a rolled-back attempt
-        #: cannot hand its model instances to the next one.
-        return command.build(CommandContext(library=library, actor=actor))
-
-    def run() -> AppendResult | ReplayedAppend | UnchangedAppend:
-        return idempotent_append(
-            library,
-            idempotency_key=idempotency_key,
-            command_input=command_input,
-            build=build,
+    return run_in_transaction(
+        partial(
+            append_command,
+            command,
             actor=actor,
+            library=library,
+            idempotency_key=idempotency_key,
             correlation_id=resolved_correlation_id,
             source_metadata=source_metadata,
             wiring=wiring,
-        )
-
-    outcome = run_in_transaction(run, policy=wiring.retry_policy)
-    if isinstance(outcome, UnchangedAppend):
-        return CommandResult(
-            stream_id=outcome.stream_id,
-            outcome=CommandOutcome.UNCHANGED,
-            sequences=None,
-            reason=outcome.reason,
-            correlation_id=resolved_correlation_id,
-        )
-    return CommandResult(
-        stream_id=outcome.stream_id,
-        outcome=(
-            CommandOutcome.REPLAYED
-            if isinstance(outcome, ReplayedAppend)
-            else CommandOutcome.APPENDED
         ),
-        sequences=SequenceRange(outcome.first_sequence, outcome.last_sequence),
-        reason=None,
-        correlation_id=resolved_correlation_id,
+        policy=wiring.retry_policy,
     )

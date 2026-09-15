@@ -27,10 +27,10 @@ def test_stats_link_prefills_labelled_choice():
 
     from common.components.filters import _choice_from_raw
     from common.criteria import UUIDMultiCriterion
-    from games.filters import SessionFilter
+    from games.filters import PlayerSessionFilter
 
     game_id = UUID("018f5e66-e800-7000-8000-000000000001")
-    link = SessionFilter(
+    link = PlayerSessionFilter(
         game=UUIDMultiCriterion(value=[game_id], labels={game_id: "Hollow Knight"})
     )
     existing = json.loads(json.dumps(link.to_json()))

@@ -28,8 +28,9 @@ from common.components.primitives import ContentContainer, PageHeading, Span
 from common.date_time_presentation import date_time_presentation_for_request
 from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
-from games.filters import SessionFilter, filter_url, model_field_registry
-from games.models import Device, Game, Platform, Purchase, Session
+from games.filters import PlayerSessionFilter, filter_url, model_field_registry
+from games.models import Device, Game, Platform, PlayerSession, Purchase
+from games.reads.player_sessions import library_sessions
 from games.reads.playtime import DayInterval, playtime_between
 from games.sorting import parse_per_page_override
 from games.views.filtering import BUILDER_MODES
@@ -43,11 +44,6 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
     library = (
         cast(User, user).library if user is not None and user.is_authenticated else None
     )
-    sessions = (
-        Session.objects.for_library(library)
-        if library is not None
-        else Session.objects.none()
-    )
     today = localdate()
     # "Last 7 days" is a calendar-day window (today plus the previous six) so the
     # displayed total matches the list its navbar link points to.
@@ -60,10 +56,10 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
     durations = duration_presentation_for_request(request)
 
     today_iso = today.isoformat()
-    today_url = filter_url(SessionFilter.where(timestamp_start=today_iso))
+    today_url = filter_url(PlayerSessionFilter.where(day=today_iso))
     last_7_url = filter_url(
-        SessionFilter.where(
-            timestamp_start__between=(last_seven_days.first.isoformat(), today_iso)
+        PlayerSessionFilter.where(
+            day__between=(last_seven_days.first.isoformat(), today_iso)
         )
     )
 
@@ -81,7 +77,9 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
             if library is not None
             else False
         ),
-        "session_count": sessions.exists(),
+        "session_count": (
+            library_sessions(library).exists() if library is not None else False
+        ),
         "today_played": Duration(
             today_played, durations, id_scope="navbar-today", link=today_url
         ),
@@ -159,15 +157,20 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
     per_page = "" if per_page_override is None else str(per_page_override)
     models_json = json.dumps(model_field_registry(model))
 
-    def _item(model):
-        model_name = model._meta.verbose_name
-        model_label = model_name.title()
+    def _item(model, label: str | None = None):
+        #: The key is the model's, the label the person's word for it.
         return DropdownLinkItem(
-            url=reverse("games:filter_builder", args=[model_name]),
-            label=model_label,
+            url=reverse("games:filter_builder", args=[model._meta.model_name]),
+            label=label or str(model._meta.verbose_name).title(),
         )
 
-    items = [_item(m) for m in [Device, Game, Platform, Purchase, Session]]
+    items = [
+        _item(Device),
+        _item(Game),
+        _item(Platform),
+        _item(Purchase),
+        _item(PlayerSession, "Session"),
+    ]
 
     model_switcher = ButtonDropdown(
         id="model-switcher", items=items, label=meta.verbose_name.title()

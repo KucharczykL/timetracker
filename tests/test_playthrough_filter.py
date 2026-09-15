@@ -6,6 +6,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from django.utils import timezone
+from session_rows import timed_row
 
 from common.criteria import ChoiceCriterion, Modifier, field_metadata
 from games.filters import (
@@ -14,7 +15,7 @@ from games.filters import (
     filter_url,
     parse_playthrough_filter,
 )
-from games.models import Game, Playthrough, PlaythroughKind, Session
+from games.models import Game, Playthrough, PlaythroughKind
 from games.reads.playthrough_activity import RunActivity
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_runs import library_runs, runs_with_condition
@@ -425,10 +426,8 @@ def test_a_percent_survives_the_url():
 def a_run_played(library, name: str, *, days_ago: int) -> Playthrough:
     """A run played that many days ago."""
     run = one_run(library, name)
-    Session.objects.create(
-        game=run.player_game.game,
-        timestamp_start=timezone.now() - timedelta(days=days_ago),
-    )
+    started_at = timezone.now() - timedelta(days=days_ago)
+    timed_row(run, started_at, started_at + timedelta(hours=1))
     return run
 
 

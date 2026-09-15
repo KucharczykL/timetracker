@@ -327,6 +327,7 @@ def test_a_rebuild_swaps_both_tables_with_an_empty_diff(owned_user, owned_librar
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in report.tables
     ] == [
+        ("games_librarycalendar", 0, 0, 0),
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
@@ -693,6 +694,7 @@ def test_a_rebuild_of_a_described_run_swaps_with_an_empty_diff(
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in report.tables
     ] == [
+        ("games_librarycalendar", 0, 0, 0),
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
@@ -772,6 +774,7 @@ def test_a_rebuild_of_a_removed_run_swaps_with_an_empty_diff(owned_user, owned_l
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in report.tables
     ] == [
+        ("games_librarycalendar", 0, 0, 0),
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),

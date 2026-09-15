@@ -181,3 +181,67 @@ def test_the_list_answers_a_hundred_rows_where_the_request_states_no_limit(
 
     assert len(client.get("/api/playthrough/").json()) == 100
     assert len(client.get("/api/playthrough/?limit=0").json()) == 121
+
+
+def _second_game_with_run(user, name: str) -> tuple[Game, Playthrough]:
+    game = Game.objects.create(library=user.library, name=name)
+    track_game(user, game, correlation_id=new_correlation_id())
+    return game, only_run(user, game)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_list_narrows_to_a_game(client, user, game):
+    track_game(user, game, correlation_id=new_correlation_id())
+    run = only_run(user, game)
+    _second_game_with_run(user, "Portal")
+    client.force_login(user)
+
+    body = client.get(f"/api/playthrough/?game={game.pk}").json()
+
+    assert [row["id"] for row in body] == [str(run.pk)]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_game_another_library_holds_answers_no_run(
+    client, user, game, django_user_model
+):
+    other = django_user_model.objects.create_user(username="second-owner")
+    other_game, _run = _second_game_with_run(other, "Portal")
+    track_game(user, game, correlation_id=new_correlation_id())
+    client.force_login(user)
+
+    body = client.get(f"/api/playthrough/?game={other_game.pk}").json()
+
+    assert body == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_row_states_its_display_name(client, user, game):
+    track_game(user, game, correlation_id=new_correlation_id())
+    run = only_run(user, game)
+    named = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=user.library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.ORDINARY,
+        name="Second run",
+        created_at=django_timezone_now(),
+    )
+    Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=user.library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=django_timezone_now(),
+    )
+    client.force_login(user)
+
+    body = client.get(f"/api/playthrough/?game={game.pk}").json()
+
+    assert {row["id"]: row["display_name"] for row in body} == {
+        str(run.pk): "Playthrough 1",
+        str(named.pk): "Second run",
+    }
+    assert client.get(f"/api/playthrough/{run.pk}").json()["display_name"] == (
+        "Playthrough 1"
+    )

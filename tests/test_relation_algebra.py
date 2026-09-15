@@ -13,10 +13,12 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
+from session_rows import session_row
 
 from common.criteria import (
     AggregateCriterion,
     BoolCriterion,
+    ChoiceCriterion,
     FilterQueryContext,
     Modifier,
     RelationMatch,
@@ -24,8 +26,8 @@ from common.criteria import (
     UUIDMultiCriterion,
     with_filter_aliases,
 )
-from games.filters import GameFilter, PurchaseFilter, SessionFilter
-from games.models import Device, Game, Platform, Purchase, Session
+from games.filters import GameFilter, PlayerSessionFilter, PurchaseFilter
+from games.models import Device, Game, Platform, PlayerSession, Purchase
 
 UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
     lambda model: with_filter_aliases(model._default_manager.all())
@@ -71,12 +73,10 @@ def emulated_world(db):
     non_emu = Game.objects.create(name="NonEmu", platform=pc)
     no_sessions = Game.objects.create(name="NoSessions", platform=pc)
 
-    Session.objects.create(game=emu_only, timestamp_start=_dt(), emulated=True)
-    Session.objects.create(game=both, timestamp_start=_dt(2024, 6, 2), emulated=True)
-    Session.objects.create(game=both, timestamp_start=_dt(2024, 6, 3), emulated=False)
-    Session.objects.create(
-        game=non_emu, timestamp_start=_dt(2024, 6, 4), emulated=False
-    )
+    session_row(emu_only, started_at=_dt(), emulated=True)
+    session_row(both, started_at=_dt(2024, 6, 2), emulated=True)
+    session_row(both, started_at=_dt(2024, 6, 3), emulated=False)
+    session_row(non_emu, started_at=_dt(2024, 6, 4), emulated=False)
 
     return {
         "emu_only": emu_only.id,
@@ -92,7 +92,7 @@ def emulated_world(db):
 def test_relation_any_matches_existence(emulated_world):
     """ANY (default) = has at least one session matching the sub-filter."""
     any_emulated = GameFilter(
-        session_filter=SessionFilter(emulated=BoolCriterion(value=True))
+        session_filter=PlayerSessionFilter(emulated=BoolCriterion(value=True))
     )
     assert _ids(any_emulated) == {emulated_world["emu_only"], emulated_world["both"]}
 
@@ -101,7 +101,7 @@ def test_relation_none_is_not_exists(emulated_world):
     """NONE = has no session matching the sub-filter, including games with zero
     sessions (the case a positive ANY(emulated=False) would miss)."""
     no_emulated = GameFilter(
-        session_filter=SessionFilter(
+        session_filter=PlayerSessionFilter(
             emulated=BoolCriterion(value=True), match=RelationMatch.NONE
         )
     )
@@ -113,7 +113,9 @@ def test_relation_none_is_not_exists(emulated_world):
 
 def test_empty_none_subfilter_means_no_related_rows(emulated_world):
     """A match-only NONE node (no child criteria) = "has no sessions at all"."""
-    no_sessions = GameFilter(session_filter=SessionFilter(match=RelationMatch.NONE))
+    no_sessions = GameFilter(
+        session_filter=PlayerSessionFilter(match=RelationMatch.NONE)
+    )
     assert _ids(no_sessions) == {emulated_world["no_sessions"]}
 
 
@@ -145,7 +147,7 @@ def test_nested_purchase_refunded_none(db):
 
 def test_match_json_round_trip():
     f = GameFilter(
-        session_filter=SessionFilter(
+        session_filter=PlayerSessionFilter(
             emulated=BoolCriterion(value=True), match=RelationMatch.NONE
         )
     )
@@ -160,7 +162,9 @@ def test_match_json_round_trip():
 def test_default_any_match_is_not_serialized():
     """The default ANY quantifier stays implicit, so existing filters serialize
     byte-identically (no spurious "match" key)."""
-    f = GameFilter(session_filter=SessionFilter(emulated=BoolCriterion(value=True)))
+    f = GameFilter(
+        session_filter=PlayerSessionFilter(emulated=BoolCriterion(value=True))
+    )
     assert "match" not in f.to_json()["session_filter"]
 
 
@@ -175,14 +179,12 @@ def aggregate_world(db):
     Game.objects.create(name="Idle", platform=pc)  # zero sessions
 
     for day in (1, 2, 3):
-        Session.objects.create(
-            game=busy,
-            timestamp_start=_dt(2024, 6, day),
+        session_row(
+            busy,
+            started_at=_dt(2024, 6, day),
             duration_manual=timedelta(hours=2),
         )
-    Session.objects.create(
-        game=quiet, timestamp_start=_dt(), duration_manual=timedelta(hours=1)
-    )
+    session_row(quiet, started_at=_dt(), duration_manual=timedelta(hours=1))
     return {"busy": busy.id, "quiet": quiet.id}
 
 
@@ -194,12 +196,12 @@ def test_aggregate_count(aggregate_world):
 
 
 def test_aggregate_duration_sum(aggregate_world):
-    """manual_playtime_hours sums duration_manual across the game's sessions."""
-    over_three_hours = GameFilter(
-        manual_playtime_hours=AggregateCriterion(
-            value=3, modifier=Modifier.GREATER_THAN
-        )
+    """session_playtime_hours sums effective_duration; a scope picks a mode."""
+    duration_only = AggregateCriterion(value=3, modifier=Modifier.GREATER_THAN)
+    duration_only.scope = PlayerSessionFilter(
+        timing_mode=ChoiceCriterion(value=["duration_only"])
     )
+    over_three_hours = GameFilter(session_playtime_hours=duration_only)
     assert _ids(over_three_hours) == {aggregate_world["busy"]}  # 6h vs 1h
 
 
@@ -218,14 +220,12 @@ def test_aggregate_average_duration(db):
     high = Game.objects.create(name="High", platform=pc)
     low = Game.objects.create(name="Low", platform=pc)
     for day in (1, 2):
-        Session.objects.create(
-            game=high,
-            timestamp_start=_dt(2024, 6, day),
+        session_row(
+            high,
+            started_at=_dt(2024, 6, day),
             duration_manual=timedelta(hours=2),
         )
-    Session.objects.create(
-        game=low, timestamp_start=_dt(), duration_manual=timedelta(hours=1)
-    )
+    session_row(low, started_at=_dt(), duration_manual=timedelta(hours=1))
     over_one_hour = GameFilter(
         session_average=AggregateCriterion(value=1, modifier=Modifier.GREATER_THAN)
     )
@@ -287,22 +287,22 @@ def test_m2m_relation_none_excludes_partial_bundle(db):
 
 def test_relation_none_on_non_game_parent(db):
     """The shared relation_to_q NONE path works for a non-Game parent
-    (SessionFilter.game_filter)."""
+    (PlayerSessionFilter.game_filter)."""
     pc = Platform.objects.create(name="PC")
     hit = Game.objects.create(name="Hit", platform=pc)
     miss = Game.objects.create(name="Miss", platform=pc)
-    Session.objects.create(game=hit, timestamp_start=_dt())
-    keep = Session.objects.create(game=miss, timestamp_start=_dt(2024, 6, 2))
+    session_row(hit, started_at=_dt())
+    keep = session_row(miss, started_at=_dt(2024, 6, 2))
 
-    not_hit = SessionFilter(
+    not_hit = PlayerSessionFilter(
         game_filter=GameFilter(
             name=StringCriterion(value="Hit"), match=RelationMatch.NONE
         )
     )
     session_ids = set(
-        Session.objects.filter(not_hit.to_q(UNRESTRICTED_FILTER_CONTEXT)).values_list(
-            "id", flat=True
-        )
+        PlayerSession.objects.filter(
+            not_hit.to_q(UNRESTRICTED_FILTER_CONTEXT)
+        ).values_list("id", flat=True)
     )
     assert session_ids == {keep.id}
 
@@ -318,7 +318,7 @@ def test_relation_all_every_row_matches_included(emulated_world):
     NoSessions has no related rows, so it matches vacuously (∀ over an empty set).
     """
     all_emulated = GameFilter(
-        session_filter=SessionFilter(
+        session_filter=PlayerSessionFilter(
             emulated=BoolCriterion(value=True), match=RelationMatch.ALL
         )
     )
@@ -331,7 +331,7 @@ def test_relation_all_every_row_matches_included(emulated_world):
 def test_relation_all_excludes_mixed_rows(emulated_world):
     """A parent with a mix of matching and violating rows is excluded from ALL."""
     all_emulated = GameFilter(
-        session_filter=SessionFilter(
+        session_filter=PlayerSessionFilter(
             emulated=BoolCriterion(value=True), match=RelationMatch.ALL
         )
     )
@@ -341,7 +341,7 @@ def test_relation_all_excludes_mixed_rows(emulated_world):
 def test_relation_all_vacuous_truth_includes_zero_row_parent(emulated_world):
     """A parent with ZERO related rows matches ALL (vacuous truth)."""
     all_emulated = GameFilter(
-        session_filter=SessionFilter(
+        session_filter=PlayerSessionFilter(
             emulated=BoolCriterion(value=True), match=RelationMatch.ALL
         )
     )
@@ -351,7 +351,7 @@ def test_relation_all_vacuous_truth_includes_zero_row_parent(emulated_world):
 def test_all_match_json_round_trip():
     """match=ALL serializes as {"match": "ALL"} and rebuilds identically."""
     f = GameFilter(
-        session_filter=SessionFilter(
+        session_filter=PlayerSessionFilter(
             emulated=BoolCriterion(value=True), match=RelationMatch.ALL
         )
     )
@@ -377,7 +377,7 @@ def test_two_level_match_round_trip():
     from games.filters import DeviceFilter
 
     f = GameFilter(
-        session_filter=SessionFilter(
+        session_filter=PlayerSessionFilter(
             device_filter=DeviceFilter(match=RelationMatch.NONE)
         )
     )
@@ -405,10 +405,10 @@ def boolean_world(db):
     refund_only = Game.objects.create(name="RefundOnly", platform=pc)
     neither = Game.objects.create(name="Neither", platform=pc)
 
-    Session.objects.create(game=both, timestamp_start=_dt(), emulated=True)
-    Session.objects.create(game=emu_only, timestamp_start=_dt(), emulated=True)
-    Session.objects.create(game=refund_only, timestamp_start=_dt(), emulated=False)
-    Session.objects.create(game=neither, timestamp_start=_dt(), emulated=False)
+    session_row(both, started_at=_dt(), emulated=True)
+    session_row(emu_only, started_at=_dt(), emulated=True)
+    session_row(refund_only, started_at=_dt(), emulated=False)
+    session_row(neither, started_at=_dt(), emulated=False)
 
     Purchase.objects.create(
         price_currency="CZK", date_purchased=_dt(), date_refunded=_dt(2024, 7, 1)
@@ -425,17 +425,11 @@ def boolean_world(db):
 
     # split: emulated session and deck session are two different rows.
     split = Game.objects.create(name="Split", platform=pc)
-    Session.objects.create(
-        game=split, timestamp_start=_dt(), emulated=True, device=desktop
-    )
-    Session.objects.create(
-        game=split, timestamp_start=_dt(2024, 6, 2), emulated=False, device=deck
-    )
+    session_row(split, started_at=_dt(), emulated=True, device=desktop)
+    session_row(split, started_at=_dt(2024, 6, 2), emulated=False, device=deck)
     # combined: a single session that is both emulated and on the deck.
     combined = Game.objects.create(name="Combined", platform=pc)
-    Session.objects.create(
-        game=combined, timestamp_start=_dt(), emulated=True, device=deck
-    )
+    session_row(combined, started_at=_dt(), emulated=True, device=deck)
 
     return {
         "both": both.id,
@@ -454,7 +448,7 @@ def test_and_list_two_independent_subfilters_both_required(boolean_world):
     both_required = GameFilter(
         AND=[
             GameFilter(
-                session_filter=SessionFilter(emulated=BoolCriterion(value=True))
+                session_filter=PlayerSessionFilter(emulated=BoolCriterion(value=True))
             ),
             GameFilter(
                 purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
@@ -472,10 +466,12 @@ def test_and_list_two_subfilters_same_relation(boolean_world):
     nary = GameFilter(
         AND=[
             GameFilter(
-                session_filter=SessionFilter(emulated=BoolCriterion(value=True))
+                session_filter=PlayerSessionFilter(emulated=BoolCriterion(value=True))
             ),
             GameFilter(
-                session_filter=SessionFilter(device=UUIDMultiCriterion(value=[deck]))
+                session_filter=PlayerSessionFilter(
+                    device=UUIDMultiCriterion(value=[deck])
+                )
             ),
         ]
     )
@@ -485,7 +481,7 @@ def test_and_list_two_subfilters_same_relation(boolean_world):
 
     # One session required to be BOTH emulated AND on the deck: split is excluded.
     single_session = GameFilter(
-        session_filter=SessionFilter(
+        session_filter=PlayerSessionFilter(
             emulated=BoolCriterion(value=True),
             device=UUIDMultiCriterion(value=[deck]),
         )
@@ -501,7 +497,7 @@ def test_or_list_two_subfilters_union(boolean_world):
     either = GameFilter(
         OR=[
             GameFilter(
-                session_filter=SessionFilter(emulated=BoolCriterion(value=True))
+                session_filter=PlayerSessionFilter(emulated=BoolCriterion(value=True))
             ),
             GameFilter(
                 purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
@@ -527,7 +523,9 @@ def test_legacy_single_object_and_is_wrapped_to_list(boolean_world):
     assert isinstance(legacy.AND, list) and len(legacy.AND) == 1
     explicit = GameFilter(
         AND=[
-            GameFilter(session_filter=SessionFilter(emulated=BoolCriterion(value=True)))
+            GameFilter(
+                session_filter=PlayerSessionFilter(emulated=BoolCriterion(value=True))
+            )
         ]
     )
     assert _ids(legacy) == _ids(explicit)
@@ -539,7 +537,7 @@ def test_multi_element_and_list_round_trip(boolean_world):
     original = GameFilter(
         AND=[
             GameFilter(
-                session_filter=SessionFilter(emulated=BoolCriterion(value=True))
+                session_filter=PlayerSessionFilter(emulated=BoolCriterion(value=True))
             ),
             GameFilter(
                 purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
@@ -566,7 +564,7 @@ def test_not_list_single_and_multi(boolean_world):
     """NOT negates each sub-filter (AND'd). One element excludes emulated-session
     games; a second element additionally excludes refunded-purchase games."""
     emulated = GameFilter(
-        session_filter=SessionFilter(emulated=BoolCriterion(value=True))
+        session_filter=PlayerSessionFilter(emulated=BoolCriterion(value=True))
     )
     refunded = GameFilter(
         purchase_filter=PurchaseFilter(is_refunded=BoolCriterion(value=True))
@@ -587,7 +585,9 @@ def test_mixed_and_or_not_composition_order(boolean_world):
     deck = boolean_world["deck"]
     mixed = GameFilter(
         AND=[
-            GameFilter(session_filter=SessionFilter(emulated=BoolCriterion(value=True)))
+            GameFilter(
+                session_filter=PlayerSessionFilter(emulated=BoolCriterion(value=True))
+            )
         ],
         OR=[
             GameFilter(
@@ -596,7 +596,9 @@ def test_mixed_and_or_not_composition_order(boolean_world):
         ],
         NOT=[
             GameFilter(
-                session_filter=SessionFilter(device=UUIDMultiCriterion(value=[deck]))
+                session_filter=PlayerSessionFilter(
+                    device=UUIDMultiCriterion(value=[deck])
+                )
             )
         ],
     )

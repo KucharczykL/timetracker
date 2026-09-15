@@ -84,7 +84,7 @@ type ModelKey = str  # singular root-model key as filter_for_model takes it, e.g
 # contract-tested against games.filters.MODE_PARSERS, like the URL table above.
 FILTER_MODE_MODELS: dict[FilterMode, ModelKey] = {
     "games": "game",
-    "sessions": "session",
+    "sessions": "playersession",
     "purchases": "purchase",
     "playthroughs": "playthrough",
     "devices": "device",
@@ -196,6 +196,16 @@ register_element("browser-time-zone", "BrowserTimeZone", BrowserTimeZoneProps)
 _BrowserTimeZone = custom_element_builder("browser-time-zone")
 _DateTimeField = custom_element_builder("date-time-field")
 _TimeZoneRow = custom_element_builder("time-zone-row")
+_PlaythroughSelect = custom_element_builder("playthrough-select")
+
+
+class PlaythroughSelectProps(TypedDict):
+    game_field: str  # the form field whose search-select names the game
+    api_url: str  # the run list; `?game=` narrows it, `limit=0` unbounds it
+    selected: str  # the run the form holds, or "" for none
+
+
+register_element("playthrough-select", "PlaythroughSelect", PlaythroughSelectProps)
 
 
 class SelectionFieldsProps(TypedDict):

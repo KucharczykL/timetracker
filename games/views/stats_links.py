@@ -28,9 +28,9 @@ from common.criteria import (
 )
 from games.filters import (
     GameFilter,
+    PlayerSessionFilter,
     PlaythroughFilter,
     PurchaseFilter,
-    SessionFilter,
 )
 from games.models import DONE_STATUSES, PlayerGameStatus, Purchase
 from games.reads.playthrough_completions import completed_in_scope
@@ -48,7 +48,7 @@ def _session_bounds(year) -> dict:
     """`where()` kwargs scoping sessions to the year (empty for all-time)."""
     if not _is_year(year):
         return {}
-    return {"timestamp_start__between": _year_range(year)}
+    return {"day__between": _year_range(year)}
 
 
 def _purchase_bounds(year) -> dict:
@@ -60,14 +60,14 @@ def _purchase_bounds(year) -> dict:
 # ── Sessions ─────────────────────────────────────────────────────────────────
 
 
-def all_sessions(year) -> SessionFilter:
-    return SessionFilter.where(**_session_bounds(year))
+def all_sessions(year) -> PlayerSessionFilter:
+    return PlayerSessionFilter.where(**_session_bounds(year))
 
 
-def sessions_for_game(game_id: UUID, year, label: str = "") -> SessionFilter:
+def sessions_for_game(game_id: UUID, year, label: str = "") -> PlayerSessionFilter:
     # Carry the game name as a display label so the filter bar renders a named
     # pill on landing (#224); falls back to a bare id when no label is given.
-    session_filter = SessionFilter.where(**_session_bounds(year))
+    session_filter = PlayerSessionFilter.where(**_session_bounds(year))
     session_filter.game = UUIDMultiCriterion(
         value=[game_id], labels={game_id: label} if label else {}
     )
@@ -76,10 +76,10 @@ def sessions_for_game(game_id: UUID, year, label: str = "") -> SessionFilter:
 
 def sessions_for_platform(
     platform_id: UUID | None, year, label: str = ""
-) -> SessionFilter:
+) -> PlayerSessionFilter:
     # See sessions_for_game: the platform name rides along as a display label so
     # the session bar's (cross-entity) platform pill renders a name, not an id.
-    session_filter = SessionFilter.where(**_session_bounds(year))
+    session_filter = PlayerSessionFilter.where(**_session_bounds(year))
     if platform_id is None:
         # The stats "Unspecified" bucket groups by the game__platform LEFT JOIN,
         # which now means exactly sessions whose required Game is platformless.
@@ -100,7 +100,7 @@ def games_in_month(year: int, month: int) -> GameFilter:
     start = f"{year}-{month:02d}-01"
     end = f"{year}-{month:02d}-{last_day:02d}"
     return GameFilter(
-        session_filter=SessionFilter.where(timestamp_start__between=(start, end))
+        session_filter=PlayerSessionFilter.where(day__between=(start, end))
     )
 
 

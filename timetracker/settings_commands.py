@@ -1,11 +1,18 @@
 """Validated mutation boundary for runtime-editable site settings."""
 
+import logging
+import uuid
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
+from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
-    from games.models import Device, UserLibrary
+    from django.contrib.auth.models import User
 
+    from games.models import Device, UserLibrary
+    from games.reads.calendar import CalendarDelta, ZoneName
+
+from games.events.retry import retried_transaction
 from timetracker.config import (
     LOCKED_SOURCES,
     ResolvedSetting,
@@ -20,7 +27,13 @@ from timetracker.settings_registry import (
 from timetracker.settings_resolver import (
     normalize_setting_value,
     resolve_fallthrough_uncached,
+    resolve_str_for_user,
 )
+
+logger = logging.getLogger("games")
+
+#: The one setting whose change is also a command.
+CALENDAR_SETTING_KEY: SettingKey = "DISPLAY_TIME_ZONE"
 
 
 class SettingOperation(StrEnum):
@@ -52,6 +65,9 @@ class SettingMutation(NamedTuple):
     changed: bool
     stored: object | None
     stored_present: bool
+    #: What a display-zone change moved; None when the calendar's zone
+    #: did not move, and for every other key.
+    calendar: CalendarDelta | None = None
 
 
 class SettingLockedError(Exception):
@@ -90,68 +106,88 @@ def _request_display_currency_if_changed(
         request_conversion(user.library, str(new_effective))
 
 
-def change_site_setting(key: SettingKey, value: object | None) -> SettingMutation:
+def change_site_setting(
+    key: SettingKey, value: object | None, *, actor: User | None = None
+) -> SettingMutation:
     """Set or clear a validated site default; return an operation-aware envelope.
 
     Lock guards SET only — a CLEAR removes the DB row even when a locked source
     (env/file/dotenv/ini) shadows the key, so an operator can drop a stale row
     before dropping the env var. No-op writes touch nothing (no signal, no cache
     invalidation). Effective-after-write is computed without a resolver read-back of
-    the just-written layer."""
+    the just-written layer.
+
+    The display zone is also the calendar: one command per inheriting
+    library whose calendar moves appends beside the row, as `actor`,
+    which this key requires."""
     definition = get_definition(key)
     if definition.scope is SettingScope.INFRA:
         raise ValueError(f"{key} is infra-scoped (boot-only); cannot store in DB.")
 
-    operation = SettingOperation.CLEAR if value is None else SettingOperation.SET
+    if key == CALENDAR_SETTING_KEY:
+        if actor is None:
+            raise ValueError(
+                "A calendar change records who changed it; name the actor."
+            )
+        #: One act, one correlation id across every attempt.
+        change = _change_site_display_zone(
+            value, actor=actor, correlation_id=uuid.uuid7()
+        )
+        for restated in change.restated:
+            logger.info(
+                "Library %s now counts days in %s: %d sessions, %d moved a day, "
+                "%d a month, %d a year.",
+                restated.library_id,
+                restated.delta.day_zone,
+                restated.delta.sessions,
+                restated.delta.day_moved,
+                restated.delta.month_moved,
+                restated.delta.year_moved,
+            )
+        return change.mutation
 
     from django.db import transaction
 
+    with transaction.atomic():
+        return _write_site_setting(key, value)
+
+
+def _write_site_setting(key: SettingKey, value: object | None) -> SettingMutation:
+    """The database half of `change_site_setting`, inside a caller's transaction."""
+    definition = get_definition(key)
+    operation = SettingOperation.CLEAR if value is None else SettingOperation.SET
+
     from games.models import SiteSetting
 
-    with transaction.atomic():
-        old_effective = resolve_fallthrough_uncached(key, skip_db=False).value
-        row = SiteSetting.objects.filter(key=key).first()
-        stored_present = row is not None
-        stored_raw = row.value if row is not None else None
+    old_effective = resolve_fallthrough_uncached(key, skip_db=False).value
+    row = SiteSetting.objects.filter(key=key).first()
+    stored_present = row is not None
+    stored_raw = row.value if row is not None else None
 
-        if operation is SettingOperation.SET:
-            raw = resolve_raw_with_source(
-                definition.env_name or definition.key,
-                allow_file=definition.allow_file,
-            )
-            if raw is not None and raw.source in LOCKED_SOURCES:
-                raise SettingLockedError(key, raw.source)
+    if operation is SettingOperation.SET:
+        raw = resolve_raw_with_source(
+            definition.env_name or definition.key,
+            allow_file=definition.allow_file,
+        )
+        if raw is not None and raw.source in LOCKED_SOURCES:
+            raise SettingLockedError(key, raw.source)
 
-            normalized = normalize_setting_value(value, definition)
-            if definition.write_validator is not None:
-                definition.write_validator(normalized)
+        normalized = normalize_setting_value(value, definition)
+        if definition.write_validator is not None:
+            definition.write_validator(normalized)
 
-            changed = (not stored_present) or normalized != stored_raw
-            if changed:
-                SiteSetting.objects.update_or_create(
-                    key=key, defaults={"value": normalized}
-                )
-            mutation = SettingMutation(
-                ResolvedSetting(normalized, SettingSource.DATABASE, False),
-                operation,
-                changed,
-                normalized,
-                True,
-            )
-            _request_display_currency_if_changed(
-                key=key,
-                changed=changed,
-                old_effective=old_effective,
-                new_effective=mutation.effective.value,
-            )
-            return mutation
-
-        # CLEAR — never lock-checked.
-        changed = stored_present
+        changed = (not stored_present) or normalized != stored_raw
         if changed:
-            SiteSetting.objects.filter(key=key).delete()
-        effective = resolve_fallthrough_uncached(key, skip_db=True)
-        mutation = SettingMutation(effective, operation, changed, None, False)
+            SiteSetting.objects.update_or_create(
+                key=key, defaults={"value": normalized}
+            )
+        mutation = SettingMutation(
+            ResolvedSetting(normalized, SettingSource.DATABASE, False),
+            operation,
+            changed,
+            normalized,
+            True,
+        )
         _request_display_currency_if_changed(
             key=key,
             changed=changed,
@@ -159,6 +195,20 @@ def change_site_setting(key: SettingKey, value: object | None) -> SettingMutatio
             new_effective=mutation.effective.value,
         )
         return mutation
+
+    # CLEAR — never lock-checked.
+    changed = stored_present
+    if changed:
+        SiteSetting.objects.filter(key=key).delete()
+    effective = resolve_fallthrough_uncached(key, skip_db=True)
+    mutation = SettingMutation(effective, operation, changed, None, False)
+    _request_display_currency_if_changed(
+        key=key,
+        changed=changed,
+        old_effective=old_effective,
+        new_effective=mutation.effective.value,
+    )
+    return mutation
 
 
 def change_user_setting(
@@ -168,66 +218,67 @@ def change_user_setting(
 
     Personal overrides are never locked (a user may always override, even over env),
     so there is no lock branch. No-op writes touch nothing. User effective is always
-    reported ``locked=False``, matching the read endpoint's contract."""
+    reported ``locked=False``, matching the read endpoint's contract.
+
+    The display zone is also the calendar: when its zone moves, the
+    command appends beside the row."""
     definition = get_definition(key)
     if definition.scope is not SettingScope.USER:
         raise ValueError(f"{key} is not a user-scoped setting; cannot store per user.")
 
-    operation = SettingOperation.CLEAR if value is None else SettingOperation.SET
+    if key == CALENDAR_SETTING_KEY:
+        from games.events.dispatch import authorize
+
+        owner = cast("User", user)
+        authorize(owner, owner.library)
+        return _change_user_display_zone(owner, value, correlation_id=uuid.uuid7())
 
     from django.db import transaction
 
+    with transaction.atomic():
+        return _write_user_setting(user, key, value)
+
+
+def _write_user_setting(
+    user: object, key: SettingKey, value: object | None
+) -> SettingMutation:
+    """The database half of `change_user_setting`, inside a caller's transaction."""
+    definition = get_definition(key)
+    operation = SettingOperation.CLEAR if value is None else SettingOperation.SET
+
     from games.models import USER_PREFERENCE_FIELD_BY_KEY, UserPreferences
 
-    with transaction.atomic():
-        row = UserPreferences.objects.filter(user=user).first()  # type: ignore[misc]  # non-creating read
-        field = USER_PREFERENCE_FIELD_BY_KEY.get(key)
-        if row is None:
-            stored_present, stored_raw = False, None
-        elif field is not None:
-            stored_raw = getattr(row, field)
-            stored_present = stored_raw is not None
-        else:
-            bag = row.extra_preferences or {}
-            stored_present = key in bag
-            stored_raw = bag.get(key)
-        old_effective = (
-            stored_raw
-            if stored_present
-            else resolve_fallthrough_uncached(key, skip_db=False).value
-        )
+    row = UserPreferences.objects.filter(user=user).first()  # type: ignore[misc]  # non-creating read
+    field = USER_PREFERENCE_FIELD_BY_KEY.get(key)
+    if row is None:
+        stored_present, stored_raw = False, None
+    elif field is not None:
+        stored_raw = getattr(row, field)
+        stored_present = stored_raw is not None
+    else:
+        bag = row.extra_preferences or {}
+        stored_present = key in bag
+        stored_raw = bag.get(key)
+    old_effective = (
+        stored_raw
+        if stored_present
+        else resolve_fallthrough_uncached(key, skip_db=False).value
+    )
 
-        if operation is SettingOperation.SET:
-            normalized = normalize_setting_value(value, definition)
-            if definition.write_validator is not None:
-                definition.write_validator(normalized)
-            changed = (not stored_present) or normalized != stored_raw
-            if changed:
-                UserPreferences.get_for_user(user).set_preference_value(key, normalized)
-            mutation = SettingMutation(
-                ResolvedSetting(normalized, SettingSource.USER, False),
-                operation,
-                changed,
-                normalized,
-                True,
-            )
-            _request_display_currency_if_changed(
-                key=key,
-                changed=changed,
-                old_effective=old_effective,
-                new_effective=mutation.effective.value,
-                user=user,
-            )
-            return mutation
-
-        # CLEAR
-        changed = stored_present
-        if changed and row is not None:
-            row.set_preference_value(key, None)
-        effective = resolve_fallthrough_uncached(key, skip_db=False)._replace(
-            locked=False
+    if operation is SettingOperation.SET:
+        normalized = normalize_setting_value(value, definition)
+        if definition.write_validator is not None:
+            definition.write_validator(normalized)
+        changed = (not stored_present) or normalized != stored_raw
+        if changed:
+            UserPreferences.get_for_user(user).set_preference_value(key, normalized)
+        mutation = SettingMutation(
+            ResolvedSetting(normalized, SettingSource.USER, False),
+            operation,
+            changed,
+            normalized,
+            True,
         )
-        mutation = SettingMutation(effective, operation, changed, None, False)
         _request_display_currency_if_changed(
             key=key,
             changed=changed,
@@ -236,6 +287,154 @@ def change_user_setting(
             user=user,
         )
         return mutation
+
+    # CLEAR
+    changed = stored_present
+    if changed and row is not None:
+        row.set_preference_value(key, None)
+    effective = resolve_fallthrough_uncached(key, skip_db=False)._replace(locked=False)
+    mutation = SettingMutation(effective, operation, changed, None, False)
+    _request_display_currency_if_changed(
+        key=key,
+        changed=changed,
+        old_effective=old_effective,
+        new_effective=mutation.effective.value,
+        user=user,
+    )
+    return mutation
+
+
+def _inheriting_libraries() -> list[UserLibrary]:
+    """Libraries whose owner states no readable display zone of their own.
+
+    A stored name tzdata cannot read resolves as absent, so its
+    library inherits the site zone and moves with it.
+    """
+    from django.db.models import Q
+
+    from common.date_time_presentation import zone_or_none
+    from games.models import UserLibrary, UserPreferences
+
+    unreadable = [
+        user_id
+        for user_id, stored in UserPreferences.objects.exclude(
+            display_time_zone__isnull=True
+        ).values_list("user_id", "display_time_zone")
+        if zone_or_none(stored) is None
+    ]
+    return list(
+        UserLibrary.objects.filter(
+            Q(user__preferences__display_time_zone__isnull=True)
+            | Q(user__preferences__isnull=True)
+            | Q(user_id__in=unreadable)
+        ).order_by("pk")
+    )
+
+
+class LibraryRestatement(NamedTuple):
+    """One library's calendar moved, and what moved with it."""
+
+    library_id: uuid.UUID
+    delta: CalendarDelta
+
+
+class SiteZoneChange(NamedTuple):
+    """The site write, and every calendar it moved."""
+
+    mutation: SettingMutation
+    restated: tuple[LibraryRestatement, ...]
+
+
+def _restate_calendar(
+    library: UserLibrary,
+    *,
+    before: ZoneName | None,
+    after: ZoneName,
+    actor: User,
+    correlation_id: uuid.UUID,
+) -> CalendarDelta | None:
+    """Append the calendar command when the calendar's zone moves.
+
+    `before` is the stored name, readable or not, so an unreadable
+    row is restated. The delta is read first; the projector rewrites
+    `day_zone` and `effective_day` regenerates.
+    """
+    from games.commands.calendar import SetCalendarDayZone
+    from games.commands.playersession import _check_zones
+    from games.events.dispatch import append_command
+    from games.reads.calendar import calendar_delta
+
+    if before == after:
+        return None
+    #: Before the read: the database reads the zone too.
+    _check_zones(after)
+    delta = calendar_delta(library, after)
+    append_command(
+        SetCalendarDayZone(day_zone=after),
+        actor=actor,
+        library=library,
+        #: Minted per attempt: a rolled-back attempt leaves no record.
+        idempotency_key=f"calendar:set_day_zone:{uuid.uuid4()}",
+        correlation_id=correlation_id,
+    )
+    return delta
+
+
+def _zone_name(value: object) -> ZoneName:
+    return ZoneInfo(str(value)).key
+
+
+def _calendar_before(library: UserLibrary) -> ZoneName | None:
+    """The stored name, or the owner's display zone before a row exists."""
+    from games.reads.calendar import stated_calendar_zone
+
+    stated = stated_calendar_zone(library)
+    if stated is not None:
+        return stated
+    return resolve_str_for_user(library.user, CALENDAR_SETTING_KEY)
+
+
+@retried_transaction
+def _change_user_display_zone(
+    user: User, value: object | None, *, correlation_id: uuid.UUID
+) -> SettingMutation:
+    library = user.library
+    before = _calendar_before(library)
+    mutation = _write_user_setting(user, CALENDAR_SETTING_KEY, value)
+    delta = _restate_calendar(
+        library,
+        before=before,
+        after=_zone_name(mutation.effective.value),
+        actor=user,
+        correlation_id=correlation_id,
+    )
+    return mutation._replace(calendar=delta)
+
+
+@retried_transaction
+def _change_site_display_zone(
+    value: object | None, *, actor: User, correlation_id: uuid.UUID
+) -> SiteZoneChange:
+    #: Read inside the transaction the act runs in.
+    libraries = _inheriting_libraries()
+    before = {library.pk: _calendar_before(library) for library in libraries}
+    mutation = _write_site_setting(CALENDAR_SETTING_KEY, value)
+    after = _zone_name(mutation.effective.value)
+    restated: list[LibraryRestatement] = []
+    for library in libraries:
+        delta = _restate_calendar(
+            library,
+            before=before[library.pk],
+            after=after,
+            actor=actor,
+            correlation_id=correlation_id,
+        )
+        if delta is not None:
+            restated.append(LibraryRestatement(library.pk, delta))
+    total: CalendarDelta | None = None
+    for entry in restated:
+        total = entry.delta if total is None else total + entry.delta
+    return SiteZoneChange(mutation._replace(calendar=total), tuple(restated))
 
 
 def change_library_default_device(library: UserLibrary, device: Device | None) -> bool:

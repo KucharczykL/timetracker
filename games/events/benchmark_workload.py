@@ -2,9 +2,11 @@
 
 import uuid
 from collections.abc import Iterator
+from datetime import date, datetime, timedelta
 from io import StringIO
 from itertools import batched, islice
 from time import monotonic
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth.models import User
 from django.core.management import call_command
@@ -12,8 +14,14 @@ from django.db import connection, transaction
 
 from common.keyset import keyset_pages
 from games.commands.playergame import TrackGame, tracking_events
-from games.events.append import lock_stream
+from games.commands.playersession import (
+    CreateSession,
+    DurationOnlyTiming,
+    session_events,
+)
+from games.events.append import NewEvent, lock_stream
 from games.events.benchmark import (
+    ReadTimings,
     Seconds,
     SeedReport,
     StatementCounter,
@@ -21,6 +29,7 @@ from games.events.benchmark import (
     WorkPerEvent,
     summarize,
 )
+from games.events.benchmark_reads import READS
 from games.events.dispatch import dispatch
 from games.events.rebuild import RebuildMode, RebuildReport, rebuild_projections
 from games.models import (
@@ -30,9 +39,11 @@ from games.models import (
     LibraryEventStreamHead,
     LibraryIdempotencyRecord,
     PlayerGame,
+    PlayerSession,
     Playthrough,
     UserLibrary,
 )
+from games.reads.calendar import calendar_day_zone
 
 #: The seeded rows, and the untracked spares.
 SEEDED_NAME_PREFIX = "Benchmark game "
@@ -55,8 +66,13 @@ _SEEDED_TABLES = (
     LibraryEventStreamHead,
     LibraryIdempotencyRecord,
     PlayerGame,
+    PlayerSession,
     Playthrough,
 )
+
+#: Days cycle over two years, so per-day and per-month
+#: reads aggregate many rows a cell and played_years stays small.
+SEEDED_DAY_CYCLE = 730
 
 
 def seed_library(
@@ -65,7 +81,8 @@ def seed_library(
     """Fill `library`, and leave `spares` untracked games.
 
     The parameter counts games rather than events, because a game is
-    two events and a parameter named for the other one reads wrong at
+    three events -- the tracking pair, then one finished session on
+    the run -- and a parameter named for the other one reads wrong at
     every call site.
     """
     catalog_started = monotonic()
@@ -75,16 +92,23 @@ def seed_library(
 
     append_started = monotonic()
     correlation_id = uuid.uuid7()
+    #: Read, never a literal: a direct append runs no command check.
+    day_zone = calendar_day_zone(library).key
+    today = datetime.now(tz=ZoneInfo(day_zone)).date()
     events = 0
-    for batch in batched(_seeded_games(library), APPEND_BATCH):
+    for batch in batched(enumerate(_seeded_games(library)), APPEND_BATCH):
         with transaction.atomic():
             lock_stream(library).append(
-                [event for game in batch for event in tracking_events(game)],
+                [
+                    event
+                    for index, game in batch
+                    for event in _seeded_events(game, index, today, day_zone)
+                ],
                 actor=actor,
                 correlation_id=correlation_id,
                 idempotency_key=SEED_IDEMPOTENCY_KEY,
             )
-        events += 2 * len(batch)
+        events += 3 * len(batch)
     append_seconds = monotonic() - append_started
     _analyze()
 
@@ -96,6 +120,16 @@ def seed_library(
         append_seconds=append_seconds,
         events_per_second=events / append_seconds if append_seconds else 0.0,
     )
+
+
+def _seeded_events(
+    game: Game, index: int, today: date, day_zone: str
+) -> list[NewEvent]:
+    """The tracking pair, then a session on the run it stated."""
+    pair = tracking_events(game)
+    run_id = pair[1].aggregate_id
+    day = today - timedelta(days=index % SEEDED_DAY_CYCLE)
+    return [*pair, *session_events(run_id, day=day, day_zone=day_zone)]
 
 
 def _analyze() -> None:
@@ -184,6 +218,75 @@ def run_command_scenario(
         _track(library, actor=actor, game=game)
         samples.append(monotonic() - started)
     return summarize(samples)
+
+
+def seeded_runs(library: UserLibrary) -> Iterator[Playthrough]:
+    """The runs the seed stated, for the session command."""
+    return keyset_pages(
+        Playthrough.objects.filter(library=library).only("id"),
+        key=("id",),
+        page_size=CATALOG_BATCH,
+    )
+
+
+def _record(library: UserLibrary, *, actor: User, run: Playthrough) -> None:
+    dispatch(
+        CreateSession(
+            playthrough_id=run.pk,
+            timing=DurationOnlyTiming(
+                day=date(2024, 6, 1), duration=timedelta(minutes=30)
+            ),
+        ),
+        actor=actor,
+        library=library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+
+
+def run_session_command_scenario(
+    library: UserLibrary,
+    *,
+    actor: User,
+    runs: Iterator[Playthrough],
+    iterations: int,
+    warmup: int,
+) -> Timings:
+    """Dispatch CreateSession against the seeded runs.
+
+    A Duration-only statement: the cheapest shape, so the number is the
+    dispatch's own cost -- the run resolve, the calendar check, the
+    projector -- and not the zone arithmetic.
+    """
+    for run in islice(runs, warmup):
+        _record(library, actor=actor, run=run)
+    samples: list[Seconds] = []
+    for run in islice(runs, iterations):
+        started = monotonic()
+        _record(library, actor=actor, run=run)
+        samples.append(monotonic() - started)
+    return summarize(samples)
+
+
+def run_read_scenario(
+    library: UserLibrary, *, iterations: int, warmup: int
+) -> tuple[ReadTimings, ...]:
+    """Execute every named read to a list, `iterations` times each.
+
+    Zero iterations runs no read: a distribution needs an observation.
+    """
+    if iterations == 0:
+        return ()
+    timings: list[ReadTimings] = []
+    for read in READS:
+        for _ in range(warmup):
+            read.execute(library)
+        samples: list[Seconds] = []
+        for _ in range(iterations):
+            started = monotonic()
+            read.execute(library)
+            samples.append(monotonic() - started)
+        timings.append(ReadTimings(read.name, summarize(samples)))
+    return tuple(timings)
 
 
 def run_amplification_scenario(

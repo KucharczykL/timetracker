@@ -10,8 +10,9 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Page
+from session_rows import session_row
 
-from games.models import Device, Game, Platform, Session
+from games.models import Device, Game, Platform
 
 
 @pytest.fixture
@@ -41,9 +42,7 @@ def test_device_dropdown_not_clipped_on_short_table(
         Device.objects.create(library=e2e_library, name=f"Device {i:02d}")
         for i in range(15)
     ]
-    session = Session.objects.create(
-        game=game, device=devices[0], timestamp_start=timezone.now()
-    )
+    session = session_row(game, device=devices[0], started_at=timezone.now())
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     page.locator(f"#session-row-{session.pk} [data-toggle]").click()
@@ -97,9 +96,7 @@ def test_device_dropdown_flips_up_near_viewport_bottom(
         for i in range(15)
     ]
     sessions = [
-        Session.objects.create(
-            game=game, device=devices[0], timestamp_start=timezone.now()
-        )
+        session_row(game, device=devices[0], started_at=timezone.now())
         for _ in range(10)
     ]
 

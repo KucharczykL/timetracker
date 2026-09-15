@@ -13,6 +13,7 @@ import pytest
 from django.conf import settings
 from django.urls import reverse
 from playwright.sync_api import Browser, Page
+from session_rows import session_row
 
 from e2e.helpers import settle_layout
 from games.models import (
@@ -21,7 +22,6 @@ from games.models import (
     Platform,
     Playthrough,
     Purchase,
-    Session,
 )
 from timetracker.temporal import TemporalValue
 
@@ -70,11 +70,11 @@ def populated(e2e_library) -> None:
     short = Game.objects.create(
         library=e2e_library, name="Short", platform=platform, year_released=2023
     )
-    Session.objects.create(
-        game=game,
+    session_row(
+        game,
         device=device,
-        timestamp_start=BASE,
-        timestamp_end=BASE + timedelta(hours=2),
+        started_at=BASE,
+        ended_at=BASE + timedelta(hours=2),
         note="a session note",
     )
     for index, purchased_game in enumerate((game, short)):

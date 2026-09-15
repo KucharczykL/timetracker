@@ -12,6 +12,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import Client
 from django.urls import reverse
+from session_rows import session_row
 
 from common.filter_execution import execute_filter
 from games import tasks
@@ -27,10 +28,11 @@ from games.models import (
     FilterPreset,
     Game,
     Platform,
+    PlayerSession,
     Purchase,
     PurchaseConversionState,
-    Session,
 )
+from games.reads.player_sessions import library_sessions
 from games.views import stats_links
 from games.views.stats_data import compute_stats
 
@@ -44,13 +46,13 @@ def _client_for(user) -> Client:
     return client
 
 
-def _session(game, device, day: int, hours: int) -> Session:
+def _session(game, device, day: int, hours: int) -> PlayerSession:
     started = datetime(YEAR, 6, day, 10, tzinfo=UTC)
-    return Session.objects.create(
-        game=game,
+    return session_row(
+        game,
         device=device,
-        timestamp_start=started,
-        timestamp_end=started + timedelta(hours=hours),
+        started_at=started,
+        ended_at=started + timedelta(hours=hours),
     )
 
 
@@ -174,7 +176,7 @@ def test_row_link_and_audit_reconciliation_is_independent(parity_world):
         assert Game.objects.for_library(library).count() == 2
         assert Device.objects.for_library(library).count() == 1
         assert Purchase.objects.for_library(library).count() == 1
-        assert Session.objects.for_library(library).count() == 2
+        assert library_sessions(library).count() == 2
         assert Platform.objects.for_library(library).count() == 1
         assert Platform.objects.visible_to(library).count() == 2
         assert (
@@ -306,19 +308,23 @@ def test_statistics_and_exact_links_reconcile_per_library(parity_world):
         assert stats["total_spent"] == spending
         assert stats["total_spent_currency"] == "CZK"
         exact_links = (
-            (stats_links.all_sessions(YEAR), Session, stats["total_sessions"]),
+            (stats_links.all_sessions(YEAR), PlayerSession, stats["total_sessions"]),
             (stats_links.games_played(YEAR), Game, stats["total_games"]),
             (
                 stats_links.purchases_total(YEAR),
                 Purchase,
                 stats["all_purchased_this_year_count"],
             ),
-            (stats_links.sessions_for_game(game.pk, YEAR, game.name), Session, 1),
+            (
+                stats_links.sessions_for_game(game.pk, YEAR, game.name),
+                PlayerSession,
+                1,
+            ),
             (
                 stats_links.sessions_for_platform(
                     world.shared_platform.pk, YEAR, world.shared_platform.name
                 ),
-                Session,
+                PlayerSession,
                 1,
             ),
             (stats_links.games_in_month(YEAR, 6), Game, 2),

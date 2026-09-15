@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from session_rows import session_row
 
 import common.layout
 from common import date_time_presentation as presentation_module
@@ -14,9 +15,9 @@ from games.models import (
     Device,
     Game,
     Platform,
+    PlayerSession,
     Playthrough,
     Purchase,
-    Session,
 )
 from timetracker.settings_commands import change_user_setting
 from timetracker.temporal import TemporalValue
@@ -68,7 +69,7 @@ ALTERNATE_PROFILE = build_format_profile(
 )
 
 
-@pytest.mark.django_db
+@pytest.mark.django_db(transaction=True)
 def test_non_default_presentation_reaches_every_server_display_path(
     client, django_user_model, monkeypatch, django_capture_on_commit_callbacks
 ) -> None:
@@ -102,11 +103,12 @@ def test_non_default_presentation_reaches_every_server_display_path(
         num_purchases=1,
     )
     purchase.games.add(game)
-    session = Session.objects.create(
-        game=game,
+    row = session_row(
+        game,
         device=device,
-        timestamp_start=datetime(2022, 9, 26, 12, 58, tzinfo=UTC),
-        timestamp_end=datetime(2022, 9, 26, 13, 58, tzinfo=UTC),
+        started_at=datetime(2022, 9, 26, 12, 58, tzinfo=UTC),
+        ended_at=datetime(2022, 9, 26, 13, 58, tzinfo=UTC),
+        created_at=datetime(2022, 10, 5, tzinfo=UTC),
     )
     #: Both endpoints and the run's created day.
     Playthrough.objects.filter(player_game__game=game).update(
@@ -121,7 +123,7 @@ def test_non_default_presentation_reaches_every_server_display_path(
         (Platform, platform.pk, datetime(2022, 10, 2, tzinfo=UTC)),
         (Device, device.pk, datetime(2022, 10, 3, tzinfo=UTC)),
         (Purchase, purchase.pk, datetime(2022, 10, 4, tzinfo=UTC)),
-        (Session, session.pk, datetime(2022, 10, 5, tzinfo=UTC)),
+        (PlayerSession, row.pk, datetime(2022, 10, 5, tzinfo=UTC)),
     )
     for model, pk, value in created_values:
         model.objects.filter(pk=pk).update(created_at=value)

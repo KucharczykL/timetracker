@@ -16,11 +16,16 @@ from uuid import UUID
 import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from session_rows import session_row
 
 from common.criteria import Modifier
 from common.filter_execution import execute_filter
-from games.filters import filter_query_context_for_library
-from games.models import Game, Platform, Playthrough, Purchase, Session
+from games.filters import (
+    filter_query_context_for_library,
+    filter_queryset_for_library,
+)
+from games.models import Game, Platform, PlayerSession, Playthrough, Purchase
+from games.reads.player_sessions import GAME, library_sessions
 from games.views import stats_links
 from games.views.stats_data import compute_stats
 from timetracker.temporal import TemporalValue
@@ -56,10 +61,10 @@ def world(db):
     )
 
     # Sessions: in-year on two platforms + one out-of-year (excluded).
-    Session.objects.create(game=finished_game, timestamp_start=_dt(YEAR, 6, 1))
-    Session.objects.create(game=finished_game, timestamp_start=_dt(YEAR, 7, 2))
-    Session.objects.create(game=playing_game, timestamp_start=_dt(YEAR, 6, 3))
-    Session.objects.create(game=finished_game, timestamp_start=_dt(YEAR - 1, 6, 1))
+    session_row(finished_game, started_at=_dt(YEAR, 6, 1))
+    session_row(finished_game, started_at=_dt(YEAR, 7, 2))
+    session_row(playing_game, started_at=_dt(YEAR, 6, 3))
+    session_row(finished_game, started_at=_dt(YEAR - 1, 6, 1))
 
     #: The run a conversion leaves, day-precision.
     Playthrough.objects.filter(player_game__game=finished_game).update(
@@ -111,9 +116,9 @@ def world(db):
         status=Game.Status.FINISHED,
         year_released=YEAR,
     )
-    Session.objects.create(
-        game=foreign_game,
-        timestamp_start=_dt(YEAR, 6, 4),
+    session_row(
+        foreign_game,
+        started_at=_dt(YEAR, 6, 4),
     )
     Purchase.objects.create(
         library=foreign_library,
@@ -137,7 +142,7 @@ def _stats(world, year):
 
 
 def _count(filter_obj, model, library):
-    queryset = model.objects.for_library(library)
+    queryset = filter_queryset_for_library(model._meta.model_name, library)
     return (
         execute_filter(filter_obj, queryset, filter_query_context_for_library(library))
         .distinct()
@@ -162,13 +167,17 @@ def _count_via_json(filter_obj, model, library):
 def test_sessions_for_game_matches_year_scoped_sessions(world):
     game = world["finished_game"]
     expected = (
-        Session.objects.for_library(world["library"])
-        .filter(timestamp_start__year=YEAR, game=game)
+        library_sessions(world["library"])
+        .filter(effective_day__year=YEAR, **{GAME: game})
         .count()
     )
     assert expected == 2  # guard: the out-of-year session is excluded
     assert (
-        _count(stats_links.sessions_for_game(game.id, YEAR), Session, world["library"])
+        _count(
+            stats_links.sessions_for_game(game.id, YEAR),
+            PlayerSession,
+            world["library"],
+        )
         == expected
     )
 
@@ -176,14 +185,14 @@ def test_sessions_for_game_matches_year_scoped_sessions(world):
 def test_sessions_for_platform_matches_year_scoped_sessions(world):
     platform = world["pc"]
     expected = (
-        Session.objects.for_library(world["library"])
-        .filter(timestamp_start__year=YEAR, game__platform=platform)
+        library_sessions(world["library"])
+        .filter(effective_day__year=YEAR, **{f"{GAME}__platform": platform})
         .count()
     )
     assert (
         _count(
             stats_links.sessions_for_platform(platform.id, YEAR),
-            Session,
+            PlayerSession,
             world["library"],
         )
         == expected
@@ -194,24 +203,28 @@ def test_sessions_for_platform_null_bucket_matches_stats_grouping(world):
     """The stats "Unspecified" bucket groups by the game__platform LEFT JOIN, so
     it holds sessions of platformless games. The None link must match that set."""
     platformless_game = Game.objects.create(library=world["library"], name="Homebrew")
-    Session.objects.create(game=platformless_game, timestamp_start=_dt(YEAR, 6, 5))
-    Session.objects.create(game=platformless_game, timestamp_start=_dt(YEAR - 1, 6, 5))
+    session_row(platformless_game, started_at=_dt(YEAR, 6, 5))
+    session_row(platformless_game, started_at=_dt(YEAR - 1, 6, 5))
 
     expected = (
-        Session.objects.for_library(world["library"])
-        .filter(timestamp_start__year=YEAR, game__platform__isnull=True)
+        library_sessions(world["library"])
+        .filter(effective_day__year=YEAR, **{f"{GAME}__platform__isnull": True})
         .count()
     )
     assert expected == 1  # guard: the out-of-year session is excluded
     assert (
-        _count(stats_links.sessions_for_platform(None, YEAR), Session, world["library"])
+        _count(
+            stats_links.sessions_for_platform(None, YEAR),
+            PlayerSession,
+            world["library"],
+        )
         == expected
     )
 
 
 def test_sessions_for_platform_null_bucket_survives_json_round_trip(world):
     platformless_game = Game.objects.create(library=world["library"], name="Homebrew")
-    Session.objects.create(game=platformless_game, timestamp_start=_dt(YEAR, 6, 5))
+    session_row(platformless_game, started_at=_dt(YEAR, 6, 5))
 
     link_filter = stats_links.sessions_for_platform(None, YEAR)
     payload = link_filter.to_json()
@@ -220,8 +233,8 @@ def test_sessions_for_platform_null_bucket_survives_json_round_trip(world):
     assert "AND" not in payload
     assert "OR" not in payload
 
-    assert _count_via_json(link_filter, Session, world["library"]) == _count(
-        link_filter, Session, world["library"]
+    assert _count_via_json(link_filter, PlayerSession, world["library"]) == _count(
+        link_filter, PlayerSession, world["library"]
     )
 
 
@@ -258,9 +271,9 @@ def test_games_in_month_matches_that_month(world):
     expected = (
         Game.objects.for_library(world["library"])
         .filter(
-            sessions__in=Session.objects.for_library(world["library"]).filter(
-                timestamp_start__year=YEAR, timestamp_start__month=6
-            )
+            player_games__playthroughs__sessions__in=library_sessions(
+                world["library"]
+            ).filter(effective_day__year=YEAR, effective_day__month=6)
         )
         .count()
     )
@@ -273,7 +286,7 @@ def test_games_in_month_matches_that_month(world):
 def test_all_sessions_matches_total_sessions(world):
     stats = _stats(world, YEAR)
     assert (
-        _count(stats_links.all_sessions(YEAR), Session, world["library"])
+        _count(stats_links.all_sessions(YEAR), PlayerSession, world["library"])
         == stats["total_sessions"]
     )
 
@@ -391,7 +404,7 @@ def test_backlog_decrease_matches_count(world):
 def test_all_sessions_alltime_matches(world):
     stats = _stats(world, None)
     assert (
-        _count(stats_links.all_sessions("Alltime"), Session, world["library"])
+        _count(stats_links.all_sessions("Alltime"), PlayerSession, world["library"])
         == stats["total_sessions"]
     )
 
@@ -418,8 +431,8 @@ def test_finished_alltime_matches_backlog(world):
 
 def test_stats_link_destination_count_parity_for_each_library(world):
     link_filter = stats_links.all_sessions(YEAR)
-    own_count = _count(link_filter, Session, world["library"])
-    foreign_count = _count(link_filter, Session, world["foreign_library"])
+    own_count = _count(link_filter, PlayerSession, world["library"])
+    foreign_count = _count(link_filter, PlayerSession, world["foreign_library"])
 
     assert own_count == compute_stats(world["library"], YEAR)["total_sessions"]
     assert (
@@ -453,7 +466,7 @@ _NESTED_BUILDERS = [
     (
         "sessions_for_platform",
         lambda: stats_links.sessions_for_platform(SAMPLE_PLATFORM_ID, YEAR),
-        Session,
+        PlayerSession,
     ),
 ]
 
@@ -461,10 +474,10 @@ _NESTED_BUILDERS = [
 @pytest.mark.parametrize("name,builder,model", _NESTED_BUILDERS)
 def test_nested_builder_survives_json_round_trip(world, name, builder, model):
     filter_obj = builder()
-    # Sanity check: the builder serialized to a non-empty payload (Session
+    # Sanity check: the builder serialized to a non-empty payload (PlayerSession
     # builders are exempt — sessions_for_platform may serialize flat-only).
     serialized = filter_obj.to_json()
-    assert serialized != {} or model is Session, f"{name}: nothing serialized"
+    assert serialized != {} or model is PlayerSession, f"{name}: nothing serialized"
     assert _count_via_json(filter_obj, model, world["library"]) == _count(
         filter_obj, model, world["library"]
     ), f"{name}: JSON round-trip changed the result set"

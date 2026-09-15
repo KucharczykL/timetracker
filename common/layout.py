@@ -52,7 +52,7 @@ from timetracker.settings_resolver import (
 if TYPE_CHECKING:
     from common.components import Node
     from common.returns import OriginUrl
-    from games.models import Session
+    from games.models import PlayerSession
 
 _MAIN_SCRIPT_A = """
             document.addEventListener('DOMContentLoaded', () => {
@@ -179,29 +179,30 @@ _NAV_LINK_CLASS = (
 )
 
 
-def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list[Session]:
+def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list[PlayerSession]:
     """The most-recent session per distinct played game, newest first (up to
     ``limit``). Each is a resume target for the navbar log dropdown: cloning it
     starts a fresh session carrying the prior device/emulated flags.
 
     Anonymous requests get an empty list — the navbar log button is
     authenticated-only, so its recent-game names never render on the login page.
-    The scan pages by key and early-exits after ``limit`` distinct games."""
+    The scan pages by ``(sort_instant, id)``, which `playersession_sort_order`
+    holds, and early-exits after ``limit`` distinct games."""
     if not request.user.is_authenticated:
         return []
-    from games.models import Session
+    from games.reads.player_sessions import library_sessions
 
     seen: set[UUID] = set()
-    resumes: list[Session] = []
+    resumes: list[PlayerSession] = []
     for session in keyset_pages(
-        Session.objects.for_library(cast(User, request.user).library).select_related(
-            "game"
+        library_sessions(cast(User, request.user).library).select_related(
+            "playthrough__player_game__game"
         ),
-        key=("timestamp_start", "id"),
+        key=("sort_instant", "id"),
         descending=True,
         page_size=RESUME_PAGE_SIZE,
     ):
-        game_id = session.game_id
+        game_id = session.playthrough.player_game.game_id
         if game_id in seen:
             continue
         seen.add(game_id)
@@ -212,7 +213,7 @@ def recent_session_resumes(request: HttpRequest, limit: int = 5) -> list[Session
 
 
 def NavbarLogButton(
-    recent_resumes: list[Session],
+    recent_resumes: list[PlayerSession],
     *,
     id: str = "navbar-log",
     csrf_token: str = "",
@@ -243,8 +244,8 @@ def NavbarLogButton(
         items: list[Node] = [
             DropdownPostItem(
                 action_url(
-                    "games:list_sessions_start_session_from_session",
-                    session.pk,
+                    "games:resume_session",
+                    session.playthrough.player_game.game_id,
                     origin=origin,
                 ),
                 # tap=False: DropdownPostItem wraps this in its own <button role=
@@ -252,7 +253,7 @@ def NavbarLogButton(
                 # <span> (a nested <button> would be illegal). On touch the row is
                 # tapped to submit, resuming straight into the cloned session.
                 NameWithIcon(
-                    game=session.game,
+                    game=session.playthrough.player_game.game,
                     linkify=False,
                     tap=False,
                     max_width="max-w-full",
@@ -296,7 +297,7 @@ def Navbar(
     csrf_token: str,
     viewer: NavbarViewer | None = None,
     is_settings_page: bool = False,
-    recent_resumes: list[Session] | None = None,
+    recent_resumes: list[PlayerSession] | None = None,
     origin: OriginUrl | None = None,
 ) -> Node:
     """Authenticated primary navigation: logo, Log game, Library, account."""

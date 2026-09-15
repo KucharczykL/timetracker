@@ -16,7 +16,7 @@ from session_rows import (
 )
 
 import games.reads.playtime
-from games.filters import SessionFilter
+from games.filters import PlayerSessionFilter
 from games.models import Device, Game, Platform, Session, UserLibrary
 from games.reads.playtime import (
     DayInterval,
@@ -24,6 +24,7 @@ from games.reads.playtime import (
     PlatformPlaytime,
     UnscopedPlaytimeRead,
     game_playtime,
+    game_playtime_between,
     legacy,
     playtime_between,
     playtime_by_game,
@@ -79,6 +80,7 @@ def test_every_scalar_figure_is_zero_for_an_empty_library(owned_library, game):
     days = DayInterval(date(2026, 1, 1), date(2026, 12, 31))
     for source in (legacy, projection):
         assert source.game_playtime(owned_library, game) == ZERO
+        assert source.game_playtime_between(owned_library, game, days) == ZERO
         assert source.total_playtime(owned_library) == ZERO
         assert source.total_playtime(owned_library, year=2026) == ZERO
         assert source.playtime_between(owned_library, days) == ZERO
@@ -86,6 +88,7 @@ def test_every_scalar_figure_is_zero_for_an_empty_library(owned_library, game):
         assert source.playtime_by_month(owned_library, year=2026) == []
         assert source.played_years(owned_library) == []
     assert game_playtime(owned_library, game) == ZERO
+    assert game_playtime_between(owned_library, game, days) == ZERO
     assert total_playtime(owned_library) == ZERO
     assert total_playtime(owned_library, year=2026) == ZERO
     assert playtime_between(owned_library, days) == ZERO
@@ -141,6 +144,9 @@ def test_a_twin_of_each_mode_gives_equal_figures(owned_library, game, platform):
                 "between": source.playtime_between(
                     owned_library, DayInterval.single(day)
                 ),
+                "game between": source.game_playtime_between(
+                    owned_library, game, DayInterval.single(day)
+                ),
                 "platforms": source.playtime_by_platform(owned_library),
                 "platforms in year": source.playtime_by_platform(
                     owned_library, year=2026
@@ -157,6 +163,7 @@ def test_a_twin_of_each_mode_gives_equal_figures(owned_library, game, platform):
         "total": total,
         "total in year": total,
         "between": timedelta(hours=3, minutes=30),
+        "game between": timedelta(hours=3, minutes=30),
         "platforms": [PlatformPlaytime(platform.pk, "PC", total)],
         "platforms in year": [PlatformPlaytime(platform.pk, "PC", total)],
         "months": [
@@ -175,6 +182,12 @@ def test_a_running_timed_row_counts_zero(source, owned_library, game):
 
     with timezone.override(TWIN_ZONE):
         assert source.game_playtime(owned_library, game) == ZERO
+        assert (
+            source.game_playtime_between(
+                owned_library, game, DayInterval.single(started_at.date())
+            )
+            == ZERO
+        )
         assert source.total_playtime(owned_library) == ZERO
         assert source.total_playtime(owned_library, year=2026) == ZERO
 
@@ -266,6 +279,50 @@ def test_a_day_window_is_inclusive(source, owned_library, game):
 
 @SOURCES
 @pytest.mark.django_db
+def test_a_games_window_counts_that_game_alone(source, owned_library, game):
+    """One game, inclusive days, in the library's calendar."""
+    first, last = date(2026, 3, 5), date(2026, 3, 7)
+    inside = timedelta(minutes=10)
+    other = Game.objects.create(library=owned_library, name="Tunic")
+    on_first = datetime.combine(first, time(0), tzinfo=TWIN_ZONE)
+    timed_twin(owned_library, game, on_first, on_first + inside)
+    late_on_last = datetime.combine(last, time(23, 30), tzinfo=TWIN_ZONE)
+    timed_twin(owned_library, game, late_on_last, late_on_last + inside)
+    duration_only_twin(owned_library, game, last, inside)
+    corrected_twin(owned_library, game, on_first, on_first + inside, inside)
+    timed_twin(owned_library, other, on_first, on_first + inside)
+    before = on_first - timedelta(minutes=5)
+    timed_twin(owned_library, game, before, before + inside)
+    after = datetime.combine(last + timedelta(days=1), time(0), tzinfo=TWIN_ZONE)
+    timed_twin(owned_library, game, after, after + inside)
+
+    with timezone.override(TWIN_ZONE):
+        figure = source.game_playtime_between(
+            owned_library, game, DayInterval(first, last)
+        )
+
+    assert figure == 5 * inside
+
+
+@pytest.mark.django_db
+def test_a_games_window_never_counts_another_library(owned_library, stranger_library):
+    shared = Game.objects.create(library=None, name="Tetris")
+    started_at = datetime(2026, 3, 5, 10, tzinfo=UTC)
+    days = DayInterval.single(started_at.date())
+    for library, hours in ((owned_library, 1), (stranger_library, 2)):
+        ended_at = started_at + timedelta(hours=hours)
+        timed_row(tracked_run(library, shared), started_at, ended_at)
+
+    assert projection.game_playtime_between(owned_library, shared, days) == timedelta(
+        hours=1
+    )
+    assert projection.game_playtime_between(
+        stranger_library, shared, days
+    ) == timedelta(hours=2)
+
+
+@SOURCES
+@pytest.mark.django_db
 def test_summed_by_game_never_counts_another_library(
     source, owned_library, stranger_library
 ):
@@ -290,23 +347,23 @@ def test_summed_by_game_never_counts_another_library(
 
 
 @pytest.mark.django_db
-def test_the_legacy_source_honours_a_session_filter(owned_library, game):
+def test_the_projection_honours_a_session_filter(owned_library, game):
     handheld = Device.objects.create(library=owned_library, name="Deck")
     desktop = Device.objects.create(library=owned_library, name="Tower")
     started_at = datetime(2026, 3, 5, 10, tzinfo=UTC)
     for device, hours in ((handheld, 1), (desktop, 2)):
-        Session.objects.create(
-            game=game,
+        timed_row(
+            tracked_run(owned_library, game),
+            started_at,
+            started_at + timedelta(hours=hours),
             device=device,
-            timestamp_start=started_at,
-            timestamp_end=started_at + timedelta(hours=hours),
         )
-    on_the_handheld = SessionFilter.where(device=[handheld.pk])
+    on_the_handheld = PlayerSessionFilter.where(device=[handheld.pk])
 
     figures = (
         Game.objects.filter(pk=game.pk)
         .annotate(
-            matching=legacy.summed_by_game_matching(owned_library, on_the_handheld),
+            matching=projection.summed_by_game_matching(owned_library, on_the_handheld),
             filtered=playtime_matching(owned_library, on_the_handheld),
             unfiltered=playtime_matching(owned_library, None),
         )
@@ -315,7 +372,7 @@ def test_the_legacy_source_honours_a_session_filter(owned_library, game):
 
     assert figures.matching == timedelta(hours=1)
     assert figures.filtered == timedelta(hours=1)
-    assert figures.unfiltered == legacy.total_playtime(owned_library)
+    assert figures.unfiltered == projection.total_playtime(owned_library)
     assert figures.unfiltered == timedelta(hours=3)
 
 
@@ -336,8 +393,8 @@ def test_summed_by_game_over_no_library_refuses_to_execute(source, stranger_libr
         summed(source, None, shared)
 
 
-def test_the_package_answers_from_the_legacy_source():
-    assert games.reads.playtime.SOURCE is legacy
+def test_the_package_answers_from_the_projection():
+    assert games.reads.playtime.SOURCE is projection
 
 
 def test_a_day_interval_refuses_to_end_before_it_starts():
@@ -399,7 +456,7 @@ def test_the_sum_is_null_when_no_session_matches(owned_library, game):
         Game.objects.filter(pk=game.pk)
         .annotate(
             figure=playtime_matching(
-                owned_library, SessionFilter.where(device=[handheld.pk])
+                owned_library, PlayerSessionFilter.where(device=[handheld.pk])
             )
         )
         .get()

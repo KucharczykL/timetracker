@@ -17,6 +17,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from session_rows import session_row
 
 from games.models import (
     Device,
@@ -26,7 +27,6 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
     Purchase,
-    Session,
 )
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
@@ -88,11 +88,8 @@ class DataTableGateTest(TestCase):
             created_at=timezone.now(),
             note="a note",
         )
-        Session.objects.create(
-            game=game,
-            device=device,
-            timestamp_start=BASE,
-            timestamp_end=BASE + timedelta(hours=2),
+        session_row(
+            game, device=device, started_at=BASE, ended_at=BASE + timedelta(hours=2)
         )
         purchase = Purchase.objects.create(
             platform=platform,

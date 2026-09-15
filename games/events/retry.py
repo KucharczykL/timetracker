@@ -9,7 +9,9 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial, wraps
 from random import Random
+from typing import overload
 
 from django.db import IntegrityError, OperationalError, router, transaction
 
@@ -146,3 +148,33 @@ def run_in_transaction[T](
             )
             policy.sleep(policy.delay_for(attempt))
             attempt += 1
+
+
+@overload
+def retried_transaction[**P, T](function: Callable[P, T], /) -> Callable[P, T]: ...
+
+
+@overload
+def retried_transaction[**P, T](
+    *, policy: RetryPolicy
+) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
+
+
+def retried_transaction[**P, T](
+    function: Callable[P, T] | None = None,
+    /,
+    *,
+    policy: RetryPolicy = DEFAULT_RETRY_POLICY,
+) -> Callable[P, T] | Callable[[Callable[P, T]], Callable[P, T]]:
+    """Run the function under `run_in_transaction`: database only, re-runnable."""
+
+    def decorate(inner: Callable[P, T]) -> Callable[P, T]:
+        @wraps(inner)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+            return run_in_transaction(partial(inner, *args, **kwargs), policy=policy)
+
+        return wrapper
+
+    if function is None:
+        return decorate
+    return decorate(function)

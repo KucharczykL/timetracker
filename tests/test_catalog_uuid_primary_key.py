@@ -12,8 +12,9 @@ from django.db import IntegrityError, transaction
 from django.test import Client
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
+from session_rows import session_row
 
-from games.models import Device, Game, Platform, PlayerGameStatus, Session
+from games.models import Device, Game, Platform, PlayerGameStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -110,7 +111,7 @@ def test_game_bearing_endpoints_accept_the_new_identity(library_client):
     )
     assert created.status_code == 204
 
-    session = Session.objects.create(game=game, timestamp_start=timezone.now())
+    session = session_row(game, started_at=timezone.now())
     detail = client.get(f"/api/session/{session.pk}").json()
     assert detail["game"]["id"] == str(game.pk)
 
@@ -122,7 +123,7 @@ def test_pages_that_build_filter_links_still_render(library_client):
     client, library = library_client
     platform = Platform.objects.create(name="Link Platform")
     game = Game.objects.create(library=library, name="Linked", platform=platform)
-    Session.objects.create(game=game, timestamp_start=timezone.now())
+    session_row(game, started_at=timezone.now())
 
     assert client.get(game.get_absolute_url()).status_code == 200
     assert client.get("/tracker/stats/").status_code == 200

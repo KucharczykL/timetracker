@@ -6,7 +6,7 @@ from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db.models import QuerySet
+from django.db.models import Count, F, Max, Min, QuerySet, Sum
 from django.http import Http404, HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect
@@ -70,10 +70,11 @@ from games.catalog_form import CatalogGraphForm
 from games.catalog_submit import submitted_game_or_form_error
 from games.external_references import CatalogTarget, external_reference_url_or_none
 from games.filters import (
+    FindFilter,
     GameFilter,
+    PlayerSessionFilter,
     PlaythroughFilter,
     PurchaseFilter,
-    SessionFilter,
     filter_query_context_for_library,
     filter_url,
     parse_game_filter,
@@ -84,23 +85,30 @@ from games.models import (
     ExternalReference,
     Game,
     PlayerGameStatus,
+    PlayerSessionQuerySet,
+    PlayerSessionTimingMode,
     Playthrough,
     Purchase,
     Release,
-    Session,
-    SessionQuerySet,
     UserLibrary,
 )
 from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.external_references import ReferenceMap, held_by, references_for
+from games.reads.player_sessions import game_sessions
 from games.reads.playergame_history import StatusEntry, status_history
 from games.reads.playthrough_completions import GAME_RUNS, reported_completion_day
 from games.reads.playthrough_numbering import numbered_for
 from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 from games.reads.playtime import game_playtime, playtime_matching, playtime_sort_key
 from games.reference_form import ReferenceSetForm
-from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
+from games.sorting import (
+    GAME_DEFAULT_SORT,
+    GAME_SORTS,
+    SortResult,
+    apply_sort,
+    parse_find_filter,
+)
 from games.views.catalog_section import editions_area
 from games.views.filtering import (
     apply_structured_filter,
@@ -140,6 +148,29 @@ def _wikidata_cell(provider_key: str) -> Cell:
     return Link(href=url)[provider_key] if url is not None else provider_key
 
 
+def games_for_list(
+    library: UserLibrary, *, game_filter: GameFilter | None, find: FindFilter
+) -> SortResult:
+    """The list's queryset: filtered, annotated, sorted, unpaged.
+
+    One function, so the benchmark times the plan the page serves.
+    """
+    games = Game.objects.tracked_by(library).select_related("platform")
+    #: Narrows the Playtime column; None counts all.
+    session_filter: PlayerSessionFilter | None = None
+    if game_filter is not None:
+        context = filter_query_context_for_library(library)
+        games = execute_filter(game_filter, games, context)
+        session_filter = game_filter.session_filter
+    #: An alias: only `?sort=playtime` reads it.
+    games = games.alias(total_playtime=playtime_sort_key(library)).annotate(
+        filtered_playtime=playtime_matching(library, session_filter),
+        #: No column renders it; `?sort=finished` reads it.
+        completed_day=reported_completion_day(library, GAME_RUNS),
+    )
+    return apply_sort(games, find, GAME_SORTS, GAME_DEFAULT_SORT)
+
+
 @login_required
 @regex_timeout_view
 def list_games(request: HttpRequest) -> HttpResponse:
@@ -147,33 +178,18 @@ def list_games(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     origin = request.get_full_path()
-    games = Game.objects.tracked_by(library).select_related("platform")
-
-    #: Narrows the Playtime column; None counts all.
-    session_filter: SessionFilter | None = None
 
     # ── Structured filter (Stash-style JSON; free-text search lives here too) ──
     filter_json = request.GET.get("filter", "")
+    game_filter: GameFilter | None = None
     if filter_json:
         game_filter = apply_structured_filter(request, parse_game_filter, filter_json)
-        if game_filter is not None:
-            context = filter_query_context_for_library(library)
-            games = execute_filter(game_filter, games, context)
-            session_filter = game_filter.session_filter
-
-    #: An alias: only `?sort=playtime` reads it.
-    games = games.alias(total_playtime=playtime_sort_key(library)).annotate(
-        filtered_playtime=playtime_matching(library, session_filter),
-        #: No column renders it; `?sort=finished` reads it.
-        completed_day=reported_completion_day(library, GAME_RUNS),
-    )
 
     find = parse_find_filter(request)
-    sort = apply_sort(games, find, GAME_SORTS, GAME_DEFAULT_SORT)
-    games = sort.queryset
+    sort = games_for_list(library, game_filter=game_filter, find=find)
     warn_unknown_sort(request, sort.unknown, entity="game")
 
-    games, page_obj, elided_page_range = paginate(games, find)
+    games, page_obj, elided_page_range = paginate(sort.queryset, find)
 
     data: TableData = {
         "caption": "Games",
@@ -359,7 +375,7 @@ def _removed_with_game(game: Game, library: UserLibrary) -> Node:
     tracked = tracked_game(library, game)
     runs = live_ordinary_runs(library, tracked).count() if tracked else 0
     counts = [
-        (game.sessions.alive().count(), "session"),
+        (game_sessions(library, game).count(), "session"),
         (game.purchases.alive().count(), "purchase"),
         #: Removal stamps the PlayerGame; runs leave too.
         (runs, "playthrough"),
@@ -594,24 +610,25 @@ def _game_section(
     ]
 
 
-def _game_overview_metrics(sessions: SessionQuerySet) -> dict[str, Any]:
+def _game_overview_metrics(sessions: PlayerSessionQuerySet) -> dict[str, Any]:
     """Request-free header metrics: total session count, play range, and the
-    per-session average (excluding manually-logged sessions)."""
+    per-session average of elapsed time over the rows that state an end."""
     session_count = sessions.count()
-    session_count_without_manual = sessions.without_manual().count()
+    days = sessions.aggregate(first=Min("effective_day"), last=Max("effective_day"))
 
-    playrange_start = sessions.earliest().timestamp_start if sessions.exists() else None
-    playrange_end = sessions.latest().timestamp_start if sessions.exists() else None
-
-    calculated_total = sessions.calculated_duration_unformatted() or timedelta(0)
-    total_hours_without_manual = calculated_total.total_seconds() / 3600
+    #: Elapsed time, not the stated duration: a Corrected row's override
+    #: and a Duration-only row's stated time are hand-written figures.
+    timed = sessions.filter(ended_at__gt=F("started_at")).aggregate(
+        total=Sum(F("ended_at") - F("started_at")), rows=Count("id")
+    )
+    elapsed_total = timed["total"] or timedelta(0)
     session_average_without_manual = round(
-        safe_division(total_hours_without_manual, int(session_count_without_manual)), 1
+        safe_division(elapsed_total.total_seconds() / 3600, int(timed["rows"])), 1
     )
     return {
         "session_count": session_count,
-        "playrange_start": playrange_start,
-        "playrange_end": playrange_end,
+        "playrange_start": days["first"],
+        "playrange_end": days["last"],
         "session_average_without_manual": session_average_without_manual,
     }
 
@@ -904,20 +921,20 @@ def _purchases_section(
 
 def _sessions_section(
     game: Game,
-    sessions: SessionQuerySet,
+    sessions: PlayerSessionQuerySet,
     presentation: DateTimePresentation,
     durations: DurationPresentation,
 ) -> Node:
-    sessions = sessions.select_related("device").order_by("-timestamp_start")
+    sessions = sessions.select_related("device").order_by("-sort_instant", "-id")
     session_count = sessions.count()
     rows = [
         make_row(
             session_time_range(session, presentation),
             Duration(
-                session.duration_total,
+                session.effective_duration,
                 durations,
                 id_scope=f"game-session-{session.pk}",
-                manual=session.is_manual(),
+                manual=session.timing_mode != PlayerSessionTimingMode.TIMED,
             ),
             session.device.name if session.device else "No device",
         )
@@ -938,7 +955,7 @@ def _sessions_section(
         session_count,
         table,
         "No sessions yet.",
-        view_all_url=filter_url(SessionFilter.where(game=[game.id])),
+        view_all_url=filter_url(PlayerSessionFilter.where(game=[game.id])),
     )
 
 
@@ -1007,9 +1024,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     #: Scoped, not `game.sessions` and friends: tracked_by() admits a
     #: shared catalog game, and a shared game's reverse accessors reach
     #: every library that ever wrote against it.
-    sessions = cast(
-        SessionQuerySet, Session.objects.for_library(library).filter(game=game)
-    )
+    sessions = game_sessions(library, game)
     purchases = Purchase.objects.for_library(library).filter(games=game)
     tracked = tracked_game(library, game)
     #: A run may name another library's PlayerGame.

@@ -2184,7 +2184,7 @@ def _record_session(owned_user, owned_library, run, key="session"):
             playthrough_id=run.pk,
             timing=TimedTiming(
                 started_at=timezone.now() - timedelta(hours=1),
-                day_zone="Europe/Prague",
+                day_zone="UTC",
             ),
         ),
         actor=owned_user,

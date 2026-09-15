@@ -310,6 +310,7 @@ dumpgames: ensure-postgres
 #   make restore-dump               -> newest dump into $(DUMP_DB), prints its URL
 #   make verify-dump                -> restore, migrate, drop
 #   make verify-dump KEEP=1         -> ... and keep the copy to look at
+#   make drop-dump                  -> drop $(DUMP_DB) once you are done with it
 #
 # DUMP=<path> names a dump other than the newest; DUMP_DB=<name> names the
 # scratch database. Rehearse anything else against the copy by passing the URL
@@ -328,6 +329,9 @@ verify-dump: ensure-postgres
 	uv run --frozen python scripts/db_dump.py verify \
 		$(if $(strip $(DUMP)),--dump "$(DUMP)") --database "$(DUMP_DB)" \
 		$(if $(strip $(KEEP)),--keep)
+
+drop-dump: ensure-postgres
+	uv run --frozen python scripts/db_dump.py drop --database "$(DUMP_DB)"
 
 # Does the deployment still hold the schema a fresh `migrate` builds? It
 # restores the newest dump, builds a second database from the migrations alone,
@@ -371,10 +375,10 @@ purge-library: ensure-postgres
 verify-replay-parity: ensure-postgres
 	uv run --frozen python manage.py rebuild_projections --all-libraries --check --fail-on-drift
 
-# Read-only: every playtime figure from both sources.
-# Usage: make verify-playtime-parity ARGS="--all-libraries"
-verify-playtime-parity: ensure-postgres
-	uv run --frozen python manage.py verify_playtime_parity $(ARGS)
+# Read-only: every playtime and session figure from both sources.
+# Usage: make verify-session-parity ARGS="--all-libraries"
+verify-session-parity: ensure-postgres
+	uv run --frozen python manage.py verify_session_parity $(ARGS)
 
 # Usage: make bench ARGS="--seed 10000 --gate"
 bench: ensure-postgres

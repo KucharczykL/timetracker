@@ -6,10 +6,17 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.utils import timezone as django_timezone
+from session_rows import duration_only_row, timed_row, tracked_run
 
 from games.commands.playthrough import CompletePlaythrough, StartPlaythrough
 from games.events.dispatch import dispatch
-from games.models import Game, PlayerGame, Playthrough, Session
+from games.models import (
+    Game,
+    PlayerGame,
+    PlayerSession,
+    Playthrough,
+    PlaythroughKind,
+)
 from games.reads.playthrough_activity import (
     ActivityClock,
     RunActivity,
@@ -21,7 +28,6 @@ from games.reads.playthrough_runs import (
     live_ordinary_runs,
     runs_with_condition,
 )
-from games.removal import remove
 from games.writes.playergame import new_correlation_id, track_game
 from timetracker.temporal import TemporalValue
 
@@ -45,11 +51,36 @@ def annotated_run(library, tracked) -> Playthrough:
     return runs_with_condition(library).filter(player_game=tracked).get()
 
 
-def a_session(game, *, days_ago: int) -> Session:
-    return Session.objects.create(
-        game=game,
-        timestamp_start=django_timezone.now() - timedelta(days=days_ago),
+def annotated(library, run: Playthrough) -> Playthrough:
+    """That run, with its aliases."""
+    return runs_with_condition(library).get(pk=run.pk)
+
+
+def a_session(
+    library, game, *, days_ago: int, run: Playthrough | None = None
+) -> PlayerSession:
+    """A Timed row on the game's run, its day in the library's calendar."""
+    started_at = django_timezone.now() - timedelta(days=days_ago)
+    return timed_row(
+        run or tracked_run(library, game),
+        started_at,
+        started_at + timedelta(hours=1),
+        day_zone=activity_clock(library).zone.key,
     )
+
+
+def a_session_starting(library, game, started_at: datetime) -> PlayerSession:
+    return timed_row(
+        tracked_run(library, game),
+        started_at,
+        None,
+        day_zone=activity_clock(library).zone.key,
+    )
+
+
+def remove_session(session: PlayerSession) -> None:
+    """The mark the projector would leave."""
+    PlayerSession.objects.filter(pk=session.pk).update(removed_at=django_timezone.now())
 
 
 def start_the_run(owned_user, owned_library, tracked, *, day: date) -> None:
@@ -109,6 +140,52 @@ def test_the_clock_reads_the_viewers_zone(owned_user, owned_library, set_user_se
     assert activity_clock(owned_library).zone == ZoneInfo("Pacific/Kiritimati")
 
 
+@pytest.mark.django_db(transaction=True)
+def test_the_clock_reads_the_calendar(owned_user, owned_library, set_user_setting):
+    from games.commands.calendar import SetCalendarDayZone
+
+    set_user_setting(owned_user, "DISPLAY_TIME_ZONE", "UTC")
+    dispatch(
+        SetCalendarDayZone(day_zone="Pacific/Kiritimati"),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="calendar",
+    )
+
+    clock = activity_clock(owned_library)
+
+    assert clock.zone == ZoneInfo("Pacific/Kiritimati")
+    assert clock.boundary_day == _today_in(clock.zone) - timedelta(
+        days=clock.threshold_days
+    )
+
+
+@pytest.mark.django_db
+def test_a_read_naming_the_condition_without_a_clock_is_refused(owned_library):
+    from games.reads.playthrough_activity import UnscopedActivityRead
+
+    unscoped = Playthrough.objects.annotated_for_filtering()
+
+    with pytest.raises(UnscopedActivityRead):
+        list(unscoped.filter(activity=RunActivity.PLAYING))
+    with pytest.raises(UnscopedActivityRead):
+        list(unscoped.order_by("activity_day"))
+
+
+@pytest.mark.django_db
+def test_a_read_naming_no_alias_executes_without_a_clock(owned_library):
+    assert list(Playthrough.objects.annotated_for_filtering()) == []
+
+
+@pytest.mark.django_db
+def test_an_unscoped_alias_cannot_take_a_clock_later(owned_library):
+    #: Annotate once, at the read that states the scope.
+    unscoped = Playthrough.objects.annotated_for_filtering()
+
+    with pytest.raises(ValueError, match="annotate once"):
+        unscoped.annotated_for_filtering(activity_clock(owned_library))
+
+
 @pytest.mark.parametrize(
     ("day", "expected"),
     [
@@ -132,7 +209,7 @@ def test_a_day_in_the_future_reads_today():
 @pytest.mark.django_db(transaction=True)
 def test_a_run_with_a_recent_session_is_playing(owned_user, owned_library, game):
     tracked = a_tracked_game(owned_user, game)
-    a_session(game, days_ago=3)
+    a_session(owned_library, game, days_ago=3)
 
     run = annotated_run(owned_library, tracked)
 
@@ -147,7 +224,7 @@ def test_a_run_whose_last_session_is_older_than_the_threshold_is_dormant(
     owned_user, owned_library, game
 ):
     tracked = a_tracked_game(owned_user, game)
-    a_session(game, days_ago=100)
+    a_session(owned_library, game, days_ago=100)
 
     assert annotated_run(owned_library, tracked).activity == RunActivity.DORMANT
 
@@ -182,7 +259,7 @@ def test_a_session_beats_a_later_start_day(owned_user, owned_library, game):
     tracked = a_tracked_game(owned_user, game)
     today = _today_in(activity_clock(owned_library).zone)
     start_the_run(owned_user, owned_library, tracked, day=today)
-    a_session(game, days_ago=100)
+    a_session(owned_library, game, days_ago=100)
 
     run = annotated_run(owned_library, tracked)
 
@@ -193,7 +270,7 @@ def test_a_session_beats_a_later_start_day(owned_user, owned_library, game):
 @pytest.mark.django_db(transaction=True)
 def test_a_completed_run_carries_no_word(owned_user, owned_library, game):
     tracked = a_tracked_game(owned_user, game)
-    a_session(game, days_ago=3)
+    a_session(owned_library, game, days_ago=3)
     complete_the_run(
         owned_user,
         owned_library,
@@ -209,7 +286,7 @@ def test_a_personal_threshold_moves_a_run_from_playing_to_dormant(
     owned_user, owned_library, game, set_user_setting
 ):
     tracked = a_tracked_game(owned_user, game)
-    a_session(game, days_ago=10)
+    a_session(owned_library, game, days_ago=10)
     assert annotated_run(owned_library, tracked).activity == RunActivity.PLAYING
 
     set_user_setting(owned_user, "DORMANT_AFTER_DAYS", 7)
@@ -219,17 +296,66 @@ def test_a_personal_threshold_moves_a_run_from_playing_to_dormant(
 
 @pytest.mark.django_db(transaction=True)
 def test_another_librarys_sessions_at_a_shared_game_move_no_word(
-    owned_user, owned_library
+    owned_user, owned_library, django_user_model
 ):
-    """A shared catalog game reads no session."""
+    """Another library's run at the shared game reads nothing here."""
     shared = Game.objects.create(library=None, name="Shared")
     tracked = a_tracked_game(owned_user, shared)
-    a_session(shared, days_ago=3)
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    a_session(stranger.library, shared, days_ago=3)
 
     run = annotated_run(owned_library, tracked)
 
     assert run.activity_day is None
     assert run.activity == RunActivity.NEVER_PLAYED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_sibling_runs_session_moves_no_word(owned_user, owned_library, game):
+    """The clock asks the run, not the game."""
+    tracked = a_tracked_game(owned_user, game)
+    own = tracked_run(owned_library, game)
+    sibling = Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        player_game=tracked,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=django_timezone.now(),
+    )
+    a_session(owned_library, game, days_ago=3, run=sibling)
+
+    assert annotated(owned_library, own).activity == RunActivity.NEVER_PLAYED
+    assert annotated(owned_library, sibling).activity == RunActivity.PLAYING
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_session_in_the_bucket_moves_no_word(owned_user, owned_library, game):
+    tracked = a_tracked_game(owned_user, game)
+    bucket = Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        player_game=tracked,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=django_timezone.now(),
+    )
+    a_session(owned_library, game, days_ago=3, run=bucket)
+
+    run = annotated_run(owned_library, tracked)
+
+    assert run.activity_day is None
+    assert run.activity == RunActivity.NEVER_PLAYED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_duration_only_sessions_written_day_counts(owned_user, owned_library, game):
+    tracked = a_tracked_game(owned_user, game)
+    day = _today_in(activity_clock(owned_library).zone) - timedelta(days=3)
+    duration_only_row(tracked_run(owned_library, game), day, timedelta(hours=1))
+
+    run = annotated_run(owned_library, tracked)
+
+    assert run.activity_day == day
+    assert run.activity == RunActivity.PLAYING
 
 
 @pytest.mark.django_db(transaction=True)
@@ -243,7 +369,7 @@ def test_a_late_session_and_a_start_on_that_day_read_alike(
     late = datetime.combine(clock.boundary_day, time(23, 30), tzinfo=clock.zone)
 
     by_session = a_tracked_game(owned_user, game)
-    Session.objects.create(game=game, timestamp_start=late)
+    a_session_starting(owned_library, game, late)
     other = Game.objects.create(library=owned_library, name="Other")
     by_start = a_tracked_game(owned_user, other)
     start_the_run(owned_user, owned_library, by_start, day=clock.boundary_day)
@@ -270,7 +396,7 @@ def test_annotating_twice_with_one_clock_states_it_once(
     owned_user, owned_library, game
 ):
     tracked = a_tracked_game(owned_user, game)
-    a_session(game, days_ago=10)
+    a_session(owned_library, game, days_ago=10)
     clock = activity_clock(owned_library)
 
     once = runs_with_condition(owned_library).filter(player_game=tracked)
@@ -298,11 +424,11 @@ def test_a_second_clock_is_refused(owned_user, owned_library, game):
 def test_a_removed_session_moves_no_word(owned_user, owned_library, game):
     """A removed session moves the day back."""
     tracked = a_tracked_game(owned_user, game)
-    a_session(game, days_ago=100)
-    recent = a_session(game, days_ago=2)
+    a_session(owned_library, game, days_ago=100)
+    recent = a_session(owned_library, game, days_ago=2)
     assert annotated_run(owned_library, tracked).activity == RunActivity.PLAYING
 
-    remove(recent)
+    remove_session(recent)
 
     run = annotated_run(owned_library, tracked)
     assert run.activity == RunActivity.DORMANT
@@ -316,7 +442,7 @@ def test_a_run_whose_only_session_is_removed_was_never_played(
     owned_user, owned_library, game
 ):
     tracked = a_tracked_game(owned_user, game)
-    remove(a_session(game, days_ago=2))
+    remove_session(a_session(owned_library, game, days_ago=2))
 
     run = annotated_run(owned_library, tracked)
 
@@ -331,7 +457,7 @@ def test_the_boundary_day_itself_still_reads_playing(
     """`>=`, so the boundary day still counts."""
     set_user_setting(owned_user, "DORMANT_AFTER_DAYS", 30)
     tracked = a_tracked_game(owned_user, game)
-    a_session(game, days_ago=30)
+    a_session(owned_library, game, days_ago=30)
 
     assert annotated_run(owned_library, tracked).activity == RunActivity.PLAYING
 
@@ -342,7 +468,7 @@ def test_the_day_after_the_boundary_reads_dormant(
 ):
     set_user_setting(owned_user, "DORMANT_AFTER_DAYS", 30)
     tracked = a_tracked_game(owned_user, game)
-    a_session(game, days_ago=31)
+    a_session(owned_library, game, days_ago=31)
 
     assert annotated_run(owned_library, tracked).activity == RunActivity.DORMANT
 
@@ -351,17 +477,16 @@ def test_the_day_after_the_boundary_reads_dormant(
 def test_the_viewers_day_is_read_not_the_servers(
     owned_user, owned_library, game, set_user_setting
 ):
-    """One instant, two calendars: the viewer's wins."""
+    """One instant, two calendars: the library's wins."""
     set_user_setting(owned_user, "DISPLAY_TIME_ZONE", "Pacific/Kiritimati")
     set_user_setting(owned_user, "DORMANT_AFTER_DAYS", 30)
     clock = activity_clock(owned_library)
     tracked = a_tracked_game(owned_user, game)
     #: Late enough that UTC still reads yesterday.
-    Session.objects.create(
-        game=game,
-        timestamp_start=datetime.combine(
-            clock.boundary_day, time(0, 30), tzinfo=clock.zone
-        ),
+    a_session_starting(
+        owned_library,
+        game,
+        datetime.combine(clock.boundary_day, time(0, 30), tzinfo=clock.zone),
     )
 
     run = annotated_run(owned_library, tracked)

@@ -4,7 +4,7 @@ import logging
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta, tzinfo
+from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from functools import lru_cache
 from typing import ClassVar, NamedTuple, assert_never
 from zoneinfo import ZoneInfo
@@ -36,8 +36,15 @@ from games.events.playersession import (
 )
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
-from games.models import Device, PlayerSession, PlayerSessionTimingMode, Playthrough
+from games.models import (
+    Device,
+    PlayerSession,
+    PlayerSessionTimingMode,
+    Playthrough,
+    PlaythroughKind,
+)
 from games.projectors.playersession import TimingColumns, columns_for_timing
+from games.reads.calendar import calendar_day_zone
 
 logger = logging.getLogger("games")
 
@@ -49,6 +56,11 @@ INCONSISTENT_SESSION = (
     "The problem has been reported."
 )
 
+#: The bucket is the importer's; a person records on a run.
+INTO_THE_BUCKET = (
+    "That is the imported-history bucket. Record the session on one of "
+    "the game's playthroughs instead."
+)
 #: The finest duration a statement may carry. The payload states whole
 #: seconds while the fingerprint states microseconds, so anything
 #: finer would fingerprint differently from the event it recorded and
@@ -297,7 +309,7 @@ def _timed_start(session: PlayerSession) -> TimedStart:
     return TimedStart(started_at, zone)
 
 
-def _normalized_timing(timing: TimingStatement) -> TimingStatement:
+def normalized_timing(timing: TimingStatement) -> TimingStatement:
     """A statement fit to fingerprint, or a refusal.
 
     Runs before the fingerprint: a naive datetime has no canonical
@@ -333,7 +345,7 @@ def _stated_zones[Statement: (TimedTiming, CorrectedTiming)](
     )
 
 
-def _timing_payload(timing: TimingStatement) -> TimingPayload:
+def timing_payload(timing: TimingStatement) -> TimingPayload:
     """The payload, or a refusal."""
     match timing:
         case DurationOnlyTiming(day=day, duration=duration):
@@ -429,7 +441,7 @@ def _library_device(
     return device
 
 
-def _check_note(note: str) -> None:
+def check_note(note: str) -> None:
     """Refuse text JSONB cannot store."""
     try:
         note.encode("utf-8")
@@ -491,6 +503,22 @@ def _check_zones(day_zone: ZoneName, *endpoint_zones: ZoneName | None) -> None:
             )
 
 
+def _check_calendar(context: CommandContext, payload: TimingPayload) -> None:
+    """A stated day zone is the library's calendar.
+
+    The event carries the zone; every row's zone equals the calendar.
+    """
+    if payload["mode"] == "duration_only":
+        return
+    calendar = calendar_day_zone(context.library).key
+    if ZoneInfo(payload["day_zone"]).key != calendar:
+        raise CommandRejected(
+            f"This statement reads its day in {payload['day_zone']!r}, and the "
+            f"library counts days in {calendar}.",
+            sentence=f"This library counts days in {calendar}.",
+        )
+
+
 def _check_endpoints_representable(
     day_zone: ZoneName,
     started_at: datetime,
@@ -523,6 +551,34 @@ def _check_endpoint_zone(
         )
 
 
+def session_events(
+    playthrough_id: uuid.UUID, *, day: date, day_zone: ZoneName
+) -> list[NewEvent]:
+    """One finished Timed hour at noon, as the benchmark seeds it.
+
+    Beside the command for the reason `tracking_events` states: a seed
+    that drifted from the command would measure a stream no command
+    produces.
+    """
+    noon = datetime.combine(day, time(12), tzinfo=ZoneInfo(day_zone))
+    return [
+        playersession_created(
+            playthrough_id,
+            timing=timing_payload(
+                TimedTiming(
+                    started_at=noon,
+                    day_zone=day_zone,
+                    ended_at=noon + timedelta(hours=1),
+                )
+            ),
+            device=None,
+            release=None,
+            note="",
+            emulated=False,
+        )
+    ]
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class CreateSession(Command):
     """Record one session against a run the caller names.
@@ -545,16 +601,24 @@ class CreateSession(Command):
     def __post_init__(self) -> None:
         #: One spelling, so restatements fingerprint alike.
         object.__setattr__(self, "note", self.note.strip())
-        _check_note(self.note)
-        object.__setattr__(self, "timing", _normalized_timing(self.timing))
+        check_note(self.note)
+        object.__setattr__(self, "timing", normalized_timing(self.timing))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
+        if run.kind == PlaythroughKind.IMPORTED_HISTORY:
+            raise CommandRejected(
+                f"Playthrough {run.pk} is the imported-history bucket, which "
+                "takes no recorded session; only a move reaches it.",
+                sentence=INTO_THE_BUCKET,
+            )
         device = _library_device(context, self.device_id)
+        payload = timing_payload(self.timing)
+        _check_calendar(context, payload)
         return [
             playersession_created(
                 run.pk,
-                timing=_timing_payload(self.timing),
+                timing=payload,
                 device=None if device is None else capture_reference(device),
                 release=None,
                 note=self.note,
@@ -638,12 +702,13 @@ class CorrectSessionTiming(Command):
     timing: TimingStatement
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "timing", _normalized_timing(self.timing))
+        object.__setattr__(self, "timing", normalized_timing(self.timing))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         session = _live_session(context, self.session_id)
         #: Rules run before the comparison.
-        payload = _timing_payload(self.timing)
+        payload = timing_payload(self.timing)
+        _check_calendar(context, payload)
         stated = columns_for_timing(payload)
         #: The projector's mapping; never copy it here.
         #:
@@ -684,7 +749,7 @@ class DescribeSession(Command):
         if self.note is not None:
             #: Before the fingerprint, so restatements match.
             object.__setattr__(self, "note", self.note.strip())
-            _check_note(self.note)
+            check_note(self.note)
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         session = _live_session(context, self.session_id)

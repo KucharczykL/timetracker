@@ -103,10 +103,10 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "sessions": [
         QuickFacet("game"),
         QuickFacet("device"),
-        QuickFacet("timestamp_start", "Started"),
-        QuickFacet("timestamp_end", "Ended"),
+        QuickFacet("day", "Day"),
+        QuickFacet("timing_mode", "Timing"),
         QuickFacet(
-            "duration_total_hours",
+            "duration_hours",
             "Duration (hrs)",
             placeholder="e.g. 1",
             placeholder2="e.g. 10",

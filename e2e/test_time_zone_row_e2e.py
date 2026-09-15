@@ -7,8 +7,17 @@ from datetime import UTC, datetime
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
+from session_rows import session_row
 
-from games.models import Game, Session
+from games.models import Game, PlayerSession
+from games.reads.calendar import calendar_day_zone
+
+
+def _row(game, **columns):
+    """A projection row whose day is counted in the library's calendar."""
+    library = game.library
+    return session_row(game, day_zone=calendar_day_zone(library).key, **columns)
+
 
 BROWSER_TIME_ZONE = "Asia/Tokyo"
 
@@ -47,9 +56,7 @@ def test_add_form_captures_the_browser_zone(tokyo_page, live_server, e2e_library
     Game.objects.create(library=e2e_library, name="Hades")
     tokyo_page.goto(f"{live_server.url}{reverse('games:add_session')}")
 
-    start_row = tokyo_page.locator(
-        'time-zone-row[field-name="timestamp_start_timezone"]'
-    )
+    start_row = tokyo_page.locator('time-zone-row[field-name="started_at_zone"]')
     # Capture default: the browser zone landed in the submitted channel.
     expect(start_row.locator("[data-time-zone-value]")).to_have_value(BROWSER_TIME_ZONE)
     # And the one control is right there, naming what it captured. (There is
@@ -70,13 +77,15 @@ def test_submitting_the_form_persists_the_captured_zone(
     game_search = tokyo_page.locator("input[data-search-select-search]").first
     game_search.fill("Hades")
     tokyo_page.locator(f'[data-search-select-option][data-value="{game.pk}"]').click()
+    #: The run picker fills from the API once the game is picked.
+    expect(tokyo_page.locator('select[name="playthrough"] option')).to_have_count(1)
     # Text-scoped: the navbar's hidden logout control is also a
     # form button[type="submit"], so that alone is still ambiguous.
     tokyo_page.click('button[type="submit"]:has-text("Submit")')
     tokyo_page.wait_for_url(f"{live_server.url}{reverse('games:list_sessions')}**")
 
-    session = Session.objects.get()
-    assert session.timestamp_start_timezone == BROWSER_TIME_ZONE
+    session = PlayerSession.objects.get()
+    assert session.started_at_zone == BROWSER_TIME_ZONE
 
 
 def test_trigger_is_visible_regardless_of_zone_match(
@@ -89,9 +98,7 @@ def test_trigger_is_visible_regardless_of_zone_match(
     Game.objects.create(library=e2e_library, name="Hades")
     matched_zone_page.goto(f"{live_server.url}{reverse('games:add_session')}")
 
-    start_row = matched_zone_page.locator(
-        'time-zone-row[field-name="timestamp_start_timezone"]'
-    )
+    start_row = matched_zone_page.locator('time-zone-row[field-name="started_at_zone"]')
     trigger = start_row.locator('button[aria-haspopup="dialog"]')
     expect(trigger).to_be_visible()
     # Opening it is a user action, never something the page did on load.
@@ -101,10 +108,8 @@ def test_trigger_is_visible_regardless_of_zone_match(
 
 def test_finish_stamps_the_end_zone(tokyo_page, live_server, e2e_library):
     game = Game.objects.create(library=e2e_library, name="Hades")
-    session = Session.objects.create(
-        game=game,
-        timestamp_start=datetime(2026, 7, 1, 12, 0, tzinfo=UTC),
-        timestamp_end=None,
+    session = _row(
+        game, started_at=datetime(2026, 7, 1, 12, 0, tzinfo=UTC), ended_at=None
     )
     tokyo_page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     row = tokyo_page.locator(f"#session-row-{session.pk}")
@@ -115,5 +120,5 @@ def test_finish_stamps_the_end_zone(tokyo_page, live_server, e2e_library):
     expect(row.locator('form[action*="/finish"]')).to_have_count(0)
 
     session.refresh_from_db()
-    assert session.timestamp_end_timezone == BROWSER_TIME_ZONE
-    assert session.timestamp_end is not None
+    assert session.ended_at_zone == BROWSER_TIME_ZONE
+    assert session.ended_at is not None

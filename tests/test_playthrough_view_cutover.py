@@ -1,13 +1,22 @@
 """#687: the screens state runs, not rows."""
 
+import html
 import json
+import re
 import uuid
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 
 import pytest
 from django.contrib.messages import get_messages
 from django.urls import reverse
 from django.utils import timezone
+from session_rows import (
+    TWIN_ZONE,
+    duration_only_twin,
+    timed_row,
+    timed_twin,
+    tracked_run,
+)
 from stated_runs import another_run, state_run
 
 from games.commands.playthrough import ActStatement
@@ -16,7 +25,6 @@ from games.models import (
     LibraryEvent,
     Playthrough,
     PlaythroughKind,
-    Session,
 )
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import remove_run
@@ -319,10 +327,10 @@ def test_the_prefill_seeds_from_the_greatest_stated_completion(
     client, user, owned_library, game
 ):
     """The day after the last run finished."""
-    Session.objects.create(
-        game=game,
-        timestamp_start=datetime(2026, 5, 1, 10, tzinfo=UTC),
-        timestamp_end=datetime(2026, 5, 1, 12, tzinfo=UTC),
+    timed_row(
+        tracked_run(user.library, game),
+        datetime(2026, 5, 1, 10, tzinfo=UTC),
+        datetime(2026, 5, 1, 12, tzinfo=UTC),
     )
     run = Playthrough.objects.get(player_game__game=game)
     Playthrough.objects.filter(pk=run.pk).update(
@@ -340,10 +348,10 @@ def test_the_prefill_seeds_from_the_greatest_stated_completion(
 
 @pytest.mark.django_db
 def test_the_prefill_seeds_nothing_from_a_completion_with_no_day(client, user, game):
-    Session.objects.create(
-        game=game,
-        timestamp_start=datetime(2026, 5, 1, 10, tzinfo=UTC),
-        timestamp_end=datetime(2026, 5, 1, 12, tzinfo=UTC),
+    timed_row(
+        tracked_run(user.library, game),
+        datetime(2026, 5, 1, 10, tzinfo=UTC),
+        datetime(2026, 5, 1, 12, tzinfo=UTC),
     )
     run = Playthrough.objects.get(player_game__game=game)
     Playthrough.objects.filter(pk=run.pk).update(
@@ -357,6 +365,110 @@ def test_the_prefill_seeds_nothing_from_a_completion_with_no_day(client, user, g
 
     #: No finish day, so the earliest session.
     assert "2026-05-01" in body
+
+
+def _prefill(client, user, game) -> dict[str, str]:
+    """What the Add Playthrough page seeds for the game."""
+    client.force_login(user)
+    body = client.get(
+        reverse("games:add_playthrough_for_game", args=[game.pk])
+    ).content.decode()
+
+    def input_value(name: str) -> str:
+        #: The picker binds its ISO day through a hidden input.
+        tag = re.search(rf'<input[^>]*\bname="{name}"[^>]*>', body)
+        assert tag is not None, name
+        value = re.search(r'value="([^"]*)"', tag.group(0))
+        return "" if value is None else html.unescape(value.group(1))
+
+    return {name: input_value(name) for name in ("started", "ended", "note")}
+
+
+def prague(hour: int, day: date) -> datetime:
+    return datetime.combine(day, time(hour), tzinfo=TWIN_ZONE)
+
+
+#: Twins, so the note reads alike from either playtime source.
+@pytest.mark.django_db
+def test_the_prefill_sums_the_sessions_from_the_seeded_start(client, user, game):
+    """Time before the seeded start day is not in the note."""
+    library = user.library
+    timed_twin(
+        library, game, prague(10, date(2026, 1, 5)), prague(12, date(2026, 1, 5))
+    )
+    timed_twin(
+        library, game, prague(10, date(2026, 3, 1)), prague(11, date(2026, 3, 1))
+    )
+    duration_only_twin(library, game, date(2026, 3, 4), timedelta(minutes=30))
+    Playthrough.objects.filter(pk=tracked_run(library, game).pk).update(
+        completion_recorded_at=timezone.now(),
+        completed=TemporalValue.from_day(date(2026, 1, 10)),
+    )
+
+    assert _prefill(client, user, game) == {
+        "started": "2026-01-11",
+        "ended": "2026-03-04",
+        "note": "1 h 30 m",
+    }
+
+
+@pytest.mark.django_db
+def test_the_prefill_reads_the_earliest_session_day_without_a_finish(
+    client, user, game
+):
+    library = user.library
+    timed_twin(
+        library, game, prague(10, date(2026, 1, 5)), prague(12, date(2026, 1, 5))
+    )
+    duration_only_twin(library, game, date(2026, 3, 4), timedelta(minutes=30))
+
+    assert _prefill(client, user, game) == {
+        "started": "2026-01-05",
+        "ended": "2026-03-04",
+        "note": "2 h 30 m",
+    }
+
+
+@pytest.mark.django_db
+def test_the_prefill_reads_the_librarys_calendar_not_the_servers(client, user, game):
+    """A day zone west of UTC puts the session on the day before."""
+    timed_row(
+        tracked_run(user.library, game),
+        datetime(2026, 1, 6, 2, tzinfo=UTC),
+        datetime(2026, 1, 6, 3, tzinfo=UTC),
+        day_zone="America/Santiago",
+    )
+
+    prefill = _prefill(client, user, game)
+
+    assert (prefill["started"], prefill["ended"]) == ("2026-01-05", "2026-01-05")
+
+
+@pytest.mark.django_db
+def test_a_finish_after_the_last_session_seeds_an_empty_note(client, user, game):
+    library = user.library
+    timed_twin(
+        library, game, prague(10, date(2026, 1, 5)), prague(12, date(2026, 1, 5))
+    )
+    Playthrough.objects.filter(pk=tracked_run(library, game).pk).update(
+        completion_recorded_at=timezone.now(),
+        completed=TemporalValue.from_day(date(2026, 2, 1)),
+    )
+
+    assert _prefill(client, user, game) == {
+        "started": "2026-02-02",
+        "ended": "2026-01-05",
+        "note": "0 h",
+    }
+
+
+@pytest.mark.django_db
+def test_a_game_with_no_session_seeds_an_empty_note(client, user, game):
+    assert _prefill(client, user, game) == {
+        "started": "",
+        "ended": "",
+        "note": "0h 00m",
+    }
 
 
 @pytest.mark.django_db

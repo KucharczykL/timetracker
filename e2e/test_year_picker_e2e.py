@@ -5,8 +5,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
+from session_rows import session_row
 
-from games.models import Game, Platform, Session
+from games.models import Game, Platform
 
 
 @pytest.fixture
@@ -29,10 +30,10 @@ def stats_data(e2e_library) -> None:
     )
     for year in (2024, 2025):
         started = datetime(year, 6, 15, 12, 0, tzinfo=UTC)
-        Session.objects.create(
-            game=game,
-            timestamp_start=started,
-            timestamp_end=started + timedelta(hours=1),
+        session_row(
+            game,
+            started_at=started,
+            ended_at=started + timedelta(hours=1),
         )
 
 

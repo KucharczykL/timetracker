@@ -229,6 +229,13 @@ def with_database(database_url: str, database: str) -> str:
     return urlunsplit(parts._replace(path=f"/{database}"))
 
 
+def drop(database: str, *, database_url: str) -> None:
+    """Drop a scratch database a restore left for inspection."""
+    _guard_scratch_database(database, database_url)
+    maintenance = f"--maintenance-db={with_database(database_url, 'postgres')}"
+    run([str(client_tool("dropdb")), maintenance, "--if-exists", database])
+
+
 def _guard_scratch_database(database: str, database_url: str) -> None:
     if database in PROTECTED_DATABASES:
         raise DumpError(
@@ -365,6 +372,8 @@ def main() -> None:
         operation_parser.add_argument("--database", default=DEFAULT_SCRATCH_DATABASE)
         if name == "verify":
             operation_parser.add_argument("--keep", action="store_true")
+    drop_parser = operations.add_parser("drop", help="drop a scratch database")
+    drop_parser.add_argument("--database", default=DEFAULT_SCRATCH_DATABASE)
     arguments = parser.parse_args()
 
     try:
@@ -376,6 +385,10 @@ def main() -> None:
             print(f"==> Dump written to {written}", file=sys.stderr)
             return
         database_url = local_database_url()
+        if arguments.operation == "drop":
+            drop(arguments.database, database_url=database_url)
+            print(f"==> {arguments.database} dropped.", file=sys.stderr)
+            return
         dump = _resolve_dump(arguments.dump)
         if arguments.operation == "restore":
             scratch_url = restore(

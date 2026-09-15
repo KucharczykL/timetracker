@@ -7,8 +7,9 @@ from html.parser import HTMLParser
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from session_rows import session_row
 
-from games.models import Game, PlayerGame, PlayerGameStatus, Session
+from games.models import Game, PlayerGame, PlayerGameStatus
 from games.writes.answers import CommandFailed
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 
@@ -158,14 +159,14 @@ def test_the_edit_form_offers_the_default_with_no_row(logged_in, owned_library):
 
 
 @pytest.mark.django_db
-def test_a_shared_games_page_shows_no_librarys_sessions(logged_in, owned_library):
-    """A shared game's rows belong to nobody, so the page claims none.
+def test_a_shared_games_page_shows_another_librarys_sessions_to_nobody(
+    logged_in, owned_library, django_user_model
+):
+    """Another library's session at a shared game is theirs alone.
 
     ``tracked_by()`` admits a shared game, whose reverse accessors reach
-    every library that ever wrote against it. A Session is scoped through
-    ``game.library``, so no library owns one on a shared game and every
-    other view already shows none. The page agrees rather than being the
-    one place that shows them all.
+    every library that ever wrote against it. A session is scoped through
+    its run's library, so the page reads its own rows and no other's.
 
     A Purchase cannot reach here at all: ``validate_purchase_game_ownership``
     refuses to link one to a game of another library, and a shared game is
@@ -178,7 +179,10 @@ def test_a_shared_games_page_shows_no_librarys_sessions(logged_in, owned_library
         game=shared,
         tracked_at=timezone.now(),
     )
-    Session.objects.create(game=shared, timestamp_start=timezone.now(), note="Theirs")
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    session_row(
+        shared, started_at=timezone.now(), note="Theirs", library=stranger.library
+    )
 
     response = logged_in.get(shared.get_absolute_url())
 
@@ -223,7 +227,7 @@ def test_a_shared_games_page_shows_no_librarys_history(
 def test_an_owned_games_page_still_shows_its_own_rows(logged_in, owned_library):
     #: The scoping above must cost an owned game nothing.
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    Session.objects.create(game=game, timestamp_start=timezone.now())
+    session_row(game, started_at=timezone.now())
 
     response = logged_in.get(game.get_absolute_url())
 

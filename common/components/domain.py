@@ -26,8 +26,8 @@ from games.models import (
     ExternalReference,
     Game,
     PlayerGameStatus,
+    PlayerSession,
     Purchase,
-    Session,
 )
 
 if TYPE_CHECKING:
@@ -236,13 +236,18 @@ class ResolvedNameWithIcon(NamedTuple):
 def NameWithIcon(
     name: str = "",
     game: Game | None = None,
-    session: Session | None = None,
+    session: PlayerSession | None = None,
     linkify: bool = True,
     tap: bool = True,
     include_sort_name: bool = False,
     max_width: str = NAME_MAX_WIDTH_CLASS,
+    run_label: str | None = None,
 ) -> Node:
+    """A name with its platform badge; ``run_label`` names the session's run
+    beside the game where the game holds more than one."""
     resolved = _resolve_name_with_icon(name, game, session, linkify)
+    if session is not None and game is None:
+        game = session.playthrough.player_game.game
 
     icons = Fragment(
         Icon(
@@ -288,7 +293,7 @@ def NameWithIcon(
         )
         tooltip_instance_key = f"game-list-sort-name:{game.pk}"
 
-    return TruncatedText(
+    truncated = TruncatedText(
         resolved.name,
         leading=icons,
         link=resolved.link,
@@ -302,6 +307,15 @@ def NameWithIcon(
             if sort_name is not None
             else "Show full name"
         ),
+    )
+    if run_label is None:
+        return truncated
+    return Fragment(
+        truncated,
+        Span(
+            class_="ml-2 text-type-micro text-body whitespace-nowrap",
+            data_run_label="",
+        )[run_label],
     )
 
 
@@ -318,7 +332,7 @@ def _platform_badge(game: Game) -> PlatformBadge:
 def _resolve_name_with_icon(
     name: str,
     game: Game | None,
-    session: Session | None,
+    session: PlayerSession | None,
     linkify: bool,
 ) -> ResolvedNameWithIcon:
     link: str | None = None
@@ -326,7 +340,8 @@ def _resolve_name_with_icon(
     emulated = False
 
     if session is not None:
-        game = session.game
+        #: Through the run: a session names no game of its own.
+        game = session.playthrough.player_game.game
         emulated = session.emulated
     if game is not None:
         badge = _platform_badge(game)
@@ -526,8 +541,13 @@ def SessionActions(session, csrf_token: str, origin: OriginUrl | None) -> Node:
     beyond the browser-zone stamp the finish form carries."""
     from common.components.primitives import ButtonGroup
     from common.returns import action_url
+    from games.models import PlayerSessionTimingMode
 
-    is_open = session.timestamp_end is None
+    #: Only a Timed row runs; Corrected states its end already.
+    is_open = (
+        session.timing_mode == PlayerSessionTimingMode.TIMED
+        and session.ended_at is None
+    )
 
     actions = ButtonGroup(
         [
