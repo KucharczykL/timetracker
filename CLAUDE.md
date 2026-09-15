@@ -117,7 +117,7 @@ path**, so verify against `make check` before pushing when possible.
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Verify the UUID identity map | `make audit-uuid-identity` (read-only; fails on any violation) |
 | Census the legacy Session rows | `make preflight-sessions ARGS="--all-libraries"` (read-only; reports, gates nothing) |
-| Benchmark commands, replay, and per-event cost | `make bench` (~1.7 min, seeds and removes a scratch library; **not** in `make check`) |
+| Benchmark commands, replay, reads, and per-event cost | `make bench` (~2 min, seeds three events a game and removes the scratch library; `ARGS="--library <id> --gate"` times the six reads and checks replay on a real library, where the 20 ms read budget is judged; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
 | Compare every playtime and session figure across both session tables | `make verify-session-parity ARGS="--all-libraries"` (read-only; fails on a differing figure; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
@@ -155,7 +155,7 @@ docs/           — Additional documentation
 - **Game** — catalog row: `name`, `platform` (FK), `year_released`, `sort_name`, `wikidata`. `status` (u/p/f/r/a) and `mastered` stranded columns since #678 D2 — nothing writes them, nothing reads them, #770 drops them
 - **Platform** — `name`, `group`, `icon` (slug, auto-generated from name)
 - **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor `game.addon_purchases`)
-- **Session** — legacy table: `timestamp_start`/`timestamp_end`, `duration_manual`, `device` (FK), `note`, `emulated`; `duration_calculated`/`duration_total` are `GeneratedField`s. Nothing writes it and no surface reads it since #702; `tests/test_session_import_guard.py` refuses import outside conversion, census, legacy playtime source, removal registry and fixture commands. #772 drops it
+- **Session** — legacy table: `timestamp_start`/`timestamp_end`, `duration_manual`, `device` (FK), `note`, `emulated`; `duration_calculated`/`duration_total` are `GeneratedField`s. Nothing writes it and no surface reads it since #702; `tests/test_session_import_guard.py` refuses import outside conversion, census, legacy playtime source, the statistics gate's legacy side (`games/reads/session_parity.py`), removal registry and fixture commands. #772 drops it
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown)
 - **ExchangeRate** — cached FX rates per currency pair per year
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
@@ -366,6 +366,23 @@ docs/           — Additional documentation
   2 of the wave stack. Contract is
   [The zone a library counts days in](docs/superpowers/specs/2026-09-15-issue-1047-library-calendar-design.md)
 
+  #704's gates, member 4 of the wave stack, lift the deployment constraint:
+  `tests/test_projection_replay_gate.py` replays one command stream through
+  every event type of the three families (a Corrected row included), empties
+  and rebuilds three tables, repeats every command under its key; the
+  two-dated-claimers conversion case reconciles clean. Stats page's session
+  figures -- count, distinct days, longest, most sessions, highest average,
+  first and last play -- are readers in `games/reads/session_figures.py`,
+  grouped on the session table, ties broken by value, `sort_name`, game key,
+  session key; `compute_stats` calls them, `verify-session-parity` compares
+  them against legacy `duration_total`, `make bench` times them.
+  `readable_sessions()` is the row path list and API share; `games_for_list()`
+  in `games/views/game.py` builds the game list's queryset so the bench times
+  the served plan. Ran on the 2026-09-12 dump: replay clean, 0 of 4,649 figures
+  differ, every read inside 20 ms; page diff attributed in the wave review.
+  Contract is
+  [Pass the Session replay, statistics and budget gates](docs/superpowers/specs/2026-09-15-issue-704-session-gates-design.md)
+
 **Nothing user removes is destroyed** (#944). Eight removable models — Game,
 Edition, Release, Platform, Device, Session, Purchase, FilterPreset —
 each carry nullable `removed_at`, listed in `REMOVABLE_MODELS` in
@@ -428,7 +445,9 @@ library), `playtime_sort_key` and `playtime_matching` stay NULL and `apply_sort`
 puts NULL last. A sum with no library compiles for validation and raises
 `UnscopedPlaytimeRead` if executed. No queryset and no `Q` crosses the interface.
 `make verify-session-parity` compares every `PlaytimeSource` member but
-`summed_by_game_matching`, in one snapshot; a test holds that list whole. A
+`summed_by_game_matching`, and every `SessionFigureSource` member
+(`games/reads/session_parity.py`), in one snapshot; a test holds both lists
+whole. A
 stored comparison naming `playtime` is refused through
 `Game.RETIRED_COMPARISON_COLUMNS`.
 
