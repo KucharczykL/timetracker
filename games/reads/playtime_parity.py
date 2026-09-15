@@ -43,7 +43,10 @@ COMPARED_MEMBERS: Final = frozenset(
 )
 #: Members no figure reads, and why.
 UNCOMPARED_MEMBERS: Final[dict[str, str]] = {
-    "summed_by_game_matching": "the projection has no session filter yet",
+    "summed_by_game_matching": (
+        "the session filter speaks the projection's words; the legacy "
+        "source has no sum it can narrow"
+    ),
 }
 
 

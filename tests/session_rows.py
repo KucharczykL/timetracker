@@ -18,6 +18,9 @@ from games.models import (
     UserLibrary,
 )
 
+#: The zone both twins read days in.
+TWIN_ZONE = ZoneInfo("Europe/Prague")
+
 
 def tracked_run(library: UserLibrary, game: Game) -> Playthrough:
     """The library's ordinary run, made when missing."""
@@ -112,15 +115,45 @@ def corrected_row(
     )
 
 
+def session_row(
+    game: Game,
+    *,
+    started_at: datetime,
+    ended_at: datetime | None = None,
+    duration_manual: timedelta | None = None,
+    library: UserLibrary | None = None,
+    **columns: object,
+) -> PlayerSession:
+    """A projection row shaped like a legacy create.
+
+    Manual time alone is a Duration-only row on the start's day; manual
+    time beside an end is a Corrected row stating the legacy total.
+    """
+    library = library or game.library
+    if library is None:
+        raise ValueError("a shared catalog game needs the library stated")
+    run = tracked_run(library, game)
+    manual = duration_manual or timedelta(0)
+    if manual and ended_at is None:
+        day = started_at.astimezone(TWIN_ZONE).date()
+        return duration_only_row(run, day, manual, **columns)
+    if manual and ended_at is not None:
+        return corrected_row(
+            run,
+            started_at,
+            ended_at,
+            (ended_at - started_at) + manual,
+            day_zone=TWIN_ZONE.key,
+            **columns,
+        )
+    return timed_row(run, started_at, ended_at, day_zone=TWIN_ZONE.key, **columns)
+
+
 class Twin(NamedTuple):
     """A legacy session and its projection row."""
 
     legacy: Session
     projection: PlayerSession
-
-
-#: The zone both twins read days in.
-TWIN_ZONE = ZoneInfo("Europe/Prague")
 
 
 def timed_twin(

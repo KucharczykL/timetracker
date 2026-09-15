@@ -8,7 +8,7 @@ from uuid import UUID
 from django.db.models import DurationField
 from django.db.models.expressions import Combinable, Expression
 
-from games.filters import SessionFilter
+from games.filters import PlayerSessionFilter
 from games.models import Game, UserLibrary
 from games.reads.playthrough_completions import YearScope
 
@@ -121,6 +121,6 @@ class FilteredPlaytimeSource[FilterT](Protocol):
 
 
 class FullPlaytimeSource(
-    PlaytimeSource, FilteredPlaytimeSource[SessionFilter], Protocol
+    PlaytimeSource, FilteredPlaytimeSource[PlayerSessionFilter], Protocol
 ):
     """A source every caller can be handed."""

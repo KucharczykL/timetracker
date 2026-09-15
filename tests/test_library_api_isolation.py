@@ -5,6 +5,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.utils import timezone
+from session_rows import session_row
 
 from common.criteria import (
     AggregateCriterion,
@@ -19,8 +20,8 @@ from common.filter_execution import execute_filter
 from games.filters import (
     GameFilter,
     PlatformFilter,
+    PlayerSessionFilter,
     PurchaseFilter,
-    SessionFilter,
     filter_query_context_for_library,
 )
 from games.models import (
@@ -114,6 +115,14 @@ def two_libraries(db):
         timestamp_start=datetime(YEAR, 6, 2, 10, tzinfo=UTC),
         timestamp_end=datetime(YEAR, 6, 2, 13, tzinfo=UTC),
     )
+    #: The projection's twins, which every read scope reads.
+    for legacy in (session_a, session_b):
+        session_row(
+            legacy.game,
+            device=legacy.device,
+            started_at=legacy.timestamp_start,
+            ended_at=legacy.timestamp_end,
+        )
     #: The run holds the note and completion.
     for game, note, day in (
         (game_a, "Library A event", date(YEAR, 2, 1)),
@@ -352,7 +361,7 @@ def test_session_reads_and_mutations_are_library_scoped(two_libraries):
     [
         ("game", {"name": {"value": "Library A", "modifier": "INCLUDES"}}, 2),
         (
-            "session",
+            "playersession",
             {"game_filter": {"name": {"value": "Library A", "modifier": "INCLUDES"}}},
             1,
         ),
@@ -438,7 +447,7 @@ def test_nested_filter_cannot_match_shared_platform_from_foreign_game(two_librar
 def test_aggregate_filter_subqueries_are_library_scoped(two_libraries):
     world = two_libraries
     criterion = AggregateCriterion(value=1)
-    criterion.scope = SessionFilter(
+    criterion.scope = PlayerSessionFilter(
         note=StringCriterion(value="Library", modifier=Modifier.INCLUDES)
     )
     filter_object = GameFilter(session_count=criterion)
@@ -457,8 +466,8 @@ def test_multivalued_comparison_subquery_is_library_scoped(two_libraries):
     filter_object = GameFilter(
         field_comparisons=[
             FieldComparisonCriterion(
-                left="sessions__timestamp_end",
-                right="sessions__timestamp_start",
+                left="purchases__date_refunded",
+                right="purchases__date_purchased",
                 modifier=Modifier.GREATER_THAN,
                 quantifier=RelationMatch.ANY,
             )

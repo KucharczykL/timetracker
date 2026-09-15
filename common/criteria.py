@@ -3042,6 +3042,16 @@ def bool_isnull_handler(field_name: str, *, invert: bool = False) -> FieldHandle
     )
 
 
+def bool_running_handler(timed_mode: str) -> FieldHandler:
+    """Map a ``BoolCriterion`` onto "a Timed row with no end yet".
+
+    ``timing_mode`` is stated, never read off the row's shape, so a
+    Corrected row is never running even though it states an end.
+    """
+    running = Q(timing_mode=timed_mode, ended_at__isnull=True)
+    return lambda c: running if c.value else ~running
+
+
 def bool_nonzero_duration_handler(field_name: str) -> FieldHandler:
     """Map a ``BoolCriterion`` onto a non-zero DurationField test.
 

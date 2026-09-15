@@ -16,7 +16,7 @@ from session_rows import (
 )
 
 import games.reads.playtime
-from games.filters import SessionFilter
+from games.filters import PlayerSessionFilter
 from games.models import Device, Game, Platform, Session, UserLibrary
 from games.reads.playtime import (
     DayInterval,
@@ -347,23 +347,23 @@ def test_summed_by_game_never_counts_another_library(
 
 
 @pytest.mark.django_db
-def test_the_legacy_source_honours_a_session_filter(owned_library, game):
+def test_the_projection_honours_a_session_filter(owned_library, game):
     handheld = Device.objects.create(library=owned_library, name="Deck")
     desktop = Device.objects.create(library=owned_library, name="Tower")
     started_at = datetime(2026, 3, 5, 10, tzinfo=UTC)
     for device, hours in ((handheld, 1), (desktop, 2)):
-        Session.objects.create(
-            game=game,
+        timed_row(
+            tracked_run(owned_library, game),
+            started_at,
+            started_at + timedelta(hours=hours),
             device=device,
-            timestamp_start=started_at,
-            timestamp_end=started_at + timedelta(hours=hours),
         )
-    on_the_handheld = SessionFilter.where(device=[handheld.pk])
+    on_the_handheld = PlayerSessionFilter.where(device=[handheld.pk])
 
     figures = (
         Game.objects.filter(pk=game.pk)
         .annotate(
-            matching=legacy.summed_by_game_matching(owned_library, on_the_handheld),
+            matching=projection.summed_by_game_matching(owned_library, on_the_handheld),
             filtered=playtime_matching(owned_library, on_the_handheld),
             unfiltered=playtime_matching(owned_library, None),
         )
@@ -372,7 +372,7 @@ def test_the_legacy_source_honours_a_session_filter(owned_library, game):
 
     assert figures.matching == timedelta(hours=1)
     assert figures.filtered == timedelta(hours=1)
-    assert figures.unfiltered == legacy.total_playtime(owned_library)
+    assert figures.unfiltered == projection.total_playtime(owned_library)
     assert figures.unfiltered == timedelta(hours=3)
 
 
@@ -393,8 +393,8 @@ def test_summed_by_game_over_no_library_refuses_to_execute(source, stranger_libr
         summed(source, None, shared)
 
 
-def test_the_package_answers_from_the_legacy_source():
-    assert games.reads.playtime.SOURCE is legacy
+def test_the_package_answers_from_the_projection():
+    assert games.reads.playtime.SOURCE is projection
 
 
 def test_a_day_interval_refuses_to_end_before_it_starts():
@@ -456,7 +456,7 @@ def test_the_sum_is_null_when_no_session_matches(owned_library, game):
         Game.objects.filter(pk=game.pk)
         .annotate(
             figure=playtime_matching(
-                owned_library, SessionFilter.where(device=[handheld.pk])
+                owned_library, PlayerSessionFilter.where(device=[handheld.pk])
             )
         )
         .get()

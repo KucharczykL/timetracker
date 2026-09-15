@@ -6,11 +6,12 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import NoReverseMatch, Resolver404, resolve, reverse
+from session_rows import session_row
 
 from common.criteria import FilterError, Modifier, UUIDMultiCriterion
 from games.api import api
-from games.filters import SessionFilter, parse_session_filter
-from games.models import Device, FilterPreset, Game, Session
+from games.filters import PlayerSessionFilter, parse_session_filter
+from games.models import Device, FilterPreset, Game, PlayerSession, Session
 
 pytestmark = pytest.mark.django_db
 
@@ -32,6 +33,9 @@ def runtime_world():
         game=game,
         device=own_device,
         timestamp_start=datetime(2026, 8, 20, 8, tzinfo=UTC),
+    )
+    row = session_row(
+        game, device=own_device, started_at=datetime(2026, 8, 20, 8, tzinfo=UTC)
     )
     own_preset = FilterPreset.objects.create(
         library=owner.library, name="Own preset", mode="sessions"
@@ -158,14 +162,14 @@ def test_session_device_filter_parses_serializes_and_executes_uuidv7(runtime_wor
         }
     )
     parsed = parse_session_filter(payload)
-    assert parsed == SessionFilter(
+    assert parsed == PlayerSessionFilter(
         device=UUIDMultiCriterion(value=[world["own_device"].pk])
     )
     assert parsed.to_json()["device"]["value"] == [str(world["own_device"].pk)]
-    assert list(Session.objects.filter(parsed.to_q()).values_list("pk", flat=True)) == [
-        world["session"].pk
-    ]
-    assert SessionFilter.fields["device"].lookup == "device_id"
+    assert list(
+        PlayerSession.objects.filter(parsed.to_q()).values_list("pk", flat=True)
+    ) == [world["row"].pk]
+    assert PlayerSessionFilter.fields["device"].lookup == "device_id"
     assert UUIDMultiCriterion(modifier=Modifier.IS_NULL).to_json() == {
         "modifier": "IS_NULL"
     }

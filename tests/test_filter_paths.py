@@ -35,9 +35,9 @@ from games.filters import (
     DeviceFilter,
     GameFilter,
     PlatformFilter,
+    PlayerSessionFilter,
     PlaythroughFilter,
     PurchaseFilter,
-    SessionFilter,
 )
 
 
@@ -87,7 +87,7 @@ class _BarCase(NamedTuple):
 
 _BAR_CASES = [
     _BarCase("games", GameFilter),
-    _BarCase("sessions", SessionFilter),
+    _BarCase("sessions", PlayerSessionFilter),
     _BarCase("purchases", PurchaseFilter),
     _BarCase("devices", DeviceFilter),
     _BarCase("platforms", PlatformFilter),

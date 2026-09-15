@@ -17,9 +17,9 @@ import pytest
 from common.criteria import FilterQueryContext, filter_from_json, with_filter_aliases
 from games.filters import (
     GameFilter,
+    PlayerSessionFilter,
     PlaythroughFilter,
     PurchaseFilter,
-    SessionFilter,
 )
 
 FILTER_TREE_DIR = (
@@ -30,7 +30,7 @@ CANONICAL_PATH = FILTER_TREE_DIR / "fixtures.canonical.json"
 
 FILTER_FOR_MODEL = {
     "game": GameFilter,
-    "session": SessionFilter,
+    "playersession": PlayerSessionFilter,
     "purchase": PurchaseFilter,
     "playthrough": PlaythroughFilter,
 }

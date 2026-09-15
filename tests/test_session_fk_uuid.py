@@ -7,6 +7,7 @@ from django.db import IntegrityError, transaction
 from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
+from session_rows import session_row
 
 from common.criteria import (
     FilterQueryContext,
@@ -19,9 +20,9 @@ from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
-from games.filters import DeviceFilter, GameFilter, SessionFilter
+from games.filters import DeviceFilter, GameFilter, PlayerSessionFilter
 from games.forms import SessionForm
-from games.models import Device, Game, Session, UserLibraryPreferences
+from games.models import Device, Game, PlayerSession, Session, UserLibraryPreferences
 
 PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
@@ -60,6 +61,11 @@ def _session(game, **overrides) -> Session:
     return Session.objects.create(
         game=game, timestamp_start=timezone.now(), **overrides
     )
+
+
+def _row(game, **overrides) -> PlayerSession:
+    """The projection's row, which the filters read."""
+    return session_row(game, started_at=timezone.now(), **overrides)
 
 
 def test_session_attnames_read_back_as_the_targets_identities(game, device):
@@ -154,16 +160,16 @@ def test_sessionfilter_game_and_device_criteria_select_the_right_rows(
 ):
     other_game = Game.objects.create(library=owned_library, name="Other")
     other_device = Device.objects.create(library=owned_library, name="Desk")
-    matching = _session(game, device=device)
-    _session(other_game, device=other_device)
+    matching = _row(game, device=device)
+    _row(other_game, device=other_device)
 
-    by_game = SessionFilter.where(game=[game.id])
-    by_device = SessionFilter.where(device=[device.id])
-    assert list(Session.objects.filter(by_game.to_q(UNRESTRICTED_FILTER_CONTEXT))) == [
-        matching
-    ]
+    by_game = PlayerSessionFilter.where(game=[game.id])
+    by_device = PlayerSessionFilter.where(device=[device.id])
     assert list(
-        Session.objects.filter(by_device.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        PlayerSession.objects.filter(by_game.to_q(UNRESTRICTED_FILTER_CONTEXT))
+    ) == [matching]
+    assert list(
+        PlayerSession.objects.filter(by_device.to_q(UNRESTRICTED_FILTER_CONTEXT))
     ) == [matching]
 
 
@@ -171,10 +177,10 @@ def test_gamefilter_session_filter_selects_games_by_relation_match(
     game, device, owned_library
 ):
     other_game = Game.objects.create(library=owned_library, name="Other")
-    _session(game, device=device, note="Marathon session")
-    _session(other_game, device=device, note="Something else")
+    _row(game, device=device, note="Marathon session")
+    _row(other_game, device=device, note="Something else")
 
-    note_filter = SessionFilter(
+    note_filter = PlayerSessionFilter(
         note=StringCriterion(value="Marathon", modifier=Modifier.INCLUDES)
     )
     owned = Game.objects.filter(library=owned_library)
@@ -183,7 +189,7 @@ def test_gamefilter_session_filter_selects_games_by_relation_match(
     assert list(owned.filter(any_match.to_q(UNRESTRICTED_FILTER_CONTEXT))) == [game]
 
     none_match = GameFilter(
-        session_filter=SessionFilter(
+        session_filter=PlayerSessionFilter(
             note=StringCriterion(value="Marathon", modifier=Modifier.INCLUDES),
             match=RelationMatch.NONE,
         )
@@ -198,30 +204,30 @@ def test_sessionfilter_game_and_device_sub_filters_select_sessions(
 ):
     other_game = Game.objects.create(library=owned_library, name="Other")
     other_device = Device.objects.create(library=owned_library, name="Desk")
-    matching = _session(game, device=device)
-    _session(other_game, device=other_device)
+    matching = _row(game, device=device)
+    _row(other_game, device=other_device)
 
-    by_game = SessionFilter(
+    by_game = PlayerSessionFilter(
         game_filter=GameFilter(name=StringCriterion(value=game.name))
     )
-    by_device = SessionFilter(
+    by_device = PlayerSessionFilter(
         device_filter=DeviceFilter(name=StringCriterion(value=device.name))
     )
-    assert list(Session.objects.filter(by_game.to_q(UNRESTRICTED_FILTER_CONTEXT))) == [
-        matching
-    ]
     assert list(
-        Session.objects.filter(by_device.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        PlayerSession.objects.filter(by_game.to_q(UNRESTRICTED_FILTER_CONTEXT))
+    ) == [matching]
+    assert list(
+        PlayerSession.objects.filter(by_device.to_q(UNRESTRICTED_FILTER_CONTEXT))
     ) == [matching]
 
 
 def test_devicefilter_session_filter_selects_devices(game, device, owned_library):
     other_device = Device.objects.create(library=owned_library, name="Desk")
-    _session(game, device=device, note="Marathon session")
-    _session(game, device=other_device, note="Something else")
+    _row(game, device=device, note="Marathon session")
+    _row(game, device=other_device, note="Something else")
 
     filter_ = DeviceFilter(
-        session_filter=SessionFilter(
+        session_filter=PlayerSessionFilter(
             note=StringCriterion(value="Marathon", modifier=Modifier.INCLUDES)
         )
     )
@@ -239,9 +245,17 @@ def test_filtered_playtime_annotation_survives_the_uuid_relation(
     It is annotated unconditionally, so a stale OuterRef target would take down
     every render of the page rather than just the filtered case.
     """
-    _session(game, device=device, note="Marathon session")
+    _row(game, device=device, note="Marathon session")
     filter_json = json.dumps(
-        {"AND": [{"session_filter": {"note": {"value": "Marathon"}}}]}
+        {
+            "AND": [
+                {
+                    "session_filter": {
+                        "note": {"value": "Marathon", "modifier": "INCLUDES"}
+                    }
+                }
+            ]
+        }
     )
 
     response = auth_client.get(reverse("games:list_games"), {"filter": filter_json})

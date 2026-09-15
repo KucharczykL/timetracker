@@ -28,7 +28,7 @@ from common.components.primitives import ContentContainer, PageHeading, Span
 from common.date_time_presentation import date_time_presentation_for_request
 from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
-from games.filters import SessionFilter, filter_url, model_field_registry
+from games.filters import PlayerSessionFilter, filter_url, model_field_registry
 from games.models import Device, Game, Platform, Purchase, Session
 from games.reads.playtime import DayInterval, playtime_between
 from games.sorting import parse_per_page_override
@@ -60,10 +60,10 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
     durations = duration_presentation_for_request(request)
 
     today_iso = today.isoformat()
-    today_url = filter_url(SessionFilter.where(timestamp_start=today_iso))
+    today_url = filter_url(PlayerSessionFilter.where(day=today_iso))
     last_7_url = filter_url(
-        SessionFilter.where(
-            timestamp_start__between=(last_seven_days.first.isoformat(), today_iso)
+        PlayerSessionFilter.where(
+            day__between=(last_seven_days.first.isoformat(), today_iso)
         )
     )
 

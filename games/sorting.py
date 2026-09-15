@@ -103,9 +103,10 @@ GAME_SORTS: SortMap = {
 GAME_DEFAULT_SORT: SortString = "-created"
 
 SESSION_SORTS: SortMap = {
-    "name": SortSpec("game__sort_name"),
-    "date": SortSpec("timestamp_start"),
-    "duration": SortSpec("duration_total"),
+    "name": SortSpec("playthrough__player_game__game__sort_name"),
+    #: One total order across the three timing modes.
+    "date": SortSpec("sort_instant"),
+    "duration": SortSpec("effective_duration"),
     "device": SortSpec("device__name"),
     "created": SortSpec("created_at"),
 }

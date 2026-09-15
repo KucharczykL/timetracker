@@ -148,15 +148,15 @@ class ReachableModelsTest(TestCase):
 
         self.assertEqual(
             set(reachable_models("game")),
-            {"game", "session", "purchase", "playthrough", "platform", "device"},
+            {"game", "playersession", "purchase", "playthrough", "platform", "device"},
         )
 
     def test_reachable_models_maps_keys_to_filter_classes(self):
-        from games.filters import GameFilter, SessionFilter, reachable_models
+        from games.filters import GameFilter, PlayerSessionFilter, reachable_models
 
         models = reachable_models("game")
         self.assertIs(models["game"], GameFilter)
-        self.assertIs(models["session"], SessionFilter)
+        self.assertIs(models["playersession"], PlayerSessionFilter)
 
     def test_registry_bundles_fields_and_columns_per_model(self):
         from games.filters import model_field_registry
@@ -164,14 +164,14 @@ class ReachableModelsTest(TestCase):
         registry = model_field_registry("game")
         self.assertEqual(
             set(registry),
-            {"game", "session", "purchase", "playthrough", "platform", "device"},
+            {"game", "playersession", "purchase", "playthrough", "platform", "device"},
         )
-        session = registry["session"]
+        session = registry["playersession"]
         self.assertIn("fields", session)
         self.assertIn("columns", session)
         # Session's datetime pair reaches the comparison columns.
         column_names = {column["value"] for column in session["columns"]}
-        self.assertLessEqual({"timestamp_start", "timestamp_end"}, column_names)
+        self.assertLessEqual({"started_at", "ended_at"}, column_names)
         # The relation entries are discoverable in the field metadata (game→session).
         game_relations = {
             relation["field"]
@@ -186,7 +186,14 @@ class ReachableModelsTest(TestCase):
         model set regardless of which list it is opened from (game/session/…)."""
         from games.filters import reachable_models
 
-        full = {"game", "session", "purchase", "playthrough", "platform", "device"}
+        full = {
+            "game",
+            "playersession",
+            "purchase",
+            "playthrough",
+            "platform",
+            "device",
+        }
         for root in full:
             self.assertEqual(set(reachable_models(root)), full, f"root={root}")
 
@@ -199,7 +206,7 @@ class ReachableModelsTest(TestCase):
 
         for root in [
             "game",
-            "session",
+            "playersession",
             "purchase",
             "playthrough",
             "platform",
@@ -229,8 +236,8 @@ class FilterGroupComparisonTest(TestCase):
         self.assertIn("models=", html)
         # Session's datetime pair — the field-comparison driving use case — reaches
         # the child-model bundle even though the root is game.
-        self.assertIn("timestamp_start", html)
-        self.assertIn("timestamp_end", html)
+        self.assertIn("started_at", html)
+        self.assertIn("ended_at", html)
 
     def test_incomplete_badge_has_no_reveal_glyph(self):
         # The "!" badge is already a bare symbol — a reveal glyph beside it
@@ -246,13 +253,20 @@ class FilterGroupComparisonTest(TestCase):
         from common.components import FilterGroup
 
         html = str(FilterGroup(presentation=_PRESENTATION, model="game"))
-        for key in ("game", "session", "purchase", "playthrough", "platform", "device"):
+        for key in (
+            "game",
+            "playersession",
+            "purchase",
+            "playthrough",
+            "platform",
+            "device",
+        ):
             self.assertIn(f'data-model="{key}"', html)
 
     def test_emits_comparison_row_template_when_model_has_comparable_group(self):
         from common.components import FilterGroup
 
-        html = str(FilterGroup(presentation=_PRESENTATION, model="session"))
+        html = str(FilterGroup(presentation=_PRESENTATION, model="playersession"))
         self.assertIn("data-fc-row-template", html)
         # The reused single row's hooks reach the cloned template.
         self.assertIn("data-fc-left", html)
@@ -260,7 +274,7 @@ class FilterGroupComparisonTest(TestCase):
     def test_columns_prop_has_no_double_escaped_markup(self):
         from common.components import FilterGroup
 
-        html = str(FilterGroup(presentation=_PRESENTATION, model="session"))
+        html = str(FilterGroup(presentation=_PRESENTATION, model="playersession"))
         for marker in _ESCAPED_TAG_MARKERS:
             self.assertNotIn(marker, html)
 
@@ -278,7 +292,7 @@ class FilterGroupComparisonTest(TestCase):
     def test_nested_builder_templates_use_semantic_control_and_danger_tokens(self):
         from common.components import FilterGroup
 
-        html = str(FilterGroup(presentation=_PRESENTATION, model="session"))
+        html = str(FilterGroup(presentation=_PRESENTATION, model="playersession"))
         self.assertIn("rounded-base border border-default-medium", html)
         self.assertIn("bg-neutral-secondary-medium", html)
         self.assertIn("hover:bg-neutral-tertiary-medium", html)

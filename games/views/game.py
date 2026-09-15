@@ -71,9 +71,9 @@ from games.catalog_submit import submitted_game_or_form_error
 from games.external_references import CatalogTarget, external_reference_url_or_none
 from games.filters import (
     GameFilter,
+    PlayerSessionFilter,
     PlaythroughFilter,
     PurchaseFilter,
-    SessionFilter,
     filter_query_context_for_library,
     filter_url,
     parse_game_filter,
@@ -151,7 +151,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
     games = Game.objects.tracked_by(library).select_related("platform")
 
     #: Narrows the Playtime column; None counts all.
-    session_filter: SessionFilter | None = None
+    session_filter: PlayerSessionFilter | None = None
 
     # ── Structured filter (Stash-style JSON; free-text search lives here too) ──
     filter_json = request.GET.get("filter", "")
@@ -939,7 +939,7 @@ def _sessions_section(
         session_count,
         table,
         "No sessions yet.",
-        view_all_url=filter_url(SessionFilter.where(game=[game.id])),
+        view_all_url=filter_url(PlayerSessionFilter.where(game=[game.id])),
     )
 
 

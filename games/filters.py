@@ -19,9 +19,9 @@ if TYPE_CHECKING:
         Device,
         Game,
         Platform,
+        PlayerSession,
         Playthrough,
         Purchase,
-        Session,
         UserLibrary,
     )
 
@@ -50,7 +50,7 @@ from common.criteria import (
     StringCriterion,
     UUIDMultiCriterion,
     bool_isnull_handler,
-    bool_nonzero_duration_handler,
+    bool_running_handler,
     comparable_columns,
     days_touched_handler,
     duration_hours_handler,
@@ -61,6 +61,7 @@ from common.criteria import (
     search_q,
     temporal_interval_handler,
 )
+from games.models import PlayerSessionTimingMode
 from games.reads.playthrough_activity import RunActivity
 from timetracker.settings_registry import DEFAULT_PAGE_SIZE
 
@@ -120,9 +121,9 @@ class GameFilter(OperatorFilter):
     purchase_count: AggregateCriterion | None = None  # distinct purchases per game
     playthrough_count: AggregateCriterion | None = None  # finished runs per game
 
-    # Aggregate session durations (hours), summed across the game's sessions
-    manual_playtime_hours: AggregateCriterion | None = None
-    calculated_playtime_hours: AggregateCriterion | None = None
+    # The game's sessions' `effective_duration`, summed, in hours; a scope
+    # on `timing_mode` narrows it to one mode's share.
+    session_playtime_hours: AggregateCriterion | None = None
 
     # Cross-entity: sum of the game's purchase prices (converted)
     purchase_price_total: AggregateCriterion | None = None  # sum of converted prices
@@ -131,7 +132,7 @@ class GameFilter(OperatorFilter):
     search: StringCriterion | None = None
 
     # Cross-entity filters
-    session_filter: SessionFilter | None = None
+    session_filter: PlayerSessionFilter | None = None
     purchase_filter: PurchaseFilter | None = None
     playthrough_filter: PlaythroughFilter | None = None
     platform_filter: PlatformFilter | None = None
@@ -184,13 +185,13 @@ class GameFilter(OperatorFilter):
 
         # Cross-entity sub-filters (ANY/NONE via each sub-filter's match mode)
         if self.session_filter is not None:
-            from games.models import Session
+            from games.models import PlayerSession
 
             q &= relation_to_q(
                 self.session_filter,
                 context=context,
-                related_model=Session,
-                related_lookup="game__id",
+                related_model=PlayerSession,
+                related_lookup=f"{SESSION_GAME}__id",
             )
 
         if self.purchase_filter is not None:
@@ -227,28 +228,33 @@ class GameFilter(OperatorFilter):
         return q
 
 
-# ── SessionFilter ──────────────────────────────────────────────────────────
+#: A session reaches its game through the run; a game reaches its
+#: sessions the other way round.
+SESSION_GAME: Final = "playthrough__player_game__game"
+GAME_SESSIONS: Final = "player_games__playthroughs__sessions"
+
+
+# ── PlayerSessionFilter ────────────────────────────────────────────────────
 
 
 @dataclass
-class SessionFilter(OperatorFilter):
-    """Filter for the Session model."""
+class PlayerSessionFilter(OperatorFilter):
+    """Filter for the PlayerSession projection, in its own words."""
 
-    AND: list[SessionFilter] = field(default_factory=list)
-    OR: list[SessionFilter] = field(default_factory=list)
-    NOT: list[SessionFilter] = field(default_factory=list)
+    AND: list[PlayerSessionFilter] = field(default_factory=list)
+    OR: list[PlayerSessionFilter] = field(default_factory=list)
+    NOT: list[PlayerSessionFilter] = field(default_factory=list)
 
-    game: UUIDMultiCriterion | None = None  # filters on game__id
+    game: UUIDMultiCriterion | None = None  # through the run
     device: UUIDMultiCriterion | None = None  # filters on device_id
     emulated: BoolCriterion | None = None
     note: StringCriterion | None = None
-    duration_total_hours: IntCriterion | None = None
-    duration_manual_hours: IntCriterion | None = None
-    duration_calculated_hours: IntCriterion | None = None
-    is_active: BoolCriterion | None = None  # timestamp_end IS NULL
-    timestamp_start: DateCriterion | None = None  # date, compared via __date
-    timestamp_end: DateCriterion | None = None  # date, compared via __date
-    is_manual: BoolCriterion | None = None  # duration_manual > 0
+    timing_mode: ChoiceCriterion | None = None
+    is_running: BoolCriterion | None = None  # Timed, and no end yet
+    day: DateCriterion | None = None  # effective_day, the library's calendar
+    started: DateCriterion | None = None  # started_at's date; null Duration-only
+    ended: DateCriterion | None = None  # ended_at's date; null while running
+    duration_hours: IntCriterion | None = None  # effective_duration
     created_at: DateCriterion | None = None  # compared via __date
 
     # Free-text search
@@ -260,37 +266,32 @@ class SessionFilter(OperatorFilter):
     # Cross-entity: sessions for devices matching these criteria
     device_filter: DeviceFilter | None = None
 
-    # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
-    # reviewable diff (AND-composition makes the order semantically irrelevant).
     fields: ClassVar[dict[str, FilterField]] = {
-        "game": FilterField("game__id", search_url="/api/games/search"),
+        "game": FilterField(f"{SESSION_GAME}__id", search_url="/api/games/search"),
         "device": FilterField("device_id", search_url="/api/devices/search"),
         "emulated": FilterField(),
         "note": FilterField(),
-        "duration_total_hours": FilterField(
-            handler=duration_hours_handler("duration_total")
+        "timing_mode": FilterField(label="Timing"),
+        "is_running": FilterField(
+            handler=bool_running_handler(PlayerSessionTimingMode.TIMED),
+            label="Running",
         ),
-        "duration_manual_hours": FilterField(
-            handler=duration_hours_handler("duration_manual")
-        ),
-        "duration_calculated_hours": FilterField(
-            handler=duration_hours_handler("duration_calculated")
-        ),
-        "is_active": FilterField(handler=bool_isnull_handler("timestamp_end")),
+        "day": FilterField("effective_day", label="Day"),
         # Compare the date portion so a date matches the datetime column.
-        "timestamp_start": FilterField("timestamp_start__date", label="Session Start"),
-        "timestamp_end": FilterField("timestamp_end__date", label="Session End"),
-        "is_manual": FilterField(
-            handler=bool_nonzero_duration_handler("duration_manual")
+        "started": FilterField("started_at__date", label="Started"),
+        "ended": FilterField("ended_at__date", label="Ended"),
+        "duration_hours": FilterField(
+            handler=duration_hours_handler("effective_duration"),
+            label="Duration (hours)",
         ),
         "created_at": FilterField("created_at__date"),
     }
 
     @classmethod
-    def _comparison_model(cls) -> type[Session]:
-        from games.models import Session
+    def _comparison_model(cls) -> type[PlayerSession]:
+        from games.models import PlayerSession
 
-        return Session
+        return PlayerSession
 
     def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
         q = Q()
@@ -299,8 +300,8 @@ class SessionFilter(OperatorFilter):
         if self.search is not None:
             q &= search_q(
                 self.search,
-                "game__name",
-                "game__platform__name",
+                f"{SESSION_GAME}__name",
+                f"{SESSION_GAME}__platform__name",
                 "device__name",
                 "device__type",
             )
@@ -314,7 +315,7 @@ class SessionFilter(OperatorFilter):
                 context=context,
                 related_model=Game,
                 related_lookup="id",
-                parent_field="game__id",
+                parent_field=f"{SESSION_GAME}__id",
             )
 
         if self.device_filter is not None:
@@ -545,7 +546,7 @@ class DeviceFilter(OperatorFilter):
     search: StringCriterion | None = None
 
     # Cross-entity: Devices that have sessions matching these criteria
-    session_filter: SessionFilter | None = None
+    session_filter: PlayerSessionFilter | None = None
 
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
@@ -570,12 +571,12 @@ class DeviceFilter(OperatorFilter):
 
         # Cross-entity sub-filter: devices that have matching sessions
         if self.session_filter is not None:
-            from games.models import Session
+            from games.models import PlayerSession
 
             q &= relation_to_q(
                 self.session_filter,
                 context=context,
-                related_model=Session,
+                related_model=PlayerSession,
                 related_lookup="device_id",
             )
 
@@ -770,15 +771,19 @@ class PlaythroughFilter(OperatorFilter):
 
 # Assigned after the class definitions (not in GameFilter's body) because the
 # specs reference filter classes defined below GameFilter — a class-body dict
-# would NameError on SessionFilter/PurchaseFilter/PlaythroughFilter. The generic
+# would NameError on PlayerSessionFilter/PurchaseFilter/PlaythroughFilter. The generic
 # ``OperatorFilter.to_q`` walks this table; ``from_json`` reads each spec's
 # ``scope_filter`` to deserialize an aggregate's scope. The drift guard in
 # tests/test_filters.py asserts the table covers exactly the
 # AggregateCriterion-annotated fields.
 GameFilter.aggregates = {
-    "session_count": AggregateSpec("count", "sessions", SessionFilter),
+    "session_count": AggregateSpec("count", GAME_SESSIONS, PlayerSessionFilter),
     "session_average": AggregateSpec(
-        "avg", "sessions", SessionFilter, source="duration_total", unit="duration_hours"
+        "avg",
+        GAME_SESSIONS,
+        PlayerSessionFilter,
+        source="effective_duration",
+        unit="duration_hours",
     ),
     "purchase_count": AggregateSpec("count", "purchases", PurchaseFilter),
     "playthrough_count": AggregateSpec(
@@ -788,18 +793,12 @@ GameFilter.aggregates = {
         #: Counts the runs whose completion is stated.
         base_scope=PlaythroughFilter(is_completed=BoolCriterion(value=True)),
     ),
-    "manual_playtime_hours": AggregateSpec(
+    #: Scope it by `timing_mode` for one mode's share.
+    "session_playtime_hours": AggregateSpec(
         "sum",
-        "sessions",
-        SessionFilter,
-        source="duration_manual",
-        unit="duration_hours",
-    ),
-    "calculated_playtime_hours": AggregateSpec(
-        "sum",
-        "sessions",
-        SessionFilter,
-        source="duration_calculated",
+        GAME_SESSIONS,
+        PlayerSessionFilter,
+        source="effective_duration",
         unit="duration_hours",
     ),
     "purchase_price_total": AggregateSpec(
@@ -815,8 +814,8 @@ def parse_game_filter(json_str: str) -> GameFilter | None:
     return filter_from_json(GameFilter, json_str)
 
 
-def parse_session_filter(json_str: str) -> SessionFilter | None:
-    return filter_from_json(SessionFilter, json_str)
+def parse_session_filter(json_str: str) -> PlayerSessionFilter | None:
+    return filter_from_json(PlayerSessionFilter, json_str)
 
 
 def parse_purchase_filter(json_str: str) -> PurchaseFilter | None:
@@ -881,11 +880,13 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
     Game is one exception: its list counts the games this library tracks, so
     counting anything else here would answer the builder's live count with a
     number the destination list cannot show. Playthrough is the other: its
-    condition alias needs the viewer's clock.
+    condition alias needs the viewer's clock. PlayerSession states no
+    `for_library`: `library_sessions` is its scope.
     """
     from django.apps import apps
 
-    from games.models import Game, Playthrough
+    from games.models import Game, PlayerSession, Playthrough
+    from games.reads.player_sessions import library_sessions
     from games.reads.playthrough_runs import runs_with_condition
 
     model = apps.get_model("games", model_name)
@@ -893,6 +894,8 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
         return Game.objects.tracked_by(library)
     if model is Playthrough:
         return runs_with_condition(library)
+    if model is PlayerSession:
+        return library_sessions(library)
     return model.objects.for_library(library)
 
 
@@ -901,7 +904,15 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
 
     Scopes build once, when named: the runs' scope reads the clock.
     """
-    from games.models import Device, Game, Platform, Playthrough, Purchase, Session
+    from games.models import (
+        Device,
+        Game,
+        Platform,
+        PlayerSession,
+        Playthrough,
+        Purchase,
+    )
+    from games.reads.player_sessions import library_sessions
     from games.reads.playthrough_runs import runs_with_condition
 
     scopes: dict[builtins.type[Model], ScopeThunk] = {
@@ -909,7 +920,7 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
         #: from the games this library tracks, and its criteria read
         #: the projection through the `tracked` alias.
         Game: cache(lambda: Game.objects.tracked_by(library)),
-        Session: cache(lambda: Session.objects.for_library(library)),
+        PlayerSession: cache(lambda: library_sessions(library)),
         Purchase: cache(lambda: Purchase.objects.for_library(library)),
         Playthrough: cache(lambda: runs_with_condition(library)),
         Device: cache(lambda: Device.objects.for_library(library)),
@@ -971,7 +982,7 @@ def model_field_registry(root_model: ModelKey) -> dict[ModelKey, ModelFieldBundl
 
 _FILTER_LIST_URL: dict[type[OperatorFilter], str] = {
     GameFilter: "games:list_games",
-    SessionFilter: "games:list_sessions",
+    PlayerSessionFilter: "games:list_sessions",
     PurchaseFilter: "games:list_purchases",
     PlaythroughFilter: "games:list_playthroughs",
     DeviceFilter: "games:list_devices",

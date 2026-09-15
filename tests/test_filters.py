@@ -13,6 +13,7 @@ from uuid import UUID
 
 import pytest
 from django.db.models import F, Q
+from session_rows import session_row
 
 from common.criteria import (
     MAX_FIELD_COMPARISONS,
@@ -63,9 +64,9 @@ from games.filters import (
     DeviceFilter,
     GameFilter,
     PlatformFilter,
+    PlayerSessionFilter,
     PlaythroughFilter,
     PurchaseFilter,
-    SessionFilter,
     parse_device_filter,
     parse_game_filter,
     parse_platform_filter,
@@ -73,6 +74,7 @@ from games.filters import (
     parse_purchase_filter,
     parse_session_filter,
 )
+from games.models import PlayerSession
 
 UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
     lambda model: with_filter_aliases(model._default_manager.all())
@@ -997,7 +999,7 @@ class TestExpandedFiltersAgainstDB:
         import datetime
         from datetime import timedelta
 
-        from games.models import Device, Game, Platform, Purchase, Session
+        from games.models import Device, Game, Platform, Purchase
 
         # 1. Platform & Game
         plat, _ = Platform.objects.get_or_create(
@@ -1013,14 +1015,12 @@ class TestExpandedFiltersAgainstDB:
         # 2. Device & Session
         dev, _ = Device.objects.get_or_create(name="Super Famicom", type="Console")
 
-        # Session 1: total 4 hours (3 hours calc, 1 hour manual)
-        s1 = Session.objects.create(
-            game=game,
+        # Session 1: a Corrected row stating 4 hours over 3 elapsed
+        s1 = session_row(
+            game,
             device=dev,
-            timestamp_start=datetime.datetime(
-                2026, 6, 1, 12, 0, 0, tzinfo=datetime.UTC
-            ),
-            timestamp_end=datetime.datetime(2026, 6, 1, 15, 0, 0, tzinfo=datetime.UTC),
+            started_at=datetime.datetime(2026, 6, 1, 12, 0, 0, tzinfo=datetime.UTC),
+            ended_at=datetime.datetime(2026, 6, 1, 15, 0, 0, tzinfo=datetime.UTC),
             duration_manual=timedelta(hours=1),
         )
 
@@ -1221,29 +1221,26 @@ class TestExpandedFiltersAgainstDB:
             Purchase.objects.filter(purchase_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
         ) == {data["pur"]}
 
-    def test_session_filter_duration_splits(self):
-        from games.filters import SessionFilter
-        from games.models import Session
+    def test_session_filter_reads_the_effective_duration_and_mode(self):
+        from games.filters import PlayerSessionFilter
 
         self._setup_entities()
 
-        # Test duration_total_hours equals 4
-        sf_tot = SessionFilter.from_json(
-            {"duration_total_hours": {"value": 4, "modifier": "EQUALS"}}
+        four_hours = PlayerSessionFilter.from_json(
+            {"duration_hours": {"value": 4, "modifier": "EQUALS"}}
         )
-        assert Session.objects.filter(sf_tot.to_q()).count() == 1
+        assert PlayerSession.objects.filter(four_hours.to_q()).count() == 1
 
-        # Test duration_manual_hours equals 1
-        sf_man = SessionFilter.from_json(
-            {"duration_manual_hours": {"value": 1, "modifier": "EQUALS"}}
+        corrected = PlayerSessionFilter.from_json(
+            {"timing_mode": {"value": ["corrected"], "modifier": "INCLUDES"}}
         )
-        assert Session.objects.filter(sf_man.to_q()).count() == 1
+        assert PlayerSession.objects.filter(corrected.to_q()).count() == 1
 
-        # Test duration_calculated_hours equals 3
-        sf_calc = SessionFilter.from_json(
-            {"duration_calculated_hours": {"value": 3, "modifier": "EQUALS"}}
-        )
-        assert Session.objects.filter(sf_calc.to_q()).count() == 1
+        #: Corrected states an end, and is not running.
+        running = PlayerSessionFilter.from_json({"is_running": {"value": True}})
+        assert PlayerSession.objects.filter(running.to_q()).count() == 0
+        not_running = PlayerSessionFilter.from_json({"is_running": {"value": False}})
+        assert PlayerSession.objects.filter(not_running.to_q()).count() == 1
 
     def test_purchase_filter_new_fields(self):
         from games.filters import PurchaseFilter
@@ -1406,24 +1403,32 @@ class TestExpandedFiltersAgainstDB:
         assert data["game"] in results
         assert data["game2"] not in results
 
-    def test_game_filter_manual_and_calculated_playtime(self):
+    def test_game_filter_session_playtime_and_its_mode_scope(self):
         from games.filters import GameFilter
         from games.models import Game
 
         data = self._setup_entities()
-        # data["s1"] has 1 hour manual + 3 hours calculated
-        gf_manual = GameFilter.from_json(
-            {"manual_playtime_hours": {"value": 1, "modifier": "EQUALS"}}
+        # data["s1"] states 4 hours, as a Corrected row
+        four_hours = GameFilter.from_json(
+            {"session_playtime_hours": {"value": 4, "modifier": "EQUALS"}}
         )
         assert data["game"] in set(
-            Game.objects.filter(gf_manual.to_q(UNRESTRICTED_FILTER_CONTEXT))
+            Game.objects.filter(four_hours.to_q(UNRESTRICTED_FILTER_CONTEXT))
         )
 
-        gf_calc = GameFilter.from_json(
-            {"calculated_playtime_hours": {"value": 3, "modifier": "EQUALS"}}
+        timed_only = GameFilter.from_json(
+            {
+                "session_playtime_hours": {
+                    "value": 4,
+                    "modifier": "EQUALS",
+                    "scope": {
+                        "timing_mode": {"value": ["timed"], "modifier": "INCLUDES"}
+                    },
+                }
+            }
         )
-        assert data["game"] in set(
-            Game.objects.filter(gf_calc.to_q(UNRESTRICTED_FILTER_CONTEXT))
+        assert data["game"] not in set(
+            Game.objects.filter(timed_only.to_q(UNRESTRICTED_FILTER_CONTEXT))
         )
 
 
@@ -1435,14 +1440,12 @@ class TestPlaytimeHoursAgainstDB:
     def played_and_unplayed(self, owned_library):
         from datetime import datetime, timedelta
 
-        from games.models import Game, Session
+        from games.models import Game
 
         played = Game.objects.create(library=owned_library, name="Played")
         unplayed = Game.objects.create(library=owned_library, name="Unplayed")
         start = datetime(2026, 3, 1, 10, tzinfo=UTC)
-        Session.objects.create(
-            game=played, timestamp_start=start, timestamp_end=start + timedelta(hours=2)
-        )
+        session_row(played, started_at=start, ended_at=start + timedelta(hours=2))
         return played, unplayed
 
     @staticmethod
@@ -1459,15 +1462,16 @@ class TestPlaytimeHoursAgainstDB:
     def test_playtime_hours_reads_the_live_sessions(
         self, owned_library, played_and_unplayed
     ):
-        from games.models import Session
-        from games.removal import remove
+        from django.utils import timezone
 
         played, _unplayed = played_and_unplayed
         greater_than_one = {"value": 1, "modifier": "GREATER_THAN"}
 
         assert self._matching(owned_library, greater_than_one) == {played}
 
-        remove(Session.objects.get(game=played))
+        PlayerSession.objects.filter(playthrough__player_game__game=played).update(
+            removed_at=timezone.now()
+        )
 
         assert self._matching(owned_library, greater_than_one) == set()
 
@@ -1491,11 +1495,11 @@ class TestPlaytimeHoursAgainstDB:
     def test_playtime_hours_inside_a_game_filter_relation(
         self, owned_library, played_and_unplayed
     ):
-        from games.filters import SessionFilter, filter_query_context_for_library
-        from games.models import Session
+        from games.filters import PlayerSessionFilter, filter_query_context_for_library
+        from games.reads.player_sessions import library_sessions
 
         played, _unplayed = played_and_unplayed
-        session_filter = SessionFilter.from_json(
+        session_filter = PlayerSessionFilter.from_json(
             {
                 "game_filter": {
                     "playtime_hours": {"value": 1, "modifier": "GREATER_THAN"}
@@ -1505,10 +1509,12 @@ class TestPlaytimeHoursAgainstDB:
         context = filter_query_context_for_library(owned_library)
 
         matching = execute_filter(
-            session_filter, Session.objects.for_library(owned_library), context
+            session_filter, library_sessions(owned_library), context
         )
 
-        assert {session.game for session in matching} == {played}
+        assert {session.playthrough.player_game.game for session in matching} == {
+            played
+        }
 
     def test_the_playtime_alias_is_not_selected(self, owned_library):
         from games.models import Game
@@ -1533,12 +1539,12 @@ class TestPlaytimeHoursAgainstDB:
 
     def test_validation_compiles_playtime_hours_without_a_library(self):
         from common.criteria import FilterQueryContext
-        from games.filters import GameFilter, SessionFilter
+        from games.filters import GameFilter, PlayerSessionFilter
 
         criterion = {"playtime_hours": {"value": 1, "modifier": "GREATER_THAN"}}
 
         GameFilter.from_json(criterion).to_q(FilterQueryContext.for_validation())
-        SessionFilter.from_json({"game_filter": criterion}).to_q(
+        PlayerSessionFilter.from_json({"game_filter": criterion}).to_q(
             FilterQueryContext.for_validation()
         )
 
@@ -1576,7 +1582,7 @@ class TestRetiredPlaytimeComparison:
         ("parse", "operand"),
         [
             (parse_game_filter, "playtime"),
-            (parse_session_filter, "game__playtime"),
+            (parse_session_filter, "playthrough__player_game__game__playtime"),
             (parse_purchase_filter, "games__playtime"),
         ],
     )
@@ -1977,14 +1983,12 @@ class TestFilterErrorBoundary:
             parse_game_filter(bad)
 
     def test_between_without_value2_date(self):
-        bad = json.dumps(
-            {"timestamp_start": {"modifier": "BETWEEN", "value": "2024-01-01"}}
-        )
+        bad = json.dumps({"day": {"modifier": "BETWEEN", "value": "2024-01-01"}})
         with pytest.raises(FilterError, match="BETWEEN requires"):
             parse_session_filter(bad)
 
     def test_between_without_value2_duration(self):
-        bad = json.dumps({"duration_total_hours": {"modifier": "BETWEEN", "value": 1}})
+        bad = json.dumps({"duration_hours": {"modifier": "BETWEEN", "value": 1}})
         with pytest.raises(FilterError, match="BETWEEN requires"):
             parse_session_filter(bad)
 
@@ -2061,11 +2065,7 @@ class TestFilterErrorBoundary:
         """An invalid criterion inside a cross-entity sub-filter must raise —
         relation_to_q exercises sub.to_q() during the eager build."""
         bad = json.dumps(
-            {
-                "session_filter": {
-                    "duration_total_hours": {"modifier": "BETWEEN", "value": 1}
-                }
-            }
+            {"session_filter": {"duration_hours": {"modifier": "BETWEEN", "value": 1}}}
         )
         with pytest.raises(FilterError, match="BETWEEN requires"):
             parse_game_filter(bad)
@@ -2092,9 +2092,7 @@ class TestFilterErrorBoundary:
     def test_non_numeric_duration_value(self):
         """A non-numeric duration value makes timedelta() raise TypeError during
         the eager build; the boundary reclassifies it to FilterError."""
-        bad = json.dumps(
-            {"duration_total_hours": {"modifier": "GREATER_THAN", "value": "x"}}
-        )
+        bad = json.dumps({"duration_hours": {"modifier": "GREATER_THAN", "value": "x"}})
         with pytest.raises(FilterError):
             parse_session_filter(bad)
 
@@ -2112,7 +2110,7 @@ class TestFilterErrorBoundary:
             {
                 "session_filter": {
                     "match": "ALL",
-                    "duration_total_hours": {"modifier": "BETWEEN", "value": 1},
+                    "duration_hours": {"modifier": "BETWEEN", "value": 1},
                 }
             }
         )
@@ -2330,7 +2328,7 @@ def _nest_relation(levels: int) -> dict:
     """Build ``levels`` deep of alternating session_filter <-> game_filter relation
     descent (the cyclic DoS vector named in issue #186). The outermost class is
     GameFilter (parse_game_filter), so position 0 must be a key GameFilter accepts
-    (session_filter); SessionFilter at position 1 accepts game_filter; and so on.
+    (session_filter); PlayerSessionFilter at position 1 accepts game_filter; and so on.
     Each nested dict is one from_json frame, so ``levels`` == the recursion depth
     the guard counts. The empty innermost filter keeps the chain valid — an empty
     sub-filter parses and its to_q() does not raise."""
@@ -2586,7 +2584,7 @@ _WRONG_VALUE_BY_CRITERION = {
 
 _ALL_FILTERS = [
     GameFilter,
-    SessionFilter,
+    PlayerSessionFilter,
     PurchaseFilter,
     DeviceFilter,
     PlatformFilter,
@@ -2859,56 +2857,56 @@ class TestFieldComparisonCriterion:
     def test_helper_date_granular_equals(self):
         from django.db.models.functions import TruncDate
 
-        guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
+        guards = Q(started_at__isnull=False) & Q(ended_at__isnull=False)
         assert (
             _field_comparison_to_q(
-                "timestamp_start",
-                "timestamp_end",
+                "started_at",
+                "ended_at",
                 Modifier.EQUALS,
                 "date",
                 left_group="datetime",
                 right_group="datetime",
             )
-            == Q(timestamp_start__date=TruncDate(F("timestamp_end"))) & guards
+            == Q(started_at__date=TruncDate(F("ended_at"))) & guards
         )
 
     def test_helper_date_granular_gte(self):
         from django.db.models.functions import TruncDate
 
-        guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
+        guards = Q(started_at__isnull=False) & Q(ended_at__isnull=False)
         assert (
             _field_comparison_to_q(
-                "timestamp_start",
-                "timestamp_end",
+                "started_at",
+                "ended_at",
                 Modifier.GREATER_THAN_OR_EQUAL,
                 "date",
                 left_group="datetime",
                 right_group="datetime",
             )
-            == Q(timestamp_start__date__gte=TruncDate(F("timestamp_end"))) & guards
+            == Q(started_at__date__gte=TruncDate(F("ended_at"))) & guards
         )
 
     def test_helper_date_granular_not_equals(self):
         from django.db.models.functions import TruncDate
 
-        guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
+        guards = Q(started_at__isnull=False) & Q(ended_at__isnull=False)
         assert (
             _field_comparison_to_q(
-                "timestamp_start",
-                "timestamp_end",
+                "started_at",
+                "ended_at",
                 Modifier.NOT_EQUALS,
                 "date",
                 left_group="datetime",
                 right_group="datetime",
             )
-            == ~Q(timestamp_start__date=TruncDate(F("timestamp_end"))) & guards
+            == ~Q(started_at__date=TruncDate(F("ended_at"))) & guards
         )
 
     def test_to_q_raises_runtime_error(self):
         """to_q() requires model context; callers must use _apply_operators."""
         criterion = FieldComparisonCriterion(
-            left="timestamp_start",
-            right="timestamp_end",
+            left="started_at",
+            right="ended_at",
             modifier=Modifier.LESS_THAN_OR_EQUAL,
             granularity="date",
         )
@@ -2919,14 +2917,14 @@ class TestFieldComparisonCriterion:
         raw = FieldComparisonCriterion(left="a", right="b")
         assert "granularity" not in raw.to_json()
         dated = FieldComparisonCriterion(
-            left="timestamp_start", right="timestamp_end", granularity="date"
+            left="started_at", right="ended_at", granularity="date"
         )
         assert dated.to_json()["granularity"] == "date"
 
     def test_roundtrip_granularity_date(self):
         criterion = FieldComparisonCriterion(
-            left="timestamp_start",
-            right="timestamp_end",
+            left="started_at",
+            right="ended_at",
             modifier=Modifier.EQUALS,
             granularity="date",
         )
@@ -2953,28 +2951,28 @@ class TestFieldComparisonCriterion:
     def test_helper_date_granular_strict_ordering(self):
         from django.db.models.functions import TruncDate
 
-        guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
+        guards = Q(started_at__isnull=False) & Q(ended_at__isnull=False)
         assert (
             _field_comparison_to_q(
-                "timestamp_start",
-                "timestamp_end",
+                "started_at",
+                "ended_at",
                 Modifier.GREATER_THAN,
                 "date",
                 left_group="datetime",
                 right_group="datetime",
             )
-            == Q(timestamp_start__date__gt=TruncDate(F("timestamp_end"))) & guards
+            == Q(started_at__date__gt=TruncDate(F("ended_at"))) & guards
         )
         assert (
             _field_comparison_to_q(
-                "timestamp_start",
-                "timestamp_end",
+                "started_at",
+                "ended_at",
                 Modifier.LESS_THAN,
                 "date",
                 left_group="datetime",
                 right_group="datetime",
             )
-            == Q(timestamp_start__date__lt=TruncDate(F("timestamp_end"))) & guards
+            == Q(started_at__date__lt=TruncDate(F("ended_at"))) & guards
         )
 
     # ── FieldComparisonCriterion.to_q ────────────────────────────────────────
@@ -3066,15 +3064,15 @@ class TestComparisonGroupResolver:
         assert _comparison_group_for(Purchase, "date_purchased") == "date"
 
     def test_datetime_field(self):
-        from games.models import Session
+        from games.models import PlayerSession
 
-        assert _comparison_group_for(Session, "timestamp_start") == "datetime"
+        assert _comparison_group_for(PlayerSession, "started_at") == "datetime"
 
     def test_generated_field_duration(self):
         """GeneratedField (duration_total) resolves via output_field to 'duration'."""
-        from games.models import Session
+        from games.models import PlayerSession
 
-        assert _comparison_group_for(Session, "duration_total") == "duration"
+        assert _comparison_group_for(PlayerSession, "effective_duration") == "duration"
 
     def test_generated_field_number(self):
         """GeneratedField (price_per_game) resolves via output_field to 'number'."""
@@ -3112,10 +3110,10 @@ class TestComparisonGroupResolver:
     # ── excluded columns ────────────────────────────────────────────────────
 
     def test_fk_relation_raises(self):
-        from games.models import Session
+        from games.models import PlayerSession
 
         with pytest.raises(FilterError):
-            _comparison_group_for(Session, "game")
+            _comparison_group_for(PlayerSession, "game")
 
     def test_m2m_relation_raises(self):
         from games.models import Purchase
@@ -3178,14 +3176,14 @@ class TestMaybeGroupFor:
         assert _maybe_group_for(Purchase, "date_purchased") == "date"
 
     def test_datetime_field(self):
-        from games.models import Session
+        from games.models import PlayerSession
 
-        assert _maybe_group_for(Session, "timestamp_start") == "datetime"
+        assert _maybe_group_for(PlayerSession, "started_at") == "datetime"
 
     def test_generated_field_duration(self):
-        from games.models import Session
+        from games.models import PlayerSession
 
-        assert _maybe_group_for(Session, "duration_total") == "duration"
+        assert _maybe_group_for(PlayerSession, "effective_duration") == "duration"
 
     def test_integer_field(self):
         from games.models import Game
@@ -3279,12 +3277,12 @@ class TestComparableColumns:
         """Close the group matrix: datetime (Session) and date (Purchase) carry
         the ordered-only operator set, like number."""
         from common.criteria import _allowed_comparison_modifiers
-        from games.models import Purchase, Session
+        from games.models import PlayerSession, Purchase
 
         ordered = [
             modifier.value for modifier in _allowed_comparison_modifiers("number")
         ]
-        assert self._by_value(Session)["timestamp_end"]["operators"] == ordered
+        assert self._by_value(PlayerSession)["ended_at"]["operators"] == ordered
         assert self._by_value(Purchase)["date_purchased"]["operators"] == ordered
 
     def test_known_game_columns(self):
@@ -3296,14 +3294,14 @@ class TestComparableColumns:
         assert columns["mastered"]["group"] == "bool"
 
     def test_session_datetime_column(self):
-        from games.models import Session
+        from games.models import PlayerSession
 
-        columns = self._by_value(Session)
-        assert columns["timestamp_end"]["group"] == "datetime"
-        assert columns["timestamp_start"]["group"] == "datetime"
-        # verbose_name="Session start"/"Session end" drives the comparison label.
-        assert columns["timestamp_start"]["label"] == "Session Start"
-        assert columns["timestamp_end"]["label"] == "Session End"
+        columns = self._by_value(PlayerSession)
+        assert columns["ended_at"]["group"] == "datetime"
+        assert columns["started_at"]["group"] == "datetime"
+        # No verbose_name: the column name, title-cased, is the label.
+        assert columns["started_at"]["label"] == "Started At"
+        assert columns["ended_at"]["label"] == "Ended At"
 
     def test_purchase_date_columns(self):
         from games.models import Purchase
@@ -3331,10 +3329,10 @@ class TestComparableColumns:
         """Own columns are sorted by label; each FK block is sorted by its column
         label too.  The global list is NOT re-sorted — FK blocks follow own
         columns in _meta declaration order."""
-        from games.models import Session
+        from games.models import PlayerSession
 
-        columns = comparable_columns(Session)
-        own_source = "Session"
+        columns = comparable_columns(PlayerSession)
+        own_source = "Player Session"
         own_labels = [
             entry["label"] for entry in columns if entry["source"] == own_source
         ]
@@ -3355,11 +3353,11 @@ class TestComparableColumnsCrossModel:
     """comparable_columns enumerates related-model columns via forward FK hops."""
 
     def test_session_includes_game_and_device_columns(self):
-        from games.models import Session
+        from games.models import PlayerSession
 
-        columns = comparable_columns(Session)
+        columns = comparable_columns(PlayerSession)
         values = {column["value"] for column in columns}
-        assert "game__year_released" in values
+        assert "playthrough__player_game__game__year_released" in values
         assert "device__name" in values
 
     def test_purchase_includes_both_fk_sources(self):
@@ -3379,21 +3377,21 @@ class TestComparableColumnsCrossModel:
         assert base_game_year["label"].startswith("Base Game: ")
 
     def test_related_labels_are_qualified_and_own_labels_bare(self):
-        from games.models import Session
+        from games.models import PlayerSession
 
-        columns = comparable_columns(Session)
+        columns = comparable_columns(PlayerSession)
         by_value = {column["value"]: column for column in columns}
-        assert by_value["note"]["source"] == "Session"
+        assert by_value["note"]["source"] == "Player Session"
         assert ": " not in by_value["note"]["label"]
-        related = by_value["game__year_released"]
+        related = by_value["playthrough__player_game__game__year_released"]
         assert related["source"] == "Game"
         assert related["label"].startswith("Game: ")
 
     def test_own_columns_first_then_relation_blocks(self):
-        from games.models import Session
+        from games.models import PlayerSession
 
-        columns = comparable_columns(Session)
-        own_source = "Session"
+        columns = comparable_columns(PlayerSession)
+        own_source = "Player Session"
         # Own-model block comes first; FK blocks follow in _meta declaration order.
         first_non_own = next(
             (
@@ -3412,7 +3410,7 @@ class TestComparableColumnsCrossModel:
     def test_m2m_and_reverse_enumerated_as_multivalued(self):
         # #282: M2M + reverse relations are now enumerated as multi-valued operand
         # blocks (marked so the widget offers a quantifier).
-        from games.models import Game, Purchase, Session
+        from games.models import Game, PlayerSession, Purchase
 
         purchase_columns = {c["value"]: c for c in comparable_columns(Purchase)}
         assert "games__name" in purchase_columns
@@ -3427,19 +3425,30 @@ class TestComparableColumnsCrossModel:
 
         # The #282 headline path (Session → game → purchases) is a to-one-prefixed
         # multi-valued operand.
-        session_columns = {c["value"]: c for c in comparable_columns(Session)}
-        assert "game__purchases__date_refunded" in session_columns
-        assert session_columns["game__purchases__date_refunded"]["multivalued"] is True
+        session_columns = {c["value"]: c for c in comparable_columns(PlayerSession)}
+        assert (
+            "playthrough__player_game__game__purchases__date_refunded"
+            in session_columns
+        )
+        assert (
+            session_columns["playthrough__player_game__game__purchases__date_refunded"][
+                "multivalued"
+            ]
+            is True
+        )
 
     def test_self_including_loops_not_enumerated(self):
         # #282 review: a fk__reverse-of-fk path (e.g. Session → game → sessions)
         # fans out a set containing the comparing row itself, so ALL is always
         # vacuously false and ANY is off by the self-row. The pk__in-on-parent form
         # cannot self-exclude, so these paths are not offered as operands.
-        from games.models import Game, Purchase, Session
+        from games.models import Game, PlayerSession, Purchase
 
-        session_values = {c["value"] for c in comparable_columns(Session)}
-        assert not any(v.startswith("game__sessions__") for v in session_values)
+        session_values = {c["value"] for c in comparable_columns(PlayerSession)}
+        assert not any(
+            v.startswith("playthrough__player_game__game__player_games__")
+            for v in session_values
+        )
         assert not any(v.startswith("device__sessions__") for v in session_values)
         # Game → related_game-reverse (addon_purchases) is a self-including loop too.
         game_values = {c["value"] for c in comparable_columns(Game)}
@@ -3450,7 +3459,10 @@ class TestComparableColumnsCrossModel:
             v.startswith("related_game__addon_purchases__") for v in purchase_values
         )
         # But a cross-model path through the same FK prefix is still offered.
-        assert any(v.startswith("game__purchases__") for v in session_values)
+        assert any(
+            v.startswith("playthrough__player_game__game__purchases__")
+            for v in session_values
+        )
         assert any(v.startswith("related_game__purchases__") for v in purchase_values)
 
     def test_platform_and_device_columns_classify_library_owner_relation(self):
@@ -3566,9 +3578,9 @@ class _SessionStub(OperatorFilter):
 
     @classmethod
     def _comparison_model(cls):
-        from games.models import Session
+        from games.models import PlayerSession
 
-        return Session
+        return PlayerSession
 
 
 @pytest.mark.django_db
@@ -3622,18 +3634,15 @@ class TestFieldComparisonWiring:
         stub = _SessionStub(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="timestamp_start",
-                    right="timestamp_end",
+                    left="started_at",
+                    right="ended_at",
                     modifier=Modifier.LESS_THAN_OR_EQUAL,
                     granularity="date",
                 )
             ]
         )
-        guards = Q(timestamp_start__isnull=False) & Q(timestamp_end__isnull=False)
-        assert (
-            stub.to_q()
-            == Q(timestamp_start__date__lte=TruncDate(F("timestamp_end"))) & guards
-        )
+        guards = Q(started_at__isnull=False) & Q(ended_at__isnull=False)
+        assert stub.to_q() == Q(started_at__date__lte=TruncDate(F("ended_at"))) & guards
 
     def test_date_granularity_on_non_temporal_raises(self):
         # Under the new space rules, date space accepts date and datetime
@@ -3662,8 +3671,8 @@ class TestFieldComparisonWiring:
         stub = _SessionStub(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="timestamp_start",
-                    right="timestamp_end",
+                    left="started_at",
+                    right="ended_at",
                     modifier=Modifier.INCLUDES,
                     granularity="date",
                 )
@@ -3901,21 +3910,21 @@ class TestFilterComparisonModels:
             DeviceFilter,
             GameFilter,
             PlatformFilter,
+            PlayerSessionFilter,
             PlaythroughFilter,
             PurchaseFilter,
-            SessionFilter,
         )
         from games.models import (
             Device,
             Game,
             Platform,
+            PlayerSession,
             Playthrough,
             Purchase,
-            Session,
         )
 
         assert GameFilter()._comparison_model() is Game
-        assert SessionFilter()._comparison_model() is Session
+        assert PlayerSessionFilter()._comparison_model() is PlayerSession
         assert PurchaseFilter()._comparison_model() is Purchase
         assert DeviceFilter()._comparison_model() is Device
         assert PlatformFilter()._comparison_model() is Platform
@@ -3980,19 +3989,19 @@ class TestFilterComparisonModels:
 
     @pytest.mark.django_db
     def test_session_filter_comparison_resolves(self):
-        from games.filters import SessionFilter
+        from games.filters import PlayerSessionFilter
 
-        sf = SessionFilter(
+        sf = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="timestamp_end",
-                    right="timestamp_start",
+                    left="ended_at",
+                    right="started_at",
                     modifier=Modifier.LESS_THAN,
                 )
             ]
         )
-        guards = Q(timestamp_end__isnull=False) & Q(timestamp_start__isnull=False)
-        assert sf.to_q() == Q(timestamp_end__lt=F("timestamp_start")) & guards
+        guards = Q(ended_at__isnull=False) & Q(started_at__isnull=False)
+        assert sf.to_q() == Q(ended_at__lt=F("started_at")) & guards
 
 
 # ── T4b — comparison spaces ───────────────────────────────────────────────────
@@ -4001,11 +4010,11 @@ class TestFilterComparisonModels:
 @pytest.mark.django_db
 class TestComparisonSpaces:
     def test_year_space_accepts_two_datetimes(self):
-        filter_object = SessionFilter(
+        filter_object = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="timestamp_start",
-                    right="timestamp_end",
+                    left="started_at",
+                    right="ended_at",
                     modifier=Modifier.EQUALS,
                     granularity="year",
                 )
@@ -4041,11 +4050,11 @@ class TestComparisonSpaces:
             filter_object.to_q()
 
     def test_year_space_rejects_string_operand(self):
-        filter_object = SessionFilter(
+        filter_object = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
                     left="note",
-                    right="timestamp_start",
+                    right="started_at",
                     modifier=Modifier.EQUALS,
                     granularity="year",
                 )
@@ -4055,11 +4064,11 @@ class TestComparisonSpaces:
             filter_object.to_q()
 
     def test_non_raw_space_rejects_containment_modifiers(self):
-        filter_object = SessionFilter(
+        filter_object = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="timestamp_start",
-                    right="timestamp_end",
+                    left="started_at",
+                    right="ended_at",
                     modifier=Modifier.INCLUDES,
                     granularity="year",
                 )
@@ -4071,8 +4080,8 @@ class TestComparisonSpaces:
     def test_from_json_accepts_year_granularity(self):
         parsed = FieldComparisonCriterion.from_json(
             {
-                "left": "timestamp_start",
-                "right": "timestamp_end",
+                "left": "started_at",
+                "right": "ended_at",
                 "modifier": "EQUALS",
                 "granularity": "year",
             }
@@ -4092,8 +4101,8 @@ class TestComparisonSpaces:
 
     def test_year_granularity_roundtrips_json(self):
         criterion = FieldComparisonCriterion(
-            left="timestamp_start",
-            right="timestamp_end",
+            left="started_at",
+            right="ended_at",
             modifier=Modifier.EQUALS,
             granularity="year",
         )
@@ -4173,47 +4182,46 @@ class TestFieldComparisonEndToEnd:
         )
         assert result == {purchase_a}
 
-    def test_session_end_before_start_same_day(self):
-        """timestamp_end < timestamp_start finds X (same calendar day, end 22:00 < start 23:00).
+    def test_session_recorded_before_it_started_same_day(self):
+        """created_at < started_at finds X (same day, recorded 22:00, start 23:00).
 
-        Y (normal order) is excluded. Proves raw-datetime comparison, not date-truncated:
-        __date truncation would make both timestamps equal on the same day and miss X.
+        Y (recorded after it started) is excluded. Proves raw-datetime comparison,
+        not date-truncated: __date truncation would make both instants equal on
+        the same day and miss X.
         """
         import datetime
 
-        from games.filters import SessionFilter
-        from games.models import Session
+        from games.filters import PlayerSessionFilter
+        from games.models import PlayerSession
 
         _, game = self._make_platform_and_game()
 
-        # X: end BEFORE start on the same calendar day — must be returned
-        session_x = Session.objects.create(
-            game=game,
-            timestamp_start=datetime.datetime(
-                2024, 6, 1, 23, 0, 0, tzinfo=datetime.UTC
-            ),
-            timestamp_end=datetime.datetime(2024, 6, 1, 22, 0, 0, tzinfo=datetime.UTC),
+        # X: recorded BEFORE it started, on the same calendar day — must be returned
+        session_x = session_row(
+            game,
+            started_at=datetime.datetime(2024, 6, 1, 23, 0, 0, tzinfo=datetime.UTC),
+            created_at=datetime.datetime(2024, 6, 1, 22, 0, 0, tzinfo=datetime.UTC),
         )
-        # Y: normal session (end after start) — must NOT be returned
-        Session.objects.create(
-            game=game,
-            timestamp_start=datetime.datetime(
-                2024, 6, 2, 10, 0, 0, tzinfo=datetime.UTC
-            ),
-            timestamp_end=datetime.datetime(2024, 6, 2, 12, 0, 0, tzinfo=datetime.UTC),
+        # Y: recorded after it started — must NOT be returned
+        session_row(
+            game,
+            started_at=datetime.datetime(2024, 6, 2, 10, 0, 0, tzinfo=datetime.UTC),
+            created_at=datetime.datetime(2024, 6, 2, 12, 0, 0, tzinfo=datetime.UTC),
         )
 
-        session_filter = SessionFilter(
+        session_filter = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="timestamp_end",
-                    right="timestamp_start",
+                    left="created_at",
+                    right="started_at",
                     modifier=Modifier.LESS_THAN,
                 )
             ]
         )
         result = set(
-            Session.objects.filter(session_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+            PlayerSession.objects.filter(
+                session_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)
+            )
         )
         assert result == {session_x}
 
@@ -4226,39 +4234,37 @@ class TestFieldComparisonEndToEnd:
         """
         import datetime
 
-        from games.filters import SessionFilter
-        from games.models import Session
+        from games.filters import PlayerSessionFilter
+        from games.models import PlayerSession
 
         _, game = self._make_platform_and_game()
 
-        same = Session.objects.create(
-            game=game,
-            timestamp_start=datetime.datetime(
-                2024, 6, 1, 10, 0, 0, tzinfo=datetime.UTC
-            ),
-            timestamp_end=datetime.datetime(2024, 6, 1, 14, 0, 0, tzinfo=datetime.UTC),
+        same = session_row(
+            game,
+            started_at=datetime.datetime(2024, 6, 1, 10, 0, 0, tzinfo=datetime.UTC),
+            ended_at=datetime.datetime(2024, 6, 1, 14, 0, 0, tzinfo=datetime.UTC),
         )
-        cross = Session.objects.create(
-            game=game,
-            timestamp_start=datetime.datetime(
-                2024, 6, 1, 10, 0, 0, tzinfo=datetime.UTC
-            ),
-            timestamp_end=datetime.datetime(2024, 6, 3, 10, 0, 0, tzinfo=datetime.UTC),
+        cross = session_row(
+            game,
+            started_at=datetime.datetime(2024, 6, 1, 10, 0, 0, tzinfo=datetime.UTC),
+            ended_at=datetime.datetime(2024, 6, 3, 10, 0, 0, tzinfo=datetime.UTC),
         )
 
         def run(modifier: Modifier, granularity: ComparisonGranularity) -> set:
-            session_filter = SessionFilter(
+            session_filter = PlayerSessionFilter(
                 field_comparisons=[
                     FieldComparisonCriterion(
-                        left="timestamp_start",
-                        right="timestamp_end",
+                        left="started_at",
+                        right="ended_at",
                         modifier=modifier,
                         granularity=granularity,
                     )
                 ]
             )
             return set(
-                Session.objects.filter(session_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+                PlayerSession.objects.filter(
+                    session_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)
+                )
             )
 
         # date-granular EQUALS: only the same-calendar-day session.
@@ -4270,52 +4276,44 @@ class TestFieldComparisonEndToEnd:
         assert run(Modifier.LESS_THAN, "date") == {cross}
 
     def test_generated_field_as_comparison_operand(self):
-        """duration_total > duration_manual finds only P.
+        """effective_duration == stated_duration finds the row that states one.
 
-        P has timestamp_start/end 1 hour apart and duration_manual=0, so
-        duration_total (1 h) > duration_manual (0). Q has no timestamp_end
-        (duration_calculated=0) and duration_manual=2 h, so duration_total
-        equals duration_manual and is NOT strictly greater.
+        The generated column resolves through its output field. A Timed
+        row states no duration, so the NULL guard leaves it out.
         """
         import datetime
         from datetime import timedelta
 
-        from games.filters import SessionFilter
-        from games.models import Session
+        from games.filters import PlayerSessionFilter
 
         _, game = self._make_platform_and_game()
 
-        # P: 1-hour calc, 0 manual → duration_total=1h > duration_manual=0
-        session_p = Session.objects.create(
-            game=game,
-            timestamp_start=datetime.datetime(
-                2024, 7, 1, 10, 0, 0, tzinfo=datetime.UTC
-            ),
-            timestamp_end=datetime.datetime(2024, 7, 1, 11, 0, 0, tzinfo=datetime.UTC),
-            duration_manual=timedelta(0),
+        session_row(
+            game,
+            started_at=datetime.datetime(2024, 7, 1, 10, 0, 0, tzinfo=datetime.UTC),
+            ended_at=datetime.datetime(2024, 7, 1, 11, 0, 0, tzinfo=datetime.UTC),
         )
-        # Q: no timestamp_end (calculated=0), 2h manual → duration_total=2h == duration_manual=2h
-        Session.objects.create(
-            game=game,
-            timestamp_start=datetime.datetime(
-                2024, 7, 2, 10, 0, 0, tzinfo=datetime.UTC
-            ),
+        stated = session_row(
+            game,
+            started_at=datetime.datetime(2024, 7, 2, 10, 0, 0, tzinfo=datetime.UTC),
             duration_manual=timedelta(hours=2),
         )
 
-        session_filter = SessionFilter(
+        session_filter = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="duration_total",
-                    right="duration_manual",
-                    modifier=Modifier.GREATER_THAN,
+                    left="effective_duration",
+                    right="stated_duration",
+                    modifier=Modifier.EQUALS,
                 )
             ]
         )
         result = set(
-            Session.objects.filter(session_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+            PlayerSession.objects.filter(
+                session_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)
+            )
         )
-        assert result == {session_p}
+        assert result == {stated}
 
     def test_unknown_right_column_raises(self):
         """An unknown right-operand raises FilterError via to_q()."""
@@ -4635,8 +4633,8 @@ class TestFieldComparisonEndToEnd:
         """
         from django.utils import timezone
 
-        from games.filters import SessionFilter
-        from games.models import Device, Game, Platform, Session
+        from games.filters import PlayerSessionFilter
+        from games.models import Device, Game, Platform, PlayerSession
 
         platform, _ = Platform.objects.get_or_create(
             name="CrossModelIncludesTest", icon="crossmodelincludestest"
@@ -4645,22 +4643,22 @@ class TestFieldComparisonEndToEnd:
         device_with_empty_name = Device.objects.create(name="", type=Device.UNKNOWN)
 
         # HIT: note is non-empty; device.name is "" → "" is substring of note
-        session_hit = Session.objects.create(
-            timestamp_start=timezone.now(),
+        session_hit = session_row(
+            game,
+            started_at=timezone.now(),
             note="some note",
-            game=game,
             device=device_with_empty_name,
         )
 
         # NULL guard: no device → device__name is NULL → excluded
-        session_no_device = Session.objects.create(
-            timestamp_start=timezone.now(),
+        session_no_device = session_row(
+            game,
+            started_at=timezone.now(),
             note="also non-empty",
-            game=game,
             device=None,
         )
 
-        session_filter = SessionFilter(
+        session_filter = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
                     left="note",
@@ -4670,7 +4668,9 @@ class TestFieldComparisonEndToEnd:
             ]
         )
         result = set(
-            Session.objects.filter(session_filter.to_q(UNRESTRICTED_FILTER_CONTEXT))
+            PlayerSession.objects.filter(
+                session_filter.to_q(UNRESTRICTED_FILTER_CONTEXT)
+            )
         )
         assert session_hit in result
         assert session_no_device not in result
@@ -4694,20 +4694,18 @@ class TestStrictNullSemantics:
     def session_without_device(self, db, game):
         from django.utils import timezone
 
-        from games.models import Session
-
-        return Session.objects.create(
-            timestamp_start=timezone.now(),
+        return session_row(
+            game,
+            started_at=timezone.now(),
             note="orphan",
-            game=game,
         )
 
     def test_not_equals_excludes_null_operand_rows_lookup_side(
         self, session_without_device
     ):
-        from games.models import Session
+        from games.models import PlayerSession
 
-        q = SessionFilter(
+        q = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
                     left="device__name",
@@ -4716,14 +4714,14 @@ class TestStrictNullSemantics:
                 )
             ]
         ).to_q()
-        assert session_without_device not in Session.objects.filter(q)
+        assert session_without_device not in PlayerSession.objects.filter(q)
 
     def test_not_equals_excludes_null_operand_rows_expression_side(
         self, session_without_device
     ):
-        from games.models import Session
+        from games.models import PlayerSession
 
-        q = SessionFilter(
+        q = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
                     left="note",
@@ -4732,63 +4730,63 @@ class TestStrictNullSemantics:
                 )
             ]
         ).to_q()
-        assert session_without_device not in Session.objects.filter(q)
+        assert session_without_device not in PlayerSession.objects.filter(q)
 
     def test_not_equals_is_side_symmetric(self, db, game, session_without_device):
         from django.utils import timezone
 
-        from games.models import Device, Session
+        from games.models import Device, PlayerSession
 
         device = Device.objects.create(library=game.library, name="Owned Device")
-        expected = Session.objects.create(
-            timestamp_start=timezone.now(),
+        expected = session_row(
+            game,
+            started_at=timezone.now(),
             note="differs",
-            game=game,
             device=device,
         )
-        left_form = SessionFilter(
+        left_form = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
                     left="device__name", right="note", modifier=Modifier.NOT_EQUALS
                 )
             ]
         ).to_q()
-        right_form = SessionFilter(
+        right_form = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
                     left="note", right="device__name", modifier=Modifier.NOT_EQUALS
                 )
             ]
         ).to_q()
-        assert list(Session.objects.filter(left_form)) == [expected]
-        assert list(Session.objects.filter(right_form)) == [expected]
+        assert list(PlayerSession.objects.filter(left_form)) == [expected]
+        assert list(PlayerSession.objects.filter(right_form)) == [expected]
 
     def test_same_model_not_equals_now_excludes_null_rows(self, db, game):
         # Behavior change pinned: previously included (NULL counted as "not equal").
         from django.utils import timezone
 
-        from games.models import Session
+        from games.models import PlayerSession
 
-        session = Session.objects.create(
-            game=game,
-            timestamp_start=timezone.now(),
-            timestamp_end=None,
+        session = session_row(
+            game,
+            started_at=timezone.now(),
+            ended_at=None,
         )
-        q = SessionFilter(
+        q = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="timestamp_end",
-                    right="timestamp_start",
+                    left="ended_at",
+                    right="started_at",
                     modifier=Modifier.NOT_EQUALS,
                 )
             ]
         ).to_q()
-        assert session not in Session.objects.filter(q)
+        assert session not in PlayerSession.objects.filter(q)
 
     def test_equals_includes_null_guards(self):
         q = _field_comparison_to_q(
-            "timestamp_start",
-            "timestamp_end",
+            "started_at",
+            "ended_at",
             Modifier.EQUALS,
             "raw",
             left_group="datetime",
@@ -4798,8 +4796,8 @@ class TestStrictNullSemantics:
 
     def test_not_equals_includes_null_guards(self):
         q = _field_comparison_to_q(
-            "timestamp_start",
-            "timestamp_end",
+            "started_at",
+            "ended_at",
             Modifier.NOT_EQUALS,
             "raw",
             left_group="datetime",
@@ -4813,76 +4811,76 @@ class TestYearProjection:
         # Session started in the game's release year — the #169 headline query.
         from datetime import UTC, datetime
 
-        from games.models import Game, Platform, Session
+        from games.models import Game, Platform, PlayerSession
 
         platform, _ = Platform.objects.get_or_create(
             name="YearProjTest", icon="yearprojtest"
         )
         game = Game.objects.create(name="Doom", year_released=2020, platform=platform)
-        hit = Session.objects.create(
-            game=game,
-            timestamp_start=datetime(2020, 6, 1, tzinfo=UTC),
+        hit = session_row(
+            game,
+            started_at=datetime(2020, 6, 1, tzinfo=UTC),
         )
-        miss = Session.objects.create(
-            game=game,
-            timestamp_start=datetime(2021, 6, 1, tzinfo=UTC),
+        miss = session_row(
+            game,
+            started_at=datetime(2021, 6, 1, tzinfo=UTC),
         )
-        q = SessionFilter(
+        q = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="timestamp_start",
-                    right="game__year_released",
+                    left="started_at",
+                    right="playthrough__player_game__game__year_released",
                     modifier=Modifier.EQUALS,
                     granularity="year",
                 )
             ]
         ).to_q()
-        results = Session.objects.filter(q)
+        results = PlayerSession.objects.filter(q)
         assert hit in results and miss not in results
 
     def test_year_space_number_left_temporal_right(self, db):
         # Symmetric: number on the lookup side, temporal behind F().
         from datetime import UTC, datetime
 
-        from games.models import Game, Platform, Session
+        from games.models import Game, Platform, PlayerSession
 
         platform, _ = Platform.objects.get_or_create(
             name="YearProjTest", icon="yearprojtest"
         )
         game = Game.objects.create(name="Doom", year_released=2020, platform=platform)
-        hit = Session.objects.create(
-            game=game,
-            timestamp_start=datetime(2020, 6, 1, tzinfo=UTC),
+        hit = session_row(
+            game,
+            started_at=datetime(2020, 6, 1, tzinfo=UTC),
         )
-        q = SessionFilter(
+        q = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="game__year_released",
-                    right="timestamp_start",
+                    left="playthrough__player_game__game__year_released",
+                    right="started_at",
                     modifier=Modifier.EQUALS,
                     granularity="year",
                 )
             ]
         ).to_q()
-        assert hit in Session.objects.filter(q)
+        assert hit in PlayerSession.objects.filter(q)
 
     def test_year_projection_datetime_to_year_lookup(self):
         """'year' granularity: datetime on left produces __year suffix."""
         q = _field_comparison_to_q(
-            "timestamp_start",
-            "timestamp_end",
+            "started_at",
+            "ended_at",
             Modifier.EQUALS,
             "year",
             left_group="datetime",
             right_group="datetime",
         )
-        assert "timestamp_start__year" in str(q)
+        assert "started_at__year" in str(q)
 
     def test_year_projection_number_left_temporal_right(self):
         """'year' granularity: number left is unchanged; temporal right uses ExtractYear."""
         q = _field_comparison_to_q(
             "year_released",
-            "timestamp_start",
+            "started_at",
             Modifier.EQUALS,
             "year",
             left_group="number",
@@ -4896,7 +4894,7 @@ class TestYearProjection:
     def test_year_projection_datetime_left_number_right(self):
         """'year' granularity: datetime left gets __year; number right stays plain F."""
         q = _field_comparison_to_q(
-            "timestamp_start",
+            "started_at",
             "year_released",
             Modifier.EQUALS,
             "year",
@@ -4904,7 +4902,7 @@ class TestYearProjection:
             right_group="number",
         )
         # datetime left: __year lookup suffix
-        assert "timestamp_start__year" in str(q)
+        assert "started_at__year" in str(q)
         # number right: no ExtractYear wrapper
         assert "ExtractYear" not in str(q)
 
@@ -4983,7 +4981,7 @@ class TestFilterFieldDescriptors:
 
     ALL_FILTERS = (
         GameFilter,
-        SessionFilter,
+        PlayerSessionFilter,
         PurchaseFilter,
         DeviceFilter,
         PlatformFilter,
@@ -5146,28 +5144,28 @@ class TestFilterFieldHandlers:
     def test_duration_hours_equals_bucket(self):
         from datetime import timedelta
 
-        handler = duration_hours_handler("duration_total")
+        handler = duration_hours_handler("effective_duration")
         assert handler(IntCriterion(value=4, modifier=Modifier.EQUALS)) == Q(
-            duration_total__gte=timedelta(hours=4),
-            duration_total__lt=timedelta(hours=5),
+            effective_duration__gte=timedelta(hours=4),
+            effective_duration__lt=timedelta(hours=5),
         )
 
     def test_duration_hours_between_passes_value2(self):
         # The refactor reads value2 via getattr — confirm it actually flows through.
         from datetime import timedelta
 
-        handler = duration_hours_handler("duration_total")
+        handler = duration_hours_handler("effective_duration")
         assert handler(IntCriterion(value=1, value2=5, modifier=Modifier.BETWEEN)) == Q(
-            duration_total__gte=timedelta(hours=1),
-            duration_total__lte=timedelta(hours=5),
+            effective_duration__gte=timedelta(hours=1),
+            effective_duration__lte=timedelta(hours=5),
         )
 
     def test_bool_isnull_handler_direct(self):
-        assert bool_isnull_handler("timestamp_end")(BoolCriterion(value=True)) == Q(
-            timestamp_end__isnull=True
+        assert bool_isnull_handler("ended_at")(BoolCriterion(value=True)) == Q(
+            ended_at__isnull=True
         )
-        assert bool_isnull_handler("timestamp_end")(BoolCriterion(value=False)) == Q(
-            timestamp_end__isnull=False
+        assert bool_isnull_handler("ended_at")(BoolCriterion(value=False)) == Q(
+            ended_at__isnull=False
         )
 
     def test_bool_isnull_handler_invert(self):
@@ -5187,16 +5185,14 @@ class TestFilterFieldHandlers:
 
     # ── wiring: the field maps to the intended handler via the generic to_q ──
 
-    def test_is_active_wired(self):
-        assert SessionFilter(is_active=BoolCriterion(value=True)).to_q() == Q(
-            timestamp_end__isnull=True
+    def test_is_running_wired(self):
+        running = Q(timing_mode="timed", ended_at__isnull=True)
+        assert (
+            PlayerSessionFilter(is_running=BoolCriterion(value=True)).to_q() == running
         )
-
-    def test_is_manual_wired(self):
-        from datetime import timedelta
-
-        assert SessionFilter(is_manual=BoolCriterion(value=True)).to_q() == ~Q(
-            duration_manual=timedelta(0)
+        assert (
+            PlayerSessionFilter(is_running=BoolCriterion(value=False)).to_q()
+            == ~running
         )
 
     def test_is_refunded_wired(self):
@@ -5250,9 +5246,9 @@ class TestPerFilterSearchColumns:
     # filter class → the icontains columns its ``search`` OR's over, in order.
     SEARCH_COLUMNS: ClassVar[dict[type[OperatorFilter], tuple[str, ...]]] = {
         GameFilter: ("name", "sort_name", "platform__name"),
-        SessionFilter: (
-            "game__name",
-            "game__platform__name",
+        PlayerSessionFilter: (
+            "playthrough__player_game__game__name",
+            "playthrough__player_game__game__platform__name",
             "device__name",
             "device__type",
         ),
@@ -5318,7 +5314,7 @@ class TestValueTypeBoundaryIntegration:
 
     @pytest.mark.django_db
     def test_api_list_returns_400_on_bad_value(self, auth_client):
-        bad = json.dumps({"timestamp_start": {"modifier": "EQUALS", "value": "nope"}})
+        bad = json.dumps({"started_at": {"modifier": "EQUALS", "value": "nope"}})
         response = auth_client.get("/api/session/", {"filter": bad})
         assert response.status_code == 400
 
@@ -5411,17 +5407,17 @@ class TestFieldMetadata:
         assert entry["choices"] == []
         assert entry["relations"] == []
 
-    def test_session_timestamp_field_labels(self):
-        # timestamp_start/end carry explicit FilterField labels so the field
-        # picker reads "Session Start"/"Session End" rather than the title-cased
-        # field name "Timestamp Start"/"Timestamp End".
-        by_name = self._by_name(SessionFilter)
-        assert by_name["timestamp_start"]["label"] == "Session Start"
-        assert by_name["timestamp_end"]["label"] == "Session End"
+    def test_session_endpoint_field_labels(self):
+        # started/ended carry explicit FilterField labels so the field
+        # picker reads the projection's words, not "Started At".
+        by_name = self._by_name(PlayerSessionFilter)
+        assert by_name["started"]["label"] == "Started"
+        assert by_name["ended"]["label"] == "Ended"
+        assert by_name["day"]["label"] == "Day"
 
     def test_aggregate_scope_model_names_the_reduced_relation(self):
         by_name = self._by_name(GameFilter)
-        assert by_name["session_count"]["scope_model"] == "session"
+        assert by_name["session_count"]["scope_model"] == "playersession"
         assert by_name["purchase_price_total"]["scope_model"] == "purchase"
         assert by_name["playthrough_count"]["scope_model"] == "playthrough"
 
@@ -5441,7 +5437,7 @@ class TestFieldMetadata:
     def test_reachable_models_include_scope_targets(self):
         from games.filters import reachable_models
 
-        for root_model in ("game", "session", "purchase", "device", "platform"):
+        for root_model in ("game", "playersession", "purchase", "device", "platform"):
             reachable = reachable_models(root_model)
             for filter_cls in reachable.values():
                 for entry in field_metadata(filter_cls):
@@ -5454,7 +5450,11 @@ class TestFieldMetadata:
         assert entry["choices"] == []
         assert entry["nullable"] is False
         assert entry["relations"] == [
-            {"field": "session_filter", "filter": "SessionFilter", "model": "Session"}
+            {
+                "field": "session_filter",
+                "filter": "PlayerSessionFilter",
+                "model": "PlayerSession",
+            }
         ]
 
     def test_static_choices_game_status(self):
@@ -5506,7 +5506,7 @@ class TestFieldMetadata:
         # Both session facets reach the target's own NOT NULL id through the
         # relation, so nullability comes from the hop: device is optional on a
         # session, game is not.
-        session_fields = self._by_name(SessionFilter)
+        session_fields = self._by_name(PlayerSessionFilter)
         assert session_fields["device"]["nullable"] is True
         assert session_fields["game"]["nullable"] is False
 
@@ -5526,15 +5526,18 @@ class TestFieldMetadata:
         from common.criteria import FilterField
 
         assert GameFilter.fields["platform"].lookup == "platform__id"
-        assert SessionFilter.fields["game"].lookup == "game__id"
-        assert SessionFilter.fields["device"].lookup == "device_id"
+        assert (
+            PlayerSessionFilter.fields["game"].lookup
+            == "playthrough__player_game__game__id"
+        )
+        assert PlayerSessionFilter.fields["device"].lookup == "device_id"
         # default label fallback is the title-cased name
         assert self._by_name(GameFilter)["name"]["label"] == "Name"
         # a FilterField.label override would take precedence (plumbing check)
         assert FilterField(lookup="x", label="Custom").label == "Custom"
 
     def test_resolve_model_field_descent_and_transform(self):
-        from games.models import Game, Platform, Session
+        from games.models import Game, Platform, PlayerSession
 
         # multi-hop FK descent reaches the terminal related-model field
         assert _resolve_model_field(
@@ -5542,8 +5545,8 @@ class TestFieldMetadata:
         ) is Platform._meta.get_field("group")
         # trailing transform is ignored; stops at the first non-relation field
         assert _resolve_model_field(
-            Session, "timestamp_start__date"
-        ) is Session._meta.get_field("timestamp_start")
+            PlayerSession, "started_at__date"
+        ) is PlayerSession._meta.get_field("started_at")
         # single-segment FK attname resolves to the FK itself
         assert _resolve_model_field(Game, "platform_id") is Game._meta.get_field(
             "platform"
@@ -5557,7 +5560,7 @@ class TestFieldMetadata:
         assert _resolve_model_field(Game, "sessions") is None
 
     def test_lookup_is_nullable_ors_over_the_whole_path(self):
-        from games.models import Game, Session
+        from games.models import Game, PlayerSession
 
         # terminal column's own nullability, with no relation hop in the path
         assert _lookup_is_nullable(Game, "year_released") is True
@@ -5568,7 +5571,10 @@ class TestFieldMetadata:
         assert _lookup_is_nullable(Game, "platform__id") is True
         assert _lookup_is_nullable(Game, "platform__group") is True
         # a NOT NULL hop does not
-        assert _lookup_is_nullable(Session, "game__id") is False
+        assert (
+            _lookup_is_nullable(PlayerSession, "playthrough__player_game__game__id")
+            is False
+        )
 
     def test_lookup_is_nullable_false_for_no_column(self):
         from games.models import Game
@@ -5644,7 +5650,7 @@ class TestFieldMetadata:
     def test_required_session_game_drops_presence_modifiers(self):
         from common.criteria import Modifier
 
-        game = self._by_name(SessionFilter)["game"]
+        game = self._by_name(PlayerSessionFilter)["game"]
 
         assert game["nullable"] is False
         assert Modifier.IS_NULL.value not in game["modifiers"]
@@ -5765,7 +5771,7 @@ class TestStringCriterionIsNullAgainstDB:
     def _seed_sessions(self):
         import datetime
 
-        from games.models import Device, Game, Platform, Session
+        from games.models import Device, Game, Platform
 
         platform, _ = Platform.objects.get_or_create(name="Test Platform", icon="test")
         game, _ = Game.objects.get_or_create(
@@ -5775,32 +5781,34 @@ class TestStringCriterionIsNullAgainstDB:
         start = datetime.datetime(2025, 1, 1, 10, 0, 0, tzinfo=datetime.UTC)
         end = datetime.datetime(2025, 1, 1, 11, 0, 0, tzinfo=datetime.UTC)
 
-        empty_note_session_1 = Session.objects.create(
-            game=game, device=device, timestamp_start=start, timestamp_end=end, note=""
+        empty_note_session_1 = session_row(
+            game, device=device, started_at=start, ended_at=end, note=""
         )
-        empty_note_session_2 = Session.objects.create(
-            game=game,
+        empty_note_session_2 = session_row(
+            game,
             device=device,
-            timestamp_start=start + datetime.timedelta(days=1),
-            timestamp_end=end + datetime.timedelta(days=1),
+            started_at=start + datetime.timedelta(days=1),
+            ended_at=end + datetime.timedelta(days=1),
             note="",
         )
-        nonempty_note_session = Session.objects.create(
-            game=game,
+        nonempty_note_session = session_row(
+            game,
             device=device,
-            timestamp_start=start + datetime.timedelta(days=2),
-            timestamp_end=end + datetime.timedelta(days=2),
+            started_at=start + datetime.timedelta(days=2),
+            ended_at=end + datetime.timedelta(days=2),
             note="Great session",
         )
         return empty_note_session_1, empty_note_session_2, nonempty_note_session
 
     def test_is_null_matches_blank_string_sessions(self):
         empty_1, empty_2, nonempty = self._seed_sessions()
-        from games.models import Session
+        from games.models import PlayerSession
 
         criterion = StringCriterion(value="", modifier=Modifier.IS_NULL)
         matching_ids = set(
-            Session.objects.filter(criterion.to_q("note")).values_list("id", flat=True)
+            PlayerSession.objects.filter(criterion.to_q("note")).values_list(
+                "id", flat=True
+            )
         )
         assert empty_1.id in matching_ids
         assert empty_2.id in matching_ids
@@ -5808,11 +5816,13 @@ class TestStringCriterionIsNullAgainstDB:
 
     def test_not_null_matches_nonempty_string_sessions(self):
         empty_1, empty_2, nonempty = self._seed_sessions()
-        from games.models import Session
+        from games.models import PlayerSession
 
         criterion = StringCriterion(value="", modifier=Modifier.NOT_NULL)
         matching_ids = set(
-            Session.objects.filter(criterion.to_q("note")).values_list("id", flat=True)
+            PlayerSession.objects.filter(criterion.to_q("note")).values_list(
+                "id", flat=True
+            )
         )
         assert nonempty.id in matching_ids
         assert empty_1.id not in matching_ids
@@ -5821,17 +5831,17 @@ class TestStringCriterionIsNullAgainstDB:
     def test_is_null_and_not_null_partition_sessions(self):
         """IS_NULL and NOT_NULL together must cover exactly every session created here."""
         empty_1, empty_2, nonempty = self._seed_sessions()
-        from games.models import Session
+        from games.models import PlayerSession
 
         is_null_q = StringCriterion(value="", modifier=Modifier.IS_NULL).to_q("note")
         not_null_q = StringCriterion(value="", modifier=Modifier.NOT_NULL).to_q("note")
         seeded_ids = {empty_1.id, empty_2.id, nonempty.id}
         is_null_ids = (
-            set(Session.objects.filter(is_null_q).values_list("id", flat=True))
+            set(PlayerSession.objects.filter(is_null_q).values_list("id", flat=True))
             & seeded_ids
         )
         not_null_ids = (
-            set(Session.objects.filter(not_null_q).values_list("id", flat=True))
+            set(PlayerSession.objects.filter(not_null_q).values_list("id", flat=True))
             & seeded_ids
         )
         assert is_null_ids | not_null_ids == seeded_ids
@@ -5947,7 +5957,7 @@ class TestScopedAggregatesAgainstDB:
         import datetime
         from datetime import timedelta
 
-        from games.models import Device, Game, Platform, Session
+        from games.models import Device, Game, Platform
 
         platform = Platform.objects.create(name="PC")
         deck = Device.objects.create(name="Steam Deck", type="Handheld")
@@ -5960,11 +5970,11 @@ class TestScopedAggregatesAgainstDB:
 
         def make_session(game, device, index, manual_hours=0):
             begin = first_start + timedelta(days=index)
-            return Session.objects.create(
-                game=game,
+            return session_row(
+                game,
                 device=device,
-                timestamp_start=begin,
-                timestamp_end=begin + timedelta(hours=1),
+                started_at=begin,
+                ended_at=begin + timedelta(hours=1),
                 duration_manual=timedelta(hours=manual_hours),
             )
 
@@ -6058,15 +6068,15 @@ class TestScopedAggregatesAgainstDB:
         }
 
     def test_scoped_duration_sum(self):
-        """A duration-unit aggregate (manual playtime hours) scoped to a device:
-        deck_heavy has 3h manual on the deck but 7h in total, so EQUALS 3 only
-        matches with the scope applied."""
+        """A duration-unit aggregate (session playtime hours) scoped to a device:
+        deck_heavy states 6h on the deck (three Corrected rows of 2h) but 11h in
+        total, so EQUALS 6 only matches with the scope applied."""
         data = self._seed_sessions()
         scope = {"device": {"value": [data["deck"].id], "modifier": "INCLUDES"}}
         scoped = {
-            "manual_playtime_hours": {"value": 3, "modifier": "EQUALS", "scope": scope}
+            "session_playtime_hours": {"value": 6, "modifier": "EQUALS", "scope": scope}
         }
-        unscoped = {"manual_playtime_hours": {"value": 3, "modifier": "EQUALS"}}
+        unscoped = {"session_playtime_hours": {"value": 6, "modifier": "EQUALS"}}
         assert self._games_matching(scoped) == {data["deck_heavy"]}
         assert self._games_matching(unscoped) == set()
 
@@ -6131,12 +6141,12 @@ class TestScopedAggregateJSON:
         }
 
     def test_scope_deserializes_to_the_accessor_filter_class(self):
-        from games.filters import GameFilter, SessionFilter
+        from games.filters import GameFilter, PlayerSessionFilter
 
         game_filter = GameFilter.from_json(self._scoped_filter_json())
         assert game_filter is not None
         assert game_filter.session_count is not None
-        assert isinstance(game_filter.session_count.scope, SessionFilter)
+        assert isinstance(game_filter.session_count.scope, PlayerSessionFilter)
         assert game_filter.session_count.scope.device is not None
 
     def test_scoped_aggregate_round_trips(self):
@@ -6300,7 +6310,7 @@ class TestScopedAggregateReducers:
         import datetime
         from datetime import timedelta
 
-        from games.models import Device, Game, Platform, Session
+        from games.models import Device, Game, Platform
 
         platform = Platform.objects.create(name="PC")
         deck = Device.objects.create(name="Steam Deck", type="Handheld")
@@ -6311,11 +6321,11 @@ class TestScopedAggregateReducers:
 
         def make_session(game, device, index, hours):
             begin = first_start + timedelta(days=index)
-            return Session.objects.create(
-                game=game,
+            return session_row(
+                game,
                 device=device,
-                timestamp_start=begin,
-                timestamp_end=begin + timedelta(hours=hours),
+                started_at=begin,
+                ended_at=begin + timedelta(hours=hours),
             )
 
         # mixed: two 1h sessions on the deck + one 5h on the desktop → the
@@ -6392,7 +6402,7 @@ class TestScopedAggregateReducers:
 
         def scoped(modifier, value=0):
             return {
-                "calculated_playtime_hours": {
+                "session_playtime_hours": {
                     "value": value,
                     "modifier": modifier,
                     "scope": deck_scope,
@@ -6402,7 +6412,7 @@ class TestScopedAggregateReducers:
         # desktop_only's NULL deck-sum is invisible to both zero tests…
         assert self._games_matching(scoped("EQUALS", 0)) == set()
         assert self._games_matching(scoped("IS_NULL")) == set()
-        # …while mixed's deck sessions (1h + 1h calculated) sum normally.
+        # …while mixed's deck sessions (1h + 1h elapsed) sum normally.
         assert self._games_matching(scoped("EQUALS", 2)) == {data["mixed"]}
 
 
@@ -6410,17 +6420,19 @@ class TestComparisonOperandPaths:
     """Tests for _comparison_operand_info: path grammar + validation (#169/#282)."""
 
     def test_fk_path_resolves_related_group(self):
-        from games.models import Session
+        from games.models import PlayerSession
 
-        info = _comparison_operand_info(Session, "game__year_released", side="left")
+        info = _comparison_operand_info(
+            PlayerSession, "playthrough__player_game__game__year_released", side="left"
+        )
         assert info.group == "number"
         assert info.multivalued is False
         assert info.relation_path is None
 
     def test_own_column_still_resolves(self):
-        from games.models import Session
+        from games.models import PlayerSession
 
-        info = _comparison_operand_info(Session, "note", side="left")
+        info = _comparison_operand_info(PlayerSession, "note", side="left")
         assert info == ("string", False, None)
 
     def test_m2m_path_is_multivalued(self):
@@ -6444,36 +6456,46 @@ class TestComparisonOperandPaths:
 
     def test_to_one_then_multi_hop_is_multivalued(self):
         # The #282 headline path: Session → game (to-one) → purchases (multi).
-        from games.models import Session
+        from games.models import PlayerSession
 
         info = _comparison_operand_info(
-            Session, "game__purchases__date_refunded", side="right"
+            PlayerSession,
+            "playthrough__player_game__game__purchases__date_refunded",
+            side="right",
         )
         assert info.group == "date"
         assert info.multivalued is True
-        assert info.relation_path == "game__purchases"
+        assert info.relation_path == "playthrough__player_game__game__purchases"
 
     def test_two_to_one_hops_rejected(self):
         # Two to-one hops (Session → game → platform) stay rejected: no
         # multi-valued relation, so the F() would need a two-join same-row path.
-        from games.models import Session
+        from games.models import PlayerSession
 
         with pytest.raises(FilterError, match="two to-one hops"):
-            _comparison_operand_info(Session, "game__platform__name", side="left")
+            _comparison_operand_info(
+                PlayerSession,
+                "playthrough__player_game__game__platform__name",
+                side="left",
+            )
 
     def test_four_segment_path_rejected(self):
-        from games.models import Session
+        from games.models import PlayerSession
 
         with pytest.raises(FilterError, match="too many relations"):
             _comparison_operand_info(
-                Session, "game__purchases__games__name", side="left"
+                PlayerSession,
+                "playthrough__player_game__game__purchases__games__name",
+                side="left",
             )
 
     def test_a_declared_through_path_resolves_as_one_hop(self):
         from games.models import PlayerSession
 
         info = _comparison_operand_info(
-            PlayerSession, "playthrough__player_game__game__year_released", side="left"
+            PlayerSession,
+            "playthrough__player_game__game__year_released",
+            side="left",
         )
 
         assert info == ("number", False, None)
@@ -6510,16 +6532,22 @@ class TestComparisonOperandPaths:
             )
 
     def test_unknown_relation_names_path_and_side(self):
-        from games.models import Session
+        from games.models import PlayerSession
 
         with pytest.raises(FilterError, match=r"right operand.*'nonexistent__name'"):
-            _comparison_operand_info(Session, "nonexistent__name", side="right")
+            _comparison_operand_info(PlayerSession, "nonexistent__name", side="right")
 
     def test_unknown_related_column_names_full_path(self):
-        from games.models import Session
+        from games.models import PlayerSession
 
-        with pytest.raises(FilterError, match="game__nonexistent"):
-            _comparison_operand_info(Session, "game__nonexistent", side="left")
+        with pytest.raises(
+            FilterError, match="playthrough__player_game__game__nonexistent"
+        ):
+            _comparison_operand_info(
+                PlayerSession,
+                "playthrough__player_game__game__nonexistent",
+                side="left",
+            )
 
     def test_cross_model_wiring_end_to_end(self, db):
         import datetime
@@ -6582,12 +6610,10 @@ class TestMultivaluedComparison:
     def _seed(self):
         import datetime as dt
 
-        from games.models import Game, Purchase, Session
+        from games.models import Game, Purchase
 
         def session(game, end):
-            return Session.objects.create(
-                game=game, timestamp_start=self._dt(2000), timestamp_end=end
-            )
+            return session_row(game, started_at=self._dt(2000), ended_at=end)
 
         def refund(game, refunded_on):
             purchase = Purchase.objects.create(
@@ -6615,9 +6641,9 @@ class TestMultivaluedComparison:
         return rows
 
     def _matched(self, quantifier, *, left, right):
-        from games.models import Session
+        from games.models import PlayerSession
 
-        query = SessionFilter(
+        query = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
                     left=left,
@@ -6628,14 +6654,14 @@ class TestMultivaluedComparison:
                 )
             ]
         ).to_q(UNRESTRICTED_FILTER_CONTEXT)
-        return set(Session.objects.filter(query).values_list("pk", flat=True))
+        return set(PlayerSession.objects.filter(query).values_list("pk", flat=True))
 
     def test_any_multi_on_right(self, db):
         rows = self._seed()
         matched = self._matched(
             RelationMatch.ANY,
-            left="timestamp_end",
-            right="game__purchases__date_refunded",
+            left="ended_at",
+            right="playthrough__player_game__game__purchases__date_refunded",
         )
         expected = {"after_all", "after_some"}
         assert {k for k, s in rows.items() if s.pk in matched} == expected
@@ -6644,8 +6670,8 @@ class TestMultivaluedComparison:
         rows = self._seed()
         matched = self._matched(
             RelationMatch.ALL,
-            left="timestamp_end",
-            right="game__purchases__date_refunded",
+            left="ended_at",
+            right="playthrough__player_game__game__purchases__date_refunded",
         )
         # after_all is after both refunds; no_refunds is vacuously true.
         expected = {"after_all", "no_refunds"}
@@ -6655,8 +6681,8 @@ class TestMultivaluedComparison:
         rows = self._seed()
         matched = self._matched(
             RelationMatch.NONE,
-            left="timestamp_end",
-            right="game__purchases__date_refunded",
+            left="ended_at",
+            right="playthrough__player_game__game__purchases__date_refunded",
         )
         # Complement of ANY.
         expected = {
@@ -6669,29 +6695,29 @@ class TestMultivaluedComparison:
 
     def test_multi_on_left_mirrors_flipped_operator(self, db):
         # Multi operand on the left with LESS_THAN is the mirror of multi-on-right
-        # GREATER_THAN: ended < timestamp_end ⇔ timestamp_end > ended.
+        # GREATER_THAN: ended < ended_at ⇔ ended_at > ended.
         rows = self._seed()
         matched = self._matched(
             RelationMatch.ANY,
-            left="game__purchases__date_refunded",
-            right="timestamp_end",
+            left="playthrough__player_game__game__purchases__date_refunded",
+            right="ended_at",
         )
         # ANY refund before the session end (date): after_all + after_some.
         # We use LESS_THAN via a separate query since _matched hardcodes GREATER_THAN.
-        from games.models import Session
+        from games.models import PlayerSession
 
-        query = SessionFilter(
+        query = PlayerSessionFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="game__purchases__date_refunded",
-                    right="timestamp_end",
+                    left="playthrough__player_game__game__purchases__date_refunded",
+                    right="ended_at",
                     modifier=Modifier.LESS_THAN,
                     granularity="date",
                     quantifier=RelationMatch.ANY,
                 )
             ]
         ).to_q(UNRESTRICTED_FILTER_CONTEXT)
-        matched = set(Session.objects.filter(query).values_list("pk", flat=True))
+        matched = set(PlayerSession.objects.filter(query).values_list("pk", flat=True))
         assert {k for k, s in rows.items() if s.pk in matched} == {
             "after_all",
             "after_some",
@@ -6768,10 +6794,10 @@ class TestMultivaluedComparison:
 
     def test_both_multivalued_different_relations_cross_product(self, db):
         # #282 follow-up: two DIFFERENT multi-valued relations form a cross product;
-        # ANY = ∃ (session, purchase) pair satisfying the predicate.
+        # ANY = ∃ (addon purchase, purchase) pair satisfying the predicate.
         import datetime as dt
 
-        from games.models import Game, Purchase, Session
+        from games.models import Game, Purchase
 
         def game_with(name, refunded_on, session_end):
             game = Game.objects.create(name=name)
@@ -6782,10 +6808,11 @@ class TestMultivaluedComparison:
                 date_refunded=refunded_on,
             )
             purchase.games.add(game)
-            Session.objects.create(
-                game=game,
-                timestamp_start=dt.datetime(2000, 1, 1, tzinfo=dt.UTC),
-                timestamp_end=session_end,
+            Purchase.objects.create(
+                price_currency="CZK",
+                name=f"{name} addon",
+                date_purchased=session_end.date(),
+                related_game=game,
             )
             return game
 
@@ -6802,7 +6829,7 @@ class TestMultivaluedComparison:
         query = GameFilter(
             field_comparisons=[
                 FieldComparisonCriterion(
-                    left="sessions__timestamp_end",
+                    left="addon_purchases__date_purchased",
                     right="purchases__date_refunded",
                     modifier=Modifier.GREATER_THAN,
                     granularity="date",
@@ -6816,11 +6843,11 @@ class TestMultivaluedComparison:
 
     def test_quantifier_without_multi_operand_rejected(self, db):
         with pytest.raises(FilterError, match="only meaningful"):
-            SessionFilter(
+            PlayerSessionFilter(
                 field_comparisons=[
                     FieldComparisonCriterion(
-                        left="timestamp_start",
-                        right="timestamp_end",
+                        left="started_at",
+                        right="ended_at",
                         modifier=Modifier.LESS_THAN,
                         granularity="date",
                         quantifier=RelationMatch.ALL,
@@ -6830,8 +6857,8 @@ class TestMultivaluedComparison:
 
     def test_quantifier_json_roundtrip(self):
         criterion = FieldComparisonCriterion(
-            left="timestamp_end",
-            right="game__purchases__date_refunded",
+            left="ended_at",
+            right="playthrough__player_game__game__purchases__date_refunded",
             modifier=Modifier.GREATER_THAN,
             granularity="date",
             quantifier=RelationMatch.ALL,
@@ -6843,7 +6870,7 @@ class TestMultivaluedComparison:
 
     def test_default_quantifier_omitted_from_json(self):
         criterion = FieldComparisonCriterion(
-            left="timestamp_start", right="timestamp_end", modifier=Modifier.LESS_THAN
+            left="started_at", right="ended_at", modifier=Modifier.LESS_THAN
         )
         assert "quantifier" not in criterion.to_json()
 

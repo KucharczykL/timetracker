@@ -2,10 +2,10 @@
   "registry": {
     "game": {
       "fields": ["name", "status", "year_released", "search", "session_count"],
-      "relations": { "session_filter": "session" },
-      "scopes": { "session_count": "session" }
+      "relations": { "session_filter": "playersession" },
+      "scopes": { "session_count": "playersession" }
     },
-    "session": {
+    "playersession": {
       "fields": ["device", "note"],
       "relations": { "game_filter": "game" },
       "scopes": {}
@@ -170,20 +170,20 @@
       "filter": { "session_count": { "value": 1, "modifier": "EQUALS", "scope": {} } }
     },
     {
-      "description": "session year-space: timestamp_start year vs game__year_released",
-      "model": "session",
+      "description": "session year-space: started_at year vs the game's year_released",
+      "model": "playersession",
       "filter": {
         "field_comparisons": [
-          { "left": "timestamp_start", "right": "game__year_released", "modifier": "EQUALS", "granularity": "year" }
+          { "left": "started_at", "right": "playthrough__player_game__game__year_released", "modifier": "EQUALS", "granularity": "year" }
         ]
       }
     },
     {
-      "description": "session both-sides paths: game__name vs device__name (raw string)",
-      "model": "session",
+      "description": "session both-sides paths: the game's name vs device__name (raw string)",
+      "model": "playersession",
       "filter": {
         "field_comparisons": [
-          { "left": "game__name", "right": "device__name", "modifier": "EQUALS" }
+          { "left": "playthrough__player_game__game__name", "right": "device__name", "modifier": "EQUALS" }
         ]
       }
     },
@@ -225,29 +225,29 @@
       "filter": { "note": { "value": "100% run", "modifier": "INCLUDES" } }
     },
     {
-      "description": "multivalued comparison ANY: session end vs game__purchases__date_purchased (date)",
-      "model": "session",
+      "description": "multivalued comparison ANY: session end vs the game's purchases' date_purchased (date)",
+      "model": "playersession",
       "filter": {
         "field_comparisons": [
-          { "left": "timestamp_end", "right": "game__purchases__date_purchased", "modifier": "GREATER_THAN", "granularity": "date" }
+          { "left": "ended_at", "right": "playthrough__player_game__game__purchases__date_purchased", "modifier": "GREATER_THAN", "granularity": "date" }
         ]
       }
     },
     {
-      "description": "multivalued comparison ALL: session end vs game__purchases__date_purchased (date)",
-      "model": "session",
+      "description": "multivalued comparison ALL: session end vs the game's purchases' date_purchased (date)",
+      "model": "playersession",
       "filter": {
         "field_comparisons": [
-          { "left": "timestamp_end", "right": "game__purchases__date_purchased", "modifier": "GREATER_THAN", "granularity": "date", "quantifier": "ALL" }
+          { "left": "ended_at", "right": "playthrough__player_game__game__purchases__date_purchased", "modifier": "GREATER_THAN", "granularity": "date", "quantifier": "ALL" }
         ]
       }
     },
     {
-      "description": "multivalued comparison NONE: session end vs game__purchases__date_purchased (date)",
-      "model": "session",
+      "description": "multivalued comparison NONE: session end vs the game's purchases' date_purchased (date)",
+      "model": "playersession",
       "filter": {
         "field_comparisons": [
-          { "left": "timestamp_end", "right": "game__purchases__date_purchased", "modifier": "GREATER_THAN", "granularity": "date", "quantifier": "NONE" }
+          { "left": "ended_at", "right": "playthrough__player_game__game__purchases__date_purchased", "modifier": "GREATER_THAN", "granularity": "date", "quantifier": "NONE" }
         ]
       }
     },

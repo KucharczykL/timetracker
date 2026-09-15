@@ -1,4 +1,7 @@
-"""Legacy playtime; days read in active zone."""
+"""Legacy playtime; days read in active zone.
+
+No filtered sum: the session filter speaks the projection's words.
+"""
 
 from datetime import datetime, time, timedelta
 
@@ -6,7 +9,6 @@ from django.db.models import DateField, DurationField, OuterRef, Subquery, Sum, 
 from django.db.models.functions import Coalesce, TruncDate, TruncMonth
 from django.utils.timezone import make_aware
 
-from games.filters import SessionFilter, filter_query_context_for_library
 from games.models import Game, Session, SessionQuerySet, UserLibrary
 from games.reads.playthrough_completions import YearScope
 from games.reads.playtime.source import (
@@ -74,13 +76,6 @@ def summed_by_game(
     if library is None:
         return UnscopedSum()
     return _summed(_sessions(library, year))
-
-
-def summed_by_game_matching(
-    library: UserLibrary, session_filter: SessionFilter, *, year: YearScope = None
-) -> PlaytimeSum:
-    context = filter_query_context_for_library(library)
-    return _summed(_sessions(library, year).filter(session_filter.to_q(context)))
 
 
 def total_playtime(library: UserLibrary, *, year: YearScope = None) -> timedelta:

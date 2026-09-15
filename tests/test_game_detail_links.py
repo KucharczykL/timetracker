@@ -6,20 +6,21 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.urls import reverse
 from django.utils.html import escape
+from session_rows import session_row
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
 from games.filters import (
+    PlayerSessionFilter,
     PlaythroughFilter,
     PurchaseFilter,
-    SessionFilter,
     filter_query_context_for_library,
     filter_url,
 )
 from games.formatting import session_time_range
-from games.models import Game, Platform, Playthrough, Purchase, Session
+from games.models import Game, Platform, PlayerSession, Playthrough, Purchase, Session
 from games.reads.playthrough_runs import library_runs
 from games.views.game import view_game
 
@@ -42,6 +43,7 @@ def game(owned_library):
         status=Game.Status.PLAYED,
     )
     Session.objects.create(game=game, timestamp_start=_dt(1), timestamp_end=_dt(1, 13))
+    session_row(game, started_at=_dt(1), ended_at=_dt(1, 13))
     Purchase.objects.create(
         library=owned_library,
         price_currency="CZK",
@@ -60,7 +62,7 @@ def rendered(game, rf, owned_user):
 
 
 def test_sessions_section_links_to_filtered_sessions(game, rendered):
-    href = escape(filter_url(SessionFilter.where(game=[game.id])))
+    href = escape(filter_url(PlayerSessionFilter.where(game=[game.id])))
     assert href in rendered
 
 
@@ -81,7 +83,7 @@ def test_link_filters_scope_to_game(game):
     other = Game.objects.create(
         library=game.library, name="Other", platform=game.platform
     )
-    Session.objects.create(game=other, timestamp_start=_dt(3), timestamp_end=_dt(3, 13))
+    session_row(other, started_at=_dt(3), ended_at=_dt(3, 13))
     Purchase.objects.create(
         library=game.library,
         price_currency="CZK",
@@ -89,8 +91,12 @@ def test_link_filters_scope_to_game(game):
         type=Purchase.GAME,
     ).games.set([other])
     context = filter_query_context_for_library(game.library)
-    sessions = Session.objects.filter(SessionFilter.where(game=[game.id]).to_q(context))
-    assert list(sessions) == list(game.sessions.all())
+    sessions = PlayerSession.objects.filter(
+        PlayerSessionFilter.where(game=[game.id]).to_q(context)
+    )
+    assert list(sessions) == list(
+        PlayerSession.objects.filter(playthrough__player_game__game=game)
+    )
 
     purchases = Purchase.objects.filter(
         PurchaseFilter.where(games=[game.id]).to_q(context)

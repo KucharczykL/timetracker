@@ -5,6 +5,7 @@ from datetime import timedelta
 from django.db.models import DurationField, OuterRef, Subquery, Sum, Value
 from django.db.models.functions import Coalesce, TruncMonth
 
+from games.filters import PlayerSessionFilter, filter_query_context_for_library
 from games.models import Game, PlayerSessionQuerySet, UserLibrary
 from games.reads.player_sessions import GAME, library_sessions
 from games.reads.playthrough_completions import YearScope
@@ -50,20 +51,33 @@ def game_playtime_between(
     return _total(_within(_sessions(library).filter(**{GAME: game}), days))
 
 
+def _summed(sessions: PlayerSessionQuerySet) -> PlaytimeSum:
+    return Subquery(
+        sessions.filter(**{GAME: OuterRef("pk")})
+        .values(GAME)
+        .annotate(total=Sum("effective_duration"))
+        .values("total"),
+        output_field=DurationField(),
+    )
+
+
 def summed_by_game(
     library: UserLibrary | None, *, year: YearScope = None
 ) -> PlaytimeSum:
     """No library compiles, then refuses to execute."""
     if library is None:
         return UnscopedSum()
-    return Subquery(
-        _sessions(library, year)
-        .filter(**{GAME: OuterRef("pk")})
-        .values(GAME)
-        .annotate(total=Sum("effective_duration"))
-        .values("total"),
-        output_field=DurationField(),
-    )
+    return _summed(_sessions(library, year))
+
+
+def summed_by_game_matching(
+    library: UserLibrary,
+    session_filter: PlayerSessionFilter,
+    *,
+    year: YearScope = None,
+) -> PlaytimeSum:
+    context = filter_query_context_for_library(library)
+    return _summed(_sessions(library, year).filter(session_filter.to_q(context)))
 
 
 def total_playtime(library: UserLibrary, *, year: YearScope = None) -> timedelta:

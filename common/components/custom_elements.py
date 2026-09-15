@@ -84,7 +84,7 @@ type ModelKey = str  # singular root-model key as filter_for_model takes it, e.g
 # contract-tested against games.filters.MODE_PARSERS, like the URL table above.
 FILTER_MODE_MODELS: dict[FilterMode, ModelKey] = {
     "games": "game",
-    "sessions": "session",
+    "sessions": "playersession",
     "purchases": "purchase",
     "playthroughs": "playthrough",
     "devices": "device",
