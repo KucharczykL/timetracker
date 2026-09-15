@@ -3499,6 +3499,39 @@ class TestComparableColumnsCrossModel:
 
         assert not any(value.endswith("_lower") for value in values)
 
+    def test_a_session_offers_its_games_columns_through_the_declared_path(self):
+        """A declared path is one hop named by its label."""
+        from games.models import PlayerSession
+
+        columns = {
+            column["value"]: column for column in comparable_columns(PlayerSession)
+        }
+        year = columns["playthrough__player_game__game__year_released"]
+
+        assert year["source"] == "Game"
+        assert year["label"] == "Game: Year Released"
+        assert year["group"] == "number"
+        assert year["multivalued"] is False
+
+    def test_a_declared_path_reaches_the_targets_multi_valued_relations(self):
+        from games.models import PlayerSession
+
+        columns = {
+            column["value"]: column for column in comparable_columns(PlayerSession)
+        }
+        purchased = columns["playthrough__player_game__game__purchases__date_purchased"]
+
+        assert purchased["multivalued"] is True
+        assert purchased["source"] == "Game › Purchases"
+
+    def test_an_undeclared_two_hop_path_is_still_not_offered(self):
+        from games.models import PlayerSession
+
+        values = {column["value"] for column in comparable_columns(PlayerSession)}
+
+        assert "playthrough__player_game__tracked_at" not in values
+        assert "playthrough__name" in values
+
 
 # ── T3 — OperatorFilter field_comparisons wiring ─────────────────────────────
 
@@ -6434,6 +6467,46 @@ class TestComparisonOperandPaths:
         with pytest.raises(FilterError, match="too many relations"):
             _comparison_operand_info(
                 Session, "game__purchases__games__name", side="left"
+            )
+
+    def test_a_declared_through_path_resolves_as_one_hop(self):
+        from games.models import PlayerSession
+
+        info = _comparison_operand_info(
+            PlayerSession, "playthrough__player_game__game__year_released", side="left"
+        )
+
+        assert info == ("number", False, None)
+
+    def test_a_declared_through_path_takes_one_multi_valued_hop(self):
+        from games.models import PlayerSession
+
+        info = _comparison_operand_info(
+            PlayerSession,
+            "playthrough__player_game__game__purchases__date_purchased",
+            side="right",
+        )
+
+        assert info.group == "date"
+        assert info.multivalued is True
+        assert info.relation_path == "playthrough__player_game__game__purchases"
+
+    def test_a_to_one_hop_past_a_declared_path_is_rejected(self):
+        from games.models import PlayerSession
+
+        with pytest.raises(FilterError, match="two to-one hops"):
+            _comparison_operand_info(
+                PlayerSession,
+                "playthrough__player_game__game__platform__name",
+                side="left",
+            )
+
+    def test_an_undeclared_two_hop_path_is_still_rejected(self):
+        from games.models import PlayerSession
+
+        with pytest.raises(FilterError, match="two to-one hops"):
+            _comparison_operand_info(
+                PlayerSession, "playthrough__player_game__tracked_at", side="left"
             )
 
     def test_unknown_relation_names_path_and_side(self):

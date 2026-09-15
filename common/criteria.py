@@ -2163,6 +2163,51 @@ def _comparison_group_for(model: type[models.Model], column: str) -> ComparisonG
 type ComparisonOperand = (
     str  # own column "playtime" or one-hop FK path "game__year_released"
 )
+#: A declared to-one path a model offers as one hop, e.g.
+#: "playthrough__player_game__game"; see `ProjectionModel.comparison_through`.
+type ThroughPath = str
+
+
+class ThroughTarget(NamedTuple):
+    """Where a declared path lands, and the field of its last hop."""
+
+    model: type[models.Model]
+    last_field: Any
+
+
+def declared_through_paths(model: type[models.Model]) -> tuple[tuple[str, str], ...]:
+    """The `(path, label)` pairs the model declares."""
+    return tuple(getattr(model, "comparison_through", ()))
+
+
+def resolve_through_path(model: type[models.Model], path: ThroughPath) -> ThroughTarget:
+    """Walk a declared path; raise FilterError at the first hop not to-one.
+
+    The startup check `games.E011` runs this over every declaration, so
+    a raise at query time means a model declared a path the check never
+    saw.
+    """
+    host: type[models.Model] = model
+    last_field: Any = None
+    for segment in path.split("__"):
+        try:
+            last_field = host._meta.get_field(segment)
+        except FieldDoesNotExist as exc:
+            raise FilterError(
+                f"{model.__name__} declares {path!r}, and {host.__name__} has no "
+                f"field {segment!r}"
+            ) from exc
+        if not (
+            last_field.is_relation
+            and last_field.related_model is not None
+            and (last_field.many_to_one or last_field.one_to_one)
+        ):
+            raise FilterError(
+                f"{model.__name__} declares {path!r}, and {host.__name__}."
+                f"{segment} is not a to-one relation"
+            )
+        host = last_field.related_model
+    return ThroughTarget(host, last_field)
 
 
 class ComparisonOperandInfo(NamedTuple):
@@ -2203,6 +2248,52 @@ def _comparison_operand_info(
         return ComparisonOperandInfo(
             _comparison_group_for(model, operand), multivalued=False, relation_path=None
         )
+
+    def group_at(target: type[models.Model], column: str) -> ComparisonGroup:
+        try:
+            return _comparison_group_for(target, column)
+        except FilterError as exc:
+            raise FilterError(f"{side} operand {operand!r}: {exc}") from exc
+
+    def multi_hop_from(host: type[models.Model], inner: str) -> type[models.Model]:
+        """The model one multi-valued hop from `host`, or the refusal."""
+        try:
+            inner_field = host._meta.get_field(inner)
+        except FieldDoesNotExist as exc:
+            raise FilterError(
+                f"{side} operand {operand!r}: {host.__name__} has no relation {inner!r}"
+            ) from exc
+        if not inner_field.is_relation or inner_field.related_model is None:
+            raise FilterError(
+                f"{side} operand {operand!r}: {host.__name__}.{inner} is not a relation"
+            )
+        if not (inner_field.many_to_many or inner_field.one_to_many):
+            raise FilterError(
+                f"{side} operand {operand!r}: {host.__name__}.{inner}"
+                f" is a to-one relation (two to-one hops are not comparable)"
+            )
+        return inner_field.related_model
+
+    #: A declared path is one hop: `path__col` or `path__multi__col`.
+    for path, _label in declared_through_paths(model):
+        if not operand.startswith(f"{path}__"):
+            continue
+        target = resolve_through_path(model, path).model
+        rest = operand.removeprefix(f"{path}__").split("__")
+        if len(rest) == 1:
+            return ComparisonOperandInfo(
+                group_at(target, rest[0]), multivalued=False, relation_path=None
+            )
+        if len(rest) > 2:
+            raise FilterError(
+                f"{side} operand {operand!r} traverses too many relations"
+                f" (at most one to-one hop then one multi-valued hop)"
+            )
+        group = group_at(multi_hop_from(target, rest[0]), rest[1])
+        return ComparisonOperandInfo(
+            group, multivalued=True, relation_path=f"{path}__{rest[0]}"
+        )
+
     if len(segments) > 3:
         raise FilterError(
             f"{side} operand {operand!r} traverses too many relations"
@@ -2223,12 +2314,6 @@ def _comparison_operand_info(
     related_model = relation_field.related_model
     first_to_one = relation_field.many_to_one or relation_field.one_to_one
 
-    def group_at(target: type[models.Model], column: str) -> ComparisonGroup:
-        try:
-            return _comparison_group_for(target, column)
-        except FilterError as exc:
-            raise FilterError(f"{side} operand {operand!r}: {exc}") from exc
-
     if len(segments) == 2:
         group = group_at(related_model, segments[1])
         if first_to_one:
@@ -2244,24 +2329,7 @@ def _comparison_operand_info(
             f" (a multi-valued hop must be last)"
         )
     inner = segments[1]
-    try:
-        inner_field = related_model._meta.get_field(inner)
-    except FieldDoesNotExist as exc:
-        raise FilterError(
-            f"{side} operand {operand!r}: {related_model.__name__}"
-            f" has no relation {inner!r}"
-        ) from exc
-    if not inner_field.is_relation or inner_field.related_model is None:
-        raise FilterError(
-            f"{side} operand {operand!r}: {related_model.__name__}.{inner}"
-            f" is not a relation"
-        )
-    if not (inner_field.many_to_many or inner_field.one_to_many):
-        raise FilterError(
-            f"{side} operand {operand!r}: {related_model.__name__}.{inner}"
-            f" is a to-one relation (two to-one hops are not comparable)"
-        )
-    group = group_at(inner_field.related_model, segments[2])
+    group = group_at(multi_hop_from(related_model, inner), segments[2])
     return ComparisonOperandInfo(
         group, multivalued=True, relation_path=f"{relation}__{inner}"
     )
@@ -2283,18 +2351,27 @@ class ComparableColumn(TypedDict):
     multivalued: bool  # True iff the path crosses a multi-valued relation (#282); the widget shows a quantifier selector
 
 
-def _comparison_relations(
-    model: type[models.Model],
-) -> list[tuple[str, type[models.Model], str]]:
-    """The forward to-one FKs comparison operands may traverse, introspected
-    (never configured): ``(fk_name, related_model, title-cased verbose name)``
-    per concrete ForeignKey/OneToOneField, in ``_meta`` declaration order.
-    The same to-one acceptance rule ``_comparison_operand_info`` validates against.
+class ComparisonRelation(NamedTuple):
+    """One to-one hop the walk offers: its operand prefix, target and label."""
+
+    path: str  # "game", or a declared "playthrough__player_game__game"
+    related_model: type[models.Model]
+    source: str  # the optgroup label
+    #: The field of the last hop, so the reverse of it can be skipped.
+    last_field: Any
+
+
+def _comparison_relations(model: type[models.Model]) -> list[ComparisonRelation]:
+    """The to-one hops comparison operands may traverse: every concrete
+    ForeignKey/OneToOneField in ``_meta`` declaration order, labelled by its
+    title-cased verbose name, then every declared ``comparison_through`` path
+    under its own label. The same to-one acceptance rule
+    ``_comparison_operand_info`` validates against.
 
     A ``comparison_scoping_relations`` entry is skipped: it scopes.
     """
     scoping = getattr(model, "comparison_scoping_relations", ())
-    relations: list[tuple[str, type[models.Model], str]] = []
+    relations: list[ComparisonRelation] = []
     for model_field in model._meta.get_fields():
         if model_field.name in scoping:
             continue
@@ -2304,12 +2381,18 @@ def _comparison_relations(
             and model_field.related_model is not None
         ):
             relations.append(
-                (
+                ComparisonRelation(
                     model_field.name,
                     model_field.related_model,
                     str(model_field.verbose_name).title(),
+                    model_field,
                 )
             )
+    for path, label in declared_through_paths(model):
+        target = resolve_through_path(model, path)
+        relations.append(
+            ComparisonRelation(path, target.model, label, target.last_field)
+        )
     return relations
 
 
@@ -2411,15 +2494,16 @@ def _comparison_multivalued_sources(
             continue
         label = _multivalued_relation_label(relation_field)
         sources.append((f"{name}__", related_model, label))
-    for fk_name, fk_model, fk_source in _comparison_relations(model):
-        fk_field = model._meta.get_field(fk_name)
-        for name, related_model, relation_field in multi_relations(fk_model):
-            # Skip the reverse of the FK we just traversed: it re-includes the
+    for relation in _comparison_relations(model):
+        for name, related_model, relation_field in multi_relations(
+            relation.related_model
+        ):
+            # Skip the reverse of the hop we just traversed: it re-includes the
             # parent row (``game__sessions`` = the game's sessions, incl. this one).
-            if getattr(relation_field, "field", None) is fk_field:
+            if getattr(relation_field, "field", None) is relation.last_field:
                 continue
-            label = f"{fk_source} › {_multivalued_relation_label(relation_field)}"
-            sources.append((f"{fk_name}__{name}__", related_model, label))
+            label = f"{relation.source} › {_multivalued_relation_label(relation_field)}"
+            sources.append((f"{relation.path}__{name}__", related_model, label))
     return sources
 
 
@@ -2452,10 +2536,12 @@ def comparable_columns(model: type[models.Model]) -> list[ComparableColumn]:
     """
     own_source = str(model._meta.verbose_name).title()
     columns = _own_comparable_columns(model, source=own_source)
-    for fk_name, related_model, fk_source in _comparison_relations(model):
+    for relation in _comparison_relations(model):
         columns.extend(
             _own_comparable_columns(
-                related_model, prefix=f"{fk_name}__", source=fk_source
+                relation.related_model,
+                prefix=f"{relation.path}__",
+                source=relation.source,
             )
         )
     for prefix, terminal_model, source in _comparison_multivalued_sources(model):

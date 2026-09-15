@@ -1500,6 +1500,10 @@ class ProjectionModel(models.Model):
 
     #: Relations the comparison-operand walk never follows.
     comparison_scoping_relations: ClassVar[tuple[str, ...]] = ("library",)
+    #: `(path, label)` pairs the walk treats as one hop: a to-one path
+    #: at every segment, which `games.E011` checks, offered under the
+    #: label. A projection reaches the catalog through its parents.
+    comparison_through: ClassVar[tuple[tuple[str, str], ...]] = ()
 
     class Meta:
         abstract = True
@@ -1786,6 +1790,9 @@ class PlayerSession(ProjectionModel):
     """One session a library recorded, projected from its events."""
 
     objects = PlayerSessionQuerySet.as_manager()
+
+    #: The game is two parents away; the filter compares against it.
+    comparison_through = (("playthrough__player_game__game", "Game"),)
 
     id = UUIDv7Field(
         primary_key=True,

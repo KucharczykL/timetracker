@@ -14,6 +14,7 @@ from django.core.checks import CheckMessage, Error, Tags, register
 from django.db import models
 from django.utils import timezone
 
+from common.criteria import FilterError, declared_through_paths, resolve_through_path
 from games.models import ProjectionModel
 from games.projections import (
     stale_projection_references,
@@ -235,6 +236,42 @@ def check_projection_references(
                 id="games.E010",
             )
         )
+    return errors
+
+
+@register(Tags.models)
+def check_comparison_through(
+    *,
+    app_configs: Sequence[AppConfig] | None = None,
+    databases: Sequence[str] | None = None,
+    apps: Apps = global_apps,
+    **kwargs: Any,
+) -> list[CheckMessage]:
+    """Refuse a declared comparison path that is not to-one at every hop."""
+    labels = None if app_configs is None else {config.label for config in app_configs}
+    errors: list[CheckMessage] = []
+    for model in apps.get_models():
+        if not issubclass(model, ProjectionModel):
+            continue
+        if labels is not None and model._meta.app_label not in labels:
+            continue
+        for path, _label in declared_through_paths(model):
+            try:
+                resolve_through_path(model, path)
+            except FilterError as error:
+                errors.append(
+                    Error(
+                        str(error),
+                        hint=(
+                            "comparison_through offers a path as one hop of a "
+                            "comparison operand, so an F() across it must reach "
+                            "one row. Declare a to-one path, or leave the "
+                            "relation to the multi-valued grammar."
+                        ),
+                        obj=model,
+                        id="games.E011",
+                    )
+                )
     return errors
 
 
