@@ -394,9 +394,13 @@ def search_devices(request, q: str = "", limit: int = 10):
     if q:
         qs = qs.filter(name__icontains=q).order_by("name")
     else:
-        qs = qs.annotate(last_used=Max("session__timestamp_start")).order_by(
-            F("last_used").desc(nulls_last=True), "-created_at", "name"
-        )
+        #: The live rows, on the base manager: a removed one moves nothing.
+        qs = qs.annotate(
+            last_used=Max(
+                "player_sessions__sort_instant",
+                filter=Q(player_sessions__removed_at__isnull=True),
+            )
+        ).order_by(F("last_used").desc(nulls_last=True), "-created_at", "name")
     return [{"value": d.id, "label": d.name, "data": {}} for d in qs[:limit]]
 
 

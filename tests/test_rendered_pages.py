@@ -18,6 +18,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 from pytest_django.asserts import assertRedirects
+from session_rows import timed_row, tracked_run
 
 from games.models import Game, Platform, Purchase, Session
 from games.reads.playtime import game_playtime
@@ -125,6 +126,12 @@ class RenderedPagesTest(TestCase):
             game=self.game,
             timestamp_start=datetime(2022, 9, 26, 15, 0, tzinfo=ZONEINFO),
             timestamp_end=datetime(2022, 9, 26, 16, 0, tzinfo=ZONEINFO),
+        )
+        #: The removal confirmation counts the projection's rows.
+        timed_row(
+            tracked_run(self.user.library, self.game),
+            self.session.timestamp_start,
+            self.session.timestamp_end,
         )
 
     def get(self, url_name, *args):

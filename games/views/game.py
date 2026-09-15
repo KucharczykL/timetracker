@@ -94,6 +94,7 @@ from games.models import (
 from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.external_references import ReferenceMap, held_by, references_for
+from games.reads.player_sessions import game_sessions
 from games.reads.playergame_history import StatusEntry, status_history
 from games.reads.playthrough_completions import GAME_RUNS, reported_completion_day
 from games.reads.playthrough_numbering import numbered_for
@@ -359,7 +360,7 @@ def _removed_with_game(game: Game, library: UserLibrary) -> Node:
     tracked = tracked_game(library, game)
     runs = live_ordinary_runs(library, tracked).count() if tracked else 0
     counts = [
-        (game.sessions.alive().count(), "session"),
+        (game_sessions(library, game).count(), "session"),
         (game.purchases.alive().count(), "purchase"),
         #: Removal stamps the PlayerGame; runs leave too.
         (runs, "playthrough"),

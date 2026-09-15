@@ -132,6 +132,20 @@ def test_the_removal_confirmation_counts_every_live_ordinary_run(logged_in, game
     assert "1 playthrough(s)" in body
 
 
+def test_the_removal_confirmation_counts_the_games_live_sessions(
+    logged_in, owned_user, game
+):
+    run = tracked_run(owned_user.library, game)
+    started_at = timezone.now() - timedelta(hours=2)
+    timed_row(run, started_at, None)
+    timed_row(run, started_at, None)
+    timed_row(run, started_at, None, removed_at=timezone.now())
+
+    body = logged_in.get(reverse("games:remove_game", args=[game.id])).content.decode()
+
+    assert "2 session(s)" in body
+
+
 def test_the_section_links_its_actions_at_the_run(logged_in, game):
     run = Playthrough.objects.get(player_game__game=game)
 

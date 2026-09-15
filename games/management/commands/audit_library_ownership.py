@@ -10,9 +10,9 @@ from games.models import (
     FilterPreset,
     Game,
     Platform,
+    PlayerSession,
     Purchase,
     PurchaseConversionState,
-    Session,
     UserLibrary,
     UserLibraryPreferences,
     UserPreferences,
@@ -74,7 +74,7 @@ class Command(BaseCommand):
         derived_counts = (
             (
                 "sessions",
-                Session.objects.filter(game__library_id__in=library_ids).count(),
+                PlayerSession.objects.filter(library_id__in=library_ids).count(),
             ),
         )
         for label, count in derived_counts:
@@ -156,10 +156,10 @@ class Command(BaseCommand):
     def _cross_library_violations(library_ids):
         """Every relation outside the projections.
 
-        The six loops below are hand-written because each names its own
+        The five loops below are hand-written because each names its own
         join path, and one of them reads an M2M through table. Every
         reference out of a projection is derived instead, from the
-        registry `games.E009` holds complete.
+        registry `games.E009` holds complete; a session's device is one.
         """
         violations = []
         for game_id, platform_id in (
@@ -204,18 +204,6 @@ class Command(BaseCommand):
             .values_list("purchase_id", "game_id")
         ):
             violations.append(f"Purchase.games: purchase {purchase_id}, game {game_id}")
-        for session_id, device_id in (
-            Session.objects.filter(
-                Q(game__library_id__in=library_ids)
-                | Q(device__library_id__in=library_ids),
-                device__isnull=False,
-            )
-            .exclude(device__library_id=F("game__library_id"))
-            .values_list("pk", "device_id")
-        ):
-            violations.append(
-                f"Session.device: session {session_id}, device {device_id}"
-            )
         for library_id, device_id in (
             UserLibraryPreferences.objects.filter(
                 Q(library_id__in=library_ids)

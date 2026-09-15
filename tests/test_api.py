@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test import Client
 from django.test.utils import CaptureQueriesContext
+from session_rows import timed_row, tracked_run
 
 from games.filters import parse_game_filter
 from games.models import Device, Game, Platform, Purchase, Session
@@ -58,21 +59,36 @@ def test_existing_endpoint_allows_logged_in(auth_client):
     assert response.status_code == 200
 
 
+def _played_on(device, started_at, **columns):
+    """A projection row on the fixture game, on that device."""
+    game, _ = Game.objects.get_or_create(library=_test_library(), name="Hades")
+    return timed_row(
+        tracked_run(_test_library(), game), started_at, None, device=device, **columns
+    )
+
+
 def test_device_search_blank_query_orders_by_most_recent_session(auth_client):
     desktop = _owned_device(name="Desktop")
     deck = _owned_device(name="Steam Deck")
-    _make_session(
-        device=desktop,
-        timestamp_start=datetime(2025, 1, 1, tzinfo=UTC),
-    )
-    _make_session(
-        device=deck,
-        timestamp_start=datetime(2026, 1, 1, tzinfo=UTC),
-    )
+    _played_on(desktop, datetime(2025, 1, 1, tzinfo=UTC))
+    _played_on(deck, datetime(2026, 1, 1, tzinfo=UTC))
 
     rows = auth_client.get("/api/devices/search", {"limit": 10}).json()
 
     assert [row["value"] for row in rows][:2] == [str(deck.id), str(desktop.id)]
+
+
+def test_device_search_orders_by_live_sessions_alone(auth_client):
+    """A removed session moves no device."""
+    desktop = _owned_device(name="Desktop")
+    deck = _owned_device(name="Steam Deck")
+    _played_on(desktop, datetime(2025, 1, 1, tzinfo=UTC))
+    _played_on(deck, datetime(2024, 1, 1, tzinfo=UTC))
+    _played_on(deck, datetime(2026, 1, 1, tzinfo=UTC), removed_at=datetime.now(tz=UTC))
+
+    rows = auth_client.get("/api/devices/search", {"limit": 10}).json()
+
+    assert [row["value"] for row in rows][:2] == [str(desktop.id), str(deck.id)]
 
 
 def test_platform_search_blank_query_uses_newest_game_or_purchase(auth_client):
@@ -114,14 +130,8 @@ def test_platform_search_blank_query_does_not_join_games_to_purchases(auth_clien
 def test_device_search_typed_query_remains_alphabetical(auth_client):
     alpha = _owned_device(name="Alpha")
     alpine = _owned_device(name="Alpine")
-    _make_session(
-        device=alpha,
-        timestamp_start=datetime(2025, 1, 1, tzinfo=UTC),
-    )
-    _make_session(
-        device=alpine,
-        timestamp_start=datetime(2026, 1, 1, tzinfo=UTC),
-    )
+    _played_on(alpha, datetime(2025, 1, 1, tzinfo=UTC))
+    _played_on(alpine, datetime(2026, 1, 1, tzinfo=UTC))
 
     rows = auth_client.get("/api/devices/search", {"q": "Al", "limit": 10}).json()
 

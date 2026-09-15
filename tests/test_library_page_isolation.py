@@ -8,6 +8,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
+from session_rows import timed_row, tracked_run
 
 from common.duration_presentation import duration_presentation_for_request
 from common.layout import recent_session_resumes
@@ -37,10 +38,19 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
         username="library-owner", password="p"
     )
     other = django_user_model.objects.create_user(username="other-owner", password="p")
-    Game.objects.create(library=owner.library, name="Owned game")
-    Game.objects.create(library=other.library, name="Foreign game")
+    owned_game = Game.objects.create(library=owner.library, name="Owned game")
+    foreign_game = Game.objects.create(library=other.library, name="Foreign game")
     Device.objects.create(library=owner.library, name="Owned device")
     Device.objects.create(library=other.library, name="Foreign device")
+    started_at = timezone.now() - timedelta(hours=2)
+    timed_row(tracked_run(owner.library, owned_game), started_at, None)
+    timed_row(
+        tracked_run(owner.library, owned_game),
+        started_at,
+        None,
+        removed_at=timezone.now(),
+    )
+    timed_row(tracked_run(other.library, foreign_game), started_at, None)
     client.force_login(owner)
 
     response = client.get("/tracker/library")
@@ -52,6 +62,7 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
     assert "Games currently includes every game in your library." in body
     assert str(owner.library.pk) in body
     assert "1 Games" in body
+    assert "1 Sessions" in body
     assert "1 Devices" in body
     assert 'data-setting-key="default-device"' in body
     assert 'data-setting-source="library"' in body
