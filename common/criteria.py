@@ -3329,7 +3329,6 @@ def aggregate_to_q(
 
     from django.db.models import Avg, Count, Sum
 
-    scope_condition: Q | None = None
     # Wrong-typed scope would query another model's namespace.
     if criterion.scope is not None and not isinstance(
         criterion.scope, spec.scope_filter
@@ -3338,21 +3337,20 @@ def aggregate_to_q(
             f"aggregate scope must be a {spec.scope_filter.__name__},"
             f" got {type(criterion.scope).__name__}"
         )
-    # Both scopes narrow one subquery.
-    scopes = [
-        scope for scope in (spec.base_scope, criterion.scope) if scope is not None
-    ]
-    if scopes:
-        related_model: ModelClass = spec.scope_filter._comparison_model()
-        if related_model is None:
-            raise RuntimeError(
-                f"{spec.scope_filter.__name__} has no comparison model"
-                f" to scope a {spec.accessor!r} aggregate"
-            )
-        matching = context.queryset_for(related_model)
-        for scope in scopes:
+    # The context's scope always narrows the subquery: without it a
+    # count reaches removed rows and other libraries' rows at a shared
+    # game. Both filter scopes narrow it further.
+    related_model: ModelClass = spec.scope_filter._comparison_model()
+    if related_model is None:
+        raise RuntimeError(
+            f"{spec.scope_filter.__name__} has no comparison model"
+            f" to scope a {spec.accessor!r} aggregate"
+        )
+    matching = context.queryset_for(related_model)
+    for scope in (spec.base_scope, criterion.scope):
+        if scope is not None:
             matching = matching.filter(scope.to_q(context))
-        scope_condition = Q(**{f"{spec.accessor}__in": matching})
+    scope_condition = Q(**{f"{spec.accessor}__in": matching})
 
     # The spec is static config declared on the filter class, never user input —
     # a failure here is a wiring bug. Raise RuntimeError (not ValueError) so
