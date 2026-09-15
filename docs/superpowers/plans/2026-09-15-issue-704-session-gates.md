@@ -110,7 +110,7 @@
 # games/reads/session_figures.py
 type YearScope = int | None            # reuse games.reads.playthrough_completions.YearScope
 class LongestSession(NamedTuple): session: PlayerSession; game: Game
-class GameCount(NamedTuple): game: Game; count: int
+class GameCount(NamedTuple): game: Game; sessions: int   # `count` would shadow tuple.count
 class GameAverage(NamedTuple): game: Game; average: timedelta
 class PlayDay(NamedTuple): day: date; game: Game
 
@@ -138,10 +138,10 @@ The stats page's `first_play_date`/`last_play_date` keep reading `effective_day`
 - `highest_average_game` orders `-session_average` with NULLs: annotate over `games_in_scope` only, as today, so no NULL enters.
 - `games_for_list` must take the sort, not the request; `list_games` parses the request and passes `find`.
 
-- [ ] **Step 1: Failing tests** in `tests/test_session_figures.py`: two games with equal longest durations pick the lower `sort_name`; two games with equal counts likewise; a year scope excludes the other year's row; `first_play` on a day holding a Duration-only and a Timed row picks the lower id; `has_sessions` false for an empty library and false when the only session is removed.
-- [ ] **Step 2: Implement the readers.** Run the file.
-- [ ] **Step 3: `compute_stats` calls them; `readable_sessions` lifted; `games_for_list` extracted.** Run `make test ARGS="tests/test_stats* tests/test_session_list.py tests/test_api.py tests/test_rendered_pages.py -x"`.
-- [ ] **Step 4: `make check-fast`. Commit:** `refactor: read the stats page's session figures through named readers (#704)`.
+- [x] **Step 1: Failing tests** in `tests/test_session_figures.py`: two games with equal longest durations pick the lower `sort_name`; two games with equal counts likewise; a year scope excludes the other year's row; `first_play` on a day holding a Duration-only and a Timed row picks the lower id; `has_sessions` false for an empty library and false when the only session is removed.
+- [x] **Step 2: Implement the readers.** Run the file.
+- [x] **Step 3: `compute_stats` calls them; `readable_sessions` lifted; `games_for_list` extracted.** Run `make test ARGS="tests/test_stats* tests/test_session_list.py tests/test_api.py tests/test_rendered_pages.py -x"`.
+- [x] **Step 4: `make check-fast`. Commit:** `refactor: read the stats page's session figures through named readers (#704)`.
 
 ---
 

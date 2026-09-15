@@ -38,6 +38,11 @@ def library_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
     )
 
 
+def readable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
+    """The row path the list and the API share: run, game, platform, device."""
+    return library_sessions(library).select_related(f"{GAME}__platform", "device")
+
+
 def game_sessions(library: UserLibrary, game: Game) -> PlayerSessionQuerySet:
     """The counted sessions at one game, on any of its runs."""
     return library_sessions(library).filter(**{GAME: game})

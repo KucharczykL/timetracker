@@ -15,8 +15,6 @@ from datetime import date, timedelta
 from typing import Any, NotRequired, TypedDict
 
 from django.db.models import (
-    Avg,
-    Count,
     F,
     Max,
     Q,
@@ -32,14 +30,13 @@ from games.models import (
     DONE_STATUSES,
     Game,
     PlayerGameStatus,
-    PlayerSession,
     PlayerSessionQuerySet,
     Purchase,
     PurchaseConversionState,
     PurchaseQueryset,
     UserLibrary,
 )
-from games.reads.player_sessions import GAME, library_sessions
+from games.reads.player_sessions import library_sessions
 from games.reads.playthrough_completions import (
     YearScope,
     completion_day,
@@ -52,6 +49,16 @@ from games.reads.playtime import (
     playtime_by_month,
     playtime_by_platform,
     total_playtime,
+)
+from games.reads.session_figures import (
+    distinct_days,
+    first_play,
+    games_in_scope,
+    highest_average_game,
+    last_play,
+    longest_session,
+    most_sessions_game,
+    session_count,
 )
 
 
@@ -105,24 +112,6 @@ class StatsData(TypedDict):
     all_purchased_this_year: NotRequired[Any]
 
 
-def _counted_sessions_q(library: UserLibrary) -> Q:
-    """`library_sessions`' marks, spelled from a Game."""
-    return Q(
-        player_games__library=library,
-        player_games__removed_at__isnull=True,
-        player_games__playthroughs__library=library,
-        player_games__playthroughs__removed_at__isnull=True,
-        **{
-            f"{GAME_SESSIONS}__library": library,
-            f"{GAME_SESSIONS}__removed_at__isnull": True,
-        },
-    )
-
-
-def _game_of(session: PlayerSession | None) -> Game | None:
-    return None if session is None else session.playthrough.player_game.game
-
-
 def _days_played_percent(unique_days: int, first: date, last: date) -> int:
     """Share of days played across the span actually played (all-time).
 
@@ -173,14 +162,9 @@ def _compute_stats_from_scoped_querysets(
     is_alltime = year is None
 
     # ── Scope ──────────────────────────────────────────────────────────────
-    #: A Game reaches its sessions through the run; the walk carries the
-    #: same marks `library_sessions` states, or a removed row counts.
-    counted = _counted_sessions_q(library)
-    sessions = sessions.select_related(GAME)
     if is_alltime:
         without_refunded = library_purchases.filter(date_refunded=None)
         refunded = library_purchases.filter(date_refunded__isnull=False)
-        session_count = Count(GAME_SESSIONS, filter=counted)
     else:
         sessions = sessions.filter(effective_day__year=year)
         purchases = library_purchases.filter(date_purchased__year=year)
@@ -190,59 +174,22 @@ def _compute_stats_from_scoped_querysets(
         refunded = library_purchases.exclude(date_refunded=None).filter(
             date_purchased__year=year
         )
-        session_count = Count(
-            GAME_SESSIONS,
-            filter=counted & Q(**{f"{GAME_SESSIONS}__effective_day__year": year}),
-        )
 
     completed_q = Q(completion_exists(library, year))
     done = _games_at_status(library, *DONE_STATUSES)
     not_finished_q = ~Q(games__in=done) & ~completed_q
 
-    # ── Session superlatives ─────────────────────────────────────────────────
-    #: `effective_duration`: a Corrected row enters at its override and a
-    #: Duration-only row at its stated time.
-    longest_session = sessions.order_by("-effective_duration", "-id").first()
-    games_in_scope = Game.objects.filter(
-        **{f"{GAME_SESSIONS}__in": sessions}
-    ).distinct()
-    highest_session_count_game = (
-        games_in_scope.annotate(session_count=session_count)
-        .order_by("-session_count")
-        .first()
-    )
-    year_scope = (
-        Q() if is_alltime else Q(**{f"{GAME_SESSIONS}__effective_day__year": year})
-    )
-    highest_session_average_game = (
-        games_in_scope.annotate(
-            session_average=Avg(
-                f"{GAME_SESSIONS}__effective_duration", filter=counted & year_scope
-            )
-        )
-        .order_by("-session_average")
-        .first()
-    )
-
-    # ── Days played + play range ─────────────────────────────────────────────
-    unique_days = (
-        sessions.values("effective_day")
-        .distinct()
-        .aggregate(dates=Count("effective_day"))["dates"]
-    )
-    #: One total order over the three modes; the day rendered is the row's.
-    first_session = sessions.order_by("sort_instant", "id").first()
-    last_session = sessions.order_by("-sort_instant", "-id").first()
-    first_play_game = _game_of(first_session)
-    last_play_game = _game_of(last_session)
-    first_play_date = first_session.effective_day if first_session else None
-    last_play_date = last_session.effective_day if last_session else None
+    # ── Session figures, one reader each ─────────────────────────────────────
+    longest = longest_session(library, year)
+    most_sessions = most_sessions_game(library, year)
+    highest_average = highest_average_game(library, year)
+    unique_days = distinct_days(library, year)
+    first = first_play(library, year)
+    last = last_play(library, year)
     if is_alltime:
         unique_days_percent = (
-            _days_played_percent(
-                unique_days, first_session.effective_day, last_session.effective_day
-            )
-            if first_session and last_session
+            _days_played_percent(unique_days, first.day, last.day)
+            if first and last
             else 0
         )
     else:
@@ -335,7 +282,7 @@ def _compute_stats_from_scoped_querysets(
         "year": year_label,
         "title": f"{year_label} Stats",
         "total_hours": total_playtime(library, year=year),
-        "total_sessions": sessions.count(),
+        "total_sessions": session_count(library, year),
         "unique_days": unique_days,
         "unique_days_percent": unique_days_percent,
         "total_year_games": total_year_games,
@@ -360,31 +307,25 @@ def _compute_stats_from_scoped_querysets(
             safe_division(unfinished_count, without_refunded_count) * 100
         ),
         "backlog_decrease_count": backlog_decrease_count,
-        "longest_session_time": (
-            longest_session.effective_duration if longest_session else None
-        ),
-        "longest_session_game": _game_of(longest_session),
-        "highest_session_count": (
-            highest_session_count_game.session_count
-            if highest_session_count_game
-            else 0
-        ),
-        "highest_session_count_game": highest_session_count_game,
+        "longest_session_time": longest.session.effective_duration if longest else None,
+        "longest_session_game": longest.game if longest else None,
+        "highest_session_count": most_sessions.sessions if most_sessions else 0,
+        "highest_session_count_game": most_sessions.game if most_sessions else None,
         "highest_session_average": (
-            highest_session_average_game.session_average
-            if highest_session_average_game
-            else None
+            highest_average.average if highest_average else None
         ),
-        "highest_session_average_game": highest_session_average_game,
-        "first_play_game": first_play_game,
-        "first_play_date": first_play_date,
-        "last_play_game": last_play_game,
-        "last_play_date": last_play_date,
+        "highest_session_average_game": (
+            highest_average.game if highest_average else None
+        ),
+        "first_play_game": first.game if first else None,
+        "first_play_date": first.day if first else None,
+        "last_play_game": last.game if last else None,
+        "last_play_date": last.day if last else None,
         "stats_dropdown_year_range": available_stats_year_range(),
     }
 
     if year is not None:
-        data["total_games"] = games_in_scope.count()
+        data["total_games"] = games_in_scope(library, year).count()
         data["month_playtimes"] = playtime_by_month(library, year=year)
         data["all_finished_this_year"] = finished.prefetch_related("games").order_by(
             F("date_finished").asc(nulls_last=True)

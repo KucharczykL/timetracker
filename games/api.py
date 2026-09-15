@@ -56,7 +56,6 @@ from games.models import (
     Platform,
     PlayerGameStatus,
     PlayerSession,
-    PlayerSessionQuerySet,
     Playthrough,
     PlaythroughKind,
     Purchase,
@@ -65,7 +64,7 @@ from games.models import (
 )
 from games.ownership import owned_or_404
 from games.reads.calendar import calendar_day_zone, calendar_sentence
-from games.reads.player_sessions import library_sessions
+from games.reads.player_sessions import readable_sessions
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_numbering import display_name, with_display_number
 from games.reads.playthrough_runs import library_runs
@@ -596,13 +595,6 @@ class SessionOut(Schema):
         return _endpoint_zone_label(obj.ended_at, obj.ended_at_zone, context)
 
 
-def _readable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
-    """What the two GET routes answer about."""
-    return library_sessions(library).select_related(
-        "playthrough__player_game__game__platform", "device"
-    )
-
-
 class SessionListOut(Schema):
     items: list[SessionOut]
     count: int
@@ -615,7 +607,7 @@ class SessionListOut(Schema):
 @regex_timeout_api
 def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
     library = cast(User, request.user).library
-    sessions: QuerySet[PlayerSession] = _readable_sessions(library)
+    sessions: QuerySet[PlayerSession] = readable_sessions(library)
     if filter:
         try:
             session_filter = parse_session_filter(filter)
@@ -664,7 +656,7 @@ def list_sessions_api(request, filter: str = "", sort: str = "", page: int = 1):
 @session_router.get("/{session_id}", response=SessionOut)
 def get_session(request, session_id: UUIDv7):
     library = cast(User, request.user).library
-    return owned_or_404(_readable_sessions(library), library, id=session_id)
+    return owned_or_404(readable_sessions(library), library, id=session_id)
 
 
 class SessionDeviceUpdate(Schema):
@@ -694,7 +686,7 @@ def partial_update_session_device(
     request, session_id: UUIDv7, payload: SessionDeviceUpdate
 ):
     library = cast(User, request.user).library
-    session = owned_or_404(_readable_sessions(library), library, id=session_id)
+    session = owned_or_404(readable_sessions(library), library, id=session_id)
     _library_device_or_404(library, payload.device_id)
     try:
         describe_session(
@@ -795,7 +787,7 @@ def _timing_statement(timing: TimingIn, day_zone: str) -> TimingStatement:
 def partial_update_session(request, session_id: UUIDv7, payload: SessionUpdate):
     library = cast(User, request.user).library
     actor = cast(User, request.user)
-    session = owned_or_404(_readable_sessions(library), library, id=session_id)
+    session = owned_or_404(readable_sessions(library), library, id=session_id)
     stated = payload.dict(exclude_unset=True)
     if "device_id" in stated:
         _library_device_or_404(library, payload.device_id)
@@ -827,7 +819,7 @@ def partial_update_session(request, session_id: UUIDv7, payload: SessionUpdate):
     except CommandFailed as failure:
         _answered_or_http(failure)
     messages.success(request, "Session updated.")
-    return _readable_sessions(library).get(pk=session.pk)
+    return readable_sessions(library).get(pk=session.pk)
 
 
 api.add_router("/session", session_router)

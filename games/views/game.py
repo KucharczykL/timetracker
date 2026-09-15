@@ -70,6 +70,7 @@ from games.catalog_form import CatalogGraphForm
 from games.catalog_submit import submitted_game_or_form_error
 from games.external_references import CatalogTarget, external_reference_url_or_none
 from games.filters import (
+    FindFilter,
     GameFilter,
     PlayerSessionFilter,
     PlaythroughFilter,
@@ -101,7 +102,13 @@ from games.reads.playthrough_numbering import numbered_for
 from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 from games.reads.playtime import game_playtime, playtime_matching, playtime_sort_key
 from games.reference_form import ReferenceSetForm
-from games.sorting import GAME_DEFAULT_SORT, GAME_SORTS, apply_sort, parse_find_filter
+from games.sorting import (
+    GAME_DEFAULT_SORT,
+    GAME_SORTS,
+    SortResult,
+    apply_sort,
+    parse_find_filter,
+)
 from games.views.catalog_section import editions_area
 from games.views.filtering import (
     apply_structured_filter,
@@ -141,6 +148,29 @@ def _wikidata_cell(provider_key: str) -> Cell:
     return Link(href=url)[provider_key] if url is not None else provider_key
 
 
+def games_for_list(
+    library: UserLibrary, *, game_filter: GameFilter | None, find: FindFilter
+) -> SortResult:
+    """The list's queryset: filtered, annotated, sorted, unpaged.
+
+    One function, so the benchmark times the plan the page serves.
+    """
+    games = Game.objects.tracked_by(library).select_related("platform")
+    #: Narrows the Playtime column; None counts all.
+    session_filter: PlayerSessionFilter | None = None
+    if game_filter is not None:
+        context = filter_query_context_for_library(library)
+        games = execute_filter(game_filter, games, context)
+        session_filter = game_filter.session_filter
+    #: An alias: only `?sort=playtime` reads it.
+    games = games.alias(total_playtime=playtime_sort_key(library)).annotate(
+        filtered_playtime=playtime_matching(library, session_filter),
+        #: No column renders it; `?sort=finished` reads it.
+        completed_day=reported_completion_day(library, GAME_RUNS),
+    )
+    return apply_sort(games, find, GAME_SORTS, GAME_DEFAULT_SORT)
+
+
 @login_required
 @regex_timeout_view
 def list_games(request: HttpRequest) -> HttpResponse:
@@ -148,33 +178,18 @@ def list_games(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     origin = request.get_full_path()
-    games = Game.objects.tracked_by(library).select_related("platform")
-
-    #: Narrows the Playtime column; None counts all.
-    session_filter: PlayerSessionFilter | None = None
 
     # ── Structured filter (Stash-style JSON; free-text search lives here too) ──
     filter_json = request.GET.get("filter", "")
+    game_filter: GameFilter | None = None
     if filter_json:
         game_filter = apply_structured_filter(request, parse_game_filter, filter_json)
-        if game_filter is not None:
-            context = filter_query_context_for_library(library)
-            games = execute_filter(game_filter, games, context)
-            session_filter = game_filter.session_filter
-
-    #: An alias: only `?sort=playtime` reads it.
-    games = games.alias(total_playtime=playtime_sort_key(library)).annotate(
-        filtered_playtime=playtime_matching(library, session_filter),
-        #: No column renders it; `?sort=finished` reads it.
-        completed_day=reported_completion_day(library, GAME_RUNS),
-    )
 
     find = parse_find_filter(request)
-    sort = apply_sort(games, find, GAME_SORTS, GAME_DEFAULT_SORT)
-    games = sort.queryset
+    sort = games_for_list(library, game_filter=game_filter, find=find)
     warn_unknown_sort(request, sort.unknown, entity="game")
 
-    games, page_obj, elided_page_range = paginate(games, find)
+    games, page_obj, elided_page_range = paginate(sort.queryset, find)
 
     data: TableData = {
         "caption": "Games",

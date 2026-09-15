@@ -57,7 +57,11 @@ from games.models import (
 )
 from games.ownership import owned_or_404
 from games.reads.calendar import calendar_day_zone
-from games.reads.player_sessions import game_sessions, library_sessions
+from games.reads.player_sessions import (
+    game_sessions,
+    library_sessions,
+    readable_sessions,
+)
 from games.reads.playthrough_numbering import display_name, numbered_for
 from games.sorting import (
     SESSION_DEFAULT_SORT,
@@ -156,9 +160,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
     origin = request.get_full_path()
-    sessions: QuerySet[PlayerSession] = library_sessions(library).select_related(
-        "playthrough__player_game__game__platform", "device"
-    )
+    sessions: QuerySet[PlayerSession] = readable_sessions(library)
     device_list = Device.objects.for_library(library).order_by("name")
 
     # ── Structured filter (JSON; free-text search lives here too) ──
