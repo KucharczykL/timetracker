@@ -6,6 +6,11 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from games.backfill.calendar import (
+    CalendarMismatchCode,
+    calendar_mismatches,
+    seed_library,
+)
 from games.commands.calendar import SetCalendarDayZone
 from games.commands.playergame import TrackGame
 from games.commands.playersession import (
@@ -317,3 +322,82 @@ def test_the_sentence_reads_the_delta():
         "Days now counted in UTC: 2,807 sessions, 124 moved to another day, "
         "10 to another month, 5 to another year."
     )
+
+
+# --- migration 0005's seed and gate -------------------------------------------
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_the_seed_states_the_owners_zone_once(prague_owner, owned_library, run):
+    from django.utils import timezone
+
+    minted_at = timezone.now()
+    row = record(
+        owned_library,
+        prague_owner,
+        run,
+        TimedTiming(started_at=START, day_zone="Europe/Prague"),
+    )
+
+    assert seed_library(owned_library, minted_at=minted_at) is True
+    assert seed_library(owned_library, minted_at=minted_at) is False
+
+    calendar = LibraryCalendar.objects.get(library=owned_library)
+    assert calendar.day_zone == "Europe/Prague"
+    event = LibraryEvent.objects.get(
+        library=owned_library, event_type=CALENDAR_DAY_ZONE_CHANGED.event_type
+    )
+    assert event.recorded_at == minted_at
+    assert event.actor_id == prague_owner.pk
+    assert (
+        event.idempotency_key == f"backfill:1047:calendar:day_zone:{owned_library.pk}"
+    )
+    row.refresh_from_db()
+    assert row.effective_day == date(2026, 1, 2)
+    assert calendar_mismatches(owned_library) == []
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_the_gate_names_a_row_off_the_calendar(prague_owner, owned_library, run):
+    from django.utils import timezone
+
+    row = record(
+        owned_library,
+        prague_owner,
+        run,
+        TimedTiming(started_at=START, day_zone="Europe/Prague"),
+    )
+    seed_library(owned_library, minted_at=timezone.now())
+    PlayerSession.objects.filter(pk=row.pk).update(day_zone="Asia/Tokyo")
+
+    found = calendar_mismatches(owned_library)
+
+    assert [mismatch.code for mismatch in found] == [
+        CalendarMismatchCode.ROW_ZONE,
+        CalendarMismatchCode.REPLAY_DIFFERS,
+    ]
+    assert found[0].subject == str(owned_library.pk)
+    assert "Asia/Tokyo" in found[0].detail
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_the_migration_seeds_from_the_schema_before_it(prague_owner, owned_library):
+    """The tripwire for a later column: run 0005 at 0004."""
+    from django.db import connection
+    from django.db.migrations.executor import MigrationExecutor
+
+    executor = MigrationExecutor(connection)
+    executor.migrate([("games", "0004_playersession_conversion")])
+    executor = MigrationExecutor(connection)
+    try:
+        executor.migrate([("games", "0005_library_calendar")])
+        assert LibraryCalendar.objects.get(library=owned_library).day_zone == (
+            "Europe/Prague"
+        )
+    finally:
+        #: Later tests on this worker read every table.
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
