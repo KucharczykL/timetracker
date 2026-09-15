@@ -533,9 +533,15 @@ def rebuild_projections(
     mode: RebuildMode = RebuildMode.CHECK,
     wiring: EventWiring = DEFAULT_WIRING,
     apps: Apps = global_apps,
+    models: Sequence[type[ProjectionModel]] | None = None,
 ) -> RebuildReport:
-    """Rebuild one library's projections, or check them."""
-    models = projection_models(apps)
+    """Rebuild one library's projections, or check them.
+
+    `models` narrows the walk to tables a caller knows exist: a
+    migration's gate runs before every later projection table.
+    """
+    if models is None:
+        models = projection_models(apps)
     policy = wiring.retry_policy
     attempts: list[RebuildAttempt] = []
     started = monotonic()

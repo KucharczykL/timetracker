@@ -1966,6 +1966,26 @@ class PlayerSession(ProjectionModel):
         return f"Session {self.pk} of run {self.playthrough_id}"
 
 
+class LibraryCalendar(ProjectionModel):
+    """The zone a library counts days in, projected from its events."""
+
+    id = UUIDv7Field(
+        primary_key=True,
+        editable=False,
+        #: The library's id: one calendar per library.
+        default=models.NOT_PROVIDED,
+        db_default=models.NOT_PROVIDED,
+    )
+    day_zone = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                fields=["library"], name="games_librarycalendar_one_per_library"
+            ),
+        )
+
+
 class UserLibraryPreferences(models.Model):
     library = models.OneToOneField(
         UserLibrary,

@@ -1277,7 +1277,7 @@ def test_a_moved_head_is_reported_as_a_replay_difference(owned_library, monkeypa
     monkeypatch.setattr(
         conversion,
         "rebuild_projections",
-        lambda library, *, mode: RebuildReport(
+        lambda library, *, mode, models=None: RebuildReport(
             library_id=library.pk,
             stream_id=None,
             mode=mode,
@@ -1353,8 +1353,12 @@ def test_the_migration_runs_from_the_schema_before_it(owned_library):
     executor.migrate([("games", "0003_remove_game_playtime")])
     executor = MigrationExecutor(connection)
     executor.migrate([("games", "0004_playersession_conversion")])
-
-    assert PlayerSession.objects.filter(library=owned_library).count() == 1
+    try:
+        assert PlayerSession.objects.filter(library=owned_library).count() == 1
+    finally:
+        #: Later tests on this worker read every table.
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
 
 
 @pytest.mark.untracked_games

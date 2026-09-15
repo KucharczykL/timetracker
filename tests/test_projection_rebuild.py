@@ -56,6 +56,7 @@ from games.identity_audit import relation_columns
 from games.management.commands import rebuild_projections as rebuild_command
 from games.models import (
     Game,
+    LibraryCalendar,
     LibraryEvent,
     LibraryEventStreamHead,
     PlayerGame,
@@ -139,8 +140,13 @@ def test_discovery_passes_over_a_manufactured_twin():
 
 
 def test_the_application_declares_its_projections():
-    """Three projection tables so far."""
-    assert projection_models() == (PlayerGame, PlayerSession, Playthrough)
+    """Four projection tables so far."""
+    assert projection_models() == (
+        LibraryCalendar,
+        PlayerGame,
+        PlayerSession,
+        Playthrough,
+    )
 
 
 @pytest.mark.django_db

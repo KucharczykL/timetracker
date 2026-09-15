@@ -50,6 +50,7 @@ from games.models import (
     PlayerSessionTimingMode,
     Playthrough,
     PlaythroughKind,
+    ProjectionModel,
     Session,
     UserLibrary,
 )
@@ -941,9 +942,19 @@ def _playtime_mismatches(library: UserLibrary) -> list[Mismatch[MismatchCode]]:
     ]
 
 
+#: The projection tables migration 0004's schema holds.
+PROJECTIONS_AT_0004: tuple[type[ProjectionModel], ...] = (
+    PlayerGame,
+    PlayerSession,
+    Playthrough,
+)
+
+
 def _replay_mismatches(library: UserLibrary) -> list[Mismatch[MismatchCode]]:
     """Check 7: replay reproduces every row."""
-    report = rebuild_projections(library, mode=RebuildMode.CHECK)
+    report = rebuild_projections(
+        library, mode=RebuildMode.CHECK, models=PROJECTIONS_AT_0004
+    )
     mismatches = [
         Mismatch(
             code=MismatchCode.REPLAY_DIFFERS,
