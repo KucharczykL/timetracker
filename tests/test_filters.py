@@ -1972,6 +1972,22 @@ class TestFilterErrorBoundary:
         with pytest.raises(FilterError, match="Unknown filter modifier"):
             parse_game_filter(bad)
 
+    def test_a_key_no_field_answers_is_refused(self):
+        """Dropped, a stale key widens the filter in silence."""
+        stale = json.dumps({"is_manual": {"value": True}, "note": {"value": "x"}})
+        with pytest.raises(FilterError, match="PlayerSessionFilter has no field"):
+            parse_session_filter(stale)
+
+    def test_a_key_no_field_answers_is_refused_inside_a_relation(self):
+        stale = json.dumps({"session_filter": {"timestamp_start": {"value": "2024"}}})
+        with pytest.raises(FilterError, match="'timestamp_start'"):
+            parse_game_filter(stale)
+
+    def test_a_renamed_key_is_mapped_before_the_check(self):
+        """`ended` still reaches `completed` on a run filter."""
+        renamed = json.dumps({"ended": {"value": "2020-01-01", "modifier": "EQUALS"}})
+        assert parse_playthrough_filter(renamed) is not None
+
     def test_bad_relation_match(self):
         bad = json.dumps({"session_filter": {"match": "MOST", "note": {"value": "x"}}})
         with pytest.raises(FilterError, match="Unknown relation match"):

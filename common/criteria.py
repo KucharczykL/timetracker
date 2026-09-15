@@ -1726,6 +1726,14 @@ class OperatorFilter:
         if _depth > MAX_FILTER_DEPTH:
             raise FilterError(f"Filter nesting too deep (max {MAX_FILTER_DEPTH})")
         data = cls.rename_legacy_keys(data)
+        #: A key no field answers is refused, not dropped: dropping it
+        #: widens the filter in silence, which is how a stale preset lies.
+        unknown = sorted(set(data) - {f.name for f in dc_fields(cls)})
+        if unknown:
+            raise FilterError(
+                f"{cls.__name__} has no field named "
+                + ", ".join(repr(key) for key in unknown)
+            )
         kwargs: dict[str, Any] = {}
         for f in dc_fields(cls):
             if f.name not in data:

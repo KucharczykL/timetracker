@@ -359,6 +359,16 @@ def test_session_list_invalid_filter_semantics_rejected(auth_client):
     assert response.status_code == 400
 
 
+def test_session_list_rejects_a_key_no_field_answers(auth_client):
+    """A stored `is_manual` names no field now; dropping it would widen the
+    filter in silence."""
+    for stale in ("is_manual", "timestamp_start", "duration_total_hours"):
+        stale_filter = json.dumps({stale: {"value": True}})
+        response = auth_client.get(f"/api/session/?filter={stale_filter}")
+        assert response.status_code == 400
+        assert stale in response.json()["detail"]
+
+
 def test_session_list_malformed_filter_logged(auth_client, capture_games_logger):
     # Issue #203: a rejected filter must leave a server-side warning so operators
     # can spot DoS-probing, in addition to the 400 the client sees.
