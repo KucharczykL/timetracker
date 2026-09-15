@@ -401,3 +401,100 @@ def test_the_migration_seeds_from_the_schema_before_it(prague_owner, owned_libra
         #: Later tests on this worker read every table.
         executor = MigrationExecutor(connection)
         executor.migrate(executor.loader.graph.leaf_nodes())
+
+
+def test_deltas_in_two_zones_do_not_add():
+    with pytest.raises(ValueError, match="cannot add"):
+        CalendarDelta("UTC", 1, 0, 0, 0) + CalendarDelta("Europe/Prague", 1, 0, 0, 0)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_unreadable_calendar_reads_the_owners_zone_until_set_again(
+    prague_owner, owned_library, capture_games_logger
+):
+    from games.reads.calendar import calendar_day_zone
+    from timetracker.settings_commands import change_user_setting
+
+    set_day_zone(owned_library, prague_owner, "Europe/Prague")
+    LibraryCalendar.objects.filter(library=owned_library).update(
+        day_zone="Mars/Olympus"
+    )
+
+    with capture_games_logger() as caplog:
+        assert calendar_day_zone(owned_library) == ZoneInfo("Europe/Prague")
+    assert any("Mars/Olympus" in record.getMessage() for record in caplog.records)
+
+    #: The same zone again restates the unreadable row.
+    mutation = change_user_setting(prague_owner, "DISPLAY_TIME_ZONE", "Europe/Prague")
+
+    assert mutation.calendar is not None
+    assert LibraryCalendar.objects.get(library=owned_library).day_zone == (
+        "Europe/Prague"
+    )
+
+
+def _seed_calendars():
+    import importlib
+
+    return importlib.import_module(
+        "games.migrations.0005_library_calendar"
+    ).seed_calendars
+
+
+def _one_calendar_mismatch(library):
+    from games.backfill.mismatch import Mismatch
+
+    return [
+        Mismatch(
+            code=CalendarMismatchCode.ROW_ZONE,
+            subject=str(library.pk),
+            detail="1 row(s) state 'Asia/Tokyo', the calendar 'UTC'",
+        )
+    ]
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_the_migration_names_the_mismatch_it_refuses_on(
+    prague_owner, owned_library, monkeypatch
+):
+    from django.db import transaction
+
+    from games.backfill import calendar as seeding
+
+    monkeypatch.setattr(seeding, "calendar_mismatches", _one_calendar_mismatch)
+
+    #: What the migration framework wraps this in.
+    with (
+        pytest.raises(RuntimeError, match=f"row_zone {owned_library.pk}: 1 row"),
+        transaction.atomic(),
+    ):
+        _seed_calendars()(None, None)
+
+    assert not LibraryCalendar.objects.filter(library=owned_library).exists()
+    assert not LibraryEvent.objects.filter(library=owned_library).exists()
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_the_migration_refuses_a_second_pass_that_appends(
+    prague_owner, owned_library, monkeypatch
+):
+    from django.db import transaction
+
+    from games.backfill import calendar as seeding
+
+    monkeypatch.setattr(seeding, "seed_library", lambda library, *, minted_at: True)
+
+    with pytest.raises(RuntimeError, match="seed_drift"), transaction.atomic():
+        _seed_calendars()(None, None)
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_the_gate_names_a_missing_calendar(prague_owner, owned_library):
+    found = calendar_mismatches(owned_library)
+
+    assert [mismatch.code for mismatch in found] == [
+        CalendarMismatchCode.CALENDAR_MISSING
+    ]

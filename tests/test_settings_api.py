@@ -628,14 +628,36 @@ def test_a_zone_patch_answers_the_calendar_delta(auth_client, user):
         "month_moved": 0,
         "year_moved": 0,
     }
-    trigger = json.loads(response.headers["HX-Trigger"])
-    assert trigger["show-toast"] == {
-        "message": (
-            "Days now counted in Asia/Tokyo: 0 sessions, 0 moved to another day, "
-            "0 to another month, 0 to another year."
-        ),
-        "type": "success",
-    }
+    #: The control reloads the page, which reads the toast.
+    assert "HX-Trigger" not in response.headers
+    assert response.headers["HX-Refresh"] == "true"
+    page = auth_client.get(reverse("games:settings")).content.decode()
+    assert (
+        "Days now counted in Asia/Tokyo: 0 sessions, 0 moved to another day, "
+        "0 to another month, 0 to another year."
+    ) in page
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_zone_the_command_refuses_is_answered_with_its_sentence(
+    auth_client, user, monkeypatch
+):
+    from games.events.dispatch import CommandRejected
+    from games.models import LibraryEvent, UserPreferences
+
+    def refusing(day_zone, *endpoint_zones):
+        raise CommandRejected(
+            "the database does not know it", sentence="Asia/Tokyo is not a zone."
+        )
+
+    monkeypatch.setattr("games.commands.calendar._check_zones", refusing)
+
+    response = _patch(auth_client, _user_patch_url("DISPLAY_TIME_ZONE"), "Asia/Tokyo")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "Asia/Tokyo is not a zone."}
+    assert UserPreferences.objects.get(user=user).display_time_zone is None
+    assert not LibraryEvent.objects.filter(library=user.library).exists()
 
 
 @pytest.mark.django_db(transaction=True)

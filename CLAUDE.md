@@ -334,12 +334,12 @@ docs/           — Additional documentation
   and Corrected session, so `effective_day` regenerates; Duration-only rows
   and the endpoint zones do not move. Changing `DISPLAY_TIME_ZONE` is the act:
   `change_user_setting` and `change_site_setting` append
-  `SetCalendarDayZone` beside the preference row under one
+  `SetCalendarDayZone` beside the setting's row under one
   `retried_transaction`, and answer a `CalendarDelta`. Every reader asks
   `calendar_day_zone(library)`: the dormancy clock, the parity command, and
   `CreateSession`/`CorrectSessionTiming`, which refuse a day zone the
-  calendar does not state. Without a clock the two condition aliases compile
-  and refuse to execute. Migration 0005 seeds one calendar per library; 0004's
+  calendar does not state. Without a clock the two condition aliases resolve
+  and refuse to compile. Migration 0005 seeds one calendar per library; 0004's
   gates keep reading the setting, because the table comes after them. Member
   2 of the wave stack. Contract is
   [The zone a library counts days in](docs/superpowers/specs/2026-09-15-issue-1047-library-calendar-design.md)

@@ -47,21 +47,13 @@ class UnscopedActivityRead(RuntimeError):
     """A condition alias executed without a clock."""
 
 
-class _Unscoped(Expression):
-    """Compiles for validation; refuses to execute."""
+class UnscopedActivityAlias(Expression):
+    """Resolves for validation; refuses to compile."""
 
     def as_sql(self, compiler, connection):
         raise UnscopedActivityRead(
             "An activity read was executed without a clock; state one."
         )
-
-
-class UnscopedActivityDay(_Unscoped):
-    output_field = models.DateField()
-
-
-class UnscopedActivity(_Unscoped):
-    output_field = models.CharField(null=True)
 
 
 def _clock(threshold_days: int, zone: ZoneInfo) -> ActivityClock:

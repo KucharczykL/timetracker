@@ -951,6 +951,7 @@ def _playtime_mismatches(library: UserLibrary) -> list[Mismatch[MismatchCode]]:
 
 
 #: The projection tables migration 0004's schema holds.
+#: TODO(#1073): the replay still runs every projector.
 PROJECTIONS_AT_0004: tuple[type[ProjectionModel], ...] = (
     PlayerGame,
     PlayerSession,

@@ -146,6 +146,15 @@ def test_a_read_naming_no_alias_executes_without_a_clock(owned_library):
     assert list(Playthrough.objects.annotated_for_filtering()) == []
 
 
+@pytest.mark.django_db
+def test_an_unscoped_alias_cannot_take_a_clock_later(owned_library):
+    #: Annotate once, at the read that states the scope.
+    unscoped = Playthrough.objects.annotated_for_filtering()
+
+    with pytest.raises(ValueError, match="annotate once"):
+        unscoped.annotated_for_filtering(activity_clock(owned_library))
+
+
 @pytest.mark.parametrize(
     ("day", "expected"),
     [

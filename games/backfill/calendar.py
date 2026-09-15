@@ -9,7 +9,7 @@ from django.db.models import Count
 
 from games.backfill.appending import append_one
 from games.backfill.mismatch import Mismatch
-from games.backfill.playersession import display_zone_name
+from games.backfill.playersession import LIBRARY_FIELDS, display_zone_name
 from games.events.calendar import calendar_day_zone_changed
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.models import (
@@ -24,6 +24,8 @@ from games.models import (
 
 CALENDAR_ISSUE = 1047
 KEY_PREFIX = f"backfill:{CALENDAR_ISSUE}:calendar"
+
+__all__ = ["LIBRARY_FIELDS", "calendar_mismatches", "seed_library"]
 
 #: The projection tables migration 0005's schema holds.
 PROJECTIONS_AT_0005: tuple[type[ProjectionModel], ...] = (
@@ -46,7 +48,8 @@ class CalendarMismatchCode(StrEnum):
 def seed_library(library: UserLibrary, *, minted_at: datetime) -> bool:
     """State the owner's display zone as the calendar; true when appended.
 
-    The zone 0004 seeded every row with; a second pass replays as a no-op.
+    The zone 0004 seeded every Timed and Corrected row with; a second
+    pass replays as a no-op.
     """
     zone = display_zone_name(library)
     with transaction.atomic():

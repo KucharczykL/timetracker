@@ -14,7 +14,7 @@ SUMMARY_KEYS = ("libraries", "seeded", "mismatches")
 
 
 def seed_calendars(apps, schema_editor):
-    """State every library's calendar: the zone 0004 seeded its rows with."""
+    """State every library's calendar: the zone 0004 seeded its Timed rows with."""
     del apps, schema_editor
     from games.backfill import calendar as seeding
     from games.backfill.mismatch import Mismatch
@@ -31,7 +31,7 @@ def seed_calendars(apps, schema_editor):
     #: One instant for every calendar.
     minted_at = timezone.now()
     try:
-        for library in UserLibrary.objects.only("id", "user_id").order_by("pk"):
+        for library in UserLibrary.objects.only(*seeding.LIBRARY_FIELDS).order_by("pk"):
             libraries += 1
             if seeding.seed_library(library, minted_at=minted_at):
                 seeded += 1
@@ -102,9 +102,9 @@ class Migration(migrations.Migration):
             ],
             options={
                 "constraints": [
-                    models.UniqueConstraint(
-                        fields=("library",),
-                        name="games_librarycalendar_one_per_library",
+                    models.CheckConstraint(
+                        condition=models.Q(("id", models.F("library"))),
+                        name="games_librarycalendar_id_is_library",
                     )
                 ],
             },

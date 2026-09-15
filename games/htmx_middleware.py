@@ -33,7 +33,11 @@ class HTMXMessagesMiddleware:
         # on. Reading them here marks the storage used, so MessageMiddleware
         # then stores an empty queue -- and the header rides a response the
         # browser discards, which loses the sentence entirely.
-        if "HX-Redirect" in response or 300 <= response.status_code < 400:
+        if (
+            "HX-Redirect" in response
+            or "HX-Refresh" in response
+            or 300 <= response.status_code < 400
+        ):
             return response
 
         min_level = (

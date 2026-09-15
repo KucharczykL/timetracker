@@ -318,7 +318,7 @@ def append_command(
     actor: User,
     library: UserLibrary,
     idempotency_key: IdempotencyKey,
-    correlation_id: uuid.UUID | None = None,
+    correlation_id: uuid.UUID,
     source_metadata: SourceMetadata | None = None,
     wiring: EventWiring = DEFAULT_WIRING,
 ) -> CommandResult:
@@ -336,13 +336,8 @@ def append_command(
             "retried_transaction."
         )
     validate_idempotency_key(idempotency_key)
-    #: A supplied id is only checked here: dispatch generated it once, and
-    #: generating again per retried attempt would give each attempt its own.
-    resolved_correlation_id = (
-        resolve_correlation_id(None)
-        if correlation_id is None
-        else parse_uuidv7(correlation_id)
-    )
+    #: Required, never minted: one act's attempts share one.
+    resolved_correlation_id = parse_uuidv7(correlation_id)
     command_input = canonical_command_input(command)
 
     def build(stream: LockedStream) -> Sequence[NewEvent] | Unchanged:

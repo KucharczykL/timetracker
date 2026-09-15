@@ -27,6 +27,7 @@ from timetracker.settings_registry import (
 from timetracker.settings_resolver import (
     normalize_setting_value,
     resolve_fallthrough_uncached,
+    resolve_str_for_user,
 )
 
 logger = logging.getLogger("games")
@@ -64,7 +65,8 @@ class SettingMutation(NamedTuple):
     changed: bool
     stored: object | None
     stored_present: bool
-    #: What a display-zone change moved; None for every other key.
+    #: What a display-zone change moved; None when the calendar's zone
+    #: did not move, and for every other key.
     calendar: CalendarDelta | None = None
 
 
@@ -116,7 +118,8 @@ def change_site_setting(
     the just-written layer.
 
     The display zone is also the calendar: one command per inheriting
-    library appends beside the row, as `actor`."""
+    library whose calendar moves appends beside the row, as `actor`,
+    which this key requires."""
     definition = get_definition(key)
     if definition.scope is SettingScope.INFRA:
         raise ValueError(f"{key} is infra-scoped (boot-only); cannot store in DB.")
@@ -126,12 +129,22 @@ def change_site_setting(
             raise ValueError(
                 "A calendar change records who changed it; name the actor."
             )
-        libraries = list(_inheriting_libraries())
-        #: Minted outside the retried call, so every attempt reuses them.
-        idempotency_keys = {library.pk: uuid.uuid4() for library in libraries}
-        return _change_site_display_zone(
-            value, actor=actor, libraries=libraries, idempotency_keys=idempotency_keys
+        #: One act, one correlation id across every attempt.
+        change = _change_site_display_zone(
+            value, actor=actor, correlation_id=uuid.uuid7()
         )
+        for restated in change.restated:
+            logger.info(
+                "Library %s now counts days in %s: %d sessions, %d moved a day, "
+                "%d a month, %d a year.",
+                restated.library_id,
+                restated.delta.day_zone,
+                restated.delta.sessions,
+                restated.delta.day_moved,
+                restated.delta.month_moved,
+                restated.delta.year_moved,
+            )
+        return change.mutation
 
     from django.db import transaction
 
@@ -207,8 +220,8 @@ def change_user_setting(
     so there is no lock branch. No-op writes touch nothing. User effective is always
     reported ``locked=False``, matching the read endpoint's contract.
 
-    The display zone is also the calendar: the command appends beside the
-    row."""
+    The display zone is also the calendar: when its zone moves, the
+    command appends beside the row."""
     definition = get_definition(key)
     if definition.scope is not SettingScope.USER:
         raise ValueError(f"{key} is not a user-scoped setting; cannot store per user.")
@@ -218,7 +231,7 @@ def change_user_setting(
 
         owner = cast("User", user)
         authorize(owner, owner.library)
-        return _change_user_display_zone(owner, value, idempotency_key=uuid.uuid4())
+        return _change_user_display_zone(owner, value, correlation_id=uuid.uuid7())
 
     from django.db import transaction
 
@@ -291,42 +304,78 @@ def _write_user_setting(
     return mutation
 
 
-def _inheriting_libraries():
-    """Libraries whose owner states no display zone of their own."""
+def _inheriting_libraries() -> list[UserLibrary]:
+    """Libraries whose owner states no readable display zone of their own.
+
+    A stored name tzdata cannot read resolves as absent, so its
+    library inherits the site zone and moves with it.
+    """
     from django.db.models import Q
 
-    from games.models import UserLibrary
+    from common.date_time_presentation import zone_or_none
+    from games.models import UserLibrary, UserPreferences
 
-    return UserLibrary.objects.filter(
-        Q(user__preferences__display_time_zone__isnull=True)
-        | Q(user__preferences__isnull=True)
-    ).order_by("pk")
+    unreadable = [
+        user_id
+        for user_id, stored in UserPreferences.objects.exclude(
+            display_time_zone__isnull=True
+        ).values_list("user_id", "display_time_zone")
+        if zone_or_none(stored) is None
+    ]
+    return list(
+        UserLibrary.objects.filter(
+            Q(user__preferences__display_time_zone__isnull=True)
+            | Q(user__preferences__isnull=True)
+            | Q(user_id__in=unreadable)
+        ).order_by("pk")
+    )
+
+
+class LibraryRestatement(NamedTuple):
+    """One library's calendar moved, and what moved with it."""
+
+    library_id: uuid.UUID
+    delta: CalendarDelta
+
+
+class SiteZoneChange(NamedTuple):
+    """The site write, and every calendar it moved."""
+
+    mutation: SettingMutation
+    restated: tuple[LibraryRestatement, ...]
 
 
 def _restate_calendar(
     library: UserLibrary,
     *,
-    before: ZoneName,
+    before: ZoneName | None,
     after: ZoneName,
     actor: User,
-    idempotency_key: uuid.UUID,
+    correlation_id: uuid.UUID,
 ) -> CalendarDelta | None:
-    """Append the calendar command when the effective zone moved.
+    """Append the calendar command when the calendar's zone moves.
 
-    The delta is read first; the projector rewrites the stored day.
+    `before` is the stored name, readable or not, so an unreadable
+    row is restated. The delta is read first; the projector rewrites
+    `day_zone` and `effective_day` regenerates.
     """
     from games.commands.calendar import SetCalendarDayZone
+    from games.commands.playersession import _check_zones
     from games.events.dispatch import append_command
     from games.reads.calendar import calendar_delta
 
     if before == after:
         return None
+    #: Before the read: the database reads the zone too.
+    _check_zones(after)
     delta = calendar_delta(library, after)
     append_command(
         SetCalendarDayZone(day_zone=after),
         actor=actor,
         library=library,
-        idempotency_key=f"calendar:set_day_zone:{idempotency_key}",
+        #: Minted per attempt: a rolled-back attempt leaves no record.
+        idempotency_key=f"calendar:set_day_zone:{uuid.uuid4()}",
+        correlation_id=correlation_id,
     )
     return delta
 
@@ -335,61 +384,57 @@ def _zone_name(value: object) -> ZoneName:
     return ZoneInfo(str(value)).key
 
 
+def _calendar_before(library: UserLibrary) -> ZoneName | None:
+    """The stored name, or the owner's display zone before a row exists."""
+    from games.reads.calendar import stated_calendar_zone
+
+    stated = stated_calendar_zone(library)
+    if stated is not None:
+        return stated
+    return resolve_str_for_user(library.user, CALENDAR_SETTING_KEY)
+
+
 @retried_transaction
 def _change_user_display_zone(
-    user: User, value: object | None, *, idempotency_key: uuid.UUID
+    user: User, value: object | None, *, correlation_id: uuid.UUID
 ) -> SettingMutation:
-    from games.reads.calendar import calendar_day_zone
-
     library = user.library
-    before = calendar_day_zone(library).key
+    before = _calendar_before(library)
     mutation = _write_user_setting(user, CALENDAR_SETTING_KEY, value)
     delta = _restate_calendar(
         library,
         before=before,
         after=_zone_name(mutation.effective.value),
         actor=user,
-        idempotency_key=idempotency_key,
+        correlation_id=correlation_id,
     )
     return mutation._replace(calendar=delta)
 
 
 @retried_transaction
 def _change_site_display_zone(
-    value: object | None,
-    *,
-    actor: User,
-    libraries: list[UserLibrary],
-    idempotency_keys: dict[uuid.UUID, uuid.UUID],
-) -> SettingMutation:
-    from games.reads.calendar import calendar_day_zone
-
-    before = {library.pk: calendar_day_zone(library).key for library in libraries}
+    value: object | None, *, actor: User, correlation_id: uuid.UUID
+) -> SiteZoneChange:
+    #: Read inside the transaction the act runs in.
+    libraries = _inheriting_libraries()
+    before = {library.pk: _calendar_before(library) for library in libraries}
     mutation = _write_site_setting(CALENDAR_SETTING_KEY, value)
     after = _zone_name(mutation.effective.value)
-    total: CalendarDelta | None = None
+    restated: list[LibraryRestatement] = []
     for library in libraries:
         delta = _restate_calendar(
             library,
             before=before[library.pk],
             after=after,
             actor=actor,
-            idempotency_key=idempotency_keys[library.pk],
+            correlation_id=correlation_id,
         )
-        if delta is None:
-            continue
-        logger.info(
-            "Library %s now counts days in %s: %d sessions, %d moved a day, "
-            "%d a month, %d a year.",
-            library.pk,
-            after,
-            delta.sessions,
-            delta.day_moved,
-            delta.month_moved,
-            delta.year_moved,
-        )
-        total = delta if total is None else total + delta
-    return mutation._replace(calendar=total)
+        if delta is not None:
+            restated.append(LibraryRestatement(library.pk, delta))
+    total: CalendarDelta | None = None
+    for entry in restated:
+        total = entry.delta if total is None else total + entry.delta
+    return SiteZoneChange(mutation._replace(calendar=total), tuple(restated))
 
 
 def change_library_default_device(library: UserLibrary, device: Device | None) -> bool:

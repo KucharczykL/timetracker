@@ -594,7 +594,7 @@ what it settled, and what the rest of this wave inherits:
   preference row and reports the delta after. The projector rewrites every
   Timed and Corrected row: one library-wide event, which answers #1054's open
   question. #748 registers as a Journal projector handling the same event.
-- **The delta on the 2026-09-12 dump** is 9 of 2,663 Timed sessions to another
+- **The delta on the 2026-09-12 dump** is 9 of 2,663 Timed and Corrected sessions to another
   day under Prague→UTC, none to another month or year; the round trip is
   exact and the replay check clean.
 - **#702's surfaces seed `day_zone` from `calendar_day_zone(library)`**, and a

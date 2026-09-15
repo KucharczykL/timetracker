@@ -1,6 +1,7 @@
 """Contract tests for the site-setting command boundary."""
 
 import json
+import logging
 from dataclasses import dataclass
 
 import pytest
@@ -770,9 +771,16 @@ def test_a_site_zone_reaches_only_inheriting_libraries(
         "Asia/Tokyo"
     )
     assert LibraryCalendar.objects.get(library=user.library).day_zone == "Europe/Prague"
-    assert not _calendar_events(operator.library) or (
-        LibraryCalendar.objects.get(library=operator.library).day_zone == "Asia/Tokyo"
+    #: The operator's own library inherits too.
+    assert LibraryCalendar.objects.get(library=operator.library).day_zone == (
+        "Asia/Tokyo"
     )
+    correlation_ids = {
+        event.correlation_id
+        for library in (overlayless_user.library, operator.library)
+        for event in _calendar_events(library)
+    }
+    assert len(correlation_ids) == 1
 
 
 @pytest.mark.django_db(transaction=True)
@@ -789,3 +797,116 @@ def test_a_zone_change_refuses_to_nest(user):
 
     with transaction.atomic(), pytest.raises(NestedTransactionNotSupported):
         change_user_setting(user, "DISPLAY_TIME_ZONE", "Asia/Tokyo")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_site_clear_that_lands_on_another_zone_restates(
+    overlayless_user, clean_site_setting_sources
+):
+    from games.models import LibraryCalendar
+
+    operator = get_user_model().objects.create_superuser("operator", password="x")
+    change_site_setting("DISPLAY_TIME_ZONE", "Asia/Tokyo", actor=operator)
+
+    mutation = change_site_setting("DISPLAY_TIME_ZONE", None, actor=operator)
+
+    assert mutation.effective.value == "UTC"
+    assert mutation.calendar is not None
+    assert mutation.calendar.day_zone == "UTC"
+    assert LibraryCalendar.objects.get(library=overlayless_user.library).day_zone == (
+        "UTC"
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_site_zone_totals_every_moved_library_and_logs_each(
+    user,
+    prague_session,
+    overlayless_user,
+    clean_site_setting_sources,
+    capture_games_logger,
+):
+    import uuid
+    from datetime import UTC, datetime
+
+    from games.commands.playergame import TrackGame
+    from games.commands.playersession import CreateSession, TimedTiming
+    from games.events.dispatch import dispatch
+    from games.models import Game, Playthrough, UserPreferences
+
+    #: `prague_session`'s owner states Prague; make it inherit so the site moves it.
+    UserPreferences.objects.filter(user=user).update(display_time_zone=None)
+    change_site_setting("DISPLAY_TIME_ZONE", "Europe/Prague", actor=overlayless_user)
+    library = overlayless_user.library
+    game = Game.objects.create(library=library, name="Elsewhere")
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=overlayless_user,
+        library=library,
+        idempotency_key="track",
+    )
+    run = Playthrough.objects.get(player_game__game=game)
+    dispatch(
+        CreateSession(
+            playthrough_id=run.pk,
+            timing=TimedTiming(
+                started_at=datetime(2026, 1, 1, 23, 30, tzinfo=UTC),
+                day_zone="Europe/Prague",
+            ),
+        ),
+        actor=overlayless_user,
+        library=library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+
+    with capture_games_logger() as caplog:
+        caplog.set_level(logging.INFO, logger="games")
+        mutation = change_site_setting(
+            "DISPLAY_TIME_ZONE", "UTC", actor=overlayless_user
+        )
+
+    assert mutation.calendar is not None
+    assert (mutation.calendar.sessions, mutation.calendar.day_moved) == (2, 2)
+    logged = [
+        record.getMessage()
+        for record in caplog.records
+        if "now counts days in UTC" in record.getMessage()
+    ]
+    assert len(logged) == 2
+    assert {str(user.library.pk), str(library.pk)} <= {
+        line.split()[1] for line in logged
+    }
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_library_whose_owner_has_no_preferences_row_inherits(
+    overlayless_user, clean_site_setting_sources
+):
+    from games.models import LibraryCalendar, UserPreferences
+
+    UserPreferences.objects.filter(user=overlayless_user).delete()
+    operator = get_user_model().objects.create_superuser("operator", password="x")
+
+    change_site_setting("DISPLAY_TIME_ZONE", "Asia/Tokyo", actor=operator)
+
+    assert LibraryCalendar.objects.get(library=overlayless_user.library).day_zone == (
+        "Asia/Tokyo"
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_library_whose_owner_states_an_unreadable_zone_inherits(
+    overlayless_user, clean_site_setting_sources
+):
+    from games.models import LibraryCalendar, UserPreferences
+
+    UserPreferences.objects.filter(user=overlayless_user).update(
+        display_time_zone="Mars/Olympus"
+    )
+    operator = get_user_model().objects.create_superuser("operator", password="x")
+
+    change_site_setting("DISPLAY_TIME_ZONE", "Asia/Tokyo", actor=operator)
+
+    assert LibraryCalendar.objects.get(library=overlayless_user.library).day_zone == (
+        "Asia/Tokyo"
+    )

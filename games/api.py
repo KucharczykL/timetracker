@@ -22,6 +22,7 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce, Greatest
+from django.http import HttpResponse
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, NinjaAPI, Query, Router, Schema, Status
 from ninja.errors import HttpError
@@ -67,7 +68,7 @@ from games.sorting import (
     parse_find_filter,
     parse_per_page_override,
 )
-from games.writes.answers import CommandFailed
+from games.writes.answers import CommandFailed, answered
 from games.writes.playergame import new_correlation_id, record_facts
 from games.writes.playthrough import RunDraft, record_run, remove_run, restate_run
 from timetracker.config import SettingSource
@@ -1049,8 +1050,17 @@ def _setting_change_out(
     }
 
 
-def _report_saved(request, key: SettingKey, mutation: SettingMutation) -> None:
-    """One toast: the calendar's sentence when days moved, else "saved"."""
+def _report_saved(
+    request, response: HttpResponse, key: SettingKey, mutation: SettingMutation
+) -> None:
+    """One toast: the calendar's sentence when its zone moved, else "saved".
+
+    A setting that reloads the page after a save reads the toast on
+    the page it lands on, so the header rides no response the browser
+    discards.
+    """
+    if get_definition(key).reload_after_save:
+        response["HX-Refresh"] = "true"
     if mutation.calendar is not None:
         messages.success(request, calendar_sentence(mutation.calendar))
         return
@@ -1058,7 +1068,9 @@ def _report_saved(request, key: SettingKey, mutation: SettingMutation) -> None:
 
 
 @settings_router.patch("/user/{key}", response=SettingChangeOut)
-def update_user_setting(request, key: str, payload: SettingValueIn):
+def update_user_setting(
+    request, response: HttpResponse, key: str, payload: SettingValueIn
+):
     """Set (or clear, with ``value: null``) one of the user's prefs.
 
     Return the freshly resolved value and origin so live controls can update their
@@ -1071,10 +1083,11 @@ def update_user_setting(request, key: str, payload: SettingValueIn):
     if definition.scope is not SettingScope.USER:
         raise HttpError(400, f"{key} is not a user-scoped setting.")
     try:
-        mutation = change_user_setting(request.user, key, payload.value)
+        with answered("time zone"):
+            mutation = change_user_setting(request.user, key, payload.value)
     except (ValidationError, ValueError, TypeError) as error:
         _raise_400(error)
-    _report_saved(request, key, mutation)
+    _report_saved(request, response, key, mutation)
     return _setting_change_out(
         key, mutation, locked=False, namespace=SettingNamespace.USER
     )
@@ -1118,13 +1131,16 @@ def list_site_settings(request):
 
 
 @settings_router.patch("/site/{key}", response=SettingChangeOut)
-def update_site_setting(request, key: str, payload: SettingValueIn):
+def update_site_setting(
+    request, response: HttpResponse, key: str, payload: SettingValueIn
+):
     """Set (or clear, with ``value: null``) a site setting's DB value.
     Superuser-only."""
     if not request.user.is_superuser:
         raise HttpError(403, "Superuser required.")
     try:
-        mutation = change_site_setting(key, payload.value, actor=request.user)
+        with answered("time zone"):
+            mutation = change_site_setting(key, payload.value, actor=request.user)
     except SettingLockedError as error:
         raise HttpError(
             409,
@@ -1134,7 +1150,7 @@ def update_site_setting(request, key: str, payload: SettingValueIn):
         raise HttpError(400, f"Unknown setting {key!r}.")
     except (ValidationError, ValueError, TypeError) as error:
         _raise_400(error)
-    _report_saved(request, key, mutation)
+    _report_saved(request, response, key, mutation)
     return _setting_change_out(key, mutation, namespace=SettingNamespace.SITE)
 
 

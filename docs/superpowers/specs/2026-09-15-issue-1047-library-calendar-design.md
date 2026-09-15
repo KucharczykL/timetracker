@@ -70,23 +70,30 @@ Days now counted in UTC: 2,663 sessions, 9 moved to another day, 0 to
 another month, 0 to another year.
 ```
 
-A site-level change logs one line per library and returns the totals.
+A site-level change logs one line per library whose calendar moved and
+returns the totals. The zone control reloads the page after a save, so the
+toast is left in the message store for the page it lands on rather than
+riding a response the browser discards. A refusal the command raises reaches
+the person as the command's sentence, through `answered`.
 
 ## The readers
 
 - `calendar_day_zone(library)` is the one read: the row, or the owner's
-  display zone before a row exists.
+  display zone before a row exists. A stored name tzdata can no longer read
+  falls back the same way, logged, and the next change of the setting
+  restates it, because the trigger compares the stored name itself.
 - `activity_clock(library)` takes its zone from it. Without a clock,
   `annotated_for_filtering` states `activity_day` and `activity` through
-  `.alias()` with expressions that compile and refuse to execute: validation
-  compiles, and a read naming either raises `UnscopedActivityRead`. The filter
+  `.alias()` with expressions that resolve and refuse to compile: validation
+  resolves them, and a query naming either raises `UnscopedActivityRead`. The filter
   context builds each scope lazily, so a list that never names runs never
   reads the clock.
 - `CreateSession` and `CorrectSessionTiming` refuse a `day_zone` off the
   calendar: "This library counts days in X." #702's surfaces seed it from
   `calendar_day_zone(library)`, and the refusal makes a wrong seed loud.
 - Until #702, the legacy reads group in the request's activated zone, which
-  the trigger keeps equal to the calendar.
+  the setting change keeps equal to the calendar within the snapshot's
+  five-second window.
 
 ## Migration
 
@@ -102,7 +109,8 @@ checks read the setting for the same reason.
 
 - One test changes a seeded library from Europe/Prague to UTC and checks the
   replay. On the 2026-09-12 dump, migration 0005 seeded the one library with
-  no mismatch; the change to UTC moved 9 of 2,663 Timed sessions to another
+  no mismatch; the change to UTC moved 9 of the 2,663 Timed and Corrected
+  sessions (the dump holds no Corrected row) to another
   day and none to another month or year; the change back moved the same 9;
   every `effective_day` matched the snapshot taken before; and the replay
   check reported no difference after either change.

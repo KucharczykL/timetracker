@@ -11,7 +11,8 @@ with AND/OR/NOT composition and typed criterion fields.
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, ClassVar, Final
+from functools import cache
+from typing import TYPE_CHECKING, Any, ClassVar, Final
 
 if TYPE_CHECKING:
     from games.models import (
@@ -26,7 +27,7 @@ if TYPE_CHECKING:
 
 import builtins
 
-from django.db.models import Q, QuerySet
+from django.db.models import Model, Q, QuerySet
 from django.urls import reverse
 from django.utils.http import urlencode
 
@@ -836,6 +837,8 @@ def parse_playthrough_filter(json_str: str) -> PlaythroughFilter | None:
 
 # Validates a mode's ``?filter=`` JSON, raising FilterError or returning None.
 type FilterParser = Callable[[str], OperatorFilter | None]
+#: One scope, built when a filter first names its model.
+type ScopeThunk = Callable[[], QuerySet[Any]]
 
 # Maps a FilterPreset.mode to the parser that validates that mode's filter JSON.
 # Keyset is contract-tested against FilterPreset.MODE_CHOICES (games/models.py)
@@ -896,26 +899,26 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
 def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext:
     """Resolve every compiler subquery from the current library's visibility.
 
-    Scopes build lazily: the runs' scope reads the clock.
+    Scopes build once, when named: the runs' scope reads the clock.
     """
     from games.models import Device, Game, Platform, Playthrough, Purchase, Session
     from games.reads.playthrough_runs import runs_with_condition
 
-    scoped_querysets: dict[builtins.type, Callable[[], QuerySet]] = {
+    scopes: dict[builtins.type[Model], ScopeThunk] = {
         #: tracked_by, not for_library: a nested game filter resolves
         #: from the games this library tracks, and its criteria read
         #: the projection through the `tracked` alias.
-        Game: lambda: Game.objects.tracked_by(library),
-        Session: lambda: Session.objects.for_library(library),
-        Purchase: lambda: Purchase.objects.for_library(library),
-        Playthrough: lambda: runs_with_condition(library),
-        Device: lambda: Device.objects.for_library(library),
+        Game: cache(lambda: Game.objects.tracked_by(library)),
+        Session: cache(lambda: Session.objects.for_library(library)),
+        Purchase: cache(lambda: Purchase.objects.for_library(library)),
+        Playthrough: cache(lambda: runs_with_condition(library)),
+        Device: cache(lambda: Device.objects.for_library(library)),
         # Related Platform selection supports the shared catalogue plus this
         # library's private rows. Top-level Platform management remains the
         # private-only base returned by filter_queryset_for_library().
-        Platform: lambda: Platform.objects.visible_to(library),
+        Platform: cache(lambda: Platform.objects.visible_to(library)),
     }
-    return FilterQueryContext(lambda model: scoped_querysets[model]())
+    return FilterQueryContext(lambda model: scopes[model]())
 
 
 def reachable_models(root_model: ModelKey) -> dict[ModelKey, type[OperatorFilter]]:

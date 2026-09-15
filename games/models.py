@@ -1604,12 +1604,12 @@ class PlaythroughQuerySet(models.QuerySet["Playthrough"]):
         clock is a read that cannot state which threshold it
         answered, and is refused.
 
-        Without a clock both names compile and refuse to execute:
-        validation resolves them, a read raises.
+        Without a clock both names resolve and refuse to compile:
+        a query naming either raises when compiled, one naming
+        neither executes.
         """
         from games.reads.playthrough_activity import (
-            UnscopedActivity,
-            UnscopedActivityDay,
+            UnscopedActivityAlias,
             activity_day_expression,
             activity_expression,
         )
@@ -1625,7 +1625,10 @@ class PlaythroughQuerySet(models.QuerySet["Playthrough"]):
             return self
         if clock is None:
             return self.alias(
-                activity_day=UnscopedActivityDay(), activity=UnscopedActivity()
+                activity_day=UnscopedActivityAlias(output_field=models.DateField()),
+                activity=UnscopedActivityAlias(
+                    output_field=models.CharField(null=True)
+                ),
             )
         queryset = self.annotate(activity_day=activity_day_expression(clock)).annotate(
             activity=activity_expression(clock)
@@ -1987,8 +1990,10 @@ class LibraryCalendar(ProjectionModel):
 
     class Meta:
         constraints = (
-            models.UniqueConstraint(
-                fields=["library"], name="games_librarycalendar_one_per_library"
+            #: The pk is the library's id; uniqueness per library follows.
+            models.CheckConstraint(
+                condition=Q(id=F("library")),
+                name="games_librarycalendar_id_is_library",
             ),
         )
 

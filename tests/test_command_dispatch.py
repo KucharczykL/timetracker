@@ -580,6 +580,7 @@ def test_append_command_inside_a_held_transaction_appends(owned_user, owned_libr
             actor=owned_user,
             library=owned_library,
             idempotency_key="first",
+            correlation_id=uuid.uuid7(),
             wiring=WIRING,
         )
 
@@ -597,6 +598,7 @@ def test_append_command_refuses_without_a_transaction(owned_user, owned_library)
             actor=owned_user,
             library=owned_library,
             idempotency_key="first",
+            correlation_id=uuid.uuid7(),
             wiring=WIRING,
         )
     assert not LibraryEvent.objects.filter(library=owned_library).exists()
@@ -612,6 +614,7 @@ def test_append_command_does_not_authorize(owned_user, other_library):
             actor=owned_user,
             library=other_library,
             idempotency_key="first",
+            correlation_id=uuid.uuid7(),
             wiring=WIRING,
         )
 

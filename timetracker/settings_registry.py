@@ -233,6 +233,14 @@ def _validate_display_time_zone(value: object) -> str:
         raise ValidationError(f"Unsupported time zone {value!r}.") from error
 
 
+def _require_known_zone(value: object) -> None:
+    """The database reads the zone too; refuse one only Python knows."""
+    from games.commands.playersession import known_zone
+
+    if not known_zone(str(value)):
+        raise ValidationError(f"{value} is not a time zone we know.")
+
+
 def _validate_date_format_locale(value: object) -> str:
     normalized = value.strip().lower() if isinstance(value, str) else value
     if not isinstance(normalized, str) or normalized not in _FORMAT_LOCALE_VALUES:
@@ -365,6 +373,7 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             ),
             default_factory=lambda: "UTC",
             validator=_validate_display_time_zone,
+            write_validator=_require_known_zone,
             widget=SettingWidget.SELECT,
             choices=DISPLAY_TIME_ZONE_CHOICES,
             reload_after_save=True,
