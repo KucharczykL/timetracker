@@ -374,6 +374,7 @@ def test_a_corrected_row_answers_its_override(run):
 def test_the_table_states_the_rules_it_was_built_with(run):
     """The names, so a migration cannot drop one in silence."""
     assert {constraint.name for constraint in PlayerSession._meta.constraints} == {
+        "unique_games_playersession_library_identity",
         "playersession_timing_mode_known",
         "playersession_timed_columns",
         "playersession_duration_only_columns",
