@@ -78,7 +78,7 @@ from games.views.playthrough_writes import (
     remove_run_for_request,
     restate_run_for_request,
 )
-from games.views.removal import confirm_and_apply, restore_and_return
+from games.views.removal import UndoOffer, confirm_and_apply, restore_and_return
 from games.views.returns import return_url
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import RunDraft, restore_run
@@ -458,9 +458,7 @@ def remove_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpRespon
         confirm_label="Remove",
         fallback="games:view_game",
         fallback_args=[game.id, game.url_slug],
-        removed="Playthrough removed.",
-        undo="games:restore_playthrough",
-        undo_args=[run.pk],
+        undo=UndoOffer("Playthrough removed.", "games:restore_playthrough", [run.pk]),
     )
 
 

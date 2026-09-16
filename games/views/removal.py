@@ -9,7 +9,7 @@ indifferent to what the POST does — reset uses it too.
 
 from collections.abc import Callable, Sequence
 from functools import partial
-from typing import Any
+from typing import Any, NamedTuple
 
 from django.contrib import messages
 from django.db.models import Model
@@ -21,11 +21,19 @@ from django.urls import reverse
 from common.components import ConfirmPage
 from common.components.core import Children
 from common.layout import render_page
-from common.notices import Undo, notify
+from common.notices import ToastAction, Undo, notify
 from common.returns import UrlName
 from games.removal import remove
 from games.views.returns import return_url
 from games.writes.answers import CommandFailed
+
+
+class UndoOffer(NamedTuple):
+    """What the Undo toast says and where it posts."""
+
+    sentence: str
+    route: UrlName
+    args: Sequence[Any] = ()
 
 
 def confirm_and_apply(
@@ -40,9 +48,7 @@ def confirm_and_apply(
     fallback_args: Sequence[Any] = (),
     details: Children = None,
     reject: str | None = None,
-    removed: str | None = None,
-    undo: UrlName | None = None,
-    undo_args: Sequence[Any] = (),
+    undo: UndoOffer | None = None,
 ) -> HttpResponse:
     """Confirm on GET, run ``action`` on POST, then return to the origin.
 
@@ -54,10 +60,8 @@ def confirm_and_apply(
     back on the confirmation, above the question rather than inside it. Only
     that type reads as a refusal; anything beneath the act is a defect.
 
-    ``removed`` and ``undo``: the Undo toast's sentence and route.
+    ``undo`` makes the answer a toast with Undo.
     """
-    if (removed is None) != (undo is None):
-        raise TypeError("removed and undo go together.")
 
     def confirmation(refusal: Sequence[str] = (), status: int = 200) -> HttpResponse:
         return render_page(
@@ -85,12 +89,12 @@ def confirm_and_apply(
     except CommandFailed as refusal:
         #: The refusal's status: stale page 409, defect 500.
         return confirmation([refusal.message], status=refusal.status_code)
-    if removed is not None and undo is not None:
+    if undo is not None:
         notify(
             request,
-            removed,
+            undo.sentence,
             level=messages.SUCCESS,
-            action=Undo(reverse(undo, args=list(undo_args))),
+            action=Undo(reverse(undo.route, args=list(undo.args))),
         )
     return redirect(
         return_url(
@@ -136,9 +140,7 @@ def confirm_and_remove(
         fallback_args=fallback_args,
         details=details,
         reject=detail_url,
-        removed=removed,
-        undo=undo,
-        undo_args=[instance.pk],
+        undo=UndoOffer(removed, undo, [instance.pk]),
     )
 
 
@@ -149,12 +151,22 @@ def restore_and_return(
     restored: str,
     fallback: UrlName,
     fallback_args: Sequence[Any] = (),
+    retry: bool = False,
 ) -> HttpResponse:
-    """Run ``action``, say so, return; a refusal is an error message."""
+    """Run ``action``, say so, return; a refusal is an error message.
+
+    ``retry`` puts a "Try again" action on that message, posting to
+    this same route: for a restore whose halfway a second press ends.
+    """
     try:
         action()
     except CommandFailed as refusal:
-        messages.error(request, refusal.message)
+        notify(
+            request,
+            refusal.message,
+            level=messages.ERROR,
+            action=ToastAction(label="Try again", url=request.path) if retry else None,
+        )
     else:
         messages.success(request, restored)
     return redirect(return_url(request, fallback=fallback, fallback_args=fallback_args))

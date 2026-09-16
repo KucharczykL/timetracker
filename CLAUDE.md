@@ -394,13 +394,15 @@ ancestors' marks as well as own, so removed Game hides both and restoring it
 leaves separately removed child out (#966). Only whole-library purge destroys
 anything.
 
-**Removing offers Undo** (#695). Every remove view passes `removed=` and
-`undo=` to `confirm_and_apply`, which queues one notice through
-`common/notices.py` after the act succeeds: the sentence, and the restore route
-the toast's Undo form posts to. Seven POST-only `restore_<entity>` routes share
+**Removing offers Undo** (#695). Every remove view hands an `UndoOffer`, the
+sentence and the restore route with the row's key, to `confirm_and_remove` or
+`confirm_and_apply`, which queues one notice through `common/notices.py` after
+the act succeeds; the toast's Undo form posts to that route. Seven POST-only `restore_<entity>` routes share
 `restore_and_return()`; a refusal is an error message on the page the person
-stands on. `<toast-stack>` appends the page as `?origin=` when it renders, so
-the restore lands back where Undo was pressed. A game's restore clears the
+stands on; the game route's error carries a "Try again" action, because its
+stamp clears before its command. `<toast-stack>` appends the page as `?origin=`
+when it takes the toast, so the restore lands back where Undo was pressed. A
+foreign `extra_tags` value is logged and the toast shows without its action. A game's restore clears the
 catalog stamp first and states `RestorePlayerGame` second, the removal's order
 reversed. The preset picker gets its restore URL from the API's DELETE answer.
 Contract is [Undo a removal](docs/superpowers/specs/2026-09-16-issue-695-undo-removal-design.md).
@@ -614,8 +616,8 @@ broker) runs `games.tasks.convert_prices()` on schedule, fetching rates from
 resolved site `DEFAULT_CURRENCY`.
 
 **HTMX toast middleware** (`games/htmx_middleware.py`): converts Django messages
-into `HX-Trigger` headers with `show-toast` event; skipped if `HX-Redirect`
-present. `<toast-stack>` (`ts/elements/toast-stack.ts`, placed by `Page()`,
+into one `HX-Trigger` header carrying every queued message as a `show-toast`
+list; skipped if `HX-Redirect` present. `<toast-stack>` (`ts/elements/toast-stack.ts`, placed by `Page()`,
 built by `ToastStack()` in `common/components/toast.py`) listens and renders;
 `ts/toast.ts` keeps `window.toast` and `fetchWithHtmxTriggers`.
 

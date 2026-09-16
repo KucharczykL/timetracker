@@ -368,6 +368,7 @@ def restore_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
         action=partial(restore_game_for_request, request, game),
         restored=f"{game.name} restored to your library.",
         fallback="games:list_games",
+        retry=True,
     )
 
 

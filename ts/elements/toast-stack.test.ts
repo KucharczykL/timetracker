@@ -197,11 +197,11 @@ describe("lifecycle", () => {
 
 describe("an action", () => {
   function clearCsrfCookie(): void {
-    document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    document.cookie = "csrftoken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
   }
 
   beforeEach(() => {
-    document.cookie = "csrftoken=t";
+    document.cookie = "csrftoken=t; path=/";
     history.replaceState({}, "", "/session/list?page=2");
     document.body.innerHTML = '<toast-stack action-class="ghost-look"></toast-stack>';
   });
@@ -267,6 +267,73 @@ describe("an action", () => {
     expect(toast.classList.contains("opacity-0")).toBe(false);
     vi.advanceTimersByTime(1);
     expect(toast.classList.contains("opacity-0")).toBe(true);
+  });
+
+  it("a stable id gains, changes and loses its action", () => {
+    window.toast("a", "info", { id: "k" });
+    expect(toasts()[0].querySelector("[data-toast-action]")).toBeNull();
+
+    window.toast("b", "success", {
+      id: "k",
+      action: { label: "Undo", url: "/x/restore" },
+    });
+    expect(toasts()).toHaveLength(1);
+    let form = toasts()[0].querySelector<HTMLFormElement>("[data-toast-action]")!;
+    expect(form.getAttribute("action")).toBe("/x/restore?origin=%2Fsession%2Flist%3Fpage%3D2");
+    vi.advanceTimersByTime(9_999);
+    expect(toasts()[0].classList.contains("opacity-0")).toBe(false);
+
+    window.toast("c", "success", {
+      id: "k",
+      action: { label: "Restore", url: "/y/restore" },
+    });
+    form = toasts()[0].querySelector<HTMLFormElement>("[data-toast-action]")!;
+    expect(form.querySelector("button")!.textContent).toBe("Restore");
+
+    window.toast("d", "info", { id: "k" });
+    expect(toasts()[0].querySelector("[data-toast-action]")).toBeNull();
+  });
+
+  it("a toast replaced under the pointer stays until the pointer leaves", () => {
+    window.toast("first", "info", { id: "k" });
+    const [toast] = toasts();
+    toast.dispatchEvent(new Event("mouseenter"));
+
+    window.toast("second", "info", { id: "k" });
+    vi.advanceTimersByTime(20_000);
+    expect(toast.classList.contains("opacity-0")).toBe(false);
+
+    toast.dispatchEvent(new Event("mouseleave"));
+    vi.advanceTimersByTime(5_000);
+    expect(toast.classList.contains("opacity-0")).toBe(true);
+  });
+
+  it("an action whose URL is no route path is dropped and reported", () => {
+    const report = vi.fn();
+    vi.stubGlobal("fetch", report);
+    show({
+      message: "odd",
+      type: "success",
+      action: { label: "Undo", url: "https://evil.example/x" },
+    } as Payload);
+
+    expect(toasts()[0].querySelector("[data-toast-action]")).toBeNull();
+    expect(report).toHaveBeenCalled();
+    vi.advanceTimersByTime(5_000);
+    expect(toasts()[0].classList.contains("opacity-0")).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it("without a CSRF token the form is not drawn", () => {
+    clearCsrfCookie();
+    const report = vi.fn();
+    vi.stubGlobal("fetch", report);
+
+    const toast = showUndo();
+
+    expect(toast.querySelector("[data-toast-action]")).toBeNull();
+    expect(report).toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it("clicking Undo does not dismiss the toast", () => {

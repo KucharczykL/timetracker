@@ -144,7 +144,7 @@ def test_preview_patch_succeeds_with_toast_without_persistence(
 
     assert response.status_code == 204
     trigger = json.loads(response.headers["HX-Trigger"])
-    assert trigger["show-toast"] == {
+    assert trigger["show-toast"][-1] == {
         "message": "Display name saved (preview only)",
         "type": "success",
     }

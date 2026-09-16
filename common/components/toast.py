@@ -26,11 +26,12 @@ register_element("toast-stack", "ToastStack", ToastStackProps)
 
 
 def ToastStack() -> Node:
-    """The notifications region; no tabindex, deliberately."""
+    """The live region; no tabindex, deliberately."""
     return _ToastStack(
         role="region",
         aria_label="Notifications",
-        aria_atomic="true",
+        aria_live="polite",
+        aria_atomic="false",
         action_class=control_button_class(variant="ghost"),
         class_=TOAST_STACK_CLASS,
     )

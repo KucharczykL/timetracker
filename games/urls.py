@@ -111,6 +111,11 @@ urlpatterns = [
         playthrough_acts.complete_playthrough,
         name="complete_playthrough",
     ),
+    path(
+        "preset/<uuidv7:preset_id>/restore",
+        preset.restore_preset,
+        name="restore_preset",
+    ),
     path("purchase/add", purchase.add_purchase, name="add_purchase"),
     path(
         "purchase/add/for-game/<uuidv7:game_id>",
@@ -193,11 +198,6 @@ urlpatterns = [
         "session/<uuidv7:session_id>/restore",
         session.restore_session,
         name="restore_session",
-    ),
-    path(
-        "preset/<uuidv7:preset_id>/restore",
-        preset.restore_preset,
-        name="restore_preset",
     ),
     path("session/list", session.list_sessions, name="list_sessions"),
     path("stats/", general.stats_alltime, name="stats_alltime"),

@@ -148,6 +148,22 @@ def test_without_an_origin_the_fallback_is_the_page(
 
 
 @pytest.mark.parametrize(("route", "removed", "fallback"), ROUTES)
+@pytest.mark.parametrize(
+    "origin",
+    ["https://evil.example/tracker/game/list", "/tracker/session/x/remove"],
+)
+def test_an_origin_that_is_no_read_only_page_is_refused(
+    logged_in, owned_user, game, route, removed, fallback, origin
+):
+    row = removed(owned_user, game)
+
+    response = logged_in.post(action_url(route, row.pk, origin=origin))
+
+    expected = game.get_absolute_url() if fallback is None else reverse(fallback)
+    assert response["Location"] == expected
+
+
+@pytest.mark.parametrize(("route", "removed", "fallback"), ROUTES)
 def test_get_answers_405(logged_in, owned_user, game, route, removed, fallback):
     row = removed(owned_user, game)
 
@@ -259,7 +275,16 @@ class TestRestoreGame:
         game.refresh_from_db()
         assert game.removed_at is None
         assert PlayerGame.objects.get(game=game).removed_at is not None
-        assert _messages_of(first)[-1] == ("error", "refused once")
+        assert _messages_of(first)[-1] == (
+            "error",
+            "Removable is back in the catalog but not tracked yet. Try again.",
+        )
+        from common.notices import toast_payloads
+
+        assert toast_payloads(first.wsgi_request)[-1]["action"] == {
+            "label": "Try again",
+            "url": url,
+        }
 
         second = logged_in.post(url)
         game.refresh_from_db()

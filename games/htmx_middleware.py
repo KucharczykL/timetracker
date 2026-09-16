@@ -44,6 +44,5 @@ class HTMXMessagesMiddleware:
         if not payloads:
             return response
 
-        # The last message (most recent) is the one toast the header carries.
-        response["HX-Trigger"] = json.dumps({"show-toast": payloads[-1]})
+        response["HX-Trigger"] = json.dumps({"show-toast": payloads})
         return response

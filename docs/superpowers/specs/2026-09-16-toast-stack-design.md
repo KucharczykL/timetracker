@@ -28,7 +28,7 @@ evaluates, comes after the collected ones.
 
 `ts/elements/toast-stack.ts` holds `ToastStore`: a read-only `toasts`,
 `addToast(message, type, options)`, `dismissToast(id, notify)`,
-`removeToast(id)`, `clearToastTimer(id)`, `resumeToastTimer(id)`. A `Toast`
+`removeToast(id)`, `setHovered(id, flag)`, `setFocused(id, flag)`. A `Toast`
 holds one `countdown`, `sticky`, `paused` with its remaining time, or
 `running` with its deadline and timer, and one `leaving` handle, null while
 the toast shows; no field pair can disagree. The rules: five types, `info`
@@ -52,8 +52,9 @@ element of its own; the close button. Every class string is one literal, so
 Tailwind's scan of `ts/` finds it.
 
 A click on the toast dismisses it, a click on the close button dismisses it
-without bubbling, Escape dismisses it, `mouseenter` pauses its timer and
-`mouseleave` resumes it. The leave transition is the leave classes on
+without bubbling, Escape dismisses it. The pointer and the focus each hold a
+flag on the toast, through `setHovered` and `setFocused`; the countdown runs
+only while both are clear. The leave transition is the leave classes on
 dismiss and removal 300 ms later. There is no enter transition.
 
 `ts/toast.ts` keeps what is not the store: `window.toast`,

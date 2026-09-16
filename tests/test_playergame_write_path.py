@@ -180,9 +180,9 @@ def test_retracking_a_removed_game_clears_its_mark(owned_user, tracked_game):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_retracking_a_game_never_tracked_is_silent(owned_user, owned_library):
+def test_retracking_a_game_never_tracked_tracks_it(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Never tracked")
 
     retrack_game(owned_user, game, correlation_id=new_correlation_id())
 
-    assert not PlayerGame.objects.filter(game=game).exists()
+    assert PlayerGame.objects.get(game=game).removed_at is None

@@ -3,12 +3,13 @@
  *
  * The dropdown lifecycle (fetch-on-open, rendering, keyboard nav) now lives in
  * the shared combobox primitives (search-select + the combobox drop-down
- * behavior); this module owns only the API calls: save (POST), per-row delete
+ * behavior); this module owns only the API calls: save (POST), per-row removal
  * (the search-select:action listener → confirm → DELETE → refetch), the
  * collision-check name fetch, and the CSRF token read. All endpoints are the
  * /api/presets/ collection URL; DELETE appends the preset id.
  */
 
+import { reportClientError } from "../client-errors.js";
 import { getCsrfToken } from "../csrf.js";
 import type { SearchSelectOption } from "./search-select.js";
 
@@ -78,14 +79,34 @@ export function savePreset(
 }
 
 /**
- * Wire per-row preset deletion for a preset picker inside `root`: listens for
+ * Wire per-row preset removal for a preset picker inside `root`: listens for
  * the widget's `search-select:action` events (guarded to `action="delete"`
- * from a [data-preset-picker] wrapper), confirms, DELETEs, toasts on failure,
- * and refetches the widget's options either way — a stale-row 404
- * self-corrects into the row vanishing. Returns a dispose function; callers
+ * from a [data-preset-picker] wrapper), confirms, DELETEs, toasts either way
+ * (Undo on success, the failure otherwise), and refetches the widget's
+ * options either way — a stale-row 404 self-corrects into the row vanishing. Returns a dispose function; callers
  * MUST invoke it from disconnectedCallback, or a re-connect stacks a second
  * listener (one click → two confirm()s → two DELETEs).
  */
+interface RemovedPresetAnswer {
+  restore_url: string;
+}
+
+/** The answer's restore route, or null for a body that names none. */
+async function restoreUrlOf(response: Response): Promise<string | null> {
+  try {
+    const answer = (await response.json()) as Partial<RemovedPresetAnswer>;
+    if (typeof answer.restore_url === "string" && answer.restore_url.startsWith("/")) {
+      return answer.restore_url;
+    }
+    reportClientError("presets[restore_url]", JSON.stringify(answer), { toast: false });
+  } catch (error) {
+    reportClientError("presets[restore_url]", String((error as Error)?.message ?? error), {
+      toast: false,
+    });
+  }
+  return null;
+}
+
 export function wirePresetDelete(root: HTMLElement, presetApiUrl: string): () => void {
   const onAction = (event: Event): void => {
     const detail = (event as CustomEvent<PresetActionDetail>).detail;
@@ -108,11 +129,13 @@ export function wirePresetDelete(root: HTMLElement, presetApiUrl: string): () =>
           refetch();
           return;
         }
-        // The answer names where Undo posts.
-        const { restore_url: restoreUrl } = (await response.json()) as { restore_url: string };
-        window.toast("Preset removed.", "success", {
-          action: { label: "Undo", url: restoreUrl },
-        });
+        // Removed either way; the action only with a route the answer names.
+        const restoreUrl = await restoreUrlOf(response);
+        window.toast(
+          "Preset removed.",
+          "success",
+          restoreUrl ? { action: { label: "Undo", url: restoreUrl } } : {},
+        );
         refetch();
       })
       .catch((error: unknown) => {

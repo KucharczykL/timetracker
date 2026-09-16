@@ -20,7 +20,7 @@ from django.utils import timezone
 from pytest_django.asserts import assertRedirects
 from session_rows import session_row, timed_row, tracked_run
 
-from common.components.primitives import _FIELD_ERROR_CLASS
+from common.components.primitives import _FIELD_ERROR_CLASS, control_button_class
 from games.models import Game, Platform, PlayerSession, Purchase
 from games.reads.playtime import game_playtime
 from timetracker.temporal import TemporalValue
@@ -164,6 +164,7 @@ class RenderedPagesTest(TestCase):
             'id="main-container"',
             'id="global-modal-container"',
             '<toast-stack role="region" aria-label="Notifications" aria-live="polite"',
+            f'action-class="{control_button_class(variant="ghost")}"',
             "</html>",
         ]:
             self.assertIn(marker, html)

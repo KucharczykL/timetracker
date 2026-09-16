@@ -35,7 +35,7 @@ def test_undo_puts_a_removed_session_back(live_server, page: Page, e2e_library):
 
     page.get_by_role("button", name="Undo").click()
 
-    #: Server-rendered first, then the row: the toast may lead the write.
+    #: A native POST and redirect: the new page proves the write.
     expect(page.get_by_text("Session restored.")).to_be_visible()
     expect(rows).to_have_count(1)
     row.refresh_from_db()

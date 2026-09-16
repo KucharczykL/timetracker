@@ -102,6 +102,20 @@ describe("wirePresetDelete", () => {
     });
   });
 
+  it("a 200 without a restore route still says removed, with no action", async () => {
+    document.cookie = "csrftoken=testtoken";
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response("not json", { status: 200 }))));
+    const toastStub = stubToast();
+    const { widget } = mountPicker();
+
+    dispatchDelete(widget);
+    await flushPromises();
+
+    expect(toastStub).toHaveBeenCalledWith("Preset removed.", "success", {});
+    expect(widget.refetchOptions).toHaveBeenCalledOnce();
+  });
+
   it("does not fetch when the confirm is declined", () => {
     const fetchStub = stubDeleteFetch();
     vi.stubGlobal("confirm", vi.fn(() => false));

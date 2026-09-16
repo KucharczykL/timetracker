@@ -71,7 +71,7 @@ from games.sorting import (
 )
 from games.views.filtering import warn_unknown_sort
 from games.views.playergame_writes import record_facts_for_request
-from games.views.removal import confirm_and_apply, restore_and_return
+from games.views.removal import UndoOffer, confirm_and_apply, restore_and_return
 from games.views.returns import return_url
 from games.writes.answers import CommandFailed
 from games.writes.playergame import new_correlation_id
@@ -499,9 +499,7 @@ def remove_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
         message=f"Remove this session of {_game_name(session)}?",
         confirm_label="Remove",
         fallback="games:list_sessions",
-        removed="Session removed.",
-        undo="games:restore_session",
-        undo_args=[session.pk],
+        undo=UndoOffer("Session removed.", "games:restore_session", [session.pk]),
     )
 
 
