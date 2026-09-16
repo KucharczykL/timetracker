@@ -195,7 +195,7 @@ def test_a_change_moves_every_timed_and_corrected_day(prague_owner, owned_librar
 def test_a_calendar_event_naming_another_library_is_refused(
     owned_user, owned_library, django_user_model
 ):
-    """The CHECK refuses before the primary key does."""
+    """The CHECK refuses ahead of the key."""
     other = django_user_model.objects.create_user(username="second-owner")
     set_day_zone(other.library, other, "UTC")
     foreign = NewEvent(

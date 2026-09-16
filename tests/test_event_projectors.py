@@ -804,7 +804,7 @@ class EmptyAmender(Projector, registry=empty_amend_registry):
 
 
 def test_an_amendment_with_no_column_is_refused(shelf, owned_library):
-    """Zero rows change, which would read as a missing row."""
+    """Zero rows would read as missing."""
     identity = uuid.uuid7()
     created_row(owned_library, identity)
 
@@ -839,7 +839,7 @@ def test_an_amendment_in_another_library_is_refused(
 def test_a_rebuild_names_the_library_the_live_table_holds(
     shelf, owned_library, second_library
 ):
-    """The shadow holds one library; the lookup reads live."""
+    """The lookup reads live, not the shadow."""
     identity = uuid.uuid7()
     created_row(second_library, identity)
 

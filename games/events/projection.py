@@ -366,13 +366,13 @@ class Projector(ABC):
         ).update(**columns)
         if changed == 1:
             return
-        #: The live table: a shadow holds one library.
+        #: Live table: a shadow holds one library.
         holder = (
             model._default_manager.filter(pk=event.aggregate_id)
             .values_list("library_id", flat=True)
             .first()
         )
-        #: Own library, live only: the stream is short.
+        #: Live only, own library: short stream.
         if holder is None or holder == event.library_id:
             raise ProjectionRowMissing(
                 f"{model.__qualname__} has no row {event.aggregate_id} to amend. "

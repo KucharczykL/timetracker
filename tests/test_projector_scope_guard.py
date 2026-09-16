@@ -1,9 +1,9 @@
-"""Refusing a projector write that states its own scope."""
+"""Refusing a self-scoped projector write."""
 
 import ast
 from pathlib import Path
 
-#: Every projector; the helpers live in games/events/projection.py.
+#: Every projector; helpers sit in games/events.
 GUARDED_PACKAGE = "games/projectors"
 #: A path, and why.
 ALLOWED_FILES: dict[str, str] = {}

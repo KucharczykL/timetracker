@@ -891,7 +891,7 @@ def test_a_foreign_row_in_the_shadow_is_left_behind(owned_library, second_librar
 
 
 def no_projectors() -> EventWiring:
-    """An append that projects nothing, so the live table never refuses it."""
+    """Projects nothing; the live table accepts."""
     return EventWiring(projectors=ProjectorRegistry(), event_types=EVENT_TYPES)
 
 
@@ -900,7 +900,7 @@ def no_projectors() -> EventWiring:
 def test_a_stream_naming_another_librarys_identity_refuses_the_swap(
     owned_library, second_library
 ):
-    """The shadow takes the row; the live primary key does not."""
+    """The shadow accepts; the live key refuses."""
     shelf = declare_and_create_shelf()
     append_shelved(second_library, ["theirs"])
     ((identity, _),) = shelf_rows(shelf)

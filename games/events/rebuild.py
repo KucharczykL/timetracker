@@ -297,7 +297,7 @@ _INSERT_REBUILT_ROWS = (
 
 
 class SwapRefused(RuntimeError):
-    """The database stopped the swap; nothing was swapped."""
+    """The database stopped the swap."""
 
     def __init__(
         self,
@@ -339,12 +339,12 @@ class SwapRefusedByReference(SwapRefused):
         self.audited = audited
 
 
-#: Which row the live table holds under a colliding identity.
+#: The live row under a colliding identity.
 type IdentityHolder = tuple[TableName, str, uuid.UUID]  # (table, identity, library)
 
 
 class SwapRefusedByIdentity(SwapRefused):
-    """A unique index stopped the swap: another library's row."""
+    """A unique index stopped the swap."""
 
     def __init__(
         self,
@@ -372,7 +372,7 @@ _VIOLATED_KEY = re.compile(r"Key \((?P<column>[^)]+)\)=\((?P<value>[^)]+)\)")
 def _identity_holder(
     models: Iterable[type[ProjectionModel]], detail: str | None
 ) -> IdentityHolder | None:
-    """The live row under the identity the swap collided on.
+    """The live row under the colliding identity.
 
     Read after the rollback: the swap deleted this library's rows first,
     so any row the identity still names is another library's.
@@ -472,7 +472,7 @@ def swap_in(
     needs the rolled-back block behind it, so a narrower try would
     answer TransactionManagementError instead of a sentence.
     """
-    #: Read twice: the swap, then a refusal's holder lookup.
+    #: Read twice: swap, then holder lookup.
     models = tuple(models)
     swapping = False
     try:

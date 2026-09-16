@@ -22,9 +22,9 @@ changed that row and reported success. The audit walks foreign keys out of
 projections, not the row an event writes, so the error showed later, in a
 rebuild diff or in `make verify-replay-parity`.
 
-No command makes such an event. Each command resolves its subject through
-`library_row`. The exposure is an append that does not go through a command: a
-conversion pass, a repair script, a hand-edited stream.
+No command makes such an event: each resolves its subject through
+`library_row`. The exposure is an append outside a command: a conversion
+pass, a repair script, a hand-edited stream.
 
 ## `project`
 
@@ -49,11 +49,11 @@ and updates. No path costs an extra query.
 A bare append raises the `IntegrityError` with the note from `apply`. A
 rebuild replays into an empty shadow table, so the foreign creation inserts
 there; the swap's `INSERT … SELECT` then hits the live primary key. `swap_in`
-answers that 23505 with `SwapRefusedByIdentity`, a sibling of
-`SwapRefusedByReference` under `SwapRefused`: after the rollback it reads the
-live row under the identity, names the table, the identity and the library
-that holds it, and logs the sentence. Both commands catch `SwapRefused`.
-Shadow tables are `LIKE … INCLUDING ALL`, so the pair exists there.
+answers that 23505 with `SwapRefusedByIdentity`, beside
+`SwapRefusedByReference` under `SwapRefused`: it reads the live row after the
+rollback, names table, identity and holding library, and logs it. Both
+commands catch `SwapRefused`. Shadow tables are `LIKE … INCLUDING ALL`, so
+the pair exists there.
 
 ## `amend`
 
@@ -70,9 +70,9 @@ defects apart. Both raise `ProjectionRowMissing`, which stays in
 ## The other writer
 
 `LibraryCalendars` rewrites `PlayerSession.day_zone` on every session of the
-library. It does so through `library_rows(Model, event)`, the third helper,
-which answers the event's library's rows. `tests/test_projector_scope_guard.py`
-refuses a manager reach anywhere in `games/projectors/`.
+library through `library_rows(Model, event)`, the third helper.
+`tests/test_projector_scope_guard.py` refuses a manager reach anywhere in
+`games/projectors/`.
 
 ## Assumption
 
