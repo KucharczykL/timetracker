@@ -1,6 +1,7 @@
 # The toast stack is a custom element
 
-Issue [#1089](https://github.com/KucharczykL/timetracker/issues/1089), the first member of the stack that delivers
+Issue [#1089](https://github.com/KucharczykL/timetracker/issues/1089), the
+first member of the stack that delivers
 [#695](https://github.com/KucharczykL/timetracker/issues/695). The code is in
 `ts/elements/toast-stack.ts`, `ts/toast.ts`, `common/components/toast.py` and
 `common/layout.py`.
