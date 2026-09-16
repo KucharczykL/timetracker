@@ -116,7 +116,6 @@ path**, so verify against `make check` before pushing when possible.
 | Run every test except `e2e/` | `make test-fast` |
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Verify the UUID identity map | `make audit-uuid-identity` (read-only; fails on any violation) |
-| Census the legacy Session rows | `make preflight-sessions ARGS="--all-libraries"` (read-only; reports, gates nothing) |
 | Render every read-only page as one user to files | `make render-pages ARGS="--user NAME --out DIR"` (read-only; run at two commits on one database and `diff -r`; lists whole, CSRF and version footer normalised) |
 | Benchmark commands, replay, reads, and per-event cost | `make bench` (~2 min, seeds three events a game and removes the scratch library; `ARGS="--library <id> --gate"` times the six reads and checks replay on a real library, where the 20 ms read budget is judged; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
@@ -267,8 +266,8 @@ docs/           — Additional documentation
   **Corrected** states both instants plus duration that *replaces* elapsed
   time — where legacy `duration_total` *added* `duration_manual`, which is why
   #700 converts such a row from legacy total rather than its manual part.
-  Three words are three `MODE_VERDICTS` names in `games/preflight/session.py`,
-  pinned by test so census and column cannot drift.
+  Three words are the timing payload's discriminator values, pinned by test
+  so payload and column cannot drift.
   Three stored generated columns: `effective_day` coalesces written day with
   start read in `day_zone`; `effective_duration` takes stated duration over
   elapsed, zero while running; `sort_instant` gives all three modes one total
@@ -322,11 +321,10 @@ docs/           — Additional documentation
   has no route until #695. Contract is
   [Remove and restore a session](docs/superpowers/specs/2026-09-14-issue-694-session-removal-design.md)
 
-  #700's `games/backfill/playersession.py`, run by migration `0004`, converts
-  every legacy `Session` row: aggregate id the row's own, `recorded_at` its
-  `created_at` (the removal's, its `removed_at`), run from `assign_run`, one imported-history bucket per game
-  needing one, seven readings gated before commit. Member 1 of the wave stack;
-  never merged alone. Contract is
+  #700 converted every legacy `Session` row into these events, under the
+  row's own id, with one imported-history bucket per game whose rows named
+  no run. The pass ran once, out of a migration since squashed; what it left
+  behind is the events. Contract is
   [Convert legacy Sessions](docs/superpowers/specs/2026-09-14-issue-700-session-conversion-design.md)
 
   #702's cutover: every session write is a command and every read the

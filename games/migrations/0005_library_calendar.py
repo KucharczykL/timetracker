@@ -3,74 +3,12 @@
 import django.db.models.deletion
 import django.db.models.fields
 from django.db import migrations, models
-from django.utils import timezone
 
 import timetracker.uuidv7
 
-MACHINE_PREFIX = "LIBRARY_CALENDAR_RECONCILIATION_JSON="
-HUMAN_PREFIX = "Library calendar reconciliation:"
-FAILURE_SUBJECT = "Library calendar seed"
-SUMMARY_KEYS = ("libraries", "seeded", "mismatches")
 
-
-def seed_calendars(apps, schema_editor):
-    """State every library's calendar: the zone 0004 seeded its Timed rows with."""
-    del apps, schema_editor
-    from games.backfill import calendar as seeding
-    from games.backfill.mismatch import Mismatch
-    from games.backfill.reporting import (
-        ReportPrefixes,
-        emit_report,
-        failure_sentence,
-    )
-    from games.models import UserLibrary
-
-    prefixes = ReportPrefixes(machine=MACHINE_PREFIX, human=HUMAN_PREFIX)
-    libraries = seeded = 0
-    mismatches = []
-    #: One instant for every calendar.
-    minted_at = timezone.now()
-    try:
-        for library in UserLibrary.objects.only(*seeding.LIBRARY_FIELDS).order_by("pk"):
-            libraries += 1
-            if seeding.seed_library(library, minted_at=minted_at):
-                seeded += 1
-            #: A second pass appends nothing.
-            if seeding.seed_library(library, minted_at=minted_at):
-                mismatches.append(
-                    Mismatch(
-                        code=seeding.CalendarMismatchCode.SEED_DRIFT,
-                        subject=str(library.pk),
-                        detail="a second pass appended the calendar event again",
-                    )
-                )
-            mismatches.extend(seeding.calendar_mismatches(library))
-    except Exception:
-        #: Emit what was counted before the rollback.
-        emit_report(
-            {
-                "libraries": libraries,
-                "seeded": seeded,
-                "mismatches": len(mismatches),
-                "aborted": 1,
-            },
-            mismatches,
-            prefixes=prefixes,
-            summary_keys=SUMMARY_KEYS,
-        )
-        raise
-
-    entries = emit_report(
-        {"libraries": libraries, "seeded": seeded, "mismatches": len(mismatches)},
-        mismatches,
-        prefixes=prefixes,
-        summary_keys=SUMMARY_KEYS,
-    )
-    sentence = failure_sentence(entries, subject=FAILURE_SUBJECT)
-    if sentence is not None:
-        raise RuntimeError(sentence)
-
-
+#: The seed of one calendar per library ran here once, on every
+#: deployment; a fresh database holds no library to seed.
 class Migration(migrations.Migration):
     dependencies = [
         ("games", "0004_playersession_conversion"),
@@ -109,5 +47,7 @@ class Migration(migrations.Migration):
                 ],
             },
         ),
-        migrations.RunPython(seed_calendars, migrations.RunPython.noop, elidable=True),
+        migrations.RunPython(
+            migrations.RunPython.noop, migrations.RunPython.noop, elidable=True
+        ),
     ]

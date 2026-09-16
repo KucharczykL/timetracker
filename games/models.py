@@ -1764,8 +1764,7 @@ class NaiveTimestamp(models.Func):
 class PlayerSessionTimingMode(models.TextChoices):
     """What one session states about its time.
 
-    The three words `MODE_VERDICTS` names in `games/preflight/session.py`,
-    so the census and the column cannot drift apart.
+    The three words the timing payload's discriminator spells.
     """
 
     TIMED = "timed", "Timed"
