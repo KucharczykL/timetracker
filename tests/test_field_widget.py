@@ -42,8 +42,7 @@ class TestFieldWidgetKindDispatch:
         html = str(field_widget(GameFilter, "status"))
         assert 'data-kind="set"' in html
         assert 'name="status"' in html
-        # status is a static enum: its six PlayerGameStatus words are pre-rendered,
-        # and single-valued, so no (All)/(Only) M2M modifiers.
+        # Static enum, single-valued: no M2M modifiers.
         assert "INCLUDES_ALL" not in html
         assert "INCLUDES_ONLY" not in html
 

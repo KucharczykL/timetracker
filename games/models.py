@@ -1370,8 +1370,7 @@ class ProjectionModel(models.Model):
 class PlayerGameStatus(models.TextChoices):
     """The status a library gives a game.
 
-    Full words: a recorded payload cannot be upcast, so a letter
-    would mean one word forever.
+    Full words: a recorded payload is never upcast.
     """
 
     UNPLAYED = "unplayed", "Unplayed"

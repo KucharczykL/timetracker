@@ -1,9 +1,4 @@
-"""A game with the facts a test states on its projection row.
-
-The autouse hook seeds every created game an UNPLAYED, unmastered
-row and one run; this states the words the test wants on that row.
-Under ``untracked_games`` there is no row, and the factory says so.
-"""
+"""States facts on the hook's seeded row."""
 
 from games.models import Game, PlayerGame, PlayerGameStatus, UserLibrary
 

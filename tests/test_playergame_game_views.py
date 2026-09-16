@@ -233,7 +233,7 @@ def test_an_owned_games_page_still_shows_its_own_rows(logged_in, owned_library):
 
 @pytest.mark.django_db
 def test_the_factory_states_the_games_facts(owned_library):
-    """The projection row says what the test states."""
+    """The row says what the test states."""
     game = create_tracked_game(
         owned_library,
         "Outer Wilds",

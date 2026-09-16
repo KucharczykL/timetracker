@@ -464,14 +464,14 @@ class TestUUIDMultiCriterion:
 
 
 class TestChoiceCriterionAgainstDB:
-    """Verify ChoiceCriterion produces correct DB results, on PlayerGame.status."""
+    """ChoiceCriterion against PlayerGame.status rows."""
 
     @pytest.fixture(autouse=True)
     def setup(self, django_db_blocker):
         pass
 
     def _seed_games(self):
-        """Create five tracked games, one per word the tests name."""
+        """Five tracked games, one per word."""
         from games.models import Game, Platform, PlayerGame, PlayerGameStatus
 
         platform, _ = Platform.objects.get_or_create(name="Test", icon="test")

@@ -139,7 +139,7 @@ def test_the_status_api_refuses_a_status_that_is_not_one(logged_in, owned_librar
     #: Game.save() checks no choices, so the typed schema
     #: field is what refuses this before the view runs.
     assert response.status_code == 422
-    #: Refused before the view ran, so nothing tracked the game.
+    #: Refused before anything tracked the game.
     assert not PlayerGame.objects.filter(game=game).exists()
 
 

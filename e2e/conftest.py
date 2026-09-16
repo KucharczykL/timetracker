@@ -49,25 +49,12 @@ def e2e_library(e2e_user):
 
 @pytest.fixture(autouse=True)
 def _track_created_games(request):
-    """Give every game a test creates the projection rows a read needs.
+    """Seed each created game its projection rows.
 
-    games/views/game.py dispatches TrackGame, and load_sample_data rebuilds
-    the projection from the fixture's events. A test is the third source of a
-    game and leaves no row, so the inner join in ``GameQuerySet.tracked_by()``
-    would hide it. The row says UNPLAYED, unmastered; a test that wants other
-    words states them through ``create_tracked_game``.
-
-    Both rows, because TrackGame states both: #679 gives every tracked game one
-    run, and #1012 reads those runs on Game detail.
-
-    A direct write, not ``backfill_game()``: the backfill needs an actor and a
-    run time, opens its own transaction and appends events. The rows are what
-    the reads want, so the rows are what this writes. The divergence from
-    production is real and deliberate; tests/test_playergame_write_path.py
-    covers the event path.
-
-    Duplicated from tests/conftest.py: the two suites share no conftest, and
-    importing across them would make e2e depend on the unit suite's collection.
+    Rows, not TrackGame: the command wants an actor and a transaction.
+    Both rows: a write path that finds no run creates a second.
+    Other words come through ``create_tracked_game``.
+    A twin of tests/conftest.py: the suites share no conftest.
     """
     from games.models import (
         Game,
