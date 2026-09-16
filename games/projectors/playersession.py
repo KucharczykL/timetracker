@@ -128,9 +128,7 @@ class PlayerSessions(Projector):
         )
 
     def _emulated_changed(self, event: RecordedEvent) -> None:
-        self.amend(
-            PlayerSession, event, emulated=event.payload["emulated"]
-        )
+        self.amend(PlayerSession, event, emulated=event.payload["emulated"])
 
     def _moved(self, event: RecordedEvent) -> None:
         self.amend(

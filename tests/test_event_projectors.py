@@ -678,9 +678,7 @@ class LibraryNamingWriter(Projector, registry=scoped_registry):
     family_name = ProjectorFamily.CURRENT_STATE
 
     def _recorded(self, event: RecordedEvent) -> None:
-        self.project(
-            stand_in(), event, library_id=event.library_id, name="projected"
-        )
+        self.project(stand_in(), event, library_id=event.library_id, name="projected")
 
     handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
@@ -707,14 +705,14 @@ class AmendingWriter(Projector, registry=amend_registry):
     handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
 
-def created_row(model: type[ProjectionModel], library, identity: uuid.UUID):
-    """The row a creation event writes."""
-    return model.objects.create(pk=identity, library_id=library.pk, name="created")
+def created_row(library, identity: uuid.UUID) -> None:
+    """The row a creation event writes: `projected 1`."""
+    project_registry.apply(make_event(library_id=library.pk, aggregate_id=identity))
 
 
 def test_an_amendment_changes_the_columns_it_names(shelf, owned_library):
     identity = uuid.uuid7()
-    created_row(shelf, owned_library, identity)
+    created_row(owned_library, identity)
 
     amend_registry.apply(make_event(library_id=owned_library.pk, aggregate_id=identity))
 
@@ -725,7 +723,7 @@ def test_an_amendment_changes_the_columns_it_names(shelf, owned_library):
 def test_an_amendment_costs_one_statement(shelf, owned_library):
     """One UPDATE, and no read."""
     identity = uuid.uuid7()
-    created_row(shelf, owned_library, identity)
+    created_row(owned_library, identity)
 
     with CaptureQueriesContext(connection) as queries:
         amend_registry.apply(
@@ -735,11 +733,9 @@ def test_an_amendment_costs_one_statement(shelf, owned_library):
     assert statements(queries) == ["UPDATE"]
 
 
-def test_an_amendment_writes_through_the_target_its_family_holds(
-    shelf, owned_library
-):
+def test_an_amendment_writes_through_the_target_its_family_holds(shelf, owned_library):
     identity = uuid.uuid7()
-    created_row(shelf, owned_library, identity)
+    created_row(owned_library, identity)
     target = RecordingTarget()
 
     amend_registry.for_target(target).apply(
@@ -768,7 +764,7 @@ def test_an_amendment_in_another_library_is_refused(
 ):
     """The stream is wrong, not the row."""
     identity = uuid.uuid7()
-    created_row(shelf, second_library, identity)
+    created_row(second_library, identity)
 
     with (
         CaptureQueriesContext(connection) as queries,
@@ -782,7 +778,7 @@ def test_an_amendment_in_another_library_is_refused(
     assert f"belongs to library {second_library.pk}" in message
     assert f"names library {owned_library.pk}" in message
     assert statements(queries) == ["UPDATE", "SELECT"]
-    assert shelf.objects.get(pk=identity).name == "created"
+    assert shelf.objects.get(pk=identity).name == "projected 1"
 
 
 def wiring_over(projectors: ProjectorRegistry) -> EventWiring:
