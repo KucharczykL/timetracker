@@ -2,8 +2,16 @@
 
 Issue [#695](https://github.com/KucharczykL/timetracker/issues/695). The
 code is in `common/notices.py`, `common/layout.py`, `games/htmx_middleware.py`,
-`games/views/removal.py`, `ts/toast.ts` and one restore route per removed
-record.
+`games/views/removal.py`, `ts/elements/toast-stack.ts` and one restore route
+per removed record.
+
+## The stack
+
+Two members, one `gh stack`. The first moves the toasts into a `<toast-stack>`
+custom element and changes nothing a person sees; its contract is
+[The toast stack is a custom element](2026-09-16-toast-stack-design.md), issue #1089. The
+second, this one, adds the action to that element. The first lands alone if
+it must; the second never does.
 
 ## The affordance
 
@@ -64,14 +72,14 @@ mutating route does.
 
 ## The form
 
-The toast draws a real `<form method="post">` around an Undo submit button,
-styled as a ghost `ControlButton`. The store fills the form's
-`csrfmiddlewaretoken` from `getCsrfToken()` in `ts/csrf.ts`: the cookie is
-on every page, because `common/layout.py` already calls `get_token(request)`
-for each document. The form's markup joins the Alpine template in
-`_TOAST_CONTAINER`, a raw HTML string that predates the component rule and
-stays one. The button stops the click, as the close button does, so the
-toast's dismiss-on-click does not take it. Escape still dismisses.
+`<toast-stack>` builds a real `<form method="post">` around an Undo submit
+button for a toast whose payload carries an action, styled with the ghost
+`ControlButton` classes, in the same `createElement` code that builds the
+text and the close button. It fills the form's `csrfmiddlewaretoken` from
+`getCsrfToken()` in `ts/csrf.ts`: the cookie is on every page, because
+`common/layout.py` already calls `get_token(request)` for each document. The
+button stops the click, as the close button does, so the toast's
+dismiss-on-click does not take it. Escape still dismisses.
 
 The timer is ten seconds when the payload carries an action and unchanged
 otherwise. The store keeps two flags a toast, hovered and focused, set on
