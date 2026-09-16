@@ -17,6 +17,7 @@ from games.commands.playersession import (
     EndSession,
     MoveSessionToPlaythrough,
     RemoveSession,
+    RestoreSession,
     StatedDevice,
     TimedTiming,
     TimingStatement,
@@ -264,6 +265,19 @@ def remove_session(
     with answered("session"):
         _dispatch(
             RemoveSession(session_id=session.pk),
+            actor=actor,
+            library=actor.library,
+            correlation_id=correlation_id,
+        )
+
+
+def restore_session(
+    actor: User, session: PlayerSession, *, correlation_id: uuid.UUID
+) -> None:
+    """Put a removed session back."""
+    with answered("session"):
+        _dispatch(
+            RestoreSession(session_id=session.pk),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,

@@ -12,6 +12,7 @@ from games.commands.playergame import (
     PlayerGameNotTracked,
     RecordPlayerGameFacts,
     RemovePlayerGame,
+    RestorePlayerGame,
     TrackGame,
 )
 from games.events.dispatch import Command, dispatch
@@ -64,6 +65,21 @@ def untrack_game(actor: User, game: Game, *, correlation_id: uuid.UUID) -> None:
             )
         except PlayerGameNotTracked:
             #: Untracked: the catalog stamp is the act.
+            pass
+
+
+def retrack_game(actor: User, game: Game, *, correlation_id: uuid.UUID) -> None:
+    """State that the library tracks a removed game again."""
+    with answered("game"):
+        try:
+            _dispatch(
+                RestorePlayerGame(game_id=game.pk),
+                actor=actor,
+                library=actor.library,
+                correlation_id=correlation_id,
+            )
+        except PlayerGameNotTracked:
+            #: Never tracked: the catalog stamp was the whole removal.
             pass
 
 

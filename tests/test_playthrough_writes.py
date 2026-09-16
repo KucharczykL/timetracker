@@ -13,6 +13,7 @@ from games.writes.playthrough import (
     record_run,
     remove_run,
     restate_run,
+    restore_run,
 )
 from timetracker.temporal import TemporalValue
 
@@ -363,3 +364,24 @@ class TestRemoveRun:
             ).count()
             == 1
         )
+
+    @pytest.mark.django_db(transaction=True)
+    def test_a_removed_run_is_put_back(self, user, game):
+        a_recorded_run(user, game, started=date(2026, 1, 2), ended=None)
+        record_run(
+            user,
+            game,
+            RunDraft(
+                started=_act(date(2026, 3, 4)),
+                completed=_act(None),
+                note="",
+            ),
+            correlation_id=new_correlation_id(),
+        )
+        second = Playthrough.objects.filter(player_game__game=game).latest("created_at")
+        remove_run(user, second, correlation_id=new_correlation_id())
+
+        restore_run(user, second, correlation_id=new_correlation_id())
+
+        second.refresh_from_db()
+        assert second.removed_at is None

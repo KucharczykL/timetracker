@@ -28,6 +28,7 @@ from games.writes.playersession import (
     remove_session,
     reset_session,
     restate_session,
+    restore_session,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -223,6 +224,39 @@ def test_removing_marks_the_row(owned_user, owned_library, game):
 
     remove_session(owned_user, row, correlation_id=uuid.uuid7())
 
+    row.refresh_from_db()
+    assert row.removed_at is not None
+
+
+def test_restoring_clears_the_mark(owned_user, owned_library, game):
+    row = session_row(game, started_at=STARTED_AT)
+    remove_session(owned_user, row, correlation_id=uuid.uuid7())
+    correlation_id = uuid.uuid7()
+
+    restore_session(owned_user, row, correlation_id=correlation_id)
+
+    row.refresh_from_db()
+    assert row.removed_at is None
+    assert _events(correlation_id) == ["library.playersession.restored"]
+
+
+def test_restoring_under_a_removed_run_is_answered(owned_user, owned_library, game):
+    from stated_runs import another_run
+
+    from games.writes.playthrough import remove_run
+
+    row = session_row(game, started_at=STARTED_AT)
+    remove_session(owned_user, row, correlation_id=uuid.uuid7())
+    another_run(owned_user, game)
+    remove_run(owned_user, row.playthrough, correlation_id=uuid.uuid7())
+
+    with pytest.raises(CommandFailed) as refusal:
+        restore_session(owned_user, row, correlation_id=uuid.uuid7())
+
+    assert refusal.value.message == (
+        "That playthrough was removed from your library. Restore it before "
+        "changing its sessions."
+    )
     row.refresh_from_db()
     assert row.removed_at is not None
 
