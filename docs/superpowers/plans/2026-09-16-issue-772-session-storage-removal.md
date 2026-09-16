@@ -48,8 +48,8 @@ conversion modules' last runtime caller.
 - [ ] Capture the baseline count on the current commit: into the empty
       development database, `make devlogin` then `make loadsample USER=admin`,
       and read `PlayerSession.objects.count()` in `make shell`. Write the
-      number into the Task 1 checklist. Expected 2,807 (the fixture's row
-      count); capture, do not trust. `make reset-db` empties it again.
+      number into the Task 1 checklist. Captured on `bb41e358`: 2,807
+      sessions, 873 runs, 0 calendars. `make reset-db` empties it again.
 - [ ] Capture the before pages: `make restore-dump` prints a `DATABASE_URL`;
       `make render-pages DATABASE_URL=<url> ARGS="--user <prod user> --out
       /tmp/render-main"`. Kept for Task 5's diff. `make drop-dump` after.

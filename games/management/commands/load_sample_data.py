@@ -14,13 +14,6 @@ from django.core.serializers.base import DeserializationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 
-from games.backfill.playersession import (
-    ConversionRefused,
-    convert_library,
-    ordering_violations,
-    reconcile,
-)
-from games.backfill.reporting import ReportPrefixes, emit_report, failure_sentence
 from games.conversion import _request_conversion_for_locked_state
 from games.events.rebuild import (
     RebuildMode,
@@ -28,6 +21,7 @@ from games.events.rebuild import (
     rebuild_projections,
 )
 from games.events.reconcile import UnresolvedReferences
+from games.events.references import UnknownReferenceKind
 from games.events.replay import PayloadVersionUnsupported, StreamNotContiguous
 from games.events.wiring import DEFAULT_WIRING
 from games.external_references import backfill_wikidata_references
@@ -42,14 +36,9 @@ from games.models import (
     Platform,
     Purchase,
     PurchaseConversionState,
-    Session,
 )
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "sample.yaml.gz"
-SAMPLE_REPORT_PREFIXES = ReportPrefixes(
-    machine="SAMPLE_SESSION_CONVERSION_RECONCILIATION_JSON=",
-    human="Sample session conversion reconciliation:",
-)
 TARGET_LIBRARY_MARKER = "__target_library__"
 
 PRIVATE_MODELS = {
@@ -61,10 +50,7 @@ PRIVATE_MODELS = {
     "games.libraryevent": LibraryEvent,
     "games.libraryeventreference": LibraryEventReference,
 }
-LOADABLE_MODELS = {
-    **PRIVATE_MODELS,
-    "games.session": Session,
-}
+LOADABLE_MODELS = {**PRIVATE_MODELS}
 
 
 class FixtureRelationship(NamedTuple):
@@ -97,10 +83,6 @@ FIXTURE_RELATIONSHIPS: dict[str, tuple[FixtureRelationship, ...]] = {
             "related_game", "games.game", False, False, reference_field="pk"
         ),
         FixtureRelationship("games", "games.game", True, False),
-    ),
-    "games.session": (
-        FixtureRelationship("game", "games.game", False, True, reference_field="pk"),
-        FixtureRelationship("device", "games.device", False, False),
     ),
     "games.libraryevent": (
         FixtureRelationship("stream", "games.libraryeventstreamhead", False, True),
@@ -189,33 +171,6 @@ class Command(BaseCommand):
                     "Sample fixture could not be projected: "
                     f"{report.attempts[-1].conflict}"
                 )
-            #: The deployment holds the projection; so here.
-            try:
-                converted = convert_library(user.library)
-            except ConversionRefused as refusal:
-                raise CommandError(
-                    f"Sample sessions could not be converted: {refusal}"
-                ) from refusal
-            #: The identity audit reads every library, not the sample's.
-            mismatches = [
-                *reconcile(user.library, converted),
-                *ordering_violations(),
-            ]
-            if mismatches:
-                entries = emit_report(
-                    converted.as_dict() | {"mismatches": len(mismatches)},
-                    mismatches,
-                    prefixes=SAMPLE_REPORT_PREFIXES,
-                    summary_keys=tuple(converted.as_dict()),
-                    stdout=self.stdout,
-                    stderr=self.stderr,
-                )
-                sentence = failure_sentence(
-                    entries, subject="Sample session conversion"
-                )
-                raise CommandError(
-                    f"{sentence} (the identity audit reads every library)"
-                )
             #: The fixture predates #896: no reference rows.
             try:
                 backfilled = backfill_wikidata_references(user.library)
@@ -248,8 +203,7 @@ class Command(BaseCommand):
                 + ", ".join(
                     f"{diff.rebuilt_rows} {diff.table}" for diff in report.tables
                 )
-                + f", and {converted.live_rows + converted.rows_removed_converted} "
-                "session(s) converted."
+                + "."
             )
         )
 
@@ -372,13 +326,22 @@ class Command(BaseCommand):
                         )
 
         #: FIXTURE_RELATIONSHIPS can only validate a plain FK field. An
-        #: event's game reference lives inside its JSON payload, which that
-        #: mechanism cannot reach.
-        game_ids = {
-            str(record["pk"])
-            for record in records
-            if record.get("model") == "games.game"
-        }
+        #: event's references live inside its JSON payload, which that
+        #: mechanism cannot reach, so each is resolved through its kind.
+        kinds = DEFAULT_WIRING.event_types.reference_kinds
+
+        def referenced_model(kind_name, *, subject):
+            if kind_name == "catalog.platform":
+                raise CommandError(
+                    f"Sample {subject} references a Platform. Platform rows are "
+                    "re-created under fresh pks at load time, so a payload "
+                    "reference to one would dangle."
+                )
+            try:
+                return kinds.kind_for(kind_name).model
+            except UnknownReferenceKind as error:
+                raise CommandError(f"Sample {subject}: {error}") from error
+
         for record in records:
             if record.get("model") != "games.libraryevent":
                 continue
@@ -386,18 +349,12 @@ class Command(BaseCommand):
             for found in DEFAULT_WIRING.event_types.references_in(
                 fields["event_type"], fields["payload"]
             ):
-                if found.value["kind"] == "catalog.platform":
+                model = referenced_model(
+                    found.value["kind"], subject=f"event {record['pk']}"
+                )
+                if (model._meta.label_lower, str(found.value["id"])) not in record_keys:
                     raise CommandError(
-                        f"Sample event {record['pk']} references a Platform. "
-                        "Platform rows are re-created under fresh pks at load "
-                        "time, so a payload reference to one would dangle."
-                    )
-                if (
-                    found.value["kind"] == "catalog.game"
-                    and found.value["id"] not in game_ids
-                ):
-                    raise CommandError(
-                        f"Sample event {record['pk']} references Game "
+                        f"Sample event {record['pk']} references {model.__name__} "
                         f"{found.value['id']!r}, which is not included in the "
                         "fixture."
                     )
@@ -405,12 +362,15 @@ class Command(BaseCommand):
             if record.get("model") != "games.libraryeventreference":
                 continue
             fields = record["fields"]
+            model = referenced_model(
+                fields["kind"], subject=f"reference {record['pk']}"
+            )
             if (
-                fields["kind"] == "catalog.game"
-                and str(fields["referenced_id"]) not in game_ids
-            ):
+                model._meta.label_lower,
+                str(fields["referenced_id"]),
+            ) not in record_keys:
                 raise CommandError(
-                    f"Sample reference {record['pk']} names Game "
+                    f"Sample reference {record['pk']} names {model.__name__} "
                     f"{fields['referenced_id']!r}, which is not included in "
                     "the fixture."
                 )
@@ -517,6 +477,12 @@ class Command(BaseCommand):
             fields = copied["fields"]
             if model in PRIVATE_MODELS:
                 fields["library"] = str(library.pk)
+            #: An aggregate keyed on the library: the calendar.
+            if (
+                model == "games.libraryevent"
+                and fields.get("aggregate_id") == TARGET_LIBRARY_MARKER
+            ):
+                fields["aggregate_id"] = str(library.pk)
             if model in {"games.game", "games.purchase"}:
                 platform_reference = fields.get("platform")
                 if platform_reference is not None:

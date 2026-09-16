@@ -22,8 +22,6 @@ ALLOWED_FILES: dict[str, str] = {
     "games/reads/playtime/legacy.py": "The parity command's other source.",
     "games/reads/session_parity.py": "The statistics gate's legacy side.",
     "games/removal.py": "REMOVABLE_MODELS lists it until the table goes.",
-    "games/management/commands/load_sample_data.py": "Loads the fixture.",
-    "games/management/commands/anonymize_sample.py": "Writes the fixture.",
 }
 
 REPORT = (

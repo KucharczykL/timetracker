@@ -21,6 +21,7 @@ from games.models import (
     Device,
     ExchangeRate,
     Game,
+    LibraryCalendar,
     Platform,
     PlayerGame,
     PlayerSession,
@@ -28,7 +29,6 @@ from games.models import (
     PlaythroughKind,
     Purchase,
     PurchaseConversionState,
-    Session,
     UserLibraryPreferences,
 )
 
@@ -220,8 +220,9 @@ def test_committed_sample_load_owns_private_rows_and_reuses_shared_platform(owne
     assert not Device.objects.exclude(library=owner.library).exists()
     assert Purchase.objects.filter(library=owner.library).exists()
     assert not Purchase.objects.exclude(library=owner.library).exists()
-    assert Session.objects.filter(game__library=owner.library).exists()
-    assert not Session.objects.exclude(game__library=owner.library).exists()
+    assert PlayerSession.objects.filter(library=owner.library).exists()
+    assert not PlayerSession.objects.exclude(library=owner.library).exists()
+    assert LibraryCalendar.objects.filter(library=owner.library).exists()
 
 
 def test_committed_sample_stores_promoted_uuid_identities_as_primary_keys():
@@ -243,9 +244,11 @@ def test_committed_sample_stores_promoted_uuid_identities_as_primary_keys():
 
     device_ids = {record["pk"] for record in promoted["games.device"]}
     session_devices = {
-        record["fields"]["device"]
+        record["fields"]["payload"]["device"]["id"]
         for record in records
-        if record["model"] == "games.session" and record["fields"]["device"] is not None
+        if record["model"] == "games.libraryevent"
+        and record["fields"]["event_type"] == "library.playersession.created"
+        and record["fields"]["payload"]["device"] is not None
     }
     assert session_devices
     assert session_devices <= device_ids
@@ -335,6 +338,8 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
 ABSENT_GAME_UUID = "00000000-0000-7000-8000-000000000000"
 ABSENT_DEVICE_UUID = "00000000-0000-7000-8000-000000000001"
 PRESENT_GAME_UUID = "00000000-0000-7000-8000-000000000002"
+PRESENT_STREAM_UUID = "00000000-0000-7000-8000-000000000003"
+PRESENT_EVENT_UUID = "00000000-0000-7000-8000-000000000004"
 ABSENT_PLATFORM_UUID = "00000000-0000-7000-8000-000000000001"
 
 
@@ -342,7 +347,6 @@ ABSENT_PLATFORM_UUID = "00000000-0000-7000-8000-000000000001"
 @pytest.mark.parametrize(
     ("model", "fields", "target_model"),
     [
-        ("games.session", {"game": ABSENT_GAME_UUID}, "Game"),
         (
             "games.purchase",
             {"library": "__target_library__", "games": [999]},
@@ -391,23 +395,36 @@ def test_sample_load_rejects_a_session_device_outside_the_fixture_graph(
         yaml.safe_dump(
             [
                 {
-                    "model": "games.game",
-                    # Session.game names its target's primary key, which for Game
-                    # is the UUID - so the included game must carry it here for
-                    # this fixture to fail on the *device* it is testing.
-                    "pk": PRESENT_GAME_UUID,
-                    "fields": {
-                        "library": "__target_library__",
-                        "name": "Included game",
-                        "platform": None,
-                    },
+                    "model": "games.libraryeventstreamhead",
+                    "pk": PRESENT_STREAM_UUID,
+                    "fields": {"library": "__target_library__", "current_sequence": 1},
                 },
                 {
-                    "model": "games.session",
-                    "pk": 302,
+                    "model": "games.libraryevent",
+                    "pk": PRESENT_EVENT_UUID,
                     "fields": {
-                        "game": PRESENT_GAME_UUID,
-                        "device": ABSENT_DEVICE_UUID,
+                        "library": "__target_library__",
+                        "stream": PRESENT_STREAM_UUID,
+                        "sequence": 1,
+                        "event_type": "library.playersession.created",
+                        "aggregate_id": PRESENT_EVENT_UUID,
+                        "payload": {
+                            "playthrough": PRESENT_GAME_UUID,
+                            "device": {
+                                "kind": "device",
+                                "id": ABSENT_DEVICE_UUID,
+                                "label": "Absent",
+                                "detail": "",
+                            },
+                            "release": None,
+                            "timing": {
+                                "mode": "duration_only",
+                                "stated_day": "2026-01-01",
+                                "duration_seconds": 60,
+                            },
+                            "note": "",
+                            "emulated": False,
+                        },
                     },
                 },
             ]
@@ -416,7 +433,7 @@ def test_sample_load_rejects_a_session_device_outside_the_fixture_graph(
     monkeypatch.setattr(load_sample_data, "FIXTURE_PATH", fixture)
 
     with pytest.raises(
-        CommandError, match=rf"references Device {ABSENT_DEVICE_UUID}.*not included"
+        CommandError, match=rf"references Device .{ABSENT_DEVICE_UUID}.*not included"
     ):
         call_command("load_sample_data", "--user", owner.username, verbosity=0)
 

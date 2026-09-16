@@ -3,13 +3,25 @@
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, cast, is_typeddict
+from typing import (
+    Any,
+    NamedTuple,
+    NotRequired,
+    Required,
+    TypeAliasType,
+    cast,
+    get_args,
+    get_origin,
+    get_type_hints,
+    is_typeddict,
+)
 
 from pydantic import TypeAdapter, ValidationError
 
 from games.events.references import (
     DEFAULT_REFERENCE_KINDS,
     FoundReference,
+    Reference,
     ReferenceFields,
     ReferenceKindRegistry,
     UnknownReferenceKind,
@@ -22,6 +34,63 @@ from timetracker.temporal import TemporalValue
 
 type AggregateType = str  # "playthrough"
 type EventType = str  # "library.playersession.created"
+#: Keys from the payload down to one field: ("timing", "started_at").
+type KeyPath = tuple[str, ...]
+#: The name a `type` statement gave an annotation: "ReferenceId".
+type AliasName = str
+type AliasedFields = Mapping[AliasName, tuple[KeyPath, ...]]
+
+AGGREGATE_ID_ALIAS: AliasName = "ReferenceId"
+INSTANT_ALIAS: AliasName = "InstantText"
+DAY_ALIAS: AliasName = "DayText"
+
+
+class DatedKeys(NamedTuple):
+    """Where a payload states an instant, and where a calendar day."""
+
+    instants: tuple[KeyPath, ...]
+    days: tuple[KeyPath, ...]
+
+
+def aliased_fields(payload: type) -> AliasedFields:
+    """Every field annotated with a `type` alias, by the alias's name.
+
+    Walks nested TypedDicts and unions of them, so a key inside the
+    session's timing statement is found under `("timing", key)`. A
+    `Reference` is one value re-captured whole, so its own `id` is
+    not reported.
+    """
+    found: dict[AliasName, list[KeyPath]] = {}
+    _collect_aliases(payload, (), found, frozenset())
+    return {name: tuple(paths) for name, paths in found.items()}
+
+
+def _collect_aliases(
+    hint: Any,
+    path: KeyPath,
+    found: dict[AliasName, list[KeyPath]],
+    seen: frozenset[Any],
+) -> None:
+    if isinstance(hint, TypeAliasType):
+        paths = found.setdefault(hint.__name__, [])
+        if path not in paths:
+            paths.append(path)
+        _collect_aliases(hint.__value__, path, found, seen)
+        return
+    if get_origin(hint) in (Required, NotRequired) or hasattr(hint, "__metadata__"):
+        _collect_aliases(get_args(hint)[0], path, found, seen)
+        return
+    if hint is Reference:
+        return
+    if is_typeddict(hint):
+        if hint in seen:
+            return
+        for key, field in get_type_hints(hint, include_extras=True).items():
+            _collect_aliases(field, (*path, key), found, seen | {hint})
+        return
+    for argument in get_args(hint):
+        _collect_aliases(argument, path, found, seen)
+
 
 #: Without both, validation means nothing.
 REQUIRED_SCHEMA_CONFIG: Mapping[str, object] = {"extra": "forbid", "strict": True}
@@ -113,6 +182,7 @@ class RegisteredType:
     adapter: TypeAdapter[Any]
     #: Derived from the payload's annotations at registration.
     references: ReferenceFields
+    aliased: AliasedFields
 
 
 class EventTypeRegistry:
@@ -156,6 +226,7 @@ class EventTypeRegistry:
             adapter=TypeAdapter(spec.payload),
             #: Raises rather than record an unenumerable reference.
             references=reference_fields(spec.payload),
+            aliased=aliased_fields(spec.payload),
         )
 
     @staticmethod
@@ -216,6 +287,17 @@ class EventTypeRegistry:
         """Every reference this recorded payload carries."""
         return tuple(
             references_in(payload, self._registration_for(event_type).references)
+        )
+
+    def aggregate_id_keys(self, event_type: EventType) -> tuple[KeyPath, ...]:
+        """Where this payload names another aggregate by bare id."""
+        return self._registration_for(event_type).aliased.get(AGGREGATE_ID_ALIAS, ())
+
+    def dated_keys(self, event_type: EventType) -> DatedKeys:
+        """Where this payload states an instant or a day."""
+        aliased = self._registration_for(event_type).aliased
+        return DatedKeys(
+            instants=aliased.get(INSTANT_ALIAS, ()), days=aliased.get(DAY_ALIAS, ())
         )
 
     @property
