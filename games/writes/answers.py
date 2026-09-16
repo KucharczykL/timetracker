@@ -18,7 +18,7 @@ from games.events.append import (
     TransactionRequired,
 )
 from games.events.conflicts import CommandConflict
-from games.events.dispatch import CommandNotPermitted, CommandRejected
+from games.events.dispatch import CommandNotPermitted, CommandRejected, RowInconsistent
 from games.events.envelope import DeferredRowRefused
 from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.projection import ProjectionRowMissing
@@ -85,6 +85,15 @@ REFUSED_BY_DATABASE = (
     "problem has been reported."
 )
 
+#: What an inconsistent row says. Worded about the reading, not the
+#: row: where the installation's tzdata lost a zone name the row is
+#: right, and a sentence calling it inconsistent would send an
+#: administrator to the wrong place.
+REFUSED_BY_AN_INCONSISTENT_ROW = (
+    "This {subject}'s record could not be read, so nothing was changed. "
+    "The problem has been reported."
+)
+
 #: Not clauses: a test reads a mapping.
 CONFLICT_ANSWERS: dict[type[CommandConflict], ConflictAnswer] = {
     RetryBudgetExhausted: ConflictAnswer(_COLLIDED, CONFLICT_STATUS),
@@ -98,7 +107,7 @@ CONFLICT_ANSWERS: dict[type[CommandConflict], ConflictAnswer] = {
 
 #: Own clause each. Not CommandConflict subclasses.
 ANSWERED_DIRECTLY: frozenset[type[Exception]] = frozenset(
-    {CommandNotPermitted, CommandRejected}
+    {CommandNotPermitted, CommandRejected, RowInconsistent}
 )
 
 #: Defects in the program, not conflicts. Each one means a command
@@ -151,6 +160,13 @@ def answered(subject: SubjectNoun) -> Iterator[None]:
             raise
         raise CommandFailed(
             answer.sentence.format(subject=subject), answer.status_code
+        ) from error
+    except RowInconsistent as error:
+        #: Ahead of its parent, which would answer it as a rule.
+        #: The traceback carries the argument and every cause.
+        logger.exception("[answers]: a command refused an inconsistent %s.", subject)
+        raise CommandFailed(
+            REFUSED_BY_AN_INCONSISTENT_ROW.format(subject=subject), DEFECT_STATUS
         ) from error
     except CommandRejected as error:
         #: Never str(error): the argument is written for a developer

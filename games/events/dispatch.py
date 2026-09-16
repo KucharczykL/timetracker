@@ -192,6 +192,17 @@ class CommandRejected(Exception):
         self.sentence = sentence
 
 
+class RowInconsistent(CommandRejected):
+    """A row the command read cannot be read as the schema promises.
+
+    Answered as a defect: the person can state nothing different, so
+    the boundary owns the sentence and the argument is for the log.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
 def authorize(actor: User, library: UserLibrary) -> None:
     """Refuse anyone but the library's own active owner.
 
