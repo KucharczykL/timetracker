@@ -19,13 +19,14 @@ What it still costs, measured at `bb41e358`:
 
 | What | Size |
 |---|---|
-| `games/backfill/` (conversion, calendar seed, reporting, mismatch, append) | 1,400 lines |
-| `games/preflight/session.py` and its command | 700 lines |
-| `games/reads/playtime/legacy.py`, `playtime_parity.py`, `session_parity.py`, `verify_session_parity` | 870 lines |
+| `games/backfill/` (conversion, calendar seed, reporting, mismatch, append) | 1,398 lines |
+| `games/preflight/session.py` and its command | 695 lines |
+| `games/reads/playtime/legacy.py`, `playtime_parity.py`, `session_parity.py`, `verify_session_parity` | 871 lines |
 | `Session`, `SessionQuerySet`, the removal registry entry, the import guard | 250 lines |
 | `games/fixtures/sample.yaml.gz` | 2,807 `games.session` records, zero `library.playersession.*` events |
 | `games/fixtures/data.yaml` and `make loadall` | 92 legacy rows, untouched since 2026-08-14 |
-| tests naming the model | 24 files under `tests/`, 3 under `e2e/` |
+| tests binding the model, its twins, or its reverse accessor | 27 files under `tests/`; `e2e/` names it in one docstring only |
+| runtime code reading a reverse accessor the guard never matched | `games/views/device.py:164`, `device.session_set.count()` on the Remove-device confirmation |
 
 The purchase wave is still to come. Its conversion may want a gated pass, a
 reconciliation report and a parity command again. Every module here is kept in
@@ -58,8 +59,19 @@ remove_session"`, then given one hand-added operation ahead of `DeleteModel`:
 a `RunPython` guard, `elidable=True`, reverse `noop`, that refuses when any
 `games_session` row has no `library.playersession.created` event at its own
 id. It counts against the event table, not the projection, because the
-projection can be mid-rebuild. Its sentence names the release to upgrade
-through first. On a fresh database the table is empty and the guard passes.
+projection can be mid-rebuild, and it counts in raw SQL through
+`schema_editor.connection`, never through `games.models`: `elidable` is read
+only by the optimizer, so every fresh database runs the callable, and an
+import of the application there is the trap CLEAN-02 §3 records. Its sentence
+names the release to upgrade through first. On a fresh database the table is
+empty and the guard passes.
+
+The guard cannot fire on a correctly converted deployment: `convert_row`
+appends the `created` event under the row's own pk for live and removed rows
+alike, and every row the walk does not convert is a refusal that aborts
+`0004` (a shared-game row, a removed or untracked game, `rows_unreached`
+becoming a mismatch). An applied `0004` therefore implies a `created` event
+per row.
 
 **The squash** is the final commit, and it is Django's `squashmigrations`, not a
 hand-written baseline, as [docs/migration-squash.md](../../migration-squash.md)
@@ -76,12 +88,15 @@ asks. Measured on this tree with a throwaway `0006`:
 - The file is named by the tool, `0001_squashed_0006_remove_session`, which
   no deployment history already holds.
 
-The old files stay in this pull request. Django marks the squashed migration
-applied on the deployment's next `migrate`, once every replaced migration is
-recorded there. Taking `0001`–`0006` out before that would make the loader
-treat the squashed file as unapplied and run its `CreateModel`s against
-existing tables. So step two is a follow-up issue, after the deployment has
-applied `0006`: remove the six files, drop `replaces`, and retarget
+The old files stay in this pull request. Read in Django 6.0.7's source: the
+loader marks a squashed migration applied only when every replaced one is
+recorded, and drops the squashed node when they are *partially* applied. The
+deployment holds `0001`–`0005`, so on its next `migrate` the original `0006`
+file runs, and `check_replacements` then records the squashed row. Taking the
+six files out before that would leave the squashed file partially applied and
+unusable. Once the row exists, `remove_replaced_nodes` tolerates missing
+files. So step two is a follow-up issue, after the deployment has applied
+`0006`: remove the six files, drop `replaces`, and retarget
 `tests/test_dump_restore_roundtrip.py`, which imports
 `games.migrations.0001_initial` by name.
 
@@ -100,11 +115,22 @@ in review.
 | `games/management/library_scope.py` | shared by the two commands above, nothing else |
 | `games/fixtures/data.yaml`, `make loadall` | a `loaddata` seed predating the event store |
 | `tests/test_session_import_guard.py` | refused the model outside an allow list; the list is empty |
-| Makefile targets `preflight-sessions`, `verify-session-parity`, `loadall` and their CLAUDE.md rows | |
+| Makefile targets `preflight-sessions`, `verify-session-parity`, `loadall`; the first two have CLAUDE.md rows | |
 
 `Session` and `SessionQuerySet` leave `models.py`, `REMOVABLE_MODELS` and the
 builder table in `tests/test_removable_models.py`. `Game.sessions` and
-`Device.session_set` go with them.
+`Device.session_set` go with them, and two readers of those accessors that the
+import guard never matched change:
+
+- `games/views/device.py:164`: the Remove-device confirmation counts
+  `device.session_set`. It counts `library_sessions(library).filter(device=device)`
+  instead, the read layer's scope.
+- `tests/test_filters.py:3435`: asserts `sessions__note` among `Game`'s
+  comparable columns, a path enumerated through the legacy reverse FK. It
+  moves to `player_games__playthroughs__sessions__note`. A stored `Game`
+  preset comparing a `sessions__*` column is refused after this with the
+  "has no field" sentence; accepted, since the session filter has spoken the
+  projection's words since #702 and no such preset is known.
 
 The three timing words `MODE_VERDICTS` pinned between census and column are
 pinned in `tests/test_playersession_projection.py` as a literal set against
@@ -117,8 +143,9 @@ With one source, `PlaytimeSource`, `FilteredPlaytimeSource`,
 `games/reads/playtime/` becomes one module `games/reads/playtime.py`: the
 projection readers under the public names the package already exports,
 `DayInterval`, the three NamedTuples, `UnscopedPlaytimeRead` and `UnscopedSum`.
-Every caller imports from `games.reads.playtime` unchanged; `render_pages`
-calls `played_years` directly. The convention becomes: a new playtime figure
+Every caller imports from `games.reads.playtime` unchanged. The two that
+import `SOURCE`, `games/management/commands/render_pages.py:22` and
+`games/events/benchmark_reads.py:17`, call `played_years` directly. The convention becomes: a new playtime figure
 is a function in that module, read through it and nowhere else.
 
 ### The sample fixture carries session events
@@ -137,8 +164,10 @@ event types and reads the vocabulary instead:
 | Concern | Treatment |
 |---|---|
 | The game an event belongs to | `game_id_by_aggregate` gains `PlayerSession` through `playthrough__player_game__game_id` |
-| The calendar aggregate | equals the library pk, so it takes no offset and is written as `TARGET_LIBRARY_MARKER`; the loader substitutes the target library, as it does for the `library` column. `LibraryCalendar` checks `id = library`, so a literal id would fail on load |
-| Dated payload fields | shifted by the game's offset. Found by walking the payload's annotations for `InstantText` and `DayText`, at the top level and inside the `timing` union, so a dated field is covered the day it is declared |
+| The calendar aggregate | equals the library pk, so it takes no offset, is left out of the aggregate re-minting pass and the game lookup, and is written as `TARGET_LIBRARY_MARKER`; the loader substitutes the target library in `_prepare_private_records`, as it does for the `library` column, after validation and the pk-collision check, which read only `pk` and `library`. `LibraryCalendar` checks `id = library`, so a literal id would fail on load |
+| Dated payload fields | shifted by the game's offset in wall-clock terms: a start is read in its `day_zone`, moved N calendar days at the same local time, and written back; an end is the shifted start plus the original elapsed time; a stated day moves N days. So `effective_day` regenerates exactly N days later, matching the shifted `effective_time`, and elapsed time survives a daylight-saving change. Fields found by walking the payload's annotations for `InstantText` and `DayText`, at the top level and inside the `timing` union (unwrapping `X \| None`), so a dated field is covered the day it is declared |
+| `recorded_at` of an undated event | today an event with no `effective_time` takes `FIXED_EPOCH`, which would put a converted session's `removed_at` (the projector writes `recorded_at` there) before its `created_at`. An undated event takes the day of its aggregate's latest earlier dated event instead, so a removal, move, note or device change never precedes its creation. This also fixes the same ordering for playthrough events |
+| Precision | `_shift_effective_time` refuses any precision but DAY. Every dated session event states DAY, as the playthrough ones do; the refusal stays as the tripwire for a later instant-precision event |
 | Bare aggregate keys (`playthrough` on `created` and `moved`, `player_game` on `playthrough.created`) | re-keyed through a new `aggregate_id_keys(event_type)` on the vocabulary, which walks the payload's annotations for `ReferenceId`. `ReferenceId` is a PEP 695 alias, which `get_type_hints` reports as a `TypeAliasType`; measured on all three payloads. The `PLAYTHROUGH_CREATED` special case goes |
 | Payload references | re-captured per kind through the kind registry's model, so a device label follows `--scrub-devices` and the remapped uuid. `LibraryEventReference.referenced_id` remapped the same way |
 | `source_metadata` | written as `{}`. `legacy` holds the real instants the jitter exists to hide, and nothing in a seeded database reads any of it |
@@ -149,6 +178,13 @@ of the success line go. The payload reference check becomes generic over
 kinds: each found reference must name a fixture record of the kind's model,
 so a device reference must name a `games.device`; the `catalog.platform`
 refusal stays. The aggregate marker is substituted before deserialization.
+`device` is a REQUIRED kind, and `reconcile_references` reads the
+`LibraryEventReference` index on replay, so the fixture carries those rows
+with `referenced_id` remapped, as it already does for the 859 game references.
+
+The loaded calendar states the source library's zone, not the loading user's
+display zone. Accepted: recording reads `calendar_day_zone(library)`, so
+nothing is refused, and the next setting change restates it.
 
 **Test.** `tests/test_anonymize_sample.py` builds its dataset by recording
 sessions through `games.writes.playersession`, so events exist to dump, and
@@ -169,11 +205,23 @@ block of `test_calendar.py`, and the legacy twins in `tests/session_rows.py`.
 
 **The subject is a mechanism and `Session` was a convenient fixture.**
 Retargeted onto `PlayerSession` rows from `tests/session_rows.py`, or another
-model when the mechanism is not about sessions: keyset paging, the identity
-audit, sentinel removal, the FK-uuid checks, library isolation, retention,
-removal, the removable-model builders, signals, library commands, the
-`GeneratedField` resolution case in `test_filters.py`, the legacy cases in
-`test_playtime_sources.py`, and three e2e files.
+model when the mechanism is not about sessions: keyset paging
+(`test_keyset`), the identity audit (`test_uuid_identity_audit`, which also
+hardcodes `("games_session", "game_id")` and `("games_session", "device_id")`
+in its expected relation-column set), sentinel removal, the FK-uuid checks
+(`test_session_fk_uuid`, `test_session_identity`), library isolation
+(`test_library_models`, `test_library_config_identity`,
+`test_catalog_hierarchy`), retention, removal, the removable-model builders,
+signals, library commands (`test_library_commands`, whose fixture-format
+cases carry `"model": "games.session"` records the loader will refuse as
+unsupported), the twins in `test_playthrough_view_cutover`, the
+`sessions__note` case in `test_filters.py`, and the legacy cases in
+`test_playtime_sources.py`.
+
+Twenty-seven files in all, found by an AST scan for the name `Session` bound
+from `games.models`, the twin helpers, `games.backfill`, `MODE_VERDICTS` and
+`sessions__note`; a grep for the bare word overcounts through
+`django.contrib.sessions` and docstrings.
 
 ### Docs
 
@@ -186,6 +234,12 @@ with the tool, what the barriers left in. CHANGELOG gets one entry. The wave
 specs are history and stay as written.
 
 ## Verification
+
+**Precondition:** a fresh dump of the deployment in `.dumps/`, fetched with
+`make fetch-dump` before implementation starts. Commit 1 takes `games.session`
+out of `LOADABLE_MODELS`, after which today's gz is refused as unsupported, so
+the regenerated gz must land in the same commit and the dump is what
+regenerates it. No dump, no start.
 
 Five commits, each green on the full `make check`:
 
@@ -210,11 +264,15 @@ Beyond the gate:
 - `make render-pages` on the restored dump at `bb41e358` and at the branch
   head, `diff -r` empty. This is a removal; no page moves.
 
-Final greps, expected empty outside `games/migrations/`:
+Final greps, expected empty outside `games/migrations/`. The first is the
+import guard's own AST check run once more over `tests/` and `e2e/` as well;
+a grep for the bare word hits `scrub_staging.py` (the contrib model),
+`settings_registry.py` ("Session time zone display") and docstrings, so it is
+not the check.
 
 ```bash
-grep -rn "\bSession\b" --include=*.py games common timetracker tests e2e | grep -v "django.contrib.sessions\|PlayerSession"
-grep -rn "games.backfill\|games.preflight\|playtime_parity\|session_parity\|playtime.legacy\|library_scope" --include=*.py --include=Makefile --include=*.md . | grep -v "docs/superpowers\|CHANGELOG"
+grep -rn "session_set\|\.sessions\b\|sessions__\|timestamp_start\|duration_manual\|duration_total\|games_session\b" --include=*.py --include=*.ts games common timetracker tests e2e ts | grep -v "playthroughs__sessions\|playthrough__sessions\|player_sessions"
+grep -rn "games.backfill\|games.preflight\|playtime_parity\|session_parity\|playtime.legacy\|library_scope\|preflight-sessions\|verify-session-parity\|loadall" --include=*.py --include=Makefile --include=*.md . | grep -v "docs/superpowers\|CHANGELOG"
 ```
 
 ## Rollback
