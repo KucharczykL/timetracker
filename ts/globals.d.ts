@@ -1,5 +1,3 @@
-import type { ToastId, ToastOptions } from "./elements/toast-stack.js";
-
 export {};
 
 declare global {
@@ -10,7 +8,15 @@ declare global {
       init?: RequestInit,
       triggerDispatch?: "immediate" | "deferred",
     ): Promise<Response>;
-    toast(message: string, type?: string, options?: ToastOptions): void;
-    removeToast(id: ToastId): void;
+    toast(
+      message: string,
+      type?: string,
+      options?: {
+        id?: number | string;
+        duration?: number | null;
+        action?: { label: string; url: string };
+      },
+    ): void;
+    removeToast(id: number | string): void;
   }
 }

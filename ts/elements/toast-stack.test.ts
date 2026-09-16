@@ -194,3 +194,88 @@ describe("lifecycle", () => {
     window.removeEventListener("toast-dismissed", dismissed);
   });
 });
+
+describe("an action", () => {
+  function clearCsrfCookie(): void {
+    document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  }
+
+  beforeEach(() => {
+    document.cookie = "csrftoken=t";
+    history.replaceState({}, "", "/session/list?page=2");
+    document.body.innerHTML = '<toast-stack action-class="ghost-look"></toast-stack>';
+  });
+
+  afterEach(() => {
+    clearCsrfCookie();
+    history.replaceState({}, "", "/");
+  });
+
+  function showUndo(): HTMLElement {
+    show({
+      message: "Session removed.",
+      type: "success",
+      action: { label: "Undo", url: "/session/x/restore" },
+    } as Payload);
+    return toasts()[0];
+  }
+
+  it("renders an Undo form whose action carries the page as origin", () => {
+    const toast = showUndo();
+
+    const form = toast.querySelector<HTMLFormElement>("form[data-toast-action]")!;
+    expect(form.getAttribute("method")).toBe("post");
+    expect(form.getAttribute("action")).toBe(
+      "/session/x/restore?origin=%2Fsession%2Flist%3Fpage%3D2",
+    );
+    const token = form.querySelector<HTMLInputElement>('input[name="csrfmiddlewaretoken"]')!;
+    expect(token.type).toBe("hidden");
+    expect(token.value).toBe("t");
+    const button = form.querySelector<HTMLButtonElement>("button[type=submit]")!;
+    expect(button.textContent).toBe("Undo");
+    expect(button.className).toBe("ghost-look");
+  });
+
+  it("a toast with an action lives ten seconds", () => {
+    const toast = showUndo();
+
+    vi.advanceTimersByTime(9_999);
+    expect(toast.classList.contains("opacity-0")).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(toast.classList.contains("opacity-0")).toBe(true);
+  });
+
+  it("a toast without an action keeps its default", () => {
+    show({ message: "plain", type: "success" });
+
+    vi.advanceTimersByTime(5_000);
+    expect(toasts()[0].classList.contains("opacity-0")).toBe(true);
+  });
+
+  it("resumes only when neither hovered nor focused", () => {
+    const toast = showUndo();
+
+    vi.advanceTimersByTime(4_000);
+    toast.dispatchEvent(new Event("mouseenter"));
+    toast.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+    toast.dispatchEvent(new Event("mouseleave"));
+    vi.advanceTimersByTime(20_000);
+    expect(toast.classList.contains("opacity-0")).toBe(false);
+
+    toast.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    vi.advanceTimersByTime(5_999);
+    expect(toast.classList.contains("opacity-0")).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(toast.classList.contains("opacity-0")).toBe(true);
+  });
+
+  it("clicking Undo does not dismiss the toast", () => {
+    const toast = showUndo();
+    const form = toast.querySelector<HTMLFormElement>("form[data-toast-action]")!;
+    form.addEventListener("submit", (event) => event.preventDefault());
+
+    form.querySelector<HTMLButtonElement>("button[type=submit]")!.click();
+
+    expect(toast.classList.contains("opacity-0")).toBe(false);
+  });
+});

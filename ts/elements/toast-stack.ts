@@ -1,150 +1,189 @@
 /** The page's toasts: the store and its element. */
 import { reportClientError } from "../client-errors.js";
+import { getCsrfToken } from "../csrf.js";
+import { readToastStackProps } from "../generated/props.js";
 
-const TOAST_TYPES = ["success", "error", "info", "warning", "debug"] as const;
-export type ToastType = (typeof TOAST_TYPES)[number];
+export type ToastType = "success" | "error" | "info" | "warning" | "debug";
 export type ToastId = number | string;
+
+export interface ToastAction {
+  label: string;
+  url: string;
+}
 
 export interface ToastOptions {
   id?: ToastId;
-  /** undefined: the type's default; null: no timer; a number: milliseconds. */
   duration?: number | null;
+  action?: ToastAction;
 }
 
-/** The wire shape: `type` is a word the store narrows. */
 export interface ToastMessage extends ToastOptions {
   message: string;
   type?: string;
 }
 
-type Timer = ReturnType<typeof setTimeout>;
-
-/** One countdown: never a timer without a deadline, never a deadline paused. */
-type Countdown =
-  | { kind: "sticky" }
-  | { kind: "paused"; remaining: number }
-  | { kind: "running"; deadline: number; timer: Timer };
-
-export interface Toast {
+interface Toast {
   id: ToastId;
   message: string;
   type: ToastType;
-  countdown: Countdown;
-  /** The removal handle while the toast leaves; null while it shows. */
-  leaving: Timer | null;
+  visible: boolean;
+  action: ToastAction | null;
+  hovered: boolean;
+  focused: boolean;
+  duration: number | null;
+  remaining: number | null;
+  deadline: number | null;
+  timer: ReturnType<typeof setTimeout> | null;
+  removalTimer: ReturnType<typeof setTimeout> | null;
 }
 
+const TOAST_TYPES: readonly ToastType[] = ["success", "error", "info", "warning", "debug"];
 const MAX_TOASTS = 3;
 const LEAVE_MS = 300;
+const ACTION_MS = 10_000;
 
 function isToastType(value: string): value is ToastType {
   return (TOAST_TYPES as readonly string[]).includes(value);
 }
 
-export function defaultDuration(type: ToastType): number | null {
+export function defaultDuration(type: ToastType, hasAction = false): number | null {
+  if (hasAction) return ACTION_MS;
   if (type === "error") return null;
   return type === "debug" ? 3_000 : 5_000;
 }
 
+/** The action's URL with this page as the origin the restore returns to. */
+function withOrigin(url: string): string {
+  const target = new URL(url, location.origin);
+  target.searchParams.set("origin", location.pathname + location.search);
+  return target.pathname + target.search;
+}
+
 export class ToastStore {
-  private items: Toast[] = [];
+  toasts: Toast[] = [];
   private idCounter = 0;
 
   constructor(private readonly onChange: () => void) {}
 
-  get toasts(): readonly Toast[] {
-    return this.items;
-  }
-
   addToast(message: string, type?: string, options: ToastOptions = {}): void {
     const toastType: ToastType = type && isToastType(type) ? type : "info";
     const id = options.id ?? ++this.idCounter;
+    const action = options.action
+      ? { label: options.action.label, url: withOrigin(options.action.url) }
+      : null;
     const duration =
-      options.duration === undefined ? defaultDuration(toastType) : options.duration;
-    const existing = this.items.find((toast) => toast.id === id);
+      options.duration === undefined
+        ? defaultDuration(toastType, action !== null)
+        : options.duration;
+    const existing = this.toasts.find((toast) => toast.id === id);
 
     if (existing) {
-      this.stop(existing);
-      existing.message = message;
-      existing.type = toastType;
-      existing.countdown = this.countdownFor(existing, duration);
+      this.clearTimers(existing);
+      Object.assign(existing, {
+        message,
+        type: toastType,
+        visible: true,
+        action,
+        duration,
+        remaining: duration,
+        deadline: null,
+      });
+      this.startToastTimer(existing);
       this.onChange();
       return;
     }
 
-    if (this.items.length >= MAX_TOASTS) {
-      const oldest = this.items.shift();
-      if (oldest) this.stop(oldest);
+    if (this.toasts.length >= MAX_TOASTS) {
+      const oldest = this.toasts.shift();
+      if (oldest) this.clearTimers(oldest);
     }
 
     const toast: Toast = {
       id,
       message,
       type: toastType,
-      countdown: { kind: "sticky" },
-      leaving: null,
+      visible: true,
+      action,
+      hovered: false,
+      focused: false,
+      duration,
+      remaining: duration,
+      deadline: null,
+      timer: null,
+      removalTimer: null,
     };
-    toast.countdown = this.countdownFor(toast, duration);
-    this.items.push(toast);
+    this.toasts.push(toast);
+    this.startToastTimer(toast);
     this.onChange();
   }
 
   dismissToast(id: ToastId, notify = true): void {
-    const toast = this.find(id);
-    if (!toast || toast.leaving !== null) return;
-    this.stop(toast);
+    const toast = this.toasts.find((candidate) => candidate.id === id);
+    if (!toast) return;
+    if (toast.timer) clearTimeout(toast.timer);
+    toast.timer = null;
+    toast.visible = false;
     if (notify) {
       window.dispatchEvent(new CustomEvent("toast-dismissed", { detail: { id } }));
     }
-    toast.leaving = setTimeout(() => this.removeToast(id), LEAVE_MS);
+    toast.removalTimer = setTimeout(() => this.removeToast(id), LEAVE_MS);
     this.onChange();
   }
 
   removeToast(id: ToastId): void {
-    const toast = this.find(id);
-    if (toast) this.stop(toast);
-    this.items = this.items.filter((candidate) => candidate.id !== id);
+    const toast = this.toasts.find((candidate) => candidate.id === id);
+    if (toast) this.clearTimers(toast);
+    this.toasts = this.toasts.filter((candidate) => candidate.id !== id);
     this.onChange();
   }
 
   clearToastTimer(id: ToastId): void {
-    const toast = this.find(id);
-    if (!toast || toast.countdown.kind !== "running") return;
-    clearTimeout(toast.countdown.timer);
-    toast.countdown = {
-      kind: "paused",
-      remaining: Math.max(0, toast.countdown.deadline - Date.now()),
-    };
+    const toast = this.toasts.find((candidate) => candidate.id === id);
+    if (!toast?.timer) return;
+    clearTimeout(toast.timer);
+    toast.timer = null;
+    toast.remaining = Math.max(0, (toast.deadline ?? Date.now()) - Date.now());
+    toast.deadline = null;
   }
 
   resumeToastTimer(id: ToastId): void {
-    const toast = this.find(id);
-    if (!toast || toast.leaving !== null || toast.countdown.kind !== "paused") return;
-    toast.countdown = this.running(toast, toast.countdown.remaining);
+    const toast = this.toasts.find((candidate) => candidate.id === id);
+    if (!toast || toast.timer !== null || toast.remaining === null) return;
+    this.startToastTimer(toast);
   }
 
-  private find(id: ToastId): Toast | undefined {
-    return this.items.find((candidate) => candidate.id === id);
+  /** The pointer's flag; the timer runs only while neither flag is set. */
+  setHovered(id: ToastId, hovered: boolean): void {
+    const toast = this.toasts.find((candidate) => candidate.id === id);
+    if (!toast) return;
+    toast.hovered = hovered;
+    this.settleTimer(toast);
   }
 
-  private countdownFor(toast: Toast, duration: number | null): Countdown {
-    return duration === null ? { kind: "sticky" } : this.running(toast, duration);
+  /** The focus's flag; the timer runs only while neither flag is set. */
+  setFocused(id: ToastId, focused: boolean): void {
+    const toast = this.toasts.find((candidate) => candidate.id === id);
+    if (!toast) return;
+    toast.focused = focused;
+    this.settleTimer(toast);
   }
 
-  private running(toast: Toast, remaining: number): Countdown {
-    return {
-      kind: "running",
-      deadline: Date.now() + remaining,
-      timer: setTimeout(() => this.dismissToast(toast.id, false), remaining),
-    };
+  private settleTimer(toast: Toast): void {
+    if (toast.hovered || toast.focused) this.clearToastTimer(toast.id);
+    else this.resumeToastTimer(toast.id);
   }
 
-  /** Every timer off; the toast neither counts nor leaves. */
-  private stop(toast: Toast): void {
-    if (toast.countdown.kind === "running") clearTimeout(toast.countdown.timer);
-    toast.countdown = { kind: "sticky" };
-    if (toast.leaving !== null) clearTimeout(toast.leaving);
-    toast.leaving = null;
+  private startToastTimer(toast: Toast): void {
+    if (toast.remaining === null) return;
+    toast.deadline = Date.now() + toast.remaining;
+    toast.timer = setTimeout(() => this.dismissToast(toast.id, false), toast.remaining);
+  }
+
+  private clearTimers(toast: Toast): void {
+    if (toast.timer) clearTimeout(toast.timer);
+    if (toast.removalTimer) clearTimeout(toast.removalTimer);
+    toast.timer = null;
+    toast.removalTimer = null;
   }
 }
 
@@ -167,7 +206,9 @@ const ICON_TYPE_CLASS: Record<ToastType, string> = {
   warning: "text-fg-warning-subtle",
   debug: "text-body-subtle",
 };
-const TEXT_CLASS = "flex-1 text-type-body";
+const BODY_CLASS = "flex-1 flex flex-col items-start gap-2";
+const ACTION_FORM_CLASS = "m-0";
+const TEXT_CLASS = "text-type-body";
 const TEXT_TYPE_CLASS: Record<ToastType, string> = {
   success: "text-fg-success-strong",
   error: "text-fg-danger-strong",
@@ -214,14 +255,6 @@ function svgIcon(paths: readonly string[], sizeClass: string): SVGSVGElement {
   return svg;
 }
 
-function isToastMessage(payload: unknown): payload is ToastMessage {
-  return (
-    typeof payload === "object" &&
-    payload !== null &&
-    typeof (payload as ToastMessage).message === "string"
-  );
-}
-
 class ToastStackElement extends HTMLElement {
   readonly store = new ToastStore(() => this.render());
   private readonly nodes = new Map<ToastId, HTMLElement>();
@@ -238,8 +271,11 @@ class ToastStackElement extends HTMLElement {
   }
 
   private readonly onShowToast = (event: Event): void => {
-    const detail = (event as CustomEvent<unknown>).detail;
-    this.addAll(Array.isArray(detail) ? detail : [detail], "show-toast");
+    const detail = (event as CustomEvent<ToastMessage | ToastMessage[]>).detail;
+    const payloads = Array.isArray(detail) ? detail : [detail];
+    for (const payload of payloads) {
+      this.store.addToast(payload.message, payload.type, payload);
+    }
   };
 
   private readonly onRemoveToast = (event: Event): void => {
@@ -247,22 +283,15 @@ class ToastStackElement extends HTMLElement {
     this.store.removeToast(id);
   };
 
-  private addAll(payloads: unknown[], source: string): void {
-    for (const payload of payloads) {
-      if (!isToastMessage(payload)) {
-        reportClientError(`toast-stack[${source}]`, JSON.stringify(payload), { toast: false });
-        continue;
-      }
-      this.store.addToast(payload.message, payload.type, payload);
-    }
-  }
-
   private readDjangoMessages(): void {
     const script = document.getElementById("django-messages");
     if (!script) return;
-    let payloads: unknown;
     try {
-      payloads = JSON.parse(script.textContent || "[]");
+      const payloads: unknown = JSON.parse(script.textContent || "[]");
+      if (!Array.isArray(payloads)) return;
+      for (const payload of payloads as ToastMessage[]) {
+        this.store.addToast(payload.message, payload.type || "info", payload);
+      }
     } catch (error) {
       // The toast cannot report itself: toast off.
       reportClientError(
@@ -270,9 +299,7 @@ class ToastStackElement extends HTMLElement {
         String((error as Error)?.message ?? error),
         { toast: false },
       );
-      return;
     }
-    this.addAll(Array.isArray(payloads) ? payloads : [payloads], "django-messages");
   }
 
   render(): void {
@@ -302,8 +329,10 @@ class ToastStackElement extends HTMLElement {
     wrapper.addEventListener("keydown", (event) => {
       if (event.key === "Escape") this.store.dismissToast(toast.id);
     });
-    wrapper.addEventListener("mouseenter", () => this.store.clearToastTimer(toast.id));
-    wrapper.addEventListener("mouseleave", () => this.store.resumeToastTimer(toast.id));
+    wrapper.addEventListener("mouseenter", () => this.store.setHovered(toast.id, true));
+    wrapper.addEventListener("mouseleave", () => this.store.setHovered(toast.id, false));
+    wrapper.addEventListener("focusin", () => this.store.setFocused(toast.id, true));
+    wrapper.addEventListener("focusout", () => this.store.setFocused(toast.id, false));
 
     const panel = document.createElement("div");
     panel.dataset.toastPanel = "";
@@ -311,6 +340,9 @@ class ToastStackElement extends HTMLElement {
     icon.dataset.toastIcon = "";
     const text = document.createElement("p");
     text.dataset.toastMessage = "";
+    const body = document.createElement("div");
+    body.dataset.toastBody = "";
+    body.appendChild(text);
     const dismiss = document.createElement("button");
     dismiss.type = "button";
     dismiss.dataset.toastDismiss = "";
@@ -321,15 +353,37 @@ class ToastStackElement extends HTMLElement {
       this.store.dismissToast(toast.id);
     });
 
-    panel.append(icon, text, dismiss);
+    panel.append(icon, body, dismiss);
     wrapper.appendChild(panel);
     return wrapper;
+  }
+
+  /** The Undo form: a real POST, so the page it lands on is re-rendered. */
+  private buildAction(action: ToastAction): HTMLFormElement {
+    const form = document.createElement("form");
+    form.dataset.toastAction = "";
+    form.method = "post";
+    form.action = action.url;
+    form.className = ACTION_FORM_CLASS;
+    const token = document.createElement("input");
+    token.type = "hidden";
+    token.name = "csrfmiddlewaretoken";
+    token.value = getCsrfToken();
+    const button = document.createElement("button");
+    button.type = "submit";
+    button.className = readToastStackProps(this).actionClass;
+    button.textContent = action.label;
+    // The wrapper's click dismisses; the browser's submit navigates.
+    button.addEventListener("click", (event) => event.stopPropagation());
+    form.append(token, button);
+    return form;
   }
 
   private updateToast(wrapper: HTMLElement, toast: Toast): void {
     const alert = toast.type === "error" || toast.type === "warning";
     wrapper.setAttribute("role", alert ? "alert" : "status");
-    wrapper.className = `${WRAPPER_CLASS} ${toast.type}${toast.leaving === null ? "" : ` ${LEAVE_CLASS}`}`;
+    wrapper.setAttribute("aria-live", toast.type === "error" ? "assertive" : "polite");
+    wrapper.className = `${WRAPPER_CLASS} ${toast.type}${toast.visible ? "" : ` ${LEAVE_CLASS}`}`;
 
     const panel = wrapper.querySelector<HTMLElement>("[data-toast-panel]")!;
     panel.className = `${PANEL_CLASS} ${PANEL_TYPE_CLASS[toast.type]}`;
@@ -341,9 +395,15 @@ class ToastStackElement extends HTMLElement {
       icon.dataset.toastIconType = toast.type;
     }
 
+    const body = wrapper.querySelector<HTMLElement>("[data-toast-body]")!;
+    body.className = BODY_CLASS;
     const text = wrapper.querySelector<HTMLElement>("[data-toast-message]")!;
     text.className = `${TEXT_CLASS} ${TEXT_TYPE_CLASS[toast.type]}`;
     text.textContent = toast.message;
+    const form = body.querySelector<HTMLFormElement>("[data-toast-action]");
+    if (toast.action && !form) body.appendChild(this.buildAction(toast.action));
+    else if (toast.action && form) form.action = toast.action.url;
+    else if (form) form.remove();
 
     const dismiss = wrapper.querySelector<HTMLElement>("[data-toast-dismiss]")!;
     dismiss.className = `${DISMISS_CLASS} ${DISMISS_TYPE_CLASS[toast.type]}`;
