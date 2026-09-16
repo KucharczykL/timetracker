@@ -1689,7 +1689,7 @@ class PlayerSession(ProjectionModel):
         on_delete=models.RESTRICT,
         related_name="sessions",
     )
-    #: RESTRICT: nothing outside the projector may change a projection row.
+    #: RESTRICT: only the projector changes rows.
     device = models.ForeignKey(
         "Device",
         on_delete=models.RESTRICT,

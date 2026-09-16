@@ -73,9 +73,9 @@ PROMOTED_MODELS = frozenset(
     ]
 )
 
-#: The zone the source library counts days in; not the settings default.
+#: Source zone; not the settings default.
 SOURCE_ZONE = "America/New_York"
-#: The first session's start, as recorded; the day it lands on is 2021-06-01.
+#: First start; lands on 2021-06-01.
 FIRST_SESSION_START = datetime(2021, 6, 1, 20, 0, tzinfo=ZoneInfo(SOURCE_ZONE))
 FIRST_SESSION_ELAPSED = timedelta(hours=2)
 
@@ -120,7 +120,7 @@ def _record(owner, run, timing, *, device=None, note=""):
 def _build_dataset():
     """A small dataset exercising every branch the anonymizer must handle."""
     owner = get_user_model().objects.create_user(username="sample-source")
-    #: A calendar event, and the zone every session below counts days in.
+    #: One calendar event; every session's zone.
     change_user_setting(owner, CALENDAR_SETTING_KEY, SOURCE_ZONE)
     platform = Platform.objects.create(name="Steam", group="PC")
     device = Device.objects.create(
@@ -197,7 +197,7 @@ def _build_dataset():
         idempotency_key="describe-2",
     )
 
-    #: Three sessions: one per timing mode, the Corrected one removed.
+    #: One session per mode; Corrected removed.
     _record(
         owner,
         run_one,
@@ -261,7 +261,7 @@ def _day_of(event):
 
 
 def test_an_instant_keeps_its_wall_time_across_a_daylight_saving_change():
-    #: 2021-03-13 20:00 New York is EST; 21 days later the same wall time is EDT.
+    #: EST start; 21 days later EDT.
     moved = shift_instant("2021-03-14T01:00:00Z", days=21, zone=SOURCE_ZONE)
     local = instant_from_text(moved).astimezone(ZoneInfo(SOURCE_ZONE))
     assert (local.date(), local.hour) == (date(2021, 4, 3), 20)
@@ -416,7 +416,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             )
             by_model = _by_model(_load_output(output))
 
-        #: The run's start event says how far its game moved.
+        #: The start event gives the offset.
         (started,) = _events_of(by_model, "library.playthrough.started")
         offset = _day_of(started) - date(2021, 6, 1)
         self.assertNotEqual(offset, timedelta(0))
@@ -446,7 +446,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             _day_of(by_mode["corrected"]), date(2021, 7, 1) + offset, "same run"
         )
 
-        #: The device reference is re-captured at the dumped row.
+        #: Device reference re-captured at dumped row.
         devices = {
             item["pk"]: item["fields"]["name"] for item in by_model["games.device"]
         }
@@ -454,7 +454,7 @@ class AnonymizeSampleTest(TransactionTestCase):
         self.assertIn(device["id"], devices)
         self.assertEqual(device["label"], devices[device["id"]])
 
-        #: The run key follows the run's re-minted aggregate.
+        #: Run key follows the re-minted aggregate.
         runs = {
             event["fields"]["aggregate_id"]
             for event in _events_of(by_model, "library.playthrough.created")
@@ -473,7 +473,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             _parsed_moment(by_mode["corrected"]["fields"]["recorded_at"]),
         )
 
-        #: The calendar's aggregate is the owner, whoever loads it.
+        #: Calendar aggregate: the owner marker.
         (calendar,) = _events_of(by_model, "library.calendar.day_zone_changed")
         self.assertEqual(calendar["fields"]["aggregate_id"], "__target_library__")
         self.assertEqual(calendar["fields"]["payload"]["day_zone"], SOURCE_ZONE)
@@ -512,7 +512,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             3,
         )
         events = LibraryEvent.objects.filter(library=target.library)
-        #: Nine on games and runs, one calendar, three sessions, one removal.
+        #: Nine, one calendar, three created, one removed.
         self.assertEqual(events.count(), 14)
         self.assertTrue(all(event.pk.version == 7 for event in events))
         sessions = PlayerSession.objects.filter(library=target.library)
@@ -551,7 +551,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             [device["fields"]["name"] for device in devices],
             ["Device 1", "Device 2", "Device 3"],
         )
-        #: The reference inside the payload carries the scrubbed name.
+        #: Payload reference carries the scrubbed name.
         names = {device["pk"]: device["fields"]["name"] for device in devices}
         referenced = [
             event["fields"]["payload"]["device"]
@@ -762,7 +762,7 @@ class ReassignedIdentityTest(TransactionTestCase):
             )
 
     def test_the_day_a_session_event_states_matches_its_payload(self):
-        """The envelope's day and the payload's start move together."""
+        """Envelope day and payload start agree."""
         by_model = self._dump()
 
         for event in by_model["games.libraryevent"]:

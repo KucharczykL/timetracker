@@ -526,7 +526,7 @@ def test_aliased_fields_are_keyed_by_the_alias_name():
 
 
 def test_a_references_own_id_is_not_an_aliased_field():
-    """A reference is re-captured whole; its id is not a bare key."""
+    """A Reference's id is no bare key."""
     assert ("device", "id") not in aliased_fields(_PlainAliasPayload).get(
         "ReferenceId", ()
     )

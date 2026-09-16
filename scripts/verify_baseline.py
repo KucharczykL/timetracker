@@ -178,15 +178,7 @@ class Drift:
 
 
 def round_trip(url: str, *, database: str, database_url: str) -> str:
-    """Dump the database at `url` and restore it over itself.
-
-    The deployment's copy reached this machine through pg_dump and
-    pg_restore, and a catalog text is not a fixed point under that
-    trip: PostgreSQL re-parses `(ARRAY['a'::varchar, 'b'::varchar])::text[]`
-    into `ARRAY[('a'::varchar)::text, ('b'::varchar)::text]`, so a CHECK
-    an IN-list compiled to reads differently on the two sides. Both sides
-    take the same path, and the comparison reads what it means to read.
-    """
+    """Dump and restore the database over itself."""
     with tempfile.TemporaryDirectory() as directory:
         dump = Path(directory) / "fresh.dump"
         run([str(client_tool("pg_dump")), "--format=custom", f"--file={dump}", url])
@@ -286,13 +278,7 @@ def verify(
     migrate: bool = False,
     keep: bool = False,
 ) -> None:
-    """Read the schema of a copy of the deployment against a fresh build.
-
-    `migrate` carries the copy over the way the deployment's startup
-    does, which is the rehearsal for a release whose migrations the
-    deployment has not applied yet -- a squash with `replaces` among
-    them.
-    """
+    """Compare a deployment copy with a fresh build."""
     #: Ahead of the restore, which takes a minute: a mistyped path is the whole
     #: run wasted otherwise, and the copy would compare as drift.
     if normalize is not None and not normalize.is_file():

@@ -34,9 +34,9 @@ from timetracker.temporal import TemporalValue
 
 type AggregateType = str  # "playthrough"
 type EventType = str  # "library.playersession.created"
-#: Keys from the payload down to one field: ("timing", "started_at").
+#: Path from payload to one field.
 type KeyPath = tuple[str, ...]
-#: The name a `type` statement gave an annotation: "ReferenceId".
+#: A `type` alias's name: "ReferenceId".
 type AliasName = str
 type AliasedFields = Mapping[AliasName, tuple[KeyPath, ...]]
 
@@ -46,19 +46,17 @@ DAY_ALIAS: AliasName = "DayText"
 
 
 class DatedKeys(NamedTuple):
-    """Where a payload states an instant, and where a calendar day."""
+    """Instant paths, and day paths."""
 
     instants: tuple[KeyPath, ...]
     days: tuple[KeyPath, ...]
 
 
 def aliased_fields(payload: type) -> AliasedFields:
-    """Every field annotated with a `type` alias, by the alias's name.
+    """Aliased fields, by alias name, nested.
 
-    Walks nested TypedDicts and unions of them, so a key inside the
-    session's timing statement is found under `("timing", key)`. A
-    `Reference` is one value re-captured whole, so its own `id` is
-    not reported.
+    A `Reference` is re-captured whole: its `id` is no
+    aggregate key, so the walk stops at one.
     """
     found: dict[AliasName, list[KeyPath]] = {}
     _collect_aliases(payload, (), found, frozenset())
@@ -290,11 +288,11 @@ class EventTypeRegistry:
         )
 
     def aggregate_id_keys(self, event_type: EventType) -> tuple[KeyPath, ...]:
-        """Where this payload names another aggregate by bare id."""
+        """Paths holding a bare aggregate id."""
         return self._registration_for(event_type).aliased.get(AGGREGATE_ID_ALIAS, ())
 
     def dated_keys(self, event_type: EventType) -> DatedKeys:
-        """Where this payload states an instant or a day."""
+        """Paths stating an instant or day."""
         aliased = self._registration_for(event_type).aliased
         return DatedKeys(
             instants=aliased.get(INSTANT_ALIAS, ()), days=aliased.get(DAY_ALIAS, ())

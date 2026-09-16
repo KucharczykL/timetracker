@@ -11,10 +11,10 @@ WHERE NOT EXISTS (
 
 
 def refuse_unconverted_rows(apps, schema_editor):
-    """Refuse to drop a row no event records.
+    """Refuse a row no event records.
 
-    Raw SQL, never the application's models: every fresh database runs
-    this callable, whatever `elidable` says to the optimizer.
+    Raw SQL: every fresh database runs this, and an
+    import of the application here breaks them all.
     """
     del apps
     with schema_editor.connection.cursor() as cursor:

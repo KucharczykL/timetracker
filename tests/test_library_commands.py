@@ -737,7 +737,7 @@ def test_make_sample_targets_do_not_accept_an_inherited_user(target):
 
 
 def test_the_committed_sample_fixture_names_no_model_the_app_dropped():
-    """A fixture naming one would fail to load rather than be read as stale."""
+    """A dropped model fails the load."""
     from games.management.commands.load_sample_data import FIXTURE_PATH
 
     with gzip_open(FIXTURE_PATH, "rt") as fixture:

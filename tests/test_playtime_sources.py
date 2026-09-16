@@ -145,7 +145,7 @@ def test_a_row_of_each_mode_counts_its_effective_duration(
             "years": played_years(owned_library),
         }
 
-    #: A Corrected row's stated time replaces its elapsed time.
+    #: Corrected: stated time replaces elapsed.
     assert figures == {
         "game": total,
         "summed": total,

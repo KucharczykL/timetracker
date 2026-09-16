@@ -325,9 +325,7 @@ class Command(BaseCommand):
                             f"{reference}, which is not included in the fixture."
                         )
 
-        #: FIXTURE_RELATIONSHIPS can only validate a plain FK field. An
-        #: event's references live inside its JSON payload, which that
-        #: mechanism cannot reach, so each is resolved through its kind.
+        #: Payload references resolve through their kind.
         kinds = DEFAULT_WIRING.event_types.reference_kinds
 
         def referenced_model(kind_name, *, subject):
@@ -477,7 +475,7 @@ class Command(BaseCommand):
             fields = copied["fields"]
             if model in PRIVATE_MODELS:
                 fields["library"] = str(library.pk)
-            #: An aggregate keyed on the library: the calendar.
+            #: Library-keyed aggregate: the calendar.
             if (
                 model == "games.libraryevent"
                 and fields.get("aggregate_id") == TARGET_LIBRARY_MARKER

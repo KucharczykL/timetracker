@@ -7,8 +7,7 @@ from django.db import migrations, models
 import timetracker.uuidv7
 
 
-#: The seed of one calendar per library ran here once, on every
-#: deployment; a fresh database holds no library to seed.
+#: The calendar seed ran here once.
 class Migration(migrations.Migration):
     dependencies = [
         ("games", "0004_playersession_conversion"),

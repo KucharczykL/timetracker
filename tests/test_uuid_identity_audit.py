@@ -389,7 +389,7 @@ def test_ordering_excludes_null_source_rows(owned_library):
     session_entry = next(
         entry for entry in identity_models() if entry.table == "games_playersession"
     )
-    #: A nullable date column a live model carries.
+    #: A nullable date column.
     by_a_nullable_source = session_entry._replace(order_source="ended_at")
 
     report = check_ordering([by_a_nullable_source])

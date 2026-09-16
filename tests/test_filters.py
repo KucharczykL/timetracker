@@ -6464,7 +6464,7 @@ class TestComparisonOperandPaths:
         assert info.relation_path == "games"
 
     def test_reverse_accessor_is_multivalued(self):
-        # A reverse-FK hop (Playthrough.sessions) is an accepted multi-valued operand.
+        # A reverse-FK hop is a multivalued operand.
         from games.models import Playthrough
 
         info = _comparison_operand_info(Playthrough, "sessions__note", side="right")

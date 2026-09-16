@@ -1,10 +1,4 @@
-"""Every playtime figure, read from the session projection.
-
-Sums per game are NULL when unplayed; totals never are. The module
-decides where NULL becomes zero: `playtime_by_game` is zero,
-`playtime_sort_key` and `playtime_matching` stay NULL so a sort puts
-the unplayed last. Days are the stored `effective_day`.
-"""
+"""Every playtime figure, from the projection."""
 
 from dataclasses import dataclass
 from datetime import date, timedelta

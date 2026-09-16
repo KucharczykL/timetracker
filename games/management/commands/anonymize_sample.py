@@ -89,7 +89,7 @@ DEFAULT_NAME_OVERRIDES = (
 # (aggregate/correlation/stream), so they get their own dedicated pass in
 # _reassign_event_identities rather than this generic one.
 IDENTITY_MODELS = (Platform, Device, Game, Purchase)
-#: Each model's old identity to its new one.
+#: Old identity to new, per model.
 type Replacements = Mapping[UUID, UUID]
 type ReplacementsByModel = Mapping[type, Replacements]
 
@@ -129,7 +129,7 @@ def _shift_effective_time(value, offset):
 
 
 def _read_path(payload: Mapping, path: KeyPath):
-    """The value at `path`, or None where a key is absent or null."""
+    """Value at path; None when absent."""
     value = payload
     for key in path:
         if not isinstance(value, Mapping) or value.get(key) is None:
@@ -146,10 +146,10 @@ def _write_path(payload: dict, path: KeyPath, value) -> None:
 
 
 def shift_instant(text: str, *, days: int, zone: str) -> str:
-    """Move an instant `days` calendar days at the same wall time in `zone`.
+    """Move `days` calendar days, same wall time.
 
-    So the day the instant falls on in that zone moves by exactly
-    `days`, across a daylight-saving change as well.
+    Shifting the UTC instant instead moves the local day by
+    one across a daylight-saving change.
     """
     local = instant_from_text(text).astimezone(ZoneInfo(zone))
     moved = local.replace(tzinfo=None) + timedelta(days=days)
@@ -157,13 +157,11 @@ def shift_instant(text: str, *, days: int, zone: str) -> str:
 
 
 def shift_dated(payload: dict, keys: DatedKeys, *, days: int) -> dict:
-    """A copy with every stated day and instant moved `days` days.
+    """Copy with every day and instant moved.
 
-    A day moves as a date. An instant moves at its wall time in the
-    zone stated beside it: the container's `day_zone`, else its own
-    `<key>_zone`, else UTC. Where a container states both a start
-    and an end, the end is the moved start plus the original
-    elapsed time, so a duration survives the move.
+    An end is the moved start plus the original elapsed
+    time; shifting it alone changes Timed durations
+    across a daylight-saving change.
     """
     shifted = copy.deepcopy(payload)
     for path in keys.days:
@@ -473,25 +471,15 @@ class Command(BaseCommand):
     def _reassign_event_identities(
         game_offsets, game_id_by_aggregate, replacements_by_model, *, library_id
     ):
-        """Shift, blank and re-key every event, then re-derive every
-        event-table identity from the recorded_at values this method just
-        wrote. Runs after _reassign_uuids, whose replacement maps this needs
-        to re-capture a payload reference at the row's final uuid.
+        """Shift, blank, re-key, re-mint every event.
 
-        game_id_by_aggregate is captured by the caller before _reassign_uuids
-        remaps the projections' game columns -- it must agree with
-        game_offsets' original-game-id keys, not the post-remap ones a fresh
-        query here would return.
-
-        An aggregate keyed on the library itself (the calendar) belongs to
-        no game: it takes no offset, keeps its id for `_write_fixture` to
-        turn into the owner marker, and is left out of the re-minting.
-
-        Answers the event count and the count of sessions recorded.
+        Runs after _reassign_uuids: references re-capture at
+        final uuids. game_id_by_aggregate is captured before
+        that remap, keyed like game_offsets.
         """
         event_types = DEFAULT_WIRING.event_types
         kinds = event_types.reference_kinds
-        #: Aggregate order, so an undated event finds its dated predecessor.
+        #: Aggregate order: undated follows dated.
         events = list(LibraryEvent.objects.order_by("aggregate_id", "sequence"))
         last_dated_day: dict[UUID, date] = {}
         sessions_recorded = 0
@@ -505,8 +493,7 @@ class Command(BaseCommand):
             event.effective_time = _shift_effective_time(event.effective_time, offset)
             if event.effective_time is not None:
                 last_dated_day[event.aggregate_id] = event.effective_time.lower_bound
-            #: An undated event follows the aggregate's latest dated one, so
-            #: a removal never precedes the creation it removes.
+            #: A removal never precedes its creation.
             day = last_dated_day.get(event.aggregate_id)
             event.recorded_at = FIXED_EPOCH if day is None else _midnight(day)
             payload = shift_dated(
@@ -526,7 +513,7 @@ class Command(BaseCommand):
                     kind.model.objects.get(pk=replacements.get(old_id, old_id))
                 )
             event.payload = payload
-            #: Evidence of the source rows: real instants, real keys.
+            #: Source evidence holds real instants.
             event.source_metadata = {}
             event.idempotency_key = f"sample:{event.sequence}"
             event.actor = None
@@ -619,8 +606,7 @@ class Command(BaseCommand):
                 event.causation_id = correlation_replacements.get(
                     event.causation_id, event.causation_id
                 )
-            #: A bare aggregate id in a payload names a row whose own
-            #: aggregate_id was just re-minted above.
+            #: Bare aggregate ids follow the re-minting.
             payload = copy.deepcopy(event.payload)
             for path in event_types.aggregate_id_keys(event.event_type):
                 named = _read_path(payload, path)
@@ -763,8 +749,7 @@ class Command(BaseCommand):
             if item.get("model") == "games.libraryevent":
                 if fields.get("effective_time") == "":
                     fields.pop("effective_time", None)
-                #: The calendar's aggregate is the library; the loader
-                #: substitutes the owner's.
+                #: Library-keyed aggregate: the owner marker.
                 if str(fields.get("aggregate_id")) == str(library_id):
                     fields["aggregate_id"] = TARGET_LIBRARY_MARKER
             if item.get("model") in PORTABLE_LIBRARY_MODELS or (
