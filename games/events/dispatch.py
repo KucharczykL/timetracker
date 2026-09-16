@@ -192,11 +192,13 @@ class CommandRejected(Exception):
         self.sentence = sentence
 
 
-class RowInconsistent(CommandRejected):
-    """The row is wrong, not the statement."""
+class RowUnreadable(Exception):
+    """A row the command cannot read; a defect.
 
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
+    A sibling of `CommandRejected`, not a subclass: nothing the person
+    restates helps, so no sentence, no 409, and no handler that means
+    a rule may take it.
+    """
 
 
 def authorize(actor: User, library: UserLibrary) -> None:

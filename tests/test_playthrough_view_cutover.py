@@ -22,9 +22,12 @@ from games.commands.playthrough import ActStatement
 from games.models import (
     Game,
     LibraryEvent,
+    PlayerSession,
+    PlayerSessionTimingMode,
     Playthrough,
     PlaythroughKind,
 )
+from games.writes.answers import REFUSED_BY_AN_UNREADABLE_ROW
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import remove_run
 from timetracker.temporal import TemporalValue
@@ -202,6 +205,44 @@ def test_removing_the_only_run_is_refused_on_the_confirmation(client, user, game
 
     assert response.status_code == 409
     assert b"only playthrough of that game" in response.content
+    born.refresh_from_db()
+    assert born.removed_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_removing_a_run_a_foreign_session_names_answers_500(
+    client, user, game, django_user_model, capture_games_logger
+):
+    """A defect, not a stale page: 500, one sentence, one ERROR record."""
+    born = Playthrough.objects.get(player_game__game=game)
+    another_run(user, game)
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    PlayerSession.objects.create(
+        id=uuid.uuid7(),
+        library=stranger.library,
+        playthrough=born,
+        timing_mode=PlayerSessionTimingMode.TIMED,
+        started_at=timezone.now() - timedelta(hours=1),
+        day_zone="Europe/Prague",
+        note="",
+        emulated=False,
+        created_at=timezone.now(),
+    )
+    client.force_login(user)
+
+    with capture_games_logger() as caplog:
+        response = client.post(reverse("games:remove_playthrough", args=[born.pk]))
+
+    assert response.status_code == 500
+    body = response.content.decode()
+    assert (
+        html.escape(REFUSED_BY_AN_UNREADABLE_ROW.format(subject="playthrough")) in body
+    )
+    assert str(stranger.library.pk) not in body
+    #: Django's request logger adds its own line; the games one is one record.
+    games_records = [record for record in caplog.records if record.name == "games"]
+    assert [record.levelname for record in games_records] == ["ERROR"]
+    assert str(stranger.library.pk) in caplog.text
     born.refresh_from_db()
     assert born.removed_at is None
 

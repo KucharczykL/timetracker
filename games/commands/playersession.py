@@ -12,6 +12,7 @@ from django.db import connection
 
 from common.date_time_presentation import zone_or_none
 from games.commands.playthrough import (
+    PlaythroughNotHeld,
     _live_run,
     library_playthrough,
     refuse_unless_live,
@@ -22,7 +23,7 @@ from games.events.dispatch import (
     CommandContext,
     CommandName,
     CommandRejected,
-    RowInconsistent,
+    RowUnreadable,
 )
 from games.events.playersession import (
     TimingPayload,
@@ -198,11 +199,11 @@ def library_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSes
 
 
 def _session_run(context: CommandContext, session: PlayerSession) -> Playthrough:
-    """The session's run, or an inconsistent row."""
+    """The session's run, or `RowUnreadable`."""
     try:
         return library_playthrough(context, session.playthrough_id)
-    except CommandRejected as refusal:
-        raise RowInconsistent(
+    except PlaythroughNotHeld as refusal:
+        raise RowUnreadable(
             f"Session {session.pk} of library {session.library_id} names "
             f"playthrough {session.playthrough_id}, which this library does not "
             "hold; the ownership audit reports it, and no command states a "
@@ -235,7 +236,7 @@ class TimedStart(NamedTuple):
 
     The zone is resolved, not named: it comes off a row an earlier
     statement wrote, so reading it is where a name this installation
-    lost is still a sentence rather than a `KeyError` in the builder.
+    lost is refused rather than a `KeyError` in the builder.
     """
 
     started_at: datetime
@@ -271,7 +272,7 @@ def _timed_start(session: PlayerSession) -> TimedStart:
     started_at, day_zone = session.started_at, session.day_zone
     if started_at is None or day_zone is None:
         #: Constraint forbids this; refused, not cast away.
-        raise RowInconsistent(
+        raise RowUnreadable(
             f"Timed session {session.pk} of library {session.library_id} states "
             "no start or no day zone, which the timed-columns constraint forbids."
         )
@@ -281,7 +282,7 @@ def _timed_start(session: PlayerSession) -> TimedStart:
         #: when some earlier statement wrote it, and tzdata retires a
         #: zone between one image and the next. Unresolved, it reaches
         #: the builder as a `KeyError` the boundary does not answer.
-        raise RowInconsistent(
+        raise RowUnreadable(
             f"Session {session.pk} of library {session.library_id} counts its "
             f"day in {day_zone!r}, which this installation's tzdata can no "
             "longer read, so the end it is given lands on no day."

@@ -15,7 +15,7 @@ from games.events.dispatch import (
     CommandContext,
     CommandName,
     CommandRejected,
-    RowInconsistent,
+    RowUnreadable,
 )
 from games.events.playthrough import (
     playthrough_completed,
@@ -180,6 +180,10 @@ class CreatePlaythrough(Command):
         return events
 
 
+class PlaythroughNotHeld(CommandRejected):
+    """The library holds no such run."""
+
+
 def library_playthrough(
     context: CommandContext, playthrough_id: uuid.UUID
 ) -> Playthrough:
@@ -194,6 +198,7 @@ def library_playthrough(
                 "fact belongs to a run the library records."
             ),
             sentence="That playthrough is not available.",
+            raises=PlaythroughNotHeld,
         ),
         pk=playthrough_id,
     )
@@ -577,10 +582,10 @@ def _refuse_a_foreign_referrer(run: Playthrough) -> None:
     foreign = foreign_referrer(run)
     if foreign is None:
         return
-    libraries = ", ".join(str(library_id) for library_id in foreign.library_ids)
-    raise RowInconsistent(
+    library_keys = ", ".join(str(library_id) for library_id in foreign.library_ids)
+    raise RowUnreadable(
         f"A live {foreign.referrer.model.__name__}.{foreign.referrer.field_name} "
-        f"of library {libraries} names playthrough {run.pk} of library "
+        f"of libraries {library_keys} names playthrough {run.pk} of library "
         f"{run.library_id}; the ownership audit reports it, and removing the "
         "run would strand it."
     )

@@ -9,7 +9,7 @@ from django.http import Http404
 
 from games.events.append import StreamSequenceMismatch
 from games.events.conflicts import CommandConflict
-from games.events.dispatch import CommandNotPermitted, CommandRejected, RowInconsistent
+from games.events.dispatch import CommandNotPermitted, CommandRejected, RowUnreadable
 from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.retry import RetryBudgetExhausted
 from games.writes.answers import (
@@ -18,7 +18,7 @@ from games.writes.answers import (
     DEFECT_STATUS,
     NOT_ANSWERED,
     REFUSED,
-    REFUSED_BY_AN_INCONSISTENT_ROW,
+    REFUSED_BY_AN_UNREADABLE_ROW,
     REFUSED_BY_DATABASE,
     CommandFailed,
     answer_for,
@@ -64,7 +64,7 @@ def test_every_sentence_interpolates_and_leaves_no_brace():
         *sentences,
         REFUSED,
         REFUSED_BY_DATABASE,
-        REFUSED_BY_AN_INCONSISTENT_ROW,
+        REFUSED_BY_AN_UNREADABLE_ROW,
     ]:
         rendered = sentence.format(subject="probe")
         assert "{" not in rendered and "}" not in rendered
@@ -125,26 +125,26 @@ def test_the_argument_a_person_never_reads_is_logged(capture_games_logger):
     assert "#676" in caplog.text
 
 
-def test_an_inconsistent_row_is_a_defect():
+def test_an_unreadable_row_is_a_defect():
     """Nothing to restate, so no retry asked."""
     with pytest.raises(CommandFailed) as failure, answered("session"):
-        raise RowInconsistent(_FOR_A_DEVELOPER)
+        raise RowUnreadable(_FOR_A_DEVELOPER)
 
     assert failure.value.status_code == DEFECT_STATUS
-    assert failure.value.message == REFUSED_BY_AN_INCONSISTENT_ROW.format(
+    assert failure.value.message == REFUSED_BY_AN_UNREADABLE_ROW.format(
         subject="session"
     )
 
 
-def test_an_inconsistent_row_says_nothing_of_the_program():
+def test_an_unreadable_row_says_nothing_of_the_program():
     with pytest.raises(CommandFailed) as failure, answered("session"):
-        raise RowInconsistent(_FOR_A_DEVELOPER)
+        raise RowUnreadable(_FOR_A_DEVELOPER)
 
     assert "0192f3d4" not in failure.value.message
     assert "#676" not in failure.value.message
 
 
-def test_an_inconsistent_row_is_logged_with_its_cause(capture_games_logger):
+def test_an_unreadable_row_is_logged_with_its_cause(capture_games_logger):
     """One ERROR record with traceback and causes."""
     with (
         capture_games_logger() as caplog,
@@ -154,20 +154,26 @@ def test_an_inconsistent_row_is_logged_with_its_cause(capture_games_logger):
         try:
             raise CommandRejected("the scope miss")
         except CommandRejected as miss:
-            raise RowInconsistent(_FOR_A_DEVELOPER) from miss
+            raise RowUnreadable(_FOR_A_DEVELOPER) from miss
 
-    assert caplog.records[-1].levelname == "ERROR"
-    assert caplog.records[-1].exc_info is not None
-    assert "#676" in caplog.text
+    (record,) = caplog.records
+    assert record.levelname == "ERROR"
+    assert record.exc_info is not None
+    assert "#676" in record.getMessage()
     assert "the scope miss" in caplog.text
 
 
-def test_an_inconsistent_row_states_no_sentence():
+def test_an_unreadable_row_states_no_sentence():
     """A site cannot write one."""
     with pytest.raises(TypeError):
-        RowInconsistent("x", sentence="y")  # type: ignore[call-arg]
+        RowUnreadable("x", sentence="y")  # type: ignore[call-arg]
 
-    assert RowInconsistent("x").sentence is None
+    assert not hasattr(RowUnreadable("x"), "sentence")
+
+
+def test_an_unreadable_row_is_no_rejection():
+    """A sibling: no rule's handler may take it."""
+    assert not issubclass(RowUnreadable, CommandRejected)
 
 
 def test_a_subclass_of_a_mapped_leaf_takes_its_parents_answer():

@@ -268,7 +268,7 @@ def playersession_ended(
     name comes off a row this command did not write. A name tzdata
     has since lost would raise `ZoneInfoNotFoundError` here -- a
     `KeyError`, which the boundary does not answer -- so the caller
-    resolves it where a refusal can still carry a sentence.
+    resolves it where a refusal is still answered.
     """
     return PLAYERSESSION_ENDED.new(
         aggregate_id=session_id,

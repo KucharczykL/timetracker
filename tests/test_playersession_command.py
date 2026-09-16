@@ -33,7 +33,7 @@ from games.commands.playthrough import (
 from games.events.dispatch import (
     CommandOutcome,
     CommandRejected,
-    RowInconsistent,
+    RowUnreadable,
     dispatch,
 )
 from games.events.idempotency import IdempotencyKeyMismatch
@@ -509,8 +509,8 @@ def refused_end(
     saying: str | None,
     ended_at=AN_END,
     ended_at_zone=None,
-    raising: type[CommandRejected] = CommandRejected,
-) -> CommandRejected:
+    raising: type[Exception] = CommandRejected,
+) -> Exception:
     """Refuse an end; pin sentence or type."""
     with pytest.raises(raising) as refusal:
         dispatch(
@@ -521,7 +521,11 @@ def refused_end(
             library=library,
             idempotency_key=str(uuid.uuid7()),
         )
-    assert refusal.value.sentence == saying
+    if raising is RowUnreadable:
+        assert saying is None
+    else:
+        assert isinstance(refusal.value, CommandRejected)
+        assert refusal.value.sentence == saying
     return refusal.value
 
 
@@ -791,7 +795,7 @@ def test_a_day_zone_this_installation_cannot_read_is_refused(
         session.pk,
         ended_at=AN_END,
         saying=None,
-        raising=RowInconsistent,
+        raising=RowUnreadable,
     )
 
     assert "tzdata" in str(refusal)
@@ -810,7 +814,7 @@ def test_a_timed_row_with_no_start_is_refused():
         timing_mode=PlayerSessionTimingMode.TIMED, started_at=None, day_zone=None
     )
 
-    with pytest.raises(RowInconsistent) as refusal:
+    with pytest.raises(RowUnreadable) as refusal:
         _timed_start(broken)
 
     assert "timed-columns constraint" in str(refusal.value)
@@ -2031,7 +2035,7 @@ def test_a_session_naming_a_foreign_run_is_refused_by_name(
     if isinstance(statement(session, run), RestoreSession):
         PlayerSession.objects.filter(pk=session.pk).update(removed_at=timezone.now())
 
-    with pytest.raises(RowInconsistent) as refusal:
+    with pytest.raises(RowUnreadable) as refusal:
         dispatch(
             statement(session, run),
             actor=owned_user,

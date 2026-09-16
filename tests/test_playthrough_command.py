@@ -34,7 +34,7 @@ from games.events.append import lock_stream
 from games.events.dispatch import (
     CommandOutcome,
     CommandRejected,
-    RowInconsistent,
+    RowUnreadable,
     dispatch,
 )
 from games.events.idempotency import IdempotencyKeyMismatch
@@ -2075,7 +2075,7 @@ def test_a_foreign_referring_row_is_refused_as_a_defect(
         ),
     )
 
-    with pytest.raises(RowInconsistent) as refusal:
+    with pytest.raises(RowUnreadable) as refusal:
         _remove(owned_user, owned_library, run, key="foreign-referrer")
 
     #: The argument is the log: name everything.
@@ -2083,8 +2083,7 @@ def test_a_foreign_referring_row_is_refused_as_a_defect(
     assert str(run.pk) in argument
     assert str(run.library_id) in argument
     assert str(stranger.library.pk) in argument
-    assert assignment_model.__name__ in argument
-    assert "playthrough" in argument
+    assert f"{assignment_model.__name__}.playthrough" in argument
     run.refresh_from_db()
     assert run.removed_at is None
 
@@ -2270,7 +2269,7 @@ def test_a_foreign_session_is_refused_as_a_defect(
         created_at=timezone.now(),
     )
 
-    with pytest.raises(RowInconsistent) as refusal:
+    with pytest.raises(RowUnreadable) as refusal:
         _remove(owned_user, owned_library, run, key="foreign-session")
 
     assert str(stranger.library.pk) in str(refusal.value)
