@@ -362,31 +362,6 @@ class Game(ReferencedRow):
         null=True, blank=True, default=None, editable=False
     )
 
-    class Status(models.TextChoices):
-        UNPLAYED = (
-            "u",
-            "Unplayed",
-        )
-        PLAYED = (
-            "p",
-            "Played",
-        )
-        FINISHED = (
-            "f",
-            "Finished",
-        )
-        RETIRED = (
-            "r",
-            "Retired",
-        )
-        ABANDONED = (
-            "a",
-            "Abandoned",
-        )
-
-    status = models.CharField(max_length=1, choices=Status, default=Status.UNPLAYED)
-    mastered = models.BooleanField(default=False)
-
     def clean(self):
         super().clean()
         if self.platform_id is not None:
@@ -1395,8 +1370,8 @@ class ProjectionModel(models.Model):
 class PlayerGameStatus(models.TextChoices):
     """The status a library gives a game.
 
-    Full words, not the letters of `Game.Status`: a recorded payload cannot be
-    upcast, so an event recording `f` would mean Completed forever.
+    Full words: a recorded payload cannot be upcast, so a letter
+    would mean one word forever.
     """
 
     UNPLAYED = "unplayed", "Unplayed"
