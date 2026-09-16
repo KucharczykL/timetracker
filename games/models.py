@@ -1349,13 +1349,10 @@ class ProjectionModel(models.Model):
     references `games/projections.py` registers, and `games.E009`
     refuses a reference that registry omits.
 
-    Every table is unique on `(id, library)`, through
-    `library_identity_constraint()` in its own `Meta`: the projector's
-    upsert conflicts on that pair, so a creation under an identity another
-    library holds falls through to the primary key and is refused. An
-    abstract `Meta` cannot supply it, because a `Meta` that assigns
-    `constraints` shadows the base's; `games.E012` refuses a table without
-    it.
+    Every table is unique on `(id, library)`, the projector's upsert target,
+    through `library_identity_constraint()` in its own `Meta`: a `Meta` that
+    assigns `constraints` shadows an abstract base's. `games.E012` refuses a
+    table without it.
     """
 
     library = models.ForeignKey(
@@ -1376,7 +1373,7 @@ class ProjectionModel(models.Model):
 
 
 def library_identity_constraint() -> models.UniqueConstraint:
-    """The pair a projection's upsert conflicts on; one per `Meta`."""
+    """The upsert's conflict target; one per Meta."""
     return models.UniqueConstraint(
         fields=("id", "library"),
         name="unique_%(app_label)s_%(class)s_library_identity",

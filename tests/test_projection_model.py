@@ -97,7 +97,7 @@ def test_a_projection_without_the_library_pair_is_refused():
         class Meta:
             app_label = "games"
 
-    #: The upsert's conflict target, so a foreign identity cannot rewrite a row.
+    #: The upsert's arbiter; foreign identities miss it.
     assert check(Unpaired) == ["games.E012"]
 
 
@@ -140,7 +140,7 @@ def test_a_conditional_pair_is_not_the_pair():
 
 @isolate_apps("games")
 def test_a_check_constraint_is_not_the_pair():
-    """The calendar's shape: the key is the library, by CHECK alone."""
+    """The calendar's shape: CHECK alone, no pair."""
 
     class Calendar(ProjectionModel):
         id = models.UUIDField(primary_key=True)

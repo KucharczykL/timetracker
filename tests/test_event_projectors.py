@@ -64,24 +64,19 @@ def second_library(django_user_model):
     ).library
 
 
-#: The projection the write helpers are tested against; a fixture sets it.
+#: The helpers' table; a fixture sets it.
 STAND_IN: type[ProjectionModel] | None = None
 
 
 def stand_in() -> type[ProjectionModel]:
-    """The fixture's table, read by a handler at write time."""
+    """The fixture's table, read at write time."""
     assert STAND_IN is not None, "the shelf fixture is not in force"
     return STAND_IN
 
 
 @pytest.fixture
 def shelf(db):
-    """A projection table for the length of one test.
-
-    Declared here rather than at module scope so the isolated registry, and
-    the table with it, outlive nothing. `Device` cannot stand in: the helper
-    upserts on the `(id, library)` pair a projection carries.
-    """
+    """Per-test table; Device holds no pair."""
     global STAND_IN
     with isolate_apps("games"):
 
@@ -584,7 +579,7 @@ def test_the_helper_writes_one_row_through_one_statement(shelf, owned_library):
 
     assert len(queries) == 1
     assert queries[0]["sql"].startswith("INSERT INTO")
-    #: The pair, so a foreign identity misses the arbiter.
+    #: The pair: a foreign identity misses it.
     assert 'ON CONFLICT("id", "library_id")' in queries[0]["sql"]
 
 
@@ -621,7 +616,7 @@ def test_the_helper_keeps_the_columns_it_was_not_given(shelf, owned_library):
 
 
 def test_the_helper_lets_the_database_fill_what_it_can(shelf, owned_library):
-    """recorded_at fills itself, so a handler need not name it."""
+    """recorded_at fills itself; no handler names it."""
     project_registry.apply(make_event(library_id=owned_library.pk))
 
     assert shelf.objects.get().recorded_at is not None
@@ -630,13 +625,13 @@ def test_the_helper_lets_the_database_fill_what_it_can(shelf, owned_library):
 def test_a_creation_under_another_librarys_identity_is_refused(
     shelf, owned_library, second_library
 ):
-    """The pair misses, the insert reaches the primary key."""
+    """The pair misses; the primary key refuses."""
     identity = uuid.uuid7()
     project_registry.apply(
         make_event(library_id=second_library.pk, aggregate_id=identity)
     )
 
-    #: The savepoint rolls the aborted statement back under the test's transaction.
+    #: The savepoint absorbs the aborted statement.
     with pytest.raises(IntegrityError) as caught, transaction.atomic():
         project_registry.apply(
             make_event(library_id=owned_library.pk, aggregate_id=identity, sequence=2)
@@ -684,7 +679,7 @@ class LibraryNamingWriter(Projector, registry=scoped_registry):
 
 
 def test_the_helper_refuses_a_library_it_is_handed(shelf, owned_library):
-    """Even the right one: the envelope is the only source."""
+    """Even the right one; the envelope decides."""
     with pytest.raises(TypeError, match="written with a library"):
         scoped_registry.apply(make_event(library_id=owned_library.pk))
 
@@ -706,7 +701,7 @@ class AmendingWriter(Projector, registry=amend_registry):
 
 
 def created_row(library, identity: uuid.UUID) -> None:
-    """The row a creation event writes: `projected 1`."""
+    """The creation event's row, named `projected 1`."""
     project_registry.apply(make_event(library_id=library.pk, aggregate_id=identity))
 
 
@@ -754,7 +749,7 @@ def test_an_amendment_with_no_row_is_refused(shelf, owned_library):
     ):
         amend_registry.apply(make_event(library_id=owned_library.pk))
 
-    #: The lookup that tells a missing row from a foreign one.
+    #: The lookup: missing row or foreign one.
     assert statements(queries) == ["UPDATE", "SELECT"]
     assert shelf.objects.count() == 0
 

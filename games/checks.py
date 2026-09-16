@@ -106,10 +106,10 @@ def _check_one(model: type[ProjectionModel]) -> list[CheckMessage]:
 
 
 def _carries_library_pair(model: type[ProjectionModel]) -> bool:
-    """Whether an upsert on `(pk, library)` finds an arbiter.
+    """Whether the upsert's arbiter exists.
 
-    A conditional constraint is a partial index, which arbitrates only a
-    statement repeating its predicate, so it does not count.
+    A conditional constraint is a partial index. It arbitrates only a
+    statement that repeats its predicate, so it does not count.
     """
     pair = {model._meta.pk.name, "library"}
     return any(
