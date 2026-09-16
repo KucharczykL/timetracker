@@ -17,8 +17,6 @@ LEGACY_NAMES = frozenset({"Session", "SessionQuerySet"})
 #: A path, and why it still reads the legacy table.
 ALLOWED_FILES: dict[str, str] = {
     "games/models.py": "Declares the model.",
-    "games/reads/playtime/legacy.py": "The parity command's other source.",
-    "games/reads/session_parity.py": "The statistics gate's legacy side.",
     "games/removal.py": "REMOVABLE_MODELS lists it until the table goes.",
 }
 

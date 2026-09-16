@@ -119,7 +119,6 @@ path**, so verify against `make check` before pushing when possible.
 | Render every read-only page as one user to files | `make render-pages ARGS="--user NAME --out DIR"` (read-only; run at two commits on one database and `diff -r`; lists whole, CSRF and version footer normalised) |
 | Benchmark commands, replay, reads, and per-event cost | `make bench` (~2 min, seeds three events a game and removes the scratch library; `ARGS="--library <id> --gate"` times the six reads and checks replay on a real library, where the 20 ms read budget is judged; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
-| Compare every playtime and session figure across both session tables | `make verify-session-parity ARGS="--all-libraries"` (read-only; fails on a differing figure; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
 | Load platform fixtures / sample data | `make loadplatforms` / `make loadsample` |
 | Regenerate sample data (anonymized prod) | `make anonymize-sample` (see Testing) |
@@ -373,8 +372,7 @@ docs/           — Additional documentation
   figures -- count, distinct days, longest, most sessions, highest average,
   first and last play -- are readers in `games/reads/session_figures.py`,
   grouped on the session table, ties broken by value, `sort_name`, game key,
-  session key; `compute_stats` calls them, `verify-session-parity` compares
-  them against legacy `duration_total`, `make bench` times them.
+  session key; `compute_stats` calls them, `make bench` times them.
   `readable_sessions()` is the row path list and API share; `games_for_list()`
   in `games/views/game.py` builds the game list's queryset so the bench times
   the served plan. Ran on the 2026-09-12 dump: replay clean, 0 of 4,649 figures
@@ -427,28 +425,21 @@ pass `scripts=` for component-owned JS). `scripts=` remains only for page-specif
 glue not owned by reusable component (e.g. `add_*.js`). Navbar shows
 today's/last-7-days playtime from `model_counts` context processor.
 
-**Playtime reads** (`games/reads/playtime/`, #697): playtime per Game, all-time,
+**Playtime reads** (`games/reads/playtime.py`, #697): playtime per Game, all-time,
 per year, per day window, per platform, per month, per day and per game in a
 day window (`game_playtime_between`, the playthrough page's range sum) comes
-from this package. Averages (Game detail, stats) and `GameFilter`'s
-`session_playtime_hours` read `effective_duration` outside it. `PlaytimeSource`
-names the figures; `legacy.py` answers them from `Session`, `projection.py` from
-`PlayerSession` through `library_sessions()` (`games/reads/player_sessions.py`,
-the read layer's one session scope: four removal marks, library on session, run
-and tracked game). `SOURCE: FullPlaytimeSource = projection`; `legacy.py` lacks
-`summed_by_game_matching`, because `PlayerSessionFilter` speaks projection words
-no legacy column answers. Sources answer sums (NULL when unplayed); the package
-decides NULL or zero: `playtime_by_game` is zero (the `playtime` alias
-`GameQuerySet.annotated_for_filtering` registers, which refuses a second
-library), `playtime_sort_key` and `playtime_matching` stay NULL and `apply_sort`
-puts NULL last. A sum with no library compiles for validation and raises
-`UnscopedPlaytimeRead` if executed. No queryset and no `Q` crosses the interface.
-`make verify-session-parity` compares every `PlaytimeSource` member but
-`summed_by_game_matching`, and every `SessionFigureSource` member
-(`games/reads/session_parity.py`), in one snapshot; a test holds both lists
-whole. A
-stored comparison naming `playtime` is refused through
-`Game.RETIRED_COMPARISON_COLUMNS`.
+from this module. Averages (Game detail, stats) and `GameFilter`'s
+`session_playtime_hours` read `effective_duration` outside it. Every figure
+reads `PlayerSession` through `library_sessions()`
+(`games/reads/player_sessions.py`, the read layer's one session scope: four
+removal marks, library on session, run and tracked game). Sums are NULL when
+unplayed; the module decides NULL or zero: `playtime_by_game` is zero (the
+`playtime` alias `GameQuerySet.annotated_for_filtering` registers, which
+refuses a second library), `playtime_sort_key` and `playtime_matching` stay
+NULL and `apply_sort` puts NULL last. A sum with no library compiles for
+validation and raises `UnscopedPlaytimeRead` if executed. No queryset and no
+`Q` crosses the interface. A stored comparison naming `playtime` is refused
+through `Game.RETIRED_COMPARISON_COLUMNS`.
 
 **Component system** (`common/components/`): FastHTML-style **lazy node tree**.
 Components are `Node` objects that render to HTML only when asked (`str(node)` /
@@ -889,9 +880,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
 - **Signals handle side-effects** — do not manually recalculate
   `Purchase.num_purchases`.
 - **Playtime is read, never stored** — read playtime through
-  `games.reads.playtime`, never `Sum("duration_total")` at a new call site; a new
-  figure is a `PlaytimeSource` member both sources implement and the parity
-  command compares.
+  `games.reads.playtime`, never `Sum("effective_duration")` at a new call site;
+  a new figure is a function in that module.
 - **Buttons are `ControlButton`** — colors: `blue` (primary), `red` (destructive),
   `gray` (secondary), `green` (positive); variants: `filled` (default),
   `segmented` (ButtonGroup members), plus colorless single-look toggles that ignore

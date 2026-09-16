@@ -19,7 +19,7 @@ from django.urls import NoReverseMatch, reverse
 from common.components.custom_elements import FILTER_MODE_MODELS
 from common.returns import UrlName
 from games.models import Game, Purchase, UserLibrary
-from games.reads.playtime import SOURCE
+from games.reads.playtime import played_years
 from games.views.returns import READ_ONLY
 
 #: `ALLOWED_HOSTS` admits `testserver` under the test runner only.
@@ -83,7 +83,7 @@ def _urls(library: UserLibrary, unmounted: list[UrlName]) -> Iterator[RenderedUr
             for purchase in Purchase.objects.for_library(library).order_by("pk"):
                 yield _rendered(name, reverse(name, args=[purchase.pk]))
         elif name == "games:stats_by_year":
-            for year in SOURCE.played_years(library):
+            for year in played_years(library):
                 yield _rendered(name, reverse(name, args=[year]))
         elif name == "games:filter_builder":
             for model in FILTER_MODE_MODELS.values():
