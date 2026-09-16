@@ -22,9 +22,7 @@ def test_game_status_selector_opens_and_patches(
     from games.models import Game, Platform
 
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
-    game = Game.objects.create(
-        library=e2e_library, name="Test Game", platform=platform, status="u"
-    )
+    game = Game.objects.create(library=e2e_library, name="Test Game", platform=platform)
 
     page = authenticated_page
     game_url = game.get_absolute_url()
@@ -127,9 +125,7 @@ def test_status_selector_reverts_on_failed_patch(
     from games.models import Game, Platform, PlayerGame, PlayerGameStatus
 
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
-    game = Game.objects.create(
-        library=e2e_library, name="Test Game", platform=platform, status="u"
-    )
+    game = Game.objects.create(library=e2e_library, name="Test Game", platform=platform)
 
     page = authenticated_page
     page.route(

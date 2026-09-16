@@ -999,18 +999,24 @@ class TestExpandedFiltersAgainstDB:
         import datetime
         from datetime import timedelta
 
-        from games.models import Device, Game, Platform, Purchase
+        from games.models import (
+            Device,
+            Game,
+            Platform,
+            PlayerGame,
+            PlayerGameStatus,
+            Purchase,
+        )
 
         # 1. Platform & Game
         plat, _ = Platform.objects.get_or_create(
             name="Retro Console", group="Nintendo", icon="retro"
         )
         game, _ = Game.objects.get_or_create(
-            name="Super Mario World", defaults={"platform": plat, "status": "f"}
+            name="Super Mario World", defaults={"platform": plat}
         )
-        game2, _ = Game.objects.get_or_create(
-            name="Zelda", defaults={"platform": plat, "status": "u"}
-        )
+        PlayerGame.objects.filter(game=game).update(status=PlayerGameStatus.COMPLETED)
+        game2, _ = Game.objects.get_or_create(name="Zelda", defaults={"platform": plat})
 
         # 2. Device & Session
         dev, _ = Device.objects.get_or_create(name="Super Famicom", type="Console")
@@ -5793,7 +5799,7 @@ class TestStringCriterionIsNullAgainstDB:
 
         platform, _ = Platform.objects.get_or_create(name="Test Platform", icon="test")
         game, _ = Game.objects.get_or_create(
-            name="Test Game", defaults={"platform": platform, "status": "u"}
+            name="Test Game", defaults={"platform": platform}
         )
         device, _ = Device.objects.get_or_create(name="Test Device", type="PC")
         start = datetime.datetime(2025, 1, 1, 10, 0, 0, tzinfo=datetime.UTC)

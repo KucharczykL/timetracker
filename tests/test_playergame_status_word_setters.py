@@ -45,9 +45,6 @@ def test_the_form_posts_a_word(logged_in, owned_library, catalog_graph_post):
     row = PlayerGame.objects.get(library=owned_library, game=game)
     assert row.status == PlayerGameStatus.COMPLETED
     assert row.mastered is True
-    #: An add states the facts nowhere else.
-    game.refresh_from_db()
-    assert (game.status, game.mastered) == ("u", False)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -119,13 +116,8 @@ def test_the_endpoint_takes_a_shared_game_this_library_tracks(logged_in, owned_l
 
 @pytest.mark.django_db(transaction=True)
 def test_a_session_marks_an_unplayed_game_played(logged_in, owned_library):
-    """_record_played reads the row, not the catalog column.
-
-    The catalog says played and the projection says unplayed, so a
-    view that still read the column would record nothing.
-    """
+    """_record_played reads the row."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    Game.objects.filter(pk=game.pk).update(status="p")
     started = timezone.now().replace(microsecond=0)
 
     logged_in.post(

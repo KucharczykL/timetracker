@@ -47,24 +47,6 @@ def test_a_status_reaches_the_event_and_the_projection(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_catalog_column_is_left_where_it_stood(owned_user, owned_library):
-    #: Nothing copies the row onto the game.
-    game = Game.objects.create(library=owned_library, name="Tunic", status="u")
-    track_game(owned_user, game, correlation_id=new_correlation_id())
-
-    record_facts(
-        owned_user,
-        game,
-        status=PlayerGameStatus.COMPLETED,
-        correlation_id=new_correlation_id(),
-    )
-
-    assert PlayerGame.objects.get().status == PlayerGameStatus.COMPLETED
-    game.refresh_from_db()
-    assert game.status == "u"
-
-
-@pytest.mark.django_db(transaction=True)
 def test_an_untracked_game_is_tracked_then_recorded(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Tunic")
 

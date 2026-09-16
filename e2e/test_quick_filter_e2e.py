@@ -12,7 +12,8 @@ from django.urls import reverse
 from playwright.sync_api import Page, expect
 from session_rows import session_row
 
-from games.models import Game, Platform
+from e2e.tracked_games import create_tracked_game
+from games.models import Game, Platform, PlayerGameStatus
 from games.reads.calendar import calendar_day_zone
 
 
@@ -48,18 +49,13 @@ def test_quick_facet_apply_filters_the_list(
     """Picking a status in the quick bar and hitting Apply navigates with a
     flat facet-only ?filter= and the list is filtered."""
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
-    Game.objects.create(
-        library=e2e_library,
-        name="Finished Game",
+    create_tracked_game(
+        e2e_library,
+        "Finished Game",
+        status=PlayerGameStatus.COMPLETED,
         platform=platform,
-        status=Game.Status.FINISHED,
     )
-    Game.objects.create(
-        library=e2e_library,
-        name="Unplayed Game",
-        platform=platform,
-        status=Game.Status.UNPLAYED,
-    )
+    Game.objects.create(library=e2e_library, name="Unplayed Game", platform=platform)
 
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")

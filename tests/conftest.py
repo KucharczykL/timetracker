@@ -235,11 +235,11 @@ def capture_client_errors_logger(caplog):
 def _track_created_games(request):
     """Give every game a test creates the projection rows a read needs.
 
-    games/views/game.py dispatches TrackGame, migration
-    0033_playergame_baseline_backfill covers a restored dump, and
-    load_sample_data calls backfill_library(). A test is the fourth source of a
+    games/views/game.py dispatches TrackGame, and load_sample_data rebuilds
+    the projection from the fixture's events. A test is the third source of a
     game and leaves no row, so the inner join in ``GameQuerySet.tracked_by()``
-    would hide it.
+    would hide it. The row says UNPLAYED, unmastered; a test that wants other
+    words states them through ``create_tracked_game``.
 
     Both rows, because TrackGame states both: #679 gives every tracked game one
     run from the moment the library tracks it, and a write path that finds none
@@ -253,8 +253,13 @@ def _track_created_games(request):
     production is real and deliberate; tests/test_playergame_write_path.py
     covers the event path.
     """
-    from games.models import Game, PlayerGame, Playthrough, PlaythroughKind
-    from games.playergame_status import player_status_for
+    from games.models import (
+        Game,
+        PlayerGame,
+        PlayerGameStatus,
+        Playthrough,
+        PlaythroughKind,
+    )
 
     if "untracked_games" in request.keywords:
         yield
@@ -270,8 +275,8 @@ def _track_created_games(request):
             defaults={
                 "pk": uuid.uuid7(),
                 "tracked_at": timezone.now(),
-                "status": player_status_for(instance.status),
-                "mastered": instance.mastered,
+                "status": PlayerGameStatus.UNPLAYED,
+                "mastered": False,
             },
         )
         if not made:

@@ -46,7 +46,7 @@ def logged_in(client, owned_user):
 
 @pytest.fixture
 def tracked_game(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track_game(owned_user, game, correlation_id=new_correlation_id())
     return game
 
@@ -82,7 +82,7 @@ def test_adding_a_game_records_one_creation_event(logged_in, owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_editing_a_games_status_records_the_event(logged_in, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
 
     logged_in.post(
         reverse("games:edit_game", args=[game.id]),
@@ -128,7 +128,7 @@ def test_the_status_api_records_the_fact(logged_in, owned_library, tracked_game)
 
 @pytest.mark.django_db(transaction=True)
 def test_the_status_api_refuses_a_status_that_is_not_one(logged_in, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
 
     response = logged_in.patch(
         f"/api/games/{game.id}/status",
@@ -139,8 +139,8 @@ def test_the_status_api_refuses_a_status_that_is_not_one(logged_in, owned_librar
     #: Game.save() checks no choices, so the typed schema
     #: field is what refuses this before the view runs.
     assert response.status_code == 422
-    game.refresh_from_db()
-    assert game.status == "u"
+    #: Refused before the view ran, so nothing tracked the game.
+    assert not PlayerGame.objects.filter(game=game).exists()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -209,7 +209,7 @@ def test_editing_a_session_records_played_too(logged_in, owned_library, tracked_
 @pytest.mark.untracked_games
 def test_a_session_on_an_untracked_game_is_refused_on_the_run(logged_in, owned_library):
     """A session names a run, and a game nothing tracks holds none."""
-    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
 
     response = logged_in.post(reverse("games:add_session"), _session_payload(game))
 
@@ -232,7 +232,7 @@ def test_the_box_comes_up_ticked(logged_in):
 @pytest.mark.untracked_games
 def test_an_unticked_box_records_nothing_and_tracks_nothing(logged_in, owned_library):
     #: The checkbox owns the tracking, not sessions.
-    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="u")
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
 
     response = logged_in.post(
         reverse("games:add_session"), _session_payload(game, mark_as_played="")
@@ -345,7 +345,7 @@ def test_refunding_abandons_every_game_under_one_correlation_id(
 ):
     games = []
     for name in ("Outer Wilds", "Tunic"):
-        game = Game.objects.create(library=owned_library, name=name, status="p")
+        game = Game.objects.create(library=owned_library, name=name)
         track_game(owned_user, game, correlation_id=new_correlation_id())
         games.append(game)
     purchase = Purchase.objects.create(
@@ -377,7 +377,7 @@ def test_a_failed_refund_answers_409_and_swaps_nothing(
 ):
     from games.writes.answers import CommandFailed
 
-    game = Game.objects.create(library=owned_library, name="Outer Wilds", status="p")
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track_game(owned_user, game, correlation_id=new_correlation_id())
     purchase = Purchase.objects.create(
         library=owned_library,
@@ -453,7 +453,7 @@ def test_a_partly_applied_refund_says_how_far_it_went(
 
     games = []
     for name in ("Outer Wilds", "Tunic"):
-        game = Game.objects.create(library=owned_library, name=name, status="p")
+        game = Game.objects.create(library=owned_library, name=name)
         track_game(owned_user, game, correlation_id=new_correlation_id())
         games.append(game)
     purchase = Purchase.objects.create(

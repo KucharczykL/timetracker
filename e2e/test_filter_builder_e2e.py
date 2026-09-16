@@ -31,7 +31,15 @@ from django.urls import reverse
 from playwright.sync_api import Page, expect
 from session_rows import session_row
 
-from games.models import FilterPreset, Game, Platform, Playthrough, Purchase
+from e2e.tracked_games import create_tracked_game
+from games.models import (
+    FilterPreset,
+    Game,
+    Platform,
+    PlayerGameStatus,
+    Playthrough,
+    Purchase,
+)
 from timetracker.temporal import TemporalValue
 
 # ── auth helpers (no shared authenticated_page fixture exists in conftest.py) ──
@@ -72,11 +80,11 @@ def test_builder_page_elements_load_and_initialize(
     page = authenticated_page
 
     platform = Platform.objects.create(library=e2e_library, name="PC")
-    Game.objects.create(
-        library=e2e_library, name="DoneGame", platform=platform, status="f"
+    create_tracked_game(
+        e2e_library, "DoneGame", status=PlayerGameStatus.COMPLETED, platform=platform
     )
-    Game.objects.create(
-        library=e2e_library, name="PlayGame", platform=platform, status="p"
+    create_tracked_game(
+        e2e_library, "PlayGame", status=PlayerGameStatus.PLAYED, platform=platform
     )
 
     # The filter JSON seeds the filter-group tree AND the leaf's value widget
@@ -140,11 +148,11 @@ def test_apply_navigates_to_game_list(
     page = authenticated_page
 
     platform = Platform.objects.create(library=e2e_library, name="PC")
-    Game.objects.create(
-        library=e2e_library, name="DoneGame", platform=platform, status="f"
+    create_tracked_game(
+        e2e_library, "DoneGame", status=PlayerGameStatus.COMPLETED, platform=platform
     )
-    Game.objects.create(
-        library=e2e_library, name="PlayGame", platform=platform, status="p"
+    create_tracked_game(
+        e2e_library, "PlayGame", status=PlayerGameStatus.PLAYED, platform=platform
     )
 
     filter_json = {"status": {"modifier": "INCLUDES", "value": ["completed"]}}
@@ -184,11 +192,11 @@ def test_game_list_filter_narrows_results(
     page = authenticated_page
 
     platform = Platform.objects.create(library=e2e_library, name="PC")
-    Game.objects.create(
-        library=e2e_library, name="DoneGame", platform=platform, status="f"
+    create_tracked_game(
+        e2e_library, "DoneGame", status=PlayerGameStatus.COMPLETED, platform=platform
     )
-    Game.objects.create(
-        library=e2e_library, name="PlayGame", platform=platform, status="p"
+    create_tracked_game(
+        e2e_library, "PlayGame", status=PlayerGameStatus.PLAYED, platform=platform
     )
 
     # Navigate directly to the game list with the status=Finished filter.
@@ -219,11 +227,11 @@ def test_prefill_apply_roundtrip_carries_filter(
     page = authenticated_page
 
     platform = Platform.objects.create(library=e2e_library, name="PC")
-    Game.objects.create(
-        library=e2e_library, name="DoneGame", platform=platform, status="f"
+    create_tracked_game(
+        e2e_library, "DoneGame", status=PlayerGameStatus.COMPLETED, platform=platform
     )
-    Game.objects.create(
-        library=e2e_library, name="PlayGame", platform=platform, status="p"
+    create_tracked_game(
+        e2e_library, "PlayGame", status=PlayerGameStatus.PLAYED, platform=platform
     )
 
     # Same filter JSON used by the other tests in this file: status INCLUDES
@@ -326,8 +334,8 @@ def test_load_set_field_preset_reflects_field_without_crash(
     page = authenticated_page
 
     platform = Platform.objects.create(library=e2e_library, name="PC")
-    game = Game.objects.create(
-        library=e2e_library, name="SpyGame", platform=platform, status="p"
+    game = create_tracked_game(
+        e2e_library, "SpyGame", status=PlayerGameStatus.PLAYED, platform=platform
     )
 
     # Obtain the user created by the authenticated_page fixture (username="tester").
@@ -507,11 +515,11 @@ def test_nested_relation_prefill_renders_full_tree(
     page = authenticated_page
 
     platform = Platform.objects.create(library=e2e_library, name="PC")
-    done_game = Game.objects.create(
-        library=e2e_library, name="DoneGame", platform=platform, status="f"
+    done_game = create_tracked_game(
+        e2e_library, "DoneGame", status=PlayerGameStatus.COMPLETED, platform=platform
     )
-    other_game = Game.objects.create(
-        library=e2e_library, name="OtherGame", platform=platform, status="p"
+    other_game = create_tracked_game(
+        e2e_library, "OtherGame", status=PlayerGameStatus.PLAYED, platform=platform
     )
     #: The finish is stated on the run.
     Playthrough.objects.filter(player_game__game=done_game).update(
