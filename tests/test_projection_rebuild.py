@@ -34,6 +34,7 @@ from games.events.rebuild import (
     RebuildAttempt,
     RebuildMode,
     RebuildReport,
+    SwapRefusedByIdentity,
     SwapRefusedByReference,
     TableDiff,
     diff_table,
@@ -887,6 +888,89 @@ def test_a_foreign_row_in_the_shadow_is_left_behind(owned_library, second_librar
 
     assert not shelf.objects.filter(library_id=second_library.pk).exists()
     assert [title for _, title in shelf_rows(shelf)] == ["one"]
+
+
+def no_projectors() -> EventWiring:
+    """An append that projects nothing, so the live table never refuses it."""
+    return EventWiring(projectors=ProjectorRegistry(), event_types=EVENT_TYPES)
+
+
+@pytest.mark.django_db
+@isolate_apps("games")
+def test_a_stream_naming_another_librarys_identity_refuses_the_swap(
+    owned_library, second_library
+):
+    """The shadow takes the row; the live primary key does not."""
+    shelf = declare_and_create_shelf()
+    append_shelved(second_library, ["theirs"])
+    ((identity, _),) = shelf_rows(shelf)
+    theirs = every_column(shelf, second_library)
+    with transaction.atomic():
+        lock_stream(owned_library).append(
+            [
+                NewEvent(
+                    spec=PROBE_SHELVED, aggregate_id=identity, payload={"title": "mine"}
+                )
+            ],
+            actor=None,
+            correlation_id=uuid7(),
+            idempotency_key=f"probe-{uuid7()}",
+            wiring=no_projectors(),
+        )
+
+    with shadow_tables([shelf]):
+        replayed = replay_into_shadow(owned_library, [shelf], wiring=SHADOW_WIRING)
+        with pytest.raises(SwapRefusedByIdentity) as refused:
+            swap_in(owned_library, [shelf], replayed.replayed_through, tables=())
+
+    sentence = str(refused.value)
+    assert sqlstate_of(refused.value.__cause__) == "23505"
+    assert refused.value.holder == (SHELF_TABLE, str(identity), second_library.pk)
+    assert f"belongs to library {second_library.pk}" in sentence
+    assert "the stream is wrong, not the row" in sentence
+    assert every_column(shelf, second_library) == theirs
+    assert not shelf.objects.filter(library_id=owned_library.pk).exists()
+
+
+def test_the_identity_refusal_reports_an_unreadable_holder(owned_library):
+    refusal = SwapRefusedByIdentity(
+        library_id=owned_library.pk,
+        constraint_name="games_playergame_pkey",
+        detail="Key (id)=(…) already exists.",
+        holder=None,
+        tables=(),
+    )
+
+    assert "could not be read" in str(refusal)
+    assert "games_playergame_pkey" in str(refusal)
+
+
+@pytest.mark.django_db
+def test_the_command_prints_the_identity_refusal(owned_library, monkeypatch):
+    refusal = SwapRefusedByIdentity(
+        library_id=owned_library.pk,
+        constraint_name="games_playergame_pkey",
+        detail="Key (id)=(…) already exists.",
+        holder=("games_playergame", "…", uuid7()),
+        tables=(no_difference("games_playergame"),),
+    )
+
+    def refuse(*arguments, **options):
+        raise refusal
+
+    monkeypatch.setattr(rebuild_command, "rebuild_projections", refuse)
+    errors = StringIO()
+
+    with pytest.raises(CommandError, match="names an identity another library holds"):
+        call_command(
+            "rebuild_projections",
+            "--library",
+            str(owned_library.pk),
+            stdout=StringIO(),
+            stderr=errors,
+        )
+
+    assert "games_playergame" in errors.getvalue()
 
 
 @pytest.mark.django_db

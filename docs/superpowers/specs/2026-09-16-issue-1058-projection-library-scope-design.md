@@ -48,9 +48,12 @@ and updates. No path costs an extra query.
 
 A bare append raises the `IntegrityError` with the note from `apply`. A
 rebuild replays into an empty shadow table, so the foreign creation inserts
-there; the swap's `INSERT … SELECT` then hits the live primary key, and
-`swap_in` re-raises it. Shadow tables are `LIKE … INCLUDING ALL`, so the pair
-exists there.
+there; the swap's `INSERT … SELECT` then hits the live primary key. `swap_in`
+answers that 23505 with `SwapRefusedByIdentity`, a sibling of
+`SwapRefusedByReference` under `SwapRefused`: after the rollback it reads the
+live row under the identity, names the table, the identity and the library
+that holds it, and logs the sentence. Both commands catch `SwapRefused`.
+Shadow tables are `LIKE … INCLUDING ALL`, so the pair exists there.
 
 ## `amend`
 
@@ -78,6 +81,5 @@ libraries: `amend` refuses it, and `project` needs the old row removed first.
 
 ## Out of scope
 
-A typed refusal for the primary-key collision on a bare append or at the swap.
-Both paths are loud and roll back. The collision is a defect in a stream, not
-an act a person can restate.
+A typed refusal for the primary-key collision on a bare append. The path is
+loud and rolls back, and no command can produce the event.

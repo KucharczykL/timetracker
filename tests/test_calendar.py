@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.db import IntegrityError, transaction
 
 from games.commands.calendar import SetCalendarDayZone
 from games.commands.playergame import TrackGame
@@ -15,9 +16,12 @@ from games.commands.playersession import (
     RemoveSession,
     TimedTiming,
 )
+from games.events.append import lock_stream
 from games.events.calendar import CALENDAR_DAY_ZONE_CHANGED
 from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
 from games.events.rebuild import RebuildMode, rebuild_projections
+from games.events.retry import constraint_name_of, sqlstate_of
+from games.events.vocabulary import NewEvent
 from games.models import (
     Game,
     LibraryCalendar,
@@ -185,6 +189,33 @@ def test_a_change_moves_every_timed_and_corrected_day(prague_owner, owned_librar
     duration_only.refresh_from_db()
     assert duration_only.day_zone is None
     assert duration_only.effective_day == date(2026, 3, 5)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_calendar_event_naming_another_library_is_refused(
+    owned_user, owned_library, django_user_model
+):
+    """The CHECK refuses before the primary key does."""
+    other = django_user_model.objects.create_user(username="second-owner")
+    set_day_zone(other.library, other, "UTC")
+    foreign = NewEvent(
+        spec=CALENDAR_DAY_ZONE_CHANGED,
+        aggregate_id=other.library.pk,
+        payload={"day_zone": "Asia/Tokyo"},
+    )
+
+    with pytest.raises(IntegrityError) as caught, transaction.atomic():
+        lock_stream(owned_library).append(
+            [foreign],
+            actor=owned_user,
+            correlation_id=uuid.uuid7(),
+            idempotency_key=str(uuid.uuid7()),
+        )
+
+    assert sqlstate_of(caught.value) == "23514"
+    assert constraint_name_of(caught.value) == "games_librarycalendar_id_is_library"
+    assert LibraryCalendar.objects.get(library=other.library).day_zone == "UTC"
+    assert not LibraryCalendar.objects.filter(library=owned_library).exists()
 
 
 @pytest.mark.django_db(transaction=True)
