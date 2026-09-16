@@ -140,7 +140,7 @@ def test_a_conditional_pair_is_not_the_pair():
 
 @isolate_apps("games")
 def test_a_check_constraint_is_not_the_pair():
-    """The calendar's shape: CHECK alone, no pair."""
+    """A CHECK `id = library` is no pair."""
 
     class Calendar(ProjectionModel):
         id = models.UUIDField(primary_key=True)

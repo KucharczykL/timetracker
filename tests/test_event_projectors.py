@@ -29,8 +29,9 @@ from games.events.projection import (
     ProjectorFamily,
     ProjectorRegistry,
 )
+from games.events.rebuild import shadow_tables
 from games.events.retry import sqlstate_of
-from games.events.targets import LIVE_TARGET, ProjectionTarget
+from games.events.targets import LIVE_TARGET, ProjectionTarget, ShadowTarget
 from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
 from games.events.wiring import EventWiring
 from games.models import (
@@ -76,9 +77,16 @@ def stand_in() -> type[ProjectionModel]:
 
 @pytest.fixture
 def shelf(db):
-    """Per-test table; Device holds no pair."""
+    """Per-test projection table carrying the pair."""
     global STAND_IN
     with isolate_apps("games"):
+        #: A twin's `library` resolves in this registry.
+        class UserLibrary(models.Model):
+            id = models.UUIDField(primary_key=True)
+
+            class Meta:
+                app_label = "games"
+                db_table = "games_userlibrary"
 
         class Shelf(ProjectionModel):
             id = models.UUIDField(primary_key=True)
@@ -754,6 +762,58 @@ def test_an_amendment_with_no_row_is_refused(shelf, owned_library):
     assert shelf.objects.count() == 0
 
 
+amend_scoped_registry = ProjectorRegistry()
+
+
+class LibraryMovingAmender(Projector, registry=amend_scoped_registry):
+    """Names the column no event moves."""
+
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _recorded(self, event: RecordedEvent) -> None:
+        self.amend(stand_in(), event, library_id=uuid.uuid7(), name="moved")
+
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+
+def test_an_amendment_cannot_move_a_row(shelf, owned_library):
+    identity = uuid.uuid7()
+    created_row(owned_library, identity)
+
+    with pytest.raises(TypeError, match="amended with a library"):
+        amend_scoped_registry.apply(
+            make_event(library_id=owned_library.pk, aggregate_id=identity)
+        )
+
+    row = shelf.objects.get(pk=identity)
+    assert (row.library_id, row.name) == (owned_library.pk, "projected 1")
+
+
+empty_amend_registry = ProjectorRegistry()
+
+
+class EmptyAmender(Projector, registry=empty_amend_registry):
+    """Names no column at all."""
+
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _recorded(self, event: RecordedEvent) -> None:
+        self.amend(stand_in(), event)
+
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+
+def test_an_amendment_with_no_column_is_refused(shelf, owned_library):
+    """Zero rows change, which would read as a missing row."""
+    identity = uuid.uuid7()
+    created_row(owned_library, identity)
+
+    with pytest.raises(TypeError, match="amended with no column"):
+        empty_amend_registry.apply(
+            make_event(library_id=owned_library.pk, aggregate_id=identity)
+        )
+
+
 def test_an_amendment_in_another_library_is_refused(
     shelf, owned_library, second_library
 ):
@@ -774,6 +834,24 @@ def test_an_amendment_in_another_library_is_refused(
     assert f"names library {owned_library.pk}" in message
     assert statements(queries) == ["UPDATE", "SELECT"]
     assert shelf.objects.get(pk=identity).name == "projected 1"
+
+
+def test_a_rebuild_names_the_library_the_live_table_holds(
+    shelf, owned_library, second_library
+):
+    """The shadow holds one library; the lookup reads live."""
+    identity = uuid.uuid7()
+    created_row(second_library, identity)
+
+    with (
+        shadow_tables([shelf]),
+        pytest.raises(ProjectionRowMissing, match="belongs to library") as caught,
+    ):
+        amend_registry.for_target(ShadowTarget()).apply(
+            make_event(library_id=owned_library.pk, aggregate_id=identity)
+        )
+
+    assert f"belongs to library {second_library.pk}" in str(caught.value)
 
 
 def wiring_over(projectors: ProjectorRegistry) -> EventWiring:

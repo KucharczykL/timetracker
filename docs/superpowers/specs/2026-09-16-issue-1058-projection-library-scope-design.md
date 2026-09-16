@@ -35,15 +35,15 @@ conversion pass, a repair script, a hand-edited stream.
 Each projection table is unique on `(id, library)`. `library_identity_constraint()`
 in `games/models.py` builds the constraint, named
 `unique_%(app_label)s_%(class)s_library_identity`. Each concrete `Meta` names
-it. An abstract `Meta` cannot supply it: a `Meta` that assigns `constraints`
-shadows the base's tuple. Migration `0008` adds the four. `games.E012` refuses
+it. An abstract `Meta` cannot supply it: a concrete `Meta` inherits none of
+it. Migration `0008` adds the four. `games.E012` refuses
 a managed projection whose constraints do not hold the pair. `LibraryCalendar`
 keeps its CHECK `id = library` and carries the pair as well.
 
 The upsert names `unique_fields=(pk, "library")`. The conflict target is the
 pair. A creation under an identity that another library holds matches no pair,
-inserts, and the primary key refuses it with SQLSTATE 23505. `is_retryable`
-does not retry it. A re-projection in the same library conflicts on the pair
+inserts, and the primary key refuses it with SQLSTATE 23505; on the calendar
+the CHECK refuses first, with 23514. `is_retryable` does not retry it. A re-projection in the same library conflicts on the pair
 and updates. No path costs an extra query.
 
 A bare append raises the `IntegrityError` with the note from `apply`. A
@@ -54,9 +54,11 @@ exists there.
 
 ## `amend`
 
-`amend` filters on `(pk, library_id)`. The happy path is one `UPDATE`. When the
-`UPDATE` changes no row, one lookup by primary key tells two defects apart. Both
-raise `ProjectionRowMissing`, which stays in `NOT_ANSWERED`:
+`amend` filters on `(pk, library_id)`. A handler that names `library_id`, or
+no column, gets a `TypeError`. The happy path is one `UPDATE`. When the
+`UPDATE` changes no row, one lookup by primary key on the live table tells two
+defects apart. Both raise `ProjectionRowMissing`, which stays in
+`NOT_ANSWERED`:
 
 - No row: the stream has no creation event.
 - A row in another library: the message names the row and both library ids.
@@ -64,8 +66,10 @@ raise `ProjectionRowMissing`, which stays in `NOT_ANSWERED`:
 
 ## The other writer
 
-`LibraryCalendars` rewrites `PlayerSession.day_zone` through a filter that it
-scopes by hand. That write is outside the helpers.
+`LibraryCalendars` rewrites `PlayerSession.day_zone` on every session of the
+library. It does so through `library_rows(Model, event)`, the third helper,
+which answers the event's library's rows. `tests/test_projector_scope_guard.py`
+refuses a manager reach anywhere in `games/projectors/`.
 
 ## Assumption
 

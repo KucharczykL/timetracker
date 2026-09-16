@@ -109,12 +109,14 @@ def _carries_library_pair(model: type[ProjectionModel]) -> bool:
     """Whether the upsert's arbiter exists.
 
     A conditional constraint is a partial index. It arbitrates only a
-    statement that repeats its predicate, so it does not count.
+    statement that repeats its predicate. A deferrable one is never an
+    arbiter. Neither counts.
     """
     pair = {model._meta.pk.name, "library"}
     return any(
         isinstance(constraint, models.UniqueConstraint)
         and constraint.condition is None
+        and constraint.deferrable is None
         and set(constraint.fields) == pair
         for constraint in model._meta.constraints
     )

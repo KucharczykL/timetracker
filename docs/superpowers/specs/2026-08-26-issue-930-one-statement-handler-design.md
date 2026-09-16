@@ -15,7 +15,7 @@ key and its library in the library column, and calls `bulk_create` with
 
 `unique_fields` names the primary key by `_meta.pk.name` and `library`, so a
 key with a different name needs no exception. The identity goes on the
-instance after construction, because `Model(pk=...)` is not a valid argument.
+instance after construction, so the written columns never name the key.
 The conflict target is the `(id, library)` pair every projection is unique on,
 so a creation under an identity another library holds matches nothing and the
 primary key refuses it.

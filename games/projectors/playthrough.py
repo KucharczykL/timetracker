@@ -82,7 +82,7 @@ class Playthroughs(Projector):
     def _restored(self, event: RecordedEvent) -> None:
         self.amend(Playthrough, event, removed_at=None)
 
-    #: The creation handler names four columns, so amendments survive.
+    #: The creation handler names three columns, so amendments survive.
     #:
     #: A rebuild inserts the model defaults for the rest, and the events
     #: that follow set the real values. Naming one there would let a

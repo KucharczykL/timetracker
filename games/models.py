@@ -1350,9 +1350,9 @@ class ProjectionModel(models.Model):
     refuses a reference that registry omits.
 
     Every table is unique on `(id, library)`, the projector's upsert target,
-    through `library_identity_constraint()` in its own `Meta`: a `Meta` that
-    assigns `constraints` shadows an abstract base's. `games.E012` refuses a
-    table without it.
+    through `library_identity_constraint()` in its own `Meta`: a concrete
+    `Meta` inherits none of an abstract one. `games.E012` refuses a table
+    without it.
     """
 
     library = models.ForeignKey(

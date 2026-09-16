@@ -81,7 +81,7 @@ creation event does for `tracked_at`, thus a replay writes what was recorded.
 ## The handlers
 
 `_archived` calls `amend()` with `archived_at=event.recorded_at`, and `_restored`
-calls it with `archived_at=None`: one `UPDATE` on the primary key of the created
+calls it with `archived_at=None`: one `UPDATE` on the key and library of the created
 row. An absent row raises `ProjectionRowMissing`.
 
 ## The commands
