@@ -8,6 +8,7 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 from session_rows import session_row
+from tracked_games import create_tracked_game
 
 from games.models import Game, PlayerGame, PlayerGameStatus
 from games.writes.answers import CommandFailed
@@ -62,9 +63,7 @@ def logged_in(client, owned_user):
 @pytest.fixture
 def disagreeing_game(owned_library):
     """The projection says Completed; the catalog still says unplayed."""
-    game = Game.objects.create(
-        library=owned_library, name="Outer Wilds", status="u", mastered=False
-    )
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
     PlayerGame.objects.filter(library=owned_library, game=game).update(
         status=PlayerGameStatus.COMPLETED, mastered=True
     )
@@ -146,9 +145,7 @@ def test_a_removed_tracked_game_is_off_the_list(logged_in, owned_library):
 def test_the_edit_form_offers_the_default_with_no_row(logged_in, owned_library):
     #: No row states nothing, so the form
     #: offers what tracking would create.
-    game = Game.objects.create(
-        library=owned_library, name="Outer Wilds", status="f", mastered=True
-    )
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
 
     response = logged_in.get(reverse("games:edit_game", args=[game.pk]))
 
@@ -235,17 +232,12 @@ def test_an_owned_games_page_still_shows_its_own_rows(logged_in, owned_library):
 
 
 @pytest.mark.django_db
-def test_the_tracking_fixture_states_the_games_facts(owned_library):
-    """The projection row says what the game says.
-
-    The fixture stands in for `track_game()`. A row taking the column
-    defaults would say `unplayed` for a finished game, and every
-    filter on the projection would then select nothing.
-    """
-    game = Game.objects.create(
-        library=owned_library,
-        name="Outer Wilds",
-        status=Game.Status.FINISHED,
+def test_the_factory_states_the_games_facts(owned_library):
+    """The row says what the test states."""
+    game = create_tracked_game(
+        owned_library,
+        "Outer Wilds",
+        status=PlayerGameStatus.COMPLETED,
         mastered=True,
     )
 
@@ -253,6 +245,13 @@ def test_the_tracking_fixture_states_the_games_facts(owned_library):
 
     assert tracked.status == PlayerGameStatus.COMPLETED
     assert tracked.mastered is True
+
+
+@pytest.mark.django_db
+@pytest.mark.untracked_games
+def test_the_factory_refuses_where_no_row_exists(owned_library):
+    with pytest.raises(RuntimeError, match="untracked_games"):
+        create_tracked_game(owned_library, "Outer Wilds")
 
 
 @pytest.mark.django_db(transaction=True)

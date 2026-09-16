@@ -17,6 +17,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from session_rows import session_row
+from tracked_games import create_tracked_game
 
 from common.criteria import Modifier
 from common.filter_execution import execute_filter
@@ -24,7 +25,14 @@ from games.filters import (
     filter_query_context_for_library,
     filter_queryset_for_library,
 )
-from games.models import Game, Platform, PlayerSession, Playthrough, Purchase
+from games.models import (
+    Game,
+    Platform,
+    PlayerGameStatus,
+    PlayerSession,
+    Playthrough,
+    Purchase,
+)
 from games.reads.player_sessions import GAME, library_sessions
 from games.views import stats_links
 from games.views.stats_data import compute_stats
@@ -46,18 +54,18 @@ def world(db):
     pc = Platform.objects.create(name="PC")
     switch = Platform.objects.create(name="Switch")
 
-    finished_game = Game.objects.create(
-        library=library,
-        name="Finished",
+    finished_game = create_tracked_game(
+        library,
+        "Finished",
+        status=PlayerGameStatus.COMPLETED,
         platform=pc,
-        status=Game.Status.FINISHED,
         year_released=YEAR,
     )
-    abandoned_game = Game.objects.create(
-        library=library, name="Abandoned", platform=pc, status=Game.Status.ABANDONED
+    abandoned_game = create_tracked_game(
+        library, "Abandoned", status=PlayerGameStatus.ABANDONED, platform=pc
     )
-    playing_game = Game.objects.create(
-        library=library, name="Playing", platform=switch, status=Game.Status.PLAYED
+    playing_game = create_tracked_game(
+        library, "Playing", status=PlayerGameStatus.PLAYED, platform=switch
     )
 
     # Sessions: in-year on two platforms + one out-of-year (excluded).
@@ -109,11 +117,11 @@ def world(db):
     foreign_library = (
         get_user_model().objects.create_user(username="stats-links-foreign").library
     )
-    foreign_game = Game.objects.create(
-        library=foreign_library,
-        name="Foreign Finished",
+    foreign_game = create_tracked_game(
+        foreign_library,
+        "Foreign Finished",
+        status=PlayerGameStatus.COMPLETED,
         platform=pc,
-        status=Game.Status.FINISHED,
         year_released=YEAR,
     )
     session_row(
@@ -496,9 +504,7 @@ def test_finished_link_round_trips_to_same_count_as_stat(world):
 @pytest.fixture
 def a_retired_purchase(world):
     library = world["library"]
-    game = Game.objects.create(
-        library=library, name="Retired", status=Game.Status.RETIRED
-    )
+    game = create_tracked_game(library, "Retired", status=PlayerGameStatus.RETIRED)
     Purchase.objects.create(
         library=library,
         price_currency="CZK",
@@ -507,8 +513,8 @@ def a_retired_purchase(world):
     ).games.set([game])
 
     #: Bought earlier, ended in scope.
-    earlier = Game.objects.create(
-        library=library, name="Retired earlier", status=Game.Status.RETIRED
+    earlier = create_tracked_game(
+        library, "Retired earlier", status=PlayerGameStatus.RETIRED
     )
     Playthrough.objects.filter(player_game__game=earlier).update(
         completion_recorded_at=timezone.now(),
@@ -538,31 +544,6 @@ def test_a_retired_purchase_links_to_the_same_count(
     library = a_retired_purchase["library"]
     stats = compute_stats(library, YEAR)
 
-    assert (
-        _count(getattr(stats_links, builder)(YEAR), Purchase, library)
-        == stats[stat_key]
-    )
-
-
-@pytest.mark.parametrize(
-    ("builder", "stat_key"),
-    [
-        ("purchases_dropped", "dropped_count"),
-        ("purchases_unfinished", "purchased_unfinished_count"),
-        ("purchases_backlog_decrease", "backlog_decrease_count"),
-    ],
-)
-def test_a_link_lands_when_the_catalog_disagrees(world, builder, stat_key):
-    """Both sides read the projection, so a wrong column changes nothing.
-
-    The fixture writes each row from the game's letter, which would
-    let a catalog reader pass. Setting every letter to `u` leaves
-    only the projection saying anything true.
-    """
-    library = world["library"]
-    Game.objects.filter(library=library).update(status=Game.Status.UNPLAYED)
-
-    stats = compute_stats(library, YEAR)
     assert (
         _count(getattr(stats_links, builder)(YEAR), Purchase, library)
         == stats[stat_key]

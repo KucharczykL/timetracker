@@ -8,6 +8,7 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.html import escape
 from session_rows import session_row
+from tracked_games import create_tracked_game
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -19,7 +20,7 @@ from common.duration_presentation import (
 )
 from common.filter_execution import execute_filter
 from games.filters import filter_query_context_for_library, filter_url
-from games.models import Game, Platform, Playthrough, Purchase
+from games.models import Game, Platform, PlayerGameStatus, Playthrough, Purchase
 from games.reads.player_sessions import library_sessions
 from games.views import stats_links
 from games.views.stats_content import stats_content as _stats_content
@@ -50,11 +51,8 @@ def rendered(db):
     # 6 games each played in-year → games-by-playtime exceeds the cap of 5.
     games = []
     for index in range(6):
-        game = Game.objects.create(
-            library=library,
-            name=f"Game {index}",
-            platform=pc,
-            status=Game.Status.PLAYED,
+        game = create_tracked_game(
+            library, f"Game {index}", status=PlayerGameStatus.PLAYED, platform=pc
         )
         start = _dt(6, index + 1)
         session_row(
@@ -64,11 +62,8 @@ def rendered(db):
         )
         games.append(game)
 
-    abandoned = Game.objects.create(
-        library=library,
-        name="Abandoned",
-        platform=pc,
-        status=Game.Status.ABANDONED,
+    abandoned = create_tracked_game(
+        library, "Abandoned", status=PlayerGameStatus.ABANDONED, platform=pc
     )
     Purchase.objects.create(
         library=library,

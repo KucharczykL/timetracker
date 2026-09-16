@@ -27,16 +27,15 @@ is unfinished is counted Dormant like any other. Neither word moves the other.
 
 The status lives on `PlayerGame`, one row per library per game, so two libraries
 can hold different statuses for one catalog game. It is the only place a status
-is stated or read: since #678 D2 nothing maintains the five-letter `Game.status`
-column, which #770 drops. `shelved` is settable everywhere the other five are,
-because no letter has to hold it any more.
+is stated or read; `Game` holds no status column. `shelved` is settable
+everywhere the other five are, because no letter has to hold it any more.
 
 **Setting game status:**
 - Users explicitly set game status via the UI (the status dropdown on the game
   page and the games list, the game form, finish/drop purchase buttons)
 - Code states a status as a command (`record_facts()` in
   `games/writes/playergame.py`), which appends an event and lets the projector
-  write the row. Do not assign `Game.status` directly.
+  write the row.
 - Refunding a purchase always marks its games as abandoned
 - The events are the record. `games/reads/playergame_history.py` replays a
   library's status events into the History section of the game page, so the

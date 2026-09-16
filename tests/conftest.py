@@ -233,28 +233,19 @@ def capture_client_errors_logger(caplog):
 
 @pytest.fixture(autouse=True)
 def _track_created_games(request):
-    """Give every game a test creates the projection rows a read needs.
+    """Seed each created game its projection rows.
 
-    games/views/game.py dispatches TrackGame, migration
-    0033_playergame_baseline_backfill covers a restored dump, and
-    load_sample_data calls backfill_library(). A test is the fourth source of a
-    game and leaves no row, so the inner join in ``GameQuerySet.tracked_by()``
-    would hide it.
-
-    Both rows, because TrackGame states both: #679 gives every tracked game one
-    run from the moment the library tracks it, and a write path that finds none
-    creates a second one instead of filling that one in. A fixture that wrote
-    only the PlayerGame would send every view and API test down a branch
-    production never takes.
-
-    A direct write, not ``backfill_game()``: the backfill needs an actor and a
-    run time, opens its own transaction and appends events. The rows are what
-    the joins want, so the rows are what this writes. The divergence from
-    production is real and deliberate; tests/test_playergame_write_path.py
-    covers the event path.
+    Rows, not TrackGame: the command wants an actor and a transaction.
+    Both rows: a write path that finds no run creates a second.
+    Other words come through ``create_tracked_game``.
     """
-    from games.models import Game, PlayerGame, Playthrough, PlaythroughKind
-    from games.playergame_status import player_status_for
+    from games.models import (
+        Game,
+        PlayerGame,
+        PlayerGameStatus,
+        Playthrough,
+        PlaythroughKind,
+    )
 
     if "untracked_games" in request.keywords:
         yield
@@ -270,8 +261,8 @@ def _track_created_games(request):
             defaults={
                 "pk": uuid.uuid7(),
                 "tracked_at": timezone.now(),
-                "status": player_status_for(instance.status),
-                "mastered": instance.mastered,
+                "status": PlayerGameStatus.UNPLAYED,
+                "mastered": False,
             },
         )
         if not made:

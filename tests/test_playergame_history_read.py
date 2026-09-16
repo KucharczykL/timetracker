@@ -68,9 +68,7 @@ def test_each_entry_follows_the_one_before_it(owned_user, owned_library):
 @pytest.mark.django_db(transaction=True)
 def test_the_first_transition_follows_unplayed(owned_user, owned_library):
     #: The creation event states no status.
-    game = Game.objects.create(
-        library=owned_library, name="Outer Wilds", status=Game.Status.FINISHED
-    )
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track_game(owned_user, game, correlation_id=new_correlation_id())
     state(owned_user, game, PlayerGameStatus.COMPLETED)
 

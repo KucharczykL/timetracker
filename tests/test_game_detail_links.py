@@ -7,6 +7,7 @@ import pytest
 from django.urls import reverse
 from django.utils.html import escape
 from session_rows import session_row
+from tracked_games import create_tracked_game
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -20,7 +21,14 @@ from games.filters import (
     filter_url,
 )
 from games.formatting import session_time_range
-from games.models import Game, Platform, PlayerSession, Playthrough, Purchase
+from games.models import (
+    Game,
+    Platform,
+    PlayerGameStatus,
+    PlayerSession,
+    Playthrough,
+    Purchase,
+)
 from games.reads.playthrough_runs import library_runs
 from games.views.game import view_game
 
@@ -36,11 +44,8 @@ def _dt(day, hour=12):
 @pytest.fixture
 def game(owned_library):
     platform = Platform.objects.create(name="PC")
-    game = Game.objects.create(
-        library=owned_library,
-        name="Test Game",
-        platform=platform,
-        status=Game.Status.PLAYED,
+    game = create_tracked_game(
+        owned_library, "Test Game", status=PlayerGameStatus.PLAYED, platform=platform
     )
     session_row(game, started_at=_dt(1), ended_at=_dt(1, 13))
     Purchase.objects.create(

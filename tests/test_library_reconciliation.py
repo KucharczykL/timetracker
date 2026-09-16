@@ -13,6 +13,7 @@ from django.core.management import call_command
 from django.test import Client
 from django.urls import reverse
 from session_rows import session_row
+from tracked_games import create_tracked_game
 
 from common.filter_execution import execute_filter
 from games import tasks
@@ -28,6 +29,7 @@ from games.models import (
     FilterPreset,
     Game,
     Platform,
+    PlayerGameStatus,
     PlayerSession,
     Purchase,
     PurchaseConversionState,
@@ -73,33 +75,33 @@ def parity_world(monkeypatch):
     platform_b = Platform.objects.create(
         library=library_b, name="Reconcile B Private Platform", group="Private"
     )
-    game_a = Game.objects.create(
-        library=library_a,
-        name="Reconcile A Main Game",
+    game_a = create_tracked_game(
+        library_a,
+        "Reconcile A Main Game",
+        status=PlayerGameStatus.COMPLETED,
         platform=platform_a,
         year_released=YEAR,
-        status=Game.Status.FINISHED,
     )
-    shared_game_a = Game.objects.create(
-        library=library_a,
-        name="Reconcile A Shared Game",
+    shared_game_a = create_tracked_game(
+        library_a,
+        "Reconcile A Shared Game",
+        status=PlayerGameStatus.PLAYED,
         platform=shared_platform,
         year_released=YEAR,
-        status=Game.Status.PLAYED,
     )
-    game_b = Game.objects.create(
-        library=library_b,
-        name="Reconcile B Main Game",
+    game_b = create_tracked_game(
+        library_b,
+        "Reconcile B Main Game",
+        status=PlayerGameStatus.COMPLETED,
         platform=platform_b,
         year_released=YEAR,
-        status=Game.Status.FINISHED,
     )
-    shared_game_b = Game.objects.create(
-        library=library_b,
-        name="Reconcile B Shared Game",
+    shared_game_b = create_tracked_game(
+        library_b,
+        "Reconcile B Shared Game",
+        status=PlayerGameStatus.PLAYED,
         platform=shared_platform,
         year_released=YEAR,
-        status=Game.Status.PLAYED,
     )
     device_a = Device.objects.create(library=library_a, name="Reconcile A Device")
     device_b = Device.objects.create(library=library_b, name="Reconcile B Device")

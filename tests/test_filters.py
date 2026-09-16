@@ -464,75 +464,83 @@ class TestUUIDMultiCriterion:
 
 
 class TestChoiceCriterionAgainstDB:
-    """Verify ChoiceCriterion produces correct DB results."""
+    """ChoiceCriterion against PlayerGame.status rows."""
 
     @pytest.fixture(autouse=True)
     def setup(self, django_db_blocker):
         pass
 
     def _seed_games(self):
-        """Create test games with different statuses."""
-        from games.models import Game, Platform
+        """Five tracked games, one per word."""
+        from games.models import Game, Platform, PlayerGame, PlayerGameStatus
 
         platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
-        statuses = ["u", "p", "f", "r", "a"]
-        for i, s in enumerate(statuses):
-            Game.objects.get_or_create(
-                name=f"Test Game {i}",
-                defaults={"platform": platform, "status": s},
+        statuses = [
+            PlayerGameStatus.UNPLAYED,
+            PlayerGameStatus.PLAYED,
+            PlayerGameStatus.COMPLETED,
+            PlayerGameStatus.RETIRED,
+            PlayerGameStatus.ABANDONED,
+        ]
+        for index, status in enumerate(statuses):
+            game, _ = Game.objects.get_or_create(
+                name=f"Test Game {index}", defaults={"platform": platform}
             )
+            PlayerGame.objects.filter(game=game).update(status=status)
 
     def _count(self, c: ChoiceCriterion) -> int:
-        from games.models import Game
+        from games.models import PlayerGame
 
-        return Game.objects.filter(c.to_q("status")).count()
+        return PlayerGame.objects.filter(c.to_q("status")).count()
 
     def _statuses(self, c: ChoiceCriterion) -> set[str]:
-        from games.models import Game
+        from games.models import PlayerGame
 
         return set(
-            Game.objects.filter(c.to_q("status")).values_list("status", flat=True)
+            PlayerGame.objects.filter(c.to_q("status")).values_list("status", flat=True)
         )
 
     @pytest.mark.django_db
     def test_include_finished_includes_only_finished(self):
         self._seed_games()
-        c = ChoiceCriterion(value=["f"], modifier=Modifier.INCLUDES)
-        assert self._statuses(c) == {"f"}
+        c = ChoiceCriterion(value=["completed"], modifier=Modifier.INCLUDES)
+        assert self._statuses(c) == {"completed"}
 
     @pytest.mark.django_db
     def test_exclude_finished_excludes_finished(self):
         self._seed_games()
-        c = ChoiceCriterion(value=[], excludes=["f"], modifier=Modifier.INCLUDES)
-        assert "f" not in self._statuses(c)
-        assert len(self._statuses(c)) == 4  # u, p, r, a
+        c = ChoiceCriterion(
+            value=[], excludes=["completed"], modifier=Modifier.INCLUDES
+        )
+        assert "completed" not in self._statuses(c)
+        assert len(self._statuses(c)) == 4
 
     @pytest.mark.django_db
     def test_include_and_exclude(self):
-        """Include Finished but exclude Abandoned."""
+        """Include Completed but exclude Abandoned."""
         self._seed_games()
         c = ChoiceCriterion(
-            value=["f", "a"], excludes=["a"], modifier=Modifier.INCLUDES
+            value=["completed", "abandoned"],
+            excludes=["abandoned"],
+            modifier=Modifier.INCLUDES,
         )
-        # Include f and a, but exclude a → only f
-        assert self._statuses(c) == {"f"}
+        assert self._statuses(c) == {"completed"}
 
     @pytest.mark.django_db
     def test_include_two(self):
-        """Include Finished AND Played."""
+        """Include Completed AND Played."""
         self._seed_games()
-        c = ChoiceCriterion(value=["f", "p"], modifier=Modifier.INCLUDES)
-        assert self._statuses(c) == {"f", "p"}
+        c = ChoiceCriterion(value=["completed", "played"], modifier=Modifier.INCLUDES)
+        assert self._statuses(c) == {"completed", "played"}
 
     @pytest.mark.django_db
     def test_exclude_two(self):
-        """Exclude Finished AND Abandoned."""
+        """Exclude Completed AND Abandoned."""
         self._seed_games()
-        c = ChoiceCriterion(value=[], excludes=["f", "a"], modifier=Modifier.INCLUDES)
-        statuses = self._statuses(c)
-        assert "f" not in statuses
-        assert "a" not in statuses
-        assert statuses == {"u", "p", "r"}
+        c = ChoiceCriterion(
+            value=[], excludes=["completed", "abandoned"], modifier=Modifier.INCLUDES
+        )
+        assert self._statuses(c) == {"unplayed", "played", "retired"}
 
     @pytest.mark.django_db
     def test_not_null_has_results(self):
@@ -999,18 +1007,24 @@ class TestExpandedFiltersAgainstDB:
         import datetime
         from datetime import timedelta
 
-        from games.models import Device, Game, Platform, Purchase
+        from games.models import (
+            Device,
+            Game,
+            Platform,
+            PlayerGame,
+            PlayerGameStatus,
+            Purchase,
+        )
 
         # 1. Platform & Game
         plat, _ = Platform.objects.get_or_create(
             name="Retro Console", group="Nintendo", icon="retro"
         )
         game, _ = Game.objects.get_or_create(
-            name="Super Mario World", defaults={"platform": plat, "status": "f"}
+            name="Super Mario World", defaults={"platform": plat}
         )
-        game2, _ = Game.objects.get_or_create(
-            name="Zelda", defaults={"platform": plat, "status": "u"}
-        )
+        PlayerGame.objects.filter(game=game).update(status=PlayerGameStatus.COMPLETED)
+        game2, _ = Game.objects.get_or_create(name="Zelda", defaults={"platform": plat})
 
         # 2. Device & Session
         dev, _ = Device.objects.get_or_create(name="Super Famicom", type="Console")
@@ -3112,9 +3126,9 @@ class TestComparisonGroupResolver:
         assert _comparison_group_for(Game, "name") == "string"
 
     def test_bool_field(self):
-        from games.models import Game
+        from games.models import PlayerGame
 
-        assert _comparison_group_for(Game, "mastered") == "bool"
+        assert _comparison_group_for(PlayerGame, "mastered") == "bool"
 
     def test_slug_field_is_string(self):
         """SlugField.get_internal_type() is "SlugField" (not "CharField"); it must
@@ -3212,9 +3226,9 @@ class TestMaybeGroupFor:
         assert _maybe_group_for(Game, "name") == "string"
 
     def test_bool_field(self):
-        from games.models import Game
+        from games.models import PlayerGame
 
-        assert _maybe_group_for(Game, "mastered") == "bool"
+        assert _maybe_group_for(PlayerGame, "mastered") == "bool"
 
     # ── non-comparable columns → None (where _comparison_group_for raises) ───
 
@@ -3241,15 +3255,18 @@ class TestMaybeGroupFor:
     def test_contract_parity_with_raising_wrapper(self):
         """Every column that makes _comparison_group_for raise must return None
         from _maybe_group_for, and vice-versa for comparable ones."""
-        from games.models import Game
+        from games.models import Game, PlayerGame
 
         for column in ("nonexistent", "platform", "id"):
             assert _maybe_group_for(Game, column) is None
             with pytest.raises(FilterError):
                 _comparison_group_for(Game, column)
-        for column in ("name", "year_released", "mastered"):
+        for column in ("name", "year_released"):
             assert _maybe_group_for(Game, column) is not None
             assert _comparison_group_for(Game, column) == _maybe_group_for(Game, column)
+        assert _comparison_group_for(PlayerGame, "mastered") == _maybe_group_for(
+            PlayerGame, "mastered"
+        )
 
 
 class TestComparableColumns:
@@ -3276,7 +3293,7 @@ class TestComparableColumns:
         """Each column carries the server-derived operator list (#152) so the TS
         widget renders it directly instead of re-deriving group->operators."""
         from common.criteria import _allowed_comparison_modifiers
-        from games.models import Game
+        from games.models import Game, PlayerGame
 
         columns = self._by_value(Game)
         # string adds containment; number is ordered-only; bool is equality-only.
@@ -3287,7 +3304,10 @@ class TestComparableColumns:
         assert columns["year_released"]["operators"] == [
             modifier.value for modifier in _allowed_comparison_modifiers("number")
         ]
-        assert columns["mastered"]["operators"] == ["EQUALS", "NOT_EQUALS"]
+        assert self._by_value(PlayerGame)["mastered"]["operators"] == [
+            "EQUALS",
+            "NOT_EQUALS",
+        ]
 
     def test_operators_for_datetime_and_date_groups(self):
         """Close the group matrix: datetime (Session) and date (Purchase) carry
@@ -3302,12 +3322,12 @@ class TestComparableColumns:
         assert self._by_value(Purchase)["date_purchased"]["operators"] == ordered
 
     def test_known_game_columns(self):
-        from games.models import Game
+        from games.models import Game, PlayerGame
 
         columns = self._by_value(Game)
         assert columns["name"]["group"] == "string"
         assert columns["year_released"]["group"] == "number"
-        assert columns["mastered"]["group"] == "bool"
+        assert self._by_value(PlayerGame)["mastered"]["group"] == "bool"
 
     def test_session_datetime_column(self):
         from games.models import PlayerSession
@@ -5793,7 +5813,7 @@ class TestStringCriterionIsNullAgainstDB:
 
         platform, _ = Platform.objects.get_or_create(name="Test Platform", icon="test")
         game, _ = Game.objects.get_or_create(
-            name="Test Game", defaults={"platform": platform, "status": "u"}
+            name="Test Game", defaults={"platform": platform}
         )
         device, _ = Device.objects.get_or_create(name="Test Device", type="PC")
         start = datetime.datetime(2025, 1, 1, 10, 0, 0, tzinfo=datetime.UTC)

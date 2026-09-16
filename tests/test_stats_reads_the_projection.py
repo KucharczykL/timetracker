@@ -36,14 +36,6 @@ def test_a_completed_row_leaves_the_backlog(a_bought_game):
     assert compute_stats(library, YEAR)["purchased_unfinished_count"] == 0
 
 
-def test_a_completed_column_the_row_denies_counts_for_nothing(a_bought_game):
-    library, game = a_bought_game
-    #: The only test that writes the column.
-    Game.objects.filter(pk=game.pk).update(status="f")
-
-    assert compute_stats(library, YEAR)["purchased_unfinished_count"] == 1
-
-
 def test_an_abandoned_row_is_dropped(a_bought_game):
     library, game = a_bought_game
     PlayerGame.objects.filter(library=library, game=game).update(

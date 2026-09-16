@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.test import Client
 from django.utils import timezone
 from session_rows import session_row
+from tracked_games import create_tracked_game
 
 from common.criteria import (
     AggregateCriterion,
@@ -29,6 +30,7 @@ from games.models import (
     FilterPreset,
     Game,
     Platform,
+    PlayerGame,
     PlayerGameStatus,
     Playthrough,
     Purchase,
@@ -65,21 +67,21 @@ def two_libraries(db):
     platform_b = Platform.objects.create(
         library=library_b, name="Library B Platform", group="Library B"
     )
-    game_a = Game.objects.create(
-        library=library_a,
-        name="Library A Game",
+    game_a = create_tracked_game(
+        library_a,
+        "Library A Game",
+        status=PlayerGameStatus.COMPLETED,
         sort_name="Library A Sort Needle",
         platform=platform_a,
         year_released=YEAR,
-        status=Game.Status.FINISHED,
     )
-    game_b = Game.objects.create(
-        library=library_b,
-        name="Library B Game",
+    game_b = create_tracked_game(
+        library_b,
+        "Library B Game",
+        status=PlayerGameStatus.COMPLETED,
         sort_name="Library B Sort Needle",
         platform=platform_b,
         year_released=YEAR,
-        status=Game.Status.FINISHED,
     )
     shared_game = Game.objects.create(
         name="Shared Catalog Game",
@@ -278,10 +280,11 @@ def test_shared_and_foreign_game_status_ids_are_undisclosed_and_unchanged(
     ]
 
     assert [response.status_code for response in responses] == [404, 404]
-    world["shared_game"].refresh_from_db()
-    world["game_b"].refresh_from_db()
-    assert world["shared_game"].status == Game.Status.UNPLAYED
-    assert world["game_b"].status == Game.Status.FINISHED
+    assert not PlayerGame.objects.filter(game=world["shared_game"]).exists()
+    assert (
+        PlayerGame.objects.get(library=world["library_b"], game=world["game_b"]).status
+        == PlayerGameStatus.COMPLETED
+    )
 
 
 def test_playthrough_crud_is_library_scoped(two_libraries):
