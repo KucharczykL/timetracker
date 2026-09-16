@@ -479,6 +479,8 @@ def remove_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
         message=f"Remove this purchase of {purchase.first_game}?",
         fallback="games:list_purchases",
         detail_url=reverse("games:view_purchase", args=[purchase_id]),
+        removed="Purchase removed.",
+        undo="games:restore_purchase",
     )
 
 

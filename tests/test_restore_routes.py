@@ -221,9 +221,11 @@ class TestRestoreGame:
         game.refresh_from_db()
         assert game.removed_at is None
         assert PlayerGame.objects.get(game=game).removed_at is None
-        assert _messages_of(response) == [
-            ("success", "Removable restored to your library.")
-        ]
+        #: The removal's own notice is still queued: no page drew it.
+        assert _messages_of(response)[-1] == (
+            "success",
+            "Removable restored to your library.",
+        )
 
     def test_get_answers_405(self, logged_in, game):
         self._removed(logged_in, game)
@@ -257,7 +259,7 @@ class TestRestoreGame:
         game.refresh_from_db()
         assert game.removed_at is None
         assert PlayerGame.objects.get(game=game).removed_at is not None
-        assert _messages_of(first) == [("error", "refused once")]
+        assert _messages_of(first)[-1] == ("error", "refused once")
 
         second = logged_in.post(url)
         game.refresh_from_db()

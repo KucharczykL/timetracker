@@ -23,6 +23,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce, Greatest
 from django.http import HttpResponse
+from django.urls import reverse
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, NinjaAPI, Query, Router, Schema, Status
 from ninja.errors import HttpError
@@ -1002,10 +1003,15 @@ def save_preset(request, payload: PresetIn):
     return Status(201 if created else 200, None)
 
 
+class RemovedPresetOut(Schema):
+    #: Where the picker's Undo toast posts.
+    restore_url: str
+
+
 #: DELETE is the transport's word, not ours.
-@preset_router.delete("/{preset_id}", response={204: None})
+@preset_router.delete("/{preset_id}", response={200: RemovedPresetOut})
 def remove_preset(request, preset_id: UUIDv7):
-    """Take one of the library's presets out.
+    """Take one of the library's presets out; answer where Undo posts.
 
     Scoped to request.user.library so it cannot touch another library's preset (404
     instead). DELETE-only by routing; CSRF is enforced by django_auth.
@@ -1015,7 +1021,10 @@ def remove_preset(request, preset_id: UUIDv7):
         FilterPreset.objects.for_library(library), library, id=preset_id
     )
     remove(preset)
-    return Status(204, None)
+    return Status(
+        200,
+        RemovedPresetOut(restore_url=reverse("games:restore_preset", args=[preset.id])),
+    )
 
 
 api.add_router("/presets", preset_router)

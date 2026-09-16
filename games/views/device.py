@@ -186,6 +186,8 @@ def remove_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
             ]
         ],
         fallback="games:list_devices",
+        removed=f"{device.name} removed from your library.",
+        undo="games:restore_device",
     )
 
 

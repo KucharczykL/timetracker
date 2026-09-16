@@ -384,6 +384,8 @@ def remove_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
         fallback="games:list_games",
         detail_url=game.get_absolute_url(),
         action=partial(remove_game_for_request, request, game),
+        removed=f"{game.name} removed from your library.",
+        undo="games:restore_game",
     )
 
 

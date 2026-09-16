@@ -16,10 +16,12 @@ from django.db.models import Model
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect
+from django.urls import reverse
 
 from common.components import ConfirmPage
 from common.components.core import Children
 from common.layout import render_page
+from common.notices import Undo, notify
 from common.returns import UrlName
 from games.removal import remove
 from games.views.returns import return_url
@@ -38,6 +40,9 @@ def confirm_and_apply(
     fallback_args: Sequence[Any] = (),
     details: Children = None,
     reject: str | None = None,
+    removed: str | None = None,
+    undo: UrlName | None = None,
+    undo_args: Sequence[Any] = (),
 ) -> HttpResponse:
     """Confirm on GET, run ``action`` on POST, then return to the origin.
 
@@ -48,7 +53,12 @@ def confirm_and_apply(
     An ``action`` that refuses raises ``CommandFailed``, and its sentence goes
     back on the confirmation, above the question rather than inside it. Only
     that type reads as a refusal; anything beneath the act is a defect.
+
+    ``removed`` and ``undo`` make the answer a toast with Undo: the sentence,
+    and the restore route the toast posts to. Both or neither.
     """
+    if (removed is None) != (undo is None):
+        raise TypeError("removed and undo go together.")
 
     def confirmation(refusal: Sequence[str] = (), status: int = 200) -> HttpResponse:
         return render_page(
@@ -76,6 +86,13 @@ def confirm_and_apply(
     except CommandFailed as refusal:
         #: The refusal's status: stale page 409, defect 500.
         return confirmation([refusal.message], status=refusal.status_code)
+    if removed is not None and undo is not None:
+        notify(
+            request,
+            removed,
+            level=messages.SUCCESS,
+            action=Undo(reverse(undo, args=list(undo_args))),
+        )
     return redirect(
         return_url(
             request,
@@ -97,14 +114,19 @@ def confirm_and_remove(
     details: Children = None,
     detail_url: str | None = None,
     action: Callable[[], object] | None = None,
+    removed: str,
+    undo: UrlName,
 ) -> HttpResponse:
-    """Confirm on GET, remove on POST, return.
+    """Confirm on GET, remove on POST, return with Undo.
 
     ``detail_url`` is the removed row's own page: an origin naming it
     would turn a successful removal into a 404, so it is refused.
 
     ``action`` is for a record whose removal is more than a stamp: a
     game states a fact to its projection first.
+
+    ``removed`` is the toast's sentence and ``undo`` the restore route
+    it posts to, with the row's key.
     """
     return confirm_and_apply(
         request,
@@ -116,6 +138,9 @@ def confirm_and_remove(
         fallback_args=fallback_args,
         details=details,
         reject=detail_url,
+        removed=removed,
+        undo=undo,
+        undo_args=[instance.pk],
     )
 
 

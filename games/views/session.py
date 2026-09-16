@@ -499,6 +499,9 @@ def remove_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
         message=f"Remove this session of {_game_name(session)}?",
         confirm_label="Remove",
         fallback="games:list_sessions",
+        removed="Session removed.",
+        undo="games:restore_session",
+        undo_args=[session.pk],
     )
 
 

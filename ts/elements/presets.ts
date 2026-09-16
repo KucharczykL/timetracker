@@ -93,7 +93,7 @@ export function wirePresetDelete(root: HTMLElement, presetApiUrl: string): () =>
     const target = event.target as HTMLElement | null;
     const picker = target?.closest<HTMLElement>("[data-preset-picker]");
     if (!picker) return;
-    if (!confirm(`Delete preset "${detail.option.label}"?`)) return;
+    if (!confirm(`Remove preset "${detail.option.label}"?`)) return;
 
     const refetch = (): void =>
       picker.querySelector<RefetchableWidget>("search-select")?.refetchOptions?.();
@@ -102,13 +102,22 @@ export function wirePresetDelete(root: HTMLElement, presetApiUrl: string): () =>
       credentials: "same-origin",
       headers: { "X-CSRFToken": getCsrfToken() },
     })
-      .then((response) => {
-        if (!response.ok) window.toast("Failed to delete preset.", "error");
+      .then(async (response) => {
+        if (!response.ok) {
+          window.toast("Failed to remove preset.", "error");
+          refetch();
+          return;
+        }
+        // The answer names where Undo posts; the toast's form carries the page as origin.
+        const { restore_url: restoreUrl } = (await response.json()) as { restore_url: string };
+        window.toast("Preset removed.", "success", {
+          action: { label: "Undo", url: restoreUrl },
+        });
         refetch();
       })
       .catch((error: unknown) => {
-        console.error("presets: delete preset failed", error);
-        window.toast("Failed to delete preset.", "error");
+        console.error("presets: remove preset failed", error);
+        window.toast("Failed to remove preset.", "error");
         refetch();
       });
   };

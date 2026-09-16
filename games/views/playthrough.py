@@ -458,6 +458,9 @@ def remove_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpRespon
         confirm_label="Remove",
         fallback="games:view_game",
         fallback_args=[game.id, game.url_slug],
+        removed="Playthrough removed.",
+        undo="games:restore_playthrough",
+        undo_args=[run.pk],
     )
 
 

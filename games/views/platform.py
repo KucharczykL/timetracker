@@ -187,6 +187,8 @@ def remove_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
             ]
         ],
         fallback="games:list_platforms",
+        removed=f"{platform.name} removed from your library.",
+        undo="games:restore_platform",
     )
 
 

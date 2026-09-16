@@ -381,8 +381,9 @@ describe("quick-filter-bar preset pick", () => {
     const refetchOptions = vi.fn();
     widget.refetchOptions = refetchOptions;
     const confirm = vi.fn(() => true);
-    const fetch = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
+    const fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ restore_url: "/preset/x/restore" }), { status: 200 })));
     vi.stubGlobal("confirm", confirm);
+    vi.stubGlobal("toast", vi.fn());
     vi.stubGlobal("fetch", fetch);
     widget.dispatchEvent(new CustomEvent("search-select:action", {
       bubbles: true,
@@ -392,8 +393,9 @@ describe("quick-filter-bar preset pick", () => {
         option: { value: PRESET_UUID, label: "Owned", data: {} },
       },
     }));
-    await Promise.resolve();
-    expect(confirm).toHaveBeenCalledWith('Delete preset "Owned"?');
+    // The answer's body is read before the refetch: a macrotask, not one tick.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(confirm).toHaveBeenCalledWith('Remove preset "Owned"?');
     expect(fetch).toHaveBeenCalledWith(
       `/api/presets/${PRESET_UUID}`,
       expect.objectContaining({ method: "DELETE" }),

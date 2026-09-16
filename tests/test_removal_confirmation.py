@@ -139,3 +139,103 @@ def test_removal_confirms_first_with_owning_game_fallback(
     assert response["Location"] == owning_game.get_absolute_url()
     run.refresh_from_db()
     assert run.removed_at is not None
+
+
+def _notices(response):
+    from django.contrib.messages import get_messages
+
+    return [
+        (message.level_tag, message.message, message.extra_tags)
+        for message in get_messages(response.wsgi_request)
+    ]
+
+
+@pytest.mark.parametrize(
+    "url_name,key,restore_name,sentence",
+    [
+        (
+            "games:remove_session",
+            "session",
+            "games:restore_session",
+            "Session removed.",
+        ),
+        (
+            "games:remove_purchase",
+            "purchase",
+            "games:restore_purchase",
+            "Purchase removed.",
+        ),
+        (
+            "games:remove_platform",
+            "platform",
+            "games:restore_platform",
+            "Doomed removed from your library.",
+        ),
+        (
+            "games:remove_device",
+            "device",
+            "games:restore_device",
+            "Doomed removed from your library.",
+        ),
+    ],
+)
+@pytest.mark.django_db(transaction=True)
+def test_every_removal_offers_undo(
+    logged_in, removables, url_name, key, restore_name, sentence
+):
+    """The success message names the restore route the toast posts to."""
+    import json
+
+    instance = removables[key]
+
+    response = logged_in.post(reverse(url_name, args=[instance.pk]))
+
+    assert response.status_code == 302
+    (notice,) = _notices(response)
+    assert notice[:2] == ("success", sentence)
+    assert json.loads(notice[2]) == {
+        "action": {"label": "Undo", "url": reverse(restore_name, args=[instance.pk])}
+    }
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.untracked_games
+def test_removing_a_game_offers_undo(logged_in, game):
+    import json
+
+    response = logged_in.post(reverse("games:remove_game", args=[game.id]))
+
+    (notice,) = _notices(response)
+    assert notice[:2] == ("success", "Test Game removed from your library.")
+    assert json.loads(notice[2])["action"]["url"] == reverse(
+        "games:restore_game", args=[game.id]
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_removing_a_playthrough_offers_undo(logged_in, owned_user, removables):
+    import json
+
+    run = another_run(owned_user, removables["game"], note="the named run")
+
+    response = logged_in.post(reverse("games:remove_playthrough", args=[run.pk]))
+
+    (notice,) = _notices(response)
+    assert notice[:2] == ("success", "Playthrough removed.")
+    assert json.loads(notice[2])["action"]["url"] == reverse(
+        "games:restore_playthrough", args=[run.pk]
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_refused_removal_queues_no_notice(logged_in, owned_user, removables):
+    """The only run of a tracked game: refused, and no Undo offered."""
+    from games.reads.playthrough_runs import tracked_game
+
+    tracked = tracked_game(owned_user.library, removables["game"])
+    (run,) = tracked.playthroughs.all()
+
+    response = logged_in.post(reverse("games:remove_playthrough", args=[run.pk]))
+
+    assert response.status_code == 409
+    assert _notices(response) == []
