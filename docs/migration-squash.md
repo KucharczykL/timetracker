@@ -17,9 +17,24 @@ operations in `0001` are optimizer barriers, so `CreateModel Session` and
 `DeleteModel Session`, and the `playtime` column with its `RemoveField`,
 survive in the squashed file: a fresh install creates each and drops it
 again. `make verify-baseline` proves the end state equals the
-deployment's. The six old files stay until the deployment has run once
-with both present and recorded the squash; a follow-up issue takes them
-out and drops `replaces`.
+deployment's. The six old files stayed until the deployment had run once
+with both present and recorded the squash; #1081 then took them out and
+dropped `replaces`, one deploy later. Django leaves the six history rows in
+place, so the deployment took one statement after that deploy, rehearsed with
+`make verify-baseline ARGS="--normalize cutover.sql --migrate"`:
+
+```sql
+DELETE FROM django_migrations
+WHERE app = 'games'
+  AND name IN (
+    '0001_initial',
+    '0002_playersession',
+    '0003_remove_game_playtime',
+    '0004_playersession_conversion',
+    '0005_library_calendar',
+    '0006_remove_session'
+  );
+```
 
 ## Do it a different way next time
 

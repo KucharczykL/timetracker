@@ -19,6 +19,7 @@ from importlib import import_module
 from pathlib import Path
 
 import pytest
+from django.db.migrations import RunSQL
 
 REPOSITORY = Path(__file__).parents[1]
 TOOLING_PATH = REPOSITORY / "scripts" / "db_dump.py"
@@ -157,6 +158,20 @@ def tooling():
     return module
 
 
+def _temporal_domain_sql() -> str:
+    """The squashed baseline's temporal domain statement."""
+    migration = import_module(
+        "games.migrations.0001_squashed_0006_remove_session"
+    ).Migration
+    return next(
+        operation.sql
+        for operation in migration.operations
+        if isinstance(operation, RunSQL)
+        and isinstance(operation.sql, str)
+        and "CREATE DOMAIN public.temporal_value" in operation.sql
+    )
+
+
 def _before_0034(domain_sql: str) -> str:
     """Undo both of the properties 0034 gave these functions.
 
@@ -187,9 +202,7 @@ def _before_0034(domain_sql: str) -> str:
 @pytest.fixture(scope="module")
 def pre_0034_dump(tooling, tmp_path_factory):
     """A schema whose functions carry no search_path."""
-    domain_sql = _before_0034(
-        import_module("games.migrations.0001_initial").CREATE_TEMPORAL_VALUE_DOMAIN
-    )
+    domain_sql = _before_0034(_temporal_domain_sql())
     database_url = tooling.local_database_url()
     maintenance = f"--maintenance-db={tooling.with_database(database_url, 'postgres')}"
     source_url = tooling.with_database(database_url, SOURCE_DATABASE)

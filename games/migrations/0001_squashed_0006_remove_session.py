@@ -18,15 +18,6 @@ import timetracker.uuidv7
 
 
 class Migration(migrations.Migration):
-    replaces = [
-        ("games", "0001_initial"),
-        ("games", "0002_playersession"),
-        ("games", "0003_remove_game_playtime"),
-        ("games", "0004_playersession_conversion"),
-        ("games", "0005_library_calendar"),
-        ("games", "0006_remove_session"),
-    ]
-
     initial = True
 
     dependencies = [
