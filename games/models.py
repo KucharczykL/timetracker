@@ -1348,6 +1348,14 @@ class ProjectionModel(models.Model):
     schema refuses it. `audit_library_ownership` reports it, over the
     references `games/projections.py` registers, and `games.E009`
     refuses a reference that registry omits.
+
+    Every table is unique on `(id, library)`, through
+    `library_identity_constraint()` in its own `Meta`: the projector's
+    upsert conflicts on that pair, so a creation under an identity another
+    library holds falls through to the primary key and is refused. An
+    abstract `Meta` cannot supply it, because a `Meta` that assigns
+    `constraints` shadows the base's; `games.E012` refuses a table without
+    it.
     """
 
     library = models.ForeignKey(
@@ -1365,6 +1373,14 @@ class ProjectionModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+def library_identity_constraint() -> models.UniqueConstraint:
+    """The pair a projection's upsert conflicts on; one per `Meta`."""
+    return models.UniqueConstraint(
+        fields=("id", "library"),
+        name="unique_%(app_label)s_%(class)s_library_identity",
+    )
 
 
 class PlayerGameStatus(models.TextChoices):
@@ -1424,6 +1440,7 @@ class PlayerGame(ProjectionModel):
 
     class Meta:
         constraints = (
+            library_identity_constraint(),
             models.UniqueConstraint(
                 fields=("library", "game"),
                 name="unique_library_player_game",
@@ -1588,6 +1605,7 @@ class Playthrough(ProjectionModel):
     }
 
     class Meta:
+        constraints = (library_identity_constraint(),)
         indexes = (
             #: The display-number order, ending on the key.
             models.Index(
@@ -1755,6 +1773,7 @@ class PlayerSession(ProjectionModel):
             ),
         )
         constraints = (
+            library_identity_constraint(),
             models.CheckConstraint(
                 condition=Q(timing_mode__in=tuple(PlayerSessionTimingMode.values)),
                 name="playersession_timing_mode_known",
@@ -1852,6 +1871,7 @@ class LibraryCalendar(ProjectionModel):
 
     class Meta:
         constraints = (
+            library_identity_constraint(),
             #: The pk is the library's id; uniqueness per library follows.
             models.CheckConstraint(
                 condition=Q(id=F("library")),

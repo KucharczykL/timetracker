@@ -11,7 +11,7 @@ from django.test.utils import isolate_apps
 from django.utils import timezone
 
 from games.checks import check_projection_models
-from games.models import ProjectionModel
+from games.models import ProjectionModel, library_identity_constraint
 
 
 def error_ids(messages: list[CheckMessage]) -> list[str]:
@@ -33,6 +33,7 @@ def test_an_event_derived_projection_passes():
 
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     assert check(Conforming) == []
 
@@ -45,6 +46,7 @@ def test_auto_now_is_refused():
 
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     assert check(Touched) == ["games.E001"]
 
@@ -57,6 +59,7 @@ def test_auto_now_add_is_refused():
 
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     assert check(Stamped) == ["games.E002"]
 
@@ -68,6 +71,7 @@ def test_an_implicit_auto_field_primary_key_is_refused():
 
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     #: The shadow gets its own identity sequence.
     assert check(Counted) == ["games.E003"]
@@ -80,8 +84,77 @@ def test_an_explicit_auto_field_primary_key_is_refused():
 
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     assert check(Numbered) == ["games.E003"]
+
+
+@isolate_apps("games")
+def test_a_projection_without_the_library_pair_is_refused():
+    class Unpaired(ProjectionModel):
+        id = models.UUIDField(primary_key=True)
+
+        class Meta:
+            app_label = "games"
+
+    #: The upsert's conflict target, so a foreign identity cannot rewrite a row.
+    assert check(Unpaired) == ["games.E012"]
+
+
+@isolate_apps("games")
+def test_the_pair_may_name_the_key_by_its_own_name():
+    class Keyed(ProjectionModel):
+        key = models.UUIDField(primary_key=True)
+
+        class Meta:
+            app_label = "games"
+            constraints = (
+                models.UniqueConstraint(
+                    fields=("library", "key"), name="keyed_library_identity"
+                ),
+            )
+
+    assert check(Keyed) == []
+
+
+@isolate_apps("games")
+def test_a_conditional_pair_is_not_the_pair():
+    """A partial index cannot arbitrate an upsert."""
+
+    class Partial(ProjectionModel):
+        id = models.UUIDField(primary_key=True)
+        removed_at = models.DateTimeField(null=True, default=None)
+
+        class Meta:
+            app_label = "games"
+            constraints = (
+                models.UniqueConstraint(
+                    fields=("id", "library"),
+                    condition=models.Q(removed_at=None),
+                    name="partial_library_identity",
+                ),
+            )
+
+    assert check(Partial) == ["games.E012"]
+
+
+@isolate_apps("games")
+def test_a_check_constraint_is_not_the_pair():
+    """The calendar's shape: the key is the library, by CHECK alone."""
+
+    class Calendar(ProjectionModel):
+        id = models.UUIDField(primary_key=True)
+
+        class Meta:
+            app_label = "games"
+            constraints = (
+                models.CheckConstraint(
+                    condition=models.Q(id=models.F("library")),
+                    name="calendar_id_is_library",
+                ),
+            )
+
+    assert check(Calendar) == ["games.E012"]
 
 
 @isolate_apps("games")
@@ -92,6 +165,7 @@ def test_a_database_default_is_refused():
 
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     #: The shadow evaluates the copied default itself.
     assert check(Defaulted) == ["games.E004"]
@@ -105,6 +179,7 @@ def test_a_clock_default_is_refused():
 
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     #: A rebuild evaluates it again, at rebuild time.
     assert check(Stamped) == ["games.E006"]
@@ -121,6 +196,7 @@ def test_a_constant_default_is_allowed():
 
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     #: A constant reproduces itself, whatever its module.
     assert check(Fixed) == []
@@ -137,6 +213,7 @@ def test_an_empty_container_default_is_allowed():
 
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     assert check(Collected) == []
 
@@ -156,6 +233,7 @@ def test_a_callable_default_of_another_kind_is_refused():
 
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     assert check(Ranked) == ["games.E007"]
 
@@ -173,6 +251,7 @@ def test_a_wrapped_clock_default_is_refused():
 
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     assert check(Wrapped) == ["games.E007"]
 
@@ -184,6 +263,7 @@ def test_a_uuid_module_default_is_refused():
 
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     assert check(Minted) == ["games.E005"]
 
@@ -198,6 +278,7 @@ def test_the_repos_uuidv7_field_is_refused_on_both_counts():
 
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     assert check(Identified) == ["games.E004", "games.E005"]
 
@@ -214,6 +295,7 @@ def test_a_rule_broken_by_an_intermediate_abstract_base_is_still_caught():
     class Inheriting(TimestampedProjection):
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     #: The copied field lands in `local_fields`.
     assert check(Inheriting) == ["games.E001"]
@@ -226,6 +308,7 @@ def test_an_unmanaged_twin_is_not_checked():
 
         class Meta:
             app_label = "games"
+            constraints = (library_identity_constraint(),)
 
     class Shadow(ProjectionModel):
         id = models.UUIDField(primary_key=True)

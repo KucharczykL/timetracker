@@ -85,9 +85,39 @@ def _check_one(model: type[ProjectionModel]) -> list[CheckMessage]:
                 id="games.E003",
             )
         )
+    if not _carries_library_pair(model):
+        errors.append(
+            Error(
+                "A projection model carries no unique constraint over its "
+                "primary key and library.",
+                hint=(
+                    "The projector's upsert conflicts on that pair, so a "
+                    "creation under an identity another library holds is "
+                    "refused by the primary key instead of rewriting the row. "
+                    "Name library_identity_constraint() in Meta.constraints."
+                ),
+                obj=model,
+                id="games.E012",
+            )
+        )
     for field in model._meta.local_fields:
         errors.extend(_check_field(model, field))
     return errors
+
+
+def _carries_library_pair(model: type[ProjectionModel]) -> bool:
+    """Whether an upsert on `(pk, library)` finds an arbiter.
+
+    A conditional constraint is a partial index, which arbitrates only a
+    statement repeating its predicate, so it does not count.
+    """
+    pair = {model._meta.pk.name, "library"}
+    return any(
+        isinstance(constraint, models.UniqueConstraint)
+        and constraint.condition is None
+        and set(constraint.fields) == pair
+        for constraint in model._meta.constraints
+    )
 
 
 def _check_field(
