@@ -394,6 +394,17 @@ ancestors' marks as well as own, so removed Game hides both and restoring it
 leaves separately removed child out (#966). Only whole-library purge destroys
 anything.
 
+**Removing offers Undo** (#695). Every remove view passes `removed=` and
+`undo=` to `confirm_and_apply`, which queues one notice through
+`common/notices.py` after the act succeeds: the sentence, and the restore route
+the toast's Undo form posts to. Seven POST-only `restore_<entity>` routes share
+`restore_and_return()`; a refusal is an error message on the page the person
+stands on. `<toast-stack>` appends the page as `?origin=` when it renders, so
+the restore lands back where Undo was pressed. A game's restore clears the
+catalog stamp first and states `RestorePlayerGame` second, the removal's order
+reversed. The preset picker gets its restore URL from the API's DELETE answer.
+Contract is [Undo a removal](docs/superpowers/specs/2026-09-16-issue-695-undo-removal-design.md).
+
 **Multi-game Purchase is *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. Humble Bundle). Independently-refundable multi-item orders (e.g.
 Steam cart) modeled as **separate single-game purchases**: add-purchase form's
@@ -579,8 +590,9 @@ organized by domain entity:
   `CONFIRMATION` / `IN_PLACE`, guarded for completeness against route table) plus
   `origin_from()` and `return_url()`, app-bound half of `common/returns.py`
 - `removal.py` — `confirm_and_remove()`: GET renders `ConfirmPage`, POST stamps
-  `removed_at` and returns to origin. Every `remove_*` view is one call to it,
-  over `confirm_and_apply()`, which same module keeps for any other confirmed POST
+  `removed_at`, queues the Undo notice and returns to origin. Every `remove_*`
+  view is one call to it, over `confirm_and_apply()`, which same module keeps
+  for any other confirmed POST; `restore_and_return()` is the POST-only undo
 - `stats_data.py` — `compute_stats(year)` → `StatsData` TypedDict; pure computation
 - `stats_content.py` — renders stats page content from a `StatsData`
 - `stats_links.py` — pure filter-link builders for stats rows/counts (#65);
@@ -633,7 +645,8 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   (`limit=0` = unbounded)
 - `POST /api/presets/` — upsert on (user, mode, name); 201 create / 200 update
 - `DELETE /api/presets/{id}` — remove owned preset (404 for non-owner). DELETE is
-  transport's word; row stays and `removed_at` set
+  transport's word; row stays and `removed_at` set; answers 200 with
+  `restore_url`, where the picker's Undo toast posts
 
 ### Templates
 

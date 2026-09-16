@@ -37,7 +37,9 @@ def test_the_confirmation_promises_a_removal(
 
     page.click('button:has-text("Remove")')
     page.wait_for_url(f"{live_server.url}{reverse('games:list_games')}**")
-    expect(page.get_by_text("Forgettable")).to_have_count(0)
+    #: The page body: the Undo toast names the game too.
+    expect(page.locator("#main-container").get_by_text("Forgettable")).to_have_count(0)
+    expect(page.get_by_text("Forgettable removed from your library.")).to_be_visible()
     assert Game.objects.get(pk=game.pk).removed_at is not None
 
 

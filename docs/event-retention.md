@@ -225,5 +225,5 @@ The act records beside them are the session's own events.
 
 ## Not in this contract
 
-- A Trash screen that lists what a library removed, and an undo (#695, #795).
-  The rows and the column are already there; nothing yet reads them back.
+- A Trash screen that lists what a library removed (#795). The undo toast
+  (#695) restores a row straight after; past it, nothing reads the rows back.
