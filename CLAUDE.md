@@ -154,7 +154,6 @@ docs/           — Additional documentation
 - **Game** — catalog row: `name`, `platform` (FK), `year_released`, `sort_name`, `wikidata`. `status` (u/p/f/r/a) and `mastered` stranded columns since #678 D2 — nothing writes them, nothing reads them, #770 drops them
 - **Platform** — `name`, `group`, `icon` (slug, auto-generated from name)
 - **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor `game.addon_purchases`)
-- **Session** — legacy table: `timestamp_start`/`timestamp_end`, `duration_manual`, `device` (FK), `note`, `emulated`; `duration_calculated`/`duration_total` are `GeneratedField`s. Nothing writes it and no surface reads it since #702; `tests/test_session_import_guard.py` refuses import outside conversion, census, legacy playtime source, the statistics gate's legacy side (`games/reads/session_parity.py`), removal registry and fixture commands. #772 drops it
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown)
 - **ExchangeRate** — cached FX rates per currency pair per year
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
@@ -404,15 +403,16 @@ point). That why per-game refund/price need no through-model — each refundable
 unit is its own Purchase.
 
 **Unset platform/device is NULL**: `Game.platform`, `Purchase.platform`,
-`Session.device` nullable, stay NULL when unset — no sentinel rows (#290 removed
-them). "Unspecified" (platform) and "No device" are render-layer labels only. All
-three FKs use `on_delete=SET_NULL`, exclude-mode set criteria match NULL rows
+`PlayerSession.device` nullable, stay NULL when unset — no sentinel rows (#290
+removed them). "Unspecified" (platform) and "No device" are render-layer labels
+only. The two catalog FKs use `on_delete=SET_NULL` and the projection's
+`RESTRICT`; exclude-mode set criteria match NULL rows
 (`_SetCriterion._not_in_q`), and conditional `UniqueConstraint` keeps (name, year)
 unique among platformless games.
 
-**GeneratedField constraint**: `duration_calculated`, `duration_total`,
-`price_per_game`, `days_to_finish` computed by database, cannot be written from
-application code.
+**GeneratedField constraint**: `price_per_game` and the projection's
+`effective_day`, `effective_duration` and `sort_instant` are computed by the
+database and cannot be written from application code.
 
 ### Key patterns
 
@@ -805,8 +805,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
 
 ## Conventions for AI assistants
 
-- **Never write to `GeneratedField`s** (`duration_calculated`, `duration_total`,
-  `price_per_game`, `days_to_finish`).
+- **Never write to `GeneratedField`s** (`price_per_game`, `effective_day`,
+  `effective_duration`, `sort_instant`).
 - **One act, one verb** — event type, its command and its projection column share
   one verb, and column is `<act>_at`: nullable `DateTimeField` whose null is live
   state. See [Naming](docs/event-retention.md#naming).

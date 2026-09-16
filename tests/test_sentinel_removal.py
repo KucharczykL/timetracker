@@ -4,13 +4,12 @@ cascading or substituting, and the conditional unique constraint keeps the
 platformless-dedup guarantee that ordinary uniqueness cannot provide when the
 platform is NULL."""
 
-from datetime import timedelta
-
 import pytest
 from django.db import IntegrityError
 from django.utils import timezone
+from session_rows import session_row
 
-from games.models import Device, Game, Platform, PlayerGameStatus, Purchase, Session
+from games.models import Device, Game, Platform, PlayerGameStatus, Purchase
 
 pytestmark = pytest.mark.django_db
 
@@ -24,9 +23,7 @@ def test_game_without_platform_stays_null(owned_library):
 
 def test_session_without_device_stays_null(owned_library):
     game = Game.objects.create(library=owned_library, name="Homebrew")
-    session = Session.objects.create(
-        game=game, timestamp_start=timezone.now(), duration_manual=timedelta(0)
-    )
+    session = session_row(game, started_at=timezone.now())
     session.refresh_from_db()
     assert session.device is None
     assert Device.objects.count() == 0
@@ -67,24 +64,6 @@ def test_platform_delete_sets_null_and_keeps_purchases(owned_library):
     purchase.refresh_from_db()
     assert game.platform is None
     assert purchase.platform is None
-
-
-def test_device_delete_sets_null_on_sessions(owned_library):
-    device = Device.objects.create(
-        library=owned_library, name="Deck", type=Device.HANDHELD
-    )
-    game = Game.objects.create(library=owned_library, name="Hades")
-    session = Session.objects.create(
-        game=game,
-        device=device,
-        timestamp_start=timezone.now(),
-        duration_manual=timedelta(0),
-    )
-
-    device.delete()
-
-    session.refresh_from_db()
-    assert session.device is None
 
 
 def test_platformless_duplicate_name_year_rejected(owned_library):

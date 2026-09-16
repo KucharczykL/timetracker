@@ -10,13 +10,11 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import (
     Exists,
-    ExpressionWrapper,
     F,
     FilteredRelation,
     Func,
     OuterRef,
     Q,
-    Sum,
     Value,
 )
 from django.db.models.fields.generated import GeneratedField
@@ -25,7 +23,6 @@ from django.template.defaultfilters import floatformat, pluralize, slugify
 from django.urls import reverse
 from django.utils import timezone
 
-from common.duration_presentation import format_decimal_hours
 from common.naming import name_key
 from common.utils import label_with_details
 from games.external_references import external_reference_url, normalize_provider_key
@@ -1177,120 +1174,6 @@ class Purchase(models.Model):
                 )
 
 
-class SessionQuerySet(RemovableMixin, models.QuerySet):
-    def for_library(self, library):
-        """A live session of a live game."""
-        return self.filter(game__library=library, game__removed_at__isnull=True).alive()
-
-    def total_duration_unformatted(self):
-        result = self.aggregate(
-            duration=Sum(F("duration_calculated") + F("duration_manual"))
-        )
-        return result["duration"]
-
-    def calculated_duration_unformatted(self):
-        result = self.aggregate(duration=Sum(F("duration_calculated")))
-        return result["duration"]
-
-    def without_manual(self):
-        return self.exclude(duration_calculated=timedelta(0))
-
-    def only_manual(self):
-        return self.filter(duration_calculated=timedelta(0))
-
-
-class Session(models.Model):
-    class Meta:
-        get_latest_by = "timestamp_start"
-        indexes = (
-            #: The navbar's resume read keys on both.
-            models.Index(fields=("timestamp_start", "id"), name="session_start_id_idx"),
-        )
-
-    id = UUIDv7Field(primary_key=True, editable=False)
-    game = models.ForeignKey(
-        Game,
-        on_delete=models.CASCADE,
-        related_name="sessions",
-    )
-    timestamp_start = models.DateTimeField(verbose_name="Session start", db_index=True)
-    timestamp_end = models.DateTimeField(
-        blank=True, null=True, verbose_name="Session end"
-    )
-    # IANA zone id the timestamp was committed in. NULL means "assume the
-    # account's display zone" — exactly the pre-existing behaviour, so old
-    # rows need no backfill. No `choices`: the valid set is the running
-    # interpreter's tzdata, validated at the form/API edge, so tzdata
-    # updates never churn migrations.
-    timestamp_start_timezone = models.CharField(
-        max_length=64, null=True, blank=True, default=None
-    )
-    timestamp_end_timezone = models.CharField(
-        max_length=64, null=True, blank=True, default=None
-    )
-    duration_manual = models.DurationField(
-        blank=True, null=True, default=timedelta(0), verbose_name="Manual duration"
-    )
-    duration_calculated = GeneratedField(
-        expression=Coalesce(F("timestamp_end") - F("timestamp_start"), timedelta(0)),
-        output_field=models.DurationField(),
-        db_persist=True,
-        editable=False,
-    )
-    duration_total = GeneratedField(
-        expression=ExpressionWrapper(
-            Coalesce(F("timestamp_end") - F("timestamp_start"), timedelta(0))
-            + F("duration_manual"),
-            output_field=models.DurationField(),
-        ),
-        output_field=models.DurationField(),
-        db_persist=True,
-        editable=False,
-    )
-    device = models.ForeignKey(
-        "Device",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        default=None,
-    )
-    note = models.TextField(blank=True, default="")
-    emulated = models.BooleanField(default=False)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    modified_at = models.DateTimeField(auto_now=True)
-    #: Set instead of destroying the row.
-    removed_at = models.DateTimeField(
-        null=True, blank=True, default=None, editable=False
-    )
-
-    objects = SessionQuerySet.as_manager()
-
-    def __str__(self):
-        mark = "*" if self.is_manual() else ""
-        return (
-            f"{self.game!s} {self.timestamp_start.date()!s} "
-            f"({format_decimal_hours(self.duration_total)}{mark})"
-        )
-
-    def finish_now(self):
-        self.timestamp_end = timezone.now()
-
-    def is_manual(self) -> bool:
-        return self.duration_manual != timedelta(0)
-
-    def save(self, *args, **kwargs) -> None:
-        if self.game_id is not None and self.device_id is not None:
-            _validate_related_library(
-                self.game.library_id,
-                self.device,
-                "device",
-            )
-        if not isinstance(self.duration_manual, timedelta):
-            self.duration_manual = timedelta(0)
-        super().save(*args, **kwargs)
-
-
 class Device(ReferencedRow):
     #: Removable: `device` is a REQUIRED reference kind.
     objects = RemovableLibraryQuerySet.as_manager()
@@ -1806,8 +1689,7 @@ class PlayerSession(ProjectionModel):
         on_delete=models.RESTRICT,
         related_name="sessions",
     )
-    #: RESTRICT rather than the legacy SET_NULL: nothing outside the
-    #: projector may change a projection row.
+    #: RESTRICT: nothing outside the projector may change a projection row.
     device = models.ForeignKey(
         "Device",
         on_delete=models.RESTRICT,
@@ -1819,7 +1701,7 @@ class PlayerSession(ProjectionModel):
     timing_mode = models.CharField(max_length=13, choices=PlayerSessionTimingMode)
     started_at = models.DateTimeField(null=True)
     #: The zone the clock stood in when the endpoint was committed.
-    #: Null is a zone nobody stated, as on the legacy row.
+    #: Null is a zone nobody stated.
     started_at_zone = models.CharField(max_length=64, null=True)
     ended_at = models.DateTimeField(null=True)
     ended_at_zone = models.CharField(max_length=64, null=True)

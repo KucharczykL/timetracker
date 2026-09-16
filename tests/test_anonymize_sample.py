@@ -377,7 +377,9 @@ class AnonymizeSampleTest(TransactionTestCase):
             if item["model"] in PROMOTED_MODELS:
                 self.assertEqual(UUID(str(item["pk"])).version, 7)
                 self.assertNotIn("uuid", item["fields"])
-        self.assertNotIn("games.session", by_model)
+        self.assertEqual(
+            [label for label in by_model if label.endswith(".session")], []
+        )
 
         for purchase in by_model["games.purchase"]:
             fields = purchase["fields"]

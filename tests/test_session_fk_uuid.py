@@ -22,7 +22,7 @@ from common.date_time_presentation import (
 )
 from games.filters import DeviceFilter, GameFilter, PlayerSessionFilter
 from games.forms import SessionForm
-from games.models import Device, Game, PlayerSession, Session, UserLibraryPreferences
+from games.models import Device, Game, PlayerSession, UserLibraryPreferences
 
 PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
@@ -57,20 +57,14 @@ def auth_client(owned_user):
     return client
 
 
-def _session(game, **overrides) -> Session:
-    return Session.objects.create(
-        game=game, timestamp_start=timezone.now(), **overrides
-    )
-
-
 def _row(game, **overrides) -> PlayerSession:
     """The projection's row, which the filters read."""
     return session_row(game, started_at=timezone.now(), **overrides)
 
 
 def test_session_attnames_read_back_as_the_targets_identities(game, device):
-    session = _session(game, device=device)
-    assert session.game_id == game.pk
+    session = _row(game, device=device)
+    assert session.playthrough.player_game.game_id == game.pk
     assert session.device_id == device.pk
 
 
@@ -91,53 +85,29 @@ def test_set_default_device_still_short_circuits_an_unchanged_value(
     assert preferences.set_default_device(device) is False
 
 
-def test_session_filters_by_related_instance_and_by_integer_id(
-    game, device, owned_library
-):
+def test_session_filters_by_related_instance_and_by_id(game, device, owned_library):
     other_game = Game.objects.create(library=owned_library, name="Other")
     other_device = Device.objects.create(library=owned_library, name="Desk")
-    matching = _session(game, device=device)
-    _session(other_game, device=other_device)
+    matching = _row(game, device=device)
+    _row(other_game, device=other_device)
 
-    assert list(Session.objects.filter(game=game)) == [matching]
-    assert list(Session.objects.filter(game__id=game.id)) == [matching]
-    assert list(Session.objects.filter(device=device)) == [matching]
-    assert list(Session.objects.filter(device__id=device.id)) == [matching]
-
-
-def test_reverse_accessors_reach_sessions_from_game_and_device(game, device):
-    session = _session(game, device=device)
-    assert list(game.sessions.all()) == [session]
-    # /api/devices/search sorts on this reverse name; it must survive the swap.
-    assert list(device.session_set.all()) == [session]
+    rows = PlayerSession.objects
+    assert list(rows.filter(playthrough__player_game__game=game)) == [matching]
+    assert list(rows.filter(playthrough__player_game__game__id=game.id)) == [matching]
+    assert list(rows.filter(device=device)) == [matching]
+    assert list(rows.filter(device__id=device.id)) == [matching]
 
 
-@pytest.mark.untracked_games
-def test_deleting_a_game_cascades_and_deleting_a_device_clears_the_session(
-    game, device
-):
-    kept = _session(game, device=device)
-    device.delete()
-    kept.refresh_from_db()
-    assert kept.device_id is None
-
-    game.delete()
-    assert not Session.objects.filter(pk=kept.pk).exists()
+def test_the_reverse_accessor_reaches_sessions_from_a_device(game, device):
+    session = _row(game, device=device)
+    assert list(device.player_sessions.all()) == [session]
 
 
 def test_database_rejects_a_session_naming_a_device_uuid_no_device_owns(game):
-    # bulk_create bypasses Session.save(), which dereferences self.device and
-    # would raise DoesNotExist before any insert is attempted.
+    row = _row(game)
+    #: Deferred: the constraint speaks at commit.
     with pytest.raises(IntegrityError), transaction.atomic():
-        Session.objects.bulk_create(
-            [
-                Session(
-                    game=game,
-                    timestamp_start=timezone.now(),
-                    device_id=uuid.uuid7(),
-                )
-            ]
-        )
+        PlayerSession.objects.filter(pk=row.pk).update(device_id=uuid.uuid7())
 
 
 def test_database_rejects_preferences_naming_a_device_uuid_no_device_owns(

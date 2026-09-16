@@ -1,10 +1,11 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from django.apps import apps
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection
+from session_rows import timed_row, tracked_run
 
 from games.events.targets import SHADOW_SUFFIX, ShadowTarget
 from games.identity_audit import (
@@ -21,7 +22,7 @@ from games.identity_audit import (
     primary_key_types,
     relation_columns,
 )
-from games.models import Game, PlayerGame, Session
+from games.models import Game, PlayerGame, Purchase
 from timetracker.uuidv7 import uuid7_at
 
 pytestmark = [pytest.mark.django_db, pytest.mark.untracked_games]
@@ -62,8 +63,6 @@ EXPECTED_RELATION_COLUMNS = {
     ("games_purchaseconversionstate", "library_id"),
     ("games_release", "edition_id"),
     ("games_release", "platform_id"),
-    ("games_session", "device_id"),
-    ("games_session", "game_id"),
     ("games_userlibrary", "user_id"),
     ("games_userlibrarypreferences", "default_device_id"),
     ("games_userlibrarypreferences", "library_id"),
@@ -119,12 +118,12 @@ def test_type_agreement_is_clean_on_a_migrated_database(actual_types):
 
 
 def test_type_agreement_reports_a_retyped_column(actual_types):
-    doctored = actual_types | {("games_session", "game_id"): "bigint"}
+    doctored = actual_types | {("games_playersession", "playthrough_id"): "bigint"}
 
     report = check_type_agreement(relation_columns(), doctored)
 
     assert [violation.subject for violation in report.violations] == [
-        "games_session.game_id"
+        "games_playersession.playthrough_id"
     ]
     assert "expects uuid_v7" in report.violations[0].detail
 
@@ -146,12 +145,16 @@ def test_type_agreement_reports_a_column_postgresql_does_not_have(actual_types):
 def test_type_agreement_reports_a_missing_table_once(actual_types):
     """An unmigrated database must name the absent table, not every column in it."""
     doctored = {
-        key: value for key, value in actual_types.items() if key[0] != "games_session"
+        key: value
+        for key, value in actual_types.items()
+        if key[0] != "games_playersession"
     }
 
     report = check_type_agreement(relation_columns(), doctored)
 
-    assert [violation.subject for violation in report.violations] == ["games_session"]
+    assert [violation.subject for violation in report.violations] == [
+        "games_playersession"
+    ]
     assert "is this database migrated?" in report.violations[0].detail
 
 
@@ -167,14 +170,14 @@ def test_residual_integer_primary_key_inventory_drops_only_the_promoted_models()
 
 
 def test_residual_inventory_reports_an_unexpected_integer_relation(actual_types):
-    doctored = actual_types | {("games_session", "game_id"): "bigint"}
+    doctored = actual_types | {("games_playersession", "playthrough_id"): "bigint"}
 
     report = check_residual_inventory(
         relation_columns(), doctored, primary_key_types(doctored)
     )
 
     assert [violation.subject for violation in report.violations] == [
-        "games_session.game_id"
+        "games_playersession.playthrough_id"
     ]
     assert "not in the residual inventory" in report.violations[0].detail
 
@@ -184,7 +187,9 @@ def test_residual_inventory_reports_a_converted_column_still_listed(
 ):
     """A Wave E slice that converts a column must also shrink the inventory."""
     monkeypatch.setitem(
-        RESIDUAL_INTEGER_RELATIONS, ("games_session", "game_id"), "ID-99 (#0)"
+        RESIDUAL_INTEGER_RELATIONS,
+        ("games_playersession", "playthrough_id"),
+        "ID-99 (#0)",
     )
 
     report = check_residual_inventory(
@@ -192,7 +197,7 @@ def test_residual_inventory_reports_a_converted_column_still_listed(
     )
 
     assert [violation.subject for violation in report.violations] == [
-        "games_session.game_id"
+        "games_playersession.playthrough_id"
     ]
     assert "no longer integer" in report.violations[0].detail
 
@@ -256,7 +261,6 @@ EXPECTED_IDENTITY_TABLES = {
     "games_purchase",
     "games_purchaseconversionstate",
     "games_release",
-    "games_session",
     "games_userlibrary",
     "games_userlibrarypreferences",
 }
@@ -375,55 +379,50 @@ def test_ordering_excludes_null_source_rows(owned_library):
     what is under test, and it reads one entry at a time.
     """
     game = Game.objects.create(library=owned_library, name="Audited")
+    run = tracked_run(owned_library, game)
     for ended in (
         datetime(2026, 1, 1, 12, tzinfo=UTC),
         datetime(2026, 1, 2, 12, tzinfo=UTC),
         None,
     ):
-        Session.objects.create(
-            game=game,
-            timestamp_start=datetime(2026, 1, 1, tzinfo=UTC),
-            timestamp_end=ended,
-        )
+        timed_row(run, datetime(2026, 1, 1, tzinfo=UTC), ended)
     session_entry = next(
-        entry for entry in identity_models() if entry.table == "games_session"
+        entry for entry in identity_models() if entry.table == "games_playersession"
     )
-    #: The one nullable date column a live model carries.
-    by_a_nullable_source = session_entry._replace(order_source="timestamp_end")
+    #: A nullable date column a live model carries.
+    by_a_nullable_source = session_entry._replace(order_source="ended_at")
 
     report = check_ordering([by_a_nullable_source])
 
     assert report.violations == []
-    note = next(note for note in report.notes if note.subject == "games_session")
-    assert "1 excluded for a NULL timestamp_end" in note.detail
+    note = next(note for note in report.notes if note.subject == "games_playersession")
+    assert "1 excluded for a NULL ended_at" in note.detail
 
 
 def test_referential_agreement_is_clean_on_a_migrated_database(cursor):
     assert check_referential_agreement(cursor, relation_columns()).violations == []
 
 
-def test_referential_agreement_reports_an_orphan_row(cursor):
+def test_referential_agreement_reports_an_orphan_row(cursor, owned_library):
     """Every foreign key here is deferred, so an orphan survives until commit.
 
-    The row names a Game that never existed. Deleting a real one instead would
-    not work: Session.game is CASCADE, so the orphan would go with it.
+    The through row names a Game that never existed.
     """
+    purchase = Purchase.objects.create(
+        library=owned_library, date_purchased=date(2026, 1, 1), price_currency="CZK"
+    )
     cursor.execute(
-        """
-        INSERT INTO games_session
-            (game_id, timestamp_start, emulated, note, created_at, modified_at)
-        VALUES (%s, now(), false, '', now(), now())
-        """,
-        [uuid7_at(datetime(2029, 1, 1, tzinfo=UTC))],
+        "INSERT INTO games_purchase_games (purchase_id, game_id) VALUES (%s, %s)",
+        [purchase.pk, uuid7_at(datetime(2029, 1, 1, tzinfo=UTC))],
     )
 
     report = check_referential_agreement(cursor, relation_columns())
     # Removed before asserting: Django's fixture teardown runs SET CONSTRAINTS
     # ALL IMMEDIATE, which would surface the deferred violation as a test error.
-    cursor.execute("DELETE FROM games_session")
+    cursor.execute("DELETE FROM games_purchase_games")
 
     assert [violation.subject for violation in report.violations] == [
-        "games_session.game_id"
+        "games_purchase_games.game_id"
     ]
     assert "reference a missing games_game.id" in report.violations[0].detail
 

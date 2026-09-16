@@ -7,7 +7,8 @@ from django.utils import timezone
 from session_rows import session_row
 from stated_runs import another_run
 
-from games.models import Game, PlayerSession, Playthrough, Session
+from games.models import Game, PlayerSession, Playthrough
+from games.reads.player_sessions import library_sessions
 from games.reads.playtime import game_playtime
 from games.removal import remove, restore
 
@@ -20,37 +21,37 @@ def make_game(library, name="Outer Wilds"):
 
 def test_removing_a_game_keeps_its_sessions(owned_library):
     game = make_game(owned_library)
-    session = Session.objects.create(
-        game=game,
-        timestamp_start=timezone.now(),
-        timestamp_end=timezone.now() + timedelta(hours=1),
+    started = timezone.now()
+    session = session_row(
+        game, started_at=started, ended_at=started + timedelta(hours=1)
     )
 
     remove(game)
 
-    assert Session.objects.filter(pk=session.pk).exists()
-    assert not Session.objects.for_library(owned_library).exists()
+    assert PlayerSession.objects.filter(pk=session.pk).exists()
+    assert not library_sessions(owned_library).exists()
 
 
 def test_restoring_a_game_brings_its_sessions_back(owned_library):
     game = make_game(owned_library)
-    Session.objects.create(game=game, timestamp_start=timezone.now())
+    session_row(game, started_at=timezone.now())
     remove(game)
 
     restore(game)
 
-    assert Session.objects.for_library(owned_library).count() == 1
+    assert library_sessions(owned_library).count() == 1
 
 
 def test_a_session_removed_by_itself_stays_removed(owned_library):
+    """The projector's mark outlives the game's."""
     game = make_game(owned_library)
-    session = Session.objects.create(game=game, timestamp_start=timezone.now())
-    remove(session)
+    session = session_row(game, started_at=timezone.now())
+    PlayerSession.objects.filter(pk=session.pk).update(removed_at=timezone.now())
     remove(game)
 
     restore(game)
 
-    assert not Session.objects.for_library(owned_library).exists()
+    assert not library_sessions(owned_library).exists()
 
 
 def test_removing_a_session_drops_the_playtime(owned_library):

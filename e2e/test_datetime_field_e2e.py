@@ -300,9 +300,9 @@ def test_now_writes_the_selected_zones_wall_clock(browser: Browser, live_server)
 def test_editing_a_session_without_touching_it_keeps_its_microseconds(
     authenticated_page, live_server
 ):
-    """duration_calculated is a generated column over both timestamps, so an
-    untouched edit that dropped sub-minute precision would shift the duration.
-    The segments only go down to minutes; the residual rides along."""
+    """effective_duration is generated over both instants, so an untouched
+    edit that dropped sub-minute precision would shift the duration. The
+    segments only go down to minutes; the residual rides along."""
     page, user = authenticated_page
     game = Game.objects.create(library=user.library, name="Alpha Game")
     started = dt.datetime(2026, 3, 15, 13, 30, 41, 123456, tzinfo=dt.UTC)

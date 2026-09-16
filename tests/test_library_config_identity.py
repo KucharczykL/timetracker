@@ -7,7 +7,7 @@ from ninja import ModelSchema
 
 from games import api as api_module
 from games.forms import DeviceForm
-from games.models import Device, FilterPreset, Session, UserLibraryPreferences
+from games.models import Device, FilterPreset, PlayerSession, UserLibraryPreferences
 from timetracker.uuidv7 import UUIDv7Field
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -167,7 +167,7 @@ def test_both_models_declare_one_uuidv7_primary_key_every_relation_names():
         assert model._meta.pk.serialize is False
         assert "uuid" not in {field.name for field in model._meta.local_fields}
 
-    assert Session._meta.get_field("device").remote_field.field_name == "id"
+    assert PlayerSession._meta.get_field("device").remote_field.field_name == "id"
     assert (
         UserLibraryPreferences._meta.get_field("default_device").remote_field.field_name
         == "id"

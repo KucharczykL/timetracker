@@ -12,9 +12,8 @@ from django.urls import reverse
 from django.utils import timezone
 from session_rows import (
     TWIN_ZONE,
-    duration_only_twin,
+    duration_only_row,
     timed_row,
-    timed_twin,
     tracked_run,
 )
 from stated_runs import another_run, state_run
@@ -388,18 +387,25 @@ def prague(hour: int, day: date) -> datetime:
     return datetime.combine(day, time(hour), tzinfo=TWIN_ZONE)
 
 
-#: Twins, so the note reads alike from either playtime source.
 @pytest.mark.django_db
 def test_the_prefill_sums_the_sessions_from_the_seeded_start(client, user, game):
     """Time before the seeded start day is not in the note."""
     library = user.library
-    timed_twin(
-        library, game, prague(10, date(2026, 1, 5)), prague(12, date(2026, 1, 5))
+    timed_row(
+        tracked_run(library, game),
+        prague(10, date(2026, 1, 5)),
+        prague(12, date(2026, 1, 5)),
+        day_zone=TWIN_ZONE.key,
     )
-    timed_twin(
-        library, game, prague(10, date(2026, 3, 1)), prague(11, date(2026, 3, 1))
+    timed_row(
+        tracked_run(library, game),
+        prague(10, date(2026, 3, 1)),
+        prague(11, date(2026, 3, 1)),
+        day_zone=TWIN_ZONE.key,
     )
-    duration_only_twin(library, game, date(2026, 3, 4), timedelta(minutes=30))
+    duration_only_row(
+        tracked_run(library, game), date(2026, 3, 4), timedelta(minutes=30)
+    )
     Playthrough.objects.filter(pk=tracked_run(library, game).pk).update(
         completion_recorded_at=timezone.now(),
         completed=TemporalValue.from_day(date(2026, 1, 10)),
@@ -417,10 +423,15 @@ def test_the_prefill_reads_the_earliest_session_day_without_a_finish(
     client, user, game
 ):
     library = user.library
-    timed_twin(
-        library, game, prague(10, date(2026, 1, 5)), prague(12, date(2026, 1, 5))
+    timed_row(
+        tracked_run(library, game),
+        prague(10, date(2026, 1, 5)),
+        prague(12, date(2026, 1, 5)),
+        day_zone=TWIN_ZONE.key,
     )
-    duration_only_twin(library, game, date(2026, 3, 4), timedelta(minutes=30))
+    duration_only_row(
+        tracked_run(library, game), date(2026, 3, 4), timedelta(minutes=30)
+    )
 
     assert _prefill(client, user, game) == {
         "started": "2026-01-05",
@@ -447,8 +458,11 @@ def test_the_prefill_reads_the_librarys_calendar_not_the_servers(client, user, g
 @pytest.mark.django_db
 def test_a_finish_after_the_last_session_seeds_an_empty_note(client, user, game):
     library = user.library
-    timed_twin(
-        library, game, prague(10, date(2026, 1, 5)), prague(12, date(2026, 1, 5))
+    timed_row(
+        tracked_run(library, game),
+        prague(10, date(2026, 1, 5)),
+        prague(12, date(2026, 1, 5)),
+        day_zone=TWIN_ZONE.key,
     )
     Playthrough.objects.filter(pk=tracked_run(library, game).pk).update(
         completion_recorded_at=timezone.now(),

@@ -379,9 +379,6 @@ verify-replay-parity: ensure-postgres
 bench: ensure-postgres
 	uv run --frozen python manage.py benchmark_events $(ARGS)
 
-loadall: ensure-postgres
-	uv run --frozen python manage.py loaddata data.yaml
-
 loadsample: ensure-postgres
 	$(if $(and $(filter command line,$(origin USER)),$(strip $(USER))),,$(error USER is required: make loadsample USER=<username>))
 	uv run --frozen python manage.py load_sample_data --user "$(USER)"

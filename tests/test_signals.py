@@ -1,5 +1,4 @@
 import tempfile
-from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -10,36 +9,22 @@ from django.core import serializers
 from django.core.management import call_command
 from django.test import TestCase
 
-from games.models import Game, Session, UserLibrary
+from games.models import Game, UserLibrary
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
 
 class SignalsTest(TestCase):
     @pytest.mark.untracked_games
-    def test_deleting_game_with_sessions_does_not_raise(self):
+    def test_destroying_an_untracked_game_does_not_raise(self):
         library = get_user_model().objects.create_user(username="signals").library
-        # Create a game and attach a session to it
         g = Game(library=library, name="Signal Test Game")
         g.save()
-
-        s = Session(
-            game=g,
-            timestamp_start=datetime(2022, 9, 26, 14, 58, tzinfo=ZONEINFO),
-            timestamp_end=datetime(2022, 9, 26, 17, 38, tzinfo=ZONEINFO),
-        )
-        s.save()
-
-        # Sanity checks before delete
         self.assertTrue(Game.objects.filter(pk=g.pk).exists())
-        self.assertEqual(g.sessions.count(), 1)
 
-        # Destroying the game should not raise
         g.delete()
 
-        # After deletion, the Game should be gone and no sessions remain
         self.assertFalse(Game.objects.filter(pk=g.pk).exists())
-        self.assertEqual(Session.objects.filter(pk=s.pk).count(), 0)
 
 
 class RawFixtureLoadTest(TestCase):
