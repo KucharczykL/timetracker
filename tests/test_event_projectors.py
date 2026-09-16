@@ -9,8 +9,9 @@ from datetime import UTC, datetime
 from typing import Any, ClassVar, TypedDict
 
 import pytest
-from django.db import OperationalError, connection, transaction
-from django.test.utils import CaptureQueriesContext
+from django.db import IntegrityError, OperationalError, connection, models, transaction
+from django.db.models.functions import Now
+from django.test.utils import CaptureQueriesContext, isolate_apps
 from pydantic import ConfigDict, with_config
 from test_command_dispatch import COMMAND_RECORDED, BasicCommand
 from test_event_retry import wrapped
@@ -28,7 +29,9 @@ from games.events.projection import (
     ProjectorFamily,
     ProjectorRegistry,
 )
-from games.events.targets import LIVE_TARGET, ProjectionTarget
+from games.events.rebuild import shadow_tables
+from games.events.retry import sqlstate_of
+from games.events.targets import LIVE_TARGET, ProjectionTarget, ShadowTarget
 from games.events.vocabulary import EventSpec, EventTypeRegistry, NewEvent
 from games.events.wiring import EventWiring
 from games.models import (
@@ -36,6 +39,7 @@ from games.models import (
     LibraryEvent,
     LibraryEventStreamHead,
     ProjectionModel,
+    library_identity_constraint,
 )
 
 RECORDED = "test.projector.recorded"
@@ -59,6 +63,49 @@ def second_library(django_user_model):
     return django_user_model.objects.create_user(
         username="second-owner", password="p"
     ).library
+
+
+#: The helpers' table; a fixture sets it.
+STAND_IN: type[ProjectionModel] | None = None
+
+
+def stand_in() -> type[ProjectionModel]:
+    """The fixture's table, read at write time."""
+    assert STAND_IN is not None, "the shelf fixture is not in force"
+    return STAND_IN
+
+
+@pytest.fixture
+def shelf(db):
+    """Per-test projection table carrying the pair."""
+    global STAND_IN
+    with isolate_apps("games"):
+        #: A twin's `library` resolves in this registry.
+        class UserLibrary(models.Model):
+            id = models.UUIDField(primary_key=True)
+
+            class Meta:
+                app_label = "games"
+                db_table = "games_userlibrary"
+
+        class Shelf(ProjectionModel):
+            id = models.UUIDField(primary_key=True)
+            name = models.CharField(max_length=64)
+            kind = models.CharField(max_length=16, default="unknown")
+            recorded_at = models.DateTimeField(db_default=Now())
+
+            class Meta:
+                app_label = "games"
+                db_table = "test_projector_shelf"
+                constraints = (library_identity_constraint(),)
+
+        with connection.schema_editor() as schema_editor:
+            schema_editor.create_model(Shelf)
+        STAND_IN = Shelf
+        try:
+            yield Shelf
+        finally:
+            STAND_IN = None
 
 
 @pytest.fixture(autouse=True)
@@ -507,41 +554,44 @@ class ProjectingWriter(Projector, registry=project_registry):
     family_name = ProjectorFamily.CURRENT_STATE
 
     def _recorded(self, event: RecordedEvent) -> None:
-        #: Device stands in for a projection table.
-        self.project(  # type: ignore[type-var]
-            Device,
-            event.aggregate_id,
-            library_id=event.library_id,
-            name=f"projected {event.sequence}",
-            type=Device.UNKNOWN,
-        )
+        self.project(stand_in(), event, name=f"projected {event.sequence}")
 
     handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
 
-@pytest.mark.django_db
-def test_the_helper_writes_through_the_target_its_family_holds(owned_library):
+def statements(queries: CaptureQueriesContext) -> list[str]:
+    """The first word of each statement."""
+    return [query["sql"].split(maxsplit=1)[0] for query in queries]
+
+
+def test_the_helper_writes_through_the_target_its_family_holds(shelf, owned_library):
     target = RecordingTarget()
 
     project_registry.for_target(target).apply(make_event(library_id=owned_library.pk))
 
-    assert target.asked == ["Device"]
-    assert Device.objects.filter(name="projected 1").count() == 1
+    assert target.asked == ["Shelf"]
+    assert shelf.objects.filter(name="projected 1").count() == 1
 
 
-@pytest.mark.django_db
-def test_the_helper_writes_one_row_through_one_statement(owned_library):
+def test_the_helper_writes_the_events_library(shelf, owned_library):
+    """The handler named none."""
+    project_registry.apply(make_event(library_id=owned_library.pk))
+
+    assert shelf.objects.get().library_id == owned_library.pk
+
+
+def test_the_helper_writes_one_row_through_one_statement(shelf, owned_library):
     """Five removed statements were a lock-and-look."""
     with CaptureQueriesContext(connection) as queries:
         project_registry.apply(make_event(library_id=owned_library.pk))
 
     assert len(queries) == 1
     assert queries[0]["sql"].startswith("INSERT INTO")
-    assert "ON CONFLICT" in queries[0]["sql"]
+    #: The pair: a foreign identity misses it.
+    assert 'ON CONFLICT("id", "library_id")' in queries[0]["sql"]
 
 
-@pytest.mark.django_db
-def test_the_helper_rewrites_the_row_an_identity_already_has(owned_library):
+def test_the_helper_rewrites_the_row_an_identity_already_has(shelf, owned_library):
     """A repeat upserts; it adds no row."""
     identity = uuid.uuid7()
 
@@ -554,32 +604,50 @@ def test_the_helper_rewrites_the_row_an_identity_already_has(owned_library):
             )
         )
 
-    assert Device.objects.count() == 1
-    assert Device.objects.get(pk=identity).name == "projected 2"
+    assert shelf.objects.count() == 1
+    assert shelf.objects.get(pk=identity).name == "projected 2"
 
 
-@pytest.mark.django_db
-def test_the_helper_keeps_the_columns_it_was_not_given(owned_library):
+def test_the_helper_keeps_the_columns_it_was_not_given(shelf, owned_library):
     """DO UPDATE writes the named columns only."""
     identity = uuid.uuid7()
     project_registry.apply(
         make_event(library_id=owned_library.pk, aggregate_id=identity)
     )
-    created_at = Device.objects.get(pk=identity).created_at
+    shelf.objects.filter(pk=identity).update(kind="changed")
 
     project_registry.apply(
         make_event(library_id=owned_library.pk, aggregate_id=identity, sequence=2)
     )
 
-    assert Device.objects.get(pk=identity).created_at == created_at
+    assert shelf.objects.get(pk=identity).kind == "changed"
 
 
-@pytest.mark.django_db
-def test_the_helper_lets_the_database_fill_what_it_can(owned_library):
-    """created_at fills itself, so a handler need not name it."""
+def test_the_helper_lets_the_database_fill_what_it_can(shelf, owned_library):
+    """recorded_at fills itself; no handler names it."""
     project_registry.apply(make_event(library_id=owned_library.pk))
 
-    assert Device.objects.get().created_at is not None
+    assert shelf.objects.get().recorded_at is not None
+
+
+def test_a_creation_under_another_librarys_identity_is_refused(
+    shelf, owned_library, second_library
+):
+    """The pair misses; the primary key refuses."""
+    identity = uuid.uuid7()
+    project_registry.apply(
+        make_event(library_id=second_library.pk, aggregate_id=identity)
+    )
+
+    #: The savepoint absorbs the aborted statement.
+    with pytest.raises(IntegrityError) as caught, transaction.atomic():
+        project_registry.apply(
+            make_event(library_id=owned_library.pk, aggregate_id=identity, sequence=2)
+        )
+
+    assert sqlstate_of(caught.value) == "23505"
+    row = shelf.objects.get(pk=identity)
+    assert (row.library_id, row.name) == (second_library.pk, "projected 1")
 
 
 partial_registry = ProjectorRegistry()
@@ -591,23 +659,39 @@ class PartialWriter(Projector, registry=partial_registry):
     family_name = ProjectorFamily.CURRENT_STATE
 
     def _recorded(self, event: RecordedEvent) -> None:
-        #: Device stands in for a projection table.
-        self.project(  # type: ignore[type-var]
-            Device,
-            event.aggregate_id,
-            library_id=event.library_id,
-        )
+        self.project(stand_in(), event)
 
     handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
 
-@pytest.mark.django_db
-def test_the_helper_refuses_a_row_it_was_not_given_whole(owned_library):
+def test_the_helper_refuses_a_row_it_was_not_given_whole(shelf, owned_library):
     """A rebuild would null what the live path kept."""
     with pytest.raises(TypeError, match="written without name"):
         partial_registry.apply(make_event(library_id=owned_library.pk))
 
-    assert Device.objects.count() == 0
+    assert shelf.objects.count() == 0
+
+
+scoped_registry = ProjectorRegistry()
+
+
+class LibraryNamingWriter(Projector, registry=scoped_registry):
+    """Names the column the helper owns."""
+
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _recorded(self, event: RecordedEvent) -> None:
+        self.project(stand_in(), event, library_id=event.library_id, name="projected")
+
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+
+def test_the_helper_refuses_a_library_it_is_handed(shelf, owned_library):
+    """Even the right one; the envelope decides."""
+    with pytest.raises(TypeError, match="written with a library"):
+        scoped_registry.apply(make_event(library_id=owned_library.pk))
+
+    assert shelf.objects.count() == 0
 
 
 amend_registry = ProjectorRegistry()
@@ -619,36 +703,27 @@ class AmendingWriter(Projector, registry=amend_registry):
     family_name = ProjectorFamily.CURRENT_STATE
 
     def _recorded(self, event: RecordedEvent) -> None:
-        #: Device stands in for a projection table.
-        self.amend(  # type: ignore[type-var]
-            Device,
-            event.aggregate_id,
-            name=f"amended {event.sequence}",
-        )
+        self.amend(stand_in(), event, name=f"amended {event.sequence}")
 
     handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
 
-def created_row(library, identity: uuid.UUID) -> Device:
-    """The row a creation event writes."""
-    return Device.objects.create(
-        pk=identity, library_id=library.pk, name="created", type=Device.UNKNOWN
-    )
+def created_row(library, identity: uuid.UUID) -> None:
+    """The creation event's row, named `projected 1`."""
+    project_registry.apply(make_event(library_id=library.pk, aggregate_id=identity))
 
 
-@pytest.mark.django_db
-def test_an_amendment_changes_the_columns_it_names(owned_library):
+def test_an_amendment_changes_the_columns_it_names(shelf, owned_library):
     identity = uuid.uuid7()
     created_row(owned_library, identity)
 
     amend_registry.apply(make_event(library_id=owned_library.pk, aggregate_id=identity))
 
-    row = Device.objects.get(pk=identity)
-    assert (row.name, row.type) == ("amended 1", Device.UNKNOWN)
+    row = shelf.objects.get(pk=identity)
+    assert (row.name, row.kind) == ("amended 1", "unknown")
 
 
-@pytest.mark.django_db
-def test_an_amendment_costs_one_statement(owned_library):
+def test_an_amendment_costs_one_statement(shelf, owned_library):
     """One UPDATE, and no read."""
     identity = uuid.uuid7()
     created_row(owned_library, identity)
@@ -658,11 +733,10 @@ def test_an_amendment_costs_one_statement(owned_library):
             make_event(library_id=owned_library.pk, aggregate_id=identity)
         )
 
-    assert [query["sql"].split(maxsplit=1)[0] for query in queries] == ["UPDATE"]
+    assert statements(queries) == ["UPDATE"]
 
 
-@pytest.mark.django_db
-def test_an_amendment_writes_through_the_target_its_family_holds(owned_library):
+def test_an_amendment_writes_through_the_target_its_family_holds(shelf, owned_library):
     identity = uuid.uuid7()
     created_row(owned_library, identity)
     target = RecordingTarget()
@@ -671,17 +745,113 @@ def test_an_amendment_writes_through_the_target_its_family_holds(owned_library):
         make_event(library_id=owned_library.pk, aggregate_id=identity)
     )
 
-    assert target.asked == ["Device"]
-    assert Device.objects.get(pk=identity).name == "amended 1"
+    assert target.asked == ["Shelf"]
+    assert shelf.objects.get(pk=identity).name == "amended 1"
 
 
-@pytest.mark.django_db
-def test_an_amendment_with_no_row_is_refused(owned_library):
+def test_an_amendment_with_no_row_is_refused(shelf, owned_library):
     """A stream missing its creation event."""
-    with pytest.raises(ProjectionRowMissing, match="no row"):
+    with (
+        CaptureQueriesContext(connection) as queries,
+        pytest.raises(ProjectionRowMissing, match="no row"),
+    ):
         amend_registry.apply(make_event(library_id=owned_library.pk))
 
-    assert Device.objects.count() == 0
+    #: The lookup: missing row or foreign one.
+    assert statements(queries) == ["UPDATE", "SELECT"]
+    assert shelf.objects.count() == 0
+
+
+amend_scoped_registry = ProjectorRegistry()
+
+
+class LibraryMovingAmender(Projector, registry=amend_scoped_registry):
+    """Names the column no event moves."""
+
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _recorded(self, event: RecordedEvent) -> None:
+        self.amend(stand_in(), event, library_id=uuid.uuid7(), name="moved")
+
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+
+def test_an_amendment_cannot_move_a_row(shelf, owned_library):
+    identity = uuid.uuid7()
+    created_row(owned_library, identity)
+
+    with pytest.raises(TypeError, match="amended with a library"):
+        amend_scoped_registry.apply(
+            make_event(library_id=owned_library.pk, aggregate_id=identity)
+        )
+
+    row = shelf.objects.get(pk=identity)
+    assert (row.library_id, row.name) == (owned_library.pk, "projected 1")
+
+
+empty_amend_registry = ProjectorRegistry()
+
+
+class EmptyAmender(Projector, registry=empty_amend_registry):
+    """Names no column at all."""
+
+    family_name = ProjectorFamily.CURRENT_STATE
+
+    def _recorded(self, event: RecordedEvent) -> None:
+        self.amend(stand_in(), event)
+
+    handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
+
+
+def test_an_amendment_with_no_column_is_refused(shelf, owned_library):
+    """Zero rows would read as missing."""
+    identity = uuid.uuid7()
+    created_row(owned_library, identity)
+
+    with pytest.raises(TypeError, match="amended with no column"):
+        empty_amend_registry.apply(
+            make_event(library_id=owned_library.pk, aggregate_id=identity)
+        )
+
+
+def test_an_amendment_in_another_library_is_refused(
+    shelf, owned_library, second_library
+):
+    """The stream is wrong, not the row."""
+    identity = uuid.uuid7()
+    created_row(second_library, identity)
+
+    with (
+        CaptureQueriesContext(connection) as queries,
+        pytest.raises(ProjectionRowMissing) as caught,
+    ):
+        amend_registry.apply(
+            make_event(library_id=owned_library.pk, aggregate_id=identity)
+        )
+
+    message = str(caught.value)
+    assert f"belongs to library {second_library.pk}" in message
+    assert f"names library {owned_library.pk}" in message
+    assert statements(queries) == ["UPDATE", "SELECT"]
+    assert shelf.objects.get(pk=identity).name == "projected 1"
+
+
+def test_a_rebuild_names_the_library_the_live_table_holds(
+    shelf, owned_library, second_library
+):
+    """The lookup reads live, not the shadow."""
+    identity = uuid.uuid7()
+    created_row(second_library, identity)
+
+    with (
+        shadow_tables([shelf]),
+        pytest.raises(ProjectionRowMissing, match="belongs to library") as caught,
+    ):
+        amend_registry.for_target(ShadowTarget()).apply(
+            make_event(library_id=owned_library.pk, aggregate_id=identity)
+        )
+
+    assert f"belongs to library {second_library.pk}" in str(caught.value)
 
 
 def wiring_over(projectors: ProjectorRegistry) -> EventWiring:

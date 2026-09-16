@@ -22,13 +22,10 @@ class LibraryCalendars(Projector):
         day_zone = event.payload["day_zone"]
         self.project(
             LibraryCalendar,
-            event.aggregate_id,
-            library_id=event.library_id,
+            event,
             day_zone=day_zone,
         )
-        sessions = self.target.model(PlayerSession)
-        sessions._default_manager.filter(
-            library_id=event.library_id,
+        self.library_rows(PlayerSession, event).filter(
             timing_mode__in=(
                 PlayerSessionTimingMode.TIMED,
                 PlayerSessionTimingMode.CORRECTED,

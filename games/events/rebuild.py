@@ -19,6 +19,7 @@ from games.events.append import StreamSequenceMismatch, lock_stream
 from games.events.replay import ReplayResult, replay
 from games.events.retry import (
     FOREIGN_KEY_VIOLATION,
+    UNIQUE_VIOLATION,
     constraint_name_of,
     detail_of,
     sqlstate_of,
@@ -295,7 +296,26 @@ _INSERT_REBUILT_ROWS = (
 )
 
 
-class SwapRefusedByReference(RuntimeError):
+class SwapRefused(RuntimeError):
+    """The database stopped the swap."""
+
+    def __init__(
+        self,
+        sentence: str,
+        *,
+        library_id: uuid.UUID,
+        constraint_name: str | None,
+        detail: str | None,
+        tables: tuple[TableDiff, ...],
+    ) -> None:
+        super().__init__(sentence)
+        self.library_id = library_id
+        self.constraint_name = constraint_name
+        self.detail = detail
+        self.tables = tables
+
+
+class SwapRefusedByReference(SwapRefused):
     """A foreign key stopped the swap at commit."""
 
     def __init__(
@@ -309,14 +329,94 @@ class SwapRefusedByReference(RuntimeError):
         tables: tuple[TableDiff, ...],
     ) -> None:
         super().__init__(
-            _refusal_sentence(library_id, constraint_name, detail, violations, audited)
+            _refusal_sentence(library_id, constraint_name, detail, violations, audited),
+            library_id=library_id,
+            constraint_name=constraint_name,
+            detail=detail,
+            tables=tables,
         )
-        self.library_id = library_id
-        self.constraint_name = constraint_name
-        self.detail = detail
         self.violations = violations
         self.audited = audited
-        self.tables = tables
+
+
+#: The live row under a colliding identity.
+type IdentityHolder = tuple[TableName, str, uuid.UUID]  # (table, identity, library)
+
+
+class SwapRefusedByIdentity(SwapRefused):
+    """A unique index stopped the swap."""
+
+    def __init__(
+        self,
+        *,
+        library_id: uuid.UUID,
+        constraint_name: str | None,
+        detail: str | None,
+        holder: IdentityHolder | None,
+        tables: tuple[TableDiff, ...],
+    ) -> None:
+        super().__init__(
+            _identity_sentence(library_id, constraint_name, detail, holder),
+            library_id=library_id,
+            constraint_name=constraint_name,
+            detail=detail,
+            tables=tables,
+        )
+        self.holder = holder
+
+
+#: PostgreSQL's DETAIL for a unique violation.
+_VIOLATED_KEY = re.compile(r"Key \((?P<column>[^)]+)\)=\((?P<value>[^)]+)\)")
+
+
+def _identity_holder(
+    models: Iterable[type[ProjectionModel]], detail: str | None
+) -> IdentityHolder | None:
+    """The live row under the colliding identity.
+
+    Read after the rollback: the swap deleted this library's rows first,
+    so any row the identity still names is another library's.
+    """
+    if detail is None:
+        return None
+    matched = _VIOLATED_KEY.search(detail)
+    if matched is None or matched["column"] != "id":
+        return None
+    identity = matched["value"]
+    for model in models:
+        table = model._meta.db_table
+        holder = (
+            model._default_manager.filter(pk=identity)
+            .values_list("library_id", flat=True)
+            .first()
+        )
+        if holder is not None:
+            return (table, identity, holder)
+    return None
+
+
+def _identity_sentence(
+    library_id: uuid.UUID,
+    constraint_name: str | None,
+    detail: str | None,
+    holder: IdentityHolder | None,
+) -> str:
+    named = "an unnamed constraint" if constraint_name is None else constraint_name
+    opening = f"The rebuild of library {library_id} was refused at the swap by {named}."
+    closing = "Nothing was swapped; the live rows are unchanged."
+    reported = f" {detail}" if detail else ""
+    if holder is None:
+        return (
+            f"{opening}{reported} The row holding the identity could not be "
+            f"read. {closing}"
+        )
+    table, identity, holding_library = holder
+    return (
+        f"{opening}{reported} Row {identity} of {table} belongs to library "
+        f"{holding_library}: the stream of library {library_id} names an "
+        f"identity another library holds, so the stream is wrong, not the "
+        f"row. {closing}"
+    )
 
 
 def _refusal_sentence(
@@ -372,6 +472,8 @@ def swap_in(
     needs the rolled-back block behind it, so a narrower try would
     answer TransactionManagementError instead of a sentence.
     """
+    #: Read twice: swap, then holder lookup.
+    models = tuple(models)
     swapping = False
     try:
         with transaction.atomic():
@@ -396,7 +498,25 @@ def swap_in(
                         [library.pk],
                     )
     except IntegrityError as error:
-        if not swapping or sqlstate_of(error) != FOREIGN_KEY_VIOLATION:
+        if not swapping:
+            raise
+        sqlstate = sqlstate_of(error)
+        if sqlstate == UNIQUE_VIOLATION:
+            try:
+                holder = _identity_holder(models, detail_of(error))
+            except DatabaseError:
+                #: A diagnostic never outranks the diagnosis.
+                holder = None
+            identity_refusal = SwapRefusedByIdentity(
+                library_id=library.pk,
+                constraint_name=constraint_name_of(error),
+                detail=detail_of(error),
+                holder=holder,
+                tables=tables,
+            )
+            logger.error("%s", identity_refusal)
+            raise identity_refusal from error
+        if sqlstate != FOREIGN_KEY_VIOLATION:
             raise
         try:
             violations = tuple(cross_library_violations([library.pk]))

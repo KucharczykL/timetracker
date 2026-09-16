@@ -39,7 +39,7 @@ refuses a plain string for an enum field; a bool reads back as itself.
 
 ## The handler
 
-`_mastered_changed` calls `amend()`: one `UPDATE` on the primary key of the
+`_mastered_changed` calls `amend()`: one `UPDATE` on the key and library of the
 created row. An absent row raises `ProjectionRowMissing`.
 
 ## The command

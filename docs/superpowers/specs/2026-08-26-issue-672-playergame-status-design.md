@@ -33,7 +33,8 @@ is a reviewed diff.
 ## Amendment
 
 `Projector.amend()` writes part of a row that exists: one `UPDATE` on the
-primary key, through the target's model, with no read. `project()`
+key and the library, through the target's model, with no read on the path
+that changes a row. `project()`
 cannot serve this, because an event that changes one column knows nothing of
 the others.
 

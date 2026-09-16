@@ -87,7 +87,8 @@ The previous recording took 60.223 s and passed by 23 milliseconds. Issue
 saw as `SAVEPOINT`, `SELECT ... FOR UPDATE`, `SAVEPOINT`, `INSERT`, `RELEASE`,
 `RELEASE`. Five of those six statements searched a shadow table that a replay
 starts empty. The handler is now one `INSERT ... ON CONFLICT (id) DO UPDATE`, and
-the replay phase alone fell from 59.24 s to 15.31 s.
+the replay phase alone fell from 59.24 s to 15.31 s. The conflict target has
+since become the `(id, library_id)` pair; the figures predate it.
 
 The run was repeated with the statement counter switched off, as the previous
 recording was:

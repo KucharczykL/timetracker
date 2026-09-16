@@ -1004,6 +1004,17 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   is gone. An issue delivered this way says so in its own body; #702 is the
   worked example.
 
+- **A projector writes through the event** — handlers call
+  `self.project(Model, event, **columns)` / `self.amend(Model, event, **columns)`,
+  or `self.library_rows(Model, event)` for a library-wide write; never a
+  manager (`tests/test_projector_scope_guard.py` walks `games/projectors/`).
+  The helpers read identity and library off the envelope:
+  `project` writes `library_id` itself and refuses a handler naming it; `amend`
+  filters on `(pk, library_id)` and raises `ProjectionRowMissing` for an absent
+  or foreign row. Every projection is unique on `(id, library)` through
+  `library_identity_constraint()` in its own `Meta` — the upsert's conflict
+  target — and `games.E012` refuses one without it.
+
 - **A reference out of a projection is registered** — foreign key from projection
   table into library-scoped model goes in `AUDITED_PROJECTION_REFERENCES` in
   `games/projections.py`, through `ProjectionReference.on`, or `games.E009` refuses

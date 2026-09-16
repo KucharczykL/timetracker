@@ -17,7 +17,7 @@ from django.db.models import Q
 from games.conversion import _request_conversion_for_locked_state
 from games.events.rebuild import (
     RebuildMode,
-    SwapRefusedByReference,
+    SwapRefused,
     rebuild_projections,
 )
 from games.events.reconcile import UnresolvedReferences
@@ -161,7 +161,7 @@ class Command(BaseCommand):
                 UnresolvedReferences,
                 StreamNotContiguous,
                 PayloadVersionUnsupported,
-                SwapRefusedByReference,
+                SwapRefused,
             ) as error:
                 raise CommandError(
                     f"Sample fixture could not be projected: {error}"

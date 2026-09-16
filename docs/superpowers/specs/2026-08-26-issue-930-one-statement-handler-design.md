@@ -7,14 +7,18 @@ in `games/events/projection.py`. The numbers are in
 
 ## The method
 
-`Projector.project()` takes a model, an identity and the columns. It asks its
-target for the model, builds the row with the identity on the primary key, and
-calls `bulk_create` with `update_conflicts=True`. One statement reaches
-PostgreSQL: `INSERT ... ON CONFLICT ("id") DO UPDATE SET ...`.
+`Projector.project()` takes a model, the event and the columns. It asks its
+target for the model, builds the row with the event's aggregate on the primary
+key and its library in the library column, and calls `bulk_create` with
+`update_conflicts=True`. One statement reaches PostgreSQL:
+`INSERT ... ON CONFLICT ("id", "library_id") DO UPDATE SET ...`.
 
-`unique_fields` holds `pk`, not `id`, so a key with a different name needs no
-exception. The identity goes on the instance after construction, because
-`Model(pk=...)` is not a valid argument.
+`unique_fields` names the primary key by `_meta.pk.name` and `library`, so a
+key with a different name needs no exception. The identity goes on the
+instance after construction, so the written columns never name the key.
+The conflict target is the `(id, library)` pair every projection is unique on,
+so a creation under an identity another library holds matches nothing and the
+primary key refuses it.
 
 `projection.py` holds no runtime ORM reference. `ProjectionModel` is imported
 under `TYPE_CHECKING`, because a PEP 695 bound evaluates lazily.
@@ -41,7 +45,7 @@ A second run writes the same row, by primary key, with no read.
 Both paths give the same statement. `ProjectionTarget` supplies the model, so a
 rebuild writes `games_playergame__shadow`; `write_targets` reads that name, and
 `only_shadow_writes` sees what it guards. `LIKE ... INCLUDING ALL` copies the
-primary key index that `ON CONFLICT` infers.
+pair's index that `ON CONFLICT` infers.
 
 There is no savepoint and no `SELECT`. `bulk_create` opens its transaction with
 `savepoint=False`, and a handler always runs inside one: under the stream-head lock
@@ -54,9 +58,9 @@ model. A receiver firing during a shadow replay would write a live table, which
 ## A second constraint
 
 `PlayerGame` has a second unique constraint, `(library, game)`. A handler with a
-new identity for a game the library tracks violates it, and `ON CONFLICT (id)`
-does not absorb a violation of a different index: the handler raises
-`IntegrityError`.
+new identity for a game the library tracks violates it, and
+`ON CONFLICT (id, library_id)` does not absorb a violation of a different
+index: the handler raises `IntegrityError`.
 
 Do not answer that error with an update by primary key. That key is not in the
 table. Zero rows change, no error leaves the handler, and the event writes

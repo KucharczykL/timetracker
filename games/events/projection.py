@@ -16,7 +16,6 @@ is the package the real ones live in. Two importable modules of one name are
 unambiguous to the interpreter and a trap for everyone else.
 """
 
-import uuid
 from abc import ABC
 from collections.abc import Callable, Container, Mapping
 from enum import StrEnum
@@ -28,6 +27,8 @@ from games.events.targets import LIVE_TARGET, ProjectionTarget
 from games.events.vocabulary import EventSpec, EventType
 
 if TYPE_CHECKING:
+    from django.db.models import QuerySet
+
     from games.models import ProjectionModel
 
 type BoundHandler = Callable[[RecordedEvent], None]
@@ -44,7 +45,11 @@ type ColumnNames = tuple[str, str]  # ("library", "library_id")
 
 
 class ProjectionRowMissing(LookupError):
-    """Raised when an amendment finds no row."""
+    """No row to amend in the library."""
+
+
+#: The helper writes this; both spellings.
+_LIBRARY_COLUMNS = frozenset({"library", "library_id"})
 
 
 #: Resolved per model, and no reason to outlive one.
@@ -278,19 +283,30 @@ class Projector(ABC):
         self.target = target
 
     def project[M: ProjectionModel](
-        self, model: type[M], identity: uuid.UUID, **columns: Any
+        self, model: type[M], event: RecordedEvent, **columns: Any
     ) -> None:
-        """Write one whole row, keyed on identity.
+        """Write one whole row in the event's library.
 
-        Pass every column of the row except the key, any generated column, and
-        any column the database fills for itself. `DO UPDATE` writes only the
-        columns it names, so a partial call is right against a row that exists
-        and inserts nulls against one that does not -- which is every row of a
+        Pass every column except the key, the library, a generated column,
+        and any column with a default. `DO UPDATE` writes only the columns
+        it names: a partial call is right against a row that exists and
+        inserts nulls against one that does not, which is every row of a
         rebuild. `_unfilled_columns` refuses the difference.
+
+        The conflict target is `(id, library)`. A creation under an identity
+        another library holds matches no pair, inserts, and the primary key
+        refuses it.
         """
+        if _LIBRARY_COLUMNS & columns.keys():
+            raise TypeError(
+                f"{model.__qualname__} was written with a library. The helper "
+                "writes the event's, so a handler cannot name another."
+            )
         #: Never the imported model: a rebuild redirects.
         projected = self.target.model(model)
-        unfilled = _unfilled_columns(projected, columns)
+        #: Before the check: library is required.
+        written = {"library_id": event.library_id, **columns}
+        unfilled = _unfilled_columns(projected, written)
         if unfilled:
             raise TypeError(
                 f"{model.__qualname__} was written without "
@@ -298,39 +314,78 @@ class Projector(ABC):
                 "path keeps what it is not given, and a rebuild inserts a null "
                 "in its place, so the two paths would disagree."
             )
-        row = projected(**columns)
-        row.pk = identity
+        row = projected(**written)
+        row.pk = event.aggregate_id
         #: `objects` is a convention, not a promise.
         projected._default_manager.bulk_create(
             [row],
             update_conflicts=True,
             update_fields=list(columns),
-            unique_fields=["pk"],
+            unique_fields=[projected._meta.pk.name, "library"],
         )
 
+    def library_rows[M: ProjectionModel](
+        self, model: type[M], event: RecordedEvent
+    ) -> QuerySet[M]:
+        """Every row of the event's library."""
+        #: Never the imported model: a rebuild redirects.
+        projected = self.target.model(model)
+        #: `objects` is a convention, not a promise.
+        return projected._default_manager.filter(library_id=event.library_id)
+
     def amend[M: ProjectionModel](
-        self, model: type[M], identity: uuid.UUID, **columns: Any
+        self, model: type[M], event: RecordedEvent, **columns: Any
     ) -> None:
-        """Change part of a row that exists.
+        """Amend one row in the event's library.
 
         `project()` cannot serve this: an event that changes one column knows
         nothing of the columns the creation event wrote.
 
-        A missing row is refused rather than inserted. A replay goes through a stream
-        in sequence order, so an insert here would write a part-row that a
-        rebuild could not reproduce.
+        A missing row is refused, not inserted: a replay goes through a stream
+        in sequence order, so an insert here would write a part-row a rebuild
+        could not reproduce. A row another library holds is refused the same
+        way. One `UPDATE`; the lookup that tells the two apart runs only when
+        it changes nothing, and reads the live table, which a shadow twin
+        under rebuild cannot answer for.
         """
+        if _LIBRARY_COLUMNS & columns.keys():
+            raise TypeError(
+                f"{model.__qualname__} was amended with a library. A row's "
+                "library is fixed at creation, so no event moves it."
+            )
+        if not columns:
+            raise TypeError(
+                f"{model.__qualname__} was amended with no column, which "
+                "changes no row and would read as a missing one."
+            )
         #: Never the imported model: a rebuild redirects.
         projected = self.target.model(model)
         #: `objects` is a convention, not a promise.
-        changed = projected._default_manager.filter(pk=identity).update(**columns)
-        if changed != 1:
+        changed = projected._default_manager.filter(
+            pk=event.aggregate_id, library_id=event.library_id
+        ).update(**columns)
+        if changed == 1:
+            return
+        #: Live table: a shadow holds one library.
+        holder = (
+            model._default_manager.filter(pk=event.aggregate_id)
+            .values_list("library_id", flat=True)
+            .first()
+        )
+        #: Live only, own library: short stream.
+        if holder is None or holder == event.library_id:
             raise ProjectionRowMissing(
-                f"{model.__qualname__} has no row {identity} to amend. An event "
-                "that changes part of a row is handled after the event that "
-                "created it, so a missing row is a broken stream rather than a "
-                "first write."
+                f"{model.__qualname__} has no row {event.aggregate_id} to amend. "
+                "An event that changes part of a row is handled after the event "
+                "that created it, so a missing row is a broken stream rather "
+                "than a first write."
             )
+        raise ProjectionRowMissing(
+            f"{model.__qualname__} row {event.aggregate_id} belongs to library "
+            f"{holder}, and the event names library {event.library_id}. A "
+            "projector writes only the rows the event's library owns, so the "
+            "stream is wrong, not the row."
+        )
 
     def __init_subclass__(
         cls,
