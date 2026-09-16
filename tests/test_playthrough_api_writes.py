@@ -1,14 +1,16 @@
 """#687: the API states runs, not rows."""
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
+from django.utils import timezone
 from stated_runs import another_run, state_run
 
 from games.commands.playthrough import ActStatement
-from games.models import Game, Playthrough
+from games.models import Game, PlayerSession, PlayerSessionTimingMode, Playthrough
 from games.removal import remove
+from games.writes.answers import REFUSED_BY_AN_UNREADABLE_ROW
 from timetracker.temporal import TemporalValue
 
 
@@ -351,6 +353,38 @@ def test_deleting_the_only_run_of_a_tracked_game_answers_409(client, user, game)
     response = client.delete(f"/api/playthrough/{run.pk}")
 
     assert response.status_code == 409
+    run.refresh_from_db()
+    assert run.removed_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_deleting_a_run_a_foreign_session_names_answers_500(
+    client, user, game, django_user_model
+):
+    """The sentence in `detail`, no key in it."""
+    run = born_run(game)
+    another_run(user, game)
+    stranger = django_user_model.objects.create_user(username="stranger", password="p")
+    PlayerSession.objects.create(
+        id=uuid.uuid7(),
+        library=stranger.library,
+        playthrough=run,
+        timing_mode=PlayerSessionTimingMode.TIMED,
+        started_at=timezone.now() - timedelta(hours=1),
+        day_zone="Europe/Prague",
+        note="",
+        emulated=False,
+        created_at=timezone.now(),
+    )
+    client.force_login(user)
+
+    response = client.delete(f"/api/playthrough/{run.pk}")
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == REFUSED_BY_AN_UNREADABLE_ROW.format(
+        subject="playthrough"
+    )
+    assert str(run.pk) not in response.content.decode()
     run.refresh_from_db()
     assert run.removed_at is None
 

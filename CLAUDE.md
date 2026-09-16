@@ -198,10 +198,9 @@ docs/           — Additional documentation
   live sessions refused with sentence naming move; last-run rule runs first
   because for sole run only its sentence names remedy that works (#1048).
   Row of *another* library naming run (drift `audit_library_ownership`
-  reports) refused after own-library rows, with neutral
-  `INCONSISTENT_PLAYTHROUGH` sentence and `games` logger error naming both
-  libraries (#1062); session naming foreign run refused by every session
-  command alike, through `_session_run`, with `INCONSISTENT_SESSION`.
+  reports) refused after own-library rows with `RowUnreadable`, which
+  boundary answers as defect (#1062, #1057); session naming foreign run
+  refused by every session command alike, through `_session_run`, same way.
   Registry constructed only through `BlockingReferrer.on`, which refuses field
   that is not key to a run and model whose manager states no `alive()`. Both
   that lookup and sibling count scoped on library. Blank `name` reads as
@@ -952,9 +951,12 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `tests/tracked_games.py` (and its `e2e/` twin) states the words on the row the
   autouse hook seeds.
 - **A refused command becomes an answer** — wrap dispatch in `answered(subject)`
-  from `games/writes/answers.py`. It answers three ways, and caller handles all
-  three: `CommandRejected` or mapped `CommandConflict` becomes `CommandFailed`
-  carrying sentence and status code; `CommandNotPermitted` becomes `Http404`, which
+  from `games/writes/answers.py`. One clause per refusal; caller handles three
+  shapes: `CommandRejected` or mapped `CommandConflict` becomes `CommandFailed`
+  carrying sentence and status code, and so does `RowUnreadable`, at
+  `DEFECT_STATUS` with `REFUSED_BY_AN_UNREADABLE_ROW` and ERROR record with
+  traceback, because row is wrong, not statement (#1057);
+  `CommandNotPermitted` becomes `Http404`, which
   view lets rise; unmapped conflict re-raised as itself rather than given sentence
   that might be wrong. New conflict type goes in `CONFLICT_ANSWERS`,
   `ANSWERED_DIRECTLY` or `NOT_ANSWERED`, or `tests/test_command_answers.py` fails,
@@ -971,7 +973,17 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   sentence=…)`. Argument explains refusal to whoever reads log or traceback and may
   name id or issue; `sentence` is only thing person shown. Boundary never reads
   `str(error)`, so raise site that states no `sentence` is answered with `REFUSED`
-  and logged, rather than leaking. Write one for every new raise site.
+  and logged, rather than leaking. Write one for every new raise site. One
+  exception: refusal whose cause is row, not statement — state constraint
+  forbids, foreign row ownership audit reports, zone tzdata lost — raises
+  `RowUnreadable(message)` from `games/events/dispatch.py` — sibling of
+  `CommandRejected`, not subclass, so no rule's handler and no
+  `pytest.raises(CommandRejected)` takes it, and `Refusal.raises` refuses it
+  at mypy — and writes no sentence; boundary owns it. Argument names row, its
+  library, and for foreign reference the referring model, field and library
+  keys, because boundary's record is the only log. Scope miss a site wraps
+  into one is caught by own class (`PlaythroughNotHeld`), never bare
+  `CommandRejected`, so later rule is not relabelled defect.
 - **A command scopes a resolve by calling one** — resolve UUID command carries with
   `library_row` from `games/commands/scope.py`, never `Model.objects.get(...)`
   inside a `build`. It applies `library=context.library` itself, so no caller holds

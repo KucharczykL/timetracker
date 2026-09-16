@@ -192,6 +192,15 @@ class CommandRejected(Exception):
         self.sentence = sentence
 
 
+class RowUnreadable(Exception):
+    """A row the command cannot read; a defect.
+
+    A sibling of `CommandRejected`, not a subclass: nothing the person
+    restates helps, so no sentence, no 409, and no handler that means
+    a rule may take it.
+    """
+
+
 def authorize(actor: User, library: UserLibrary) -> None:
     """Refuse anyone but the library's own active owner.
 

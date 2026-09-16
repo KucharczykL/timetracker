@@ -17,7 +17,6 @@ from games.commands.playersession import (
     TimedTiming,
 )
 from games.commands.playthrough import (
-    INCONSISTENT_PLAYTHROUGH,
     PLAYTHROUGH_NAME_MAX_LENGTH,
     ActStatement,
     BlockingReferrer,
@@ -32,7 +31,12 @@ from games.commands.playthrough import (
     endpoints_certainly_reversed,
 )
 from games.events.append import lock_stream
-from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
+from games.events.dispatch import (
+    CommandOutcome,
+    CommandRejected,
+    RowUnreadable,
+    dispatch,
+)
 from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.playthrough import playthrough_created
 from games.models import (
@@ -2055,16 +2059,10 @@ def test_the_first_naming_entry_is_the_one_a_person_hears(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_foreign_referring_row_is_refused_and_reported(
-    owned_user,
-    owned_library,
-    game,
-    monkeypatch,
-    referring_models,
-    django_user_model,
-    capture_games_logger,
+def test_a_foreign_referring_row_is_refused_as_a_defect(
+    owned_user, owned_library, game, monkeypatch, referring_models, django_user_model
 ):
-    """Neither sentence fits, so the log carries the rest."""
+    """No sentence fits; the argument carries it."""
     assignment_model, _ = referring_models
     _track(owned_user, owned_library, game)
     run = _second_run(owned_user, owned_library)
@@ -2077,14 +2075,15 @@ def test_a_foreign_referring_row_is_refused_and_reported(
         ),
     )
 
-    with capture_games_logger() as caplog, pytest.raises(CommandRejected) as refusal:
+    with pytest.raises(RowUnreadable) as refusal:
         _remove(owned_user, owned_library, run, key="foreign-referrer")
 
-    assert refusal.value.sentence == INCONSISTENT_PLAYTHROUGH
-    (record,) = caplog.records
-    assert record.levelname == "ERROR"
-    assert str(run.pk) in record.getMessage()
-    assert str(stranger.library.pk) in record.getMessage()
+    #: The argument is the log: name everything.
+    argument = str(refusal.value)
+    assert str(run.pk) in argument
+    assert str(run.library_id) in argument
+    assert str(stranger.library.pk) in argument
+    assert f"{assignment_model.__name__}.playthrough" in argument
     run.refresh_from_db()
     assert run.removed_at is None
 
@@ -2252,8 +2251,8 @@ def test_a_moved_session_frees_its_run(owned_user, owned_library, game, target):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_foreign_session_is_refused_and_reported(
-    owned_user, owned_library, game, django_user_model, capture_games_logger
+def test_a_foreign_session_is_refused_as_a_defect(
+    owned_user, owned_library, game, django_user_model
 ):
     _track(owned_user, owned_library, game)
     run = _second_run(owned_user, owned_library)
@@ -2270,11 +2269,11 @@ def test_a_foreign_session_is_refused_and_reported(
         created_at=timezone.now(),
     )
 
-    with capture_games_logger() as caplog, pytest.raises(CommandRejected) as refusal:
+    with pytest.raises(RowUnreadable) as refusal:
         _remove(owned_user, owned_library, run, key="foreign-session")
 
-    assert refusal.value.sentence == INCONSISTENT_PLAYTHROUGH
-    assert [record.levelname for record in caplog.records] == ["ERROR"]
+    assert str(stranger.library.pk) in str(refusal.value)
+    assert "PlayerSession" in str(refusal.value)
 
 
 @pytest.mark.django_db(transaction=True)

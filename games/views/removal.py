@@ -73,11 +73,7 @@ def confirm_and_apply(
     try:
         action()
     except CommandFailed as refusal:
-        #: State moves: another tab may have won.
-        #:
-        #: A 500 would read as our fault rather than as a stale
-        #: page, and the status is the refusal's own, because the
-        #: answers disagree about what to do next.
+        #: The refusal's status: stale page 409, defect 500.
         return confirmation([refusal.message], status=refusal.status_code)
     return redirect(
         return_url(

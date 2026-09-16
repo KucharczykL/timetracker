@@ -18,7 +18,7 @@ from games.events.append import (
     TransactionRequired,
 )
 from games.events.conflicts import CommandConflict
-from games.events.dispatch import CommandNotPermitted, CommandRejected
+from games.events.dispatch import CommandNotPermitted, CommandRejected, RowUnreadable
 from games.events.envelope import DeferredRowRefused
 from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.projection import ProjectionRowMissing
@@ -85,6 +85,16 @@ REFUSED_BY_DATABASE = (
     "problem has been reported."
 )
 
+#: Worded about the reading, not the row.
+#:
+#: On the retired-zone branch the row is right and the
+#: installation is what changed; "inconsistent" would
+#: tell the person the wrong thing.
+REFUSED_BY_AN_UNREADABLE_ROW = (
+    "This {subject}'s record could not be read, so nothing was changed. "
+    "The problem has been reported."
+)
+
 #: Not clauses: a test reads a mapping.
 CONFLICT_ANSWERS: dict[type[CommandConflict], ConflictAnswer] = {
     RetryBudgetExhausted: ConflictAnswer(_COLLIDED, CONFLICT_STATUS),
@@ -98,7 +108,7 @@ CONFLICT_ANSWERS: dict[type[CommandConflict], ConflictAnswer] = {
 
 #: Own clause each. Not CommandConflict subclasses.
 ANSWERED_DIRECTLY: frozenset[type[Exception]] = frozenset(
-    {CommandNotPermitted, CommandRejected}
+    {CommandNotPermitted, CommandRejected, RowUnreadable}
 )
 
 #: Defects in the program, not conflicts. Each one means a command
@@ -151,6 +161,17 @@ def answered(subject: SubjectNoun) -> Iterator[None]:
             raise
         raise CommandFailed(
             answer.sentence.format(subject=subject), answer.status_code
+        ) from error
+    except RowUnreadable as error:
+        #: The argument in the message, so one line names the row.
+        logger.error(
+            "[answers]: a %s's row could not be read: %s",
+            subject,
+            error,
+            exc_info=error,
+        )
+        raise CommandFailed(
+            REFUSED_BY_AN_UNREADABLE_ROW.format(subject=subject), DEFECT_STATUS
         ) from error
     except CommandRejected as error:
         #: Never str(error): the argument is written for a developer
