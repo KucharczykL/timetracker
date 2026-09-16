@@ -475,7 +475,10 @@ def test_delete_requires_ownership(auth_client, second_auth_client):
 def test_owner_can_remove(auth_client):
     preset = _make_preset(auth_client)
     response = auth_client.delete(_delete_url(preset.id))
-    assert response.status_code == 204
+    assert response.status_code == 200
+    assert response.json() == {
+        "restore_url": reverse("games:restore_preset", args=[preset.id])
+    }
     #: The row stays; the library hides it.
     assert FilterPreset.objects.filter(id=preset.id).exists()
     visible = FilterPreset.objects.for_library(preset.library)

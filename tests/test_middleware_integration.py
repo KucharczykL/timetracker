@@ -52,7 +52,7 @@ def test_non_htmx_request_with_message_gets_hx_trigger(client, owned_user):
 
     assert response.status_code == 204
     trigger = json.loads(response["HX-Trigger"])
-    assert trigger["show-toast"]["type"] == "success"
+    assert trigger["show-toast"][-1]["type"] == "success"
 
 
 @pytest.mark.django_db(transaction=True)
@@ -83,7 +83,7 @@ def test_refund_purchase_returns_updated_row_with_hx_trigger(client, owned_user)
     assert response.status_code == 200
     assert "HX-Redirect" not in response
     trigger = json.loads(response["HX-Trigger"])
-    assert trigger["show-toast"]["message"] == "Purchase refunded"
+    assert trigger["show-toast"][-1]["message"] == "Purchase refunded"
     body = response.content.decode()
     assert f"purchase-row-{purchase.id}" in body
     #: The out-of-band template that closes the modal.
@@ -115,4 +115,4 @@ def test_session_device_api_endpoint_sends_hx_trigger(client, owned_user):
     assert response.status_code == 204
     assert "HX-Trigger" in response
     data = json.loads(response["HX-Trigger"])
-    assert data["show-toast"]["message"] == "Device updated"
+    assert data["show-toast"][-1]["message"] == "Device updated"

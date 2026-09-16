@@ -1,3 +1,4 @@
+from functools import partial
 from typing import cast
 from uuid import UUID
 
@@ -6,6 +7,7 @@ from django.contrib.auth.models import User
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from common.components import (
     ICON_BUTTON_SIZE_CLASS,
@@ -37,6 +39,7 @@ from games.forms import DeviceForm
 from games.models import Device
 from games.ownership import owned_or_404
 from games.reads.player_sessions import library_sessions
+from games.removal import restore
 from games.sorting import (
     DEVICE_DEFAULT_SORT,
     DEVICE_SORTS,
@@ -48,7 +51,7 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
-from games.views.removal import confirm_and_remove
+from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
 
 
@@ -154,6 +157,20 @@ def edit_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
 
 
 @login_required
+@require_POST
+def restore_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
+    """Undo; the plain manager, since the row is removed."""
+    library = cast(User, request.user).library
+    device = owned_or_404(Device.objects.filter(library=library), library, id=device_id)
+    return restore_and_return(
+        request,
+        action=partial(restore, device),
+        restored=f"{device.name} restored to your library.",
+        fallback="games:list_devices",
+    )
+
+
+@login_required
 def remove_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     device = owned_or_404(Device.objects.for_library(library), library, id=device_id)
@@ -169,6 +186,8 @@ def remove_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
             ]
         ],
         fallback="games:list_devices",
+        removed=f"{device.name} removed from your library.",
+        undo="games:restore_device",
     )
 
 

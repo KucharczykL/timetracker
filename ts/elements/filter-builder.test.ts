@@ -212,7 +212,7 @@ describe("<filter-builder>", () => {
     const { group, widget } = mount();
     const untouched = group.serialize(); // pristine tree (one blank leaf)
     document.cookie = "csrftoken=testtoken";
-    const fetchStub = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })));
+    const fetchStub = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ restore_url: "/preset/x/restore" }), { status: 200 })));
     vi.stubGlobal("fetch", fetchStub);
     vi.stubGlobal("confirm", vi.fn(() => true));
 

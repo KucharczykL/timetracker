@@ -143,7 +143,7 @@ def test_preset_values_and_delete_identity_are_strict_uuidv7(runtime_world):
     )
     assert (
         world["client"].delete(f"/api/presets/{world['own_preset'].pk}").status_code
-        == 204
+        == 200
     )
 
 

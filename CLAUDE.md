@@ -394,6 +394,19 @@ ancestors' marks as well as own, so removed Game hides both and restoring it
 leaves separately removed child out (#966). Only whole-library purge destroys
 anything.
 
+**Removing offers Undo** (#695). Every remove view hands an `UndoOffer`, the
+sentence and the restore route with the row's key, to `confirm_and_remove` or
+`confirm_and_apply`, which queues one notice through `common/notices.py` after
+the act succeeds; the toast's Undo form posts to that route. Seven POST-only `restore_<entity>` routes share
+`restore_and_return()`; a refusal is an error message on the page the person
+stands on; the game route's error carries a "Try again" action, because its
+stamp clears before its command. `<toast-stack>` appends the page as `?origin=`
+when it takes the toast, so the restore lands back where Undo was pressed. A
+foreign `extra_tags` value is logged and the toast shows without its action. A game's restore clears the
+catalog stamp first and states `RestorePlayerGame` second, the removal's order
+reversed. The preset picker gets its restore URL from the API's DELETE answer.
+Contract is [Undo a removal](docs/superpowers/specs/2026-09-16-issue-695-undo-removal-design.md).
+
 **Multi-game Purchase is *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. Humble Bundle). Independently-refundable multi-item orders (e.g.
 Steam cart) modeled as **separate single-game purchases**: add-purchase form's
@@ -471,8 +484,8 @@ Submodules re-exported via `common/components/__init__.py`:
   `w-full max-w-7xl self-center` — every list/detail/stats body sits in one),
   `paginated_table_content()`, `AddForm()`, `YearPicker()`,
   `CsrfInput()`/`ModuleScript()`/`StaticScript()`.
-- **`domain.py`** — `GameLink()`, `GameStatus()`, `GameStatusSelector()` (Alpine.js
-  PATCH dropdown), `SessionDeviceSelector()` (ditto), `LinkedPurchase()`,
+- **`domain.py`** — `GameLink()`, `GameStatus()`, `GameStatusSelector()`
+  (`<drop-down behavior="select">` PATCH dropdown), `SessionDeviceSelector()` (ditto), `LinkedPurchase()`,
   `NameWithIcon()`, `PriceConverted()`, `PurchasePrice()`
 - **`filters.py`** — filter widget layer: criterion-blob parse helpers
   (`_*_from_field`, `_choice_from_raw`, `parse_filter_dict`), widget builders
@@ -579,8 +592,9 @@ organized by domain entity:
   `CONFIRMATION` / `IN_PLACE`, guarded for completeness against route table) plus
   `origin_from()` and `return_url()`, app-bound half of `common/returns.py`
 - `removal.py` — `confirm_and_remove()`: GET renders `ConfirmPage`, POST stamps
-  `removed_at` and returns to origin. Every `remove_*` view is one call to it,
-  over `confirm_and_apply()`, which same module keeps for any other confirmed POST
+  `removed_at`, queues the Undo notice and returns to origin. Every `remove_*`
+  view is one call to it, over `confirm_and_apply()`, which same module keeps
+  for any other confirmed POST; `restore_and_return()` is the POST-only undo
 - `stats_data.py` — `compute_stats(year)` → `StatsData` TypedDict; pure computation
 - `stats_content.py` — renders stats page content from a `StatsData`
 - `stats_links.py` — pure filter-link builders for stats rows/counts (#65);
@@ -602,8 +616,10 @@ broker) runs `games.tasks.convert_prices()` on schedule, fetching rates from
 resolved site `DEFAULT_CURRENCY`.
 
 **HTMX toast middleware** (`games/htmx_middleware.py`): converts Django messages
-into `HX-Trigger` headers with `show-toast` event; skipped if `HX-Redirect`
-present. Rendering client-side (`games/static/js/toast.js`).
+into one `HX-Trigger` header carrying every queued message as a `show-toast`
+list; skipped if `HX-Redirect` present. `<toast-stack>` (`ts/elements/toast-stack.ts`, placed by `Page()`,
+built by `ToastStack()` in `common/components/toast.py`) listens and renders;
+`ts/toast.ts` keeps `window.toast` and `fetchWithHtmxTriggers`.
 
 **REST API** (`games/api.py`): Django Ninja routers mounted at `/api/`:
 - `GET /api/games/search` — search games for autocomplete
@@ -631,7 +647,8 @@ present. Rendering client-side (`games/static/js/toast.js`).
   (`limit=0` = unbounded)
 - `POST /api/presets/` — upsert on (user, mode, name); 201 create / 200 update
 - `DELETE /api/presets/{id}` — remove owned preset (404 for non-owner). DELETE is
-  transport's word; row stays and `removed_at` set
+  transport's word; row stays and `removed_at` set; answers 200 with
+  `restore_url`, where the picker's Undo toast posts
 
 ### Templates
 
@@ -645,16 +662,17 @@ Few HTML templates remain; bulk of UI is Python components.
 ### Frontend stack
 
 - **HTMX** — partial page updates
-- **Alpine.js** (vendored) — reactive dropdowns (`GameStatusSelector`,
-  `SessionDeviceSelector`), toast store
+- **Alpine.js** (vendored) — three `x-mask` inputs in the session, purchase and
+  settings forms, nothing else; the toasts and both domain selectors are custom elements
 - **Flowbite** — its CSS theme and semantic tokens still in use; legacy
   `flowbite.min.js` bundle is vendored static asset only
 - **Tailwind CSS** — compiled from `common/input.css` → `games/static/base.css`
 - All third-party JS served locally from `games/static/js/` (no CDNs), so pages
   and browser tests work offline
 - **Custom JS** authored in TypeScript under `ts/`, compiled to
-  `games/static/js/dist/` (gitignored, build-only): `ts/toast.ts` (Alpine toast
-  store; also defines `window.fetchWithHtmxTriggers`),
+  `games/static/js/dist/` (gitignored, build-only): `ts/toast.ts`
+  (`window.toast` and `window.fetchWithHtmxTriggers`),
+  `ts/elements/toast-stack.ts` (the toasts' store and DOM),
   `ts/elements/search-select.ts`, `ts/utils.ts` (shared helpers — `onSwap`,
   `toISOUTCString`, …)
 - **Widget initialization**: widget JS registers with `onSwap(selector,
@@ -921,9 +939,10 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   snippet, run `make gen-icons`, reference by slug in `Platform.icon`. `Icon(name,
   attributes=...)` returns node: `class` merges onto svg, `title` becomes `<title>`
   child. Never edit `icons_generated.py` by hand.
-- **Inline Alpine.js** remains only in pre-existing domain components
-  (`GameStatusSelector`, `SessionDeviceSelector`): `x-data="{...}"` plus
-  `fetchWithHtmxTriggers()` for PATCH calls. New behavior goes in custom element.
+- **Inline Alpine.js** remains only as three `x-mask` inputs
+  (`games/forms.py`, `games/settings_forms.py`), each with the empty `x-data`
+  scope the plugin needs. New
+  behavior goes in custom element.
 - **Nothing destroys a record** — call `remove()`/`restore()` from
   `games/removal.py`, never `instance.delete()`, and write confirmation as one
   `confirm_and_remove()` call. New removable model needs `removed_at`, place in

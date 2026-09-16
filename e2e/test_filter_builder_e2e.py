@@ -405,7 +405,7 @@ def test_load_set_field_preset_reflects_field_without_crash(
 
     # -- Assertion 2: no error toast --
     # A crash triggers window.toast("Preset is not a valid filter.", "error").
-    # The toast renders via Alpine.js (x-text="toast.message") as a <p> element.
+    # <toast-stack> renders the message as its own [data-toast-message] element.
     # Assert the error message is NOT visible anywhere on the page.
     expect(page.get_by_text("Preset is not a valid filter.")).not_to_be_visible()
 

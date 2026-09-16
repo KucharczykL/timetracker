@@ -19,6 +19,7 @@ from games.commands.playthrough import (
     CreatePlaythrough,
     DescribePlaythrough,
     RemovePlaythrough,
+    RestorePlaythrough,
     StartPlaythrough,
     endpoints_certainly_reversed,
 )
@@ -359,6 +360,17 @@ def remove_run(actor: User, run: Playthrough, *, correlation_id: uuid.UUID) -> N
     with answered("playthrough"):
         _dispatch(
             RemovePlaythrough(playthrough_id=run.pk),
+            actor=actor,
+            library=actor.library,
+            correlation_id=correlation_id,
+        )
+
+
+def restore_run(actor: User, run: Playthrough, *, correlation_id: uuid.UUID) -> None:
+    """Put a removed run back."""
+    with answered("playthrough"):
+        _dispatch(
+            RestorePlaythrough(playthrough_id=run.pk),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,

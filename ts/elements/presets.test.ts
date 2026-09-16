@@ -69,10 +69,13 @@ describe("getCsrfToken", () => {
 });
 
 describe("wirePresetDelete", () => {
-  function stubDeleteFetch(status = 204): ReturnType<typeof vi.fn> {
+  const RESTORE_URL = `/preset/${PRESET_UUID}/restore`;
+
+  function stubDeleteFetch(status = 200): ReturnType<typeof vi.fn> {
     document.cookie = "csrftoken=testtoken";
     vi.stubGlobal("confirm", vi.fn(() => true));
-    const fetchStub = vi.fn(() => Promise.resolve(new Response(null, { status })));
+    const body = status === 200 ? JSON.stringify({ restore_url: RESTORE_URL }) : null;
+    const fetchStub = vi.fn(() => Promise.resolve(new Response(body, { status })));
     vi.stubGlobal("fetch", fetchStub);
     return fetchStub;
   }
@@ -94,7 +97,23 @@ describe("wirePresetDelete", () => {
     expect(options.method).toBe("DELETE");
     expect(options.headers["X-CSRFToken"]).toBe("testtoken");
     expect(widget.refetchOptions).toHaveBeenCalledOnce();
-    expect(toastStub).not.toHaveBeenCalled();
+    expect(toastStub).toHaveBeenCalledWith("Preset removed.", "success", {
+      action: { label: "Undo", url: RESTORE_URL },
+    });
+  });
+
+  it("a 200 without a restore route still says removed, with no action", async () => {
+    document.cookie = "csrftoken=testtoken";
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response("not json", { status: 200 }))));
+    const toastStub = stubToast();
+    const { widget } = mountPicker();
+
+    dispatchDelete(widget);
+    await flushPromises();
+
+    expect(toastStub).toHaveBeenCalledWith("Preset removed.", "success", {});
+    expect(widget.refetchOptions).toHaveBeenCalledOnce();
   });
 
   it("does not fetch when the confirm is declined", () => {
@@ -115,7 +134,7 @@ describe("wirePresetDelete", () => {
 
     dispatchDelete(widget, PRESET_UUID, "Backlog");
 
-    expect(confirmStub).toHaveBeenCalledWith('Delete preset "Backlog"?');
+    expect(confirmStub).toHaveBeenCalledWith('Remove preset "Backlog"?');
   });
 
   it("toasts on a rejection but still refetches (stale 404 self-corrects)", async () => {
@@ -126,7 +145,7 @@ describe("wirePresetDelete", () => {
     dispatchDelete(widget);
     await flushPromises();
 
-    expect(toastStub).toHaveBeenCalledWith("Failed to delete preset.", "error");
+    expect(toastStub).toHaveBeenCalledWith("Failed to remove preset.", "error");
     expect(widget.refetchOptions).toHaveBeenCalledOnce();
   });
 

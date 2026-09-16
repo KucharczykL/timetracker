@@ -9,6 +9,7 @@ from games.views import (
     platform,
     playthrough,
     playthrough_acts,
+    preset,
     purchase,
     session,
 )
@@ -40,6 +41,11 @@ urlpatterns = [
     path(
         "device/<uuidv7:device_id>/remove", device.remove_device, name="remove_device"
     ),
+    path(
+        "device/<uuidv7:device_id>/restore",
+        device.restore_device,
+        name="restore_device",
+    ),
     path("device/edit/<uuidv7:device_id>", device.edit_device, name="edit_device"),
     path("device/list", device.list_devices, name="list_devices"),
     path("game/add", game.add_game, name="add_game"),
@@ -54,6 +60,7 @@ urlpatterns = [
         name="view_game",
     ),
     path("game/<uuidv7:game_id>/remove", game.remove_game, name="remove_game"),
+    path("game/<uuidv7:game_id>/restore", game.restore_game, name="restore_game"),
     path("game/list", game.list_games, name="list_games"),
     path("platform/add", platform.add_platform, name="add_platform"),
     path(
@@ -65,6 +72,11 @@ urlpatterns = [
         "platform/<uuidv7:platform_id>/remove",
         platform.remove_platform,
         name="remove_platform",
+    ),
+    path(
+        "platform/<uuidv7:platform_id>/restore",
+        platform.restore_platform,
+        name="restore_platform",
     ),
     path("platform/list", platform.list_platforms, name="list_platforms"),
     path("playthrough/list", playthrough.list_playthroughs, name="list_playthroughs"),
@@ -85,6 +97,11 @@ urlpatterns = [
         name="remove_playthrough",
     ),
     path(
+        "playthrough/<uuidv7:playthrough_id>/restore",
+        playthrough.restore_playthrough,
+        name="restore_playthrough",
+    ),
+    path(
         "playthrough/<uuidv7:playthrough_id>/start",
         playthrough_acts.start_playthrough,
         name="start_playthrough",
@@ -93,6 +110,11 @@ urlpatterns = [
         "playthrough/<uuidv7:playthrough_id>/complete",
         playthrough_acts.complete_playthrough,
         name="complete_playthrough",
+    ),
+    path(
+        "preset/<uuidv7:preset_id>/restore",
+        preset.restore_preset,
+        name="restore_preset",
     ),
     path("purchase/add", purchase.add_purchase, name="add_purchase"),
     path(
@@ -109,6 +131,11 @@ urlpatterns = [
         "purchase/<uuidv7:purchase_id>/remove",
         purchase.remove_purchase,
         name="remove_purchase",
+    ),
+    path(
+        "purchase/<uuidv7:purchase_id>/restore",
+        purchase.restore_purchase,
+        name="restore_purchase",
     ),
     path(
         "purchase/<uuidv7:purchase_id>/view",
@@ -166,6 +193,11 @@ urlpatterns = [
         "session/<uuidv7:session_id>/remove",
         session.remove_session,
         name="remove_session",
+    ),
+    path(
+        "session/<uuidv7:session_id>/restore",
+        session.restore_session,
+        name="restore_session",
     ),
     path("session/list", session.list_sessions, name="list_sessions"),
     path("stats/", general.stats_alltime, name="stats_alltime"),

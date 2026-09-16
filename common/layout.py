@@ -15,7 +15,6 @@ from uuid import UUID
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.contrib.messages import get_messages
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
@@ -40,7 +39,9 @@ from common.components.primitives import (
     Span,
     Title,
 )
+from common.components.toast import ToastStack
 from common.keyset import keyset_pages
+from common.notices import toast_payloads
 from games.templatetags.version import version, version_modified_at
 from timetracker.config import SettingSource
 from timetracker.settings_registry import THEME_CHOICES
@@ -64,104 +65,6 @@ _MAIN_SCRIPT_B = """
                 }
             });
         """
-
-_TOAST_CONTAINER = """<div x-data="toastStore()"
-         role="region"
-         aria-label="Notifications"
-         aria-atomic="true"
-         class="fixed z-50 bottom-0 right-0 flex flex-col items-end pointer-events-none p-4">
-        <template x-for="toast in $store.toasts.toasts" :key="toast.id">
-            <div x-show="toast.visible"
-                 x-transition:enter="transition ease-out duration-300"
-                 x-transition:enter-start="opacity-0 translate-x-8"
-                 x-transition:enter-end="opacity-100 translate-x-0"
-                 x-transition:leave="transition ease-in duration-200"
-                 x-transition:leave-start="opacity-100 translate-x-0"
-                 x-transition:leave-end="opacity-0 translate-x-8"
-                 :role="toast.type === 'error' || toast.type === 'warning' ? 'alert' : 'status'"
-                  :aria-live="toast.type === 'error' ? 'assertive' : 'polite'"
-                 tabindex="0"
-                 class="pointer-events-auto max-w-sm w-72 cursor-pointer mb-3 last:mb-0"
-     :class="{
-                      'success': toast.type === 'success',
-                      'error': toast.type === 'error',
-                      'info': toast.type === 'info',
-                      'warning': toast.type === 'warning',
-                      'debug': toast.type === 'debug'
-                  }"
-                 @click="dismissToast(toast.id)"
-                 @mouseenter="$store.toasts.clearToastTimer(toast.id)"
-                 @mouseleave="$store.toasts.resumeToastTimer(toast.id)"
-                 @keydown.escape="dismissToast(toast.id)">
-                <div class="rounded-base shadow-lg p-4 flex items-start gap-3"
-                     :class="{
-                          'bg-success-soft border border-success-subtle': toast.type === 'success',
-                          'bg-danger-soft border border-danger-subtle': toast.type === 'error',
-                          'bg-brand-softer border border-brand-subtle': toast.type === 'info',
-                          'bg-warning-soft border border-warning-subtle': toast.type === 'warning',
-                          'bg-neutral-secondary-soft border border-default-medium': toast.type === 'debug'
-                      }">
-                    <span class="flex-shrink-0 mt-0.5"
-                   :class="{
-                               'text-fg-success': toast.type === 'success',
-                               'text-fg-danger': toast.type === 'error',
-                               'text-fg-brand': toast.type === 'info',
-                               'text-fg-warning-subtle': toast.type === 'warning',
-                               'text-body-subtle': toast.type === 'debug'
-                           }">
-                        <template x-if="toast.type === 'success'">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                            </svg>
-                        </template>
-                        <template x-if="toast.type === 'error'">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                            </svg>
-                        </template>
-                        <template x-if="toast.type === 'info'">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M12 20a8 8 0 100-16 8 8 0 000 16z"/>
-                            </svg>
-                        </template>
-                        <template x-if="toast.type === 'warning'">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 13l5 5 5-5M7 6l5 5 5-5"/>
-                            </svg>
-                        </template>
-                        <template x-if="toast.type === 'debug'">
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
-                            </svg>
-                        </template>
-                    </span>
-                    <p class="flex-1 text-type-body"
-                        :class="{
-                            'text-fg-success-strong': toast.type === 'success',
-                            'text-fg-danger-strong': toast.type === 'error',
-                            'text-fg-brand-strong': toast.type === 'info',
-                            'text-fg-warning': toast.type === 'warning',
-                            'text-heading': toast.type === 'debug'
-                        }"
-                       x-text="toast.message"></p>
-                    <button @click.stop="dismissToast(toast.id)"
-                            class="flex-shrink-0"
-                            :class="{
-                                'text-fg-success hover:text-fg-success-strong': toast.type === 'success',
-                                'text-fg-danger hover:text-fg-danger-strong': toast.type === 'error',
-                                'text-fg-brand hover:text-fg-brand-strong': toast.type === 'info',
-                                'text-fg-warning-subtle hover:text-fg-warning': toast.type === 'warning',
-                                'text-body-subtle hover:text-heading': toast.type === 'debug'
-                            }">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                    </button>
-                </div>
-            </div>
-        </template>
-    </div>"""
 
 
 def _main_script(mastered: bool) -> str:
@@ -410,8 +313,11 @@ def TimetrackerDocument(
     # modal container (below) receives HTMX-swapped confirm modals
     # (<modal-dialog>) on any page, and the swapped-in fragment carries no script
     # of its own — so its dismiss element must be defined page-globally.
+    # First: its listener stands before any element upgrades.
+    toast_container = ToastStack()
     media = (
-        collect_media(content)
+        collect_media(toast_container)
+        + collect_media(content)
         + collect_media(navbar)
         + Media(js=("dist/elements/modal-dialog.js",))
     )
@@ -423,12 +329,8 @@ def TimetrackerDocument(
         collected_scripts += str(ModuleScript("dist/library-conversion-status.js"))
     all_scripts = collected_scripts + (str(scripts) if scripts else "")
 
-    messages = [
-        {"message": str(m.message), "type": (m.tags or "info")}
-        for m in get_messages(request)
-    ]
     # Embed as JSON; guard against `</script>` breaking out of the tag.
-    messages_json = json.dumps(messages).replace("</", "<\\/")
+    messages_json = json.dumps(toast_payloads(request)).replace("</", "<\\/")
 
     def html_document(title: str = "") -> Document:
         htmx_indicator = Img(
@@ -451,7 +353,6 @@ def TimetrackerDocument(
 
         script_body = Safe(all_scripts)
         global_modal_container = Div(id="global-modal-container", hx_swap_oob="true")
-        toast_container = Safe(_TOAST_CONTAINER)
         mastered_script_IS_THIS_REALLY_NEEDED = Script(type="module")[
             _main_script(mastered)
         ]

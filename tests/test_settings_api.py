@@ -159,7 +159,7 @@ def test_user_patch_and_get_round_trip(
 def test_user_patch_emits_saved_success_toast(auth_client, no_currency_env):
     response = _patch(auth_client, _user_patch_url("DEFAULT_PURCHASE_CURRENCY"), "EUR")
     trigger = json.loads(response.headers["HX-Trigger"])
-    assert trigger["show-toast"] == {
+    assert trigger["show-toast"][-1] == {
         "message": "Default purchase currency saved",
         "type": "success",
     }

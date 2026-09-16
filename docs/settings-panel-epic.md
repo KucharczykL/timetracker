@@ -64,7 +64,7 @@ targets and the corrections from adversarial review:
   ([ts/elements/behaviors/select.ts:63](ts/elements/behaviors/select.ts)) behind
   `SessionDeviceSelector`/`GameStatusSelector` ([common/components/domain.py:241](common/components/domain.py)) —
   optimistic `fetchWithHtmxTriggers` PATCH with revert-on-error. It is a **custom element, not
-  Alpine** (Alpine only backs the toast store). It currently toasts on *error* only — success is
+  Alpine** (Alpine only backs three `x-mask` inputs). It currently toasts on *error* only — success is
   silent — so Stage 3's "saved" feedback is a small **addition**, not pure reuse. New behavior
   follows the `register_element`/`gen_element_types` recipe
   ([common/components/custom_elements.py](common/components/custom_elements.py)).

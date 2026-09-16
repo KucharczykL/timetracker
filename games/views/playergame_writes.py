@@ -5,6 +5,7 @@ and answers False; one that stands behind a confirmation re-raises, so
 the confirmation states the sentence itself.
 """
 
+import logging
 import uuid
 from typing import cast
 
@@ -13,14 +14,17 @@ from django.contrib.auth.models import User
 from django.http import HttpRequest
 
 from games.models import Game, PlayerGameStatus
-from games.removal import remove
+from games.removal import remove, restore
 from games.writes.answers import CommandFailed
 from games.writes.playergame import (
     new_correlation_id,
     record_facts,
+    retrack_game,
     track_game,
     untrack_game,
 )
+
+logger = logging.getLogger("games")
 
 
 def track_game_for_request(
@@ -71,3 +75,25 @@ def remove_game_for_request(request: HttpRequest, game: Game) -> None:
     """
     untrack_game(cast("User", request.user), game, correlation_id=new_correlation_id())
     remove(game)
+
+
+def restore_game_for_request(request: HttpRequest, game: Game) -> None:
+    """Stamp first: a halfway is the removal's own halfway."""
+    restore(game)
+    try:
+        retrack_game(
+            cast("User", request.user), game, correlation_id=new_correlation_id()
+        )
+    except CommandFailed as failure:
+        #: The stamp is cleared; the sentence must not say nothing was.
+        logger.error(
+            "[restore]: game %s of library %s is back in the catalog but not "
+            "tracked: %s",
+            game.pk,
+            game.library_id,
+            failure.message,
+        )
+        raise CommandFailed(
+            f"{game.name} is back in the catalog but not tracked yet. Try again.",
+            failure.status_code,
+        ) from failure

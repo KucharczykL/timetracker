@@ -1,3 +1,4 @@
+from functools import partial
 from typing import cast
 from uuid import UUID
 
@@ -66,7 +67,7 @@ from games.reads.playthrough_completions import (
     reported_completion,
     reported_completion_day,
 )
-from games.removal import remove
+from games.removal import remove, restore
 from games.sorting import (
     PURCHASE_DEFAULT_SORT,
     PURCHASE_SORTS,
@@ -75,7 +76,7 @@ from games.sorting import (
 )
 from games.views.filtering import warn_unknown_sort
 from games.views.playergame_writes import record_facts_for_request
-from games.views.removal import confirm_and_remove
+from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import origin_from, return_url
 from games.writes.playergame import new_correlation_id
 
@@ -450,6 +451,22 @@ def edit_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
 
 
 @login_required
+@require_POST
+def restore_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
+    """Undo; the plain manager, since the row is removed."""
+    library = cast(User, request.user).library
+    purchase = owned_or_404(
+        Purchase.objects.filter(library=library), library, id=purchase_id
+    )
+    return restore_and_return(
+        request,
+        action=partial(restore, purchase),
+        restored="Purchase restored.",
+        fallback="games:list_purchases",
+    )
+
+
+@login_required
 def remove_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
@@ -462,6 +479,8 @@ def remove_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
         message=f"Remove this purchase of {purchase.first_game}?",
         fallback="games:list_purchases",
         detail_url=reverse("games:view_purchase", args=[purchase_id]),
+        removed="Purchase removed.",
+        undo="games:restore_purchase",
     )
 
 

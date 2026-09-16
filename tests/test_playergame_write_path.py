@@ -9,6 +9,7 @@ from games.writes.answers import CommandFailed
 from games.writes.playergame import (
     new_correlation_id,
     record_facts,
+    retrack_game,
     track_game,
     untrack_game,
 )
@@ -167,3 +168,21 @@ def test_an_exhausted_retry_budget_asks_the_player_to_try_again(
         )
     assert failure.value.status_code == 409
     assert "try again" in failure.value.message
+
+
+@pytest.mark.django_db(transaction=True)
+def test_retracking_a_removed_game_clears_its_mark(owned_user, tracked_game):
+    untrack_game(owned_user, tracked_game, correlation_id=new_correlation_id())
+
+    retrack_game(owned_user, tracked_game, correlation_id=new_correlation_id())
+
+    assert PlayerGame.objects.get(game=tracked_game).removed_at is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_retracking_a_game_never_tracked_tracks_it(owned_user, owned_library):
+    game = Game.objects.create(library=owned_library, name="Never tracked")
+
+    retrack_game(owned_user, game, correlation_id=new_correlation_id())
+
+    assert PlayerGame.objects.get(game=game).removed_at is None

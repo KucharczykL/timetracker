@@ -20,6 +20,7 @@ from django.utils import timezone
 from pytest_django.asserts import assertRedirects
 from session_rows import session_row, timed_row, tracked_run
 
+from common.components.primitives import _FIELD_ERROR_CLASS, control_button_class
 from games.models import Game, Platform, PlayerSession, Purchase
 from games.reads.playtime import game_playtime
 from timetracker.temporal import TemporalValue
@@ -162,7 +163,8 @@ class RenderedPagesTest(TestCase):
             "<nav",
             'id="main-container"',
             'id="global-modal-container"',
-            "toastStore()",
+            '<toast-stack role="region" aria-label="Notifications" aria-live="polite"',
+            f'action-class="{control_button_class(variant="ghost")}"',
             "</html>",
         ]:
             self.assertIn(marker, html)
@@ -277,7 +279,9 @@ class RenderedPagesTest(TestCase):
         # re-renders with errors — an empty {} POST is falsy and stays unbound.
         response = self.client.post(reverse("games:add_game"), {"status": "unplayed"})
         html = response.content.decode()
-        self.assertIn("bg-danger", html)  # _FIELD_ERROR_CLASS
+        # The class itself: a token the page shell carries elsewhere would
+        # pass with no field error drawn at all.
+        self.assertIn(_FIELD_ERROR_CLASS, html)
         self.assertNotIn('class="errorlist"', html)
         self.assertNoEscapedTags(html)
 

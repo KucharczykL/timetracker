@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import date, timedelta
+from functools import partial
 from typing import Any, NamedTuple, cast
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from common.components import (
     AddForm,
@@ -76,10 +78,10 @@ from games.views.playthrough_writes import (
     remove_run_for_request,
     restate_run_for_request,
 )
-from games.views.removal import confirm_and_apply
+from games.views.removal import UndoOffer, confirm_and_apply, restore_and_return
 from games.views.returns import return_url
 from games.writes.playergame import new_correlation_id
-from games.writes.playthrough import RunDraft
+from games.writes.playthrough import RunDraft, restore_run
 from timetracker.temporal import TemporalValue
 
 logger = logging.getLogger("games")
@@ -454,6 +456,30 @@ def remove_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpRespon
         title="Remove playthrough",
         message=f"Remove this playthrough of {game}?",
         confirm_label="Remove",
+        fallback="games:view_game",
+        fallback_args=[game.id, game.url_slug],
+        undo=UndoOffer("Playthrough removed.", "games:restore_playthrough", [run.pk]),
+    )
+
+
+@login_required
+@require_POST
+def restore_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse:
+    """Undo; the plain manager, since the row is removed."""
+    library = cast(User, request.user).library
+    run = owned_or_404(
+        Playthrough.objects.filter(library=library), library, id=playthrough_id
+    )
+    game = run.player_game.game
+    return restore_and_return(
+        request,
+        action=partial(
+            restore_run,
+            cast(User, request.user),
+            run,
+            correlation_id=new_correlation_id(),
+        ),
+        restored="Playthrough restored.",
         fallback="games:view_game",
         fallback_args=[game.id, game.url_slug],
     )
