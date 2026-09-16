@@ -1,10 +1,4 @@
-/**
- * The toast API and the HX-Trigger bridge.
- *
- * window.toast() and window.removeToast() dispatch events; <toast-stack>
- * (ts/elements/toast-stack.ts) listens and renders. fetchWithHtmxTriggers
- * turns a response's HX-Trigger header into the same events.
- */
+/** The toast API and the HX-Trigger bridge; <toast-stack> renders. */
 import { reportClientError } from "./client-errors.js";
 
 type ToastId = number | string;
@@ -36,8 +30,7 @@ function dispatchHtmxTriggers(response: Response): void {
   try {
     triggers = JSON.parse(htmxTrigger);
   } catch (error) {
-    // Reporting through the toast would be circular. Suppress it and use the
-    // best-effort client-error reporting channel.
+    // Circular through the toast: report without it.
     reportClientError(
       "fetchWithHtmxTriggers[HX-Trigger]",
       String((error as Error)?.message ?? error),
@@ -64,11 +57,7 @@ function dispatchHtmxTriggers(response: Response): void {
 }
 window.dispatchHtmxTriggers = dispatchHtmxTriggers;
 
-/**
- * Wrapper around fetch() that dispatches HTMX HX-Trigger events. Callers that
- * must validate the response first can defer dispatch, then explicitly call
- * dispatchHtmxTriggers() after accepting it.
- */
+/** fetch() that dispatches HX-Trigger events; "deferred" lets the caller validate first. */
 window.fetchWithHtmxTriggers = function fetchWithHtmxTriggers(
   url: RequestInfo | URL,
   options: RequestInit = {},

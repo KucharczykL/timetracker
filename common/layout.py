@@ -313,8 +313,7 @@ def TimetrackerDocument(
     # modal container (below) receives HTMX-swapped confirm modals
     # (<modal-dialog>) on any page, and the swapped-in fragment carries no script
     # of its own — so its dismiss element must be defined page-globally.
-    # The stack's module goes first, so its listener stands before any
-    # element the content holds connects and toasts.
+    # First: its listener stands before any element connects.
     toast_container = ToastStack()
     media = (
         collect_media(toast_container)

@@ -1,11 +1,4 @@
-/**
- * <toast-stack>: the page's toasts.
- *
- * The store holds the rules (types, durations, the cap of three, stable
- * ids, pause and resume); the element renders it and owns the window
- * listeners. window.toast() and the HX-Trigger path only dispatch
- * `show-toast`; nothing else builds a toast.
- */
+/** The page's toasts: the store and its element. */
 import { reportClientError } from "../client-errors.js";
 
 export type ToastType = "success" | "error" | "info" | "warning" | "debug";
@@ -144,7 +137,7 @@ export class ToastStore {
   }
 }
 
-// The literal class strings Tailwind's scan of ts/ compiles; never concatenate.
+// Whole literals: Tailwind scans ts/ for them.
 const WRAPPER_CLASS = "pointer-events-auto max-w-sm w-72 cursor-pointer mb-3 last:mb-0";
 const LEAVE_CLASS = "transition ease-in duration-200 opacity-0 translate-x-8";
 const PANEL_CLASS = "rounded-base shadow-lg p-4 flex items-start gap-3";
@@ -248,7 +241,7 @@ class ToastStackElement extends HTMLElement {
         this.store.addToast(payload.message, payload.type || "info", payload);
       }
     } catch (error) {
-      // A toast cannot report its own payload's failure: report with it off.
+      // The toast cannot report itself: toast off.
       reportClientError(
         "toast-stack[django-messages]",
         String((error as Error)?.message ?? error),
