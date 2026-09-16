@@ -12,7 +12,6 @@ from django.utils import timezone
 from games.commands import playersession as playersession_commands
 from games.commands.playergame import TrackGame
 from games.commands.playersession import (
-    INCONSISTENT_SESSION,
     INTO_THE_BUCKET,
     CorrectedTiming,
     CorrectSessionTiming,
@@ -34,6 +33,7 @@ from games.commands.playthrough import (
 from games.events.dispatch import (
     CommandOutcome,
     CommandRejected,
+    RowInconsistent,
     dispatch,
 )
 from games.events.idempotency import IdempotencyKeyMismatch
@@ -502,15 +502,23 @@ def ends(library, actor, session, *, ended_at, ended_at_zone=None, key=None):
 
 
 def refused_end(
-    library, actor, session_id, *, saying, ended_at=AN_END, ended_at_zone=None
+    library,
+    actor,
+    session_id,
+    *,
+    saying: str | None,
+    ended_at=AN_END,
+    ended_at_zone=None,
+    raising: type[CommandRejected] = CommandRejected,
 ) -> CommandRejected:
     """Refuse an end, and pin which refusal the person met.
 
     The sentence, not merely its presence: several of these rules
     refuse the same statement, so a test that asks only whether one
-    fired stays green when the branch it names is taken away.
+    fired stays green when the branch it names is taken away. A
+    defect states no sentence, so `saying=None` pins the type instead.
     """
-    with pytest.raises(CommandRejected) as refusal:
+    with pytest.raises(raising) as refusal:
         dispatch(
             EndSession(
                 session_id=session_id, ended_at=ended_at, ended_at_zone=ended_at_zone
@@ -783,13 +791,17 @@ def test_a_day_zone_this_installation_cannot_read_is_refused(
     session = record(owned_library, owned_user, run, a_timed())
     monkeypatch.setattr("games.commands.playersession.zone_or_none", lambda name: None)
 
-    refused_end(
+    refusal = refused_end(
         owned_library,
         owned_user,
         session.pk,
         ended_at=AN_END,
-        saying="We cannot read the time zone this session's day is counted in.",
+        saying=None,
+        raising=RowInconsistent,
     )
+
+    assert "tzdata" in str(refusal)
+    assert str(session.pk) in str(refusal)
 
 
 def test_a_timed_row_with_no_start_is_refused():
@@ -804,10 +816,10 @@ def test_a_timed_row_with_no_start_is_refused():
         timing_mode=PlayerSessionTimingMode.TIMED, started_at=None, day_zone=None
     )
 
-    with pytest.raises(CommandRejected) as refusal:
+    with pytest.raises(RowInconsistent) as refusal:
         _timed_start(broken)
 
-    assert refusal.value.sentence == "We cannot read that session's start time."
+    assert "timed-columns constraint" in str(refusal.value)
 
 
 def test_a_padded_zone_states_the_name_inside_it(owned_user, owned_library, run):
@@ -2018,14 +2030,14 @@ def a_session_naming_a_foreign_run(library, foreign_library) -> PlayerSession:
     ids=["end", "correct", "describe", "move", "remove", "restore"],
 )
 def test_a_session_naming_a_foreign_run_is_refused_by_name(
-    owned_user, owned_library, second_library, run, capture_games_logger, statement
+    owned_user, owned_library, second_library, run, statement
 ):
-    """The person named the session; the log names the run."""
+    """The person named the session; the argument names the run."""
     session = a_session_naming_a_foreign_run(owned_library, second_library)
     if isinstance(statement(session, run), RestoreSession):
         PlayerSession.objects.filter(pk=session.pk).update(removed_at=timezone.now())
 
-    with capture_games_logger() as caplog, pytest.raises(CommandRejected) as refusal:
+    with pytest.raises(RowInconsistent) as refusal:
         dispatch(
             statement(session, run),
             actor=owned_user,
@@ -2033,11 +2045,11 @@ def test_a_session_naming_a_foreign_run_is_refused_by_name(
             idempotency_key=str(uuid.uuid7()),
         )
 
-    assert refusal.value.sentence == INCONSISTENT_SESSION
-    (record,) = caplog.records
-    assert record.levelname == "ERROR"
-    assert str(session.pk) in record.getMessage()
-    assert str(session.playthrough_id) in record.getMessage()
+    #: The boundary logs the argument and its cause; both must name the rest.
+    assert str(session.pk) in str(refusal.value)
+    assert str(session.library_id) in str(refusal.value)
+    assert str(session.playthrough_id) in str(refusal.value)
+    assert refusal.value.__cause__ is not None
 
 
 def test_a_restored_session_records_a_fact_again(owned_user, owned_library, run):

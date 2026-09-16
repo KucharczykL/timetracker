@@ -1,6 +1,5 @@
 """Commands about the runs a library records."""
 
-import logging
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -11,7 +10,13 @@ from django.db.models import QuerySet
 
 from games.commands.playergame import tracked_game
 from games.commands.scope import Refusal, library_row
-from games.events.dispatch import Command, CommandContext, CommandName, CommandRejected
+from games.events.dispatch import (
+    Command,
+    CommandContext,
+    CommandName,
+    CommandRejected,
+    RowInconsistent,
+)
 from games.events.playthrough import (
     playthrough_completed,
     playthrough_completion_corrected,
@@ -33,14 +38,6 @@ from games.models import (
 from games.projections import FieldName
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 from timetracker.temporal import TemporalQualifier, TemporalValue, stated_date
-
-logger = logging.getLogger("games")
-
-#: For a row the ownership audit reports, not the person.
-INCONSISTENT_PLAYTHROUGH = (
-    "That playthrough's record is inconsistent, so nothing was changed. "
-    "The problem has been reported."
-)
 
 #: Read off the column, so the refusal and the constraint cannot drift.
 PLAYTHROUGH_NAME_MAX_LENGTH: int = cast(
@@ -576,24 +573,20 @@ def foreign_referrer(run: Playthrough) -> ForeignReferrer | None:
 
 
 def _refuse_a_foreign_referrer(run: Playthrough) -> None:
-    """Refuse and report a foreign row naming the run."""
+    """Refuse a foreign row naming the run.
+
+    A defect, not a rule: the argument names both libraries, and
+    the boundary logs it.
+    """
     foreign = foreign_referrer(run)
     if foreign is None:
         return
-    logger.error(
-        "[playthrough]: %s.%s of library %s names playthrough %s of library %s; "
-        "the removal was refused.",
-        foreign.referrer.model.__name__,
-        foreign.referrer.field_name,
-        ", ".join(str(library_id) for library_id in foreign.library_ids),
-        run.pk,
-        run.library_id,
-    )
-    raise CommandRejected(
-        f"A live {foreign.referrer.model.__name__} of another library names "
-        f"playthrough {run.pk}, which the ownership audit reports; removing "
-        "the run would strand it.",
-        sentence=INCONSISTENT_PLAYTHROUGH,
+    libraries = ", ".join(str(library_id) for library_id in foreign.library_ids)
+    raise RowInconsistent(
+        f"A live {foreign.referrer.model.__name__}.{foreign.referrer.field_name} "
+        f"of library {libraries} names playthrough {run.pk} of library "
+        f"{run.library_id}; the ownership audit reports it, and removing the "
+        "run would strand it."
     )
 
 

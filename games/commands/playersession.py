@@ -1,6 +1,5 @@
 """Commands about the sessions a library records."""
 
-import logging
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -18,7 +17,13 @@ from games.commands.playthrough import (
     refuse_unless_live,
 )
 from games.commands.scope import Refusal, library_row
-from games.events.dispatch import Command, CommandContext, CommandName, CommandRejected
+from games.events.dispatch import (
+    Command,
+    CommandContext,
+    CommandName,
+    CommandRejected,
+    RowInconsistent,
+)
 from games.events.playersession import (
     TimingPayload,
     ZoneName,
@@ -46,15 +51,7 @@ from games.models import (
 from games.projectors.playersession import TimingColumns, columns_for_timing
 from games.reads.calendar import calendar_day_zone
 
-logger = logging.getLogger("games")
-
 OUT_OF_RANGE = "That time is outside the range we can record."
-
-#: For a row the ownership audit reports, not the person.
-INCONSISTENT_SESSION = (
-    "That session's record is inconsistent, so nothing was changed. "
-    "The problem has been reported."
-)
 
 #: The bucket is the importer's; a person records on a run.
 INTO_THE_BUCKET = (
@@ -204,24 +201,17 @@ def _session_run(context: CommandContext, session: PlayerSession) -> Playthrough
     """The session's run, resolved in this library.
 
     A miss is a session naming another library's run, the drift
-    `audit_library_ownership` reports. The person named the
-    session, so the sentence names it, and the log names the rest.
+    `audit_library_ownership` reports. A defect, not a rule: the
+    argument names the rest, and the boundary logs it.
     """
     try:
         return library_playthrough(context, session.playthrough_id)
     except CommandRejected as refusal:
-        logger.error(
-            "[playersession]: session %s of library %s names playthrough %s, "
-            "which this library does not hold; the command was refused.",
-            session.pk,
-            session.library_id,
-            session.playthrough_id,
-        )
-        raise CommandRejected(
-            f"Session {session.pk} names playthrough {session.playthrough_id}, "
-            "which is not this library's; the ownership audit reports it, and "
-            "no command states a fact about it.",
-            sentence=INCONSISTENT_SESSION,
+        raise RowInconsistent(
+            f"Session {session.pk} of library {session.library_id} names "
+            f"playthrough {session.playthrough_id}, which this library does not "
+            "hold; the ownership audit reports it, and no command states a "
+            "fact about it."
         ) from refusal
 
 
@@ -287,12 +277,10 @@ def _timed_start(session: PlayerSession) -> TimedStart:
     if started_at is None or day_zone is None:
         #: `playersession_timed_columns` forbids this. Refused rather
         #: than cast away, so a relaxed constraint lands here as a
-        #: sentence instead of a TypeError inside the builder.
-        raise CommandRejected(
-            f"Timed session {session.pk} states no start or no day zone, which "
-            "the timed-columns constraint forbids. The row is wrong, not the "
-            "statement.",
-            sentence="We cannot read that session's start time.",
+        #: defect instead of a TypeError inside the builder.
+        raise RowInconsistent(
+            f"Timed session {session.pk} of library {session.library_id} states "
+            "no start or no day zone, which the timed-columns constraint forbids."
         )
     zone = zone_or_none(day_zone)
     if zone is None:
@@ -300,11 +288,10 @@ def _timed_start(session: PlayerSession) -> TimedStart:
         #: when some earlier statement wrote it, and tzdata retires a
         #: zone between one image and the next. Unresolved, it reaches
         #: the builder as a `KeyError` the boundary does not answer.
-        raise CommandRejected(
-            f"Session {session.pk} counts its day in {day_zone!r}, which this "
-            "installation's tzdata can no longer read, so the end it is given "
-            "lands on no day.",
-            sentence=("We cannot read the time zone this session's day is counted in."),
+        raise RowInconsistent(
+            f"Session {session.pk} of library {session.library_id} counts its "
+            f"day in {day_zone!r}, which this installation's tzdata can no "
+            "longer read, so the end it is given lands on no day."
         )
     return TimedStart(started_at, zone)
 
