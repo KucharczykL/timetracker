@@ -159,6 +159,12 @@ makemigrations: ensure-postgres
 check-migrations: ensure-postgres
 	uv run --frozen python manage.py makemigrations --check --dry-run --noinput
 
+# Squash the history with Django's tool; the old files stay until every
+# deployment has recorded the squash (docs/migration-squash.md).
+# Usage: make squash-migrations ARGS="games 0006"
+squash-migrations: ensure-postgres
+	uv run --frozen python manage.py squashmigrations --no-input $(ARGS)
+
 # Read back the DDL a migration actually emits, for the cases the migration file
 # does not show plainly: raw-SQL operations, and fields whose column definition
 # is decided by the field class rather than the call site.
@@ -348,6 +354,12 @@ drop-dump: ensure-postgres
 # before its cutover ran -- see docs/migration-squash.md:
 #
 #   make verify-baseline ARGS="--normalize cutover.sql --record 0001_squashed"
+#
+# A release the deployment has not applied yet -- a squash with `replaces`
+# among its migrations -- is rehearsed by carrying the copy over first, as the
+# deployment's startup would:
+#
+#   make verify-baseline ARGS="--migrate"
 #
 # Not in `make check`: it needs a dump of the deployment.
 verify-baseline: ensure-postgres

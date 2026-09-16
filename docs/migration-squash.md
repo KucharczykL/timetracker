@@ -7,6 +7,20 @@ deployment over by hand. This is what that cost, and what to do differently.
 Read [Database contract](database.md#schema-and-migrations) for what the
 current baseline carries that no model declares.
 
+## The second squash, 2026-09-16
+
+Done the way the next section asks: `make squash-migrations ARGS="games
+0006"`, output committed as the tool wrote it. Both data migrations were
+`elidable=True`, so the optimizer dropped them and the `games/backfill/`
+package they imported left the tree with them. The four `RunSQL`
+operations in `0001` are optimizer barriers, so `CreateModel Session` and
+`DeleteModel Session`, and the `playtime` column with its `RemoveField`,
+survive in the squashed file: a fresh install creates each and drops it
+again. `make verify-baseline` proves the end state equals the
+deployment's. The six old files stay until the deployment has run once
+with both present and recorded the squash; a follow-up issue takes them
+out and drops `replaces`.
+
 ## Do it a different way next time
 
 Use `manage.py squashmigrations`, and let it write `replaces = [...]`.
@@ -121,8 +135,9 @@ whitespace.
    `--record` writes the history row the operator's `migrate --fake` writes.
    The run then builds a second database from the migrations alone and compares
    seven catalogs. **A differing row is a stop.** With `replaces =` neither
-   option is needed, and the bare `make verify-baseline` is the whole
-   rehearsal.
+   option is needed: `make verify-baseline ARGS="--migrate"` carries the copy
+   over as the deployment's startup will, records the squash beside the
+   originals, and compares. That is the whole rehearsal.
 
    Keep the operator statements in a file the branch carries, so the rehearsal
    is reproducible in review, and take the file out once the deployment is
@@ -174,6 +189,13 @@ been renamed. PostgreSQL names such a constraint after the column, so a fresh
 build named them differently and the two schemas would have differed by six
 strings forever. Renaming them on the deployment was one guarded `DO` block;
 entrenching the old names in the baseline would have been permanent.
+
+**Round-trip the fresh build before comparing.** A catalog text is not a
+fixed point under dump and restore: PostgreSQL re-parses a CHECK's
+`(ARRAY[...])::text[]` into per-element casts. The deployment's copy took
+that trip; `verify_baseline.py` sends the fresh build through pg_dump and
+pg_restore too, so a difference is a difference in schema and never in
+spelling.
 
 **Compare catalogs, not `pg_dump` text.** `pg_dump` writes a table's columns in
 the order they were added, so two databases holding the same schema produce

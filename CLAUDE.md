@@ -101,6 +101,7 @@ path**, so verify against `make check` before pushing when possible.
 | Run tests | `make test` (pytest; also runs vitest via its `test-ts` prereq) |
 | Run a subset of tests | `make test ARGS="tests/test_filters.py -k relation -x"` (same for `make test-e2e ARGS=…`) |
 | Run TypeScript tests | `make test-ts` (vitest over `ts/**/*.test.ts`) |
+| Squash the migration history | `make squash-migrations ARGS="games 0006"` (Django's tool; old files stay until the deployment records the squash, see [Squashing](docs/migration-squash.md)) |
 | Make / apply migrations | `make makemigrations` (`ARGS="games --name edition_name"` names the file) / `make migrate` (`ARGS="games 0001_initial"` targets one) |
 | CSS (Tailwind) | `make css` |
 | Django shell | `make shell` |
