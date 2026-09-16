@@ -6,7 +6,7 @@ This issue makes it the read source.
 
 A library's game list is the list of games that library tracks. Every
 authenticated Game read resolves private state from `PlayerGame` and catalog
-state from `Game`. The two catalog columns stop being read; #770 removes them.
+state from `Game`. The two catalog columns stop being read; #770 removed them.
 
 The work exceeds the catalog wave's re-slice thresholds, so it ships as four
 child issues on one integration branch. [The child issues](#the-child-issues)
@@ -341,7 +341,7 @@ production copy.
 ## What D2 settled
 
 D2 landed, so the mirror is gone and nothing maintains `Game.status` or
-`Game.mastered`. Three calls departed from the plan above, and #770 inherits
+`Game.mastered`. Three calls departed from the plan above, and #770 inherited
 all three.
 
 **`games/views/playergame_writes.py` stays.** The D2 bullet lists it for
@@ -407,9 +407,8 @@ reads and changes no removal behaviour.
 fact to the Purchase cutover, and the unfinished and dropped statistics keep
 reading `Purchase.infinite` until then.
 
-No legacy catalog field and no catalog adapter is removed. #770 removes
-`Game.status` and `Game.mastered`; #771 removes `GameStatusChange` storage.
-Both wait for the Session, access, Purchase, parity and IGDB consumers.
+No legacy catalog field and no catalog adapter is removed here. #770 removed
+`Game.status` and `Game.mastered`; #771 removed `GameStatusChange` storage.
 
 ## No rollback plan
 

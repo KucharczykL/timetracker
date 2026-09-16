@@ -5,7 +5,7 @@
 **Parent phase:** #601
 **Precedent:** [CLEAN-02](2026-09-11-clean-02-legacy-table-removal.md),
 [CLEAN-03](2026-09-16-issue-772-session-storage-removal-design.md)
-**Status:** Draft
+**Status:** Done
 
 ## Problem
 
@@ -20,8 +20,8 @@ and `loaddata` refuses a field the model does not have.
 
 ## Design
 
-**The columns go.** Migration `0002_remove_game_status_and_mastered` removes
-both fields. No index or constraint names them. The deployment's letters are
+**The columns go.** Migration `0007_remove_game_status_and_mastered` removes
+both fields; Django numbers on from the squash it follows. No index or constraint names them. The deployment's letters are
 already events: #676 recorded them, and a database that never ran that
 backfill cannot apply `0001_squashed_0006_remove_session` either, so no guard
 stands in front of the drop. `Game.Status`, `games/playergame_status.py` and
@@ -47,7 +47,9 @@ runs, the site moves onto the factory. Under `untracked_games`
 `test_playergame_game_views.py`) the letter reached nothing, so the kwargs
 drop and no row is created. One stray `update(status="p")` in
 `test_a_session_marks_an_unplayed_game_played` drops; the test keeps its
-projection assertion.
+projection assertion. Three `get_or_create` fixtures in `tests/test_filters.py`
+carried a letter in `defaults`, and `TestChoiceCriterionAgainstDB` read the
+column back: both now state and read `PlayerGame.status`.
 
 Tests whose subject was the column leave:
 `test_a_completed_column_the_row_denies_counts_for_nothing`,
@@ -79,17 +81,26 @@ what was true when they ran and are left as they stand.
 
 ## Verification
 
+Measured on the 2026-09-16 post-#772 dump of the deployment, 860 game rows
+(letters u 258, p 95, f 194, r 22, a 291), every one with a `PlayerGame` row:
+
 - Full `make check` green on each commit, `e2e/` included.
-- `make loadsample` into an empty database from the regenerated fixture;
-  `make verify-replay-parity` and `make audit-uuid-identity` clean on it.
-- `make verify-dump` green on the fresh dump; `make verify-baseline
-  ARGS="--migrate"` green.
-- `make render-pages ARGS="--user NAME --out DIR"` before and after on the
-  restored dump: zero files expected to differ, because no page read the
-  columns; any difference is attributed in the PR.
+- `make loadsample` into an empty database from the regenerated fixture:
+  12,299 objects, 7,066 events replayed into 860 `PlayerGame`, 874 runs and
+  2,812 sessions; `make verify-replay-parity` and `make audit-uuid-identity`
+  clean; a second load refused with a sentence.
+- `make verify-dump` green: the dump restores and `0007` applies.
+  `make verify-baseline ARGS="--normalize cutover.sql --migrate"` green,
+  seven catalogs identical; the normalize file is the history statement in
+  [Squashing](../../migration-squash.md), which the deployment still owes.
+- `make render-pages ARGS="--user NAME --out DIR"` at `main` and after
+  `0007` on the restored copy: 6 of 1,702 files differ, all six filter-builder
+  pages, which lost the 14 comparison columns rooted at the two catalog
+  columns (`status`, `mastered` and their twelve relation paths). No other
+  page changed.
 
 ## Rollback
 
-Not reversed after `0002` applies: Django's reverse re-adds two columns at
+Not reversed after `0007` applies: Django's reverse re-adds two columns at
 `u` and `false`, the letters do not return, and nothing reads them. Before
 that, `git revert`.

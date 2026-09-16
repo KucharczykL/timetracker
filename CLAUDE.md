@@ -152,7 +152,7 @@ docs/           — Additional documentation
 
 ### Models (in `games/models.py`)
 
-- **Game** — catalog row: `name`, `platform` (FK), `year_released`, `sort_name`, `wikidata`. `status` (u/p/f/r/a) and `mastered` stranded columns since #678 D2 — nothing writes them, nothing reads them, #770 drops them
+- **Game** — catalog row: `name`, `platform` (FK), `year_released`, `sort_name`, `wikidata`. Holds no status and no mastered flag: both live on `PlayerGame`
 - **Platform** — `name`, `group`, `icon` (slug, auto-generated from name)
 - **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor `game.addon_purchases`)
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown)
@@ -944,12 +944,13 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   graph from a person is `CatalogGraphForm` in `games/catalog_form.py`, hosted by
   Add Game and Edit Game alike. No standalone Edition or Release routes. Contract
   is [Catalog](docs/catalog.md).
-- **A PlayerGame fact is stated as a command** — never assign `Game.status` or
-  `Game.mastered` directly. Call `record_facts()` / `track_game()` from
-  `games/writes/playergame.py`, or their request-shaped wrappers in
-  `games/views/playergame_writes.py`. Nothing maintains `Game.status` and
-  `Game.mastered` columns any more, and #770 drops them: command is only way to
-  state either fact, and projection is only place to read it.
+- **A PlayerGame fact is stated as a command** — call `record_facts()` /
+  `track_game()` from `games/writes/playergame.py`, or their request-shaped
+  wrappers in `games/views/playergame_writes.py`. `Game` holds no status and no
+  mastered column: command is only way to state either fact, and projection is
+  only place to read it. In tests, `create_tracked_game()` from
+  `tests/tracked_games.py` (and its `e2e/` twin) states the words on the row the
+  autouse hook seeds.
 - **A refused command becomes an answer** — wrap dispatch in `answered(subject)`
   from `games/writes/answers.py`. It answers three ways, and caller handles all
   three: `CommandRejected` or mapped `CommandConflict` becomes `CommandFailed`

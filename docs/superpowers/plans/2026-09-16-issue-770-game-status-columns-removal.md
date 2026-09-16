@@ -88,7 +88,7 @@ Letter to word: `u`→`UNPLAYED`, `p`→`PLAYED`, `f`→`COMPLETED`, `r`→`RETI
 **Files:**
 - Modify: `games/models.py:365-388` (delete `class Status` and both columns), `:1396-1400` (`PlayerGameStatus` docstring: "Full words, so a recorded payload never needs upcasting.")
 - Delete: `games/playergame_status.py`, `tests/test_playergame_status_map.py`
-- Create: `games/migrations/0002_remove_game_status_and_mastered.py` via `make makemigrations ARGS="games --name remove_game_status_and_mastered"`; expect exactly two `RemoveField` operations and a dependency on `0001_squashed_0006_remove_session`
+- Create: `games/migrations/0007_remove_game_status_and_mastered.py` via `make makemigrations ARGS="games --name remove_game_status_and_mastered"`; expect exactly two `RemoveField` operations and a dependency on `0001_squashed_0006_remove_session`
 - Regenerate: `games/fixtures/sample.yaml.gz`
 
 **Interfaces:** none produced; `Game` loses two attributes, `Game.Status` stops existing.
@@ -96,7 +96,7 @@ Letter to word: `u`→`UNPLAYED`, `p`→`PLAYED`, `f`→`COMPLETED`, `r`→`RETI
 **Fixture regeneration** (needs `PROD_SSH_HOST` and `PROD_DB_CONTAINER` in `.env`; the user fetches):
 1. `make fetch-dump` → `.dumps/<newest>`.
 2. `make restore-dump` → prints `DATABASE_URL` of `timetracker_restore_verify`.
-3. `make migrate DATABASE_URL=<that url>` → applies `0002` to the copy.
+3. `make migrate DATABASE_URL=<that url>` → applies `0007` to the copy.
 4. `make anonymize-sample USER=<prod username> DATABASE_URL=<that url>` → rewrites `games/fixtures/sample.yaml.gz`. `zcat games/fixtures/sample.yaml.gz | grep -c '^    status:'` must be 0 and `grep -c '^    mastered:'` 0; `grep -c 'model: games.game$'` is the deployment's game count.
 5. `make drop-dump`.
 
@@ -118,7 +118,7 @@ Letter to word: `u`→`UNPLAYED`, `p`→`PLAYED`, `f`→`COMPLETED`, `r`→`RETI
 - Leave alone: #676, #677, CLEAN-02 specs.
 
 **Evidence to collect (on the restored dump, before dropping it in Task 2 step 5 — order the tasks' commands accordingly):**
-- `make render-pages ARGS="--user <prod username> --out /tmp/…/before"` at `main`, same at the branch head with `0002` applied; `diff -r` → expected empty.
+- `make render-pages ARGS="--user <prod username> --out /tmp/…/before"` at `main`, same at the branch head with `0007` applied; `diff -r` → expected empty.
 - `make verify-dump` green. `make verify-baseline ARGS="--migrate"` green.
 
 **Steps:**
