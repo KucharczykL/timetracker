@@ -5,7 +5,7 @@
  * scattered across the filter widgets.
  *
  * Signal reliability is deliberately tiered: the server POST always fires; the
- * toast's listener stands before any element connects; the ring mark may sit
+ * toast's listener stands before any element upgrades; the ring mark may sit
  * inside a closed dropdown panel. The log line is the one guaranteed signal.
  */
 import { getCsrfToken } from "./csrf.js";

@@ -1,12 +1,6 @@
 /** The toast API and the HX-Trigger bridge; <toast-stack> renders. */
 import { reportClientError } from "./client-errors.js";
-
-type ToastId = number | string;
-
-interface ToastOptions {
-  id?: ToastId;
-  duration?: number | null;
-}
+import type { ToastId, ToastOptions } from "./elements/toast-stack.js";
 
 function toast(message: string, type?: string, options: ToastOptions = {}): void {
   document.dispatchEvent(

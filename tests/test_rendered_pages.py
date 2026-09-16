@@ -163,7 +163,7 @@ class RenderedPagesTest(TestCase):
             "<nav",
             'id="main-container"',
             'id="global-modal-container"',
-            "<toast-stack",
+            '<toast-stack role="region" aria-label="Notifications" aria-live="polite"',
             "</html>",
         ]:
             self.assertIn(marker, html)

@@ -1,32 +1,39 @@
 /** The page's toasts: the store and its element. */
 import { reportClientError } from "../client-errors.js";
 
-export type ToastType = "success" | "error" | "info" | "warning" | "debug";
+const TOAST_TYPES = ["success", "error", "info", "warning", "debug"] as const;
+export type ToastType = (typeof TOAST_TYPES)[number];
 export type ToastId = number | string;
 
 export interface ToastOptions {
   id?: ToastId;
+  /** undefined: the type's default; null: no timer; a number: milliseconds. */
   duration?: number | null;
 }
 
+/** The wire shape: `type` is a word the store narrows. */
 export interface ToastMessage extends ToastOptions {
   message: string;
   type?: string;
 }
 
-interface Toast {
+type Timer = ReturnType<typeof setTimeout>;
+
+/** One countdown: never a timer without a deadline, never a deadline paused. */
+type Countdown =
+  | { kind: "sticky" }
+  | { kind: "paused"; remaining: number }
+  | { kind: "running"; deadline: number; timer: Timer };
+
+export interface Toast {
   id: ToastId;
   message: string;
   type: ToastType;
-  visible: boolean;
-  duration: number | null;
-  remaining: number | null;
-  deadline: number | null;
-  timer: ReturnType<typeof setTimeout> | null;
-  removalTimer: ReturnType<typeof setTimeout> | null;
+  countdown: Countdown;
+  /** The removal handle while the toast leaves; null while it shows. */
+  leaving: Timer | null;
 }
 
-const TOAST_TYPES: readonly ToastType[] = ["success", "error", "info", "warning", "debug"];
 const MAX_TOASTS = 3;
 const LEAVE_MS = 300;
 
@@ -40,100 +47,104 @@ export function defaultDuration(type: ToastType): number | null {
 }
 
 export class ToastStore {
-  toasts: Toast[] = [];
+  private items: Toast[] = [];
   private idCounter = 0;
 
   constructor(private readonly onChange: () => void) {}
+
+  get toasts(): readonly Toast[] {
+    return this.items;
+  }
 
   addToast(message: string, type?: string, options: ToastOptions = {}): void {
     const toastType: ToastType = type && isToastType(type) ? type : "info";
     const id = options.id ?? ++this.idCounter;
     const duration =
       options.duration === undefined ? defaultDuration(toastType) : options.duration;
-    const existing = this.toasts.find((toast) => toast.id === id);
+    const existing = this.items.find((toast) => toast.id === id);
 
     if (existing) {
-      this.clearTimers(existing);
-      Object.assign(existing, {
-        message,
-        type: toastType,
-        visible: true,
-        duration,
-        remaining: duration,
-        deadline: null,
-      });
-      this.startToastTimer(existing);
+      this.stop(existing);
+      existing.message = message;
+      existing.type = toastType;
+      existing.countdown = this.countdownFor(existing, duration);
       this.onChange();
       return;
     }
 
-    if (this.toasts.length >= MAX_TOASTS) {
-      const oldest = this.toasts.shift();
-      if (oldest) this.clearTimers(oldest);
+    if (this.items.length >= MAX_TOASTS) {
+      const oldest = this.items.shift();
+      if (oldest) this.stop(oldest);
     }
 
     const toast: Toast = {
       id,
       message,
       type: toastType,
-      visible: true,
-      duration,
-      remaining: duration,
-      deadline: null,
-      timer: null,
-      removalTimer: null,
+      countdown: { kind: "sticky" },
+      leaving: null,
     };
-    this.toasts.push(toast);
-    this.startToastTimer(toast);
+    toast.countdown = this.countdownFor(toast, duration);
+    this.items.push(toast);
     this.onChange();
   }
 
   dismissToast(id: ToastId, notify = true): void {
-    const toast = this.toasts.find((candidate) => candidate.id === id);
-    if (!toast) return;
-    if (toast.timer) clearTimeout(toast.timer);
-    toast.timer = null;
-    toast.visible = false;
+    const toast = this.find(id);
+    if (!toast || toast.leaving !== null) return;
+    this.stop(toast);
     if (notify) {
       window.dispatchEvent(new CustomEvent("toast-dismissed", { detail: { id } }));
     }
-    toast.removalTimer = setTimeout(() => this.removeToast(id), LEAVE_MS);
+    toast.leaving = setTimeout(() => this.removeToast(id), LEAVE_MS);
     this.onChange();
   }
 
   removeToast(id: ToastId): void {
-    const toast = this.toasts.find((candidate) => candidate.id === id);
-    if (toast) this.clearTimers(toast);
-    this.toasts = this.toasts.filter((candidate) => candidate.id !== id);
+    const toast = this.find(id);
+    if (toast) this.stop(toast);
+    this.items = this.items.filter((candidate) => candidate.id !== id);
     this.onChange();
   }
 
   clearToastTimer(id: ToastId): void {
-    const toast = this.toasts.find((candidate) => candidate.id === id);
-    if (!toast?.timer) return;
-    clearTimeout(toast.timer);
-    toast.timer = null;
-    toast.remaining = Math.max(0, (toast.deadline ?? Date.now()) - Date.now());
-    toast.deadline = null;
+    const toast = this.find(id);
+    if (!toast || toast.countdown.kind !== "running") return;
+    clearTimeout(toast.countdown.timer);
+    toast.countdown = {
+      kind: "paused",
+      remaining: Math.max(0, toast.countdown.deadline - Date.now()),
+    };
   }
 
   resumeToastTimer(id: ToastId): void {
-    const toast = this.toasts.find((candidate) => candidate.id === id);
-    if (!toast || toast.timer !== null || toast.remaining === null) return;
-    this.startToastTimer(toast);
+    const toast = this.find(id);
+    if (!toast || toast.leaving !== null || toast.countdown.kind !== "paused") return;
+    toast.countdown = this.running(toast, toast.countdown.remaining);
   }
 
-  private startToastTimer(toast: Toast): void {
-    if (toast.remaining === null) return;
-    toast.deadline = Date.now() + toast.remaining;
-    toast.timer = setTimeout(() => this.dismissToast(toast.id, false), toast.remaining);
+  private find(id: ToastId): Toast | undefined {
+    return this.items.find((candidate) => candidate.id === id);
   }
 
-  private clearTimers(toast: Toast): void {
-    if (toast.timer) clearTimeout(toast.timer);
-    if (toast.removalTimer) clearTimeout(toast.removalTimer);
-    toast.timer = null;
-    toast.removalTimer = null;
+  private countdownFor(toast: Toast, duration: number | null): Countdown {
+    return duration === null ? { kind: "sticky" } : this.running(toast, duration);
+  }
+
+  private running(toast: Toast, remaining: number): Countdown {
+    return {
+      kind: "running",
+      deadline: Date.now() + remaining,
+      timer: setTimeout(() => this.dismissToast(toast.id, false), remaining),
+    };
+  }
+
+  /** Every timer off; the toast neither counts nor leaves. */
+  private stop(toast: Toast): void {
+    if (toast.countdown.kind === "running") clearTimeout(toast.countdown.timer);
+    toast.countdown = { kind: "sticky" };
+    if (toast.leaving !== null) clearTimeout(toast.leaving);
+    toast.leaving = null;
   }
 }
 
@@ -203,6 +214,14 @@ function svgIcon(paths: readonly string[], sizeClass: string): SVGSVGElement {
   return svg;
 }
 
+function isToastMessage(payload: unknown): payload is ToastMessage {
+  return (
+    typeof payload === "object" &&
+    payload !== null &&
+    typeof (payload as ToastMessage).message === "string"
+  );
+}
+
 class ToastStackElement extends HTMLElement {
   readonly store = new ToastStore(() => this.render());
   private readonly nodes = new Map<ToastId, HTMLElement>();
@@ -219,11 +238,8 @@ class ToastStackElement extends HTMLElement {
   }
 
   private readonly onShowToast = (event: Event): void => {
-    const detail = (event as CustomEvent<ToastMessage | ToastMessage[]>).detail;
-    const payloads = Array.isArray(detail) ? detail : [detail];
-    for (const payload of payloads) {
-      this.store.addToast(payload.message, payload.type, payload);
-    }
+    const detail = (event as CustomEvent<unknown>).detail;
+    this.addAll(Array.isArray(detail) ? detail : [detail], "show-toast");
   };
 
   private readonly onRemoveToast = (event: Event): void => {
@@ -231,15 +247,22 @@ class ToastStackElement extends HTMLElement {
     this.store.removeToast(id);
   };
 
+  private addAll(payloads: unknown[], source: string): void {
+    for (const payload of payloads) {
+      if (!isToastMessage(payload)) {
+        reportClientError(`toast-stack[${source}]`, JSON.stringify(payload), { toast: false });
+        continue;
+      }
+      this.store.addToast(payload.message, payload.type, payload);
+    }
+  }
+
   private readDjangoMessages(): void {
     const script = document.getElementById("django-messages");
     if (!script) return;
+    let payloads: unknown;
     try {
-      const payloads: unknown = JSON.parse(script.textContent || "[]");
-      if (!Array.isArray(payloads)) return;
-      for (const payload of payloads as ToastMessage[]) {
-        this.store.addToast(payload.message, payload.type || "info", payload);
-      }
+      payloads = JSON.parse(script.textContent || "[]");
     } catch (error) {
       // The toast cannot report itself: toast off.
       reportClientError(
@@ -247,7 +270,9 @@ class ToastStackElement extends HTMLElement {
         String((error as Error)?.message ?? error),
         { toast: false },
       );
+      return;
     }
+    this.addAll(Array.isArray(payloads) ? payloads : [payloads], "django-messages");
   }
 
   render(): void {
@@ -304,8 +329,7 @@ class ToastStackElement extends HTMLElement {
   private updateToast(wrapper: HTMLElement, toast: Toast): void {
     const alert = toast.type === "error" || toast.type === "warning";
     wrapper.setAttribute("role", alert ? "alert" : "status");
-    wrapper.setAttribute("aria-live", toast.type === "error" ? "assertive" : "polite");
-    wrapper.className = `${WRAPPER_CLASS} ${toast.type}${toast.visible ? "" : ` ${LEAVE_CLASS}`}`;
+    wrapper.className = `${WRAPPER_CLASS} ${toast.type}${toast.leaving === null ? "" : ` ${LEAVE_CLASS}`}`;
 
     const panel = wrapper.querySelector<HTMLElement>("[data-toast-panel]")!;
     panel.className = `${PANEL_CLASS} ${PANEL_TYPE_CLASS[toast.type]}`;

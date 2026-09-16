@@ -472,7 +472,7 @@ Submodules re-exported via `common/components/__init__.py`:
   `paginated_table_content()`, `AddForm()`, `YearPicker()`,
   `CsrfInput()`/`ModuleScript()`/`StaticScript()`.
 - **`domain.py`** — `GameLink()`, `GameStatus()`, `GameStatusSelector()`
-  (`<select-dropdown>` PATCH dropdown), `SessionDeviceSelector()` (ditto), `LinkedPurchase()`,
+  (`<drop-down behavior="select">` PATCH dropdown), `SessionDeviceSelector()` (ditto), `LinkedPurchase()`,
   `NameWithIcon()`, `PriceConverted()`, `PurchasePrice()`
 - **`filters.py`** — filter widget layer: criterion-blob parse helpers
   (`_*_from_field`, `_choice_from_raw`, `parse_filter_dict`), widget builders
@@ -647,8 +647,8 @@ Few HTML templates remain; bulk of UI is Python components.
 ### Frontend stack
 
 - **HTMX** — partial page updates
-- **Alpine.js** (vendored) — three `x-mask` inputs in the game and settings
-  forms, nothing else; the toasts and both domain selectors are custom elements
+- **Alpine.js** (vendored) — three `x-mask` inputs in the session, purchase and
+  settings forms, nothing else; the toasts and both domain selectors are custom elements
 - **Flowbite** — its CSS theme and semantic tokens still in use; legacy
   `flowbite.min.js` bundle is vendored static asset only
 - **Tailwind CSS** — compiled from `common/input.css` → `games/static/base.css`
@@ -925,8 +925,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   attributes=...)` returns node: `class` merges onto svg, `title` becomes `<title>`
   child. Never edit `icons_generated.py` by hand.
 - **Inline Alpine.js** remains only as three `x-mask` inputs
-  (`games/forms.py`, `games/settings_forms.py`) and the empty `x-data` scope one
-  of them needs. New
+  (`games/forms.py`, `games/settings_forms.py`), each with the empty `x-data`
+  scope the plugin needs. New
   behavior goes in custom element.
 - **Nothing destroys a record** — call `remove()`/`restore()` from
   `games/removal.py`, never `instance.delete()`, and write confirmation as one

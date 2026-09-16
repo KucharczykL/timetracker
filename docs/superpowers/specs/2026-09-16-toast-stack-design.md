@@ -8,9 +8,11 @@ code is in `ts/elements/toast-stack.ts`, `ts/toast.ts` and
 
 `<toast-stack>` is a light-DOM custom element with no props. `ToastStack()`
 in `common/components/toast.py` renders the empty tag with `role="region"`,
-`aria-label="Notifications"`, `aria-atomic="true"` and the fixed corner
-classes, and no `tabindex`: one e2e test selects the one focusable region on
-the page. `custom_element_builder` attaches the element's module as its
+`aria-label="Notifications"`, `aria-live="polite"`, `aria-atomic="false"` and
+the fixed corner classes, and no `tabindex`: one e2e test selects the one
+focusable region on the page. The container is the live region, so a toast
+inserted and filled in one task is still announced; a toast carries its
+`role` only. `custom_element_builder` attaches the element's module as its
 `Media`. `common/components/__init__.py` imports the module, because the
 codegen command imports only the package.
 
@@ -24,25 +26,28 @@ evaluates, comes after the collected ones.
 
 ## The store
 
-`ts/elements/toast-stack.ts` holds `ToastStore`: `toasts`, `addToast(message,
-type, options)`, `dismissToast(id, notify)`, `removeToast(id)`,
-`clearToastTimer(id)`, `resumeToastTimer(id)`. The rules: five types, `info`
+`ts/elements/toast-stack.ts` holds `ToastStore`: a read-only `toasts`,
+`addToast(message, type, options)`, `dismissToast(id, notify)`,
+`removeToast(id)`, `clearToastTimer(id)`, `resumeToastTimer(id)`. A `Toast`
+holds one `countdown`, `sticky`, `paused` with its remaining time, or
+`running` with its deadline and timer, and one `leaving` handle, null while
+the toast shows; no field pair can disagree. The rules: five types, `info`
 for a word it does not know; a duration of 5 s, 3 s for `debug`, none for
 `error`, `null` for no timer; at most three toasts, the oldest leaving first;
 a stable string id replacing its toast in place and clearing the old timer; a
-dismiss that hides the toast, fires `toast-dismissed` on `window` when a
-person did it, and removes it after 300 ms; a paused timer that keeps its
-remaining time. The store calls the element's `render()` after every
-mutation, the timer callbacks included.
+dismiss that stops the countdown, fires `toast-dismissed` on `window` when a
+person did it, and removes the toast after 300 ms, a second dismiss meanwhile
+doing nothing; a paused timer that keeps its remaining time. The store calls
+the element's `render()` after every mutation the DOM shows.
 
 The element attaches its `window` listeners for `show-toast`, one payload or
 a list, and for `remove-toast` in `connectedCallback` and removes them in
 `disconnectedCallback`; it reads the `django-messages` script once on
-connect, and a parse failure goes through `reportClientError` with the toast
-off. It builds each toast with `document.createElement`: the wrapper with
+connect. A parse failure, and a payload with no `message`, go through
+`reportClientError` with the toast off, and the other payloads still show.
+It builds each toast with `document.createElement`: the wrapper with
 `tabindex="0"`, the type's class, `role` `alert` for `error` and `warning` and
-`status` otherwise, `aria-live` `assertive` for `error` and `polite`
-otherwise; the panel; the type's icon, five inline SVG paths; the text in an
+`status` otherwise; the panel; the type's icon, five inline SVG paths; the text in an
 element of its own; the close button. Every class string is one literal, so
 Tailwind's scan of `ts/` finds it.
 
@@ -68,9 +73,9 @@ content element's `connectedCallback` is never lost.
 ## Verification
 
 - `ts/elements/toast-stack.test.ts` in jsdom: each case connects one
-  `<toast-stack>` and disconnects it after. Types and roles, the cap of
-  three, stable ids through `window.removeToast`, pause and resume, the
-  three dismiss paths, the `django-messages` script, detach. Fake timers
-  only.
+  `<toast-stack>` and disconnects it after. Types and roles, the sticky
+  error, the cap of three, stable ids through `window.removeToast`, pause and
+  resume, the three dismiss paths and the second dismiss, a payload with no
+  message, the `django-messages` script, detach. Fake timers only.
 - `ts/toast.test.ts` holds the two `fetchWithHtmxTriggers` cases.
 - `tests/test_rendered_pages.py` asserts `<toast-stack` on every page.

@@ -36,7 +36,7 @@ describe("rendering", () => {
     const [toast] = toasts();
     expect(toasts()).toHaveLength(1);
     expect(toast.getAttribute("role")).toBe("status");
-    expect(toast.getAttribute("aria-live")).toBe("polite");
+    expect(toast.hasAttribute("aria-live")).toBe(false);
     expect(toast.getAttribute("tabindex")).toBe("0");
     expect(toast.classList.contains("success")).toBe(true);
     expect(messageOf(toast)).toBe("Saved");
@@ -53,7 +53,7 @@ describe("rendering", () => {
     expect(toasts().map(messageOf)).toEqual(["two", "three", "four"]);
   });
 
-  it("error and warning are alerts; error is assertive", () => {
+  it("error and warning are alerts", () => {
     show([
       { message: "bad", type: "error" },
       { message: "hmm", type: "warning" },
@@ -61,9 +61,25 @@ describe("rendering", () => {
 
     const [error, warning] = toasts();
     expect(error.getAttribute("role")).toBe("alert");
-    expect(error.getAttribute("aria-live")).toBe("assertive");
     expect(warning.getAttribute("role")).toBe("alert");
-    expect(warning.getAttribute("aria-live")).toBe("polite");
+  });
+
+  it("an error never dismisses on its own", () => {
+    show({ message: "bad", type: "error" });
+
+    vi.advanceTimersByTime(60_000);
+
+    expect(toasts()[0].classList.contains("opacity-0")).toBe(false);
+  });
+
+  it("reports a payload with no message and keeps the rest", () => {
+    const report = vi.fn();
+    vi.stubGlobal("fetch", report);
+    show([{ nope: 1 } as unknown as Payload, { message: "kept" }]);
+
+    expect(toasts().map(messageOf)).toEqual(["kept"]);
+    expect(report).toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it("reads the django-messages script on connect", () => {
@@ -143,6 +159,25 @@ describe("lifecycle", () => {
     expect(wrapperClick).not.toHaveBeenCalled();
     expect(dismissed).toHaveBeenCalledTimes(3);
     vi.advanceTimersByTime(300);
+    expect(toasts()).toEqual([]);
+    window.removeEventListener("toast-dismissed", dismissed);
+  });
+
+  it("a second dismiss while leaving neither fires nor reschedules", () => {
+    const dismissed = vi.fn();
+    window.addEventListener("toast-dismissed", dismissed);
+    show({ message: "twice" });
+    const [toast] = toasts();
+
+    toast.click();
+    vi.advanceTimersByTime(100);
+    toast.click();
+    toast.dispatchEvent(new Event("mouseenter"));
+    toast.dispatchEvent(new Event("mouseleave"));
+
+    expect(dismissed).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(1);
+    vi.advanceTimersByTime(200);
     expect(toasts()).toEqual([]);
     window.removeEventListener("toast-dismissed", dismissed);
   });
