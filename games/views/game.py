@@ -11,6 +11,7 @@ from django.http import Http404, HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from common.components import (
     ICON_BUTTON_SIZE_CLASS,
@@ -118,11 +119,12 @@ from games.views.filtering import (
 from games.views.playergame_writes import (
     record_facts_for_request,
     remove_game_for_request,
+    restore_game_for_request,
     track_game_for_request,
 )
 from games.views.playthrough_rows import playthrough_tabledata
 from games.views.reference_section import references_area
-from games.views.removal import confirm_and_remove
+from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import origin_from, return_url
 from games.writes.playergame import new_correlation_id
 
@@ -352,6 +354,20 @@ def add_game(request: HttpRequest) -> HttpResponse:
             ModuleScript("dist/elements/temporal-field.js"),
             ModuleScript("dist/add_game.js"),
         ),
+    )
+
+
+@login_required
+@require_POST
+def restore_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
+    """Undo: the row is removed, so the plain manager resolves it."""
+    library = cast(User, request.user).library
+    game = owned_or_404(Game.objects.filter(library=library), library, id=game_id)
+    return restore_and_return(
+        request,
+        action=partial(restore_game_for_request, request, game),
+        restored=f"{game.name} restored to your library.",
+        fallback="games:list_games",
     )
 
 

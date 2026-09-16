@@ -15,6 +15,7 @@ from games import urls as games_urls
 from games.models import (
     Device,
     Edition,
+    FilterPreset,
     Game,
     Platform,
     Playthrough,
@@ -50,6 +51,9 @@ def world(owned_library):
         "device_id": Device.objects.create(library=owned_library, name="Desk").id,
         "platform_id": Platform.objects.create(
             library=owned_library, name="Private"
+        ).id,
+        "preset_id": FilterPreset.objects.create(
+            library=owned_library, name="Mine", mode="games"
         ).id,
         "year": 2024,
         "model": "game",

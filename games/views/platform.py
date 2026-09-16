@@ -1,3 +1,4 @@
+from functools import partial
 from typing import cast
 from uuid import UUID
 
@@ -6,6 +7,7 @@ from django.contrib.auth.models import User
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from common.components import (
     AddForm,
@@ -40,6 +42,7 @@ from games.models import Platform, UserLibrary
 from games.ownership import owned_or_404
 from games.reads.external_references import held_by, references_for
 from games.reference_form import ReferenceSetForm, submitted_or_form_error
+from games.removal import restore
 from games.sorting import (
     PLATFORM_DEFAULT_SORT,
     PLATFORM_SORTS,
@@ -52,7 +55,7 @@ from games.views.filtering import (
     warn_unknown_sort,
 )
 from games.views.reference_section import references_area
-from games.views.removal import confirm_and_remove
+from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
 
 
@@ -147,6 +150,22 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         request,
         content,
         title="Manage platforms",
+    )
+
+
+@login_required
+@require_POST
+def restore_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
+    """Undo: the row is removed, so the plain manager resolves it."""
+    library = cast(User, request.user).library
+    platform = owned_or_404(
+        Platform.objects.filter(library=library), library, id=platform_id
+    )
+    return restore_and_return(
+        request,
+        action=partial(restore, platform),
+        restored=f"{platform.name} restored to your library.",
+        fallback="games:list_platforms",
     )
 
 

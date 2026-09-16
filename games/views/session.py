@@ -71,7 +71,7 @@ from games.sorting import (
 )
 from games.views.filtering import warn_unknown_sort
 from games.views.playergame_writes import record_facts_for_request
-from games.views.removal import confirm_and_apply
+from games.views.removal import confirm_and_apply, restore_and_return
 from games.views.returns import return_url
 from games.writes.answers import CommandFailed
 from games.writes.playergame import new_correlation_id
@@ -89,6 +89,9 @@ from games.writes.playersession import (
 )
 from games.writes.playersession import (
     reset_session as reset_session_start,
+)
+from games.writes.playersession import (
+    restore_session as restore_session_row,
 )
 
 #: What the name cell calls a session in the bucket.
@@ -495,5 +498,26 @@ def remove_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
         title="Remove session",
         message=f"Remove this session of {_game_name(session)}?",
         confirm_label="Remove",
+        fallback="games:list_sessions",
+    )
+
+
+@login_required
+@require_POST
+def restore_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
+    """Undo: the row is removed, so the plain manager resolves it."""
+    library = cast(User, request.user).library
+    session = owned_or_404(
+        PlayerSession.objects.filter(library=library), library, id=session_id
+    )
+    return restore_and_return(
+        request,
+        action=partial(
+            restore_session_row,
+            cast(User, request.user),
+            session,
+            correlation_id=new_correlation_id(),
+        ),
+        restored="Session restored.",
         fallback="games:list_sessions",
     )

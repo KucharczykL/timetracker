@@ -11,6 +11,7 @@ from collections.abc import Callable, Sequence
 from functools import partial
 from typing import Any
 
+from django.contrib import messages
 from django.db.models import Model
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
@@ -116,3 +117,26 @@ def confirm_and_remove(
         details=details,
         reject=detail_url,
     )
+
+
+def restore_and_return(
+    request: HttpRequest,
+    *,
+    action: Callable[[], object],
+    restored: str,
+    fallback: UrlName,
+    fallback_args: Sequence[Any] = (),
+) -> HttpResponse:
+    """Run ``action``, say so, return to the origin.
+
+    The undo is the confirmation, so nothing is drawn. A refusal is
+    an error message on the same page, the defect status included:
+    ``answered()`` has already made a sentence of it.
+    """
+    try:
+        action()
+    except CommandFailed as refusal:
+        messages.error(request, refusal.message)
+    else:
+        messages.success(request, restored)
+    return redirect(return_url(request, fallback=fallback, fallback_args=fallback_args))
