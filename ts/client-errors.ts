@@ -5,8 +5,8 @@
  * scattered across the filter widgets.
  *
  * Signal reliability is deliberately tiered: the server POST always fires; the
- * toast may be lost on initial page load (its listener attaches during
- * alpine:init, after a custom element's connectedCallback); the ring mark may
+ * toast depends on <toast-stack>, whose module the layout runs first among the
+ * body modules, ahead of every element the content holds; the ring mark may
  * sit inside a closed dropdown panel. The log line is the one guaranteed signal.
  */
 import { getCsrfToken } from "./csrf.js";

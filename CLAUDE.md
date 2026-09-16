@@ -471,8 +471,8 @@ Submodules re-exported via `common/components/__init__.py`:
   `w-full max-w-7xl self-center` — every list/detail/stats body sits in one),
   `paginated_table_content()`, `AddForm()`, `YearPicker()`,
   `CsrfInput()`/`ModuleScript()`/`StaticScript()`.
-- **`domain.py`** — `GameLink()`, `GameStatus()`, `GameStatusSelector()` (Alpine.js
-  PATCH dropdown), `SessionDeviceSelector()` (ditto), `LinkedPurchase()`,
+- **`domain.py`** — `GameLink()`, `GameStatus()`, `GameStatusSelector()`
+  (`<select-dropdown>` PATCH dropdown), `SessionDeviceSelector()` (ditto), `LinkedPurchase()`,
   `NameWithIcon()`, `PriceConverted()`, `PurchasePrice()`
 - **`filters.py`** — filter widget layer: criterion-blob parse helpers
   (`_*_from_field`, `_choice_from_raw`, `parse_filter_dict`), widget builders
@@ -603,7 +603,9 @@ resolved site `DEFAULT_CURRENCY`.
 
 **HTMX toast middleware** (`games/htmx_middleware.py`): converts Django messages
 into `HX-Trigger` headers with `show-toast` event; skipped if `HX-Redirect`
-present. Rendering client-side (`games/static/js/toast.js`).
+present. `<toast-stack>` (`ts/elements/toast-stack.ts`, placed by `Page()`,
+built by `ToastStack()` in `common/components/toast.py`) listens and renders;
+`ts/toast.ts` keeps `window.toast` and `fetchWithHtmxTriggers`.
 
 **REST API** (`games/api.py`): Django Ninja routers mounted at `/api/`:
 - `GET /api/games/search` — search games for autocomplete
@@ -645,16 +647,17 @@ Few HTML templates remain; bulk of UI is Python components.
 ### Frontend stack
 
 - **HTMX** — partial page updates
-- **Alpine.js** (vendored) — reactive dropdowns (`GameStatusSelector`,
-  `SessionDeviceSelector`), toast store
+- **Alpine.js** (vendored) — three `x-mask` inputs in the game and settings
+  forms, nothing else; the toasts and both domain selectors are custom elements
 - **Flowbite** — its CSS theme and semantic tokens still in use; legacy
   `flowbite.min.js` bundle is vendored static asset only
 - **Tailwind CSS** — compiled from `common/input.css` → `games/static/base.css`
 - All third-party JS served locally from `games/static/js/` (no CDNs), so pages
   and browser tests work offline
 - **Custom JS** authored in TypeScript under `ts/`, compiled to
-  `games/static/js/dist/` (gitignored, build-only): `ts/toast.ts` (Alpine toast
-  store; also defines `window.fetchWithHtmxTriggers`),
+  `games/static/js/dist/` (gitignored, build-only): `ts/toast.ts`
+  (`window.toast` and `window.fetchWithHtmxTriggers`),
+  `ts/elements/toast-stack.ts` (the toasts' store and DOM),
   `ts/elements/search-select.ts`, `ts/utils.ts` (shared helpers — `onSwap`,
   `toISOUTCString`, …)
 - **Widget initialization**: widget JS registers with `onSwap(selector,
@@ -921,9 +924,10 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   snippet, run `make gen-icons`, reference by slug in `Platform.icon`. `Icon(name,
   attributes=...)` returns node: `class` merges onto svg, `title` becomes `<title>`
   child. Never edit `icons_generated.py` by hand.
-- **Inline Alpine.js** remains only in pre-existing domain components
-  (`GameStatusSelector`, `SessionDeviceSelector`): `x-data="{...}"` plus
-  `fetchWithHtmxTriggers()` for PATCH calls. New behavior goes in custom element.
+- **Inline Alpine.js** remains only as three `x-mask` inputs
+  (`games/forms.py`, `games/settings_forms.py`) and the empty `x-data` scope one
+  of them needs. New
+  behavior goes in custom element.
 - **Nothing destroys a record** — call `remove()`/`restore()` from
   `games/removal.py`, never `instance.delete()`, and write confirmation as one
   `confirm_and_remove()` call. New removable model needs `removed_at`, place in
