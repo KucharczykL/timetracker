@@ -184,11 +184,13 @@ written once the functions carried their own setting loads in one command.
 
 ## Replacing the migration history
 
-The `games` app has one migration, `0001_initial`, and it states the schema the
-deployment already reached rather than building up to it. Every migration
-before it had run in full on every database that exists, so they were replaced
-by their own result; see [Database contract](database.md#schema-and-migrations)
-for what the file carries that no model declares.
+The `games` app has one migration, `0001_squashed_0006_remove_session`, and
+it states the schema the deployment already reached rather than building up
+to it. Every migration before it had run in full on every database that
+exists, so they were replaced by their own result, the second time with
+Django's `squashmigrations` (see [Squashing](migration-squash.md)); see
+[Database contract](database.md#schema-and-migrations) for what the file
+carries that no model declares.
 
 The deployment was carried over to it on 2026-09-12, and nothing needs doing
 again. Doing it a second time -- the steps, the rehearsal, and what went wrong

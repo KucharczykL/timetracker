@@ -42,9 +42,9 @@ point `DATABASE_URL` at an existing server there.
 ## Schema and migrations
 
 Fresh databases are built from the migration files in `games/migrations/`.
-`0001_initial` is the permanent baseline: it states the schema the deployment
-reached, rather than building up to it, and it is the one migration file that
-carries raw SQL for what no model declares — the `uuid_v7` and `temporal_value`
+`0001_squashed_0006_remove_session` is the baseline: it states the schema the
+deployment reached, rather than building up to it, and it is the one migration
+file that carries raw SQL for what no model declares — the `uuid_v7` and `temporal_value`
 domains, the two generated columns whose NOT NULL a `CREATE TABLE` drops, and
 the composite foreign key holding an event's stream against its library. Future
 schema changes add normal Django migrations; do not rewrite an applied one.
