@@ -156,7 +156,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
 @login_required
 @require_POST
 def restore_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
-    """Undo: the row is removed, so the plain manager resolves it."""
+    """Undo; the plain manager, since the row is removed."""
     library = cast(User, request.user).library
     platform = owned_or_404(
         Platform.objects.filter(library=library), library, id=platform_id

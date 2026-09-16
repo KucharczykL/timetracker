@@ -453,7 +453,7 @@ def edit_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
 @login_required
 @require_POST
 def restore_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
-    """Undo: the row is removed, so the plain manager resolves it."""
+    """Undo; the plain manager, since the row is removed."""
     library = cast(User, request.user).library
     purchase = owned_or_404(
         Purchase.objects.filter(library=library), library, id=purchase_id

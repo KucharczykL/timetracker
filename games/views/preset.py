@@ -1,4 +1,4 @@
-"""The preset picker removes through the API; Undo posts here."""
+"""Undo for the preset picker's API removal."""
 
 from functools import partial
 from typing import cast
@@ -18,7 +18,7 @@ from games.views.removal import restore_and_return
 @login_required
 @require_POST
 def restore_preset(request: HttpRequest, preset_id: UUID) -> HttpResponse:
-    """Undo: the row is removed, so the plain manager resolves it."""
+    """Undo; the plain manager, since the row is removed."""
     library = cast(User, request.user).library
     preset = owned_or_404(
         FilterPreset.objects.filter(library=library), library, id=preset_id

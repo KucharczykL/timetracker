@@ -75,12 +75,6 @@ def remove_game_for_request(request: HttpRequest, game: Game) -> None:
 
 
 def restore_game_for_request(request: HttpRequest, game: Game) -> None:
-    """Put the row back, then track it again: the removal reversed.
-
-    The stamp first, so a failure between the two leaves what the
-    removal's own halfway leaves: a live catalog row nothing tracks,
-    which the edit form shows and saving it tracks again. A second
-    Undo completes either half.
-    """
+    """Stamp first: a halfway is the removal's own halfway."""
     restore(game)
     retrack_game(cast("User", request.user), game, correlation_id=new_correlation_id())

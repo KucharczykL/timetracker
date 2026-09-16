@@ -79,7 +79,7 @@ def retrack_game(actor: User, game: Game, *, correlation_id: uuid.UUID) -> None:
                 correlation_id=correlation_id,
             )
         except PlayerGameNotTracked:
-            #: Never tracked: the catalog stamp was the whole removal.
+            #: Never tracked: the stamp was the removal.
             pass
 
 

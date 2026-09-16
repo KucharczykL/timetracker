@@ -467,7 +467,7 @@ def remove_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpRespon
 @login_required
 @require_POST
 def restore_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse:
-    """Undo: the row is removed, so the plain manager resolves it."""
+    """Undo; the plain manager, since the row is removed."""
     library = cast(User, request.user).library
     run = owned_or_404(
         Playthrough.objects.filter(library=library), library, id=playthrough_id

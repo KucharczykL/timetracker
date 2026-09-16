@@ -1004,14 +1004,14 @@ def save_preset(request, payload: PresetIn):
 
 
 class RemovedPresetOut(Schema):
-    #: Where the picker's Undo toast posts.
+    #: Where Undo posts.
     restore_url: str
 
 
 #: DELETE is the transport's word, not ours.
 @preset_router.delete("/{preset_id}", response={200: RemovedPresetOut})
 def remove_preset(request, preset_id: UUIDv7):
-    """Take one of the library's presets out; answer where Undo posts.
+    """Take one of the library's presets out; say where Undo posts.
 
     Scoped to request.user.library so it cannot touch another library's preset (404
     instead). DELETE-only by routing; CSRF is enforced by django_auth.

@@ -108,7 +108,7 @@ export function wirePresetDelete(root: HTMLElement, presetApiUrl: string): () =>
           refetch();
           return;
         }
-        // The answer names where Undo posts; the toast's form carries the page as origin.
+        // The answer names where Undo posts.
         const { restore_url: restoreUrl } = (await response.json()) as { restore_url: string };
         window.toast("Preset removed.", "success", {
           action: { label: "Undo", url: restoreUrl },

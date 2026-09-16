@@ -508,7 +508,7 @@ def remove_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
 @login_required
 @require_POST
 def restore_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
-    """Undo: the row is removed, so the plain manager resolves it."""
+    """Undo; the plain manager, since the row is removed."""
     library = cast(User, request.user).library
     session = owned_or_404(
         PlayerSession.objects.filter(library=library), library, id=session_id

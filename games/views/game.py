@@ -360,7 +360,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
 @login_required
 @require_POST
 def restore_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
-    """Undo: the row is removed, so the plain manager resolves it."""
+    """Undo; the plain manager, since the row is removed."""
     library = cast(User, request.user).library
     game = owned_or_404(Game.objects.filter(library=library), library, id=game_id)
     return restore_and_return(

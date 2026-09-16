@@ -52,7 +52,7 @@ export function defaultDuration(type: ToastType, hasAction = false): number | nu
   return type === "debug" ? 3_000 : 5_000;
 }
 
-/** The action's URL with this page as the origin the restore returns to. */
+/** The action's URL, this page as origin. */
 function withOrigin(url: string): string {
   const target = new URL(url, location.origin);
   target.searchParams.set("origin", location.pathname + location.search);
@@ -152,7 +152,7 @@ export class ToastStore {
     this.startToastTimer(toast);
   }
 
-  /** The pointer's flag; the timer runs only while neither flag is set. */
+  /** Pointer flag; timer runs while both clear. */
   setHovered(id: ToastId, hovered: boolean): void {
     const toast = this.toasts.find((candidate) => candidate.id === id);
     if (!toast) return;
@@ -160,7 +160,7 @@ export class ToastStore {
     this.settleTimer(toast);
   }
 
-  /** The focus's flag; the timer runs only while neither flag is set. */
+  /** Focus flag; timer runs while both clear. */
   setFocused(id: ToastId, focused: boolean): void {
     const toast = this.toasts.find((candidate) => candidate.id === id);
     if (!toast) return;
@@ -358,7 +358,7 @@ class ToastStackElement extends HTMLElement {
     return wrapper;
   }
 
-  /** The Undo form: a real POST, so the page it lands on is re-rendered. */
+  /** A real POST: the landing page re-renders. */
   private buildAction(action: ToastAction): HTMLFormElement {
     const form = document.createElement("form");
     form.dataset.toastAction = "";
@@ -373,7 +373,7 @@ class ToastStackElement extends HTMLElement {
     button.type = "submit";
     button.className = readToastStackProps(this).actionClass;
     button.textContent = action.label;
-    // The wrapper's click dismisses; the browser's submit navigates.
+    // The wrapper's click would dismiss.
     button.addEventListener("click", (event) => event.stopPropagation());
     form.append(token, button);
     return form;

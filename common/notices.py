@@ -1,11 +1,4 @@
-"""What a toast carries, and the queue it rides.
-
-A notice is a Django message. The sentence is the message; the
-action, when there is one, rides `extra_tags` as JSON. Nothing else
-sets `extra_tags`, so the slot is this module's alone. Both carriers,
-the `django-messages` script and the `HX-Trigger` header, read
-`toast_payloads` and build nothing themselves.
-"""
+"""What a toast carries; the action rides extra_tags."""
 
 import json
 from typing import Literal, TypedDict
@@ -16,7 +9,7 @@ from django.http import HttpRequest
 
 type ToastType = Literal["success", "error", "info", "warning", "debug"]
 
-#: The words the element knows; an unknown level reads as info.
+#: The element's words; else info.
 _TOAST_TYPES: frozenset[str] = frozenset(
     {"success", "error", "info", "warning", "debug"}
 )

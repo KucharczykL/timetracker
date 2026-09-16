@@ -54,8 +54,7 @@ def confirm_and_apply(
     back on the confirmation, above the question rather than inside it. Only
     that type reads as a refusal; anything beneath the act is a defect.
 
-    ``removed`` and ``undo`` make the answer a toast with Undo: the sentence,
-    and the restore route the toast posts to. Both or neither.
+    ``removed`` and ``undo``: the Undo toast's sentence and route.
     """
     if (removed is None) != (undo is None):
         raise TypeError("removed and undo go together.")
@@ -125,8 +124,7 @@ def confirm_and_remove(
     ``action`` is for a record whose removal is more than a stamp: a
     game states a fact to its projection first.
 
-    ``removed`` is the toast's sentence and ``undo`` the restore route
-    it posts to, with the row's key.
+    ``removed`` and ``undo``: the Undo toast's sentence and route.
     """
     return confirm_and_apply(
         request,
@@ -152,12 +150,7 @@ def restore_and_return(
     fallback: UrlName,
     fallback_args: Sequence[Any] = (),
 ) -> HttpResponse:
-    """Run ``action``, say so, return to the origin.
-
-    The undo is the confirmation, so nothing is drawn. A refusal is
-    an error message on the same page, the defect status included:
-    ``answered()`` has already made a sentence of it.
-    """
+    """Run ``action``, say so, return; a refusal is an error message."""
     try:
         action()
     except CommandFailed as refusal:
