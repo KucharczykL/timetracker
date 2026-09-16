@@ -94,7 +94,7 @@ class NarrowerInconsistency(RowInconsistent):
 
 @pytest.mark.parametrize("defect", [RowInconsistent, NarrowerInconsistency])
 def test_a_scope_miss_is_never_a_defect(defect):
-    """Refused at construction, not at the one moment the row is absent."""
+    """Refused at construction, not at the miss."""
     with pytest.raises(TypeError, match=defect.__name__):
         refusal(raises=defect)
 

@@ -511,13 +511,7 @@ def refused_end(
     ended_at_zone=None,
     raising: type[CommandRejected] = CommandRejected,
 ) -> CommandRejected:
-    """Refuse an end, and pin which refusal the person met.
-
-    The sentence, not merely its presence: several of these rules
-    refuse the same statement, so a test that asks only whether one
-    fired stays green when the branch it names is taken away. A
-    defect states no sentence, so `saying=None` pins the type instead.
-    """
+    """Refuse an end; pin sentence or type."""
     with pytest.raises(raising) as refusal:
         dispatch(
             EndSession(
@@ -2032,7 +2026,7 @@ def a_session_naming_a_foreign_run(library, foreign_library) -> PlayerSession:
 def test_a_session_naming_a_foreign_run_is_refused_by_name(
     owned_user, owned_library, second_library, run, statement
 ):
-    """The person named the session; the argument names the run."""
+    """Person names session; argument names the run."""
     session = a_session_naming_a_foreign_run(owned_library, second_library)
     if isinstance(statement(session, run), RestoreSession):
         PlayerSession.objects.filter(pk=session.pk).update(removed_at=timezone.now())
@@ -2045,7 +2039,7 @@ def test_a_session_naming_a_foreign_run_is_refused_by_name(
             idempotency_key=str(uuid.uuid7()),
         )
 
-    #: The boundary logs the argument and its cause; both must name the rest.
+    #: The argument is the log: name everything.
     assert str(session.pk) in str(refusal.value)
     assert str(session.library_id) in str(refusal.value)
     assert str(session.playthrough_id) in str(refusal.value)

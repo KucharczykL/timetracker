@@ -193,11 +193,7 @@ class CommandRejected(Exception):
 
 
 class RowInconsistent(CommandRejected):
-    """A row the command read cannot be read as the schema promises.
-
-    Answered as a defect: the person can state nothing different, so
-    the boundary owns the sentence and the argument is for the log.
-    """
+    """The row is wrong, not the statement."""
 
     def __init__(self, message: str) -> None:
         super().__init__(message)

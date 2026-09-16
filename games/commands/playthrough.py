@@ -573,11 +573,7 @@ def foreign_referrer(run: Playthrough) -> ForeignReferrer | None:
 
 
 def _refuse_a_foreign_referrer(run: Playthrough) -> None:
-    """Refuse a foreign row naming the run.
-
-    A defect, not a rule: the argument names both libraries, and
-    the boundary logs it.
-    """
+    """Refuse a foreign row naming the run."""
     foreign = foreign_referrer(run)
     if foreign is None:
         return

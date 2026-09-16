@@ -2062,7 +2062,7 @@ def test_the_first_naming_entry_is_the_one_a_person_hears(
 def test_a_foreign_referring_row_is_refused_as_a_defect(
     owned_user, owned_library, game, monkeypatch, referring_models, django_user_model
 ):
-    """Neither sentence fits, so the argument carries the rest."""
+    """No sentence fits; the argument carries it."""
     assignment_model, _ = referring_models
     _track(owned_user, owned_library, game)
     run = _second_run(owned_user, owned_library)
@@ -2078,7 +2078,7 @@ def test_a_foreign_referring_row_is_refused_as_a_defect(
     with pytest.raises(RowInconsistent) as refusal:
         _remove(owned_user, owned_library, run, key="foreign-referrer")
 
-    #: The boundary logs the argument, so it names everything.
+    #: The argument is the log: name everything.
     argument = str(refusal.value)
     assert str(run.pk) in argument
     assert str(run.library_id) in argument

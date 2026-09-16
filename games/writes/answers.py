@@ -85,10 +85,11 @@ REFUSED_BY_DATABASE = (
     "problem has been reported."
 )
 
-#: What an inconsistent row says. Worded about the reading, not the
-#: row: where the installation's tzdata lost a zone name the row is
-#: right, and a sentence calling it inconsistent would send an
-#: administrator to the wrong place.
+#: Worded about the reading, not the row.
+#:
+#: On the retired-zone branch the row is right and the
+#: installation is what changed; "inconsistent" would
+#: send an administrator to the wrong place.
 REFUSED_BY_AN_INCONSISTENT_ROW = (
     "This {subject}'s record could not be read, so nothing was changed. "
     "The problem has been reported."
@@ -162,8 +163,7 @@ def answered(subject: SubjectNoun) -> Iterator[None]:
             answer.sentence.format(subject=subject), answer.status_code
         ) from error
     except RowInconsistent as error:
-        #: Ahead of its parent, which would answer it as a rule.
-        #: The traceback carries the argument and every cause.
+        #: Before the parent, which would take it.
         logger.exception("[answers]: a command refused an inconsistent %s.", subject)
         raise CommandFailed(
             REFUSED_BY_AN_INCONSISTENT_ROW.format(subject=subject), DEFECT_STATUS

@@ -198,12 +198,7 @@ def library_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSes
 
 
 def _session_run(context: CommandContext, session: PlayerSession) -> Playthrough:
-    """The session's run, resolved in this library.
-
-    A miss is a session naming another library's run, the drift
-    `audit_library_ownership` reports. A defect, not a rule: the
-    argument names the rest, and the boundary logs it.
-    """
+    """The session's run, or an inconsistent row."""
     try:
         return library_playthrough(context, session.playthrough_id)
     except CommandRejected as refusal:
@@ -275,9 +270,7 @@ def _timed_start(session: PlayerSession) -> TimedStart:
         )
     started_at, day_zone = session.started_at, session.day_zone
     if started_at is None or day_zone is None:
-        #: `playersession_timed_columns` forbids this. Refused rather
-        #: than cast away, so a relaxed constraint lands here as a
-        #: defect instead of a TypeError inside the builder.
+        #: Constraint forbids this; refused, not cast away.
         raise RowInconsistent(
             f"Timed session {session.pk} of library {session.library_id} states "
             "no start or no day zone, which the timed-columns constraint forbids."

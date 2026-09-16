@@ -126,7 +126,7 @@ def test_the_argument_a_person_never_reads_is_logged(capture_games_logger):
 
 
 def test_an_inconsistent_row_is_a_defect():
-    """The person can state nothing different, so no retry is asked for."""
+    """Nothing to restate, so no retry asked."""
     with pytest.raises(CommandFailed) as failure, answered("session"):
         raise RowInconsistent(_FOR_A_DEVELOPER)
 
@@ -145,7 +145,7 @@ def test_an_inconsistent_row_says_nothing_of_the_program():
 
 
 def test_an_inconsistent_row_is_logged_with_its_cause(capture_games_logger):
-    """One ERROR record, the traceback, the argument and every cause."""
+    """One ERROR record with traceback and causes."""
     with (
         capture_games_logger() as caplog,
         pytest.raises(CommandFailed),
@@ -163,7 +163,7 @@ def test_an_inconsistent_row_is_logged_with_its_cause(capture_games_logger):
 
 
 def test_an_inconsistent_row_states_no_sentence():
-    """A site cannot write one, so four sites cannot drift into four."""
+    """A site cannot write one."""
     with pytest.raises(TypeError):
         RowInconsistent("x", sentence="y")  # type: ignore[call-arg]
 

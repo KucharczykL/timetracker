@@ -22,8 +22,7 @@ class Refusal:
     raises: type[CommandRejected] = CommandRejected
 
     def __post_init__(self) -> None:
-        #: A miss is a rule with a sentence. RowInconsistent takes none,
-        #: and mypy reads type[CommandRejected] without its constructor.
+        #: mypy accepts the subclass; raised() would TypeError.
         if issubclass(self.raises, RowInconsistent):
             raise TypeError(
                 f"Refusal.raises cannot be {self.raises.__name__}: a scope miss "
