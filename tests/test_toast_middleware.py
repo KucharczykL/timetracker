@@ -51,6 +51,33 @@ class HTMXMessagesMiddlewareTest(TestCase):
         self.assertEqual(data["show-toast"]["message"], "Item saved")
         self.assertEqual(data["show-toast"]["type"], "success")
 
+    def test_a_notice_action_rides_the_trigger(self):
+        """An Undo action reaches the header beside the sentence."""
+        from django.contrib.messages import constants
+
+        from common.notices import Undo, notify
+
+        request = self._build_request(htmx=True)
+        notify(
+            request,
+            "Session removed.",
+            level=constants.SUCCESS,
+            action=Undo("/session/x/restore"),
+        )
+        middleware = HTMXMessagesMiddleware(get_response_ok)
+
+        response = middleware(request)
+
+        data = json.loads(response["HX-Trigger"])
+        self.assertEqual(
+            data["show-toast"],
+            {
+                "message": "Session removed.",
+                "type": "success",
+                "action": {"label": "Undo", "url": "/session/x/restore"},
+            },
+        )
+
     def test_htmx_request_with_error_message(self):
         """Error messages should map to 'error' toast type."""
         request = self._build_request(htmx=True)

@@ -4,13 +4,7 @@ from django.conf import settings
 from django.contrib import messages as django_messages
 from django.contrib.messages import constants as message_constants
 
-MESSAGE_LEVEL_MAP = {
-    message_constants.DEBUG: "debug",
-    message_constants.INFO: "info",
-    message_constants.SUCCESS: "success",
-    message_constants.WARNING: "warning",
-    message_constants.ERROR: "error",
-}
+from common.notices import toast_payloads
 
 
 class HTMXMessagesMiddleware:
@@ -46,27 +40,10 @@ class HTMXMessagesMiddleware:
         backend = django_messages.get_messages(request)
         if hasattr(backend, "_set_level") and backend._get_level() > min_level:
             backend._set_level(min_level)
-        messages = list(backend)
-        if not messages:
+        payloads = toast_payloads(request)
+        if not payloads:
             return response
 
-        triggers = []
-        for msg in messages:
-            toast_type = MESSAGE_LEVEL_MAP.get(msg.level, "info")
-            triggers.append(
-                {
-                    "message": msg.message,
-                    "type": toast_type,
-                }
-            )
-
-        if triggers:
-            # Use last message (most recent) as the primary toast
-            trigger = triggers[-1]
-            response["HX-Trigger"] = json.dumps(
-                {
-                    "show-toast": trigger,
-                }
-            )
-
+        # The last message (most recent) is the one toast the header carries.
+        response["HX-Trigger"] = json.dumps({"show-toast": payloads[-1]})
         return response

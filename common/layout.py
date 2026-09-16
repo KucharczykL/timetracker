@@ -15,7 +15,6 @@ from uuid import UUID
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.contrib.messages import get_messages
 from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
@@ -42,6 +41,7 @@ from common.components.primitives import (
 )
 from common.components.toast import ToastStack
 from common.keyset import keyset_pages
+from common.notices import toast_payloads
 from games.templatetags.version import version, version_modified_at
 from timetracker.config import SettingSource
 from timetracker.settings_registry import THEME_CHOICES
@@ -329,12 +329,8 @@ def TimetrackerDocument(
         collected_scripts += str(ModuleScript("dist/library-conversion-status.js"))
     all_scripts = collected_scripts + (str(scripts) if scripts else "")
 
-    messages = [
-        {"message": str(m.message), "type": (m.tags or "info")}
-        for m in get_messages(request)
-    ]
     # Embed as JSON; guard against `</script>` breaking out of the tag.
-    messages_json = json.dumps(messages).replace("</", "<\\/")
+    messages_json = json.dumps(toast_payloads(request)).replace("</", "<\\/")
 
     def html_document(title: str = "") -> Document:
         htmx_indicator = Img(
