@@ -8,9 +8,10 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from session_rows import timed_row, tracked_run
 
 from common.keyset import keyset_pages
-from games.models import Game, Platform, Session
+from games.models import Game, Platform, PlayerSession
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 BASE = datetime(2025, 1, 1, 12, 0, tzinfo=ZONEINFO)
@@ -28,20 +29,18 @@ def game(library):
     return Game.objects.create(library=library, name="A", platform=platform)
 
 
-def _sessions(game, offsets: list[int]) -> list[Session]:
-    return [
-        Session.objects.create(game=game, timestamp_start=BASE + timedelta(hours=hours))
-        for hours in offsets
-    ]
+def _sessions(game, offsets: list[int]) -> list[PlayerSession]:
+    run = tracked_run(game.library, game)
+    return [timed_row(run, BASE + timedelta(hours=hours), None) for hours in offsets]
 
 
 def test_one_field_ascending_reads_every_row_in_order(game):
     _sessions(game, [0, 1, 2, 3, 4])
     rows = list(
-        keyset_pages(Session.objects.all(), key=("timestamp_start",), page_size=2)
+        keyset_pages(PlayerSession.objects.all(), key=("sort_instant",), page_size=2)
     )
-    assert [row.timestamp_start for row in rows] == sorted(
-        row.timestamp_start for row in Session.objects.all()
+    assert [row.sort_instant for row in rows] == sorted(
+        row.sort_instant for row in PlayerSession.objects.all()
     )
 
 
@@ -49,14 +48,14 @@ def test_two_fields_descending_read_from_the_newest(game):
     _sessions(game, [0, 1, 2])
     rows = list(
         keyset_pages(
-            Session.objects.all(),
-            key=("timestamp_start", "id"),
+            PlayerSession.objects.all(),
+            key=("sort_instant", "id"),
             descending=True,
             page_size=2,
         )
     )
-    assert [row.timestamp_start for row in rows] == sorted(
-        (row.timestamp_start for row in Session.objects.all()), reverse=True
+    assert [row.sort_instant for row in rows] == sorted(
+        (row.sort_instant for row in PlayerSession.objects.all()), reverse=True
     )
 
 
@@ -65,8 +64,8 @@ def test_a_tie_straddling_a_page_boundary_yields_every_row_once(game):
     _sessions(game, [0, 1, 1, 1, 2])
     rows = list(
         keyset_pages(
-            Session.objects.all(),
-            key=("timestamp_start", "id"),
+            PlayerSession.objects.all(),
+            key=("sort_instant", "id"),
             descending=True,
             page_size=2,
         )
@@ -79,17 +78,21 @@ def test_a_tie_straddling_a_page_boundary_yields_every_row_once(game):
 def test_a_result_ending_on_a_page_boundary_stops(game):
     _sessions(game, [0, 1, 2, 3])
     rows = list(
-        keyset_pages(Session.objects.all(), key=("timestamp_start", "id"), page_size=2)
+        keyset_pages(
+            PlayerSession.objects.all(), key=("sort_instant", "id"), page_size=2
+        )
     )
     assert len(rows) == 4
 
 
 def test_one_row_and_no_rows(game):
-    assert list(keyset_pages(Session.objects.all(), key=("id",), page_size=2)) == []
+    assert (
+        list(keyset_pages(PlayerSession.objects.all(), key=("id",), page_size=2)) == []
+    )
     only = _sessions(game, [0])[0]
-    assert [row.id for row in keyset_pages(Session.objects.all(), key=("id",))] == [
-        only.id
-    ]
+    assert [
+        row.id for row in keyset_pages(PlayerSession.objects.all(), key=("id",))
+    ] == [only.id]
 
 
 def test_a_composite_key_emits_a_row_value_comparison(game):
@@ -101,29 +104,31 @@ def test_a_composite_key_emits_a_row_value_comparison(game):
     with CaptureQueriesContext(connection) as captured:
         list(
             keyset_pages(
-                Session.objects.all(),
-                key=("timestamp_start", "id"),
+                PlayerSession.objects.all(),
+                key=("sort_instant", "id"),
                 descending=True,
                 page_size=1,
             )
         )
     second = captured.captured_queries[1]["sql"]
-    assert '("games_session"."timestamp_start", "games_session"."id") <' in second
+    assert (
+        '("games_playersession"."sort_instant", "games_playersession"."id") <' in second
+    )
     assert " OR " not in second
 
 
 def test_a_single_field_key_emits_a_plain_comparison(game):
     _sessions(game, [0, 1])
     with CaptureQueriesContext(connection) as captured:
-        list(keyset_pages(Session.objects.all(), key=("id",), page_size=1))
-    assert '"games_session"."id" >' in captured.captured_queries[1]["sql"]
+        list(keyset_pages(PlayerSession.objects.all(), key=("id",), page_size=1))
+    assert '"games_playersession"."id" >' in captured.captured_queries[1]["sql"]
 
 
 def test_an_empty_key_is_refused(game):
     with pytest.raises(ValueError, match="at least one key field"):
-        list(keyset_pages(Session.objects.all(), key=()))
+        list(keyset_pages(PlayerSession.objects.all(), key=()))
 
 
 def test_a_page_smaller_than_one_row_is_refused(game):
     with pytest.raises(ValueError, match="at least one row"):
-        list(keyset_pages(Session.objects.all(), key=("id",), page_size=0))
+        list(keyset_pages(PlayerSession.objects.all(), key=("id",), page_size=0))

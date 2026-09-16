@@ -4,11 +4,10 @@ A model added to the registry later cannot skip it.
 """
 
 from collections.abc import Callable
-from datetime import date, timedelta
+from datetime import date
 
 import pytest
 from django.db.models import Model
-from django.utils import timezone
 
 from games.models import (
     Device,
@@ -18,7 +17,6 @@ from games.models import (
     Platform,
     Purchase,
     Release,
-    Session,
     UserLibrary,
 )
 from games.removal import REMOVABLE_MODELS, remove, restore
@@ -46,14 +44,6 @@ def _device(library: UserLibrary) -> Device:
     return Device.objects.create(library=library, name="Deck", type=Device.HANDHELD)
 
 
-def _session(library: UserLibrary) -> Session:
-    return Session.objects.create(
-        game=_game(library),
-        timestamp_start=timezone.now(),
-        timestamp_end=timezone.now() + timedelta(hours=1),
-    )
-
-
 def _purchase(library: UserLibrary) -> Purchase:
     purchase = Purchase.objects.create(
         library=library,
@@ -77,7 +67,6 @@ BUILDERS: dict[type[Model], Builder] = {
     Release: _release,
     Platform: _platform,
     Device: _device,
-    Session: _session,
     Purchase: _purchase,
     FilterPreset: _filter_preset,
 }

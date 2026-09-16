@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from session_rows import session_row
 
 from games.models import (
     Device,
@@ -12,10 +13,10 @@ from games.models import (
     Game,
     Platform,
     Purchase,
-    Session,
     UserLibrary,
     UserLibraryPreferences,
 )
+from games.reads.player_sessions import library_sessions
 
 pytestmark = pytest.mark.django_db
 
@@ -47,25 +48,19 @@ def test_direct_and_derived_records_filter_by_library(libraries):
     )
     FilterPreset.objects.create(library=library_a, name="A preset", mode="games")
     FilterPreset.objects.create(library=library_b, name="B preset", mode="games")
-    session_a = Session.objects.create(
-        game=game_a,
+    session_a = session_row(
+        game_a,
+        started_at=datetime(2025, 1, 1, tzinfo=UTC),
         device=device_a,
-        timestamp_start=datetime(2025, 1, 1, tzinfo=UTC),
+        library=library_a,
     )
-    Session.objects.create(
-        game=game_b, timestamp_start=datetime(2025, 1, 1, tzinfo=UTC)
-    )
+    session_row(game_b, started_at=datetime(2025, 1, 1, tzinfo=UTC), library=library_b)
 
     assert Game.objects.for_library(library_a).get() == game_a
     assert Purchase.objects.for_library(library_a).get() == purchase_a
     assert Device.objects.for_library(library_a).get() == device_a
     assert FilterPreset.objects.for_library(library_a).get().name == "A preset"
-    assert Session.objects.for_library(library_a).get() == session_a
-
-
-def test_session_requires_a_game():
-    with pytest.raises(IntegrityError):
-        Session.objects.create(timestamp_start=datetime(2025, 1, 1, tzinfo=UTC))
+    assert library_sessions(library_a).get() == session_a
 
 
 def test_game_names_are_unique_only_within_a_library(libraries):
@@ -166,19 +161,6 @@ def test_purchase_games_reject_cross_library_add_in_both_directions(libraries):
     with pytest.raises(ValidationError), transaction.atomic():
         game_b.purchases.add(purchase_a)
     assert list(purchase_a.games.all()) == [game_a]
-
-
-def test_session_rejects_another_library_device(libraries):
-    library_a, library_b = libraries
-    game_a = Game.objects.create(library=library_a, name="A game")
-    device_b = Device.objects.create(library=library_b, name="B device")
-
-    with pytest.raises(ValidationError):
-        Session.objects.create(
-            game=game_a,
-            device=device_b,
-            timestamp_start=datetime(2025, 1, 1, tzinfo=UTC),
-        )
 
 
 def test_library_preferences_reject_another_library_default_device(libraries):

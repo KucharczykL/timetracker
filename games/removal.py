@@ -20,7 +20,6 @@ from games.models import (
     Platform,
     Purchase,
     Release,
-    Session,
 )
 
 #: Every model a user can remove.
@@ -31,7 +30,6 @@ REMOVABLE_MODELS: tuple[type[Model], ...] = (
     Release,
     Platform,
     Device,
-    Session,
     Purchase,
     FilterPreset,
 )

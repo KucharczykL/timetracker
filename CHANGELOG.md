@@ -1,5 +1,10 @@
 ## Unreleased
 
+### Changed
+
+* The legacy session table is gone; every session is its events, and the
+  sample fixture carries them.
+
 ### Fixed
 
 * Fix Method Not Allowed (GET) error when trying to finish a session by rendering a confirmation page instead of rejecting GET requests with a 405 error.

@@ -1,9 +1,12 @@
+import copy
 import gzip
 import random
 import tempfile
-from datetime import UTC, datetime, timedelta
+from collections.abc import Mapping
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import yaml
 from django.contrib.auth import get_user_model
@@ -11,8 +14,14 @@ from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from games.events.playthrough import PLAYTHROUGH_CREATED
+from games.events.playersession import (
+    day_from_text,
+    day_text,
+    instant_from_text,
+    instant_text,
+)
 from games.events.references import capture_reference
+from games.events.vocabulary import DatedKeys, KeyPath
 from games.events.wiring import DEFAULT_WIRING
 from games.management.commands.load_sample_data import TARGET_LIBRARY_MARKER
 from games.models import (
@@ -24,18 +33,16 @@ from games.models import (
     LibraryEventStreamHead,
     Platform,
     PlayerGame,
+    PlayerSession,
     Playthrough,
     Purchase,
-    Session,
 )
 from timetracker.temporal import TemporalPrecision, TemporalValue
 from timetracker.uuidv7 import UUIDv7Field, uuid7_at
 
 # DB-computed columns: the serializer emits them, loaddata discards them.
 # Stripped to keep the fixture clean.
-GENERATED_FIELDS = frozenset(
-    ["price_per_game", "duration_calculated", "duration_total"]
-)
+GENERATED_FIELDS = frozenset(["price_per_game"])
 PORTABLE_LIBRARY_MODELS = frozenset(
     [
         "games.device",
@@ -56,7 +63,6 @@ DUMP_LABELS = [
     "games.Device",
     "games.Game",
     "games.Purchase",
-    "games.Session",
     "games.LibraryEventStreamHead",
     "games.LibraryEvent",
     "games.LibraryEventReference",
@@ -82,7 +88,10 @@ DEFAULT_NAME_OVERRIDES = (
 # derive from recorded_at, not created_at, and from each other's grouping
 # (aggregate/correlation/stream), so they get their own dedicated pass in
 # _reassign_event_identities rather than this generic one.
-IDENTITY_MODELS = (Platform, Device, Game, Purchase, Session)
+IDENTITY_MODELS = (Platform, Device, Game, Purchase)
+#: Old identity to new, per model.
+type Replacements = Mapping[UUID, UUID]
+type ReplacementsByModel = Mapping[type, Replacements]
 
 _UUID_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 _RAND_B_BITS = 62
@@ -117,6 +126,72 @@ def _shift_effective_time(value, offset):
             "the anonymizer only knows how to shift a day value."
         )
     return TemporalValue.from_day(value.lower_bound + offset, qualifier=value.qualifier)
+
+
+def _read_path(payload: Mapping, path: KeyPath):
+    """Value at path; None when absent."""
+    value = payload
+    for key in path:
+        if not isinstance(value, Mapping) or value.get(key) is None:
+            return None
+        value = value[key]
+    return value
+
+
+def _write_path(payload: dict, path: KeyPath, value) -> None:
+    container = payload
+    for key in path[:-1]:
+        container = container[key]
+    container[path[-1]] = value
+
+
+def shift_instant(text: str, *, days: int, zone: str) -> str:
+    """Move `days` calendar days, same wall time.
+
+    Shifting the UTC instant instead moves the local day by
+    one across a daylight-saving change.
+    """
+    local = instant_from_text(text).astimezone(ZoneInfo(zone))
+    moved = local.replace(tzinfo=None) + timedelta(days=days)
+    return instant_text(moved.replace(tzinfo=ZoneInfo(zone)).astimezone(UTC))
+
+
+def shift_dated(payload: dict, keys: DatedKeys, *, days: int) -> dict:
+    """Copy with every day and instant moved.
+
+    An end is the moved start plus the original elapsed
+    time; shifting it alone changes Timed durations
+    across a daylight-saving change.
+    """
+    shifted = copy.deepcopy(payload)
+    for path in keys.days:
+        text = _read_path(shifted, path)
+        if text is not None:
+            _write_path(
+                shifted, path, day_text(day_from_text(text) + timedelta(days=days))
+            )
+    ends_after_starts: list[tuple[KeyPath, KeyPath]] = []
+    for path in keys.instants:
+        text = _read_path(shifted, path)
+        if text is None:
+            continue
+        container_path, key = path[:-1], path[-1]
+        container = _read_path(shifted, container_path) if container_path else shifted
+        if key == "ended_at" and container.get("started_at") is not None:
+            ends_after_starts.append(((*container_path, "started_at"), path))
+            continue
+        zone = container.get("day_zone") or container.get(f"{key}_zone") or "UTC"
+        _write_path(shifted, path, shift_instant(text, days=days, zone=zone))
+    for start_path, end_path in ends_after_starts:
+        elapsed = instant_from_text(_read_path(payload, end_path)) - instant_from_text(
+            _read_path(payload, start_path)
+        )
+        _write_path(
+            shifted,
+            end_path,
+            instant_text(instant_from_text(_read_path(shifted, start_path)) + elapsed),
+        )
+    return shifted
 
 
 class Command(BaseCommand):
@@ -231,6 +306,7 @@ class Command(BaseCommand):
                     reassignable_game_ids,
                     options["scrub_devices"],
                     name_overrides,
+                    library_id=library.pk,
                 )
                 call_command(
                     "dumpdata",
@@ -240,7 +316,7 @@ class Command(BaseCommand):
                     output=str(dump_path),
                 )
                 transaction.set_rollback(True)
-            self._write_fixture(dump_path, output_path)
+            self._write_fixture(dump_path, output_path, library_id=library.pk)
 
         self.stdout.write(
             self.style.SUCCESS(
@@ -259,7 +335,6 @@ class Command(BaseCommand):
         rows, the pre_delete guard in games/signals.py refuses to delete them.
         """
         FilterPreset.objects.exclude(library=library).delete()
-        Session.objects.exclude(game__library=library).delete()
         LibraryEventReference.objects.exclude(library=library).delete()
         LibraryEvent.objects.exclude(library=library).delete()
         LibraryEventStreamHead.objects.exclude(library=library).delete()
@@ -269,29 +344,18 @@ class Command(BaseCommand):
         Platform.objects.filter(library__isnull=False).exclude(library=library).delete()
 
     def _anonymize(
-        self, all_game_ids, reassignable_game_ids, scrub_devices, name_overrides
+        self,
+        all_game_ids,
+        reassignable_game_ids,
+        scrub_devices,
+        name_overrides,
+        *,
+        library_id,
     ):
         game_offsets = {
             game_id: timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
             for game_id in all_game_ids
         }
-
-        sessions = list(Session.objects.order_by("pk"))
-        for session in sessions:
-            if session.game_id is not None:
-                offset = game_offsets[session.game_id]
-            else:
-                offset = timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
-            session.timestamp_start += offset
-            if session.timestamp_end is not None:
-                session.timestamp_end += offset
-            session.note = ""
-            session.created_at = session.timestamp_start
-            session.modified_at = session.timestamp_start
-        Session.objects.bulk_update(
-            sessions,
-            ["timestamp_start", "timestamp_end", "note", "created_at", "modified_at"],
-        )
 
         purchases = list(Purchase.objects.order_by("pk"))
         through_rows = []
@@ -358,17 +422,25 @@ class Command(BaseCommand):
         game_id_by_aggregate = {
             **dict(PlayerGame.objects.values_list("pk", "game_id")),
             **dict(Playthrough.objects.values_list("pk", "player_game__game_id")),
+            **dict(
+                PlayerSession.objects.values_list(
+                    "pk", "playthrough__player_game__game_id"
+                )
+            ),
         }
 
         replacements_by_model = self._reassign_uuids()
-        event_count = self._reassign_event_identities(
-            game_offsets, game_id_by_aggregate, replacements_by_model[Game]
+        event_count, session_count = self._reassign_event_identities(
+            game_offsets,
+            game_id_by_aggregate,
+            replacements_by_model,
+            library_id=library_id,
         )
 
         return {
             "games": len(all_game_ids),
             "purchases": len(purchases),
-            "sessions": len(sessions),
+            "sessions": session_count,
             "events": event_count,
         }
 
@@ -397,48 +469,56 @@ class Command(BaseCommand):
 
     @staticmethod
     def _reassign_event_identities(
-        game_offsets, game_id_by_aggregate, game_replacements
+        game_offsets, game_id_by_aggregate, replacements_by_model, *, library_id
     ):
-        """Shift, blank and re-key every event, then re-derive every
-        event-table identity from the recorded_at values this method just
-        wrote. Runs after _reassign_uuids, whose Game replacements this needs
-        to re-capture a payload reference at the game's final uuid.
+        """Shift, blank, re-key, re-mint every event.
 
-        game_id_by_aggregate is captured by the caller before _reassign_uuids
-        remaps PlayerGame.game_id / Playthrough.player_game__game_id -- it
-        must agree with game_offsets' original-game-id keys, not the
-        post-remap ones a fresh query here would return.
+        Runs after _reassign_uuids: references re-capture at
+        final uuids. game_id_by_aggregate is captured before
+        that remap, keyed like game_offsets.
         """
-        events = list(LibraryEvent.objects.order_by("pk"))
-        for sequence, event in enumerate(events, start=1):
-            offset = game_offsets[game_id_by_aggregate[event.aggregate_id]]
-            event.effective_time = _shift_effective_time(event.effective_time, offset)
-            event.recorded_at = (
-                _midnight(event.effective_time.lower_bound)
-                if event.effective_time is not None
-                else FIXED_EPOCH
+        event_types = DEFAULT_WIRING.event_types
+        kinds = event_types.reference_kinds
+        #: Aggregate order: undated follows dated.
+        events = list(LibraryEvent.objects.order_by("aggregate_id", "sequence"))
+        last_dated_day: dict[UUID, date] = {}
+        sessions_recorded = 0
+        for event in events:
+            library_keyed = event.aggregate_id == library_id
+            offset = (
+                timedelta(0)
+                if library_keyed
+                else game_offsets[game_id_by_aggregate[event.aggregate_id]]
             )
-            payload = dict(event.payload)
+            event.effective_time = _shift_effective_time(event.effective_time, offset)
+            if event.effective_time is not None:
+                last_dated_day[event.aggregate_id] = event.effective_time.lower_bound
+            #: A removal never precedes its creation.
+            day = last_dated_day.get(event.aggregate_id)
+            event.recorded_at = FIXED_EPOCH if day is None else _midnight(day)
+            payload = shift_dated(
+                event.payload,
+                event_types.dated_keys(event.event_type),
+                days=offset.days,
+            )
             if "note" in payload:
                 payload["note"] = ""
             if "name" in payload:
                 payload["name"] = ""
-            for found in DEFAULT_WIRING.event_types.references_in(
-                event.event_type, payload
-            ):
-                old_game_id = UUID(found.value["id"])
-                new_game = Game.objects.get(
-                    pk=game_replacements.get(old_game_id, old_game_id)
+            for found in event_types.references_in(event.event_type, payload):
+                kind = kinds.kind_for(found.value["kind"])
+                replacements = replacements_by_model.get(kind.model, {})
+                old_id = UUID(found.value["id"])
+                payload[found.key] = capture_reference(
+                    kind.model.objects.get(pk=replacements.get(old_id, old_id))
                 )
-                payload[found.key] = capture_reference(new_game)
             event.payload = payload
-            event.source_metadata = {
-                key: value
-                for key, value in event.source_metadata.items()
-                if key != "play_event_id"
-            }
-            event.idempotency_key = f"sample:{sequence}"
+            #: Source evidence holds real instants.
+            event.source_metadata = {}
+            event.idempotency_key = f"sample:{event.sequence}"
             event.actor = None
+            if event.event_type == "library.playersession.created":
+                sessions_recorded += 1
         LibraryEvent.objects.bulk_update(
             events,
             [
@@ -453,10 +533,12 @@ class Command(BaseCommand):
 
         references = list(LibraryEventReference.objects.order_by("pk"))
         for reference in references:
-            if reference.kind == "catalog.game":
-                reference.referenced_id = game_replacements.get(
-                    reference.referenced_id, reference.referenced_id
-                )
+            replacements = replacements_by_model.get(
+                kinds.kind_for(reference.kind).model, {}
+            )
+            reference.referenced_id = replacements.get(
+                reference.referenced_id, reference.referenced_id
+            )
         LibraryEventReference.objects.bulk_update(references, ["referenced_id"])
 
         def _mint(moment, state):
@@ -487,15 +569,16 @@ class Command(BaseCommand):
             }
 
         aggregate_replacements = _group_replacements(
-            events, lambda event: event.aggregate_id
+            [event for event in events if event.aggregate_id != library_id],
+            lambda event: event.aggregate_id,
         )
         correlation_replacements = _group_replacements(
             events, lambda event: event.correlation_id
         )
         #: LibraryEventStreamHead.id is deliberately left alone.
         #: games_libraryevent's composite FK to it
-        #: (library_event_stream_matches_library, migration 0023) is a plain
-        #: RunSQL constraint with no DEFERRABLE -- unlike every other FK this
+        #: (library_event_stream_matches_library) is a plain RunSQL
+        #: constraint with no DEFERRABLE -- unlike every other FK this
         #: command remaps, Postgres checks it immediately on each UPDATE, so
         #: LibraryEvent.stream_id and LibraryEventStreamHead.id cannot be
         #: swapped to new values in separate statements without one side
@@ -515,24 +598,24 @@ class Command(BaseCommand):
         #: and each event's own id is swapped after via a per-row UPDATE --
         #: the same split _resequence_identity/_remap_referrers already use.
         for event in events:
-            event.aggregate_id = aggregate_replacements[event.aggregate_id]
+            event.aggregate_id = aggregate_replacements.get(
+                event.aggregate_id, event.aggregate_id
+            )
             event.correlation_id = correlation_replacements[event.correlation_id]
             if event.causation_id is not None:
                 event.causation_id = correlation_replacements.get(
                     event.causation_id, event.causation_id
                 )
-            #: PlaythroughCreatedPayload.player_game is a bare ReferenceId,
-            #: not a Reference the reference-recapture pass above can see --
-            #: it names the PlayerGame this run belongs to, whose own
-            #: aggregate_id (from its own library.playergame.created event)
-            #: was just remapped above.
-            if event.event_type == PLAYTHROUGH_CREATED.event_type:
-                payload = dict(event.payload)
-                old_player_game_id = UUID(payload["player_game"])
-                payload["player_game"] = str(
-                    aggregate_replacements.get(old_player_game_id, old_player_game_id)
-                )
-                event.payload = payload
+            #: Bare aggregate ids follow the re-minting.
+            payload = copy.deepcopy(event.payload)
+            for path in event_types.aggregate_id_keys(event.event_type):
+                named = _read_path(payload, path)
+                if named is not None:
+                    old_id = UUID(named)
+                    _write_path(
+                        payload, path, str(aggregate_replacements.get(old_id, old_id))
+                    )
+            event.payload = payload
         LibraryEvent.objects.bulk_update(
             events, ["aggregate_id", "correlation_id", "causation_id", "payload"]
         )
@@ -552,7 +635,7 @@ class Command(BaseCommand):
         for old_id, new_id in reference_id_replacements.items():
             LibraryEventReference.objects.filter(pk=old_id).update(id=new_id)
 
-        return len(events)
+        return len(events), sessions_recorded
 
     @staticmethod
     def _identity_field_name(model) -> str:
@@ -656,18 +739,19 @@ class Command(BaseCommand):
             mapping = yaml.safe_load(stream) or {}
         return {str(old): str(new) for old, new in mapping.items()}
 
-    def _write_fixture(self, dump_path, output_path):
+    def _write_fixture(self, dump_path, output_path, *, library_id):
         with dump_path.open() as stream:
             objects = yaml.safe_load(stream) or []
         for item in objects:
             fields = item.get("fields", {})
             for key in GENERATED_FIELDS:
                 fields.pop(key, None)
-            if (
-                item.get("model") == "games.libraryevent"
-                and fields.get("effective_time") == ""
-            ):
-                fields.pop("effective_time", None)
+            if item.get("model") == "games.libraryevent":
+                if fields.get("effective_time") == "":
+                    fields.pop("effective_time", None)
+                #: Library-keyed aggregate: the owner marker.
+                if str(fields.get("aggregate_id")) == str(library_id):
+                    fields["aggregate_id"] = TARGET_LIBRARY_MARKER
             if item.get("model") in PORTABLE_LIBRARY_MODELS or (
                 item.get("model") == "games.platform"
                 and fields.get("library") is not None

@@ -1,9 +1,11 @@
 import gzip
+import uuid
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 import yaml
@@ -14,25 +16,40 @@ from django.db import transaction
 from django.test import TransactionTestCase
 
 from games.commands.playergame import TrackGame
+from games.commands.playersession import (
+    CorrectedTiming,
+    DurationOnlyTiming,
+    TimedTiming,
+)
 from games.commands.playthrough import (
     CompletePlaythrough,
     DescribePlaythrough,
     StartPlaythrough,
 )
 from games.events.dispatch import dispatch
-from games.management.commands.anonymize_sample import Command as AnonymizeCommand
+from games.events.playersession import day_from_text, instant_from_text
+from games.events.vocabulary import DEFAULT_EVENT_TYPES
+from games.management.commands.anonymize_sample import (
+    Command as AnonymizeCommand,
+)
+from games.management.commands.anonymize_sample import (
+    shift_dated,
+    shift_instant,
+)
 from games.models import (
     Device,
     Game,
+    LibraryCalendar,
     LibraryEvent,
     Platform,
     PlayerSession,
     Playthrough,
     Purchase,
-    Session,
 )
 from games.removal import remove
 from games.retention import purging_library
+from games.writes.playersession import SessionDraft, record_session, remove_session
+from timetracker.settings_commands import CALENDAR_SETTING_KEY, change_user_setting
 from timetracker.temporal import TemporalValue
 
 #: _build_dataset dispatches TrackGame/StartPlaythrough/CompletePlaythrough
@@ -50,12 +67,17 @@ PROMOTED_MODELS = frozenset(
         "games.filterpreset",
         "games.platform",
         "games.purchase",
-        "games.session",
         "games.libraryevent",
         "games.libraryeventstreamhead",
         "games.libraryeventreference",
     ]
 )
+
+#: Source zone; not the settings default.
+SOURCE_ZONE = "America/New_York"
+#: First start; lands on 2021-06-01.
+FIRST_SESSION_START = datetime(2021, 6, 1, 20, 0, tzinfo=ZoneInfo(SOURCE_ZONE))
+FIRST_SESSION_ELAPSED = timedelta(hours=2)
 
 
 def identity(record):
@@ -78,16 +100,28 @@ def _parsed_moment(value):
     return moment.replace(microsecond=moment.microsecond // 1000 * 1000)
 
 
-GENERATED_KEYS = {
-    "price_per_game",
-    "duration_calculated",
-    "duration_total",
-}
+GENERATED_KEYS = {"price_per_game"}
+
+
+def _record(owner, run, timing, *, device=None, note=""):
+    return record_session(
+        owner,
+        SessionDraft(
+            playthrough_id=run.pk,
+            timing=timing,
+            device_id=None if device is None else device.pk,
+            note=note,
+            emulated=False,
+        ),
+        correlation_id=uuid.uuid7(),
+    )
 
 
 def _build_dataset():
     """A small dataset exercising every branch the anonymizer must handle."""
     owner = get_user_model().objects.create_user(username="sample-source")
+    #: One calendar event; every session's zone.
+    change_user_setting(owner, CALENDAR_SETTING_KEY, SOURCE_ZONE)
     platform = Platform.objects.create(name="Steam", group="PC")
     device = Device.objects.create(
         library=owner.library,
@@ -120,27 +154,6 @@ def _build_dataset():
         related_game=base_game,
     )
     dlc_purchase.games.set([games[3]])
-
-    # Sessions include an open row and one with NULL manual duration.
-    Session.objects.create(
-        game=games[1],
-        timestamp_start=datetime(2021, 6, 1, 20, 0, tzinfo=UTC),
-        timestamp_end=datetime(2021, 6, 1, 22, 0, tzinfo=UTC),
-        device=device,
-        note="played after dinner",
-    )
-    Session.objects.create(
-        game=games[0],
-        timestamp_start=datetime(2021, 7, 1, 10, 0, tzinfo=UTC),
-        timestamp_end=None,
-        note="open session",
-    )
-    Session.objects.create(
-        game=games[2],
-        timestamp_start=datetime(2021, 8, 1, 12, 0, tzinfo=UTC),
-        timestamp_end=datetime(2021, 8, 1, 13, 0, tzinfo=UTC),
-        duration_manual=None,
-    )
 
     dispatch(
         TrackGame(game_id=games[1].pk),
@@ -184,12 +197,121 @@ def _build_dataset():
         idempotency_key="describe-2",
     )
 
+    #: One session per mode; Corrected removed.
+    _record(
+        owner,
+        run_one,
+        TimedTiming(
+            started_at=FIRST_SESSION_START,
+            day_zone=SOURCE_ZONE,
+            started_at_zone=SOURCE_ZONE,
+            ended_at=FIRST_SESSION_START + FIRST_SESSION_ELAPSED,
+            ended_at_zone=SOURCE_ZONE,
+        ),
+        device=device,
+        note="played after dinner",
+    )
+    _record(
+        owner,
+        run_two,
+        DurationOnlyTiming(day=date(2021, 8, 1), duration=timedelta(hours=1)),
+    )
+    corrected_id = _record(
+        owner,
+        run_one,
+        CorrectedTiming(
+            started_at=datetime(2021, 7, 1, 10, 0, tzinfo=UTC),
+            ended_at=datetime(2021, 7, 1, 12, 0, tzinfo=UTC),
+            duration=timedelta(minutes=90),
+            day_zone=SOURCE_ZONE,
+        ),
+    )
+    remove_session(
+        owner, PlayerSession.objects.get(pk=corrected_id), correlation_id=uuid.uuid7()
+    )
+
     return game_purchase, dlc_purchase
 
 
 def _load_output(path):
     with gzip.open(path, "rt") as stream:
         return yaml.safe_load(stream)
+
+
+def _by_model(objects):
+    by_model = {}
+    for item in objects:
+        by_model.setdefault(item["model"], []).append(item)
+    return by_model
+
+
+def _events_of(by_model, event_type):
+    return [
+        event
+        for event in by_model.get("games.libraryevent", [])
+        if event["fields"]["event_type"] == event_type
+    ]
+
+
+def _day_of(event):
+    return TemporalValue.parse(event["fields"]["effective_time"]).lower_bound
+
+
+# --- the pure shifts -----------------------------------------------------------
+
+
+def test_an_instant_keeps_its_wall_time_across_a_daylight_saving_change():
+    #: EST start; 21 days later EDT.
+    moved = shift_instant("2021-03-14T01:00:00Z", days=21, zone=SOURCE_ZONE)
+    local = instant_from_text(moved).astimezone(ZoneInfo(SOURCE_ZONE))
+    assert (local.date(), local.hour) == (date(2021, 4, 3), 20)
+
+
+def test_a_timing_statement_keeps_its_elapsed_time_and_moves_its_day():
+    payload = {
+        "timing": {
+            "mode": "timed",
+            "started_at": "2021-03-14T01:00:00Z",
+            "started_at_zone": SOURCE_ZONE,
+            "ended_at": "2021-03-14T03:30:00Z",
+            "ended_at_zone": SOURCE_ZONE,
+            "day_zone": SOURCE_ZONE,
+        },
+        "note": "",
+    }
+    keys = DEFAULT_EVENT_TYPES.dated_keys("library.playersession.created")
+    shifted = shift_dated(payload, keys, days=21)["timing"]
+    started = instant_from_text(shifted["started_at"])
+    ended = instant_from_text(shifted["ended_at"])
+    assert ended - started == timedelta(hours=2, minutes=30)
+    assert started.astimezone(ZoneInfo(SOURCE_ZONE)).date() == date(2021, 4, 3)
+    assert payload["timing"]["started_at"] == "2021-03-14T01:00:00Z", "a copy"
+
+
+def test_a_stated_day_moves_as_a_date():
+    payload = {
+        "timing": {
+            "mode": "duration_only",
+            "stated_day": "2021-12-25",
+            "duration_seconds": 5,
+        }
+    }
+    keys = DEFAULT_EVENT_TYPES.dated_keys("library.playersession.created")
+    assert shift_dated(payload, keys, days=-30)["timing"]["stated_day"] == "2021-11-25"
+
+
+def test_an_end_stated_alone_moves_in_its_own_zone():
+    keys = DEFAULT_EVENT_TYPES.dated_keys("library.playersession.ended")
+    shifted = shift_dated(
+        {"ended_at": "2021-03-14T01:00:00Z", "ended_at_zone": SOURCE_ZONE},
+        keys,
+        days=21,
+    )
+    local = instant_from_text(shifted["ended_at"]).astimezone(ZoneInfo(SOURCE_ZONE))
+    assert (local.date(), local.hour) == (date(2021, 4, 3), 20)
+
+
+# --- the command -------------------------------------------------------------
 
 
 class AnonymizeSampleTest(TransactionTestCase):
@@ -199,7 +321,10 @@ class AnonymizeSampleTest(TransactionTestCase):
         game_purchase.price = 999.0
         game_purchase.name = "SENTINEL"
         game_purchase.save()
-        session = Session.objects.get(note="played after dinner")
+        session = PlayerSession.objects.get(note="played after dinner")
+        created = LibraryEvent.objects.get(
+            aggregate_id=session.pk, event_type="library.playersession.created"
+        )
 
         with TemporaryDirectory() as tempdir:
             call_command(
@@ -211,10 +336,12 @@ class AnonymizeSampleTest(TransactionTestCase):
 
         game_purchase.refresh_from_db()
         session.refresh_from_db()
+        created.refresh_from_db()
         self.assertEqual(game_purchase.price, 999.0)
         self.assertEqual(game_purchase.name, "SENTINEL")
         self.assertEqual(session.note, "played after dinner")
-        self.assertEqual(session.timestamp_start.year, 2021)
+        self.assertEqual(created.payload["note"], "played after dinner")
+        self.assertEqual(session.started_at, FIRST_SESSION_START)
 
     def test_output_is_deterministic_for_a_fixed_seed(self):
         _build_dataset()
@@ -241,9 +368,8 @@ class AnonymizeSampleTest(TransactionTestCase):
             )
             objects = _load_output(output)
 
-        by_model = {}
+        by_model = _by_model(objects)
         for item in objects:
-            by_model.setdefault(item["model"], []).append(item)
             self.assertFalse(
                 GENERATED_KEYS & item["fields"].keys(),
                 f"generated key leaked into {item['model']}",
@@ -251,6 +377,9 @@ class AnonymizeSampleTest(TransactionTestCase):
             if item["model"] in PROMOTED_MODELS:
                 self.assertEqual(UUID(str(item["pk"])).version, 7)
                 self.assertNotIn("uuid", item["fields"])
+        self.assertEqual(
+            [label for label in by_model if label.endswith(".session")], []
+        )
 
         for purchase in by_model["games.purchase"]:
             fields = purchase["fields"]
@@ -267,32 +396,91 @@ class AnonymizeSampleTest(TransactionTestCase):
                     "related_game must name a game identity in the same dump",
                 )
 
-        for session in by_model["games.session"]:
-            self.assertEqual(session["fields"]["note"], "")
-            # Audit timestamp is derived from the jittered start, never a real date.
-            self.assertEqual(
-                session["fields"]["created_at"], session["fields"]["timestamp_start"]
-            )
-
-        for event in by_model.get("games.libraryevent", []):
+        for event in by_model["games.libraryevent"]:
             payload = event["fields"]["payload"]
             if "note" in payload:
                 self.assertEqual(payload["note"], "")
             if "name" in payload:
                 self.assertEqual(payload["name"], "")
+            self.assertEqual(event["fields"]["source_metadata"], {})
+            self.assertIsNone(event["fields"]["actor"])
         for reference in by_model.get("games.libraryeventreference", []):
             self.assertNotEqual(reference["fields"]["payload_key"], "")
+
+    def test_session_events_move_with_their_run_and_keep_their_shape(self):
+        _build_dataset()
+        with TemporaryDirectory() as tempdir:
+            output = Path(tempdir) / "out.yaml.gz"
+            call_command(
+                "anonymize_sample", user="sample-source", seed=3, output=output
+            )
+            by_model = _by_model(_load_output(output))
+
+        #: The start event gives the offset.
+        (started,) = _events_of(by_model, "library.playthrough.started")
+        offset = _day_of(started) - date(2021, 6, 1)
+        self.assertNotEqual(offset, timedelta(0))
+        created = _events_of(by_model, "library.playersession.created")
+        self.assertEqual(len(created), 3)
+        by_mode = {
+            event["fields"]["payload"]["timing"]["mode"]: event for event in created
+        }
+        timed = by_mode["timed"]["fields"]
+        timing = timed["payload"]["timing"]
+        started_at = instant_from_text(timing["started_at"])
+        self.assertEqual(
+            started_at.astimezone(ZoneInfo(SOURCE_ZONE)).date(),
+            date(2021, 6, 1) + offset,
+        )
+        self.assertEqual(
+            instant_from_text(timing["ended_at"]) - started_at, FIRST_SESSION_ELAPSED
+        )
+        self.assertEqual(_day_of(by_mode["timed"]), date(2021, 6, 1) + offset)
+        self.assertEqual(
+            _parsed_moment(timed["recorded_at"]),
+            datetime.combine(date(2021, 6, 1) + offset, datetime.min.time(), UTC),
+        )
+        corrected = by_mode["corrected"]["fields"]["payload"]["timing"]
+        self.assertEqual(corrected["duration_seconds"], 90 * 60)
+        self.assertEqual(
+            _day_of(by_mode["corrected"]), date(2021, 7, 1) + offset, "same run"
+        )
+
+        #: Device reference re-captured at dumped row.
+        devices = {
+            item["pk"]: item["fields"]["name"] for item in by_model["games.device"]
+        }
+        device = timed["payload"]["device"]
+        self.assertIn(device["id"], devices)
+        self.assertEqual(device["label"], devices[device["id"]])
+
+        #: Run key follows the re-minted aggregate.
+        runs = {
+            event["fields"]["aggregate_id"]
+            for event in _events_of(by_model, "library.playthrough.created")
+        }
+        for event in created:
+            self.assertIn(event["fields"]["payload"]["playthrough"], runs)
+
+        #: A removal follows its creation.
+        (removed,) = _events_of(by_model, "library.playersession.removed")
+        self.assertEqual(
+            removed["fields"]["aggregate_id"],
+            by_mode["corrected"]["fields"]["aggregate_id"],
+        )
+        self.assertGreaterEqual(
+            _parsed_moment(removed["fields"]["recorded_at"]),
+            _parsed_moment(by_mode["corrected"]["fields"]["recorded_at"]),
+        )
+
+        #: Calendar aggregate: the owner marker.
+        (calendar,) = _events_of(by_model, "library.calendar.day_zone_changed")
+        self.assertEqual(calendar["fields"]["aggregate_id"], "__target_library__")
+        self.assertEqual(calendar["fields"]["payload"]["day_zone"], SOURCE_ZONE)
 
     def test_output_reloads_via_loaddata(self):
         game_purchase, _ = _build_dataset()
         source_user = game_purchase.library.user
-        #: The loader refuses what the migration refuses.
-        Session.objects.filter(timestamp_end__isnull=True).update(
-            timestamp_end=datetime(2021, 7, 1, 11, 0, tzinfo=UTC)
-        )
-        Session.objects.filter(duration_manual__isnull=True).update(
-            duration_manual=timedelta(0)
-        )
         dispatch(
             TrackGame(game_id=Game.objects.get(name="Game 0").pk),
             actor=source_user,
@@ -317,10 +505,6 @@ class AnonymizeSampleTest(TransactionTestCase):
             self.assertEqual(purchase.library, target.library)
             self.assertLessEqual(purchase.price, 100)
             self.assertEqual(purchase.name, "")
-        self.assertEqual(Session.objects.count(), 3)
-        self.assertTrue(
-            all(session.pk.version == 7 for session in Session.objects.all())
-        )
         self.assertEqual(
             Playthrough.objects.filter(
                 player_game__game__library=target.library
@@ -328,12 +512,16 @@ class AnonymizeSampleTest(TransactionTestCase):
             3,
         )
         events = LibraryEvent.objects.filter(library=target.library)
-        #: Nine from the fixture, three converted.
-        self.assertEqual(events.count(), 12)
-        self.assertEqual(
-            PlayerSession.objects.filter(library=target.library).count(), 3
-        )
+        #: Nine, one calendar, three created, one removed.
+        self.assertEqual(events.count(), 14)
         self.assertTrue(all(event.pk.version == 7 for event in events))
+        sessions = PlayerSession.objects.filter(library=target.library)
+        self.assertEqual(sessions.count(), 3)
+        self.assertEqual(sessions.filter(removed_at__isnull=False).count(), 1)
+        self.assertTrue(all(session.pk.version == 7 for session in sessions))
+        calendar = LibraryCalendar.objects.get(library=target.library)
+        self.assertEqual(calendar.pk, target.library.pk)
+        self.assertEqual(calendar.day_zone, SOURCE_ZONE)
 
     def test_scrub_devices_uses_stable_primary_key_ordinals(self):
         game_purchase, _ = _build_dataset()
@@ -356,16 +544,24 @@ class AnonymizeSampleTest(TransactionTestCase):
                 output=output,
                 scrub_devices=True,
             )
-            objects = _load_output(output)
+            by_model = _by_model(_load_output(output))
 
-        devices = sorted(
-            (item for item in objects if item["model"] == "games.device"),
-            key=lambda item: UUID(item["pk"]),
-        )
+        devices = sorted(by_model["games.device"], key=lambda item: UUID(item["pk"]))
         self.assertEqual(
             [device["fields"]["name"] for device in devices],
             ["Device 1", "Device 2", "Device 3"],
         )
+        #: Payload reference carries the scrubbed name.
+        names = {device["pk"]: device["fields"]["name"] for device in devices}
+        referenced = [
+            event["fields"]["payload"]["device"]
+            for event in _events_of(by_model, "library.playersession.created")
+            if event["fields"]["payload"]["device"] is not None
+        ]
+        self.assertTrue(referenced)
+        for reference in referenced:
+            self.assertEqual(reference["label"], names[reference["id"]])
+            self.assertNotEqual(reference["label"], "Anna's laptop")
 
     def test_name_overrides_rename_games(self):
         game_purchase, _ = _build_dataset()
@@ -413,10 +609,10 @@ class AnonymizeSampleTest(TransactionTestCase):
             library=library,
             idempotency_key="track-shelved",
         )
-        Session.objects.create(
-            game=shelved,
-            timestamp_start=datetime(2021, 9, 1, 9, 0, tzinfo=UTC),
-            timestamp_end=datetime(2021, 9, 1, 10, 0, tzinfo=UTC),
+        _record(
+            library.user,
+            Playthrough.objects.get(player_game__game=shelved),
+            DurationOnlyTiming(day=date(2021, 9, 1), duration=timedelta(hours=1)),
         )
         remove(shelved)
 
@@ -427,18 +623,16 @@ class AnonymizeSampleTest(TransactionTestCase):
             )
             objects = _load_output(output)
 
+        by_model = _by_model(objects)
         removed_rows = [
             item
-            for item in objects
-            if item["model"] == "games.game"
-            and item["fields"]["removed_at"] is not None
+            for item in by_model["games.game"]
+            if item["fields"]["removed_at"] is not None
         ]
         self.assertEqual(len(removed_rows), 1)
-        self.assertEqual(
-            len([item for item in objects if item["model"] == "games.session"]), 4
-        )
+        self.assertEqual(len(_events_of(by_model, "library.playersession.created")), 4)
         removed_identity = str(identity(removed_rows[0]))
-        for purchase in (item for item in objects if item["model"] == "games.purchase"):
+        for purchase in by_model["games.purchase"]:
             self.assertNotIn(
                 removed_identity,
                 {str(game) for game in purchase["fields"]["games"]},
@@ -501,12 +695,9 @@ class ReassignedIdentityTest(TransactionTestCase):
                 "anonymize_sample", user="sample-source", seed=seed, output=output
             )
             objects = _load_output(output)
-        by_model = {}
-        for item in objects:
-            by_model.setdefault(item["model"], []).append(item)
-        return by_model
+        return _by_model(objects)
 
-    def test_uuid_timestamps_track_the_anonymized_created_at(self):
+    def test_uuid_timestamps_track_the_anonymized_dates(self):
         by_model = self._dump()
 
         for game in by_model["games.game"]:
@@ -514,29 +705,33 @@ class ReassignedIdentityTest(TransactionTestCase):
                 _uuid_moment(identity(game)),
                 _parsed_moment(game["fields"]["created_at"]),
             )
-        for session in by_model["games.session"]:
+        for event in by_model["games.libraryevent"]:
             self.assertEqual(
-                _uuid_moment(identity(session)),
-                _parsed_moment(session["fields"]["created_at"]),
+                _uuid_moment(identity(event)),
+                _parsed_moment(event["fields"]["recorded_at"]),
             )
 
     def test_output_preserves_uuid_ordering(self):
         by_model = self._dump()
 
-        for model_label in ("games.game", "games.session", "games.purchase"):
+        for model_label, date_field in (
+            ("games.game", "created_at"),
+            ("games.purchase", "created_at"),
+            ("games.libraryevent", "recorded_at"),
+        ):
             records = by_model[model_label]
             by_uuid = [
                 item["pk"]
                 for item in sorted(records, key=lambda item: UUID(str(identity(item))))
             ]
-            by_created = [
+            by_date = [
                 item["pk"]
                 for item in sorted(
                     records,
-                    key=lambda item: (str(item["fields"]["created_at"]), item["pk"]),
+                    key=lambda item: (str(item["fields"][date_field]), item["pk"]),
                 )
             ]
-            self.assertEqual(by_uuid, by_created, model_label)
+            self.assertEqual(by_uuid, by_date, model_label)
 
     def test_related_game_reference_follows_the_new_uuid(self):
         by_model = self._dump()
@@ -547,19 +742,43 @@ class ReassignedIdentityTest(TransactionTestCase):
             if related is not None:
                 self.assertIn(str(related), {str(value) for value in emitted})
 
-    def test_session_and_event_reference_follow_the_new_uuid(self):
+    def test_every_reference_follows_the_new_uuid(self):
         by_model = self._dump()
 
-        games = {str(identity(item)) for item in by_model["games.game"]}
-        devices = {str(identity(item)) for item in by_model["games.device"]}
-        for session in by_model["games.session"]:
-            self.assertIn(str(session["fields"]["game"]), games)
-            device = session["fields"]["device"]
-            if device is not None:
-                self.assertIn(str(device), devices)
+        rows_by_kind = {
+            "catalog.game": {str(identity(item)) for item in by_model["games.game"]},
+            "device": {str(identity(item)) for item in by_model["games.device"]},
+        }
+        for event in by_model["games.libraryevent"]:
+            fields = event["fields"]
+            for found in DEFAULT_EVENT_TYPES.references_in(
+                fields["event_type"], fields["payload"]
+            ):
+                self.assertIn(found.value["id"], rows_by_kind[found.value["kind"]])
         for reference in by_model.get("games.libraryeventreference", []):
-            if reference["fields"]["kind"] == "catalog.game":
-                self.assertIn(str(reference["fields"]["referenced_id"]), games)
+            self.assertIn(
+                str(reference["fields"]["referenced_id"]),
+                rows_by_kind[reference["fields"]["kind"]],
+            )
+
+    def test_the_day_a_session_event_states_matches_its_payload(self):
+        """Envelope day and payload start agree."""
+        by_model = self._dump()
+
+        for event in by_model["games.libraryevent"]:
+            fields = event["fields"]
+            if fields["event_type"] != "library.playersession.created":
+                continue
+            timing = fields["payload"]["timing"]
+            if timing["mode"] == "duration_only":
+                stated = day_from_text(timing["stated_day"])
+            else:
+                stated = (
+                    instant_from_text(timing["started_at"])
+                    .astimezone(ZoneInfo(timing["day_zone"]))
+                    .date()
+                )
+            self.assertEqual(_day_of(event), stated)
 
     def test_hidden_device_referrer_follows_the_new_uuid(self):
         """UserLibraryPreferences.default_device is related_name="+".

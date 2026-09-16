@@ -40,11 +40,11 @@ from games.models import (
     LibraryEventReference,
     Platform,
     PlayerGame,
+    PlayerSession,
     Playthrough,
     Purchase,
     ReferencedRow,
     Release,
-    Session,
     UserLibraryPreferences,
 )
 from games.reads.playtime import game_playtime
@@ -274,17 +274,11 @@ def populate(library):
     bystander = Game.objects.create(
         library=library, name="Bystander", year_released=2024, platform=platform
     )
-    Session.objects.create(
-        game=doomed,
-        timestamp_start=datetime(2026, 1, 1, 10, tzinfo=UTC),
-        timestamp_end=datetime(2026, 1, 1, 12, tzinfo=UTC),
+    session_row(
+        doomed,
+        started_at=datetime(2026, 1, 1, 10, tzinfo=UTC),
+        ended_at=datetime(2026, 1, 1, 12, tzinfo=UTC),
     )
-    Session.objects.create(
-        game=bystander,
-        timestamp_start=datetime(2026, 1, 2, 10, tzinfo=UTC),
-        timestamp_end=datetime(2026, 1, 2, 11, tzinfo=UTC),
-    )
-    #: Playtime reads the projection.
     session_row(
         bystander,
         started_at=datetime(2026, 1, 2, 10, tzinfo=UTC),
@@ -313,7 +307,7 @@ def populate(library):
 def snapshot(library, bundle, bystander) -> LibraryState:
     surviving = Purchase.objects.filter(pk=bundle.pk).first()
     return LibraryState(
-        sessions=Session.objects.filter(game__library=library).count(),
+        sessions=PlayerSession.objects.filter(library=library).count(),
         purchases=Purchase.objects.filter(library=library).count(),
         editions=Edition.objects.filter(game__library=library).count(),
         releases=Release.objects.filter(edition__game__library=library).count(),
@@ -381,11 +375,11 @@ def test_removing_a_platform_keeps_what_names_it(owned_library, platform):
 
 
 def test_removing_a_device_keeps_what_names_it(owned_library, game, device):
-    session = Session.objects.create(
-        game=game,
+    session = session_row(
+        game,
+        started_at=datetime(2026, 1, 1, 10, tzinfo=UTC),
+        ended_at=datetime(2026, 1, 1, 11, tzinfo=UTC),
         device=device,
-        timestamp_start=datetime(2026, 1, 1, 10, tzinfo=UTC),
-        timestamp_end=datetime(2026, 1, 1, 11, tzinfo=UTC),
     )
     preferences = UserLibraryPreferences.objects.get(library=owned_library)
     preferences.set_default_device(device)
@@ -393,7 +387,7 @@ def test_removing_a_device_keeps_what_names_it(owned_library, game, device):
 
     remove(device)
 
-    assert Session.objects.get(pk=session.pk).device_id == device.pk
+    assert PlayerSession.objects.get(pk=session.pk).device_id == device.pk
     preferences.refresh_from_db()
     assert preferences.default_device_id == device.pk
 

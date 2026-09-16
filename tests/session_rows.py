@@ -1,8 +1,7 @@
 """Session rows written by hand for reads."""
 
 import uuid
-from datetime import date, datetime, time, timedelta
-from typing import NamedTuple
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from django.utils import timezone
@@ -14,7 +13,6 @@ from games.models import (
     PlayerSessionTimingMode,
     Playthrough,
     PlaythroughKind,
-    Session,
     UserLibrary,
 )
 
@@ -148,80 +146,6 @@ def session_row(
             **columns,
         )
     return timed_row(run, started_at, ended_at, day_zone=day_zone, **columns)
-
-
-class Twin(NamedTuple):
-    """A legacy session and its projection row."""
-
-    legacy: Session
-    projection: PlayerSession
-
-
-def timed_twin(
-    library: UserLibrary,
-    game: Game,
-    started_at: datetime,
-    ended_at: datetime | None,
-) -> Twin:
-    """Finished with an end, running without one.
-
-    One id for both rows, as the conversion keeps the legacy one.
-    """
-    legacy = Session.objects.create(
-        game=game, timestamp_start=started_at, timestamp_end=ended_at
-    )
-    return Twin(
-        legacy,
-        timed_row(
-            tracked_run(library, game),
-            started_at,
-            ended_at,
-            day_zone=TWIN_ZONE.key,
-            id=legacy.pk,
-        ),
-    )
-
-
-def duration_only_twin(
-    library: UserLibrary, game: Game, day: date, duration: timedelta
-) -> Twin:
-    """No end, a manual duration, noon start."""
-    legacy = Session.objects.create(
-        game=game,
-        timestamp_start=datetime.combine(day, time(12), tzinfo=TWIN_ZONE),
-        duration_manual=duration,
-    )
-    return Twin(
-        legacy,
-        duration_only_row(tracked_run(library, game), day, duration, id=legacy.pk),
-    )
-
-
-def corrected_twin(
-    library: UserLibrary,
-    game: Game,
-    started_at: datetime,
-    ended_at: datetime,
-    manual: timedelta,
-) -> Twin:
-    """Legacy adds manual time; projection states totals."""
-    legacy = Session.objects.create(
-        game=game,
-        timestamp_start=started_at,
-        timestamp_end=ended_at,
-        duration_manual=manual,
-    )
-    return Twin(
-        legacy,
-        corrected_row(
-            tracked_run(library, game),
-            started_at,
-            ended_at,
-            (ended_at - started_at) + manual,
-            day_zone=TWIN_ZONE.key,
-            id=legacy.pk,
-        ),
-    )
 
 
 def run_id(library: UserLibrary | None, game: Game) -> str:

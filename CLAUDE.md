@@ -101,6 +101,7 @@ path**, so verify against `make check` before pushing when possible.
 | Run tests | `make test` (pytest; also runs vitest via its `test-ts` prereq) |
 | Run a subset of tests | `make test ARGS="tests/test_filters.py -k relation -x"` (same for `make test-e2e ARGS=…`) |
 | Run TypeScript tests | `make test-ts` (vitest over `ts/**/*.test.ts`) |
+| Squash the migration history | `make squash-migrations ARGS="games 0006"` (Django's tool; old files stay until the deployment records the squash, see [Squashing](docs/migration-squash.md)) |
 | Make / apply migrations | `make makemigrations` (`ARGS="games --name edition_name"` names the file) / `make migrate` (`ARGS="games 0001_initial"` targets one) |
 | CSS (Tailwind) | `make css` |
 | Django shell | `make shell` |
@@ -116,11 +117,9 @@ path**, so verify against `make check` before pushing when possible.
 | Run every test except `e2e/` | `make test-fast` |
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Verify the UUID identity map | `make audit-uuid-identity` (read-only; fails on any violation) |
-| Census the legacy Session rows | `make preflight-sessions ARGS="--all-libraries"` (read-only; reports, gates nothing) |
 | Render every read-only page as one user to files | `make render-pages ARGS="--user NAME --out DIR"` (read-only; run at two commits on one database and `diff -r`; lists whole, CSRF and version footer normalised) |
 | Benchmark commands, replay, reads, and per-event cost | `make bench` (~2 min, seeds three events a game and removes the scratch library; `ARGS="--library <id> --gate"` times the six reads and checks replay on a real library, where the 20 ms read budget is judged; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
-| Compare every playtime and session figure across both session tables | `make verify-session-parity ARGS="--all-libraries"` (read-only; fails on a differing figure; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
 | Load platform fixtures / sample data | `make loadplatforms` / `make loadsample` |
 | Regenerate sample data (anonymized prod) | `make anonymize-sample` (see Testing) |
@@ -156,7 +155,6 @@ docs/           — Additional documentation
 - **Game** — catalog row: `name`, `platform` (FK), `year_released`, `sort_name`, `wikidata`. `status` (u/p/f/r/a) and `mastered` stranded columns since #678 D2 — nothing writes them, nothing reads them, #770 drops them
 - **Platform** — `name`, `group`, `icon` (slug, auto-generated from name)
 - **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor `game.addon_purchases`)
-- **Session** — legacy table: `timestamp_start`/`timestamp_end`, `duration_manual`, `device` (FK), `note`, `emulated`; `duration_calculated`/`duration_total` are `GeneratedField`s. Nothing writes it and no surface reads it since #702; `tests/test_session_import_guard.py` refuses import outside conversion, census, legacy playtime source, the statistics gate's legacy side (`games/reads/session_parity.py`), removal registry and fixture commands. #772 drops it
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown)
 - **ExchangeRate** — cached FX rates per currency pair per year
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
@@ -267,8 +265,8 @@ docs/           — Additional documentation
   **Corrected** states both instants plus duration that *replaces* elapsed
   time — where legacy `duration_total` *added* `duration_manual`, which is why
   #700 converts such a row from legacy total rather than its manual part.
-  Three words are three `MODE_VERDICTS` names in `games/preflight/session.py`,
-  pinned by test so census and column cannot drift.
+  Three words are the timing payload's discriminator values, pinned by test
+  so payload and column cannot drift.
   Three stored generated columns: `effective_day` coalesces written day with
   start read in `day_zone`; `effective_duration` takes stated duration over
   elapsed, zero while running; `sort_instant` gives all three modes one total
@@ -322,11 +320,10 @@ docs/           — Additional documentation
   has no route until #695. Contract is
   [Remove and restore a session](docs/superpowers/specs/2026-09-14-issue-694-session-removal-design.md)
 
-  #700's `games/backfill/playersession.py`, run by migration `0004`, converts
-  every legacy `Session` row: aggregate id the row's own, `recorded_at` its
-  `created_at` (the removal's, its `removed_at`), run from `assign_run`, one imported-history bucket per game
-  needing one, seven readings gated before commit. Member 1 of the wave stack;
-  never merged alone. Contract is
+  #700 converted every legacy `Session` row into these events, under the
+  row's own id, with one imported-history bucket per game whose rows named
+  no run. The pass ran once, out of a migration since squashed; what it left
+  behind is the events. Contract is
   [Convert legacy Sessions](docs/superpowers/specs/2026-09-14-issue-700-session-conversion-design.md)
 
   #702's cutover: every session write is a command and every read the
@@ -375,8 +372,7 @@ docs/           — Additional documentation
   figures -- count, distinct days, longest, most sessions, highest average,
   first and last play -- are readers in `games/reads/session_figures.py`,
   grouped on the session table, ties broken by value, `sort_name`, game key,
-  session key; `compute_stats` calls them, `verify-session-parity` compares
-  them against legacy `duration_total`, `make bench` times them.
+  session key; `compute_stats` calls them, `make bench` times them.
   `readable_sessions()` is the row path list and API share; `games_for_list()`
   in `games/views/game.py` builds the game list's queryset so the bench times
   the served plan. Ran on the 2026-09-12 dump: replay clean, 0 of 4,649 figures
@@ -408,15 +404,16 @@ point). That why per-game refund/price need no through-model — each refundable
 unit is its own Purchase.
 
 **Unset platform/device is NULL**: `Game.platform`, `Purchase.platform`,
-`Session.device` nullable, stay NULL when unset — no sentinel rows (#290 removed
-them). "Unspecified" (platform) and "No device" are render-layer labels only. All
-three FKs use `on_delete=SET_NULL`, exclude-mode set criteria match NULL rows
+`PlayerSession.device` nullable, stay NULL when unset — no sentinel rows (#290
+removed them). "Unspecified" (platform) and "No device" are render-layer labels
+only. The two catalog FKs use `on_delete=SET_NULL` and the projection's
+`RESTRICT`; exclude-mode set criteria match NULL rows
 (`_SetCriterion._not_in_q`), and conditional `UniqueConstraint` keeps (name, year)
 unique among platformless games.
 
-**GeneratedField constraint**: `duration_calculated`, `duration_total`,
-`price_per_game`, `days_to_finish` computed by database, cannot be written from
-application code.
+**GeneratedField constraint**: `price_per_game` and the projection's
+`effective_day`, `effective_duration` and `sort_instant` are computed by the
+database and cannot be written from application code.
 
 ### Key patterns
 
@@ -429,28 +426,21 @@ pass `scripts=` for component-owned JS). `scripts=` remains only for page-specif
 glue not owned by reusable component (e.g. `add_*.js`). Navbar shows
 today's/last-7-days playtime from `model_counts` context processor.
 
-**Playtime reads** (`games/reads/playtime/`, #697): playtime per Game, all-time,
+**Playtime reads** (`games/reads/playtime.py`, #697): playtime per Game, all-time,
 per year, per day window, per platform, per month, per day and per game in a
 day window (`game_playtime_between`, the playthrough page's range sum) comes
-from this package. Averages (Game detail, stats) and `GameFilter`'s
-`session_playtime_hours` read `effective_duration` outside it. `PlaytimeSource`
-names the figures; `legacy.py` answers them from `Session`, `projection.py` from
-`PlayerSession` through `library_sessions()` (`games/reads/player_sessions.py`,
-the read layer's one session scope: four removal marks, library on session, run
-and tracked game). `SOURCE: FullPlaytimeSource = projection`; `legacy.py` lacks
-`summed_by_game_matching`, because `PlayerSessionFilter` speaks projection words
-no legacy column answers. Sources answer sums (NULL when unplayed); the package
-decides NULL or zero: `playtime_by_game` is zero (the `playtime` alias
-`GameQuerySet.annotated_for_filtering` registers, which refuses a second
-library), `playtime_sort_key` and `playtime_matching` stay NULL and `apply_sort`
-puts NULL last. A sum with no library compiles for validation and raises
-`UnscopedPlaytimeRead` if executed. No queryset and no `Q` crosses the interface.
-`make verify-session-parity` compares every `PlaytimeSource` member but
-`summed_by_game_matching`, and every `SessionFigureSource` member
-(`games/reads/session_parity.py`), in one snapshot; a test holds both lists
-whole. A
-stored comparison naming `playtime` is refused through
-`Game.RETIRED_COMPARISON_COLUMNS`.
+from this module. Averages (Game detail, stats) and `GameFilter`'s
+`session_playtime_hours` read `effective_duration` outside it. Every figure
+reads `PlayerSession` through `library_sessions()`
+(`games/reads/player_sessions.py`, the read layer's one session scope: four
+removal marks, library on session, run and tracked game). Sums are NULL when
+unplayed; the module decides NULL or zero: `playtime_by_game` is zero (the
+`playtime` alias `GameQuerySet.annotated_for_filtering` registers, which
+refuses a second library), `playtime_sort_key` and `playtime_matching` stay
+NULL and `apply_sort` puts NULL last. A sum with no library compiles for
+validation and raises `UnscopedPlaytimeRead` if executed. No queryset and no
+`Q` crosses the interface. A stored comparison naming `playtime` is refused
+through `Game.RETIRED_COMPARISON_COLUMNS`.
 
 **Component system** (`common/components/`): FastHTML-style **lazy node tree**.
 Components are `Node` objects that render to HTML only when asked (`str(node)` /
@@ -816,8 +806,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
 
 ## Conventions for AI assistants
 
-- **Never write to `GeneratedField`s** (`duration_calculated`, `duration_total`,
-  `price_per_game`, `days_to_finish`).
+- **Never write to `GeneratedField`s** (`price_per_game`, `effective_day`,
+  `effective_duration`, `sort_instant`).
 - **One act, one verb** — event type, its command and its projection column share
   one verb, and column is `<act>_at`: nullable `DateTimeField` whose null is live
   state. See [Naming](docs/event-retention.md#naming).
@@ -891,9 +881,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
 - **Signals handle side-effects** — do not manually recalculate
   `Purchase.num_purchases`.
 - **Playtime is read, never stored** — read playtime through
-  `games.reads.playtime`, never `Sum("duration_total")` at a new call site; a new
-  figure is a `PlaytimeSource` member both sources implement and the parity
-  command compares.
+  `games.reads.playtime`, never `Sum("effective_duration")` at a new call site;
+  a new figure is a function in that module.
 - **Buttons are `ControlButton`** — colors: `blue` (primary), `red` (destructive),
   `gray` (secondary), `green` (positive); variants: `filled` (default),
   `segmented` (ButtonGroup members), plus colorless single-look toggles that ignore

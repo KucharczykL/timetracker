@@ -36,6 +36,7 @@ from games.filters import (
 from games.forms import DeviceForm
 from games.models import Device
 from games.ownership import owned_or_404
+from games.reads.player_sessions import library_sessions
 from games.sorting import (
     DEVICE_DEFAULT_SORT,
     DEVICE_SORTS,
@@ -161,7 +162,12 @@ def remove_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
         device,
         title="Remove device",
         message=f"Remove {device.name} from your library?",
-        details=Ul()[Li()[f"{device.session_set.count()} session(s) still name it"]],
+        details=Ul()[
+            Li()[
+                f"{library_sessions(library).filter(device=device).count()} "
+                "session(s) still name it"
+            ]
+        ],
         fallback="games:list_devices",
     )
 

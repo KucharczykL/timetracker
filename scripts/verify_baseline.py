@@ -27,6 +27,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -176,6 +177,14 @@ class Drift:
         return "\n".join(lines)
 
 
+def round_trip(url: str, *, database: str, database_url: str) -> str:
+    """Dump and restore the database over itself."""
+    with tempfile.TemporaryDirectory() as directory:
+        dump = Path(directory) / "fresh.dump"
+        run([str(client_tool("pg_dump")), "--format=custom", f"--file={dump}", url])
+        return db_dump.restore(dump, database=database, database_url=database_url)
+
+
 def create_database(database: str, database_url: str) -> str:
     """Make an empty database under the cluster's collation contract."""
     maintenance = f"--maintenance-db={with_database(database_url, 'postgres')}"
@@ -266,9 +275,10 @@ def verify(
     app: str = DEFAULT_APP,
     normalize: Path | None = None,
     record: str | None = None,
+    migrate: bool = False,
     keep: bool = False,
 ) -> None:
-    """Read the schema of a copy of the deployment against a fresh build."""
+    """Compare a deployment copy with a fresh build."""
     #: Ahead of the restore, which takes a minute: a mistyped path is the whole
     #: run wasted otherwise, and the copy would compare as drift.
     if normalize is not None and not normalize.is_file():
@@ -280,6 +290,8 @@ def verify(
         apply_sql(normalize.read_text(), database_url=deployed_url)
     if record is not None:
         manage("migrate", "--fake", app, record, database_url=deployed_url)
+    if migrate:
+        manage("migrate", database_url=deployed_url)
     #: Every app's history is the deployment's own, and the copy has already
     #: applied it. This proves that, rather than assuming it -- and it is what
     #: fails first when a dump predates a squash that was never carried over.
@@ -287,6 +299,9 @@ def verify(
 
     fresh_url = create_database(FRESH_DATABASE, database_url)
     manage("migrate", database_url=fresh_url)
+    fresh_url = round_trip(
+        fresh_url, database=FRESH_DATABASE, database_url=database_url
+    )
 
     drift = compare(deployed_url, fresh_url, app=app)
     if drift:
@@ -334,6 +349,11 @@ def main() -> None:
         "--record",
         help="a migration to fake on the copy, for rehearsing a squash",
     )
+    verify_parser.add_argument(
+        "--migrate",
+        action="store_true",
+        help="migrate the copy first, as the deployment's startup would",
+    )
     arguments = parser.parse_args()
 
     try:
@@ -345,6 +365,7 @@ def main() -> None:
             app=arguments.app,
             normalize=arguments.normalize,
             record=arguments.record,
+            migrate=arguments.migrate,
             keep=arguments.keep,
         )
     except DumpError as error:

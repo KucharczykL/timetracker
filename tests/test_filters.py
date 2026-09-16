@@ -3433,8 +3433,8 @@ class TestComparableColumnsCrossModel:
         assert purchase_columns["games__name"]["multivalued"] is True
 
         game_columns = {c["value"]: c for c in comparable_columns(Game)}
-        assert "sessions__note" in game_columns
-        assert game_columns["sessions__note"]["multivalued"] is True
+        assert "player_games__status" in game_columns
+        assert game_columns["player_games__status"]["multivalued"] is True
 
         # Own + to-one-FK columns stay single-valued.
         assert game_columns["name"]["multivalued"] is False
@@ -3465,7 +3465,9 @@ class TestComparableColumnsCrossModel:
             v.startswith("playthrough__player_game__game__player_games__")
             for v in session_values
         )
-        assert not any(v.startswith("device__sessions__") for v in session_values)
+        assert not any(
+            v.startswith("device__player_sessions__") for v in session_values
+        )
         # Game → related_game-reverse (addon_purchases) is a self-including loop too.
         game_values = {c["value"] for c in comparable_columns(Game)}
         assert not any(v.startswith("platform__game__") for v in game_values)
@@ -6462,10 +6464,10 @@ class TestComparisonOperandPaths:
         assert info.relation_path == "games"
 
     def test_reverse_accessor_is_multivalued(self):
-        # #282: a reverse-FK hop (Game.sessions) is an accepted multi-valued operand.
-        from games.models import Game
+        # A reverse-FK hop is a multivalued operand.
+        from games.models import Playthrough
 
-        info = _comparison_operand_info(Game, "sessions__note", side="right")
+        info = _comparison_operand_info(Playthrough, "sessions__note", side="right")
         assert info.group == "string"
         assert info.multivalued is True
         assert info.relation_path == "sessions"

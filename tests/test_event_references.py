@@ -7,11 +7,13 @@ from pydantic import ConfigDict, with_config
 
 from games.events.append import canonical_json, lock_stream
 from games.events.envelope import RecordedEvent
+from games.events.playersession import InstantText
 from games.events.references import (
     DEFAULT_REFERENCE_KINDS,
     Reference,
     ReferenceArity,
     ReferenceFieldUnsupported,
+    ReferenceId,
     ReferenceKind,
     ReferenceKindRegistry,
     Resolution,
@@ -23,9 +25,12 @@ from games.events.references import (
     references_in,
 )
 from games.events.vocabulary import (
+    DEFAULT_EVENT_TYPES,
+    DatedKeys,
     EventSpec,
     EventTypeRegistry,
     PayloadInvalid,
+    aliased_fields,
 )
 from games.events.wiring import EventWiring
 from games.models import Device, Edition, Game, LibraryEvent, Platform, Release
@@ -503,3 +508,53 @@ def test_a_snapshot_is_evidence_rather_than_the_current_row(
     assert recorded.payload["device"]["label"] == "Steam Deck"
     assert recorded.payload["device"]["id"] == str(device.pk)
     assert Device.objects.get(pk=device.pk).name == "Steam Deck OLED"
+
+
+# --- aliased fields ----------------------------------------------------------
+
+
+class _PlainAliasPayload(TypedDict):
+    playthrough: ReferenceId
+    when: NotRequired[InstantText | None]
+    device: Reference | None
+
+
+def test_aliased_fields_are_keyed_by_the_alias_name():
+    found = aliased_fields(_PlainAliasPayload)
+    assert found["ReferenceId"] == (("playthrough",),)
+    assert found["InstantText"] == (("when",),)
+
+
+def test_a_references_own_id_is_not_an_aliased_field():
+    """A Reference's id is no bare key."""
+    assert ("device", "id") not in aliased_fields(_PlainAliasPayload).get(
+        "ReferenceId", ()
+    )
+
+
+def test_aggregate_id_keys_name_the_bare_keys_of_every_shipped_payload():
+    assert DEFAULT_EVENT_TYPES.aggregate_id_keys("library.playersession.created") == (
+        ("playthrough",),
+    )
+    assert DEFAULT_EVENT_TYPES.aggregate_id_keys("library.playersession.moved") == (
+        ("playthrough",),
+    )
+    assert DEFAULT_EVENT_TYPES.aggregate_id_keys("library.playthrough.created") == (
+        ("player_game",),
+    )
+    assert DEFAULT_EVENT_TYPES.aggregate_id_keys("library.playergame.created") == ()
+    assert (
+        DEFAULT_EVENT_TYPES.aggregate_id_keys("library.playersession.device_changed")
+        == ()
+    )
+
+
+def test_dated_keys_reach_into_the_timing_union():
+    created = DEFAULT_EVENT_TYPES.dated_keys("library.playersession.created")
+    assert created.instants == (("timing", "started_at"), ("timing", "ended_at"))
+    assert created.days == (("timing", "stated_day"),)
+    ended = DEFAULT_EVENT_TYPES.dated_keys("library.playersession.ended")
+    assert ended == DatedKeys(instants=(("ended_at",),), days=())
+    assert DEFAULT_EVENT_TYPES.dated_keys("library.playergame.created") == DatedKeys(
+        (), ()
+    )

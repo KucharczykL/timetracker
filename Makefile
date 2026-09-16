@@ -159,6 +159,12 @@ makemigrations: ensure-postgres
 check-migrations: ensure-postgres
 	uv run --frozen python manage.py makemigrations --check --dry-run --noinput
 
+# Squash the history with Django's tool; the old files stay until every
+# deployment has recorded the squash (docs/migration-squash.md).
+# Usage: make squash-migrations ARGS="games 0006"
+squash-migrations: ensure-postgres
+	uv run --frozen python manage.py squashmigrations --no-input $(ARGS)
+
 # Read back the DDL a migration actually emits, for the cases the migration file
 # does not show plainly: raw-SQL operations, and fields whose column definition
 # is decided by the field class rather than the call site.
@@ -349,6 +355,12 @@ drop-dump: ensure-postgres
 #
 #   make verify-baseline ARGS="--normalize cutover.sql --record 0001_squashed"
 #
+# A release the deployment has not applied yet -- a squash with `replaces`
+# among its migrations -- is rehearsed by carrying the copy over first, as the
+# deployment's startup would:
+#
+#   make verify-baseline ARGS="--migrate"
+#
 # Not in `make check`: it needs a dump of the deployment.
 verify-baseline: ensure-postgres
 	uv run --frozen python scripts/verify_baseline.py verify \
@@ -360,11 +372,6 @@ loadplatforms: ensure-postgres
 
 audit-uuid-identity: ensure-postgres
 	uv run --frozen python manage.py audit_uuid_identity
-
-# Read-only: reports what the legacy Session rows hold.
-# Usage: make preflight-sessions ARGS="--user NAME"
-preflight-sessions: ensure-postgres
-	uv run --frozen python manage.py preflight_sessions $(ARGS)
 
 # Read-only: every read-only page as one user, one file each, for a diff.
 # Usage: make render-pages ARGS="--user NAME --out DIR"
@@ -380,17 +387,9 @@ purge-library: ensure-postgres
 verify-replay-parity: ensure-postgres
 	uv run --frozen python manage.py rebuild_projections --all-libraries --check --fail-on-drift
 
-# Read-only: every playtime and session figure from both sources.
-# Usage: make verify-session-parity ARGS="--all-libraries"
-verify-session-parity: ensure-postgres
-	uv run --frozen python manage.py verify_session_parity $(ARGS)
-
 # Usage: make bench ARGS="--seed 10000 --gate"
 bench: ensure-postgres
 	uv run --frozen python manage.py benchmark_events $(ARGS)
-
-loadall: ensure-postgres
-	uv run --frozen python manage.py loaddata data.yaml
 
 loadsample: ensure-postgres
 	$(if $(and $(filter command line,$(origin USER)),$(strip $(USER))),,$(error USER is required: make loadsample USER=<username>))

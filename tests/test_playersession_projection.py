@@ -41,7 +41,6 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
 )
-from games.preflight.session import MODE_VERDICTS
 from games.projections import (
     AUDITED_PROJECTION_REFERENCES,
     unaudited_projection_references,
@@ -472,9 +471,11 @@ def test_a_session_may_name_a_device(owned_library, run):
     assert session.device == device
 
 
-def test_the_modes_are_spelled_as_the_census_spells_them():
+def test_the_modes_are_spelled_as_the_payload_discriminator_spells_them():
     assert {mode.value for mode in PlayerSessionTimingMode} == {
-        verdict.value for verdict in MODE_VERDICTS
+        "timed",
+        "duration_only",
+        "corrected",
     }
 
 

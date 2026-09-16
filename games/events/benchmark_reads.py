@@ -14,7 +14,7 @@ from games.filters import FindFilter
 from games.models import UserLibrary
 from games.reads.player_sessions import readable_sessions
 from games.reads.playtime import (
-    SOURCE,
+    played_years,
     playtime_by_month,
     playtime_by_platform,
     total_playtime,
@@ -64,7 +64,7 @@ def _stats_by_platform(library: UserLibrary) -> object:
 
 def _stats_by_month(library: UserLibrary) -> object:
     """The latest played year; this year where none was."""
-    years = SOURCE.played_years(library)
+    years = played_years(library)
     year = max(years) if years else timezone.now().year
     return playtime_by_month(library, year=year)
 
