@@ -27,9 +27,7 @@ class Playthroughs(Projector):
     def _created(self, event: RecordedEvent) -> None:
         self.project(
             Playthrough,
-            event.aggregate_id,
-            #: From the event, never a command's context.
-            library_id=event.library_id,
+            event,
             player_game_id=uuid.UUID(event.payload["player_game"]),
             kind=event.payload["kind"],
             created_at=event.recorded_at,
@@ -39,7 +37,7 @@ class Playthroughs(Projector):
         #: Every value off the event, so a replay agrees.
         self.amend(
             Playthrough,
-            event.aggregate_id,
+            event,
             started=event.effective_time,
             start_recorded_at=event.recorded_at,
             start_note=event.payload["note"],
@@ -48,23 +46,23 @@ class Playthroughs(Projector):
     def _completed(self, event: RecordedEvent) -> None:
         self.amend(
             Playthrough,
-            event.aggregate_id,
+            event,
             completed=event.effective_time,
             completion_recorded_at=event.recorded_at,
             completion_note=event.payload["note"],
         )
 
     def _name_changed(self, event: RecordedEvent) -> None:
-        self.amend(Playthrough, event.aggregate_id, name=event.payload["name"])
+        self.amend(Playthrough, event, name=event.payload["name"])
 
     def _note_changed(self, event: RecordedEvent) -> None:
-        self.amend(Playthrough, event.aggregate_id, note=event.payload["note"])
+        self.amend(Playthrough, event, note=event.payload["note"])
 
     def _start_corrected(self, event: RecordedEvent) -> None:
         #: The marker holds the first statement's instant, not this one.
         self.amend(
             Playthrough,
-            event.aggregate_id,
+            event,
             started=event.effective_time,
             start_note=event.payload["note"],
         )
@@ -72,17 +70,17 @@ class Playthroughs(Projector):
     def _completion_corrected(self, event: RecordedEvent) -> None:
         self.amend(
             Playthrough,
-            event.aggregate_id,
+            event,
             completed=event.effective_time,
             completion_note=event.payload["note"],
         )
 
     def _removed(self, event: RecordedEvent) -> None:
         #: The event's instant, so a replay agrees.
-        self.amend(Playthrough, event.aggregate_id, removed_at=event.recorded_at)
+        self.amend(Playthrough, event, removed_at=event.recorded_at)
 
     def _restored(self, event: RecordedEvent) -> None:
-        self.amend(Playthrough, event.aggregate_id, removed_at=None)
+        self.amend(Playthrough, event, removed_at=None)
 
     #: The creation handler names four columns, so amendments survive.
     #:

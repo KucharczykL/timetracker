@@ -89,9 +89,7 @@ class PlayerSessions(Projector):
         device = payload["device"]
         self.project(
             PlayerSession,
-            event.aggregate_id,
-            #: From the event, never a command's context.
-            library_id=event.library_id,
+            event,
             playthrough_id=uuid.UUID(payload["playthrough"]),
             device_id=None if device is None else uuid.UUID(device["id"]),
             note=payload["note"],
@@ -105,7 +103,7 @@ class PlayerSessions(Projector):
         payload = event.payload
         self.amend(
             PlayerSession,
-            event.aggregate_id,
+            event,
             ended_at=instant_from_text(payload["ended_at"]),
             ended_at_zone=payload["ended_at_zone"],
         )
@@ -114,39 +112,39 @@ class PlayerSessions(Projector):
         """All eight columns; no old mode stays."""
         self.amend(
             PlayerSession,
-            event.aggregate_id,
+            event,
             **columns_for_timing(event.payload["timing"]),
         )
 
     def _note_changed(self, event: RecordedEvent) -> None:
-        self.amend(PlayerSession, event.aggregate_id, note=event.payload["note"])
+        self.amend(PlayerSession, event, note=event.payload["note"])
 
     def _device_changed(self, event: RecordedEvent) -> None:
         device = event.payload["device"]
         self.amend(
             PlayerSession,
-            event.aggregate_id,
+            event,
             device_id=None if device is None else uuid.UUID(device["id"]),
         )
 
     def _emulated_changed(self, event: RecordedEvent) -> None:
         self.amend(
-            PlayerSession, event.aggregate_id, emulated=event.payload["emulated"]
+            PlayerSession, event, emulated=event.payload["emulated"]
         )
 
     def _moved(self, event: RecordedEvent) -> None:
         self.amend(
             PlayerSession,
-            event.aggregate_id,
+            event,
             playthrough_id=uuid.UUID(event.payload["playthrough"]),
         )
 
     def _removed(self, event: RecordedEvent) -> None:
         #: The event's instant, so a replay agrees.
-        self.amend(PlayerSession, event.aggregate_id, removed_at=event.recorded_at)
+        self.amend(PlayerSession, event, removed_at=event.recorded_at)
 
     def _restored(self, event: RecordedEvent) -> None:
-        self.amend(PlayerSession, event.aggregate_id, removed_at=None)
+        self.amend(PlayerSession, event, removed_at=None)
 
     handles: ClassVar[HandlerMap] = {
         PLAYERSESSION_CREATED: _created,

@@ -24,35 +24,33 @@ class PlayerGames(Projector):
     def _created(self, event: RecordedEvent) -> None:
         self.project(
             PlayerGame,
-            event.aggregate_id,
-            #: From the event, never a command's context.
-            library_id=event.library_id,
+            event,
             game_id=uuid.UUID(event.payload["game"]["id"]),
             tracked_at=event.recorded_at,
         )
 
     def _status_changed(self, event: RecordedEvent) -> None:
         #: From the payload, so replays agree.
-        self.amend(PlayerGame, event.aggregate_id, status=event.payload["status"])
+        self.amend(PlayerGame, event, status=event.payload["status"])
 
     def _mastered_changed(self, event: RecordedEvent) -> None:
         #: From the payload, so replays agree.
-        self.amend(PlayerGame, event.aggregate_id, mastered=event.payload["mastered"])
+        self.amend(PlayerGame, event, mastered=event.payload["mastered"])
 
     def _excluded_from_unfinished_changed(self, event: RecordedEvent) -> None:
         #: From the payload, so replays agree.
         self.amend(
             PlayerGame,
-            event.aggregate_id,
+            event,
             excluded_from_unfinished=event.payload["excluded_from_unfinished"],
         )
 
     def _removed(self, event: RecordedEvent) -> None:
         #: The event's own time, so replays agree.
-        self.amend(PlayerGame, event.aggregate_id, removed_at=event.recorded_at)
+        self.amend(PlayerGame, event, removed_at=event.recorded_at)
 
     def _restored(self, event: RecordedEvent) -> None:
-        self.amend(PlayerGame, event.aggregate_id, removed_at=None)
+        self.amend(PlayerGame, event, removed_at=None)
 
     handles: ClassVar[HandlerMap] = {
         PLAYERGAME_CREATED: _created,
