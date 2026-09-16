@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Model, QuerySet
 
-from games.events.dispatch import CommandContext, CommandRejected
+from games.events.dispatch import CommandContext, CommandRejected, RowInconsistent
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +20,15 @@ class Refusal:
     sentence: str
     #: A subclass for a separately answered case.
     raises: type[CommandRejected] = CommandRejected
+
+    def __post_init__(self) -> None:
+        #: A miss is a rule with a sentence. RowInconsistent takes none,
+        #: and mypy reads type[CommandRejected] without its constructor.
+        if issubclass(self.raises, RowInconsistent):
+            raise TypeError(
+                f"Refusal.raises cannot be {self.raises.__name__}: a scope miss "
+                "is not an inconsistent row, and the type states no sentence."
+            )
 
     def raised(self) -> CommandRejected:
         return self.raises(self.message, sentence=self.sentence)

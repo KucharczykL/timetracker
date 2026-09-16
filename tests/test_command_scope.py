@@ -6,7 +6,7 @@ import pytest
 from django.utils import timezone
 
 from games.commands.scope import Refusal, library_row
-from games.events.dispatch import CommandContext, CommandRejected
+from games.events.dispatch import CommandContext, CommandRejected, RowInconsistent
 from games.models import Game, PlayerGame
 
 
@@ -86,6 +86,17 @@ def test_the_caller_states_the_class_it_refuses_with(owned_user, owned_library):
         )
 
     assert refused.value.sentence == "That game is not available."
+
+
+class NarrowerInconsistency(RowInconsistent):
+    pass
+
+
+@pytest.mark.parametrize("defect", [RowInconsistent, NarrowerInconsistency])
+def test_a_scope_miss_is_never_a_defect(defect):
+    """Refused at construction, not at the one moment the row is absent."""
+    with pytest.raises(TypeError, match=defect.__name__):
+        refusal(raises=defect)
 
 
 def test_the_queryset_the_caller_hands_over_is_the_one_read(
