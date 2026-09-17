@@ -1877,6 +1877,141 @@ class LibraryCalendar(ProjectionModel):
         )
 
 
+class HistoricalPlaytimeProvenance(models.TextChoices):
+    """Where a stated duration came from.
+
+    Full words: a recorded payload is never upcast.
+    """
+
+    ESTIMATED = "estimated", "Estimated"
+    MANUALLY_ENTERED = "manually_entered", "Manually entered"
+    EXTERNALLY_MEASURED = "externally_measured", "Externally measured"
+
+
+class HistoricalPlaytimeQuerySet(RemovableMixin, models.QuerySet["HistoricalPlaytime"]):
+    """The marks that hide a record: its own and its tracked game's."""
+
+    ancestor_marks = ("player_game",)
+
+
+class HistoricalPlaytime(ProjectionModel):
+    """Playtime a library states without sittings, projected from its events."""
+
+    objects = HistoricalPlaytimeQuerySet.as_manager()
+
+    #: The game is one parent away; the filter compares against it.
+    comparison_through = (("player_game__game", "Game"),)
+
+    id = UUIDv7Field(
+        primary_key=True,
+        editable=False,
+        #: The creation event's aggregate_id, evaluated once.
+        default=models.NOT_PROVIDED,
+        db_default=models.NOT_PROVIDED,
+    )
+    player_game = models.ForeignKey(
+        PlayerGame,
+        #: No cascade may destroy a projection row.
+        on_delete=models.RESTRICT,
+        related_name="historical_playtime",
+    )
+    #: Every column below is stated by the event and carries no default.
+    duration = models.DurationField()
+    #: Null is a when nobody knows, as on a run's start.
+    when = TemporalValueField()
+    when_lower = models.GeneratedField(
+        expression=TemporalLowerBound("when"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    when_upper = models.GeneratedField(
+        expression=TemporalUpperBound("when"),
+        output_field=models.DateField(null=True),
+        null=True,
+        serialize=False,
+        db_persist=True,
+        editable=False,
+    )
+    provenance = models.CharField(max_length=19, choices=HistoricalPlaytimeProvenance)
+    #: RESTRICT: only the projector changes rows.
+    device = models.ForeignKey(
+        "Device",
+        on_delete=models.RESTRICT,
+        null=True,
+        related_name="historical_playtime",
+    )
+    emulated = models.BooleanField()
+    note = models.TextField()
+    #: The creation event's recorded_at.
+    created_at = models.DateTimeField(editable=False)
+    #: The remove event's recorded_at; null means live.
+    removed_at = models.DateTimeField(null=True, default=None, editable=False)
+
+    class Meta:
+        indexes = (
+            #: The containment reads: a year or a month, then the key.
+            models.Index(
+                fields=("library", "when_lower", "id"),
+                name="historicalplaytime_when_order",
+            ),
+        )
+        constraints = (
+            library_identity_constraint(),
+            models.CheckConstraint(
+                condition=Q(duration__gt=timedelta(0)),
+                name="historicalplaytime_duration_positive",
+            ),
+            models.CheckConstraint(
+                condition=Q(provenance__in=HistoricalPlaytimeProvenance.values),
+                name="historicalplaytime_provenance_known",
+            ),
+        )
+
+
+class HistoricalPlaytimeRunQuerySet(models.QuerySet["HistoricalPlaytimeRun"]):
+    """A join row is live while its record is."""
+
+    def alive(self):
+        return self.filter(
+            record__removed_at__isnull=True,
+            record__player_game__removed_at__isnull=True,
+        )
+
+
+class HistoricalPlaytimeRun(ProjectionModel):
+    """One run a historical playtime record names."""
+
+    objects = HistoricalPlaytimeRunQuerySet.as_manager()
+
+    id = UUIDv7Field(
+        primary_key=True,
+        editable=False,
+        #: The statement's own id for this pair, evaluated once.
+        default=models.NOT_PROVIDED,
+        db_default=models.NOT_PROVIDED,
+    )
+    record = models.ForeignKey(
+        HistoricalPlaytime, on_delete=models.RESTRICT, related_name="runs"
+    )
+    playthrough = models.ForeignKey(
+        Playthrough,
+        on_delete=models.RESTRICT,
+        related_name="historical_playtime_runs",
+    )
+
+    class Meta:
+        constraints = (
+            library_identity_constraint(),
+            models.UniqueConstraint(
+                fields=("record", "playthrough"),
+                name="historicalplaytimerun_once_per_record",
+            ),
+        )
+
+
 class UserLibraryPreferences(models.Model):
     library = models.OneToOneField(
         UserLibrary,
