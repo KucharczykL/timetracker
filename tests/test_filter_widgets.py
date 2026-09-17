@@ -197,6 +197,23 @@ class ReachableModelsTest(TestCase):
         for root in full:
             self.assertEqual(set(reachable_models(root)), full, f"root={root}")
 
+    def test_historical_playtime_reaches_the_whole_set_one_way(self):
+        """Its relations point out; nothing points back at it."""
+        from games.filters import reachable_models
+
+        self.assertEqual(
+            set(reachable_models("historicalplaytime")),
+            {
+                "historicalplaytime",
+                "game",
+                "playersession",
+                "purchase",
+                "playthrough",
+                "platform",
+                "device",
+            },
+        )
+
     def test_registry_covers_every_reachable_model_and_relation_target(self):
         """The server invariant the client's bundle() fallback relies on: every
         reachable model has a bundle, and every relation target named in any bundle is
@@ -209,6 +226,7 @@ class ReachableModelsTest(TestCase):
             "playersession",
             "purchase",
             "playthrough",
+            "historicalplaytime",
             "platform",
             "device",
         ]:
@@ -319,6 +337,7 @@ class ListUrlForTest(SimpleTestCase):
             ("sessions", "games:list_sessions"),
             ("purchases", "games:list_purchases"),
             ("playthroughs", "games:list_playthroughs"),
+            ("historical_playtime", "games:list_historical_playtime"),
             ("devices", "games:list_devices"),
             ("platforms", "games:list_platforms"),
         ]:

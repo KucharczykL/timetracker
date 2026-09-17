@@ -142,6 +142,19 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
         QuickFacet("note", placeholder="e.g. second run"),
         QuickFacet("created_at", "Created"),
     ],
+    "historical_playtime": [
+        QuickFacet("provenance", "Provenance"),
+        QuickFacet(
+            "duration_hours",
+            "Duration (hrs)",
+            placeholder="e.g. 1",
+            placeholder2="e.g. 100",
+        ),
+        QuickFacet("game"),
+        QuickFacet("device"),
+        QuickFacet("when", "When"),
+        QuickFacet("created_at", "Created"),
+    ],
     "devices": [
         QuickFacet("name", placeholder="e.g. Steam Deck"),
         QuickFacet("type"),

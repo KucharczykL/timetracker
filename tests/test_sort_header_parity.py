@@ -21,6 +21,7 @@ from games.models import Device, Game, Platform, Purchase
 from games.sorting import (
     DEVICE_SORTS,
     GAME_SORTS,
+    HISTORICAL_PLAYTIME_SORTS,
     PLATFORM_SORTS,
     PLAYTHROUGH_SORTS,
     PURCHASE_SORTS,
@@ -82,6 +83,9 @@ class SortHeaderParityTest(TestCase):
 
     def test_playthroughs_headers_match_map(self):
         self._assert_parity("games:list_playthroughs", PLAYTHROUGH_SORTS)
+
+    def test_historical_playtime_headers_match_map(self):
+        self._assert_parity("games:list_historical_playtime", HISTORICAL_PLAYTIME_SORTS)
 
     def test_devices_headers_match_map(self):
         Device.objects.create(library=self.user.library, name="Test Device")

@@ -23,13 +23,14 @@ from common.components.custom_elements import (
     FILTER_MODE_MODELS,
     ButtonDropdown,
     DropdownLinkItem,
+    ModelKey,
 )
 from common.components.primitives import ContentContainer, PageHeading, Span
 from common.date_time_presentation import date_time_presentation_for_request
 from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
 from games.filters import PlayerSessionFilter, filter_url, model_field_registry
-from games.models import Device, Game, Platform, PlayerSession, Purchase
+from games.models import Game, Platform, Purchase
 from games.reads.player_sessions import library_sessions
 from games.reads.playtime import DayInterval, playtime_between
 from games.sorting import parse_per_page_override
@@ -130,6 +131,9 @@ _BUILDER_MODELS: dict[str, str] = {
     FILTER_MODE_MODELS[mode]: mode for mode in BUILDER_MODES
 }
 
+#: Where the verbose name is not the person's word.
+_BUILDER_LABELS: dict[ModelKey, str] = {"playersession": "Session"}
+
 
 @login_required
 def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
@@ -157,19 +161,20 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
     per_page = "" if per_page_override is None else str(per_page_override)
     models_json = json.dumps(model_field_registry(model))
 
-    def _item(model, label: str | None = None):
-        #: The key is the model's, the label the person's word for it.
-        return DropdownLinkItem(
-            url=reverse("games:filter_builder", args=[model._meta.model_name]),
-            label=label or str(model._meta.verbose_name).title(),
+    #: The key is the model's, the label the person's word for it.
+    switcher_labels = {
+        key: _BUILDER_LABELS.get(
+            key, str(apps.get_model("games", key)._meta.verbose_name).title()
         )
-
+        for key in _BUILDER_MODELS
+    }
     items = [
-        _item(Device),
-        _item(Game),
-        _item(Platform),
-        _item(Purchase),
-        _item(PlayerSession, "Session"),
+        DropdownLinkItem(
+            url=reverse("games:filter_builder", args=[key]), label=item_label
+        )
+        for key, item_label in sorted(
+            switcher_labels.items(), key=lambda entry: entry[1]
+        )
     ]
 
     model_switcher = ButtonDropdown(

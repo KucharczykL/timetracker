@@ -942,6 +942,7 @@ MODE_PARSERS: dict[str, FilterParser] = {
     "sessions": parse_session_filter,
     "purchases": parse_purchase_filter,
     "playthroughs": parse_playthrough_filter,
+    "historical_playtime": parse_historical_playtime_filter,
     "devices": parse_device_filter,
     "platforms": parse_platform_filter,
 }
@@ -1087,6 +1088,7 @@ _FILTER_LIST_URL: dict[type[OperatorFilter], str] = {
     PlayerSessionFilter: "games:list_sessions",
     PurchaseFilter: "games:list_purchases",
     PlaythroughFilter: "games:list_playthroughs",
+    HistoricalPlaytimeFilter: "games:list_historical_playtime",
     DeviceFilter: "games:list_devices",
     PlatformFilter: "games:list_platforms",
 }

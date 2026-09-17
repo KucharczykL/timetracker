@@ -8,6 +8,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory
 from django.urls import reverse
 from django.utils import timezone
+from historical_playtime_rows import record_row
 from session_rows import session_row, timed_row, tracked_run
 
 from common.duration_presentation import duration_presentation_for_request
@@ -179,6 +180,8 @@ def world(client, django_user_model):
     #: the test tracks no game, which names no run either.
     own_run = Playthrough.objects.filter(library=owner_library).first()
     foreign_run = Playthrough.objects.filter(library=foreign_library).first()
+    own_record = record_row([own_run])
+    foreign_record = record_row([foreign_run])
     return SimpleNamespace(**locals())
 
 
@@ -191,6 +194,7 @@ def world(client, django_user_model):
         ("games:list_devices", "Owner device", "Foreign device"),
         ("games:list_platforms", "Owner private platform", "Foreign private platform"),
         ("games:list_playthroughs", "Owner game", "Foreign game"),
+        ("games:list_historical_playtime", "Owner game", "Foreign game"),
     ],
 )
 def test_lists_show_owned_rows_and_omit_foreign_rows(

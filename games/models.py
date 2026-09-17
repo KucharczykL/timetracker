@@ -1262,6 +1262,7 @@ class FilterPreset(models.Model):
         ("sessions", "Sessions"),
         ("purchases", "Purchases"),
         ("playthroughs", "Playthroughs"),
+        ("historical_playtime", "Historical playtime"),
         ("devices", "Devices"),
         ("platforms", "Platforms"),
     )
