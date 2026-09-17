@@ -171,10 +171,10 @@ other. Each was seen to fail on the thing it guards before it was committed.
 `CommandFailed` carries a status code, and one caller reads it: the Ninja
 exception handler in `games/api.py`.
 
-No HTML view can. The three `*_for_request` wrappers in
-`games/views/playergame_writes.py` catch the exception, raise a message, and
-answer `bool`. `games/views/purchase.py` needs a status anyway, so it restates
-the value as the literal `409`.
+A view that takes its refusal through a `*_for_request` wrapper cannot. Those
+wrappers catch the exception, raise a message, and answer `bool`.
+`games/views/purchase.py` needs a status anyway, so it restates the value as the
+literal `409`.
 
 That literal is correct while every leaf answers 409, and it is a copy of a
 number rather than a reading of one.
@@ -198,7 +198,7 @@ rather than an oversight.
 copies both. Neither is the rendering of a conflict, thus each belongs to the
 issue that needs it second.
 
-The three `*_for_request` wrappers stay, for the reason #958 records.
+The `*_for_request` wrappers stay, for the reason #958 records.
 
 ## Reversibility
 
