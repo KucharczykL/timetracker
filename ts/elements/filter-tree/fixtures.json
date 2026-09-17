@@ -19,6 +19,11 @@
       "fields": ["started", "completed", "days_to_finish", "note", "created_at"],
       "relations": { "game_filter": "game" },
       "scopes": {}
+    },
+    "historicalplaytime": {
+      "fields": ["provenance", "when", "duration_hours", "device", "note"],
+      "relations": { "game_filter": "game" },
+      "scopes": {}
     }
   },
   "cases": [
@@ -223,6 +228,32 @@
       "description": "a percent in a text criterion survives the serializer",
       "model": "playthrough",
       "filter": { "note": { "value": "100% run", "modifier": "INCLUDES" } }
+    },
+    {
+      "description": "historical playtime: one provenance",
+      "model": "historicalplaytime",
+      "filter": { "provenance": { "value": ["externally_measured"], "modifier": "INCLUDES" } }
+    },
+    {
+      "description": "historical playtime: when between two days",
+      "model": "historicalplaytime",
+      "filter": {
+        "when": { "value": "2020-01-01", "value2": "2022-12-31", "modifier": "BETWEEN" }
+      }
+    },
+    {
+      "description": "historical playtime: NOT a long duration",
+      "model": "historicalplaytime",
+      "filter": {
+        "NOT": [{ "duration_hours": { "value": 8, "modifier": "GREATER_THAN" } }]
+      }
+    },
+    {
+      "description": "historical playtime relation: records at games matching a name",
+      "model": "historicalplaytime",
+      "filter": {
+        "game_filter": { "name": { "value": "zelda", "modifier": "INCLUDES" } }
+      }
     },
     {
       "description": "multivalued comparison ANY: session end vs the game's purchases' date_purchased (date)",
