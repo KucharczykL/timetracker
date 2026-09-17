@@ -4,7 +4,7 @@ import "./temporal-field.js";
 
 const PARTS = ["year", "month", "day"] as const;
 type PartOrder = readonly string[];
-/** The three profile orders the segments can be rendered in. */
+/** The three profile orders. */
 const ORDERS: PartOrder[] = [
   ["year", "month", "day"],
   ["day", "month", "year"],
@@ -122,7 +122,7 @@ function type(
   }
 }
 
-/** Type from an endpoint's first segment on, letting auto-advance carry focus. */
+/** Type from the first segment; auto-advance carries focus. */
 function typeFrom(host: HTMLElement, endpoint: string, digits: string): void {
   host
     .querySelector<HTMLInputElement>(`input[data-date-part][data-date-side="${endpoint}"]`)!

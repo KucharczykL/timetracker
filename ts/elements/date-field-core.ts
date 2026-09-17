@@ -393,8 +393,7 @@ export type PartValues = Record<string, string>;
  * sync helpers below.
  */
 export interface FieldCodec {
-  /** Segment buffers → wire value. A codec decides what an incomplete field
-   * encodes: the date codec says `""`, the temporal codec every part. */
+  /** Segment buffers → wire value; incomplete is codec-defined. */
   encode(values: PartValues, complete: boolean): string;
   /** Wire value → segment buffers. Missing parts come back as `""`. */
   decode(value: string): PartValues;

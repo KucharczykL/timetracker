@@ -105,8 +105,10 @@ function setEndShape(host: HTMLElement, shape: string): void {
 }
 
 /**
- * Whether the endpoint would post any part. A decade posts the year alone,
- * so a month or day hidden under the box states nothing while it is checked.
+ * Whether the endpoint would post any part.
+ *
+ * A decade posts the year alone. Counting a month or day hidden under the
+ * box would post `kind=date` with every part blank, which stores unknown.
  */
 function endpointHasValue(host: HTMLElement, endpoint: string): boolean {
   const { values } = readSideParts(host, endpoint);
@@ -193,7 +195,7 @@ function writeNamedParts(host: HTMLElement, endpoint: string): void {
 function endpointSentence(host: HTMLElement, endpoint: string): string {
   if (isToggled(host, `whole_decade_${endpoint}`)) return "Decade precision";
   const { values } = readSideParts(host, endpoint);
-  // A hole is named before a precision: a day with no month states none.
+  // A hole is named before a precision.
   if (values.day && !values.year && !values.month) return "Day needs a year and a month";
   if (values.day && !values.year) return "Day needs a year";
   if (values.day && !values.month) return "Day needs a month";

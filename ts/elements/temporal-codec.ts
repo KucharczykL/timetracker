@@ -1,12 +1,8 @@
 /**
- * The wire format one temporal endpoint's segments state.
+ * Scratch codec: every part, any order, never posted.
  *
- * `dateCodec` encodes "" for anything short of a whole day, because a date
- * input has one precision. A temporal endpoint has five, and its parts can
- * arrive in any order the profile shows them, so this codec encodes every
- * part, filled or not. The value it produces is never posted: it lives in an
- * unnamed scratch input and only exists so the shared engine can tell a
- * change from a keystroke that changed nothing.
+ * The engine commits only when this value changes. A blank part must still
+ * take its slot, or a day typed before its year changes nothing and is lost.
  */
 import type { FieldCodec } from "./date-field-core.js";
 

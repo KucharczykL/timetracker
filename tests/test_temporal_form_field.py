@@ -368,8 +368,7 @@ def test_a_refused_submission_re_renders_what_was_typed() -> None:
 
 
 def test_a_day_typed_before_its_year_is_refused_and_kept() -> None:
-    """Under a day-first profile the day arrives first. The element keeps
-    it and posts it; the server names the hole; the segment shows it."""
+    """A day alone is refused and re-rendered."""
     form = ReleaseForm(data=post(kind="date", day="22"))
 
     assert not form.is_valid()

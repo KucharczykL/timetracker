@@ -35,7 +35,7 @@ class ReleaseForm(forms.Form):
 
 
 class DayFirstReleaseForm(forms.Form):
-    """The same field under a profile that shows the day first."""
+    """The same field under a day-first profile."""
 
     released = TemporalFormField(
         presentation=_presentation("dmy_24h"), label="Release date"
@@ -45,9 +45,7 @@ class DayFirstReleaseForm(forms.Form):
 def _render_form_page(
     request: HttpRequest, form_class: type[forms.Form]
 ) -> HttpResponse:
-    # The page's own presentation contract states the anonymous request's
-    # profile; the widget's states its own. The segment engine reads bounds
-    # per name and order from the DOM, so the two need not agree.
+    # Page contract and widget profile may differ.
     if request.method == "POST":
         form = form_class(data=request.POST)
         # The canonical string is what a column keeps.
@@ -87,7 +85,7 @@ urlpatterns = [
 
 @override_settings(ROOT_URLCONF="e2e.test_temporal_field_e2e")
 def test_a_day_typed_first_stores_as_a_day(live_server, page):
-    """Under a day-first profile the whole date is typed left to right."""
+    """A day-first profile types left to right."""
     page.goto(f"{live_server.url}/test-temporal-dmy/")
     page.wait_for_selector("[data-temporal-segments='start']:not([hidden])")
 
