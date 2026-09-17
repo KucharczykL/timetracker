@@ -71,8 +71,7 @@ It holds:
   `player_game__game__platform` and `device` selected;
 - `game_records(library, game)` — `library_records` at one catalog game.
 
-D1's text uses `F` and does not import it. The module carries
-`from django.db.models import F`, the one line D1 leaves out.
+The module is D1's text on `main`, copied verbatim.
 
 The list prefetches runs itself (`Prefetch("runs")`); run names are joined in
 Python from `numbered_for` over the page's `player_game_id`s.
