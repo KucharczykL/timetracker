@@ -217,7 +217,7 @@ reach the game list through a session filter. A game whose only 2022
 playtime is a record appears in the 2022 top 10 but not in the list behind
 the link. Under that filter, the list's column shows sessions only. The
 repair is a `GameFilter` relation to records, which needs #1097's
-`HistoricalPlaytimeFilter`. It is filed as a follow-up.
+`HistoricalPlaytimeFilter`. It is filed as #1105.
 
 ## Callers
 
@@ -285,14 +285,14 @@ The issue merges alone, with no stack and no required order.
 
 ## Follow-up issues
 
-1. A `GameFilter` relation to historical playtime records, with a
+1. #1105: a `GameFilter` relation to historical playtime records, with a
    containment modifier or a second `when` field. #1097's `when` filter
    reads overlap, as Playthrough's endpoints do, and this issue's sums read
    containment. With the relation, a stats link and its stat compile one
    predicate, and a link finds a game that only records reach. Placed after
-   #1097. This issue files it; #1097 files nothing for it.
-2. A stated session count on a record: an optional `session_count` in the
-   payload and the form. With it, `total_sessions` and
+   #1097.
+2. #1106: a stated session count on a record: an optional
+   `session_count` in the payload and the form. With it, `total_sessions` and
    `highest_session_count` sum the count, `highest_session_average` divides
    by sessions plus counts over records that state one, and `last_play_*`
    reads a day-precision `when_upper`. The worked example is a PS Tracker
