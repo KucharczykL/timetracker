@@ -1,4 +1,4 @@
-"""Record, restate, remove and restore historical playtime from a game."""
+"""Historical playtime acts from a game."""
 
 from functools import partial
 from typing import cast
@@ -33,7 +33,7 @@ from games.writes.historical_playtime import (
 )
 from games.writes.playergame import new_correlation_id
 
-#: Widgets render to text, so their Media never bubbles.
+#: Widget Media never bubbles.
 FORM_SCRIPTS = (
     "dist/elements/temporal-field.js",
     "dist/elements/search-select.js",
@@ -53,7 +53,7 @@ def _library_record(request: HttpRequest, record_id: UUID) -> HistoricalPlaytime
 
 
 def _any_library_record(request: HttpRequest, record_id: UUID) -> HistoricalPlaytime:
-    """Removed or not: removal and its undo both reach one."""
+    """Removed or not, for remove and undo."""
     library = cast(User, request.user).library
     return owned_or_404(
         HistoricalPlaytime.objects.filter(library=library).select_related(

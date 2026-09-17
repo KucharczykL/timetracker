@@ -1041,7 +1041,7 @@ def _historical_playtime_section(
         .order_by(*RECORD_ORDER)
         .prefetch_related("runs")
     )
-    #: Every run a live record names is live and numbered.
+    #: A live record names only numbered runs.
     names = {
         run.pk: display_name(run)
         for run in numbered_for(library, [tracked.pk] if tracked else [])

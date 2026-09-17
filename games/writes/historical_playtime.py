@@ -57,7 +57,7 @@ def restate_historical_playtime(
     *,
     correlation_id: uuid.UUID,
 ) -> None:
-    """State the whole record again; the same statement changes nothing."""
+    """State the whole record again."""
     with answered(SUBJECT):
         _dispatch(
             RestateHistoricalPlaytime(record_id=record.pk, statement=statement),

@@ -960,15 +960,15 @@ _NUMBER_CLASS = (
     "w-24 px-3 min-h-control rounded-base border border-default-medium "
     f"bg-neutral-secondary-medium text-heading {_DISABLED_CONTROL}"
 )
-#: Wide enough for 561 h and more; small enough for a timedelta.
+#: Keeps timedelta from overflowing.
 MAXIMUM_HOURS: Final = 99_999
 
 
 class _ChoiceListWidget(forms.widgets.ChoiceWidget):
-    """One primitive per choice, grouped under the row's label."""
+    """One primitive per choice, in a group."""
 
     def id_for_label(self, id_, index=None):
-        #: The group is the labelled thing, not its first option.
+        #: The group takes the label.
         return id_
 
     def _option(
@@ -1100,7 +1100,7 @@ class HistoricalWhenField(TemporalFormField):
             ) from cause
 
 
-#: The two a person states; the third is an importer's.
+#: Externally measured is an importer's.
 _STATED_PROVENANCES = (
     HistoricalPlaytimeProvenance.ESTIMATED,
     HistoricalPlaytimeProvenance.MANUALLY_ENTERED,
@@ -1108,10 +1108,7 @@ _STATED_PROVENANCES = (
 
 
 class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
-    """One record, at one game, as a person states it.
-
-    Parses types only: every domain rule is the command's.
-    """
+    """One record at one game; types only."""
 
     playthroughs = forms.ModelMultipleChoiceField(
         queryset=Playthrough.objects.none(),
@@ -1144,13 +1141,13 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         initial.update(_record_initial(library, game, record))
         super().__init__(*args, initial=initial, **kwargs)
         self.record = record
-        #: Named after duration, so the rows read in order.
+        #: Needs the presentation, so built here.
         self.fields["when"] = HistoricalWhenField(
             presentation=presentation, label="When"
         )
         self.order_fields(["playthroughs", "duration", "when", "provenance", "device"])
         runs = cast(forms.ModelMultipleChoiceField, self.fields["playthroughs"])
-        #: Any run validates; the command refuses the wrong ones.
+        #: The command refuses the wrong runs.
         runs.queryset = Playthrough.objects.filter(library=library)
         runs.choices = _run_choices(library, game)
         provenances = list(_STATED_PROVENANCES)
@@ -1164,7 +1161,7 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         ]
         devices = Device.objects.for_library(library)
         if record is not None and record.device_id is not None:
-            #: A held device stays selectable, removed or not.
+            #: A held device stays, removed or not.
             devices = devices | Device.objects.filter(
                 library=library, pk=record.device_id
             )
@@ -1193,7 +1190,7 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
             and self._both_hours_and_minutes_posted()
             and duration == held - datetime.timedelta(seconds=held.seconds % 60)
         ):
-            #: Seconds a person cannot see are not a change.
+            #: Hidden seconds are no change.
             duration = held
         when: TemporalValue | None = cleaned.get("when")
         device = cleaned.get("device")
