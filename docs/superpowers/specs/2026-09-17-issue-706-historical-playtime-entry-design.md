@@ -144,9 +144,10 @@ refuses it, even for a stored duration under one minute.
 `apply_primitive_widget_classes` gives `INPUT_CLASS` to every widget that
 is not a `Select` or a `Textarea`, and `RadioSelect` and
 `CheckboxSelectMultiple` are neither. This issue adds `RadioListWidget` and
-`CheckboxListWidget` to `games/forms.py`. Each renders a `<fieldset>` with a
-`<legend>` (the field label), and one `Radio()` or `Checkbox()` primitive
-per choice. Both are added to the exemption list in
+`CheckboxListWidget` to `games/forms.py`. Each renders a `<fieldset>` whose
+`aria-labelledby` names the row's label through `field_label_id`, as the
+temporal field does, and one `Radio()` or `Checkbox()` primitive per
+choice. The label stays the group's one name source. Both are added to the exemption list in
 `apply_primitive_widget_classes`. `HoursMinutesWidget` stamps its own
 classes on its two inputs, with no `w-full`, and is exempt too.
 
@@ -244,7 +245,8 @@ not, #1097 adds them.
   another removed device is refused; minutes above 59, negative numbers
   and hours above 99,999 are refused; blank inputs on a record under one
   minute clean to zero; a CRLF note cleans to LF; each choice widget
-  renders a fieldset, a legend and one primitive per choice.
+  renders a fieldset named by the row's label and one primitive per
+  choice.
 - `tests/test_historical_playtime_views.py`
   (`django_db(transaction=True)`, because the views dispatch):
   - acceptance: record with two runs, restate to one run, remove, restore,

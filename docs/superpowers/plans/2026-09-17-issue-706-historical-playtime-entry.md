@@ -69,7 +69,7 @@
   - `restore_historical_playtime(actor, record, *, correlation_id) -> None`
 - In `games/forms.py`:
   - `HoursMinutesWidget(forms.MultiWidget)` and `HoursMinutesField(forms.MultiValueField)`. The field cleans to a `timedelta`; blank cleans to `timedelta(0)`.
-  - `CheckboxListWidget(forms.CheckboxSelectMultiple)` and `RadioListWidget(forms.RadioSelect)`, rendered through `Checkbox()` and `Radio()` inside a `Fieldset`/`Legend`. Add either tag to the builder whitelist in `primitives.py` if it is missing.
+  - `CheckboxListWidget(forms.CheckboxSelectMultiple)` and `RadioListWidget(forms.RadioSelect)`, rendered through `Checkbox()` and `Radio()` inside a `Fieldset` whose `aria-labelledby` is `field_label_id(id)`.
   - `HistoricalWhenField(TemporalFormField)`.
   - `HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form)` with `__init__(self, *args, library, game, presentation, record: HistoricalPlaytime | None = None, **kwargs)` and `statement() -> HistoricalPlaytimeStatement`.
 
@@ -90,7 +90,7 @@
   - A blank duration is valid in the form, and `statement().duration == timedelta(0)`.
   - Seconds are kept: a record of 1:30:20 posted as 1 h 30 min gives 1:30:20. Posted as 1 h 31 min, it gives 1:31:00. A record of 0:00:20 posted blank gives zero.
   - A note posted as `"a\r\nb"` cleans to `"a\nb"`.
-  - Rendered `playthroughs` and `provenance`: one `<fieldset>`, one `<legend>`, one input per choice, and no `INPUT_CLASS` on the inputs.
+  - Rendered `playthroughs` and `provenance`: one `<fieldset>` named by the label, one input per choice, and no `INPUT_CLASS` on the inputs.
   - A posted removed run validates in the form, so the command decides.
   - Provenance choices on Add are two. On Edit of an externally measured record they are three, with it initial.
   - A `when` of "2005-13" shows `WHEN_NO_SUCH_DATE` on the field. Unknown gives `statement().when is None`.
