@@ -61,6 +61,20 @@ three runs each, serial 1491s against 696-797s at 4 workers. Halve it there if
 flaky failure appears. Set `PYTEST_WORKERS=0` when debugging — parallel output
 interleaves and `-x` stops only the worker that hit it.
 
+**Several worktrees at once share one lock.** A suite takes every core it is
+given, so two of them at once exhaust the machine rather than finishing
+sooner. Wrap every pytest target — `check`, `check-fast`, `test`, `test-fast`,
+`test-e2e`, and a focused `test ARGS=…` alike — in the lock the whole
+checkout shares:
+
+```bash
+flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make check
+```
+
+Waiting is the point; never lower `PYTEST_WORKERS` to run beside another
+worktree instead. One worktree alone needs no lock. `make dev` and `e2e/`
+still exclude each other, whichever worktree each runs in.
+
 ### Python 3.14 is a hard prerequisite
 
 `pyproject.toml` pins `requires-python = ">=3.14,<4"`, and code **depends on
