@@ -25,17 +25,34 @@ A qualifier (`2022~`, `2022?`) does not move a bound, so `2022~` counts in
 31 December, a month is its first to its last day, and the navbar's windows
 are days. Every narrowed read uses one containment filter.
 
-## The records module
+## The records modules
 
-`games/reads/historical_playtime.py` is the records twin of
-`games/reads/player_sessions.py` and holds the record sums.
+Two modules, as for sessions: `player_sessions.py` holds the scope and
+`playtime.py` the sums.
+
+| module | owner | contents |
+|---|---|---|
+| `games/reads/historical_playtime_records.py` | shared with #706 and #1097 | `library_records`, `readable_records`, `game_records`, `RECORD_ORDER` |
+| `games/reads/historical_playtime.py` | this issue | the sums below |
 
 ### Scope
 
-The scope text is fixed. #706 and #1097 add the same two functions to the
-same file, so the second branch to merge takes `main`'s copy on rebase.
+The shared module is this text, fixed by
+[the parallel review](../../review/2026-09-17-historical-playtime-parallel-specs.md)
+(D1, D2). The first of the three branches to merge adds it. The others take
+`main`'s copy on rebase and add nothing to it.
 
 ```python
+"""The records a library counts, and the row path a page reads."""
+
+from django.db.models import F
+
+from games.models import Game, HistoricalPlaytime, HistoricalPlaytimeQuerySet, UserLibrary
+
+#: Newest first; an unknown `when` last; then newest recorded.
+RECORD_ORDER = (F("when_lower").desc(nulls_last=True), "-created_at", "id")
+
+
 def library_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
     """Every live record this library counts.
 
@@ -53,15 +70,29 @@ def library_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
     )
 
 
+def readable_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
+    """The row path the list, the section and the API share."""
+    return library_records(library).select_related(
+        "player_game__game__platform", "device"
+    )
+
+
 def game_records(library: UserLibrary, game: Game) -> HistoricalPlaytimeQuerySet:
     """The counted records at one catalog game."""
     return library_records(library).filter(player_game__game=game)
 ```
 
+The review's text omits the `F` import. The import above is required,
+because without it the module raises `NameError` on import. `make format`
+wraps the long `games.models` import. All three branches get the same result.
+
 The run join is not in the scope. `RemovePlaythrough` refuses a run that a
 live record names, so a live record never names a removed run.
 
 ### Sums
+
+`games/reads/historical_playtime.py` imports `library_records` and
+`game_records`.
 
 All of these read records only and return zero, not NULL, for a scalar:
 
@@ -206,7 +237,7 @@ repair is a `GameFilter` relation to records, which needs #1097's
     `2020/2022`, `198X`, `../2021-09-27`, `2020/` and `unknown`, in a year,
     a month, a day window and all-time;
   - the platform through the game, and `provenance=`.
-- `tests/test_playtime_sources.py`:
+- `tests/test_playtime_sources.py`, which exists, gains:
   - each breakdown;
   - the platform and month merge, including a row only records reach;
   - the sort key's NULL rule, including a running session;
@@ -226,15 +257,39 @@ repair is a `GameFilter` relation to records, which needs #1097's
 
 ## Parallel work
 
-#706 and #1097 run beside this issue. The scope functions above are posted
-on both issues. Expected textual conflicts: `CLAUDE.md` and
-`games/views/game.py`, where the Game detail header call sits next to
-#706's new section. The issue merges alone, with no stack.
+#706 and #1097 run beside this issue. The agreement between the three
+branches is
+[the parallel review](../../review/2026-09-17-historical-playtime-parallel-specs.md),
+and nothing else. This issue's comment links it.
+
+- **Shared module.** See Scope above.
+- **`CLAUDE.md`.** In the HistoricalPlaytime entry, this branch replaces
+  "Nothing reads or writes it from a page yet." with one sentence of its
+  own. If a sibling merges first, this branch keeps `main`'s sentence and
+  appends its own. Nothing else in that entry changes. The Playtime reads
+  paragraph is this issue's alone.
+- **`games/views/game.py`.** This issue changes the header call and
+  `games_for_list`. #706 adds a section nearby. The lines are adjacent and
+  do not overlap.
+- **Comment on #710.** This issue posts it once. It states:
+  - `PlaytimeSplit` in #706's section header;
+  - `PlaytimeSplit` as the value of #1097's Library card, which shows a
+    count until then;
+  - the second of #706 and #1097 to merge adds the list's Actions column
+    and the section's "View all" link.
+- **Issue body.** It names `total_playtime` as a `StatsData` figure;
+  `StatsData` has only `total_hours`. This issue's comment states that.
+
+The issue merges alone, with no stack and no required order.
 
 ## Follow-up issues
 
-1. A `GameFilter` relation to historical playtime records, so the stats
-   links find a game that only records reach. Placed after #1097.
+1. A `GameFilter` relation to historical playtime records, with a
+   containment modifier or a second `when` field. #1097's `when` filter
+   reads overlap, as Playthrough's endpoints do, and this issue's sums read
+   containment. With the relation, a stats link and its stat compile one
+   predicate, and a link finds a game that only records reach. Placed after
+   #1097. This issue files it; #1097 files nothing for it.
 2. A stated session count on a record: an optional `session_count` in the
    payload and the form. With it, `total_sessions` and
    `highest_session_count` sum the count, `highest_session_average` divides
