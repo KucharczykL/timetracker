@@ -367,12 +367,30 @@ def test_a_refused_submission_re_renders_what_was_typed() -> None:
     assert 'name="released-month" value="6"' in html
 
 
-def test_a_day_typed_before_its_year_is_refused_and_kept() -> None:
-    """A day alone is refused and re-rendered."""
+@pytest.mark.parametrize(
+    ("parts", "sentence"),
+    [
+        ({"day": "22"}, "A day needs a year and a month beside it."),
+        ({"day": "22", "month": "6"}, "A day needs a year beside it."),
+        ({"day": "22", "year": "1984"}, "A day needs a month beside it."),
+        ({"month": "6"}, "A month needs a year beside it."),
+    ],
+)
+def test_a_hole_names_the_part_that_is_missing(
+    parts: dict[str, str], sentence: str
+) -> None:
+    """No sentence asks for a part already filled."""
+    form = ReleaseForm(data=post(kind="date", **parts))
+
+    assert not form.is_valid()
+    assert form.errors["released"] == [sentence]
+
+
+def test_a_day_typed_before_its_year_is_kept() -> None:
+    """The segment input keeps the day, not just the native row."""
     form = ReleaseForm(data=post(kind="date", day="22"))
 
     assert not form.is_valid()
-    assert form.errors["released"] == ["A day needs a year and a month beside it."]
     html = str(form["released"])
 
     assert 'value="22" data-date-part="day" data-date-side="start"' in html

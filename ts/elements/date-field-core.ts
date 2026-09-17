@@ -381,8 +381,18 @@ export function segmentsForSide(
 
 export type HiddenResolver = (side: string) => HTMLInputElement | null;
 
-/** Per-segment buffers keyed by `data-date-part`. */
-export type PartValues = Record<string, string>;
+/** Per-segment buffers, keyed by the contract's segment names.
+ *
+ * Partial: a field renders only the segments its profile states, and a date
+ * field has no hour. Widening it to a string key makes a misspelt part read
+ * blank and store nothing, which is what this spelling refuses.
+ */
+export type PartValues = Partial<Record<SegmentName, string>>;
+
+/** One segment's buffer, read by a DOM name. */
+export function partValue(values: PartValues, name: string): string {
+  return isSegmentName(name) ? (values[name] ?? "") : "";
+}
 
 /**
  * Translates between the segment buffers and the value the server binds.
@@ -393,7 +403,16 @@ export type PartValues = Record<string, string>;
  * sync helpers below.
  */
 export interface FieldCodec {
-  /** Segment buffers → wire value; incomplete is codec-defined. */
+  /** Segment buffers → wire value.
+   *
+   * A scratch codec must give every buffer state its own value: the engine
+   * commits only on a change, so one value for two states loses the
+   * keystroke between them. A wire codec may break that on purpose, as
+   * `dateCodec` does, encoding `""` until the whole date stands.
+   *
+   * `complete` says every segment is full. A codec of one precision gates
+   * on it; a codec of several ignores it.
+   */
   encode(values: PartValues, complete: boolean): string;
   /** Wire value → segment buffers. Missing parts come back as `""`. */
   decode(value: string): PartValues;
@@ -404,9 +423,9 @@ export const dateCodec: FieldCodec = {
   encode(values, complete) {
     if (!complete) return "";
     return isoFromParts(
-      parseInt(values.year, 10),
-      parseInt(values.month, 10),
-      parseInt(values.day, 10),
+      parseInt(values.year ?? "", 10),
+      parseInt(values.month ?? "", 10),
+      parseInt(values.day ?? "", 10),
     );
   },
   decode(value) {
@@ -438,7 +457,8 @@ export function readSideParts(
     const buffer = segmentBuffer(segment);
     const spec = segmentSpec(segment);
     if (!spec || buffer.length !== spec.width) complete = false;
-    values[segment.dataset.datePart ?? ""] = buffer;
+    // A segment the contract does not name is left out.
+    if (spec) values[spec.name] = buffer;
   });
   return { values, complete };
 }
@@ -480,7 +500,7 @@ export function writeSideValue(
   hidden.value = isoString;
   const partValues = codec.decode(isoString);
   segmentsForSide(picker, side).forEach((segment) => {
-    setSegmentBuffer(segment, partValues[segment.dataset.datePart ?? ""] ?? "");
+    setSegmentBuffer(segment, partValue(partValues, segment.dataset.datePart ?? ""));
   });
   return hidden.value !== previousValue;
 }
@@ -689,7 +709,7 @@ class SegmentedField {
       const parsed = parse(text, partNamesInOrder, values);
       if (!parsed) return;
       sideSegments.forEach((sideSegment) => {
-        setSegmentBuffer(sideSegment, parsed[sideSegment.dataset.datePart ?? ""] ?? "");
+        setSegmentBuffer(sideSegment, partValue(parsed, sideSegment.dataset.datePart ?? ""));
       });
       this.commitSide(side);
     });

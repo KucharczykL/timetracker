@@ -20,12 +20,21 @@ import {
   segmentBuffer,
   segmentsForSide,
   setSegmentBuffer,
+  type PartValues,
 } from "./date-field-core.js";
 import { decadeStart, temporalCodec } from "./temporal-codec.js";
 
 const ENDPOINTS = ["start", "end"] as const;
+/** Which end a control names. */
+type Endpoint = (typeof ENDPOINTS)[number];
 /** How a value ends, as the one radio group states it. */
 const END_SHAPES = ["end_none", "end_date", "end_open"] as const;
+type EndShape = (typeof END_SHAPES)[number];
+
+/** A side this element does not name is left alone. */
+function isEndpoint(side: string): side is Endpoint {
+  return (ENDPOINTS as readonly string[]).includes(side);
+}
 
 export function namedInput(
   host: HTMLElement,
@@ -43,7 +52,7 @@ function setNamed(host: HTMLElement, key: string, value: string): void {
 
 function scratchInput(
   host: HTMLElement,
-  endpoint: string,
+  endpoint: Endpoint,
 ): HTMLInputElement | null {
   return host.querySelector<HTMLInputElement>(
     `input[data-temporal-scratch="${endpoint}"]`,
@@ -59,7 +68,7 @@ export function isToggled(host: HTMLElement, toggle: string): boolean {
 }
 
 /** The boxes that qualify one end, decade included. */
-function endpointBoxes(host: HTMLElement, endpoint: string): HTMLInputElement[] {
+function endpointBoxes(host: HTMLElement, endpoint: Endpoint): HTMLInputElement[] {
   return [
     namedInput(host, `${endpoint}_approximate`),
     namedInput(host, `${endpoint}_uncertain`),
@@ -68,7 +77,7 @@ function endpointBoxes(host: HTMLElement, endpoint: string): HTMLInputElement[] 
 }
 
 /** Empty one end, so a shape that never reads it posts nothing. */
-function clearEndpoint(host: HTMLElement, endpoint: string): void {
+function clearEndpoint(host: HTMLElement, endpoint: Endpoint): void {
   segmentsForSide(host, endpoint).forEach((segment) => setSegmentBuffer(segment, ""));
   const scratch = scratchInput(host, endpoint);
   if (scratch) scratch.value = "";
@@ -80,7 +89,7 @@ function clearEndpoint(host: HTMLElement, endpoint: string): void {
 }
 
 /** An open end states no date, so nothing here qualifies one. */
-function setEndpointOpen(host: HTMLElement, endpoint: string, open: boolean): void {
+function setEndpointOpen(host: HTMLElement, endpoint: Endpoint, open: boolean): void {
   if (open) clearEndpoint(host, endpoint);
   endpointBoxes(host, endpoint).forEach((box) => {
     box.disabled = open;
@@ -95,22 +104,22 @@ function endShapeBoxes(host: HTMLElement): HTMLInputElement[] {
 }
 
 /** Which of the three the group is on. */
-function endShape(host: HTMLElement): string {
+function endShape(host: HTMLElement): EndShape {
   return END_SHAPES.find((shape) => isToggled(host, shape)) ?? "end_none";
 }
 
-function setEndShape(host: HTMLElement, shape: string): void {
+function setEndShape(host: HTMLElement, shape: EndShape): void {
   const box = toggleBox(host, shape);
   if (box) box.checked = true;
 }
 
 /**
- * Whether the endpoint would post any part.
+ * Whether the endpoint holds anything its shape counts.
  *
- * A decade posts the year alone. Counting a month or day hidden under the
- * box would post `kind=date` with every part blank, which stores unknown.
+ * Under the decade box only the year counts: a hidden month or day would
+ * announce a decade nobody typed a year for.
  */
-function endpointHasValue(host: HTMLElement, endpoint: string): boolean {
+function endpointHasValue(host: HTMLElement, endpoint: Endpoint): boolean {
   const { values } = readSideParts(host, endpoint);
   if (isToggled(host, `whole_decade_${endpoint}`)) return Boolean(values.year);
   return Boolean(values.year || values.month || values.day);
@@ -130,7 +139,7 @@ export function currentKind(host: HTMLElement): string {
 /** What a person typed before the decade box swallowed it. */
 const typedYears = new WeakMap<HTMLElement, Record<string, string>>();
 
-function rememberYear(host: HTMLElement, endpoint: string, year: string): void {
+function rememberYear(host: HTMLElement, endpoint: Endpoint, year: string): void {
   const remembered = typedYears.get(host) ?? {};
   remembered[endpoint] = year;
   typedYears.set(host, remembered);
@@ -138,7 +147,7 @@ function rememberYear(host: HTMLElement, endpoint: string, year: string): void {
 
 function yearSegmentFor(
   host: HTMLElement,
-  endpoint: string,
+  endpoint: Endpoint,
 ): HTMLInputElement | undefined {
   return segmentsForSide(host, endpoint).find(
     (segment) => segment.dataset.datePart === "year",
@@ -147,7 +156,7 @@ function yearSegmentFor(
 
 function endpointPart(
   host: HTMLElement,
-  endpoint: string,
+  endpoint: Endpoint,
   part: string,
 ): Element | null {
   return host.querySelector(
@@ -156,7 +165,7 @@ function endpointPart(
 }
 
 /** One cell, one glyph: the box reads YYYYs and states ten years. */
-function paintDecade(host: HTMLElement, endpoint: string, whole: boolean): void {
+function paintDecade(host: HTMLElement, endpoint: Endpoint, whole: boolean): void {
   ["month", "day"].forEach((part) => show(endpointPart(host, endpoint, part), !whole));
   const cells = Array.from(
     host.querySelectorAll(`[data-temporal-endpoint="${endpoint}"] [data-temporal-part]`),
@@ -172,7 +181,7 @@ function paintDecade(host: HTMLElement, endpoint: string, whole: boolean): void 
   );
 }
 
-function snapYearToDecade(host: HTMLElement, endpoint: string): void {
+function snapYearToDecade(host: HTMLElement, endpoint: Endpoint): void {
   const yearSegment = yearSegmentFor(host, endpoint);
   if (!yearSegment) return;
   const buffer = segmentBuffer(yearSegment);
@@ -181,25 +190,56 @@ function snapYearToDecade(host: HTMLElement, endpoint: string): void {
   if (snapped && snapped !== buffer) setSegmentBuffer(yearSegment, snapped);
 }
 
-function writeNamedParts(host: HTMLElement, endpoint: string): void {
+function writeNamedParts(host: HTMLElement, endpoint: Endpoint): void {
   const { values } = readSideParts(host, endpoint);
   const whole = isToggled(host, `whole_decade_${endpoint}`);
   const year = values.year ?? "";
   setNamed(host, `${endpoint}_year`, whole ? "" : year);
   setNamed(host, `${endpoint}_month`, whole ? "" : (values.month ?? ""));
   setNamed(host, `${endpoint}_day`, whole ? "" : (values.day ?? ""));
-  // A half-typed year states no decade; 19 is not the 10s.
-  setNamed(host, `${endpoint}_decade`, whole && year.length === 4 ? decadeStart(year) : "");
+  // A half-typed year posts as typed, for the server to refuse.
+  const decade = year.length === 4 ? decadeStart(year) : year;
+  setNamed(host, `${endpoint}_decade`, whole ? decade : "");
 }
 
-function endpointSentence(host: HTMLElement, endpoint: string): string {
-  if (isToggled(host, `whole_decade_${endpoint}`)) return "Decade precision";
+/**
+ * A part filled with a coarser part missing beside it.
+ *
+ * The holes the server refuses, split the way its sentences are, so neither
+ * half asks for a part that is filled.
+ */
+type Hole =
+  | "day_needs_year_and_month"
+  | "day_needs_year"
+  | "day_needs_month"
+  | "month_needs_year"
+  | "decade_needs_four_digits";
+
+const HOLE_SENTENCES: Record<Hole, string> = {
+  day_needs_year_and_month: "Day needs a year and a month",
+  day_needs_year: "Day needs a year",
+  day_needs_month: "Day needs a month",
+  month_needs_year: "Month needs a year",
+  decade_needs_four_digits: "Decade needs four digits",
+};
+
+function holeIn(values: PartValues, wholeDecade: boolean): Hole | null {
+  const year = values.year ?? "";
+  if (wholeDecade) return year.length === 4 ? null : "decade_needs_four_digits";
+  if (values.day && !year && !values.month) return "day_needs_year_and_month";
+  if (values.day && !year) return "day_needs_year";
+  if (values.day && !values.month) return "day_needs_month";
+  if (values.month && !year) return "month_needs_year";
+  return null;
+}
+
+function endpointSentence(host: HTMLElement, endpoint: Endpoint): string {
   const { values } = readSideParts(host, endpoint);
+  const wholeDecade = isToggled(host, `whole_decade_${endpoint}`);
   // A hole is named before a precision.
-  if (values.day && !values.year && !values.month) return "Day needs a year and a month";
-  if (values.day && !values.year) return "Day needs a year";
-  if (values.day && !values.month) return "Day needs a month";
-  if (values.month && !values.year) return "Month needs a year";
+  const hole = holeIn(values, wholeDecade);
+  if (hole) return HOLE_SENTENCES[hole];
+  if (wholeDecade) return "Decade precision";
   if (values.day) return "Day precision";
   if (values.month) return "Month precision";
   if (values.year) return "Year precision";
@@ -228,9 +268,26 @@ function announce(host: HTMLElement): void {
   if (region.textContent !== sentence) region.textContent = sentence;
 }
 
-export function commitEndpoint(host: HTMLElement, endpoint: string): void {
+/**
+ * Mirror the buffers into the scratch value the engine compares against.
+ *
+ * The engine commits only when that value changes, and it writes it before
+ * this endpoint's own handlers run. A buffer written outside the engine — a
+ * decade snap, a restore, a server-rendered value — would otherwise leave a
+ * stale value that swallows the next keystroke that lands back on it.
+ */
+function syncScratch(host: HTMLElement, endpoint: Endpoint): void {
+  const scratch = scratchInput(host, endpoint);
+  if (!scratch) return;
+  scratch.value = temporalCodec.encode(readSideParts(host, endpoint).values, false);
+}
+
+export function commitEndpoint(host: HTMLElement, endpoint: Endpoint): void {
   if (isToggled(host, `whole_decade_${endpoint}`)) snapYearToDecade(host, endpoint);
-  ENDPOINTS.forEach((each) => writeNamedParts(host, each));
+  ENDPOINTS.forEach((each) => {
+    syncScratch(host, each);
+    writeNamedParts(host, each);
+  });
   setNamed(host, "kind", currentKind(host));
   announce(host);
   paintDisclosure(host);
@@ -283,10 +340,16 @@ function initField(host: HTMLElement): void {
   bindSegmentField({
     picker: host,
     field: host.querySelector<HTMLElement>("[data-temporal-field]")!,
-    resolveHidden: (endpoint) => scratchInput(host, endpoint),
-    onCommit: (endpoint) => commitEndpoint(host, endpoint),
+    resolveHidden: (side) => (isEndpoint(side) ? scratchInput(host, side) : null),
+    onCommit: (side) => {
+      if (isEndpoint(side)) commitEndpoint(host, side);
+    },
     codec: temporalCodec,
   });
+
+  // The server renders the scratch input empty beside filled segments, so
+  // clearing the only filled one would encode "" over "" and commit nothing.
+  ENDPOINTS.forEach((endpoint) => syncScratch(host, endpoint));
 
   function paintEndShape(): void {
     // Only a date at the end needs the fields for one.
@@ -312,7 +375,13 @@ function initField(host: HTMLElement): void {
       const yearSegment = yearSegmentFor(host, endpoint);
       if (yearSegment) {
         if (whole) rememberYear(host, endpoint, segmentBuffer(yearSegment));
-        else setSegmentBuffer(yearSegment, typedYears.get(host)?.[endpoint] ?? "");
+        else {
+          // Give back the year the snap took, never a year typed since.
+          const remembered = typedYears.get(host)?.[endpoint] ?? "";
+          if (segmentBuffer(yearSegment) === decadeStart(remembered)) {
+            setSegmentBuffer(yearSegment, remembered);
+          }
+        }
       }
       paintDecade(host, endpoint, whole);
       commitEndpoint(host, endpoint);

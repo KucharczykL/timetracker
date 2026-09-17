@@ -1,5 +1,5 @@
 /**
- * Scratch codec: every part, any order, never posted.
+ * Scratch codec: every part, typed in any order, never posted.
  *
  * The engine commits only when this value changes. A blank part must still
  * take its slot, or a day typed before its year changes nothing and is lost.
@@ -7,7 +7,7 @@
 import type { FieldCodec } from "./date-field-core.js";
 
 export const temporalCodec: FieldCodec = {
-  // `complete` says every segment is full, which no partial date is.
+  // Ignores `complete`: a partial value must encode too.
   encode(values) {
     const year = values.year ?? "";
     const month = values.month ?? "";

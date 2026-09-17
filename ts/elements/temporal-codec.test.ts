@@ -28,6 +28,18 @@ describe("temporalCodec", () => {
     }
   });
 
+  it("gives every buffer state its own value", () => {
+    // The rule the three cases above are examples of.
+    const states = ["", "19", "1984"].flatMap((year) =>
+      ["", "6", "06"].flatMap((month) =>
+        ["", "2", "22"].map((day) => ({ year, month, day })),
+      ),
+    );
+    const encoded = states.map((state) => temporalCodec.encode(state, false));
+
+    expect(new Set(encoded).size).toBe(states.length);
+  });
+
   it("decodes missing parts as empty", () => {
     expect(temporalCodec.decode("1984--")).toEqual({ year: "1984", month: "", day: "" });
     expect(temporalCodec.decode("")).toEqual({ year: "", month: "", day: "" });

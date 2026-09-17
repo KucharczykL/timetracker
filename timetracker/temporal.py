@@ -616,10 +616,21 @@ class TemporalEndpointDraft:
         return None
 
     def _refuse_disagreement(self) -> None:
-        if self.day is not None and (self.year is None or self.month is None):
+        # Each hole names the part that is missing, not every coarser
+        # part: a sentence asking for a filled month sends a person
+        # looking for one that is already there.
+        if self.day is not None and self.year is None and self.month is None:
             raise TemporalValueParseError(
                 "A day needs a year and a month beside it.",
                 code="incomplete_day",
+            )
+        if self.day is not None and self.year is None:
+            raise TemporalValueParseError(
+                "A day needs a year beside it.", code="incomplete_day"
+            )
+        if self.day is not None and self.month is None:
+            raise TemporalValueParseError(
+                "A day needs a month beside it.", code="incomplete_day"
             )
         if self.month is not None and self.year is None:
             raise TemporalValueParseError(

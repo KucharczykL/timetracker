@@ -66,8 +66,9 @@ cannot say what the value says would invite a fabricated exact date.
 ## Tests
 
 vitest beside the module, at `ts/elements/temporal-field.test.ts`, covers the
-codec, the growth rule, and the clearing rule. A browser test in `e2e/` proves a
-round trip with the element, and the same form proves one with scripting off.
+codec, the three profile orders, and the hole sentences. A browser test in
+`e2e/` proves a round trip with the element, and the same form proves one with
+scripting off.
 
 ## Boundary
 

@@ -45,15 +45,18 @@ class DayFirstReleaseForm(forms.Form):
 def _render_form_page(
     request: HttpRequest, form_class: type[forms.Form]
 ) -> HttpResponse:
-    # Page contract and widget profile may differ.
     if request.method == "POST":
         form = form_class(data=request.POST)
         # The canonical string is what a column keeps.
         stored = "refused"
+        # The sentence tells one refusal from another.
+        sentence = " | ".join(str(error) for error in form.errors.get("released") or [])
         if form.is_valid():
             value = form.cleaned_data["released"]
             stored = value.serialize() if value else "nothing"
-        return HttpResponse(f'<p id="stored">{stored}</p>')
+        return HttpResponse(
+            f'<p id="stored">{stored}</p><p id="sentence">{sentence}</p>'
+        )
     return render_page(
         request,
         Form(method="post")[
@@ -85,7 +88,7 @@ urlpatterns = [
 
 @override_settings(ROOT_URLCONF="e2e.test_temporal_field_e2e")
 def test_a_day_typed_first_stores_as_a_day(live_server, page):
-    """A day-first profile types left to right."""
+    """Under a day-first profile the day is the first segment."""
     page.goto(f"{live_server.url}/test-temporal-dmy/")
     page.wait_for_selector("[data-temporal-segments='start']:not([hidden])")
 
@@ -94,6 +97,20 @@ def test_a_day_typed_first_stores_as_a_day(live_server, page):
     page.click("button[type=submit]")
 
     assert page.inner_text("#stored") == "2024-12-01"
+
+
+@override_settings(ROOT_URLCONF="e2e.test_temporal_field_e2e")
+def test_a_day_without_a_year_is_refused_by_its_own_sentence(live_server, page):
+    """The element posts the hole; the server names it."""
+    page.goto(f"{live_server.url}/test-temporal-dmy/")
+    page.wait_for_selector("[data-temporal-segments='start']:not([hidden])")
+
+    page.click("[data-date-part='day'][data-date-side='start']")
+    page.keyboard.type("0112")
+    page.click("button[type=submit]")
+
+    assert page.inner_text("#stored") == "refused"
+    assert page.inner_text("#sentence") == "A day needs a year beside it."
 
 
 @override_settings(ROOT_URLCONF="e2e.test_temporal_field_e2e")

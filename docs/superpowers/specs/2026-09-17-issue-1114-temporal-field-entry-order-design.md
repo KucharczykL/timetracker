@@ -8,63 +8,63 @@ Grammar: [Temporal](../../temporal.md).
 
 `<temporal-field>` shows three date segments in the order the account profile
 states. A person types them from left to right. The element keeps each typed
-part. It does not clear a part on its own.
+part and clears no part in answer to a keystroke.
 
-Precision comes from the parts that are filled. A hole is a filled part with
-an empty coarser part beside it: a day with no month, or a month with no year.
-The element does not refuse a hole. The server refuses it at submit, with the
-sentence from `_refuse_disagreement` in `timetracker/temporal.py`. The refused
-draft shows the typed parts again, beside the sentence.
+A hole is a filled part with an empty coarser part beside it. The element
+names a hole. The server refuses it at submit, and the refused draft shows
+the typed parts again beside the sentence.
 
-## Why the element does not enforce growth
-
-A growth rule clears a finer part when a coarser part is empty. Under a
-day-first or month-first profile, the keystroke that types the day is the
-keystroke that leaves the hole. A growth rule in the element makes the day
-impossible to type.
+The element enforces no growth rule. Such a rule clears a finer part while a
+coarser part is empty. Under a day-first profile that is the keystroke that
+typed the day, so the day cannot be typed at all.
 
 ## What the element does with a hole
 
-- The segments keep each buffer.
-- The named inputs carry each part as typed.
-- The `kind` input reads `date` when the start would post any part. A start
-  with only a day posts `kind=date`, so the server answers with the hole
-  sentence and not with "Pick a shape for the date you typed, or clear it."
-  When the whole-decade box is checked, only the year counts, because a
-  decade posts the year alone.
-- The live region names the hole: "Day needs a year and a month", "Day needs
-  a year", "Day needs a month", "Month needs a year". Without a hole it states
-  the precision. A range composes the two endpoint sentences. The region names
-  the coarser hole only; the server sentence names each missing part.
-- A refused draft whose end holds one part shows the end group, because the
-  stored-shape read uses the same rule.
+- Each segment keeps its buffer, and each named input carries it as typed.
+- `kind` reads `date` when the start holds a part and the end holds none, so
+  the server answers with the hole sentence rather than asking for a shape.
+- The live region names the hole, one sentence per missing part. The server
+  names the same hole. Neither half asks for a part that is filled.
+- A refused draft whose end holds one part shows the end group.
 
 ## The scratch codec
 
-The shared engine in `ts/elements/date-field-core.ts` calls `onCommit` only
-when the codec value changes. The temporal codec encodes each part, filled or
-not: `year-month-day`, so `2024--01` is a year and a day, and `""` is nothing
-typed. The value is not posted. Each buffer change changes it, so the engine
-fires each commit. The element has no keyup hook.
+The shared engine calls `onCommit` only when the codec value changes. The
+temporal codec therefore encodes each part, filled or not: `2024--01` is a
+year and a day. The value is never posted, and the element needs no keyup
+hook.
 
-## Clearing a coarser part
+The value must mirror the buffers after each commit. A buffer written outside
+the engine leaves it stale, and the next keystroke that lands back on the
+stale value commits nothing. The server renders the input empty beside filled
+segments, and the decade snap and its restore rewrite the year. Each commit
+therefore re-encodes each endpoint, and the element seeds the value once it
+binds.
 
-When the year is cleared, the month and day stay. The live region names the
-hole. The server refuses it at submit.
+## The whole decade
 
-The whole-decade box hides the month and day cells and posts neither. The
-hidden buffers stay. They show again when the box is unchecked, and a hole
-among them is refused at submit.
+The box hides the month and day cells and posts neither. The hidden buffers
+stay, and show again when the box is unchecked, which gives back the year the
+snap took and never a year typed since. A year of fewer than four digits
+posts as typed, so the server refuses it rather than storing an unknown date
+without a word.
+
+## Types
+
+`PartValues` is keyed by the contract's segment names, so a misspelt part is
+a compile error. `Hole` names the holes the server refuses, and one table
+renders them.
 
 ## Tests
 
-vitest types a date under the three profile orders and covers a day typed
-before its year, the hole sentence, the decade box, and a cleared year. A
-form test posts a day alone and asserts the sentence and the re-rendered
-segment. An e2e harness types a whole date from the day segment under a
-day-first profile.
+vitest types a date under the three profile orders, and covers a day typed
+before its year, each hole, a cleared stored year, a retype after the snap,
+and the codec giving each buffer state its own value. A form test states each
+hole's sentence. An e2e harness types a date from the day segment, and a hole
+answered by its own sentence.
 
 ## Boundary
 
-No grammar change. No server change. No stored shape change. The session
-form's date fields accept each order and are not touched.
+No grammar change. No stored shape change. The server's day sentence splits
+in three, one per hole, and no code changes with it. The session form's date
+fields accept each order and are not touched.

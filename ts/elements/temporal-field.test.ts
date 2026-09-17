@@ -58,6 +58,7 @@ function mount(
   storedEndYear = "",
   storedKind = "unknown",
   order: PartOrder = PARTS,
+  storedStartYear = "",
 ): HTMLElement {
   const kindOption = (value: string, text: string) =>
     `<option value="${value}"${value === storedKind ? " selected" : ""}>${text}</option>`;
@@ -73,7 +74,7 @@ function mount(
             ${kindOption("unknown", "Unknown")}
           </select>
         </div>
-        ${endpointMarkup("start", "open_start", "", order)}
+        ${endpointMarkup("start", "open_start", storedStartYear, order)}
         <fieldset data-temporal-extra="" hidden>
           <legend>After the start date</legend>
           <input type="radio" name="end-shape" value="end_none"
@@ -118,7 +119,6 @@ function type(
   target.focus();
   for (const digit of digits) {
     target.dispatchEvent(new KeyboardEvent("keydown", { key: digit, bubbles: true }));
-    target.dispatchEvent(new KeyboardEvent("keyup", { key: digit, bubbles: true }));
   }
 }
 
@@ -270,6 +270,70 @@ describe("temporal-field", () => {
     expect(named(host, "start_month").value).toBe("06");
     expect(named(host, "start_day").value).toBe("22");
     expect(region(host).textContent).toBe("Day needs a year");
+  });
+
+  it("names a month typed before its year", () => {
+    const host = mount("false", "", "unknown", ["month", "day", "year"]);
+
+    typeFrom(host, "start", "06");
+
+    expect(named(host, "start_month").value).toBe("06");
+    expect(named(host, "kind").value).toBe("date");
+    expect(region(host).textContent).toBe("Month needs a year");
+  });
+
+  it("clears a stored year", () => {
+    const host = mount("false", "", "date", PARTS, "1984");
+
+    segment(host, "start", "year").focus();
+    document.activeElement!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }),
+    );
+
+    expect(named(host, "start_year").value).toBe("");
+    expect(named(host, "kind").value).toBe("unknown");
+  });
+
+  it("keeps committing after the decade snap", () => {
+    const host = mount("true");
+
+    type(host, "start", "year", "1982");
+    check(host, "whole_decade_start");
+    expect(named(host, "start_decade").value).toBe("1980");
+
+    segment(host, "start", "year").focus();
+    document.activeElement!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }),
+    );
+    expect(named(host, "start_decade").value).toBe("");
+
+    type(host, "start", "year", "1982");
+    expect(segment(host, "start", "year").value).toBe("1980");
+    expect(named(host, "start_decade").value).toBe("1980");
+  });
+
+  it("posts a half-typed decade for the server to refuse", () => {
+    const host = mount("true");
+
+    check(host, "whole_decade_start");
+    type(host, "start", "year", "198");
+
+    expect(named(host, "start_decade").value).toBe("198");
+    expect(named(host, "kind").value).toBe("date");
+    expect(region(host).textContent).toBe("Decade needs four digits");
+  });
+
+  it("keeps a year typed under the decade box", () => {
+    const host = mount("true");
+
+    type(host, "start", "year", "1985");
+    check(host, "whole_decade_start");
+    type(host, "start", "year", "2001");
+    check(host, "whole_decade_start", false);
+
+    // The snap comes back, not the year it was ticked over.
+    expect(segment(host, "start", "year").value).toBe("2000");
+    expect(named(host, "start_year").value).toBe("2000");
   });
 
   it("states no date from a hidden buffer under a decade", () => {
@@ -461,13 +525,13 @@ describe("temporal-field", () => {
     expect(named(host, "start_decade").value).toBe("1970");
   });
 
-  it("states no decade until the year is whole", () => {
+  it("posts a half-typed year for the server to refuse", () => {
     const host = mount("true");
     check(host, "whole_decade_start");
 
     type(host, "start", "year", "19");
 
-    expect(named(host, "start_decade").value).toBe("");
+    expect(named(host, "start_decade").value).toBe("19");
   });
 
   it("still going leaves the value a since", () => {
