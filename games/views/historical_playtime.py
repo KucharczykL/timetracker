@@ -66,7 +66,7 @@ from games.views.filtering import (
 
 type RunLabel = str  # e.g. "Playthrough 2"
 
-#: Importers write this one, so it stands apart.
+#: Importers write this one; it stands apart.
 PROVENANCE_TONES: Mapping[str, BadgeTone] = {
     HistoricalPlaytimeProvenance.ESTIMATED: "neutral",
     HistoricalPlaytimeProvenance.MANUALLY_ENTERED: "neutral",
@@ -75,7 +75,7 @@ PROVENANCE_TONES: Mapping[str, BadgeTone] = {
 
 
 def readable_list(library: UserLibrary):
-    """The row path, runs in one query for the page."""
+    """The row path; runs in one query."""
     return readable_records(library).prefetch_related(
         Prefetch(
             "runs",
@@ -87,7 +87,7 @@ def readable_list(library: UserLibrary):
 def run_labels_for(
     library: UserLibrary, records: Sequence[HistoricalPlaytime]
 ) -> dict[object, RunLabel]:
-    """Every named run's display name, numbered across its game."""
+    """Each run's name, numbered across its game."""
     return {
         run.pk: display_name(run)
         for run in numbered_for(library, {record.player_game_id for record in records})

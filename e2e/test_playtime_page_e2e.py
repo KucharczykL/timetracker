@@ -1,4 +1,4 @@
-"""Browser tests for the Playtime page: tabs, entry, the Historical quick bar."""
+"""Browser tests for the Playtime page."""
 
 import pytest
 from django.urls import reverse

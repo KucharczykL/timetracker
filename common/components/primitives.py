@@ -1140,7 +1140,7 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
 
 type TabLabel = str  # e.g. "Sessions"
 
-#: The segmented shell, without a hover fill on the current tab.
+#: Segmented shell; the current tab never hovers.
 _TAB_CLASS = (
     "inline-flex items-center border focus:z-10 focus:ring-2 "
     f"focus:ring-fg-brand {CONTROL_SIZE_CLASS}"
@@ -1154,7 +1154,7 @@ _TAB_CURRENT_CLASS = "solid-brand border-brand"
 
 
 class PageTab(NamedTuple):
-    """One tab: a label and the route it opens."""
+    """One tab: its label and route."""
 
     label: TabLabel
     href: str
@@ -1162,7 +1162,7 @@ class PageTab(NamedTuple):
 
 
 def PageTabs(label: str, tabs: Sequence[PageTab]) -> Node:
-    """Sibling pages as a row of links; the current one is marked."""
+    """Sibling pages as links; current one marked."""
     links = [
         ControlLink(
             href=tab.href,

@@ -1,4 +1,4 @@
-"""The historical playtime filter and the scope it reads."""
+"""The historical playtime filter and its scope."""
 
 import uuid
 from datetime import timedelta

@@ -131,7 +131,7 @@ _BUILDER_MODELS: dict[str, str] = {
     FILTER_MODE_MODELS[mode]: mode for mode in BUILDER_MODES
 }
 
-#: Where the verbose name is not the person's word.
+#: Labels where the verbose name misleads.
 _BUILDER_LABELS: dict[ModelKey, str] = {"playersession": "Session"}
 
 
@@ -161,7 +161,7 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
     per_page = "" if per_page_override is None else str(per_page_override)
     models_json = json.dumps(model_field_registry(model))
 
-    #: The key is the model's, the label the person's word for it.
+    #: Model key; the person's label.
     switcher_labels = {
         key: _BUILDER_LABELS.get(
             key, str(apps.get_model("games", key)._meta.verbose_name).title()

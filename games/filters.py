@@ -791,7 +791,7 @@ class HistoricalPlaytimeFilter(OperatorFilter):
     # Free-text search
     search: StringCriterion | None = None
 
-    # Cross-entity: records at matching games / on matching devices
+    # Cross-entity: matching games and devices
     game_filter: GameFilter | None = None
     device_filter: DeviceFilter | None = None
 

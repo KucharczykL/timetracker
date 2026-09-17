@@ -198,7 +198,7 @@ class ReachableModelsTest(TestCase):
             self.assertEqual(set(reachable_models(root)), full, f"root={root}")
 
     def test_historical_playtime_reaches_the_whole_set_one_way(self):
-        """Its relations point out; nothing points back at it."""
+        """Relations point out; none point back."""
         from games.filters import reachable_models
 
         self.assertEqual(

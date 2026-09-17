@@ -1,4 +1,4 @@
-"""The Playtime page: its tabs, entry and Historical list."""
+"""The Playtime page: tabs, entry, Historical list."""
 
 import json
 import re
