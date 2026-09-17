@@ -39,15 +39,15 @@ and both events state the whole of it:
 ```python
 @with_config(STRICT_SCHEMA)
 class HistoricalPlaytimeStatementPayload(TypedDict):
-    player_game: ReferenceId          # bare id, as PlaythroughCreatedPayload
+    player_game: ReferenceId  # bare id, as PlaythroughCreatedPayload
     playthroughs: list[HistoricalPlaytimeRunPayload]  # at least one, no repeat
-    duration_seconds: int             # positive
+    duration_seconds: int  # positive
     provenance: Literal["estimated", "manually_entered", "externally_measured"]
     device: Reference | None
     emulated: bool
     note: NoteText
-    release: None                     # reserved for ACCESS (#719-#724)
-    source: None                      # reserved for the importer (#798)
+    release: None  # reserved for ACCESS (#719-#724)
+    source: None  # reserved for the importer (#798)
 ```
 
 `when` is not in the payload. It is the envelope's `effective_time`, where the
@@ -97,12 +97,13 @@ members: `HISTORICALPLAYTIME_RECORD`, `_RESTATE`, `_REMOVE`, `_RESTORE`.
 ```python
 class HistoricalPlaytimeStatement(NamedTuple):
     duration: timedelta
-    when: str | None                  # canonical temporal text; None is unknown
+    when: str | None  # canonical temporal text; None is unknown
     provenance: HistoricalPlaytimeProvenance
     playthrough_ids: tuple[uuid.UUID, ...]
     device_id: uuid.UUID | None
     emulated: bool
     note: str
+
 
 RecordHistoricalPlaytime(statement)
 RestateHistoricalPlaytime(record_id, statement)
