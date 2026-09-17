@@ -1,5 +1,6 @@
 """Windows of calendar days."""
 
+from calendar import monthrange
 from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Self
@@ -15,6 +16,14 @@ class DayInterval:
     def __post_init__(self) -> None:
         if self.last < self.first:
             raise ValueError(f"{self.last} is before {self.first}")
+
+    @classmethod
+    def year(cls, year: int) -> Self:
+        return cls(date(year, 1, 1), date(year, 12, 31))
+
+    @classmethod
+    def month(cls, year: int, month: int) -> Self:
+        return cls(date(year, month, 1), date(year, month, monthrange(year, month)[1]))
 
     @classmethod
     def single(cls, day: date) -> Self:

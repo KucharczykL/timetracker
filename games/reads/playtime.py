@@ -5,7 +5,6 @@ from typing import NamedTuple
 from uuid import UUID
 
 from django.db.models import DurationField, OuterRef, Subquery, Sum, Value
-from django.db.models.expressions import Combinable, Expression
 from django.db.models.functions import Coalesce, TruncMonth
 
 from games.filters import PlayerSessionFilter, filter_query_context_for_library
@@ -13,6 +12,13 @@ from games.models import Game, PlayerSessionQuerySet, UserLibrary
 from games.reads.days import DayInterval
 from games.reads.player_sessions import GAME, library_sessions
 from games.reads.playthrough_completions import YearScope
+from games.reads.sums import (
+    ZERO,
+    Playtime,
+    PlaytimeSum,
+    UnscopedPlaytimeRead,
+    UnscopedSum,
+)
 
 __all__ = [
     "MonthPlaytime",
@@ -32,29 +38,7 @@ __all__ = [
     "total_playtime",
 ]
 
-#: A per-game sum; NULL when unplayed.
-type PlaytimeSum = Combinable
-#: A per-game figure; never NULL.
-type Playtime = Combinable
-
-ZERO = Value(timedelta(0), output_field=DurationField())
-
 PLATFORM = f"{GAME}__platform"
-
-
-class UnscopedPlaytimeRead(RuntimeError):
-    """A playtime sum executed without a library."""
-
-
-class UnscopedSum(Expression):
-    """Compiles for validation; refuses to execute."""
-
-    output_field = DurationField()
-
-    def as_sql(self, compiler, connection):
-        raise UnscopedPlaytimeRead(
-            "A playtime sum was executed without a library; state one."
-        )
 
 
 class PlatformPlaytime(NamedTuple):
