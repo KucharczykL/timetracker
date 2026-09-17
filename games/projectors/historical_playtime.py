@@ -76,7 +76,7 @@ class HistoricalPlaytimes(Projector):
                     record_id=event.aggregate_id,
                     playthrough_id=uuid.UUID(member["playthrough"]),
                 )
-                for member in event.payload["playthroughs"]
+                for member in _statement_of(event)["playthroughs"]
             ]
         )
 

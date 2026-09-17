@@ -307,7 +307,7 @@ class RestateHistoricalPlaytime(Command):
             event.effective_time,
         )
         same_runs = set(kept) == {run.pk for run in runs}
-        if dict(stated) == _held_columns(record) and same_runs:
+        if stated == _held_columns(record) and same_runs:
             return Unchanged("This record already states that.")
         return [event]
 
