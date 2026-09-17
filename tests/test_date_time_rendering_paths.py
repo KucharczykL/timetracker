@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from historical_playtime_rows import record_row
 from session_rows import session_row
 
 import common.layout
@@ -14,6 +15,7 @@ from common.date_time_presentation import build_format_profile
 from games.models import (
     Device,
     Game,
+    HistoricalPlaytime,
     Platform,
     PlayerSession,
     Playthrough,
@@ -118,12 +120,17 @@ def test_non_default_presentation_reaches_every_server_display_path(
         completed=TemporalValue.from_day(date(2022, 9, 25)),
         created_at=datetime(2022, 10, 6, tzinfo=UTC),
     )
+    record = record_row(
+        [Playthrough.objects.get(player_game__game=game)],
+        when="2022-09-23",
+    )
     created_values = (
         (Game, game.pk, datetime(2022, 10, 1, tzinfo=UTC)),
         (Platform, platform.pk, datetime(2022, 10, 2, tzinfo=UTC)),
         (Device, device.pk, datetime(2022, 10, 3, tzinfo=UTC)),
         (Purchase, purchase.pk, datetime(2022, 10, 4, tzinfo=UTC)),
         (PlayerSession, row.pk, datetime(2022, 10, 5, tzinfo=UTC)),
+        (HistoricalPlaytime, record.pk, datetime(2022, 10, 7, tzinfo=UTC)),
     )
     for model, pk, value in created_values:
         model.objects.filter(pk=pk).update(created_at=value)
@@ -150,6 +157,7 @@ def test_non_default_presentation_reaches_every_server_display_path(
             "2022.25.09",
             "2022.06.10",
         ),
+        reverse("games:list_historical_playtime"): ("2022.23.09", "2022.07.10"),
         reverse("games:stats_alltime"): ("2022.26.09",),
         reverse("games:stats_by_year", args=[2022]): (
             "září",

@@ -66,6 +66,7 @@ FILTER_MODE_LIST_URLS: dict[FilterMode, str] = {
     "sessions": "games:list_sessions",
     "purchases": "games:list_purchases",
     "playthroughs": "games:list_playthroughs",
+    "historical_playtime": "games:list_historical_playtime",
     "devices": "games:list_devices",
     "platforms": "games:list_platforms",
 }
@@ -87,6 +88,7 @@ FILTER_MODE_MODELS: dict[FilterMode, ModelKey] = {
     "sessions": "playersession",
     "purchases": "purchase",
     "playthroughs": "playthrough",
+    "historical_playtime": "historicalplaytime",
     "devices": "device",
     "platforms": "platform",
 }

@@ -37,6 +37,7 @@ from games.models import (
     Purchase,
     PurchaseConversionState,
 )
+from games.reads.historical_playtime_records import library_records
 from games.reads.player_sessions import library_sessions
 from games.views import stats_links
 from timetracker.settings_commands import SettingNamespace
@@ -66,6 +67,7 @@ def library(request: HttpRequest) -> HttpResponse:
     conversion = PurchaseConversionState.objects.get(library=library)
     game_count = games.count()
     session_count = sessions.count()
+    record_count = library_records(library).count()
     purchase_count = purchases.count()
     device_count = devices.count()
     platform_count = platforms.count()
@@ -88,7 +90,10 @@ def library(request: HttpRequest) -> HttpResponse:
         StatisticGrid(
             StatisticCard("Games", game_count, href=reverse("games:list_games")),
             StatisticCard(
-                "Sessions", session_count, href=reverse("games:list_sessions")
+                "Playtime",
+                session_count + record_count,
+                href=reverse("games:list_sessions"),
+                title="Sessions and historical records",
             ),
             StatisticCard(
                 "Purchases",

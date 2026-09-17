@@ -249,12 +249,14 @@ submit shows the success toast and appends nothing. Remove goes through the
 confirm page and offers Undo through `<toast-stack>` as #695 does, over
 `RestoreHistoricalPlaytime`.
 
-**Playtime page.** The nav entry "Sessions" becomes "Playtime" with two tabs.
+**Playtime page.** No nav entry names Sessions: the Library page's card, the
+landing-page choice and the `index` redirect reach it. The card and the
+landing-page choice name it "Playtime", a page with two tabs.
 Sessions is today's list, same route, same presets. Historical is a new list
 over `HistoricalPlaytime`: `HistoricalPlaytimeFilter` (game, provenance, device,
 emulated, duration hours, when, note, created; not run, because a record's
 runs are a to-many hop and `check_comparison_through` refuses one — a run's
-records are read from Game detail), a quick bar with
+records are read from Game detail), a quick bar led by
 provenance and duration facets, sortable table, saved presets, the filter
 builder, `GET /api/historical-playtime/` and `/{id}`, and the TypeScript
 contract. Provenance is prominent in columns and facets because import will

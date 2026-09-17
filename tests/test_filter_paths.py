@@ -34,6 +34,7 @@ from common.date_time_presentation import (
 from games.filters import (
     DeviceFilter,
     GameFilter,
+    HistoricalPlaytimeFilter,
     PlatformFilter,
     PlayerSessionFilter,
     PlaythroughFilter,
@@ -92,6 +93,7 @@ _BAR_CASES = [
     _BarCase("devices", DeviceFilter),
     _BarCase("platforms", PlatformFilter),
     _BarCase("playthroughs", PlaythroughFilter),
+    _BarCase("historical_playtime", HistoricalPlaytimeFilter),
 ]
 _PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")

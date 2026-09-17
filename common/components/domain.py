@@ -2,7 +2,7 @@
 
 import logging
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, NamedTuple
+from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from django.template.defaultfilters import floatformat
 from django.urls import reverse
@@ -15,6 +15,8 @@ from common.components.primitives import (
     Input,
     Li,
     Link,
+    PageTab,
+    PageTabs,
     Popover,
     Span,
     TooltipDefinition,
@@ -35,6 +37,28 @@ if TYPE_CHECKING:
     from common.returns import OriginUrl
 
 logger = logging.getLogger("games")
+
+
+type PlaytimeTab = Literal["sessions", "historical"]
+
+
+def PlaytimeTabs(current: PlaytimeTab) -> Node:
+    """The Playtime page's two lists."""
+    return PageTabs(
+        "Playtime",
+        [
+            PageTab(
+                "Sessions",
+                reverse("games:list_sessions"),
+                current=current == "sessions",
+            ),
+            PageTab(
+                "Historical",
+                reverse("games:list_historical_playtime"),
+                current=current == "historical",
+            ),
+        ],
+    )
 
 
 def GameLink(

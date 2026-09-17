@@ -17,6 +17,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from historical_playtime_rows import record_row
 from session_rows import session_row
 
 from games.models import (
@@ -152,12 +153,14 @@ class HtmlValidityTest(TestCase):
         )
         #: #1012 moved the route onto the run.
         self.playthrough = Playthrough.objects.get(player_game__game=self.long_game)
+        record_row([self.playthrough], device=self.device, when="2020/2022")
 
     def _urls(self) -> list[str]:
         urls = [
             reverse("games:list_games"),
             reverse("games:list_sessions"),
             reverse("games:list_playthroughs"),
+            reverse("games:list_historical_playtime"),
             reverse("games:list_purchases"),
             reverse("games:list_devices"),
             reverse("games:list_platforms"),
@@ -183,6 +186,7 @@ class HtmlValidityTest(TestCase):
             "playersession",
             "purchase",
             "playthrough",
+            "historicalplaytime",
             "device",
             "platform",
         ):

@@ -157,7 +157,7 @@ docs/           — Additional documentation
 - **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor `game.addon_purchases`)
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown)
 - **ExchangeRate** — cached FX rates per currency pair per year
-- **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
+- **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs/historical_playtime/devices/platforms), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
 - **PlayerGame** — first projection: one row per catalog game a library tracks, written only by `PlayerGames` projector. Its `removed_at` is projector's, stated by `RemovePlayerGame` command, separate from catalog row's. States library's `status` (six `PlayerGameStatus` words) and `mastered`, and since #678 D2 only place either stated or read. Both `UUIDv7Field` defaults opted out (pk is event's `aggregate_id`); `game` is `RESTRICT`, so projection row never collateral; #1017 registers it, so `audit_library_ownership` reports a `PlayerGame` naming another library's Game
 - **Playthrough** — second projection: one row per run at a tracked game, written
   only by `Playthroughs` projector, which shares `CURRENT_STATE` family with
@@ -393,8 +393,10 @@ docs/           — Additional documentation
   from record's. Commands `Record`/`Restate`/`Remove`/`RestoreHistoricalPlaytime`
   take `HistoricalPlaytimeStatement`, normalised before fingerprint; devices
   resolve through `library_device` in `games/commands/scope.py`, the one
-  resolver. Join's `playthrough` is second `BLOCKING_REFERRERS` entry. Nothing
-  reads or writes it from a page yet. Contract is
+  resolver. Join's `playthrough` is second `BLOCKING_REFERRERS` entry.
+  The Playtime page's Historical tab lists live records through
+  `readable_records` and `HistoricalPlaytimeFilter`, mode
+  `historical_playtime`. Contract is
   [HistoricalPlaytime aggregate](docs/superpowers/specs/2026-09-17-issue-705-historical-playtime-aggregate-design.md);
   wave is
   [Historical Playtime](docs/superpowers/specs/2026-09-17-historical-playtime-wave-design.md)
@@ -663,6 +665,9 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   a description, `playthrough_id` a move; named key is the act, omitted key
   states nothing. Device outside library answers 404. No POST: #1074
 - `PATCH /api/session/{id}/device` — `DescribeSession(StatedDevice(...))`
+- `GET /api/historical-playtime/`, `GET /{id}` — live records through
+  `readable_records`: `filter`/`sort`/`page` as the session list, `when` as
+  canonical text beside its two bounds, `playthrough_ids`. No write endpoint
 - `GET /api/presets/` — user's presets for a mode, shaped as combobox options
   (`limit=0` = unbounded)
 - `POST /api/presets/` — upsert on (user, mode, name); 201 create / 200 update

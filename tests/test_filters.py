@@ -63,6 +63,7 @@ from common.filter_execution import contains_regex_modifier, execute_filter
 from games.filters import (
     DeviceFilter,
     GameFilter,
+    HistoricalPlaytimeFilter,
     PlatformFilter,
     PlayerSessionFilter,
     PlaythroughFilter,
@@ -2619,6 +2620,7 @@ _ALL_FILTERS = [
     DeviceFilter,
     PlatformFilter,
     PlaythroughFilter,
+    HistoricalPlaytimeFilter,
 ]
 
 
@@ -5024,6 +5026,7 @@ class TestFilterFieldDescriptors:
         DeviceFilter,
         PlatformFilter,
         PlaythroughFilter,
+        HistoricalPlaytimeFilter,
     )
 
     @staticmethod
@@ -5299,6 +5302,12 @@ class TestPerFilterSearchColumns:
             "note",
             "start_note",
             "completion_note",
+        ),
+        HistoricalPlaytimeFilter: (
+            "player_game__game__name",
+            "player_game__game__platform__name",
+            "device__name",
+            "note",
         ),
     }
 

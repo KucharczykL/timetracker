@@ -1,5 +1,6 @@
 import json
 import logging
+import uuid
 from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any, Final, NoReturn, assert_never, cast
@@ -46,6 +47,7 @@ from games.filters import (
     filter_for_model,
     filter_query_context_for_library,
     filter_queryset_for_library,
+    parse_historical_playtime_filter,
     parse_session_filter,
 )
 from games.formatting import zone_label
@@ -54,6 +56,7 @@ from games.models import (
     Device,
     FilterPreset,
     Game,
+    HistoricalPlaytime,
     Platform,
     PlayerGameStatus,
     PlayerSession,
@@ -65,12 +68,15 @@ from games.models import (
 )
 from games.ownership import owned_or_404
 from games.reads.calendar import calendar_day_zone, calendar_sentence
+from games.reads.historical_playtime_page import listed_records
 from games.reads.player_sessions import readable_sessions
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_numbering import display_name, with_display_number
 from games.reads.playthrough_runs import library_runs
 from games.removal import remove
 from games.sorting import (
+    HISTORICAL_PLAYTIME_DEFAULT_SORT,
+    HISTORICAL_PLAYTIME_SORTS,
     MODE_SORTS,
     SESSION_DEFAULT_SORT,
     SESSION_SORTS,
@@ -824,6 +830,103 @@ def partial_update_session(request, session_id: UUIDv7, payload: SessionUpdate):
 
 
 api.add_router("/session", session_router)
+
+historical_playtime_router = Router()
+
+
+class HistoricalPlaytimeOut(Schema):
+    """The projection row, its runs by key."""
+
+    id: UUIDv7
+    player_game_id: UUIDv7
+    game: GameOut = Field(..., alias="player_game.game")
+    playthrough_ids: list[UUIDv7]
+    duration_seconds: int
+    #: Canonical temporal text; null is unknown.
+    when: StatedTemporal = None
+    when_lower: date | None = None
+    when_upper: date | None = None
+    provenance: str
+    device: DeviceOut | None = None
+    emulated: bool
+    note: str
+    created_at: datetime
+
+    @staticmethod
+    def resolve_duration_seconds(obj: HistoricalPlaytime) -> int:
+        return int(obj.duration.total_seconds())
+
+    @staticmethod
+    def resolve_playthrough_ids(obj: HistoricalPlaytime) -> list[uuid.UUID]:
+        return sorted(run.playthrough_id for run in obj.runs.all())
+
+
+class HistoricalPlaytimeListOut(Schema):
+    items: list[HistoricalPlaytimeOut]
+    count: int
+    page: int
+    page_size: int
+    num_pages: int
+
+
+@historical_playtime_router.get("/", response=HistoricalPlaytimeListOut)
+@regex_timeout_api
+def list_historical_playtime_api(
+    request, filter: str = "", sort: str = "", page: int = 1
+):
+    library = cast(User, request.user).library
+    records: QuerySet[HistoricalPlaytime] = listed_records(library)
+    if filter:
+        try:
+            record_filter = parse_historical_playtime_filter(filter)
+        except FilterError as exc:
+            logger.warning(
+                "rejected invalid filter (entity=historical playtime, user=%s, "
+                "path=%s): %s",
+                request.user,
+                request.path,
+                exc,
+            )
+            raise HttpError(400, f"Invalid filter: {exc}") from exc
+        if record_filter is not None:
+            records = execute_filter(
+                record_filter,
+                records,
+                filter_query_context_for_library(library),
+            )
+    sort_result = apply_sort(
+        records,
+        parse_find_filter(request),
+        HISTORICAL_PLAYTIME_SORTS,
+        HISTORICAL_PLAYTIME_DEFAULT_SORT,
+    )
+    if sort_result.unknown:
+        logger.warning(
+            "rejected unknown sort field(s) (entity=historical playtime, user=%s, "
+            "path=%s): %s",
+            request.user,
+            request.path,
+            ", ".join(repr(key) for key in sort_result.unknown),
+        )
+        raise HttpError(400, f"Invalid sort: {', '.join(sort_result.unknown)}")
+    paginator = Paginator(sort_result.queryset, PAGE_SIZE)
+    page_obj = paginator.get_page(page)
+    return {
+        "items": list(page_obj.object_list),
+        "count": paginator.count,
+        "page": page_obj.number,
+        "page_size": PAGE_SIZE,
+        "num_pages": paginator.num_pages,
+    }
+
+
+@historical_playtime_router.get("/{record_id}", response=HistoricalPlaytimeOut)
+def get_historical_playtime(request, record_id: UUIDv7):
+    library = cast(User, request.user).library
+    return owned_or_404(listed_records(library), library, id=record_id)
+
+
+api.add_router("/historical-playtime", historical_playtime_router)
 
 filter_router = Router()
 

@@ -108,7 +108,7 @@ def test_settings_page_disables_only_the_navbar_theme_switcher(auth_client):
 def test_unset_selects_show_the_effective_builtin_defaults(auth_client):
     html = auth_client.get(reverse("games:settings")).content.decode()
 
-    assert '<option value="" selected>Use site default (Sessions)</option>' in html
+    assert '<option value="" selected>Use site default (Playtime)</option>' in html
     assert '<option value="" selected>Use site default (25)</option>' in html
     assert '<option value="" selected>Use site default (System)</option>' in html
     assert '<option value="" selected>Use site default (ISO 8601)</option>' in html

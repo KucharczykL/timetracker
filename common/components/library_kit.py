@@ -45,10 +45,18 @@ def _value_node(value: str | int, label: str, href: str | None, class_: str) -> 
     )
 
 
-def StatisticCard(label: str, value: str | int, *, href: str | None = None) -> Node:
+def StatisticCard(
+    label: str,
+    value: str | int,
+    *,
+    href: str | None = None,
+    title: str | None = None,
+) -> Node:
+    """A labelled figure; `title` says what it counts."""
     value_node = _value_node(value, label, href, "text-type-title")
     return Div(
         data_statistic_card="",
+        title=title,
         class_="flex min-w-32 flex-1 flex-col gap-1",
     )[
         P(class_="text-type-body text-body")[label],

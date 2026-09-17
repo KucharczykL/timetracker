@@ -37,6 +37,8 @@ __all__ = [
     "DEVICE_SORTS",
     "GAME_DEFAULT_SORT",
     "GAME_SORTS",
+    "HISTORICAL_PLAYTIME_DEFAULT_SORT",
+    "HISTORICAL_PLAYTIME_SORTS",
     "MODE_SORTS",
     "PLATFORM_DEFAULT_SORT",
     "PLATFORM_SORTS",
@@ -148,6 +150,18 @@ PLAYTHROUGH_SORTS: SortMap = {
 }
 PLAYTHROUGH_DEFAULT_SORT: SortString = "-created"
 
+HISTORICAL_PLAYTIME_SORTS: SortMap = {
+    "name": SortSpec("player_game__game__sort_name"),
+    "when": SortSpec("when_lower"),
+    "duration": SortSpec("duration"),
+    #: Stored value, not label order.
+    "provenance": SortSpec("provenance"),
+    "device": SortSpec("device__name"),
+    "created": SortSpec("created_at"),
+}
+#: RECORD_ORDER's order.
+HISTORICAL_PLAYTIME_DEFAULT_SORT: SortString = "-when,-created"
+
 DEVICE_SORTS: SortMap = {
     "name": SortSpec("name"),
     "type": SortSpec("type"),
@@ -173,6 +187,7 @@ MODE_SORTS: dict[str, SortMap] = {
     "sessions": SESSION_SORTS,
     "purchases": PURCHASE_SORTS,
     "playthroughs": PLAYTHROUGH_SORTS,
+    "historical_playtime": HISTORICAL_PLAYTIME_SORTS,
     "devices": DEVICE_SORTS,
     "platforms": PLATFORM_SORTS,
 }

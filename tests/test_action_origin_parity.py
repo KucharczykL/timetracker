@@ -13,9 +13,10 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from django.urls import Resolver404, resolve, reverse
+from historical_playtime_rows import record_row
 from session_rows import session_row
 
-from games.models import Device, Game, Platform, Purchase
+from games.models import Device, Game, Platform, Playthrough, Purchase
 from games.views.returns import CONFIRMATION, ORIGIN_AWARE
 
 LINK_ATTRIBUTE = re.compile(r'\b(?:href|hx-get|hx-post|action)="([^"]*)"')
@@ -42,6 +43,7 @@ def world(owned_library):
     )
     #: Tracking states a run of its own, so the playthrough
     #: sweep has a row whose actions carry an origin.
+    record_row([Playthrough.objects.get(player_game__game=game)])
     return game
 
 
@@ -72,6 +74,7 @@ def _missing_origin(body: str, page_path: str) -> list[str]:
         "games:list_sessions",
         "games:list_purchases",
         "games:list_playthroughs",
+        "games:list_historical_playtime",
         "games:list_platforms",
         "games:list_devices",
     ],

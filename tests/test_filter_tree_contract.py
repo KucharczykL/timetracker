@@ -17,6 +17,7 @@ import pytest
 from common.criteria import FilterQueryContext, filter_from_json, with_filter_aliases
 from games.filters import (
     GameFilter,
+    HistoricalPlaytimeFilter,
     PlayerSessionFilter,
     PlaythroughFilter,
     PurchaseFilter,
@@ -33,6 +34,7 @@ FILTER_FOR_MODEL = {
     "playersession": PlayerSessionFilter,
     "purchase": PurchaseFilter,
     "playthrough": PlaythroughFilter,
+    "historicalplaytime": HistoricalPlaytimeFilter,
 }
 
 # Map each original fixture to its TS-emitted canonical form, by description.

@@ -17,6 +17,7 @@ from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from historical_playtime_rows import record_row
 from session_rows import session_row
 
 from games.models import (
@@ -38,6 +39,7 @@ LIST_PAGES = [
     "games:list_games",
     "games:list_purchases",
     "games:list_playthroughs",
+    "games:list_historical_playtime",
     "games:list_devices",
     "games:list_platforms",
 ]
@@ -80,7 +82,7 @@ class DataTableGateTest(TestCase):
         tracked = PlayerGame.objects.create(
             pk=uuid7(), library=library, game=game, tracked_at=timezone.now()
         )
-        Playthrough.objects.create(
+        run = Playthrough.objects.create(
             pk=uuid7(),
             library=library,
             player_game=tracked,
@@ -91,6 +93,7 @@ class DataTableGateTest(TestCase):
         session_row(
             game, device=device, started_at=BASE, ended_at=BASE + timedelta(hours=2)
         )
+        record_row([run], device=device, when="2020")
         purchase = Purchase.objects.create(
             platform=platform,
             date_purchased=BASE,

@@ -182,7 +182,7 @@ def test_currency_validators_reject(key, bad):
 
 def test_landing_page_choices_are_the_supported_destinations():
     assert settings_registry.LANDING_PAGE_CHOICES == (
-        ("games:list_sessions", "Sessions"),
+        ("games:list_sessions", "Playtime"),
         ("games:list_games", "Games"),
         ("games:list_purchases", "Purchases"),
         ("games:stats_by_year", "Statistics (this year)"),

@@ -118,6 +118,7 @@ class ActionsColumnPriorityTest(TestCase):
             "games:list_games",
             "games:list_purchases",
             "games:list_playthroughs",
+            "games:list_historical_playtime",
             "games:list_devices",
             "games:list_platforms",
         ):
