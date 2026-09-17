@@ -21,7 +21,7 @@ import {
   segmentsForSide,
   setSegmentBuffer,
 } from "./date-field-core.js";
-import { coarsestPrefix, decadeStart, temporalCodec } from "./temporal-codec.js";
+import { decadeStart, temporalCodec } from "./temporal-codec.js";
 
 const ENDPOINTS = ["start", "end"] as const;
 /** How a value ends, as the one radio group states it. */
@@ -104,18 +104,14 @@ function setEndShape(host: HTMLElement, shape: string): void {
   if (box) box.checked = true;
 }
 
-/** Clear a part no coarser part can carry. */
-function enforceGrowth(host: HTMLElement, endpoint: string): void {
-  const { values } = readSideParts(host, endpoint);
-  const stale = !values.year ? ["month", "day"] : !values.month ? ["day"] : [];
-  segmentsForSide(host, endpoint).forEach((segment) => {
-    const part = segment.dataset.datePart ?? "";
-    if (stale.includes(part) && segmentBuffer(segment)) setSegmentBuffer(segment, "");
-  });
-}
-
+/**
+ * Whether the endpoint would post any part. A decade posts the year alone,
+ * so a month or day hidden under the box states nothing while it is checked.
+ */
 function endpointHasValue(host: HTMLElement, endpoint: string): boolean {
-  return coarsestPrefix(readSideParts(host, endpoint).values) !== "";
+  const { values } = readSideParts(host, endpoint);
+  if (isToggled(host, `whole_decade_${endpoint}`)) return Boolean(values.year);
+  return Boolean(values.year || values.month || values.day);
 }
 
 export function currentKind(host: HTMLElement): string {
@@ -197,6 +193,11 @@ function writeNamedParts(host: HTMLElement, endpoint: string): void {
 function endpointSentence(host: HTMLElement, endpoint: string): string {
   if (isToggled(host, `whole_decade_${endpoint}`)) return "Decade precision";
   const { values } = readSideParts(host, endpoint);
+  // A hole is named before a precision: a day with no month states none.
+  if (values.day && !values.year && !values.month) return "Day needs a year and a month";
+  if (values.day && !values.year) return "Day needs a year";
+  if (values.day && !values.month) return "Day needs a month";
+  if (values.month && !values.year) return "Month needs a year";
   if (values.day) return "Day precision";
   if (values.month) return "Month precision";
   if (values.year) return "Year precision";
@@ -227,7 +228,6 @@ function announce(host: HTMLElement): void {
 
 export function commitEndpoint(host: HTMLElement, endpoint: string): void {
   if (isToggled(host, `whole_decade_${endpoint}`)) snapYearToDecade(host, endpoint);
-  enforceGrowth(host, endpoint);
   ENDPOINTS.forEach((each) => writeNamedParts(host, each));
   setNamed(host, "kind", currentKind(host));
   announce(host);
@@ -284,15 +284,6 @@ function initField(host: HTMLElement): void {
     resolveHidden: (endpoint) => scratchInput(host, endpoint),
     onCommit: (endpoint) => commitEndpoint(host, endpoint),
     codec: temporalCodec,
-  });
-
-  // The codec ignores a part the value cannot state, so that keystroke
-  // changes no scratch value and onCommit stays silent. This clears it.
-  host.addEventListener("keyup", (event) => {
-    const segment = (event.target as HTMLElement | null)?.closest<HTMLInputElement>(
-      "input[data-date-part]",
-    );
-    if (segment) commitEndpoint(host, segment.dataset.dateSide ?? "start");
   });
 
   function paintEndShape(): void {

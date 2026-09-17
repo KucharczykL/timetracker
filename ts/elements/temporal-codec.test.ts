@@ -1,40 +1,36 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { coarsestPrefix, decadeStart, temporalCodec } from "./temporal-codec.js";
-
-describe("coarsestPrefix", () => {
-  it("states nothing when no year is filled", () => {
-    expect(coarsestPrefix({ year: "", month: "06", day: "22" })).toBe("");
-  });
-
-  it("states a year alone", () => {
-    expect(coarsestPrefix({ year: "1984", month: "", day: "" })).toBe("1984");
-  });
-
-  it("stops at the first part nobody filled", () => {
-    expect(coarsestPrefix({ year: "1984", month: "", day: "22" })).toBe("1984");
-  });
-
-  it("states a whole day", () => {
-    expect(coarsestPrefix({ year: "1984", month: "06", day: "22" })).toBe("1984-06-22");
-  });
-});
+import { decadeStart, temporalCodec } from "./temporal-codec.js";
 
 describe("temporalCodec", () => {
   it("encodes a partial date the whole-day codec would drop", () => {
     expect(temporalCodec.encode({ year: "1984", month: "06", day: "" }, false)).toBe(
-      "1984-06",
+      "1984-06-",
     );
   });
 
-  it("round-trips every precision", () => {
-    for (const wire of ["", "1984", "1984-06", "1984-06-22"]) {
+  it("encodes a part typed before its coarser part", () => {
+    expect(temporalCodec.encode({ year: "", month: "12", day: "01" }, false)).toBe(
+      "-12-01",
+    );
+    expect(temporalCodec.encode({ year: "2024", month: "", day: "01" }, false)).toBe(
+      "2024--01",
+    );
+  });
+
+  it("encodes nothing typed as nothing", () => {
+    expect(temporalCodec.encode({ year: "", month: "", day: "" }, false)).toBe("");
+  });
+
+  it("round-trips every shape", () => {
+    for (const wire of ["", "1984--", "1984-06-", "1984-06-22", "-12-01", "2024--01"]) {
       expect(temporalCodec.encode(temporalCodec.decode(wire), false)).toBe(wire);
     }
   });
 
   it("decodes missing parts as empty", () => {
-    expect(temporalCodec.decode("1984")).toEqual({ year: "1984", month: "", day: "" });
+    expect(temporalCodec.decode("1984--")).toEqual({ year: "1984", month: "", day: "" });
+    expect(temporalCodec.decode("")).toEqual({ year: "", month: "", day: "" });
   });
 });
 
