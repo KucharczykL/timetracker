@@ -15,8 +15,8 @@ from session_rows import (
 
 from games.filters import PlayerSessionFilter
 from games.models import Device, Game, Platform, UserLibrary
+from games.reads.days import DayInterval
 from games.reads.playtime import (
-    DayInterval,
     MonthPlaytime,
     PlatformPlaytime,
     UnscopedPlaytimeRead,

@@ -1,8 +1,7 @@
 """Every playtime figure, from the projection."""
 
-from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import NamedTuple, Self
+from typing import NamedTuple
 from uuid import UUID
 
 from django.db.models import DurationField, OuterRef, Subquery, Sum, Value
@@ -11,12 +10,11 @@ from django.db.models.functions import Coalesce, TruncMonth
 
 from games.filters import PlayerSessionFilter, filter_query_context_for_library
 from games.models import Game, PlayerSessionQuerySet, UserLibrary
+from games.reads.days import DayInterval
 from games.reads.player_sessions import GAME, library_sessions
 from games.reads.playthrough_completions import YearScope
 
 __all__ = [
-    "DayInterval",
-    "DayPlaytime",
     "MonthPlaytime",
     "PlatformPlaytime",
     "UnscopedPlaytimeRead",
@@ -24,7 +22,6 @@ __all__ = [
     "game_playtime_between",
     "played_years",
     "playtime_between",
-    "playtime_by_day",
     "playtime_by_game",
     "playtime_by_month",
     "playtime_by_platform",
@@ -60,27 +57,6 @@ class UnscopedSum(Expression):
         )
 
 
-@dataclass(frozen=True, slots=True)
-class DayInterval:
-    """First and last day, both inclusive."""
-
-    first: date
-    last: date
-
-    def __post_init__(self) -> None:
-        if self.last < self.first:
-            raise ValueError(f"{self.last} is before {self.first}")
-
-    @classmethod
-    def single(cls, day: date) -> Self:
-        return cls(day, day)
-
-    @classmethod
-    def ending(cls, day: date, *, days: int) -> Self:
-        """The `days` calendar days ending on `day`."""
-        return cls(day - timedelta(days=days - 1), day)
-
-
 class PlatformPlaytime(NamedTuple):
     #: None is the unspecified-platform bucket.
     platform_id: UUID | None
@@ -91,11 +67,6 @@ class PlatformPlaytime(NamedTuple):
 class MonthPlaytime(NamedTuple):
     #: The first day of the month.
     month: date
-    playtime: timedelta
-
-
-class DayPlaytime(NamedTuple):
-    day: date
     playtime: timedelta
 
 
@@ -213,17 +184,6 @@ def playtime_by_month(library: UserLibrary, *, year: int) -> list[MonthPlaytime]
         .values_list("month", "playtime")
     )
     return [MonthPlaytime(*row) for row in rows]
-
-
-def playtime_by_day(library: UserLibrary, *, year: int) -> list[DayPlaytime]:
-    rows = (
-        _sessions(library, year)
-        .values("effective_day")
-        .annotate(playtime=Coalesce(Sum("effective_duration"), ZERO))
-        .order_by("effective_day")
-        .values_list("effective_day", "playtime")
-    )
-    return [DayPlaytime(*row) for row in rows]
 
 
 def played_years(library: UserLibrary) -> list[int]:

@@ -31,8 +31,9 @@ from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
 from games.filters import PlayerSessionFilter, filter_url, model_field_registry
 from games.models import Game, Platform, Purchase
+from games.reads.days import DayInterval
 from games.reads.player_sessions import library_sessions
-from games.reads.playtime import DayInterval, playtime_between
+from games.reads.playtime import playtime_between
 from games.sorting import parse_per_page_override
 from games.views.filtering import BUILDER_MODES
 from games.views.stats_content import stats_content

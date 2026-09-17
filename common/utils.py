@@ -1,6 +1,4 @@
 import unicodedata
-from collections.abc import Generator
-from datetime import date
 from typing import TYPE_CHECKING, Any, NamedTuple
 
 from django.core.paginator import Page, Paginator
@@ -113,23 +111,6 @@ def truncate_info(
     """
     display = truncate(input_string, length, ellipsis, endpart)
     return Truncation(display, was_truncated=display != f"{input_string}{endpart}")
-
-
-def generate_split_ranges[T: (str, int, date)](
-    value_list: list[T], split_points: list[T]
-) -> Generator[tuple[T, T]]:
-    for x in range(len(split_points) + 1):
-        if x == 0:
-            start = 0
-        elif x >= len(split_points):
-            start = value_list.index(split_points[x - 1]) + 1
-        else:
-            start = value_list.index(split_points[x - 1]) + 1
-        try:
-            end = value_list.index(split_points[x])
-        except IndexError:
-            end = len(value_list)
-        yield (value_list[start], value_list[end - 1])
 
 
 def format_float_or_int(number: float):
