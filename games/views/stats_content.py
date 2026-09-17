@@ -138,7 +138,7 @@ def _playtime_table(
     rows = [
         make_row(
             "Hours",
-            Duration(ctx.get("total_hours"), durations, id_scope="stats-total-hours"),
+            Duration(ctx["total_hours"].total, durations, id_scope="stats-total-hours"),
         ),
         make_row(
             "Sessions",
@@ -375,7 +375,7 @@ def stats_content(
             make_row(
                 presentation.format(month_playtime.month, "month"),
                 Duration(
-                    month_playtime.playtime,
+                    month_playtime.playtime.total,
                     durations,
                     id_scope=f"stats-month-{month_playtime.month.month}",
                     link=filter_url(
@@ -415,7 +415,7 @@ def stats_content(
                 ctx.get("total_playtime_per_platform") or [],
                 lambda platform: platform.platform_name or "Unspecified",
                 lambda platform: Duration(
-                    platform.playtime,
+                    platform.playtime.total,
                     durations,
                     id_scope=f"stats-platform-{platform.platform_id or 'none'}",
                     link=filter_url(

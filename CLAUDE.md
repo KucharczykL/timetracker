@@ -396,7 +396,8 @@ docs/           — Additional documentation
   resolver. Join's `playthrough` is second `BLOCKING_REFERRERS` entry.
   The Playtime page's Historical tab lists live records through
   `readable_records` and `HistoricalPlaytimeFilter`, mode
-  `historical_playtime`. Contract is
+  `historical_playtime`. `games/reads/historical_playtime.py` sums it beside
+  sessions, by containment. Contract is
   [HistoricalPlaytime aggregate](docs/superpowers/specs/2026-09-17-issue-705-historical-playtime-aggregate-design.md);
   wave is
   [Historical Playtime](docs/superpowers/specs/2026-09-17-historical-playtime-wave-design.md)
@@ -460,21 +461,34 @@ pass `scripts=` for component-owned JS). `scripts=` remains only for page-specif
 glue not owned by reusable component (e.g. `add_*.js`). Navbar shows
 today's/last-7-days playtime from `model_counts` context processor.
 
-**Playtime reads** (`games/reads/playtime.py`, #697): playtime per Game, all-time,
-per year, per day window, per platform, per month, per day and per game in a
-day window (`game_playtime_between`, the playthrough page's range sum) comes
-from this module. Averages (Game detail, stats) and `GameFilter`'s
-`session_playtime_hours` read `effective_duration` outside it. Every figure
-reads `PlayerSession` through `library_sessions()`
-(`games/reads/player_sessions.py`, the read layer's one session scope: four
-removal marks, library on session, run and tracked game). Sums are NULL when
-unplayed; the module decides NULL or zero: `playtime_by_game` is zero (the
-`playtime` alias `GameQuerySet.annotated_for_filtering` registers, which
-refuses a second library), `playtime_sort_key` and `playtime_matching` stay
-NULL and `apply_sort` puts NULL last. A sum with no library compiles for
-validation and raises `UnscopedPlaytimeRead` if executed. No queryset and no
-`Q` crosses the interface. A stored comparison naming `playtime` is refused
-through `Game.RETIRED_COMPARISON_COLUMNS`.
+**Playtime reads** (`games/reads/playtime.py`, #697, #709): every playtime
+figure sums two sources, sessions and historical playtime records, and comes
+from this module: per Game, all-time, per year, per day window, per platform,
+per month, and per game in a day window. Sessions come through
+`library_sessions()` (`games/reads/player_sessions.py`: four removal marks,
+library on session, run and tracked game). Records come through
+`library_records()` (`games/reads/historical_playtime_records.py`, shared
+text: three marks, library on record and tracked game), summed in
+`games/reads/historical_playtime.py`, which nothing outside `games/reads`
+imports. A record counts in a period only when `when_lower` and `when_upper`
+both lie inside it (containment), so an unknown or open `when` counts in
+all-time alone. `DayInterval` (`games/reads/days.py`) states every period.
+Python figures answer `PlaytimeBreakdown(tracked, historical)` with `.total`;
+the playthrough page's range sum reads `.tracked`, because a record is not a
+sitting. Expressions stay one number: `playtime_by_game` is zero when
+unplayed (the `playtime` alias `GameQuerySet.annotated_for_filtering`
+registers, which refuses a second library); `playtime_sort_key` is NULL
+without playtime, so a game whose only session is running sorts with the
+unplayed ones, because telling them apart runs each subquery twice;
+`playtime_matching` sums matching sessions only, and the game list's column
+header then says so. `playtime_parts_by_game` gives the two halves for the
+stats top 10. `STATS_SOURCES` in `games/views/stats_data.py` classifies every
+`StatsData` key, and a test holds it complete. Averages (Game detail) and
+`GameFilter`'s `session_playtime_hours` read `effective_duration` outside the
+module. A sum with no library compiles for validation and raises
+`UnscopedPlaytimeRead` if executed. No queryset and no `Q` crosses the
+interface. A stored comparison naming `playtime` is refused through
+`Game.RETIRED_COMPARISON_COLUMNS`.
 
 **Component system** (`common/components/`): FastHTML-style **lazy node tree**.
 Components are `Node` objects that render to HTML only when asked (`str(node)` /
@@ -923,8 +937,9 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
 - **Signals handle side-effects** — do not manually recalculate
   `Purchase.num_purchases`.
 - **Playtime is read, never stored** — read playtime through
-  `games.reads.playtime`, never `Sum("effective_duration")` at a new call site;
-  a new figure is a function in that module.
+  `games.reads.playtime`, never `Sum("effective_duration")` or
+  `Sum("duration")` at a new call site; a new figure is a function in that
+  module, and it states which of the two sources it takes.
 - **Buttons are `ControlButton`** — colors: `blue` (primary), `red` (destructive),
   `gray` (secondary), `green` (positive); variants: `filled` (default),
   `segmented` (ButtonGroup members), plus colorless single-look toggles that ignore

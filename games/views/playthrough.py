@@ -46,6 +46,7 @@ from games.models import (
     UserLibrary,
 )
 from games.ownership import owned_or_404
+from games.reads.days import DayInterval
 from games.reads.player_sessions import game_session_days
 from games.reads.playthrough_endpoints import (
     StatedEndpoint,
@@ -59,7 +60,7 @@ from games.reads.playthrough_runs import (
     runs_with_condition,
     tracked_game,
 )
-from games.reads.playtime import DayInterval, game_playtime_between
+from games.reads.playtime import game_playtime_between
 from games.sorting import (
     PLAYTHROUGH_DEFAULT_SORT,
     PLAYTHROUGH_SORTS,
@@ -120,10 +121,13 @@ def _seeded_run(library: UserLibrary, game: Game) -> SeededRun:
     )
     started = played.first if last_finish is None else last_finish + timedelta(days=1)
     #: A finish after the last session leaves no day to sum.
+    #: Sessions only: a record is not a sitting.
     playtime = (
         timedelta(0)
         if played.last < started
-        else game_playtime_between(library, game, DayInterval(started, played.last))
+        else game_playtime_between(
+            library, game, DayInterval(started, played.last)
+        ).tracked
     )
     return SeededRun(started, played.last, fixed.format(playtime))
 

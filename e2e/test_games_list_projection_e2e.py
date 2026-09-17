@@ -1,9 +1,13 @@
 """The games list under the inner join, in a real browser."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from historical_playtime_rows import record_row
 from playwright.sync_api import Page, expect
+from session_rows import session_row, tracked_run
 
 from games.models import Game, PlayerGame, PlayerGameStatus
 
@@ -74,3 +78,23 @@ def test_the_status_a_selector_sets_survives_a_reload(
 
     row = PlayerGame.objects.get(library=e2e_library, game=game)
     assert row.status == PlayerGameStatus.COMPLETED
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_playtime_column_adds_historical_records(
+    authenticated_page: Page, live_server, e2e_library
+):
+    start = datetime(2022, 3, 1, 10, tzinfo=UTC)
+    recorded = Game.objects.create(library=e2e_library, name="Outer Wilds")
+    session_row(recorded, started_at=start, ended_at=start + timedelta(hours=1))
+    record_row(
+        [tracked_run(e2e_library, recorded)], duration=timedelta(hours=2), when=None
+    )
+    tracked_only = Game.objects.create(library=e2e_library, name="Tunic")
+    session_row(tracked_only, started_at=start, ended_at=start + timedelta(hours=2))
+    page = authenticated_page
+
+    page.goto(f"{list_url(live_server)}?sort=-playtime")
+
+    expect(page.locator(f"#duration-game-{recorded.pk}-playtime")).to_contain_text("3")
+    expect(page.locator("tbody tr").first).to_contain_text("Outer Wilds")

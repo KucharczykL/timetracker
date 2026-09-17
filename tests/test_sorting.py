@@ -2,7 +2,7 @@
 
 import logging
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -11,6 +11,7 @@ from django.contrib.messages import get_messages
 from django.db.models import Case, DateField, Value, When
 from django.test import RequestFactory
 from django.urls import reverse
+from historical_playtime_rows import record_row
 from session_rows import session_row, tracked_run
 
 from common.criteria import filter_to_json
@@ -44,6 +45,7 @@ from games.sorting import (
     parse_find_filter,
     parse_sort_terms,
 )
+from games.views.game import games_for_list
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
@@ -509,6 +511,48 @@ class TestListGamesSort:
         response = logged_client.get(reverse("games:list_games"), {"sort": sort})
 
         assert _row_order(response, ["Alpha", "Beta"]) == ["Alpha", "Beta"]
+
+    @pytest.mark.parametrize("key", ["-playtime", "-filtered_playtime"])
+    def test_a_record_counts_toward_the_playtime_sort(
+        self, logged_client, owned_library, two_games, key
+    ):
+        alpha, beta = two_games
+        start = datetime(2022, 1, 1, 10, tzinfo=ZONEINFO)
+        session_row(alpha, started_at=start, ended_at=start.replace(hour=12))
+        session_row(beta, started_at=start, ended_at=start.replace(hour=11))
+        record_row([tracked_run(owned_library, beta)], duration=timedelta(hours=2))
+
+        response = logged_client.get(reverse("games:list_games"), {"sort": key})
+
+        assert _row_order(response, ["Alpha", "Beta"]) == ["Beta", "Alpha"]
+
+    def test_the_unnarrowed_column_reuses_the_sort_keys_subqueries(
+        self, owned_library, two_games
+    ):
+        sort = games_for_list(
+            owned_library, game_filter=None, find=FindFilter(sort="playtime")
+        )
+        plan = sort.queryset.explain()
+
+        #: The trailing space skips index names that start with the table's.
+        assert plan.count(" on games_historicalplaytime ") == 1
+        assert plan.count(" on games_playersession ") == 1
+
+    def test_the_narrowed_column_says_it_counts_sessions(
+        self, logged_client, owned_library, two_games
+    ):
+        handheld = Device.objects.create(library=owned_library, name="Deck")
+        narrowed = GameFilter(
+            session_filter=PlayerSessionFilter.where(device=[handheld.pk])
+        )
+
+        plain = logged_client.get(reverse("games:list_games"))
+        filtered = logged_client.get(
+            reverse("games:list_games"), {"filter": filter_to_json(narrowed)}
+        )
+
+        assert "Playtime (matching sessions)" not in plain.content.decode()
+        assert "Playtime (matching sessions)" in filtered.content.decode()
 
     def test_unknown_sort_emits_warning_message(
         self, logged_client, two_games, capture_games_logger

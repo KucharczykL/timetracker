@@ -11,7 +11,9 @@ year. The two scopes genuinely diverge (different aggregations, and all-time
 hides the per-purchase list sections), so the differences are kept explicit.
 """
 
+from collections.abc import Mapping
 from datetime import date, timedelta
+from enum import StrEnum
 from typing import Any, NotRequired, TypedDict
 
 from django.db.models import (
@@ -45,9 +47,10 @@ from games.reads.playthrough_completions import (
 from games.reads.playtime import (
     MonthPlaytime,
     PlatformPlaytime,
-    playtime_by_game,
+    PlaytimeBreakdown,
     playtime_by_month,
     playtime_by_platform,
+    playtime_parts_by_game,
     total_playtime,
 )
 from games.reads.session_figures import (
@@ -63,6 +66,8 @@ from games.reads.session_figures import (
 
 
 class GamePlaytime(TypedDict):
+    tracked_playtime: timedelta
+    historical_playtime: timedelta
     total_playtime: timedelta
 
 
@@ -70,7 +75,7 @@ class StatsData(TypedDict):
     # --- always present (both scopes) ---
     year: Any  # int for a year, "Alltime" for all-time
     title: str
-    total_hours: timedelta
+    total_hours: PlaytimeBreakdown
     total_sessions: int
     unique_days: int
     unique_days_percent: int
@@ -110,6 +115,76 @@ class StatsData(TypedDict):
     purchased_this_year_finished_this_year: NotRequired[Any]
     purchased_unfinished: NotRequired[Any]
     all_purchased_this_year: NotRequired[Any]
+
+
+class StatsSource(StrEnum):
+    """Which playtime sources a figure reads."""
+
+    #: Sessions, and records whose `when` lies wholly in scope.
+    BOTH = "both"
+    #: A record states no sittings.
+    SESSIONS_NO_SITTINGS = "sessions: no sittings"
+    #: A record states hours, not a year of play.
+    SESSIONS_NO_YEAR_OF_PLAY = "sessions: no year of play"
+    PURCHASES = "purchases"
+    NOT_A_FIGURE = "not a figure"
+
+
+STATS_SOURCES: Mapping[str, StatsSource] = {
+    "total_hours": StatsSource.BOTH,
+    "top_10_games_by_playtime": StatsSource.BOTH,
+    #: Records reach it through the game's platform, as sessions do.
+    "total_playtime_per_platform": StatsSource.BOTH,
+    "month_playtimes": StatsSource.BOTH,
+    **dict.fromkeys(
+        (
+            "total_sessions",
+            "unique_days",
+            "unique_days_percent",
+            "longest_session_time",
+            "longest_session_game",
+            "highest_session_count",
+            "highest_session_count_game",
+            "highest_session_average",
+            "highest_session_average_game",
+            "first_play_game",
+            "first_play_date",
+            "last_play_game",
+            "last_play_date",
+        ),
+        StatsSource.SESSIONS_NO_SITTINGS,
+    ),
+    **dict.fromkeys(
+        ("total_games", "total_year_games"), StatsSource.SESSIONS_NO_YEAR_OF_PLAY
+    ),
+    **dict.fromkeys(
+        (
+            "this_year_finished_this_year_count",
+            "total_spent",
+            "total_spent_currency",
+            "spent_per_game",
+            "all_purchased_this_year_count",
+            "all_purchased_refunded_this_year",
+            "all_purchased_refunded_this_year_count",
+            "refunded_percent",
+            "dropped_count",
+            "dropped_percentage",
+            "purchased_unfinished_count",
+            "unfinished_purchases_percent",
+            "backlog_decrease_count",
+            "all_finished_this_year",
+            "all_finished_this_year_count",
+            "this_year_finished_this_year",
+            "purchased_this_year_finished_this_year",
+            "purchased_unfinished",
+            "all_purchased_this_year",
+        ),
+        StatsSource.PURCHASES,
+    ),
+    **dict.fromkeys(
+        ("year", "title", "stats_dropdown_year_range"), StatsSource.NOT_A_FIGURE
+    ),
+}
 
 
 def _days_played_percent(unique_days: int, first: date, last: date) -> int:
@@ -260,9 +335,11 @@ def _compute_stats_from_scoped_querysets(
 
     # ── Games by playtime ────────────────────────────────────────────────────
     #: Visible games: untracked library games still count.
+    parts = playtime_parts_by_game(library, year=year)
     top_games = (
         Game.objects.visible_to(library)
-        .annotate(total_playtime=playtime_by_game(library, year=year))
+        .annotate(tracked_playtime=parts.tracked, historical_playtime=parts.historical)
+        .annotate(total_playtime=F("tracked_playtime") + F("historical_playtime"))
         .filter(total_playtime__gt=timedelta(0))
         #: Ties need an order, or rows reshuffle.
         .order_by("-total_playtime", "sort_name", "name", "pk")

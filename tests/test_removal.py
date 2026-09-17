@@ -59,11 +59,11 @@ def test_removing_a_session_drops_the_playtime(owned_library):
     game = make_game(owned_library)
     started = timezone.now()
     row = session_row(game, started_at=started, ended_at=started + timedelta(hours=2))
-    assert game_playtime(owned_library, game) == timedelta(hours=2)
+    assert game_playtime(owned_library, game).total == timedelta(hours=2)
 
     PlayerSession.objects.filter(pk=row.pk).update(removed_at=timezone.now())
 
-    assert game_playtime(owned_library, game) == timedelta(0)
+    assert game_playtime(owned_library, game).total == timedelta(0)
 
 
 @pytest.mark.django_db(transaction=True)
