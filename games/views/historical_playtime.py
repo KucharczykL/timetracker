@@ -121,7 +121,7 @@ def historical_playtime_tabledata(
             Column("When", "when", priority=3),
             Column("Duration", "duration", priority=2),
             Column("Provenance", "provenance", priority=2),
-            Column("Runs", wrap=True, priority=1),
+            Column("Runs", priority=1),
             Column("Device", "device"),
             Column("Created", "created"),
         ],

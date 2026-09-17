@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.conf import settings
 from django.urls import reverse
+from historical_playtime_rows import record_row
 from playwright.sync_api import Page, expect
 from session_rows import session_row
 
@@ -18,6 +19,7 @@ from e2e.helpers import settle_layout
 from games.models import (
     Device,
     Game,
+    HistoricalPlaytimeProvenance,
     Platform,
     PlayerGameStatus,
     Playthrough,
@@ -129,6 +131,12 @@ def populated(e2e_user, e2e_library) -> None:
         completed=TemporalValue.from_day((BASE + timedelta(days=3)).date()),
         note=LONG_NOTE,
     )
+    record_row(
+        [Playthrough.objects.get(player_game__game=game)],
+        device=device,
+        when="2020/2022",
+        provenance=HistoricalPlaytimeProvenance.EXTERNALLY_MEASURED,
+    )
     record_facts(
         e2e_user,
         game,
@@ -152,6 +160,7 @@ LIST_PAGES = [
     "games:list_games",
     "games:list_purchases",
     "games:list_playthroughs",
+    "games:list_historical_playtime",
     "games:list_devices",
     "games:list_platforms",
 ]
