@@ -120,11 +120,11 @@ class StatsData(TypedDict):
 class StatsSource(StrEnum):
     """Which playtime sources a figure reads."""
 
-    #: Sessions, and records whose `when` lies wholly in scope.
+    #: Sessions, and records wholly in scope.
     BOTH = "both"
     #: A record states no sittings.
     SESSIONS_NO_SITTINGS = "sessions: no sittings"
-    #: A record states hours, not a year of play.
+    #: A record states no year of play.
     SESSIONS_NO_YEAR_OF_PLAY = "sessions: no year of play"
     PURCHASES = "purchases"
     NOT_A_FIGURE = "not a figure"
@@ -133,7 +133,7 @@ class StatsSource(StrEnum):
 STATS_SOURCES: Mapping[str, StatsSource] = {
     "total_hours": StatsSource.BOTH,
     "top_10_games_by_playtime": StatsSource.BOTH,
-    #: Records reach it through the game's platform, as sessions do.
+    #: Records join through the game's platform.
     "total_playtime_per_platform": StatsSource.BOTH,
     "month_playtimes": StatsSource.BOTH,
     **dict.fromkeys(

@@ -1,4 +1,4 @@
-"""Every playtime figure: sessions and historical records together."""
+"""Every playtime figure: sessions plus historical records."""
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -85,10 +85,9 @@ class MonthPlaytime(NamedTuple):
 
 
 class PlaytimeParts(NamedTuple):
-    """Per-game expressions, each zero when unplayed.
+    """Per-game halves, each zero when unplayed.
 
-    No total: it would run both subqueries again. Sum the two
-    annotations instead.
+    No total member: it would run both subqueries again.
     """
 
     tracked: Playtime
@@ -185,10 +184,10 @@ def playtime_by_game(
 
 
 def playtime_sort_key(library: UserLibrary) -> PlaytimeSum:
-    """NULL when the game has no playtime; `apply_sort` orders it last.
+    """NULL without playtime; `apply_sort` orders it last.
 
-    A game whose only session is running has none yet. Telling it
-    apart from an unplayed one would run each subquery twice.
+    A game whose only session is running sorts as unplayed.
+    Telling the two apart runs each subquery twice.
     """
     return NullIf(playtime_by_game(library), ZERO, output_field=DurationField())
 
@@ -196,10 +195,7 @@ def playtime_sort_key(library: UserLibrary) -> PlaytimeSum:
 def playtime_matching(
     library: UserLibrary, session_filter: PlayerSessionFilter
 ) -> PlaytimeSum:
-    """Matching sessions' sum, NULL when none match.
-
-    Sessions only: a session filter cannot narrow records.
-    """
+    """Matching sessions' sum; NULL when none match."""
     return tracked_summed_by_game_matching(library, session_filter)
 
 
@@ -238,7 +234,7 @@ def playtime_between(library: UserLibrary, days: DayInterval) -> PlaytimeBreakdo
 
 
 def _platform_order(row: PlatformPlaytime) -> tuple[object, ...]:
-    """The database's order: total down, then name and id, None last."""
+    """The database's order; None sorts last."""
     return (
         -row.playtime.total,
         row.platform_name is None,

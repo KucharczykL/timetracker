@@ -1,9 +1,4 @@
-"""Historical playtime record sums.
-
-A record counts in a period only when its `when` lies wholly inside it.
-A null bound is never inside, so an unknown or open `when` counts in
-all-time alone.
-"""
+"""Historical playtime sums, counted by containment."""
 
 from collections.abc import Sequence
 from datetime import date, timedelta
@@ -36,7 +31,7 @@ __all__ = [
     "historical_years",
 ]
 
-#: Records reach their catalog game through the tracked game.
+#: Records reach games through the tracked game.
 GAME = "player_game__game"
 PLATFORM = f"{GAME}__platform"
 
@@ -99,7 +94,7 @@ def historical_totals(
 def historical_summed_by_game(
     library: UserLibrary | None, *, within: DayInterval | None = None
 ) -> PlaytimeSum:
-    """NULL when the game has no record in scope."""
+    """NULL when no record is in scope."""
     if library is None:
         return UnscopedSum()
     return Subquery(
@@ -126,7 +121,7 @@ def historical_by_platform(
 
 
 def historical_by_month(library: UserLibrary, *, year: int) -> list[MonthHistorical]:
-    """A record counts in a month only when both bounds lie in it."""
+    """Counts a record only within one month."""
     rows = (
         contained_in(library_records(library), DayInterval.year(year))
         .filter(when_lower__month=F("when_upper__month"))
@@ -140,7 +135,7 @@ def historical_by_month(library: UserLibrary, *, year: int) -> list[MonthHistori
 
 
 def historical_years(library: UserLibrary) -> list[int]:
-    """Each year that wholly contains some record's `when`."""
+    """Years that wholly contain a record's `when`."""
     return list(
         library_records(library)
         .filter(when_lower__year=F("when_upper__year"))

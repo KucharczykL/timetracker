@@ -534,7 +534,7 @@ class TestListGamesSort:
         )
         plan = sort.queryset.explain()
 
-        #: The trailing space skips index names that start with the table's.
+        #: The space skips same-prefixed index names.
         assert plan.count(" on games_historicalplaytime ") == 1
         assert plan.count(" on games_playersession ") == 1
 

@@ -139,7 +139,7 @@ YEAR = DayInterval.year(2022)
 JUNE = DayInterval.month(2022, 6)
 DAY = DayInterval.single(date(2022, 6, 11))
 
-#: Which scopes a record with this `when` counts in.
+#: The scopes each `when` counts in.
 CONTAINMENT = [
     ("2022", {"year", "all"}),
     ("2022~", {"year", "all"}),

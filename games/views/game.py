@@ -165,7 +165,7 @@ def games_for_list(
         games = execute_filter(game_filter, games, context)
         session_filter = game_filter.session_filter
     if session_filter is None:
-        #: One copy of the subqueries: the sort orders by the column.
+        #: The sort reuses the column's subqueries.
         games = games.annotate(filtered_playtime=playtime_sort_key(library)).alias(
             total_playtime=F("filtered_playtime")
         )
