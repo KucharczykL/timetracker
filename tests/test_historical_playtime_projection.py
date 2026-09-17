@@ -9,6 +9,17 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from games.checks import check_projection_models
+from games.commands.playergame import TrackGame
+from games.events.append import lock_stream
+from games.events.dispatch import dispatch
+from games.events.historical_playtime import (
+    historicalplaytime_created,
+    historicalplaytime_removed,
+    historicalplaytime_restated,
+    historicalplaytime_restored,
+)
+from games.events.rebuild import RebuildMode, rebuild_projections
+from games.events.replay import replay
 from games.models import (
     Game,
     HistoricalPlaytime,
@@ -22,6 +33,8 @@ from games.projections import (
     AUDITED_PROJECTION_REFERENCES,
     unaudited_projection_references,
 )
+from games.projectors.historical_playtime import columns_for_statement
+from timetracker.temporal import TemporalValue
 
 #: Nothing here wants the row the fixture tracks for a new game.
 pytestmark = pytest.mark.untracked_games
@@ -164,3 +177,219 @@ def test_a_removed_tracked_game_hides_the_record(tracked, run):
 
 def test_the_record_reaches_the_game_in_one_hop():
     assert HistoricalPlaytime.comparison_through == (("player_game__game", "Game"),)
+
+
+# --- The projector -----------------------------------------------------------
+
+
+def append(library, actor, event, *, key: str) -> None:
+    """Append one built event under a key, as dispatch would."""
+    with transaction.atomic():
+        stream = lock_stream(library)
+        stream.append(
+            [event], actor=actor, correlation_id=uuid.uuid7(), idempotency_key=key
+        )
+
+
+def a_created(tracked, runs, **stated):
+    return historicalplaytime_created(
+        player_game_id=tracked.pk,
+        runs=[{"id": str(uuid.uuid7()), "playthrough": str(run.pk)} for run in runs],
+        duration=stated.get("duration", timedelta(hours=100)),
+        when=stated.get("when", TemporalValue.parse("2005")),
+        provenance=stated.get("provenance", "estimated"),
+        device=stated.get("device"),
+        emulated=stated.get("emulated", False),
+        note=stated.get("note", ""),
+    )
+
+
+def a_second_run(owned_library, tracked) -> Playthrough:
+    return Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        player_game=tracked,
+        kind=PlaythroughKind.ORDINARY,
+        created_at=timezone.now(),
+    )
+
+
+def test_the_mapper_names_every_statement_column():
+    payload = {
+        "player_game": str(uuid.uuid7()),
+        "playthroughs": [{"id": str(uuid.uuid7()), "playthrough": str(uuid.uuid7())}],
+        "duration_seconds": 3600,
+        "provenance": "manually_entered",
+        "device": None,
+        "emulated": True,
+        "note": "read off Steam",
+        "release": None,
+        "source": None,
+    }
+    columns = columns_for_statement(payload, TemporalValue.parse("2005"))
+    assert set(columns) == {
+        "player_game_id",
+        "duration",
+        "when",
+        "provenance",
+        "device_id",
+        "emulated",
+        "note",
+    }
+    assert columns["when"] == "2005"
+    assert columns["duration"] == timedelta(hours=1)
+    assert columns["provenance"] is HistoricalPlaytimeProvenance.MANUALLY_ENTERED
+    assert columns_for_statement(payload, None)["when"] is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_creation_writes_the_record_and_its_runs(
+    owned_user, owned_library, tracked, run
+):
+    second = a_second_run(owned_library, tracked)
+    event = a_created(tracked, [run, second])
+    append(owned_library, owned_user, event, key="create")
+
+    record = HistoricalPlaytime.objects.get()
+    assert record.pk == event.aggregate_id
+    assert record.library_id == owned_library.pk
+    assert record.player_game_id == tracked.pk
+    assert record.when.canonical == "2005"
+    assert record.duration == timedelta(hours=100)
+    assert record.removed_at is None
+    assert set(record.runs.values_list("playthrough_id", flat=True)) == {
+        run.pk,
+        second.pk,
+    }
+    assert set(record.runs.values_list("id", flat=True)) == {
+        uuid.UUID(member["id"]) for member in event.payload["playthroughs"]
+    }
+    assert set(record.runs.values_list("library_id", flat=True)) == {owned_library.pk}
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_restatement_replaces_the_runs_and_keeps_a_kept_id(
+    owned_user, owned_library, tracked, run
+):
+    second = a_second_run(owned_library, tracked)
+    created = a_created(tracked, [run, second])
+    append(owned_library, owned_user, created, key="create")
+    kept = next(
+        m for m in created.payload["playthroughs"] if m["playthrough"] == str(run.pk)
+    )
+
+    restated = historicalplaytime_restated(
+        created.aggregate_id,
+        player_game_id=tracked.pk,
+        runs=[kept],
+        duration=timedelta(hours=50),
+        when=TemporalValue.parse("2006~"),
+        provenance="manually_entered",
+        device=None,
+        emulated=True,
+        note="halved",
+    )
+    append(owned_library, owned_user, restated, key="restate")
+
+    record = HistoricalPlaytime.objects.get()
+    assert record.duration == timedelta(hours=50)
+    assert record.when.canonical == "2006~"
+    assert record.provenance == HistoricalPlaytimeProvenance.MANUALLY_ENTERED
+    assert record.emulated is True
+    assert record.note == "halved"
+    assert list(record.runs.values_list("id", "playthrough_id")) == [
+        (uuid.UUID(kept["id"]), run.pk)
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_removed_and_restored_move_the_mark(owned_user, owned_library, tracked, run):
+    created = a_created(tracked, [run])
+    append(owned_library, owned_user, created, key="create")
+    append(
+        owned_library,
+        owned_user,
+        historicalplaytime_removed(created.aggregate_id),
+        key="remove",
+    )
+    assert HistoricalPlaytime.objects.get().removed_at is not None
+    assert not HistoricalPlaytimeRun.objects.alive().exists()
+    append(
+        owned_library,
+        owned_user,
+        historicalplaytime_restored(created.aggregate_id),
+        key="restore",
+    )
+    assert HistoricalPlaytime.objects.get().removed_at is None
+    assert HistoricalPlaytimeRun.objects.alive().count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_projection_replays_from_an_empty_stream(
+    owned_user, owned_library, tracked, run
+):
+    created = a_created(tracked, [run])
+    append(owned_library, owned_user, created, key="create")
+    append(
+        owned_library,
+        owned_user,
+        historicalplaytime_restated(
+            created.aggregate_id,
+            player_game_id=tracked.pk,
+            runs=created.payload["playthroughs"],
+            duration=timedelta(hours=2),
+            when=TemporalValue.unknown(),
+            provenance="estimated",
+            device=None,
+            emulated=False,
+            note="",
+        ),
+        key="restate",
+    )
+    before_records = list(HistoricalPlaytime.objects.order_by("pk").values())
+    before_runs = list(HistoricalPlaytimeRun.objects.order_by("pk").values())
+
+    HistoricalPlaytimeRun.objects.all().delete()
+    HistoricalPlaytime.objects.all().delete()
+    replay(owned_library)
+
+    assert list(HistoricalPlaytime.objects.order_by("pk").values()) == before_records
+    assert list(HistoricalPlaytimeRun.objects.order_by("pk").values()) == before_runs
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rebuild_swaps_both_tables_with_an_empty_diff(
+    owned_user, owned_library, game
+):
+    """The run comes from a command: a rebuild reproduces every row."""
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="track",
+    )
+    tracked_run = Playthrough.objects.get(player_game__game=game)
+    created = a_created(tracked_run.player_game, [tracked_run])
+    append(owned_library, owned_user, created, key="create")
+    append(
+        owned_library,
+        owned_user,
+        historicalplaytime_removed(created.aggregate_id),
+        key="remove",
+    )
+
+    report = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    assert report.swapped is True
+    assert [
+        (table.table, table.only_live, table.only_rebuilt, table.differing)
+        for table in report.tables
+    ] == [
+        ("games_historicalplaytime", 0, 0, 0),
+        ("games_historicalplaytimerun", 0, 0, 0),
+        ("games_librarycalendar", 0, 0, 0),
+        ("games_playergame", 0, 0, 0),
+        ("games_playersession", 0, 0, 0),
+        ("games_playthrough", 0, 0, 0),
+    ]
+    assert HistoricalPlaytimeRun.objects.count() == 1
