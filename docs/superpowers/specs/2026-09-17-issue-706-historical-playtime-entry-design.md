@@ -62,14 +62,14 @@ A section between Sessions and Playthroughs shows every live record: when,
 duration, provenance, runs, device, Edit and Remove. It reads rows and run
 names through `games/reads/historical_playtime_page.py`, as the Historical
 list does. The header shows a count badge, Add, and View all, which opens
-the list narrowed to the game.
+the list narrowed to the game. The header shows no total: the page
+headline states the game's playtime.
 
 ## Historical list
 
 Each row of the Historical list has Edit and Remove, through
 `record_actions`. Both links carry the list page as the origin. The
-Actions column has priority 4, above every other column. The header does not show a total, because a total is
-a playtime read (#709) and its presentation is #710's.
+Actions column has priority 4, above every other column.
 
 ## Tests
 
@@ -79,6 +79,7 @@ a playtime read (#709) and its presentation is #710's.
 - `tests/test_historical_playtime_views.py`: every act, every refusal,
   foreign rows.
 - `tests/test_game_detail_historical_playtime.py`: the section.
+- `tests/test_playtime_page.py`: the list's row actions.
 - `e2e/test_historical_playtime_entry_e2e.py`: every act in a browser.
 - `tests/historical_playtime_rows.py` writes rows by hand. The sibling
   branches share its text.

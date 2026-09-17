@@ -1,4 +1,4 @@
-"""Historical playtime is recorded, restated, removed and restored from a game."""
+"""Every historical playtime act, from Game detail."""
 
 from django.urls import reverse
 from playwright.sync_api import Page, expect

@@ -1,4 +1,4 @@
-"""Record, restate, remove and restore historical playtime from Game detail."""
+"""Historical playtime acts through the routes."""
 
 import uuid
 from datetime import timedelta

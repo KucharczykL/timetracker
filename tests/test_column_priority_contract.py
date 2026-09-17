@@ -94,7 +94,7 @@ class ActionsColumnPriorityTest(TestCase):
             price_currency="USD",
         )
         purchase.games.add(self.game)
-        #: Game detail's historical section draws a table only with a row.
+        #: A table needs a row.
         record_row([Playthrough.objects.get(player_game__game=self.game)])
 
     def assert_actions_dominates(self, url: str) -> None:
