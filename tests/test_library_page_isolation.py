@@ -423,7 +423,7 @@ def test_navbar_playtime_is_scoped_to_the_authenticated_library(world):
 
 def test_the_navbar_without_a_library_is_zero(client):
     with patch(
-        "games.views.general.playtime_between",
+        "games.views.general.playtime_between_each",
         side_effect=AssertionError("no library reads no playtime"),
     ):
         request = RequestFactory().get("/")
