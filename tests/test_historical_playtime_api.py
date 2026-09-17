@@ -16,6 +16,7 @@ from games.models import (
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
+    HistoricalPlaytimeRun,
     PlayerGame,
     Playthrough,
     PlaythroughKind,
@@ -152,7 +153,36 @@ def test_the_detail_hides_what_the_list_hides(client_for, owner, django_user_mod
     remove(catalog_run.player_game.game)
     other_library = django_user_model.objects.create_user(username="other").library
     foreign = record_row([a_run(other_library, "Elsewhere")])
+    foreign_game = record_row([a_run(other_library, "Borrowed")])
+    HistoricalPlaytime.objects.filter(pk=foreign_game.pk).update(library=library)
 
-    for record in (removed, untracked, catalog, foreign):
+    for record in (removed, untracked, catalog, foreign, foreign_game):
         assert client_for.get(f"{LIST_URL}{record.pk}").status_code == 404
     assert client_for.get(LIST_URL).json()["count"] == 0
+
+
+def test_the_list_pages(client_for, owner):
+    run = a_run(owner.library)
+    for _ in range(11):
+        record_row([run])
+
+    body = client_for.get(LIST_URL, {"page": 2}).json()
+
+    assert body["count"] == 11
+    assert body["page"] == 2
+    assert body["num_pages"] == 2
+    assert len(body["items"]) == 1
+
+
+def test_another_librarys_join_row_is_not_listed(client_for, owner, django_user_model):
+    run = a_run(owner.library)
+    record = record_row([run])
+    other_library = django_user_model.objects.create_user(username="other").library
+    foreign_run = a_run(other_library, "Elsewhere")
+    HistoricalPlaytimeRun.objects.create(
+        id=uuid.uuid7(), library=other_library, record=record, playthrough=foreign_run
+    )
+
+    (item,) = client_for.get(LIST_URL).json()["items"]
+
+    assert item["playthrough_ids"] == [str(run.pk)]

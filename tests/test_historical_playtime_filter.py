@@ -82,6 +82,8 @@ def test_the_scope_holds_live_records_of_this_library(owned_library, django_user
 
     other = django_user_model.objects.create_user(username="other").library
     record_row([game_run(other, "Elsewhere")], note="elsewhere")
+    borrowed = record_row([game_run(other, "Borrowed")], note="borrowed")
+    HistoricalPlaytime.objects.filter(pk=borrowed.pk).update(library=owned_library)
 
     assert list(library_records(owned_library)) == [live]
 

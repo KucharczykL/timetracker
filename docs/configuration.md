@@ -196,8 +196,8 @@ Changes save immediately against the account through `/api/settings/user`:
   an empty device when editing a session. An existing device is preserved.
 - **Default landing page** controls the `/tracker/` redirect. Supported values
   are the Playtime page (its Sessions list), the Games and Purchases lists,
-  and Statistics for the current calendar year. The stored value is a validated Django URL name, not an
-  arbitrary URL.
+  and Statistics for the current calendar year. The stored value is a
+  validated Django URL name, not an arbitrary URL.
 - **Default rows per page** controls every list using `FindFilter` when its URL
   has no valid `per_page` override. Presets saved without an explicit size keep
   inheriting this preference; choosing a size from a list pins that exact value

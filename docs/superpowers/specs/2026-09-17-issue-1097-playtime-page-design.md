@@ -18,7 +18,7 @@ No navbar entry names the page. Three entries reach it:
 - the `index` redirect.
 
 The card value is a row count: live sessions plus live records. Its `title`
-says so. #710 replaces the count with a duration.
+says so. The value is a count, not a duration.
 
 ## Tabs
 
@@ -44,7 +44,8 @@ list and the API read this scope.
 `search`, `game_filter` and `device_filter`.
 
 `when` uses overlap. A day matches a record whose interval can contain that
-day. `is null` matches an unknown `when`. The statistics use containment.
+day. `is null` matches an unknown `when`. The wave's statistics use
+containment.
 Thus a list filter and a year figure can count different records.
 
 The filter has no run field. A record's runs are a to-many relation, and
@@ -62,8 +63,12 @@ not sortable. A record with two or more runs shows a "shared" badge.
 The default sort is `-when,-created`. It agrees with `RECORD_ORDER`. An
 unknown `when` sorts last.
 
-The Actions column and Game detail's "View all" link are not here. The
-second of #706 and #1097 to merge adds them.
+The page has no Actions column. Game detail has no "View all" link to the
+page.
+
+A join row that names a run the page cannot name is a defect.
+`record_run_labels` raises `RowUnreadable` for it. The list and the API read
+only this library's join rows.
 
 ## API
 

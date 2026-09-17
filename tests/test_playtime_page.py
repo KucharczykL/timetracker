@@ -6,21 +6,28 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils import timezone
 from historical_playtime_rows import record_row
-from session_rows import tracked_run
+from session_rows import session_row, tracked_run
 
 from common.components import PageTab, PageTabs, StatisticCard
+from games.events.dispatch import RowUnreadable
 from games.models import (
     Device,
     FilterPreset,
     Game,
+    HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
+    HistoricalPlaytimeRun,
     Playthrough,
     PlaythroughKind,
 )
 from games.reads.historical_playtime_records import RECORD_ORDER, library_records
 from games.sorting import HISTORICAL_PLAYTIME_SORTS
+from games.views.historical_playtime import PROVENANCE_TONES
 
 
 def test_page_tabs_mark_only_the_current_tab():
@@ -134,14 +141,46 @@ class TestHistoricalList:
     @pytest.mark.parametrize("key", sorted(HISTORICAL_PLAYTIME_SORTS))
     def test_every_sort_key_orders(self, client, owner, key):
         library = owner.library
+        low_device = Device.objects.create(library=library, name="A device")
+        high_device = Device.objects.create(library=library, name="Z device")
+        low_game = Game.objects.create(library=library, name="Alpha", sort_name="alpha")
+        high_game = Game.objects.create(
+            library=library, name="Omega", sort_name="omega"
+        )
+        low = record_row(
+            [tracked_run(library, low_game)],
+            duration=timedelta(hours=1),
+            when="2001",
+            device=low_device,
+        )
+        high = record_row(
+            [tracked_run(library, high_game)],
+            duration=timedelta(hours=2),
+            when="2002",
+            provenance=HistoricalPlaytimeProvenance.MANUALLY_ENTERED,
+            device=high_device,
+        )
+        HistoricalPlaytime.objects.filter(pk=high.pk).update(
+            created_at=low.created_at + timedelta(minutes=1)
+        )
+
+        ascending = client.get(reverse(HISTORICAL), {"sort": key}).content.decode()
+        descending = client.get(
+            reverse(HISTORICAL), {"sort": f"-{key}"}
+        ).content.decode()
+
+        assert rows_in_order(ascending) == [str(low.pk), str(high.pk)]
+        assert rows_in_order(descending) == [str(high.pk), str(low.pk)]
+
+    def test_an_unknown_when_sorts_last_both_ways(self, client, owner):
+        library = owner.library
         run = tracked_run(library, Game.objects.create(library=library, name="G"))
-        record_row([run], duration=timedelta(hours=1))
-        record_row([run], duration=timedelta(hours=2))
+        unknown = record_row([run])
+        known = record_row([run], when="2001")
 
-        response = client.get(reverse(HISTORICAL), {"sort": key})
-
-        assert response.status_code == 200
-        assert len(rows_in_order(response.content.decode())) == 2
+        for sort in ("when", "-when"):
+            body = client.get(reverse(HISTORICAL), {"sort": sort}).content.decode()
+            assert rows_in_order(body) == [str(known.pk), str(unknown.pk)], sort
 
     def test_a_filter_narrows_the_rows(self, client, owner):
         library = owner.library
@@ -160,21 +199,25 @@ class TestHistoricalList:
 
         assert rows_in_order(body) == [str(kept.pk)]
 
-    def test_the_page_costs_the_same_for_more_runs(
-        self, client, owner, django_assert_max_num_queries
-    ):
+    def test_the_page_costs_the_same_for_more_records_and_runs(self, client, owner):
         library = owner.library
-        for index in range(5):
+
+        def queries_for_page() -> int:
+            client.get(reverse(HISTORICAL))
+            with CaptureQueriesContext(connection) as captured:
+                client.get(reverse(HISTORICAL))
+            return len(captured)
+
+        first = tracked_run(library, Game.objects.create(library=library, name="G"))
+        record_row([first])
+        one_record = queries_for_page()
+        for index in range(4):
             run = tracked_run(
                 library, Game.objects.create(library=library, name=f"G{index}")
             )
             record_row([run, second_run(run), second_run(run)])
-        client.get(reverse(HISTORICAL))
 
-        with django_assert_max_num_queries(40):
-            response = client.get(reverse(HISTORICAL))
-
-        assert len(rows_in_order(response.content.decode())) == 5
+        assert queries_for_page() == one_record
 
     def test_the_quick_bar_offers_the_facets_and_the_builder(self, client, owner):
         body = client.get(reverse(HISTORICAL)).content.decode()
@@ -214,19 +257,61 @@ class TestHistoricalList:
             reverse("games:filter_builder", args=["playersession"])
         ).content.decode()
 
-        for key in ("playthrough", "historicalplaytime", "playersession"):
-            assert reverse("games:filter_builder", args=[key]) in body
-        assert ">Historical Playtime<" in body or "Historical Playtime" in body
+        labels = re.findall(
+            r'href="/tracker/[a-z]+/filter" role="menuitem"[^>]*>([^<]+)<', body
+        )
+        assert labels == [
+            "Device",
+            "Game",
+            "Historical Playtime",
+            "Platform",
+            "Playthrough",
+            "Purchase",
+            "Session",
+        ]
 
 
 @pytest.mark.django_db
-def test_the_library_card_counts_sessions_and_records(client, owner):
+def test_the_library_card_counts_live_sessions_and_records(
+    client, owner, django_user_model
+):
     library = owner.library
     run = tracked_run(library, Game.objects.create(library=library, name="G"))
+    session_row(run.player_game.game, started_at=timezone.now())
     record_row([run])
     record_row([run])
+    removed = record_row([run])
+    HistoricalPlaytime.objects.filter(pk=removed.pk).update(removed_at=timezone.now())
+    other = django_user_model.objects.create_user(username="other").library
+    record_row([tracked_run(other, Game.objects.create(library=other, name="O"))])
 
     body = client.get(reverse("games:library")).content.decode()
 
-    assert 'aria-label="2 Playtime"' in body
+    assert 'aria-label="3 Playtime"' in body
     assert 'title="Sessions and historical records"' in body
+
+
+def test_every_provenance_has_a_tone():
+    assert set(PROVENANCE_TONES) == set(HistoricalPlaytimeProvenance.values)
+
+
+@pytest.mark.django_db
+@pytest.mark.untracked_games
+def test_a_run_the_page_cannot_name_is_a_defect(client, owner):
+    library = owner.library
+    run = tracked_run(library, Game.objects.create(library=library, name="G"))
+    record = record_row([run])
+    bucket = Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+    HistoricalPlaytimeRun.objects.create(
+        id=uuid.uuid7(), library=library, record=record, playthrough=bucket
+    )
+    client.raise_request_exception = True
+
+    with pytest.raises(RowUnreadable, match=str(record.pk)):
+        client.get(reverse(HISTORICAL))

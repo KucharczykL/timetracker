@@ -1067,6 +1067,14 @@ class ButtonGroupMember(TypedDict, total=False):
     type: str
 
 
+#: Rounds a group's outer corners.
+_GROUP_ENDS_CLASS = (
+    "inline-flex rounded-base shadow-xs "
+    "[&>*:first-child]:rounded-s-base "
+    "[&>*:last-child]:rounded-e-base"
+)
+
+
 def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
     """Generate a button group div of segmented :class:`ControlButton` members.
 
@@ -1128,10 +1136,8 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
     # button.
     return Div(
         class_=(
-            "inline-flex rounded-base shadow-xs "
-            "[&>*:first-child]:rounded-s-base "
+            f"{_GROUP_ENDS_CLASS} "
             "[&>*:first-child_button]:rounded-s-base "
-            "[&>*:last-child]:rounded-e-base "
             "[&>*:last-child_button]:rounded-e-base"
         ),
         role="group",
@@ -1140,28 +1146,27 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
 
 type TabLabel = str  # e.g. "Sessions"
 
-#: Segmented shell; the current tab never hovers.
+type NavLabel = str  # e.g. "Playtime"
+
+#: The segmented look, sized like a button.
 _TAB_CLASS = (
-    "inline-flex items-center border focus:z-10 focus:ring-2 "
-    f"focus:ring-fg-brand {CONTROL_SIZE_CLASS}"
+    "inline-flex items-center focus:z-10 focus:ring-2 focus:ring-fg-brand "
+    f"{CONTROL_SIZE_CLASS}"
 )
-_TAB_IDLE_CLASS = (
-    "text-heading bg-neutral-primary-medium border-default-medium "
-    "hover:bg-neutral-tertiary-medium hover:border-default-strong "
-    "hover:text-fg-brand dark:hover:text-heading"
-)
-_TAB_CURRENT_CLASS = "solid-brand border-brand"
+_TAB_IDLE_CLASS = _SEGMENTED_COLOR_CLASSES["gray"]
+#: Brand fill; the current tab never hovers.
+_TAB_CURRENT_CLASS = "solid-brand border border-brand"
 
 
 class PageTab(NamedTuple):
-    """One tab: its label and route."""
+    """One tab: its label and URL."""
 
     label: TabLabel
     href: str
     current: bool = False
 
 
-def PageTabs(label: str, tabs: Sequence[PageTab]) -> Node:
+def PageTabs(aria_label: NavLabel, tabs: Sequence[PageTab]) -> Node:
     """Sibling pages as links; current one marked."""
     links = [
         ControlLink(
@@ -1172,14 +1177,8 @@ def PageTabs(label: str, tabs: Sequence[PageTab]) -> Node:
         )[tab.label]
         for tab in tabs
     ]
-    return Nav(aria_label=label, class_="mb-4")[
-        Div(
-            class_=(
-                "inline-flex rounded-base shadow-xs "
-                "[&>*:first-child]:rounded-s-base "
-                "[&>*:last-child]:rounded-e-base"
-            )
-        )[links]
+    return Nav(aria_label=aria_label, class_="mb-4")[
+        Div(class_=_GROUP_ENDS_CLASS)[links]
     ]
 
 

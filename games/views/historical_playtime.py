@@ -5,7 +5,7 @@ from typing import cast
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
-from django.db.models import Prefetch
+from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
 
@@ -44,14 +44,13 @@ from games.filters import (
     filter_query_context_for_library,
     parse_historical_playtime_filter,
 )
-from games.models import (
-    HistoricalPlaytime,
-    HistoricalPlaytimeProvenance,
-    HistoricalPlaytimeRun,
-    UserLibrary,
+from games.models import HistoricalPlaytime, HistoricalPlaytimeProvenance
+from games.reads.historical_playtime_page import (
+    RunLabels,
+    listed_records,
+    record_run_labels,
+    run_labels_for,
 )
-from games.reads.historical_playtime_records import readable_records
-from games.reads.playthrough_numbering import display_name, numbered_for
 from games.sorting import (
     HISTORICAL_PLAYTIME_DEFAULT_SORT,
     HISTORICAL_PLAYTIME_SORTS,
@@ -64,9 +63,7 @@ from games.views.filtering import (
     warn_unknown_sort,
 )
 
-type RunLabel = str  # e.g. "Playthrough 2"
-
-#: Importers write this one; it stands apart.
+#: Importer-written provenance gets the brand tone.
 PROVENANCE_TONES: Mapping[str, BadgeTone] = {
     HistoricalPlaytimeProvenance.ESTIMATED: "neutral",
     HistoricalPlaytimeProvenance.MANUALLY_ENTERED: "neutral",
@@ -74,46 +71,26 @@ PROVENANCE_TONES: Mapping[str, BadgeTone] = {
 }
 
 
-def readable_list(library: UserLibrary):
-    """The row path; runs in one query."""
-    return readable_records(library).prefetch_related(
-        Prefetch(
-            "runs",
-            queryset=HistoricalPlaytimeRun.objects.order_by("playthrough_id"),
-        )
-    )
-
-
-def run_labels_for(
-    library: UserLibrary, records: Sequence[HistoricalPlaytime]
-) -> dict[object, RunLabel]:
-    """Each run's name, numbered across its game."""
-    return {
-        run.pk: display_name(run)
-        for run in numbered_for(library, {record.player_game_id for record in records})
-    }
-
-
-def _runs_cell(record: HistoricalPlaytime, labels: Mapping[object, RunLabel]) -> Node:
-    runs = list(record.runs.all())
-    names = ", ".join(labels[run.playthrough_id] for run in runs)
-    if len(runs) < 2:
-        return Span()[names]
+def _runs_cell(record: HistoricalPlaytime, labels: RunLabels) -> Node:
+    names = record_run_labels(record, labels)
+    text = Span()[", ".join(names)]
+    if len(names) < 2:
+        return text
     return Fragment(
-        Span()[names],
+        text,
         Badge("shared", size="sm", tone="neutral", extra_class="ms-2"),
     )
 
 
 def historical_playtime_tabledata(
     records: Sequence[HistoricalPlaytime],
-    labels: Mapping[object, RunLabel],
+    labels: RunLabels,
     presentation: DateTimePresentation,
     durations: DurationPresentation,
     *,
     sort_terms: Sequence[SortTerm] = (),
 ) -> TableData:
-    """Rows for the records, one per record."""
+    """Runs column is not sortable."""
     return {
         "caption": "Historical playtime",
         "columns": [
@@ -157,7 +134,7 @@ def list_historical_playtime(request: HttpRequest) -> HttpResponse:
     library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
-    records = readable_list(library)
+    records: QuerySet[HistoricalPlaytime] = listed_records(library)
 
     filter_json = request.GET.get("filter", "")
     if filter_json:
