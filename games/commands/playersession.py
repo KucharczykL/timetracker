@@ -17,7 +17,7 @@ from games.commands.playthrough import (
     library_playthrough,
     refuse_unless_live,
 )
-from games.commands.scope import Refusal, library_row
+from games.commands.scope import Refusal, library_device, library_row
 from games.events.dispatch import (
     Command,
     CommandContext,
@@ -43,7 +43,6 @@ from games.events.playersession import (
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import (
-    Device,
     PlayerSession,
     PlayerSessionTimingMode,
     Playthrough,
@@ -392,36 +391,6 @@ def timing_payload(timing: TimingStatement) -> TimingPayload:
             assert_never(timing)
 
 
-def _library_device(
-    context: CommandContext, device_id: uuid.UUID | None
-) -> Device | None:
-    """This library's device, or a refusal."""
-    if device_id is None:
-        return None
-    device = library_row(
-        context,
-        Device.objects.all(),
-        Refusal(
-            message=(
-                f"This library holds no device {device_id}. A session "
-                "names a device the library records."
-            ),
-            sentence="That device is not available.",
-        ),
-        pk=device_id,
-    )
-    #: Under dispatch's lock: the mark cannot move.
-    if device.removed_at is not None:
-        raise CommandRejected(
-            f"This library removed device {device_id}, so no session names it anew.",
-            sentence=(
-                "That device was removed from your library. Restore it "
-                "before choosing it for a session."
-            ),
-        )
-    return device
-
-
 def check_note(note: str) -> None:
     """Refuse text JSONB cannot store."""
     try:
@@ -593,7 +562,7 @@ class CreateSession(Command):
                 "takes no recorded session; only a move reaches it.",
                 sentence=INTO_THE_BUCKET,
             )
-        device = _library_device(context, self.device_id)
+        device = library_device(context, self.device_id)
         payload = timing_payload(self.timing)
         _check_calendar(context, payload)
         return [
@@ -739,7 +708,7 @@ class DescribeSession(Command):
             events.append(playersession_note_changed(session.pk, note=self.note))
         #: Compared first: restated removed device is Unchanged.
         if self.device is not None and self.device.device_id != session.device_id:
-            device = _library_device(context, self.device.device_id)
+            device = library_device(context, self.device.device_id)
             events.append(
                 playersession_device_changed(
                     session.pk,

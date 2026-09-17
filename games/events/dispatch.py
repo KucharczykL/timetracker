@@ -105,6 +105,10 @@ class CommandName(CommandVocabulary):
     PLAYERSESSION_REMOVE = "library.playersession.remove"
     PLAYERSESSION_RESTORE = "library.playersession.restore"
     CALENDAR_SET_DAY_ZONE = "library.calendar.set_day_zone"
+    HISTORICALPLAYTIME_RECORD = "library.historicalplaytime.record"
+    HISTORICALPLAYTIME_RESTATE = "library.historicalplaytime.restate"
+    HISTORICALPLAYTIME_REMOVE = "library.historicalplaytime.remove"
+    HISTORICALPLAYTIME_RESTORE = "library.historicalplaytime.restore"
 
 
 @dataclass(frozen=True, slots=True)
