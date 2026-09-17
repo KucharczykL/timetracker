@@ -52,7 +52,14 @@ The shared module is this text, and no branch adds to it:
 ```python
 """The records a library counts, and the row path a page reads."""
 
-from games.models import Game, HistoricalPlaytime, HistoricalPlaytimeQuerySet, UserLibrary
+from django.db.models import F
+
+from games.models import (
+    Game,
+    HistoricalPlaytime,
+    HistoricalPlaytimeQuerySet,
+    UserLibrary,
+)
 
 #: Newest first; an unknown `when` last; then newest recorded.
 RECORD_ORDER = (F("when_lower").desc(nulls_last=True), "-created_at", "id")
