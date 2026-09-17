@@ -367,6 +367,18 @@ def test_a_refused_submission_re_renders_what_was_typed() -> None:
     assert 'name="released-month" value="6"' in html
 
 
+def test_a_day_typed_before_its_year_is_refused_and_kept() -> None:
+    """Under a day-first profile the day arrives first. The element keeps
+    it and posts it; the server names the hole; the segment shows it."""
+    form = ReleaseForm(data=post(kind="date", day="22"))
+
+    assert not form.is_valid()
+    assert form.errors["released"] == ["A day needs a year and a month beside it."]
+    html = str(form["released"])
+
+    assert 'value="22" data-date-part="day" data-date-side="start"' in html
+
+
 def test_a_stored_value_renders_as_its_parts() -> None:
     form = ReleaseForm(initial={"released": TemporalValue.parse("198X")})
     html = str(form["released"])

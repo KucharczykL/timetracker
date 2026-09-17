@@ -24,7 +24,7 @@ Django form tests.
 - **Wrap every pytest run** in `flock /home/lukas/git/timetracker/.cache/heavy-tests.lock make …`.
 - **The verification gate is the full `make check`**, `e2e/` included.
 - **Full words in identifiers.** **Refused words** (`make vale`) apply to
-  comments and docs: no "fold", "seam", "delete" in the domain sense.
+  comments and docs; the list is in `docs/vocabulary.md`.
 - **Comments state present design**, no issue references.
 - **Rebase onto `origin/main` before the first edit.**
 

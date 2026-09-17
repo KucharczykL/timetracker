@@ -16,17 +16,17 @@ from django.views.decorators.csrf import csrf_exempt
 
 from common.components import ControlButton, Form, FormFields, ModuleScript
 from common.date_time_presentation import (
-    DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
+    date_time_format_profile,
 )
 from common.layout import render_page
 from games.forms import TemporalFormField
 from timetracker.urls import urlpatterns as base_urlpatterns
 
 
-def _presentation() -> DateTimePresentation:
+def _presentation(profile_id: str = "iso_8601") -> DateTimePresentation:
     return DateTimePresentation(
-        DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+        date_time_format_profile(profile_id), "en-us", ZoneInfo("UTC")
     )
 
 
@@ -34,10 +34,22 @@ class ReleaseForm(forms.Form):
     released = TemporalFormField(presentation=_presentation(), label="Release date")
 
 
-@csrf_exempt
-def temporal_page_view(request: HttpRequest) -> HttpResponse:
+class DayFirstReleaseForm(forms.Form):
+    """The same field under a profile that shows the day first."""
+
+    released = TemporalFormField(
+        presentation=_presentation("dmy_24h"), label="Release date"
+    )
+
+
+def _render_form_page(
+    request: HttpRequest, form_class: type[forms.Form]
+) -> HttpResponse:
+    # The page's own presentation contract states the anonymous request's
+    # profile; the widget's states its own. The segment engine reads bounds
+    # per name and order from the DOM, so the two need not agree.
     if request.method == "POST":
-        form = ReleaseForm(data=request.POST)
+        form = form_class(data=request.POST)
         # The canonical string is what a column keeps.
         stored = "refused"
         if form.is_valid():
@@ -47,7 +59,7 @@ def temporal_page_view(request: HttpRequest) -> HttpResponse:
     return render_page(
         request,
         Form(method="post")[
-            FormFields(ReleaseForm()),
+            FormFields(form_class()),
             ControlButton(type="submit")["Save"],
         ],
         title="Temporal harness",
@@ -56,7 +68,34 @@ def temporal_page_view(request: HttpRequest) -> HttpResponse:
     )
 
 
-urlpatterns = [*base_urlpatterns, path("test-temporal/", temporal_page_view)]
+@csrf_exempt
+def temporal_page_view(request: HttpRequest) -> HttpResponse:
+    return _render_form_page(request, ReleaseForm)
+
+
+@csrf_exempt
+def day_first_page_view(request: HttpRequest) -> HttpResponse:
+    return _render_form_page(request, DayFirstReleaseForm)
+
+
+urlpatterns = [
+    *base_urlpatterns,
+    path("test-temporal/", temporal_page_view),
+    path("test-temporal-dmy/", day_first_page_view),
+]
+
+
+@override_settings(ROOT_URLCONF="e2e.test_temporal_field_e2e")
+def test_a_day_typed_first_stores_as_a_day(live_server, page):
+    """Under a day-first profile the whole date is typed left to right."""
+    page.goto(f"{live_server.url}/test-temporal-dmy/")
+    page.wait_for_selector("[data-temporal-segments='start']:not([hidden])")
+
+    page.click("[data-date-part='day'][data-date-side='start']")
+    page.keyboard.type("01122024")
+    page.click("button[type=submit]")
+
+    assert page.inner_text("#stored") == "2024-12-01"
 
 
 @override_settings(ROOT_URLCONF="e2e.test_temporal_field_e2e")

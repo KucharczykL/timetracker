@@ -33,10 +33,11 @@ Segment order follows the account profile through `DateTimePresentation`, the wa
 
 ## How the field grows
 
-A person types a year, then a month, then a day, in one box. All three segments
-stand there from the start: a segment that appeared only once the coarser one
-was whole would move under the cursor mid-keystroke. Clearing a coarser part
-clears every finer part, because `1984--12` states no month.
+A person types the three parts in the order the profile shows them, in one
+box. All three segments stand there from the start: a segment that appeared
+only once the coarser one was whole would move under the cursor mid-keystroke.
+A hole is named by the live region and refused by the server at submit; see
+[the entry-order spec](2026-09-17-issue-1114-temporal-field-entry-order-design.md).
 
 Everything else waits behind one disclosure, "I don't know the exact date",
 which closes as well as opens. It takes itself away while the controls behind
