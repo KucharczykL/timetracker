@@ -59,8 +59,8 @@ sum to about 4,700 of the library's 9,300 hours. Half of all recorded playtime
 is a historical estimate stored as a session.
 
 Every session-derived statistic is wrong because of them today: the longest
-session, the highest per-game average, the unique-day count and the day chart
-all read those rows as sittings. The playtime totals are right, because a
+session, the highest per-game average and the unique-day count all read those
+rows as sittings. The playtime totals are right, because a
 record and a session contribute to totals alike.
 
 No rule tells an estimate from a session: a 9-hour sitting exists and so does
@@ -214,7 +214,7 @@ carries for four fields. Stated once, in `stats_data.py`:
 
 | `StatsData` figure | sessions | records |
 |---|---|---|
-| `total_hours`, `total_playtime`, `top_10_games_by_playtime` | yes | yes, by containment |
+| `total_hours`, `top_10_games_by_playtime` | yes | yes, by containment |
 | `total_playtime_per_platform` | yes | yes, through the game's platform |
 | `month_playtimes` | yes | only when `when` lies inside the month |
 | `total_sessions`, `unique_days`, `longest_session_*`, `highest_session_*`, `first_play_*`, `last_play_*` | yes | never |
@@ -370,8 +370,8 @@ whenever either projection's columns do.
 - Statistics parity on the production copy, before and after "Convert all
   shown" over the 93 rows of 8 hours or longer: every playtime total equal to
   the second in every scope; `total_sessions` down by 93; the longest session,
-  the highest average, the unique-day count and the day chart restated and
-  each change attributed to a converted row.
+  the highest average and the unique-day count restated and each change
+  attributed to a converted row.
 - The Undo of one conversion leaves the stream one pair longer and both
   tables as they were; `RestoreSession` alone refuses a reclassified session
   while its record is live and admits it once the record is removed.
