@@ -3,9 +3,21 @@ import { beforeEach, describe, expect, it } from "vitest";
 import "./temporal-field.js";
 
 const PARTS = ["year", "month", "day"] as const;
+type PartOrder = readonly string[];
+/** The three profile orders. */
+const ORDERS: PartOrder[] = [
+  ["year", "month", "day"],
+  ["day", "month", "year"],
+  ["month", "day", "year"],
+];
 
-function endpointMarkup(endpoint: string, openToggle = "", storedYear = ""): string {
-  const cells = PARTS.map(
+function endpointMarkup(
+  endpoint: string,
+  openToggle = "",
+  storedYear = "",
+  order: PartOrder = PARTS,
+): string {
+  const cells = order.map(
     (part, index) => `
       <span data-temporal-part="${part}">
         ${index > 0 ? '<span data-temporal-prefix="">-</span>' : ""}
@@ -45,6 +57,8 @@ function mount(
   expanded = "false",
   storedEndYear = "",
   storedKind = "unknown",
+  order: PartOrder = PARTS,
+  storedStartYear = "",
 ): HTMLElement {
   const kindOption = (value: string, text: string) =>
     `<option value="${value}"${value === storedKind ? " selected" : ""}>${text}</option>`;
@@ -60,7 +74,7 @@ function mount(
             ${kindOption("unknown", "Unknown")}
           </select>
         </div>
-        ${endpointMarkup("start", "open_start")}
+        ${endpointMarkup("start", "open_start", storedStartYear, order)}
         <fieldset data-temporal-extra="" hidden>
           <legend>After the start date</legend>
           <input type="radio" name="end-shape" value="end_none"
@@ -71,7 +85,7 @@ function mount(
                  data-temporal-toggle="end_open" disabled>
         </fieldset>
         <div data-temporal-end-group="">
-          ${endpointMarkup("end", "", storedEndYear)}
+          ${endpointMarkup("end", "", storedEndYear, order)}
         </div>
         <div hidden data-temporal-disclosure-row="">
           <button type="button" data-temporal-disclosure="" aria-expanded="false">
@@ -105,8 +119,23 @@ function type(
   target.focus();
   for (const digit of digits) {
     target.dispatchEvent(new KeyboardEvent("keydown", { key: digit, bubbles: true }));
-    target.dispatchEvent(new KeyboardEvent("keyup", { key: digit, bubbles: true }));
   }
+}
+
+/** Type from the first segment; auto-advance carries focus. */
+function typeFrom(host: HTMLElement, endpoint: string, digits: string): void {
+  host
+    .querySelector<HTMLInputElement>(`input[data-date-part][data-date-side="${endpoint}"]`)!
+    .focus();
+  for (const digit of digits) {
+    document.activeElement!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: digit, bubbles: true }),
+    );
+  }
+}
+
+function region(host: HTMLElement): Element {
+  return host.querySelector("[data-temporal-announcement]")!;
 }
 
 function toggle(host: HTMLElement, name: string): HTMLInputElement {
@@ -181,25 +210,146 @@ describe("temporal-field", () => {
     expect(named(host, "kind").value).toBe("date");
   });
 
-  it("writes a whole typed day", () => {
-    const host = mount();
+  describe.each(ORDERS)("with the segments ordered %s, %s, %s", (...order) => {
+    const digitsFor: Record<string, string> = { year: "1984", month: "06", day: "22" };
 
-    type(host, "start", "year", "1984");
-    type(host, "start", "month", "06");
-    type(host, "start", "day", "22");
+    it("writes a whole typed day", () => {
+      const host = mount("false", "", "unknown", order);
 
-    expect(named(host, "start_month").value).toBe("06");
-    expect(named(host, "start_day").value).toBe("22");
+      typeFrom(host, "start", order.map((part) => digitsFor[part]).join(""));
+
+      expect(named(host, "start_year").value).toBe("1984");
+      expect(named(host, "start_month").value).toBe("06");
+      expect(named(host, "start_day").value).toBe("22");
+      expect(named(host, "kind").value).toBe("date");
+    });
+
+    it("writes a typed year", () => {
+      const host = mount("false", "", "unknown", order);
+
+      type(host, "start", "year", "1984");
+
+      expect(named(host, "start_year").value).toBe("1984");
+      expect(named(host, "kind").value).toBe("date");
+    });
   });
 
-  it("clears a part no coarser part can carry", () => {
-    const host = mount();
+  it("keeps a day typed before its year", () => {
+    const host = mount("false", "", "unknown", ["day", "month", "year"]);
 
-    type(host, "start", "year", "1984");
     type(host, "start", "day", "22");
 
-    expect(segment(host, "start", "day").value).toBe("");
+    expect(segment(host, "start", "day").value).toBe("22");
+    expect(named(host, "start_day").value).toBe("22");
+    expect(named(host, "kind").value).toBe("date");
+  });
+
+  it("names the hole", () => {
+    const host = mount("false", "", "unknown", ["day", "month", "year"]);
+
+    type(host, "start", "day", "22");
+    expect(region(host).textContent).toBe("Day needs a year and a month");
+
+    type(host, "start", "year", "1984");
+    expect(region(host).textContent).toBe("Day needs a month");
+
+    type(host, "start", "month", "06");
+    expect(region(host).textContent).toBe("Day precision");
+  });
+
+  it("leaves finer parts when a coarser one is cleared", () => {
+    const host = mount();
+
+    typeFrom(host, "start", "19840622");
+    segment(host, "start", "year").focus();
+    document.activeElement!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }),
+    );
+
+    expect(named(host, "start_year").value).toBe("");
+    expect(named(host, "start_month").value).toBe("06");
+    expect(named(host, "start_day").value).toBe("22");
+    expect(region(host).textContent).toBe("Day needs a year");
+  });
+
+  it("names a month typed before its year", () => {
+    const host = mount("false", "", "unknown", ["month", "day", "year"]);
+
+    typeFrom(host, "start", "06");
+
+    expect(named(host, "start_month").value).toBe("06");
+    expect(named(host, "kind").value).toBe("date");
+    expect(region(host).textContent).toBe("Month needs a year");
+  });
+
+  it("clears a stored year", () => {
+    const host = mount("false", "", "date", PARTS, "1984");
+
+    segment(host, "start", "year").focus();
+    document.activeElement!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }),
+    );
+
+    expect(named(host, "start_year").value).toBe("");
+    expect(named(host, "kind").value).toBe("unknown");
+  });
+
+  it("keeps committing after the decade snap", () => {
+    const host = mount("true");
+
+    type(host, "start", "year", "1982");
+    check(host, "whole_decade_start");
+    expect(named(host, "start_decade").value).toBe("1980");
+
+    segment(host, "start", "year").focus();
+    document.activeElement!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }),
+    );
+    expect(named(host, "start_decade").value).toBe("");
+
+    type(host, "start", "year", "1982");
+    expect(segment(host, "start", "year").value).toBe("1980");
+    expect(named(host, "start_decade").value).toBe("1980");
+  });
+
+  it("posts a half-typed decade for the server to refuse", () => {
+    const host = mount("true");
+
+    check(host, "whole_decade_start");
+    type(host, "start", "year", "198");
+
+    expect(named(host, "start_decade").value).toBe("198");
+    expect(named(host, "kind").value).toBe("date");
+    expect(region(host).textContent).toBe("Decade needs four digits");
+  });
+
+  it("keeps a year typed under the decade box", () => {
+    const host = mount("true");
+
+    type(host, "start", "year", "1985");
+    check(host, "whole_decade_start");
+    type(host, "start", "year", "2001");
+    check(host, "whole_decade_start", false);
+
+    // The snap comes back, not the year it was ticked over.
+    expect(segment(host, "start", "year").value).toBe("2000");
+    expect(named(host, "start_year").value).toBe("2000");
+  });
+
+  it("states no date from a hidden buffer under a decade", () => {
+    const host = mount("true", "", "unknown", ["day", "month", "year"]);
+
+    type(host, "start", "day", "22");
+    check(host, "whole_decade_start");
+
+    expect(named(host, "kind").value).toBe("unknown");
     expect(named(host, "start_day").value).toBe("");
+
+    check(host, "whole_decade_start", false);
+
+    expect(named(host, "kind").value).toBe("date");
+    expect(named(host, "start_day").value).toBe("22");
+    expect(region(host).textContent).toBe("Day needs a year and a month");
   });
 
   it("says unknown while nothing is filled", () => {
@@ -375,13 +525,13 @@ describe("temporal-field", () => {
     expect(named(host, "start_decade").value).toBe("1970");
   });
 
-  it("states no decade until the year is whole", () => {
+  it("posts a half-typed year for the server to refuse", () => {
     const host = mount("true");
     check(host, "whole_decade_start");
 
     type(host, "start", "year", "19");
 
-    expect(named(host, "start_decade").value).toBe("");
+    expect(named(host, "start_decade").value).toBe("19");
   });
 
   it("still going leaves the value a since", () => {

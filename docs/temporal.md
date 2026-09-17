@@ -97,7 +97,8 @@ number inputs and shows a segmented date, offers a whole-decade box and an
 open-start box, gives the end a three-way shape radio group, and puts the
 second endpoint behind a disclosure. Nothing it does is needed to save a value,
 and the precision is never picked from a menu — it is derived from which parts a
-person filled.
+person filled. A part typed before its coarser part stays; the server refuses
+the hole at submit.
 
 The element uses `Temporal`, which arrives in Node 26. On an older runtime the
 formatters return null and the vitest assertions fail; see the environment notes

@@ -25,6 +25,7 @@
 import {
   bindSegmentField,
   dateCodec,
+  partValue,
   readSideParts,
   segmentsForSide,
   setSegmentBuffer,
@@ -177,7 +178,7 @@ class DateTimeFieldElement extends HTMLElement {
    */
   private writeParts(parts: PartValues): void {
     segmentsForSide(this, SIDE).forEach((segment) => {
-      setSegmentBuffer(segment, parts[segment.dataset.datePart ?? ""] ?? "");
+      setSegmentBuffer(segment, partValue(parts, segment.dataset.datePart ?? ""));
     });
     syncHiddenFromSegments(
       this,

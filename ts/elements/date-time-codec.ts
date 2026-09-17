@@ -179,18 +179,18 @@ export function createDateTimeCodec(
       const clock = presentationClock();
       if (!complete || !clock) return "";
 
-      let hour = parseInt(values.hour, 10);
+      let hour = parseInt(values.hour ?? "", 10);
       if (clock.hourCycle === "h12") {
         hour = hourFromTwelve(hour, parseInt(values.day_period || "0", 10));
       }
       let plain: Temporal.PlainDateTime;
       try {
         plain = Temporal.PlainDateTime.from({
-          year: parseInt(values.year, 10),
-          month: parseInt(values.month, 10),
-          day: parseInt(values.day, 10),
+          year: parseInt(values.year ?? "", 10),
+          month: parseInt(values.month ?? "", 10),
+          day: parseInt(values.day ?? "", 10),
           hour,
-          minute: parseInt(values.minute, 10),
+          minute: parseInt(values.minute ?? "", 10),
           second: residual.second,
           millisecond: residual.millisecond,
           microsecond: residual.microsecond,

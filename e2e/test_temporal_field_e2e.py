@@ -16,17 +16,17 @@ from django.views.decorators.csrf import csrf_exempt
 
 from common.components import ControlButton, Form, FormFields, ModuleScript
 from common.date_time_presentation import (
-    DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
+    date_time_format_profile,
 )
 from common.layout import render_page
 from games.forms import TemporalFormField
 from timetracker.urls import urlpatterns as base_urlpatterns
 
 
-def _presentation() -> DateTimePresentation:
+def _presentation(profile_id: str = "iso_8601") -> DateTimePresentation:
     return DateTimePresentation(
-        DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+        date_time_format_profile(profile_id), "en-us", ZoneInfo("UTC")
     )
 
 
@@ -34,20 +34,33 @@ class ReleaseForm(forms.Form):
     released = TemporalFormField(presentation=_presentation(), label="Release date")
 
 
-@csrf_exempt
-def temporal_page_view(request: HttpRequest) -> HttpResponse:
+class DayFirstReleaseForm(forms.Form):
+    """The same field under a day-first profile."""
+
+    released = TemporalFormField(
+        presentation=_presentation("dmy_24h"), label="Release date"
+    )
+
+
+def _render_form_page(
+    request: HttpRequest, form_class: type[forms.Form]
+) -> HttpResponse:
     if request.method == "POST":
-        form = ReleaseForm(data=request.POST)
+        form = form_class(data=request.POST)
         # The canonical string is what a column keeps.
         stored = "refused"
+        # The sentence tells one refusal from another.
+        sentence = " | ".join(str(error) for error in form.errors.get("released") or [])
         if form.is_valid():
             value = form.cleaned_data["released"]
             stored = value.serialize() if value else "nothing"
-        return HttpResponse(f'<p id="stored">{stored}</p>')
+        return HttpResponse(
+            f'<p id="stored">{stored}</p><p id="sentence">{sentence}</p>'
+        )
     return render_page(
         request,
         Form(method="post")[
-            FormFields(ReleaseForm()),
+            FormFields(form_class()),
             ControlButton(type="submit")["Save"],
         ],
         title="Temporal harness",
@@ -56,7 +69,48 @@ def temporal_page_view(request: HttpRequest) -> HttpResponse:
     )
 
 
-urlpatterns = [*base_urlpatterns, path("test-temporal/", temporal_page_view)]
+@csrf_exempt
+def temporal_page_view(request: HttpRequest) -> HttpResponse:
+    return _render_form_page(request, ReleaseForm)
+
+
+@csrf_exempt
+def day_first_page_view(request: HttpRequest) -> HttpResponse:
+    return _render_form_page(request, DayFirstReleaseForm)
+
+
+urlpatterns = [
+    *base_urlpatterns,
+    path("test-temporal/", temporal_page_view),
+    path("test-temporal-dmy/", day_first_page_view),
+]
+
+
+@override_settings(ROOT_URLCONF="e2e.test_temporal_field_e2e")
+def test_a_day_typed_first_stores_as_a_day(live_server, page):
+    """Under a day-first profile the day is the first segment."""
+    page.goto(f"{live_server.url}/test-temporal-dmy/")
+    page.wait_for_selector("[data-temporal-segments='start']:not([hidden])")
+
+    page.click("[data-date-part='day'][data-date-side='start']")
+    page.keyboard.type("01122024")
+    page.click("button[type=submit]")
+
+    assert page.inner_text("#stored") == "2024-12-01"
+
+
+@override_settings(ROOT_URLCONF="e2e.test_temporal_field_e2e")
+def test_a_day_without_a_year_is_refused_by_its_own_sentence(live_server, page):
+    """The element posts the hole; the server names it."""
+    page.goto(f"{live_server.url}/test-temporal-dmy/")
+    page.wait_for_selector("[data-temporal-segments='start']:not([hidden])")
+
+    page.click("[data-date-part='day'][data-date-side='start']")
+    page.keyboard.type("0112")
+    page.click("button[type=submit]")
+
+    assert page.inner_text("#stored") == "refused"
+    assert page.inner_text("#sentence") == "A day needs a year beside it."
 
 
 @override_settings(ROOT_URLCONF="e2e.test_temporal_field_e2e")
