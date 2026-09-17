@@ -47,7 +47,12 @@ The shared module is this text, fixed by
 
 from django.db.models import F
 
-from games.models import Game, HistoricalPlaytime, HistoricalPlaytimeQuerySet, UserLibrary
+from games.models import (
+    Game,
+    HistoricalPlaytime,
+    HistoricalPlaytimeQuerySet,
+    UserLibrary,
+)
 
 #: Newest first; an unknown `when` last; then newest recorded.
 RECORD_ORDER = (F("when_lower").desc(nulls_last=True), "-created_at", "id")
@@ -81,10 +86,6 @@ def game_records(library: UserLibrary, game: Game) -> HistoricalPlaytimeQuerySet
     """The counted records at one catalog game."""
     return library_records(library).filter(player_game__game=game)
 ```
-
-The review's text omits the `F` import. The import above is required,
-because without it the module raises `NameError` on import. `make format`
-wraps the long `games.models` import. All three branches get the same result.
 
 The run join is not in the scope. `RemovePlaythrough` refuses a run that a
 live record names, so a live record never names a removed run.
