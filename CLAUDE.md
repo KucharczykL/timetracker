@@ -365,8 +365,8 @@ docs/           — Additional documentation
 
   #704's gates, member 4 of the wave stack, lift the deployment constraint:
   `tests/test_projection_replay_gate.py` replays one command stream through
-  every event type of the three families (a Corrected row included), empties
-  and rebuilds three tables, repeats every command under its key; the
+  every event type of the four families (a Corrected row included), empties
+  and rebuilds five tables, repeats every command under its key; the
   two-dated-claimers conversion case reconciles clean. Stats page's session
   figures -- count, distinct days, longest, most sessions, highest average,
   first and last play -- are readers in `games/reads/session_figures.py`,

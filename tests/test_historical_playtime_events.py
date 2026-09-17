@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import timedelta
+from typing import get_args
 
 import pytest
 
@@ -11,6 +12,7 @@ from games.events.historical_playtime import (
     HISTORICALPLAYTIME_RESTATED,
     HISTORICALPLAYTIME_RESTORED,
     HistoricalPlaytimeRunPayload,
+    ProvenanceValue,
     historicalplaytime_created,
     historicalplaytime_removed,
     historicalplaytime_restated,
@@ -19,6 +21,7 @@ from games.events.historical_playtime import (
 )
 from games.events.references import ReferenceArity
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, PayloadInvalid
+from games.models import HistoricalPlaytimeProvenance
 from timetracker.temporal import TemporalValue
 
 PLAYER_GAME = uuid.uuid7()
@@ -30,6 +33,9 @@ DEVICE = {
     "label": "Steam Deck",
     "detail": "",
 }
+
+
+SHARED_ID = str(uuid.uuid7())
 
 
 def a_member(run: uuid.UUID) -> HistoricalPlaytimeRunPayload:
@@ -98,6 +104,14 @@ def test_a_statement_round_trips():
     [
         {"playthroughs": []},
         {"playthroughs": [a_member(RUN_A), a_member(RUN_A)]},
+        {
+            "playthroughs": sorted_runs(
+                [
+                    a_member(RUN_A) | {"id": SHARED_ID},
+                    a_member(RUN_B) | {"id": SHARED_ID},
+                ]
+            )
+        },
         {"playthroughs": sorted_runs([a_member(RUN_A), a_member(RUN_B)])[::-1]},
         {"duration_seconds": 0},
         {"duration_seconds": -1},
@@ -110,6 +124,7 @@ def test_a_statement_round_trips():
     ids=[
         "no-runs",
         "repeated-run",
+        "repeated-id",
         "unsorted-runs",
         "zero-duration",
         "negative-duration",
@@ -130,6 +145,14 @@ def test_a_missing_key_is_refused():
     del payload["note"]
     with pytest.raises(PayloadInvalid):
         validated(payload)
+
+
+def test_the_provenance_literal_matches_the_choices():
+    """A payload is read back as text."""
+    #: __value__ reads through the PEP 695 alias.
+    assert set(get_args(ProvenanceValue.__value__)) == set(
+        HistoricalPlaytimeProvenance.values
+    )
 
 
 def test_the_restatement_shares_the_statement_payload():

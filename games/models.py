@@ -1912,10 +1912,10 @@ class HistoricalPlaytime(ProjectionModel):
         on_delete=models.RESTRICT,
         related_name="historical_playtime",
     )
-    #: Every column below is stated; no default.
+    #: Stated by the event; the projector names each.
     duration = models.DurationField()
-    #: Null is a when nobody knows.
-    when = TemporalValueField()
+    #: Null is a when nobody knows; no default.
+    when = TemporalValueField(default=models.NOT_PROVIDED)
     when_lower = models.GeneratedField(
         expression=TemporalLowerBound("when"),
         output_field=models.DateField(null=True),
@@ -1933,7 +1933,7 @@ class HistoricalPlaytime(ProjectionModel):
         editable=False,
     )
     provenance = models.CharField(max_length=19, choices=HistoricalPlaytimeProvenance)
-    #: RESTRICT: only the projector changes rows.
+    #: No cascade destroys a projection row.
     device = models.ForeignKey(
         "Device",
         on_delete=models.RESTRICT,

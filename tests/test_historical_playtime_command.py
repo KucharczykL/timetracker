@@ -7,15 +7,21 @@ import pytest
 from django.utils import timezone
 
 from games.commands.historical_playtime import (
+    GAME_REMOVED,
     INTO_THE_BUCKET_HISTORICAL,
     ONE_GAME,
+    RUN_REMOVED,
+    WHEN_NO_SUCH_DATE,
+    WHEN_NOT_A_DATE,
+    WHEN_RANGE_BACKWARDS,
+    WHEN_UNSUPPORTED,
     HistoricalPlaytimeStatement,
     RecordHistoricalPlaytime,
     RemoveHistoricalPlaytime,
     RestateHistoricalPlaytime,
     RestoreHistoricalPlaytime,
 )
-from games.commands.playergame import TrackGame
+from games.commands.playergame import RemovePlayerGame, TrackGame
 from games.commands.playthrough import (
     HISTORICAL_PLAYTIME_RECORDED,
     CreatePlaythrough,
@@ -38,6 +44,7 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
 )
+from timetracker.temporal import TemporalValueParseError
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
 
@@ -224,27 +231,44 @@ def test_it_refuses_a_run_another_library_holds(
     owned_user, owned_library, run, second_library
 ):
     Playthrough.objects.filter(pk=run.pk).update(library=second_library)
-    _refused(owned_library, owned_user, RecordHistoricalPlaytime(statement=stated(run)))
+    refused = _refused(
+        owned_library, owned_user, RecordHistoricalPlaytime(statement=stated(run))
+    )
+    assert refused.sentence == "That playthrough is not available."
 
 
 def test_it_refuses_a_removed_run(owned_user, owned_library, run):
     Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())
-    _refused(owned_library, owned_user, RecordHistoricalPlaytime(statement=stated(run)))
+    refused = _refused(
+        owned_library, owned_user, RecordHistoricalPlaytime(statement=stated(run))
+    )
+    assert refused.sentence == (
+        "That playthrough was removed from your library. Restore it before "
+        "recording this."
+    )
 
 
 def test_it_refuses_a_run_under_a_removed_game(owned_user, owned_library, run):
     PlayerGame.objects.filter(pk=run.player_game_id).update(removed_at=timezone.now())
-    _refused(owned_library, owned_user, RecordHistoricalPlaytime(statement=stated(run)))
+    refused = _refused(
+        owned_library, owned_user, RecordHistoricalPlaytime(statement=stated(run))
+    )
+    assert refused.sentence == (
+        "That game was removed from your library. Restore it before recording this."
+    )
 
 
 def test_it_refuses_a_removed_device(owned_user, owned_library, run):
     device = Device.objects.create(
         library=owned_library, name="Deck", removed_at=timezone.now()
     )
-    _refused(
+    refused = _refused(
         owned_library,
         owned_user,
         RecordHistoricalPlaytime(statement=stated(run, device_id=device.pk)),
+    )
+    assert refused.sentence == (
+        "That device was removed from your library. Restore it before choosing it."
     )
 
 
@@ -252,11 +276,75 @@ def test_it_refuses_a_device_another_library_holds(
     owned_user, owned_library, run, second_library
 ):
     device = Device.objects.create(library=second_library, name="Deck")
-    _refused(
+    refused = _refused(
         owned_library,
         owned_user,
         RecordHistoricalPlaytime(statement=stated(run, device_id=device.pk)),
     )
+    assert refused.sentence == "That device is not available."
+
+
+@pytest.mark.parametrize(
+    ("when", "sentence"),
+    [
+        ("march 2005", WHEN_NOT_A_DATE),
+        ("2005-13", WHEN_NO_SUCH_DATE),
+        ("2007/2005", WHEN_RANGE_BACKWARDS),
+        ("{2005,2006}", WHEN_UNSUPPORTED),
+    ],
+    ids=["syntax", "no-such-date", "backwards-range", "unsupported"],
+)
+def test_an_unreadable_when_answers_a_written_sentence(run, when, sentence):
+    with pytest.raises(CommandRejected) as refused:
+        RecordHistoricalPlaytime(statement=stated(run, when=when))
+    assert refused.value.sentence == sentence
+
+
+def test_a_when_of_the_wrong_type_is_a_defect(run):
+    with pytest.raises(TemporalValueParseError):
+        RecordHistoricalPlaytime(statement=stated(run, when=2005))
+
+
+def test_a_sub_second_retry_under_one_key_replays(owned_user, owned_library, run):
+    dispatch(
+        RecordHistoricalPlaytime(
+            statement=stated(run, duration=timedelta(seconds=90, microseconds=400000))
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="k",
+    )
+    again = dispatch(
+        RecordHistoricalPlaytime(statement=stated(run, duration=timedelta(seconds=90))),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="k",
+    )
+    assert again.outcome is CommandOutcome.REPLAYED
+    assert HistoricalPlaytime.objects.get().duration == timedelta(seconds=90)
+
+
+def test_reordered_runs_under_one_key_replay(
+    owned_user, owned_library, run, second_run
+):
+    dispatch(
+        RecordHistoricalPlaytime(
+            statement=stated(run, playthrough_ids=(run.pk, second_run.pk))
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="k",
+    )
+    again = dispatch(
+        RecordHistoricalPlaytime(
+            statement=stated(run, playthrough_ids=(second_run.pk, run.pk))
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="k",
+    )
+    assert again.outcome is CommandOutcome.REPLAYED
+    assert HistoricalPlaytime.objects.count() == 1
 
 
 def test_it_admits_every_provenance(owned_user, owned_library, run):
@@ -267,7 +355,9 @@ def test_it_admits_every_provenance(owned_user, owned_library, run):
             library=owned_library,
             idempotency_key=f"p{index}",
         )
-    assert HistoricalPlaytime.objects.count() == 3
+    assert set(HistoricalPlaytime.objects.values_list("provenance", flat=True)) == set(
+        HistoricalPlaytimeProvenance.values
+    )
 
 
 def test_a_retry_of_one_statement_appends_nothing_more(owned_user, owned_library, run):
@@ -411,6 +501,168 @@ def test_a_record_another_library_holds_is_refused(
     assert HistoricalPlaytimeRun.objects.count() == 1
 
 
+def _restate(library, actor, record_id, statement, *, key):
+    return dispatch(
+        RestateHistoricalPlaytime(record_id=record_id, statement=statement),
+        actor=actor,
+        library=library,
+        idempotency_key=key,
+    )
+
+
+def test_a_restatement_that_adds_a_run_mints_one_fresh_id(
+    owned_user, owned_library, run, second_run
+):
+    stored = record(owned_library, owned_user, stated(run))
+    kept_id = stored.runs.get().pk
+    _restate(
+        owned_library,
+        owned_user,
+        stored.pk,
+        stated(run, playthrough_ids=(run.pk, second_run.pk)),
+        key="add",
+    )
+    joins = dict(stored.runs.values_list("playthrough_id", "pk"))
+    assert joins[run.pk] == kept_id
+    assert joins[second_run.pk] != kept_id
+    assert len(joins) == 2
+
+
+def test_a_restatement_clears_and_restores_the_device(owned_user, owned_library, run):
+    device = Device.objects.create(library=owned_library, name="Deck")
+    stored = record(owned_library, owned_user, stated(run, device_id=device.pk))
+    cleared = _restate(owned_library, owned_user, stored.pk, stated(run), key="clear")
+    assert cleared.outcome is CommandOutcome.APPENDED
+    stored.refresh_from_db()
+    assert stored.device_id is None
+    back = _restate(
+        owned_library,
+        owned_user,
+        stored.pk,
+        stated(run, device_id=device.pk),
+        key="back",
+    )
+    assert back.outcome is CommandOutcome.APPENDED
+    stored.refresh_from_db()
+    assert stored.device_id == device.pk
+
+
+def test_a_restatement_to_an_unknown_when_clears_the_bounds(
+    owned_user, owned_library, run
+):
+    stored = record(owned_library, owned_user, stated(run, when="2005"))
+    _restate(
+        owned_library, owned_user, stored.pk, stated(run, when=None), key="unknown"
+    )
+    stored.refresh_from_db()
+    assert stored.when is None
+    assert stored.when_lower is None
+    assert stored.when_upper is None
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"duration": timedelta(hours=1)},
+        {"when": "2006"},
+        {"provenance": HistoricalPlaytimeProvenance.MANUALLY_ENTERED},
+        {"emulated": True},
+        {"note": "changed"},
+    ],
+    ids=["duration", "when", "provenance", "emulated", "note"],
+)
+def test_a_restatement_differing_in_one_column_appends(
+    owned_user, owned_library, run, changes
+):
+    stored = record(owned_library, owned_user, stated(run))
+    result = _restate(
+        owned_library, owned_user, stored.pk, stated(run, **changes), key="one"
+    )
+    assert result.outcome is CommandOutcome.APPENDED
+
+
+def test_a_restatement_differing_in_its_runs_appends(
+    owned_user, owned_library, run, second_run
+):
+    stored = record(owned_library, owned_user, stated(run))
+    result = _restate(
+        owned_library,
+        owned_user,
+        stored.pk,
+        stated(run, playthrough_ids=(second_run.pk,)),
+        key="runs",
+    )
+    assert result.outcome is CommandOutcome.APPENDED
+    assert list(stored.runs.values_list("playthrough_id", flat=True)) == [second_run.pk]
+
+
+def test_a_restatement_keeps_a_removed_device_it_names(owned_user, owned_library, run):
+    device = Device.objects.create(library=owned_library, name="Deck")
+    stored = record(owned_library, owned_user, stated(run, device_id=device.pk))
+    Device.objects.filter(pk=device.pk).update(removed_at=timezone.now())
+    result = _restate(
+        owned_library,
+        owned_user,
+        stored.pk,
+        stated(run, device_id=device.pk, note="typo fixed"),
+        key="keep",
+    )
+    assert result.outcome is CommandOutcome.APPENDED
+    stored.refresh_from_db()
+    assert stored.device_id == device.pk
+    assert stored.note == "typo fixed"
+
+
+def test_a_restatement_onto_a_removed_device_is_refused(owned_user, owned_library, run):
+    stored = record(owned_library, owned_user, stated(run))
+    device = Device.objects.create(
+        library=owned_library, name="Deck", removed_at=timezone.now()
+    )
+    _refused(
+        owned_library,
+        owned_user,
+        RestateHistoricalPlaytime(
+            record_id=stored.pk, statement=stated(run, device_id=device.pk)
+        ),
+    )
+
+
+def test_a_removal_under_a_removed_game_is_refused(owned_user, owned_library, run):
+    stored = record(owned_library, owned_user, stated(run))
+    dispatch(
+        RemovePlayerGame(game_id=run.player_game.game_id),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="rm-game",
+    )
+    refused = _refused(
+        owned_library, owned_user, RemoveHistoricalPlaytime(record_id=stored.pk)
+    )
+    assert refused.sentence == GAME_REMOVED
+
+
+def test_a_restore_under_a_removed_game_is_refused(owned_user, owned_library, run):
+    stored = record(owned_library, owned_user, stated(run))
+    dispatch(
+        RemoveHistoricalPlaytime(record_id=stored.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="rm",
+    )
+    dispatch(
+        RemovePlayerGame(game_id=run.player_game.game_id),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="rm-game",
+    )
+    refused = _refused(
+        owned_library, owned_user, RestoreHistoricalPlaytime(record_id=stored.pk)
+    )
+    assert refused.sentence == GAME_REMOVED
+    stored.refresh_from_db()
+    assert stored.removed_at is not None
+
+
 # --- A record keeps its run in place -----------------------------------------
 
 
@@ -485,3 +737,25 @@ def test_a_foreign_record_is_refused_as_a_defect(
     assert "HistoricalPlaytimeRun.playthrough" in argument
     second_run.refresh_from_db()
     assert second_run.removed_at is None
+
+
+def test_a_restore_after_its_run_was_removed_is_refused(
+    owned_user, owned_library, run, second_run
+):
+    stored = record(
+        owned_library, owned_user, stated(run, playthrough_ids=(second_run.pk,))
+    )
+    dispatch(
+        RemoveHistoricalPlaytime(record_id=stored.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="rm",
+    )
+    _remove_run(owned_library, owned_user, second_run, key="rm-run")
+    refused = _refused(
+        owned_library, owned_user, RestoreHistoricalPlaytime(record_id=stored.pk)
+    )
+    assert refused.sentence == RUN_REMOVED
+    stored.refresh_from_db()
+    assert stored.removed_at is not None
+    assert not HistoricalPlaytimeRun.objects.alive().exists()

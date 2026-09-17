@@ -44,6 +44,9 @@ def _canonical_runs(
     runs = [member["playthrough"] for member in members]
     if len(set(runs)) != len(runs):
         raise ValueError("A record names each playthrough once.")
+    ids = [member["id"] for member in members]
+    if len(set(ids)) != len(ids):
+        raise ValueError("Each join row has its own id.")
     if members != sorted_runs(members):
         raise ValueError("A record's playthroughs are sorted by id.")
     return members

@@ -517,12 +517,12 @@ class BlockingReferrer(NamedTuple):
         return cls(model, field_name, sentence)
 
 
-#: The sentence names a remedy that exists.
 HISTORICAL_PLAYTIME_RECORDED = (
     "Historical playtime is recorded on this playthrough. Restate it onto "
     "another playthrough, or remove it, before removing this one."
 )
 
+#: Every sentence names a remedy that exists.
 BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
     BlockingReferrer.on(
         PlayerSession,

@@ -52,15 +52,20 @@ provenance, playthrough ids, device id, emulated flag and note.
 
 `__post_init__` normalises the statement before the fingerprint: note
 stripped and checked, runs deduplicated and sorted, `when` made canonical,
-duration truncated to whole seconds. It refuses no runs, under one second,
-and `when` text the grammar refuses.
+duration truncated to whole seconds. Truncation, not refusal: reclassified
+sessions and imports carry clock precision, and one site keeps the
+fingerprint and the payload in agreement. It refuses no runs, under one
+second, and `when` text the grammar refuses, each with a written sentence.
 
 `build` resolves runs with `library_playthrough` and the device with
 `library_device`. It refuses a removed run, a run under a removed game,
 another library's run, runs of two games and the imported-history bucket,
 each with its own sentence. `Restate` compares the statement with the row
 through `columns_for_statement` and answers `Unchanged` when nothing differs.
-`Remove` and `Restore` answer `Unchanged` for the state the row holds.
+It resolves the device only when the statement changes it, so a record keeps
+a removed device it already names. `Remove` and `Restore` answer `Unchanged`
+for the state the row holds, then refuse a record under a removed game or
+one naming a removed playthrough.
 
 Every refusal is a `CommandRejected` with a sentence.
 

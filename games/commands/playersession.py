@@ -428,8 +428,8 @@ def _check_duration(duration: timedelta) -> None:
     if duration % DURATION_RESOLUTION:
         raise CommandRejected(
             f"{duration} is finer than a second, which a recorded payload "
-            "cannot carry. Truncating it here would fingerprint the retry "
-            "of this very statement as a different one.",
+            "cannot carry. A session's length is typed by a person, who "
+            "restates it in whole seconds.",
             sentence="State this session's length in whole seconds.",
         )
 

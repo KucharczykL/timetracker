@@ -48,13 +48,13 @@ def library_row[RowT: Model](
         raise refusal.raised() from None
 
 
-def library_device(
+def library_device_row(
     context: CommandContext, device_id: uuid.UUID | None
 ) -> Device | None:
-    """This library's device; None is unstated."""
+    """This library's device, removed or not; None unstated."""
     if device_id is None:
         return None
-    device = library_row(
+    return library_row(
         context,
         Device.objects.all(),
         Refusal(
@@ -66,6 +66,15 @@ def library_device(
         ),
         pk=device_id,
     )
+
+
+def library_device(
+    context: CommandContext, device_id: uuid.UUID | None
+) -> Device | None:
+    """This library's live device, or a refusal."""
+    device = library_device_row(context, device_id)
+    if device is None:
+        return None
     #: Under dispatch's lock; mark cannot move.
     if device.removed_at is not None:
         raise CommandRejected(
