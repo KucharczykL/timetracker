@@ -223,17 +223,28 @@ carries for four fields. Stated once, in `stats_data.py`:
 
 ### Presentation
 
-One `PlaytimeSplit` component renders `242 h · 142 h tracked · 100 h
-historical`, omitting the split when the historical part is zero. The
-charter's example says "~100h estimated"; the word is amended, because a
-`Manually entered` figure read off a launcher is not an estimate and the bulk
-conversion writes that provenance by default. Provenance shows per record, not
-in the sum. It appears on
-the Game detail headline, the stats totals, the navbar figure and the top-10
-rows. The game list column shows the total alone. The Playthroughs table on
-Game detail adds record durations to the run they name; a record naming two
-runs shows under both with a "shared" mark and is never divided, so the column
-may sum past the game's total, which the mark explains.
+One `PlaytimeSplit` component states a total and, beneath it, the split
+`142 h tracked · 100 h historical`, omitting the split when the historical part
+is zero. The charter's example says "~100h estimated"; the word is amended,
+because a `Manually entered` figure read off a launcher is not an estimate and
+the bulk conversion writes that provenance by default. Provenance shows per
+record, not in the sum. It appears on the Game detail headline, every playtime
+row of the stats page, the navbar figures and the Library card. The game list
+column shows the total alone.
+
+#710 amended three statements of this paragraph, on the evidence of mockups at
+each surface's real width and of the Dark Souls 2 case below. The split renders
+on two lines rather than one, because at the account menu's `w-72` panel and
+the Library card's title type the one-line form wraps to three lines. Game
+detail's Historical playtime section header keeps its count badge and states no
+playtime, because that section renders only where the headline states the same
+game's split already, and its own sum is the historical part by definition. The
+per-run column moves out of the wave: a record naming several runs cannot be
+stated in a column, since adding it to each run named sums past the game's
+total and leaving it out reads zero against every run of a game whose whole
+playtime is one shared record. #1119 states it structurally instead, as run
+rows whose gutter braces the runs a record names, and on a year axis; it is
+placed after #1099 and holds on Game detail until a screen is chosen for it.
 
 ## Screens
 
@@ -296,8 +307,8 @@ correlation id: remove the record, restore the session.
    sort and filter, the classification table.
 4. **#1097** — the Playtime page: nav entry, two tabs, `HistoricalPlaytimeFilter`,
    quick bar, presets, API router, TypeScript contract.
-5. **#710** — presentation: `PlaytimeSplit` on the headline, the stats, the
-   navbar, the top-10 rows; the per-run column.
+5. **#710** — presentation: `PlaytimeSplit` on the headline, every playtime
+   row of the stats page, the navbar figures and the Library card.
 6. **#1098** — reclassification: the `Reclassify` command, the review facet,
    "Was an estimate", "Convert all shown", Undo of the pair.
 7. **#1099** — gates: replay parity with a record in every leg, the `make bench`
