@@ -22,10 +22,13 @@ setting, and from the `index` redirect. So:
 - The Library page's "Sessions" statistic card becomes "Playtime"; its link
   is the Sessions tab. Its value stays a row count, live sessions plus live
   records, and the card's `title` says so ("Sessions and historical
-  records"): `StatisticCard` gains an optional `title`. #710 replaces the
-  count with the `PlaytimeSplit` total, which #709 reads.
+  records"): `StatisticCard` gains an optional `title`. The link's
+  accessible name, `f"{value} {label}"`, becomes "N Playtime". #710 replaces
+  the count with the `PlaytimeSplit` total, which #709 reads.
 - `LANDING_PAGE_CHOICES` keeps `games:list_sessions` and relabels it
-  "Playtime". A stored landing page does not change.
+  "Playtime", and the landing-page setting's `empty_display` becomes
+  "Playtime" too ("Use site default (Playtime)"). A stored landing page does
+  not change. `docs/configuration.md` names the list the same way.
 - The navbar does not change.
 
 The wave document's Screens section says "nav entry". This issue's PR amends
@@ -36,7 +39,10 @@ that sentence to name the three entries above.
 `PageTabs(label, tabs)` is a new primitive in `common/components/primitives.py`:
 a `<nav aria-label=…>` of plain links, the current one marked
 `aria-current="page"`. It needs no script: each tab is its own route.
-`PlaytimeTabs(current)` states the two tabs. Both list views put it at the
+No existing primitive has a current state: `ButtonGroup` has none, and
+`aria-current` appears only in pagination and `DropdownLinkItem`. `PageTabs`
+borrows the segmented `ControlButton` look and styles the current tab
+itself. `PlaytimeTabs(current)` states the two tabs. Both list views put it at the
 top of their `ContentContainer`, above the quick bar.
 
 | tab | route | name | mode |
@@ -92,16 +98,32 @@ Model key `historicalplaytime`, so `filter_for_model` finds
 - `_FILTER_LIST_URL`;
 - `filter_queryset_for_library` and `filter_query_context_for_library`, both
   answering `library_records(library)`. The generic fallback calls
-  `for_library()`, which this queryset does not state.
+  `for_library()`, which this queryset does not state. The context entry is
+  `HistoricalPlaytime: cache(lambda: library_records(library))`: a field
+  comparison over a multi-valued operand (`comparable_columns` offers
+  columns through `device` and `player_game`) asks the context for the root
+  model's scope and raises `KeyError` without it.
+
+The filter builder's model switcher (`games/views/general.py`) is a
+hand-written list that already omits Playthrough. It is derived from
+`BUILDER_MODES` and `FILTER_MODE_MODELS` instead, so both Playthrough and
+Historical playtime appear, labelled from each model's verbose name.
 
 The tests that walk these tables then cover the new mode: the plan relies on
 `test_mode_parsers_cover_every_mode_choice` in `tests/test_filter_presets.py`
 (parsers against `MODE_CHOICES`), `tests/test_filter_widgets.py`
 (`FILTER_MODE_LIST_URLS` against `MODE_PARSERS`),
-`tests/test_quick_filter_bar.py` (`QUICK_FACETS` and `BUILDER_MODES`), and
-`tests/test_render_pages.py` (`LIST_ROUTES`).
+and `tests/test_quick_filter_bar.py` (`QUICK_FACETS` and `BUILDER_MODES`).
+`LIST_ROUTES` has no walk: a list missing from it still renders, paginated.
 
 ## HistoricalPlaytimeFilter
+
+`_comparison_model()` returns `HistoricalPlaytime`; without it
+`field_metadata` resolves no column, and `provenance` gets no choices.
+Criterion types follow `PlayerSessionFilter`: `UUIDMultiCriterion` for
+`game` and `device`, `ChoiceCriterion`, `BoolCriterion`, `IntCriterion` for
+`duration_hours`, `DateCriterion` for `when` and `created_at`,
+`StringCriterion` for `note` and `search`.
 
 | field | compiles to |
 |---|---|
@@ -132,7 +154,8 @@ note. `game_filter` and `device_filter` are forward relations, as on
 
 ## Quick bar and sorts
 
-Facets, in order: provenance, duration (hours), game, device, when, created.
+Facets, in order, as field keys: `provenance`, `duration_hours` (label
+"Duration (hrs)"), `game`, `device`, `when`, `created_at` (label "Created").
 
 | sort key | column |
 |---|---|
@@ -143,6 +166,9 @@ Facets, in order: provenance, duration (hours), game, device, when, created.
 | `device` | `device__name` |
 | `created` | `created_at` |
 
+`provenance` orders by stored value (estimated, externally measured,
+manually entered), not by label; that is accepted.
+
 Default `-when,-created`: newest first, newest recorded first on a tie, as
 `RECORD_ORDER` orders (review D3). `apply_sort` puts an unknown `when` last.
 
@@ -151,9 +177,11 @@ Default `-when,-created`: newest first, newest recorded first on a tie, as
 `StyledTable` through `paginated_table_content`, caption "Historical
 playtime", every column but Runs sortable:
 
-- **Name** — the game link, shrinkable.
+- **Name** — `NameWithIcon(game=…)`, shrinkable. The first cell must hold
+  `<truncated-text`, which `GameLink` alone does not emit.
 - **When** — the temporal text Playthrough rows use; "Unknown" for null.
-- **Duration** — the viewer's duration presentation.
+- **Duration** — `Duration(...)` in the viewer's presentation, `id_scope`
+  `record-{pk}`.
 - **Provenance** — a badge; `Externally measured` reads distinctly, because
   import (#798) writes it.
 - **Runs** — each run's display name through `numbered_for`, one query for
@@ -161,7 +189,8 @@ playtime", every column but Runs sortable:
 - **Device** — "No device" when null.
 - **Created**.
 
-Empty: the table's empty state, "No historical playtime."
+An empty result renders an empty table, as every other list does:
+`StyledTable` has no empty state.
 
 **Row actions and "View all"** (review D4). Edit and Remove need #706's
 routes. Whichever of #706 and #1097 merges second adds, in its own PR:
@@ -195,15 +224,36 @@ New files, named apart from #705's (`_command`, `_events`, `_projection`) and
 #706's (`_form`, `_views`, `test_game_detail_historical_playtime.py`):
 `tests/test_historical_playtime_filter.py`,
 `tests/test_historical_playtime_api.py`, `tests/test_playtime_page.py`,
-`e2e/test_playtime_page_e2e.py`. Existing files are extended where a
-registry walk or route list lives.
+`e2e/test_playtime_page_e2e.py`. Existing files hold hand-written lists of filters, list pages or routes,
+and each gains the new filter or route:
+
+- `tests/test_filters.py` (`_ALL_FILTERS`, `ALL_FILTERS`);
+- `tests/test_filter_paths.py` (`_BAR_CASES`);
+- `tests/test_filter_widgets.py` (`ListUrlForTest`);
+- `tests/test_filter_builder_page.py`;
+- `tests/test_sort_header_parity.py` (one method per list);
+- `tests/test_table_width_policy.py` (`LIST_PAGES`);
+- `tests/test_column_priority_contract.py`;
+- `tests/test_action_origin_parity.py`;
+- `tests/test_html_validity.py`;
+- `tests/test_date_time_rendering_paths.py`;
+- `tests/test_library_page_isolation.py`, whose `"1 Sessions"` becomes the
+  new accessible name;
+- `tests/test_paths_return_200.py`;
+- `e2e/test_table_width_e2e.py`, `e2e/test_responsive_table_e2e.py`.
+
+The relabel updates `tests/test_settings_registry.py`,
+`tests/test_settings_forms.py` and `tests/test_settings_page.py`, which pin
+"Sessions".
 
 - Filter: every field, each modifier a widget offers; `when` overlap, a
   decade, an open range and unknown; `search`; both relations.
 - Scope: a removed record, a record under a removed `PlayerGame`, a record
   under a removed catalog game, and another library's record never appear.
 - Registry: the four walks named above pass with the new mode;
-  `filter_for_model` resolves it; the builder page renders it.
+  `filter_for_model` resolves it; the builder page renders it and its
+  switcher lists it; a builder filter with a multi-valued field comparison
+  runs through the context scope.
 - Contract: `ts/elements/filter-tree/fixtures.json` gains a
   `historicalplaytime` model and cases (a leaf, a `when` range, `NOT`, a
   `game_filter` relation); `FILTER_FOR_MODEL` in
