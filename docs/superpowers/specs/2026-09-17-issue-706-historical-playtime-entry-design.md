@@ -2,7 +2,7 @@
 
 Issue: [#706](https://github.com/KucharczykL/timetracker/issues/706).
 Wave: [Historical Playtime](2026-09-17-historical-playtime-wave-design.md).
-Shared surface: [review of the parallel specs](../../review/2026-09-17-historical-playtime-parallel-specs.md).
+Shared surface: [parallel-spec review](../../review/2026-09-17-historical-playtime-parallel-specs.md).
 
 ## Purpose
 
@@ -23,8 +23,8 @@ because `RemovePlaythrough` refuses a run a live record names.
 ## Form
 
 `HistoricalPlaytimeForm` parses types and narrows the offered provenances
-and devices. The command makes every other decision, so its refusals show
-the command's sentence, at the command's status.
+and devices. Every other refusal is the command's: its sentence, its
+status.
 
 - `playthroughs` shows the game's numbered runs as checkboxes. It accepts
   any run of the library, so the command refuses a removed run, the bucket
