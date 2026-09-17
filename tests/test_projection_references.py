@@ -33,6 +33,10 @@ def named(references):
 def test_the_walk_finds_every_outward_reference():
     """Every key out of a projection, and no library column."""
     assert named(projection_references()) == [
+        ("HistoricalPlaytime", "device"),
+        ("HistoricalPlaytime", "player_game"),
+        ("HistoricalPlaytimeRun", "playthrough"),
+        ("HistoricalPlaytimeRun", "record"),
         ("PlayerGame", "game"),
         ("PlayerSession", "device"),
         ("PlayerSession", "playthrough"),

@@ -57,6 +57,8 @@ from games.identity_audit import relation_columns
 from games.management.commands import rebuild_projections as rebuild_command
 from games.models import (
     Game,
+    HistoricalPlaytime,
+    HistoricalPlaytimeRun,
     LibraryCalendar,
     LibraryEvent,
     LibraryEventStreamHead,
@@ -141,8 +143,10 @@ def test_discovery_passes_over_a_manufactured_twin():
 
 
 def test_the_application_declares_its_projections():
-    """Four projection tables so far."""
+    """Six projection tables so far."""
     assert projection_models() == (
+        HistoricalPlaytime,
+        HistoricalPlaytimeRun,
         LibraryCalendar,
         PlayerGame,
         PlayerSession,

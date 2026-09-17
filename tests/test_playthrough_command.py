@@ -41,6 +41,7 @@ from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.playthrough import playthrough_created
 from games.models import (
     Game,
+    HistoricalPlaytimeRun,
     LibraryEvent,
     PlayerGame,
     PlayerSession,
@@ -2169,12 +2170,17 @@ SESSIONS_SENTENCE = (
 )
 
 
-def test_the_delivered_registry_names_sessions():
-    """One entry: a session names its run."""
-    (entry,) = playthrough_commands.BLOCKING_REFERRERS
+def test_the_delivered_registry_names_sessions_and_historical_playtime():
+    """Two entries: sessions and records name runs."""
+    sessions, records = playthrough_commands.BLOCKING_REFERRERS
 
-    assert (entry.model, entry.field_name) == (PlayerSession, "playthrough")
-    assert entry.sentence == SESSIONS_SENTENCE
+    assert (sessions.model, sessions.field_name) == (PlayerSession, "playthrough")
+    assert sessions.sentence == SESSIONS_SENTENCE
+    assert (records.model, records.field_name) == (
+        HistoricalPlaytimeRun,
+        "playthrough",
+    )
+    assert records.sentence == playthrough_commands.HISTORICAL_PLAYTIME_RECORDED
 
 
 def _record_session(owned_user, owned_library, run, key="session"):

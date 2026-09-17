@@ -347,6 +347,10 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         #: The projector's mark; every other column is stated.
         "removed_at": None,
     },
+    "games.HistoricalPlaytime": {
+        #: The projector's mark.
+        "removed_at": None,
+    },
 }
 
 

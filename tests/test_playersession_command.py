@@ -1417,8 +1417,7 @@ def test_a_removed_device_is_refused(owned_user, owned_library, run, steam_deck)
         session.pk,
         device=StatedDevice(steam_deck.pk),
         saying=(
-            "That device was removed from your library. Restore it before "
-            "choosing it for a session."
+            "That device was removed from your library. Restore it before choosing it."
         ),
     )
 

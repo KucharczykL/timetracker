@@ -1,4 +1,4 @@
-"""Every event type of the three families, replayed.
+"""Every event type of the four families, replayed.
 
 The dispatches need real transactions, and the conftest tracking
 fixture would otherwise write projection rows no event states.
@@ -11,6 +11,13 @@ from typing import Any, NamedTuple
 import pytest
 from django.db import connection
 
+from games.commands.historical_playtime import (
+    HistoricalPlaytimeStatement,
+    RecordHistoricalPlaytime,
+    RemoveHistoricalPlaytime,
+    RestateHistoricalPlaytime,
+    RestoreHistoricalPlaytime,
+)
 from games.commands.playergame import (
     RemovePlayerGame,
     RestorePlayerGame,
@@ -48,6 +55,9 @@ from games.events.replay import replay
 from games.models import (
     Device,
     Game,
+    HistoricalPlaytime,
+    HistoricalPlaytimeProvenance,
+    HistoricalPlaytimeRun,
     LibraryEvent,
     LibraryEventStreamHead,
     LibraryIdempotencyRecord,
@@ -57,6 +67,7 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
 )
+from games.projectors.historical_playtime import HistoricalPlaytimes
 from games.projectors.playergame import PlayerGames
 from games.projectors.playersession import PlayerSessions
 from games.projectors.playthrough import Playthroughs
@@ -89,7 +100,7 @@ def _created_id(result: CommandResult) -> Any:
 
 
 def build_stream(user, library) -> list[DispatchedCommand]:
-    """Every type of the three families, through commands.
+    """Every type of the four families, through commands.
 
     Nothing appends by hand: the gate is a claim about what the write
     path produces, and an event this module wrote itself would prove
@@ -303,6 +314,60 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     #: Left removed, as the third run and the third game are.
     run(RemoveSession(session_id=duration_only), "remove-duration-only-session")
 
+    #: Two-run record restated; one removed; one restored.
+    a_statement = HistoricalPlaytimeStatement(
+        duration=timedelta(hours=100),
+        when="2005",
+        provenance=HistoricalPlaytimeProvenance.ESTIMATED,
+        playthrough_ids=(first_run.pk, second_run.pk),
+        device_id=None,
+        emulated=False,
+        note="",
+    )
+    restated_record = _created_id(
+        run(RecordHistoricalPlaytime(statement=a_statement), "record-two-runs")
+    )
+    run(
+        RestateHistoricalPlaytime(
+            record_id=restated_record,
+            statement=a_statement._replace(
+                duration=timedelta(hours=50),
+                when="2005-06~",
+                provenance=HistoricalPlaytimeProvenance.MANUALLY_ENTERED,
+                playthrough_ids=(first_run.pk,),
+                device_id=device.pk,
+                emulated=True,
+                note="Read off the launcher",
+            ),
+        ),
+        "restate-onto-one-run",
+    )
+    removed_record = _created_id(
+        run(
+            RecordHistoricalPlaytime(
+                statement=a_statement._replace(
+                    when=None, playthrough_ids=(first_run.pk,)
+                )
+            ),
+            "record-to-remove",
+        )
+    )
+    run(RemoveHistoricalPlaytime(record_id=removed_record), "remove-record")
+    restored_record = _created_id(
+        run(
+            RecordHistoricalPlaytime(
+                statement=a_statement._replace(
+                    when="2006/2007",
+                    provenance=HistoricalPlaytimeProvenance.EXTERNALLY_MEASURED,
+                    playthrough_ids=(first_run.pk,),
+                )
+            ),
+            "record-to-restore",
+        )
+    )
+    run(RemoveHistoricalPlaytime(record_id=restored_record), "remove-record-again")
+    run(RestoreHistoricalPlaytime(record_id=restored_record), "restore-record")
+
     run(RemovePlayerGame(game_id=second.pk), "remove-second-game")
     run(RestorePlayerGame(game_id=second.pk), "restore-second-game")
     #: Left removed, for the same reason as the third run.
@@ -311,13 +376,14 @@ def build_stream(user, library) -> list[DispatchedCommand]:
 
 
 def registered_event_types() -> set[str]:
-    """Every type the three CURRENT_STATE projectors read."""
+    """Every type the four CURRENT_STATE projectors read."""
     return {
         spec.event_type
         for handles in (
             PlayerGames.handles,
             Playthroughs.handles,
             PlayerSessions.handles,
+            HistoricalPlaytimes.handles,
         )
         for spec in handles
     }
@@ -341,7 +407,7 @@ def test_the_stream_carries_every_registered_event_type(owned_user, owned_librar
 
 
 def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_library):
-    """A real stream, short of twenty-two of its types."""
+    """A real stream, short of twenty-six types."""
     game = Game.objects.create(library=owned_library, name="Celeste")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -357,7 +423,7 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
         "library.playergame.created",
         "library.playthrough.created",
     }
-    assert len(missing) == 22
+    assert len(missing) == 26
 
 
 def build_neighbour(user, library) -> None:
@@ -391,6 +457,24 @@ def build_neighbour(user, library) -> None:
         idempotency_key="neighbour-session",
     )
     assert result.outcome is CommandOutcome.APPENDED, "neighbour-session"
+    #: One record; both new tables hold neighbours.
+    result = dispatch(
+        RecordHistoricalPlaytime(
+            statement=HistoricalPlaytimeStatement(
+                duration=timedelta(hours=10),
+                when="2019",
+                provenance=HistoricalPlaytimeProvenance.ESTIMATED,
+                playthrough_ids=(run.pk,),
+                device_id=None,
+                emulated=False,
+                note="",
+            )
+        ),
+        actor=user,
+        library=library,
+        idempotency_key="neighbour-record",
+    )
+    assert result.outcome is CommandOutcome.APPENDED, "neighbour-record"
 
 
 @pytest.fixture
@@ -407,8 +491,13 @@ def neighbour(django_user_model):
 type ProjectionRows = list[Mapping[str, Any]]
 
 
-def rows_of(library) -> tuple[ProjectionRows, ProjectionRows, ProjectionRows]:
-    """The three tables' whole rows, in key order.
+type ProjectionSnapshot = tuple[
+    ProjectionRows, ProjectionRows, ProjectionRows, ProjectionRows, ProjectionRows
+]
+
+
+def rows_of(library) -> ProjectionSnapshot:
+    """Five tables' whole rows, in key order.
 
     `.values()` rather than a column list, so a column added later is
     in the comparison the day it lands. Refuses an empty table, because
@@ -424,10 +513,16 @@ def rows_of(library) -> tuple[ProjectionRows, ProjectionRows, ProjectionRows]:
     sessions: ProjectionRows = list(
         PlayerSession.objects.filter(library=library).order_by("pk").values()
     )
-    assert tracked and runs and sessions, (
+    records: ProjectionRows = list(
+        HistoricalPlaytime.objects.filter(library=library).order_by("pk").values()
+    )
+    joins: ProjectionRows = list(
+        HistoricalPlaytimeRun.objects.filter(library=library).order_by("pk").values()
+    )
+    assert tracked and runs and sessions and records and joins, (
         f"Library {library.pk} holds no rows to compare."
     )
-    return (tracked, runs, sessions)
+    return (tracked, runs, sessions, records, joins)
 
 
 def row_versions(library) -> list[tuple[str, str]]:
@@ -445,15 +540,21 @@ def row_versions(library) -> list[tuple[str, str]]:
             SELECT id::text, xmin::text FROM games_playthrough WHERE library_id = %s
             UNION ALL
             SELECT id::text, xmin::text FROM games_playersession WHERE library_id = %s
+            UNION ALL
+            SELECT id::text, xmin::text FROM games_historicalplaytime WHERE library_id = %s
+            UNION ALL
+            SELECT id::text, xmin::text FROM games_historicalplaytimerun WHERE library_id = %s
             ORDER BY 1
             """,
-            [library.pk, library.pk, library.pk],
+            [library.pk] * 5,
         )
         return cursor.fetchall()
 
 
 def empty_projections(library) -> None:
     """Scoped by library, children first for RESTRICT."""
+    HistoricalPlaytimeRun.objects.filter(library=library).delete()
+    HistoricalPlaytime.objects.filter(library=library).delete()
     PlayerSession.objects.filter(library=library).delete()
     Playthrough.objects.filter(library=library).delete()
     PlayerGame.objects.filter(library=library).delete()
@@ -494,6 +595,8 @@ def test_a_rebuild_swaps_every_table_with_an_empty_diff(
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in report.tables
     ] == [
+        ("games_historicalplaytime", 0, 0, 0),
+        ("games_historicalplaytimerun", 0, 0, 0),
         ("games_librarycalendar", 0, 0, 0),
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
@@ -557,6 +660,9 @@ def test_the_stream_leaves_a_removed_row_in_each_table(owned_user, owned_library
         library=owned_library, removed_at__isnull=False
     ).exists()
     assert PlayerSession.objects.filter(
+        library=owned_library, removed_at__isnull=False
+    ).exists()
+    assert HistoricalPlaytime.objects.filter(
         library=owned_library, removed_at__isnull=False
     ).exists()
 

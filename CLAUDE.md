@@ -365,8 +365,8 @@ docs/           — Additional documentation
 
   #704's gates, member 4 of the wave stack, lift the deployment constraint:
   `tests/test_projection_replay_gate.py` replays one command stream through
-  every event type of the three families (a Corrected row included), empties
-  and rebuilds three tables, repeats every command under its key; the
+  every event type of the four families (a Corrected row included), empties
+  and rebuilds five tables, repeats every command under its key; the
   two-dated-claimers conversion case reconciles clean. Stats page's session
   figures -- count, distinct days, longest, most sessions, highest average,
   first and last play -- are readers in `games/reads/session_figures.py`,
@@ -378,6 +378,26 @@ docs/           — Additional documentation
   differ, every read inside 20 ms; page diff attributed in the wave review.
   Contract is
   [Pass the Session replay, statistics and budget gates](docs/superpowers/specs/2026-09-15-issue-704-session-gates-design.md)
+- **HistoricalPlaytime** — fourth projection: playtime a library states
+  without sittings, written only by `HistoricalPlaytimes` projector.
+  `library.historicalplaytime.created`/`.restated` share one whole-statement
+  payload and a restatement overwrites every column; `.removed`/`.restored`
+  move `removed_at`. Names a `PlayerGame` and one or more of its runs through
+  `HistoricalPlaytimeRun`, a join whose row ids the payload carries so a
+  replay reproduces them; projector replaces the set whole. `when` is
+  envelope's `effective_time`, null unknown, with generated
+  `when_lower`/`when_upper` and index `(library, when_lower, id)`. Provenance
+  CHECKed: `estimated`, `manually_entered`, `externally_measured`. `release`
+  and `source` reserved, typed `None`. Database admits superset of what
+  command admits. `alive()` reads own mark and `player_game`'s; join's derives
+  from record's. Commands `Record`/`Restate`/`Remove`/`RestoreHistoricalPlaytime`
+  take `HistoricalPlaytimeStatement`, normalised before fingerprint; devices
+  resolve through `library_device` in `games/commands/scope.py`, the one
+  resolver. Join's `playthrough` is second `BLOCKING_REFERRERS` entry. Nothing
+  reads or writes it from a page yet. Contract is
+  [HistoricalPlaytime aggregate](docs/superpowers/specs/2026-09-17-issue-705-historical-playtime-aggregate-design.md);
+  wave is
+  [Historical Playtime](docs/superpowers/specs/2026-09-17-historical-playtime-wave-design.md)
 
 **Nothing user removes is destroyed** (#944). Eight removable models — Game,
 Edition, Release, Platform, Device, Session, Purchase, FilterPreset —
