@@ -155,8 +155,12 @@ def game_historical_playtime(
     library: UserLibrary,
     game: Game,
     provenance: HistoricalPlaytimeProvenance | None = None,
+    *,
+    within: DayInterval | None = None,
 ) -> timedelta:
     records = game_records(library, game)
+    if within is not None:
+        records = contained_in(records, within)
     if provenance is not None:
         records = records.filter(provenance=provenance)
     return _total(records)

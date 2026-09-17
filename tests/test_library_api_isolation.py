@@ -399,7 +399,7 @@ def test_compute_stats_uses_only_the_requested_library(two_libraries):
     stats = compute_stats(world["library_a"], YEAR)
 
     assert stats["total_sessions"] == 1
-    assert stats["total_hours"] == timedelta(hours=2)
+    assert stats["total_hours"].total == timedelta(hours=2)
     assert stats["unique_days"] == 1
     assert stats["total_games"] == 1
     assert stats["total_year_games"] == 1

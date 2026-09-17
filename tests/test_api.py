@@ -498,7 +498,7 @@ def test_session_patch_grows_the_games_playtime(auth_client, user):
     session = _row()
     game = session.playthrough.player_game.game
     library = _test_library()
-    assert game_playtime(library, game) == timedelta(0)
+    assert game_playtime(library, game).total == timedelta(0)
     _patch_session(
         auth_client,
         session.id,
@@ -509,7 +509,7 @@ def test_session_patch_grows_the_games_playtime(auth_client, user):
             }
         },
     )
-    assert game_playtime(library, game) == timedelta(hours=1)
+    assert game_playtime(library, game).total == timedelta(hours=1)
 
 
 @pytest.mark.django_db(transaction=True)

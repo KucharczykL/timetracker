@@ -305,7 +305,7 @@ def test_statistics_and_exact_links_reconcile_per_library(parity_world):
         game = getattr(world, f"game_{side}")
         stats = compute_stats(library, YEAR)
         assert stats["total_sessions"] == 2
-        assert stats["total_hours"] == playtime
+        assert stats["total_hours"].total == playtime
         assert stats["total_games"] == 2
         assert stats["total_spent"] == spending
         assert stats["total_spent_currency"] == "CZK"

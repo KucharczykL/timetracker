@@ -33,7 +33,7 @@ from games.filters import PlayerSessionFilter, filter_url, model_field_registry
 from games.models import Game, Platform, Purchase
 from games.reads.days import DayInterval
 from games.reads.player_sessions import library_sessions
-from games.reads.playtime import playtime_between
+from games.reads.playtime import playtime_between_each
 from games.sorting import parse_per_page_override
 from games.views.filtering import BUILDER_MODES
 from games.views.stats_content import stats_content
@@ -47,13 +47,17 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
         cast(User, user).library if user is not None and user.is_authenticated else None
     )
     today = localdate()
-    # "Last 7 days" is a calendar-day window (today plus the previous six) so the
-    # displayed total matches the list its navbar link points to.
+    # "Last 7 days" is a calendar-day window (today plus the previous six), the
+    # window its navbar link lists. The link lists sessions, the tracked part.
     last_seven_days = DayInterval.ending(today, days=7)
     today_played = last_7_played = timedelta(0)
     if library is not None:
-        today_played = playtime_between(library, DayInterval.single(today))
-        last_7_played = playtime_between(library, last_seven_days)
+        today_played, last_7_played = (
+            figure.total
+            for figure in playtime_between_each(
+                library, [DayInterval.single(today), last_seven_days]
+            )
+        )
 
     durations = duration_presentation_for_request(request)
 

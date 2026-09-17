@@ -393,7 +393,7 @@ class RenderedPagesTest(TestCase):
         ]
 
         self.assertEqual(
-            game_playtime(self.user.library, self.game), timedelta(hours=1)
+            game_playtime(self.user.library, self.game).total, timedelta(hours=1)
         )
         self.assertIn("1 h 00 m", hours)
         self.assertNotIn("3 h 00 m", hours)

@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from django.utils import timezone
+from historical_playtime_rows import record_row
 from session_rows import (
     TWIN_ZONE,
     corrected_row,
@@ -13,28 +14,40 @@ from session_rows import (
     tracked_run,
 )
 
-from games.filters import PlayerSessionFilter
+from common.filter_execution import execute_filter
+from games.filters import (
+    GameFilter,
+    PlayerSessionFilter,
+    filter_query_context_for_library,
+)
 from games.models import Device, Game, Platform, UserLibrary
 from games.reads.days import DayInterval
 from games.reads.playtime import (
     MonthPlaytime,
     PlatformPlaytime,
+    PlaytimeBreakdown,
     UnscopedPlaytimeRead,
     game_playtime,
     game_playtime_between,
     played_years,
     playtime_between,
+    playtime_between_each,
     playtime_by_game,
     playtime_by_month,
     playtime_by_platform,
     playtime_matching,
+    playtime_parts_by_game,
     playtime_sort_key,
-    summed_by_game,
-    summed_by_game_matching,
     total_playtime,
+    tracked_summed_by_game,
+    tracked_summed_by_game_matching,
 )
 
 ZERO = timedelta(0)
+
+
+def tracked(playtime: timedelta) -> PlaytimeBreakdown:
+    return PlaytimeBreakdown(tracked=playtime, historical=ZERO)
 
 
 @pytest.fixture
@@ -60,7 +73,7 @@ def summed(library: UserLibrary | None, game: Game, **scope):
     """The sum on one game."""
     return (
         Game.objects.filter(pk=game.pk)
-        .annotate(figure=summed_by_game(library, **scope))
+        .annotate(figure=tracked_summed_by_game(library, **scope))
         .get()
         .figure
     )
@@ -79,11 +92,11 @@ def timed(library: UserLibrary, game: Game, started_at, ended_at):
 @pytest.mark.django_db
 def test_every_scalar_figure_is_zero_for_an_empty_library(owned_library, game):
     days = DayInterval(date(2026, 1, 1), date(2026, 12, 31))
-    assert game_playtime(owned_library, game) == ZERO
-    assert game_playtime_between(owned_library, game, days) == ZERO
-    assert total_playtime(owned_library) == ZERO
-    assert total_playtime(owned_library, year=2026) == ZERO
-    assert playtime_between(owned_library, days) == ZERO
+    assert game_playtime(owned_library, game).total == ZERO
+    assert game_playtime_between(owned_library, game, days).total == ZERO
+    assert total_playtime(owned_library).total == ZERO
+    assert total_playtime(owned_library, year=2026).total == ZERO
+    assert playtime_between(owned_library, days).total == ZERO
     assert playtime_by_platform(owned_library) == []
     assert playtime_by_month(owned_library, year=2026) == []
     assert played_years(owned_library) == []
@@ -100,14 +113,12 @@ def test_the_sum_is_null_for_an_unplayed_game(owned_library, game):
         Game.objects.tracked_by(owned_library)
         .annotate(
             sort_key=playtime_sort_key(owned_library),
-            matching=playtime_matching(owned_library, None),
             by_game=playtime_by_game(owned_library),
         )
         .get()
     )
 
     assert figures.sort_key is None
-    assert figures.matching is None
     assert figures.by_game == ZERO
 
 
@@ -130,15 +141,15 @@ def test_a_row_of_each_mode_counts_its_effective_duration(
 
     with timezone.override(TWIN_ZONE):
         figures = {
-            "game": game_playtime(owned_library, game),
+            "game": game_playtime(owned_library, game).total,
             "summed": summed(owned_library, game),
             "summed in year": summed(owned_library, game, year=2026),
-            "total": total_playtime(owned_library),
-            "total in year": total_playtime(owned_library, year=2026),
-            "between": playtime_between(owned_library, DayInterval.single(day)),
+            "total": total_playtime(owned_library).total,
+            "total in year": total_playtime(owned_library, year=2026).total,
+            "between": playtime_between(owned_library, DayInterval.single(day)).total,
             "game between": game_playtime_between(
                 owned_library, game, DayInterval.single(day)
-            ),
+            ).total,
             "platforms": playtime_by_platform(owned_library),
             "platforms in year": playtime_by_platform(owned_library, year=2026),
             "months": playtime_by_month(owned_library, year=2026),
@@ -154,11 +165,11 @@ def test_a_row_of_each_mode_counts_its_effective_duration(
         "total in year": total,
         "between": timedelta(hours=2, minutes=30),
         "game between": timedelta(hours=2, minutes=30),
-        "platforms": [PlatformPlaytime(platform.pk, "PC", total)],
-        "platforms in year": [PlatformPlaytime(platform.pk, "PC", total)],
+        "platforms": [PlatformPlaytime(platform.pk, "PC", tracked(total))],
+        "platforms in year": [PlatformPlaytime(platform.pk, "PC", tracked(total))],
         "months": [
-            MonthPlaytime(date(2026, 3, 1), timedelta(hours=2, minutes=30)),
-            MonthPlaytime(date(2026, 4, 1), timedelta(minutes=90)),
+            MonthPlaytime(date(2026, 3, 1), tracked(timedelta(hours=2, minutes=30))),
+            MonthPlaytime(date(2026, 4, 1), tracked(timedelta(minutes=90))),
         ],
         "years": [2026],
     }
@@ -170,15 +181,15 @@ def test_a_running_timed_row_counts_zero(owned_library, game):
     timed(owned_library, game, started_at, None)
 
     with timezone.override(TWIN_ZONE):
-        assert game_playtime(owned_library, game) == ZERO
+        assert game_playtime(owned_library, game).total == ZERO
         assert (
             game_playtime_between(
                 owned_library, game, DayInterval.single(started_at.date())
-            )
+            ).total
             == ZERO
         )
-        assert total_playtime(owned_library) == ZERO
-        assert total_playtime(owned_library, year=2026) == ZERO
+        assert total_playtime(owned_library).total == ZERO
+        assert total_playtime(owned_library, year=2026).total == ZERO
 
 
 @pytest.mark.django_db
@@ -193,8 +204,10 @@ def test_the_stored_day_is_read_whatever_the_active_zone(owned_library, game):
 
     for zone in (TWIN_ZONE, ZoneInfo("UTC")):
         with timezone.override(zone):
-            assert total_playtime(owned_library, year=2026) == timedelta(minutes=20)
-            assert total_playtime(owned_library, year=2025) == ZERO
+            assert total_playtime(owned_library, year=2026).total == timedelta(
+                minutes=20
+            )
+            assert total_playtime(owned_library, year=2025).total == ZERO
             assert played_years(owned_library) == [2026]
 
 
@@ -205,13 +218,17 @@ def test_a_duration_only_row_lands_on_its_written_day(owned_library, game):
     duration_only_row(tracked_run(owned_library, game), day, duration)
 
     with timezone.override(TWIN_ZONE):
-        assert total_playtime(owned_library, year=2026) == duration
+        assert total_playtime(owned_library, year=2026).total == duration
         assert playtime_by_month(owned_library, year=2026) == [
-            MonthPlaytime(date(2026, 3, 1), duration)
+            MonthPlaytime(date(2026, 3, 1), tracked(duration))
         ]
-        assert playtime_between(owned_library, DayInterval.single(day)) == duration
         assert (
-            playtime_between(owned_library, DayInterval.single(day + timedelta(days=1)))
+            playtime_between(owned_library, DayInterval.single(day)).total == duration
+        )
+        assert (
+            playtime_between(
+                owned_library, DayInterval.single(day + timedelta(days=1))
+            ).total
             == ZERO
         )
 
@@ -235,7 +252,10 @@ def test_a_day_window_is_inclusive(owned_library, game):
     timed(owned_library, game, after_last, after_last + outside)
 
     with timezone.override(TWIN_ZONE):
-        assert playtime_between(owned_library, DayInterval(first, last)) == 2 * inside
+        assert (
+            playtime_between(owned_library, DayInterval(first, last)).total
+            == 2 * inside
+        )
 
 
 @pytest.mark.django_db
@@ -258,7 +278,9 @@ def test_a_games_window_counts_that_game_alone(owned_library, game):
     timed(owned_library, game, after, after + inside)
 
     with timezone.override(TWIN_ZONE):
-        figure = game_playtime_between(owned_library, game, DayInterval(first, last))
+        figure = game_playtime_between(
+            owned_library, game, DayInterval(first, last)
+        ).total
 
     assert figure == 4 * inside
 
@@ -272,8 +294,12 @@ def test_a_games_window_never_counts_another_library(owned_library, stranger_lib
         ended_at = started_at + timedelta(hours=hours)
         timed_row(tracked_run(library, shared), started_at, ended_at)
 
-    assert game_playtime_between(owned_library, shared, days) == timedelta(hours=1)
-    assert game_playtime_between(stranger_library, shared, days) == timedelta(hours=2)
+    assert game_playtime_between(owned_library, shared, days).total == timedelta(
+        hours=1
+    )
+    assert game_playtime_between(stranger_library, shared, days).total == timedelta(
+        hours=2
+    )
 
 
 @pytest.mark.django_db
@@ -307,16 +333,16 @@ def test_a_session_filter_narrows_the_sum(owned_library, game):
     figures = (
         Game.objects.filter(pk=game.pk)
         .annotate(
-            matching=summed_by_game_matching(owned_library, on_the_handheld),
+            matching=tracked_summed_by_game_matching(owned_library, on_the_handheld),
             filtered=playtime_matching(owned_library, on_the_handheld),
-            unfiltered=playtime_matching(owned_library, None),
+            unfiltered=playtime_sort_key(owned_library),
         )
         .get()
     )
 
     assert figures.matching == timedelta(hours=1)
     assert figures.filtered == timedelta(hours=1)
-    assert figures.unfiltered == total_playtime(owned_library)
+    assert figures.unfiltered == total_playtime(owned_library).total
     assert figures.unfiltered == timedelta(hours=3)
 
 
@@ -371,9 +397,9 @@ def test_platforms_order_by_playtime_then_name(owned_library):
         timed(owned_library, game, prague(10, day), prague(10 + hours, day))
 
     assert playtime_by_platform(owned_library) == [
-        PlatformPlaytime(None, None, timedelta(hours=2)),
-        PlatformPlaytime(pc.pk, "PC", timedelta(hours=1)),
-        PlatformPlaytime(switch.pk, "Switch", timedelta(hours=1)),
+        PlatformPlaytime(None, None, tracked(timedelta(hours=2))),
+        PlatformPlaytime(pc.pk, "PC", tracked(timedelta(hours=1))),
+        PlatformPlaytime(switch.pk, "Switch", tracked(timedelta(hours=1))),
     ]
 
 
@@ -395,3 +421,161 @@ def test_the_sum_is_null_when_no_session_matches(owned_library, game):
     )
 
     assert matching is None
+
+
+HOUR = timedelta(hours=1)
+
+
+@pytest.mark.django_db
+def test_every_figure_adds_the_contained_records(owned_library, game, platform):
+    day = date(2026, 3, 5)
+    run = tracked_run(owned_library, game)
+    timed(owned_library, game, prague(10, day), prague(11, day))
+    record_row([run], duration=2 * HOUR, when="2026-03-05")
+    record_row([run], duration=4 * HOUR, when="2026")
+    record_row([run], duration=8 * HOUR, when=None)
+    in_march = PlaytimeBreakdown(HOUR, 2 * HOUR)
+
+    with timezone.override(TWIN_ZONE):
+        assert game_playtime(owned_library, game) == PlaytimeBreakdown(HOUR, 14 * HOUR)
+        assert total_playtime(owned_library) == PlaytimeBreakdown(HOUR, 14 * HOUR)
+        assert total_playtime(owned_library, year=2026) == PlaytimeBreakdown(
+            HOUR, 6 * HOUR
+        )
+        assert total_playtime(owned_library, year=2025) == PlaytimeBreakdown(ZERO, ZERO)
+        assert playtime_between(owned_library, DayInterval.single(day)) == in_march
+        assert (
+            game_playtime_between(owned_library, game, DayInterval.single(day))
+            == in_march
+        )
+        assert playtime_by_month(owned_library, year=2026) == [
+            MonthPlaytime(date(2026, 3, 1), in_march)
+        ]
+        assert playtime_by_platform(owned_library, year=2026) == [
+            PlatformPlaytime(platform.pk, "PC", PlaytimeBreakdown(HOUR, 6 * HOUR))
+        ]
+
+
+@pytest.mark.django_db
+def test_both_windows_are_read_in_two_queries(
+    owned_library, game, django_assert_num_queries
+):
+    day = date(2026, 3, 5)
+    run = tracked_run(owned_library, game)
+    timed(owned_library, game, prague(10, day), prague(11, day))
+    record_row([run], duration=2 * HOUR, when="2026-03-01")
+    week = DayInterval.ending(day, days=7)
+
+    with timezone.override(TWIN_ZONE), django_assert_num_queries(2):
+        figures = playtime_between_each(owned_library, [DayInterval.single(day), week])
+
+    assert figures == [
+        PlaytimeBreakdown(HOUR, ZERO),
+        PlaytimeBreakdown(HOUR, 2 * HOUR),
+    ]
+
+
+@pytest.mark.django_db
+def test_a_platform_or_month_only_records_reach_gets_a_row(owned_library, platform):
+    recorded = Game.objects.create(
+        library=owned_library, name="Tunic", platform=platform
+    )
+    record_row([tracked_run(owned_library, recorded)], duration=HOUR, when="2026-04")
+
+    assert playtime_by_platform(owned_library) == [
+        PlatformPlaytime(platform.pk, "PC", PlaytimeBreakdown(ZERO, HOUR))
+    ]
+    assert playtime_by_month(owned_library, year=2026) == [
+        MonthPlaytime(date(2026, 4, 1), PlaytimeBreakdown(ZERO, HOUR))
+    ]
+    assert played_years(owned_library) == [2026]
+
+
+@pytest.mark.django_db
+def test_merged_platform_rows_keep_the_databases_order(owned_library):
+    names = ["b", "a", None]
+    for index, name in enumerate(names):
+        platform = (
+            None
+            if name is None
+            else Platform.objects.create(name=name, icon=f"icon-{index}")
+        )
+        played = Game.objects.create(
+            library=owned_library, name=f"Game {index}", platform=platform
+        )
+        record_row([tracked_run(owned_library, played)], duration=HOUR, when=None)
+    bigger = Game.objects.create(library=owned_library, name="Bigger")
+    day = date(2026, 3, 5)
+    timed(owned_library, bigger, prague(10, day), prague(13, day))
+
+    rows = playtime_by_platform(owned_library)
+
+    assert [row.platform_name for row in rows] == [None, "a", "b"]
+    assert [row.playtime.total for row in rows] == [4 * HOUR, HOUR, HOUR]
+
+
+@pytest.mark.django_db
+def test_the_sort_key_is_null_without_playtime(owned_library, game):
+    running = Game.objects.create(library=owned_library, name="Running")
+    recorded = Game.objects.create(library=owned_library, name="Recorded")
+    timed(owned_library, running, prague(10, date(2026, 3, 5)), None)
+    record_row([tracked_run(owned_library, recorded)], duration=HOUR, when=None)
+
+    keys = dict(
+        Game.objects.tracked_by(owned_library)
+        .annotate(key=playtime_sort_key(owned_library))
+        .values_list("name", "key")
+    )
+
+    assert keys == {"Outer Wilds": None, "Running": None, "Recorded": HOUR}
+
+
+@pytest.mark.django_db
+def test_the_playtime_filter_reads_the_composed_total(owned_library, game):
+    day = date(2026, 3, 5)
+    timed(owned_library, game, prague(10, day), prague(11, day))
+    record_row([tracked_run(owned_library, game)], duration=2 * HOUR, when=None)
+    at_least_three = GameFilter.from_json(
+        {"playtime_hours": {"modifier": "GREATER_THAN", "value": 2}}
+    )
+    context = filter_query_context_for_library(owned_library)
+
+    matched = execute_filter(
+        at_least_three, Game.objects.tracked_by(owned_library), context
+    )
+
+    assert list(matched) == [game]
+
+
+@pytest.mark.django_db
+def test_a_session_filter_never_reaches_records(owned_library, game):
+    handheld = Device.objects.create(library=owned_library, name="Deck")
+    run = tracked_run(owned_library, game)
+    timed_row(
+        run,
+        datetime(2026, 3, 5, 10, tzinfo=UTC),
+        datetime(2026, 3, 5, 11, tzinfo=UTC),
+        device=handheld,
+    )
+    record_row([run], duration=2 * HOUR, when=None, device=handheld)
+
+    figure = (
+        Game.objects.filter(pk=game.pk)
+        .annotate(
+            matching=playtime_matching(
+                owned_library, PlayerSessionFilter.where(device=[handheld.pk])
+            )
+        )
+        .get()
+        .matching
+    )
+
+    assert figure == HOUR
+
+
+@pytest.mark.django_db
+def test_a_composed_sum_over_no_library_refuses_to_execute(game):
+    with pytest.raises(UnscopedPlaytimeRead):
+        list(Game.objects.annotate(figure=playtime_by_game(None)))
+    with pytest.raises(UnscopedPlaytimeRead):
+        list(Game.objects.annotate(figure=playtime_parts_by_game(None).historical))

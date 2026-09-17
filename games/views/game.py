@@ -164,12 +164,18 @@ def games_for_list(
         context = filter_query_context_for_library(library)
         games = execute_filter(game_filter, games, context)
         session_filter = game_filter.session_filter
-    #: An alias: only `?sort=playtime` reads it.
-    games = games.alias(total_playtime=playtime_sort_key(library)).annotate(
-        filtered_playtime=playtime_matching(library, session_filter),
-        #: No column renders it; `?sort=finished` reads it.
-        completed_day=reported_completion_day(library, GAME_RUNS),
-    )
+    if session_filter is None:
+        #: One copy of the subqueries: the sort orders by the column.
+        games = games.annotate(filtered_playtime=playtime_sort_key(library)).alias(
+            total_playtime=F("filtered_playtime")
+        )
+    else:
+        #: An alias: only `?sort=playtime` reads it.
+        games = games.alias(total_playtime=playtime_sort_key(library)).annotate(
+            filtered_playtime=playtime_matching(library, session_filter)
+        )
+    #: No column renders it; `?sort=finished` reads it.
+    games = games.annotate(completed_day=reported_completion_day(library, GAME_RUNS))
     return apply_sort(games, find, GAME_SORTS, GAME_DEFAULT_SORT)
 
 
@@ -198,7 +204,13 @@ def list_games(request: HttpRequest) -> HttpResponse:
         "columns": [
             Column("Name", "name", shrinkable=True),
             Column("Year", "year", priority=2),
-            Column("Playtime", "filtered_playtime", priority=2),
+            Column(
+                "Playtime"
+                if game_filter is None or game_filter.session_filter is None
+                else "Playtime (matching sessions)",
+                "filtered_playtime",
+                priority=2,
+            ),
             Column("Status", "status", priority=3),
             Column("Wikidata", "wikidata"),
             Column("Created", "created"),
@@ -1066,7 +1078,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             game,
             request,
             _game_overview_metrics(sessions),
-            game_playtime(library, game),
+            game_playtime(library, game).total,
             presentation,
             durations,
             origin,

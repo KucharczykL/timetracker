@@ -10,6 +10,7 @@ import pytest
 from django.contrib.messages import get_messages
 from django.urls import reverse
 from django.utils import timezone
+from historical_playtime_rows import record_row
 from session_rows import (
     TWIN_ZONE,
     duration_only_row,
@@ -479,6 +480,22 @@ def test_the_prefill_reads_the_earliest_session_day_without_a_finish(
         "ended": "2026-03-04",
         "note": "2 h 30 m",
     }
+
+
+@pytest.mark.django_db
+def test_the_prefill_leaves_a_contained_record_out(client, user, game):
+    """A record is not a sitting."""
+    library = user.library
+    run = tracked_run(library, game)
+    timed_row(
+        run,
+        prague(10, date(2026, 1, 5)),
+        prague(12, date(2026, 1, 5)),
+        day_zone=TWIN_ZONE.key,
+    )
+    record_row([run], duration=timedelta(hours=5), when="2026-01-05")
+
+    assert _prefill(client, user, game)["note"] == "2 h 00 m"
 
 
 @pytest.mark.django_db

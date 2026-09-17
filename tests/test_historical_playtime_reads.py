@@ -5,7 +5,7 @@ from datetime import date, timedelta
 
 import pytest
 from django.utils import timezone
-from record_rows import record_join, record_row
+from historical_playtime_rows import record_row
 from session_rows import tracked_run
 
 from games.models import (
@@ -65,14 +65,14 @@ def counted(library: UserLibrary) -> list[HistoricalPlaytime]:
 
 @pytest.mark.django_db
 def test_a_live_record_is_counted(owned_library, run):
-    record = record_row(run, duration=HOUR, when="2022")
+    record = record_row([run], duration=HOUR, when="2022")
     assert counted(owned_library) == [record]
 
 
 @pytest.mark.django_db
 def test_another_librarys_record_is_not_counted(owned_library, stranger_library):
     foreign = Game.objects.create(library=stranger_library, name="Tunic")
-    record_row(tracked_run(stranger_library, foreign), duration=HOUR, when="2022")
+    record_row([tracked_run(stranger_library, foreign)], duration=HOUR, when="2022")
     assert counted(owned_library) == []
 
 
@@ -82,28 +82,29 @@ def test_a_record_naming_another_librarys_tracked_game_is_not_counted(
 ):
     foreign = Game.objects.create(library=stranger_library, name="Tunic")
     foreign_run = tracked_run(stranger_library, foreign)
+    record = record_row([foreign_run], duration=HOUR, when="2022")
     #: Drift the ownership audit reports.
-    record_row(foreign_run, duration=HOUR, when="2022", library=owned_library)
+    HistoricalPlaytime.objects.filter(pk=record.pk).update(library=owned_library)
     assert counted(owned_library) == []
 
 
 @pytest.mark.django_db
 def test_a_removed_record_is_not_counted(owned_library, run):
-    record = record_row(run, duration=HOUR, when="2022")
+    record = record_row([run], duration=HOUR, when="2022")
     HistoricalPlaytime.objects.filter(pk=record.pk).update(removed_at=timezone.now())
     assert counted(owned_library) == []
 
 
 @pytest.mark.django_db
 def test_a_record_of_a_removed_tracked_game_is_not_counted(owned_library, run):
-    record_row(run, duration=HOUR, when="2022")
+    record_row([run], duration=HOUR, when="2022")
     PlayerGame.objects.filter(pk=run.player_game_id).update(removed_at=timezone.now())
     assert counted(owned_library) == []
 
 
 @pytest.mark.django_db
 def test_a_record_of_a_removed_catalog_game_is_not_counted(owned_library, game, run):
-    record_row(run, duration=HOUR, when="2022")
+    record_row([run], duration=HOUR, when="2022")
     remove(game)
     assert counted(owned_library) == []
 
@@ -111,8 +112,8 @@ def test_a_record_of_a_removed_catalog_game_is_not_counted(owned_library, game, 
 @pytest.mark.django_db
 def test_game_records_narrow_to_one_catalog_game(owned_library, game, run):
     other = Game.objects.create(library=owned_library, name="Tunic")
-    mine = record_row(run, duration=HOUR, when="2022")
-    record_row(tracked_run(owned_library, other), duration=HOUR, when="2022")
+    mine = record_row([run], duration=HOUR, when="2022")
+    record_row([tracked_run(owned_library, other)], duration=HOUR, when="2022")
     assert list(game_records(owned_library, game)) == [mine]
 
 
@@ -121,7 +122,7 @@ def test_readable_records_read_platform_and_device_at_once(
     owned_library, run, django_assert_num_queries
 ):
     device = Device.objects.create(library=owned_library, name="Deck")
-    record_row(run, duration=HOUR, when="2022", device=device)
+    record_row([run], duration=HOUR, when="2022", device=device)
     with django_assert_num_queries(1):
         (record,) = readable_records(owned_library)
         assert record.player_game.game.platform is None
@@ -130,7 +131,7 @@ def test_readable_records_read_platform_and_device_at_once(
 
 @pytest.mark.django_db
 def test_an_unused_id_is_never_counted(owned_library, run):
-    record_row(run, duration=HOUR, when="2022")
+    record_row([run], duration=HOUR, when="2022")
     assert not library_records(owned_library).filter(pk=uuid.uuid7()).exists()
 
 
@@ -157,7 +158,7 @@ CONTAINMENT = [
 @pytest.mark.django_db
 @pytest.mark.parametrize(("when", "scopes"), CONTAINMENT)
 def test_a_record_counts_where_its_when_lies_wholly(owned_library, run, when, scopes):
-    record_row(run, duration=HOUR, when=when)
+    record_row([run], duration=HOUR, when=when)
     counted_in = {
         name
         for name, within in {
@@ -174,7 +175,7 @@ def test_a_record_counts_where_its_when_lies_wholly(owned_library, run, when, sc
 @pytest.mark.django_db
 @pytest.mark.parametrize(("when", "scopes"), CONTAINMENT)
 def test_the_month_rows_count_what_lies_in_one_month(owned_library, run, when, scopes):
-    record_row(run, duration=HOUR, when=when)
+    record_row([run], duration=HOUR, when=when)
     expected = [MonthHistorical(date(2022, 6, 1), HOUR)] if "month" in scopes else []
     assert historical_by_month(owned_library, year=2022) == expected
 
@@ -182,14 +183,14 @@ def test_the_month_rows_count_what_lies_in_one_month(owned_library, run, when, s
 @pytest.mark.django_db
 @pytest.mark.parametrize(("when", "scopes"), CONTAINMENT)
 def test_a_year_is_listed_when_it_holds_a_record(owned_library, run, when, scopes):
-    record_row(run, duration=HOUR, when=when)
+    record_row([run], duration=HOUR, when=when)
     assert historical_years(owned_library) == ([2022] if "year" in scopes else [])
 
 
 @pytest.mark.django_db
 def test_one_query_sums_every_window(owned_library, run, django_assert_num_queries):
-    record_row(run, duration=HOUR, when="2022-06-11")
-    record_row(run, duration=2 * HOUR, when="2022-06")
+    record_row([run], duration=HOUR, when="2022-06-11")
+    record_row([run], duration=2 * HOUR, when="2022-06")
     with django_assert_num_queries(1):
         totals = historical_totals(owned_library, [DAY, JUNE, YEAR])
     assert totals == [HOUR, 3 * HOUR, 3 * HOUR]
@@ -201,8 +202,8 @@ def test_a_record_reaches_its_platform_through_the_game(owned_library):
     platform = Platform.objects.create(name="PC", icon="pc")
     played = Game.objects.create(library=owned_library, name="Tunic", platform=platform)
     unplaced = Game.objects.create(library=owned_library, name="Outer Wilds")
-    record_row(tracked_run(owned_library, played), duration=HOUR, when="2022")
-    record_row(tracked_run(owned_library, unplaced), duration=2 * HOUR, when="2021")
+    record_row([tracked_run(owned_library, played)], duration=HOUR, when="2022")
+    record_row([tracked_run(owned_library, unplaced)], duration=2 * HOUR, when="2021")
 
     assert sorted(historical_by_platform(owned_library), key=str) == sorted(
         [
@@ -218,9 +219,9 @@ def test_a_record_reaches_its_platform_through_the_game(owned_library):
 
 @pytest.mark.django_db
 def test_provenance_narrows_the_games_sum(owned_library, game, run):
-    record_row(run, duration=HOUR, when="2022")
+    record_row([run], duration=HOUR, when="2022")
     record_row(
-        run,
+        [run],
         duration=2 * HOUR,
         when=None,
         provenance=HistoricalPlaytimeProvenance.EXTERNALLY_MEASURED,
@@ -237,8 +238,8 @@ def test_provenance_narrows_the_games_sum(owned_library, game, run):
 @pytest.mark.django_db
 def test_the_per_game_sum_agrees_with_the_games_figure(owned_library, game, run):
     unplayed = Game.objects.create(library=owned_library, name="Tunic")
-    record_row(run, duration=HOUR, when="2022")
-    record_row(run, duration=HOUR, when="2019")
+    record_row([run], duration=HOUR, when="2022")
+    record_row([run], duration=HOUR, when="2019")
     sums = dict(
         Game.objects.filter(pk__in=[game.pk, unplayed.pk])
         .annotate(
@@ -276,7 +277,6 @@ def test_a_record_naming_two_runs_counts_once(owned_library, game, run):
         kind=PlaythroughKind.ORDINARY,
         created_at=timezone.now(),
     )
-    record = record_row(run, duration=HOUR, when="2022")
-    record_join(record, second)
+    record_row([run, second], duration=HOUR, when="2022")
     assert historical_total(owned_library) == HOUR
     assert game_historical_playtime(owned_library, game) == HOUR

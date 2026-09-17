@@ -52,7 +52,7 @@ def _game_playtime_sort(library: UserLibrary) -> object:
 
 def _stats_totals(library: UserLibrary) -> object:
     return (
-        total_playtime(library),
+        total_playtime(library).total,
         session_count(library, None),
         distinct_days(library, None),
     )
