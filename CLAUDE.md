@@ -378,36 +378,25 @@ docs/           — Additional documentation
   differ, every read inside 20 ms; page diff attributed in the wave review.
   Contract is
   [Pass the Session replay, statistics and budget gates](docs/superpowers/specs/2026-09-15-issue-704-session-gates-design.md)
-- **HistoricalPlaytime** — fourth projection: one row per record of playtime a
-  library states without sittings — a Steam total, a guess about a childhood
-  — written only by `HistoricalPlaytimes` projector, `CURRENT_STATE` family.
-  A record is one fact, so `library.historicalplaytime.created` and
-  `.restated` share one whole-statement payload and a restatement overwrites
-  every column; `.removed`/`.restored` carry nothing and move `removed_at`.
-  Names a `PlayerGame` and one or more of its runs through
-  `HistoricalPlaytimeRun`, a join projection whose row ids the payload
-  carries (`playthroughs: [{id, playthrough}]`, sorted by run) so a replay
-  reproduces them and a kept run keeps its row; the projector replaces the
-  set whole. `when` is envelope's `effective_time`, null unknown, with
-  generated `when_lower`/`when_upper` and index `(library, when_lower, id)`
-  for containment reads. Three provenances, full words, CHECKed:
-  `estimated`, `manually_entered`, `externally_measured`; command admits all
-  three, form (#706) offers two. `release` and `source` are reserved keys
-  typed `None` until ACCESS and importer widen them. Database admits
-  superset of what command admits: CHECK is `duration > 0`, command asks a
-  whole second. `alive()` reads own mark and `player_game`'s, not catalog
-  game's; join's `alive()` derives from record's two marks. Commands
-  `RecordHistoricalPlaytime`, `RestateHistoricalPlaytime`,
-  `RemoveHistoricalPlaytime`, `RestoreHistoricalPlaytime` take
-  `HistoricalPlaytimeStatement`, normalised before fingerprint (note stripped,
-  runs deduplicated and sorted, duration truncated, `when` canonical), refuse
-  runs of two games and the imported-history bucket, and resolve devices
-  through `library_device` in `games/commands/scope.py`, the one resolver.
-  `HistoricalPlaytimeRun.playthrough` is second `BLOCKING_REFERRERS` entry: a
-  live record keeps its run in place. Nothing reads or writes it from a page
-  yet. Contract is
+- **HistoricalPlaytime** — fourth projection: playtime a library states
+  without sittings, written only by `HistoricalPlaytimes` projector.
+  `library.historicalplaytime.created`/`.restated` share one whole-statement
+  payload and a restatement overwrites every column; `.removed`/`.restored`
+  move `removed_at`. Names a `PlayerGame` and one or more of its runs through
+  `HistoricalPlaytimeRun`, a join whose row ids the payload carries so a
+  replay reproduces them; projector replaces the set whole. `when` is
+  envelope's `effective_time`, null unknown, with generated
+  `when_lower`/`when_upper` and index `(library, when_lower, id)`. Provenance
+  CHECKed: `estimated`, `manually_entered`, `externally_measured`. `release`
+  and `source` reserved, typed `None`. Database admits superset of what
+  command admits. `alive()` reads own mark and `player_game`'s; join's derives
+  from record's. Commands `Record`/`Restate`/`Remove`/`RestoreHistoricalPlaytime`
+  take `HistoricalPlaytimeStatement`, normalised before fingerprint; devices
+  resolve through `library_device` in `games/commands/scope.py`, the one
+  resolver. Join's `playthrough` is second `BLOCKING_REFERRERS` entry. Nothing
+  reads or writes it from a page yet. Contract is
   [HistoricalPlaytime aggregate](docs/superpowers/specs/2026-09-17-issue-705-historical-playtime-aggregate-design.md);
-  the wave is
+  wave is
   [Historical Playtime](docs/superpowers/specs/2026-09-17-historical-playtime-wave-design.md)
 
 **Nothing user removes is destroyed** (#944). Eight removable models — Game,

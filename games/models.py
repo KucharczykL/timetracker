@@ -1878,10 +1878,7 @@ class LibraryCalendar(ProjectionModel):
 
 
 class HistoricalPlaytimeProvenance(models.TextChoices):
-    """Where a stated duration came from.
-
-    Full words: a recorded payload is never upcast.
-    """
+    """Where a stated duration came from."""
 
     ESTIMATED = "estimated", "Estimated"
     MANUALLY_ENTERED = "manually_entered", "Manually entered"
@@ -1889,35 +1886,35 @@ class HistoricalPlaytimeProvenance(models.TextChoices):
 
 
 class HistoricalPlaytimeQuerySet(RemovableMixin, models.QuerySet["HistoricalPlaytime"]):
-    """The marks that hide a record: its own and its tracked game's."""
+    """The marks that hide a record."""
 
     ancestor_marks = ("player_game",)
 
 
 class HistoricalPlaytime(ProjectionModel):
-    """Playtime a library states without sittings, projected from its events."""
+    """Playtime stated without sittings, from events."""
 
     objects = HistoricalPlaytimeQuerySet.as_manager()
 
-    #: The game is one parent away; the filter compares against it.
+    #: The game is one parent away.
     comparison_through = (("player_game__game", "Game"),)
 
     id = UUIDv7Field(
         primary_key=True,
         editable=False,
-        #: The creation event's aggregate_id, evaluated once.
+        #: The creation event's aggregate_id.
         default=models.NOT_PROVIDED,
         db_default=models.NOT_PROVIDED,
     )
     player_game = models.ForeignKey(
         PlayerGame,
-        #: No cascade may destroy a projection row.
+        #: No cascade destroys a projection row.
         on_delete=models.RESTRICT,
         related_name="historical_playtime",
     )
-    #: Every column below is stated by the event and carries no default.
+    #: Every column below is stated; no default.
     duration = models.DurationField()
-    #: Null is a when nobody knows, as on a run's start.
+    #: Null is a when nobody knows.
     when = TemporalValueField()
     when_lower = models.GeneratedField(
         expression=TemporalLowerBound("when"),
@@ -1947,12 +1944,12 @@ class HistoricalPlaytime(ProjectionModel):
     note = models.TextField()
     #: The creation event's recorded_at.
     created_at = models.DateTimeField(editable=False)
-    #: The remove event's recorded_at; null means live.
+    #: The remove event's recorded_at; null live.
     removed_at = models.DateTimeField(null=True, default=None, editable=False)
 
     class Meta:
         indexes = (
-            #: The containment reads: a year or a month, then the key.
+            #: Containment reads: period, then key.
             models.Index(
                 fields=("library", "when_lower", "id"),
                 name="historicalplaytime_when_order",
@@ -1972,7 +1969,7 @@ class HistoricalPlaytime(ProjectionModel):
 
 
 class HistoricalPlaytimeRunQuerySet(models.QuerySet["HistoricalPlaytimeRun"]):
-    """A join row is live while its record is."""
+    """A join row lives while its record."""
 
     def alive(self):
         return self.filter(
@@ -1982,14 +1979,14 @@ class HistoricalPlaytimeRunQuerySet(models.QuerySet["HistoricalPlaytimeRun"]):
 
 
 class HistoricalPlaytimeRun(ProjectionModel):
-    """One run a historical playtime record names."""
+    """One run a record names."""
 
     objects = HistoricalPlaytimeRunQuerySet.as_manager()
 
     id = UUIDv7Field(
         primary_key=True,
         editable=False,
-        #: The statement's own id for this pair, evaluated once.
+        #: The statement's id for this pair.
         default=models.NOT_PROVIDED,
         db_default=models.NOT_PROVIDED,
     )

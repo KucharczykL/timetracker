@@ -1,4 +1,4 @@
-"""Events about playtime a library states without sittings."""
+"""Events about playtime stated without sittings."""
 
 import uuid
 from collections.abc import Iterable
@@ -12,17 +12,16 @@ from games.events.references import STRICT_SCHEMA, Reference, ReferenceId
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, EventSpec, NewEvent
 from timetracker.temporal import TemporalValue
 
-#: The recorded spelling; the model's TextChoices is not it.
+#: Recorded spelling; not the TextChoices.
 type ProvenanceValue = Literal["estimated", "manually_entered", "externally_measured"]
 
 
 @with_config(STRICT_SCHEMA)
 class HistoricalPlaytimeRunPayload(TypedDict):
-    """One run the record names, and the join row's own identity.
+    """One named run and its join id.
 
-    Both bare ids, as a session's run is: a required ReferenceKind on
-    a projection row would make replay's check read the live table
-    before the first row.
+    Both bare ids: a ReferenceKind on a projection row would make
+    replay's reference check read the live table before the first row.
     """
 
     id: ReferenceId
@@ -32,14 +31,14 @@ class HistoricalPlaytimeRunPayload(TypedDict):
 def sorted_runs(
     members: Iterable[HistoricalPlaytimeRunPayload],
 ) -> list[HistoricalPlaytimeRunPayload]:
-    """The one order a statement's runs are recorded in."""
+    """The one recorded order: by playthrough text."""
     return sorted(members, key=lambda member: member["playthrough"])
 
 
 def _canonical_runs(
     members: list[HistoricalPlaytimeRunPayload],
 ) -> list[HistoricalPlaytimeRunPayload]:
-    """Refuse an empty, repeated or unsorted list."""
+    """Refuse empty, repeated or unsorted runs."""
     if not members:
         raise ValueError("A record names at least one playthrough.")
     runs = [member["playthrough"] for member in members]
@@ -57,16 +56,7 @@ type RunMembers = Annotated[
 
 @with_config(STRICT_SCHEMA)
 class HistoricalPlaytimeStatementPayload(TypedDict):
-    """The whole of one record; created and restated share it.
-
-    `when` is not here: it is the envelope's effective_time, where a
-    playthrough endpoint's date already rides.
-
-    `release` and `source` are reserved and typed None: the validator
-    refuses a value until the issue that defines one widens the type.
-    A key holding None rather than an absent one, because under
-    extra="forbid" the two would be two spellings of one fact.
-    """
+    """Whole record; created and restated share it."""
 
     player_game: ReferenceId
     playthroughs: RunMembers
@@ -81,7 +71,7 @@ class HistoricalPlaytimeStatementPayload(TypedDict):
 
 @with_config(STRICT_SCHEMA)
 class HistoricalPlaytimeMarkPayload(TypedDict):
-    """Removed and restored state nothing beyond the act."""
+    """Removed and restored state nothing more."""
 
 
 HISTORICALPLAYTIME_CREATED = EventSpec(
@@ -126,7 +116,7 @@ def _statement(
     return {
         "player_game": str(player_game_id),
         "playthroughs": sorted_runs(runs),
-        #: Whole seconds: the command truncates, this only spells.
+        #: Whole seconds; the command truncates.
         "duration_seconds": duration // timedelta(seconds=1),
         "provenance": provenance,
         "device": device,
@@ -138,7 +128,7 @@ def _statement(
 
 
 def _effective(when: TemporalValue) -> TemporalValue | None:
-    """Null is the envelope's spelling of a when nobody knows."""
+    """Unknown when is a null effective_time."""
     return None if when.is_unknown else when
 
 
@@ -154,7 +144,7 @@ def historicalplaytime_created(
     note: str,
     record_id: uuid.UUID | None = None,
 ) -> NewEvent:
-    """The library stated playtime it did not track."""
+    """The library stated untracked playtime."""
     return HISTORICALPLAYTIME_CREATED.new(
         aggregate_id=uuid.uuid7() if record_id is None else record_id,
         effective_time=_effective(when),
@@ -182,7 +172,7 @@ def historicalplaytime_restated(
     emulated: bool,
     note: str,
 ) -> NewEvent:
-    """The library stated the whole record again."""
+    """The library restated the whole record."""
     return HISTORICALPLAYTIME_RESTATED.new(
         aggregate_id=record_id,
         effective_time=_effective(when),
@@ -199,10 +189,10 @@ def historicalplaytime_restated(
 
 
 def historicalplaytime_removed(record_id: uuid.UUID) -> NewEvent:
-    """The library took the record out of every total."""
+    """Took the record out of totals."""
     return HISTORICALPLAYTIME_REMOVED.new(aggregate_id=record_id, payload={})
 
 
 def historicalplaytime_restored(record_id: uuid.UUID) -> NewEvent:
-    """The library put a removed record back."""
+    """Put a removed record back."""
     return HISTORICALPLAYTIME_RESTORED.new(aggregate_id=record_id, payload={})

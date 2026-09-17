@@ -51,7 +51,7 @@ def library_row[RowT: Model](
 def library_device(
     context: CommandContext, device_id: uuid.UUID | None
 ) -> Device | None:
-    """This library's device, or a refusal; None is a device nobody stated."""
+    """This library's device; None is unstated."""
     if device_id is None:
         return None
     device = library_row(
@@ -66,7 +66,7 @@ def library_device(
         ),
         pk=device_id,
     )
-    #: Under dispatch's lock: the mark cannot move.
+    #: Under dispatch's lock; mark cannot move.
     if device.removed_at is not None:
         raise CommandRejected(
             f"This library removed device {device_id}, so nothing names it anew.",

@@ -1,4 +1,4 @@
-"""One row per historical playtime record a library states."""
+"""One row per historical playtime record."""
 
 import uuid
 from datetime import date, timedelta
@@ -36,7 +36,7 @@ from games.projections import (
 from games.projectors.historical_playtime import columns_for_statement
 from timetracker.temporal import TemporalValue
 
-#: Nothing here wants the row the fixture tracks for a new game.
+#: No fixture-tracked row wanted here.
 pytestmark = pytest.mark.untracked_games
 
 
@@ -67,7 +67,7 @@ def run(owned_library, tracked) -> Playthrough:
 
 
 def a_record(tracked, **stated) -> HistoricalPlaytime:
-    """One row, written the way the projector writes it."""
+    """One row, as the projector writes it."""
     columns = {
         "id": uuid.uuid7(),
         "library": tracked.library,
@@ -183,7 +183,7 @@ def test_the_record_reaches_the_game_in_one_hop():
 
 
 def append(library, actor, event, *, key: str) -> None:
-    """Append one built event under a key, as dispatch would."""
+    """Append one event under a key."""
     with transaction.atomic():
         stream = lock_stream(library)
         stream.append(
@@ -361,7 +361,7 @@ def test_the_projection_replays_from_an_empty_stream(
 def test_a_rebuild_swaps_both_tables_with_an_empty_diff(
     owned_user, owned_library, game
 ):
-    """The run comes from a command: a rebuild reproduces every row."""
+    """A rebuild reproduces a command's run."""
     dispatch(
         TrackGame(game_id=game.pk),
         actor=owned_user,

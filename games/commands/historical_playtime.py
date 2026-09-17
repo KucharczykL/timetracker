@@ -1,4 +1,4 @@
-"""Commands about the playtime a library states without sittings."""
+"""Commands about historical playtime."""
 
 import uuid
 from collections.abc import Sequence
@@ -39,7 +39,7 @@ from timetracker.temporal import TemporalValue, TemporalValueParseError
 ONE_GAME = (
     "Historical playtime belongs to one game. Choose playthroughs of the same game."
 )
-#: The bucket is the importer's; a person records on a run.
+#: The bucket is the importer's.
 INTO_THE_BUCKET_HISTORICAL = (
     "That is the imported-history bucket. Record historical playtime on one of "
     "the game's playthroughs instead."
@@ -49,15 +49,10 @@ AT_LEAST_A_SECOND = "Historical playtime is at least a second."
 
 
 class HistoricalPlaytimeStatement(NamedTuple):
-    """The whole of one record, as a person states it.
-
-    A NamedTuple, so the idempotency fingerprint encodes it as an
-    array; a dataclass reaches the encoder's fallback and raises.
-    Positional, so the fields are named here once and left alone.
-    """
+    """One record, as a person states it."""
 
     duration: timedelta
-    #: Canonical temporal text; None is a when nobody knows.
+    #: Canonical temporal text; None is unknown.
     when: str | None
     provenance: HistoricalPlaytimeProvenance
     playthrough_ids: tuple[uuid.UUID, ...]
@@ -69,7 +64,7 @@ class HistoricalPlaytimeStatement(NamedTuple):
 def normalized_statement(
     statement: HistoricalPlaytimeStatement,
 ) -> HistoricalPlaytimeStatement:
-    """One spelling, so restatements fingerprint alike; refusals first."""
+    """One spelling; refusals first."""
     note = statement.note.strip()
     check_note(note)
     runs = tuple(sorted(set(statement.playthrough_ids), key=str))
@@ -99,7 +94,7 @@ def normalized_statement(
 def _live_runs(
     context: CommandContext, statement: HistoricalPlaytimeStatement
 ) -> list[Playthrough]:
-    """Every named run, live, of one game, none the bucket."""
+    """Every run live, one game, no bucket."""
     runs = [
         refuse_unless_live(library_playthrough(context, run_id))
         for run_id in statement.playthrough_ids
@@ -120,14 +115,14 @@ def _live_runs(
 
 
 def _recorded(provenance: HistoricalPlaytimeProvenance) -> ProvenanceValue:
-    """The model's choice as the payload spells it; the CHECK admits no other."""
+    """The choice as the payload spells it."""
     return cast("ProvenanceValue", provenance.value)
 
 
 def _members(
     runs: Sequence[Playthrough], kept: dict[uuid.UUID, uuid.UUID]
 ) -> list[HistoricalPlaytimeRunPayload]:
-    """A join id per run: the one it has, or a fresh one."""
+    """Join id per run: kept or fresh."""
     return [
         {"id": str(kept.get(run.pk, uuid.uuid7())), "playthrough": str(run.pk)}
         for run in runs
@@ -135,7 +130,7 @@ def _members(
 
 
 def library_record(context: CommandContext, record_id: uuid.UUID) -> HistoricalPlaytime:
-    """This library's record, or a refusal; returns a removed one."""
+    """This library's record, removed or not."""
     return library_row(
         context,
         HistoricalPlaytime.objects.select_related("player_game"),
@@ -149,7 +144,7 @@ def library_record(context: CommandContext, record_id: uuid.UUID) -> HistoricalP
 
 def _live_record(context: CommandContext, record_id: uuid.UUID) -> HistoricalPlaytime:
     record = library_record(context, record_id)
-    #: Under dispatch's lock: neither mark can move.
+    #: Under dispatch's lock: marks cannot move.
     if record.player_game.removed_at is not None:
         raise CommandRejected(
             f"This library removed the game behind record {record_id}.",
@@ -167,7 +162,7 @@ def _live_record(context: CommandContext, record_id: uuid.UUID) -> HistoricalPla
 
 
 def _held_columns(record: HistoricalPlaytime) -> dict[str, object]:
-    """The row as the projector's mapping spells it."""
+    """The row as the projector spells it."""
     return {
         "player_game_id": record.player_game_id,
         "duration": record.duration,
@@ -181,7 +176,7 @@ def _held_columns(record: HistoricalPlaytime) -> dict[str, object]:
 
 @dataclass(frozen=True, slots=True)
 class RecordHistoricalPlaytime(Command):
-    """State playtime the library did not track."""
+    """State untracked playtime."""
 
     command_name: ClassVar[CommandName] = CommandName.HISTORICALPLAYTIME_RECORD
     statement: HistoricalPlaytimeStatement
@@ -221,7 +216,7 @@ class RestateHistoricalPlaytime(Command):
         record = _live_record(context, self.record_id)
         runs = _live_runs(context, self.statement)
         device = library_device(context, self.statement.device_id)
-        #: A projection read under dispatch's lock; the rows cannot move.
+        #: Read under dispatch's lock; rows cannot move.
         kept = dict(
             HistoricalPlaytimeRun.objects.filter(
                 record=record, library=context.library
@@ -238,7 +233,7 @@ class RestateHistoricalPlaytime(Command):
             emulated=self.statement.emulated,
             note=self.statement.note,
         )
-        #: The projector's mapping; never a copy of it.
+        #: The projector's mapping, never a copy.
         stated = columns_for_statement(
             cast("HistoricalPlaytimeStatementPayload", event.payload),
             event.effective_time,
@@ -251,14 +246,14 @@ class RestateHistoricalPlaytime(Command):
 
 @dataclass(frozen=True, slots=True)
 class RemoveHistoricalPlaytime(Command):
-    """Take a record out of every total."""
+    """Take a record out of totals."""
 
     command_name: ClassVar[CommandName] = CommandName.HISTORICALPLAYTIME_REMOVE
     record_id: uuid.UUID
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         record = library_record(context, self.record_id)
-        #: No-op first: a repeat succeeds regardless.
+        #: No-op first; a repeat succeeds.
         if record.removed_at is not None:
             return Unchanged(f"This library already removed record {self.record_id}.")
         return [historicalplaytime_removed(record.pk)]

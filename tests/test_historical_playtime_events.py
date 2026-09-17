@@ -1,4 +1,4 @@
-"""What a library states about playtime it did not track."""
+"""What a library states about untracked playtime."""
 
 import uuid
 from datetime import timedelta

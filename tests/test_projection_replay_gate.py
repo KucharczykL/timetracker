@@ -314,8 +314,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     #: Left removed, as the third run and the third game are.
     run(RemoveSession(session_id=duration_only), "remove-duration-only-session")
 
-    #: Historical playtime: a record on two runs, restated onto one;
-    #: a second left removed; a third removed and restored.
+    #: Two-run record restated; one removed; one restored.
     a_statement = HistoricalPlaytimeStatement(
         duration=timedelta(hours=100),
         when="2005",
@@ -408,7 +407,7 @@ def test_the_stream_carries_every_registered_event_type(owned_user, owned_librar
 
 
 def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_library):
-    """A real stream, short of twenty-six of its types."""
+    """A real stream, short of twenty-six types."""
     game = Game.objects.create(library=owned_library, name="Celeste")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -458,7 +457,7 @@ def build_neighbour(user, library) -> None:
         idempotency_key="neighbour-session",
     )
     assert result.outcome is CommandOutcome.APPENDED, "neighbour-session"
-    #: And one record with its join row, so both new tables hold a neighbour.
+    #: One record; both new tables hold neighbours.
     result = dispatch(
         RecordHistoricalPlaytime(
             statement=HistoricalPlaytimeStatement(
@@ -498,7 +497,7 @@ type ProjectionSnapshot = tuple[
 
 
 def rows_of(library) -> ProjectionSnapshot:
-    """The five tables' whole rows, in key order.
+    """Five tables' whole rows, in key order.
 
     `.values()` rather than a column list, so a column added later is
     in the comparison the day it lands. Refuses an empty table, because

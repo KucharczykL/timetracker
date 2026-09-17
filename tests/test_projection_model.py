@@ -348,7 +348,7 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         "removed_at": None,
     },
     "games.HistoricalPlaytime": {
-        #: The field's own null for a when nobody knows.
+        #: The field's own null for unknown when.
         "when": None,
         #: The projector's mark.
         "removed_at": None,

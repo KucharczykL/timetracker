@@ -1,4 +1,4 @@
-"""Current-state rows for the playtime a library states without sittings."""
+"""Current-state rows for historical playtime."""
 
 import uuid
 from datetime import timedelta
@@ -24,8 +24,8 @@ from timetracker.temporal import TemporalValue
 class StatementColumns(TypedDict):
     """The seven columns one statement decides.
 
-    A TypedDict so a dropped key is the type checker's finding, not
-    `project()`'s at append time.
+    A TypedDict, so a dropped key is mypy's finding: `amend` would
+    keep the old value in silence.
     """
 
     player_game_id: uuid.UUID
@@ -40,7 +40,7 @@ class StatementColumns(TypedDict):
 def columns_for_statement(
     payload: HistoricalPlaytimeStatementPayload, effective_time: TemporalValue | None
 ) -> StatementColumns:
-    """Every column, every time: a restatement overwrites the whole row."""
+    """Every column, every time."""
     device = payload["device"]
     return {
         "player_game_id": uuid.UUID(payload["player_game"]),
@@ -54,26 +54,20 @@ def columns_for_statement(
 
 
 def _statement_of(event: RecordedEvent) -> HistoricalPlaytimeStatementPayload:
-    """The payload as its schema reads it; validated at append."""
+    """The payload as its schema reads it."""
     return cast("HistoricalPlaytimeStatementPayload", event.payload)
 
 
 class HistoricalPlaytimes(Projector):
-    """One row per record, and one join row per run it names."""
+    """One record row; one join per run."""
 
     family_name = ProjectorFamily.CURRENT_STATE
 
     def _write_runs(self, event: RecordedEvent) -> None:
-        """The record's runs, replaced whole.
-
-        A derived set is never patched: this record's rows in the
-        event's library are taken out and written again from the
-        payload, each with the id the statement carries, so a kept run
-        keeps its row and a replay reproduces every id.
-        """
+        """The record's runs, replaced whole."""
         rows = self.library_rows(HistoricalPlaytimeRun, event)
         rows.filter(record_id=event.aggregate_id).delete()
-        #: `bulk_create` reads no filter; each row states its library.
+        #: bulk_create ignores the filter; rows state library.
         rows.bulk_create(
             [
                 rows.model(
@@ -87,7 +81,7 @@ class HistoricalPlaytimes(Projector):
         )
 
     def _created(self, event: RecordedEvent) -> None:
-        #: Never names the mark, so a removal survives a replayed restate.
+        #: Never names the mark; removal survives replay.
         self.project(
             HistoricalPlaytime,
             event,
@@ -105,7 +99,7 @@ class HistoricalPlaytimes(Projector):
         self._write_runs(event)
 
     def _removed(self, event: RecordedEvent) -> None:
-        #: The event's instant, so a replay agrees.
+        #: The event's instant, so replay agrees.
         self.amend(HistoricalPlaytime, event, removed_at=event.recorded_at)
 
     def _restored(self, event: RecordedEvent) -> None:
