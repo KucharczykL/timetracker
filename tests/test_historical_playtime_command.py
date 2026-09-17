@@ -16,8 +16,17 @@ from games.commands.historical_playtime import (
     RestoreHistoricalPlaytime,
 )
 from games.commands.playergame import TrackGame
-from games.commands.playthrough import CreatePlaythrough
-from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
+from games.commands.playthrough import (
+    HISTORICAL_PLAYTIME_RECORDED,
+    CreatePlaythrough,
+    RemovePlaythrough,
+)
+from games.events.dispatch import (
+    CommandOutcome,
+    CommandRejected,
+    RowUnreadable,
+    dispatch,
+)
 from games.models import (
     Device,
     Game,
@@ -400,3 +409,79 @@ def test_a_record_another_library_holds_is_refused(
     _refused(owned_library, owned_user, RemoveHistoricalPlaytime(record_id=stored.pk))
     _refused(owned_library, owned_user, RestoreHistoricalPlaytime(record_id=stored.pk))
     assert HistoricalPlaytimeRun.objects.count() == 1
+
+
+# --- A record keeps its run in place -----------------------------------------
+
+
+def _remove_run(library, actor, run, *, key):
+    return dispatch(
+        RemovePlaythrough(playthrough_id=run.pk),
+        actor=actor,
+        library=library,
+        idempotency_key=key,
+    )
+
+
+def test_a_live_record_keeps_its_run_in_place(
+    owned_user, owned_library, run, second_run
+):
+    record(owned_library, owned_user, stated(run, playthrough_ids=(second_run.pk,)))
+    refused = _refused(
+        owned_library, owned_user, RemovePlaythrough(playthrough_id=second_run.pk)
+    )
+    assert refused.sentence == HISTORICAL_PLAYTIME_RECORDED
+    second_run.refresh_from_db()
+    assert second_run.removed_at is None
+
+
+def test_a_removed_record_keeps_nothing_in_place(
+    owned_user, owned_library, run, second_run
+):
+    stored = record(
+        owned_library, owned_user, stated(run, playthrough_ids=(second_run.pk,))
+    )
+    dispatch(
+        RemoveHistoricalPlaytime(record_id=stored.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="rm",
+    )
+    _remove_run(owned_library, owned_user, second_run, key="rm-run")
+    second_run.refresh_from_db()
+    assert second_run.removed_at is not None
+
+
+def test_a_restated_away_record_keeps_nothing_in_place(
+    owned_user, owned_library, run, second_run
+):
+    stored = record(
+        owned_library, owned_user, stated(run, playthrough_ids=(second_run.pk,))
+    )
+    dispatch(
+        RestateHistoricalPlaytime(record_id=stored.pk, statement=stated(run)),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="move",
+    )
+    _remove_run(owned_library, owned_user, second_run, key="rm-run")
+    second_run.refresh_from_db()
+    assert second_run.removed_at is not None
+
+
+def test_a_foreign_record_is_refused_as_a_defect(
+    owned_user, owned_library, run, second_run, second_library
+):
+    stored = record(
+        owned_library, owned_user, stated(run, playthrough_ids=(second_run.pk,))
+    )
+    HistoricalPlaytime.objects.filter(pk=stored.pk).update(library=second_library)
+    HistoricalPlaytimeRun.objects.filter(record=stored).update(library=second_library)
+    with pytest.raises(RowUnreadable) as refusal:
+        _remove_run(owned_library, owned_user, second_run, key="rm-run")
+    argument = str(refusal.value)
+    assert str(second_run.pk) in argument
+    assert str(second_library.pk) in argument
+    assert "HistoricalPlaytimeRun.playthrough" in argument
+    second_run.refresh_from_db()
+    assert second_run.removed_at is None

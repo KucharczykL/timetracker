@@ -30,6 +30,7 @@ from games.events.playthrough import (
 )
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import (
+    HistoricalPlaytimeRun,
     PlayerSession,
     Playthrough,
     PlaythroughKind,
@@ -517,6 +518,11 @@ class BlockingReferrer(NamedTuple):
 
 
 #: The sentence names a remedy that exists.
+HISTORICAL_PLAYTIME_RECORDED = (
+    "Historical playtime is recorded on this playthrough. Restate it onto "
+    "another playthrough, or remove it, before removing this one."
+)
+
 BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
     BlockingReferrer.on(
         PlayerSession,
@@ -525,6 +531,11 @@ BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
             "Sessions are recorded on this playthrough. Move them to "
             "another playthrough before removing it."
         ),
+    ),
+    BlockingReferrer.on(
+        HistoricalPlaytimeRun,
+        "playthrough",
+        sentence=HISTORICAL_PLAYTIME_RECORDED,
     ),
 )
 
