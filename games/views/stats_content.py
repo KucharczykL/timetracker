@@ -394,7 +394,7 @@ def stats_content(
             "Games by playtime",
             _two_col_table(
                 "Name",
-                ctx.get("top_10_games_by_playtime") or [],
+                ctx["top_10_games_by_playtime"],
                 lambda g: Fragment(
                     GameLink(g, g.name), _session_link(g.id, year, g.name)
                 ),
@@ -412,7 +412,7 @@ def stats_content(
             "Platforms by playtime",
             _two_col_table(
                 "Platform",
-                ctx.get("total_playtime_per_platform") or [],
+                ctx["total_playtime_per_platform"],
                 lambda platform: platform.platform_name or "Unspecified",
                 lambda platform: Duration(
                     platform.playtime.total,

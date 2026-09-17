@@ -531,10 +531,10 @@ class TestListGamesSort:
     ):
         sort = games_for_list(
             owned_library, game_filter=None, find=FindFilter(sort="playtime")
-        )
+        ).sort
         plan = sort.queryset.explain()
 
-        #: The trailing space skips index names that start with the table's.
+        #: The space skips same-prefixed index names.
         assert plan.count(" on games_historicalplaytime ") == 1
         assert plan.count(" on games_playersession ") == 1
 
@@ -546,13 +546,52 @@ class TestListGamesSort:
             session_filter=PlayerSessionFilter.where(device=[handheld.pk])
         )
 
+        by_name = GameFilter.from_json(
+            {"name": {"value": "Alpha", "modifier": "INCLUDES"}}
+        )
+
         plain = logged_client.get(reverse("games:list_games"))
+        named = logged_client.get(
+            reverse("games:list_games"), {"filter": filter_to_json(by_name)}
+        )
         filtered = logged_client.get(
             reverse("games:list_games"), {"filter": filter_to_json(narrowed)}
         )
 
         assert "Playtime (matching sessions)" not in plain.content.decode()
+        assert "Playtime (matching sessions)" not in named.content.decode()
         assert "Playtime (matching sessions)" in filtered.content.decode()
+
+    def test_a_session_filter_narrows_the_column_not_the_sort(
+        self, logged_client, owned_library, two_games
+    ):
+        alpha, beta = two_games
+        handheld = Device.objects.create(library=owned_library, name="Deck")
+        start = datetime(2022, 1, 1, 10, tzinfo=ZONEINFO)
+        session_row(
+            alpha, started_at=start, ended_at=start.replace(hour=12), device=handheld
+        )
+        session_row(
+            beta, started_at=start, ended_at=start.replace(hour=11), device=handheld
+        )
+        record_row([tracked_run(owned_library, beta)], duration=timedelta(hours=2))
+        narrowed = filter_to_json(
+            GameFilter(session_filter=PlayerSessionFilter.where(device=[handheld.pk]))
+        )
+
+        by_total = logged_client.get(
+            reverse("games:list_games"), {"filter": narrowed, "sort": "-playtime"}
+        )
+        by_column = logged_client.get(
+            reverse("games:list_games"),
+            {"filter": narrowed, "sort": "-filtered_playtime"},
+        )
+
+        assert _row_order(by_total, ["Alpha", "Beta"]) == ["Beta", "Alpha"]
+        assert _row_order(by_column, ["Alpha", "Beta"]) == ["Alpha", "Beta"]
+        html = by_column.content.decode()
+        cell = html[html.index(f'id="duration-game-{beta.pk}-playtime"') :]
+        assert cell.index("1 h 00 m") < cell.index("</td>")
 
     def test_unknown_sort_emits_warning_message(
         self, logged_client, two_games, capture_games_logger

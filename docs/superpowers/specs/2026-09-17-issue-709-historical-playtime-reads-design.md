@@ -16,27 +16,27 @@ A null bound is never inside. Thus these count in all-time only:
 - a range or a decade wider than the period.
 
 A qualifier does not move a bound. `DayInterval` in `games/reads/days.py`
-states every period: a year, a month, or a window of days.
+states every period, for both sources.
 
 ## Modules
 
-- `games/reads/historical_playtime_records.py` holds the record scope. Its
-  text is shared with #706 and #1097.
-- `games/reads/historical_playtime.py` holds the record sums. Only
-  `games/reads` imports it.
+- `games/reads/historical_playtime_records.py` holds the record scope.
+- `games/reads/historical_playtime.py` holds the record sums, for
+  `games/reads` only.
 - `games/reads/playtime.py` composes the two sources.
-- `games/reads/sums.py` holds what both sum modules use: `UnscopedSum`,
-  `UnscopedPlaytimeRead` and `ZERO`.
+- `games/reads/sums.py` holds what both sum modules share.
+
+Both scopes refuse a missing library with `UnscopedRead`.
 
 ## Figures
 
 A figure computed in Python returns `PlaytimeBreakdown(tracked,
 historical)`, and `total` is their sum. The platform rows and the month rows
-merge one query per source. The platform rows keep the database order:
-total, then name, then id, with `None` last.
+merge one query per source. Platform rows merge on the platform id and sort
+as PostgreSQL did: total descending, then name, then id, with `None` last.
 
-The playthrough note reads `tracked` only. A record is not a sitting, and
-the note's window comes from session days. Every other caller reads `total`.
+The note the Add Playthrough page fills in reads sessions only, through
+`game_tracked_between`, because a record is not a sitting.
 
 ## Expressions
 
@@ -48,22 +48,20 @@ A queryset sorts and filters on one number:
 | `playtime_sort_key` | the same, `NullIf` zero | NULL |
 | `playtime_matching` | matching sessions only | NULL |
 
-The sort key is NULL for a game whose only session is running. The
-alternatives each run a subquery twice, and the read budget is 20 ms.
+The sort key is NULL for a game whose only playtime is a running session.
+Telling the two apart runs each subquery twice.
 
-`playtime_parts_by_game` gives the two halves for the stats top 10, which
-adds them. It has no total, because a total expression runs both subqueries
-again.
+Django compiles an annotation again wherever `F()` names it. Thus a page
+annotates a half beside a total only where it renders the half.
 
-When no session filter is set, the game list annotates the sort key as the
-column and aliases the sort to it. PostgreSQL then evaluates each subquery
-once. Under a session filter, the column header reads "Playtime (matching
+Without a session filter, the game list's sort reuses the column's
+subqueries. Under a session filter, the column header reads "Playtime (matching
 sessions)", because a session filter cannot narrow records.
 
 ## Classification
 
-`STATS_SOURCES` in `games/views/stats_data.py` gives each `StatsData` key a
-`StatsSource`. A test compares its keys with the `StatsData` keys.
+`STATS_SOURCE_GROUPS` in `games/views/stats_data.py` lists each `StatsData`
+key under one `StatsSource`. A test compares the keys with `StatsData`.
 
 - **Both sources:** `total_hours`, the top 10, the platform rows, the month
   rows. Records reach a platform through the game's platform column until
@@ -71,12 +69,11 @@ sessions)", because a session filter cannot narrow records.
 - **Sessions only, a record states no sittings:** the session count, the
   unique days, the longest session, the highest count, the highest average,
   and the first and last play.
-- **Sessions only, a record states no year of play:** `total_games` and
+- **Sessions only, the count names played games:** `total_games` and
   `total_year_games`.
 - **Purchases**, and **not a figure**, for the rest.
 
-Game detail's hours read both sources. Its session count, average and play
-range read sessions only.
+Game detail's hours read both sources. Its other figures read sessions.
 
 ## Known gap
 

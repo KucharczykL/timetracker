@@ -47,6 +47,9 @@ Decision: mirror the session split, `player_sessions.py` for scope and
 | `games/reads/historical_playtime_records.py` | shared; first to merge owns it, the others take `main`'s copy on rebase | `library_records`, `readable_records`, `game_records`, `RECORD_ORDER` |
 | `games/reads/historical_playtime.py` | #709 alone | `contained_in`, `historical_total`, `historical_summed_by_game`, `historical_by_platform`, `historical_by_month`, `historical_years`, `game_historical_playtime` |
 
+Landed in #1108; since then `main`'s copy is canonical and this text is the
+pre-merge agreement.
+
 The shared module is this text, and no branch adds to it:
 
 ```python

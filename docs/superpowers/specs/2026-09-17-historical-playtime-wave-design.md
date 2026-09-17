@@ -219,7 +219,7 @@ carries for four fields. Stated once, in `stats_data.py`:
 | `month_playtimes` | yes | only when `when` lies inside the month |
 | `total_sessions`, `unique_days`, `longest_session_*`, `highest_session_*`, `first_play_*`, `last_play_*` | yes | never |
 
-Streaks and the day chart had no caller, and #709 removed the read.
+`playtime_by_day` and the streak helpers had no caller; #709 removed them.
 
 ### Presentation
 

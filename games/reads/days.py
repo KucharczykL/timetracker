@@ -32,4 +32,6 @@ class DayInterval:
     @classmethod
     def ending(cls, day: date, *, days: int) -> Self:
         """The `days` calendar days ending on `day`."""
+        if days < 1:
+            raise ValueError(f"a window of {days} days is empty")
         return cls(day - timedelta(days=days - 1), day)

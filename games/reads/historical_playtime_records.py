@@ -8,6 +8,7 @@ from games.models import (
     HistoricalPlaytimeQuerySet,
     UserLibrary,
 )
+from games.reads.unscoped import require_library
 
 #: Newest first; an unknown `when` last; then newest recorded.
 RECORD_ORDER = (F("when_lower").desc(nulls_last=True), "-created_at", "id")
@@ -21,6 +22,7 @@ def library_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
     library's row. `alive()` alone keeps the records of a removed
     catalog game.
     """
+    library = require_library(library)
     return HistoricalPlaytime.objects.filter(
         library=library,
         player_game__library=library,

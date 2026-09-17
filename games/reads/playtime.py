@@ -1,4 +1,4 @@
-"""Every playtime figure: sessions and historical records together."""
+"""Every playtime figure: sessions plus historical records."""
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -29,16 +29,17 @@ from games.reads.sums import (
     PlaytimeSum,
     UnscopedPlaytimeRead,
     UnscopedSum,
+    zero_when_null,
 )
 
 __all__ = [
     "MonthPlaytime",
     "PlatformPlaytime",
     "PlaytimeBreakdown",
-    "PlaytimeParts",
     "UnscopedPlaytimeRead",
     "game_playtime",
     "game_playtime_between",
+    "game_tracked_between",
     "played_years",
     "playtime_between",
     "playtime_between_each",
@@ -46,7 +47,6 @@ __all__ = [
     "playtime_by_month",
     "playtime_by_platform",
     "playtime_matching",
-    "playtime_parts_by_game",
     "playtime_sort_key",
     "total_playtime",
     "tracked_summed_by_game",
@@ -54,6 +54,13 @@ __all__ = [
 ]
 
 PLATFORM = f"{GAME}__platform"
+
+#: None is the unspecified-platform bucket.
+type PlatformId = UUID | None
+type PlatformName = str | None
+type KeyedPlaytime[Key] = tuple[Key, timedelta]
+#: Total down, then name, id; None last.
+type PlatformOrder = tuple[timedelta, bool, str, bool, UUID]
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,13 +75,9 @@ class PlaytimeBreakdown:
         return self.tracked + self.historical
 
 
-NOTHING = PlaytimeBreakdown(timedelta(0), timedelta(0))
-
-
 class PlatformPlaytime(NamedTuple):
-    #: None is the unspecified-platform bucket.
-    platform_id: UUID | None
-    platform_name: str | None
+    platform_id: PlatformId
+    platform_name: PlatformName
     playtime: PlaytimeBreakdown
 
 
@@ -84,31 +87,20 @@ class MonthPlaytime(NamedTuple):
     playtime: PlaytimeBreakdown
 
 
-class PlaytimeParts(NamedTuple):
-    """Per-game expressions, each zero when unplayed.
-
-    No total: it would run both subqueries again. Sum the two
-    annotations instead.
-    """
-
-    tracked: Playtime
-    historical: Playtime
-
-
 def _year_days(year: YearScope) -> DayInterval | None:
     return None if year is None else DayInterval.year(year)
 
 
-def _sessions(library: UserLibrary, year: YearScope = None) -> PlayerSessionQuerySet:
-    """Counted sessions, narrowed to a year."""
-    sessions = library_sessions(library)
-    if year is None:
-        return sessions
-    return sessions.filter(effective_day__year=year)
-
-
 def _on_days(days: DayInterval) -> Q:
     return Q(effective_day__range=(days.first, days.last))
+
+
+def _sessions(
+    library: UserLibrary, within: DayInterval | None = None
+) -> PlayerSessionQuerySet:
+    """Counted sessions, narrowed to days."""
+    sessions = library_sessions(library)
+    return sessions if within is None else sessions.filter(_on_days(within))
 
 
 def _total(sessions: PlayerSessionQuerySet) -> timedelta:
@@ -125,10 +117,6 @@ def _summed(sessions: PlayerSessionQuerySet) -> PlaytimeSum:
     )
 
 
-def _zero_when_null(figure: PlaytimeSum) -> Playtime:
-    return Coalesce(figure, ZERO, output_field=DurationField())
-
-
 def game_playtime(library: UserLibrary, game: Game) -> PlaytimeBreakdown:
     return PlaytimeBreakdown(
         tracked=_total(_sessions(library).filter(**{GAME: game})),
@@ -136,12 +124,19 @@ def game_playtime(library: UserLibrary, game: Game) -> PlaytimeBreakdown:
     )
 
 
+def game_tracked_between(
+    library: UserLibrary, game: Game, days: DayInterval
+) -> timedelta:
+    """One game's sessions over inclusive days."""
+    return _total(_sessions(library, days).filter(**{GAME: game}))
+
+
 def game_playtime_between(
     library: UserLibrary, game: Game, days: DayInterval
 ) -> PlaytimeBreakdown:
     """One game's playtime over inclusive days."""
     return PlaytimeBreakdown(
-        tracked=_total(_sessions(library).filter(_on_days(days), **{GAME: game})),
+        tracked=game_tracked_between(library, game, days),
         historical=game_historical_playtime(library, game, within=days),
     )
 
@@ -152,7 +147,7 @@ def tracked_summed_by_game(
     """No library compiles, then refuses to execute."""
     if library is None:
         return UnscopedSum()
-    return _summed(_sessions(library, year))
+    return _summed(_sessions(library, _year_days(year)))
 
 
 def tracked_summed_by_game_matching(
@@ -162,17 +157,8 @@ def tracked_summed_by_game_matching(
     year: YearScope = None,
 ) -> PlaytimeSum:
     context = filter_query_context_for_library(library)
-    return _summed(_sessions(library, year).filter(session_filter.to_q(context)))
-
-
-def playtime_parts_by_game(
-    library: UserLibrary | None, *, year: YearScope = None
-) -> PlaytimeParts:
-    return PlaytimeParts(
-        tracked=_zero_when_null(tracked_summed_by_game(library, year=year)),
-        historical=_zero_when_null(
-            historical_summed_by_game(library, within=_year_days(year))
-        ),
+    return _summed(
+        _sessions(library, _year_days(year)).filter(session_filter.to_q(context))
     )
 
 
@@ -180,15 +166,18 @@ def playtime_by_game(
     library: UserLibrary | None, *, year: YearScope = None
 ) -> Playtime:
     """Each game's playtime, zero when unplayed."""
-    tracked, historical = playtime_parts_by_game(library, year=year)
-    return tracked + historical
+    tracked = zero_when_null(tracked_summed_by_game(library, year=year))
+    historical = zero_when_null(
+        historical_summed_by_game(library, within=_year_days(year))
+    )
+    return Playtime(tracked + historical)
 
 
 def playtime_sort_key(library: UserLibrary) -> PlaytimeSum:
-    """NULL when the game has no playtime; `apply_sort` orders it last.
+    """NULL without playtime; `apply_sort` orders it last.
 
-    A game whose only session is running has none yet. Telling it
-    apart from an unplayed one would run each subquery twice.
+    A running session alone sorts as unplayed.
+    Telling the two apart runs each subquery twice.
     """
     return NullIf(playtime_by_game(library), ZERO, output_field=DurationField())
 
@@ -196,19 +185,17 @@ def playtime_sort_key(library: UserLibrary) -> PlaytimeSum:
 def playtime_matching(
     library: UserLibrary, session_filter: PlayerSessionFilter
 ) -> PlaytimeSum:
-    """Matching sessions' sum, NULL when none match.
-
-    Sessions only: a session filter cannot narrow records.
-    """
+    """Matching sessions' sum; NULL when none match."""
     return tracked_summed_by_game_matching(library, session_filter)
 
 
 def total_playtime(
     library: UserLibrary, *, year: YearScope = None
 ) -> PlaytimeBreakdown:
+    within = _year_days(year)
     return PlaytimeBreakdown(
-        tracked=_total(_sessions(library, year)),
-        historical=historical_total(library, within=_year_days(year)),
+        tracked=_total(_sessions(library, within)),
+        historical=historical_total(library, within=within),
     )
 
 
@@ -237,8 +224,29 @@ def playtime_between(library: UserLibrary, days: DayInterval) -> PlaytimeBreakdo
     return playtime_between_each(library, [days])[0]
 
 
-def _platform_order(row: PlatformPlaytime) -> tuple[object, ...]:
-    """The database's order: total down, then name and id, None last."""
+def _merged[Key](
+    tracked: Iterable[KeyedPlaytime[Key]],
+    historical: Iterable[KeyedPlaytime[Key]],
+) -> dict[Key, PlaytimeBreakdown]:
+    """Both sources per key; repeats refuse."""
+    tracked_by_key: dict[Key, timedelta] = {}
+    historical_by_key: dict[Key, timedelta] = {}
+    for by_key, rows in ((tracked_by_key, tracked), (historical_by_key, historical)):
+        for key, playtime in rows:
+            if key in by_key:
+                raise ValueError(f"{key!r} was summed twice in one source")
+            by_key[key] = playtime
+    return {
+        key: PlaytimeBreakdown(
+            tracked_by_key.get(key, timedelta(0)),
+            historical_by_key.get(key, timedelta(0)),
+        )
+        for key in tracked_by_key.keys() | historical_by_key.keys()
+    }
+
+
+def _platform_order(row: PlatformPlaytime) -> PlatformOrder:
+    """PostgreSQL's order: total descending, None last."""
     return (
         -row.playtime.total,
         row.platform_name is None,
@@ -248,48 +256,36 @@ def _platform_order(row: PlatformPlaytime) -> tuple[object, ...]:
     )
 
 
-def _merged[Key](
-    tracked: Iterable[tuple[Key, timedelta]],
-    historical: Iterable[tuple[Key, timedelta]],
-) -> dict[Key, PlaytimeBreakdown]:
-    merged: dict[Key, PlaytimeBreakdown] = {}
-    for key, playtime in tracked:
-        merged[key] = PlaytimeBreakdown(playtime, timedelta(0))
-    for key, playtime in historical:
-        merged[key] = PlaytimeBreakdown(merged.get(key, NOTHING).tracked, playtime)
-    return merged
-
-
 def playtime_by_platform(
     library: UserLibrary, *, year: YearScope = None
 ) -> list[PlatformPlaytime]:
-    tracked_rows = (
-        _sessions(library, year)
+    within = _year_days(year)
+    #: By id: names may differ between reads.
+    names: dict[PlatformId, PlatformName] = {}
+    tracked: list[KeyedPlaytime[PlatformId]] = []
+    for platform_id, name, playtime in (
+        _sessions(library, within)
         .values(PLATFORM, f"{PLATFORM}__name")
         .annotate(playtime=Sum("effective_duration"))
         .order_by()
         .values_list(PLATFORM, f"{PLATFORM}__name", "playtime")
-    )
-    merged = _merged(
-        (
-            ((platform_id, name), playtime)
-            for platform_id, name, playtime in tracked_rows
-        ),
-        (
-            ((row.platform_id, row.platform_name), row.playtime)
-            for row in historical_by_platform(library, within=_year_days(year))
-        ),
-    )
+    ):
+        names[platform_id] = name
+        tracked.append((platform_id, playtime))
+    historical: list[KeyedPlaytime[PlatformId]] = []
+    for row in historical_by_platform(library, within=within):
+        names.setdefault(row.platform_id, row.platform_name)
+        historical.append((row.platform_id, row.playtime))
     rows = [
-        PlatformPlaytime(platform_id, name, playtime)
-        for (platform_id, name), playtime in merged.items()
+        PlatformPlaytime(platform_id, names[platform_id], playtime)
+        for platform_id, playtime in _merged(tracked, historical).items()
     ]
     return sorted(rows, key=_platform_order)
 
 
 def playtime_by_month(library: UserLibrary, *, year: int) -> list[MonthPlaytime]:
-    tracked_rows = (
-        _sessions(library, year)
+    tracked: Iterable[KeyedPlaytime[date]] = (
+        _sessions(library, DayInterval.year(year))
         .annotate(month=TruncMonth("effective_day"))
         .values("month")
         .annotate(playtime=Sum("effective_duration"))
@@ -297,7 +293,7 @@ def playtime_by_month(library: UserLibrary, *, year: int) -> list[MonthPlaytime]
         .values_list("month", "playtime")
     )
     merged = _merged(
-        tracked_rows,
+        tracked,
         ((row.month, row.playtime) for row in historical_by_month(library, year=year)),
     )
     return [MonthPlaytime(month, merged[month]) for month in sorted(merged)]

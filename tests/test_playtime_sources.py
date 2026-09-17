@@ -1,6 +1,7 @@
 """Playtime read from the session projection."""
 
 from datetime import UTC, date, datetime, time, timedelta
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -22,13 +23,16 @@ from games.filters import (
 )
 from games.models import Device, Game, Platform, UserLibrary
 from games.reads.days import DayInterval
+from games.reads.historical_playtime import PlatformHistorical
 from games.reads.playtime import (
     MonthPlaytime,
     PlatformPlaytime,
     PlaytimeBreakdown,
     UnscopedPlaytimeRead,
+    _merged,
     game_playtime,
     game_playtime_between,
+    game_tracked_between,
     played_years,
     playtime_between,
     playtime_between_each,
@@ -36,12 +40,12 @@ from games.reads.playtime import (
     playtime_by_month,
     playtime_by_platform,
     playtime_matching,
-    playtime_parts_by_game,
     playtime_sort_key,
     total_playtime,
     tracked_summed_by_game,
     tracked_summed_by_game_matching,
 )
+from games.reads.unscoped import UnscopedRead
 
 ZERO = timedelta(0)
 
@@ -365,6 +369,11 @@ def test_a_day_interval_refuses_to_end_before_it_starts():
         DayInterval(date(2026, 3, 2), date(2026, 3, 1))
 
 
+def test_a_window_of_no_days_refuses():
+    with pytest.raises(ValueError, match="empty"):
+        DayInterval.ending(date(2026, 3, 7), days=0)
+
+
 def test_a_day_interval_ending_on_a_day_counts_that_day():
     assert DayInterval.ending(date(2026, 3, 7), days=7) == DayInterval(
         date(2026, 3, 1), date(2026, 3, 7)
@@ -515,6 +524,42 @@ def test_merged_platform_rows_keep_the_databases_order(owned_library):
 
 
 @pytest.mark.django_db
+def test_the_unspecified_platform_sorts_last_on_a_tie(owned_library):
+    day = date(2026, 3, 5)
+    for index, name in enumerate([None, "b", "a"]):
+        platform = (
+            None
+            if name is None
+            else Platform.objects.create(name=name, icon=f"icon-{index}")
+        )
+        played = Game.objects.create(
+            library=owned_library, name=f"Game {index}", platform=platform
+        )
+        if index % 2:
+            timed(owned_library, played, prague(10, day), prague(11, day))
+        else:
+            record_row([tracked_run(owned_library, played)], duration=HOUR, when=None)
+
+    rows = playtime_by_platform(owned_library)
+
+    assert [row.platform_name for row in rows] == ["a", "b", None]
+
+
+@pytest.mark.django_db
+def test_a_platform_renamed_between_reads_stays_one_row(owned_library, platform):
+    day = date(2026, 3, 5)
+    played = Game.objects.create(library=owned_library, name="Tunic", platform=platform)
+    timed(owned_library, played, prague(10, day), prague(11, day))
+    #: The second read sees an old name.
+    renamed = [PlatformHistorical(platform.pk, "Old name", HOUR)]
+
+    with patch("games.reads.playtime.historical_by_platform", return_value=renamed):
+        rows = playtime_by_platform(owned_library)
+
+    assert rows == [PlatformPlaytime(platform.pk, "PC", PlaytimeBreakdown(HOUR, HOUR))]
+
+
+@pytest.mark.django_db
 def test_the_sort_key_is_null_without_playtime(owned_library, game):
     running = Game.objects.create(library=owned_library, name="Running")
     recorded = Game.objects.create(library=owned_library, name="Recorded")
@@ -535,13 +580,17 @@ def test_the_playtime_filter_reads_the_composed_total(owned_library, game):
     day = date(2026, 3, 5)
     timed(owned_library, game, prague(10, day), prague(11, day))
     record_row([tracked_run(owned_library, game)], duration=2 * HOUR, when=None)
-    at_least_three = GameFilter.from_json(
+    sessions_only = Game.objects.create(library=owned_library, name="Sessions")
+    timed(owned_library, sessions_only, prague(10, day), prague(12, day))
+    records_only = Game.objects.create(library=owned_library, name="Records")
+    record_row([tracked_run(owned_library, records_only)], duration=2 * HOUR, when=None)
+    over_two_hours = GameFilter.from_json(
         {"playtime_hours": {"modifier": "GREATER_THAN", "value": 2}}
     )
     context = filter_query_context_for_library(owned_library)
 
     matched = execute_filter(
-        at_least_three, Game.objects.tracked_by(owned_library), context
+        over_two_hours, Game.objects.tracked_by(owned_library), context
     )
 
     assert list(matched) == [game]
@@ -577,5 +626,37 @@ def test_a_session_filter_never_reaches_records(owned_library, game):
 def test_a_composed_sum_over_no_library_refuses_to_execute(game):
     with pytest.raises(UnscopedPlaytimeRead):
         list(Game.objects.annotate(figure=playtime_by_game(None)))
+    unscoped = Game.objects.annotate(figure=playtime_sort_key(None))  # type: ignore[arg-type]
     with pytest.raises(UnscopedPlaytimeRead):
-        list(Game.objects.annotate(figure=playtime_parts_by_game(None).historical))
+        list(unscoped)
+
+
+@pytest.mark.django_db
+def test_a_python_figure_without_a_library_refuses(game):
+    with pytest.raises(UnscopedRead):
+        total_playtime(None)  # type: ignore[arg-type]
+    with pytest.raises(UnscopedRead):
+        game_playtime(None, game)  # type: ignore[arg-type]
+
+
+def test_no_window_reads_nothing(owned_library, django_assert_num_queries):
+    with django_assert_num_queries(0):
+        assert playtime_between_each(owned_library, []) == []
+
+
+@pytest.mark.django_db
+def test_the_games_tracked_window_leaves_records_out(owned_library, game):
+    day = date(2026, 3, 5)
+    run = tracked_run(owned_library, game)
+    timed(owned_library, game, prague(10, day), prague(11, day))
+    record_row([run], duration=2 * HOUR, when="2026-03-05")
+    days = DayInterval.single(day)
+
+    with timezone.override(TWIN_ZONE):
+        assert game_tracked_between(owned_library, game, days) == HOUR
+        assert game_playtime_between(owned_library, game, days).total == 3 * HOUR
+
+
+def test_a_source_that_repeats_a_key_refuses():
+    with pytest.raises(ValueError, match="twice"):
+        _merged([("a", HOUR), ("a", HOUR)], [])

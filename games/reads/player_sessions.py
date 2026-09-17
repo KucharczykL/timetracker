@@ -6,6 +6,7 @@ from typing import NamedTuple
 from django.db.models import Max, Min
 
 from games.models import Game, PlayerSession, PlayerSessionQuerySet, UserLibrary
+from games.reads.unscoped import require_library
 
 #: Sessions reach their game through the run.
 GAME = "playthrough__player_game__game"
@@ -27,6 +28,7 @@ def library_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
     The run's and its tracked game's libraries are stated too:
     either can name another library's row.
     """
+    library = require_library(library)
     return PlayerSession.objects.filter(
         library=library,
         playthrough__library=library,

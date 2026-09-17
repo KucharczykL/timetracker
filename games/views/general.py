@@ -47,8 +47,7 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
         cast(User, user).library if user is not None and user.is_authenticated else None
     )
     today = localdate()
-    # "Last 7 days" is a calendar-day window (today plus the previous six), the
-    # window its navbar link lists. The link lists sessions, the tracked part.
+    #: Seven calendar days, the linked list's window.
     last_seven_days = DayInterval.ending(today, days=7)
     today_played = last_7_played = timedelta(0)
     if library is not None:
