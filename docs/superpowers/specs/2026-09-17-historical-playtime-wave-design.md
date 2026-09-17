@@ -249,7 +249,9 @@ submit shows the success toast and appends nothing. Remove goes through the
 confirm page and offers Undo through `<toast-stack>` as #695 does, over
 `RestoreHistoricalPlaytime`.
 
-**Playtime page.** The nav entry "Sessions" becomes "Playtime" with two tabs.
+**Playtime page.** No nav entry names Sessions: the Library page's card, the
+landing-page choice and the `index` redirect reach it. Each now names
+"Playtime", a page with two tabs.
 Sessions is today's list, same route, same presets. Historical is a new list
 over `HistoricalPlaytime`: `HistoricalPlaytimeFilter` (game, provenance, device,
 emulated, duration hours, when, note, created; not run, because a record's
