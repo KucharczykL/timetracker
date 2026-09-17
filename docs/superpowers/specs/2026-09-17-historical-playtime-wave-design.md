@@ -208,7 +208,7 @@ letter, recorded here and in #709.
 
 ### Classification
 
-#708 is folded into #709: the classification is the table in the
+#708 merges into #709: the classification is the table in the
 specification of the issue that implements it, as #697's specification already
 carries for four fields. Stated once, in `stats_data.py`:
 
