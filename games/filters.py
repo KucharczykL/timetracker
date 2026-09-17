@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from games.models import (
         Device,
         Game,
+        HistoricalPlaytime,
         Platform,
         PlayerSession,
         Playthrough,
@@ -767,6 +768,94 @@ class PlaythroughFilter(OperatorFilter):
         return q
 
 
+# ── HistoricalPlaytimeFilter ───────────────────────────────────────────────
+
+
+@dataclass
+class HistoricalPlaytimeFilter(OperatorFilter):
+    """Filter for the HistoricalPlaytime projection."""
+
+    AND: list[HistoricalPlaytimeFilter] = field(default_factory=list)
+    OR: list[HistoricalPlaytimeFilter] = field(default_factory=list)
+    NOT: list[HistoricalPlaytimeFilter] = field(default_factory=list)
+
+    game: UUIDMultiCriterion | None = None  # player_game__game__id
+    provenance: ChoiceCriterion | None = None
+    device: UUIDMultiCriterion | None = None  # filters on device_id
+    emulated: BoolCriterion | None = None
+    duration_hours: IntCriterion | None = None
+    when: DateCriterion | None = None  # the interval the record states
+    note: StringCriterion | None = None
+    created_at: DateCriterion | None = None  # compared via __date
+
+    # Free-text search
+    search: StringCriterion | None = None
+
+    # Cross-entity: records at matching games / on matching devices
+    game_filter: GameFilter | None = None
+    device_filter: DeviceFilter | None = None
+
+    fields: ClassVar[dict[str, FilterField]] = {
+        "game": FilterField("player_game__game__id", search_url="/api/games/search"),
+        "provenance": FilterField(),
+        "device": FilterField("device_id", search_url="/api/devices/search"),
+        "emulated": FilterField(),
+        "duration_hours": FilterField(
+            handler=duration_hours_handler("duration"),
+            label="Duration (hours)",
+        ),
+        "when": FilterField(
+            handler=temporal_interval_handler("when", "when_lower", "when_upper"),
+            metadata_lookup="when_lower",
+            label="When",
+        ),
+        "note": FilterField(),
+        "created_at": FilterField("created_at__date"),
+    }
+
+    @classmethod
+    def _comparison_model(cls) -> type[HistoricalPlaytime]:
+        from games.models import HistoricalPlaytime
+
+        return HistoricalPlaytime
+
+    def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
+        q = Q()
+
+        if self.search is not None:
+            q &= search_q(
+                self.search,
+                "player_game__game__name",
+                "player_game__game__platform__name",
+                "device__name",
+                "note",
+            )
+
+        if self.game_filter is not None:
+            from games.models import Game
+
+            q &= relation_to_q(
+                self.game_filter,
+                context=context,
+                related_model=Game,
+                related_lookup="id",
+                parent_field="player_game__game__id",
+            )
+
+        if self.device_filter is not None:
+            from games.models import Device
+
+            q &= relation_to_q(
+                self.device_filter,
+                context=context,
+                related_model=Device,
+                related_lookup="id",
+                parent_field="device_id",
+            )
+
+        return q
+
+
 # ── Aggregate wiring ───────────────────────────────────────────────────────
 
 # Assigned after the class definitions (not in GameFilter's body) because the
@@ -834,6 +923,12 @@ def parse_playthrough_filter(json_str: str) -> PlaythroughFilter | None:
     return filter_from_json(PlaythroughFilter, json_str)
 
 
+def parse_historical_playtime_filter(
+    json_str: str,
+) -> HistoricalPlaytimeFilter | None:
+    return filter_from_json(HistoricalPlaytimeFilter, json_str)
+
+
 # Validates a mode's ``?filter=`` JSON, raising FilterError or returning None.
 type FilterParser = Callable[[str], OperatorFilter | None]
 #: One scope, built when a filter first names its model.
@@ -880,12 +975,14 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
     Game is one exception: its list counts the games this library tracks, so
     counting anything else here would answer the builder's live count with a
     number the destination list cannot show. Playthrough is the other: its
-    condition alias needs the viewer's clock. PlayerSession states no
-    `for_library`: `library_sessions` is its scope.
+    condition alias needs the viewer's clock. PlayerSession and
+    HistoricalPlaytime state no `for_library`: their read modules
+    state the scope.
     """
     from django.apps import apps
 
-    from games.models import Game, PlayerSession, Playthrough
+    from games.models import Game, HistoricalPlaytime, PlayerSession, Playthrough
+    from games.reads.historical_playtime_records import library_records
     from games.reads.player_sessions import library_sessions
     from games.reads.playthrough_runs import runs_with_condition
 
@@ -896,6 +993,8 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
         return runs_with_condition(library)
     if model is PlayerSession:
         return library_sessions(library)
+    if model is HistoricalPlaytime:
+        return library_records(library)
     return model.objects.for_library(library)
 
 
@@ -907,11 +1006,13 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
     from games.models import (
         Device,
         Game,
+        HistoricalPlaytime,
         Platform,
         PlayerSession,
         Playthrough,
         Purchase,
     )
+    from games.reads.historical_playtime_records import library_records
     from games.reads.player_sessions import library_sessions
     from games.reads.playthrough_runs import runs_with_condition
 
@@ -921,6 +1022,7 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
         #: the projection through the `tracked` alias.
         Game: cache(lambda: Game.objects.tracked_by(library)),
         PlayerSession: cache(lambda: library_sessions(library)),
+        HistoricalPlaytime: cache(lambda: library_records(library)),
         Purchase: cache(lambda: Purchase.objects.for_library(library)),
         Playthrough: cache(lambda: runs_with_condition(library)),
         Device: cache(lambda: Device.objects.for_library(library)),
