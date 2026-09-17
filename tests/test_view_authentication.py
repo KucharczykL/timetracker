@@ -9,6 +9,7 @@ from datetime import UTC, date, datetime
 import pytest
 from django.conf import settings
 from django.urls import reverse
+from historical_playtime_rows import record_row
 from session_rows import session_row
 
 from games import urls as games_urls
@@ -48,6 +49,7 @@ def world(owned_library):
             game, started_at=datetime(2024, 6, 1, 12, tzinfo=UTC)
         ).id,
         "playthrough_id": Playthrough.objects.get(player_game__game=game).id,
+        "record_id": record_row([Playthrough.objects.get(player_game__game=game)]).id,
         "device_id": Device.objects.create(library=owned_library, name="Desk").id,
         "platform_id": Platform.objects.create(
             library=owned_library, name="Private"
