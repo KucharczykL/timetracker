@@ -35,7 +35,7 @@ type SettingOption = tuple[Any, str]  # e.g. ("cs", "Čeština"), (25, "25")
 type QuerysetFactory = Callable[[], "QuerySet[Any]"]  # lazy; imports models when called
 
 LANDING_PAGE_CHOICES: Final[tuple[tuple[str, str], ...]] = (
-    ("games:list_sessions", "Sessions"),
+    ("games:list_sessions", "Playtime"),
     ("games:list_games", "Games"),
     ("games:list_purchases", "Purchases"),
     ("games:stats_by_year", "Statistics (this year)"),
@@ -318,7 +318,7 @@ def _build_registry() -> dict[SettingKey, SettingDefinition]:
             # index() redirects an unset landing page to games:list_sessions;
             # that destination is decided there, not by choice order, so it is
             # named explicitly rather than left to fall back to choices[0].
-            empty_display="Sessions",
+            empty_display="Playtime",
         ),
         SettingDefinition(
             "DEFAULT_PAGE_SIZE",

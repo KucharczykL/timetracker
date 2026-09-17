@@ -129,7 +129,7 @@ def test_the_user_page_names_the_inherited_site_value():
 
     assert fields["default_landing_page"].choices[0] == (
         "",
-        "Use site default (Sessions)",
+        "Use site default (Playtime)",
     )
     assert fields["default_page_size"].choices[0] == ("", "Use site default (25)")
     assert fields["default_purchase_currency"].widget.attrs["placeholder"] == (
@@ -140,7 +140,7 @@ def test_the_user_page_names_the_inherited_site_value():
 @pytest.mark.django_db
 def test_display_label_falls_back_to_the_first_choice_only_for_none():
     landing_page = get_definition("DEFAULT_LANDING_PAGE")
-    assert display_label(landing_page, None) == "Sessions"
+    assert display_label(landing_page, None) == "Playtime"
     assert display_label(landing_page, "games:list_games") == "Games"
 
     # A timezone outside the frozen choices tuple must print itself, not the
@@ -157,12 +157,12 @@ def test_display_label_names_the_unset_landing_page_regardless_of_choice_order()
     assert choices is not None
     reordered = dataclasses.replace(landing_page, choices=tuple(reversed(choices)))
 
-    # The reordered first choice is no longer "Sessions", so a pass here can
+    # The reordered first choice is no longer "Playtime", so a pass here can
     # only be explained by empty_display, not choices[0].
     reordered_choices = reordered.choices
     assert reordered_choices is not None
-    assert reordered_choices[0][1] != "Sessions"
-    assert display_label(reordered, None) == "Sessions"
+    assert reordered_choices[0][1] != "Playtime"
+    assert display_label(reordered, None) == "Playtime"
 
 
 @pytest.fixture
