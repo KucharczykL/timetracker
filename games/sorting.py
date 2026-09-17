@@ -95,9 +95,7 @@ GAME_SORTS: SortMap = {
     "created": SortSpec("created_at"),
     # `list_games` registers `total_playtime` per library.
     "playtime": SortSpec("total_playtime"),
-    # No annotate dict: list_games pre-annotates `filtered_playtime` (playtime
-    # restricted to the active session sub-filter) on the queryset, and this
-    # spec just orders by that existing alias.
+    # No annotate dict: list_games annotates `filtered_playtime`.
     "filtered_playtime": SortSpec("filtered_playtime"),
     # No annotate dict: list_games annotates `completed_day`.
     "finished": SortSpec("completed_day"),

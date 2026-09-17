@@ -60,7 +60,7 @@ from games.reads.playthrough_runs import (
     runs_with_condition,
     tracked_game,
 )
-from games.reads.playtime import game_playtime_between
+from games.reads.playtime import game_tracked_between
 from games.sorting import (
     PLAYTHROUGH_DEFAULT_SORT,
     PLAYTHROUGH_SORTS,
@@ -121,13 +121,11 @@ def _seeded_run(library: UserLibrary, game: Game) -> SeededRun:
     )
     started = played.first if last_finish is None else last_finish + timedelta(days=1)
     #: A finish after the last session leaves no day to sum.
-    #: A record is not a sitting.
     playtime = (
         timedelta(0)
         if played.last < started
-        else game_playtime_between(
-            library, game, DayInterval(started, played.last)
-        ).tracked
+        #: Sessions only; records are not sittings.
+        else game_tracked_between(library, game, DayInterval(started, played.last))
     )
     return SeededRun(started, played.last, fixed.format(playtime))
 

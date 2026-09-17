@@ -18,6 +18,7 @@ from session_rows import duration_only_row, session_row, tracked_run
 from games.models import Game, Platform, PlayerSession
 from games.reads.playtime import MonthPlaytime, PlatformPlaytime, PlaytimeBreakdown
 from games.views.stats_data import (
+    STATS_SOURCE_GROUPS,
     STATS_SOURCES,
     StatsData,
     StatsSource,
@@ -208,10 +209,11 @@ def test_an_untracked_library_game_counts_in_top_games(owned_library):
 HOUR = timedelta(hours=1)
 
 
-def test_every_stats_key_states_its_sources():
+def test_every_stats_key_states_its_sources_once():
     assert set(STATS_SOURCES) == (
         StatsData.__required_keys__ | StatsData.__optional_keys__
     )
+    assert sum(map(len, STATS_SOURCE_GROUPS.values())) == len(STATS_SOURCES)
 
 
 def _session_figures(stats: StatsData) -> dict[str, object]:
@@ -219,7 +221,7 @@ def _session_figures(stats: StatsData) -> dict[str, object]:
         key: stats.get(key)
         for key, source in STATS_SOURCES.items()
         if source
-        in (StatsSource.SESSIONS_NO_SITTINGS, StatsSource.SESSIONS_NO_YEAR_OF_PLAY)
+        in (StatsSource.SESSIONS_NO_SITTINGS, StatsSource.SESSIONS_PLAYED_GAMES)
     }
 
 
@@ -253,20 +255,13 @@ def test_a_contained_record_moves_only_the_playtime_figures(
     this_year = after[2022]
     assert this_year["total_hours"] == PlaytimeBreakdown(HOUR, 3 * HOUR)
     assert [
-        (
-            game.name,
-            game.tracked_playtime,
-            game.historical_playtime,
-            game.total_playtime,
-        )
+        (game.name, game.total_playtime)
         for game in this_year["top_10_games_by_playtime"]
-    ] == [
-        ("Recorded", timedelta(0), 3 * HOUR, 3 * HOUR),
-        ("Played", HOUR, timedelta(0), HOUR),
+    ] == [("Recorded", 3 * HOUR), ("Played", HOUR)]
+    assert this_year["total_playtime_per_platform"] == [
+        PlatformPlaytime(platform.pk, "PC", PlaytimeBreakdown(timedelta(0), 3 * HOUR)),
+        PlatformPlaytime(None, None, PlaytimeBreakdown(HOUR, timedelta(0))),
     ]
-    assert this_year["total_playtime_per_platform"][0] == PlatformPlaytime(
-        platform.pk, "PC", PlaytimeBreakdown(timedelta(0), 3 * HOUR)
-    )
     assert this_year["month_playtimes"] == [
         MonthPlaytime(date(2022, 3, 1), PlaytimeBreakdown(HOUR, timedelta(0))),
         MonthPlaytime(date(2022, 6, 1), PlaytimeBreakdown(timedelta(0), 3 * HOUR)),

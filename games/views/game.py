@@ -1,7 +1,7 @@
 from collections.abc import Sequence
 from datetime import timedelta
 from functools import partial
-from typing import Any, NoReturn, cast
+from typing import Any, NamedTuple, NoReturn, cast
 from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
@@ -150,9 +150,18 @@ def _wikidata_cell(provider_key: str) -> Cell:
     return Link(href=url)[provider_key] if url is not None else provider_key
 
 
+type ColumnLabel = str  # e.g. "Playtime"
+
+
+class GameList(NamedTuple):
+    sort: SortResult
+    #: Names what the Playtime column sums.
+    playtime_label: ColumnLabel
+
+
 def games_for_list(
     library: UserLibrary, *, game_filter: GameFilter | None, find: FindFilter
-) -> SortResult:
+) -> GameList:
     """The list's queryset: filtered, annotated, sorted, unpaged.
 
     One function, so the benchmark times the plan the page serves.
@@ -164,19 +173,23 @@ def games_for_list(
         context = filter_query_context_for_library(library)
         games = execute_filter(game_filter, games, context)
         session_filter = game_filter.session_filter
+    playtime_label = "Playtime"
     if session_filter is None:
         #: The sort reuses the column's subqueries.
         games = games.annotate(filtered_playtime=playtime_sort_key(library)).alias(
             total_playtime=F("filtered_playtime")
         )
     else:
+        playtime_label = "Playtime (matching sessions)"
         #: An alias: only `?sort=playtime` reads it.
         games = games.alias(total_playtime=playtime_sort_key(library)).annotate(
             filtered_playtime=playtime_matching(library, session_filter)
         )
     #: No column renders it; `?sort=finished` reads it.
     games = games.annotate(completed_day=reported_completion_day(library, GAME_RUNS))
-    return apply_sort(games, find, GAME_SORTS, GAME_DEFAULT_SORT)
+    return GameList(
+        apply_sort(games, find, GAME_SORTS, GAME_DEFAULT_SORT), playtime_label
+    )
 
 
 @login_required
@@ -194,7 +207,8 @@ def list_games(request: HttpRequest) -> HttpResponse:
         game_filter = apply_structured_filter(request, parse_game_filter, filter_json)
 
     find = parse_find_filter(request)
-    sort = games_for_list(library, game_filter=game_filter, find=find)
+    listed = games_for_list(library, game_filter=game_filter, find=find)
+    sort = listed.sort
     warn_unknown_sort(request, sort.unknown, entity="game")
 
     games, page_obj, elided_page_range = paginate(sort.queryset, find)
@@ -204,13 +218,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
         "columns": [
             Column("Name", "name", shrinkable=True),
             Column("Year", "year", priority=2),
-            Column(
-                "Playtime"
-                if game_filter is None or game_filter.session_filter is None
-                else "Playtime (matching sessions)",
-                "filtered_playtime",
-                priority=2,
-            ),
+            Column(listed.playtime_label, "filtered_playtime", priority=2),
             Column("Status", "status", priority=3),
             Column("Wikidata", "wikidata"),
             Column("Created", "created"),

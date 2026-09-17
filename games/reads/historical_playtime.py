@@ -121,7 +121,7 @@ def historical_by_platform(
 
 
 def historical_by_month(library: UserLibrary, *, year: int) -> list[MonthHistorical]:
-    """Counts a record only within one month."""
+    """Only records whose `when` lies in one month."""
     rows = (
         contained_in(library_records(library), DayInterval.year(year))
         .filter(when_lower__month=F("when_upper__month"))

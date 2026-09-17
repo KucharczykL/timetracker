@@ -1,19 +1,23 @@
 """What every playtime sum shares."""
 
 from datetime import timedelta
+from typing import Final, NewType
 
 from django.db.models import DurationField, Value
 from django.db.models.expressions import Combinable, Expression
+from django.db.models.functions import Coalesce
+
+from games.reads.unscoped import UnscopedRead
 
 #: A per-game sum; NULL when unplayed.
 type PlaytimeSum = Combinable
 #: A per-game figure; never NULL.
-type Playtime = Combinable
+Playtime = NewType("Playtime", Combinable)
 
-ZERO = Value(timedelta(0), output_field=DurationField())
+ZERO: Final = Value(timedelta(0), output_field=DurationField())
 
 
-class UnscopedPlaytimeRead(RuntimeError):
+class UnscopedPlaytimeRead(UnscopedRead):
     """A playtime sum executed without a library."""
 
 
@@ -26,3 +30,7 @@ class UnscopedSum(Expression):
         raise UnscopedPlaytimeRead(
             "A playtime sum was executed without a library; state one."
         )
+
+
+def zero_when_null(figure: PlaytimeSum) -> Playtime:
+    return Playtime(Coalesce(figure, ZERO, output_field=DurationField()))

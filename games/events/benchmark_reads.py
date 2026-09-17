@@ -46,7 +46,9 @@ def _session_page(library: UserLibrary) -> object:
 
 
 def _game_playtime_sort(library: UserLibrary) -> object:
-    sort = games_for_list(library, game_filter=None, find=FindFilter(sort="playtime"))
+    sort = games_for_list(
+        library, game_filter=None, find=FindFilter(sort="playtime")
+    ).sort
     return list(sort.queryset[:PAGE_ROWS])
 
 

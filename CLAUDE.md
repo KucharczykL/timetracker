@@ -396,8 +396,9 @@ docs/           — Additional documentation
   resolver. Join's `playthrough` is second `BLOCKING_REFERRERS` entry.
   The Playtime page's Historical tab lists live records through
   `readable_records` and `HistoricalPlaytimeFilter`, mode
-  `historical_playtime`. `games/reads/historical_playtime.py` sums it beside
-  sessions, by containment. Contract is
+  `historical_playtime`. `games/reads/historical_playtime.py` sums the
+  records by containment; `games/reads/playtime.py` adds them to sessions.
+  Contract is
   [HistoricalPlaytime aggregate](docs/superpowers/specs/2026-09-17-issue-705-historical-playtime-aggregate-design.md);
   wave is
   [Historical Playtime](docs/superpowers/specs/2026-09-17-historical-playtime-wave-design.md)
@@ -467,28 +468,32 @@ from this module: per Game, all-time, per year, per day window, per platform,
 per month, and per game in a day window. Sessions come through
 `library_sessions()` (`games/reads/player_sessions.py`: four removal marks,
 library on session, run and tracked game). Records come through
-`library_records()` (`games/reads/historical_playtime_records.py`, shared
-text: three marks, library on record and tracked game), summed in
-`games/reads/historical_playtime.py`, which nothing outside `games/reads`
-imports. A record counts in a period only when `when_lower` and `when_upper`
-both lie inside it (containment), so an unknown or open `when` counts in
-all-time alone. `DayInterval` (`games/reads/days.py`) states every period.
-Python figures answer `PlaytimeBreakdown(tracked, historical)` with `.total`;
-the playthrough page's range sum reads `.tracked`, because a record is not a
-sitting. Expressions stay one number: `playtime_by_game` is zero when
-unplayed (the `playtime` alias `GameQuerySet.annotated_for_filtering`
-registers, which refuses a second library); `playtime_sort_key` is NULL
-without playtime, so a game whose only session is running sorts with the
-unplayed ones, because telling them apart runs each subquery twice;
-`playtime_matching` sums matching sessions only, and the game list's column
-header then says so. `playtime_parts_by_game` gives the two halves for the
-stats top 10. `STATS_SOURCES` in `games/views/stats_data.py` classifies every
-`StatsData` key, and a test holds it complete. Averages (Game detail) and
-`GameFilter`'s `session_playtime_hours` read `effective_duration` outside the
-module. A sum with no library compiles for validation and raises
-`UnscopedPlaytimeRead` if executed. No queryset and no `Q` crosses the
-interface. A stored comparison naming `playtime` is refused through
-`Game.RETIRED_COMPARISON_COLUMNS`.
+`library_records()` (`games/reads/historical_playtime_records.py`: three
+removal marks, library on record and tracked game), summed in
+`games/reads/historical_playtime.py`, which no application module outside
+`games/reads` imports. Both scopes refuse a missing library with
+`UnscopedRead`. A record counts in a period only when `when_lower` and
+`when_upper` both lie inside it (containment), so an unknown, open or
+too-wide `when` counts in all-time alone. `DayInterval`
+(`games/reads/days.py`) states every period, for both sources. Python figures
+answer `PlaytimeBreakdown(tracked, historical)` with `.total`; the
+playthrough page's range sum reads `game_tracked_between`, because a record
+is not a sitting. Expressions stay one number: `playtime_by_game` is zero
+when unplayed (the `playtime` alias `GameQuerySet.annotated_for_filtering`
+registers, which refuses a second library, and the stats top 10's total).
+`playtime_sort_key` is NULL without playtime. A game whose only session is
+running therefore sorts with the unplayed ones, because telling them apart
+would run each subquery twice. `playtime_matching` sums matching sessions
+only, and the game list's column header then says so. An annotation named
+through `F()` is compiled again, so annotate a half beside a total only
+where a page renders it. `STATS_SOURCES` in `games/views/stats_data.py`
+classifies every `StatsData` key once, and a test holds it complete. Game
+detail's averages and play range, `games/reads/session_figures.py` (longest
+session, highest average) and `GameFilter`'s `session_playtime_hours` read
+`effective_duration` outside the module. A sum with no library compiles for
+validation and raises `UnscopedPlaytimeRead` if executed. No queryset and no
+`Q` crosses the interface. A stored comparison naming `playtime` is refused
+through `Game.RETIRED_COMPARISON_COLUMNS`.
 
 **Component system** (`common/components/`): FastHTML-style **lazy node tree**.
 Components are `Node` objects that render to HTML only when asked (`str(node)` /

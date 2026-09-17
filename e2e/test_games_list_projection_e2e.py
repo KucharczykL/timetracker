@@ -96,5 +96,10 @@ def test_the_playtime_column_adds_historical_records(
 
     page.goto(f"{list_url(live_server)}?sort=-playtime")
 
-    expect(page.locator(f"#duration-game-{recorded.pk}-playtime")).to_contain_text("3")
+    expect(page.locator(f"#duration-game-{recorded.pk}-playtime")).to_contain_text(
+        "3 h 00 m"
+    )
+    expect(page.locator(f"#duration-game-{tracked_only.pk}-playtime")).to_contain_text(
+        "2 h 00 m"
+    )
     expect(page.locator("tbody tr").first).to_contain_text("Outer Wilds")
