@@ -132,13 +132,24 @@ provenance; the form offers two, and `Externally measured` is the importer's.
 `Restate` answers `Unchanged` when the statement equals the row.
 
 `ReclassifySessionAsHistoricalPlaytime`, in `games/commands/playersession.py`:
-`RemoveSession` then `RecordHistoricalPlaytime`, two dispatches under one
-correlation id, the pairing #683 established. The record carries the session's
-duration, its `stated_day` (a Timed row's effective day) as a day-precision
-`when`, its device, emulated flag, note and run, and provenance `Manually
-entered` unless the caller states `Estimated`. Only Duration-only rows are
-offered on screen; the command admits any live session. Its undo is the
-reverse pair under one correlation id: remove the record, restore the session.
+`RecordHistoricalPlaytime`, then a fifth session event,
+`library.playersession.reclassified`, carrying the record's reference; two
+dispatches under one correlation id, the pairing #683 established. The record
+carries the session's duration, its `stated_day` (a Timed row's effective day)
+as a day-precision `when`, its device, emulated flag, note and run, and
+provenance `Manually entered` unless the caller states `Estimated`. Only
+Duration-only rows are offered on screen; the command admits any live session
+that has a duration, and refuses a running Timed row.
+
+The event is not `removed`, because a removed session can be restored:
+`RestoreSession` exists, #695's Undo reaches it, and the Trash (#795) will.
+Restoring a reclassified session would count its hours twice while the record
+stands. The projector marks `removed_at` and a new `reclassified_into` column
+on the session row, so every `alive()` read excludes it as before, and
+`RestoreSession` refuses a row whose `reclassified_into` names a live record,
+with a sentence naming it. The undo of the pair is `RemoveHistoricalPlaytime`
+then `RestoreSession`, which the refusal then admits, under one correlation id;
+`restored` clears both columns.
 
 ### Projections
 
@@ -150,7 +161,9 @@ in `games/projectors/historical_playtime.py`:
   `Playthrough.started_*` pattern), provenance, device (RESTRICT, null),
   emulated, note, created_at, removed_at. CHECK: duration positive.
 - `HistoricalPlaytimeRun`: record (RESTRICT), playthrough (RESTRICT), library;
-  unique on (record, playthrough).
+  unique on (record, playthrough). Its queryset declares
+  `ancestor_marks = ("record",)`, so the referrer check reads the record's mark
+  through it, as `PlayerSessionQuerySet` reads its parents'.
 
 Both foreign-key pairs join `AUDITED_PROJECTION_REFERENCES`; #1017's audit
 test enumerates them. The run side joins `BLOCKING_REFERRERS`, so
@@ -171,7 +184,7 @@ granularity rule.
 
 `playtime.py` stops meaning "sessions" and starts meaning "playtime":
 
-- totals and per-game figures return `PlaytimeBreakdown(tracked, estimated)`
+- totals and per-game figures return `PlaytimeBreakdown(tracked, historical)`
   with `total` derived, so every caller that shows a figure can show the
   split;
 - the game list's `playtime_by_game`, `playtime_sort_key` and the
@@ -208,12 +221,17 @@ carries for four fields. Stated once, in `stats_data.py`:
 
 ### Presentation
 
-One `PlaytimeSplit` component renders `242 h · 142 h tracked · ~100 h
-estimated`, omitting the split when the estimated part is zero. It appears on
+One `PlaytimeSplit` component renders `242 h · 142 h tracked · 100 h
+historical`, omitting the split when the historical part is zero. The
+charter's example says "~100h estimated"; the word is amended, because a
+`Manually entered` figure read off a launcher is not an estimate and the bulk
+conversion writes that provenance by default. Provenance shows per record, not
+in the sum. It appears on
 the Game detail headline, the stats totals, the navbar figure and the top-10
 rows. The game list column shows the total alone. The Playthroughs table on
 Game detail adds record durations to the run they name; a record naming two
-runs shows under both with a "shared" mark and is never divided.
+runs shows under both with a "shared" mark and is never divided, so the column
+may sum past the game's total, which the mark explains.
 
 ## Screens
 
@@ -233,8 +251,10 @@ confirm page and offers Undo through `<toast-stack>` as #695 does, over
 
 **Playtime page.** The nav entry "Sessions" becomes "Playtime" with two tabs.
 Sessions is today's list, same route, same presets. Historical is a new list
-over `HistoricalPlaytime`: `HistoricalPlaytimeFilter` (game, run, provenance,
-device, emulated, duration hours, when, note, created), a quick bar with
+over `HistoricalPlaytime`: `HistoricalPlaytimeFilter` (game, provenance, device,
+emulated, duration hours, when, note, created; not run, because a record's
+runs are a to-many hop and `check_comparison_through` refuses one — a run's
+records are read from Game detail), a quick bar with
 provenance and duration facets, sortable table, saved presets, the filter
 builder, `GET /api/historical-playtime/` and `/{id}`, and the TypeScript
 contract. Provenance is prominent in columns and facets because import will
@@ -249,14 +269,16 @@ nothing meanwhile.
 **Review facet** on the Sessions tab: a quick facet "Duration only, ≥ N h", N
 editable, default 8. Each Duration-only row gains "Was an estimate", which
 opens the entry form prefilled from the session with the run fixed. The
-facet's toolbar gains "Convert all shown": a confirm page listing the rows,
-then `Reclassify` per row at day precision, provenance Manually entered, one
-correlation id per row, and a count when done. There is no stored "suggested"
+facet's toolbar gains "Convert all shown": every row matching the current
+filter, not the page; a confirm page listing them; then `Reclassify` per row at
+day precision, provenance Manually entered, one correlation id per row, in one
+request, and a count when done. The population is bounded (142 rows exist);
+chunking and retry are TABLE-03's if a later population outgrows one request. There is no stored "suggested"
 state: the threshold is the suggestion, and a row a person does not convert
 stays a session.
 
 **Undo of a single conversion** from its toast reverses the pair under one
-correlation id.
+correlation id: remove the record, restore the session.
 
 ## Delivery order
 
@@ -313,7 +335,7 @@ dispatches), provenance `Externally measured` in the enum, column, filter and
 badge, `source: null` reserved on `created` and `restated`, idempotency keys
 the importer derives from provider, game key and observed-at, a default run on
 every tracked game to hang a record on, `game_historical_playtime` by
-provenance for the remainder, a bench workload sized like an import, and
+provenance for the remainder, a bench workload shaped like an import, and
 `Restate` as the sync verb so a counter never counts twice. The observation
 store, a sync-run record and the reconciliation screen are #798's own tables
 and screens; "when was the last import" is answered by them, not by a record.
@@ -348,9 +370,11 @@ whenever either projection's columns do.
   the highest average, the unique-day count and the day chart restated and
   each change attributed to a converted row.
 - The Undo of one conversion leaves the stream one pair longer and both
-  tables as they were.
-- `make bench` seeds 600 records in one command run and meets the append and
-  read budgets recorded in `docs/event-benchmarks.md`.
+  tables as they were; `RestoreSession` alone refuses a reclassified session
+  while its record is live and admits it once the record is removed.
+- `make bench` appends 600 records through 600 dispatches in one workload
+  run, an import's shape, and meets the append and read budgets recorded in
+  `docs/event-benchmarks.md`.
 - `render_pages` before and after, every differing file attributed.
 - Full `make check` green at every merged commit.
 
