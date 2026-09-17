@@ -116,7 +116,7 @@ payload validation:
 Field-grained events (`duration_corrected`, `runs_changed`, …) were considered
 and rejected: sessions needed the split because timing, description and run
 are corrected at different times for different reasons; a record is corrected
-as a unit. Folding records into `PlayerSession` under a `kind` was rejected
+as a unit. Storing records as `PlayerSession` rows under a `kind` was rejected
 because it is the charter's named non-goal and would put a kind filter on
 every session-derived figure forever.
 
