@@ -185,14 +185,14 @@ def test_no_data_table_cell_wraps_at_any_viewport(
 def test_no_game_detail_mini_table_cell_wraps(
     authenticated_page: Page, live_server, populated
 ):
-    """The detail page stacks three data tables inside a narrower column than
+    """The detail page stacks four data tables inside a narrower column than
     any list page gets, so it is where the rule is under the most pressure."""
     page = authenticated_page
     game = Game.objects.get(name=LONG_NAME)
     page.goto(f"{live_server.url}{game.get_absolute_url()}")
     #: The page measured is the populated one:
-    #: three tables, and History with an entry.
-    expect(page.locator('[role="region"] table')).to_have_count(3)
+    #: four tables, and History with an entry.
+    expect(page.locator('[role="region"] table')).to_have_count(4)
     expect(page.locator("#history-container li")).to_have_count(1)
     for width in VIEWPORTS:
         page.set_viewport_size({"width": width, "height": 900})

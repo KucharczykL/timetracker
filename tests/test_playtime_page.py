@@ -1,5 +1,6 @@
 """The Playtime page: tabs, entry, Historical list."""
 
+import html
 import json
 import re
 import uuid
@@ -14,6 +15,7 @@ from historical_playtime_rows import record_row
 from session_rows import session_row, tracked_run
 
 from common.components import PageTab, PageTabs, StatisticCard
+from common.returns import action_url
 from games.events.dispatch import RowUnreadable
 from games.models import (
     Device,
@@ -293,6 +295,21 @@ def test_the_library_card_counts_live_sessions_and_records(
 
 def test_every_provenance_has_a_tone():
     assert set(PROVENANCE_TONES) == set(HistoricalPlaytimeProvenance.values)
+
+
+@pytest.mark.django_db
+@pytest.mark.untracked_games
+def test_each_row_offers_edit_and_remove_back_to_the_list(client, owner):
+    library = owner.library
+    run = tracked_run(library, Game.objects.create(library=library, name="G"))
+    record = record_row([run])
+    page = f"{reverse(HISTORICAL)}?page=1"
+
+    body = client.get(page).content.decode()
+
+    for route in ("games:edit_historical_playtime", "games:remove_historical_playtime"):
+        assert action_url(route, record.pk, origin=page) in html.unescape(body)
+    assert ">Actions<" in body
 
 
 @pytest.mark.django_db

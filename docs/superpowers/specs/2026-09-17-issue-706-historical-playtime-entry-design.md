@@ -59,8 +59,16 @@ no-op. Every redirect goes to the origin, else to Game detail.
 ## Game detail
 
 A section between Sessions and Playthroughs shows every live record: when,
-duration, provenance, runs, device, Edit and Remove. The header shows a
-count badge and Add. The header does not show a total, because a total is
+duration, provenance, runs, device, Edit and Remove. It reads rows and run
+names through `games/reads/historical_playtime_page.py`, as the Historical
+list does. The header shows a count badge, Add, and View all, which opens
+the list narrowed to the game.
+
+## Historical list
+
+Each row of the Historical list has Edit and Remove, through
+`record_actions`. Both links carry the list page as the origin. The
+Actions column has priority 4, above every other column. The header does not show a total, because a total is
 a playtime read (#709) and its presentation is #710's.
 
 ## Tests

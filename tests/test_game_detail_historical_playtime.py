@@ -1,5 +1,6 @@
 """Game detail lists a game's historical playtime."""
 
+import html
 from datetime import timedelta
 from urllib.parse import quote
 
@@ -7,7 +8,9 @@ import pytest
 from django.urls import reverse
 from historical_playtime_rows import record_row
 from stated_runs import another_run
+from test_column_priority_contract import header_policies
 
+from games.filters import HistoricalPlaytimeFilter, filter_url
 from games.models import Device, Game, HistoricalPlaytimeProvenance, Playthrough
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -90,6 +93,19 @@ def test_row_actions_carry_the_origin(logged_in, game, run):
     for route in ("games:edit_historical_playtime", "games:remove_historical_playtime"):
         url = reverse(route, args=[record.pk])
         assert f'href="{url}?origin={origin}"' in html
+
+
+def test_view_all_opens_the_list_narrowed_to_the_game(logged_in, game, run):
+    record_row([run])
+    view_all = filter_url(HistoricalPlaytimeFilter.where(game=[game.id]))
+    assert html.escape(view_all) in section(logged_in, game)
+
+
+def test_actions_outrank_every_other_column(logged_in, game, run):
+    record_row([run])
+    [policies] = header_policies(section(logged_in, game))
+    actions = dict(policies)["Actions"]
+    assert all(actions > priority for label, priority in policies if label != "Actions")
 
 
 def test_a_removed_record_is_not_listed(logged_in, game, run):

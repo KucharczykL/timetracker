@@ -20,9 +20,10 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from historical_playtime_rows import record_row
 from session_rows import session_row
 
-from games.models import Device, Game, Platform, Purchase
+from games.models import Device, Game, Platform, Playthrough, Purchase
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 BASE = datetime(2024, 5, 1, 12, 0, tzinfo=ZONEINFO)
@@ -93,6 +94,8 @@ class ActionsColumnPriorityTest(TestCase):
             price_currency="USD",
         )
         purchase.games.add(self.game)
+        #: Game detail's historical section draws a table only with a row.
+        record_row([Playthrough.objects.get(player_game__game=self.game)])
 
     def assert_actions_dominates(self, url: str) -> None:
         response = self.client.get(url)
