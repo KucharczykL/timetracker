@@ -17,15 +17,14 @@ its `PlayerGame`, and the marks of the record, the `PlayerGame` and the
 catalog game. `alive()` does not read the catalog game's mark.
 `RECORD_ORDER` puts the newest `when` first and an unknown `when` last.
 
-Run names come from `numbered_for`. `live_ordinary_runs` has no numbers,
-so `display_name` raises for a run with a blank name. A live record names
-only live runs, because `RemovePlaythrough` refuses a run a live record
-names.
+Run names come from `numbered_for`. A live record names only live runs,
+because `RemovePlaythrough` refuses a run a live record names.
 
 ## Form
 
-`HistoricalPlaytimeForm` parses types only. The command makes every domain
-decision, so a refusal shows the command's sentence.
+`HistoricalPlaytimeForm` parses types and narrows the offered provenances
+and devices. The command makes every other decision, so its refusals show
+the command's sentence, at the command's status.
 
 - `playthroughs` shows the game's numbered runs as checkboxes. It accepts
   any run of the library, so the command refuses a removed run, the bucket
@@ -37,12 +36,14 @@ decision, so a refusal shows the command's sentence.
   shows only on a record that holds it.
 - `device` also accepts the record's own device, removed or not.
 
-An unchanged submit states nothing. The form keeps the stored seconds when
+Add renders a fresh `submission` key and dispatches Record under it, so a
+repeated submit replays instead of recording twice. An unchanged Edit
+states nothing. The form keeps the stored seconds when
 both duration inputs match the stored hours and minutes. It changes CRLF to
 LF in the note.
 
-The checkbox and radio lists render primitives in a `<fieldset>` that the
-row's label names through `field_label_id`.
+The checkbox and radio lists and the duration inputs render in a
+`<fieldset>` that the row's label names through `field_label_id`.
 
 ## Routes
 
@@ -61,8 +62,8 @@ no-op. Every redirect goes to the origin, else to Game detail.
 A section between Sessions and Playthroughs shows every live record: when,
 duration, provenance, runs, device, Edit and Remove. It reads rows and run
 names through `games/reads/historical_playtime_page.py`, as the Historical
-list does. The header shows a count badge, Add, and View all, which opens
-the list narrowed to the game. The header shows no total: the page
+list does. The header shows Add; with records, also a count badge and View all,
+which opens the list narrowed to the game. The header shows no total: the page
 headline states the game's playtime.
 
 ## Historical list
@@ -81,5 +82,5 @@ Actions column has priority 4, above every other column.
 - `tests/test_game_detail_historical_playtime.py`: the section.
 - `tests/test_playtime_page.py`: the list's row actions.
 - `e2e/test_historical_playtime_entry_e2e.py`: every act in a browser.
-- `tests/historical_playtime_rows.py` writes rows by hand. The sibling
-  branches share its text.
+- `tests/historical_playtime_rows.py` writes rows by hand;
+  `tests/historical_playtime_posts.py` builds a submit.

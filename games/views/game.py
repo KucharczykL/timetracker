@@ -1050,6 +1050,7 @@ def _historical_playtime_section(
             ", ".join(record_run_labels(record, labels)),
             record.device.name if record.device else "No device",
             record_actions(record, origin),
+            id=f"historical-row-{record.pk}",
         )
         for record in records
     ]

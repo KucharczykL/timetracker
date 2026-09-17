@@ -32,7 +32,6 @@ def test_a_record_goes_through_every_act_from_game_detail(
     page.get_by_label("Playthrough 2").check()
     page.fill('input[name="duration_hours"]', "100")
     page.fill('input[name="duration_minutes"]', "0")
-    page.select_option('select[name="when-kind"]', "date")
     page.wait_for_selector("[data-temporal-segments='start']:not([hidden])")
     page.click("[data-date-part='year'][data-date-side='start']")
     page.keyboard.type("2005")
@@ -44,16 +43,18 @@ def test_a_record_goes_through_every_act_from_game_detail(
     expect(rows.first).to_contain_text("Playthrough 1, Playthrough 2")
     expect(rows.first).to_contain_text("2005")
 
-    rows.first.locator('a[href*="/edit"]').click()
+    rows.first.get_by_title("Edit historical playtime").click()
     page.get_by_label("Playthrough 2").uncheck()
     page.get_by_role("button", name="Submit", exact=True).click()
 
     expect(page.get_by_text("Historical playtime saved.")).to_be_visible()
     expect(rows.first).not_to_contain_text("Playthrough 2")
     expect(rows.first).to_contain_text("Playthrough 1")
+    expect(rows.first).to_contain_text("2005")
+    expect(rows.first).to_contain_text("100.0 h")
     assert HistoricalPlaytime.objects.get().runs.count() == 1
 
-    rows.first.locator('a[href*="/remove"]').click()
+    rows.first.get_by_title("Remove historical playtime").click()
     page.click('button:has-text("Remove")')
 
     expect(page.get_by_text("Historical playtime removed.")).to_be_visible()

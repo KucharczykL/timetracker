@@ -15,6 +15,7 @@ from games.commands.historical_playtime import (
     RestoreHistoricalPlaytime,
 )
 from games.events.dispatch import Command, CommandResult, dispatch
+from games.events.idempotency import IdempotencyKey
 from games.models import HistoricalPlaytime, LibraryEvent
 from games.writes.answers import answered
 
@@ -22,29 +23,45 @@ SUBJECT = "historical playtime"
 
 
 def _dispatch(
-    command: Command, *, actor: User, correlation_id: uuid.UUID
+    command: Command,
+    *,
+    actor: User,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
 ) -> CommandResult:
     return dispatch(
         command,
         actor=actor,
         library=actor.library,
-        #: Deduplicates nothing; each build absorbs a repeat.
-        idempotency_key=str(uuid.uuid7()),
+        #: No key: the build absorbs a repeat.
+        idempotency_key=idempotency_key or str(uuid.uuid7()),
         correlation_id=correlation_id,
     )
 
 
 def record_historical_playtime(
-    actor: User, statement: HistoricalPlaytimeStatement, *, correlation_id: uuid.UUID
+    actor: User,
+    statement: HistoricalPlaytimeStatement,
+    *,
+    idempotency_key: IdempotencyKey,
+    correlation_id: uuid.UUID,
 ) -> uuid.UUID:
-    """Record the statement; answer the new record's id."""
+    """Record the statement; answer the record's id.
+
+    Record has no Unchanged, so the key is what makes a
+    repeated submit replay rather than record twice.
+    """
     with answered(SUBJECT):
         result = _dispatch(
             RecordHistoricalPlaytime(statement=statement),
             actor=actor,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
         )
-    assert result.sequences is not None
+    if result.sequences is None:
+        raise RuntimeError(
+            f"Recording historical playtime under {idempotency_key} appended nothing."
+        )
     return LibraryEvent.objects.get(
         stream_id=result.stream_id, sequence=result.sequences.first
     ).aggregate_id

@@ -1,10 +1,11 @@
-"""The historical playtime form parses; the command decides."""
+"""The form parses and narrows choices; the command decides."""
 
 import uuid
 from datetime import timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from historical_playtime_posts import posted_record
 from stated_runs import another_run
 
 from common.date_time_presentation import (
@@ -39,8 +40,6 @@ PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
 )
 
-type PostedData = dict[str, str | list[str]]
-
 
 @pytest.fixture
 def game(owned_library) -> Game:
@@ -50,20 +49,6 @@ def game(owned_library) -> Game:
 @pytest.fixture
 def run(game) -> Playthrough:
     return Playthrough.objects.get(player_game__game=game)
-
-
-def posted(run_ids, *, hours="100", minutes="0", **overrides) -> PostedData:
-    data: PostedData = {
-        "playthroughs": [str(run_id) for run_id in run_ids],
-        "duration_hours": hours,
-        "duration_minutes": minutes,
-        temporal_input_name("when", "kind"): "unknown",
-        "provenance": HistoricalPlaytimeProvenance.ESTIMATED.value,
-        "device": "",
-        "note": "",
-    }
-    data.update(overrides)
-    return data
 
 
 def form(library, game, data=None, record=None) -> HistoricalPlaytimeForm:
@@ -92,22 +77,34 @@ def recorded(user, run_ids, **changes) -> HistoricalPlaytime:
 
 
 def test_hours_and_minutes_clean_to_a_duration(owned_library, game, run):
-    bound = form(owned_library, game, posted([run.pk], hours="120", minutes="30"))
+    bound = form(
+        owned_library, game, posted_record([run.pk], hours="120", minutes="30")
+    )
     assert bound.is_valid(), bound.errors
     assert bound.statement().duration == timedelta(hours=120, minutes=30)
 
 
 def test_a_blank_duration_reaches_the_command_as_zero(owned_library, game, run):
-    bound = form(owned_library, game, posted([run.pk], hours="", minutes=""))
+    bound = form(owned_library, game, posted_record([run.pk], hours="", minutes=""))
     assert bound.is_valid(), bound.errors
     assert bound.statement().duration == timedelta(0)
+
+
+def test_the_largest_duration_is_accepted(owned_library, game, run):
+    bound = form(
+        owned_library, game, posted_record([run.pk], hours="99999", minutes="59")
+    )
+    assert bound.is_valid(), bound.errors
+    assert bound.statement().duration == timedelta(hours=99999, minutes=59)
 
 
 @pytest.mark.parametrize(
     ("hours", "minutes"), [("1", "60"), ("-1", "0"), ("100000", "0")]
 )
 def test_numbers_out_of_range_are_refused(owned_library, game, run, hours, minutes):
-    bound = form(owned_library, game, posted([run.pk], hours=hours, minutes=minutes))
+    bound = form(
+        owned_library, game, posted_record([run.pk], hours=hours, minutes=minutes)
+    )
     assert not bound.is_valid()
     assert "duration" in bound.errors
 
@@ -116,14 +113,18 @@ def test_unchanged_hours_and_minutes_keep_the_stored_seconds(
     owned_user, owned_library, game, run
 ):
     record = recorded(owned_user, [run.pk])
-    bound = form(owned_library, game, posted([run.pk], hours="1", minutes="30"), record)
+    bound = form(
+        owned_library, game, posted_record([run.pk], hours="1", minutes="30"), record
+    )
     assert bound.is_valid(), bound.errors
     assert bound.statement().duration == timedelta(hours=1, minutes=30, seconds=20)
 
 
 def test_changed_minutes_drop_the_stored_seconds(owned_user, owned_library, game, run):
     record = recorded(owned_user, [run.pk])
-    bound = form(owned_library, game, posted([run.pk], hours="1", minutes="31"), record)
+    bound = form(
+        owned_library, game, posted_record([run.pk], hours="1", minutes="31"), record
+    )
     assert bound.is_valid(), bound.errors
     assert bound.statement().duration == timedelta(hours=1, minutes=31)
 
@@ -132,7 +133,9 @@ def test_blank_inputs_on_a_record_under_a_minute_are_zero(
     owned_user, owned_library, game, run
 ):
     record = recorded(owned_user, [run.pk], duration=timedelta(seconds=20))
-    bound = form(owned_library, game, posted([run.pk], hours="", minutes=""), record)
+    bound = form(
+        owned_library, game, posted_record([run.pk], hours="", minutes=""), record
+    )
     assert bound.is_valid(), bound.errors
     assert bound.statement().duration == timedelta(0)
 
@@ -164,7 +167,7 @@ def test_edit_offers_externally_measured_only_where_held(
     refused = form(
         owned_library,
         game,
-        posted([run.pk], provenance="externally_measured"),
+        posted_record([run.pk], provenance="externally_measured"),
     )
     assert not refused.is_valid()
 
@@ -175,7 +178,7 @@ def test_a_date_that_does_not_exist_gets_the_commands_sentence(
     bound = form(
         owned_library,
         game,
-        posted(
+        posted_record(
             [run.pk],
             **{
                 temporal_input_name("when", "kind"): "date",
@@ -193,7 +196,7 @@ def test_a_known_when_is_stated_canonically(owned_library, game, run):
     bound = form(
         owned_library,
         game,
-        posted(
+        posted_record(
             [run.pk],
             **{
                 temporal_input_name("when", "kind"): "date",
@@ -206,7 +209,7 @@ def test_a_known_when_is_stated_canonically(owned_library, game, run):
 
 
 def test_an_unknown_when_is_stated_as_none(owned_library, game, run):
-    bound = form(owned_library, game, posted([run.pk]))
+    bound = form(owned_library, game, posted_record([run.pk]))
     assert bound.is_valid(), bound.errors
     assert bound.statement().when is None
 
@@ -250,7 +253,7 @@ def test_a_posted_removed_run_is_left_to_the_command(
         library=owned_library,
         idempotency_key="remove-second",
     )
-    bound = form(owned_library, game, posted([second.pk]))
+    bound = form(owned_library, game, posted_record([second.pk]))
     assert bound.is_valid(), bound.errors
 
 
@@ -263,7 +266,7 @@ def test_a_held_removed_device_stays_selectable(owned_user, owned_library, game,
     bound = form(
         owned_library,
         game,
-        posted([run.pk], hours="1", minutes="30", device=str(device.pk)),
+        posted_record([run.pk], hours="1", minutes="30", device=str(device.pk)),
         record,
     )
     assert bound.is_valid(), bound.errors
@@ -273,13 +276,13 @@ def test_a_held_removed_device_stays_selectable(owned_user, owned_library, game,
 def test_another_removed_device_is_refused(owned_library, game, run):
     device = Device.objects.create(library=owned_library, name="Old PC")
     remove(device)
-    bound = form(owned_library, game, posted([run.pk], device=str(device.pk)))
+    bound = form(owned_library, game, posted_record([run.pk], device=str(device.pk)))
     assert not bound.is_valid()
     assert "device" in bound.errors
 
 
 def test_a_crlf_note_cleans_to_lf(owned_library, game, run):
-    bound = form(owned_library, game, posted([run.pk], note="one\r\ntwo"))
+    bound = form(owned_library, game, posted_record([run.pk], note="one\r\ntwo"))
     assert bound.is_valid(), bound.errors
     assert bound.statement().note == "one\ntwo"
 
@@ -295,19 +298,106 @@ def test_choice_lists_render_as_labelled_groups(owned_library, game, run):
 
 
 def test_recording_answers_the_new_id(owned_user, game, run):
-    bound = form(owned_user.library, game, posted([run.pk]))
+    bound = form(owned_user.library, game, posted_record([run.pk]))
     assert bound.is_valid(), bound.errors
     record_id = record_historical_playtime(
-        owned_user, bound.statement(), correlation_id=uuid.uuid7()
+        owned_user,
+        bound.statement(),
+        idempotency_key=bound.submission_key(),
+        correlation_id=uuid.uuid7(),
     )
     assert HistoricalPlaytime.objects.get().pk == record_id
 
 
 def test_a_refusal_is_an_answer(owned_user, game, run):
-    bound = form(owned_user.library, game, posted([]))
+    bound = form(owned_user.library, game, posted_record([]))
     assert bound.is_valid(), bound.errors
     with pytest.raises(CommandFailed) as failed:
         record_historical_playtime(
-            owned_user, bound.statement(), correlation_id=uuid.uuid7()
+            owned_user,
+            bound.statement(),
+            idempotency_key=bound.submission_key(),
+            correlation_id=uuid.uuid7(),
         )
     assert failed.value.message == AT_LEAST_ONE_RUN
+
+
+def test_edit_renders_the_stored_hours_and_minutes(
+    owned_user, owned_library, game, run
+):
+    record = recorded(owned_user, [run.pk])
+    html = str(form(owned_library, game, record=record)["duration"])
+    assert 'name="duration_hours" id="id_duration_hours" value="1"' in html
+    assert 'name="duration_minutes" id="id_duration_minutes" value="30"' in html
+
+
+def test_an_estimated_record_is_offered_two_provenances(
+    owned_user, owned_library, game, run
+):
+    record = recorded(owned_user, [run.pk])
+    choices = form(owned_library, game, record=record).fields["provenance"].choices
+    assert [value for value, _ in choices] == ["estimated", "manually_entered"]
+
+
+def test_emulated_reaches_the_statement(owned_library, game, run):
+    bound = form(owned_library, game, posted_record([run.pk], emulated="on"))
+    assert bound.is_valid(), bound.errors
+    assert bound.statement().emulated is True
+
+
+def test_another_librarys_run_is_refused(owned_library, game, run, django_user_model):
+    other = django_user_model.objects.create_user(username="someone-else")
+    theirs = Game.objects.create(library=other.library, name="Theirs")
+    their_run = Playthrough.objects.get(player_game__game=theirs)
+    bound = form(owned_library, game, posted_record([their_run.pk]))
+    assert not bound.is_valid()
+    assert "playthroughs" in bound.errors
+
+
+def test_another_librarys_device_is_refused(
+    owned_library, game, run, django_user_model
+):
+    other = django_user_model.objects.create_user(username="someone-else")
+    device = Device.objects.create(library=other.library, name="Theirs")
+    bound = form(owned_library, game, posted_record([run.pk], device=str(device.pk)))
+    assert not bound.is_valid()
+    assert "device" in bound.errors
+
+
+def test_edit_refuses_a_removed_device_it_does_not_hold(
+    owned_user, owned_library, game, run
+):
+    held = Device.objects.create(library=owned_library, name="Held")
+    other = Device.objects.create(library=owned_library, name="Other")
+    record = recorded(owned_user, [run.pk], device_id=held.pk)
+    remove(held)
+    remove(other)
+    bound = form(
+        owned_library, game, posted_record([run.pk], device=str(other.pk)), record
+    )
+    assert not bound.is_valid()
+    assert "device" in bound.errors
+
+
+def test_a_device_that_is_no_id_is_a_field_error(owned_library, game, run):
+    bound = form(owned_library, game, posted_record([run.pk], device="not-an-id"))
+    assert not bound.is_valid()
+    assert "device" in bound.errors
+    #: Re-rendering the refused form must not raise.
+    assert "not-an-id" not in str(bound["device"])
+
+
+def test_add_needs_its_submission_key(owned_library, game, run):
+    data = posted_record([run.pk])
+    del data["submission"]
+    bound = form(owned_library, game, data)
+    assert not bound.is_valid()
+    assert "submission" in bound.errors
+
+
+def test_add_renders_a_fresh_key_and_edit_none(owned_user, owned_library, game, run):
+    first = form(owned_library, game)["submission"].value()
+    second = form(owned_library, game)["submission"].value()
+    assert first != second
+    record = recorded(owned_user, [run.pk])
+    assert "submission" not in form(owned_library, game, record=record).fields

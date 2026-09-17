@@ -1,11 +1,13 @@
 """Historical playtime acts through the routes."""
 
+import re
 import uuid
 from datetime import timedelta
 
 import pytest
 from django.contrib.messages import get_messages
 from django.urls import reverse
+from historical_playtime_posts import MultiValuePost, posted_record
 from stated_runs import another_run
 
 from common.returns import action_url
@@ -17,6 +19,7 @@ from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
     RecordHistoricalPlaytime,
 )
+from games.commands.playergame import RemovePlayerGame, TrackGame
 from games.commands.playthrough import RemovePlaythrough
 from games.events.dispatch import dispatch
 from games.models import (
@@ -30,15 +33,15 @@ from games.models import (
     PlaythroughKind,
 )
 from games.removal import remove
-from timetracker.temporal import temporal_input_name
+from games.writes.answers import CONFLICT_STATUS
+from games.writes.historical_playtime import remove_historical_playtime
+from games.writes.playergame import new_correlation_id
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
 RUN_REMOVED_SENTENCE = (
     "That playthrough was removed from your library. Restore it before recording this."
 )
-
-type PostedData = dict[str, str | list[str]]
 
 
 @pytest.fixture
@@ -57,19 +60,8 @@ def run(game) -> Playthrough:
     return Playthrough.objects.get(player_game__game=game)
 
 
-def posted(run_ids, *, hours="100", minutes="0", **overrides) -> PostedData:
-    data: PostedData = {
-        "playthroughs": [str(run_id) for run_id in run_ids],
-        "duration_hours": hours,
-        "duration_minutes": minutes,
-        temporal_input_name("when", "kind"): "date",
-        temporal_input_name("when", "start_year"): "2005",
-        "provenance": HistoricalPlaytimeProvenance.ESTIMATED.value,
-        "device": "",
-        "note": "",
-    }
-    data.update(overrides)
-    return data
+def posted(run_ids, **changes) -> MultiValuePost:
+    return posted_record(run_ids, when_year="2005", **changes)
 
 
 def recorded(user, run_ids, **changes) -> HistoricalPlaytime:
@@ -207,7 +199,7 @@ def test_a_refusal_is_the_commands_sentence_on_the_form(
         reverse("games:add_historical_playtime", args=[game.pk]),
         posted(runs, hours=hours),
     )
-    assert response.status_code == 200
+    assert response.status_code == CONFLICT_STATUS
     assert sentence in messages_of(response)
     assert not HistoricalPlaytime.objects.exists()
 
@@ -226,7 +218,7 @@ def test_a_removed_run_is_refused_in_the_commands_words(
         reverse("games:add_historical_playtime", args=[game.pk]),
         posted([second.pk]),
     )
-    assert response.status_code == 200
+    assert response.status_code == CONFLICT_STATUS
     assert RUN_REMOVED_SENTENCE in messages_of(response)
 
 
@@ -265,7 +257,7 @@ def test_a_second_remove_returns_and_states_nothing(logged_in, owned_user, game,
 
     response = logged_in.post(url)
 
-    assert response.status_code == 302
+    assert response["Location"] == game.get_absolute_url()
     assert LibraryEvent.objects.count() == events
 
 
@@ -308,3 +300,138 @@ def test_another_librarys_record_and_game_answer_404(
     )
     record.refresh_from_db()
     assert record.removed_at is None
+
+
+def test_a_repeated_add_submit_records_once(logged_in, game, run):
+    url = reverse("games:add_historical_playtime", args=[game.pk])
+    data = posted([run.pk])
+
+    first = logged_in.post(url, data)
+    second = logged_in.post(url, data)
+
+    assert first.status_code == second.status_code == 302
+    assert "Historical playtime recorded." in messages_of(second)
+    assert HistoricalPlaytime.objects.count() == 1
+
+
+def test_a_reused_key_with_another_statement_is_refused(logged_in, game, run):
+    url = reverse("games:add_historical_playtime", args=[game.pk])
+    data = posted([run.pk])
+    logged_in.post(url, data)
+
+    response = logged_in.post(url, {**data, "duration_hours": "5"})
+
+    assert response.status_code == CONFLICT_STATUS
+    assert HistoricalPlaytime.objects.count() == 1
+
+
+def test_the_edit_page_states_the_record_and_saving_it_changes_nothing(
+    logged_in, owned_user, game, run
+):
+    device = Device.objects.create(library=owned_user.library, name="Steam Deck")
+    record = recorded(
+        owned_user,
+        [run.pk],
+        duration=timedelta(hours=1, minutes=30, seconds=20),
+        device_id=device.pk,
+        emulated=True,
+        note="Read off a launcher",
+    )
+    url = reverse("games:edit_historical_playtime", args=[record.pk])
+    page = logged_in.get(url).content.decode()
+    for rendered in (
+        'value="1"',
+        'value="30"',
+        'value="2005"',
+        "Steam Deck",
+        "Read off a launcher",
+    ):
+        assert rendered in page, rendered
+    assert re.search(rf'value="{run.pk}"[^>]*checked', page)
+    events = LibraryEvent.objects.count()
+
+    response = logged_in.post(
+        url,
+        posted(
+            [run.pk],
+            hours="1",
+            minutes="30",
+            device=str(device.pk),
+            emulated="on",
+            note="Read off a launcher",
+        ),
+    )
+
+    assert response.status_code == 302
+    assert LibraryEvent.objects.count() == events
+    record.refresh_from_db()
+    assert record.duration == timedelta(hours=1, minutes=30, seconds=20)
+
+
+def test_a_refused_edit_keeps_the_record(logged_in, owned_user, game, run):
+    record = recorded(owned_user, [run.pk])
+    response = logged_in.post(
+        reverse("games:edit_historical_playtime", args=[record.pk]),
+        posted([run.pk], hours="0", minutes="0"),
+    )
+    assert response.status_code == CONFLICT_STATUS
+    assert AT_LEAST_A_SECOND in messages_of(response)
+    assert 'name="duration_hours" id="id_duration_hours" value="0"' in (
+        response.content.decode()
+    )
+    record.refresh_from_db()
+    assert record.duration == timedelta(hours=100)
+
+
+def test_edit_without_an_origin_returns_to_game_detail(
+    logged_in, owned_user, game, run
+):
+    record = recorded(owned_user, [run.pk])
+    response = logged_in.post(
+        reverse("games:edit_historical_playtime", args=[record.pk]), posted([run.pk])
+    )
+    assert response["Location"] == game.get_absolute_url()
+
+
+def test_add_on_a_game_the_library_stopped_tracking_answers_404(
+    logged_in, owned_user, game, run
+):
+    dispatch(
+        RemovePlayerGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_user.library,
+        idempotency_key="untrack",
+    )
+    url = reverse("games:add_historical_playtime", args=[game.pk])
+    assert logged_in.get(url).status_code == 404
+
+
+def test_edit_on_a_removed_record_answers_404(logged_in, owned_user, game, run):
+    record = recorded(owned_user, [run.pk])
+    remove_historical_playtime(owned_user, record, correlation_id=new_correlation_id())
+    url = reverse("games:edit_historical_playtime", args=[record.pk])
+    assert logged_in.get(url).status_code == 404
+
+
+def test_a_shared_game_shows_each_library_its_own_records(
+    client, owned_user, django_user_model
+):
+    shared = Game.objects.create(library=None, name="Shared")
+    other = django_user_model.objects.create_user(username="someone-else")
+    for user in (owned_user, other):
+        dispatch(
+            TrackGame(game_id=shared.pk),
+            actor=user,
+            library=user.library,
+            idempotency_key=f"track-{user.pk}",
+        )
+        run = Playthrough.objects.get(player_game__game=shared, library=user.library)
+        recorded(user, [run.pk], note=f"by {user.username}")
+
+    client.force_login(owned_user)
+    page = client.get(shared.get_absolute_url()).content.decode()
+
+    mine = HistoricalPlaytime.objects.get(library=owned_user.library)
+    theirs = HistoricalPlaytime.objects.get(library=other.library)
+    assert f"historical-row-{mine.pk}" in page
+    assert f"historical-row-{theirs.pk}" not in page

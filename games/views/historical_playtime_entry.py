@@ -1,4 +1,4 @@
-"""Historical playtime acts from a game."""
+"""Record, restate, remove and restore historical playtime."""
 
 from functools import partial
 from typing import cast
@@ -41,7 +41,7 @@ FORM_SCRIPTS = (
 
 
 def _game_page(request: HttpRequest, game: Game) -> str:
-    """Where a finished act returns without an origin."""
+    """The origin, else Game detail."""
     return return_url(
         request, fallback="games:view_game", fallback_args=[game.pk, game.url_slug]
     )
@@ -65,13 +65,17 @@ def _any_library_record(request: HttpRequest, record_id: UUID) -> HistoricalPlay
 
 
 def _render_form(
-    request: HttpRequest, form: HistoricalPlaytimeForm, title: str
+    request: HttpRequest,
+    form: HistoricalPlaytimeForm,
+    title: str,
+    status: int = 200,
 ) -> HttpResponse:
     return render_page(
         request,
         AddForm(form, request=request, submit_class="", fields=FormFields(form)),
         title=title,
         scripts=Fragment(*(ModuleScript(path) for path in FORM_SCRIPTS)),
+        status=status,
     )
 
 
@@ -86,17 +90,21 @@ def add_historical_playtime(request: HttpRequest, game_id: UUID) -> HttpResponse
         game=game,
         presentation=date_time_presentation_for_request(request),
     )
+    title = f"Add historical playtime - {game.name}"
     if form.is_valid():
         try:
             record_historical_playtime(
-                user, form.statement(), correlation_id=new_correlation_id()
+                user,
+                form.statement(),
+                idempotency_key=form.submission_key(),
+                correlation_id=new_correlation_id(),
             )
         except CommandFailed as failure:
             messages.error(request, failure.message)
-        else:
-            messages.success(request, "Historical playtime recorded.")
-            return redirect(_game_page(request, game))
-    return _render_form(request, form, f"Add historical playtime - {game.name}")
+            return _render_form(request, form, title, status=failure.status_code)
+        messages.success(request, "Historical playtime recorded.")
+        return redirect(_game_page(request, game))
+    return _render_form(request, form, title)
 
 
 @login_required
@@ -111,6 +119,7 @@ def edit_historical_playtime(request: HttpRequest, record_id: UUID) -> HttpRespo
         presentation=date_time_presentation_for_request(request),
         record=record,
     )
+    title = f"Edit historical playtime - {game.name}"
     if form.is_valid():
         try:
             restate_historical_playtime(
@@ -118,11 +127,11 @@ def edit_historical_playtime(request: HttpRequest, record_id: UUID) -> HttpRespo
             )
         except CommandFailed as failure:
             messages.error(request, failure.message)
-        else:
-            #: An unchanged statement is a success too.
-            messages.success(request, "Historical playtime saved.")
-            return redirect(_game_page(request, game))
-    return _render_form(request, form, f"Edit historical playtime - {game.name}")
+            return _render_form(request, form, title, status=failure.status_code)
+        #: An unchanged statement is a success too.
+        messages.success(request, "Historical playtime saved.")
+        return redirect(_game_page(request, game))
+    return _render_form(request, form, title)
 
 
 @login_required

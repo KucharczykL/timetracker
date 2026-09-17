@@ -1,6 +1,7 @@
 """Game detail lists a game's historical playtime."""
 
 import html
+import re
 from datetime import timedelta
 from urllib.parse import quote
 
@@ -55,11 +56,16 @@ def test_an_empty_section_says_so_and_still_offers_add(logged_in, game):
 
 
 def test_rows_read_newest_first_with_an_unknown_when_last(logged_in, game, run):
-    record_row([run], when="2005", note="older")
-    record_row([run], when=None, note="unknown")
-    record_row([run], when="2010", note="newer")
+    older = record_row([run], when="2005")
+    unknown = record_row([run], when=None)
+    newer = record_row([run], when="2010")
     html = section(logged_in, game)
-    assert html.index("2010") < html.index("2005") < html.index("Unknown")
+    assert re.findall(r'id="historical-row-([0-9a-f-]+)"', html) == [
+        str(newer.pk),
+        str(older.pk),
+        str(unknown.pk),
+    ]
+    assert "Unknown" in html
 
 
 def test_a_row_states_duration_provenance_runs_and_device(
@@ -78,7 +84,9 @@ def test_a_row_states_duration_provenance_runs_and_device(
     assert "Manually entered" in html
     assert "Playthrough 1, Playthrough 2" in html
     assert "Steam Deck" in html
-    assert ">1<" in html  # the count badge
+    assert "100.0 h" in html
+    heading = html[: html.index("</h1>")]
+    assert re.search(r">\s*1\s*</", heading), heading
 
 
 def test_a_row_without_a_device_says_so(logged_in, game, run):

@@ -96,6 +96,7 @@ def record_actions(record: HistoricalPlaytime, origin: OriginUrl | None) -> Node
                 ),
                 "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
                 "color": "gray",
+                "title": "Edit historical playtime",
             },
             {
                 "href": action_url(
@@ -103,6 +104,7 @@ def record_actions(record: HistoricalPlaytime, origin: OriginUrl | None) -> Node
                 ),
                 "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                 "color": "red",
+                "title": "Remove historical playtime",
             },
         ]
     )
