@@ -38,6 +38,7 @@ from common.components import (
     Node,
     P,
     PageHeading,
+    Pill,
     Popover,
     PurchasePrice,
     QuickFilterBar,
@@ -85,6 +86,9 @@ from games.forms import GameForm
 from games.models import (
     ExternalReference,
     Game,
+    HistoricalPlaytime,
+    HistoricalPlaytimeProvenance,
+    PlayerGame,
     PlayerGameStatus,
     PlayerSessionQuerySet,
     PlayerSessionTimingMode,
@@ -96,10 +100,11 @@ from games.models import (
 from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.external_references import ReferenceMap, held_by, references_for
+from games.reads.historical_playtime_records import RECORD_ORDER, readable_records
 from games.reads.player_sessions import game_sessions
 from games.reads.playergame_history import StatusEntry, status_history
 from games.reads.playthrough_completions import GAME_RUNS, reported_completion_day
-from games.reads.playthrough_numbering import numbered_for
+from games.reads.playthrough_numbering import display_name, numbered_for
 from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 from games.reads.playtime import game_playtime, playtime_matching, playtime_sort_key
 from games.reference_form import ReferenceSetForm
@@ -625,24 +630,42 @@ def _game_section(
     table: Node,
     empty_message: str,
     view_all_url: str | None = None,
+    add_url: str | None = None,
 ) -> Node:
+    buttons: list[Node] = []
+    if add_url:
+        #: Offered on an empty section too.
+        buttons.append(
+            ControlButton(
+                href=add_url,
+                color="gray",
+                title=f"Add {title.lower()} for this game",
+            )[
+                Icon("plus", size=ICON_BUTTON_SIZE_CLASS),
+                "Add",
+            ]
+        )
     if view_all_url and count:
-        view_all_link = ControlButton(
-            href=view_all_url,
-            color="gray",
-            title=f"View all {title.lower()} for this game",
-        )[
-            Icon("arrowright", size=ICON_BUTTON_SIZE_CLASS),
-            "View all",
-        ]
+        buttons.append(
+            ControlButton(
+                href=view_all_url,
+                color="gray",
+                title=f"View all {title.lower()} for this game",
+            )[
+                Icon("arrowright", size=ICON_BUTTON_SIZE_CLASS),
+                "View all",
+            ]
+        )
+    heading = PageHeading(children=[title], badge=str(count) if count else "")
+    if buttons:
         # No margin: the section wrapper's gap owns the distance to the table, so
-        # a section with a "View all" button spaces exactly like one without.
+        # a section with buttons spaces exactly like one without.
         header = Div(class_="flex items-center justify-between")[
-            PageHeading(children=[title], badge=str(count) if count else ""),
-            view_all_link,
+            heading,
+            Div(class_="flex items-center gap-2")[*buttons],
         ]
     else:
-        header = PageHeading(children=[title], badge=str(count) if count else "")
+        header = heading
     return Div(class_="mb-6 flex flex-col gap-4")[
         header,
         table if count else empty_message,
@@ -998,6 +1021,89 @@ def _sessions_section(
     )
 
 
+def _run_names(record: HistoricalPlaytime, names: dict[UUID, str]) -> str:
+    """The record's runs, in their numbered order."""
+    named = {join.playthrough_id for join in record.runs.all()}
+    return ", ".join(name for run_id, name in names.items() if run_id in named)
+
+
+def _historical_playtime_section(
+    game: Game,
+    library: UserLibrary,
+    tracked: PlayerGame | None,
+    presentation: DateTimePresentation,
+    durations: DurationPresentation,
+    origin: OriginUrl | None,
+) -> Node:
+    records = list(
+        readable_records(library)
+        .filter(player_game__game=game)
+        .order_by(*RECORD_ORDER)
+        .prefetch_related("runs")
+    )
+    #: Every run a live record names is live and numbered.
+    names = {
+        run.pk: display_name(run)
+        for run in numbered_for(library, [tracked.pk] if tracked else [])
+    }
+    rows = [
+        make_row(
+            TemporalText(record.when, presentation),
+            Duration(
+                record.duration,
+                durations,
+                id_scope=f"game-historical-{record.pk}",
+                manual=True,
+            ),
+            Pill(label=HistoricalPlaytimeProvenance(record.provenance).label),
+            _run_names(record, names),
+            record.device.name if record.device else "No device",
+            ButtonGroup(
+                [
+                    {
+                        "href": action_url(
+                            "games:edit_historical_playtime", record.pk, origin=origin
+                        ),
+                        "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
+                        "color": "gray",
+                    },
+                    {
+                        "href": action_url(
+                            "games:remove_historical_playtime",
+                            record.pk,
+                            origin=origin,
+                        ),
+                        "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
+                        "color": "red",
+                    },
+                ]
+            ),
+        )
+        for record in records
+    ]
+    table = StyledTable(
+        columns=[
+            Column("When"),
+            Column("Duration", priority=2),
+            Column("Provenance", priority=2),
+            Column("Playthroughs", shrinkable=True),
+            Column("Device", priority=3),
+            Column("Actions", align="right", priority=3),
+        ],
+        rows=rows,
+        data_table=True,
+        caption="Historical playtime of this game",
+    )
+    section = _game_section(
+        "Historical playtime",
+        len(records),
+        table,
+        "No historical playtime.",
+        add_url=action_url("games:add_historical_playtime", game.pk, origin=origin),
+    )
+    return Div(id_="historical-playtime-container")[section]
+
+
 def _playthroughs_section(
     game: Game,
     runs: Sequence[Playthrough],
@@ -1099,6 +1205,9 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         ),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
+        _historical_playtime_section(
+            game, library, tracked, presentation, durations, origin
+        ),
         _playthroughs_section(game, runs, presentation, origin, get_token(request)),
         _history_section(game, library, presentation),
     ]
