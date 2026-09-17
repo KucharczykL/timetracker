@@ -12,10 +12,18 @@ import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from historical_playtime_rows import record_row
 from session_rows import duration_only_row, session_row, tracked_run
 
 from games.models import Game, Platform, PlayerSession
-from games.views.stats_data import _days_played_percent, compute_stats
+from games.reads.playtime import MonthPlaytime, PlatformPlaytime, PlaytimeBreakdown
+from games.views.stats_data import (
+    STATS_SOURCES,
+    StatsData,
+    StatsSource,
+    _days_played_percent,
+    compute_stats,
+)
 
 TZ = ZoneInfo(settings.TIME_ZONE)
 
@@ -195,3 +203,93 @@ def test_an_untracked_library_game_counts_in_top_games(owned_library):
     top = list(compute_stats(owned_library, 2023)["top_10_games_by_playtime"])
 
     assert [row.id for row in top] == [game.id]
+
+
+HOUR = timedelta(hours=1)
+
+
+def test_every_stats_key_states_its_sources():
+    assert set(STATS_SOURCES) == (
+        StatsData.__required_keys__ | StatsData.__optional_keys__
+    )
+
+
+def _session_figures(stats: StatsData) -> dict[str, object]:
+    return {
+        key: stats.get(key)
+        for key, source in STATS_SOURCES.items()
+        if source
+        in (StatsSource.SESSIONS_NO_SITTINGS, StatsSource.SESSIONS_NO_YEAR_OF_PLAY)
+    }
+
+
+@pytest.fixture
+def played_and_recorded(owned_library):
+    platform = Platform.objects.create(name="PC", icon="pc")
+    played = Game.objects.create(library=owned_library, name="Played")
+    recorded = Game.objects.create(
+        library=owned_library, name="Recorded", platform=platform
+    )
+    start = datetime(2022, 3, 1, 10, tzinfo=TZ)
+    session_row(played, started_at=start, ended_at=start + HOUR)
+    return played, recorded, platform
+
+
+@pytest.mark.django_db
+def test_a_contained_record_moves_only_the_playtime_figures(
+    owned_library, played_and_recorded
+):
+    _played, recorded, platform = played_and_recorded
+    before = {year: compute_stats(owned_library, year) for year in (2021, 2022, None)}
+    record_row(
+        [tracked_run(owned_library, recorded)], duration=3 * HOUR, when="2022-06"
+    )
+    after = {year: compute_stats(owned_library, year) for year in (2021, 2022, None)}
+
+    for year in (2021, 2022, None):
+        assert _session_figures(after[year]) == _session_figures(before[year])
+    assert after[2021]["total_hours"] == before[2021]["total_hours"]
+
+    this_year = after[2022]
+    assert this_year["total_hours"] == PlaytimeBreakdown(HOUR, 3 * HOUR)
+    assert [
+        (
+            game.name,
+            game.tracked_playtime,
+            game.historical_playtime,
+            game.total_playtime,
+        )
+        for game in this_year["top_10_games_by_playtime"]
+    ] == [
+        ("Recorded", timedelta(0), 3 * HOUR, 3 * HOUR),
+        ("Played", HOUR, timedelta(0), HOUR),
+    ]
+    assert this_year["total_playtime_per_platform"][0] == PlatformPlaytime(
+        platform.pk, "PC", PlaytimeBreakdown(timedelta(0), 3 * HOUR)
+    )
+    assert this_year["month_playtimes"] == [
+        MonthPlaytime(date(2022, 3, 1), PlaytimeBreakdown(HOUR, timedelta(0))),
+        MonthPlaytime(date(2022, 6, 1), PlaytimeBreakdown(timedelta(0), 3 * HOUR)),
+    ]
+    assert after[None]["total_hours"] == PlaytimeBreakdown(HOUR, 3 * HOUR)
+
+
+@pytest.mark.django_db
+def test_a_record_wider_than_a_year_counts_all_time_only(
+    owned_library, played_and_recorded
+):
+    _played, recorded, _platform = played_and_recorded
+    record_row(
+        [tracked_run(owned_library, recorded)], duration=3 * HOUR, when="2020/2022"
+    )
+
+    assert compute_stats(owned_library, 2022)["total_hours"] == PlaytimeBreakdown(
+        HOUR, timedelta(0)
+    )
+    assert [
+        game.name
+        for game in compute_stats(owned_library, 2022)["top_10_games_by_playtime"]
+    ] == ["Played"]
+    assert compute_stats(owned_library, None)["total_hours"] == PlaytimeBreakdown(
+        HOUR, 3 * HOUR
+    )
