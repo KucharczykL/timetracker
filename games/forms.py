@@ -1,8 +1,9 @@
 import datetime
+import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, ClassVar, Final, cast
+from typing import Any, ClassVar, Final, NamedTuple, cast
 from zoneinfo import ZoneInfo
 
 from django import forms
@@ -24,8 +25,20 @@ from common.components import (
     render,
     searchselect_selected,
 )
-from common.components.primitives import Checkbox
+from common.components.core import Node
+from common.components.elements import Fieldset
+from common.components.primitives import (
+    Checkbox,
+    Input,
+    Label,
+    Radio,
+    field_label_id,
+)
 from common.date_time_presentation import DateTimePresentation, zone_or_none
+from games.commands.historical_playtime import (
+    HistoricalPlaytimeStatement,
+    when_sentence,
+)
 from games.commands.playersession import (
     CorrectedTiming,
     DurationOnlyTiming,
@@ -33,9 +46,12 @@ from games.commands.playersession import (
     TimingStatement,
 )
 from games.dev_login import prefill_credentials
+from games.events.idempotency import IdempotencyKey
 from games.models import (
     Device,
     Game,
+    HistoricalPlaytime,
+    HistoricalPlaytimeProvenance,
     Platform,
     PlayerGame,
     PlayerGameStatus,
@@ -47,6 +63,7 @@ from games.models import (
 from games.reads.companion_status import played_is_offered
 from games.reads.playthrough_numbering import display_name, numbered_for
 from games.reads.playthrough_runs import library_runs, tracked_game
+from games.writes.playersession import latest_ordinary_run
 from timetracker.settings_registry import DISPLAY_TIME_ZONE_CHOICES
 from timetracker.settings_resolver import resolve_str_for_user
 from timetracker.temporal import (
@@ -149,6 +166,8 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
                 DateTimeFieldWidget,
                 TimeZoneRowWidget,
                 TemporalWidget,
+                _ChoiceListWidget,
+                HoursMinutesWidget,
             ),
         ):
             continue
@@ -451,8 +470,14 @@ class TemporalFormField(forms.Field):
         try:
             built = temporal_draft_from_data(self._data(value)).build()
         except TemporalValueParseError as error:
-            raise forms.ValidationError(str(error), code=error.code) from error
+            raise forms.ValidationError(
+                self.parse_error_message(error), code=error.code
+            ) from error
         return None if built.is_unknown else built
+
+    def parse_error_message(self, error: TemporalValueParseError) -> str:
+        """What a person reads for a refused value."""
+        return str(error)
 
     def has_changed(self, initial, data) -> bool:
         # Django's own guard: nobody touches a disabled control.
@@ -722,7 +747,12 @@ class PlaythroughSelectWidget(forms.Select):
         )
 
 
-def _run_choices(library: UserLibrary, game: Game | None) -> list[tuple[str, str]]:
+type ChoiceValue = str  # a posted option value
+type ChoiceLabel = str  # e.g. "Playthrough 2"
+type LabeledChoice = tuple[ChoiceValue, ChoiceLabel]
+
+
+def _run_choices(library: UserLibrary, game: Game | None) -> list[LabeledChoice]:
     """The game's live ordinary runs, each by its display name."""
     if game is None:
         return []
@@ -931,6 +961,324 @@ def _session_initial(session: PlayerSession) -> dict[str, Any]:
         "device": session.device_id,
         "note": session.note,
         "emulated": session.emulated,
+    }
+
+
+_CHOICE_LIST_CLASS = "flex flex-col gap-2"
+_NUMBER_CLASS = (
+    "w-24 px-3 min-h-control rounded-base border border-default-medium "
+    f"bg-neutral-secondary-medium text-heading {_DISABLED_CONTROL}"
+)
+
+type OptionBuilder = Callable[..., Node]
+
+
+class _ChoiceListWidget(forms.widgets.ChoiceWidget):
+    """One primitive per choice, in a group."""
+
+    option: ClassVar[OptionBuilder]
+
+    def id_for_label(self, id_, index=None):
+        #: The group takes the label.
+        return id_
+
+    def render(self, name, value, attrs=None, renderer=None):
+        final_attrs = self.build_attrs(self.attrs, attrs)
+        group_id = str(final_attrs.get("id", ""))
+        selected = set(self.format_value(value))
+        options = [
+            type(self).option(
+                name=name,
+                value=str(choice),
+                label=str(label),
+                checked=str(choice) in selected,
+            )
+            for choice, label in self.choices
+        ]
+        return render(
+            Fieldset(
+                id_=group_id or None,
+                aria_labelledby=field_label_id(group_id) or None,
+                class_=_CHOICE_LIST_CLASS,
+            )[*options]
+        )
+
+
+class CheckboxListWidget(_ChoiceListWidget):
+    """Checkboxes, any number checked."""
+
+    option = staticmethod(Checkbox)
+    allow_multiple_selected = True
+
+    def value_omitted_from_data(self, data, files, name) -> bool:
+        #: Nothing checked posts nothing.
+        return False
+
+
+class RadioListWidget(_ChoiceListWidget):
+    """Radio buttons, one checked."""
+
+    option = staticmethod(Radio)
+
+
+type DurationSuffix = str  # e.g. "hours"
+
+
+class DurationPart(NamedTuple):
+    """One number input of a duration."""
+
+    suffix: DurationSuffix
+    label: str
+    maximum: int
+
+
+#: A cap stops timedelta overflowing.
+DURATION_PARTS: Final = (
+    DurationPart("hours", "Hours", 99_999),
+    DurationPart("minutes", "Minutes", 59),
+)
+
+
+def whole_minutes(duration: datetime.timedelta) -> datetime.timedelta:
+    """The duration without its seconds."""
+    return datetime.timedelta(minutes=int(duration.total_seconds()) // 60)
+
+
+class HoursMinutesWidget(forms.MultiWidget):
+    """Two number inputs, each with its own label."""
+
+    def __init__(self, attrs=None):
+        super().__init__(
+            {part.suffix: forms.NumberInput() for part in DURATION_PARTS}, attrs
+        )
+
+    def decompress(self, value):
+        if not isinstance(value, datetime.timedelta):
+            return [None, None]
+        minutes = int(whole_minutes(value).total_seconds()) // 60
+        return [minutes // 60, minutes % 60]
+
+    def id_for_label(self, id_):
+        return id_
+
+    def render(self, name, value, attrs=None, renderer=None):
+        final_attrs = self.build_attrs(self.attrs, attrs)
+        group_id = str(final_attrs.get("id", ""))
+        values = value if isinstance(value, list) else self.decompress(value)
+        parts = [
+            Label(class_="flex items-center gap-2 text-type-body text-heading")[
+                Input(
+                    type="number",
+                    name=f"{name}_{part.suffix}",
+                    id_=f"{group_id}_{part.suffix}" if group_id else None,
+                    value="" if posted in (None, "") else str(posted),
+                    min="0",
+                    max=str(part.maximum),
+                    class_=_NUMBER_CLASS,
+                ),
+                part.label,
+            ]
+            for part, posted in zip(DURATION_PARTS, values, strict=True)
+        ]
+        return render(
+            Fieldset(
+                id_=group_id or None,
+                aria_labelledby=field_label_id(group_id) or None,
+                class_="flex flex-wrap items-center gap-4",
+            )[*parts]
+        )
+
+
+class HoursMinutesField(forms.MultiValueField):
+    """Whole hours and minutes; blank is zero."""
+
+    widget = HoursMinutesWidget
+
+    def __init__(self, **kwargs):
+        super().__init__(
+            fields=tuple(
+                forms.IntegerField(required=False, min_value=0, max_value=part.maximum)
+                for part in DURATION_PARTS
+            ),
+            require_all_fields=False,
+            required=False,
+            **kwargs,
+        )
+
+    def compress(self, data_list) -> datetime.timedelta:
+        hours, minutes = (data_list or [None, None])[:2]
+        return datetime.timedelta(hours=hours or 0, minutes=minutes or 0)
+
+
+class HistoricalWhenField(TemporalFormField):
+    """A when, refused in the command's words."""
+
+    def parse_error_message(self, error: TemporalValueParseError) -> str:
+        return when_sentence(error)
+
+
+#: Externally measured is an importer's.
+_STATED_PROVENANCES = (
+    HistoricalPlaytimeProvenance.ESTIMATED,
+    HistoricalPlaytimeProvenance.MANUALLY_ENTERED,
+)
+
+
+class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
+    """One record at one game.
+
+    Narrows the offered provenances and devices; every other rule is
+    the command's, so a refusal reads in its words.
+    """
+
+    playthroughs = forms.ModelMultipleChoiceField(
+        queryset=Playthrough.objects.none(),
+        required=False,
+        widget=CheckboxListWidget,
+        label="Playthroughs",
+    )
+    duration = HoursMinutesField(label="Duration")
+    provenance = forms.ChoiceField(widget=RadioListWidget, label="Provenance")
+    device = forms.ModelChoiceField(
+        queryset=Device.objects.none(),
+        required=False,
+        widget=SearchSelectWidget(
+            search_url="/api/devices/search", options_resolver=_device_options
+        ),
+    )
+    emulated = forms.BooleanField(required=False)
+    note = forms.CharField(required=False, widget=forms.Textarea)
+    #: Rendered once per page; a repeated submit replays.
+    submission = forms.UUIDField(widget=forms.HiddenInput)
+
+    def __init__(
+        self,
+        *args,
+        library: UserLibrary,
+        game: Game,
+        presentation: DateTimePresentation,
+        record: HistoricalPlaytime | None = None,
+        **kwargs,
+    ):
+        initial = dict(kwargs.pop("initial", None) or {})
+        initial.update(_record_initial(library, game, record))
+        super().__init__(*args, initial=initial, **kwargs)
+        self.record: HistoricalPlaytime | None = record
+        if record is not None:
+            #: A restatement repeats harmlessly.
+            del self.fields["submission"]
+        #: Needs the presentation, so built here.
+        self.fields["when"] = HistoricalWhenField(
+            presentation=presentation, label="When"
+        )
+        self.order_fields(["playthroughs", "duration", "when", "provenance", "device"])
+        runs = cast(forms.ModelMultipleChoiceField, self.fields["playthroughs"])
+        #: Library-wide; the command refuses the rest.
+        runs.queryset = Playthrough.objects.filter(library=library)
+        runs.choices = _run_choices(library, game)
+        provenances = list(_STATED_PROVENANCES)
+        if (
+            record is not None
+            and record.provenance == HistoricalPlaytimeProvenance.EXTERNALLY_MEASURED
+        ):
+            provenances.append(HistoricalPlaytimeProvenance.EXTERNALLY_MEASURED)
+        cast(forms.ChoiceField, self.fields["provenance"]).choices = [
+            (choice.value, choice.label) for choice in provenances
+        ]
+        devices = Device.objects.for_library(library)
+        if record is not None and record.device_id is not None:
+            #: A held device stays, removed or not.
+            devices = devices | Device.objects.filter(
+                library=library, pk=record.device_id
+            )
+        device_field = cast(forms.ModelChoiceField, self.fields["device"])
+        device_field.queryset = devices.order_by("name")
+        device_field.widget.options_resolver = partial(
+            _held_device_options, devices=devices
+        )
+
+    def clean_note(self) -> str:
+        return self.cleaned_data["note"].replace("\r\n", "\n")
+
+    def _every_duration_part_posted(self) -> bool:
+        return all(
+            self.data.get(f"{self.add_prefix('duration')}_{part.suffix}", "") != ""
+            for part in DURATION_PARTS
+        )
+
+    def submission_key(self) -> IdempotencyKey:
+        """The key this page's Add submits under."""
+        return f"historical-playtime-record-{self.cleaned_data['submission']}"
+
+    def statement(self) -> HistoricalPlaytimeStatement:
+        """What the valid form states."""
+        cleaned = self.cleaned_data
+        duration: datetime.timedelta = cleaned["duration"]
+        held = None if self.record is None else self.record.duration
+        if (
+            held is not None
+            and self._every_duration_part_posted()
+            and duration == whole_minutes(held)
+        ):
+            #: Inputs show whole minutes; keep stored seconds.
+            duration = held
+        when: TemporalValue | None = cleaned["when"]
+        device: Device | None = cleaned["device"]
+        return HistoricalPlaytimeStatement(
+            duration=duration,
+            when=None if when is None else when.canonical,
+            provenance=HistoricalPlaytimeProvenance(cleaned["provenance"]),
+            playthrough_ids=tuple(run.pk for run in cleaned["playthroughs"]),
+            device_id=None if device is None else device.pk,
+            emulated=cleaned["emulated"],
+            note=cleaned["note"],
+        )
+
+
+def _parsed_ids(values) -> list[uuid.UUID]:
+    """The values that are ids; the field reports the rest."""
+    parsed = []
+    for value in values:
+        try:
+            parsed.append(
+                value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+            )
+        except ValueError:
+            continue
+    return parsed
+
+
+def _held_device_options(
+    values, *, devices: QuerySet[Device]
+) -> list[SearchSelectOption]:
+    return [
+        {"value": device.id, "label": device.name, "data": {}}
+        for device in devices.filter(pk__in=_parsed_ids(values))
+    ]
+
+
+def _record_initial(
+    library: UserLibrary, game: Game, record: HistoricalPlaytime | None
+) -> dict[str, Any]:
+    """What Add and Edit seed."""
+    if record is None:
+        run = latest_ordinary_run(library, game)
+        return {
+            "playthroughs": [] if run is None else [str(run.pk)],
+            "provenance": HistoricalPlaytimeProvenance.ESTIMATED.value,
+            "submission": uuid.uuid7(),
+        }
+    return {
+        "playthroughs": [
+            str(run_id)
+            for run_id in record.runs.values_list("playthrough_id", flat=True)
+        ],
+        "duration": record.duration,
+        "when": record.when,
+        "provenance": record.provenance,
+        "device": record.device_id,
+        "emulated": record.emulated,
+        "note": record.note,
     }
 
 

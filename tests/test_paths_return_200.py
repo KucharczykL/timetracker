@@ -1,12 +1,13 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from historical_playtime_rows import record_row
 
-from games.models import Game, Platform, Purchase
+from games.models import Game, Platform, Playthrough, Purchase
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
@@ -87,6 +88,30 @@ class PathWorksTest(TestCase):
         self.assertNotContains(response, "wikidata.org/wiki/n")
 
     def test_view_game_returns_200(self):
+        response = self.client.get(self.game.get_absolute_url())
+        self.assertEqual(response.status_code, 200)
+
+    def test_add_historical_playtime_returns_200(self):
+        response = self.client.get(
+            reverse("games:add_historical_playtime", args=[self.game.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_edit_historical_playtime_returns_200(self):
+        record = record_row(
+            [Playthrough.objects.get(player_game__game=self.game)],
+            duration=timedelta(hours=100),
+            when="2005",
+        )
+        response = self.client.get(
+            reverse("games:edit_historical_playtime", args=[record.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_view_game_with_historical_playtime_returns_200(self):
+        run = Playthrough.objects.get(player_game__game=self.game)
+        record_row([run], when="2005")
+        record_row([run])
         response = self.client.get(self.game.get_absolute_url())
         self.assertEqual(response.status_code, 200)
 

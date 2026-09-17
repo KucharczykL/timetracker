@@ -398,6 +398,11 @@ docs/           — Additional documentation
   `readable_records` and `HistoricalPlaytimeFilter`, mode
   `historical_playtime`. `games/reads/historical_playtime.py` sums the
   records by containment; `games/reads/playtime.py` adds them to sessions.
+  Game detail and the Historical list record, restate, remove and restore
+  one through `games/views/historical_playtime_entry.py`, whose form
+  narrows provenance and device choices and leaves every other rule to the
+  command
+  ([entry](docs/superpowers/specs/2026-09-17-issue-706-historical-playtime-entry-design.md)).
   Contract is
   [HistoricalPlaytime aggregate](docs/superpowers/specs/2026-09-17-issue-705-historical-playtime-aggregate-design.md);
   wave is

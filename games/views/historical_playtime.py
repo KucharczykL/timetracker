@@ -10,12 +10,15 @@ from django.http import HttpRequest, HttpResponse
 from django.urls import reverse
 
 from common.components import (
+    ICON_BUTTON_SIZE_CLASS,
     Badge,
     BadgeTone,
+    ButtonGroup,
     Column,
     ContentContainer,
     Duration,
     Fragment,
+    Icon,
     NameWithIcon,
     Node,
     PlaytimeTabs,
@@ -36,6 +39,7 @@ from common.duration_presentation import (
 )
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
+from common.returns import OriginUrl, action_url
 from common.sorting import SortTerm
 from common.temporal_presentation import TemporalText
 from common.utils import paginate
@@ -82,12 +86,37 @@ def _runs_cell(record: HistoricalPlaytime, labels: RunLabels) -> Node:
     )
 
 
+def record_actions(record: HistoricalPlaytime, origin: OriginUrl | None) -> Node:
+    """Edit and Remove, back to the origin."""
+    return ButtonGroup(
+        [
+            {
+                "href": action_url(
+                    "games:edit_historical_playtime", record.pk, origin=origin
+                ),
+                "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
+                "color": "gray",
+                "title": "Edit historical playtime",
+            },
+            {
+                "href": action_url(
+                    "games:remove_historical_playtime", record.pk, origin=origin
+                ),
+                "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
+                "color": "red",
+                "title": "Remove historical playtime",
+            },
+        ]
+    )
+
+
 def historical_playtime_tabledata(
     records: Sequence[HistoricalPlaytime],
     labels: RunLabels,
     presentation: DateTimePresentation,
     durations: DurationPresentation,
     *,
+    origin: OriginUrl | None,
     sort_terms: Sequence[SortTerm] = (),
 ) -> TableData:
     """Runs column is not sortable."""
@@ -101,6 +130,7 @@ def historical_playtime_tabledata(
             Column("Runs", priority=1),
             Column("Device", "device"),
             Column("Created", "created"),
+            Column("Actions", align="right", priority=4),
         ],
         "sort_terms": sort_terms,
         "rows": [
@@ -121,6 +151,7 @@ def historical_playtime_tabledata(
                 _runs_cell(record, labels),
                 record.device.name if record.device else "No device",
                 presentation.format(record.created_at, "date"),
+                record_actions(record, origin),
                 id=f"record-row-{record.pk}",
             )
             for record in records
@@ -160,6 +191,7 @@ def list_historical_playtime(request: HttpRequest) -> HttpResponse:
         run_labels_for(library, page_records),
         presentation,
         durations,
+        origin=request.get_full_path(),
         sort_terms=sort.terms,
     )
     table = paginated_table_content(

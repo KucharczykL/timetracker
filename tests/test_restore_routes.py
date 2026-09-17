@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 import pytest
 from django.contrib.messages import get_messages
 from django.urls import reverse
+from historical_playtime_rows import record_row
 from session_rows import session_row
 from stated_runs import another_run
 
@@ -13,15 +14,18 @@ from games.models import (
     Device,
     FilterPreset,
     Game,
+    HistoricalPlaytime,
     Platform,
     PlayerGame,
     PlayerSession,
     Playthrough,
     Purchase,
 )
+from games.reads.historical_playtime_records import library_records
 from games.reads.player_sessions import library_sessions
 from games.removal import remove
 from games.writes.answers import CommandFailed
+from games.writes.historical_playtime import remove_historical_playtime
 from games.writes.playergame import new_correlation_id
 from games.writes.playersession import remove_session
 from games.writes.playthrough import remove_run
@@ -95,7 +99,15 @@ def _removed_preset(user, game):
     return preset
 
 
+def _removed_record(user, game):
+    record = record_row([Playthrough.objects.get(player_game__game=game)])
+    remove_historical_playtime(user, record, correlation_id=new_correlation_id())
+    return record
+
+
 def _visible(library, instance) -> bool:
+    if isinstance(instance, HistoricalPlaytime):
+        return library_records(library).filter(pk=instance.pk).exists()
     if isinstance(instance, PlayerSession):
         return library_sessions(library).filter(pk=instance.pk).exists()
     if isinstance(instance, Playthrough):
@@ -110,6 +122,7 @@ ROUTES = [
     ("games:restore_platform", _removed_platform, "games:list_platforms"),
     ("games:restore_device", _removed_device, "games:list_devices"),
     ("games:restore_preset", _removed_preset, "games:list_games"),
+    ("games:restore_historical_playtime", _removed_record, None),
 ]
 
 
