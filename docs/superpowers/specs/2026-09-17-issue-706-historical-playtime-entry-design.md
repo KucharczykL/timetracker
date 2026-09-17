@@ -11,8 +11,9 @@ record from the game it belongs to. The four commands exist (#705). This
 issue adds the screens that dispatch them.
 
 #709 (reads and statistics) and #1097 (the Playtime page) are built at the
-same time in other worktrees. This issue does not create a module either of
-them will want, and it changes shared files only by small additions.
+same time in other worktrees. The shared surface is settled by
+[the review of the three parallel specs](../../review/2026-09-17-historical-playtime-parallel-specs.md)
+(decisions D1 to D6). This spec follows it.
 
 ## Boundary
 
@@ -36,20 +37,23 @@ total is a playtime read, and playtime reads are #709's module
 (`games/reads/historical_playtime.py`, `game_historical_playtime`). #709 is
 not merged when this issue is built. So the header shows a count badge,
 as every other section on Game detail does. #710 puts the `PlaytimeSplit`
-in this header; its issue is told so.
+in this header. #709 tells #710 so (review D6).
 
 ## Modules
 
-New modules. Neither sibling issue uses these names.
+| module | owner | contents |
+|---|---|---|
+| `games/reads/historical_playtime_records.py` | shared (review D1) | `RECORD_ORDER`, `library_records`, `readable_records`, `game_records` |
+| `games/writes/historical_playtime.py` | #706 | `record_historical_playtime`, `restate_historical_playtime`, `remove_historical_playtime`, `restore_historical_playtime` |
+| `games/views/historical_playtime_entry.py` | #706 | the four views, and the private resolvers `_library_record` and `_any_library_record` |
 
-| module | contents |
-|---|---|
-| `games/reads/historical_playtime_records.py` | `game_records(library, game)`, `library_record(library, record_id)`, `any_library_record(library, record_id)` |
-| `games/writes/historical_playtime.py` | `record_historical_playtime`, `restate_historical_playtime`, `remove_historical_playtime`, `restore_historical_playtime` |
-| `games/views/historical_playtime_entry.py` | `add_historical_playtime`, `edit_historical_playtime`, `remove_historical_playtime`, `restore_historical_playtime` |
+The shared module is the text in review D1, copied exactly. This issue adds
+nothing to it. If #709 or #1097 merges first, this branch takes `main`'s
+copy when it rebases.
 
-The view module is not `historical_playtime.py`: #1097's list view will
-probably want that name.
+`games/views/historical_playtime.py` is #1097's list view.
+`games/reads/historical_playtime.py` and `game_historical_playtime` are
+#709's; this issue does not use them.
 
 Changed files:
 
@@ -58,32 +62,49 @@ Changed files:
 - `games/views/returns.py`: four names in `ORIGIN_AWARE`.
 - `games/views/game.py`: the section, and an `add_url` argument on
   `_game_section`.
-- `CLAUDE.md`: the HistoricalPlaytime entry says that Game detail writes
-  records.
+- `CLAUDE.md`: in the HistoricalPlaytime entry, the sentence "Nothing reads
+  or writes it from a page yet." is replaced by one sentence saying that
+  Game detail records, restates, removes and restores records. If a sibling
+  merged first, keep `main`'s sentence and add this one after it (review
+  D5). Nothing else in the entry changes.
 
 Each change is an addition. If a sibling merges first, the conflict is
 small and the second branch resolves it.
 
 ## Reads
 
-`game_records(library, game)` returns the live records of the library's
-tracked row for the game:
+The scope is `library_records(library)` (review D1, D2). It states five
+conditions: the library on the record and on its `PlayerGame`, and the
+marks of the record, the `PlayerGame` and the catalog game.
+`HistoricalPlaytime.objects.alive()` is not enough, because it does not
+read the catalog game's mark.
 
-- scope: `HistoricalPlaytime.objects.alive()`, `library=library`,
-  `player_game__game=game`;
-- `select_related("device")`;
-- the join rows prefetched, with each run numbered by `numbered_for`, so
-  `display_name` works without a fallback;
-- order: `when_lower` descending with nulls last, then `created_at`
-  descending, then `id`.
+The section reads
+`readable_records(library).filter(player_game__game=game).order_by(*RECORD_ORDER)`.
+The join rows are prefetched.
 
-A record naming a removed run is still live, so it is listed. The removed
-run has no number; its name is "Removed playthrough".
+Run names: the section and the form get the game's runs from
+`numbered_for(library, [tracked.pk])` and match them to join rows in
+Python. `live_ordinary_runs` is not used for names: it has no
+`display_number`, so `display_name` raises `UnnumberedPlaythrough` for a
+run with a blank name.
 
-`library_record` resolves one live record in the library for Edit and
-Remove. `any_library_record` resolves one record, removed or not, for
-Restore. Both answer `Http404` through `owned_or_404` for a missing row or
-another library's row.
+Every run of a live record is live and numbered.
+`HistoricalPlaytimeRun.playthrough` is in `BLOCKING_REFERRERS`, so
+`RemovePlaythrough` refuses a run that a live record names. The section
+needs no fallback name.
+
+The view resolvers are private to the view module, as `_library_session`
+is in `games/views/session.py`:
+
+- `_library_record(library, record_id)`: one record in
+  `readable_records(library)`, for Edit and Remove;
+- `_any_library_record(library, record_id)`: one record in
+  `HistoricalPlaytime.objects.filter(library=library)`, removed or not, for
+  Restore.
+
+Both answer `Http404` through `owned_or_404` for a missing row or another
+library's row.
 
 ## Writes
 
@@ -100,11 +121,11 @@ a refusal shows the command's sentence.
 
 | field | control | notes |
 |---|---|---|
-| `playthroughs` | `ModelMultipleChoiceField`, checkboxes | Choices are `live_ordinary_runs(library, tracked)`, each labelled `display_name`. `required=False`: zero runs goes to the command, which refuses with `AT_LEAST_ONE_RUN`. Add checks `latest_ordinary_run`. Edit checks the record's runs. |
+| `playthroughs` | `ModelMultipleChoiceField`, checkboxes | Choices are `numbered_for(library, [tracked.pk])`, each labelled `display_name`. `required=False`: zero runs goes to the command, which refuses with `AT_LEAST_ONE_RUN`. Add checks `latest_ordinary_run`. Edit checks the record's runs. |
 | `duration` | `HoursMinutesField` | Two number inputs: hours (0 or more, no maximum) and minutes (0 to 59). Blank cleans to zero, which the command refuses with `AT_LEAST_A_SECOND`. |
 | `when` | `TemporalFormField` | Default unknown. A parse error is put on the field as `when_sentence(error)`, the command's sentence. |
 | `provenance` | radio buttons | Add offers Estimated and Manually entered; Estimated is the default. Edit also offers Externally measured, but only if the record holds it. |
-| `device` | `SearchSelectWidget` | The session form's resolver. No default: historical hours often come from another device. |
+| `device` | `SearchSelectWidget` | Live devices of the library, plus the record's held device. No default: historical hours often come from another device. |
 | `emulated` | checkbox | |
 | `note` | textarea | |
 
@@ -115,6 +136,17 @@ seconds. On Edit, if the posted hours and minutes equal the stored
 duration with its seconds removed, the statement carries the stored
 duration. An unchanged submit then gets `Unchanged` from the command. If
 either number changes, the duration is the posted whole minutes.
+
+**A held device is kept.** `RestateHistoricalPlaytime` keeps a removed
+device only when the posted device equals the row's. The session form's
+device field cannot post a removed device: its queryset is
+`Device.objects.for_library(library)`, which is live devices only, and its
+resolver uses the same scope, so the removed device is not shown as
+selected. The form therefore adds the record's `device_id` to both the
+field's queryset and the resolver's lookup, through
+`Device.objects.filter(library=library, pk=record.device_id)`. The held
+device is shown as selected, and a submit posts it again. Any other
+removed device is still refused by the field.
 
 `HoursMinutesField` is a `MultiValueField` with a `MultiWidget`. It does
 not use Alpine: CLAUDE.md allows no new `x-mask` input.
@@ -167,9 +199,21 @@ Playthroughs sections.
   Duration (`Duration`), Provenance (`Pill` with the choice label),
   Playthroughs (display names, separated by commas), Device (name, or "No
   device"), Actions (Edit and Remove in a `ButtonGroup`, with the origin).
-- Every record is shown. There is no "View all" link, because the list
-  page is #1097's.
+- Every record is shown.
 - Empty: "No historical playtime."
+
+### Work for the second merge (review D4)
+
+The list page is #1097's. Of #706 and #1097, the branch that merges second
+adds both of these in its own pull request:
+
+- the Actions column on the Historical list: Edit and Remove, through
+  `action_url` with the origin;
+- a "View all" link from this section to the list, narrowed to the game,
+  through `_game_section`'s `view_all_url`.
+
+If #1097 is on `main` when this branch rebases, this branch adds them. If
+not, #1097 adds them.
 
 ## Testing
 
@@ -179,21 +223,26 @@ Playthroughs sections.
   changes; Externally measured is offered only on a record that holds it;
   a `when` parse error shows `when_sentence`; unknown cleans to `None`;
   Add checks the latest run; the choices exclude the bucket and removed
-  runs.
+  runs; a run with a blank name is labelled "Playthrough N"; Edit shows a
+  held removed device as selected, and accepts it when it is posted again;
+  another removed device is refused.
 - `tests/test_historical_playtime_views.py`
   (`django_db(transaction=True)`, because the views dispatch):
   - acceptance: record with two runs, restate to one run, remove, restore,
     all through the Game detail routes, checking the record row and its
     join rows after each step;
   - an unchanged Edit shows the toast and appends no event;
+  - an Edit of a record that names a removed device keeps the device and
+    appends no event;
   - refusals show the command's sentence: no runs, zero duration, a
     removed run;
   - another library's record answers 404 on all four routes;
   - the Undo route in the removal toast restores the record;
   - redirects go to the origin, else to Game detail.
-- `tests/test_game_detail_historical_playtime.py`: rows, order, count
-  badge, empty state, run names, a removed run's name, links with the
-  origin.
+- `tests/test_game_detail_historical_playtime.py`: rows, order
+  (`RECORD_ORDER`, with an unknown `when` last), count badge, empty state,
+  run names, links with the origin; a record of a removed catalog game is
+  not listed.
 - Existing guards: `tests/test_returns_classification.py` (new names) and
   `tests/test_paths_return_200.py` (the Add and Edit pages).
 - `e2e/test_historical_playtime_entry_e2e.py`: from Game detail, Add with
@@ -202,9 +251,10 @@ Playthroughs sections.
   server-rendered section first.
 - Full `make check` passes before the pull request.
 
-## Follow-ups
+## Coordination
 
-- #710: put `PlaytimeSplit` in this section's header. Comment on #710.
-- #1097 or #710: a "View all" link from this section to the list, narrowed
-  to the game. Comment on #1097.
-- Comment on #706 and #601: the header deviation above.
+- One comment on #706 links the review and states the header deviation.
+- #709 comments on #710 about `PlaytimeSplit` in this header (review D6).
+  This issue does not.
+- No follow-up issue: the "View all" link is review D4 work, not a new
+  issue.
