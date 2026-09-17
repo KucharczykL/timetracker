@@ -290,20 +290,19 @@ correlation id: remove the record, restore the session.
 3. **#709** — reads and statistics: `historical_playtime.py`,
    `PlaytimeBreakdown`, the composed `playtime.py`, the game list column,
    sort and filter, the classification table.
-4. **new** — the Playtime page: nav entry, two tabs, `HistoricalPlaytimeFilter`,
+4. **#1097** — the Playtime page: nav entry, two tabs, `HistoricalPlaytimeFilter`,
    quick bar, presets, API router, TypeScript contract.
 5. **#710** — presentation: `PlaytimeSplit` on the headline, the stats, the
    navbar, the top-10 rows; the per-run column.
-6. **new** — reclassification: the `Reclassify` command, the review facet,
+6. **#1098** — reclassification: the `Reclassify` command, the review facet,
    "Was an estimate", "Convert all shown", Undo of the pair.
-7. **new** — gates: replay parity with a record in every leg, the `make bench`
+7. **#1099** — gates: replay parity with a record in every leg, the `make bench`
    records workload and budgets, the `render_pages` diff attributed, the
    rehearsal on the production copy.
 
-`#705 → {#706, #709, page} → #710 → reclassification → gates`. #706, #709
-and the page may start together after #705. #710 waits on #709.
-Reclassification waits on #706, whose form it prefills, and on the page, whose
-tab it lives on.
+`#705 → {#706, #709, #1097} → #710 → #1098 → #1099`. #706, #709 and #1097
+may start together after #705. #710 waits on #709. #1098 waits on #706, whose
+form it prefills, and on #1097, whose tab it lives on.
 
 No deployment window. Each issue leaves `main` incomplete rather than
 inconsistent: #705 leaves tables nothing writes, #706 a form that records
@@ -316,8 +315,8 @@ Merged:
   #706's; a record is corrected as a unit, so there is no third act.
 - **#708** — the classification is #709's table, not a separate act.
 
-Opened: the Playtime page, the reclassification, the gates, and the union list
-as a follow-up outside the wave.
+Opened: #1097 the Playtime page, #1098 the reclassification, #1099 the gates,
+and #1100 the union list as a follow-up outside the wave.
 
 ## Cross-wave handoffs
 
@@ -349,7 +348,7 @@ it does, records and sessions move together.
 
 ### The union Playtime list
 
-Filed as a follow-up. A read-side view `games_playtime_entry` over both
+Filed as #1100. A read-side view `games_playtime_entry` over both
 projections, an unmanaged model, one list, one filter vocabulary, row actions
 by kind. Placed after TABLE-01–03, which decide what a bulk action needs on a
 row, and after the #798 design, which decides what an imported row carries.
@@ -382,8 +381,8 @@ whenever either projection's columns do.
 
 Merged: #707 into #705 and #706; #708 into #709.
 
-Opened: the Playtime page; the reclassification act and review; the gates;
-the union list, as a follow-up outside the wave.
+Opened: #1097 the Playtime page; #1098 the reclassification act and review;
+#1099 the gates; #1100 the union list, as a follow-up outside the wave.
 
 Reordered: #709 stays reads and #710 stays presentation, with the page
 between them and #710 behind #709; #705 first, as before.
