@@ -1,7 +1,7 @@
 """The form parses and narrows choices; the command decides."""
 
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -401,3 +401,106 @@ def test_add_renders_a_fresh_key_and_edit_none(owned_user, owned_library, game, 
     assert first != second
     record = recorded(owned_user, [run.pk])
     assert "submission" not in form(owned_library, game, record=record).fields
+
+
+# --- Seeding from a session ---------------------------------------------------
+
+
+def a_session(library, run, **columns):
+    from session_rows import duration_only_row
+
+    return duration_only_row(
+        run, date(2026, 3, 5), timedelta(hours=9, minutes=30), **columns
+    )
+
+
+def test_a_session_seeds_its_own_run_and_not_the_latest(
+    owned_user, owned_library, game, run
+):
+    """The seed answers the page, so it wins over the Add default.
+
+    `_record_initial` runs after the caller's `initial`, so a caller
+    that passed the run as an initial would have it overwritten by the
+    latest run of the game.
+    """
+    another = another_run(owned_user, game)
+    session = a_session(owned_library, run)
+
+    bound = HistoricalPlaytimeForm(
+        library=owned_library, game=game, presentation=PRESENTATION, session=session
+    )
+
+    assert bound.initial["playthroughs"] == [str(run.pk)]
+    assert str(another.pk) != str(run.pk)
+
+
+def test_a_session_seeds_every_fact_it_states(owned_library, game, run):
+    device = Device.objects.create(library=owned_library, name="Vita")
+    session = a_session(owned_library, run, device=device, note="off a screenshot")
+
+    bound = HistoricalPlaytimeForm(
+        library=owned_library, game=game, presentation=PRESENTATION, session=session
+    )
+
+    assert bound.initial["duration"] == timedelta(hours=9, minutes=30)
+    assert bound.initial["when"].canonical == "2026-03-05"
+    assert bound.initial["device"] == device.pk
+    assert bound.initial["note"] == "off a screenshot"
+    assert (
+        bound.initial["provenance"]
+        == HistoricalPlaytimeProvenance.MANUALLY_ENTERED.value
+    )
+
+
+def test_a_session_takes_the_provenance_the_caller_states(owned_library, game, run):
+    session = a_session(owned_library, run)
+
+    bound = HistoricalPlaytimeForm(
+        library=owned_library,
+        game=game,
+        presentation=PRESENTATION,
+        session=session,
+        provenance=HistoricalPlaytimeProvenance.ESTIMATED,
+    )
+
+    assert bound.initial["provenance"] == HistoricalPlaytimeProvenance.ESTIMATED.value
+
+
+def test_a_session_keeps_its_removed_device_among_the_choices(owned_library, game, run):
+    device = Device.objects.create(library=owned_library, name="Vita")
+    session = a_session(owned_library, run, device=device)
+    remove(device)
+
+    bound = HistoricalPlaytimeForm(
+        library=owned_library, game=game, presentation=PRESENTATION, session=session
+    )
+
+    assert device in bound.fields["device"].queryset
+
+
+def test_a_session_form_still_states_a_submission(owned_library, game, run):
+    """A conversion has no Unchanged, so a repeat needs the key."""
+    session = a_session(owned_library, run)
+
+    bound = HistoricalPlaytimeForm(
+        library=owned_library, game=game, presentation=PRESENTATION, session=session
+    )
+
+    assert "submission" in bound.fields
+    assert bound.initial["submission"]
+
+
+def test_a_record_and_a_session_together_are_refused(
+    owned_library, game, run, owned_user
+):
+    record = recorded(owned_user, [run.pk])
+    session = a_session(owned_library, run)
+
+    with pytest.raises(TypeError):
+        HistoricalPlaytimeForm(
+            library=owned_library,
+            game=game,
+            presentation=PRESENTATION,
+            record=record,
+            session=session,
+        )

@@ -11,9 +11,15 @@ from games.commands.playersession import (
     DurationOnlyTiming,
     TimedTiming,
 )
+from games.commands.session_reclassification import (
+    NEVER_RECLASSIFIED,
+    STILL_RUNNING,
+    statement_from_session,
+)
 from games.models import (
     Device,
     Game,
+    HistoricalPlaytime,
     LibraryEvent,
     PlayerSession,
     Playthrough,
@@ -24,11 +30,13 @@ from games.writes.playersession import (
     SessionDraft,
     clone_session,
     end_session,
+    reclassify_session,
     record_session,
     remove_session,
     reset_session,
     restate_session,
     restore_session,
+    undo_reclassification,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -292,3 +300,88 @@ def test_cloning_lands_on_the_ordinary_run_past_the_bucket(
     assert clone.timing_mode == "timed"
     assert clone.ended_at is None
     assert clone.note == ""
+
+
+# --- Reclassifying, through the write path -----------------------------------
+
+
+def _reclassified(user, session, correlation_id, key="one-conversion"):
+    return reclassify_session(
+        user,
+        session,
+        statement_from_session(session),
+        idempotency_key=key,
+        correlation_id=correlation_id,
+    )
+
+
+def test_reclassifying_answers_the_records_id(owned_user, owned_library, game):
+    run = tracked_run(owned_library, game)
+    row = session_row(game, started_at=STARTED_AT, duration_manual=timedelta(hours=9))
+    correlation_id = uuid.uuid7()
+
+    record_id = _reclassified(owned_user, row, correlation_id)
+
+    assert HistoricalPlaytime.objects.get(pk=record_id).player_game_id == (
+        run.player_game_id
+    )
+    assert _events(correlation_id) == [
+        "library.historicalplaytime.created",
+        "library.playersession.reclassified",
+    ]
+
+
+def test_the_same_key_records_one_record(owned_user, owned_library, game):
+    tracked_run(owned_library, game)
+    row = session_row(game, started_at=STARTED_AT, duration_manual=timedelta(hours=9))
+
+    first = _reclassified(owned_user, row, uuid.uuid7())
+    second = _reclassified(owned_user, row, uuid.uuid7())
+
+    assert first == second
+    assert HistoricalPlaytime.objects.count() == 1
+
+
+def test_a_running_row_answers_the_commands_sentence(owned_user, owned_library, game):
+    tracked_run(owned_library, game)
+    row = session_row(game, started_at=STARTED_AT)
+
+    with pytest.raises(CommandFailed) as refusal:
+        reclassify_session(
+            owned_user,
+            row,
+            statement_from_session(row)._replace(duration=timedelta(hours=1)),
+            idempotency_key="running",
+            correlation_id=uuid.uuid7(),
+        )
+
+    assert refusal.value.message == STILL_RUNNING
+
+
+def test_undoing_returns_the_session(owned_user, owned_library, game):
+    tracked_run(owned_library, game)
+    row = session_row(game, started_at=STARTED_AT, duration_manual=timedelta(hours=9))
+    record_id = _reclassified(owned_user, row, uuid.uuid7())
+    correlation_id = uuid.uuid7()
+
+    undo_reclassification(owned_user, row, correlation_id=correlation_id)
+
+    row.refresh_from_db()
+    assert row.removed_at is None
+    assert HistoricalPlaytime.objects.get(pk=record_id).removed_at is not None
+    assert _events(correlation_id) == [
+        "library.historicalplaytime.removed",
+        "library.playersession.restored",
+    ]
+
+
+def test_undoing_a_session_that_became_nothing_answers_a_sentence(
+    owned_user, owned_library, game
+):
+    tracked_run(owned_library, game)
+    row = session_row(game, started_at=STARTED_AT, duration_manual=timedelta(hours=9))
+
+    with pytest.raises(CommandFailed) as refusal:
+        undo_reclassification(owned_user, row, correlation_id=uuid.uuid7())
+
+    assert refusal.value.message == NEVER_RECLASSIFIED
