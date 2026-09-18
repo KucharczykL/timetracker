@@ -61,6 +61,16 @@ class CommandFailed(Exception):
         self.status_code = status_code
 
 
+class WriteAnswer(NamedTuple):
+    """What a request-shaped write left a view to answer with."""
+
+    refusal: CommandFailed | None
+
+    def __bool__(self) -> bool:
+        """True when the write landed."""
+        return self.refusal is None
+
+
 class ConflictAnswer(NamedTuple):
     """A sentence for a person, and the status that carries it."""
 

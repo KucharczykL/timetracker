@@ -15,12 +15,14 @@ from games.events.retry import RetryBudgetExhausted
 from games.writes.answers import (
     ANSWERED_DIRECTLY,
     CONFLICT_ANSWERS,
+    CONFLICT_STATUS,
     DEFECT_STATUS,
     NOT_ANSWERED,
     REFUSED,
     REFUSED_BY_AN_UNREADABLE_ROW,
     REFUSED_BY_DATABASE,
     CommandFailed,
+    WriteAnswer,
     answer_for,
     answered,
 )
@@ -346,3 +348,14 @@ def test_every_boundary_exception_is_classified():
         "dispatch boundary and named nowhere in games/writes/answers.py. Put "
         "each in CONFLICT_ANSWERS, ANSWERED_DIRECTLY, or NOT_ANSWERED."
     )
+
+
+def test_a_landed_write_is_truthy_and_a_refused_one_is_not():
+    landed = WriteAnswer(None)
+    refused = WriteAnswer(CommandFailed("Nothing was recorded.", CONFLICT_STATUS))
+
+    assert landed
+    assert not refused
+    assert landed.refusal is None
+    assert refused.refusal is not None
+    assert refused.refusal.status_code == CONFLICT_STATUS
