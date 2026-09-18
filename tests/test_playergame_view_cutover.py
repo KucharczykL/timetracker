@@ -428,9 +428,12 @@ def test_a_failed_add_leaves_the_row_at_the_defaults(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_failed_edit_re_renders_the_form(logged_in, tracked_game, monkeypatch):
+@pytest.mark.parametrize("status", [CONFLICT_STATUS, DEFECT_STATUS])
+def test_a_failed_edit_re_renders_the_form(
+    logged_in, tracked_game, monkeypatch, status
+):
     def refuse(*args, **kwargs):
-        raise CommandFailed("Nothing was recorded; try again.", 409)
+        raise CommandFailed("Nothing was recorded; try again.", status)
 
     monkeypatch.setattr("games.views.playergame_writes.record_facts", refuse)
     response = logged_in.post(
@@ -439,7 +442,7 @@ def test_a_failed_edit_re_renders_the_form(logged_in, tracked_game, monkeypatch)
     )
 
     #: A redirect would read as a save that landed.
-    assert response.status_code == 200
+    assert response.status_code == status
     assert "show-toast" in response.headers["HX-Trigger"]
     row = PlayerGame.objects.get(game=tracked_game)
     assert row.status == PlayerGameStatus.UNPLAYED

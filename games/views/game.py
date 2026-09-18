@@ -448,20 +448,23 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
         request.POST or None, game=game, library=library, presentation=presentation
     )
     references = ReferenceSetForm(request.POST or None, target=game, library=library)
+    refused_status = 200
     #: Both read; see `add_game` for why the order is not `and`.
     game_reads = form.is_valid()
     references_read = references.is_valid()
     if graph.is_valid() and game_reads and references_read:
         written = submitted_game_or_form_error(form, graph, references)
         if written is not None:
-            if record_facts_for_request(
+            answer = record_facts_for_request(
                 request,
                 written,
                 status=form.cleaned_data["status"],
                 mastered=form.cleaned_data["mastered"],
                 correlation_id=new_correlation_id(),
-            ):
+            )
+            if answer.refusal is None:
                 return redirect(return_url(request, fallback="games:list_games"))
+            refused_status = answer.refusal.status_code
             #: The graph is written. Drawing it from storage rather
             #: than from the post is what makes the resubmit below
             #: land on those rows instead of making new ones.
@@ -489,6 +492,9 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/temporal-field.js"),
         ),
+        #: The same return serves a form the person must correct,
+        #: which states no status of its own.
+        status=refused_status,
     )
 
 
