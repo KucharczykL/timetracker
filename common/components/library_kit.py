@@ -45,12 +45,19 @@ def _value_node(
 ) -> Node:
     """One figure, linked or plain.
 
-    A stringified node reaches the page as escaped markup, and speaks as
-    HTML, so a node renders as a child and states its own ``spoken`` label.
+    A node renders as a child rather than a string, which would reach the
+    page as escaped markup. A linked one must state ``spoken``: an
+    ``aria-label`` replaces the link's content for a screen reader, and a
+    node stringified into it speaks as HTML.
     """
     child: Child = value if isinstance(value, Node | str) else str(value)
     if href is None:
         return Span(class_=f"{class_} text-heading")[child]
+    if isinstance(value, Node) and spoken is None:
+        raise ValueError(
+            f"The linked {label} figure is a node, which speaks as its own "
+            "markup; state what it says as `spoken`"
+        )
     return Link(
         href=href,
         aria_label=spoken if spoken is not None else f"{value} {label}",
