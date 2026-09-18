@@ -315,10 +315,10 @@ def reclassify_session(
 
 def undo_reclassification(
     actor: User, session: PlayerSession, *, correlation_id: uuid.UUID
-) -> None:
+) -> CommandResult:
     """Take the record back off and return the session."""
     with answered("session"):
-        _dispatch(
+        return _dispatch(
             UndoSessionReclassification(session_id=session.pk),
             actor=actor,
             library=actor.library,

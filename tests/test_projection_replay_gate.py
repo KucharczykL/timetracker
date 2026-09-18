@@ -601,10 +601,10 @@ def row_versions(library) -> list[tuple[str, str]]:
 
 
 def empty_projections(library) -> None:
-    """By library, children first; sessions before records."""
+    """By library, children first; records before sessions."""
     HistoricalPlaytimeRun.objects.filter(library=library).delete()
-    PlayerSession.objects.filter(library=library).delete()
     HistoricalPlaytime.objects.filter(library=library).delete()
+    PlayerSession.objects.filter(library=library).delete()
     Playthrough.objects.filter(library=library).delete()
     PlayerGame.objects.filter(library=library).delete()
 

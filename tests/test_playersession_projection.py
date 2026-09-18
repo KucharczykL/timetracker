@@ -415,7 +415,7 @@ def test_every_reference_is_registered():
 
     assert ("games.PlayerSession", "playthrough") in keys
     assert ("games.PlayerSession", "device") in keys
-    assert ("games.PlayerSession", "reclassified_into") in keys
+    assert ("games.HistoricalPlaytime", "reclassified_from") in keys
     assert unaudited_projection_references() == ()
 
 
@@ -1322,7 +1322,7 @@ def a_record(run: Playthrough) -> HistoricalPlaytime:
 def test_the_reclassification_marks_the_session_and_names_the_record(
     owned_user, owned_library, run
 ):
-    """One event, two columns: the mark and the way back."""
+    """One event, one column: the mark."""
     session = a_recorded_session(owned_library, owned_user, run)
     record = a_record(run)
 
@@ -1338,13 +1338,11 @@ def test_the_reclassification_marks_the_session_and_names_the_record(
     ).recorded_at
     session.refresh_from_db()
     assert session.removed_at == stamped
-    assert session.reclassified_into_id == record.pk
     assert not PlayerSession.objects.alive().exists()
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_restore_clears_the_mark_and_keeps_the_record(owned_user, owned_library, run):
-    """The reference outlives the mark."""
+def test_a_restore_clears_the_mark(owned_user, owned_library, run):
     session = a_recorded_session(owned_library, owned_user, run)
     record = a_record(run)
     append_events(
@@ -1360,7 +1358,6 @@ def test_a_restore_clears_the_mark_and_keeps_the_record(owned_user, owned_librar
 
     session.refresh_from_db()
     assert session.removed_at is None
-    assert session.reclassified_into_id == record.pk
 
 
 def test_the_reclassification_event_has_a_current_state_handler():

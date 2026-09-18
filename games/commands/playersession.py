@@ -43,6 +43,7 @@ from games.events.playersession import (
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import (
+    HistoricalPlaytime,
     PlayerSession,
     PlayerSessionTimingMode,
     Playthrough,
@@ -792,11 +793,22 @@ class RemoveSession(Command):
         return [playersession_removed(session.pk)]
 
 
-def _refuse_beside_a_live_record(session: PlayerSession) -> None:
+def live_record_from(
+    context: CommandContext, session: PlayerSession
+) -> HistoricalPlaytime | None:
+    """The live record made from the session, if one is."""
+    return HistoricalPlaytime.objects.filter(
+        library=context.library, reclassified_from=session, removed_at__isnull=True
+    ).first()
+
+
+def _refuse_beside_a_live_record(
+    context: CommandContext, session: PlayerSession
+) -> None:
     """Refuse a restore that would count hours twice."""
     #: Under dispatch's lock: neither mark can move.
-    record = session.reclassified_into
-    if record is not None and record.removed_at is None:
+    record = live_record_from(context, session)
+    if record is not None:
         raise CommandRejected(
             f"Session {session.pk} became historical playtime record "
             f"{record.pk}, which is live, so restoring the session would "
@@ -819,5 +831,5 @@ class RestoreSession(Command):
         if session.removed_at is None:
             return Unchanged(f"This library did not remove session {self.session_id}.")
         _refuse_under_a_removed_parent(context, session)
-        _refuse_beside_a_live_record(session)
+        _refuse_beside_a_live_record(context, session)
         return [playersession_restored(session.pk)]

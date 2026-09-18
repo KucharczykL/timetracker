@@ -36,7 +36,6 @@ from games.models import (
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
     HistoricalPlaytimeRun,
-    PlayerSession,
     Playthrough,
     PlaythroughKind,
 )
@@ -69,6 +68,10 @@ RECORD_REMOVED = "That record was removed. Restore it before changing it."
 SESSION_STILL_LIVE = (
     "The session this record was made from is back in your lists, so its "
     "playtime is already counted."
+)
+ANOTHER_RECORD_LIVE = (
+    "Another historical playtime record made from the same session is live, "
+    "so its playtime is already counted."
 )
 WHEN_NOT_A_DATE = (
     "Write when as a year, a month or a day, like 2005, 2005-03 or 2005-03-14."
@@ -190,7 +193,7 @@ def library_record(context: CommandContext, record_id: uuid.UUID) -> HistoricalP
     """This library's record, removed or not."""
     return library_row(
         context,
-        HistoricalPlaytime.objects.select_related("player_game"),
+        HistoricalPlaytime.objects.select_related("player_game", "reclassified_from"),
         Refusal(
             message=f"This library holds no historical playtime record {record_id}.",
             sentence="That record is not available.",
@@ -249,6 +252,8 @@ def created_event(
     runs: Sequence[Playthrough],
     device: Device | None,
     statement: HistoricalPlaytimeStatement,
+    *,
+    reclassified_from: uuid.UUID | None = None,
 ) -> NewEvent:
     """One statement as the creation event; caller resolves both."""
     return historicalplaytime_created(
@@ -260,6 +265,7 @@ def created_event(
         device=None if device is None else capture_reference(device),
         emulated=statement.emulated,
         note=statement.note,
+        reclassified_from=reclassified_from,
     )
 
 
@@ -346,15 +352,32 @@ def _refuse_beside_a_live_session(
     context: CommandContext, record: HistoricalPlaytime
 ) -> None:
     """The mirror of the session's own guard."""
-    #: Under dispatch's lock: neither mark can move.
-    live = PlayerSession.objects.filter(
-        library=context.library, reclassified_into=record, removed_at__isnull=True
-    ).first()
-    if live is not None:
+    session = record.reclassified_from
+    if session is None:
+        return
+    #: Under dispatch's lock: no mark can move.
+    if session.removed_at is None:
         raise CommandRejected(
-            f"Session {live.pk} became record {record.pk} and is live again, "
+            f"Session {session.pk} became record {record.pk} and is live again, "
             "so restoring the record would count its hours twice.",
             sentence=SESSION_STILL_LIVE,
+        )
+    #: A session converted twice left two records.
+    sibling = (
+        HistoricalPlaytime.objects.filter(
+            library=context.library,
+            reclassified_from=session,
+            removed_at__isnull=True,
+        )
+        .exclude(pk=record.pk)
+        .first()
+    )
+    if sibling is not None:
+        raise CommandRejected(
+            f"Record {sibling.pk} was made from session {session.pk} as well "
+            f"and is live, so restoring record {record.pk} would count its "
+            "hours twice.",
+            sentence=ANOTHER_RECORD_LIVE,
         )
 
 

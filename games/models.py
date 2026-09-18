@@ -1749,16 +1749,6 @@ class PlayerSession(ProjectionModel):
     created_at = models.DateTimeField(editable=False)
     #: The remove event's recorded_at; null means live.
     removed_at = models.DateTimeField(null=True, default=None, editable=False)
-    #: The record this session became.
-    #: Outlives a restore; both guard each other.
-    reclassified_into = models.ForeignKey(
-        "HistoricalPlaytime",
-        #: No cascade destroys a projection row.
-        on_delete=models.RESTRICT,
-        null=True,
-        default=None,
-        related_name="reclassified_sessions",
-    )
 
     class Meta:
         get_latest_by = "sort_instant"
@@ -1957,6 +1947,18 @@ class HistoricalPlaytime(ProjectionModel):
     created_at = models.DateTimeField(editable=False)
     #: The remove event's recorded_at; null live.
     removed_at = models.DateTimeField(null=True, default=None, editable=False)
+    #: The latest restate event's recorded_at; null never.
+    restated_at = models.DateTimeField(null=True, default=None, editable=False)
+    #: The session this record was made from.
+    #: On the record: one session can become many.
+    reclassified_from = models.ForeignKey(
+        "PlayerSession",
+        #: No cascade destroys a projection row.
+        on_delete=models.RESTRICT,
+        null=True,
+        default=None,
+        related_name="reclassified_records",
+    )
 
     class Meta:
         indexes = (

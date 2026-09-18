@@ -139,14 +139,9 @@ class PlayerSessions(Projector):
         )
 
     def _reclassified(self, event: RecordedEvent) -> None:
-        """The mark and the way back, one act."""
-        self.amend(
-            PlayerSession,
-            event,
-            #: The event's instant, so a replay agrees.
-            removed_at=event.recorded_at,
-            reclassified_into_id=uuid.UUID(event.payload["record"]),
-        )
+        """The mark alone; the record holds the reference."""
+        #: The event's instant, so a replay agrees.
+        self.amend(PlayerSession, event, removed_at=event.recorded_at)
 
     def _removed(self, event: RecordedEvent) -> None:
         #: The event's instant, so a replay agrees.

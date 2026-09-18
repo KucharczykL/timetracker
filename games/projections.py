@@ -116,12 +116,12 @@ def projection_references(apps: Apps = global_apps) -> tuple[ProjectionReference
 AUDITED_PROJECTION_REFERENCES: tuple[ProjectionReference, ...] = (
     ProjectionReference.on(HistoricalPlaytime, "device"),
     ProjectionReference.on(HistoricalPlaytime, "player_game"),
+    ProjectionReference.on(HistoricalPlaytime, "reclassified_from"),
     ProjectionReference.on(HistoricalPlaytimeRun, "playthrough"),
     ProjectionReference.on(HistoricalPlaytimeRun, "record"),
     ProjectionReference.on(PlayerGame, "game"),
     ProjectionReference.on(PlayerSession, "device"),
     ProjectionReference.on(PlayerSession, "playthrough"),
-    ProjectionReference.on(PlayerSession, "reclassified_into"),
     ProjectionReference.on(Playthrough, "player_game"),
 )
 

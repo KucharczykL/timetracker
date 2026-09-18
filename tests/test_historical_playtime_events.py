@@ -155,8 +155,35 @@ def test_the_provenance_literal_matches_the_choices():
     )
 
 
-def test_the_restatement_shares_the_statement_payload():
-    assert HISTORICALPLAYTIME_RESTATED.payload is HISTORICALPLAYTIME_CREATED.payload
+def test_the_restatement_carries_the_statement_alone():
+    """The creation adds one optional key; the restatement none."""
+    assert HISTORICALPLAYTIME_RESTATED.payload in (
+        HISTORICALPLAYTIME_CREATED.payload.__orig_bases__
+    )
+    assert set(HISTORICALPLAYTIME_CREATED.payload.__annotations__) - set(
+        HISTORICALPLAYTIME_RESTATED.payload.__annotations__
+    ) == {"reclassified_from"}
+
+
+def test_the_creation_may_name_the_session_it_came_from():
+    session = uuid.uuid7()
+    event = a_creation(reclassified_from=session)
+    assert event.payload["reclassified_from"] == str(session)
+    assert validated(event.payload) == event.payload
+    assert "reclassified_from" not in a_creation().payload
+
+
+def test_the_session_key_is_absent_not_null():
+    with pytest.raises(PayloadInvalid):
+        validated(a_statement() | {"reclassified_from": None})
+
+
+def test_a_restatement_refuses_the_session_key():
+    with pytest.raises(PayloadInvalid):
+        DEFAULT_EVENT_TYPES.validate(
+            HISTORICALPLAYTIME_RESTATED.event_type,
+            a_statement() | {"reclassified_from": str(uuid.uuid7())},
+        )
 
 
 def test_the_references_are_enumerated():

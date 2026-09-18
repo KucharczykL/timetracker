@@ -44,7 +44,7 @@ def test_a_written_down_session_becomes_a_record_and_comes_back(
     expect(page.get_by_text("Session recorded as historical playtime.")).to_be_visible()
     session.refresh_from_db()
     assert session.removed_at is not None
-    assert session.reclassified_into_id == HistoricalPlaytime.objects.get().pk
+    assert HistoricalPlaytime.objects.get().reclassified_from_id == session.pk
 
     page.get_by_role("button", name="Undo").click()
 

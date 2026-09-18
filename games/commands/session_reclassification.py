@@ -11,13 +11,19 @@ from games.commands.historical_playtime import (
     created_event,
     normalized_statement,
 )
-from games.commands.playersession import _live_session, library_session
+from games.commands.playersession import (
+    _live_session,
+    _refuse_under_a_removed_parent,
+    library_session,
+    live_record_from,
+)
 from games.commands.scope import library_device, library_device_row
 from games.events.dispatch import (
     Command,
     CommandContext,
     CommandName,
     CommandRejected,
+    RowUnreadable,
 )
 from games.events.historical_playtime import historicalplaytime_removed
 from games.events.playersession import (
@@ -26,6 +32,7 @@ from games.events.playersession import (
 )
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import (
+    HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
     PlayerSession,
     PlayerSessionTimingMode,
@@ -43,6 +50,11 @@ ANOTHER_GAME = (
 NEVER_RECLASSIFIED = (
     "That session was never recorded as historical playtime, so there is "
     "nothing to undo."
+)
+RESTATED_SINCE = (
+    "That record was edited after it was made from the session, so undoing "
+    "would throw the edit away. Remove the record yourself, then undo again "
+    "to bring the session back."
 )
 
 
@@ -95,15 +107,23 @@ class ReclassifySessionAsHistoricalPlaytime(Command):
                 f"playthroughs of {runs[0].player_game_id}.",
                 sentence=ANOTHER_GAME,
             )
-        #: A held device stays, removed or not.
-        #: Not library_device: a library that stopped using a device
-        #: removed it, and 91 of the 93 rows this act exists for name
-        #: one, so the live-only resolver refuses almost all of them.
+        #: A held device stays, removed or not: a library that
+        #: stopped using a device removed it, and the row must convert.
         if self.statement.device_id == session.device_id:
             device = library_device_row(context, self.statement.device_id)
         else:
             device = library_device(context, self.statement.device_id)
-        created = created_event(runs, device, self.statement)
+        #: A live session beside a live record is drift, not a statement.
+        record = live_record_from(context, session)
+        if record is not None:
+            raise RowUnreadable(
+                f"Session {session.pk} of library {context.library.pk} is live "
+                f"beside record {record.pk} made from it, which no command "
+                "admits."
+            )
+        created = created_event(
+            runs, device, self.statement, reclassified_from=session.pk
+        )
         return [
             created,
             playersession_reclassified(session.pk, record_id=created.aggregate_id),
@@ -122,22 +142,33 @@ class UndoSessionReclassification(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         session = library_session(context, self.session_id)
-        record = session.reclassified_into
-        if record is None:
+        #: The marks decide; nothing reads the history.
+        if not HistoricalPlaytime.objects.filter(
+            library=context.library, reclassified_from=session
+        ).exists():
             raise CommandRejected(
-                f"Session {session.pk} states no record, so no act of this "
-                "library made it one.",
+                f"No record of this library was made from session "
+                f"{session.pk}, so there is no act to undo.",
                 sentence=NEVER_RECLASSIFIED,
             )
+        record = live_record_from(context, session)
         #: No-op first: a second press restores nothing.
-        if session.removed_at is None and record.removed_at is not None:
+        if record is None and session.removed_at is None:
             return Unchanged(
                 f"This library already undid the reclassification of session "
                 f"{self.session_id}."
             )
+        #: Whole: a refused leg alone would leave both live.
+        if record is not None and record.restated_at is not None:
+            raise CommandRejected(
+                f"Record {record.pk} was restated after session {session.pk} "
+                "became it, so removing it would take back more than the act.",
+                sentence=RESTATED_SINCE,
+            )
+        _refuse_under_a_removed_parent(context, session)
         events: list[NewEvent] = []
         #: Each leg only where still to happen.
-        if record.removed_at is None:
+        if record is not None:
             events.append(historicalplaytime_removed(record.pk))
         if session.removed_at is not None:
             events.append(playersession_restored(session.pk))

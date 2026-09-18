@@ -7,9 +7,11 @@ import pytest
 from django.utils import timezone
 
 from games.commands.historical_playtime import (
+    ANOTHER_RECORD_LIVE,
     ONE_GAME,
     SESSION_STILL_LIVE,
     RemoveHistoricalPlaytime,
+    RestateHistoricalPlaytime,
     RestoreHistoricalPlaytime,
 )
 from games.commands.playergame import RemovePlayerGame, TrackGame
@@ -26,6 +28,7 @@ from games.commands.playthrough import CreatePlaythrough
 from games.commands.session_reclassification import (
     ANOTHER_GAME,
     NEVER_RECLASSIFIED,
+    RESTATED_SINCE,
     STILL_RUNNING,
     ReclassifySessionAsHistoricalPlaytime,
     UndoSessionReclassification,
@@ -210,7 +213,7 @@ def test_the_session_is_marked_and_names_the_record(owned_user, owned_library, r
 
     session.refresh_from_db()
     assert session.removed_at is not None
-    assert session.reclassified_into_id == record.pk
+    assert record.reclassified_from_id == session.pk
     assert not PlayerSession.objects.alive().exists()
 
 
@@ -321,7 +324,7 @@ def test_a_sibling_run_of_the_same_game_is_admitted(
 def test_a_session_holding_a_removed_device_still_converts(
     owned_user, owned_library, run
 ):
-    """91 of 93 rows name a device."""
+    """A device the library stopped using."""
     device = Device.objects.create(library=owned_library, name="Vita")
     session = a_duration_only(owned_library, owned_user, run, device_id=device.pk)
     Device.objects.filter(pk=device.pk).update(removed_at=timezone.now())
@@ -486,7 +489,7 @@ def test_the_undo_reverses_the_pair(owned_user, owned_library, run):
     session.refresh_from_db()
     assert record.removed_at is not None
     assert session.removed_at is None
-    assert session.reclassified_into_id == record.pk
+    assert record.reclassified_from_id == session.pk
     appended = list(
         LibraryEvent.objects.filter(
             event_type__in=(
@@ -542,6 +545,111 @@ def test_the_undo_returns_a_session_whose_record_was_already_removed(
     session.refresh_from_db()
     assert session.removed_at is None
     assert LibraryEvent.objects.count() == before + 1
+
+
+def restate(library, actor, record, statement) -> None:
+    dispatch(
+        RestateHistoricalPlaytime(record_id=record.pk, statement=statement),
+        actor=actor,
+        library=library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+
+
+def test_an_undo_after_a_restatement_is_refused_whole(owned_user, owned_library, run):
+    """Neither leg runs: both live is the double count."""
+    session = a_duration_only(owned_library, owned_user, run)
+    record = convert(owned_library, owned_user, session)
+    restate(
+        owned_library,
+        owned_user,
+        record,
+        statement_from_session(session)._replace(note="edited since"),
+    )
+    before = LibraryEvent.objects.count()
+
+    refusal = refused(
+        owned_library, owned_user, UndoSessionReclassification(session_id=session.pk)
+    )
+
+    assert refusal.sentence == RESTATED_SINCE
+    session.refresh_from_db()
+    record.refresh_from_db()
+    assert session.removed_at is not None
+    assert record.removed_at is None
+    assert record.restated_at is not None
+    assert LibraryEvent.objects.count() == before
+
+
+def test_a_restated_record_removed_by_hand_does_not_block_the_undo(
+    owned_user, owned_library, run
+):
+    session = a_duration_only(owned_library, owned_user, run)
+    record = convert(owned_library, owned_user, session)
+    restate(
+        owned_library,
+        owned_user,
+        record,
+        statement_from_session(session)._replace(note="edited since"),
+    )
+    dispatch(
+        RemoveHistoricalPlaytime(record_id=record.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="record-gone",
+    )
+
+    undo(owned_library, owned_user, session)
+
+    session.refresh_from_db()
+    assert session.removed_at is None
+
+
+def test_an_undo_under_a_removed_game_is_refused(owned_user, owned_library, run, game):
+    """A live record keeps its run; only the game can go."""
+    session = a_duration_only(owned_library, owned_user, run)
+    record = convert(owned_library, owned_user, session)
+    dispatch(
+        RemovePlayerGame(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="game-gone",
+    )
+
+    refused(
+        owned_library, owned_user, UndoSessionReclassification(session_id=session.pk)
+    )
+
+    session.refresh_from_db()
+    record.refresh_from_db()
+    assert session.removed_at is not None
+    assert record.removed_at is None
+
+
+def test_a_session_converted_twice_keeps_one_record_live(
+    owned_user, owned_library, run
+):
+    """Restoring the earlier record is refused by the later one."""
+    session = a_duration_only(owned_library, owned_user, run)
+    first = convert(owned_library, owned_user, session)
+    undo(owned_library, owned_user, session)
+    dispatch(
+        ReclassifySessionAsHistoricalPlaytime(
+            session_id=session.pk, statement=statement_from_session(session)
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="again",
+    )
+    second = HistoricalPlaytime.objects.exclude(pk=first.pk).get()
+
+    refusal = refused(
+        owned_library, owned_user, RestoreHistoricalPlaytime(record_id=first.pk)
+    )
+
+    assert refusal.sentence == ANOTHER_RECORD_LIVE
+    assert str(second.pk) in refusal.args[0]
+    assert second.reclassified_from_id == first.reclassified_from_id == session.pk
 
 
 # --- The two guards -----------------------------------------------------------

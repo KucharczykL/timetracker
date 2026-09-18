@@ -10,6 +10,7 @@ from games.events.historical_playtime import (
     HISTORICALPLAYTIME_REMOVED,
     HISTORICALPLAYTIME_RESTATED,
     HISTORICALPLAYTIME_RESTORED,
+    HistoricalPlaytimeCreatedPayload,
     HistoricalPlaytimeStatementPayload,
 )
 from games.events.projection import HandlerMap, Projector, ProjectorFamily
@@ -82,11 +83,14 @@ class HistoricalPlaytimes(Projector):
 
     def _created(self, event: RecordedEvent) -> None:
         #: Never names the mark; removal survives replay.
+        payload = cast("HistoricalPlaytimeCreatedPayload", event.payload)
+        session = payload.get("reclassified_from")
         self.project(
             HistoricalPlaytime,
             event,
             created_at=event.recorded_at,
-            **columns_for_statement(_statement_of(event), event.effective_time),
+            reclassified_from_id=None if session is None else uuid.UUID(session),
+            **columns_for_statement(payload, event.effective_time),
         )
         self._write_runs(event)
 
@@ -94,6 +98,8 @@ class HistoricalPlaytimes(Projector):
         self.amend(
             HistoricalPlaytime,
             event,
+            #: The event's instant, so a replay agrees.
+            restated_at=event.recorded_at,
             **columns_for_statement(_statement_of(event), event.effective_time),
         )
         self._write_runs(event)
