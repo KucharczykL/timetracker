@@ -173,3 +173,24 @@ def test_the_navbar_states_the_split_and_carries_no_link(owned_user):
     assert "</span> tracked" in today
     assert "</span> historical" in today
     assert "href=" not in today
+
+
+@pytest.mark.django_db
+def test_the_library_playtime_card_states_the_split_and_no_link(client, owned_user):
+    """The card states playtime, not a count of two populations."""
+    game = Game.objects.create(library=owned_user.library, name="Tunic")
+    start = datetime(2022, 3, 1, 10, tzinfo=UTC)
+    session_row(game, started_at=start, ended_at=start + HOUR)
+    record_row([tracked_run(owned_user.library, game)], duration=2 * HOUR)
+    client.force_login(owned_user)
+
+    body = client.get(reverse("games:library")).content.decode()
+
+    assert 'title="Tracked sessions and historical records"' in body
+    assert "3.0 h" in body
+    assert "</span> tracked" in body
+    assert "</span> historical" in body
+    #: The card stated a count of two populations before, and linked to a
+    #: list that shows one of them.
+    assert 'aria-label="3 Playtime"' not in body
+    assert 'title="Sessions and historical records"' not in body

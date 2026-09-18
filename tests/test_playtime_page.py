@@ -274,9 +274,7 @@ class TestHistoricalList:
 
 
 @pytest.mark.django_db
-def test_the_library_card_counts_live_sessions_and_records(
-    client, owner, django_user_model
-):
+def test_the_library_card_states_live_playtime_only(client, owner, django_user_model):
     library = owner.library
     run = tracked_run(library, Game.objects.create(library=library, name="G"))
     session_row(run.player_game.game, started_at=timezone.now())
@@ -289,8 +287,12 @@ def test_the_library_card_counts_live_sessions_and_records(
 
     body = client.get(reverse("games:library")).content.decode()
 
-    assert 'aria-label="3 Playtime"' in body
-    assert 'title="Sessions and historical records"' in body
+    #: Two live records of an hour each; the removed one and the other
+    #: library's are outside the figure.
+    assert "2.0 h" in body
+    assert "</span> historical" in body
+    assert 'title="Tracked sessions and historical records"' in body
+    assert 'aria-label="3 Playtime"' not in body
 
 
 def test_every_provenance_has_a_tone():

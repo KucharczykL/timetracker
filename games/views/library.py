@@ -15,6 +15,7 @@ from common.components import (
     FactList,
     Fragment,
     LiveSettingFields,
+    PlaytimeSplit,
     SectionedPage,
     SectionedPageSection,
     SettingFieldState,
@@ -26,6 +27,7 @@ from common.components import (
     SummaryValue,
 )
 from common.date_time_presentation import date_time_presentation_for_request
+from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
 from common.returns import OriginUrl, UrlName, action_url
 from games.filters import PurchaseFilter, filter_url
@@ -37,8 +39,7 @@ from games.models import (
     Purchase,
     PurchaseConversionState,
 )
-from games.reads.historical_playtime_records import library_records
-from games.reads.player_sessions import library_sessions
+from games.reads.playtime import total_playtime
 from games.views import stats_links
 from timetracker.settings_commands import SettingNamespace
 
@@ -58,16 +59,15 @@ def library(request: HttpRequest) -> HttpResponse:
     library = user.library
     origin = request.get_full_path()
     presentation = date_time_presentation_for_request(request)
+    durations = duration_presentation_for_request(request)
+    playtime = total_playtime(library)
     games = Game.objects.for_library(library)
-    sessions = library_sessions(library)
     purchases = Purchase.objects.for_library(library)
     devices = Device.objects.for_library(library)
     platforms = Platform.objects.for_library(library)
     not_refunded = purchases.not_refunded()
     conversion = PurchaseConversionState.objects.get(library=library)
     game_count = games.count()
-    session_count = sessions.count()
-    record_count = library_records(library).count()
     purchase_count = purchases.count()
     device_count = devices.count()
     platform_count = platforms.count()
@@ -89,11 +89,12 @@ def library(request: HttpRequest) -> HttpResponse:
         ),
         StatisticGrid(
             StatisticCard("Games", game_count, href=reverse("games:list_games")),
+            #: No link: the session list shows no record, so it would
+            #: sum less than the figure the card states.
             StatisticCard(
                 "Playtime",
-                session_count + record_count,
-                href=reverse("games:list_sessions"),
-                title="Sessions and historical records",
+                PlaytimeSplit(playtime, durations, id_scope="library-playtime"),
+                title="Tracked sessions and historical records",
             ),
             StatisticCard(
                 "Purchases",

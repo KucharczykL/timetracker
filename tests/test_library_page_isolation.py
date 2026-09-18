@@ -63,8 +63,7 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
     assert "Games currently includes every game in your library." in body
     assert str(owner.library.pk) in body
     assert "1 Games" in body
-    assert "1 Playtime" in body
-    assert 'title="Sessions and historical records"' in body
+    assert 'title="Tracked sessions and historical records"' in body
     assert "1 Devices" in body
     assert 'data-setting-key="default-device"' in body
     assert 'data-setting-source="library"' in body

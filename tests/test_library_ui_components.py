@@ -7,6 +7,7 @@ from common.components import (
     Div,
     EmptyState,
     FactList,
+    Span,
     StatisticCard,
     StatisticGrid,
     SummaryAction,
@@ -295,3 +296,25 @@ def test_account_menu_forwards_the_theme_disabled_state():
     html = str(_account_menu(theme_disabled=True))
 
     assert '<theme-toggle disabled="true"' in html
+
+
+def test_a_statistic_card_renders_a_node_value_as_markup():
+    """A node value reaches the page as markup, not as escaped text."""
+    html = str(StatisticCard("Playtime", Span(class_="block")["242 h"]))
+
+    assert '<span class="block">242 h</span>' in html
+    assert "&lt;span" not in html
+
+
+def test_a_linked_statistic_card_speaks_the_label_it_is_given():
+    html = str(
+        StatisticCard("Games", 851, href="/tracker/game/list", spoken="851 games")
+    )
+
+    assert 'aria-label="851 games"' in html
+
+
+def test_a_linked_statistic_card_speaks_its_value_by_default():
+    html = str(StatisticCard("Games", 851, href="/tracker/game/list"))
+
+    assert 'aria-label="851 Games"' in html
