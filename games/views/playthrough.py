@@ -81,6 +81,7 @@ from games.views.playthrough_writes import (
 )
 from games.views.removal import UndoOffer, confirm_and_apply, restore_and_return
 from games.views.returns import return_url
+from games.writes.answers import WriteAnswer
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import RunDraft, restore_run
 from timetracker.temporal import TemporalValue
@@ -325,13 +326,13 @@ def editable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
 
 def record_completed(
     request: HttpRequest, game: Game, correlation_id: uuid.UUID
-) -> bool:
+) -> WriteAnswer:
     """State Completed for the game just finished.
 
     The request's correlation id, not a fresh one: the act
     and the status it implies belong to one submit.
 
-    Answers False on a refusal, which toasted already.
+    Answers the refusal, which toasted already.
     """
     return record_facts_for_request(
         request,

@@ -18,6 +18,12 @@ from games.models import (
     Playthrough,
     Purchase,
 )
+from games.writes.answers import (
+    CONFLICT_STATUS,
+    DEFECT_STATUS,
+    CommandFailed,
+    WriteAnswer,
+)
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 
 pytestmark = pytest.mark.untracked_games
@@ -147,8 +153,6 @@ def test_the_status_api_refuses_a_status_that_is_not_one(logged_in, owned_librar
 def test_a_failed_status_write_answers_409_with_a_toast(
     logged_in, owned_library, tracked_game, monkeypatch
 ):
-    from games.writes.answers import CommandFailed
-
     game = tracked_game
 
     def refuse(*args, **kwargs):
@@ -251,7 +255,9 @@ def test_a_game_no_command_could_track_is_not_left_behind(
     #: page, while its name goes on holding the unique constraint.
     monkeypatch.setattr(
         "games.views.game.track_game_for_request",
-        lambda request, game, *, correlation_id: False,
+        lambda request, game, *, correlation_id: WriteAnswer(
+            CommandFailed("Nothing was recorded; try again.", CONFLICT_STATUS)
+        ),
     )
 
     logged_in.post(reverse("games:add_game"), GAME_PAYLOAD)
@@ -375,8 +381,6 @@ def test_refunding_abandons_every_game_under_one_correlation_id(
 def test_a_failed_refund_answers_409_and_swaps_nothing(
     logged_in, owned_user, owned_library, monkeypatch
 ):
-    from games.writes.answers import CommandFailed
-
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track_game(owned_user, game, correlation_id=new_correlation_id())
     purchase = Purchase.objects.create(
@@ -406,8 +410,6 @@ def test_a_failed_refund_answers_409_and_swaps_nothing(
 def test_a_failed_add_leaves_the_row_at_the_defaults(
     logged_in, owned_library, monkeypatch
 ):
-    from games.writes.answers import CommandFailed
-
     def refuse(*args, **kwargs):
         raise CommandFailed("Nothing was recorded; try again.", 409)
 
@@ -426,8 +428,6 @@ def test_a_failed_add_leaves_the_row_at_the_defaults(
 
 @pytest.mark.django_db(transaction=True)
 def test_a_failed_edit_re_renders_the_form(logged_in, tracked_game, monkeypatch):
-    from games.writes.answers import CommandFailed
-
     def refuse(*args, **kwargs):
         raise CommandFailed("Nothing was recorded; try again.", 409)
 
@@ -449,7 +449,6 @@ def test_a_partly_applied_refund_says_how_far_it_went(
     logged_in, owned_user, owned_library, monkeypatch
 ):
     from games.views import playergame_writes
-    from games.writes.answers import CommandFailed
 
     games = []
     for name in ("Outer Wilds", "Tunic"):
