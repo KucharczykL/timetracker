@@ -1,4 +1,4 @@
-"""A form rendered again after a refused command answers its status."""
+"""A re-rendered form answers the refusal's status."""
 
 import pytest
 from django.urls import reverse
@@ -58,7 +58,7 @@ def test_a_refused_new_session_renders_the_form_at_the_refusals_status(
         reverse("games:add_session"), _session_payload(tracked_game)
     )
 
-    #: A redirect would read as a save that landed.
+    #: A redirect would read as a save.
     assert response.status_code == status
     assert "show-toast" in response.headers["HX-Trigger"]
     assert not PlayerSession.objects.exists()

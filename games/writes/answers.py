@@ -62,7 +62,7 @@ class CommandFailed(Exception):
 
 
 class WriteAnswer(NamedTuple):
-    """What a request-shaped write left a view to answer with."""
+    """What a request-shaped write answers."""
 
     refusal: CommandFailed | None
 

@@ -71,7 +71,7 @@ def start_run_for_request(
     *,
     correlation_id: uuid.UUID,
 ) -> WriteAnswer:
-    """State the run's start; the refusal on failure."""
+    """State the run's start; refusal on failure."""
     try:
         start_run(cast("User", request.user), run, when, correlation_id=correlation_id)
     except CommandFailed as failure:
@@ -87,7 +87,7 @@ def complete_run_for_request(
     *,
     correlation_id: uuid.UUID,
 ) -> WriteAnswer:
-    """State the run's completion; the refusal on failure."""
+    """State the run's completion; refusal on failure."""
     try:
         complete_run(
             cast("User", request.user), run, when, correlation_id=correlation_id

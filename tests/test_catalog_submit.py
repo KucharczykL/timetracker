@@ -270,7 +270,7 @@ def test_a_written_graph_is_redrawn_from_storage(
         )
 
     assert refused.called
-    #: The command refused, and the page it renders says so.
+    #: The refused command's page says so.
     assert response.status_code == CONFLICT_STATUS
     written = Edition.objects.alive().get(game=graph.game, name="Gold")
     assert str(written.pk) in response.content.decode()

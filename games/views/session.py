@@ -329,8 +329,7 @@ def add_session(request: HttpRequest, game_id: UUID | None = None) -> HttpRespon
         if run is not None:
             initial["playthrough"] = run.pk
 
-    #: The tail below serves a form the person must correct as
-    #: well, which states no status of its own.
+    #: The same tail renders an invalid form.
     refused_status = 200
     if request.method == "POST":
         form = SessionForm(

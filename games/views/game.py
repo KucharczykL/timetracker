@@ -492,8 +492,7 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/temporal-field.js"),
         ),
-        #: The same return serves a form the person must correct,
-        #: which states no status of its own.
+        #: The same tail renders an invalid form.
         status=refused_status,
     )
 
