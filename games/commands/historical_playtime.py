@@ -32,6 +32,7 @@ from games.events.historical_playtime import (
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import (
+    Device,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
     HistoricalPlaytimeRun,
@@ -238,6 +239,30 @@ def _held_columns(record: HistoricalPlaytime) -> StatementColumns:
     }
 
 
+def created_event(
+    runs: Sequence[Playthrough],
+    device: Device | None,
+    statement: HistoricalPlaytimeStatement,
+) -> NewEvent:
+    """One statement as the creation event.
+
+    The caller resolves the runs and the device, because the rule for
+    each differs by act: a record stated fresh takes a live device,
+    while a record made out of a session takes the one the session
+    already holds, removed or not.
+    """
+    return historicalplaytime_created(
+        player_game_id=runs[0].player_game_id,
+        runs=_members(runs, {}),
+        duration=statement.duration,
+        when=TemporalValue.parse(statement.when),
+        provenance=_recorded(statement.provenance),
+        device=None if device is None else capture_reference(device),
+        emulated=statement.emulated,
+        note=statement.note,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class RecordHistoricalPlaytime(Command):
     """State untracked playtime."""
@@ -251,18 +276,7 @@ class RecordHistoricalPlaytime(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         runs = _live_runs(context, self.statement)
         device = library_device(context, self.statement.device_id)
-        return [
-            historicalplaytime_created(
-                player_game_id=runs[0].player_game_id,
-                runs=_members(runs, {}),
-                duration=self.statement.duration,
-                when=TemporalValue.parse(self.statement.when),
-                provenance=_recorded(self.statement.provenance),
-                device=None if device is None else capture_reference(device),
-                emulated=self.statement.emulated,
-                note=self.statement.note,
-            )
-        ]
+        return [created_event(runs, device, self.statement)]
 
 
 @dataclass(frozen=True, slots=True)
