@@ -58,7 +58,7 @@ def _dispatch(
         command,
         actor=actor,
         library=library,
-        #: No key: the build absorbs a repeat.
+        #: A caller's key, else none: the build absorbs a repeat.
         idempotency_key=idempotency_key or str(uuid.uuid7()),
         correlation_id=correlation_id,
     )

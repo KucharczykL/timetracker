@@ -1,11 +1,13 @@
 """The reclassification acts through the routes."""
 
 import json
+import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.contrib.messages import get_messages
 from django.urls import reverse
+from django.utils import timezone
 from historical_playtime_posts import posted_record
 from session_rows import duration_only_row, timed_row, tracked_run
 
@@ -20,13 +22,16 @@ from games.models import (
     LibraryEvent,
     PlayerSession,
     Playthrough,
+    PlaythroughKind,
 )
 from games.views.session_reclassification import (
+    ALREADY_RECORDED,
+    IN_THE_BUCKET,
     NOT_AVAILABLE,
     NOT_WRITTEN,
     UNDER_THRESHOLD,
 )
-from games.writes.answers import DEFECT_STATUS, CommandFailed
+from games.writes.answers import CONFLICT_STATUS, DEFECT_STATUS, CommandFailed
 from games.writes.playergame import new_correlation_id
 from games.writes.playersession import reclassify_session as state_reclassification
 
@@ -70,9 +75,12 @@ def test_get_renders_the_prefilled_form(logged_in, session, run):
 
     assert response.status_code == 200
     html = response.content.decode()
-    assert str(run.pk) in html
-    #: Nine hours, as the session states them.
+    #: The session's run is checked, and its day and hours filled.
+    checked = [line for line in html.split("<input") if str(run.pk) in line]
+    assert any("checked" in line for line in checked)
+    assert 'name="duration_hours"' in html
     assert 'value="9"' in html
+    assert 'value="2026"' in html
 
 
 def test_post_converts_and_returns_to_the_origin(logged_in, session, run):
@@ -99,6 +107,22 @@ def test_the_toast_offers_the_undo(logged_in, session, run):
     (level, message) = _messages_of(response)[0]
     assert level == "success"
     assert message == "Session recorded as historical playtime."
+
+
+def test_a_reclassified_session_posted_again_is_refused_in_its_own_words(
+    logged_in, session, run
+):
+    """A stale tab: the sentence names the undo, not a restore."""
+    posted = posted_record([run.pk], hours="9", when_year="2026")
+    logged_in.post(_url(session), posted)
+
+    response = logged_in.post(_url(session), posted | {"submission": str(uuid.uuid7())})
+
+    assert response.status_code == CONFLICT_STATUS
+    assert any(
+        "already recorded" in message for _level, message in _messages_of(response)
+    )
+    assert HistoricalPlaytime.objects.count() == 1
     stored = next(iter(get_messages(response.wsgi_request)))
     assert reverse("games:undo_reclassify_session", args=[session.pk]) in (
         stored.extra_tags
@@ -348,13 +372,15 @@ def test_a_defect_stops_the_request_and_offers_no_second_press(
 
     response = logged_in.post(
         _bulk_url(),
-        {"session": [str(row.pk) for row in rows], "submission": "one"},
+        {"session": [str(row.pk) for row in rows] + ["not-a-key"], "submission": "one"},
     )
 
     assert response.status_code == DEFECT_STATUS
     html = response.content.decode()
-    assert "1 of 3" in html
+    assert "1 of 4" in html
     assert ">Record as historical playtime<" not in html
+    #: The sentences collected before the defect still reach the page.
+    assert NOT_AVAILABLE in html
     for row in rows:
         row.refresh_from_db()
     assert rows[0].removed_at is not None
@@ -381,7 +407,7 @@ def test_the_library_promises_no_undo_for_the_bulk_act(logged_in, session):
     html = logged_in.get(reverse("games:library")).content.decode()
 
     assert "every change offers an Undo" not in html
-    assert "does not yet" in html
+    assert "all of them at once does not." in html
 
 
 def test_one_refused_row_does_not_stop_the_rest(logged_in, owned_user, run, game):
@@ -405,7 +431,113 @@ def test_one_refused_row_does_not_stop_the_rest(logged_in, owned_user, run, game
     fine.refresh_from_db()
     assert fine.removed_at is not None
     #: The refused row counts: two were sent.
-    assert any("1 of 2" in message for _level, message in _messages_of(response))
+    said = _messages_of(response)
+    assert any("1 of 2" in message for _level, message in said)
+    assert ("info", ALREADY_RECORDED) in said
+
+
+def test_a_command_refusal_does_not_stop_the_rest(logged_in, run, monkeypatch):
+    """The loop's refusal branch: a sentence, then on to the next row."""
+    from games.views import session_reclassification as views
+
+    rows = [_long_row(run, date(2026, 3, day)) for day in (1, 2, 3)]
+    real = views.state_reclassification
+
+    def refusing(user, row, *args, **kwargs):
+        if row.pk == rows[1].pk:
+            raise CommandFailed("That one was refused.", CONFLICT_STATUS)
+        return real(user, row, *args, **kwargs)
+
+    monkeypatch.setattr(views, "state_reclassification", refusing)
+
+    response = logged_in.post(
+        _bulk_url(),
+        {"session": [str(row.pk) for row in rows], "submission": "one"},
+    )
+
+    assert response.status_code == 302
+    said = _messages_of(response)
+    assert any("2 of 3" in message for _level, message in said)
+    assert ("error", "That one was refused.") in said
+    assert HistoricalPlaytime.objects.count() == 2
+
+
+def test_a_second_submit_says_the_rows_were_already_recorded(logged_in, run):
+    row = _long_row(run)
+    posted = {"session": [str(row.pk)], "submission": "one"}
+    logged_in.post(_bulk_url(), posted)
+    logged_in.get(reverse("games:list_sessions"))
+
+    response = logged_in.post(_bulk_url(), posted)
+
+    said = _messages_of(response)
+    assert ("info", ALREADY_RECORDED) in said
+    assert not any(level == "error" for level, _message in said)
+    assert any("0 of 1" in message for _level, message in said)
+
+
+def test_a_key_posted_twice_counts_once(logged_in, run):
+    row = _long_row(run)
+
+    response = logged_in.post(
+        _bulk_url(), {"session": [str(row.pk), str(row.pk)], "submission": "one"}
+    )
+
+    assert any("1 of 1" in message for _level, message in _messages_of(response))
+
+
+def test_a_bucket_session_is_not_reviewed_and_is_refused_in_its_own_words(
+    logged_in, run
+):
+    bucket = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=run.library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+    in_the_bucket = _long_row(bucket)
+
+    assert (
+        "Nothing to review" in logged_in.get(reverse("games:library")).content.decode()
+    )
+    response = logged_in.post(
+        _bulk_url(), {"session": [str(in_the_bucket.pk)], "submission": "one"}
+    )
+
+    assert ("error", IN_THE_BUCKET) in _messages_of(response)
+    in_the_bucket.refresh_from_db()
+    assert in_the_bucket.removed_at is None
+
+
+def test_every_key_left_alone_is_logged_with_its_library(logged_in, run, caplog):
+    import logging
+
+    short = _long_row(run, hours=7)
+    #: The games logger does not propagate; listen on it directly.
+    logging.getLogger("games").addHandler(caplog.handler)
+    with caplog.at_level("INFO", logger="games"):
+        logged_in.post(_bulk_url(), {"session": [str(short.pk)], "submission": "one"})
+    logging.getLogger("games").removeHandler(caplog.handler)
+
+    (line,) = [
+        record for record in caplog.records if "was not recorded" in record.message
+    ]
+    assert str(short.pk) in line.message
+    assert str(run.library_id) in line.message
+    assert UNDER_THRESHOLD in line.message
+
+
+def test_the_bulk_toast_offers_no_undo(logged_in, run):
+    row = _long_row(run)
+
+    response = logged_in.post(
+        _bulk_url(), {"session": [str(row.pk)], "submission": "one"}
+    )
+
+    stored = list(get_messages(response.wsgi_request))
+    assert stored
+    assert all(not message.extra_tags for message in stored)
 
 
 def test_a_second_submit_converts_nothing_new(logged_in, run):

@@ -77,9 +77,8 @@ def confirm_and_apply(
                 cancel_url=return_url(
                     request, fallback=fallback, fallback_args=fallback_args
                 ),
-                confirm_label=confirm_label,
                 #: A defect admits no second press.
-                confirm=status != DEFECT_STATUS,
+                confirm_label=None if status == DEFECT_STATUS else confirm_label,
             ),
             title=title,
             status=status,
@@ -150,7 +149,7 @@ def confirm_and_remove(
 def restore_and_return(
     request: HttpRequest,
     *,
-    action: Callable[[], object],
+    action: Callable[[], CommandResult | None],
     restored: str,
     fallback: UrlName,
     fallback_args: Sequence[Any] = (),
@@ -182,7 +181,7 @@ def restore_and_return(
     else:
         if (
             unchanged is not None
-            and isinstance(answer, CommandResult)
+            and answer is not None
             and answer.outcome is CommandOutcome.UNCHANGED
         ):
             messages.info(request, unchanged)

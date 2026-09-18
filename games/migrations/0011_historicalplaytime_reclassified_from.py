@@ -1,15 +1,16 @@
 import django.db.models.deletion
 from django.db import migrations, models
 
-#: The latest restate event per record, so a replay agrees.
+#: The last restate event per record in stream order, as a replay reads it.
 STATE_RESTATED_AT = """
 UPDATE games_historicalplaytime AS record
 SET restated_at = latest.recorded_at
 FROM (
-    SELECT aggregate_id, library_id, max(recorded_at) AS recorded_at
+    SELECT DISTINCT ON (library_id, aggregate_id)
+        library_id, aggregate_id, recorded_at
     FROM games_libraryevent
     WHERE event_type = 'library.historicalplaytime.restated'
-    GROUP BY aggregate_id, library_id
+    ORDER BY library_id, aggregate_id, sequence DESC
 ) AS latest
 WHERE record.id = latest.aggregate_id
   AND record.library_id = latest.library_id
@@ -40,6 +41,16 @@ class Migration(migrations.Migration):
                 on_delete=django.db.models.deletion.RESTRICT,
                 related_name="reclassified_records",
                 to="games.playersession",
+            ),
+        ),
+        migrations.AddConstraint(
+            model_name="historicalplaytime",
+            constraint=models.UniqueConstraint(
+                condition=models.Q(
+                    ("reclassified_from__isnull", False), ("removed_at__isnull", True)
+                ),
+                fields=("reclassified_from",),
+                name="historicalplaytime_one_live_per_session",
             ),
         ),
         migrations.RunPython(state_restated_at, migrations.RunPython.noop),

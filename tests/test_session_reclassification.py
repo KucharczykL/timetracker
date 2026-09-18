@@ -4,7 +4,9 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from django.db import IntegrityError
 from django.utils import timezone
+from session_rows import duration_only_row
 
 from games.commands.historical_playtime import (
     ANOTHER_RECORD_LIVE,
@@ -17,6 +19,7 @@ from games.commands.historical_playtime import (
 from games.commands.playergame import RemovePlayerGame, TrackGame
 from games.commands.playersession import (
     RECORD_STILL_LIVE,
+    SESSION_REMOVED,
     CorrectedTiming,
     CreateSession,
     DurationOnlyTiming,
@@ -24,17 +27,24 @@ from games.commands.playersession import (
     RestoreSession,
     TimedTiming,
 )
-from games.commands.playthrough import CreatePlaythrough
+from games.commands.playthrough import CreatePlaythrough, RemovePlaythrough
 from games.commands.session_reclassification import (
+    ALREADY_RECORDED,
     ANOTHER_GAME,
     NEVER_RECLASSIFIED,
+    REMOVED_ON_ITS_OWN,
     RESTATED_SINCE,
     STILL_RUNNING,
     ReclassifySessionAsHistoricalPlaytime,
     UndoSessionReclassification,
     statement_from_session,
 )
-from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
+from games.events.dispatch import (
+    CommandOutcome,
+    CommandRejected,
+    RowUnreadable,
+    dispatch,
+)
 from games.models import (
     Device,
     Game,
@@ -43,6 +53,7 @@ from games.models import (
     LibraryEvent,
     PlayerSession,
     Playthrough,
+    PlaythroughKind,
 )
 from games.reads.playthrough_activity import RunActivity
 
@@ -251,6 +262,8 @@ def test_a_finished_timed_session_is_admitted(owned_user, owned_library, run):
     record = convert(owned_library, owned_user, session)
 
     assert record.duration == AN_HOUR
+    #: 23:30 UTC is the next day in Prague: effective_day, not the UTC day.
+    assert record.when.canonical == "2026-01-02"
 
 
 def test_a_corrected_session_is_admitted(owned_user, owned_library, run):
@@ -347,7 +360,28 @@ def test_a_removed_device_named_anew_is_refused(owned_user, owned_library, run):
         ReclassifySessionAsHistoricalPlaytime(session_id=session.pk, statement=swapped),
     )
 
-    assert refusal.sentence
+    assert refusal.sentence == (
+        "That device was removed from your library. Restore it before choosing it."
+    )
+
+
+def test_a_bucket_session_converts_onto_an_ordinary_run(owned_user, owned_library, run):
+    """The statement names the run; the session need not."""
+    bucket = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+    #: A row, not a command: nothing records onto the bucket.
+    session = duration_only_row(bucket, A_DAY, timedelta(hours=9))
+    onto_the_run = statement_from_session(session)._replace(playthrough_ids=(run.pk,))
+
+    record = convert(owned_library, owned_user, session, onto_the_run)
+
+    assert set(record.runs.values_list("playthrough_id", flat=True)) == {run.pk}
+    assert record.reclassified_from_id == session.pk
 
 
 def test_the_same_key_twice_appends_one_pair(owned_user, owned_library, run):
@@ -383,13 +417,82 @@ def test_a_removed_session_is_refused(owned_user, owned_library, run):
         idempotency_key="gone",
     )
 
-    refused(
+    refusal = refused(
         owned_library,
         owned_user,
         ReclassifySessionAsHistoricalPlaytime(
             session_id=session.pk, statement=statement
         ),
     )
+
+    assert refusal.sentence == SESSION_REMOVED
+
+
+def test_a_reclassified_session_is_refused_in_its_own_words(
+    owned_user, owned_library, run
+):
+    """Not the removed-session sentence, whose remedy is circular."""
+    session = a_duration_only(owned_library, owned_user, run)
+    statement = statement_from_session(session)
+    convert(owned_library, owned_user, session)
+
+    refusal = refused(
+        owned_library,
+        owned_user,
+        ReclassifySessionAsHistoricalPlaytime(
+            session_id=session.pk, statement=statement
+        ),
+    )
+
+    assert refusal.sentence == ALREADY_RECORDED
+
+
+def drift(session, record) -> None:
+    """Both live, as no command leaves them."""
+    PlayerSession.objects.filter(pk=session.pk).update(removed_at=None)
+    HistoricalPlaytime.objects.filter(pk=record.pk).update(removed_at=None)
+
+
+def test_a_live_session_beside_a_live_record_is_a_defect(
+    owned_user, owned_library, run
+):
+    session = a_duration_only(owned_library, owned_user, run)
+    record = convert(owned_library, owned_user, session)
+    drift(session, record)
+
+    for command in (
+        ReclassifySessionAsHistoricalPlaytime(
+            session_id=session.pk, statement=statement_from_session(session)
+        ),
+        UndoSessionReclassification(session_id=session.pk),
+    ):
+        with pytest.raises(RowUnreadable):
+            dispatch(
+                command,
+                actor=owned_user,
+                library=owned_library,
+                idempotency_key=str(uuid.uuid7()),
+            )
+
+
+def test_two_live_records_from_one_session_are_refused_by_the_database(
+    owned_user, owned_library, run
+):
+    """The backstop behind three commands' guard."""
+    session = a_duration_only(owned_library, owned_user, run)
+    first = convert(owned_library, owned_user, session)
+    undo(owned_library, owned_user, session)
+    dispatch(
+        ReclassifySessionAsHistoricalPlaytime(
+            session_id=session.pk, statement=statement_from_session(session)
+        ),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="again",
+    )
+
+    with pytest.raises(IntegrityError, match="historicalplaytime_one_live_per_session"):
+        HistoricalPlaytime.objects.filter(pk=first.pk).update(removed_at=None)
 
 
 def test_a_removed_run_is_refused(owned_user, owned_library, run, second_run):
@@ -440,6 +543,27 @@ def test_the_playtime_total_does_not_move(owned_user, owned_library, run, game):
     convert(owned_library, owned_user, session)
 
     assert game_playtime(owned_library, game).total == before.total
+
+
+def test_each_period_total_stays_the_same(owned_user, owned_library, run):
+    """The record's day is inside every period the session was."""
+    from games.reads.days import DayInterval
+    from games.reads.playtime import playtime_between_each
+
+    session = a_duration_only(owned_library, owned_user, run)
+    windows = [
+        DayInterval(date(2026, 1, 1), date(2026, 12, 31)),
+        DayInterval(date(2026, 3, 1), date(2026, 3, 31)),
+        DayInterval(A_DAY, A_DAY),
+        DayInterval(date(2026, 3, 6), date(2026, 3, 6)),
+    ]
+    before = [figure.total for figure in playtime_between_each(owned_library, windows)]
+
+    convert(owned_library, owned_user, session)
+
+    after = playtime_between_each(owned_library, windows)
+    assert [figure.total for figure in after] == before
+    assert [figure.tracked for figure in after] == [timedelta(0)] * 4
 
 
 def test_the_session_count_falls_by_one(owned_user, owned_library, run):
@@ -603,6 +727,105 @@ def test_a_restated_record_removed_by_hand_does_not_block_the_undo(
 
     session.refresh_from_db()
     assert session.removed_at is None
+
+
+def test_an_undo_under_a_removed_run_is_refused(
+    owned_user, owned_library, run, second_run
+):
+    """Reachable once the record is gone: nothing then holds the run."""
+    session = a_duration_only(owned_library, owned_user, run)
+    record = convert(owned_library, owned_user, session)
+    dispatch(
+        RemoveHistoricalPlaytime(record_id=record.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="record-gone",
+    )
+    dispatch(
+        RemovePlaythrough(playthrough_id=run.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="run-gone",
+    )
+
+    refusal = refused(
+        owned_library, owned_user, UndoSessionReclassification(session_id=session.pk)
+    )
+
+    assert "playthrough" in refusal.sentence
+    session.refresh_from_db()
+    assert session.removed_at is not None
+
+
+def test_a_session_removed_on_its_own_after_an_undo_is_not_restored(
+    owned_user, owned_library, run
+):
+    """A later mark on the session is another act's."""
+    session = a_duration_only(owned_library, owned_user, run)
+    convert(owned_library, owned_user, session)
+    undo(owned_library, owned_user, session)
+    dispatch(
+        RemoveSession(session_id=session.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="on-its-own",
+    )
+
+    refusal = refused(
+        owned_library, owned_user, UndoSessionReclassification(session_id=session.pk)
+    )
+
+    assert refusal.sentence == REMOVED_ON_ITS_OWN
+    session.refresh_from_db()
+    assert session.removed_at is not None
+
+
+def test_another_librarys_record_naming_the_session_guards_nothing(
+    owned_user, owned_library, run, django_user_model
+):
+    """Every guard is scoped; drift is the audit's to report."""
+    session = a_duration_only(owned_library, owned_user, run)
+    dispatch(
+        RemoveSession(session_id=session.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="gone",
+    )
+    stranger = django_user_model.objects.create_user(username="stranger")
+    foreign_game = Game.objects.create(library=stranger.library, name="Theirs")
+    dispatch(
+        TrackGame(game_id=foreign_game.pk),
+        actor=stranger,
+        library=stranger.library,
+        idempotency_key="track-theirs",
+    )
+    foreign_run = Playthrough.objects.get(player_game__game=foreign_game)
+    HistoricalPlaytime.objects.create(
+        id=uuid.uuid7(),
+        library=stranger.library,
+        player_game=foreign_run.player_game,
+        duration=timedelta(hours=9),
+        when="2026-03-05",
+        provenance=HistoricalPlaytimeProvenance.MANUALLY_ENTERED,
+        emulated=False,
+        note="",
+        created_at=timezone.now(),
+        reclassified_from=session,
+    )
+
+    dispatch(
+        RestoreSession(session_id=session.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="back",
+    )
+    refusal = refused(
+        owned_library, owned_user, UndoSessionReclassification(session_id=session.pk)
+    )
+
+    session.refresh_from_db()
+    assert session.removed_at is None
+    assert refusal.sentence == NEVER_RECLASSIFIED
 
 
 def test_an_undo_under_a_removed_game_is_refused(owned_user, owned_library, run, game):

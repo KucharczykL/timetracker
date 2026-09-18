@@ -42,9 +42,12 @@ from common.returns import OriginUrl, action_url
 from games.commands.session_reclassification import statement_from_session
 from games.forms import HistoricalPlaytimeForm
 from games.models import (
+    HistoricalPlaytime,
     PlayerSession,
     PlayerSessionQuerySet,
     PlayerSessionTimingMode,
+    PlaythroughKind,
+    UserLibrary,
 )
 from games.ownership import owned_or_404
 from games.reads.player_sessions import library_sessions
@@ -90,7 +93,7 @@ def reclassify_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
                 user,
                 session,
                 form.statement(),
-                idempotency_key=form.submission_key(),
+                idempotency_key=form.submission_key(act="reclassify"),
                 correlation_id=new_correlation_id(),
             )
         except CommandFailed as failure:
@@ -169,28 +172,39 @@ def review_url() -> str:
 
 
 NOT_WRITTEN = (
-    "Only a session whose time was written down can be recorded as historical playtime."
+    "A session whose time the app measured is not one the review offers, so "
+    "it was left as it is."
 )
 NOT_AVAILABLE = "One of the sessions is no longer available, so it was left as it is."
 UNDER_THRESHOLD = (
     f"A session shorter than {REVIEW_THRESHOLD_HOURS} hours is not one the "
     "review offers, so it was left as it is."
 )
+IN_THE_BUCKET = (
+    "A session in imported history is not one the review offers, because it "
+    "must be told which playthrough its hours belong to. Move it from its own "
+    "row."
+)
+ALREADY_RECORDED = "Some of the sessions were already recorded as historical playtime."
 
 #: A session key as the page posts it.
 type PostedKey = str
 
 
-def reviewable_sessions(library) -> PlayerSessionQuerySet:
-    """Live written-down rows of the threshold or longer."""
+def reviewable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
+    """Live written-down rows of the threshold or longer, on a run."""
     return library_sessions(library).filter(
         timing_mode=PlayerSessionTimingMode.DURATION_ONLY,
         effective_duration__gte=timedelta(hours=REVIEW_THRESHOLD_HOURS),
+        #: The bulk act cannot ask which run a bucket row belongs to.
+        playthrough__kind=PlaythroughKind.ORDINARY,
     )
 
 
-def _reviewable(library, keys=None) -> list[PlayerSession]:
-    """Live written-down rows; `keys` narrows to a post."""
+def _reviewable(
+    library: UserLibrary, keys: Sequence[UUID] | None = None
+) -> list[PlayerSession]:
+    """The review's rows; `keys` narrows to a post."""
     rows = reviewable_sessions(library)
     if keys is not None:
         rows = rows.filter(pk__in=keys)
@@ -201,60 +215,98 @@ def _reviewable(library, keys=None) -> list[PlayerSession]:
     )
 
 
+class Refused(NamedTuple):
+    """A posted key the act left alone, and why."""
+
+    key: PostedKey
+    sentence: str
+
+
 class Classified(NamedTuple):
     """What the review offers, and why the rest are left."""
 
-    convertible: list[PlayerSession]
-    refused: list[tuple[PostedKey, str]]
+    convertible: tuple[PlayerSession, ...]
+    refused: tuple[Refused, ...]
+    #: Distinct keys sent: the count's denominator.
+    posted: int
 
 
-def _classified(library, posted: Sequence[PostedKey]) -> Classified:
+def _classified(library: UserLibrary, posted: Sequence[PostedKey]) -> Classified:
     """The review's rows; a sentence true of each other key."""
-    keys: dict[PostedKey, UUID] = {}
-    refused: list[tuple[PostedKey, str]] = []
-    for value in posted:
+    keys: dict[UUID, PostedKey] = {}
+    refused: list[Refused] = []
+    for value in dict.fromkeys(posted):
         try:
-            keys[value] = UUID(value)
+            keys.setdefault(UUID(value), value)
         except ValueError:
-            refused.append((value, NOT_AVAILABLE))
-    convertible = _reviewable(library, list(keys.values()))
+            refused.append(Refused(value, NOT_AVAILABLE))
+    convertible = _reviewable(library, list(keys))
     offered = {row.pk for row in convertible}
-    rest = {value: key for value, key in keys.items() if key not in offered}
-    live = library_sessions(library).in_bulk(list(rest.values()))
-    for value, key in rest.items():
+    rest = [key for key in keys if key not in offered]
+    recorded = set(
+        HistoricalPlaytime.objects.filter(
+            library=library, reclassified_from__in=rest, removed_at__isnull=True
+        ).values_list("reclassified_from_id", flat=True)
+    )
+    live = library_sessions(library).select_related("playthrough").in_bulk(rest)
+    for key in rest:
         row = live.get(key)
-        if row is None:
-            refused.append((value, NOT_AVAILABLE))
+        if key in recorded:
+            sentence = ALREADY_RECORDED
+        elif row is None:
+            sentence = NOT_AVAILABLE
+        elif row.playthrough.kind == PlaythroughKind.IMPORTED_HISTORY:
+            sentence = IN_THE_BUCKET
         elif row.timing_mode != PlayerSessionTimingMode.DURATION_ONLY:
-            refused.append((value, NOT_WRITTEN))
+            sentence = NOT_WRITTEN
         else:
-            refused.append((value, UNDER_THRESHOLD))
-    return Classified(convertible, refused)
+            sentence = UNDER_THRESHOLD
+        refused.append(Refused(keys[key], sentence))
+    return Classified(
+        tuple(convertible), tuple(refused), posted=len(keys) + len(refused) - len(rest)
+    )
 
 
 def _convert_each(
-    request: HttpRequest,
-    user: User,
-    classified: Classified,
-    posted: int,
-    token: str,
+    request: HttpRequest, user: User, classified: Classified, token: str
 ) -> None:
     """Convert each row; a refusal is a sentence, a defect stops."""
     correlation_id = new_correlation_id()
     recorded = 0
     sentences: list[str] = []
 
-    def left(key: object, sentence: str) -> None:
+    def left(key: object, sentence: str, cause: object = None) -> None:
         if sentence not in sentences:
             sentences.append(sentence)
         #: The page prints sentences, not keys; the log holds both.
         logger.info(
-            "Session %s of library %s was not recorded under %s: %s",
+            "Session %s of library %s was not recorded under %s: %s%s",
             key,
             user.library.pk,
             correlation_id,
             sentence,
+            "" if cause is None else f" ({cause})",
         )
+
+    def say() -> None:
+        if recorded:
+            level = messages.SUCCESS
+        elif sentences == [ALREADY_RECORDED]:
+            level = messages.INFO
+        else:
+            level = messages.ERROR
+        notify(
+            request,
+            f"{recorded} of {classified.posted} sessions recorded as historical "
+            "playtime.",
+            level=level,
+        )
+        for sentence in sentences:
+            notify(
+                request,
+                sentence,
+                level=messages.INFO if sentence == ALREADY_RECORDED else messages.ERROR,
+            )
 
     for key, sentence in classified.refused:
         left(key, sentence)
@@ -270,38 +322,33 @@ def _convert_each(
         except CommandFailed as failure:
             #: One type, two meanings; the status tells them apart.
             if failure.status_code != CONFLICT_STATUS:
+                say()
                 raise CommandFailed(
-                    f"{recorded} of {posted} sessions were recorded before a "
-                    "problem on our side stopped the request. The problem has "
-                    "been reported, and the review still lists the rest.",
+                    f"{recorded} of {classified.posted} sessions were recorded "
+                    "before a problem on our side stopped the request. The "
+                    "problem has been reported, and the review still lists the "
+                    "rest.",
                     failure.status_code,
                 ) from failure
-            left(row.pk, failure.message)
+            left(row.pk, failure.message, failure.__cause__)
             continue
         recorded += 1
-    notify(
-        request,
-        f"{recorded} of {posted} sessions recorded as historical playtime.",
-        level=messages.SUCCESS if recorded else messages.ERROR,
-    )
-    for sentence in sentences:
-        notify(request, sentence, level=messages.ERROR)
+    say()
 
 
 @login_required
 def reclassify_reviewed_sessions(request: HttpRequest) -> HttpResponse:
     user = cast(User, request.user)
-    posted = request.POST.getlist("session")
     #: GET the filter; POST the page's keys.
     if request.method == "POST":
-        classified = _classified(user.library, posted)
+        classified = _classified(user.library, request.POST.getlist("session"))
     else:
-        classified = Classified(_reviewable(user.library), [])
+        classified = Classified(tuple(_reviewable(user.library)), (), posted=0)
     rows = classified.convertible
     token = request.POST.get("submission") or str(uuid.uuid7())
     return confirm_and_apply(
         request,
-        action=partial(_convert_each, request, user, classified, len(posted), token),
+        action=partial(_convert_each, request, user, classified, token),
         title="Record these sessions as historical playtime",
         message=(
             f"Record {len(rows)} written-down sessions of "
@@ -345,7 +392,7 @@ TEMPORARY_NOTE = (
 )
 
 
-def PlaytimeReviewPanel(library, *, origin: OriginUrl) -> Node:
+def PlaytimeReviewPanel(library: UserLibrary, *, origin: OriginUrl) -> Node:
     """What the review offers, in a person's own words."""
     waiting = reviewable_sessions(library).count()
     if not waiting:
@@ -374,7 +421,7 @@ def PlaytimeReviewPanel(library, *, origin: OriginUrl) -> Node:
         ],
         P(class_="text-type-body text-body mb-4")[
             "Nothing is thrown away. Moving one session offers an Undo; moving "
-            "all of them at once does not yet."
+            "all of them at once does not."
         ],
         Div(class_="flex flex-wrap items-center gap-2")[
             ControlButton(href=review_url(), color="gray")["See these sessions"],

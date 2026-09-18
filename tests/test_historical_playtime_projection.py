@@ -261,6 +261,47 @@ def test_a_creation_names_the_session_it_came_from(
     assert a_record(tracked).reclassified_from_id is None
 
 
+@pytest.mark.django_db(transaction=True)
+def test_the_migration_states_restated_at_as_the_replay_does(
+    owned_user, owned_library, tracked, run
+):
+    """The backfill reads the stream the way the projector does."""
+    import importlib
+
+    from django.db import connection
+
+    migration = importlib.import_module(
+        "games.migrations.0011_historicalplaytime_reclassified_from"
+    )
+    created = a_created(tracked, [run])
+    append(owned_library, owned_user, created, key="create")
+    for note in ("once", "twice"):
+        append(
+            owned_library,
+            owned_user,
+            historicalplaytime_restated(
+                created.aggregate_id,
+                player_game_id=tracked.pk,
+                runs=created.payload["playthroughs"],
+                duration=timedelta(hours=1),
+                when=TemporalValue.parse("2005"),
+                provenance="estimated",
+                device=None,
+                emulated=False,
+                note=note,
+            ),
+            key=f"restate-{note}",
+        )
+    replayed = HistoricalPlaytime.objects.get().restated_at
+    HistoricalPlaytime.objects.update(restated_at=None)
+
+    with connection.schema_editor() as editor:
+        migration.state_restated_at(None, editor)
+
+    assert HistoricalPlaytime.objects.get().restated_at == replayed
+    assert replayed is not None
+
+
 def a_second_run(owned_library, tracked) -> Playthrough:
     return Playthrough.objects.create(
         id=uuid.uuid7(),

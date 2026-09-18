@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import ClassVar, NamedTuple, cast
 
-from games.commands.playersession import DURATION_RESOLUTION, check_note
+from games.commands.playersession import (
+    DURATION_RESOLUTION,
+    SessionNotHeld,
+    check_note,
+    library_session,
+)
 from games.commands.playthrough import library_playthrough, refuse_unless_live
 from games.commands.scope import (
     Refusal,
@@ -19,6 +24,7 @@ from games.events.dispatch import (
     CommandContext,
     CommandName,
     CommandRejected,
+    RowUnreadable,
 )
 from games.events.historical_playtime import (
     HistoricalPlaytimeRunPayload,
@@ -193,7 +199,7 @@ def library_record(context: CommandContext, record_id: uuid.UUID) -> HistoricalP
     """This library's record, removed or not."""
     return library_row(
         context,
-        HistoricalPlaytime.objects.select_related("player_game", "reclassified_from"),
+        HistoricalPlaytime.objects.select_related("player_game"),
         Refusal(
             message=f"This library holds no historical playtime record {record_id}.",
             sentence="That record is not available.",
@@ -255,7 +261,7 @@ def created_event(
     *,
     reclassified_from: uuid.UUID | None = None,
 ) -> NewEvent:
-    """One statement as the creation event; caller resolves both."""
+    """One statement as the creation event; caller resolves runs and device."""
     return historicalplaytime_created(
         player_game_id=runs[0].player_game_id,
         runs=_members(runs, {}),
@@ -351,10 +357,19 @@ class RemoveHistoricalPlaytime(Command):
 def _refuse_beside_a_live_session(
     context: CommandContext, record: HistoricalPlaytime
 ) -> None:
-    """The mirror of the session's own guard."""
-    session = record.reclassified_from
-    if session is None:
+    """The session's guard, and the sibling check a mirror would miss."""
+    if record.reclassified_from_id is None:
         return
+    #: Resolved, not followed: the FK drops the scope.
+    try:
+        session = library_session(context, record.reclassified_from_id)
+    except SessionNotHeld as refusal:
+        raise RowUnreadable(
+            f"Record {record.pk} of library {context.library.pk} names session "
+            f"{record.reclassified_from_id}, which this library does not hold; "
+            "the ownership audit reports it, and no command states a fact "
+            "about it."
+        ) from refusal
     #: Under dispatch's lock: no mark can move.
     if session.removed_at is None:
         raise CommandRejected(

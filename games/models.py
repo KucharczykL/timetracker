@@ -1947,7 +1947,7 @@ class HistoricalPlaytime(ProjectionModel):
     created_at = models.DateTimeField(editable=False)
     #: The remove event's recorded_at; null live.
     removed_at = models.DateTimeField(null=True, default=None, editable=False)
-    #: The latest restate event's recorded_at; null never.
+    #: The latest restate event's recorded_at; null while never restated.
     restated_at = models.DateTimeField(null=True, default=None, editable=False)
     #: The session this record was made from.
     #: On the record: one session can become many.
@@ -1977,6 +1977,12 @@ class HistoricalPlaytime(ProjectionModel):
             models.CheckConstraint(
                 condition=Q(provenance__in=HistoricalPlaytimeProvenance.values),
                 name="historicalplaytime_provenance_known",
+            ),
+            #: Backstop for three commands' guard; hours stated once.
+            models.UniqueConstraint(
+                fields=("reclassified_from",),
+                condition=Q(reclassified_from__isnull=False, removed_at__isnull=True),
+                name="historicalplaytime_one_live_per_session",
             ),
         )
 

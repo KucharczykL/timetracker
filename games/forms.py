@@ -1221,9 +1221,9 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
             for part in DURATION_PARTS
         )
 
-    def submission_key(self) -> IdempotencyKey:
-        """The key this page's Add submits under."""
-        return f"historical-playtime-record-{self.cleaned_data['submission']}"
+    def submission_key(self, act: str = "record") -> IdempotencyKey:
+        """The key this page submits under; `act` names the command."""
+        return f"historical-playtime-{act}-{self.cleaned_data['submission']}"
 
     def statement(self) -> HistoricalPlaytimeStatement:
         """What the valid form states."""

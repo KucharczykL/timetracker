@@ -54,6 +54,9 @@ from games.reads.calendar import calendar_day_zone
 
 OUT_OF_RANGE = "That time is outside the range we can record."
 
+SESSION_REMOVED = (
+    "That session was removed from your library. Restore it before recording this."
+)
 #: One rule, both directions: hours stated once.
 RECORD_STILL_LIVE = (
     "That session is already recorded as historical playtime. Undo that "
@@ -187,6 +190,10 @@ def _check_representable(instant: datetime, *zones: tzinfo | None) -> None:
             ) from None
 
 
+class SessionNotHeld(CommandRejected):
+    """The library holds no such session."""
+
+
 def library_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSession:
     """This library's session, or a refusal."""
     return library_row(
@@ -199,6 +206,7 @@ def library_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSes
                 "belongs to a session the library records."
             ),
             sentence="That session is not available.",
+            raises=SessionNotHeld,
         ),
         pk=session_id,
     )
@@ -229,10 +237,7 @@ def _live_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSessi
         raise CommandRejected(
             f"This library removed session {session_id}, so it states no "
             "further facts about it.",
-            sentence=(
-                "That session was removed from your library. Restore it "
-                "before recording this."
-            ),
+            sentence=SESSION_REMOVED,
         )
     return session
 
@@ -796,10 +801,22 @@ class RemoveSession(Command):
 def live_record_from(
     context: CommandContext, session: PlayerSession
 ) -> HistoricalPlaytime | None:
-    """The live record made from the session, if one is."""
-    return HistoricalPlaytime.objects.filter(
-        library=context.library, reclassified_from=session, removed_at__isnull=True
-    ).first()
+    """The live record made from the session; two is a defect."""
+    records = list(
+        HistoricalPlaytime.objects.filter(
+            library=context.library,
+            reclassified_from=session,
+            removed_at__isnull=True,
+        )
+    )
+    if len(records) > 1:
+        raise RowUnreadable(
+            f"Session {session.pk} of library {context.library.pk} has "
+            f"{len(records)} live records made from it, "
+            f"{', '.join(str(record.pk) for record in records)}; at most one "
+            "is admitted, and no command states a fact over two."
+        )
+    return records[0] if records else None
 
 
 def _refuse_beside_a_live_record(

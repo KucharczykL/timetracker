@@ -409,7 +409,7 @@ def playersession_moved(
 
 @with_config(STRICT_SCHEMA)
 class PlayerSessionReclassifiedPayload(TypedDict):
-    """A bare key: the record is minted here."""
+    """A bare key, not a captured reference: the record is created in the same act."""
 
     record: ReferenceId
 
