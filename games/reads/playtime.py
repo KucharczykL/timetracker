@@ -174,9 +174,8 @@ def games_by_playtime_queryset(
 ) -> GameQuerySet:
     """Every visible game that was played, most played first.
 
-    Answered unexecuted so a test can read its plan: the two halves each
-    compile twice, once in the select list and once in the filter that names
-    the annotation.
+    Unexecuted, so a test reads its plan: each half compiles twice, once in
+    the select list and once in the filter naming the annotation.
     """
     return (
         Game.objects.visible_to(library)
@@ -192,8 +191,8 @@ def games_by_playtime(
 ) -> list[GameByPlaytime]:
     """The most played games, each beside the two sources that made it.
 
-    The halves are a second query over the keys this answers, rather than two
-    more subqueries on the query that ranks every played game.
+    The halves are a second query over the keys this answers, not two more
+    subqueries on the query ranking every played game.
     """
     ranked = list(games_by_playtime_queryset(library, year=year)[:limit])
     if not ranked:

@@ -565,9 +565,7 @@ def _stat_popover(
     playtime stat puts its alternate formats there rather than nesting a second
     popover inside this one.
 
-    ``two_line`` keeps the icon on the first line's baseline, for a value that
-    states a second line beneath it. A one-line value centres against its
-    icon, which is what every other stat wants."""
+    ``two_line`` keeps the icon on the first line's baseline."""
     content: Node | str = (
         tooltip
         if details is None

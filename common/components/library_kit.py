@@ -45,10 +45,8 @@ def _value_node(
 ) -> Node:
     """One figure, linked or plain.
 
-    A node renders itself, so nothing here turns the value into a string: a
-    stringified node would reach the page as escaped markup, and an aria
-    label built from one would read as HTML. A caller handing over a node
-    states what to speak.
+    A stringified node reaches the page as escaped markup, and speaks as
+    HTML, so a node renders as a child and states its own ``spoken`` label.
     """
     child: Child = value if isinstance(value, Node | str) else str(value)
     if href is None:

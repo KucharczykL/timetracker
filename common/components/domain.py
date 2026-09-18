@@ -548,15 +548,12 @@ def PlaytimeSplit(
     popover: bool = True,
     link: str | None = None,
 ) -> Node:
-    """A playtime total, and beneath it the two sources that made it.
+    """A total, and beneath it the two sources that made it.
 
-    ``popover`` states a fact about the host, not a preference: Game detail's
-    header stat is itself a popover holding the alternates, and a second one
-    inside it would give one stat two tooltips.
-
-    Both lines are blocks rather than a flex column. ``Popover`` renders
-    ``self-start``, so in a column the total would pin to the left edge while
-    the line beneath it honoured the host's alignment.
+    ``popover=False`` is for a host that owns one already; a popover inside a
+    popover gives one figure two tooltips. Both lines are blocks: ``Popover``
+    renders ``self-start``, which a flex column would pin left of a line that
+    honours the host's alignment.
     """
     if popover:
         if id_scope is None:
