@@ -151,3 +151,25 @@ def test_the_stats_page_renders_the_composed_figures(client, owned_user):
     assert "3 h 00 m" in element(html, "duration-stats-month-6")
     assert "3 h 00 m" in element(html, f"duration-stats-platform-{platform.pk}")
     assert "3 h 00 m" in element(html, f"duration-stats-game-{recorded.pk}-playtime")
+
+
+@pytest.mark.django_db
+def test_the_navbar_states_the_split_and_carries_no_link(owned_user):
+    """The session list cannot show a record, so the figure links nowhere."""
+    game = Game.objects.create(library=owned_user.library, name="Tunic")
+    noon = timezone.make_aware(datetime.combine(timezone.localdate(), time(12)))
+    session_row(game, started_at=noon, ended_at=noon + HOUR)
+    record_row(
+        [tracked_run(owned_user.library, game)],
+        duration=2 * HOUR,
+        when=timezone.localdate().isoformat(),
+    )
+    request = RequestFactory().get("/")
+    request.user = owned_user
+
+    counts = model_counts(request)
+    today = str(counts["today_played"])
+
+    assert "</span> tracked" in today
+    assert "</span> historical" in today
+    assert "href=" not in today
