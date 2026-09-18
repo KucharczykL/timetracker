@@ -128,15 +128,17 @@ class TestModifier:
 
 
 class TestInclusiveComparisons:
-    """`is at least` and `is at most`, all six bodies."""
+    """`is at least` and `is at most`: every number body, no date one."""
 
     def test_for_numbers_offers_both(self):
         assert Modifier.GREATER_THAN_OR_EQUAL in Modifier.for_numbers()
         assert Modifier.LESS_THAN_OR_EQUAL in Modifier.for_numbers()
 
-    def test_for_dates_offers_both(self):
-        assert Modifier.GREATER_THAN_OR_EQUAL in Modifier.for_dates()
-        assert Modifier.LESS_THAN_OR_EQUAL in Modifier.for_dates()
+    def test_for_dates_offers_neither(self):
+        """A date widget is two boxes; it emits neither."""
+        assert Modifier.GREATER_THAN_OR_EQUAL not in Modifier.for_dates()
+        assert Modifier.LESS_THAN_OR_EQUAL not in Modifier.for_dates()
+        assert set(Modifier.for_dates()) < set(Modifier.for_numbers())
 
     def test_int_criterion(self):
         assert IntCriterion(value=10, modifier=Modifier.GREATER_THAN_OR_EQUAL).to_q(
@@ -154,13 +156,12 @@ class TestInclusiveComparisons:
             "price"
         ) == Q(price__lte=2.5)
 
-    def test_date_criterion(self):
-        assert DateCriterion(
-            value="2025-06-01", modifier=Modifier.GREATER_THAN_OR_EQUAL
-        ).to_q("date_purchased") == Q(date_purchased__gte="2025-06-01")
-        assert DateCriterion(
-            value="2025-06-01", modifier=Modifier.LESS_THAN_OR_EQUAL
-        ).to_q("date_purchased") == Q(date_purchased__lte="2025-06-01")
+    @pytest.mark.parametrize(
+        "modifier", [Modifier.GREATER_THAN_OR_EQUAL, Modifier.LESS_THAN_OR_EQUAL]
+    )
+    def test_a_date_criterion_refuses_both(self, modifier):
+        with pytest.raises(FilterError):
+            DateCriterion(value="2025-06-01", modifier=modifier).to_q("date_purchased")
 
     def test_numeric_annotation(self):
         from common.criteria import _numeric_to_q
@@ -184,17 +185,15 @@ class TestInclusiveComparisons:
             8, None, Modifier.LESS_THAN_OR_EQUAL, "effective_duration"
         ) == Q(effective_duration__lte=timedelta(hours=8))
 
-    def test_temporal_endpoint(self):
+    @pytest.mark.parametrize(
+        "modifier", [Modifier.GREATER_THAN_OR_EQUAL, Modifier.LESS_THAN_OR_EQUAL]
+    )
+    def test_a_temporal_endpoint_refuses_both(self, modifier):
         from common.criteria import temporal_interval_handler
 
         handler = temporal_interval_handler("started", "started_lower", "started_upper")
-        stated = Q(started__isnull=False)
-        assert handler(
-            DateCriterion(value="2025-06-01", modifier=Modifier.GREATER_THAN_OR_EQUAL)
-        ) == stated & Q(started_lower__gte="2025-06-01")
-        assert handler(
-            DateCriterion(value="2025-06-01", modifier=Modifier.LESS_THAN_OR_EQUAL)
-        ) == stated & Q(started_upper__lte="2025-06-01")
+        with pytest.raises(FilterError):
+            handler(DateCriterion(value="2025-06-01", modifier=modifier))
 
     def test_days_touched(self):
         from datetime import timedelta

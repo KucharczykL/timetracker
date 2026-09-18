@@ -168,7 +168,17 @@ class Modifier(str, Enum):
 
     @classmethod
     def for_dates(cls) -> list[Self]:
-        return cls.for_numbers()
+        """Without the inclusive pair: no date widget emits them."""
+        return [
+            cls.EQUALS,
+            cls.NOT_EQUALS,
+            cls.GREATER_THAN,
+            cls.LESS_THAN,
+            cls.BETWEEN,
+            cls.NOT_BETWEEN,
+            cls.IS_NULL,
+            cls.NOT_NULL,
+        ]
 
     @classmethod
     def for_multi(cls) -> list[Self]:
@@ -555,10 +565,6 @@ class DateCriterion(_ScalarCriterion):
             return Q(**{f"{field_name}__gt": self.value})
         if m == Modifier.LESS_THAN:
             return Q(**{f"{field_name}__lt": self.value})
-        if m == Modifier.GREATER_THAN_OR_EQUAL:
-            return Q(**{f"{field_name}__gte": self.value})
-        if m == Modifier.LESS_THAN_OR_EQUAL:
-            return Q(**{f"{field_name}__lte": self.value})
         if m == Modifier.BETWEEN:
             if self.value is None or self.value2 is None:
                 raise FilterError("BETWEEN requires two bounds (value and value2)")
@@ -3144,10 +3150,6 @@ def temporal_interval_handler(
             return stated & Q(**{f"{lower_field}__gt": value})
         if modifier == Modifier.LESS_THAN:
             return stated & Q(**{f"{upper_field}__lt": value})
-        if modifier == Modifier.GREATER_THAN_OR_EQUAL:
-            return stated & Q(**{f"{lower_field}__gte": value})
-        if modifier == Modifier.LESS_THAN_OR_EQUAL:
-            return stated & Q(**{f"{upper_field}__lte": value})
         if modifier in (Modifier.BETWEEN, Modifier.NOT_BETWEEN):
             if value is None or value2 is None:
                 raise FilterError(f"{modifier} requires two bounds (value and value2)")
