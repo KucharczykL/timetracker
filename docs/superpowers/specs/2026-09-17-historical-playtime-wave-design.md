@@ -131,10 +131,10 @@ under one second, a `when` the grammar refuses. The command admits every
 provenance; the form offers two, and `Externally measured` is the importer's.
 `Restate` answers `Unchanged` when the statement equals the row.
 
-`ReclassifySessionAsHistoricalPlaytime`, in `games/commands/playersession.py`:
-`RecordHistoricalPlaytime`, then a fifth session event,
-`library.playersession.reclassified`, carrying the record's reference; two
-dispatches under one correlation id, the pairing #683 established. The record
+`ReclassifySessionAsHistoricalPlaytime`, in
+`games/commands/session_reclassification.py`: one command answering
+`library.historicalplaytime.created`, which names the session, and a fifth
+session event, `library.playersession.reclassified`, under one lock. The record
 carries the session's duration, its `stated_day` (a Timed row's effective day)
 as a day-precision `when`, its device, emulated flag, note and run, and
 provenance `Manually entered` unless the caller states `Estimated`. Only
@@ -147,7 +147,7 @@ Restoring a reclassified session would count its hours twice while the record
 stands. The projector marks `removed_at` on the session row, so every `alive()` read
 excludes it as before; the record names the session in
 `HistoricalPlaytime.reclassified_from`, and `RestoreSession` refuses a row a
-live record was made from, with a sentence naming it. The undo of the pair is
+live record was made from, with a sentence naming the undo. The undo of the pair is
 one command, `UndoSessionReclassification`, which removes the record and
 restores the session under one lock; `restored` clears the mark and the
 record keeps its reference.
@@ -291,7 +291,7 @@ nothing meanwhile.
 **Review facet** on the Sessions tab: a quick facet "Duration only, ≥ N h", N
 editable, default 8. Each Duration-only row gains "Was an estimate", which
 opens the entry form prefilled from the session with the run fixed. The
-facet's toolbar gains "Convert all shown": every row matching the current
+Library page's Playtime section offers "Move all N to historical playtime": every row the review names,
 filter, not the page; a confirm page listing them; then `Reclassify` per row at
 day precision, provenance Manually entered, one correlation id per row, in one
 request, and a count when done. The population is bounded (142 rows exist);
@@ -317,7 +317,7 @@ correlation id: remove the record, restore the session.
 5. **#710** — presentation: `PlaytimeSplit` on the headline, every playtime
    row of the stats page, the navbar figures and the Library card.
 6. **#1098** — reclassification: the `Reclassify` command, the review facet,
-   "Was an estimate", "Convert all shown", Undo of the pair.
+   "Was an estimate", the Library page's "Move all N", Undo of the pair.
 7. **#1099** — gates: replay parity with a record in every leg, the `make bench`
    records workload and budgets, the `render_pages` diff attributed, the
    rehearsal on the production copy.

@@ -17,8 +17,7 @@ make test-e2e ARGS="-k widgets"
 
 `ARGS` scopes every pytest target. A word holding `/` is a path and replaces
 the directory `test-fast` and `test-e2e` pin; a bare flag and its value narrow
-that directory as before. Before this, an `ARGS` path was collected *beside*
-the pinned directory, so naming one file still ran the whole suite.
+that directory as before.
 
 **`make check` run anywhere — no Nix shell needed.** Makefile version-proofs both
 interpreters, because getting either wrong produces failures that look like the
@@ -463,7 +462,7 @@ anything.
 **Removing offers Undo** (#695). Every remove view hands an `UndoOffer`, the
 sentence and the restore route with the row's key, to `confirm_and_remove` or
 `confirm_and_apply`, which queues one notice through `common/notices.py` after
-the act succeeds; the toast's Undo form posts to that route. Seven POST-only `restore_<entity>` routes share
+the act succeeds; the toast's Undo form posts to that route. Nine POST-only restore routes, `restore_<entity>` and the reclassification's undo, share
 `restore_and_return()`; a refusal is an error message on the page the person
 stands on; the game route's error carries a "Try again" action, because its
 stamp clears before its command. `<toast-stack>` appends the page as `?origin=`
