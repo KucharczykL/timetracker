@@ -196,8 +196,7 @@ def games_by_playtime(
     the game that second query read, so no row states its total twice.
 
     The caller states the cap, and counting the rest is a third query that
-    ranks every played game again. Measured over 860 games, the three cost
-    less than the one query that materialised every row.
+    ranks every played game again.
     """
     ranked = list(games_by_playtime_queryset(library, year=year)[:limit])
     if not ranked:

@@ -13,16 +13,17 @@ figure states how much of it each source gave.
 `PlaytimeSplit(breakdown, presentation, *, id_scope=None, popover=True,
 link=None)` in `common/components/domain.py`.
 
-It states the total, and beneath it `142 h tracked · 100 h historical` in micro
-text. Each half is a `DurationText`, carrying its own spoken form; the separator
-is `aria-hidden`.
+It states the total and, beneath it, `142 h tracked · 100 h historical` in
+micro text. Each half is a `DurationText`, carrying its own spoken form; the
+separator is `aria-hidden`.
 
-A zero historical half omits the second line and answers the bare `Duration` or
-`DurationText`: no wrapper, no added class. A figure of sessions alone renders
-what it rendered before the split existed.
+The lines are two blocks of one element. Siblings would become two flex items
+in a host that is a flex row, and a flex column would pin the total left of
+them, because `Popover` renders `self-start`.
 
-The lines are blocks, not a flex column. `Popover` renders `self-start`, which a
-column pins left of a line honouring the host's alignment.
+A zero historical half omits the second line and answers the bare `Duration`
+or `DurationText`: no wrapper, no added class. A figure of sessions alone
+renders what it rendered before the split existed.
 
 `popover=False` states the total as text, for a host that owns a popover
 already. `id_scope` is required with a popover and refused without one; `link`
@@ -35,23 +36,25 @@ vocabulary into `common.components`.
 
 **Game detail.** The `hours` stat, inside `_stat_popover`, whose `details` slot
 keeps the alternates of the whole figure. `_stat_popover` takes `two_line` —
-only this stat, only with a historical part — which states `items-baseline` so
-the icon stays on the first line. `_game_header` takes the breakdown; every
+only this stat, only with a historical part — which states `items-start`, so
+the value keeps the line the other stats sit on. `_game_header` takes the breakdown; every
 other header stat reads sessions alone.
 
-**The stats page.** The `Hours` row, the month rows and the platform rows. The
-month and platform figures keep the filter link they carry, which the component
-forwards.
+**The stats page.** The `Hours` row, the month rows and the platform rows,
+whose filter links the component forwards.
 
 **The stats games card.** `games_by_playtime(library, *, year, limit)` in
 `games/reads/playtime.py` answers `GameByPlaytime(game, playtime)` rows.
-`games_by_playtime_queryset` answers the ranking query unexecuted, so a test
-reads its plan. `compute_stats` states three queries: the capped rows, the
+`games_by_playtime_queryset` answers the ranking unexecuted, so a test reads
+its plan. A game the halves query no longer holds leaves the card, that query
+being the later read; the count is a third and may exceed the rows. `compute_stats` states three queries: the capped rows, the
 halves over the keys it kept, and the count `View all` prints, which ranks
 every played game again. The ranking query scans each source table twice,
-because the filter names the annotation and recompiles both halves. Over 860
-games the three read in 16 ms against 17 ms for the one query that
-materialised every row.
+because the filter names the annotation and recompiles both halves.
+
+The three read no slower than the one query they replace, which materialised
+every played game: median of 30 samples over 834 games and 300 records. A
+library holding no record times the ranking alone, so seed records first.
 
 **The navbar.** `Today` and `Last 7 days`, with no link: the session list shows
 no record, so the link opened a page summing less than the figure it came from.
@@ -64,10 +67,10 @@ no record, so the link opened a page summing less than the figure it came from.
 
 ## Not here
 
-A per-run playtime column: a record naming several runs over-sums added to each
-and reads zero left out.
+A per-run playtime column: a record naming several runs over-sums added to
+each and reads zero left out.
 [#1119](https://github.com/KucharczykL/timetracker/issues/1119) states it as
-run rows. The link predicates: #1105. A stated session count on a record:
+run rows. The link predicates: #1105. A session count on a record:
 [#1106](https://github.com/KucharczykL/timetracker/issues/1106).
 
 ## Tests

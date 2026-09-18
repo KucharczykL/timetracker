@@ -36,9 +36,6 @@ from games.filters import filter_url
 from games.views import stats_links
 from games.views.stats_data import LIST_CAP, StatsData
 
-# Stats lists are previews: capped to this many rows, with a "View all" link to
-# the full filtered list (#65).
-
 
 def _cell(value: object) -> str:
     """Coerce a scalar stat value to a table-cell string (satisfies Cell)."""

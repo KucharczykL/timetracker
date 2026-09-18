@@ -565,7 +565,10 @@ def _stat_popover(
     playtime stat puts its alternate formats there rather than nesting a second
     popover inside this one.
 
-    ``two_line`` keeps the icon on the first line's baseline."""
+    ``two_line`` keeps the icon beside the first line. Centring it against
+    both lines lifts it out of the row the other stats share; a baseline
+    hangs the value 6px below them, because the icon is taller than the
+    line and its own baseline is its bottom edge."""
     content: Node | str = (
         tooltip
         if details is None
@@ -574,7 +577,7 @@ def _stat_popover(
     return Popover(
         popover_content=content,
         wrapped_classes=(
-            "flex gap-2 items-baseline" if two_line else "flex gap-2 items-center"
+            "flex gap-2 items-start" if two_line else "flex gap-2 items-center"
         ),
         id=popover_id,
         children=[Safe(_STAT_SVGS[svg_key]), value],

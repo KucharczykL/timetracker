@@ -171,3 +171,26 @@ def test_the_split_forwards_its_link():
 
     assert 'href="/tracker/game/list"' in html
     assert '>2.0 h</span><span class="sr-only">2 hours</span> historical' in html
+
+
+def test_the_split_is_one_element_so_a_flex_host_stacks_it():
+    """Two siblings would become two flex items, side by side."""
+    html = _split(3 * HOUR, 2 * HOUR, id_scope="stats-total-hours")
+
+    assert html.startswith('<span class="block"><span class="block">')
+    assert html.endswith("</span></span>")
+
+
+def test_each_half_states_its_own_word():
+    """A swap would read the tracked hours as historical."""
+    html = _split(3 * HOUR, 2 * HOUR, id_scope="stats-total-hours")
+
+    assert '>3.0 h</span><span class="sr-only">3 hours</span> tracked' in html
+    assert '>2.0 h</span><span class="sr-only">2 hours</span> historical' in html
+
+
+def test_a_game_with_no_tracked_half_still_states_both():
+    html = _split(0, 2 * HOUR, id_scope="stats-total-hours")
+
+    assert '>0.0 h</span><span class="sr-only">0 hours</span> tracked' in html
+    assert "</span> historical" in html
