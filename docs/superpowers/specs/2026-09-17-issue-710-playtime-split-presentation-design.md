@@ -105,11 +105,11 @@ states the exception, and it states it because of the markup it sits in.
 `id_scope` is what `Popover` needs for its DOM id, so it is required with a
 popover and refused without one. Under `popover=False` nothing would read it.
 
-Every `id_scope` in use today is kept verbatim —
-`duration-stats-total-hours`, `duration-stats-month-<n>`,
-`duration-stats-platform-<pk>`, `duration-stats-game-<pk>-playtime`,
-`navbar-today`, `navbar-last-7` — and so is `popover-hours`. Three test
-modules slice the rendered page on those strings.
+Every `id_scope` in use today is kept verbatim — `stats-total-hours`,
+`stats-month-<n>`, `stats-platform-<pk>`, `stats-game-<pk>-playtime`,
+`navbar-today` and `navbar-last-7` — and so is the `popover-hours` id on Game
+detail. `Duration` prefixes its own DOM id with `duration-`, and three test
+modules slice the rendered page on the result.
 
 ### Two block lines, not a flex column
 
