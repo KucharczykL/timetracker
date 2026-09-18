@@ -574,7 +574,9 @@ def PlaytimeHalves(
     ``PlaytimeSplit`` puts it beneath the total; a host whose total sits inside
     a popover puts it beneath the popover instead.
     """
-    return Span(class_="block text-type-micro text-body")[
+    #: Tighter than the token's leading: a caption under a figure reads as
+    #: one block, and the line it hangs from grows by less.
+    return Span(class_="block text-type-micro leading-3.5 text-body")[
         DurationText(breakdown.tracked, presentation),
         " tracked",
         Span(aria_hidden="true")[" · "],
