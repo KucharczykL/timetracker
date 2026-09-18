@@ -62,11 +62,13 @@ then renders exactly what the surface rendered before this issue, which is why
 `render_pages` can attribute every differing file: a library with no record
 sees no change at all.
 
-### One popover per figure
+### One popover per figure, and none where the surface owns one
 
-The total is today's `Duration`: a popover trigger whose panel states the same
-value under the other duration profiles, and a link when the surface has one.
-The two parts are `DurationText`, visible text plus their own `sr-only` words.
+`PlaytimeSplit(breakdown, durations, *, id_scope, popover=True)`.
+
+By default the total is `Duration`: a popover trigger whose panel states the
+same value under the other duration profiles. The two parts are
+`DurationText`, visible text plus their own `sr-only` words.
 
 Three popovers per figure was rejected. The stats page would carry thirty
 panels whose content is the profile table three times over, and each needs its
@@ -76,6 +78,17 @@ Putting the split inside the existing popover panel was rejected as well: the
 outcome of this issue is that a person *sees* how much was tracked, and a
 panel is reached by hover.
 
+`popover=False` renders the total as `DurationText` and no trigger. One
+surface passes it: Game detail's `hours` stat, where `_stat_popover` is itself
+the `Popover` and puts the alternates in its `details` slot rather than
+nesting a second one. A component that owned a `Duration` there would put
+`<pop-over>` inside `<pop-over>` and give one stat two tooltips.
+
+The argument states a fact about the host — whether it already owns a popover
+— so no call site weighs anything, which is what separates it from the
+rejected `layout=`. Four surfaces take the default; one states the exception,
+and it states it because of the markup it sits in.
+
 A screen reader hears the total, then the parts: "242 hours. 142 hours
 tracked, 100 hours historical."
 
@@ -84,28 +97,47 @@ tracked, 100 hours historical."
 The component takes the breakdown, not two `timedelta` arguments, because a
 compound value passed between modules gets a name.
 
-It cannot take it from `games/reads/playtime.py`. That module imports
-`games.filters`, so a component importing it would pull the filter vocabulary
-into every module that imports `common.components`, and put `common` one
-edit away from a cycle with `games`.
+No cycle forces the move. `common/components/domain.py` already imports
+`games.models` at module scope, and `games/filters.py` imports
+`common.criteria`, not `common.components`. The cost of importing
+`games/reads/playtime.py` from a component is import weight: that module
+pulls in `games.filters` and three read modules, and `common.components` is
+imported by every page. A `TYPE_CHECKING` import would avoid even that —
+`domain.py` already uses one for `DurationPresentation`, and the component
+reads only `.tracked`, `.historical` and `.total`.
 
-`games/reads/sums.py` already holds what every playtime sum shares — `ZERO`,
-`Playtime`, `PlaytimeSum`, `UnscopedSum` — and imports only Django and
-`games.reads.unscoped`. `PlaytimeBreakdown` belongs there, and
-`playtime.py` re-exports it, as its `__all__` already names it.
+The move is housekeeping that happens to be free. `games/reads/sums.py`
+already holds what every playtime sum shares — `ZERO`, `Playtime`,
+`PlaytimeSum`, `UnscopedSum` — and `PlaytimeBreakdown` is the same kind of
+value. `playtime.py` re-exports it, as its `__all__` already names it, so
+every importer today keeps working: `games/views/stats_data.py`,
+`tests/test_playtime_sources.py` and `tests/test_stats.py`. The component
+then imports the value from the module that owns it and takes no read
+machinery with it.
 
 ## The surfaces
 
 ### Game detail headline
 
-The `hours` stat in the header row. `_stat_popover` already takes a `details`
-slot for the profile alternates rather than nesting a second popover, so the
-split renders as the stat's value and the alternates stay where they are.
+The `hours` stat in the header row, as `PlaytimeSplit(..., popover=False)`.
+
+The stat's value is `DurationText` today, inside the `Popover` that
+`_stat_popover` builds, with `DurationAlternates` in its `details` slot. The
+component replaces the value and touches neither: the alternates stay in
+`details`, and the stat keeps its one popover.
+
+The value sits in a `flex gap-2 items-center` row beside the stat's icon, so
+the two lines need their own column inside that row. The split does not push
+the icon.
+
+`_game_header` takes `playtime: timedelta` today and is passed `.total`. It
+takes the breakdown instead, and the split is the only thing in the header
+that reads it.
 
 Its figure is `game_playtime(library, game)`, which already answers a
-breakdown. Every other header stat reads sessions and does not change: a
-record states no sitting, so it moves no session count, no average and no play
-range.
+breakdown. Every other header stat comes from `_game_overview_metrics`, which
+reads sessions alone and does not change: a record states no sitting, so it
+moves no session count, no average and no play range.
 
 ### The stats page, every playtime row
 
@@ -131,20 +163,47 @@ The halves come back as a second query over the keys the card renders:
 1. `compute_stats` reads the card's rows itself, ordered and sliced to the cap,
    and counts the rest for the "View all" affordance.
 2. One further query annotates `tracked` and `historical` over those keys
-   alone, and the rows carry a `PlaytimeBreakdown`.
+   alone.
 
-The plan of the query over every visible game does not grow, and a test
-asserts that by counting `games_playersession` and `games_historicalplaytime`
-scans, as `tests/test_sorting.py` already does for the sort keys.
+Each row answers the game, its `PlaytimeBreakdown` and nothing else, as a
+`NamedTuple` beside `PlatformPlaytime` and `MonthPlaytime` in
+`games/reads/playtime.py`. The annotated `Game` row goes away, and with it
+`GamePlaytime` and the `total_playtime` attribute that six assertions in
+`tests/test_stats.py` and one in `tests/test_library_api_isolation.py` read.
+Those assertions state `.playtime.total`. A row shaped like the two the page
+already renders is worth more than a queryset's attribute nobody else names.
 
-Two consequences, both stated rather than worked around:
+The query over every visible game keeps the plan it has. A test pins that by
+counting `games_playersession` and `games_historicalplaytime` scans in
+`.explain()` output, the mechanism `tests/test_sorting.py` uses for the
+`playtime` sort key. Two things the mechanism needs and does not yet have
+here:
+
+- A builder that answers the un-executed queryset, as `games_for_list()` does
+  for the game list. The card's query is inline in `compute_stats` today and
+  would otherwise never leave it. The name is `games_by_playtime_queryset`,
+  beside the reader that consumes it.
+- A stated baseline rather than "does not grow". The count today is not one
+  scan per table: `filter(total_playtime__gt=…)` names the annotation, so
+  Django compiles both `Coalesce(Subquery(...))` halves again in `WHERE`. The
+  test reads the number off the current plan and pins it, and a later reading
+  that differs is the finding.
+
+Three consequences, all stated rather than worked around:
 
 - The key is renamed. `top_10_games_by_playtime` becomes `games_by_playtime`,
   a list, beside `games_by_playtime_count`. The incumbent name states a cap it
   does not hold and a bound it does not have; a second name beside it would
-  leave the lie in place. Eleven references in four files.
-- `stats_content` renders a list rather than slicing a queryset. Its "View
-  all" link reads the count key.
+  leave the lie in place. Eleven references in four code files, and three
+  documents: this wave's design, `2026-07-20-stats-styledtable-migration-design.md`
+  and `2026-09-14-issue-697-playtime-reads-design.md`.
+- `STATS_SOURCES` classifies both keys. `games_by_playtime` keeps what the
+  incumbent holds; `games_by_playtime_count` counts games, not playtime, and
+  states the same sources, because a game enters the count through either.
+  `test_every_stats_key_states_its_sources_once` fails until both are named.
+- `_two_col_table` takes a total rather than slicing, as `_finished_table`
+  already does. It also serves the platform card, which passes no "View all"
+  and must keep rendering every row it is given.
 
 A per-game reader in Python over the rendered rows was rejected: it answers
 the same numbers in twenty queries rather than one.
@@ -169,19 +228,41 @@ repairs them together with one predicate. Removing four kinds of link here and
 restoring them there would be the same work twice, and the stats links at
 least state a year or a month that the destination honours.
 
-The two `filter_url` calls in `model_counts` go with the links.
+The two `filter_url` calls in `model_counts` go with the links. Nothing else
+reads `today_url` or `last_7_url`, and no test asserts either href, so
+`PlayerSessionFilter` and `filter_url` leave `games/views/general.py`
+with them.
 
 ### The Library page's Playtime card
 
 The card states the library's whole playtime with the split beneath it. Its
-`title` becomes "Tracked sessions and historical records".
+`title` becomes "Tracked sessions and historical records", and it carries no
+link.
 
 It states a count of sessions plus records today, which #1097 left for this
 issue. Adding two populations of different things into one number answers no
 question a person asks.
 
-`StatisticCard`'s `value` widens from `str | int` to accept a node. Every
-other card keeps passing an integer.
+The link goes for the reason the navbar's goes: it opens the session list,
+which cannot show a record, so it undercounts the figure it hangs from.
+#1105 restores it with the rest.
+
+`StatisticCard`'s `value` widens from `str | int` to `Child`, and `_value_node`
+changes with it. It renders `str(value)` into both the link text and the
+`aria_label` today, so a node would reach the page as escaped markup and the
+label would read as HTML. Two changes:
+
+- The value renders as a child, not as a string. A node renders itself; a
+  `str` or `int` still escapes as it does today.
+- The spoken label is stated rather than derived. `StatisticCard` takes
+  `spoken: str | None`, which the linked cards pass instead of letting
+  `_value_node` build one from a node it cannot read. Only the linked cards
+  need it, and the Playtime card is no longer one of them.
+
+A node value inside a `Link` is refused rather than handled: `Duration`
+contains a button, and its own contract forbids wrapping it in an anchor.
+The three cards that keep links keep passing scalars, and `total_spent_value`
+is one of them — a formatted string, not an integer.
 
 ## Not this issue's
 
@@ -210,12 +291,22 @@ Recorded in the wave design document as part of this issue:
 3. The per-run column moves to #1119, with the run-row shape.
 4. Every playtime row on the stats page states the split, not the totals and
    the game rows alone.
+5. The Library card's link goes with the navbar's, for the same reason, and
+   #1105 restores both.
 
 ## Verification
 
 - A figure whose historical part is zero renders exactly what it renders
-  today, on every one of the five surfaces. This is the `render_pages`
-  invariant: a library with no record produces no differing file.
+  today on Game detail, the stats page and the Library card's value. The
+  component returns the bare `Duration` or `DurationText` node when the
+  historical part is zero — no wrapper, no changed class — or this fails on
+  all three at once.
+- The navbar and the Library card differ for every library, records or not,
+  and the `render_pages` diff is read with that in mind. The navbar figures
+  lose their link, which changes their markup unconditionally, and
+  `model_counts` feeds every page, so every rendered file differs in those two
+  lines. The Library card's value changes from a count to a duration and its
+  link goes. A differing file anywhere else is a finding.
 - A figure with a historical part states the total, the tracked part and the
   historical part, and the three are consistent: `tracked + historical ==
   total`, asserted against the reader rather than against typed-in numbers.
@@ -224,12 +315,15 @@ Recorded in the wave design document as part of this issue:
 - The stats page states the split on the `Hours` row, every month row, every
   platform row and every game row, and the classification in `STATS_SOURCES`
   still names every `StatsData` key.
-- The stats card's first query plans the same number of source scans as it
-  does today; the halves arrive in one further query.
+- The stats card's first query plans the number of source scans the test pins
+  off today's plan; the halves arrive in one further query.
+- The stats game rows answer a row of their own, and no test reads
+  `total_playtime` off a `Game`.
 - The navbar figures carry no link, and the account menu renders at 390 px
   with no horizontal scroll.
-- The Library card states a duration, and the other three cards still state
-  integers.
+- The Library card states a duration, carries no link, and renders its node
+  as markup rather than as escaped text. The other three cards still state
+  scalars, and the two that state counts still speak them.
 - The full `make check` gate passes, `e2e/` included.
 
 ## Mockups
