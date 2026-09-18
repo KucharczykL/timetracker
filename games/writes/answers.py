@@ -62,10 +62,11 @@ class CommandFailed(Exception):
 
 
 class WriteAnswer(NamedTuple):
-    """What a request-shaped write answers."""
+    """A refusal, or None when the write landed."""
 
     refusal: CommandFailed | None
 
+    #: A tuple of one is otherwise truthy.
     def __bool__(self) -> bool:
         """True when the write landed."""
         return self.refusal is None

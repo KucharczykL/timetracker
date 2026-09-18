@@ -3,10 +3,10 @@
 import pytest
 from django.urls import reverse
 from django.utils import timezone
+from tracked_games import create_tracked_game
 
-from games.models import Game, PlayerGame, PlayerSession
+from games.models import PlayerGame, PlayerSession, Playthrough
 from games.writes.answers import CONFLICT_STATUS, DEFECT_STATUS, CommandFailed
-from games.writes.playergame import new_correlation_id, track_game
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -18,10 +18,8 @@ def logged_in(client, owned_user):
 
 
 @pytest.fixture
-def tracked_game(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    track_game(owned_user, game, correlation_id=new_correlation_id())
-    return game
+def tracked_game(owned_library):
+    return create_tracked_game(owned_library, "Outer Wilds")
 
 
 def _session_payload(game, **overrides):
@@ -81,3 +79,47 @@ def test_a_refused_session_edit_renders_the_form_at_the_refusals_status(
     assert "show-toast" in response.headers["HX-Trigger"]
     session.refresh_from_db()
     assert session.note == ""
+
+
+@pytest.mark.parametrize("status", [CONFLICT_STATUS, DEFECT_STATUS])
+def test_a_refused_new_run_renders_the_form_at_the_refusals_status(
+    logged_in, tracked_game, monkeypatch, status
+):
+    monkeypatch.setattr("games.views.playthrough_writes.record_run", _refuse(status))
+
+    response = logged_in.post(
+        reverse("games:add_playthrough"),
+        {
+            "game": str(tracked_game.pk),
+            "started": "2024-01-05",
+            "ended": "",
+            "note": "",
+        },
+    )
+
+    assert response.status_code == status
+    assert "show-toast" in response.headers["HX-Trigger"]
+    assert Playthrough.objects.count() == 1
+
+
+@pytest.mark.parametrize("status", [CONFLICT_STATUS, DEFECT_STATUS])
+def test_a_refused_run_edit_renders_the_form_at_the_refusals_status(
+    logged_in, tracked_game, monkeypatch, status
+):
+    run = Playthrough.objects.get(player_game__game=tracked_game)
+    monkeypatch.setattr("games.views.playthrough_writes.restate_run", _refuse(status))
+
+    response = logged_in.post(
+        reverse("games:edit_playthrough", args=[run.pk]),
+        {
+            "game": str(tracked_game.pk),
+            "started": "2024-01-05",
+            "ended": "",
+            "note": "",
+        },
+    )
+
+    assert response.status_code == status
+    assert "show-toast" in response.headers["HX-Trigger"]
+    run.refresh_from_db()
+    assert run.started_lower is None

@@ -219,12 +219,17 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
         presentation=date_time_presentation_for_request(request),
         offered_game=offered_game,
     )
+    #: The same tail renders an invalid form.
+    refused_status = 200
     if form.is_valid():
         game = form.cleaned_data["game"]
         correlation_id = new_correlation_id()
         draft = _recorded_draft(form)
         acts = _new_acts(draft, None)
-        if record_run_for_request(request, game, draft, correlation_id=correlation_id):
+        answer = record_run_for_request(
+            request, game, draft, correlation_id=correlation_id
+        )
+        if answer.refusal is None:
             _record_companion_status(request, game, acts, form, correlation_id)
             return redirect(
                 return_url(
@@ -233,6 +238,7 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
                     fallback_args=[game.id, game.url_slug],
                 )
             )
+        refused_status = answer.refusal.status_code
 
     return render_page(
         request,
@@ -242,6 +248,7 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/date-picker.js"),
         ),
+        status=refused_status,
     )
 
 
@@ -418,12 +425,17 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
         locked_game=game,
         offered_game=game,
     )
+    #: The same tail renders an invalid form.
+    refused_status = 200
     if form.is_valid():
         correlation_id = new_correlation_id()
         draft = _edited_draft(form, run)
         #: Ahead of the write, which refreshes the run.
         acts = _new_acts(draft, run)
-        if restate_run_for_request(request, run, draft, correlation_id=correlation_id):
+        answer = restate_run_for_request(
+            request, run, draft, correlation_id=correlation_id
+        )
+        if answer.refusal is None:
             _record_companion_status(request, game, acts, form, correlation_id)
             return redirect(
                 return_url(
@@ -432,6 +444,7 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
                     fallback_args=[game.id, game.url_slug],
                 )
             )
+        refused_status = answer.refusal.status_code
 
     return render_page(
         request,
@@ -441,6 +454,7 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/date-picker.js"),
         ),
+        status=refused_status,
     )
 
 

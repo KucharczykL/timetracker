@@ -15,7 +15,7 @@ from django.http import HttpRequest
 
 from games.models import Game, PlayerGameStatus
 from games.removal import remove, restore
-from games.writes.answers import CommandFailed, WriteAnswer
+from games.writes.answers import CONFLICT_STATUS, CommandFailed, WriteAnswer
 from games.writes.playergame import (
     new_correlation_id,
     record_facts,
@@ -92,8 +92,15 @@ def restore_game_for_request(request: HttpRequest, game: Game) -> None:
             game.pk,
             game.library_id,
             failure.message,
+            exc_info=failure,
+        )
+        #: A defect states no second press that can work.
+        tail = (
+            "Try again."
+            if failure.status_code == CONFLICT_STATUS
+            else "The problem has been reported."
         )
         raise CommandFailed(
-            f"{game.name} is back in the catalog but not tracked yet. Try again.",
+            f"{game.name} is back in the catalog but not tracked yet. {tail}",
             failure.status_code,
         ) from failure

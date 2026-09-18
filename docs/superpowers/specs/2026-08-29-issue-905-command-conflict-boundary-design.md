@@ -172,16 +172,16 @@ other. Each was seen to fail on the thing it guards before it was committed.
 `games/api.py` reads it, and so does every view that catches the exception
 itself.
 
-A view that takes its refusal through a `*_for_request` wrapper cannot. Those
-wrappers catch the exception, raise a message, and answer `bool`.
-`games/views/purchase.py` needs a status anyway, so it restates the value as the
-literal `409`.
+A view that takes its refusal through a `*_for_request` wrapper cannot, while
+those wrappers answer `bool`. `games/views/purchase.py` needs a status anyway,
+so it restates the value as the literal `409`.
 
 That literal is correct while every leaf answers 409, and it is a copy of a
-number rather than a reading of one.
-[#958](https://github.com/KucharczykL/timetracker/issues/958) owns the repair,
-because the fix is the return type of the three wrappers, which this issue does
-not move. This issue keeps the field and the literal as they are.
+number rather than a reading of one. This issue keeps the field and the literal
+as they are.
+[#958](https://github.com/KucharczykL/timetracker/issues/958) makes the repair:
+it gives the wrappers a return type that carries the refusal, and every view
+that answers a status reads one.
 
 ## The layering cost
 

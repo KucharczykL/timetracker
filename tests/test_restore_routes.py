@@ -24,7 +24,7 @@ from games.models import (
 from games.reads.historical_playtime_records import library_records
 from games.reads.player_sessions import library_sessions
 from games.removal import remove
-from games.writes.answers import CommandFailed
+from games.writes.answers import DEFECT_STATUS, CommandFailed
 from games.writes.historical_playtime import remove_historical_playtime
 from games.writes.playergame import new_correlation_id
 from games.writes.playersession import remove_session
@@ -263,6 +263,31 @@ class TestRestoreGame:
             logged_in.get(reverse("games:restore_game", args=[game.pk])).status_code
             == 405
         )
+
+    def test_a_defect_after_the_stamp_offers_no_second_press(
+        self, logged_in, game, monkeypatch
+    ):
+        """No retry of a defect can succeed, so none is offered."""
+        import games.views.playergame_writes as writes
+
+        self._removed(logged_in, game)
+
+        def refuse(*args, **kwargs):
+            raise CommandFailed("the row could not be read", DEFECT_STATUS)
+
+        monkeypatch.setattr(writes, "retrack_game", refuse)
+        url = reverse("games:restore_game", args=[game.pk])
+
+        response = logged_in.post(url)
+
+        expected = (
+            "Removable is back in the catalog but not tracked yet. "
+            "The problem has been reported."
+        )
+        assert _messages_of(response)[-1] == ("error", expected)
+        from common.notices import toast_payloads
+
+        assert "action" not in toast_payloads(response.wsgi_request)[-1]
 
     def test_a_failed_command_after_the_stamp_completes_on_the_second_press(
         self, logged_in, game, monkeypatch

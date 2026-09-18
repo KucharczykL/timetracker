@@ -274,9 +274,13 @@ def test_a_stale_start_press_leaves_the_stated_day(logged_in, owned_library, tra
 
     run.refresh_from_db()
     assert run.started_lower == date(2024, 1, 5)
+    #: The refused act offers no status either.
+    assert status_of(owned_library) == PlayerGameStatus.UNPLAYED
 
 
-def test_a_stale_completion_press_leaves_the_stated_day(logged_in, tracked):
+def test_a_stale_completion_press_leaves_the_stated_day(
+    logged_in, owned_library, tracked
+):
     run = Playthrough.objects.get(player_game__game=tracked)
     logged_in.post(
         reverse("games:edit_playthrough", args=[run.pk]),
@@ -292,6 +296,8 @@ def test_a_stale_completion_press_leaves_the_stated_day(logged_in, tracked):
 
     run.refresh_from_db()
     assert run.completed_upper == date(2024, 2, 6)
+    #: The refused act offers no status either.
+    assert status_of(owned_library) == PlayerGameStatus.UNPLAYED
 
 
 def test_a_refused_press_tells_the_person_why(logged_in, tracked):
