@@ -1,5 +1,6 @@
 """A written-down session becomes a record, and comes back."""
 
+import re
 from datetime import date, timedelta
 
 from django.urls import reverse
@@ -33,11 +34,11 @@ def test_a_written_down_session_becomes_a_record_and_comes_back(
     )
     _login(page, live_server)
 
-    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
-    page.get_by_role("link", name="Review estimates").first.click()
+    page.goto(f"{live_server.url}{reverse('games:library')}")
+    page.get_by_role("link", name="See these sessions").click()
     expect(page.get_by_role("row")).to_have_count(2)
 
-    page.get_by_title("Was an estimate").first.click()
+    page.get_by_title(re.compile("Was an estimate")).first.click()
     page.get_by_role("button", name="Submit", exact=True).click()
 
     expect(page.get_by_text("Session recorded as historical playtime.")).to_be_visible()

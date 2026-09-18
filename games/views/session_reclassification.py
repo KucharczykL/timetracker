@@ -24,8 +24,10 @@ from common.components import (
     FormFields,
     Fragment,
     ModuleScript,
+    P,
 )
 from common.components.core import Node
+from common.components.library_kit import EmptyState
 from common.components.primitives import Column, Input, StyledTable, make_row
 from common.criteria import ChoiceCriterion, IntCriterion, Modifier
 from common.date_time_presentation import date_time_presentation_for_request
@@ -35,9 +37,14 @@ from common.duration_presentation import (
 )
 from common.layout import render_page
 from common.notices import Undo, notify
+from common.returns import OriginUrl, action_url
 from games.commands.session_reclassification import statement_from_session
 from games.forms import HistoricalPlaytimeForm
-from games.models import PlayerSession, PlayerSessionTimingMode
+from games.models import (
+    PlayerSession,
+    PlayerSessionQuerySet,
+    PlayerSessionTimingMode,
+)
 from games.ownership import owned_or_404
 from games.reads.player_sessions import library_sessions
 from games.views.historical_playtime_entry import FORM_SCRIPTS
@@ -157,26 +164,22 @@ def review_url() -> str:
     return f"{reverse('games:list_sessions')}?filter={quote(review_filter())}"
 
 
-def ReviewEstimatesRow() -> Node:
-    """The link above the quick bar, and the act beside it."""
-    return Div(class_="flex flex-wrap items-center gap-2 mb-2")[
-        ControlButton(href=review_url(), color="gray", variant="ghost")[
-            f"Review estimates of {REVIEW_THRESHOLD_HOURS} hours or longer"
-        ],
-    ]
-
-
 NOT_WRITTEN = (
     "Only a session whose time was written down can be recorded as historical playtime."
 )
 
 
-def _reviewable(library, keys=None) -> list[PlayerSession]:
-    """Live written-down rows; `keys` narrows to a post."""
-    rows = library_sessions(library).filter(
+def reviewable_sessions(library) -> PlayerSessionQuerySet:
+    """Live written-down rows of the threshold or longer."""
+    return library_sessions(library).filter(
         timing_mode=PlayerSessionTimingMode.DURATION_ONLY,
         effective_duration__gte=timedelta(hours=REVIEW_THRESHOLD_HOURS),
     )
+
+
+def _reviewable(library, keys=None) -> list[PlayerSession]:
+    """Live written-down rows; `keys` narrows to a post."""
+    rows = reviewable_sessions(library)
     if keys is not None:
         rows = rows.filter(pk__in=keys)
     return list(
@@ -260,5 +263,52 @@ def _review_table(
                 durations.format(row.effective_duration),
             )
             for row in rows
+        ],
+    )
+
+
+#: Marks the panel while it has no permanent home.
+TEMPORARY_NOTE = (
+    "This section is temporary. It moves into the Playtime page once that "
+    "page can hold it."
+)
+
+
+def PlaytimeReviewPanel(library, *, origin: OriginUrl) -> Node:
+    """What the review offers, in a person's own words."""
+    waiting = reviewable_sessions(library).count()
+    if not waiting:
+        return EmptyState(
+            title="Nothing to review",
+            description=(
+                "None of your play sessions look like a total rather than a "
+                "single sitting. If you type a long time into a session later, "
+                "it shows up here."
+            ),
+        )
+    return Fragment(
+        P(class_="text-type-body text-body mb-3")[
+            f"{waiting} of your play sessions are {REVIEW_THRESHOLD_HOURS} hours "
+            "or longer and have a length you typed in yourself, rather than one "
+            "the app measured while you played. A number that big is usually not "
+            "one sitting. It is the total you remembered, or the figure a "
+            "launcher showed you."
+        ],
+        P(class_="text-type-body text-body mb-3")[
+            "You can move those hours to historical playtime, which is where "
+            "this app keeps time you played without it watching the clock. "
+            "Your total playtime does not change. What changes is that the "
+            "hours stop pretending to be one enormous session, so figures like "
+            "your longest session and your busiest day tell the truth again."
+        ],
+        P(class_="text-type-body text-body mb-4")[
+            "Nothing is thrown away, and every change offers an Undo."
+        ],
+        Div(class_="flex flex-wrap items-center gap-2")[
+            ControlButton(href=review_url(), color="gray")["See these sessions"],
+            ControlButton(
+                href=action_url("games:reclassify_reviewed_sessions", origin=origin),
+                color="blue",
+            )[f"Move all {waiting} to historical playtime"],
         ],
     )

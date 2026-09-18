@@ -155,8 +155,9 @@ def test_the_row_action_appears_on_a_duration_only_row_alone(run):
     written = duration_only_row(run, A_DAY, timedelta(hours=9))
     measured = timed_row(run, START, START + timedelta(hours=1))
 
-    assert "Was an estimate" in str(SessionActions(written, "token", None))
-    assert "Was an estimate" not in str(SessionActions(measured, "token", None))
+    tooltip = "Was an estimate, not one sitting"
+    assert tooltip in str(SessionActions(written, "token", None))
+    assert tooltip not in str(SessionActions(measured, "token", None))
 
 
 # --- The review and the bulk conversion ---------------------------------------
@@ -170,10 +171,29 @@ def _long_row(run, day=A_DAY, hours=9) -> PlayerSession:
     return duration_only_row(run, day, timedelta(hours=hours))
 
 
-def test_the_session_list_offers_the_review(logged_in, session):
+def test_the_library_offers_the_review(logged_in, session):
+    """The entry points live here, not above the session list."""
+    response = logged_in.get(reverse("games:library"))
+
+    html = response.content.decode()
+    assert "See these sessions" in html
+    assert "Move all 1 to historical playtime" in html
+    assert "Playtime" in html
+
+
+def test_the_library_says_so_when_nothing_waits(logged_in, run):
+    timed_row(run, START, START + timedelta(hours=20))
+
+    response = logged_in.get(reverse("games:library"))
+
+    assert "Nothing to review" in response.content.decode()
+
+
+def test_the_session_list_carries_no_review_row(logged_in, session):
+    """One act, one home: the list keeps its own furniture."""
     response = logged_in.get(reverse("games:list_sessions"))
 
-    assert "Review estimates" in response.content.decode()
+    assert "See these sessions" not in response.content.decode()
 
 
 def test_the_review_filter_parses_and_stays_quick_editable(logged_in):
