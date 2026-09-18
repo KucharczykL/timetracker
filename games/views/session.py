@@ -229,6 +229,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     )
     from games.filters import PlayerSessionFilter
     from games.views.filtering import builder_url_for
+    from games.views.session_reclassification import ReviewEstimatesRow
 
     # The quick bar is the page's only filter tier; the builder
     # entry point lives in its action group.
@@ -245,7 +246,9 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         per_page_override=find.per_page_override,
     )
-    content = ContentContainer()[PlaytimeTabs("sessions"), quick_bar, content]
+    content = ContentContainer()[
+        PlaytimeTabs("sessions"), ReviewEstimatesRow(), quick_bar, content
+    ]
     return render_page(
         request,
         content,
