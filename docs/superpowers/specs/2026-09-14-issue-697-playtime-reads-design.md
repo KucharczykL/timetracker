@@ -76,7 +76,7 @@ or an empty scope makes the command fail.
 | `StatsData` field | Sessions | Historical Playtime |
 |---|---|---|
 | `total_hours` | yes | all-time: estimated; year: only inside the year |
-| `top_10_games_by_playtime` | yes | estimated |
+| `games_by_playtime` | yes | estimated |
 | `total_playtime_per_platform` | yes | only with a recorded Release or device |
 | `month_playtimes` | yes | only inside the month |
 

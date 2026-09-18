@@ -558,10 +558,16 @@ def _stat_popover(
     svg_key: str,
     value: Node | str,
     details: Node | None = None,
+    *,
+    two_line: bool = False,
 ) -> Node:
     """One header stat. ``details`` adds rows beneath the tooltip line — the
     playtime stat puts its alternate formats there rather than nesting a second
-    popover inside this one."""
+    popover inside this one.
+
+    ``two_line`` keeps the icon on the first line's baseline, for a value that
+    states a second line beneath it. A one-line value centres against its
+    icon, which is what every other stat wants."""
     content: Node | str = (
         tooltip
         if details is None
@@ -569,7 +575,9 @@ def _stat_popover(
     )
     return Popover(
         popover_content=content,
-        wrapped_classes="flex gap-2 items-baseline",
+        wrapped_classes=(
+            "flex gap-2 items-baseline" if two_line else "flex gap-2 items-center"
+        ),
         id=popover_id,
         children=[Safe(_STAT_SVGS[svg_key]), value],
     )
@@ -884,6 +892,7 @@ def _game_header(
             "hours",
             PlaytimeSplit(playtime, durations, popover=False),
             DurationAlternates(playtime.total, durations),
+            two_line=playtime.historical > timedelta(0),
         ),
         _stat_popover(
             "popover-sessions",

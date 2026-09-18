@@ -85,10 +85,9 @@ Type fixes so cells satisfy `Cell = Node | str` under mypy (today some cells pas
 **"View all"** moves out of the table (a colspan row cannot pass through `make_row`). Render it
 below each capped `StyledTable`, gated on `total > _LIST_CAP`, reusing the `_game_section`
 convention (`games/views/game.py:471`): a gray `ControlButton` with an `arrowright` icon and a
-`View all (N)` label. Count source per helper: `_finished_table` / `_priced_table` already take an
-explicit `total=` (use it); `_two_col_table` has no total param — keep its `len(items)` (its
-`top_10_games_by_playtime` queryset is actually uncapped, so `len()` is the true total; the
-misleading name is flagged for the follow-up issue, not fixed here).
+`View all (N)` label. Count source per helper: `_finished_table`, `_priced_table` and
+`_two_col_table` each take an explicit `total=`, which the caller states for rows that
+reach it already capped.
 
 Imports: drop `Table`, `Tbody`, `Td`, `Th`, `Thead`, `Tr`; add `StyledTable`, `Column`,
 `make_row`, `ControlButton`. (`Icon`, `ICON_BUTTON_SIZE_CLASS`, `Fragment`, `PageHeading`, `A`,
@@ -152,4 +151,3 @@ collapsing to 1 column, right-aligned values, headerless kv / headed ranked tabl
 
 - **StyledTable shell rounding** → #438 (square bottom corners without a footer; intrinsic
   rounding + a general footer slot). Affects all list pages; kept separate.
-- The misleading `top_10_games_by_playtime` name and `_two_col_table`'s `len(items)` count.
