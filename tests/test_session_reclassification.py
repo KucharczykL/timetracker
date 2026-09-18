@@ -8,23 +8,30 @@ from django.utils import timezone
 
 from games.commands.historical_playtime import (
     ONE_GAME,
+    SESSION_STILL_LIVE,
+    RemoveHistoricalPlaytime,
+    RestoreHistoricalPlaytime,
 )
 from games.commands.playergame import RemovePlayerGame, TrackGame
 from games.commands.playersession import (
+    RECORD_STILL_LIVE,
     CorrectedTiming,
     CreateSession,
     DurationOnlyTiming,
     RemoveSession,
+    RestoreSession,
     TimedTiming,
 )
 from games.commands.playthrough import CreatePlaythrough
 from games.commands.session_reclassification import (
     ANOTHER_GAME,
+    NEVER_RECLASSIFIED,
     STILL_RUNNING,
     ReclassifySessionAsHistoricalPlaytime,
+    UndoSessionReclassification,
     statement_from_session,
 )
-from games.events.dispatch import CommandRejected, dispatch
+from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
 from games.models import (
     Device,
     Game,
@@ -465,3 +472,156 @@ def test_the_run_reads_never_played(owned_user, owned_library, run):
         runs_with_condition(owned_library).get(pk=run.pk).activity
         == RunActivity.NEVER_PLAYED
     )
+
+
+# --- The undo -----------------------------------------------------------------
+
+
+def undo(library, actor, session, *, key=None) -> None:
+    dispatch(
+        UndoSessionReclassification(session_id=session.pk),
+        actor=actor,
+        library=library,
+        idempotency_key=key or str(uuid.uuid7()),
+    )
+
+
+def test_the_undo_reverses_the_pair(owned_user, owned_library, run):
+    session = a_duration_only(owned_library, owned_user, run)
+    record = convert(owned_library, owned_user, session)
+
+    undo(owned_library, owned_user, session)
+
+    record.refresh_from_db()
+    session.refresh_from_db()
+    assert record.removed_at is not None
+    assert session.removed_at is None
+    assert session.reclassified_into_id == record.pk
+    appended = list(
+        LibraryEvent.objects.filter(
+            event_type__in=(
+                "library.historicalplaytime.removed",
+                "library.playersession.restored",
+            )
+        ).order_by("sequence")
+    )
+    assert [event.event_type for event in appended] == [
+        "library.historicalplaytime.removed",
+        "library.playersession.restored",
+    ]
+    assert len({event.correlation_id for event in appended}) == 1
+
+
+def test_a_second_undo_records_nothing(owned_user, owned_library, run):
+    session = a_duration_only(owned_library, owned_user, run)
+    convert(owned_library, owned_user, session)
+    undo(owned_library, owned_user, session)
+    before = LibraryEvent.objects.count()
+
+    undo(owned_library, owned_user, session)
+
+    assert LibraryEvent.objects.count() == before
+
+
+def test_a_session_that_became_no_record_is_refused(owned_user, owned_library, run):
+    session = a_duration_only(owned_library, owned_user, run)
+
+    refusal = refused(
+        owned_library, owned_user, UndoSessionReclassification(session_id=session.pk)
+    )
+
+    assert refusal.sentence == NEVER_RECLASSIFIED
+
+
+def test_the_undo_returns_a_session_whose_record_was_already_removed(
+    owned_user, owned_library, run
+):
+    """Only the leg that is still to happen."""
+    session = a_duration_only(owned_library, owned_user, run)
+    record = convert(owned_library, owned_user, session)
+    dispatch(
+        RemoveHistoricalPlaytime(record_id=record.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="record-gone",
+    )
+    before = LibraryEvent.objects.count()
+
+    undo(owned_library, owned_user, session)
+
+    session.refresh_from_db()
+    assert session.removed_at is None
+    assert LibraryEvent.objects.count() == before + 1
+
+
+# --- The two guards -----------------------------------------------------------
+
+
+def test_a_restore_alone_is_refused_while_the_record_is_live(
+    owned_user, owned_library, run
+):
+    session = a_duration_only(owned_library, owned_user, run)
+    record = convert(owned_library, owned_user, session)
+
+    refusal = refused(owned_library, owned_user, RestoreSession(session_id=session.pk))
+
+    assert refusal.sentence == RECORD_STILL_LIVE
+    assert str(record.pk) in refusal.args[0]
+
+
+def test_a_restore_alone_is_admitted_once_the_record_is_removed(
+    owned_user, owned_library, run
+):
+    session = a_duration_only(owned_library, owned_user, run)
+    record = convert(owned_library, owned_user, session)
+    dispatch(
+        RemoveHistoricalPlaytime(record_id=record.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="record-gone",
+    )
+
+    dispatch(
+        RestoreSession(session_id=session.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="back",
+    )
+
+    session.refresh_from_db()
+    assert session.removed_at is None
+
+
+def test_a_record_restore_is_refused_while_its_session_is_live(
+    owned_user, owned_library, run
+):
+    session = a_duration_only(owned_library, owned_user, run)
+    record = convert(owned_library, owned_user, session)
+    undo(owned_library, owned_user, session)
+
+    refusal = refused(
+        owned_library, owned_user, RestoreHistoricalPlaytime(record_id=record.pk)
+    )
+
+    assert refusal.sentence == SESSION_STILL_LIVE
+
+
+def test_a_live_session_still_answers_unchanged(owned_user, owned_library, run):
+    """The no-op comes first, as it does in every lifecycle command.
+
+    Were the new refusal read first, a session that was never removed
+    would answer a sentence about a record instead of succeeding
+    quietly.
+    """
+    session = a_duration_only(owned_library, owned_user, run)
+    before = LibraryEvent.objects.count()
+
+    result = dispatch(
+        RestoreSession(session_id=session.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="nothing-to-do",
+    )
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert LibraryEvent.objects.count() == before

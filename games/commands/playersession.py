@@ -53,6 +53,12 @@ from games.reads.calendar import calendar_day_zone
 
 OUT_OF_RANGE = "That time is outside the range we can record."
 
+#: Both directions of the one rule: the hours are stated once.
+RECORD_STILL_LIVE = (
+    "That session is already recorded as historical playtime. Undo that "
+    "first, and the session comes back with it."
+)
+
 #: The bucket is the importer's; a person records on a run.
 INTO_THE_BUCKET = (
     "That is the imported-history bucket. Record the session on one of "
@@ -786,6 +792,24 @@ class RemoveSession(Command):
         return [playersession_removed(session.pk)]
 
 
+def _refuse_beside_a_live_record(session: PlayerSession) -> None:
+    """Refuse a restore that would count the hours twice.
+
+    A session that became a record states both the mark and the
+    record it became. Bringing the session back on its own would put
+    its hours beside the record's, which state the same play.
+    """
+    #: Under dispatch's lock: neither mark can move.
+    record = session.reclassified_into
+    if record is not None and record.removed_at is None:
+        raise CommandRejected(
+            f"Session {session.pk} became historical playtime record "
+            f"{record.pk}, which is live, so restoring the session would "
+            "count its hours twice.",
+            sentence=RECORD_STILL_LIVE,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class RestoreSession(Command):
     """Put a removed session back."""
@@ -800,4 +824,5 @@ class RestoreSession(Command):
         if session.removed_at is None:
             return Unchanged(f"This library did not remove session {self.session_id}.")
         _refuse_under_a_removed_parent(context, session)
+        _refuse_beside_a_live_record(session)
         return [playersession_restored(session.pk)]

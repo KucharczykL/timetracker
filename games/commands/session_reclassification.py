@@ -16,7 +16,7 @@ from games.commands.historical_playtime import (
     created_event,
     normalized_statement,
 )
-from games.commands.playersession import _live_session
+from games.commands.playersession import _live_session, library_session
 from games.commands.scope import library_device, library_device_row
 from games.events.dispatch import (
     Command,
@@ -24,7 +24,11 @@ from games.events.dispatch import (
     CommandName,
     CommandRejected,
 )
-from games.events.playersession import playersession_reclassified
+from games.events.historical_playtime import historicalplaytime_removed
+from games.events.playersession import (
+    playersession_reclassified,
+    playersession_restored,
+)
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import (
     HistoricalPlaytimeProvenance,
@@ -40,6 +44,10 @@ STILL_RUNNING = (
 ANOTHER_GAME = (
     "Historical playtime made from a session belongs to that session's game. "
     "Choose one of its playthroughs."
+)
+NEVER_RECLASSIFIED = (
+    "That session was never recorded as historical playtime, so there is "
+    "nothing to undo."
 )
 
 
@@ -111,3 +119,39 @@ class ReclassifySessionAsHistoricalPlaytime(Command):
             created,
             playersession_reclassified(session.pk, record_id=created.aggregate_id),
         ]
+
+
+@dataclass(frozen=True, slots=True)
+class UndoSessionReclassification(Command):
+    """Take back the act, both halves of it."""
+
+    command_name: ClassVar[CommandName] = (
+        CommandName.PLAYERSESSION_UNDO_RECLASSIFICATION
+    )
+    #: A UUID, because Command fingerprints its fields.
+    session_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        session = library_session(context, self.session_id)
+        record = session.reclassified_into
+        if record is None:
+            raise CommandRejected(
+                f"Session {session.pk} states no record, so no act of this "
+                "library made it one.",
+                sentence=NEVER_RECLASSIFIED,
+            )
+        #: The no-op first, as in every lifecycle command: a second
+        #: press must not restore a session that is already live.
+        if session.removed_at is None and record.removed_at is not None:
+            return Unchanged(
+                f"This library already undid the reclassification of session "
+                f"{self.session_id}."
+            )
+        events: list[NewEvent] = []
+        #: Each leg only where it is still to happen, so a record
+        #: removed by hand between the two acts is left alone.
+        if record.removed_at is None:
+            events.append(historicalplaytime_removed(record.pk))
+        if session.removed_at is not None:
+            events.append(playersession_restored(session.pk))
+        return events

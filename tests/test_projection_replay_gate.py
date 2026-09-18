@@ -51,6 +51,7 @@ from games.commands.playthrough import (
 )
 from games.commands.session_reclassification import (
     ReclassifySessionAsHistoricalPlaytime,
+    UndoSessionReclassification,
     statement_from_session,
 )
 from games.events.dispatch import Command, CommandOutcome, CommandResult, dispatch
@@ -392,6 +393,30 @@ def build_stream(user, library) -> list[DispatchedCommand]:
             statement=statement_from_session(PlayerSession.objects.get(pk=converted)),
         ),
         "reclassify-session",
+    )
+    #: A second one, put back, so the restore beside a kept
+    #: reference reaches the snapshot as well.
+    undone = _created_id(
+        run(
+            CreateSession(
+                playthrough_id=first_run.pk,
+                timing=DurationOnlyTiming(
+                    day=date(2024, 2, 10), duration=timedelta(hours=11)
+                ),
+            ),
+            "create-session-to-reclassify-and-undo",
+        )
+    )
+    run(
+        ReclassifySessionAsHistoricalPlaytime(
+            session_id=undone,
+            statement=statement_from_session(PlayerSession.objects.get(pk=undone)),
+        ),
+        "reclassify-session-to-undo",
+    )
+    run(
+        UndoSessionReclassification(session_id=undone),
+        "undo-reclassification",
     )
 
     run(RemovePlayerGame(game_id=second.pk), "remove-second-game")

@@ -36,6 +36,7 @@ from games.models import (
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
     HistoricalPlaytimeRun,
+    PlayerSession,
     Playthrough,
     PlaythroughKind,
 )
@@ -64,6 +65,11 @@ RUN_REMOVED = (
     "changing this record."
 )
 RECORD_REMOVED = "That record was removed. Restore it before changing it."
+#: Both directions of the one rule: the hours are stated once.
+SESSION_STILL_LIVE = (
+    "The session this record was made from is back in your lists, so its "
+    "playtime is already counted."
+)
 WHEN_NOT_A_DATE = (
     "Write when as a year, a month or a day, like 2005, 2005-03 or 2005-03-14."
 )
@@ -342,6 +348,26 @@ class RemoveHistoricalPlaytime(Command):
         return [historicalplaytime_removed(record.pk)]
 
 
+def _refuse_beside_a_live_session(
+    context: CommandContext, record: HistoricalPlaytime
+) -> None:
+    """The mirror of the session's own guard.
+
+    A record made out of a session states the same play the session
+    does, so exactly one of the two is live at a time.
+    """
+    #: Under dispatch's lock: neither mark can move.
+    live = PlayerSession.objects.filter(
+        library=context.library, reclassified_into=record, removed_at__isnull=True
+    ).first()
+    if live is not None:
+        raise CommandRejected(
+            f"Session {live.pk} became record {record.pk} and is live again, "
+            "so restoring the record would count its hours twice.",
+            sentence=SESSION_STILL_LIVE,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class RestoreHistoricalPlaytime(Command):
     """Put a removed record back."""
@@ -354,4 +380,5 @@ class RestoreHistoricalPlaytime(Command):
         if record.removed_at is None:
             return Unchanged(f"This library did not remove record {self.record_id}.")
         _refuse_under_a_removed_parent(context, record)
+        _refuse_beside_a_live_session(context, record)
         return [historicalplaytime_restored(record.pk)]
