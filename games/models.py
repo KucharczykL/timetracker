@@ -1749,8 +1749,8 @@ class PlayerSession(ProjectionModel):
     created_at = models.DateTimeField(editable=False)
     #: The remove event's recorded_at; null means live.
     removed_at = models.DateTimeField(null=True, default=None, editable=False)
-    #: The record this session became; the mark beside it is removed_at.
-    #: It outlives a restore, so the two can guard each other.
+    #: The record this session became.
+    #: Outlives a restore; both guard each other.
     reclassified_into = models.ForeignKey(
         "HistoricalPlaytime",
         #: No cascade destroys a projection row.

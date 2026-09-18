@@ -346,7 +346,7 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
     "games.PlayerSession": {
         #: The projector's mark; every other column is stated.
         "removed_at": None,
-        #: The record a reclassified session became; null is every other.
+        #: The record a reclassified session became.
         "reclassified_into": None,
     },
     "games.HistoricalPlaytime": {

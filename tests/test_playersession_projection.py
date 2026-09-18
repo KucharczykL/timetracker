@@ -1344,12 +1344,7 @@ def test_the_reclassification_marks_the_session_and_names_the_record(
 
 @pytest.mark.django_db(transaction=True)
 def test_a_restore_clears_the_mark_and_keeps_the_record(owned_user, owned_library, run):
-    """The reference outlives the mark, so nothing double counts.
-
-    Were it cleared, a record restored later would state its hours
-    beside the session that became it, with no column left to say
-    the two are the same play.
-    """
+    """The reference outlives the mark."""
     session = a_recorded_session(owned_library, owned_user, run)
     record = a_record(run)
     append_events(

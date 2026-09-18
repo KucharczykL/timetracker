@@ -50,6 +50,5 @@ def test_a_written_down_session_becomes_a_record_and_comes_back(
     expect(page.get_by_text("Session restored.")).to_be_visible()
     assert PlayerSession.objects.alive().count() == 1
     assert HistoricalPlaytime.objects.get().removed_at is not None
-    #: The form's module scripts load; a dist module served as a
-    #: classic script would be inert and say so here.
+    #: Catches a dist module served as classic.
     assert errors == []

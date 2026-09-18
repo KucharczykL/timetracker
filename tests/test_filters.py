@@ -128,12 +128,7 @@ class TestModifier:
 
 
 class TestInclusiveComparisons:
-    """`is at least` and `is at most` across every leaf number path.
-
-    ``Modifier.for_numbers`` is the one home for which operators a number
-    or a date offers, so a member added there is offered by every handler
-    those two lists reach. Each of the six bodies below is one of them.
-    """
+    """`is at least` and `is at most`, all six bodies."""
 
     def test_for_numbers_offers_both(self):
         assert Modifier.GREATER_THAN_OR_EQUAL in Modifier.for_numbers()

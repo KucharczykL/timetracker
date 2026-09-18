@@ -373,8 +373,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     run(RemoveHistoricalPlaytime(record_id=restored_record), "remove-record-again")
     run(RestoreHistoricalPlaytime(record_id=restored_record), "restore-record")
 
-    #: A session that became a record, so both sides of the mark
-    #: and the reference the restore keeps reach the snapshot.
+    #: A session that became a record.
     converted = _created_id(
         run(
             CreateSession(
@@ -394,8 +393,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         ),
         "reclassify-session",
     )
-    #: A second one, put back, so the restore beside a kept
-    #: reference reaches the snapshot as well.
+    #: A second one, put back again.
     undone = _created_id(
         run(
             CreateSession(
@@ -603,12 +601,7 @@ def row_versions(library) -> list[tuple[str, str]]:
 
 
 def empty_projections(library) -> None:
-    """Scoped by library, children first for RESTRICT.
-
-    Sessions come before records: a reclassified session names the
-    record it became, and that reference outlives a restore, so a
-    record taken first is refused by its own RESTRICT key.
-    """
+    """By library, children first; sessions before records."""
     HistoricalPlaytimeRun.objects.filter(library=library).delete()
     PlayerSession.objects.filter(library=library).delete()
     HistoricalPlaytime.objects.filter(library=library).delete()

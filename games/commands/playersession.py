@@ -53,7 +53,7 @@ from games.reads.calendar import calendar_day_zone
 
 OUT_OF_RANGE = "That time is outside the range we can record."
 
-#: Both directions of the one rule: the hours are stated once.
+#: One rule, both directions: hours stated once.
 RECORD_STILL_LIVE = (
     "That session is already recorded as historical playtime. Undo that "
     "first, and the session comes back with it."
@@ -793,12 +793,7 @@ class RemoveSession(Command):
 
 
 def _refuse_beside_a_live_record(session: PlayerSession) -> None:
-    """Refuse a restore that would count the hours twice.
-
-    A session that became a record states both the mark and the
-    record it became. Bringing the session back on its own would put
-    its hours beside the record's, which state the same play.
-    """
+    """Refuse a restore that would count hours twice."""
     #: Under dispatch's lock: neither mark can move.
     record = session.reclassified_into
     if record is not None and record.removed_at is None:

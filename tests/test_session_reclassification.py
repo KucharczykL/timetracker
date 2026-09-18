@@ -215,12 +215,7 @@ def test_the_session_is_marked_and_names_the_record(owned_user, owned_library, r
 
 
 def test_a_running_timed_session_is_refused(owned_user, owned_library, run):
-    """A running row states no hours yet, so it states none to keep.
-
-    The statement carries a duration of its own here: a running row
-    measures nothing, and a statement of nothing is refused before the
-    fingerprint, which would hide the rule this pins.
-    """
+    """A running row measures nothing; state a duration."""
     session = a_session(
         owned_library,
         owned_user,
@@ -326,11 +321,7 @@ def test_a_sibling_run_of_the_same_game_is_admitted(
 def test_a_session_holding_a_removed_device_still_converts(
     owned_user, owned_library, run
 ):
-    """The regression that would otherwise refuse most of the rows.
-
-    Ninety-one of the ninety-three rows this act exists for name a
-    device, and a library that stopped using one removed it.
-    """
+    """91 of 93 rows name a device."""
     device = Device.objects.create(library=owned_library, name="Vita")
     session = a_duration_only(owned_library, owned_user, run, device_id=device.pk)
     Device.objects.filter(pk=device.pk).update(removed_at=timezone.now())
@@ -401,8 +392,7 @@ def test_a_removed_session_is_refused(owned_user, owned_library, run):
 def test_a_removed_run_is_refused(owned_user, owned_library, run, second_run):
     session = a_duration_only(owned_library, owned_user, second_run)
     statement = statement_from_session(session)
-    #: Stamped rather than stated: a run holding a live session
-    #: refuses its own removal, which is a different rule.
+    #: Stamped: a run with sessions refuses removal.
     Playthrough.objects.filter(pk=second_run.pk).update(removed_at=timezone.now())
 
     refused(
@@ -536,7 +526,7 @@ def test_a_session_that_became_no_record_is_refused(owned_user, owned_library, r
 def test_the_undo_returns_a_session_whose_record_was_already_removed(
     owned_user, owned_library, run
 ):
-    """Only the leg that is still to happen."""
+    """Only the leg still to happen."""
     session = a_duration_only(owned_library, owned_user, run)
     record = convert(owned_library, owned_user, session)
     dispatch(
@@ -607,12 +597,7 @@ def test_a_record_restore_is_refused_while_its_session_is_live(
 
 
 def test_a_live_session_still_answers_unchanged(owned_user, owned_library, run):
-    """The no-op comes first, as it does in every lifecycle command.
-
-    Were the new refusal read first, a session that was never removed
-    would answer a sentence about a record instead of succeeding
-    quietly.
-    """
+    """The no-op comes first, before the new refusal."""
     session = a_duration_only(owned_library, owned_user, run)
     before = LibraryEvent.objects.count()
 

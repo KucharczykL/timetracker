@@ -139,12 +139,7 @@ class PlayerSessions(Projector):
         )
 
     def _reclassified(self, event: RecordedEvent) -> None:
-        """The mark and the way back, in one act.
-
-        The reference is written beside the mark rather than instead
-        of it, so every scope that already reads `removed_at` needs
-        no second word for a session that became a record.
-        """
+        """The mark and the way back, one act."""
         self.amend(
             PlayerSession,
             event,

@@ -188,12 +188,7 @@ class QuickFilterBarRenderingTest(TestCase):
         self.assertNotIn("Advanced filter active", html)
 
     def test_inclusive_number_modifiers_round_trip(self):
-        """`is at least` survives the bar rather than degrading to `is`.
-
-        ``NumberFilter`` drops a modifier its own option list does not
-        offer, so the review link's own predicate would come back as
-        ``EQUALS`` were the two members absent from the widget.
-        """
+        """`is at least` survives the bar, not degraded."""
         filter_json = json.dumps(
             {"duration_hours": {"value": 8, "modifier": "GREATER_THAN_OR_EQUAL"}}
         )

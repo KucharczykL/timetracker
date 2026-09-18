@@ -1,9 +1,4 @@
-"""The act that turns a session into historical playtime.
-
-Its own module because it spans two aggregates: `historical_playtime`
-already reads this package's session rules, so a command naming both
-cannot sit on either side without a cycle.
-"""
+"""Its own module: the act spans two aggregates."""
 
 import uuid
 from collections.abc import Sequence
@@ -57,14 +52,7 @@ def statement_from_session(
         HistoricalPlaytimeProvenance.MANUALLY_ENTERED
     ),
 ) -> HistoricalPlaytimeStatement:
-    """The record a session already states.
-
-    The two generated columns are what the read layer counts, so they
-    are what the record repeats: a Corrected row states its override
-    rather than its elapsed time, and every mode states one day.
-    Provenance is the one fact no session holds, so the caller states
-    it.
-    """
+    """The record a session already states."""
     return HistoricalPlaytimeStatement(
         duration=session.effective_duration,
         when=TemporalValue.from_day(session.effective_day).canonical,
@@ -107,9 +95,10 @@ class ReclassifySessionAsHistoricalPlaytime(Command):
                 f"playthroughs of {runs[0].player_game_id}.",
                 sentence=ANOTHER_GAME,
             )
-        #: The session's own device is kept, removed or not; any other
-        #: must be live. Without this, a library that stopped using a
-        #: device could not convert the rows recorded on it.
+        #: A held device stays, removed or not.
+        #: Not library_device: a library that stopped using a device
+        #: removed it, and 91 of the 93 rows this act exists for name
+        #: one, so the live-only resolver refuses almost all of them.
         if self.statement.device_id == session.device_id:
             device = library_device_row(context, self.statement.device_id)
         else:
@@ -140,16 +129,14 @@ class UndoSessionReclassification(Command):
                 "library made it one.",
                 sentence=NEVER_RECLASSIFIED,
             )
-        #: The no-op first, as in every lifecycle command: a second
-        #: press must not restore a session that is already live.
+        #: No-op first: a second press restores nothing.
         if session.removed_at is None and record.removed_at is not None:
             return Unchanged(
                 f"This library already undid the reclassification of session "
                 f"{self.session_id}."
             )
         events: list[NewEvent] = []
-        #: Each leg only where it is still to happen, so a record
-        #: removed by hand between the two acts is left alone.
+        #: Each leg only where still to happen.
         if record.removed_at is None:
             events.append(historicalplaytime_removed(record.pk))
         if session.removed_at is not None:

@@ -65,7 +65,7 @@ RUN_REMOVED = (
     "changing this record."
 )
 RECORD_REMOVED = "That record was removed. Restore it before changing it."
-#: Both directions of the one rule: the hours are stated once.
+#: One rule, both directions: hours stated once.
 SESSION_STILL_LIVE = (
     "The session this record was made from is back in your lists, so its "
     "playtime is already counted."
@@ -250,13 +250,7 @@ def created_event(
     device: Device | None,
     statement: HistoricalPlaytimeStatement,
 ) -> NewEvent:
-    """One statement as the creation event.
-
-    The caller resolves the runs and the device, because the rule for
-    each differs by act: a record stated fresh takes a live device,
-    while a record made out of a session takes the one the session
-    already holds, removed or not.
-    """
+    """One statement as the creation event; caller resolves both."""
     return historicalplaytime_created(
         player_game_id=runs[0].player_game_id,
         runs=_members(runs, {}),
@@ -351,11 +345,7 @@ class RemoveHistoricalPlaytime(Command):
 def _refuse_beside_a_live_session(
     context: CommandContext, record: HistoricalPlaytime
 ) -> None:
-    """The mirror of the session's own guard.
-
-    A record made out of a session states the same play the session
-    does, so exactly one of the two is live at a time.
-    """
+    """The mirror of the session's own guard."""
     #: Under dispatch's lock: neither mark can move.
     live = PlayerSession.objects.filter(
         library=context.library, reclassified_into=record, removed_at__isnull=True

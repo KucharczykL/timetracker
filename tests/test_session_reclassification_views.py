@@ -267,7 +267,7 @@ def test_one_refused_row_does_not_stop_the_rest(logged_in, owned_user, run, game
     """The answer names both counts, and the rest are converted."""
     refused = _long_row(run, date(2026, 3, 1))
     fine = _long_row(run, date(2026, 3, 2))
-    #: Already a record, so its own conversion is refused.
+    #: Already a record; its conversion is refused.
     state_reclassification(
         owned_user,
         refused,

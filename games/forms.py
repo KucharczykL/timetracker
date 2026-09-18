@@ -1171,9 +1171,10 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
                 "session, never from both."
             )
         initial = dict(kwargs.pop("initial", None) or {})
-        #: After the caller's, because the seed is the whole answer to
-        #: what this page opens on; a caller that wants another value
-        #: states a record or a session rather than an initial.
+        #: After the caller's, and it overwrites them.
+        #: A caller passing `playthroughs` as an initial loses it to
+        #: the game's latest run, so a page that opens on another run
+        #: states `record=` or `session=` instead.
         initial.update(_record_initial(library, game, record, session, provenance))
         super().__init__(*args, initial=initial, **kwargs)
         self.record: HistoricalPlaytime | None = record

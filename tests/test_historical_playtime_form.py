@@ -417,12 +417,7 @@ def a_session(library, run, **columns):
 def test_a_session_seeds_its_own_run_and_not_the_latest(
     owned_user, owned_library, game, run
 ):
-    """The seed answers the page, so it wins over the Add default.
-
-    `_record_initial` runs after the caller's `initial`, so a caller
-    that passed the run as an initial would have it overwritten by the
-    latest run of the game.
-    """
+    """The seed wins over the Add default."""
     another = another_run(owned_user, game)
     session = a_session(owned_library, run)
 

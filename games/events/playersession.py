@@ -409,12 +409,7 @@ def playersession_moved(
 
 @with_config(STRICT_SCHEMA)
 class PlayerSessionReclassifiedPayload(TypedDict):
-    """A bare key, as the move's run.
-
-    The record does not exist when the command builds this, so no
-    `Reference` can be captured of it; the pair is appended under one
-    lock, so the key is answered by the same act that mints it.
-    """
+    """A bare key: the record is minted here."""
 
     record: ReferenceId
 

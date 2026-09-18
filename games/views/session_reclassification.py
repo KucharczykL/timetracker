@@ -130,17 +130,12 @@ def _back_to(request: HttpRequest) -> str:
     return return_url(request, fallback="games:list_sessions")
 
 
-#: Long enough that a written number is more likely a total than a sitting.
+#: Longer than a sitting a person recalls.
 REVIEW_THRESHOLD_HOURS = 8
 
 
 def review_filter() -> str:
-    """The rows this act was written for, as `?filter=` JSON.
-
-    Built from the criteria rather than written out, so it cannot
-    drift from what the parser accepts: `timing_mode` is a set
-    criterion, and its modifier is INCLUDES rather than EQUALS.
-    """
+    """The rows worth reviewing, as `?filter=` JSON."""
     from games.filters import PlayerSessionFilter
 
     return json.dumps(
@@ -177,12 +172,7 @@ NOT_WRITTEN = (
 
 
 def _reviewable(library, keys=None) -> list[PlayerSession]:
-    """Every live written-down row of eight hours or longer.
-
-    `keys` narrows it to what a POST named, so a re-render after a
-    refusal shows what was acted on rather than what the filter
-    answers now.
-    """
+    """Live written-down rows; `keys` narrows to a post."""
     rows = library_sessions(library).filter(
         timing_mode=PlayerSessionTimingMode.DURATION_ONLY,
         effective_duration__gte=timedelta(hours=REVIEW_THRESHOLD_HOURS),
@@ -199,14 +189,7 @@ def _reviewable(library, keys=None) -> list[PlayerSession]:
 def _convert_each(
     request: HttpRequest, user: User, rows: Sequence[PlayerSession], token: str
 ) -> None:
-    """Convert every row, and say what happened to each.
-
-    A refused row does not stop the rest, and nothing is raised: this
-    runs inside `confirm_and_apply`, which turns one refusal into a
-    re-rendered page, and a review of ninety rows would then report
-    only the first. One correlation id for the request; each row's key
-    is the submit token and its own key, so a second submit replays.
-    """
+    """Convert each row; raise nothing, answer both counts."""
     correlation_id = new_correlation_id()
     converted = 0
     refusals: list[str] = []
@@ -237,8 +220,7 @@ def _convert_each(
 def reclassify_reviewed_sessions(request: HttpRequest) -> HttpResponse:
     user = cast(User, request.user)
     posted = request.POST.getlist("session")
-    #: The GET offers what the filter answers; the POST acts on what
-    #: the page it was drawn from named.
+    #: GET the filter; POST the page's keys.
     rows = _reviewable(user.library, posted if request.method == "POST" else None)
     if request.method == "POST" and len(posted) != len(rows):
         messages.error(request, NOT_WRITTEN)

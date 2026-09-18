@@ -299,11 +299,7 @@ def reclassify_session(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> uuid.UUID:
-    """Make the session a record; answer the record's id.
-
-    The act has no Unchanged, so the key is what makes a repeated
-    submit replay rather than state the hours a second time.
-    """
+    """Make the session a record; answer its id."""
     with answered("session"):
         result = _dispatch(
             ReclassifySessionAsHistoricalPlaytime(
