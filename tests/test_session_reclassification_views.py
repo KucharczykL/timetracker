@@ -21,7 +21,12 @@ from games.models import (
     PlayerSession,
     Playthrough,
 )
-from games.views.session_reclassification import NOT_WRITTEN
+from games.views.session_reclassification import (
+    NOT_AVAILABLE,
+    NOT_WRITTEN,
+    UNDER_THRESHOLD,
+)
+from games.writes.answers import DEFECT_STATUS, CommandFailed
 from games.writes.playergame import new_correlation_id
 from games.writes.playersession import reclassify_session as state_reclassification
 
@@ -82,7 +87,7 @@ def test_post_converts_and_returns_to_the_origin(logged_in, session, run):
     assert response.headers["Location"] == origin
     record = HistoricalPlaytime.objects.get()
     session.refresh_from_db()
-    assert session.reclassified_into_id == record.pk
+    assert record.reclassified_from_id == session.pk
     assert session.removed_at is not None
 
 
@@ -278,9 +283,105 @@ def test_a_row_of_another_library_is_refused(
 
     response = client.post(_bulk_url(), {"session": [str(row.pk)], "submission": "one"})
 
-    assert ("error", NOT_WRITTEN) in _messages_of(response)
+    assert ("error", NOT_AVAILABLE) in _messages_of(response)
     row.refresh_from_db()
     assert row.removed_at is None
+
+
+def test_a_written_down_row_under_the_threshold_is_refused_in_its_own_words(
+    logged_in, run
+):
+    short = _long_row(run, hours=7)
+
+    response = logged_in.post(
+        _bulk_url(), {"session": [str(short.pk)], "submission": "one"}
+    )
+
+    assert ("error", UNDER_THRESHOLD) in _messages_of(response)
+    assert ("error", NOT_WRITTEN) not in _messages_of(response)
+    short.refresh_from_db()
+    assert short.removed_at is None
+
+
+def test_a_key_that_is_no_session_counts_against_the_posted_total(logged_in, run):
+    row = _long_row(run)
+
+    response = logged_in.post(
+        _bulk_url(), {"session": [str(row.pk), "not-a-key"], "submission": "one"}
+    )
+
+    said = _messages_of(response)
+    assert ("error", NOT_AVAILABLE) in said
+    assert any("1 of 2" in message for _level, message in said)
+
+
+def test_a_row_removed_since_the_page_opened_counts_as_lost(logged_in, owned_user, run):
+    kept = _long_row(run, date(2026, 3, 1))
+    gone = _long_row(run, date(2026, 3, 2))
+    PlayerSession.objects.filter(pk=gone.pk).update(removed_at=START)
+
+    response = logged_in.post(
+        _bulk_url(),
+        {"session": [str(kept.pk), str(gone.pk)], "submission": "one"},
+    )
+
+    said = _messages_of(response)
+    assert any("1 of 2" in message for _level, message in said)
+    assert ("error", NOT_AVAILABLE) in said
+
+
+def test_a_defect_stops_the_request_and_offers_no_second_press(
+    logged_in, run, monkeypatch
+):
+    """The rows before it stay recorded; the page says how many."""
+    from games.views import session_reclassification as views
+
+    rows = [_long_row(run, date(2026, 3, day)) for day in (1, 2, 3)]
+    real = views.state_reclassification
+
+    def failing(user, row, *args, **kwargs):
+        if row.pk == rows[1].pk:
+            raise CommandFailed("Nothing was saved.", DEFECT_STATUS)
+        return real(user, row, *args, **kwargs)
+
+    monkeypatch.setattr(views, "state_reclassification", failing)
+
+    response = logged_in.post(
+        _bulk_url(),
+        {"session": [str(row.pk) for row in rows], "submission": "one"},
+    )
+
+    assert response.status_code == DEFECT_STATUS
+    html = response.content.decode()
+    assert "1 of 3" in html
+    assert ">Record as historical playtime<" not in html
+    for row in rows:
+        row.refresh_from_db()
+    assert rows[0].removed_at is not None
+    assert rows[1].removed_at is None
+    assert rows[2].removed_at is None
+
+
+def test_the_undo_route_says_when_nothing_changed(logged_in, session, run):
+    logged_in.post(_url(session), posted_record([run.pk], hours="9", when_year="2026"))
+    url = reverse("games:undo_reclassify_session", args=[session.pk])
+    logged_in.post(url)
+    #: A rendered page spends the earlier messages.
+    logged_in.get(reverse("games:list_sessions"))
+
+    response = logged_in.post(url)
+
+    assert response.status_code == 302
+    said = _messages_of(response)
+    assert ("info", "That session was already back.") in said
+    assert not any("restored" in message for _level, message in said)
+
+
+def test_the_library_promises_no_undo_for_the_bulk_act(logged_in, session):
+    html = logged_in.get(reverse("games:library")).content.decode()
+
+    assert "every change offers an Undo" not in html
+    assert "does not yet" in html
 
 
 def test_one_refused_row_does_not_stop_the_rest(logged_in, owned_user, run, game):
@@ -303,7 +404,8 @@ def test_one_refused_row_does_not_stop_the_rest(logged_in, owned_user, run, game
 
     fine.refresh_from_db()
     assert fine.removed_at is not None
-    assert any("1 of 1" in message for _level, message in _messages_of(response))
+    #: The refused row counts: two were sent.
+    assert any("1 of 2" in message for _level, message in _messages_of(response))
 
 
 def test_a_second_submit_converts_nothing_new(logged_in, run):

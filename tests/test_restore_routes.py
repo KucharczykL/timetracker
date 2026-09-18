@@ -229,7 +229,9 @@ def test_a_second_post_still_says_restored(
 
     assert response.status_code == 302
     assert _visible(owned_user.library, row)
-    assert any("restored" in text for _, text in _messages_of(response))
+    #: The undo says so; the others still print the state.
+    said = "already back" if route == "games:undo_reclassify_session" else "restored"
+    assert any(said in text for _, text in _messages_of(response))
 
 
 def test_a_session_under_a_removed_run_lands_an_error_on_the_origin(

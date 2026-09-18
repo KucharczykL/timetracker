@@ -1,11 +1,12 @@
 """Record a session as historical playtime, and take it back."""
 
 import json
+import logging
 import uuid
 from collections.abc import Sequence
 from datetime import timedelta
 from functools import partial
-from typing import cast
+from typing import NamedTuple, cast
 from urllib.parse import quote
 from uuid import UUID
 
@@ -50,10 +51,12 @@ from games.reads.player_sessions import library_sessions
 from games.views.historical_playtime_entry import FORM_SCRIPTS
 from games.views.removal import confirm_and_apply, restore_and_return
 from games.views.returns import return_url
-from games.writes.answers import CommandFailed
+from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from games.writes.playergame import new_correlation_id
 from games.writes.playersession import reclassify_session as state_reclassification
 from games.writes.playersession import undo_reclassification
+
+logger = logging.getLogger("games")
 
 
 def _library_session(request: HttpRequest, session_id: UUID) -> PlayerSession:
@@ -116,6 +119,7 @@ def undo_reclassify_session(request: HttpRequest, session_id: UUID) -> HttpRespo
             correlation_id=new_correlation_id(),
         ),
         restored="Session restored.",
+        unchanged="That session was already back.",
         fallback="games:list_sessions",
     )
 
@@ -167,6 +171,14 @@ def review_url() -> str:
 NOT_WRITTEN = (
     "Only a session whose time was written down can be recorded as historical playtime."
 )
+NOT_AVAILABLE = "One of the sessions is no longer available, so it was left as it is."
+UNDER_THRESHOLD = (
+    f"A session shorter than {REVIEW_THRESHOLD_HOURS} hours is not one the "
+    "review offers, so it was left as it is."
+)
+
+#: A session key as the page posts it.
+type PostedKey = str
 
 
 def reviewable_sessions(library) -> PlayerSessionQuerySet:
@@ -189,14 +201,64 @@ def _reviewable(library, keys=None) -> list[PlayerSession]:
     )
 
 
+class Classified(NamedTuple):
+    """What the review offers, and why the rest are left."""
+
+    convertible: list[PlayerSession]
+    refused: list[tuple[PostedKey, str]]
+
+
+def _classified(library, posted: Sequence[PostedKey]) -> Classified:
+    """The review's rows; a sentence true of each other key."""
+    keys: dict[PostedKey, UUID] = {}
+    refused: list[tuple[PostedKey, str]] = []
+    for value in posted:
+        try:
+            keys[value] = UUID(value)
+        except ValueError:
+            refused.append((value, NOT_AVAILABLE))
+    convertible = _reviewable(library, list(keys.values()))
+    offered = {row.pk for row in convertible}
+    rest = {value: key for value, key in keys.items() if key not in offered}
+    live = library_sessions(library).in_bulk(list(rest.values()))
+    for value, key in rest.items():
+        row = live.get(key)
+        if row is None:
+            refused.append((value, NOT_AVAILABLE))
+        elif row.timing_mode != PlayerSessionTimingMode.DURATION_ONLY:
+            refused.append((value, NOT_WRITTEN))
+        else:
+            refused.append((value, UNDER_THRESHOLD))
+    return Classified(convertible, refused)
+
+
 def _convert_each(
-    request: HttpRequest, user: User, rows: Sequence[PlayerSession], token: str
+    request: HttpRequest,
+    user: User,
+    classified: Classified,
+    posted: int,
+    token: str,
 ) -> None:
-    """Convert each row; raise nothing, answer both counts."""
+    """Convert each row; a refusal is a sentence, a defect stops."""
     correlation_id = new_correlation_id()
-    converted = 0
-    refusals: list[str] = []
-    for row in rows:
+    recorded = 0
+    sentences: list[str] = []
+
+    def left(key: object, sentence: str) -> None:
+        if sentence not in sentences:
+            sentences.append(sentence)
+        #: The page prints sentences, not keys; the log holds both.
+        logger.info(
+            "Session %s of library %s was not recorded under %s: %s",
+            key,
+            user.library.pk,
+            correlation_id,
+            sentence,
+        )
+
+    for key, sentence in classified.refused:
+        left(key, sentence)
+    for row in classified.convertible:
         try:
             state_reclassification(
                 user,
@@ -206,16 +268,23 @@ def _convert_each(
                 correlation_id=correlation_id,
             )
         except CommandFailed as failure:
-            if failure.message not in refusals:
-                refusals.append(failure.message)
+            #: One type, two meanings; the status tells them apart.
+            if failure.status_code != CONFLICT_STATUS:
+                raise CommandFailed(
+                    f"{recorded} of {posted} sessions were recorded before a "
+                    "problem on our side stopped the request. The problem has "
+                    "been reported, and the review still lists the rest.",
+                    failure.status_code,
+                ) from failure
+            left(row.pk, failure.message)
             continue
-        converted += 1
+        recorded += 1
     notify(
         request,
-        f"{converted} of {len(rows)} sessions recorded as historical playtime.",
-        level=messages.SUCCESS if converted else messages.ERROR,
+        f"{recorded} of {posted} sessions recorded as historical playtime.",
+        level=messages.SUCCESS if recorded else messages.ERROR,
     )
-    for sentence in refusals:
+    for sentence in sentences:
         notify(request, sentence, level=messages.ERROR)
 
 
@@ -224,13 +293,15 @@ def reclassify_reviewed_sessions(request: HttpRequest) -> HttpResponse:
     user = cast(User, request.user)
     posted = request.POST.getlist("session")
     #: GET the filter; POST the page's keys.
-    rows = _reviewable(user.library, posted if request.method == "POST" else None)
-    if request.method == "POST" and len(posted) != len(rows):
-        messages.error(request, NOT_WRITTEN)
+    if request.method == "POST":
+        classified = _classified(user.library, posted)
+    else:
+        classified = Classified(_reviewable(user.library), [])
+    rows = classified.convertible
     token = request.POST.get("submission") or str(uuid.uuid7())
     return confirm_and_apply(
         request,
-        action=partial(_convert_each, request, user, rows, token),
+        action=partial(_convert_each, request, user, classified, len(posted), token),
         title="Record these sessions as historical playtime",
         message=(
             f"Record {len(rows)} written-down sessions of "
@@ -302,7 +373,8 @@ def PlaytimeReviewPanel(library, *, origin: OriginUrl) -> Node:
             "your longest session and your busiest day tell the truth again."
         ],
         P(class_="text-type-body text-body mb-4")[
-            "Nothing is thrown away, and every change offers an Undo."
+            "Nothing is thrown away. Moving one session offers an Undo; moving "
+            "all of them at once does not yet."
         ],
         Div(class_="flex flex-wrap items-center gap-2")[
             ControlButton(href=review_url(), color="gray")["See these sessions"],

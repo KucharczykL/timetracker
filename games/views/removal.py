@@ -23,9 +23,10 @@ from common.components.core import Children
 from common.layout import render_page
 from common.notices import ToastAction, Undo, notify
 from common.returns import UrlName
+from games.events.dispatch import CommandOutcome, CommandResult
 from games.removal import remove
 from games.views.returns import return_url
-from games.writes.answers import CONFLICT_STATUS, CommandFailed
+from games.writes.answers import CONFLICT_STATUS, DEFECT_STATUS, CommandFailed
 
 
 class UndoOffer(NamedTuple):
@@ -77,6 +78,8 @@ def confirm_and_apply(
                     request, fallback=fallback, fallback_args=fallback_args
                 ),
                 confirm_label=confirm_label,
+                #: A defect admits no second press.
+                confirm=status != DEFECT_STATUS,
             ),
             title=title,
             status=status,
@@ -152,15 +155,20 @@ def restore_and_return(
     fallback: UrlName,
     fallback_args: Sequence[Any] = (),
     retry: bool = False,
+    unchanged: str | None = None,
 ) -> HttpResponse:
     """Run ``action``, say so, return; a refusal is an error message.
 
     ``retry`` puts a "Try again" action on that message, posting to
     this same route: for a restore whose halfway a second press ends.
     A defect admits no second press.
+
+    ``unchanged`` is said instead of ``restored`` when the action
+    answers a `CommandResult` that appended nothing, so a second
+    press does not report a restore that did not occur.
     """
     try:
-        action()
+        answer = action()
     except CommandFailed as refusal:
         offered = retry and refusal.status_code == CONFLICT_STATUS
         notify(
@@ -172,5 +180,12 @@ def restore_and_return(
             else None,
         )
     else:
-        messages.success(request, restored)
+        if (
+            unchanged is not None
+            and isinstance(answer, CommandResult)
+            and answer.outcome is CommandOutcome.UNCHANGED
+        ):
+            messages.info(request, unchanged)
+        else:
+            messages.success(request, restored)
     return redirect(return_url(request, fallback=fallback, fallback_args=fallback_args))

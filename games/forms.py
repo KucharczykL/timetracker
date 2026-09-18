@@ -1134,7 +1134,6 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
 
     playthroughs = forms.ModelMultipleChoiceField(
         queryset=Playthrough.objects.none(),
-        required=False,
         widget=CheckboxListWidget,
         label="Playthroughs",
     )
@@ -1230,7 +1229,11 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         """What the valid form states."""
         cleaned = self.cleaned_data
         duration: datetime.timedelta = cleaned["duration"]
-        held = None if self.record is None else self.record.duration
+        held = None
+        if self.record is not None:
+            held = self.record.duration
+        elif self.session is not None:
+            held = self.session.effective_duration
         if (
             held is not None
             and self._every_duration_part_posted()
