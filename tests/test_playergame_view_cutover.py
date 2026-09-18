@@ -378,8 +378,9 @@ def test_refunding_abandons_every_game_under_one_correlation_id(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_failed_refund_answers_409_and_swaps_nothing(
-    logged_in, owned_user, owned_library, monkeypatch
+@pytest.mark.parametrize("status", [CONFLICT_STATUS, DEFECT_STATUS])
+def test_a_failed_refund_answers_the_refusals_status_and_swaps_nothing(
+    logged_in, owned_user, owned_library, monkeypatch, status
 ):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track_game(owned_user, game, correlation_id=new_correlation_id())
@@ -392,14 +393,14 @@ def test_a_failed_refund_answers_409_and_swaps_nothing(
     purchase.games.set([game])
 
     def refuse(*args, **kwargs):
-        raise CommandFailed("Nothing was recorded; try again.", 409)
+        raise CommandFailed("Nothing was recorded; try again.", status)
 
     #: Patched where the call is made, not where it is named.
     monkeypatch.setattr("games.views.playergame_writes.record_facts", refuse)
     response = logged_in.post(reverse("games:refund_purchase", args=[purchase.id]))
 
     #: htmx swaps nothing outside 2xx, so the row stands.
-    assert response.status_code == 409
+    assert response.status_code == status
     assert response.content == b""
     assert "show-toast" in response.headers["HX-Trigger"]
     purchase.refresh_from_db()
@@ -445,8 +446,9 @@ def test_a_failed_edit_re_renders_the_form(logged_in, tracked_game, monkeypatch)
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("status", [CONFLICT_STATUS, DEFECT_STATUS])
 def test_a_partly_applied_refund_says_how_far_it_went(
-    logged_in, owned_user, owned_library, monkeypatch
+    logged_in, owned_user, owned_library, monkeypatch, status
 ):
     from games.views import playergame_writes
 
@@ -469,13 +471,13 @@ def test_a_partly_applied_refund_says_how_far_it_went(
     def refuse_the_second(*args, **kwargs):
         calls.append(None)
         if len(calls) > 1:
-            raise CommandFailed("Nothing was recorded; try again.", 409)
+            raise CommandFailed("Nothing was recorded; try again.", status)
         return record_facts(*args, **kwargs)
 
     monkeypatch.setattr(playergame_writes, "record_facts", refuse_the_second)
     response = logged_in.post(reverse("games:refund_purchase", args=[purchase.id]))
 
-    assert response.status_code == 409
+    assert response.status_code == status
     #: The first game is abandoned and stays that way, so the
     #: toast has to say so rather than claim nothing landed.
     assert "1 of 2 games were abandoned" in response.headers["HX-Trigger"]
