@@ -1,6 +1,6 @@
 """Undo posts to a restore route; the route puts the row back and returns."""
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.contrib.messages import get_messages
@@ -10,6 +10,7 @@ from session_rows import session_row
 from stated_runs import another_run
 
 from common.returns import action_url
+from games.commands.session_reclassification import statement_from_session
 from games.models import (
     Device,
     FilterPreset,
@@ -27,6 +28,9 @@ from games.removal import remove
 from games.writes.answers import DEFECT_STATUS, CommandFailed
 from games.writes.historical_playtime import remove_historical_playtime
 from games.writes.playergame import new_correlation_id
+from games.writes.playersession import (
+    reclassify_session as state_reclassification,
+)
 from games.writes.playersession import remove_session
 from games.writes.playthrough import remove_run
 
@@ -58,6 +62,23 @@ def game(owned_library):
 def _removed_session(user, game):
     row = library_sessions(user.library).get(playthrough__player_game__game=game)
     remove_session(user, row, correlation_id=new_correlation_id())
+    return row
+
+
+def _reclassified_session(user, game):
+    """A session that became a record, which the undo returns."""
+    row = session_row(
+        game,
+        started_at=datetime(2024, 6, 2, 12, tzinfo=UTC),
+        duration_manual=timedelta(hours=9),
+    )
+    state_reclassification(
+        user,
+        row,
+        statement_from_session(row),
+        idempotency_key=f"reclassify-{row.pk}",
+        correlation_id=new_correlation_id(),
+    )
     return row
 
 
@@ -123,6 +144,7 @@ ROUTES = [
     ("games:restore_device", _removed_device, "games:list_devices"),
     ("games:restore_preset", _removed_preset, "games:list_games"),
     ("games:restore_historical_playtime", _removed_record, None),
+    ("games:undo_reclassify_session", _reclassified_session, "games:list_sessions"),
 ]
 
 
