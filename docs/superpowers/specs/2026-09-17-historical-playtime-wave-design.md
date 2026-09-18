@@ -144,12 +144,13 @@ that has a duration, and refuses a running Timed row.
 The event is not `removed`, because a removed session can be restored:
 `RestoreSession` exists, #695's Undo reaches it, and the Trash (#795) will.
 Restoring a reclassified session would count its hours twice while the record
-stands. The projector marks `removed_at` and a new `reclassified_into` column
-on the session row, so every `alive()` read excludes it as before, and
-`RestoreSession` refuses a row whose `reclassified_into` names a live record,
-with a sentence naming it. The undo of the pair is `RemoveHistoricalPlaytime`
-then `RestoreSession`, which the refusal then admits, under one correlation id;
-`restored` clears both columns.
+stands. The projector marks `removed_at` on the session row, so every `alive()` read
+excludes it as before; the record names the session in
+`HistoricalPlaytime.reclassified_from`, and `RestoreSession` refuses a row a
+live record was made from, with a sentence naming it. The undo of the pair is
+one command, `UndoSessionReclassification`, which removes the record and
+restores the session under one lock; `restored` clears the mark and the
+record keeps its reference.
 
 ### Projections
 

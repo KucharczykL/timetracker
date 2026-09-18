@@ -212,13 +212,16 @@ nullable `DateTimeField`. Thus `started` beside `start_recorded_at`, and
 the participle. Null in the stated column is only a time nobody knows; null in
 the record column is the act that did not occur.
 
-An act that includes a removal states the removal's mark and adds its own
-reference. It does not add a second mark. Thus `reclassified_into` beside
-`removed_at`, where a session became a historical playtime record: every scope
-that hides a removed session already reads the one mark, and a second mark
-would make each of them ask two questions to answer one. The reference says
-which act did the removing, and it stays after a restore, so the row and the
-record it became can refuse to be live at the same time.
+An act that includes a removal states the removal's mark and adds no second
+mark: every scope that hides a removed row already reads the one mark, and a
+second would make each of them ask two questions to answer one. The act's own
+reference lives on the row the act created, not beside the mark. Thus
+`HistoricalPlaytime.reclassified_from`, where a session became a historical
+playtime record: one session can become a record more than once, and a column
+on the session would hold only the latest link, so a guard that read it would
+go blind to the earlier record. The reference on the record cannot be
+overwritten, it outlives every restore, and the session and each record made
+from it refuse to be live at the same time.
 
 A fact about the world and a retraction of a record are two acts, thus they take
 two verbs. An end of access and a refund are facts. A void is a retraction.

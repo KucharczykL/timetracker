@@ -422,7 +422,7 @@ ARGS ?=
 
 # `test-fast` and `test-e2e` each pin a directory, so an ARGS path would be
 # collected *beside* it rather than instead of it -- naming one file still ran
-# the whole suite. A word holding a separator is a path, so it replaces the
+# the whole suite. A word holding `/` is a path, so it replaces the
 # pinned directory; a bare flag and its value (`-k relation`) hold none and
 # narrow the default scope as before.
 ARGS_PATHS = $(strip $(foreach word,$(ARGS),$(if $(findstring /,$(word)),$(word),)))

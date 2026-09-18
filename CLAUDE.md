@@ -336,8 +336,24 @@ docs/           — Additional documentation
   sentences (`_refuse_under_a_removed_parent`). Every other session command
   resolves through `_live_session`, so removed session refuses end,
   correction, description and move alike. Remove route calls first; restore
-  has no route until #695. Contract is
+  has no route until #695. `RestoreSession` also refuses while a live record
+  was made from the session (#1098). Contract is
   [Remove and restore a session](docs/superpowers/specs/2026-09-14-issue-694-session-removal-design.md)
+
+  #1098's `ReclassifySessionAsHistoricalPlaytime` moves a written-down
+  session's hours to a record in one command: `historicalplaytime.created`
+  carrying the session as `reclassified_from`, then
+  `playersession.reclassified`, which projects `removed_at` alone. Session and
+  every record made from it: at most one live, kept by `RestoreSession`,
+  `RestoreHistoricalPlaytime` and the reclassify itself.
+  `UndoSessionReclassification` decides by marks alone -- never reclassified
+  refused, already undone `Unchanged`, record restated since refused whole,
+  removed parent refused -- then appends each event still to happen. Library
+  page's Playtime section reviews Duration-only rows of
+  `REVIEW_THRESHOLD_HOURS` or longer; the confirmation converts posted keys
+  the review names, answers with the posted count as denominator, and a
+  defect stops it on a page with no submit. Contract is
+  [Reclassify a session](docs/superpowers/specs/2026-09-18-issue-1098-session-reclassification-design.md)
 
   #700 converted every legacy `Session` row into these events, under the
   row's own id, with one imported-history bucket per game whose rows named
@@ -400,9 +416,10 @@ docs/           — Additional documentation
   [Pass the Session replay, statistics and budget gates](docs/superpowers/specs/2026-09-15-issue-704-session-gates-design.md)
 - **HistoricalPlaytime** — fourth projection: playtime a library states
   without sittings, written only by `HistoricalPlaytimes` projector.
-  `library.historicalplaytime.created`/`.restated` share one whole-statement
-  payload and a restatement overwrites every column; `.removed`/`.restored`
-  move `removed_at`. Names a `PlayerGame` and one or more of its runs through
+  `library.historicalplaytime.created`/`.restated` carry one whole-statement
+  payload, `created` with an optional `reclassified_from` beside it, and a
+  restatement overwrites every column and stamps `restated_at`;
+  `.removed`/`.restored` move `removed_at`. Names a `PlayerGame` and one or more of its runs through
   `HistoricalPlaytimeRun`, a join whose row ids the payload carries so a
   replay reproduces them; projector replaces the set whole. `when` is
   envelope's `effective_time`, null unknown, with generated
