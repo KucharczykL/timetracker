@@ -13,6 +13,7 @@ from django.urls import reverse
 from django.utils import timezone
 from historical_playtime_rows import record_row
 from session_rows import session_row, tracked_run
+from statistic_cards import statistic_card
 
 from common.components import PageTab, PageTabs, StatisticCard
 from common.returns import action_url
@@ -56,6 +57,7 @@ def test_a_statistic_card_states_its_title_only_when_given():
 
 # ── The pages ──────────────────────────────────────────────────────────────
 
+HOUR = timedelta(hours=1)
 HISTORICAL = "games:list_historical_playtime"
 
 
@@ -277,7 +279,8 @@ class TestHistoricalList:
 def test_the_library_card_states_live_playtime_only(client, owner, django_user_model):
     library = owner.library
     run = tracked_run(library, Game.objects.create(library=library, name="G"))
-    session_row(run.player_game.game, started_at=timezone.now())
+    started = timezone.now() - timedelta(hours=2)
+    session_row(run.player_game.game, started_at=started, ended_at=started + HOUR)
     record_row([run])
     record_row([run])
     removed = record_row([run])
@@ -287,12 +290,15 @@ def test_the_library_card_states_live_playtime_only(client, owner, django_user_m
 
     body = client.get(reverse("games:library")).content.decode()
 
-    #: Two live records of an hour each; the removed one and the other
-    #: library's are outside the figure.
-    assert "2.0 h" in body
-    assert "</span> historical" in body
-    assert 'title="Tracked sessions and historical records"' in body
-    assert 'aria-label="3 Playtime"' not in body
+    card = statistic_card(body, "Playtime")
+    #: One tracked hour and two live records of an hour each. The removed
+    #: record and the other library's are outside the figure.
+    assert "3.0 h" in card
+    assert "1.0 h" in card
+    assert "</span> tracked" in card
+    assert "2.0 h" in card
+    assert "</span> historical" in card
+    assert 'title="Tracked sessions and historical records"' in card
 
 
 def test_every_provenance_has_a_tone():

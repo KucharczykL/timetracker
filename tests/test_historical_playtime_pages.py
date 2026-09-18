@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 from historical_playtime_rows import record_row
 from session_rows import session_row, tracked_run
+from statistic_cards import statistic_card
 
 from games.models import Game, Platform
 from games.views.general import model_counts
@@ -185,12 +186,12 @@ def test_the_library_playtime_card_states_the_split_and_no_link(client, owned_us
     client.force_login(owned_user)
 
     body = client.get(reverse("games:library")).content.decode()
+    card = statistic_card(body, "Playtime")
 
-    assert 'title="Tracked sessions and historical records"' in body
-    assert "3.0 h" in body
-    assert "</span> tracked" in body
-    assert "</span> historical" in body
-    #: The card stated a count of two populations before, and linked to a
-    #: list that shows one of them.
-    assert 'aria-label="3 Playtime"' not in body
-    assert 'title="Sessions and historical records"' not in body
+    assert 'title="Tracked sessions and historical records"' in card
+    assert "3.0 h" in card
+    assert "</span> tracked" in card
+    assert "</span> historical" in card
+    #: The session list shows only one of the two populations the figure
+    #: sums, so the card states it and links nowhere.
+    assert "<a " not in card

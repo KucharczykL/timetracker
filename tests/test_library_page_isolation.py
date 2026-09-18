@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 from historical_playtime_rows import record_row
 from session_rows import session_row, timed_row, tracked_run
+from statistic_cards import statistic_card
 
 from common.duration_presentation import duration_presentation_for_request
 from common.layout import recent_session_resumes
@@ -43,15 +44,24 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
     foreign_game = Game.objects.create(library=other.library, name="Foreign game")
     Device.objects.create(library=owner.library, name="Owned device")
     Device.objects.create(library=other.library, name="Foreign device")
-    started_at = timezone.now() - timedelta(hours=2)
-    timed_row(tracked_run(owner.library, owned_game), started_at, None)
+    started_at = timezone.now() - timedelta(hours=12)
+    #: Three distinct durations, so the figure states which rows it read.
     timed_row(
         tracked_run(owner.library, owned_game),
         started_at,
-        None,
+        started_at + timedelta(hours=1),
+    )
+    timed_row(
+        tracked_run(owner.library, owned_game),
+        started_at,
+        started_at + timedelta(hours=5),
         removed_at=timezone.now(),
     )
-    timed_row(tracked_run(other.library, foreign_game), started_at, None)
+    timed_row(
+        tracked_run(other.library, foreign_game),
+        started_at,
+        started_at + timedelta(hours=9),
+    )
     client.force_login(owner)
 
     response = client.get("/tracker/library")
@@ -63,7 +73,14 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
     assert "Games currently includes every game in your library." in body
     assert str(owner.library.pk) in body
     assert "1 Games" in body
-    assert 'title="Tracked sessions and historical records"' in body
+    playtime_card = statistic_card(body, "Playtime")
+    assert 'title="Tracked sessions and historical records"' in playtime_card
+    #: The owner's live hour alone. The removed row would read 6.0 h, the
+    #: other library's 10.0 h, and both 15.0 h.
+    assert "1.0 h" in playtime_card
+    assert "6.0 h" not in playtime_card
+    assert "10.0 h" not in playtime_card
+    assert "15.0 h" not in playtime_card
     assert "1 Devices" in body
     assert 'data-setting-key="default-device"' in body
     assert 'data-setting-source="library"' in body
