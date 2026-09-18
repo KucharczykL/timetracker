@@ -1,10 +1,11 @@
 """The form parses and narrows choices; the command decides."""
 
 import uuid
-from datetime import timedelta
+from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.utils import timezone
 from historical_playtime_posts import posted_record
 from stated_runs import another_run
 
@@ -13,7 +14,7 @@ from common.date_time_presentation import (
     DateTimePresentation,
 )
 from games.commands.historical_playtime import (
-    AT_LEAST_ONE_RUN,
+    AT_LEAST_A_SECOND,
     WHEN_NO_SUCH_DATE,
     HistoricalPlaytimeStatement,
     RecordHistoricalPlaytime,
@@ -310,7 +311,7 @@ def test_recording_answers_the_new_id(owned_user, game, run):
 
 
 def test_a_refusal_is_an_answer(owned_user, game, run):
-    bound = form(owned_user.library, game, posted_record([]))
+    bound = form(owned_user.library, game, posted_record([run.pk], hours="0"))
     assert bound.is_valid(), bound.errors
     with pytest.raises(CommandFailed) as failed:
         record_historical_playtime(
@@ -319,7 +320,14 @@ def test_a_refusal_is_an_answer(owned_user, game, run):
             idempotency_key=bound.submission_key(),
             correlation_id=uuid.uuid7(),
         )
-    assert failed.value.message == AT_LEAST_ONE_RUN
+    assert failed.value.message == AT_LEAST_A_SECOND
+
+
+def test_no_playthrough_is_a_field_error(owned_library, game, run):
+    """The field names what is missing."""
+    bound = form(owned_library, game, posted_record([]))
+    assert not bound.is_valid()
+    assert "playthroughs" in bound.errors
 
 
 def test_edit_renders_the_stored_hours_and_minutes(
@@ -401,3 +409,144 @@ def test_add_renders_a_fresh_key_and_edit_none(owned_user, owned_library, game, 
     assert first != second
     record = recorded(owned_user, [run.pk])
     assert "submission" not in form(owned_library, game, record=record).fields
+
+
+# --- Seeding from a session ---------------------------------------------------
+
+
+def a_session(library, run, **columns):
+    from session_rows import duration_only_row
+
+    return duration_only_row(
+        run, date(2026, 3, 5), timedelta(hours=9, minutes=30), **columns
+    )
+
+
+def test_a_session_seeds_its_own_run_and_not_the_latest(
+    owned_user, owned_library, game, run
+):
+    """The seed wins over the Add default."""
+    another = another_run(owned_user, game)
+    session = a_session(owned_library, run)
+
+    bound = HistoricalPlaytimeForm(
+        library=owned_library, game=game, presentation=PRESENTATION, session=session
+    )
+
+    assert bound.initial["playthroughs"] == [str(run.pk)]
+    assert str(another.pk) != str(run.pk)
+
+
+def test_a_session_seeds_every_fact_it_states(owned_library, game, run):
+    device = Device.objects.create(library=owned_library, name="Vita")
+    session = a_session(owned_library, run, device=device, note="off a screenshot")
+
+    bound = HistoricalPlaytimeForm(
+        library=owned_library, game=game, presentation=PRESENTATION, session=session
+    )
+
+    assert bound.initial["duration"] == timedelta(hours=9, minutes=30)
+    assert bound.initial["when"].canonical == "2026-03-05"
+    assert bound.initial["device"] == device.pk
+    assert bound.initial["note"] == "off a screenshot"
+    assert (
+        bound.initial["provenance"]
+        == HistoricalPlaytimeProvenance.MANUALLY_ENTERED.value
+    )
+
+
+def test_a_session_in_the_bucket_posted_without_a_run_is_a_field_error(
+    owned_user, owned_library, game, run
+):
+    bucket = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+    session = a_session(owned_library, bucket)
+    bound = HistoricalPlaytimeForm(
+        posted_record([], hours="9", minutes="30"),
+        library=owned_library,
+        game=game,
+        presentation=PRESENTATION,
+        session=session,
+    )
+
+    assert not bound.is_valid()
+    assert "playthroughs" in bound.errors
+
+
+def test_a_session_keeps_its_seconds_when_the_minutes_are_unchanged(
+    owned_library, game, run
+):
+    from session_rows import duration_only_row
+
+    session = duration_only_row(
+        run, date(2026, 3, 5), timedelta(hours=9, minutes=30, seconds=7)
+    )
+    bound = HistoricalPlaytimeForm(
+        posted_record([run.pk], hours="9", minutes="30"),
+        library=owned_library,
+        game=game,
+        presentation=PRESENTATION,
+        session=session,
+    )
+
+    assert bound.is_valid(), bound.errors
+    assert bound.statement().duration == timedelta(hours=9, minutes=30, seconds=7)
+
+
+def test_a_session_takes_the_provenance_the_caller_states(owned_library, game, run):
+    session = a_session(owned_library, run)
+
+    bound = HistoricalPlaytimeForm(
+        library=owned_library,
+        game=game,
+        presentation=PRESENTATION,
+        session=session,
+        provenance=HistoricalPlaytimeProvenance.ESTIMATED,
+    )
+
+    assert bound.initial["provenance"] == HistoricalPlaytimeProvenance.ESTIMATED.value
+
+
+def test_a_session_keeps_its_removed_device_among_the_choices(owned_library, game, run):
+    device = Device.objects.create(library=owned_library, name="Vita")
+    session = a_session(owned_library, run, device=device)
+    remove(device)
+
+    bound = HistoricalPlaytimeForm(
+        library=owned_library, game=game, presentation=PRESENTATION, session=session
+    )
+
+    assert device in bound.fields["device"].queryset
+
+
+def test_a_session_form_still_states_a_submission(owned_library, game, run):
+    """No Unchanged; a repeat needs the key."""
+    session = a_session(owned_library, run)
+
+    bound = HistoricalPlaytimeForm(
+        library=owned_library, game=game, presentation=PRESENTATION, session=session
+    )
+
+    assert "submission" in bound.fields
+    assert bound.initial["submission"]
+
+
+def test_a_record_and_a_session_together_are_refused(
+    owned_library, game, run, owned_user
+):
+    record = recorded(owned_user, [run.pk])
+    session = a_session(owned_library, run)
+
+    with pytest.raises(TypeError):
+        HistoricalPlaytimeForm(
+            library=owned_library,
+            game=game,
+            presentation=PRESENTATION,
+            record=record,
+            session=session,
+        )

@@ -127,6 +127,134 @@ class TestModifier:
         assert Modifier.EXCLUDES in modes
 
 
+class TestInclusiveComparisons:
+    """Both inclusive members: numbers yes, dates no."""
+
+    def test_for_numbers_offers_both(self):
+        assert Modifier.GREATER_THAN_OR_EQUAL in Modifier.for_numbers()
+        assert Modifier.LESS_THAN_OR_EQUAL in Modifier.for_numbers()
+
+    def test_for_dates_offers_neither(self):
+        """Two boxes emit neither."""
+        assert Modifier.GREATER_THAN_OR_EQUAL not in Modifier.for_dates()
+        assert Modifier.LESS_THAN_OR_EQUAL not in Modifier.for_dates()
+        assert set(Modifier.for_dates()) < set(Modifier.for_numbers())
+
+    def test_int_criterion(self):
+        assert IntCriterion(value=10, modifier=Modifier.GREATER_THAN_OR_EQUAL).to_q(
+            "session_count"
+        ) == Q(session_count__gte=10)
+        assert IntCriterion(value=10, modifier=Modifier.LESS_THAN_OR_EQUAL).to_q(
+            "session_count"
+        ) == Q(session_count__lte=10)
+
+    def test_float_criterion(self):
+        assert FloatCriterion(value=2.5, modifier=Modifier.GREATER_THAN_OR_EQUAL).to_q(
+            "price"
+        ) == Q(price__gte=2.5)
+        assert FloatCriterion(value=2.5, modifier=Modifier.LESS_THAN_OR_EQUAL).to_q(
+            "price"
+        ) == Q(price__lte=2.5)
+
+    @pytest.mark.parametrize(
+        "modifier", [Modifier.GREATER_THAN_OR_EQUAL, Modifier.LESS_THAN_OR_EQUAL]
+    )
+    def test_a_date_criterion_refuses_both(self, modifier):
+        with pytest.raises(FilterError):
+            DateCriterion(value="2025-06-01", modifier=modifier).to_q("date_purchased")
+
+    def test_numeric_annotation(self):
+        from common.criteria import _numeric_to_q
+
+        assert _numeric_to_q(
+            5, None, Modifier.GREATER_THAN_OR_EQUAL, "session_count"
+        ) == Q(session_count__gte=5)
+        assert _numeric_to_q(
+            5, None, Modifier.LESS_THAN_OR_EQUAL, "session_count"
+        ) == Q(session_count__lte=5)
+
+    def test_duration_hours(self):
+        from datetime import timedelta
+
+        from common.criteria import duration_hours_to_q
+
+        assert duration_hours_to_q(
+            8, None, Modifier.GREATER_THAN_OR_EQUAL, "effective_duration"
+        ) == Q(effective_duration__gte=timedelta(hours=8))
+        assert duration_hours_to_q(
+            8, None, Modifier.LESS_THAN_OR_EQUAL, "effective_duration"
+        ) == Q(effective_duration__lte=timedelta(hours=8))
+
+    @pytest.mark.parametrize(
+        "modifier", [Modifier.GREATER_THAN_OR_EQUAL, Modifier.LESS_THAN_OR_EQUAL]
+    )
+    def test_a_temporal_endpoint_refuses_both(self, modifier):
+        from common.criteria import temporal_interval_handler
+
+        handler = temporal_interval_handler("started", "started_lower", "started_upper")
+        with pytest.raises(FilterError):
+            handler(DateCriterion(value="2025-06-01", modifier=modifier))
+
+    def test_days_touched(self):
+        from datetime import timedelta
+
+        from django.db.models import F
+
+        from common.criteria import days_touched_handler
+
+        handler = days_touched_handler("started_lower", "completed_upper")
+        known = (
+            Q(started_lower__isnull=False)
+            & Q(completed_upper__isnull=False)
+            & Q(completed_upper__gte=F("started_lower"))
+        )
+        span_end = F("started_lower") + timedelta(days=2)
+        assert handler(
+            IntCriterion(value=3, modifier=Modifier.GREATER_THAN_OR_EQUAL)
+        ) == known & Q(completed_upper__gte=span_end)
+        assert handler(
+            IntCriterion(value=3, modifier=Modifier.LESS_THAN_OR_EQUAL)
+        ) == known & Q(completed_upper__lte=span_end)
+
+
+@pytest.mark.django_db
+class TestDurationHoursThresholdAgainstDB:
+    """The review's predicate: eight hours or longer."""
+
+    @staticmethod
+    def _matching(library, modifier):
+        from games.filters import (
+            PlayerSessionFilter,
+            filter_query_context_for_library,
+        )
+        from games.reads.player_sessions import library_sessions
+
+        session_filter = PlayerSessionFilter.from_json(
+            {"duration_hours": {"value": 8, "modifier": modifier}}
+        )
+        return set(
+            execute_filter(
+                session_filter,
+                library_sessions(library),
+                filter_query_context_for_library(library),
+            )
+        )
+
+    def test_at_least_includes_the_threshold_itself(self, owned_library):
+        from datetime import datetime, timedelta
+
+        from games.models import Game
+
+        game = Game.objects.create(library=owned_library, name="Long")
+        start = datetime(2026, 3, 1, 10, tzinfo=UTC)
+        exactly_eight = session_row(
+            game, started_at=start, ended_at=start + timedelta(hours=8)
+        )
+
+        assert self._matching(owned_library, "GREATER_THAN_OR_EQUAL") == {exactly_eight}
+        assert self._matching(owned_library, "GREATER_THAN") == set()
+
+
 class TestStringCriterion:
     def test_equals(self):
         c = StringCriterion(value="zelda", modifier=Modifier.EQUALS)

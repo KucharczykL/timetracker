@@ -7,6 +7,7 @@ import pytest
 from django.apps import apps as global_apps
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from session_rows import duration_only_row
 
 from games.checks import check_projection_models
 from games.commands.playergame import TrackGame
@@ -25,6 +26,7 @@ from games.models import (
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
     HistoricalPlaytimeRun,
+    LibraryEvent,
     PlayerGame,
     Playthrough,
     PlaythroughKind,
@@ -202,6 +204,102 @@ def a_created(tracked, runs, **stated):
         emulated=stated.get("emulated", False),
         note=stated.get("note", ""),
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_restatement_marks_the_row_and_a_second_moves_the_mark(
+    owned_user, owned_library, tracked, run
+):
+    created = a_created(tracked, [run])
+    append(owned_library, owned_user, created, key="create")
+    assert HistoricalPlaytime.objects.get().restated_at is None
+
+    def restated(note: str):
+        return historicalplaytime_restated(
+            created.aggregate_id,
+            player_game_id=tracked.pk,
+            runs=created.payload["playthroughs"],
+            duration=timedelta(hours=1),
+            when=TemporalValue.parse("2005"),
+            provenance="estimated",
+            device=None,
+            emulated=False,
+            note=note,
+        )
+
+    append(owned_library, owned_user, restated("once"), key="restate-1")
+    first = HistoricalPlaytime.objects.get().restated_at
+    append(owned_library, owned_user, restated("twice"), key="restate-2")
+    second = HistoricalPlaytime.objects.get().restated_at
+
+    assert first is not None
+    assert second is not None
+    assert second > first
+    assert second == LibraryEvent.objects.latest("sequence").recorded_at
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_creation_names_the_session_it_came_from(
+    owned_user, owned_library, tracked, run
+):
+    session = duration_only_row(run, date(2026, 3, 5), timedelta(hours=9))
+    created = historicalplaytime_created(
+        player_game_id=tracked.pk,
+        runs=[{"id": str(uuid.uuid7()), "playthrough": str(run.pk)}],
+        duration=timedelta(hours=9),
+        when=TemporalValue.parse("2026-03-05"),
+        provenance="manually_entered",
+        device=None,
+        emulated=False,
+        note="",
+        reclassified_from=session.pk,
+    )
+
+    append(owned_library, owned_user, created, key="create")
+
+    assert HistoricalPlaytime.objects.get().reclassified_from_id == session.pk
+    assert a_record(tracked).reclassified_from_id is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_migration_states_restated_at_as_the_replay_does(
+    owned_user, owned_library, tracked, run
+):
+    """The backfill reads the stream as replay does."""
+    import importlib
+
+    from django.db import connection
+
+    migration = importlib.import_module(
+        "games.migrations.0011_historicalplaytime_reclassified_from"
+    )
+    created = a_created(tracked, [run])
+    append(owned_library, owned_user, created, key="create")
+    for note in ("once", "twice"):
+        append(
+            owned_library,
+            owned_user,
+            historicalplaytime_restated(
+                created.aggregate_id,
+                player_game_id=tracked.pk,
+                runs=created.payload["playthroughs"],
+                duration=timedelta(hours=1),
+                when=TemporalValue.parse("2005"),
+                provenance="estimated",
+                device=None,
+                emulated=False,
+                note=note,
+            ),
+            key=f"restate-{note}",
+        )
+    replayed = HistoricalPlaytime.objects.get().restated_at
+    HistoricalPlaytime.objects.update(restated_at=None)
+
+    with connection.schema_editor() as editor:
+        migration.state_restated_at(None, editor)
+
+    assert HistoricalPlaytime.objects.get().restated_at == replayed
+    assert replayed is not None
 
 
 def a_second_run(owned_library, tracked) -> Playthrough:

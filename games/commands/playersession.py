@@ -43,6 +43,7 @@ from games.events.playersession import (
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import (
+    HistoricalPlaytime,
     PlayerSession,
     PlayerSessionTimingMode,
     Playthrough,
@@ -52,6 +53,15 @@ from games.projectors.playersession import TimingColumns, columns_for_timing
 from games.reads.calendar import calendar_day_zone
 
 OUT_OF_RANGE = "That time is outside the range we can record."
+
+SESSION_REMOVED = (
+    "That session was removed from your library. Restore it before recording this."
+)
+#: One rule, both directions: hours stated once.
+RECORD_STILL_LIVE = (
+    "That session is already recorded as historical playtime. Undo that "
+    "first, and the session comes back with it."
+)
 
 #: The bucket is the importer's; a person records on a run.
 INTO_THE_BUCKET = (
@@ -180,6 +190,10 @@ def _check_representable(instant: datetime, *zones: tzinfo | None) -> None:
             ) from None
 
 
+class SessionNotHeld(CommandRejected):
+    """The library holds no such session."""
+
+
 def library_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSession:
     """This library's session, or a refusal."""
     return library_row(
@@ -192,6 +206,7 @@ def library_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSes
                 "belongs to a session the library records."
             ),
             sentence="That session is not available.",
+            raises=SessionNotHeld,
         ),
         pk=session_id,
     )
@@ -222,10 +237,7 @@ def _live_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSessi
         raise CommandRejected(
             f"This library removed session {session_id}, so it states no "
             "further facts about it.",
-            sentence=(
-                "That session was removed from your library. Restore it "
-                "before recording this."
-            ),
+            sentence=SESSION_REMOVED,
         )
     return session
 
@@ -786,6 +798,42 @@ class RemoveSession(Command):
         return [playersession_removed(session.pk)]
 
 
+def live_record_from(
+    context: CommandContext, session: PlayerSession
+) -> HistoricalPlaytime | None:
+    """The live record from the session; two, defect."""
+    records = list(
+        HistoricalPlaytime.objects.filter(
+            library=context.library,
+            reclassified_from=session,
+            removed_at__isnull=True,
+        )
+    )
+    if len(records) > 1:
+        raise RowUnreadable(
+            f"Session {session.pk} of library {context.library.pk} has "
+            f"{len(records)} live records made from it, "
+            f"{', '.join(str(record.pk) for record in records)}; at most one "
+            "is admitted, and no command states a fact over two."
+        )
+    return records[0] if records else None
+
+
+def _refuse_beside_a_live_record(
+    context: CommandContext, session: PlayerSession
+) -> None:
+    """Refuse a restore that double counts."""
+    #: Under dispatch's lock: neither mark can move.
+    record = live_record_from(context, session)
+    if record is not None:
+        raise CommandRejected(
+            f"Session {session.pk} became historical playtime record "
+            f"{record.pk}, which is live, so restoring the session would "
+            "count its hours twice.",
+            sentence=RECORD_STILL_LIVE,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class RestoreSession(Command):
     """Put a removed session back."""
@@ -800,4 +848,5 @@ class RestoreSession(Command):
         if session.removed_at is None:
             return Unchanged(f"This library did not remove session {self.session_id}.")
         _refuse_under_a_removed_parent(context, session)
+        _refuse_beside_a_live_record(context, session)
         return [playersession_restored(session.pk)]

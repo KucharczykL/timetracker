@@ -45,6 +45,7 @@ from games.commands.playersession import (
     TimedTiming,
     TimingStatement,
 )
+from games.commands.session_reclassification import statement_from_session
 from games.dev_login import prefill_credentials
 from games.events.idempotency import IdempotencyKey
 from games.models import (
@@ -1133,7 +1134,6 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
 
     playthroughs = forms.ModelMultipleChoiceField(
         queryset=Playthrough.objects.none(),
-        required=False,
         widget=CheckboxListWidget,
         label="Playthroughs",
     )
@@ -1158,12 +1158,26 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         game: Game,
         presentation: DateTimePresentation,
         record: HistoricalPlaytime | None = None,
+        session: PlayerSession | None = None,
+        provenance: HistoricalPlaytimeProvenance = (
+            HistoricalPlaytimeProvenance.MANUALLY_ENTERED
+        ),
         **kwargs,
     ):
+        if record is not None and session is not None:
+            raise TypeError(
+                "A historical playtime form seeds from a record or from a "
+                "session, never from both."
+            )
         initial = dict(kwargs.pop("initial", None) or {})
-        initial.update(_record_initial(library, game, record))
+        #: The seed overwrites a caller's initial.
+        #: A caller passing `playthroughs` as an initial loses it to
+        #: the game's latest run, quietly; a page opening on another
+        #: run states `record=` or `session=` instead.
+        initial.update(_record_initial(library, game, record, session, provenance))
         super().__init__(*args, initial=initial, **kwargs)
         self.record: HistoricalPlaytime | None = record
+        self.session: PlayerSession | None = session
         if record is not None:
             #: A restatement repeats harmlessly.
             del self.fields["submission"]
@@ -1186,10 +1200,11 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
             (choice.value, choice.label) for choice in provenances
         ]
         devices = Device.objects.for_library(library)
-        if record is not None and record.device_id is not None:
+        held = record if record is not None else session
+        if held is not None and held.device_id is not None:
             #: A held device stays, removed or not.
             devices = devices | Device.objects.filter(
-                library=library, pk=record.device_id
+                library=library, pk=held.device_id
             )
         device_field = cast(forms.ModelChoiceField, self.fields["device"])
         device_field.queryset = devices.order_by("name")
@@ -1206,15 +1221,19 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
             for part in DURATION_PARTS
         )
 
-    def submission_key(self) -> IdempotencyKey:
-        """The key this page's Add submits under."""
-        return f"historical-playtime-record-{self.cleaned_data['submission']}"
+    def submission_key(self, act: str = "record") -> IdempotencyKey:
+        """The submit key; `act` names the command."""
+        return f"historical-playtime-{act}-{self.cleaned_data['submission']}"
 
     def statement(self) -> HistoricalPlaytimeStatement:
         """What the valid form states."""
         cleaned = self.cleaned_data
         duration: datetime.timedelta = cleaned["duration"]
-        held = None if self.record is None else self.record.duration
+        held = None
+        if self.record is not None:
+            held = self.record.duration
+        elif self.session is not None:
+            held = self.session.effective_duration
         if (
             held is not None
             and self._every_duration_part_posted()
@@ -1258,9 +1277,27 @@ def _held_device_options(
 
 
 def _record_initial(
-    library: UserLibrary, game: Game, record: HistoricalPlaytime | None
+    library: UserLibrary,
+    game: Game,
+    record: HistoricalPlaytime | None,
+    session: PlayerSession | None = None,
+    provenance: HistoricalPlaytimeProvenance = (
+        HistoricalPlaytimeProvenance.MANUALLY_ENTERED
+    ),
 ) -> dict[str, Any]:
-    """What Add and Edit seed."""
+    """What Add, Edit and a reclassification seed."""
+    if session is not None:
+        stated = statement_from_session(session, provenance)
+        return {
+            "playthroughs": [str(run_id) for run_id in stated.playthrough_ids],
+            "duration": stated.duration,
+            "when": TemporalValue.parse(stated.when),
+            "provenance": stated.provenance.value,
+            "device": stated.device_id,
+            "emulated": stated.emulated,
+            "note": stated.note,
+            "submission": uuid.uuid7(),
+        }
     if record is None:
         run = latest_ordinary_run(library, game)
         return {

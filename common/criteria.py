@@ -158,6 +158,8 @@ class Modifier(str, Enum):
             cls.NOT_EQUALS,
             cls.GREATER_THAN,
             cls.LESS_THAN,
+            cls.GREATER_THAN_OR_EQUAL,
+            cls.LESS_THAN_OR_EQUAL,
             cls.BETWEEN,
             cls.NOT_BETWEEN,
             cls.IS_NULL,
@@ -166,7 +168,17 @@ class Modifier(str, Enum):
 
     @classmethod
     def for_dates(cls) -> list[Self]:
-        return cls.for_numbers()
+        """No inclusive pair; no date widget emits them."""
+        return [
+            cls.EQUALS,
+            cls.NOT_EQUALS,
+            cls.GREATER_THAN,
+            cls.LESS_THAN,
+            cls.BETWEEN,
+            cls.NOT_BETWEEN,
+            cls.IS_NULL,
+            cls.NOT_NULL,
+        ]
 
     @classmethod
     def for_multi(cls) -> list[Self]:
@@ -469,6 +481,10 @@ class IntCriterion(_ScalarCriterion):
             return Q(**{f"{field_name}__gt": self.value})
         if m == Modifier.LESS_THAN:
             return Q(**{f"{field_name}__lt": self.value})
+        if m == Modifier.GREATER_THAN_OR_EQUAL:
+            return Q(**{f"{field_name}__gte": self.value})
+        if m == Modifier.LESS_THAN_OR_EQUAL:
+            return Q(**{f"{field_name}__lte": self.value})
         if m == Modifier.BETWEEN:
             if self.value is None or self.value2 is None:
                 raise FilterError("BETWEEN requires two bounds (value and value2)")
@@ -507,6 +523,10 @@ class FloatCriterion(_ScalarCriterion):
             return Q(**{f"{field_name}__gt": self.value})
         if m == Modifier.LESS_THAN:
             return Q(**{f"{field_name}__lt": self.value})
+        if m == Modifier.GREATER_THAN_OR_EQUAL:
+            return Q(**{f"{field_name}__gte": self.value})
+        if m == Modifier.LESS_THAN_OR_EQUAL:
+            return Q(**{f"{field_name}__lte": self.value})
         if m == Modifier.BETWEEN:
             if self.value is None or self.value2 is None:
                 raise FilterError("BETWEEN requires two bounds (value and value2)")
@@ -2002,6 +2022,10 @@ def _numeric_to_q(
         return Q(**{f"{field_name}__gt": value})
     if modifier == Modifier.LESS_THAN:
         return Q(**{f"{field_name}__lt": value})
+    if modifier == Modifier.GREATER_THAN_OR_EQUAL:
+        return Q(**{f"{field_name}__gte": value})
+    if modifier == Modifier.LESS_THAN_OR_EQUAL:
+        return Q(**{f"{field_name}__lte": value})
     if modifier == Modifier.BETWEEN:
         if value is None or value2 is None:
             raise FilterError("BETWEEN requires two bounds (value and value2)")
@@ -2997,6 +3021,10 @@ def duration_hours_to_q(
         return Q(**{f"{field_name}__gt": duration})
     if modifier == Modifier.LESS_THAN:
         return Q(**{f"{field_name}__lt": duration})
+    if modifier == Modifier.GREATER_THAN_OR_EQUAL:
+        return Q(**{f"{field_name}__gte": duration})
+    if modifier == Modifier.LESS_THAN_OR_EQUAL:
+        return Q(**{f"{field_name}__lte": duration})
     if modifier == Modifier.BETWEEN:
         if value is None or value2 is None:
             raise FilterError("BETWEEN requires two bounds (value and value2)")
@@ -3172,6 +3200,10 @@ def days_touched_handler(lower_field: str, upper_field: str) -> FieldHandler:
             return known & Q(**{f"{upper_field}__gt": span_end(value)})
         if modifier == Modifier.LESS_THAN:
             return known & Q(**{f"{upper_field}__lt": span_end(value)})
+        if modifier == Modifier.GREATER_THAN_OR_EQUAL:
+            return known & Q(**{f"{upper_field}__gte": span_end(value)})
+        if modifier == Modifier.LESS_THAN_OR_EQUAL:
+            return known & Q(**{f"{upper_field}__lte": span_end(value)})
         if modifier in (Modifier.BETWEEN, Modifier.NOT_BETWEEN):
             if value is None or value2 is None:
                 raise FilterError(f"{modifier} requires two bounds (value and value2)")

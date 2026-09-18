@@ -3,7 +3,7 @@
 import uuid
 from collections.abc import Iterable
 from datetime import timedelta
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Literal, NotRequired, TypedDict
 
 from pydantic import AfterValidator, Field, with_config
 
@@ -73,6 +73,19 @@ class HistoricalPlaytimeStatementPayload(TypedDict):
 
 
 @with_config(STRICT_SCHEMA)
+class HistoricalPlaytimeCreatedPayload(HistoricalPlaytimeStatementPayload):
+    """The statement, plus the session it came from.
+
+    Not required: the deployment holds created events without it,
+    and nothing upcasts a recorded payload, so `Required` would
+    refuse every one of them on the next rebuild. Absent is the one
+    spelling of no session; `None` is refused.
+    """
+
+    reclassified_from: NotRequired[ReferenceId]
+
+
+@with_config(STRICT_SCHEMA)
 class HistoricalPlaytimeMarkPayload(TypedDict):
     """Removed and restored state nothing more."""
 
@@ -80,7 +93,7 @@ class HistoricalPlaytimeMarkPayload(TypedDict):
 HISTORICALPLAYTIME_CREATED = EventSpec(
     "library.historicalplaytime.created",
     aggregate_type="historicalplaytime",
-    payload=HistoricalPlaytimeStatementPayload,
+    payload=HistoricalPlaytimeCreatedPayload,
 )
 HISTORICALPLAYTIME_RESTATED = EventSpec(
     "library.historicalplaytime.restated",
@@ -146,12 +159,11 @@ def historicalplaytime_created(
     emulated: bool,
     note: str,
     record_id: uuid.UUID | None = None,
+    reclassified_from: uuid.UUID | None = None,
 ) -> NewEvent:
     """The library stated untracked playtime."""
-    return HISTORICALPLAYTIME_CREATED.new(
-        aggregate_id=uuid.uuid7() if record_id is None else record_id,
-        effective_time=_effective(when),
-        payload=_statement(
+    payload: HistoricalPlaytimeCreatedPayload = {
+        **_statement(
             player_game_id=player_game_id,
             runs=runs,
             duration=duration,
@@ -159,7 +171,14 @@ def historicalplaytime_created(
             device=device,
             emulated=emulated,
             note=note,
-        ),
+        )
+    }
+    if reclassified_from is not None:
+        payload["reclassified_from"] = str(reclassified_from)
+    return HISTORICALPLAYTIME_CREATED.new(
+        aggregate_id=uuid.uuid7() if record_id is None else record_id,
+        effective_time=_effective(when),
+        payload=payload,
     )
 
 

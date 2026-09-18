@@ -348,8 +348,11 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         "removed_at": None,
     },
     "games.HistoricalPlaytime": {
-        #: The projector's mark.
+        #: The projector's marks.
         "removed_at": None,
+        "restated_at": None,
+        #: The session a reclassified record came from.
+        "reclassified_from": None,
     },
 }
 

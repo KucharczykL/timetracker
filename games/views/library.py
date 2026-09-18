@@ -41,6 +41,10 @@ from games.models import (
 )
 from games.reads.playtime import total_playtime
 from games.views import stats_links
+from games.views.session_reclassification import (
+    TEMPORARY_NOTE,
+    PlaytimeReviewPanel,
+)
 from timetracker.settings_commands import SettingNamespace
 
 
@@ -171,6 +175,12 @@ def library(request: HttpRequest) -> HttpResponse:
     )
     sections = [
         SectionedPageSection("overview", "Overview", overview),
+        SectionedPageSection(
+            "playtime",
+            "Playtime",
+            PlaytimeReviewPanel(library, origin=origin),
+            description=TEMPORARY_NOTE,
+        ),
         SectionedPageSection(
             "activity",
             "Activity",

@@ -12,6 +12,7 @@ from games.events.playersession import (
     PLAYERSESSION_ENDED,
     PLAYERSESSION_MOVED,
     PLAYERSESSION_NOTE_CHANGED,
+    PLAYERSESSION_RECLASSIFIED,
     PLAYERSESSION_REMOVED,
     PLAYERSESSION_RESTORED,
     PLAYERSESSION_TIMING_CORRECTED,
@@ -137,6 +138,11 @@ class PlayerSessions(Projector):
             playthrough_id=uuid.UUID(event.payload["playthrough"]),
         )
 
+    def _reclassified(self, event: RecordedEvent) -> None:
+        """The mark alone; the record holds the reference."""
+        #: The event's instant, so a replay agrees.
+        self.amend(PlayerSession, event, removed_at=event.recorded_at)
+
     def _removed(self, event: RecordedEvent) -> None:
         #: The event's instant, so a replay agrees.
         self.amend(PlayerSession, event, removed_at=event.recorded_at)
@@ -152,6 +158,7 @@ class PlayerSessions(Projector):
         PLAYERSESSION_DEVICE_CHANGED: _device_changed,
         PLAYERSESSION_EMULATED_CHANGED: _emulated_changed,
         PLAYERSESSION_MOVED: _moved,
+        PLAYERSESSION_RECLASSIFIED: _reclassified,
         PLAYERSESSION_REMOVED: _removed,
         PLAYERSESSION_RESTORED: _restored,
     }

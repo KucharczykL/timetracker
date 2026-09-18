@@ -35,6 +35,7 @@ def test_the_walk_finds_every_outward_reference():
     assert named(projection_references()) == [
         ("HistoricalPlaytime", "device"),
         ("HistoricalPlaytime", "player_game"),
+        ("HistoricalPlaytime", "reclassified_from"),
         ("HistoricalPlaytimeRun", "playthrough"),
         ("HistoricalPlaytimeRun", "record"),
         ("PlayerGame", "game"),

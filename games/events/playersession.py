@@ -408,6 +408,31 @@ def playersession_moved(
 
 
 @with_config(STRICT_SCHEMA)
+class PlayerSessionReclassifiedPayload(TypedDict):
+    """A bare key; the record is created alongside."""
+
+    record: ReferenceId
+
+
+PLAYERSESSION_RECLASSIFIED = EventSpec(
+    "library.playersession.reclassified",
+    aggregate_type="playersession",
+    payload=PlayerSessionReclassifiedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERSESSION_RECLASSIFIED)
+
+
+def playersession_reclassified(
+    session_id: uuid.UUID, *, record_id: uuid.UUID
+) -> NewEvent:
+    """The session became historical playtime."""
+    return PLAYERSESSION_RECLASSIFIED.new(
+        aggregate_id=session_id, payload={"record": str(record_id)}
+    )
+
+
+@with_config(STRICT_SCHEMA)
 class PlayerSessionRemovedPayload(TypedDict):
     """The library takes the session out."""
 

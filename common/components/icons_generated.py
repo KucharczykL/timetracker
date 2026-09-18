@@ -126,6 +126,13 @@ ICON_NODES: dict[str, Element] = {
             ],
         ],
     ],
+    'history': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'M3 12a9 9 0 1 0 3-6.7L3 8')]),
+        Path([('d', 'M3 3v5h5')]),
+        Path([('d', 'M12 7v5l3.5 2')]),
+    ],
     'info': Svg(
         [('x', '0px'), ('y', '0px'), ('width', '50'), ('height', '50'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[

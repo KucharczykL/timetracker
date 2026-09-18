@@ -49,6 +49,11 @@ from games.commands.playthrough import (
     RestorePlaythrough,
     StartPlaythrough,
 )
+from games.commands.session_reclassification import (
+    ReclassifySessionAsHistoricalPlaytime,
+    UndoSessionReclassification,
+    statement_from_session,
+)
 from games.events.dispatch import Command, CommandOutcome, CommandResult, dispatch
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.events.replay import replay
@@ -368,6 +373,50 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     run(RemoveHistoricalPlaytime(record_id=restored_record), "remove-record-again")
     run(RestoreHistoricalPlaytime(record_id=restored_record), "restore-record")
 
+    #: A session that became a record.
+    converted = _created_id(
+        run(
+            CreateSession(
+                playthrough_id=first_run.pk,
+                timing=DurationOnlyTiming(
+                    day=date(2024, 2, 9), duration=timedelta(hours=9)
+                ),
+                note="Off the launcher",
+            ),
+            "create-session-to-reclassify",
+        )
+    )
+    run(
+        ReclassifySessionAsHistoricalPlaytime(
+            session_id=converted,
+            statement=statement_from_session(PlayerSession.objects.get(pk=converted)),
+        ),
+        "reclassify-session",
+    )
+    #: A second one, put back again.
+    undone = _created_id(
+        run(
+            CreateSession(
+                playthrough_id=first_run.pk,
+                timing=DurationOnlyTiming(
+                    day=date(2024, 2, 10), duration=timedelta(hours=11)
+                ),
+            ),
+            "create-session-to-reclassify-and-undo",
+        )
+    )
+    run(
+        ReclassifySessionAsHistoricalPlaytime(
+            session_id=undone,
+            statement=statement_from_session(PlayerSession.objects.get(pk=undone)),
+        ),
+        "reclassify-session-to-undo",
+    )
+    run(
+        UndoSessionReclassification(session_id=undone),
+        "undo-reclassification",
+    )
+
     run(RemovePlayerGame(game_id=second.pk), "remove-second-game")
     run(RestorePlayerGame(game_id=second.pk), "restore-second-game")
     #: Left removed, for the same reason as the third run.
@@ -407,7 +456,7 @@ def test_the_stream_carries_every_registered_event_type(owned_user, owned_librar
 
 
 def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_library):
-    """A real stream, short of twenty-six types."""
+    """A real stream, short of twenty-seven types."""
     game = Game.objects.create(library=owned_library, name="Celeste")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -423,7 +472,7 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
         "library.playergame.created",
         "library.playthrough.created",
     }
-    assert len(missing) == 26
+    assert len(missing) == 27
 
 
 def build_neighbour(user, library) -> None:
@@ -552,7 +601,7 @@ def row_versions(library) -> list[tuple[str, str]]:
 
 
 def empty_projections(library) -> None:
-    """Scoped by library, children first for RESTRICT."""
+    """By library, children first; records before sessions."""
     HistoricalPlaytimeRun.objects.filter(library=library).delete()
     HistoricalPlaytime.objects.filter(library=library).delete()
     PlayerSession.objects.filter(library=library).delete()

@@ -11,8 +11,13 @@ Focused runs already covered:
 
 ```
 make test ARGS="tests/test_filters.py -k relation -x"
+make test-fast ARGS="tests/test_filters.py -k relation -x"
 make test-e2e ARGS="-k widgets"
 ```
+
+`ARGS` scopes every pytest target. A word holding `/` is a path and replaces
+the directory `test-fast` and `test-e2e` pin; a bare flag and its value narrow
+that directory as before.
 
 **`make check` run anywhere — no Nix shell needed.** Makefile version-proofs both
 interpreters, because getting either wrong produces failures that look like the
@@ -113,7 +118,7 @@ path**, so verify against `make check` before pushing when possible.
 | Development server | `make dev` (Django runserver + Tailwind watcher + `tsc --watch`) |
 | Production-like dev | `make dev-prod` (Caddy + Gunicorn/Uvicorn + Django-Q cluster) |
 | Run tests | `make test` (pytest; also runs vitest via its `test-ts` prereq) |
-| Run a subset of tests | `make test ARGS="tests/test_filters.py -k relation -x"` (same for `make test-e2e ARGS=…`) |
+| Run a subset of tests | `make test ARGS="tests/test_filters.py -k relation -x"` (same for `make test-fast` / `make test-e2e`; a path in `ARGS` replaces the directory those two pin) |
 | Run TypeScript tests | `make test-ts` (vitest over `ts/**/*.test.ts`) |
 | Squash the migration history | `make squash-migrations ARGS="games 0006"` (Django's tool; old files stay until the deployment records the squash, see [Squashing](docs/migration-squash.md)) |
 | Make / apply migrations | `make makemigrations` (`ARGS="games --name edition_name"` names the file) / `make migrate` (`ARGS="games 0001_squashed_0006_remove_session"` targets one) |
@@ -330,8 +335,24 @@ docs/           — Additional documentation
   sentences (`_refuse_under_a_removed_parent`). Every other session command
   resolves through `_live_session`, so removed session refuses end,
   correction, description and move alike. Remove route calls first; restore
-  has no route until #695. Contract is
+  has no route until #695. `RestoreSession` also refuses while a live record
+  was made from the session (#1098). Contract is
   [Remove and restore a session](docs/superpowers/specs/2026-09-14-issue-694-session-removal-design.md)
+
+  #1098's `ReclassifySessionAsHistoricalPlaytime` moves a written-down
+  session's hours to a record in one command: `historicalplaytime.created`
+  carrying the session as `reclassified_from`, then
+  `playersession.reclassified`, which projects `removed_at` alone. Session and
+  every record made from it: at most one live, kept by `RestoreSession`,
+  `RestoreHistoricalPlaytime` and the reclassify itself.
+  `UndoSessionReclassification` decides by marks alone -- never reclassified
+  refused, already undone `Unchanged`, record restated since refused whole,
+  removed parent refused -- then appends each event still to happen. Library
+  page's Playtime section reviews Duration-only rows of
+  `REVIEW_THRESHOLD_HOURS` or longer; the confirmation converts posted keys
+  the review names, answers with the posted count as denominator, and a
+  defect stops it on a page with no submit. Contract is
+  [Reclassify a session](docs/superpowers/specs/2026-09-18-issue-1098-session-reclassification-design.md)
 
   #700 converted every legacy `Session` row into these events, under the
   row's own id, with one imported-history bucket per game whose rows named
@@ -394,9 +415,10 @@ docs/           — Additional documentation
   [Pass the Session replay, statistics and budget gates](docs/superpowers/specs/2026-09-15-issue-704-session-gates-design.md)
 - **HistoricalPlaytime** — fourth projection: playtime a library states
   without sittings, written only by `HistoricalPlaytimes` projector.
-  `library.historicalplaytime.created`/`.restated` share one whole-statement
-  payload and a restatement overwrites every column; `.removed`/`.restored`
-  move `removed_at`. Names a `PlayerGame` and one or more of its runs through
+  `library.historicalplaytime.created`/`.restated` carry one whole-statement
+  payload, `created` with an optional `reclassified_from` beside it, and a
+  restatement overwrites every column and stamps `restated_at`;
+  `.removed`/`.restored` move `removed_at`. Names a `PlayerGame` and one or more of its runs through
   `HistoricalPlaytimeRun`, a join whose row ids the payload carries so a
   replay reproduces them; projector replaces the set whole. `when` is
   envelope's `effective_time`, null unknown, with generated
@@ -440,7 +462,7 @@ anything.
 **Removing offers Undo** (#695). Every remove view hands an `UndoOffer`, the
 sentence and the restore route with the row's key, to `confirm_and_remove` or
 `confirm_and_apply`, which queues one notice through `common/notices.py` after
-the act succeeds; the toast's Undo form posts to that route. Seven POST-only `restore_<entity>` routes share
+the act succeeds; the toast's Undo form posts to that route. Nine POST-only restore routes, `restore_<entity>` and the reclassification's undo, share
 `restore_and_return()`; a refusal is an error message on the page the person
 stands on; the game route's error carries a "Try again" action, because its
 stamp clears before its command. `<toast-stack>` appends the page as `?origin=`

@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import ClassVar, NamedTuple, cast
 
-from games.commands.playersession import DURATION_RESOLUTION, check_note
+from games.commands.playersession import (
+    DURATION_RESOLUTION,
+    SessionNotHeld,
+    check_note,
+    library_session,
+)
 from games.commands.playthrough import library_playthrough, refuse_unless_live
 from games.commands.scope import (
     Refusal,
@@ -19,6 +24,7 @@ from games.events.dispatch import (
     CommandContext,
     CommandName,
     CommandRejected,
+    RowUnreadable,
 )
 from games.events.historical_playtime import (
     HistoricalPlaytimeRunPayload,
@@ -32,6 +38,7 @@ from games.events.historical_playtime import (
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import (
+    Device,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
     HistoricalPlaytimeRun,
@@ -63,6 +70,15 @@ RUN_REMOVED = (
     "changing this record."
 )
 RECORD_REMOVED = "That record was removed. Restore it before changing it."
+#: One rule, both directions: hours stated once.
+SESSION_STILL_LIVE = (
+    "The session this record was made from is back in your lists, so its "
+    "playtime is already counted."
+)
+ANOTHER_RECORD_LIVE = (
+    "Another historical playtime record made from the same session is live, "
+    "so its playtime is already counted."
+)
 WHEN_NOT_A_DATE = (
     "Write when as a year, a month or a day, like 2005, 2005-03 or 2005-03-14."
 )
@@ -238,6 +254,27 @@ def _held_columns(record: HistoricalPlaytime) -> StatementColumns:
     }
 
 
+def created_event(
+    runs: Sequence[Playthrough],
+    device: Device | None,
+    statement: HistoricalPlaytimeStatement,
+    *,
+    reclassified_from: uuid.UUID | None = None,
+) -> NewEvent:
+    """The creation event from a resolved statement."""
+    return historicalplaytime_created(
+        player_game_id=runs[0].player_game_id,
+        runs=_members(runs, {}),
+        duration=statement.duration,
+        when=TemporalValue.parse(statement.when),
+        provenance=_recorded(statement.provenance),
+        device=None if device is None else capture_reference(device),
+        emulated=statement.emulated,
+        note=statement.note,
+        reclassified_from=reclassified_from,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class RecordHistoricalPlaytime(Command):
     """State untracked playtime."""
@@ -251,18 +288,7 @@ class RecordHistoricalPlaytime(Command):
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         runs = _live_runs(context, self.statement)
         device = library_device(context, self.statement.device_id)
-        return [
-            historicalplaytime_created(
-                player_game_id=runs[0].player_game_id,
-                runs=_members(runs, {}),
-                duration=self.statement.duration,
-                when=TemporalValue.parse(self.statement.when),
-                provenance=_recorded(self.statement.provenance),
-                device=None if device is None else capture_reference(device),
-                emulated=self.statement.emulated,
-                note=self.statement.note,
-            )
-        ]
+        return [created_event(runs, device, self.statement)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -328,6 +354,48 @@ class RemoveHistoricalPlaytime(Command):
         return [historicalplaytime_removed(record.pk)]
 
 
+def _refuse_beside_a_live_session(
+    context: CommandContext, record: HistoricalPlaytime
+) -> None:
+    """The session's guard, plus the sibling check."""
+    if record.reclassified_from_id is None:
+        return
+    #: Resolved, not followed; keeps the scope.
+    try:
+        session = library_session(context, record.reclassified_from_id)
+    except SessionNotHeld as refusal:
+        raise RowUnreadable(
+            f"Record {record.pk} of library {context.library.pk} names session "
+            f"{record.reclassified_from_id}, which this library does not hold; "
+            "the ownership audit reports it, and no command states a fact "
+            "about it."
+        ) from refusal
+    #: Under dispatch's lock: no mark can move.
+    if session.removed_at is None:
+        raise CommandRejected(
+            f"Session {session.pk} became record {record.pk} and is live again, "
+            "so restoring the record would count its hours twice.",
+            sentence=SESSION_STILL_LIVE,
+        )
+    #: A session converted twice left two records.
+    sibling = (
+        HistoricalPlaytime.objects.filter(
+            library=context.library,
+            reclassified_from=session,
+            removed_at__isnull=True,
+        )
+        .exclude(pk=record.pk)
+        .first()
+    )
+    if sibling is not None:
+        raise CommandRejected(
+            f"Record {sibling.pk} was made from session {session.pk} as well "
+            f"and is live, so restoring record {record.pk} would count its "
+            "hours twice.",
+            sentence=ANOTHER_RECORD_LIVE,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class RestoreHistoricalPlaytime(Command):
     """Put a removed record back."""
@@ -340,4 +408,5 @@ class RestoreHistoricalPlaytime(Command):
         if record.removed_at is None:
             return Unchanged(f"This library did not remove record {self.record_id}.")
         _refuse_under_a_removed_parent(context, record)
+        _refuse_beside_a_live_session(context, record)
         return [historicalplaytime_restored(record.pk)]

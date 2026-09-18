@@ -10,6 +10,7 @@ from typing import NamedTuple
 from django.contrib.auth.models import User
 from django.utils import timezone
 
+from games.commands.historical_playtime import HistoricalPlaytimeStatement
 from games.commands.playersession import (
     CorrectSessionTiming,
     CreateSession,
@@ -22,7 +23,12 @@ from games.commands.playersession import (
     TimedTiming,
     TimingStatement,
 )
+from games.commands.session_reclassification import (
+    ReclassifySessionAsHistoricalPlaytime,
+    UndoSessionReclassification,
+)
 from games.events.dispatch import Command, CommandRejected, CommandResult, dispatch
+from games.events.idempotency import IdempotencyKey
 from games.events.playersession import ZoneName
 from games.models import Game, LibraryEvent, PlayerSession, Playthrough, UserLibrary
 from games.reads.calendar import calendar_day_zone
@@ -46,13 +52,14 @@ def _dispatch(
     actor: User,
     library: UserLibrary,
     correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
 ) -> CommandResult:
     return dispatch(
         command,
         actor=actor,
         library=library,
-        #: Deduplicates nothing; each build absorbs a repeat.
-        idempotency_key=str(uuid.uuid7()),
+        #: Caller's key, else none; builds absorb repeats.
+        idempotency_key=idempotency_key or str(uuid.uuid7()),
         correlation_id=correlation_id,
     )
 
@@ -278,6 +285,41 @@ def restore_session(
     with answered("session"):
         _dispatch(
             RestoreSession(session_id=session.pk),
+            actor=actor,
+            library=actor.library,
+            correlation_id=correlation_id,
+        )
+
+
+def reclassify_session(
+    actor: User,
+    session: PlayerSession,
+    statement: HistoricalPlaytimeStatement,
+    *,
+    idempotency_key: IdempotencyKey,
+    correlation_id: uuid.UUID,
+) -> uuid.UUID:
+    """Make the session a record; answer its id."""
+    with answered("session"):
+        result = _dispatch(
+            ReclassifySessionAsHistoricalPlaytime(
+                session_id=session.pk, statement=statement
+            ),
+            actor=actor,
+            library=actor.library,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+        )
+    return _created_id(result)
+
+
+def undo_reclassification(
+    actor: User, session: PlayerSession, *, correlation_id: uuid.UUID
+) -> CommandResult:
+    """Remove the record; restore the session."""
+    with answered("session"):
+        return _dispatch(
+            UndoSessionReclassification(session_id=session.pk),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,

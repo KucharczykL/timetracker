@@ -188,19 +188,24 @@ def test_an_edit_keeps_a_held_removed_device(logged_in, owned_user, game, run):
     assert LibraryEvent.objects.count() == events
 
 
-@pytest.mark.parametrize(
-    ("hours", "sentence"), [("0", AT_LEAST_A_SECOND), ("100", AT_LEAST_ONE_RUN)]
-)
-def test_a_refusal_is_the_commands_sentence_on_the_form(
-    logged_in, game, run, hours, sentence
-):
-    runs = [] if sentence == AT_LEAST_ONE_RUN else [run.pk]
+def test_a_refusal_is_the_commands_sentence_on_the_form(logged_in, game, run):
     response = logged_in.post(
         reverse("games:add_historical_playtime", args=[game.pk]),
-        posted(runs, hours=hours),
+        posted([run.pk], hours="0"),
     )
     assert response.status_code == CONFLICT_STATUS
-    assert sentence in messages_of(response)
+    assert AT_LEAST_A_SECOND in messages_of(response)
+    assert not HistoricalPlaytime.objects.exists()
+
+
+def test_no_playthrough_is_the_fields_error_not_the_commands(logged_in, game, run):
+    response = logged_in.post(
+        reverse("games:add_historical_playtime", args=[game.pk]),
+        posted([], hours="100"),
+    )
+    assert response.status_code == 200
+    assert AT_LEAST_ONE_RUN not in messages_of(response)
+    assert "This field is required" in response.content.decode()
     assert not HistoricalPlaytime.objects.exists()
 
 

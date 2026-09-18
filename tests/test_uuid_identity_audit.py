@@ -42,6 +42,7 @@ EXPECTED_RELATION_COLUMNS = {
     ("games_historicalplaytime", "device_id"),
     ("games_historicalplaytime", "library_id"),
     ("games_historicalplaytime", "player_game_id"),
+    ("games_historicalplaytime", "reclassified_from_id"),
     ("games_historicalplaytimerun", "library_id"),
     ("games_historicalplaytimerun", "playthrough_id"),
     ("games_historicalplaytimerun", "record_id"),

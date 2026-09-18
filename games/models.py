@@ -1947,6 +1947,17 @@ class HistoricalPlaytime(ProjectionModel):
     created_at = models.DateTimeField(editable=False)
     #: The remove event's recorded_at; null live.
     removed_at = models.DateTimeField(null=True, default=None, editable=False)
+    #: Latest restate's recorded_at; null, never restated.
+    restated_at = models.DateTimeField(null=True, default=None, editable=False)
+    #: The session this record came from.
+    reclassified_from = models.ForeignKey(
+        "PlayerSession",
+        #: No cascade destroys a projection row.
+        on_delete=models.RESTRICT,
+        null=True,
+        default=None,
+        related_name="reclassified_records",
+    )
 
     class Meta:
         indexes = (
@@ -1965,6 +1976,12 @@ class HistoricalPlaytime(ProjectionModel):
             models.CheckConstraint(
                 condition=Q(provenance__in=HistoricalPlaytimeProvenance.values),
                 name="historicalplaytime_provenance_known",
+            ),
+            #: Backstop for the commands' guard.
+            models.UniqueConstraint(
+                fields=("reclassified_from",),
+                condition=Q(reclassified_from__isnull=False, removed_at__isnull=True),
+                name="historicalplaytime_one_live_per_session",
             ),
         )
 

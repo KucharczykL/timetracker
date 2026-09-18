@@ -25,8 +25,10 @@ One record has these facts:
 
 ## Events
 
-`created` and `restated` share `HistoricalPlaytimeStatementPayload`: a
-record is one fact. `removed` and `restored` have empty payloads.
+`restated` carries `HistoricalPlaytimeStatementPayload`: a record is one
+fact. `created` carries the same statement and one key more,
+`reclassified_from`, the session the record was made from, absent where
+there is none. `removed` and `restored` have empty payloads.
 
 `when` is not in the payload. It is the envelope's `effective_time`. An
 unknown `when` is a null `effective_time`.
@@ -65,7 +67,9 @@ through `columns_for_statement` and answers `Unchanged` when nothing differs.
 It resolves the device only when the statement changes it, so a record keeps
 a removed device it already names. `Remove` and `Restore` answer `Unchanged`
 for the state the row holds, then refuse a record under a removed game or
-one naming a removed playthrough.
+one naming a removed playthrough. `Restore` also refuses while the session
+the record was made from is live, and while another record made from that
+session is: the hours are stated once.
 
 Every refusal is a `CommandRejected` with a sentence.
 
@@ -73,7 +77,8 @@ Every refusal is a `CommandRejected` with a sentence.
 
 `HistoricalPlaytime` has `id`, `library`, `player_game`, `duration`, `when`
 with generated `when_lower` and `when_upper`, `provenance`, `device`,
-`emulated`, `note`, `created_at` and `removed_at`. Constraints:
+`emulated`, `note`, `created_at`, `removed_at`, `restated_at` and
+`reclassified_from`. Constraints:
 `library_identity_constraint()`, `duration > 0` and a known provenance.
 Index: `(library, when_lower, id)`. `comparison_through` reaches the game in
 one hop. `alive()` reads the record's mark and the tracked game's.
@@ -81,7 +86,7 @@ one hop. `alive()` reads the record's mark and the tracked game's.
 `HistoricalPlaytimeRun` has `id`, `library`, `record` and `playthrough`,
 unique on `(record, playthrough)`. Its `alive()` reads the record's two marks.
 
-The four foreign keys are in `AUDITED_PROJECTION_REFERENCES`.
+The five foreign keys are in `AUDITED_PROJECTION_REFERENCES`.
 `HistoricalPlaytimeRun.playthrough` is in `BLOCKING_REFERRERS`: a live record
 keeps its run in place.
 
@@ -91,8 +96,8 @@ The database admits a superset of what the command admits.
 
 `HistoricalPlaytimes`, family `CURRENT_STATE`. `created` projects the record
 with every column and writes the join rows. `restated` amends every statement
-column and replaces the join rows whole. `removed` and `restored` amend
-`removed_at`. `columns_for_statement(payload, effective_time)` is the one
+column and replaces the join rows whole. `restated` also stamps
+`restated_at`. `removed` and `restored` amend `removed_at`. `columns_for_statement(payload, effective_time)` is the one
 mapping from payload to columns.
 
 ## Boundary

@@ -646,6 +646,19 @@ def SessionActions(session, csrf_token: str, origin: OriginUrl | None) -> Node:
                 "title": "Edit",
             },
             {
+                "href": action_url(
+                    "games:reclassify_session", session.pk, origin=origin
+                ),
+                "slot": Icon("history", size=ICON_BUTTON_SIZE_CLASS),
+                "title": (
+                    "Was an estimate, not one sitting - move these hours to "
+                    "historical playtime"
+                ),
+                "color": "gray",
+            }
+            if session.timing_mode == PlayerSessionTimingMode.DURATION_ONLY
+            else {},
+            {
                 "href": action_url("games:remove_session", session.pk, origin=origin),
                 "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Delete",

@@ -840,7 +840,7 @@ def NumberFilter(
     *,
     path: FilterWidgetPath,
 ) -> Node:
-    """Renders a numeric filter with 8 modifier radio options and two inputs.
+    """Renders a numeric filter with 10 modifier radio options and two inputs.
 
     Modeled 1:1 on :func:`StringFilter`. Both inputs are disabled for the
     presence modifiers (IS_NULL/NOT_NULL); the second input is shown only for
@@ -858,6 +858,8 @@ def NumberFilter(
         ("NOT_EQUALS", "is not"),
         ("GREATER_THAN", "is greater than"),
         ("LESS_THAN", "is less than"),
+        ("GREATER_THAN_OR_EQUAL", "is at least"),
+        ("LESS_THAN_OR_EQUAL", "is at most"),
         ("BETWEEN", "between"),
         ("NOT_BETWEEN", "not between"),
         ("IS_NULL", "is null"),
