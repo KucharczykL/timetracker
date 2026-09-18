@@ -5,18 +5,27 @@ pins the two intentional fixes: all-time "days played %" is span-based, and
 games-by-playtime uses duration_total (so manual sessions count).
 """
 
+import itertools
 from datetime import date, datetime, timedelta
+from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from historical_playtime_rows import record_row
 from session_rows import duration_only_row, session_row, tracked_run
 
 from games.models import Game, Platform, PlayerSession
-from games.reads.playtime import MonthPlaytime, PlatformPlaytime, PlaytimeBreakdown
+from games.reads import playtime as playtime_reads
+from games.reads.playtime import (
+    MonthPlaytime,
+    PlatformPlaytime,
+    PlaytimeBreakdown,
+    games_by_playtime,
+)
 from games.views.stats_data import (
     LIST_CAP,
     STATS_SOURCE_GROUPS,
@@ -331,3 +340,33 @@ def test_a_game_with_one_source_states_a_zero_half(owned_library):
     rows = compute_stats(owned_library, 2023)["games_by_playtime"]
 
     assert rows[0].playtime == PlaytimeBreakdown(timedelta(0), 2 * HOUR)
+
+
+@pytest.mark.django_db
+def test_a_game_removed_between_the_two_reads_leaves_the_card(owned_library):
+    """The halves query is the authority on what the library still holds.
+
+    It runs after the ranking, so a game removed in between is ranked and
+    then gone. The row goes with it rather than printing halves of zero
+    under a total the ranking already stated.
+    """
+    start = datetime(2023, 3, 1, 10, tzinfo=TZ)
+    kept = Game.objects.create(library=owned_library, name="Kept")
+    going = Game.objects.create(library=owned_library, name="Going")
+    session_row(kept, started_at=start, ended_at=start + HOUR)
+    session_row(going, started_at=start, ended_at=start + 3 * HOUR)
+    real_half = playtime_reads.tracked_summed_by_game
+    #: The ranking query builds one too; the halves query is the second.
+    builds = itertools.count(1)
+
+    def remove_before_the_halves(*args, **kwargs):
+        if next(builds) == 2:
+            Game.objects.filter(pk=going.pk).update(removed_at=timezone.now())
+        return real_half(*args, **kwargs)
+
+    with patch.object(
+        playtime_reads, "tracked_summed_by_game", remove_before_the_halves
+    ):
+        rows = games_by_playtime(owned_library, year=2023, limit=LIST_CAP)
+
+    assert [row.game.name for row in rows] == ["Kept"]

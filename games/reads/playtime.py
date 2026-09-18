@@ -191,8 +191,9 @@ def games_by_playtime(
 ) -> list[GameByPlaytime]:
     """The most played games, each beside the two sources that made it.
 
-    The halves are a second query over the keys this answers, not two more
-    subqueries on the query ranking every played game.
+    The halves are a second query over the keys the ranking answers, not two
+    more subqueries on the query ranking every played game. Each row carries
+    the game that second query read, so no row states its total twice.
     """
     ranked = list(games_by_playtime_queryset(library, year=year)[:limit])
     if not ranked:
@@ -208,16 +209,22 @@ def games_by_playtime(
             ),
         )
     }
-    return [
-        GameByPlaytime(
-            game,
-            PlaytimeBreakdown(
-                tracked=halves[game.pk].tracked,
-                historical=halves[game.pk].historical,
-            ),
+    rows = []
+    for game in ranked:
+        counted = halves.get(game.pk)
+        #: A game removed between the two reads left the library, so it
+        #: leaves the card. The ranking states the order, the halves the row.
+        if counted is None:
+            continue
+        rows.append(
+            GameByPlaytime(
+                counted,
+                PlaytimeBreakdown(
+                    tracked=counted.tracked, historical=counted.historical
+                ),
+            )
         )
-        for game in ranked
-    ]
+    return rows
 
 
 def playtime_sort_key(library: UserLibrary) -> PlaytimeSum:
