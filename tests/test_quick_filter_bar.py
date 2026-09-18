@@ -187,6 +187,24 @@ class QuickFilterBarRenderingTest(TestCase):
         self.assertIn("<quick-filter-bar", html)
         self.assertNotIn("Advanced filter active", html)
 
+    def test_inclusive_number_modifiers_round_trip(self):
+        """`is at least` survives the bar rather than degrading to `is`.
+
+        ``NumberFilter`` drops a modifier its own option list does not
+        offer, so the review link's own predicate would come back as
+        ``EQUALS`` were the two members absent from the widget.
+        """
+        filter_json = json.dumps(
+            {"duration_hours": {"value": 8, "modifier": "GREATER_THAN_OR_EQUAL"}}
+        )
+        html = str(
+            QuickFilterBar(mode="sessions", filter_json=filter_json, builder_url="/x")
+        )
+        self.assertNotIn("Advanced filter active", html)
+        self.assertIn('value="GREATER_THAN_OR_EQUAL" selected', html)
+        self.assertIn(">is at least<", html)
+        self.assertIn(">is at most<", html)
+
     def test_scalar_round_trip_serializer_shapes_are_editable(self):
         """The scalar facets' serializer output (number criterion from
         readNumberWidget, date criterion from readDateWidget) must render an

@@ -96,10 +96,18 @@ Ships alone and is worth its own review: it changes a shared algebra.
       to fail.
 - [ ] **Step 3 — implement.** Add both members to `Modifier.for_numbers()`
       (`common/criteria.py:155`); `for_dates()` returns `for_numbers()`, so
-      dates follow. Add a `__gte`/`__lte` branch beside the existing
-      `GREATER_THAN`/`LESS_THAN` branch in each of the three leaf `to_q`
-      bodies (around `:468`, `:506`, `:544`) and in `_numeric_to_q`
-      (`:2001`). Add `("GREATER_THAN_OR_EQUAL", "is at least")` and
+      dates follow. That list is the one home for which operators a number or
+      a date offers, so it reaches **six** bodies, not four, and each needs a
+      `__gte`/`__lte` branch beside its existing `GREATER_THAN`/`LESS_THAN`
+      one, or the new option answers `FilterError` on the fields it is
+      offered for: the three leaf `to_q` bodies (`IntCriterion`,
+      `FloatCriterion`, `DateCriterion`), `_numeric_to_q`,
+      `duration_hours_to_q` — **the one the review link's own predicate
+      reads** — `temporal_interval_handler`, and `days_touched_handler`. The
+      last three take the point reading their strict siblings already take:
+      the duration compares the exact `timedelta`, the endpoint reads
+      `lower_field` going up and `upper_field` going down, and the day count
+      reads `span_end`. Add `("GREATER_THAN_OR_EQUAL", "is at least")` and
       `("LESS_THAN_OR_EQUAL", "is at most")` to `NumberFilter`'s `options`
       (`common/components/filters.py:856`).
 - [ ] **Step 4 — the TypeScript is deliberately untouched.** `readNumberWidget`
