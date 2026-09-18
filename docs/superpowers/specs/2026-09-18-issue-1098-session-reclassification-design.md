@@ -364,12 +364,29 @@ contribute alike.
 - `tests/test_filters.py` and the cross-language contract fixture: both new
   modifiers compile and round-trip.
 - `e2e/`: the review link, one conversion, and its Undo in a browser.
-- The rehearsal on the restored 2026-09-16 copy: "Convert all shown" over the
-  rows of 8 hours or longer; every playtime total equal to the second in every
-  scope; `total_sessions` down by the converted count; the longest session,
-  the highest average and the unique-day count restated, each change
-  attributed to a converted row. The numbers are written into this file when
-  the rehearsal runs.
+- The rehearsal, on a copy of the deployment restored 2026-09-18 and migrated.
+  Ninety-three rows matched "written down, eight hours or longer" -- the
+  census figure exactly -- and all ninety-three converted, none refused, which
+  is the held-device rule answering on real rows rather than in a test.
+
+  What did not move: every playtime total, in every scope. All-time stayed
+  33,504,255 seconds and each of the twenty years kept its own total to the
+  second. The two halves now sum to it: 16,157,055 tracked and 17,347,200
+  historical. A record's `when` is one day, so it lies inside every period the
+  session lay inside, and containment counts it there.
+
+  What moved, and why: `total_sessions` 2,815 to 2,722, which is the
+  ninety-three; distinct days 1,308 to 1,233, so seventy-five of the converted
+  rows were the only play recorded on their day; the longest session, the
+  highest average and the first play, each because the row that held the
+  record was a converted one. On the 2022 page the longest session falls from
+  216.4 hours to 11.4 -- a 216-hour sitting is the mis-recording this act
+  exists for.
+
+  `make render-pages` over 1,706 pages differs on 111: ninety game pages, the
+  eighteen statistics pages, the session list, the historical playtime list
+  and the library page. Each statistics page keeps its total as one line and
+  gains the tracked-and-historical split beneath it.
 - Full `make check` green.
 
 ## Not in this specification
