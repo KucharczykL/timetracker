@@ -39,14 +39,22 @@ is refused, with a sentence that names the remedy.
 finds the record by a query, not by a column on the session.
 
 It answers `Unchanged` before each refusal, as every other lifecycle command
-does. A session that no record came from is `Unchanged`, not an error: that is
-the end state the undo asks for.
+does. It is `Unchanged` in exactly one state: no record from the session is
+live **and** the session is live. That is the end state the undo asks for, so a
+second press changes nothing. A session that a plain removal took, and that no
+live record came from, is refused rather than restored: this route undoes one
+act, and a general restore of any removed session is `RestoreSession`'s. The
+route says which of the two happened, because `Unchanged` raises nothing and a
+restore message printed over it would report a restore that did not occur.
 
-It refuses when the record was restated after the act, which
-`HistoricalPlaytime.restated_at` marks. An undo puts things back. Removing a
-record that a person has since edited is a surprise, not a reversal, so the
-person removes it themselves. The refusal applies to the leg that removes the
-record; a record already removed does not block the session's return.
+It refuses when a live record from the session was restated after the act,
+which `HistoricalPlaytime.restated_at` marks. An undo puts things back.
+Removing a record that a person has since edited is a surprise, not a reversal,
+so the person removes it themselves. **The refusal is of the whole command, not
+of one leg.** Refusing only the leg that removes the record would restore the
+session beside a live record, which is the double count the invariant forbids.
+A record the person already removed holds no mark to refuse on and does not
+block the session's return.
 
 The marker is a column because nothing else can answer the question. The
 projector overwrites every stated column on a restatement, so the row cannot be
@@ -57,7 +65,8 @@ the bucket states a different run on purpose.
 It refuses under a removed game and a removed playthrough, as `RestoreSession`
 does. A restored session under a removed parent is a row no scope can reach.
 
-It appends each event only when that event is still necessary.
+Past those refusals, it appends each event only where that event is still to
+happen: a record already removed takes no second removal.
 
 ## Storage
 
@@ -69,6 +78,14 @@ The session keeps `removed_at` and gains no column.
 The event is what says why the mark is there, which a plain removal does not.
 The act's own reference belongs to the row the act created, not beside the
 mark.
+
+This reverses what two committed documents say, and both are amended with it.
+The naming rule in `docs/event-retention.md` argues for the reference beside
+the mark on the session; the paragraph that does so is rewritten to the rule
+below it. The `HistoricalPlaytime` contract lists the row's columns, says the
+created and restated payloads share one statement whole, counts the audited
+foreign keys, and enumerates what a restore refuses; each of those four is
+restated there.
 
 The branch already carries a migration for a column on the session. That
 migration is not on the main branch, so it is rewritten rather than reversed by
@@ -123,15 +140,22 @@ control opens the session list narrowed to those rows. One opens a
 confirmation page.
 
 The confirmation page lists each row and converts them in one request. It
-parses each posted key and drops what it cannot read. It reports how many of
-the keys **the person sent** were recorded, so a row that another act removed
-in the meantime is counted as lost, and it says what each refusal was. A
-refusal does not stop the other rows. A defect stops the request and answers
+parses each posted key and drops what it cannot read. A key that names a live
+row of this library which the review does not name is refused, not converted,
+with a sentence saying the row's time was measured rather than written down:
+this act converts what the review offers and nothing else, though the command
+itself admits a finished measured row. It reports how many of the keys **the
+person sent** were recorded, so a row that another act removed in the meantime
+is counted as lost, and it says what each refusal was. A refusal does not stop
+the other rows. A defect stops the request and answers
 with the defect's own status, because a defect is not a refusal and no retry of
-it can succeed. The page that answers a defect states how many rows were
-recorded before it, and offers no button to try again: each row is its own
-transaction, so the rows before the defect are recorded and a second submit
-would act on a different set.
+it can succeed. The boundary answers a defect as a
+`CommandFailed` like any other, so the loop tells the two apart by status code,
+not by type. The page that answers a defect states how many rows were recorded
+before it, and offers no button to try again: each row is its own transaction,
+so the rows before the defect are recorded and a second submit would act on a
+different set. The confirmation page has no such variant today and gains one;
+its ordinary shape always renders the confirm button.
 
 Each refused row is written to the log with its key, its library and the
 request's correlation id. The page states sentences, not keys, so the log is
@@ -152,9 +176,10 @@ change; the two members reached dates only because `for_dates` returns
 A date criterion has no control for choosing a comparison. Its widget is a
 start box and an end box, and the comparison follows from which boxes hold a
 date. A member the widget cannot emit is one a person can only reach by writing
-`?filter=` JSON, and the round trip through the widget rewrites it: the server
-renders `on or before` into the start box, and the widget reads a filled start
-box back as `after`.
+`?filter=` JSON, and neither widget carries it back: the quick bar renders `on
+or before` into the start box and reads a filled start box back as `after`,
+while the nested builder's date leaf leaves both boxes blank for a member it
+does not know and prunes the leaf.
 
 This forecloses one thing, and the foreclosure is deliberate. A start box alone
 compiles to `after`, which excludes the start day, while a start and an end
@@ -169,6 +194,11 @@ modifier control, and it keeps both members.
 
 Each playtime total stays the same. A record that states one day is inside each
 period that the session was inside.
+
+Two rendered figures read the tracked half alone and do fall by the session's
+hours: the playthrough page's range sum, which takes only sittings on purpose,
+and the game list's filtered-playtime column, which counts the sessions a
+filter matched. Neither is a total.
 
 The session figures can change: the count, the distinct days, the longest
 session, the highest average, the busiest game, and the first and last play.
