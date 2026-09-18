@@ -499,13 +499,16 @@ answer `PlaytimeBreakdown(tracked, historical)` with `.total`; the
 playthrough page's range sum reads `game_tracked_between`, because a record
 is not a sitting. Expressions stay one number: `playtime_by_game` is zero
 when unplayed (the `playtime` alias `GameQuerySet.annotated_for_filtering`
-registers, which refuses a second library, and the stats top 10's total).
+registers, which refuses a second library, and the stats games card's total).
 `playtime_sort_key` is NULL without playtime. A game whose only session is
 running therefore sorts with the unplayed ones, because telling them apart
 would run each subquery twice. `playtime_matching` sums matching sessions
 only, and the game list's column header then says so. An annotation named
 through `F()` is compiled again, so annotate a half beside a total only
-where a page renders it. `STATS_SOURCES` in `games/views/stats_data.py`
+where a page renders it: the stats games card reads its rows capped, then
+takes the halves in a second query over those keys, and a test in
+`tests/test_sorting.py` pins the ranking query at two scans per source
+table. `STATS_SOURCES` in `games/views/stats_data.py`
 classifies every `StatsData` key once, and a test holds it complete. Game
 detail's averages and play range, `games/reads/session_figures.py` (longest
 session, highest average) and `GameFilter`'s `session_playtime_hours` read

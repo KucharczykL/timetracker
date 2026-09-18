@@ -48,7 +48,7 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
         cast(User, user).library if user is not None and user.is_authenticated else None
     )
     today = localdate()
-    #: Seven calendar days, the linked list's window.
+    #: Seven calendar days, today included.
     last_seven_days = DayInterval.ending(today, days=7)
     nothing = PlaytimeBreakdown(timedelta(0), timedelta(0))
     today_played = last_7_played = nothing
@@ -76,8 +76,7 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
         "session_count": (
             library_sessions(library).exists() if library is not None else False
         ),
-        #: No link: the session list cannot show a record, so it would
-        #: open a page summing less than the figure it came from.
+        #: No link: the session list shows no record, so it sums less.
         "today_played": PlaytimeSplit(today_played, durations, id_scope="navbar-today"),
         "last_7_played": PlaytimeSplit(
             last_7_played, durations, id_scope="navbar-last-7"

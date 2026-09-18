@@ -14,34 +14,30 @@ figure states how much of it each source gave.
 link=None)` in `common/components/domain.py`.
 
 It states the total, and beneath it `142 h tracked · 100 h historical` in micro
-text. Each half is a `DurationText`, so each carries its own spoken form, and
-the separator is `aria-hidden`.
+text. Each half is a `DurationText`, carrying its own spoken form; the separator
+is `aria-hidden`.
 
-A zero historical half omits the second line and the component answers the bare
-`Duration` or `DurationText` node: no wrapper, no added class. A figure of
-sessions alone therefore renders what it rendered before the split existed.
+A zero historical half omits the second line and answers the bare `Duration` or
+`DurationText`: no wrapper, no added class. A figure of sessions alone renders
+what it rendered before the split existed.
 
-The two lines are blocks, not a flex column. `Popover` renders `self-start`, so
-a column pins the total to the left edge while the line beneath it honours the
-host's alignment.
+The lines are blocks, not a flex column. `Popover` renders `self-start`, which a
+column pins left of a line honouring the host's alignment.
 
-`popover=False` states the total as text. One surface passes it: Game detail's
-`hours` stat is itself a popover, and a second one inside it gives one stat two
-tooltips. `id_scope` is required with a popover and refused without one, and
-`link` beside `popover=False` is refused, because `DurationText` renders no
-anchor.
+`popover=False` states the total as text, for a host that owns a popover
+already. `id_scope` is required with a popover and refused without one; `link`
+beside `popover=False` is refused, because `DurationText` renders no anchor.
 
 `PlaytimeBreakdown` lives in `games/reads/sums.py`, which carries no filter
 vocabulary into `common.components`.
 
 ## The surfaces
 
-**Game detail.** The `hours` stat, as the value inside `_stat_popover`, whose
-`details` slot keeps the duration alternates of the whole figure.
-`_stat_popover` takes `two_line`, which only this stat passes and only with a
-historical part: it states `items-baseline`, so the icon stays on the first
-line. `_game_header` takes the breakdown. Every other header stat reads
-sessions alone.
+**Game detail.** The `hours` stat, inside `_stat_popover`, whose `details` slot
+keeps the alternates of the whole figure. `_stat_popover` takes `two_line` —
+only this stat, only with a historical part — which states `items-baseline` so
+the icon stays on the first line. `_game_header` takes the breakdown; every
+other header stat reads sessions alone.
 
 **The stats page.** The `Hours` row, the month rows and the platform rows. The
 month and platform figures keep the filter link they carry, which the component

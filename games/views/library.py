@@ -89,8 +89,7 @@ def library(request: HttpRequest) -> HttpResponse:
         ),
         StatisticGrid(
             StatisticCard("Games", game_count, href=reverse("games:list_games")),
-            #: No link: the session list shows no record, so it would
-            #: sum less than the figure the card states.
+            #: No link: the session list shows no record, so it sums less.
             StatisticCard(
                 "Playtime",
                 PlaytimeSplit(playtime, durations, id_scope="library-playtime"),
