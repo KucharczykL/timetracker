@@ -24,6 +24,7 @@ from common.components import (
     Node,
     PageHeading,
     PlainH2,
+    PlaytimeSplit,
     Safe,
     StyledTable,
     YearPicker,
@@ -138,7 +139,7 @@ def _playtime_table(
     rows = [
         make_row(
             "Hours",
-            Duration(ctx["total_hours"].total, durations, id_scope="stats-total-hours"),
+            PlaytimeSplit(ctx["total_hours"], durations, id_scope="stats-total-hours"),
         ),
         make_row(
             "Sessions",
@@ -374,8 +375,8 @@ def stats_content(
         month_rows = [
             make_row(
                 presentation.format(month_playtime.month, "month"),
-                Duration(
-                    month_playtime.playtime.total,
+                PlaytimeSplit(
+                    month_playtime.playtime,
                     durations,
                     id_scope=f"stats-month-{month_playtime.month.month}",
                     link=filter_url(
@@ -414,8 +415,8 @@ def stats_content(
                 "Platform",
                 ctx["total_playtime_per_platform"],
                 lambda platform: platform.platform_name or "Unspecified",
-                lambda platform: Duration(
-                    platform.playtime.total,
+                lambda platform: PlaytimeSplit(
+                    platform.playtime,
                     durations,
                     id_scope=f"stats-platform-{platform.platform_id or 'none'}",
                     link=filter_url(

@@ -46,14 +46,25 @@ def test_the_navbar_adds_todays_record_in_two_queries(owned_user):
     assert len(summed) == 2
 
 
-def _stat_trigger(html: str, popover_id: str) -> str:
-    """One header stat's visible value.
+def trigger(html: str, element_id: str) -> str:
+    """The visible value of one popover.
 
     ``Popover`` carries the id on its hidden panel, which follows the
     trigger, so the value lies between the element's start and that id.
     """
-    panel = html.index(f'id="{popover_id}"')
+    panel = html.index(f'id="{element_id}"')
     return html[html.rindex("<pop-over", 0, panel) : panel]
+
+
+def figure(html: str, element_id: str) -> str:
+    """One table cell's whole figure.
+
+    A split states its second line as a sibling of the popover rather than
+    inside it, so that a figure with no historical part renders exactly what
+    it rendered before. Reading both lines therefore means reading the cell.
+    """
+    panel = html.index(f'id="{element_id}"')
+    return html[html.rindex("<pop-over", 0, panel) : html.index("</td>", panel)]
 
 
 @pytest.mark.django_db
@@ -65,7 +76,7 @@ def test_game_detail_hours_add_the_record_alone(client, owned_user):
     client.force_login(owned_user)
 
     html = client.get(game.get_absolute_url()).content.decode()
-    hours = _stat_trigger(html, "popover-hours")
+    hours = trigger(html, "popover-hours")
 
     #: The visible line states the viewer's profile, decimal hours by default.
     assert "3.0 h" in hours
@@ -85,11 +96,42 @@ def test_game_detail_states_no_split_without_a_record(client, owned_user):
     client.force_login(owned_user)
 
     html = client.get(game.get_absolute_url()).content.decode()
-    hours = _stat_trigger(html, "popover-hours")
+    hours = trigger(html, "popover-hours")
 
     assert "1.0 h" in hours
     assert "tracked" not in hours
     assert "historical" not in hours
+
+
+@pytest.mark.django_db
+def test_the_stats_page_states_the_split_on_every_playtime_row(client, owned_user):
+    """Hours, the month rows and the platform rows all name both sources."""
+    library = owned_user.library
+    platform = Platform.objects.create(name="PC", icon="pc")
+    played = Game.objects.create(library=library, name="Played")
+    recorded = Game.objects.create(library=library, name="Recorded", platform=platform)
+    start = datetime(2022, 3, 1, 10, tzinfo=UTC)
+    session_row(played, started_at=start, ended_at=start + HOUR)
+    record_row([tracked_run(library, recorded)], duration=3 * HOUR, when="2022-06")
+    client.force_login(owned_user)
+
+    html = client.get(reverse("games:stats_by_year", args=[2022])).content.decode()
+
+    hours = figure(html, "duration-stats-total-hours")
+    assert "4.0 h" in hours
+    assert "1.0 h" in hours
+    assert "</span> tracked" in hours
+    assert "3.0 h" in hours
+    assert "</span> historical" in hours
+
+    month = figure(html, "duration-stats-month-6")
+    assert "</span> historical" in month
+    #: The row keeps the filter link this issue leaves to #1105.
+    assert "href=" in month
+
+    platform_row = figure(html, f"duration-stats-platform-{platform.pk}")
+    assert "</span> historical" in platform_row
+    assert "href=" in platform_row
 
 
 @pytest.mark.django_db
