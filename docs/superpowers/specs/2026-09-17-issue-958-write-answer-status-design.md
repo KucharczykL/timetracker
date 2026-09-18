@@ -54,10 +54,9 @@ invites a second game.
 first two. `restore_and_return` redirects, and a redirect states no status.
 
 The restore reads the status for a different answer. Its refusal carries a
-sentence and a "Try again" button, because the catalog mark is clear and a
-second press ends the halfway. Only a conflict gets them. A defect states that
-the problem was reported, and offers no button, because no retry of it can
-succeed.
+sentence and a "Try again" button. The catalog mark is clear, thus a second
+press ends the halfway. Only a conflict gets the button. A defect states that
+the problem was reported. No retry of a defect can succeed.
 
 ## The status stays on the exception
 

@@ -267,7 +267,7 @@ class TestRestoreGame:
     def test_a_defect_after_the_stamp_offers_no_second_press(
         self, logged_in, game, monkeypatch
     ):
-        """No retry of a defect can succeed, so none is offered."""
+        """A defect offers no second press."""
         import games.views.playergame_writes as writes
 
         self._removed(logged_in, game)

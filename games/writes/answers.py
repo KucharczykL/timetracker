@@ -62,7 +62,7 @@ class CommandFailed(Exception):
 
 
 class WriteAnswer(NamedTuple):
-    """A refusal, or None when the write landed."""
+    """A refusal, or None when it landed."""
 
     refusal: CommandFailed | None
 

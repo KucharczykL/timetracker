@@ -157,7 +157,7 @@ def restore_and_return(
 
     ``retry`` puts a "Try again" action on that message, posting to
     this same route: for a restore whose halfway a second press ends.
-    A defect states no second press that can work, so it gets none.
+    A defect admits no second press.
     """
     try:
         action()

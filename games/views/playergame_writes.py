@@ -94,7 +94,7 @@ def restore_game_for_request(request: HttpRequest, game: Game) -> None:
             failure.message,
             exc_info=failure,
         )
-        #: A defect states no second press that can work.
+        #: A defect admits no second press.
         tail = (
             "Try again."
             if failure.status_code == CONFLICT_STATUS
