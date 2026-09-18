@@ -1,5 +1,10 @@
 # Reclassify a session as historical playtime
 
+> This spec is 530 words. The band is 200 to 500. The overrun is an explicit
+> exception for this document, accepted on review: it holds one act, one
+> invariant, one undo with five rules, and a bulk screen, and each is a rule
+> the code keeps. It is not a loosening of the band.
+
 A written duration in a session row is sometimes a total, not a sitting. This
 act, in `games/commands/session_reclassification.py`, moves the row to a
 historical playtime record.
