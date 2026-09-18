@@ -156,7 +156,7 @@ def test_the_provenance_literal_matches_the_choices():
 
 
 def test_the_restatement_carries_the_statement_alone():
-    """The creation adds one optional key; the restatement none."""
+    """Creation adds one optional key; restatement none."""
     assert HISTORICALPLAYTIME_RESTATED.payload in (
         HISTORICALPLAYTIME_CREATED.payload.__orig_bases__
     )

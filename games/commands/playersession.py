@@ -801,7 +801,7 @@ class RemoveSession(Command):
 def live_record_from(
     context: CommandContext, session: PlayerSession
 ) -> HistoricalPlaytime | None:
-    """The live record made from the session; two is a defect."""
+    """The live record from the session; two, defect."""
     records = list(
         HistoricalPlaytime.objects.filter(
             library=context.library,
@@ -822,7 +822,7 @@ def live_record_from(
 def _refuse_beside_a_live_record(
     context: CommandContext, session: PlayerSession
 ) -> None:
-    """Refuse a restore that would count hours twice."""
+    """Refuse a restore that double counts."""
     #: Under dispatch's lock: neither mark can move.
     record = live_record_from(context, session)
     if record is not None:

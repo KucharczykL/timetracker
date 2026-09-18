@@ -324,7 +324,7 @@ def test_a_refusal_is_an_answer(owned_user, game, run):
 
 
 def test_no_playthrough_is_a_field_error(owned_library, game, run):
-    """The field, not the command, names what is missing."""
+    """The field names what is missing."""
     bound = form(owned_library, game, posted_record([]))
     assert not bound.is_valid()
     assert "playthroughs" in bound.errors
@@ -525,7 +525,7 @@ def test_a_session_keeps_its_removed_device_among_the_choices(owned_library, gam
 
 
 def test_a_session_form_still_states_a_submission(owned_library, game, run):
-    """A conversion has no Unchanged, so a repeat needs the key."""
+    """No Unchanged; a repeat needs the key."""
     session = a_session(owned_library, run)
 
     bound = HistoricalPlaytimeForm(

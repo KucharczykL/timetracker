@@ -2001,8 +2001,7 @@ def ConfirmPage(
     and a cancel link back to the origin. The no-JS replacement for the htmx
     confirmation modals — reusable across delete/refund/split/reset flows.
 
-    ``confirm_label=None`` draws no submit: the answer to a defect, which
-    admits no second press.
+    ``confirm_label=None`` draws no submit; a defect admits none.
 
     Three slots, and neither of the two beside ``message`` can live in it,
     because it renders inside a ``<p>``. ``refusal`` is why the last POST was

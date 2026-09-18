@@ -1303,7 +1303,7 @@ def test_a_rebuild_reproduces_a_removed_session(owned_user, owned_library, run):
 
 
 def a_record(run: Playthrough) -> HistoricalPlaytime:
-    """One record row, so a session has something to name."""
+    """One record row for a session to name."""
     return HistoricalPlaytime.objects.create(
         pk=uuid.uuid7(),
         library=run.library,

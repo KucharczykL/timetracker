@@ -74,11 +74,12 @@ class HistoricalPlaytimeStatementPayload(TypedDict):
 
 @with_config(STRICT_SCHEMA)
 class HistoricalPlaytimeCreatedPayload(HistoricalPlaytimeStatementPayload):
-    """The statement, and the session it came from.
+    """The statement, plus the session it came from.
 
     Not required: the deployment holds created events without it,
-    and nothing upcasts a recorded payload. Absent is the one
-    spelling of no session.
+    and nothing upcasts a recorded payload, so `Required` would
+    refuse every one of them on the next rebuild. Absent is the one
+    spelling of no session; `None` is refused.
     """
 
     reclassified_from: NotRequired[ReferenceId]

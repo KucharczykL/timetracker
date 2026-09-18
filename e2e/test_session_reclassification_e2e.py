@@ -1,4 +1,4 @@
-"""A written-down session becomes a record, and comes back."""
+"""A written-down session becomes a record, and back."""
 
 import re
 from datetime import date, timedelta

@@ -188,7 +188,7 @@ class QuickFilterBarRenderingTest(TestCase):
         self.assertNotIn("Advanced filter active", html)
 
     def test_inclusive_number_modifiers_round_trip(self):
-        """`is at least` survives the bar, not degraded."""
+        """`is at least` survives the bar."""
         filter_json = json.dumps(
             {"duration_hours": {"value": 8, "modifier": "GREATER_THAN_OR_EQUAL"}}
         )

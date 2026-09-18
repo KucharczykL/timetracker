@@ -1170,10 +1170,10 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
                 "session, never from both."
             )
         initial = dict(kwargs.pop("initial", None) or {})
-        #: After the caller's, and it overwrites them.
+        #: The seed overwrites a caller's initial.
         #: A caller passing `playthroughs` as an initial loses it to
-        #: the game's latest run, so a page that opens on another run
-        #: states `record=` or `session=` instead.
+        #: the game's latest run, quietly; a page opening on another
+        #: run states `record=` or `session=` instead.
         initial.update(_record_initial(library, game, record, session, provenance))
         super().__init__(*args, initial=initial, **kwargs)
         self.record: HistoricalPlaytime | None = record
@@ -1222,7 +1222,7 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         )
 
     def submission_key(self, act: str = "record") -> IdempotencyKey:
-        """The key this page submits under; `act` names the command."""
+        """The submit key; `act` names the command."""
         return f"historical-playtime-{act}-{self.cleaned_data['submission']}"
 
     def statement(self) -> HistoricalPlaytimeStatement:

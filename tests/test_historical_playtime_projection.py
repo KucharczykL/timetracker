@@ -265,7 +265,7 @@ def test_a_creation_names_the_session_it_came_from(
 def test_the_migration_states_restated_at_as_the_replay_does(
     owned_user, owned_library, tracked, run
 ):
-    """The backfill reads the stream the way the projector does."""
+    """The backfill reads the stream as replay does."""
     import importlib
 
     from django.db import connection

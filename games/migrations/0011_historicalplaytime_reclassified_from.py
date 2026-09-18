@@ -1,7 +1,10 @@
 import django.db.models.deletion
 from django.db import migrations, models
 
-#: The last restate event per record in stream order, as a replay reads it.
+#: The last restate event, in stream order.
+#: `max(recorded_at)` agrees only while `recorded_at` is
+#: monotonic with `sequence`; a replay reads the sequence, and
+#: `verify-replay-parity` is the only thing that would notice.
 STATE_RESTATED_AT = """
 UPDATE games_historicalplaytime AS record
 SET restated_at = latest.recorded_at

@@ -128,14 +128,14 @@ class TestModifier:
 
 
 class TestInclusiveComparisons:
-    """`is at least` and `is at most`: every number body, no date one."""
+    """Both inclusive members: numbers yes, dates no."""
 
     def test_for_numbers_offers_both(self):
         assert Modifier.GREATER_THAN_OR_EQUAL in Modifier.for_numbers()
         assert Modifier.LESS_THAN_OR_EQUAL in Modifier.for_numbers()
 
     def test_for_dates_offers_neither(self):
-        """A date widget is two boxes; it emits neither."""
+        """Two boxes emit neither."""
         assert Modifier.GREATER_THAN_OR_EQUAL not in Modifier.for_dates()
         assert Modifier.LESS_THAN_OR_EQUAL not in Modifier.for_dates()
         assert set(Modifier.for_dates()) < set(Modifier.for_numbers())
@@ -219,7 +219,7 @@ class TestInclusiveComparisons:
 
 @pytest.mark.django_db
 class TestDurationHoursThresholdAgainstDB:
-    """The review filter's own predicate: eight hours or longer."""
+    """The review's predicate: eight hours or longer."""
 
     @staticmethod
     def _matching(library, modifier):

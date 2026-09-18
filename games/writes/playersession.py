@@ -58,7 +58,7 @@ def _dispatch(
         command,
         actor=actor,
         library=library,
-        #: A caller's key, else none: the build absorbs a repeat.
+        #: Caller's key, else none; builds absorb repeats.
         idempotency_key=idempotency_key or str(uuid.uuid7()),
         correlation_id=correlation_id,
     )
@@ -316,7 +316,7 @@ def reclassify_session(
 def undo_reclassification(
     actor: User, session: PlayerSession, *, correlation_id: uuid.UUID
 ) -> CommandResult:
-    """Take the record back off and return the session."""
+    """Remove the record; restore the session."""
     with answered("session"):
         return _dispatch(
             UndoSessionReclassification(session_id=session.pk),

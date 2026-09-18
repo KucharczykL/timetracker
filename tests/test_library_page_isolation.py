@@ -104,10 +104,7 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
 def test_library_page_evaluates_each_summary_count_once(
     client, django_user_model, django_assert_num_queries
 ):
-    """A summary counted twice adds a database query.
-
-    The Playtime panel's own count is the twenty-third.
-    """
+    """Twenty-three queries; the Playtime count is one."""
     owner = django_user_model.objects.create_user(username="query-owner", password="p")
     client.force_login(owner)
 

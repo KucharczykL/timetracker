@@ -162,9 +162,7 @@ def restore_and_return(
     this same route: for a restore whose halfway a second press ends.
     A defect admits no second press.
 
-    ``unchanged`` is said instead of ``restored`` when the action
-    answers a `CommandResult` that appended nothing, so a second
-    press does not report a restore that did not occur.
+    ``unchanged`` replaces ``restored`` when nothing was appended.
     """
     try:
         answer = action()

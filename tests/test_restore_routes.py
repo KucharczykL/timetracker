@@ -66,7 +66,7 @@ def _removed_session(user, game):
 
 
 def _reclassified_session(user, game):
-    """A session that became a record, which the undo returns."""
+    """A session that became a record."""
     row = session_row(
         game,
         started_at=datetime(2024, 6, 2, 12, tzinfo=UTC),
@@ -229,7 +229,7 @@ def test_a_second_post_still_says_restored(
 
     assert response.status_code == 302
     assert _visible(owned_user.library, row)
-    #: The undo says so; the others still print the state.
+    #: The undo says so; others print state.
     said = "already back" if route == "games:undo_reclassify_session" else "restored"
     assert any(said in text for _, text in _messages_of(response))
 

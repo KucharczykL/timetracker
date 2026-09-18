@@ -75,7 +75,7 @@ def test_get_renders_the_prefilled_form(logged_in, session, run):
 
     assert response.status_code == 200
     html = response.content.decode()
-    #: The session's run is checked, and its day and hours filled.
+    #: Run checked; day and hours filled.
     checked = [line for line in html.split("<input") if str(run.pk) in line]
     assert any("checked" in line for line in checked)
     assert 'name="duration_hours"' in html
@@ -112,7 +112,7 @@ def test_the_toast_offers_the_undo(logged_in, session, run):
 def test_a_reclassified_session_posted_again_is_refused_in_its_own_words(
     logged_in, session, run
 ):
-    """A stale tab: the sentence names the undo, not a restore."""
+    """A stale tab; the sentence names the undo."""
     posted = posted_record([run.pk], hours="9", when_year="2026")
     logged_in.post(_url(session), posted)
 
@@ -201,7 +201,7 @@ def _long_row(run, day=A_DAY, hours=9) -> PlayerSession:
 
 
 def test_the_library_offers_the_review(logged_in, session):
-    """The entry points live here, not above the session list."""
+    """The entry points live here."""
     response = logged_in.get(reverse("games:library"))
 
     html = response.content.decode()
@@ -219,14 +219,14 @@ def test_the_library_says_so_when_nothing_waits(logged_in, run):
 
 
 def test_the_session_list_carries_no_review_row(logged_in, session):
-    """One act, one home: the list keeps its own furniture."""
+    """One act, one home."""
     response = logged_in.get(reverse("games:list_sessions"))
 
     assert "See these sessions" not in response.content.decode()
 
 
 def test_the_review_filter_parses_and_stays_quick_editable(logged_in):
-    """The link lands on a bar a person can go on editing."""
+    """The link lands on an editable bar."""
     from common.components import QUICK_FACETS, is_quick_editable, parse_filter_dict
     from games.filters import PlayerSessionFilter
     from games.views.session_reclassification import review_filter, review_url
@@ -357,7 +357,7 @@ def test_a_row_removed_since_the_page_opened_counts_as_lost(logged_in, owned_use
 def test_a_defect_stops_the_request_and_offers_no_second_press(
     logged_in, run, monkeypatch
 ):
-    """The rows before it stay recorded; the page says how many."""
+    """Rows before it stay recorded and counted."""
     from games.views import session_reclassification as views
 
     rows = [_long_row(run, date(2026, 3, day)) for day in (1, 2, 3)]
@@ -379,7 +379,7 @@ def test_a_defect_stops_the_request_and_offers_no_second_press(
     html = response.content.decode()
     assert "1 of 4" in html
     assert ">Record as historical playtime<" not in html
-    #: The sentences collected before the defect still reach the page.
+    #: Sentences before the defect still reach the page.
     assert NOT_AVAILABLE in html
     for row in rows:
         row.refresh_from_db()
@@ -411,7 +411,7 @@ def test_the_library_promises_no_undo_for_the_bulk_act(logged_in, session):
 
 
 def test_one_refused_row_does_not_stop_the_rest(logged_in, owned_user, run, game):
-    """The answer names both counts, and the rest are converted."""
+    """Both counts named; the rest converted."""
     refused = _long_row(run, date(2026, 3, 1))
     fine = _long_row(run, date(2026, 3, 2))
     #: Already a record; its conversion is refused.
@@ -437,7 +437,7 @@ def test_one_refused_row_does_not_stop_the_rest(logged_in, owned_user, run, game
 
 
 def test_a_command_refusal_does_not_stop_the_rest(logged_in, run, monkeypatch):
-    """The loop's refusal branch: a sentence, then on to the next row."""
+    """A refusal is a sentence; the loop continues."""
     from games.views import session_reclassification as views
 
     rows = [_long_row(run, date(2026, 3, day)) for day in (1, 2, 3)]
@@ -514,7 +514,7 @@ def test_every_key_left_alone_is_logged_with_its_library(logged_in, run, caplog)
     import logging
 
     short = _long_row(run, hours=7)
-    #: The games logger does not propagate; listen on it directly.
+    #: The games logger does not propagate.
     logging.getLogger("games").addHandler(caplog.handler)
     with caplog.at_level("INFO", logger="games"):
         logged_in.post(_bulk_url(), {"session": [str(short.pk)], "submission": "one"})

@@ -1,4 +1,4 @@
-"""Its own module: the act spans two aggregates."""
+"""The act spans two aggregates."""
 
 import uuid
 from collections.abc import Sequence
@@ -101,7 +101,7 @@ def _drift(
 
 @dataclass(frozen=True, slots=True)
 class ReclassifySessionAsHistoricalPlaytime(Command):
-    """State that a session was never a sitting."""
+    """A session was never a sitting."""
 
     command_name: ClassVar[CommandName] = CommandName.PLAYERSESSION_RECLASSIFY
     #: A UUID, because Command fingerprints its fields.
@@ -113,7 +113,7 @@ class ReclassifySessionAsHistoricalPlaytime(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         session = library_session(context, self.session_id)
-        #: Resolved, not followed: the FK drops the scope.
+        #: Resolved, not followed; keeps the scope.
         run = refuse_unless_live(_session_run(context, session))
         record = live_record_from(context, session)
         #: Under dispatch's lock: no mark can move.
@@ -147,8 +147,7 @@ class ReclassifySessionAsHistoricalPlaytime(Command):
                 f"of {runs[0].player_game_id}.",
                 sentence=ANOTHER_GAME,
             )
-        #: A held device stays, removed or not: a library that
-        #: stopped using a device removed it, and the row must convert.
+        #: A held device stays, removed or not.
         if self.statement.device_id == session.device_id:
             device = library_device_row(context, self.statement.device_id)
         else:
@@ -164,7 +163,7 @@ class ReclassifySessionAsHistoricalPlaytime(Command):
 
 @dataclass(frozen=True, slots=True)
 class UndoSessionReclassification(Command):
-    """Take back the act, both halves of it."""
+    """Take back both halves of the act."""
 
     command_name: ClassVar[CommandName] = (
         CommandName.PLAYERSESSION_UNDO_RECLASSIFICATION
@@ -195,15 +194,19 @@ class UndoSessionReclassification(Command):
             )
         if record is not None and session.removed_at is None:
             raise _drift(context, session, record)
-        #: Whole: a refused leg alone would leave both live.
+        #: Whole; one refused leg leaves both live.
         if record is not None and record.restated_at is not None:
             raise CommandRejected(
                 f"Record {record.pk} was restated after session {session.pk} "
                 "became it, so removing it would take back more than the act.",
                 sentence=RESTATED_SINCE,
             )
-        #: The act marks the session before its record can be marked,
-        #: so a session marked after its last record was is another act's.
+        #: A mark after the last record's is another act's.
+        #: The act marks the session at the record's creation, so
+        #: the record's removal, by hand or by undo, is always later.
+        #: Reversing this comparison would restore plainly removed
+        #: sessions through the undo route, and no test of the
+        #: ordinary case would notice.
         if record is None and session.removed_at is not None:
             latest = max(
                 removed.removed_at for removed in records if removed.removed_at
@@ -218,7 +221,7 @@ class UndoSessionReclassification(Command):
         _refuse_under_a_removed_parent(context, session)
         if record is not None:
             _refuse_under_the_records_removed_parent(context, record)
-        #: Past the refusals the session is removed; the record may be.
+        #: Session removed here; the record may be.
         events: list[NewEvent] = []
         if record is not None:
             events.append(historicalplaytime_removed(record.pk))

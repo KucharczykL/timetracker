@@ -261,7 +261,7 @@ def created_event(
     *,
     reclassified_from: uuid.UUID | None = None,
 ) -> NewEvent:
-    """One statement as the creation event; caller resolves runs and device."""
+    """The creation event from a resolved statement."""
     return historicalplaytime_created(
         player_game_id=runs[0].player_game_id,
         runs=_members(runs, {}),
@@ -357,10 +357,10 @@ class RemoveHistoricalPlaytime(Command):
 def _refuse_beside_a_live_session(
     context: CommandContext, record: HistoricalPlaytime
 ) -> None:
-    """The session's guard, and the sibling check a mirror would miss."""
+    """The session's guard, plus the sibling check."""
     if record.reclassified_from_id is None:
         return
-    #: Resolved, not followed: the FK drops the scope.
+    #: Resolved, not followed; keeps the scope.
     try:
         session = library_session(context, record.reclassified_from_id)
     except SessionNotHeld as refusal:

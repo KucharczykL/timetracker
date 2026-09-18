@@ -168,7 +168,7 @@ class Modifier(str, Enum):
 
     @classmethod
     def for_dates(cls) -> list[Self]:
-        """Without the inclusive pair: no date widget emits them."""
+        """No inclusive pair; no date widget emits them."""
         return [
             cls.EQUALS,
             cls.NOT_EQUALS,

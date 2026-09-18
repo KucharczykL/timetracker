@@ -1,4 +1,4 @@
-"""Record a session as historical playtime, and take it back."""
+"""Record a session as historical playtime."""
 
 import json
 import logging
@@ -167,7 +167,7 @@ def review_filter() -> str:
 
 
 def review_url() -> str:
-    """The session list, narrowed to the rows worth reviewing."""
+    """The session list, narrowed to the review."""
     return f"{reverse('games:list_sessions')}?filter={quote(review_filter())}"
 
 
@@ -187,16 +187,16 @@ IN_THE_BUCKET = (
 )
 ALREADY_RECORDED = "Some of the sessions were already recorded as historical playtime."
 
-#: A session key as the page posts it.
+#: A session key as posted.
 type PostedKey = str
 
 
 def reviewable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
-    """Live written-down rows of the threshold or longer, on a run."""
+    """Live written-down rows at the threshold."""
     return library_sessions(library).filter(
         timing_mode=PlayerSessionTimingMode.DURATION_ONLY,
         effective_duration__gte=timedelta(hours=REVIEW_THRESHOLD_HOURS),
-        #: The bulk act cannot ask which run a bucket row belongs to.
+        #: The bulk act cannot ask for a run.
         playthrough__kind=PlaythroughKind.ORDINARY,
     )
 
@@ -204,7 +204,7 @@ def reviewable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
 def _reviewable(
     library: UserLibrary, keys: Sequence[UUID] | None = None
 ) -> list[PlayerSession]:
-    """The review's rows; `keys` narrows to a post."""
+    """The review's rows; `keys` narrows them."""
     rows = reviewable_sessions(library)
     if keys is not None:
         rows = rows.filter(pk__in=keys)
@@ -216,14 +216,14 @@ def _reviewable(
 
 
 class Refused(NamedTuple):
-    """A posted key the act left alone, and why."""
+    """A key left alone, and why."""
 
     key: PostedKey
     sentence: str
 
 
 class Classified(NamedTuple):
-    """What the review offers, and why the rest are left."""
+    """The review's rows, and the rest's sentences."""
 
     convertible: tuple[PlayerSession, ...]
     refused: tuple[Refused, ...]
@@ -232,7 +232,7 @@ class Classified(NamedTuple):
 
 
 def _classified(library: UserLibrary, posted: Sequence[PostedKey]) -> Classified:
-    """The review's rows; a sentence true of each other key."""
+    """Sort posted keys: convertible or a sentence."""
     keys: dict[UUID, PostedKey] = {}
     refused: list[Refused] = []
     for value in dict.fromkeys(posted):
@@ -270,7 +270,7 @@ def _classified(library: UserLibrary, posted: Sequence[PostedKey]) -> Classified
 def _convert_each(
     request: HttpRequest, user: User, classified: Classified, token: str
 ) -> None:
-    """Convert each row; a refusal is a sentence, a defect stops."""
+    """Convert each; refusal a sentence, defect stops."""
     correlation_id = new_correlation_id()
     recorded = 0
     sentences: list[str] = []
@@ -278,7 +278,7 @@ def _convert_each(
     def left(key: object, sentence: str, cause: object = None) -> None:
         if sentence not in sentences:
             sentences.append(sentence)
-        #: The page prints sentences, not keys; the log holds both.
+        #: The page prints sentences; the log, keys.
         logger.info(
             "Session %s of library %s was not recorded under %s: %s%s",
             key,
@@ -320,7 +320,7 @@ def _convert_each(
                 correlation_id=correlation_id,
             )
         except CommandFailed as failure:
-            #: One type, two meanings; the status tells them apart.
+            #: One type; the status tells defect apart.
             if failure.status_code != CONFLICT_STATUS:
                 say()
                 raise CommandFailed(
@@ -367,7 +367,7 @@ def reclassify_reviewed_sessions(request: HttpRequest) -> HttpResponse:
 def _review_table(
     rows: Sequence[PlayerSession], durations: DurationPresentation
 ) -> Node:
-    """What the confirmation lists: every row, not the page's worth."""
+    """Every row, not one page of them."""
     return StyledTable(
         columns=[
             Column("Game", None),
@@ -385,7 +385,7 @@ def _review_table(
     )
 
 
-#: Marks the panel while it has no permanent home.
+#: The panel has no permanent home yet.
 TEMPORARY_NOTE = (
     "This section is temporary. It moves into the Playtime page once that "
     "page can hold it."
@@ -393,7 +393,7 @@ TEMPORARY_NOTE = (
 
 
 def PlaytimeReviewPanel(library: UserLibrary, *, origin: OriginUrl) -> Node:
-    """What the review offers, in a person's own words."""
+    """The review, in a person's words."""
     waiting = reviewable_sessions(library).count()
     if not waiting:
         return EmptyState(

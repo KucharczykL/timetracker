@@ -1,4 +1,4 @@
-"""Turning a session into a historical playtime record."""
+"""A session becomes a historical playtime record."""
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
@@ -229,7 +229,7 @@ def test_the_session_is_marked_and_names_the_record(owned_user, owned_library, r
 
 
 def test_a_running_timed_session_is_refused(owned_user, owned_library, run):
-    """A running row measures nothing; state a duration."""
+    """A running row measures nothing yet."""
     session = a_session(
         owned_library,
         owned_user,
@@ -249,7 +249,7 @@ def test_a_running_timed_session_is_refused(owned_user, owned_library, run):
 
 
 def test_a_finished_timed_session_is_admitted(owned_user, owned_library, run):
-    """The command's rule; the screen is what narrows it."""
+    """The command admits it; the screen narrows."""
     session = a_session(
         owned_library,
         owned_user,
@@ -262,7 +262,7 @@ def test_a_finished_timed_session_is_admitted(owned_user, owned_library, run):
     record = convert(owned_library, owned_user, session)
 
     assert record.duration == AN_HOUR
-    #: 23:30 UTC is the next day in Prague: effective_day, not the UTC day.
+    #: 23:30 UTC is the next Prague day.
     assert record.when.canonical == "2026-01-02"
 
 
@@ -366,7 +366,7 @@ def test_a_removed_device_named_anew_is_refused(owned_user, owned_library, run):
 
 
 def test_a_bucket_session_converts_onto_an_ordinary_run(owned_user, owned_library, run):
-    """The statement names the run; the session need not."""
+    """The statement names the run."""
     bucket = Playthrough.objects.create(
         id=uuid.uuid7(),
         library=owned_library,
@@ -374,7 +374,7 @@ def test_a_bucket_session_converts_onto_an_ordinary_run(owned_user, owned_librar
         kind=PlaythroughKind.IMPORTED_HISTORY,
         created_at=timezone.now(),
     )
-    #: A row, not a command: nothing records onto the bucket.
+    #: A row; nothing records onto the bucket.
     session = duration_only_row(bucket, A_DAY, timedelta(hours=9))
     onto_the_run = statement_from_session(session)._replace(playthrough_ids=(run.pk,))
 
@@ -431,7 +431,7 @@ def test_a_removed_session_is_refused(owned_user, owned_library, run):
 def test_a_reclassified_session_is_refused_in_its_own_words(
     owned_user, owned_library, run
 ):
-    """Not the removed-session sentence, whose remedy is circular."""
+    """Not the removed-session sentence; that remedy circles."""
     session = a_duration_only(owned_library, owned_user, run)
     statement = statement_from_session(session)
     convert(owned_library, owned_user, session)
@@ -546,7 +546,7 @@ def test_the_playtime_total_does_not_move(owned_user, owned_library, run, game):
 
 
 def test_each_period_total_stays_the_same(owned_user, owned_library, run):
-    """The record's day is inside every period the session was."""
+    """The record's day is inside every period."""
     from games.reads.days import DayInterval
     from games.reads.playtime import playtime_between_each
 
@@ -578,7 +578,7 @@ def test_the_session_count_falls_by_one(owned_user, owned_library, run):
 
 
 def test_the_run_reads_never_played(owned_user, owned_library, run):
-    """The figure a person sees, on Game detail and in the facet."""
+    """The figure Game detail and the facet show."""
     from games.reads.playthrough_runs import runs_with_condition
 
     session = a_duration_only(owned_library, owned_user, run)
@@ -681,7 +681,7 @@ def restate(library, actor, record, statement) -> None:
 
 
 def test_an_undo_after_a_restatement_is_refused_whole(owned_user, owned_library, run):
-    """Neither leg runs: both live is the double count."""
+    """Neither leg runs; both live double counts."""
     session = a_duration_only(owned_library, owned_user, run)
     record = convert(owned_library, owned_user, session)
     restate(
@@ -732,7 +732,7 @@ def test_a_restated_record_removed_by_hand_does_not_block_the_undo(
 def test_an_undo_under_a_removed_run_is_refused(
     owned_user, owned_library, run, second_run
 ):
-    """Reachable once the record is gone: nothing then holds the run."""
+    """Reachable once the record is gone."""
     session = a_duration_only(owned_library, owned_user, run)
     record = convert(owned_library, owned_user, session)
     dispatch(
@@ -760,7 +760,7 @@ def test_an_undo_under_a_removed_run_is_refused(
 def test_a_session_removed_on_its_own_after_an_undo_is_not_restored(
     owned_user, owned_library, run
 ):
-    """A later mark on the session is another act's."""
+    """A later mark is another act's."""
     session = a_duration_only(owned_library, owned_user, run)
     convert(owned_library, owned_user, session)
     undo(owned_library, owned_user, session)
@@ -783,7 +783,7 @@ def test_a_session_removed_on_its_own_after_an_undo_is_not_restored(
 def test_another_librarys_record_naming_the_session_guards_nothing(
     owned_user, owned_library, run, django_user_model
 ):
-    """Every guard is scoped; drift is the audit's to report."""
+    """Every guard is scoped; drift is audited."""
     session = a_duration_only(owned_library, owned_user, run)
     dispatch(
         RemoveSession(session_id=session.pk),
@@ -829,7 +829,7 @@ def test_another_librarys_record_naming_the_session_guards_nothing(
 
 
 def test_an_undo_under_a_removed_game_is_refused(owned_user, owned_library, run, game):
-    """A live record keeps its run; only the game can go."""
+    """A live record keeps its run."""
     session = a_duration_only(owned_library, owned_user, run)
     record = convert(owned_library, owned_user, session)
     dispatch(
@@ -852,7 +852,7 @@ def test_an_undo_under_a_removed_game_is_refused(owned_user, owned_library, run,
 def test_a_session_converted_twice_keeps_one_record_live(
     owned_user, owned_library, run
 ):
-    """Restoring the earlier record is refused by the later one."""
+    """The later record refuses restoring the earlier."""
     session = a_duration_only(owned_library, owned_user, run)
     first = convert(owned_library, owned_user, session)
     undo(owned_library, owned_user, session)
@@ -928,7 +928,7 @@ def test_a_record_restore_is_refused_while_its_session_is_live(
 
 
 def test_a_live_session_still_answers_unchanged(owned_user, owned_library, run):
-    """The no-op comes first, before the new refusal."""
+    """The no-op precedes the new refusal."""
     session = a_duration_only(owned_library, owned_user, run)
     before = LibraryEvent.objects.count()
 
