@@ -571,7 +571,8 @@ def PlaytimeSplit(
     )
     if not breakdown.historical:
         return total
-    return Fragment(
+    #: One element, or a flex host lays the lines out side by side.
+    return Span(class_="block")[
         Span(class_="block")[total],
         Span(class_="block text-type-micro text-body")[
             DurationText(breakdown.tracked, presentation),
@@ -580,7 +581,7 @@ def PlaytimeSplit(
             DurationText(breakdown.historical, presentation),
             " historical",
         ],
-    )
+    ]
 
 
 BROWSER_TIME_ZONE_FIELD = "browser_time_zone"
