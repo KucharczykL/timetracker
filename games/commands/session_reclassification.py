@@ -1,0 +1,113 @@
+"""The act that turns a session into historical playtime.
+
+Its own module because it spans two aggregates: `historical_playtime`
+already reads this package's session rules, so a command naming both
+cannot sit on either side without a cycle.
+"""
+
+import uuid
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import ClassVar
+
+from games.commands.historical_playtime import (
+    HistoricalPlaytimeStatement,
+    _live_runs,
+    created_event,
+    normalized_statement,
+)
+from games.commands.playersession import _live_session
+from games.commands.scope import library_device, library_device_row
+from games.events.dispatch import (
+    Command,
+    CommandContext,
+    CommandName,
+    CommandRejected,
+)
+from games.events.playersession import playersession_reclassified
+from games.events.vocabulary import NewEvent, Unchanged
+from games.models import (
+    HistoricalPlaytimeProvenance,
+    PlayerSession,
+    PlayerSessionTimingMode,
+)
+from timetracker.temporal import TemporalValue
+
+STILL_RUNNING = (
+    "That session is still running. Finish it before recording it as "
+    "historical playtime."
+)
+ANOTHER_GAME = (
+    "Historical playtime made from a session belongs to that session's game. "
+    "Choose one of its playthroughs."
+)
+
+
+def statement_from_session(
+    session: PlayerSession,
+    provenance: HistoricalPlaytimeProvenance = (
+        HistoricalPlaytimeProvenance.MANUALLY_ENTERED
+    ),
+) -> HistoricalPlaytimeStatement:
+    """The record a session already states.
+
+    The two generated columns are what the read layer counts, so they
+    are what the record repeats: a Corrected row states its override
+    rather than its elapsed time, and every mode states one day.
+    Provenance is the one fact no session holds, so the caller states
+    it.
+    """
+    return HistoricalPlaytimeStatement(
+        duration=session.effective_duration,
+        when=TemporalValue.from_day(session.effective_day).canonical,
+        provenance=provenance,
+        playthrough_ids=(session.playthrough_id,),
+        device_id=session.device_id,
+        emulated=session.emulated,
+        note=session.note,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ReclassifySessionAsHistoricalPlaytime(Command):
+    """State that a session was never a sitting."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYERSESSION_RECLASSIFY
+    #: A UUID, because Command fingerprints its fields.
+    session_id: uuid.UUID
+    statement: HistoricalPlaytimeStatement
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "statement", normalized_statement(self.statement))
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        session = _live_session(context, self.session_id)
+        if (
+            session.timing_mode == PlayerSessionTimingMode.TIMED
+            and session.ended_at is None
+        ):
+            raise CommandRejected(
+                f"Session {session.pk} is a running Timed row, so the hours it "
+                "states are still moving.",
+                sentence=STILL_RUNNING,
+            )
+        runs = _live_runs(context, self.statement)
+        if runs[0].player_game_id != session.playthrough.player_game_id:
+            raise CommandRejected(
+                f"Session {session.pk} belongs to player game "
+                f"{session.playthrough.player_game_id}, and the statement names "
+                f"playthroughs of {runs[0].player_game_id}.",
+                sentence=ANOTHER_GAME,
+            )
+        #: The session's own device is kept, removed or not; any other
+        #: must be live. Without this, a library that stopped using a
+        #: device could not convert the rows recorded on it.
+        if self.statement.device_id == session.device_id:
+            device = library_device_row(context, self.statement.device_id)
+        else:
+            device = library_device(context, self.statement.device_id)
+        created = created_event(runs, device, self.statement)
+        return [
+            created,
+            playersession_reclassified(session.pk, record_id=created.aggregate_id),
+        ]

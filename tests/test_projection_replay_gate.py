@@ -49,6 +49,10 @@ from games.commands.playthrough import (
     RestorePlaythrough,
     StartPlaythrough,
 )
+from games.commands.session_reclassification import (
+    ReclassifySessionAsHistoricalPlaytime,
+    statement_from_session,
+)
 from games.events.dispatch import Command, CommandOutcome, CommandResult, dispatch
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.events.replay import replay
@@ -368,6 +372,28 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     run(RemoveHistoricalPlaytime(record_id=restored_record), "remove-record-again")
     run(RestoreHistoricalPlaytime(record_id=restored_record), "restore-record")
 
+    #: A session that became a record, so both sides of the mark
+    #: and the reference the restore keeps reach the snapshot.
+    converted = _created_id(
+        run(
+            CreateSession(
+                playthrough_id=first_run.pk,
+                timing=DurationOnlyTiming(
+                    day=date(2024, 2, 9), duration=timedelta(hours=9)
+                ),
+                note="Off the launcher",
+            ),
+            "create-session-to-reclassify",
+        )
+    )
+    run(
+        ReclassifySessionAsHistoricalPlaytime(
+            session_id=converted,
+            statement=statement_from_session(PlayerSession.objects.get(pk=converted)),
+        ),
+        "reclassify-session",
+    )
+
     run(RemovePlayerGame(game_id=second.pk), "remove-second-game")
     run(RestorePlayerGame(game_id=second.pk), "restore-second-game")
     #: Left removed, for the same reason as the third run.
@@ -552,10 +578,15 @@ def row_versions(library) -> list[tuple[str, str]]:
 
 
 def empty_projections(library) -> None:
-    """Scoped by library, children first for RESTRICT."""
+    """Scoped by library, children first for RESTRICT.
+
+    Sessions come before records: a reclassified session names the
+    record it became, and that reference outlives a restore, so a
+    record taken first is refused by its own RESTRICT key.
+    """
     HistoricalPlaytimeRun.objects.filter(library=library).delete()
-    HistoricalPlaytime.objects.filter(library=library).delete()
     PlayerSession.objects.filter(library=library).delete()
+    HistoricalPlaytime.objects.filter(library=library).delete()
     Playthrough.objects.filter(library=library).delete()
     PlayerGame.objects.filter(library=library).delete()
 
