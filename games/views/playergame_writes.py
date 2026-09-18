@@ -1,8 +1,8 @@
 """The request-shaped half of the write path.
 
 games/writes/playergame.py raises. A view that stays on its page toasts
-and answers False; one that stands behind a confirmation re-raises, so
-the confirmation states the sentence itself.
+and answers the refusal; one that stands behind a confirmation re-raises,
+so the confirmation states the sentence itself.
 """
 
 import logging
@@ -15,7 +15,7 @@ from django.http import HttpRequest
 
 from games.models import Game, PlayerGameStatus
 from games.removal import remove, restore
-from games.writes.answers import CommandFailed
+from games.writes.answers import CONFLICT_STATUS, CommandFailed, WriteAnswer
 from games.writes.playergame import (
     new_correlation_id,
     record_facts,
@@ -29,14 +29,14 @@ logger = logging.getLogger("games")
 
 def track_game_for_request(
     request: HttpRequest, game: Game, *, correlation_id: uuid.UUID
-) -> bool:
-    """Track the game; False on failure."""
+) -> WriteAnswer:
+    """Track the game; the refusal on failure."""
     try:
         track_game(cast("User", request.user), game, correlation_id=correlation_id)
     except CommandFailed as failure:
         messages.error(request, failure.message)
-        return False
-    return True
+        return WriteAnswer(failure)
+    return WriteAnswer(None)
 
 
 def record_facts_for_request(
@@ -46,8 +46,8 @@ def record_facts_for_request(
     status: PlayerGameStatus | None = None,
     mastered: bool | None = None,
     correlation_id: uuid.UUID,
-) -> bool:
-    """State the facts; False on failure."""
+) -> WriteAnswer:
+    """State the facts; the refusal on failure."""
     try:
         record_facts(
             cast("User", request.user),
@@ -58,8 +58,8 @@ def record_facts_for_request(
         )
     except CommandFailed as failure:
         messages.error(request, failure.message)
-        return False
-    return True
+        return WriteAnswer(failure)
+    return WriteAnswer(None)
 
 
 def remove_game_for_request(request: HttpRequest, game: Game) -> None:
@@ -92,8 +92,15 @@ def restore_game_for_request(request: HttpRequest, game: Game) -> None:
             game.pk,
             game.library_id,
             failure.message,
+            exc_info=failure,
+        )
+        #: A defect admits no second press.
+        tail = (
+            "Try again."
+            if failure.status_code == CONFLICT_STATUS
+            else "The problem has been reported."
         )
         raise CommandFailed(
-            f"{game.name} is back in the catalog but not tracked yet. Try again.",
+            f"{game.name} is back in the catalog but not tracked yet. {tail}",
             failure.status_code,
         ) from failure

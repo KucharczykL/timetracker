@@ -38,6 +38,11 @@ from games.models import (
 )
 from games.reference_form import ReferenceSetForm
 from games.removal import remove
+from games.writes.answers import (
+    CONFLICT_STATUS,
+    CommandFailed,
+    WriteAnswer,
+)
 from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -255,14 +260,18 @@ def test_a_written_graph_is_redrawn_from_storage(
     posted["edition-1-release-0-platform"] = ""
 
     with patch(
-        "games.views.game.record_facts_for_request", return_value=False
+        "games.views.game.record_facts_for_request",
+        return_value=WriteAnswer(
+            CommandFailed("Nothing was recorded; try again.", CONFLICT_STATUS)
+        ),
     ) as refused:
         response = client.post(
             reverse("games:edit_game", args=[graph.game.pk]), data=posted
         )
 
     assert refused.called
-    assert response.status_code == 200
+    #: The refused command's page says so.
+    assert response.status_code == CONFLICT_STATUS
     written = Edition.objects.alive().get(game=graph.game, name="Gold")
     assert str(written.pk) in response.content.decode()
 

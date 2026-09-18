@@ -166,21 +166,22 @@ second catches a sibling outside the hierarchy, which is what
 `CommandNotPermitted` and `CommandRejected` are. Neither guard subsumes the
 other. Each was seen to fail on the thing it guards before it was committed.
 
-## The status code has one reader
+## The status code has few readers
 
-`CommandFailed` carries a status code, and one caller reads it: the Ninja
-exception handler in `games/api.py`.
+`CommandFailed` carries a status code. The Ninja exception handler in
+`games/api.py` reads it, and so does every view that catches the exception
+itself.
 
-No HTML view can. The three `*_for_request` wrappers in
-`games/views/playergame_writes.py` catch the exception, raise a message, and
-answer `bool`. `games/views/purchase.py` needs a status anyway, so it restates
-the value as the literal `409`.
+A view that takes its refusal through a `*_for_request` wrapper cannot, while
+those wrappers answer `bool`. `games/views/purchase.py` needs a status anyway,
+so it restates the value as the literal `409`.
 
 That literal is correct while every leaf answers 409, and it is a copy of a
-number rather than a reading of one.
-[#958](https://github.com/KucharczykL/timetracker/issues/958) owns the repair,
-because the fix is the return type of the three wrappers, which this issue does
-not move. This issue keeps the field and the literal as they are.
+number rather than a reading of one. This issue keeps the field and the literal
+as they are.
+[#958](https://github.com/KucharczykL/timetracker/issues/958) makes the repair:
+it gives the wrappers a return type that carries the refusal, and every view
+that answers a status reads one.
 
 ## The layering cost
 
@@ -198,7 +199,7 @@ rather than an oversight.
 copies both. Neither is the rendering of a conflict, thus each belongs to the
 issue that needs it second.
 
-The three `*_for_request` wrappers stay, for the reason #958 records.
+The `*_for_request` wrappers stay, for the reason #958 records.
 
 ## Reversibility
 

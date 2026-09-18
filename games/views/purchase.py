@@ -593,12 +593,13 @@ def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     correlation_id = new_correlation_id()
     games = list(purchase.games.all())
     for abandoned, game in enumerate(games):
-        if not record_facts_for_request(
+        answer = record_facts_for_request(
             request,
             game,
             status=PlayerGameStatus.ABANDONED,
             correlation_id=correlation_id,
-        ):
+        )
+        if answer.refusal is not None:
             if abandoned:
                 #: Say how far it went: the earlier games are
                 #: abandoned already and no rollback takes them
@@ -612,7 +613,7 @@ def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
             #: A redirect would swap into a cell.
             #: htmx swaps nothing outside 2xx.
             #: The toast rides the middleware's header.
-            return HttpResponse(status=409)
+            return HttpResponse(status=answer.refusal.status_code)
 
     purchase.refund()
 

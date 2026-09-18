@@ -81,6 +81,7 @@ from games.views.playthrough_writes import (
 )
 from games.views.removal import UndoOffer, confirm_and_apply, restore_and_return
 from games.views.returns import return_url
+from games.writes.answers import WriteAnswer
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import RunDraft, restore_run
 from timetracker.temporal import TemporalValue
@@ -218,12 +219,17 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
         presentation=date_time_presentation_for_request(request),
         offered_game=offered_game,
     )
+    #: The same tail renders an invalid form.
+    refused_status = 200
     if form.is_valid():
         game = form.cleaned_data["game"]
         correlation_id = new_correlation_id()
         draft = _recorded_draft(form)
         acts = _new_acts(draft, None)
-        if record_run_for_request(request, game, draft, correlation_id=correlation_id):
+        answer = record_run_for_request(
+            request, game, draft, correlation_id=correlation_id
+        )
+        if answer.refusal is None:
             _record_companion_status(request, game, acts, form, correlation_id)
             return redirect(
                 return_url(
@@ -232,6 +238,7 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
                     fallback_args=[game.id, game.url_slug],
                 )
             )
+        refused_status = answer.refusal.status_code
 
     return render_page(
         request,
@@ -241,6 +248,7 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/date-picker.js"),
         ),
+        status=refused_status,
     )
 
 
@@ -325,13 +333,13 @@ def editable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
 
 def record_completed(
     request: HttpRequest, game: Game, correlation_id: uuid.UUID
-) -> bool:
+) -> WriteAnswer:
     """State Completed for the game just finished.
 
     The request's correlation id, not a fresh one: the act
     and the status it implies belong to one submit.
 
-    Answers False on a refusal, which toasted already.
+    Answers the refusal, which toasted already.
     """
     return record_facts_for_request(
         request,
@@ -417,12 +425,17 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
         locked_game=game,
         offered_game=game,
     )
+    #: The same tail renders an invalid form.
+    refused_status = 200
     if form.is_valid():
         correlation_id = new_correlation_id()
         draft = _edited_draft(form, run)
         #: Ahead of the write, which refreshes the run.
         acts = _new_acts(draft, run)
-        if restate_run_for_request(request, run, draft, correlation_id=correlation_id):
+        answer = restate_run_for_request(
+            request, run, draft, correlation_id=correlation_id
+        )
+        if answer.refusal is None:
             _record_companion_status(request, game, acts, form, correlation_id)
             return redirect(
                 return_url(
@@ -431,6 +444,7 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
                     fallback_args=[game.id, game.url_slug],
                 )
             )
+        refused_status = answer.refusal.status_code
 
     return render_page(
         request,
@@ -440,6 +454,7 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/date-picker.js"),
         ),
+        status=refused_status,
     )
 
 

@@ -61,6 +61,17 @@ class CommandFailed(Exception):
         self.status_code = status_code
 
 
+class WriteAnswer(NamedTuple):
+    """A refusal, or None when it landed."""
+
+    refusal: CommandFailed | None
+
+    #: A tuple of one is otherwise truthy.
+    def __bool__(self) -> bool:
+        """True when the write landed."""
+        return self.refusal is None
+
+
 class ConflictAnswer(NamedTuple):
     """A sentence for a person, and the status that carries it."""
 

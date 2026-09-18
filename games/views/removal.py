@@ -25,7 +25,7 @@ from common.notices import ToastAction, Undo, notify
 from common.returns import UrlName
 from games.removal import remove
 from games.views.returns import return_url
-from games.writes.answers import CommandFailed
+from games.writes.answers import CONFLICT_STATUS, CommandFailed
 
 
 class UndoOffer(NamedTuple):
@@ -157,15 +157,19 @@ def restore_and_return(
 
     ``retry`` puts a "Try again" action on that message, posting to
     this same route: for a restore whose halfway a second press ends.
+    A defect admits no second press.
     """
     try:
         action()
     except CommandFailed as refusal:
+        offered = retry and refusal.status_code == CONFLICT_STATUS
         notify(
             request,
             refusal.message,
             level=messages.ERROR,
-            action=ToastAction(label="Try again", url=request.path) if retry else None,
+            action=ToastAction(label="Try again", url=request.path)
+            if offered
+            else None,
         )
     else:
         messages.success(request, restored)
