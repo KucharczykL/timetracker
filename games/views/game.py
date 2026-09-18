@@ -24,7 +24,6 @@ from common.components import (
     Div,
     Duration,
     DurationAlternates,
-    DurationText,
     ExternalReferenceLinks,
     FormFields,
     Fragment,
@@ -39,6 +38,7 @@ from common.components import (
     P,
     PageHeading,
     Pill,
+    PlaytimeSplit,
     Popover,
     PurchasePrice,
     QuickFilterBar,
@@ -111,6 +111,7 @@ from games.reads.playthrough_completions import GAME_RUNS, reported_completion_d
 from games.reads.playthrough_numbering import numbered_for
 from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 from games.reads.playtime import game_playtime, playtime_matching, playtime_sort_key
+from games.reads.sums import PlaytimeBreakdown
 from games.reference_form import ReferenceSetForm
 from games.sorting import (
     GAME_DEFAULT_SORT,
@@ -568,7 +569,7 @@ def _stat_popover(
     )
     return Popover(
         popover_content=content,
-        wrapped_classes="flex gap-2 items-center",
+        wrapped_classes="flex gap-2 items-baseline",
         id=popover_id,
         children=[Safe(_STAT_SVGS[svg_key]), value],
     )
@@ -857,7 +858,7 @@ def _game_header(
     game: Game,
     request: HttpRequest,
     metrics: dict[str, Any],
-    playtime: timedelta,
+    playtime: PlaytimeBreakdown,
     presentation: DateTimePresentation,
     durations: DurationPresentation,
     origin: OriginUrl | None,
@@ -881,8 +882,8 @@ def _game_header(
             "popover-hours",
             "Total hours played",
             "hours",
-            DurationText(playtime, durations),
-            DurationAlternates(playtime, durations),
+            PlaytimeSplit(playtime, durations, popover=False),
+            DurationAlternates(playtime.total, durations),
         ),
         _stat_popover(
             "popover-sessions",
@@ -1171,7 +1172,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             game,
             request,
             _game_overview_metrics(sessions),
-            game_playtime(library, game).total,
+            game_playtime(library, game),
             presentation,
             durations,
             origin,

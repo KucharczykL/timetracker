@@ -46,6 +46,16 @@ def test_the_navbar_adds_todays_record_in_two_queries(owned_user):
     assert len(summed) == 2
 
 
+def _stat_trigger(html: str, popover_id: str) -> str:
+    """One header stat's visible value.
+
+    ``Popover`` carries the id on its hidden panel, which follows the
+    trigger, so the value lies between the element's start and that id.
+    """
+    panel = html.index(f'id="{popover_id}"')
+    return html[html.rindex("<pop-over", 0, panel) : panel]
+
+
 @pytest.mark.django_db
 def test_game_detail_hours_add_the_record_alone(client, owned_user):
     game = Game.objects.create(library=owned_user.library, name="Tunic")
@@ -55,10 +65,31 @@ def test_game_detail_hours_add_the_record_alone(client, owned_user):
     client.force_login(owned_user)
 
     html = client.get(game.get_absolute_url()).content.decode()
-    hours = html[html.index('id="popover-hours"') : html.index('id="popover-sessions"')]
+    hours = _stat_trigger(html, "popover-hours")
 
-    assert "3 h 00 m" in hours
-    assert "1 h 00 m" not in hours
+    #: The visible line states the viewer's profile, decimal hours by default.
+    assert "3.0 h" in hours
+    #: The word follows the value's own spans, so it is not contiguous with it.
+    assert "1.0 h" in hours
+    assert "</span> tracked" in hours
+    assert "2.0 h" in hours
+    assert "</span> historical" in hours
+
+
+@pytest.mark.django_db
+def test_game_detail_states_no_split_without_a_record(client, owned_user):
+    """The headline of a game nothing recorded reads as it did."""
+    game = Game.objects.create(library=owned_user.library, name="Tunic")
+    start = datetime(2022, 3, 1, 10, tzinfo=UTC)
+    session_row(game, started_at=start, ended_at=start + HOUR)
+    client.force_login(owned_user)
+
+    html = client.get(game.get_absolute_url()).content.decode()
+    hours = _stat_trigger(html, "popover-hours")
+
+    assert "1.0 h" in hours
+    assert "tracked" not in hours
+    assert "historical" not in hours
 
 
 @pytest.mark.django_db
