@@ -544,43 +544,42 @@ def PlaytimeSplit(
     breakdown: PlaytimeBreakdown,
     presentation: DurationPresentation,
     *,
-    id_scope: str | None = None,
-    popover: bool = True,
+    id_scope: str,
     link: str | None = None,
 ) -> Node:
     """A total, and beneath it the two sources that made it.
 
-    ``popover=False`` is for a host that owns one already; a popover inside a
-    popover gives one figure two tooltips. Both lines are blocks: ``Popover``
-    renders ``self-start``, which a flex column would pin left of a line that
-    honours the host's alignment.
-    """
-    if popover:
-        if id_scope is None:
-            raise ValueError("A PlaytimeSplit that owns a popover needs an id_scope")
-    else:
-        if id_scope is not None:
-            raise ValueError("A PlaytimeSplit with no popover reads no id_scope")
-        if link is not None:
-            raise ValueError("A PlaytimeSplit with no popover renders no link")
+    A zero historical half answers the bare ``Duration``, so a figure of
+    sessions alone renders what it rendered before the split existed.
 
-    total = (
-        Duration(breakdown.total, presentation, id_scope=id_scope, link=link)
-        if id_scope is not None
-        else DurationText(breakdown.total, presentation)
-    )
+    The two lines are one element: a flex host would take siblings as two
+    items and lay them side by side. A host that states its own rows, or one
+    that owns the popover already, composes ``Duration`` or ``DurationText``
+    with :func:`PlaytimeHalves` instead.
+    """
+    total = Duration(breakdown.total, presentation, id_scope=id_scope, link=link)
     if not breakdown.historical:
         return total
-    #: One element, or a flex host lays the lines out side by side.
     return Span(class_="block")[
         Span(class_="block")[total],
-        Span(class_="block text-type-micro text-body")[
-            DurationText(breakdown.tracked, presentation),
-            " tracked",
-            Span(aria_hidden="true")[" · "],
-            DurationText(breakdown.historical, presentation),
-            " historical",
-        ],
+        PlaytimeHalves(breakdown, presentation),
+    ]
+
+
+def PlaytimeHalves(
+    breakdown: PlaytimeBreakdown, presentation: DurationPresentation
+) -> Node:
+    """The two sources of a total, on one line of smaller text.
+
+    ``PlaytimeSplit`` puts it beneath the total; a host whose total sits inside
+    a popover puts it beneath the popover instead.
+    """
+    return Span(class_="block text-type-micro text-body")[
+        DurationText(breakdown.tracked, presentation),
+        " tracked",
+        Span(aria_hidden="true")[" · "],
+        DurationText(breakdown.historical, presentation),
+        " historical",
     ]
 
 

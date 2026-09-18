@@ -48,13 +48,16 @@ def test_the_navbar_adds_todays_record_in_two_queries(owned_user):
 
 
 def trigger(html: str, element_id: str) -> str:
-    """The visible value of one popover.
+    """One whole stat: its visible value, and any line beneath it.
 
     ``Popover`` carries the id on its hidden panel, which follows the
-    trigger, so the value lies between the element's start and that id.
+    trigger, and a header stat states its second line after the popover
+    rather than inside it, so the stat ends where the next one starts.
     """
     panel = html.index(f'id="{element_id}"')
-    return html[html.rindex("<pop-over", 0, panel) : panel]
+    start = html.rindex("<pop-over", 0, panel)
+    following = html.find("<pop-over", panel)
+    return html[start : following if following != -1 else len(html)]
 
 
 def figure(html: str, element_id: str) -> str:

@@ -4,7 +4,7 @@ from datetime import timedelta
 
 import pytest
 
-from common.components import Duration, DurationText, PlaytimeSplit
+from common.components import Duration, PlaytimeSplit
 from common.components.core import assert_unique_element_ids
 from common.duration_presentation import (
     DurationPresentation,
@@ -126,12 +126,6 @@ def test_zero_historical_renders_exactly_a_duration():
     )
 
 
-def test_zero_historical_without_a_popover_renders_exactly_the_text():
-    assert _split(2 * HOUR, 0, popover=False) == str(
-        DurationText(timedelta(seconds=2 * HOUR), _presentation())
-    )
-
-
 def test_the_split_states_both_halves():
     html = _split(3 * HOUR, 2 * HOUR, id_scope="stats-total-hours")
 
@@ -149,19 +143,11 @@ def test_each_half_carries_its_spoken_form():
     assert '<span aria-hidden="true"> · </span>' in html
 
 
-def test_a_popover_requires_an_id_scope():
-    with pytest.raises(ValueError, match="id_scope"):
-        _split(3 * HOUR, 2 * HOUR)
-
-
-def test_no_popover_refuses_an_id_scope():
-    with pytest.raises(ValueError, match="id_scope"):
-        _split(3 * HOUR, 2 * HOUR, popover=False, id_scope="stats-total-hours")
-
-
-def test_a_link_without_a_popover_is_refused():
-    with pytest.raises(ValueError, match="link"):
-        _split(3 * HOUR, 2 * HOUR, popover=False, link="/tracker/session/list")
+def test_an_id_scope_is_required():
+    with pytest.raises(TypeError):
+        PlaytimeSplit(  # type: ignore[call-arg]
+            PlaytimeBreakdown(timedelta(0), timedelta(0)), _presentation()
+        )
 
 
 def test_the_split_forwards_its_link():

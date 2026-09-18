@@ -25,9 +25,8 @@ A zero historical half omits the second line and answers the bare `Duration`
 or `DurationText`: no wrapper, no added class. A figure of sessions alone
 renders what it rendered before the split existed.
 
-`popover=False` states the total as text, for a host that owns a popover
-already. `id_scope` is required with a popover and refused without one; `link`
-beside `popover=False` is refused, because `DurationText` renders no anchor.
+`PlaytimeHalves` is the second line alone, for a host that states its own
+rows or owns the popover already. Game detail composes it.
 
 `PlaytimeBreakdown` lives in `games/reads/sums.py`, which carries no filter
 vocabulary into `common.components`.
