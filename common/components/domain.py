@@ -31,6 +31,7 @@ from games.models import (
     PlayerSession,
     Purchase,
 )
+from games.reads.sums import PlaytimeBreakdown
 
 if TYPE_CHECKING:
     from common.duration_presentation import DurationPresentation
@@ -536,6 +537,52 @@ def Duration(
         trigger_label="Other duration formats",
         id=f"duration-{id_scope}",
         describedby=False,
+    )
+
+
+def PlaytimeSplit(
+    breakdown: PlaytimeBreakdown,
+    presentation: DurationPresentation,
+    *,
+    id_scope: str | None = None,
+    popover: bool = True,
+    link: str | None = None,
+) -> Node:
+    """A playtime total, and beneath it the two sources that made it.
+
+    ``popover`` states a fact about the host, not a preference: Game detail's
+    header stat is itself a popover holding the alternates, and a second one
+    inside it would give one stat two tooltips.
+
+    Both lines are blocks rather than a flex column. ``Popover`` renders
+    ``self-start``, so in a column the total would pin to the left edge while
+    the line beneath it honoured the host's alignment.
+    """
+    if popover:
+        if id_scope is None:
+            raise ValueError("A PlaytimeSplit that owns a popover needs an id_scope")
+    else:
+        if id_scope is not None:
+            raise ValueError("A PlaytimeSplit with no popover reads no id_scope")
+        if link is not None:
+            raise ValueError("A PlaytimeSplit with no popover renders no link")
+
+    total = (
+        Duration(breakdown.total, presentation, id_scope=id_scope, link=link)
+        if id_scope is not None
+        else DurationText(breakdown.total, presentation)
+    )
+    if not breakdown.historical:
+        return total
+    return Fragment(
+        Span(class_="block")[total],
+        Span(class_="block text-type-micro text-body")[
+            DurationText(breakdown.tracked, presentation),
+            " tracked",
+            Span(aria_hidden="true")[" · "],
+            DurationText(breakdown.historical, presentation),
+            " historical",
+        ],
     )
 
 
