@@ -8,14 +8,22 @@ that writes the status, and its "The status code has one reader" section names
 this repair.
 
 `CommandFailed` carries a sentence and a status code. A view that catches the
-exception itself reads both: `games/views/historical_playtime_entry.py` renders
-its form again at `failure.status_code`, and `confirm_and_apply` in
-`games/views/removal.py` renders its confirmation the same way.
+exception itself can read both: `games/views/historical_playtime_entry.py`
+renders its form again at `failure.status_code`, and `confirm_and_apply` in
+`games/views/removal.py` renders its confirmation the same way. Reading the
+status is a choice a catching view makes, not something catching gives it:
+`games/views/session.py` catches the same exception and reads the sentence
+alone.
 
 A view that takes its refusal through one of the six request-shaped write
 wrappers reads neither. The wrapper catches the exception, raises a message from
 it, and answers `bool`: the sentence reaches the person as a toast and the status
 stops at that line.
+
+The issue counts three such wrappers. That count predates
+`games/views/playthrough_writes.py`, which added four more; nine
+`*_for_request` functions stand in the two modules today, six of them
+answering `bool`.
 
 One view needs the status anyway. The refund loop in `games/views/purchase.py`
 states the number itself:
@@ -76,15 +84,15 @@ The repository states this refusal two ways. A view catches `CommandFailed`
 itself in `games/views/session.py`, `games/views/historical_playtime_entry.py`
 and `games/views/removal.py`. A view calls a `*_for_request` wrapper in
 `games/views/game.py`, `games/views/playthrough.py`,
-`games/views/playthrough_acts.py` and `games/views/purchase.py`.
+`games/views/playthrough_acts.py`, `games/views/purchase.py` and
+`games/views/session.py`, which takes both ways for two different writes.
 
 The refund can take the first way: `record_facts` inside a `try`, and the status
 read where it is caught. That costs no new type and no signature. It costs the
 toast instead. The wrapper owns the one line that turns a refusal into a message,
 and the refund states the write in a loop, once per game in the purchase, so the
 view would either repeat that line or hold the only copy of it outside the two
-write modules. It would also import a command's leaf into a view that states no
-other one.
+write modules.
 
 The wrappers exist to keep that line in one place. Giving them a return value
 that carries the status keeps it there and answers the issue, where moving the
@@ -123,9 +131,9 @@ the person lands on is the answer, as it is for a refused add.
 `games/views/playthrough.py` holds `record_completed`, which passes one wrapper's
 answer through to two callers that read neither. It takes the new type with it.
 
-## Which view reads the status
+## Which views read the status
 
-The refund loop, and no other.
+The refund loop reads it:
 
 ```python
 answer = record_facts_for_request(...)
@@ -137,8 +145,16 @@ if answer.refusal is not None:
 The narrowing is the read: there is no property that answers a status on a
 landed write, because such a property can only raise on the call that is wrong.
 
-A defect therefore reaches the browser as 500 rather than as 409. Nothing else
-moves. `HTMXMessagesMiddleware` attaches the toast header to a queued message on
+A defect therefore reaches the browser as 500 rather than as 409.
+
+One sentence is read beside it. A refund that stopped part way toasts "Refunding
+again is safe", and a defect's own sentence says the fault was reported. The two
+read as disagreement and are not one: the advice is about the rows, which a
+restatement absorbs whatever refused the next one, and it is the only thing that
+tells a person the earlier games are abandoned already. It stands at both
+statuses.
+
+Nothing else moves. `HTMXMessagesMiddleware` attaches the toast header to a queued message on
 every answer that is neither a redirect nor an `HX-Redirect` or `HX-Refresh`
 header, and htmx answers 409 and 500 by the same rule — its default response
 handling swaps nothing for either, which is why the view answers a status rather
@@ -146,10 +162,37 @@ than a redirect in the first place. The two numbers differ in what the network
 record says, and a defect of ours reading there as a conflict the person can
 retry is the thing this issue removes.
 
-The other HTML failure paths keep their answers. A refused add redirects with
-302, and a refused session form renders again with 200. Each states where the
-person lands, which no refusal knows. The refund answers a status because it can
-land nowhere: its answer replaces one row of a table.
+## Every re-render reads it too
+
+Three views stay on their page after a refused command and render their form
+again. They disagree about the status today.
+`games/views/historical_playtime_entry.py` answers `failure.status_code`.
+`edit_game` in `games/views/game.py` and both session forms in
+`games/views/session.py` answer 200.
+
+One rule replaces the two: a form rendered again after a refused command
+answers the refusal's status. A status states what the request did, and the
+request did not save. 200 says it saved, and the person is left reading a toast
+that disagrees with the network record. The historical form already holds the
+rule; the other two are the drift.
+
+`edit_game` reads the status off `WriteAnswer`, which is why the rule costs it
+nothing. The session forms catch `CommandFailed` themselves and read
+`failure.status_code`, as the historical form does.
+
+Both of those views render their tail for two causes: a form the person must
+correct, and a command that refused. Only the second has a status. Each holds
+the refusal in a local and answers 200 where there is none, rather than moving
+the render into the `except`, because `edit_game` rebuilds its graph and
+reference forms from storage between the refusal and the render.
+`_render_session_form` takes the `status` parameter `_render_form` already has
+in the historical module.
+
+A refused add is the exception, and it keeps its 302. `add_game` redirects
+because re-rendering invites a second game: a refused `track_game` takes the
+inserted row back out, and a refused `record_facts` leaves a tracked game whose
+form would insert another. Where a view does not render the refused form again,
+there is no response for the status to describe.
 
 ## The status stays on the exception
 
@@ -168,12 +211,28 @@ HTTP; `409` and `500` are its words, not a translation of them.
 
 `tests/test_playergame_view_cutover.py` holds
 `test_a_partly_applied_refund_says_how_far_it_went`. It replaces the leaf
-`record_facts`, not the wrapper, so the wrapper and the view both run. The test
-takes the status as a parameter and states it twice, 409 and 500, and asserts the
-view answers the one the leaf raised. A view that copies a number passes at 409
-and fails at 500, which is the hole this issue names. Django logs a returned 500
-on the `django.request` logger, so a test that reads records filters on the
-`games` logger, as `tests/test_playthrough_view_cutover.py` already does.
+`record_facts`, not the wrapper, so the wrapper and the view both run. Its double
+raises a `CommandFailed` of its own rather than a conflict, because `answered()`
+sits inside `record_facts` and the patch stands in front of it; the status is
+therefore whatever the double names. The test takes it as a parameter and states
+it twice, 409 and 500, and asserts the view answers the one the double raised. A
+view that copies a number passes at 409 and fails at 500, which is the hole this
+issue names.
+
+Its sibling, `test_a_failed_refund_answers_409_and_swaps_nothing`, states the
+same literal in its name and its assertion. It takes the parameter too, and its
+name drops the number. Leaving it behind would leave a copied 409 in the suite,
+which is the thing this issue removes from the view.
+
+`test_a_failed_edit_re_renders_the_form` states 200 in the same file. Its
+comment says a redirect would read as a save, which is the assertion worth
+keeping; the number beside it becomes the refusal's. It states the status twice
+as well, so the value is read rather than swapped for another literal.
+
+No test states what a refused session form answers, and none states what the
+historical form answers either. The rule gets one test per module that adopts
+it, each refusing the write at the command and reading the status off the
+re-rendered page.
 
 One test states `WriteAnswer`'s truthiness in both of its states, because the
 eight call sites that read the value read it that way and nothing else proves it.

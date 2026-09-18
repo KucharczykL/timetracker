@@ -166,10 +166,11 @@ second catches a sibling outside the hierarchy, which is what
 `CommandNotPermitted` and `CommandRejected` are. Neither guard subsumes the
 other. Each was seen to fail on the thing it guards before it was committed.
 
-## The status code has one reader
+## The status code has few readers
 
-`CommandFailed` carries a status code, and one caller reads it: the Ninja
-exception handler in `games/api.py`.
+`CommandFailed` carries a status code. The Ninja exception handler in
+`games/api.py` reads it, and so does every view that catches the exception
+itself.
 
 A view that takes its refusal through a `*_for_request` wrapper cannot. Those
 wrappers catch the exception, raise a message, and answer `bool`.
