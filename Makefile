@@ -416,9 +416,16 @@ collectstatic: ensure-postgres
 uv.lock: pyproject.toml
 	uv sync
 
-# Extra pytest arguments for `test` / `test-e2e`, so a focused run needs no raw
+# Extra pytest arguments for every pytest target, so a focused run needs no raw
 # tooling: make test ARGS="tests/test_filters.py -k relation -x"
 ARGS ?=
+
+# `test-fast` and `test-e2e` each pin a directory, so an ARGS path would be
+# collected *beside* it rather than instead of it -- naming one file still ran
+# the whole suite. A word holding a separator is a path, so it replaces the
+# pinned directory; a bare flag and its value (`-k relation`) hold none and
+# narrow the default scope as before.
+ARGS_PATHS = $(strip $(foreach word,$(ARGS),$(if $(findstring /,$(word)),$(word),)))
 
 # The suite is dominated by browser page loads rather than CPU, so it shards
 # well: 2507 tests drop from ~370s to ~55s on a 32-core box.
@@ -467,10 +474,11 @@ test: ensure-postgres ensure-python uv.lock css ts test-ts
 # The iteration counterpart to `test`: everything except e2e/, which is 83% of
 # the suite's wall time (269 browser tests ~ 306s, against 2238 others ~ 64s).
 test-fast: ensure-postgres ensure-python uv.lock css ts test-ts
-	uv run --frozen --with pytest-django pytest tests/ -n $(PYTEST_WORKERS) $(ARGS)
+	uv run --frozen --with pytest-django pytest $(if $(ARGS_PATHS),,tests/) \
+		-n $(PYTEST_WORKERS) $(ARGS)
 
 test-e2e: ensure-postgres uv.lock css ts
-	uv run --frozen pytest e2e/ -n $(PYTEST_WORKERS) $(ARGS)
+	uv run --frozen pytest $(if $(ARGS_PATHS),,e2e/) -n $(PYTEST_WORKERS) $(ARGS)
 
 lint:
 	uv run --frozen ruff check

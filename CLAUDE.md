@@ -11,8 +11,14 @@ Focused runs already covered:
 
 ```
 make test ARGS="tests/test_filters.py -k relation -x"
+make test-fast ARGS="tests/test_filters.py -k relation -x"
 make test-e2e ARGS="-k widgets"
 ```
+
+`ARGS` scopes every pytest target. A word holding `/` is a path and replaces
+the directory `test-fast` and `test-e2e` pin; a bare flag and its value narrow
+that directory as before. Before this, an `ARGS` path was collected *beside*
+the pinned directory, so naming one file still ran the whole suite.
 
 **`make check` run anywhere — no Nix shell needed.** Makefile version-proofs both
 interpreters, because getting either wrong produces failures that look like the
@@ -113,7 +119,7 @@ path**, so verify against `make check` before pushing when possible.
 | Development server | `make dev` (Django runserver + Tailwind watcher + `tsc --watch`) |
 | Production-like dev | `make dev-prod` (Caddy + Gunicorn/Uvicorn + Django-Q cluster) |
 | Run tests | `make test` (pytest; also runs vitest via its `test-ts` prereq) |
-| Run a subset of tests | `make test ARGS="tests/test_filters.py -k relation -x"` (same for `make test-e2e ARGS=…`) |
+| Run a subset of tests | `make test ARGS="tests/test_filters.py -k relation -x"` (same for `make test-fast` / `make test-e2e`; a path in `ARGS` replaces the directory those two pin) |
 | Run TypeScript tests | `make test-ts` (vitest over `ts/**/*.test.ts`) |
 | Squash the migration history | `make squash-migrations ARGS="games 0006"` (Django's tool; old files stay until the deployment records the squash, see [Squashing](docs/migration-squash.md)) |
 | Make / apply migrations | `make makemigrations` (`ARGS="games --name edition_name"` names the file) / `make migrate` (`ARGS="games 0001_squashed_0006_remove_session"` targets one) |
