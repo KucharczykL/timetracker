@@ -34,11 +34,10 @@ from common.date_time_presentation import DateTimePresentation
 from common.duration_presentation import DurationPresentation
 from games.filters import filter_url
 from games.views import stats_links
-from games.views.stats_data import StatsData
+from games.views.stats_data import LIST_CAP, StatsData
 
 # Stats lists are previews: capped to this many rows, with a "View all" link to
 # the full filtered list (#65).
-_LIST_CAP = 5
 
 
 def _cell(value: object) -> str:
@@ -298,16 +297,24 @@ def _purchases_table(ctx) -> Node:
     return _kv_table(rows)
 
 
-def _two_col_table(header: str, items, name_key, value_fn, view_all_url=None) -> Node:
+def _two_col_table(
+    header: str, items, name_key, value_fn, view_all_url=None, total=None
+) -> Node:
+    """Rows, and the whole count where the caller states one.
+
+    ``total`` is for a caller that read its rows already capped; one that
+    hands over every row it has is capped here.
+    """
     items = list(items)
-    display = items[:_LIST_CAP] if view_all_url else items
+    display = items if total is not None or not view_all_url else items[:LIST_CAP]
+    counted = len(items) if total is None else total
     rows = [make_row(name_key(item), value_fn(item)) for item in display]
     table = StyledTable(
         columns=[Column(header), Column("Playtime", align="right")],
         rows=rows,
     )
-    if view_all_url and len(items) > _LIST_CAP:
-        return Fragment(table, _view_all_button(len(items), view_all_url))
+    if view_all_url and counted > LIST_CAP:
+        return Fragment(table, _view_all_button(counted, view_all_url))
     return table
 
 
@@ -318,7 +325,7 @@ def _finished_table(
     total=None,
 ) -> Node:
     purchases = list(purchases)
-    display = purchases[:_LIST_CAP] if view_all_url else purchases
+    display = purchases[:LIST_CAP] if view_all_url else purchases
     rows = [
         #: An open lower bound reports no day.
         make_row(
@@ -331,14 +338,14 @@ def _finished_table(
         columns=[Column("Name"), Column("Date", align="right")], rows=rows
     )
     total = total if total is not None else len(purchases)
-    if view_all_url and total > _LIST_CAP:
+    if view_all_url and total > LIST_CAP:
         return Fragment(table, _view_all_button(total, view_all_url))
     return table
 
 
 def _priced_table(purchases, currency, view_all_url=None, total=None) -> Node:
     purchases = list(purchases)
-    display = purchases[:_LIST_CAP] if view_all_url else purchases
+    display = purchases[:LIST_CAP] if view_all_url else purchases
     rows = [
         make_row(_purchase_name(p), floatformat(p.converted_price)) for p in display
     ]
@@ -347,7 +354,7 @@ def _priced_table(purchases, currency, view_all_url=None, total=None) -> Node:
         rows=rows,
     )
     total = total if total is not None else len(purchases)
-    if view_all_url and total > _LIST_CAP:
+    if view_all_url and total > LIST_CAP:
         return Fragment(table, _view_all_button(total, view_all_url))
     return table
 
@@ -395,18 +402,20 @@ def stats_content(
             "Games by playtime",
             _two_col_table(
                 "Name",
-                ctx["top_10_games_by_playtime"],
-                lambda g: Fragment(
-                    GameLink(g, g.name), _session_link(g.id, year, g.name)
+                ctx["games_by_playtime"],
+                lambda row: Fragment(
+                    GameLink(row.game, row.game.name),
+                    _session_link(row.game.id, year, row.game.name),
                 ),
-                lambda g: Duration(
-                    g.total_playtime,
+                lambda row: PlaytimeSplit(
+                    row.playtime,
                     durations,
-                    id_scope=f"stats-game-{g.id}-playtime",
+                    id_scope=f"stats-game-{row.game.id}-playtime",
                 ),
                 view_all_url=filter_url(
                     stats_links.games_played(year), sort="-filtered_playtime"
                 ),
+                total=ctx["games_by_playtime_count"],
             ),
         ),
         _card(

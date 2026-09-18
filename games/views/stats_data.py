@@ -20,10 +20,8 @@ from django.db.models import (
     F,
     Max,
     Q,
-    QuerySet,
     Sum,
 )
-from django_stubs_ext import WithAnnotations
 
 from common.time import available_stats_year_range
 from common.utils import safe_division
@@ -45,10 +43,12 @@ from games.reads.playthrough_completions import (
     completion_exists,
 )
 from games.reads.playtime import (
+    GameByPlaytime,
     MonthPlaytime,
     PlatformPlaytime,
     PlaytimeBreakdown,
-    playtime_by_game,
+    games_by_playtime,
+    games_by_playtime_queryset,
     playtime_by_month,
     playtime_by_platform,
     total_playtime,
@@ -65,10 +65,6 @@ from games.reads.session_figures import (
 )
 
 
-class GamePlaytime(TypedDict):
-    total_playtime: timedelta
-
-
 class StatsData(TypedDict):
     # --- always present (both scopes) ---
     year: Any  # int for a year, "Alltime" for all-time
@@ -79,7 +75,8 @@ class StatsData(TypedDict):
     unique_days_percent: int
     total_year_games: int
     this_year_finished_this_year_count: int
-    top_10_games_by_playtime: QuerySet[WithAnnotations[Game, GamePlaytime]]
+    games_by_playtime: list[GameByPlaytime]
+    games_by_playtime_count: int
     total_playtime_per_platform: list[PlatformPlaytime]
     total_spent: Any
     total_spent_currency: str
@@ -116,7 +113,11 @@ class StatsData(TypedDict):
 
 
 class StatsSource(Enum):
-    """Which playtime sources a figure reads."""
+    """Which sources a figure reads.
+
+    A count of games reads both sources without being a playtime figure: a
+    game enters it through a session or through a record.
+    """
 
     #: Sessions, and records wholly in scope.
     BOTH = auto()
@@ -128,6 +129,9 @@ class StatsSource(Enum):
     NOT_A_FIGURE = auto()
 
 
+#: Rows one card prints before it offers View all.
+LIST_CAP = 5
+
 type StatsKey = str  # a StatsData key
 
 #: Each key once; the test counts them.
@@ -135,7 +139,8 @@ STATS_SOURCE_GROUPS: Mapping[StatsSource, tuple[StatsKey, ...]] = {
     #: Platform rows join through the game's platform.
     StatsSource.BOTH: (
         "total_hours",
-        "top_10_games_by_playtime",
+        "games_by_playtime",
+        "games_by_playtime_count",
         "total_playtime_per_platform",
         "month_playtimes",
     ),
@@ -332,13 +337,8 @@ def _compute_stats_from_scoped_querysets(
 
     # ── Games by playtime ────────────────────────────────────────────────────
     #: Visible games: untracked library games still count.
-    top_games = (
-        Game.objects.visible_to(library)
-        .annotate(total_playtime=playtime_by_game(library, year=year))
-        .filter(total_playtime__gt=timedelta(0))
-        #: Ties need an order, or rows reshuffle.
-        .order_by("-total_playtime", "sort_name", "name", "pk")
-    )
+    ranked_games = games_by_playtime(library, year=year, limit=LIST_CAP)
+    ranked_games_count = games_by_playtime_queryset(library, year=year).count()
 
     played_purchases = library_purchases.filter(
         **{f"games__{GAME_SESSIONS}__in": sessions}
@@ -359,7 +359,8 @@ def _compute_stats_from_scoped_querysets(
         "unique_days_percent": unique_days_percent,
         "total_year_games": total_year_games,
         "this_year_finished_this_year_count": finished_released.count(),
-        "top_10_games_by_playtime": top_games,
+        "games_by_playtime": ranked_games,
+        "games_by_playtime_count": ranked_games_count,
         "total_playtime_per_platform": playtime_by_platform(library, year=year),
         "total_spent": total_spent,
         "total_spent_currency": currency,

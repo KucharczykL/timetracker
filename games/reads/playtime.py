@@ -9,7 +9,7 @@ from django.db.models import DurationField, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Coalesce, NullIf, TruncMonth
 
 from games.filters import PlayerSessionFilter, filter_query_context_for_library
-from games.models import Game, PlayerSessionQuerySet, UserLibrary
+from games.models import Game, GameQuerySet, PlayerSessionQuerySet, UserLibrary
 from games.reads.days import DayInterval
 from games.reads.historical_playtime import (
     game_historical_playtime,
@@ -33,6 +33,7 @@ from games.reads.sums import (
 )
 
 __all__ = [
+    "GameByPlaytime",
     "MonthPlaytime",
     "PlatformPlaytime",
     "PlaytimeBreakdown",
@@ -40,6 +41,8 @@ __all__ = [
     "game_playtime",
     "game_playtime_between",
     "game_tracked_between",
+    "games_by_playtime",
+    "games_by_playtime_queryset",
     "played_years",
     "playtime_between",
     "playtime_between_each",
@@ -72,6 +75,11 @@ class PlatformPlaytime(NamedTuple):
 class MonthPlaytime(NamedTuple):
     #: The first day of the month.
     month: date
+    playtime: PlaytimeBreakdown
+
+
+class GameByPlaytime(NamedTuple):
+    game: Game
     playtime: PlaytimeBreakdown
 
 
@@ -159,6 +167,58 @@ def playtime_by_game(
         historical_summed_by_game(library, within=_year_days(year))
     )
     return Playtime(tracked + historical)
+
+
+def games_by_playtime_queryset(
+    library: UserLibrary, *, year: YearScope = None
+) -> GameQuerySet:
+    """Every visible game that was played, most played first.
+
+    Answered unexecuted so a test can read its plan: the two halves each
+    compile twice, once in the select list and once in the filter that names
+    the annotation.
+    """
+    return (
+        Game.objects.visible_to(library)
+        .annotate(total_playtime=playtime_by_game(library, year=year))
+        .filter(total_playtime__gt=timedelta(0))
+        #: Ties need an order, or rows reshuffle.
+        .order_by("-total_playtime", "sort_name", "name", "pk")
+    )
+
+
+def games_by_playtime(
+    library: UserLibrary, *, year: YearScope = None, limit: int
+) -> list[GameByPlaytime]:
+    """The most played games, each beside the two sources that made it.
+
+    The halves are a second query over the keys this answers, rather than two
+    more subqueries on the query that ranks every played game.
+    """
+    ranked = list(games_by_playtime_queryset(library, year=year)[:limit])
+    if not ranked:
+        return []
+    halves = {
+        game.pk: game
+        for game in Game.objects.visible_to(library)
+        .filter(pk__in=[game.pk for game in ranked])
+        .annotate(
+            tracked=zero_when_null(tracked_summed_by_game(library, year=year)),
+            historical=zero_when_null(
+                historical_summed_by_game(library, within=_year_days(year))
+            ),
+        )
+    }
+    return [
+        GameByPlaytime(
+            game,
+            PlaytimeBreakdown(
+                tracked=halves[game.pk].tracked,
+                historical=halves[game.pk].historical,
+            ),
+        )
+        for game in ranked
+    ]
 
 
 def playtime_sort_key(library: UserLibrary) -> PlaytimeSum:

@@ -18,6 +18,7 @@ from session_rows import duration_only_row, session_row, tracked_run
 from games.models import Game, Platform, PlayerSession
 from games.reads.playtime import MonthPlaytime, PlatformPlaytime, PlaytimeBreakdown
 from games.views.stats_data import (
+    LIST_CAP,
     STATS_SOURCE_GROUPS,
     STATS_SOURCES,
     StatsData,
@@ -118,9 +119,9 @@ class ComputeStatsTest(TestCase):
 
     def test_games_by_playtime_includes_manual_sessions(self):
         """In 2023, Game B's manual 2h must count, putting it (3h) above A (2.5h)."""
-        top = list(self.stats(2023)["top_10_games_by_playtime"])
-        self.assertEqual(top[0].id, self.game_b.id)
-        self.assertEqual(top[0].total_playtime, timedelta(hours=3))
+        top = self.stats(2023)["games_by_playtime"]
+        self.assertEqual(top[0].game.id, self.game_b.id)
+        self.assertEqual(top[0].playtime.total, timedelta(hours=3))
 
     def test_equal_playtimes_order_by_name(self):
         """Ties order by name on every load."""
@@ -133,15 +134,15 @@ class ComputeStatsTest(TestCase):
             ended_at=datetime(2023, 8, 1, 13, tzinfo=TZ),
         )
 
-        top = list(self.stats(2023)["top_10_games_by_playtime"])
+        top = self.stats(2023)["games_by_playtime"]
 
-        self.assertEqual([game.id for game in top[:2]], [tied.id, self.game_b.id])
+        self.assertEqual([row.game.id for row in top[:2]], [tied.id, self.game_b.id])
 
     def test_alltime_playtime_sums_all_years(self):
         """All-time Game A = 2.5h (2023) + 2h (2022) = 4.5h, ahead of B (3h)."""
-        top = list(self.stats(None)["top_10_games_by_playtime"])
-        self.assertEqual(top[0].id, self.game_a.id)
-        self.assertEqual(top[0].total_playtime, timedelta(hours=4, minutes=30))
+        top = self.stats(None)["games_by_playtime"]
+        self.assertEqual(top[0].game.id, self.game_a.id)
+        self.assertEqual(top[0].playtime.total, timedelta(hours=4, minutes=30))
 
     # ── section visibility (scope difference preserved) ──
 
@@ -201,9 +202,9 @@ def test_an_untracked_library_game_counts_in_top_games(owned_library):
     start = datetime(2023, 3, 1, 10, tzinfo=TZ)
     session_row(game, started_at=start, ended_at=start + timedelta(hours=2))
 
-    top = list(compute_stats(owned_library, 2023)["top_10_games_by_playtime"])
+    top = compute_stats(owned_library, 2023)["games_by_playtime"]
 
-    assert [row.id for row in top] == [game.id]
+    assert [row.game.id for row in top] == [game.id]
 
 
 HOUR = timedelta(hours=1)
@@ -255,8 +256,7 @@ def test_a_contained_record_moves_only_the_playtime_figures(
     this_year = after[2022]
     assert this_year["total_hours"] == PlaytimeBreakdown(HOUR, 3 * HOUR)
     assert [
-        (game.name, game.total_playtime)
-        for game in this_year["top_10_games_by_playtime"]
+        (row.game.name, row.playtime.total) for row in this_year["games_by_playtime"]
     ] == [("Recorded", 3 * HOUR), ("Played", HOUR)]
     assert this_year["total_playtime_per_platform"] == [
         PlatformPlaytime(platform.pk, "PC", PlaytimeBreakdown(timedelta(0), 3 * HOUR)),
@@ -282,9 +282,52 @@ def test_a_record_wider_than_a_year_counts_all_time_only(
         HOUR, timedelta(0)
     )
     assert [
-        game.name
-        for game in compute_stats(owned_library, 2022)["top_10_games_by_playtime"]
+        row.game.name for row in compute_stats(owned_library, 2022)["games_by_playtime"]
     ] == ["Played"]
     assert compute_stats(owned_library, None)["total_hours"] == PlaytimeBreakdown(
         HOUR, 3 * HOUR
     )
+
+
+@pytest.mark.django_db
+def test_the_card_reads_the_halves_over_the_sliced_keys(owned_library):
+    """Capped rows, and a count of every played game beside them."""
+    start = datetime(2023, 3, 1, 10, tzinfo=TZ)
+    for index in range(LIST_CAP + 2):
+        game = Game.objects.create(library=owned_library, name=f"Game {index}")
+        session_row(
+            game,
+            started_at=start,
+            ended_at=start + timedelta(hours=index + 1),
+        )
+
+    data = compute_stats(owned_library, 2023)
+
+    assert len(data["games_by_playtime"]) == LIST_CAP
+    assert data["games_by_playtime_count"] == LIST_CAP + 2
+    #: Most played first.
+    assert data["games_by_playtime"][0].game.name == f"Game {LIST_CAP + 1}"
+
+
+@pytest.mark.django_db
+def test_a_shared_record_sums_once(owned_library, played_and_recorded):
+    """A game holding both sources states each half and their total."""
+    played, _recorded, _platform = played_and_recorded
+    record_row([tracked_run(owned_library, played)], duration=3 * HOUR, when="2022-03")
+
+    rows = compute_stats(owned_library, 2022)["games_by_playtime"]
+
+    assert rows[0].game.name == "Played"
+    assert rows[0].playtime == PlaytimeBreakdown(HOUR, 3 * HOUR)
+    assert rows[0].playtime.total == 4 * HOUR
+
+
+@pytest.mark.django_db
+def test_a_game_with_one_source_states_a_zero_half(owned_library):
+    """The halves are NULL for an absent source, not missing."""
+    game = Game.objects.create(library=owned_library, name="Recorded only")
+    record_row([tracked_run(owned_library, game)], duration=2 * HOUR, when="2023")
+
+    rows = compute_stats(owned_library, 2023)["games_by_playtime"]
+
+    assert rows[0].playtime == PlaytimeBreakdown(timedelta(0), 2 * HOUR)
