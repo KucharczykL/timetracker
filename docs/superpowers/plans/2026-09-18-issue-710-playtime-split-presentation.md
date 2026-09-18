@@ -424,7 +424,7 @@ Gotchas:
 
 `Child` is `Node | str` (`core.py:153`) and admits no integer, which every
 other card passes, so the annotation is `Child | int`. `_value_node` stops
-folding the value into a string: it renders the value as a child, and takes the
+turning the value into a string: it renders the value as a child, and takes the
 spoken label rather than deriving one from a node it cannot read. The five
 remaining linked cards pass `spoken`.
 
