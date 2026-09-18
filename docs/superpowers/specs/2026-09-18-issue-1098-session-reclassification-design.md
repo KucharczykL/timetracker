@@ -36,43 +36,49 @@ is refused, with a sentence that names the remedy.
 ## The undo
 
 `UndoSessionReclassification` removes the record and restores the session. It
-finds the record by a query, not by a column on the session.
+finds the record by a query, not by a column on the session: the live record
+of this library whose `reclassified_from` is the session.
 
-It answers `Unchanged` before each refusal, as every other lifecycle command
-does. It is `Unchanged` in exactly one state: no record from the session is
-live **and** the session is live. That is the end state the undo asks for, so a
-second press changes nothing. A session that a plain removal took, and that no
-live record came from, is refused rather than restored: this route undoes one
-act, and a general restore of any removed session is `RestoreSession`'s. The
-route says which of the two happened, because `Unchanged` raises nothing and a
-restore message printed over it would report a restore that did not occur.
+The marks decide what it does, and nothing else can. No command reads the
+event history, and the session gains no column, so the command cannot tell a
+session that a reclassification removed from one that a plain removal took
+after an earlier undo.
 
-It refuses when a live record from the session was restated after the act,
-which `HistoricalPlaytime.restated_at` marks. An undo puts things back.
-Removing a record that a person has since edited is a surprise, not a reversal,
-so the person removes it themselves. **The refusal is of the whole command, not
-of one leg.** Refusing only the leg that removes the record would restore the
-session beside a live record, which is the double count the invariant forbids.
-A record the person already removed holds no mark to refuse on and does not
-block the session's return.
+- No record was ever made from the session: refused. There is no act to undo.
+- No record from the session is live, and the session is live: `Unchanged`.
+  That is the end state the undo asks for, so a second press changes nothing.
+- The live record was restated after the act, which
+  `HistoricalPlaytime.restated_at` marks: refused. An undo puts things back.
+  Removing a record that a person has since edited is a surprise, not a
+  reversal, so the person removes it themselves. **The refusal is of the whole
+  command, not of one leg.** Refusing only the leg that removes the record
+  would restore the session beside a live record, which is the double count
+  the invariant forbids.
+- The session's game or playthrough is removed: refused, as `RestoreSession`
+  does. A restored session under a removed parent is a row no scope can reach.
+
+Past those, it appends each event that is still to happen: the removal of the
+live record where there is one, and the restore of the session where it is
+removed. A session whose records were all removed by hand therefore comes
+back. That is what `RestoreSession` would do for it, and as safe: the double
+count is guarded by live records, and there is none.
 
 The marker is a column because nothing else can answer the question. The
-projector overwrites every stated column on a restatement, so the row cannot be
-compared against what the act created, and no command reads the event history.
-A statement rebuilt from the session would be wrong in any case: a session in
-the bucket states a different run on purpose.
+projector overwrites every stated column on a restatement, so the row cannot
+be compared against what the act created, and no command reads the event
+history. A statement rebuilt from the session would be wrong in any case: a
+session in the bucket states a different run on purpose.
 
-It refuses under a removed game and a removed playthrough, as `RestoreSession`
-does. A restored session under a removed parent is a row no scope can reach.
-
-Past those refusals, it appends each event only where that event is still to
-happen: a record already removed takes no second removal.
+The route says which of the two happened. `Unchanged` raises nothing, and a
+restore message printed over it would report a restore that did not occur.
 
 ## Storage
 
-`HistoricalPlaytime.reclassified_from` refers to the session, and
-`HistoricalPlaytime.restated_at` marks a record a person changed after the act.
-The session keeps `removed_at` and gains no column.
+`HistoricalPlaytime.reclassified_from` refers to the session.
+`HistoricalPlaytime.restated_at` is the `restated` event's `recorded_at`, null
+on a record never restated. The migration that adds it states it from the
+events already recorded, so a replay and the live row agree. The session keeps
+`removed_at` and gains no column.
 
 `library.playersession.reclassified` stays, and it projects `removed_at` alone.
 The event is what says why the mark is there, which a plain removal does not.
@@ -112,10 +118,12 @@ Every one of those queries is scoped to the library. A record of another
 library naming this session is drift, which the ownership audit reports; no
 command reads outside its own scope to find it.
 
-The created event carries the session as a bare key. It is not part of the
-statement, which `created` and `restated` share, so a restatement neither
-states it nor clears it, and an event already recorded without it stays valid.
-One lock covers both events.
+The created event carries the session as a bare key, absent where there is no
+session. The key joins a payload the deployment has already recorded, so it is
+not required, and a null would be a second spelling of absent. The restated
+event carries the statement alone, so a restatement neither states the key nor
+clears it, and the projector writes it on creation only. One lock covers both
+events.
 
 ## Screens
 
@@ -140,16 +148,15 @@ control opens the session list narrowed to those rows. One opens a
 confirmation page.
 
 The confirmation page lists each row and converts them in one request. It
-parses each posted key and drops what it cannot read. A key that names a live
-row of this library which the review does not name is refused, not converted,
-with a sentence saying the row's time was measured rather than written down:
-this act converts what the review offers and nothing else, though the command
-itself admits a finished measured row. It reports how many of the keys **the
+converts the posted keys the review names now, and nothing else, though the
+command itself admits a finished measured row. Every other posted key is left
+alone, and the page says why in the words that are true of it: the session is
+not available, its time was measured, or it is under the threshold. It reports how many of the keys **the
 person sent** were recorded, so a row that another act removed in the meantime
 is counted as lost, and it says what each refusal was. A refusal does not stop
 the other rows. A defect stops the request and answers
-with the defect's own status, because a defect is not a refusal and no retry of
-it can succeed. The boundary answers a defect as a
+with the defect's own status, because a defect is not a refusal: the row is
+wrong, or the database is, and no sentence can say what to state instead. The boundary answers a defect as a
 `CommandFailed` like any other, so the loop tells the two apart by status code,
 not by type. The page that answers a defect states how many rows were recorded
 before it, and offers no button to try again: each row is its own transaction,
@@ -157,11 +164,13 @@ so the rows before the defect are recorded and a second submit would act on a
 different set. The confirmation page has no such variant today and gains one;
 its ordinary shape always renders the confirm button.
 
-Each refused row is written to the log with its key, its library and the
-request's correlation id. The page states sentences, not keys, so the log is
+Each key that is not converted is written to the log with its key, its library
+and the request's correlation id. The page states sentences, not keys, so the log is
 the only record of which row each sentence was about.
 
-The confirmation page offers no Undo. Issue #1123 owns that.
+The confirmation page offers no Undo. Issue #1123 owns that. The Playtime
+section promises none: its copy says what the act does, not that every change
+offers an Undo.
 
 ## Greater-or-equal
 
