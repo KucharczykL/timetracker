@@ -292,7 +292,9 @@ def _session_draft(form: SessionForm, library: UserLibrary) -> SessionDraft:
     )
 
 
-def _render_session_form(request: HttpRequest, form: SessionForm, title: str):
+def _render_session_form(
+    request: HttpRequest, form: SessionForm, title: str, status: int = 200
+):
     return render_page(
         request,
         AddForm(
@@ -303,6 +305,7 @@ def _render_session_form(request: HttpRequest, form: SessionForm, title: str):
         ),
         title=title,
         scripts=Fragment(*(ModuleScript(path) for path in SESSION_FORM_SCRIPTS)),
+        status=status,
     )
 
 
@@ -326,6 +329,9 @@ def add_session(request: HttpRequest, game_id: UUID | None = None) -> HttpRespon
         if run is not None:
             initial["playthrough"] = run.pk
 
+    #: The tail below serves a form the person must correct as
+    #: well, which states no status of its own.
+    refused_status = 200
     if request.method == "POST":
         form = SessionForm(
             request.POST, initial=initial, library=library, presentation=presentation
@@ -340,6 +346,7 @@ def add_session(request: HttpRequest, game_id: UUID | None = None) -> HttpRespon
                 )
             except CommandFailed as failure:
                 messages.error(request, failure.message)
+                refused_status = failure.status_code
             else:
                 if form.cleaned_data.get("mark_as_played"):
                     _record_played(request, game)
@@ -353,7 +360,7 @@ def add_session(request: HttpRequest, game_id: UUID | None = None) -> HttpRespon
             form.fields["device"].widget.autofocus = True
 
     # TODO: re-add custom buttons #91
-    return _render_session_form(request, form, "Add New Session")
+    return _render_session_form(request, form, "Add New Session", status=refused_status)
 
 
 def _library_session(request: HttpRequest, session_id: UUID) -> PlayerSession:
@@ -381,6 +388,7 @@ def edit_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
         library=library,
         presentation=date_time_presentation_for_request(request),
     )
+    refused_status = 200
     if form.is_valid():
         game = form.cleaned_data["game"]
         try:
@@ -392,11 +400,12 @@ def edit_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
             )
         except CommandFailed as failure:
             messages.error(request, failure.message)
+            refused_status = failure.status_code
         else:
             if form.cleaned_data.get("mark_as_played"):
                 _record_played(request, game)
             return redirect(return_url(request, fallback="games:list_sessions"))
-    return _render_session_form(request, form, "Edit Session")
+    return _render_session_form(request, form, "Edit Session", status=refused_status)
 
 
 @login_required
