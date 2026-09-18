@@ -14,6 +14,7 @@ from games.events.playersession import (
     PLAYERSESSION_ENDED,
     PLAYERSESSION_MOVED,
     PLAYERSESSION_NOTE_CHANGED,
+    PLAYERSESSION_RECLASSIFIED,
     PLAYERSESSION_REMOVED,
     PLAYERSESSION_RESTORED,
     PLAYERSESSION_TIMING_CORRECTED,
@@ -30,6 +31,7 @@ from games.events.playersession import (
     playersession_ended,
     playersession_moved,
     playersession_note_changed,
+    playersession_reclassified,
     playersession_removed,
     playersession_restored,
     playersession_timing_corrected,
@@ -667,3 +669,43 @@ def test_the_lifecycle_builders_name_the_session_they_are_told_about():
     assert (removed.aggregate_id, restored.aggregate_id) == (identity, identity)
     assert (removed.payload, restored.payload) == ({}, {})
     assert (removed.effective_time, restored.effective_time) == (None, None)
+
+
+# --- Reclassifying a session as a historical playtime record ------------------
+
+
+def test_the_reclassification_event_is_spelled_once_and_forever():
+    assert PLAYERSESSION_RECLASSIFIED.event_type == "library.playersession.reclassified"
+    assert PLAYERSESSION_RECLASSIFIED.aggregate_type == "playersession"
+
+
+def test_the_reclassification_event_is_in_the_default_vocabulary():
+    assert (
+        DEFAULT_EVENT_TYPES.spec_for("library.playersession.reclassified")
+        is PLAYERSESSION_RECLASSIFIED
+    )
+
+
+def test_the_reclassification_payload_carries_the_record_as_a_key():
+    record = uuid.uuid7()
+
+    event = playersession_reclassified(SESSION, record_id=record)
+
+    assert event.aggregate_id == SESSION
+    assert event.payload == {"record": str(record)}
+    assert event.effective_time is None
+    assert validated_as(event.spec, event.payload) == event.payload
+
+
+def test_the_reclassification_payload_refuses_text_that_is_not_a_key():
+    with pytest.raises(PayloadInvalid):
+        validated_as(PLAYERSESSION_RECLASSIFIED, {"record": "not-a-key"})
+
+
+def test_the_reclassification_payload_refuses_a_second_key():
+    """STRICT_SCHEMA: the record is the whole statement."""
+    with pytest.raises(PayloadInvalid):
+        validated_as(
+            PLAYERSESSION_RECLASSIFIED,
+            {"record": str(uuid.uuid7()), "session": str(SESSION)},
+        )

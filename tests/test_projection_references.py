@@ -40,6 +40,7 @@ def test_the_walk_finds_every_outward_reference():
         ("PlayerGame", "game"),
         ("PlayerSession", "device"),
         ("PlayerSession", "playthrough"),
+        ("PlayerSession", "reclassified_into"),
         ("Playthrough", "player_game"),
     ]
 

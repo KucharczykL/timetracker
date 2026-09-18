@@ -121,6 +121,7 @@ AUDITED_PROJECTION_REFERENCES: tuple[ProjectionReference, ...] = (
     ProjectionReference.on(PlayerGame, "game"),
     ProjectionReference.on(PlayerSession, "device"),
     ProjectionReference.on(PlayerSession, "playthrough"),
+    ProjectionReference.on(PlayerSession, "reclassified_into"),
     ProjectionReference.on(Playthrough, "player_game"),
 )
 

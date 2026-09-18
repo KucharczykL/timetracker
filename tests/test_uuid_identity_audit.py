@@ -59,6 +59,7 @@ EXPECTED_RELATION_COLUMNS = {
     ("games_playersession", "device_id"),
     ("games_playersession", "library_id"),
     ("games_playersession", "playthrough_id"),
+    ("games_playersession", "reclassified_into_id"),
     ("games_playthrough", "library_id"),
     ("games_playthrough", "player_game_id"),
     ("games_purchase", "library_id"),

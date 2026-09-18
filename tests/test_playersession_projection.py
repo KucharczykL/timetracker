@@ -23,6 +23,7 @@ from games.events.playersession import (
     playersession_ended,
     playersession_moved,
     playersession_note_changed,
+    playersession_reclassified,
     playersession_removed,
     playersession_restored,
     playersession_timing_corrected,
@@ -34,6 +35,8 @@ from games.events.replay import replay
 from games.models import (
     Device,
     Game,
+    HistoricalPlaytime,
+    HistoricalPlaytimeProvenance,
     LibraryEvent,
     PlayerGame,
     PlayerSession,
@@ -407,11 +410,12 @@ def test_the_model_passes_the_projection_checks():
 
 
 @pytest.mark.django_db
-def test_both_references_are_registered():
+def test_every_reference_is_registered():
     keys = {reference.key for reference in AUDITED_PROJECTION_REFERENCES}
 
     assert ("games.PlayerSession", "playthrough") in keys
     assert ("games.PlayerSession", "device") in keys
+    assert ("games.PlayerSession", "reclassified_into") in keys
     assert unaudited_projection_references() == ()
 
 
@@ -1295,4 +1299,92 @@ def test_a_rebuild_reproduces_a_removed_session(owned_user, owned_library, run):
         for table in report.tables
         if table.table == "games_playersession"
     ] == [(0, 0, 0)]
+    assert list(PlayerSession.objects.order_by("pk").values()) == before
+
+
+def a_record(run: Playthrough) -> HistoricalPlaytime:
+    """One record row, so a session has something to name."""
+    return HistoricalPlaytime.objects.create(
+        pk=uuid.uuid7(),
+        library=run.library,
+        player_game=run.player_game,
+        duration=timedelta(hours=3),
+        when=None,
+        provenance=HistoricalPlaytimeProvenance.MANUALLY_ENTERED,
+        device=None,
+        emulated=False,
+        note="",
+        created_at=timezone.now(),
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_reclassification_marks_the_session_and_names_the_record(
+    owned_user, owned_library, run
+):
+    """One event, two columns: the mark and the way back."""
+    session = a_recorded_session(owned_library, owned_user, run)
+    record = a_record(run)
+
+    append_events(
+        owned_library,
+        owned_user,
+        [playersession_reclassified(session.pk, record_id=record.pk)],
+        key="became-a-record",
+    )
+
+    stamped = LibraryEvent.objects.get(
+        event_type="library.playersession.reclassified"
+    ).recorded_at
+    session.refresh_from_db()
+    assert session.removed_at == stamped
+    assert session.reclassified_into_id == record.pk
+    assert not PlayerSession.objects.alive().exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_restore_clears_the_mark_and_keeps_the_record(owned_user, owned_library, run):
+    """The reference outlives the mark, so nothing double counts.
+
+    Were it cleared, a record restored later would state its hours
+    beside the session that became it, with no column left to say
+    the two are the same play.
+    """
+    session = a_recorded_session(owned_library, owned_user, run)
+    record = a_record(run)
+    append_events(
+        owned_library,
+        owned_user,
+        [playersession_reclassified(session.pk, record_id=record.pk)],
+        key="became-a-record",
+    )
+
+    append_events(
+        owned_library, owned_user, [playersession_restored(session.pk)], key="back"
+    )
+
+    session.refresh_from_db()
+    assert session.removed_at is None
+    assert session.reclassified_into_id == record.pk
+
+
+def test_the_reclassification_event_has_a_current_state_handler():
+    assert len(DEFAULT_REGISTRY.handlers_for("library.playersession.reclassified")) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_replay_reproduces_a_reclassified_session(owned_user, owned_library, run):
+    session = a_recorded_session(owned_library, owned_user, run)
+    record = a_record(run)
+    append_events(
+        owned_library,
+        owned_user,
+        [playersession_reclassified(session.pk, record_id=record.pk)],
+        key="became-a-record",
+    )
+    before = list(PlayerSession.objects.order_by("pk").values())
+
+    PlayerSession.objects.all().delete()
+    replay(owned_library)
+
     assert list(PlayerSession.objects.order_by("pk").values()) == before
