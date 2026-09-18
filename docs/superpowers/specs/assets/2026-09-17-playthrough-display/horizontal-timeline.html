@@ -1,0 +1,130 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Playthroughs on a horizontal timeline</title>
+<style>
+  :root{
+    --type-subheading:1.25rem;--type-body:.875rem;--type-micro:.75rem;
+    --heading:#111827;--body:#4b5563;--subtle:#9ca3af;
+    --surface:#fff;--ground:#f3f4f6;--border:#e5e7eb;--border2:#d1d5db;
+    --lane1:#6366f1;--lane1-bg:#eef2ff;--lane1-text:#3730a3;
+    --lane2:#0d9488;--lane2-bg:#ecfeff;--lane2-text:#0f766e;
+    --green-bg:#ecfdf5;--green-text:#065f46;--green-border:#a7f3d0;
+    --amber-bg:#fffbeb;--amber-text:#92400e;--amber-border:#fde68a;
+    --gray-bg:#f3f4f6;--gray-text:#374151;--gray-border:#e5e7eb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--ground);color:var(--body);
+       font:400 var(--type-body)/1.25rem ui-sans-serif,system-ui,sans-serif}
+  h1{font-size:1.1rem;color:var(--heading);margin:0 0 6px}
+  h2{font-size:var(--type-micro);text-transform:uppercase;letter-spacing:.06em;color:var(--subtle);
+     font-weight:700;margin:22px 0 8px}
+  .lede{font-size:var(--type-micro);color:var(--subtle);max-width:92ch;margin:0 0 6px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;max-width:780px}
+  .h{font-size:var(--type-subheading);font-weight:700;color:var(--heading)}
+  .badge{background:var(--ground);border-radius:999px;padding:1px 8px;font-size:var(--type-micro);color:var(--body);margin-left:8px}
+  .sechdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+  .tail{font-size:var(--type-micro);color:var(--subtle)}
+  .tabular{font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;border-radius:999px;padding:0 8px;font-size:var(--type-micro);line-height:1.15rem;
+        background:var(--gray-bg);color:var(--gray-text);border:1px solid var(--gray-border);white-space:nowrap}
+  .pill.green{background:var(--green-bg);color:var(--green-text);border-color:var(--green-border)}
+  .pill.amber{background:var(--amber-bg);color:var(--amber-text);border-color:var(--amber-border)}
+
+  /* one grid: a label column, an "undated" bin, then one column per year */
+  .chart{display:grid;grid-template-columns:104px 84px repeat(12,minmax(0,1fr));row-gap:6px;align-items:center}
+  .chart.narrow{grid-template-columns:52px 44px repeat(12,minmax(0,1fr))}
+  .axis{display:contents}
+  .axis .spacer{grid-column:1}
+  .axis .binhead{grid-column:2;font-size:var(--type-micro);color:var(--body);text-align:center;
+                 border-right:1px dashed var(--border2);padding-bottom:4px}
+  .axis .year{font-size:var(--type-micro);color:var(--subtle);text-align:center;padding-bottom:4px}
+  .axisline{grid-column:2 / -1;height:1px;background:var(--border2);margin-bottom:4px}
+  .rowlabel{font-size:var(--type-micro);color:var(--heading);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+            padding-right:8px}
+  .bin{grid-column:2;border-right:1px dashed var(--border2);height:100%;min-height:22px;
+       background:repeating-linear-gradient(45deg,#fbfbfc,#fbfbfc 5px,#f4f4f6 5px,#f4f4f6 10px)}
+  .bar{height:20px;border-radius:4px;display:flex;align-items:center;justify-content:center;
+       font-size:var(--type-micro);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .bar.tracked{background:var(--green-bg);border:1px solid var(--green-border);color:var(--green-text)}
+  .bar.playing{background:var(--amber-bg);border:1px solid var(--amber-border);color:var(--amber-text)}
+  .bar.undated{background:transparent;border:1px dashed var(--border2);color:var(--subtle)}
+  .band{height:10px;border-radius:3px;background:var(--lane1);opacity:.3}
+  .band.l2{background:var(--lane2)}
+  .bandlabel{font-size:var(--type-micro);color:var(--lane1-text);white-space:nowrap;padding-right:8px;text-align:right}
+  .bandlabel.l2{color:var(--lane2-text)}
+  .note{font-size:var(--type-micro);color:#b45309;margin-top:12px;max-width:80ch}
+  .phone{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:12px;max-width:390px;
+         box-shadow:0 6px 18px rgb(0 0 0/.06)}
+  .phonelabel{font-size:var(--type-micro);color:var(--subtle);margin-bottom:6px}
+</style>
+
+<h1>A game's playthroughs on a horizontal timeline</h1>
+<p class="lede"><b>Dark Souls 2</b>: P1 aborted 2014, P2 finished 2014, P3 finished 2015, P4 aborted 2016, P5 finished 2024 (43 h of sessions plus a 15 h record naming it alone), P6 playing since Jan 2025 (8 h of sessions). Shared records: <b>120 h</b> naming P1, P2 and P4; <b>30 h</b> naming P1–P2. Runs whose dates are year-precision or unknown cannot take a position on the axis, so they sit in the hatched bin at the left.</p>
+
+<h2>Desktop</h2>
+<div class="panel">
+  <div class="sechdr"><div><span class="h">Playthroughs</span><span class="badge">6</span></div><div class="tail">[+ Add]</div></div>
+  <div class="chart">
+    <div class="axis">
+      <div class="spacer"></div>
+      <div class="binhead">undated</div>
+      <div class="year">2014</div><div class="year">2015</div><div class="year">2016</div><div class="year">2017</div>
+      <div class="year">2018</div><div class="year">2019</div><div class="year">2020</div><div class="year">2021</div>
+      <div class="year">2022</div><div class="year">2023</div><div class="year">2024</div><div class="year">2025</div>
+    </div>
+    <div class="axisline" style="grid-row:2"></div>
+
+    <div class="rowlabel" style="grid-row:3">P1 · aborted</div><div class="bin" style="grid-row:3"></div>
+    <div class="bar undated" style="grid-row:3;grid-column:3/4">2014?</div>
+
+    <div class="rowlabel" style="grid-row:4">P2 · finished</div><div class="bin" style="grid-row:4"></div>
+    <div class="bar undated" style="grid-row:4;grid-column:3/4">2014?</div>
+
+    <div class="rowlabel" style="grid-row:5">P3 · finished</div><div class="bin" style="grid-row:5"></div>
+    <div class="bar undated" style="grid-row:5;grid-column:4/5">2015?</div>
+
+    <div class="rowlabel" style="grid-row:6">P4 · aborted</div><div class="bin" style="grid-row:6"></div>
+    <div class="bar undated" style="grid-row:6;grid-column:5/6">2016?</div>
+
+    <div class="rowlabel" style="grid-row:7">P5 · finished</div><div class="bin" style="grid-row:7"></div>
+    <div class="bar tracked" style="grid-row:7;grid-column:13/14">43 h + 15 h</div>
+
+    <div class="rowlabel" style="grid-row:8">P6 · playing</div><div class="bin" style="grid-row:8"></div>
+    <div class="bar playing" style="grid-row:8;grid-column:14/15">8 h</div>
+
+    <div class="bandlabel" style="grid-row:9">120 h shared</div><div class="bin" style="grid-row:9"></div>
+    <div class="band" style="grid-row:9;grid-column:3/6"></div>
+
+    <div class="bandlabel l2" style="grid-row:10">30 h shared</div><div class="bin" style="grid-row:10"></div>
+    <div class="band l2" style="grid-row:10;grid-column:3/4"></div>
+  </div>
+  <div class="note">Four of the six runs have no honest position: their bars are placed on the year they state and dashed to say so, and the 120 h band spans 2014–2016 only because those years are what the runs state. Ten years of empty axis separate the two clusters.</div>
+</div>
+
+<h2>390 px</h2>
+<div class="phonelabel">390 px · ~26 px per year</div>
+<div class="phone">
+  <div class="sechdr"><div><span class="h">Playthroughs</span><span class="badge">6</span></div></div>
+  <div class="chart narrow">
+    <div class="axis">
+      <div class="spacer"></div>
+      <div class="binhead" style="font-size:.6rem">und.</div>
+      <div class="year" style="font-size:.55rem">14</div><div class="year" style="font-size:.55rem">15</div>
+      <div class="year" style="font-size:.55rem">16</div><div class="year" style="font-size:.55rem">17</div>
+      <div class="year" style="font-size:.55rem">18</div><div class="year" style="font-size:.55rem">19</div>
+      <div class="year" style="font-size:.55rem">20</div><div class="year" style="font-size:.55rem">21</div>
+      <div class="year" style="font-size:.55rem">22</div><div class="year" style="font-size:.55rem">23</div>
+      <div class="year" style="font-size:.55rem">24</div><div class="year" style="font-size:.55rem">25</div>
+    </div>
+    <div class="axisline" style="grid-row:2"></div>
+    <div class="rowlabel" style="grid-row:3;font-size:.65rem">P1</div><div class="bin" style="grid-row:3"></div><div class="bar undated" style="grid-row:3;grid-column:3/4"></div>
+    <div class="rowlabel" style="grid-row:4;font-size:.65rem">P2</div><div class="bin" style="grid-row:4"></div><div class="bar undated" style="grid-row:4;grid-column:3/4"></div>
+    <div class="rowlabel" style="grid-row:5;font-size:.65rem">P3</div><div class="bin" style="grid-row:5"></div><div class="bar undated" style="grid-row:5;grid-column:4/5"></div>
+    <div class="rowlabel" style="grid-row:6;font-size:.65rem">P4</div><div class="bin" style="grid-row:6"></div><div class="bar undated" style="grid-row:6;grid-column:5/6"></div>
+    <div class="rowlabel" style="grid-row:7;font-size:.65rem">P5</div><div class="bin" style="grid-row:7"></div><div class="bar tracked" style="grid-row:7;grid-column:13/14"></div>
+    <div class="rowlabel" style="grid-row:8;font-size:.65rem">P6</div><div class="bin" style="grid-row:8"></div><div class="bar playing" style="grid-row:8;grid-column:14/15"></div>
+    <div class="bandlabel" style="grid-row:9;font-size:.6rem">120 h</div><div class="bin" style="grid-row:9"></div><div class="band" style="grid-row:9;grid-column:3/6"></div>
+    <div class="bandlabel l2" style="grid-row:10;font-size:.6rem">30 h</div><div class="bin" style="grid-row:10"></div><div class="band l2" style="grid-row:10;grid-column:3/4"></div>
+  </div>
+  <div class="note">No room for a status, a note or an action: every one needs a tap into a detail view.</div>
+</div>

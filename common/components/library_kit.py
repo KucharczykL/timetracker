@@ -36,24 +36,48 @@ def StatisticGrid(*cards: Child) -> Node:
     )[*cards]
 
 
-def _value_node(value: str | int, label: str, href: str | None, class_: str) -> Node:
-    value_text = str(value)
-    return (
-        Link(href=href, aria_label=f"{value_text} {label}", class_=class_)[value_text]
-        if href is not None
-        else Span(class_=f"{class_} text-heading")[value_text]
-    )
+def _value_node(
+    value: Child | int,
+    label: str,
+    href: str | None,
+    class_: str,
+    spoken: str | None = None,
+) -> Node:
+    """One figure, linked or plain.
+
+    A node renders as a child rather than a string, which would reach the
+    page as escaped markup. A linked one must state ``spoken``: an
+    ``aria-label`` replaces the link's content for a screen reader, and a
+    node stringified into it speaks as HTML.
+    """
+    child: Child = value if isinstance(value, Node | str) else str(value)
+    if href is None:
+        return Span(class_=f"{class_} text-heading")[child]
+    if isinstance(value, Node) and spoken is None:
+        raise ValueError(
+            f"The linked {label} figure is a node, which speaks as its own "
+            "markup; state what it says as `spoken`"
+        )
+    return Link(
+        href=href,
+        aria_label=spoken if spoken is not None else f"{value} {label}",
+        class_=class_,
+    )[child]
 
 
 def StatisticCard(
     label: str,
-    value: str | int,
+    value: Child | int,
     *,
     href: str | None = None,
     title: str | None = None,
+    spoken: str | None = None,
 ) -> Node:
-    """A labelled figure; `title` says what it counts."""
-    value_node = _value_node(value, label, href, "text-type-title")
+    """A labelled figure; `title` says what it counts.
+
+    ``spoken`` is the link's own label, for a value no string states.
+    """
+    value_node = _value_node(value, label, href, "text-type-title", spoken)
     return Div(
         data_statistic_card="",
         title=title,

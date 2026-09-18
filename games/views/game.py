@@ -39,6 +39,7 @@ from common.components import (
     P,
     PageHeading,
     Pill,
+    PlaytimeHalves,
     Popover,
     PurchasePrice,
     QuickFilterBar,
@@ -111,6 +112,7 @@ from games.reads.playthrough_completions import GAME_RUNS, reported_completion_d
 from games.reads.playthrough_numbering import numbered_for
 from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 from games.reads.playtime import game_playtime, playtime_matching, playtime_sort_key
+from games.reads.sums import PlaytimeBreakdown
 from games.reference_form import ReferenceSetForm
 from games.sorting import (
     GAME_DEFAULT_SORT,
@@ -551,27 +553,44 @@ def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
     ]
 
 
+#: Where a stat's value starts: past its ``size-6`` icon and the ``gap-2``.
+_STAT_VALUE_INDENT_CLASS = "ml-8"
+
+
 def _stat_popover(
     popover_id: str,
     tooltip: str,
     svg_key: str,
     value: Node | str,
     details: Node | None = None,
+    *,
+    beneath: Node | None = None,
 ) -> Node:
     """One header stat. ``details`` adds rows beneath the tooltip line — the
     playtime stat puts its alternate formats there rather than nesting a second
-    popover inside this one."""
+    popover inside this one.
+
+    ``beneath`` hangs a second line under the value, outside the popover and
+    indented to start where the value does. The popover keeps the one-line
+    anatomy the other stats share, so its icon and reveal glyph sit where
+    theirs do; inside the popover a second line would move both, because the
+    glyph centres against the whole trigger."""
     content: Node | str = (
         tooltip
         if details is None
         else Div(class_="flex flex-col gap-1")[tooltip, details]
     )
-    return Popover(
+    popover = Popover(
         popover_content=content,
         wrapped_classes="flex gap-2 items-center",
         id=popover_id,
         children=[Safe(_STAT_SVGS[svg_key]), value],
     )
+    if beneath is None:
+        return popover
+    return Div(class_="flex flex-col")[
+        popover, Div(class_=_STAT_VALUE_INDENT_CLASS)[beneath]
+    ]
 
 
 def _meta_row(label: str, value: Node | str, extra: Node | str = "") -> Node:
@@ -857,7 +876,7 @@ def _game_header(
     game: Game,
     request: HttpRequest,
     metrics: dict[str, Any],
-    playtime: timedelta,
+    playtime: PlaytimeBreakdown,
     presentation: DateTimePresentation,
     durations: DurationPresentation,
     origin: OriginUrl | None,
@@ -881,8 +900,11 @@ def _game_header(
             "popover-hours",
             "Total hours played",
             "hours",
-            DurationText(playtime, durations),
-            DurationAlternates(playtime, durations),
+            DurationText(playtime.total, durations),
+            DurationAlternates(playtime.total, durations),
+            beneath=(
+                PlaytimeHalves(playtime, durations) if playtime.historical else None
+            ),
         ),
         _stat_popover(
             "popover-sessions",
@@ -1171,7 +1193,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             game,
             request,
             _game_overview_metrics(sessions),
-            game_playtime(library, game).total,
+            game_playtime(library, game),
             presentation,
             durations,
             origin,

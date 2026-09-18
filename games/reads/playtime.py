@@ -1,7 +1,6 @@
 """Every playtime figure: sessions plus historical records."""
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import NamedTuple
 from uuid import UUID
@@ -10,7 +9,7 @@ from django.db.models import DurationField, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Coalesce, NullIf, TruncMonth
 
 from games.filters import PlayerSessionFilter, filter_query_context_for_library
-from games.models import Game, PlayerSessionQuerySet, UserLibrary
+from games.models import Game, GameQuerySet, PlayerSessionQuerySet, UserLibrary
 from games.reads.days import DayInterval
 from games.reads.historical_playtime import (
     game_historical_playtime,
@@ -26,6 +25,7 @@ from games.reads.playthrough_completions import YearScope
 from games.reads.sums import (
     ZERO,
     Playtime,
+    PlaytimeBreakdown,
     PlaytimeSum,
     UnscopedPlaytimeRead,
     UnscopedSum,
@@ -33,6 +33,7 @@ from games.reads.sums import (
 )
 
 __all__ = [
+    "GameByPlaytime",
     "MonthPlaytime",
     "PlatformPlaytime",
     "PlaytimeBreakdown",
@@ -40,6 +41,8 @@ __all__ = [
     "game_playtime",
     "game_playtime_between",
     "game_tracked_between",
+    "games_by_playtime",
+    "games_by_playtime_queryset",
     "played_years",
     "playtime_between",
     "playtime_between_each",
@@ -63,18 +66,6 @@ type KeyedPlaytime[Key] = tuple[Key, timedelta]
 type PlatformOrder = tuple[timedelta, bool, str, bool, UUID]
 
 
-@dataclass(frozen=True, slots=True)
-class PlaytimeBreakdown:
-    """Tracked sessions beside historical records."""
-
-    tracked: timedelta
-    historical: timedelta
-
-    @property
-    def total(self) -> timedelta:
-        return self.tracked + self.historical
-
-
 class PlatformPlaytime(NamedTuple):
     platform_id: PlatformId
     platform_name: PlatformName
@@ -84,6 +75,11 @@ class PlatformPlaytime(NamedTuple):
 class MonthPlaytime(NamedTuple):
     #: The first day of the month.
     month: date
+    playtime: PlaytimeBreakdown
+
+
+class GameByPlaytime(NamedTuple):
+    game: Game
     playtime: PlaytimeBreakdown
 
 
@@ -171,6 +167,67 @@ def playtime_by_game(
         historical_summed_by_game(library, within=_year_days(year))
     )
     return Playtime(tracked + historical)
+
+
+def games_by_playtime_queryset(
+    library: UserLibrary, *, year: YearScope = None
+) -> GameQuerySet:
+    """Every visible game that was played, most played first.
+
+    Unexecuted, so a test reads its plan: each half compiles twice, once in
+    the select list and once in the filter naming the annotation.
+    """
+    return (
+        Game.objects.visible_to(library)
+        .annotate(total_playtime=playtime_by_game(library, year=year))
+        .filter(total_playtime__gt=timedelta(0))
+        #: Ties need an order, or rows reshuffle.
+        .order_by("-total_playtime", "sort_name", "name", "pk")
+    )
+
+
+def games_by_playtime(
+    library: UserLibrary, *, year: YearScope = None, limit: int
+) -> list[GameByPlaytime]:
+    """The most played games, each beside the two sources that made it.
+
+    The halves are a second query over the keys the ranking answers, not two
+    more subqueries on the query ranking every played game. Each row carries
+    the game that second query read, so no row states its total twice.
+
+    The caller states the cap, and counting the rest is a third query that
+    ranks every played game again.
+    """
+    ranked = list(games_by_playtime_queryset(library, year=year)[:limit])
+    if not ranked:
+        return []
+    halves = {
+        game.pk: game
+        for game in Game.objects.visible_to(library)
+        .filter(pk__in=[game.pk for game in ranked])
+        .annotate(
+            tracked=zero_when_null(tracked_summed_by_game(library, year=year)),
+            historical=zero_when_null(
+                historical_summed_by_game(library, within=_year_days(year))
+            ),
+        )
+    }
+    rows = []
+    for game in ranked:
+        counted = halves.get(game.pk)
+        #: A game removed between the two reads left the library, so it
+        #: leaves the card. The ranking states the order, the halves the row.
+        if counted is None:
+            continue
+        rows.append(
+            GameByPlaytime(
+                counted,
+                PlaytimeBreakdown(
+                    tracked=counted.tracked, historical=counted.historical
+                ),
+            )
+        )
+    return rows
 
 
 def playtime_sort_key(library: UserLibrary) -> PlaytimeSum:

@@ -35,7 +35,7 @@ def records(e2e_library):
     record_row([guessed])
 
 
-def test_the_library_card_opens_the_playtime_tabs(
+def test_the_playtime_tabs_move_between_the_lists(
     authenticated_page: Page, live_server, records
 ):
     page = authenticated_page
@@ -46,10 +46,8 @@ def test_the_library_card_opens_the_playtime_tabs(
             errors.append(message.text) if message.type == "error" else None
         ),
     )
-    page.goto(f"{live_server.url}{reverse('games:library')}")
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
-    page.get_by_role("link", name="2 Playtime").click()
-    page.wait_for_url(f"**{reverse('games:list_sessions')}")
     tabs = page.get_by_role("navigation", name="Playtime")
     expect(tabs.get_by_role("link", name="Sessions")).to_have_attribute(
         "aria-current", "page"

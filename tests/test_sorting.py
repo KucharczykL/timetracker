@@ -25,7 +25,7 @@ from games.models import (
     Purchase,
     UserPreferences,
 )
-from games.reads.playtime import playtime_sort_key
+from games.reads.playtime import games_by_playtime_queryset, playtime_sort_key
 from games.sorting import (
     DEVICE_DEFAULT_SORT,
     DEVICE_SORTS,
@@ -940,3 +940,19 @@ class TestListPlatformsSort:
             for record in caplog.records
             if record.name == "games"
         )
+
+
+@pytest.mark.django_db
+class TestTheGamesCardPlan:
+    def test_the_games_card_query_scans_each_source_twice(self, owned_library):
+        """The rows query keeps the plan it has.
+
+        Each half compiles once in the select list and once more in the
+        filter that names the annotation, so two scans per source table is
+        the shape to hold, not one.
+        """
+        plan = games_by_playtime_queryset(owned_library, year=None).explain()
+
+        #: The space skips same-prefixed index names.
+        assert plan.count(" on games_historicalplaytime ") == 2
+        assert plan.count(" on games_playersession ") == 2

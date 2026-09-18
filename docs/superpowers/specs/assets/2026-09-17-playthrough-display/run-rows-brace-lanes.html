@@ -1,0 +1,183 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Playthrough rows with shared-record braces</title>
+<style>
+  :root{
+    --type-subheading:1.25rem;--type-body:.875rem;--type-micro:.75rem;
+    --heading:#111827;--body:#4b5563;--subtle:#9ca3af;
+    --surface:#fff;--ground:#f3f4f6;--border:#e5e7eb;--link:#1d4ed8;
+    --lane1:#6366f1;--lane1-bg:#eef2ff;--lane1-text:#3730a3;
+    --lane2:#0d9488;--lane2-bg:#ecfeff;--lane2-text:#0f766e;
+    --green-bg:#ecfdf5;--green-text:#065f46;--green-border:#a7f3d0;
+    --gray-bg:#f3f4f6;--gray-text:#374151;--gray-border:#e5e7eb;
+    --amber-bg:#fffbeb;--amber-text:#92400e;--amber-border:#fde68a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;padding:24px;background:var(--ground);color:var(--body);
+       font:400 var(--type-body)/1.25rem ui-sans-serif,system-ui,sans-serif}
+  h1{font-size:1.1rem;color:var(--heading);margin:0 0 6px}
+  h2{font-size:var(--type-micro);text-transform:uppercase;letter-spacing:.06em;color:var(--subtle);font-weight:700;margin:22px 0 8px}
+  .lede{font-size:var(--type-micro);color:var(--subtle);max-width:90ch;margin:0 0 6px}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:16px;max-width:780px}
+  .h{font-size:var(--type-subheading);font-weight:700;color:var(--heading)}
+  .badge{background:var(--ground);border-radius:999px;padding:1px 8px;font-size:var(--type-micro);color:var(--body);margin-left:8px}
+  .sechdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  .tail{font-size:var(--type-micro);color:var(--subtle)}
+  .tabular{font-variant-numeric:tabular-nums}
+  .pill{display:inline-block;border-radius:999px;padding:0 8px;font-size:var(--type-micro);line-height:1.15rem;
+        background:var(--gray-bg);color:var(--gray-text);border:1px solid var(--gray-border);white-space:nowrap}
+  .pill.green{background:var(--green-bg);color:var(--green-text);border-color:var(--green-border)}
+  .pill.amber{background:var(--amber-bg);color:var(--amber-text);border-color:var(--amber-border)}
+
+  .runs{display:grid;grid-auto-rows:min-content}
+  .runrow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:14px;align-items:center;
+          padding:12px 0;border-top:1px solid var(--border)}
+  .runrow.first{border-top:0}
+  .runrow.narrow{grid-template-columns:minmax(0,1fr) auto}
+  .namext{font-size:var(--type-body);font-weight:700;color:var(--heading)}
+  .name{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .sub{font-size:var(--type-micro);color:var(--body);margin-top:2px}
+  .value{text-align:right}.valuetotal{font-weight:700;color:var(--heading)}
+  .acts a{color:var(--link);text-decoration:none;font-size:var(--type-micro);margin-left:10px}
+  .kebab{border:1px solid var(--border);border-radius:6px;padding:1px 6px;color:var(--body);background:#fafafa}
+  .skipnote{font-size:var(--type-micro);color:var(--subtle);font-style:italic}
+
+  /* a lane spans its record's row range and inherits the run rows' row template */
+  .lane{display:grid;grid-template-rows:subgrid;position:relative}
+  .lane > .seg{position:relative}
+  .lane > .seg::after{content:"";position:absolute;left:12px;top:-1px;bottom:-1px;
+                      border-left:2px solid var(--lane1)}
+  .lane > .seg.skip::after{border-left-style:dotted;opacity:.5}
+  .lane > .seg.first::after{top:50%;width:10px;border-top:2px solid var(--lane1);border-top-left-radius:8px}
+  .lane > .seg.last::after{bottom:50%;width:10px;border-bottom:2px solid var(--lane1);border-bottom-left-radius:8px}
+  .lane > .seg.mid .tick{position:absolute;left:12px;top:50%;width:8px;height:2px;background:var(--lane1)}
+  /* stub from the label to the brace's middle */
+  .lane::after{content:"";position:absolute;left:0;top:50%;width:12px;border-top:2px solid var(--lane1)}
+  .lane.l2 > .seg::after,.lane.l2 > .seg.first::after,.lane.l2 > .seg.last::after{border-color:var(--lane2)}
+  .lane.l2 > .seg.mid .tick{background:var(--lane2)}
+  .lane.l2::after{border-color:var(--lane2)}
+  /* the label lives in its own gutter column, vertically centred on the lane */
+  .lanelabel{position:relative}
+  .lanelabel > span{position:absolute;right:0;top:50%;transform:translateY(-50%);
+        background:var(--lane1-bg);border:1px solid var(--lane1);color:var(--lane1-text);
+        border-radius:6px;padding:2px 6px;font-size:var(--type-micro);
+        font-variant-numeric:tabular-nums;white-space:nowrap}
+  .lanelabel.l2 > span{background:var(--lane2-bg);border-color:var(--lane2);color:var(--lane2-text)}
+  .chip{display:inline-block;border-radius:6px;padding:0 6px;font-size:var(--type-micro);
+        background:var(--lane1-bg);border:1px solid var(--lane1);color:var(--lane1-text);font-variant-numeric:tabular-nums}
+  .chip.l2{background:var(--lane2-bg);border-color:var(--lane2);color:var(--lane2-text)}
+</style>
+
+<h1>Playthrough rows, shared records as braces in the gutter</h1>
+<p class="lede"><b>Dark Souls 2</b>: P1 aborted 2014, P2 finished 2014, P3 finished 2015, P4 aborted 2016, P5 finished 2024 (43 h tracked + a 15 h record naming it alone), P6 playing 2025 (8 h tracked). Record A <b>120 h</b> names P1, P2 and P4 — skipping P3, the hard case. Record C <b>30 h</b> names P1–P2. Game total 216 h = 51 h tracked + 165 h historical. Each lane is one record: its own label column, then its brace column; outermost span leftmost.</p>
+
+<h2>Desktop · two lanes, one of them gapped</h2>
+<div class="panel">
+  <div class="sechdr"><div><span class="h">Playthroughs</span><span class="badge">6</span></div><div class="tail">[+ Add]</div></div>
+  <div class="runs" style="grid-template-columns:52px 24px 48px 24px minmax(0,1fr)">
+    <div class="lanelabel" style="grid-column:1;grid-row:1 / 5"><span>120 h</span></div>
+    <div class="lane" style="grid-column:2;grid-row:1 / 5">
+      <div class="seg first"></div><div class="seg mid"><span class="tick"></span></div>
+      <div class="seg skip"></div><div class="seg last"></div>
+    </div>
+    <div class="lanelabel l2" style="grid-column:3;grid-row:1 / 3"><span>30 h</span></div>
+    <div class="lane l2" style="grid-column:4;grid-row:1 / 3">
+      <div class="seg first"></div><div class="seg last"></div>
+    </div>
+
+    <div class="runrow first" style="grid-column:5;grid-row:1">
+      <div><div class="name"><span class="namext">Playthrough 1</span><span class="pill">Never played</span></div><div class="sub">2014 · aborted</div></div>
+      <div class="value"><span class="valuetotal tabular">0 h</span></div>
+      <div class="acts"><a href="#">Edit</a><a href="#">Remove</a></div>
+    </div>
+    <div class="runrow" style="grid-column:5;grid-row:2">
+      <div><div class="name"><span class="namext">Playthrough 2</span><span class="pill green">Finished</span></div><div class="sub">2014 → 2014</div></div>
+      <div class="value"><span class="valuetotal tabular">0 h</span></div>
+      <div class="acts"><a href="#">Edit</a><a href="#">Remove</a></div>
+    </div>
+    <div class="runrow" style="grid-column:5;grid-row:3">
+      <div><div class="name"><span class="namext">Playthrough 3</span><span class="pill green">Finished</span> <span class="skipnote">in neither record</span></div><div class="sub">2015 → 2015</div></div>
+      <div class="value"><span class="valuetotal tabular">0 h</span></div>
+      <div class="acts"><a href="#">Edit</a><a href="#">Remove</a></div>
+    </div>
+    <div class="runrow" style="grid-column:5;grid-row:4">
+      <div><div class="name"><span class="namext">Playthrough 4</span><span class="pill">Never played</span></div><div class="sub">2016 · aborted</div></div>
+      <div class="value"><span class="valuetotal tabular">0 h</span></div>
+      <div class="acts"><a href="#">Edit</a><a href="#">Remove</a></div>
+    </div>
+    <div class="runrow" style="grid-column:1 / -1;grid-row:5">
+      <div><div class="name"><span class="namext">Playthrough 5</span><span class="pill green">Finished</span></div><div class="sub">Mar 2024 → Apr 2024 · 28 days to finish</div></div>
+      <div class="value"><span class="valuetotal tabular">58 h</span><div class="tail tabular">43 h tracked · 15 h historical</div></div>
+      <div class="acts"><a href="#">Edit</a><a href="#">Remove</a></div>
+    </div>
+    <div class="runrow" style="grid-column:1 / -1;grid-row:6">
+      <div><div class="name"><span class="namext">Playthrough 6</span><span class="pill amber">Playing</span></div><div class="sub">Jan 2025 → ongoing · last played 4 days ago</div></div>
+      <div class="value"><span class="valuetotal tabular">8 h</span><div class="tail tabular">8 h tracked</div></div>
+      <div class="acts"><a href="#">Edit</a><a href="#">Remove</a></div>
+    </div>
+  </div>
+</div>
+
+<h2>The ordinary case · one record, one lane (what almost every game looks like)</h2>
+<div class="panel">
+  <div class="runs" style="grid-template-columns:52px 24px minmax(0,1fr)">
+    <div class="lanelabel" style="grid-column:1;grid-row:1 / 3"><span>71 h</span></div>
+    <div class="lane" style="grid-column:2;grid-row:1 / 3">
+      <div class="seg first"></div><div class="seg last"></div>
+    </div>
+    <div class="runrow first" style="grid-column:3;grid-row:1">
+      <div><div class="name"><span class="namext">Playthrough 1</span><span class="pill">Never played</span></div><div class="sub">2016 · aborted at Pontiff</div></div>
+      <div class="value"><span class="valuetotal tabular">0 h</span></div>
+      <div class="acts"><a href="#">Edit</a><a href="#">Remove</a></div>
+    </div>
+    <div class="runrow" style="grid-column:3;grid-row:2">
+      <div><div class="name"><span class="namext">Playthrough 2</span><span class="pill green">Finished</span></div><div class="sub">2016 → 2016</div></div>
+      <div class="value"><span class="valuetotal tabular">12 h</span><div class="tail tabular">12 h tracked</div></div>
+      <div class="acts"><a href="#">Edit</a><a href="#">Remove</a></div>
+    </div>
+  </div>
+</div>
+
+<h2>390 px · lanes narrow to 12 px and lose their labels; each covered row states the share</h2>
+<div class="panel" style="max-width:390px">
+  <div class="sechdr"><div><span class="h">Playthroughs</span><span class="badge">6</span></div><div class="tail">[+]</div></div>
+  <div class="runs" style="grid-template-columns:16px 16px minmax(0,1fr)">
+    <div class="lane" style="grid-column:1;grid-row:1 / 5">
+      <div class="seg first"></div><div class="seg mid"><span class="tick"></span></div>
+      <div class="seg skip"></div><div class="seg last"></div>
+    </div>
+    <div class="lane l2" style="grid-column:2;grid-row:1 / 3">
+      <div class="seg first"></div><div class="seg last"></div>
+    </div>
+    <div class="runrow narrow first" style="grid-column:3;grid-row:1">
+      <div><div class="name"><span class="namext">Playthrough 1</span></div><div class="sub">2014 · aborted</div>
+        <div class="tail tabular">0 h · <span class="chip">120 h</span> <span class="chip l2">30 h</span></div></div>
+      <div class="acts"><span class="kebab">⋯</span></div>
+    </div>
+    <div class="runrow narrow" style="grid-column:3;grid-row:2">
+      <div><div class="name"><span class="namext">Playthrough 2</span><span class="pill green">Finished</span></div><div class="sub">2014 → 2014</div>
+        <div class="tail tabular">0 h · <span class="chip">120 h</span> <span class="chip l2">30 h</span></div></div>
+      <div class="acts"><span class="kebab">⋯</span></div>
+    </div>
+    <div class="runrow narrow" style="grid-column:3;grid-row:3">
+      <div><div class="name"><span class="namext">Playthrough 3</span><span class="pill green">Finished</span></div><div class="sub">2015 → 2015</div>
+        <div class="tail tabular">0 h</div></div>
+      <div class="acts"><span class="kebab">⋯</span></div>
+    </div>
+    <div class="runrow narrow" style="grid-column:3;grid-row:4">
+      <div><div class="name"><span class="namext">Playthrough 4</span></div><div class="sub">2016 · aborted</div>
+        <div class="tail tabular">0 h · <span class="chip">120 h</span></div></div>
+      <div class="acts"><span class="kebab">⋯</span></div>
+    </div>
+    <div class="runrow narrow" style="grid-column:1 / -1;grid-row:5">
+      <div><div class="name"><span class="namext">Playthrough 5</span><span class="pill green">Finished</span></div><div class="sub">Mar 2024 → Apr 2024</div>
+        <div class="tail tabular">58 h · 43 h tracked · 15 h historical</div></div>
+      <div class="acts"><span class="kebab">⋯</span></div>
+    </div>
+    <div class="runrow narrow" style="grid-column:1 / -1;grid-row:6">
+      <div><div class="name"><span class="namext">Playthrough 6</span><span class="pill amber">Playing</span></div><div class="sub">Jan 2025 → ongoing</div>
+        <div class="tail tabular">8 h · 8 h tracked</div></div>
+      <div class="acts"><span class="kebab">⋯</span></div>
+    </div>
+  </div>
+</div>

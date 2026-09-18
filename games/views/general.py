@@ -13,11 +13,11 @@ from django.utils.timezone import localdate
 from common.components import (
     CsrfInput,
     Div,
-    Duration,
     FilterBuilder,
     FilterCount,
     FilterGroup,
     FilterSummary,
+    PlaytimeSplit,
 )
 from common.components.custom_elements import (
     FILTER_MODE_MODELS,
@@ -29,11 +29,12 @@ from common.components.primitives import ContentContainer, PageHeading, Span
 from common.date_time_presentation import date_time_presentation_for_request
 from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
-from games.filters import PlayerSessionFilter, filter_url, model_field_registry
+from games.filters import model_field_registry
 from games.models import Game, Platform, Purchase
 from games.reads.days import DayInterval
 from games.reads.player_sessions import library_sessions
 from games.reads.playtime import playtime_between_each
+from games.reads.sums import PlaytimeBreakdown
 from games.sorting import parse_per_page_override
 from games.views.filtering import BUILDER_MODES
 from games.views.stats_content import stats_content
@@ -47,26 +48,16 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
         cast(User, user).library if user is not None and user.is_authenticated else None
     )
     today = localdate()
-    #: Seven calendar days, the linked list's window.
+    #: Seven calendar days, today included.
     last_seven_days = DayInterval.ending(today, days=7)
-    today_played = last_7_played = timedelta(0)
+    nothing = PlaytimeBreakdown(timedelta(0), timedelta(0))
+    today_played = last_7_played = nothing
     if library is not None:
-        today_played, last_7_played = (
-            figure.total
-            for figure in playtime_between_each(
-                library, [DayInterval.single(today), last_seven_days]
-            )
+        today_played, last_7_played = playtime_between_each(
+            library, [DayInterval.single(today), last_seven_days]
         )
 
     durations = duration_presentation_for_request(request)
-
-    today_iso = today.isoformat()
-    today_url = filter_url(PlayerSessionFilter.where(day=today_iso))
-    last_7_url = filter_url(
-        PlayerSessionFilter.where(
-            day__between=(last_seven_days.first.isoformat(), today_iso)
-        )
-    )
 
     return {
         "game_available": (
@@ -85,11 +76,10 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
         "session_count": (
             library_sessions(library).exists() if library is not None else False
         ),
-        "today_played": Duration(
-            today_played, durations, id_scope="navbar-today", link=today_url
-        ),
-        "last_7_played": Duration(
-            last_7_played, durations, id_scope="navbar-last-7", link=last_7_url
+        #: No link: the session list shows no record, so it sums less.
+        "today_played": PlaytimeSplit(today_played, durations, id_scope="navbar-today"),
+        "last_7_played": PlaytimeSplit(
+            last_7_played, durations, id_scope="navbar-last-7"
         ),
     }
 

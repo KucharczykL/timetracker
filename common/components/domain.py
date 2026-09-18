@@ -31,6 +31,7 @@ from games.models import (
     PlayerSession,
     Purchase,
 )
+from games.reads.sums import PlaytimeBreakdown
 
 if TYPE_CHECKING:
     from common.duration_presentation import DurationPresentation
@@ -537,6 +538,51 @@ def Duration(
         id=f"duration-{id_scope}",
         describedby=False,
     )
+
+
+def PlaytimeSplit(
+    breakdown: PlaytimeBreakdown,
+    presentation: DurationPresentation,
+    *,
+    id_scope: str,
+    link: str | None = None,
+) -> Node:
+    """A total, and beneath it the two sources that made it.
+
+    A zero historical half answers the bare ``Duration``, so a figure of
+    sessions alone renders what it rendered before the split existed.
+
+    The two lines are one element: a flex host would take siblings as two
+    items and lay them side by side. A host that states its own rows, or one
+    that owns the popover already, composes ``Duration`` or ``DurationText``
+    with :func:`PlaytimeHalves` instead.
+    """
+    total = Duration(breakdown.total, presentation, id_scope=id_scope, link=link)
+    if not breakdown.historical:
+        return total
+    return Span(class_="block")[
+        Span(class_="block")[total],
+        PlaytimeHalves(breakdown, presentation),
+    ]
+
+
+def PlaytimeHalves(
+    breakdown: PlaytimeBreakdown, presentation: DurationPresentation
+) -> Node:
+    """The two sources of a total, on one line of smaller text.
+
+    ``PlaytimeSplit`` puts it beneath the total; a host whose total sits inside
+    a popover puts it beneath the popover instead.
+    """
+    #: Tighter than the token's leading: a caption under a figure reads as
+    #: one block, and the line it hangs from grows by less.
+    return Span(class_="block text-type-micro leading-3.5 text-body")[
+        DurationText(breakdown.tracked, presentation),
+        " tracked",
+        Span(aria_hidden="true")[" · "],
+        DurationText(breakdown.historical, presentation),
+        " historical",
+    ]
 
 
 BROWSER_TIME_ZONE_FIELD = "browser_time_zone"

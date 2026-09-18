@@ -1,5 +1,6 @@
 """What every playtime sum shares."""
 
+from dataclasses import dataclass
 from datetime import timedelta
 from typing import Final, NewType
 
@@ -15,6 +16,18 @@ type PlaytimeSum = Combinable
 Playtime = NewType("Playtime", Combinable)
 
 ZERO: Final = Value(timedelta(0), output_field=DurationField())
+
+
+@dataclass(frozen=True, slots=True)
+class PlaytimeBreakdown:
+    """Tracked sessions beside historical records."""
+
+    tracked: timedelta
+    historical: timedelta
+
+    @property
+    def total(self) -> timedelta:
+        return self.tracked + self.historical
 
 
 class UnscopedPlaytimeRead(UnscopedRead):
