@@ -1,7 +1,6 @@
 """Every playtime figure: sessions plus historical records."""
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import NamedTuple
 from uuid import UUID
@@ -26,6 +25,7 @@ from games.reads.playthrough_completions import YearScope
 from games.reads.sums import (
     ZERO,
     Playtime,
+    PlaytimeBreakdown,
     PlaytimeSum,
     UnscopedPlaytimeRead,
     UnscopedSum,
@@ -61,18 +61,6 @@ type PlatformName = str | None
 type KeyedPlaytime[Key] = tuple[Key, timedelta]
 #: Total down, then name, id; None last.
 type PlatformOrder = tuple[timedelta, bool, str, bool, UUID]
-
-
-@dataclass(frozen=True, slots=True)
-class PlaytimeBreakdown:
-    """Tracked sessions beside historical records."""
-
-    tracked: timedelta
-    historical: timedelta
-
-    @property
-    def total(self) -> timedelta:
-        return self.tracked + self.historical
 
 
 class PlatformPlaytime(NamedTuple):

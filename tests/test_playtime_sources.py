@@ -660,3 +660,11 @@ def test_the_games_tracked_window_leaves_records_out(owned_library, game):
 def test_a_source_that_repeats_a_key_refuses():
     with pytest.raises(ValueError, match="twice"):
         _merged([("a", HOUR), ("a", HOUR)], [])
+
+
+def test_the_breakdown_is_importable_from_both_modules():
+    """The value lives beside the sums; playtime re-exports it."""
+    from games.reads.playtime import PlaytimeBreakdown as from_playtime
+    from games.reads.sums import PlaytimeBreakdown as from_sums
+
+    assert from_playtime is from_sums
