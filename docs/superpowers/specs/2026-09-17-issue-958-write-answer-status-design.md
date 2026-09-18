@@ -229,10 +229,10 @@ comment says a redirect would read as a save, which is the assertion worth
 keeping; the number beside it becomes the refusal's. It states the status twice
 as well, so the value is read rather than swapped for another literal.
 
-No test states what a refused session form answers, and none states what the
-historical form answers either. The rule gets one test per module that adopts
-it, each refusing the write at the command and reading the status off the
-re-rendered page.
+`tests/test_historical_playtime_views.py` states what the historical form
+answers, refusing the write at the command rather than at a double. No test
+states what a refused session form answers. Both session forms get one, reading
+the status off the page they render again.
 
 One test states `WriteAnswer`'s truthiness in both of its states, because the
 eight call sites that read the value read it that way and nothing else proves it.
