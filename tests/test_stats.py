@@ -226,13 +226,43 @@ def test_every_stats_key_states_its_sources_once():
     assert sum(map(len, STATS_SOURCE_GROUPS.values())) == len(STATS_SOURCES)
 
 
+#: Named, not derived from the groups: a key moved out of them would
+#: otherwise leave this comparison in silence.
+SESSIONS_ONLY_KEYS = (
+    "total_sessions",
+    "longest_session_time",
+    "longest_session_game",
+    "highest_session_count",
+    "highest_session_count_game",
+    "highest_session_average",
+    "highest_session_average_game",
+    "total_games",
+    "total_year_games",
+)
+
+DAY_KEYS = (
+    "unique_days",
+    "unique_days_percent",
+    "first_play_game",
+    "first_play_date",
+    "last_play_game",
+    "last_play_date",
+)
+
+
+def test_the_day_figures_read_both_sources():
+    for key in DAY_KEYS:
+        assert STATS_SOURCES[key] is StatsSource.BOTH, key
+    for key in SESSIONS_ONLY_KEYS:
+        assert STATS_SOURCES[key] is not StatsSource.BOTH, key
+
+
 def _session_figures(stats: StatsData) -> dict[str, object]:
-    return {
-        key: stats.get(key)
-        for key, source in STATS_SOURCES.items()
-        if source
-        in (StatsSource.SESSIONS_NO_SITTINGS, StatsSource.SESSIONS_PLAYED_GAMES)
-    }
+    return {key: stats.get(key) for key in SESSIONS_ONLY_KEYS}
+
+
+def _day_figures(stats: StatsData) -> dict[str, object]:
+    return {key: stats.get(key) for key in DAY_KEYS}
 
 
 @pytest.fixture
@@ -260,6 +290,8 @@ def test_a_contained_record_moves_only_the_playtime_figures(
 
     for year in (2021, 2022, None):
         assert _session_figures(after[year]) == _session_figures(before[year])
+        #: A month names no single day.
+        assert _day_figures(after[year]) == _day_figures(before[year])
     assert after[2021]["total_hours"] == before[2021]["total_hours"]
 
     this_year = after[2022]
@@ -276,6 +308,31 @@ def test_a_contained_record_moves_only_the_playtime_figures(
         MonthPlaytime(date(2022, 6, 1), PlaytimeBreakdown(timedelta(0), 3 * HOUR)),
     ]
     assert after[None]["total_hours"] == PlaytimeBreakdown(HOUR, 3 * HOUR)
+
+
+@pytest.mark.django_db
+def test_a_day_precision_record_moves_the_day_figures_too(
+    owned_library, played_and_recorded
+):
+    _played, recorded, _platform = played_and_recorded
+    before = {year: compute_stats(owned_library, year) for year in (2021, 2022, None)}
+    record_row(
+        [tracked_run(owned_library, recorded)], duration=3 * HOUR, when="2022-06-15"
+    )
+    after = {year: compute_stats(owned_library, year) for year in (2021, 2022, None)}
+
+    for year in (2021, 2022, None):
+        assert _session_figures(after[year]) == _session_figures(before[year])
+    assert _day_figures(after[2021]) == _day_figures(before[2021])
+    for year in (2022, None):
+        assert after[year]["unique_days"] == before[year]["unique_days"] + 1
+        assert after[year]["first_play_game"] == before[year]["first_play_game"]
+        assert after[year]["first_play_date"] == before[year]["first_play_date"]
+        assert after[year]["last_play_game"] == recorded
+        assert after[year]["last_play_date"] == date(2022, 6, 15)
+        assert after[year]["last_play_from_record"] is True
+        assert after[year]["first_play_from_record"] is False
+    assert after[2022]["unique_days_percent"] == int(2 / 365 * 100)
 
 
 @pytest.mark.django_db

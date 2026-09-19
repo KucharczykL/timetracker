@@ -124,7 +124,8 @@ class StatsSource(Enum):
     game enters it through a session or through a record.
     """
 
-    #: Sessions, and records wholly in scope.
+    #: Sessions, and records: a playtime figure takes a record wholly
+    #: in scope, a day figure only a record naming one day.
     BOTH = auto()
     #: A record states no sittings.
     SESSIONS_NO_SITTINGS = auto()
@@ -148,21 +149,21 @@ STATS_SOURCE_GROUPS: Mapping[StatsSource, tuple[StatsKey, ...]] = {
         "games_by_playtime_count",
         "total_playtime_per_platform",
         "month_playtimes",
+        "unique_days",
+        "unique_days_percent",
+        "first_play_game",
+        "first_play_date",
+        "last_play_game",
+        "last_play_date",
     ),
     StatsSource.SESSIONS_NO_SITTINGS: (
         "total_sessions",
-        "unique_days",
-        "unique_days_percent",
         "longest_session_time",
         "longest_session_game",
         "highest_session_count",
         "highest_session_count_game",
         "highest_session_average",
         "highest_session_average_game",
-        "first_play_game",
-        "first_play_date",
-        "last_play_game",
-        "last_play_date",
     ),
     StatsSource.SESSIONS_PLAYED_GAMES: ("total_games", "total_year_games"),
     StatsSource.PURCHASES: (
