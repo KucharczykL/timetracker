@@ -56,6 +56,7 @@ export const MODIFIER_PHRASES: Record<ModifierToken, string> = {
   LESS_THAN_OR_EQUAL: "is at most",
   BETWEEN: "is between",
   NOT_BETWEEN: "is not between",
+  WITHIN: "is wholly within",
   IS_NULL: "is empty",
   NOT_NULL: "is set",
   MATCHES_REGEX: "matches",

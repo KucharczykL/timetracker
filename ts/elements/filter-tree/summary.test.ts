@@ -137,6 +137,11 @@ describe("summarize — modifier families", () => {
       "Games where Playtime is not between 2 and 5.",
     );
   });
+  it("phrases WITHIN with both bounds", () => {
+    expect(one("playtime", { value: "2", value2: "5", modifier: "WITHIN" })).toBe(
+      "Games where Playtime is wholly within 2 and 5.",
+    );
+  });
   it("phrases presence modifiers with no value", () => {
     expect(one("name", { modifier: "IS_NULL" })).toBe("Games where Name is empty.");
     expect(one("name", { modifier: "NOT_NULL" })).toBe("Games where Name is set.");

@@ -303,6 +303,7 @@ export function writeDateWidget(element: HTMLElement, criterion: Record<string, 
       bounds = { min: value, max: "" };
       break;
     case "BETWEEN":
+    case "WITHIN":
       bounds = { min: value, max: value2 };
       break;
     case "EQUALS":
