@@ -2230,7 +2230,9 @@ def TableRow(
             if summary is not None:
                 # The cell is whitespace-nowrap and, below md, max-w-0, so the
                 # line states its own clipping rather than inheriting any.
-                identity_children.append(Div(class_=_ROW_SUMMARY_CLASS)[summary])
+                identity_children.append(
+                    Div([("data-row-summary", "")], class_=_ROW_SUMMARY_CLASS)[summary]
+                )
             cell_elements.append(
                 Th(
                     scope="row",
@@ -2655,6 +2657,23 @@ def SelectionLine(
     # empty selection would offer anyway.
     controls.append(Div([("data-selection-actions", "")], class_="flex gap-2"))
 
+    # The element clones this per row when the mode turns on. A <template>
+    # renders nothing, so a page with no scripting still shows no checkbox,
+    # and the look stays where every other look is stated: in Python.
+    checkbox_template = Element(
+        "template",
+        [("data-selection-checkbox-template", "")],
+        Input(
+            [("data-selection-checkbox", "")],
+            type="checkbox",
+            class_=(
+                "shrink-0 me-2 align-middle rounded border-default-medium "
+                "bg-neutral-secondary-medium text-brand focus:ring-brand "
+                f"{SELECTION_CHECKBOX_CLASS}"
+            ),
+        ),
+    )
+
     return Div(
         [("data-selection-line", ""), ("data-selection-filter", declaration["filter"])],
         class_=(
@@ -2675,6 +2694,7 @@ def SelectionLine(
         Div(
             [("data-selection-announcement", ""), ("role", "status")], class_="sr-only"
         ),
+        checkbox_template,
     ]
 
 
