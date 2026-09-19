@@ -88,7 +88,7 @@ from common.components.domain import (
     SessionDeviceSelector,
     _resolve_name_with_icon,
 )
-from common.components.elements import LinkTag
+from common.components.elements import Footer, LinkTag
 from common.components.filters import (
     FilterFieldPicker,
     NumberFilter,
@@ -181,8 +181,10 @@ from common.components.primitives import (
     PopoverIf,
     Radio,
     Select,
+    SelectionBar,
     SelectionDeclaration,
     SelectionLine,
+    SelectionToggle,
     Span,
     StaticScript,
     StyledTable,
@@ -342,6 +344,7 @@ __all__ = [
     "FilterSelect",
     "FilterSelectLayout",
     "FilterSummary",
+    "Footer",
     "Form",
     "FormFieldGroup",
     "FormFieldPresentation",
@@ -408,9 +411,11 @@ __all__ = [
     "SectionedPageSection",
     "Select",
     "SelectDropdown",
+    "SelectionBar",
     "SelectionDeclaration",
     "SelectionFields",
     "SelectionLine",
+    "SelectionToggle",
     "SessionActions",
     "SessionDeviceSelector",
     "SettingFieldState",

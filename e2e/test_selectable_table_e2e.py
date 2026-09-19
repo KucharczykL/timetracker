@@ -40,6 +40,13 @@ LINE_BOTTOM = """
 }
 """
 
+ROW_GEOMETRY = """
+() => [...document.querySelectorAll('tbody tr')].map((row) => {
+    const name = row.querySelector('th').getBoundingClientRect();
+    return [Math.round(row.getBoundingClientRect().height), Math.round(name.left)];
+})
+"""
+
 STATEMENT_LOG = """
 () => {
     window.statements = [];
@@ -123,20 +130,33 @@ def _open(page: Page, live_server, url: str = "/test-selectable-table/") -> None
 
 
 def _select_mode(page: Page) -> None:
-    page.locator("[data-selection-toggle]").click()
+    page.locator("[data-selection-bar] [data-selection-toggle]").click()
 
 
 def _checkboxes(page: Page):
+    return page.locator("tbody [data-selection-checkbox]:not(.invisible)")
+
+
+def _all_checkboxes(page: Page):
     return page.locator("tbody [data-selection-checkbox]")
 
 
-def test_the_mode_builds_and_takes_back_the_checkboxes(page: Page, live_server):
+def test_the_mode_shows_and_hides_the_checkboxes(page: Page, live_server):
     _open(page, live_server)
     assert _checkboxes(page).count() == 0
     _select_mode(page)
     assert _checkboxes(page).count() == ROW_COUNT
     _select_mode(page)
     assert _checkboxes(page).count() == 0
+
+
+def test_the_mode_moves_no_row(page: Page, live_server):
+    """The checkboxes are built at connect and only shown, so the rows keep
+    their height and the names their place."""
+    _open(page, live_server)
+    at_rest = page.evaluate(ROW_GEOMETRY)
+    _select_mode(page)
+    assert page.evaluate(ROW_GEOMETRY) == at_rest
 
 
 def test_the_checkbox_is_the_first_child_of_the_identity_cell(page: Page, live_server):
@@ -224,6 +244,33 @@ def test_the_region_speaks_at_a_change_of_scope_and_not_at_a_tick(
     assert "every row matching the filter" in region.inner_text()
     page.locator("[data-selection-clear]").click()
     assert region.inner_text() == "Selection cleared."
+
+
+def test_a_selection_survives_the_next_page(page: Page, live_server):
+    """The statement waits in the tab: the list's other pages find it, and the
+    mode comes back with it."""
+    _open(page, live_server)
+    _select_mode(page)
+    _checkboxes(page).nth(0).click()
+    _checkboxes(page).nth(2).click()
+
+    page.get_by_role("link", name="Next").click()
+    page.wait_for_function("() => customElements.get('selectable-table')")
+
+    assert page.locator("selectable-table").get_attribute("data-selection-mode") == "on"
+    assert "2 selected" in page.locator("[data-selection-count]").inner_text()
+
+
+def test_clearing_forgets_a_selection_for_the_next_page(page: Page, live_server):
+    _open(page, live_server)
+    _select_mode(page)
+    _checkboxes(page).nth(0).click()
+    page.locator("[data-selection-clear]").click()
+
+    page.get_by_role("link", name="Next").click()
+    page.wait_for_function("() => customElements.get('selectable-table')")
+
+    assert page.locator("selectable-table").get_attribute("data-selection-mode") is None
 
 
 def test_the_line_sticks_to_the_foot_of_the_window(page: Page, live_server):

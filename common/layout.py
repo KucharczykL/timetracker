@@ -24,7 +24,7 @@ from django.utils.translation import get_language
 from django_htmx.jinja import django_htmx_script
 
 from common.components.core import Document, Safe
-from common.components.elements import LinkTag
+from common.components.elements import Footer, LinkTag
 from common.components.primitives import (
     CONTENT_MAX_WIDTH_CLASS,
     PAGE_GUTTER_CLASS,
@@ -36,7 +36,6 @@ from common.components.primitives import (
     Meta,
     Nav,
     Script,
-    Span,
     Title,
 )
 from common.components.toast import ToastStack
@@ -74,11 +73,8 @@ def _main_script(mastered: bool) -> str:
 #: One page usually answers the whole scan.
 RESUME_PAGE_SIZE = 50
 
-# The build stamp's corner, off the selection line.
-VERSION_STAMP_CLASS = (
-    "fixed left-2 bottom-[calc(0.5rem+var(--selection-line,0px))] "
-    "text-type-micro text-fg-disabled"
-)
+# The build stamp, on the page's last line.
+VERSION_STAMP_CLASS = f"{PAGE_GUTTER_CLASS} py-3 text-type-micro text-fg-disabled"
 
 # Shared classes for the plain navbar entries (Home/Stats/Log out).
 _NAV_LINK_CLASS = (
@@ -348,7 +344,7 @@ def TimetrackerDocument(
             alt="loading indicator",
         )
 
-        version_footer_note = Span(class_=VERSION_STAMP_CLASS)[
+        version_footer_note = Footer(class_=VERSION_STAMP_CLASS)[
             f"{version()} "
             f"({date_time_presentation.format(version_modified_at(), 'datetime')})"
         ]
@@ -474,10 +470,10 @@ def TimetrackerDocument(
                         navbar,
                         Div(
                             id="main-container",
-                            class_=f"flex flex-1 flex-col pt-8 pb-16 {PAGE_GUTTER_CLASS}",
+                            class_=f"flex flex-1 flex-col pt-8 pb-8 {PAGE_GUTTER_CLASS}",
                         )[content],
+                        version_footer_note,
                     ],
-                    version_footer_note,
                     script_body,
                     mastered_script_IS_THIS_REALLY_NEEDED,
                     global_modal_container,

@@ -5,6 +5,12 @@ import {
   SelectableTableProps,
 } from "../generated/props.js";
 import {
+  forgetSelection,
+  readSelection,
+  storageKeyFor,
+  writeSelection,
+} from "./selection-storage.js";
+import {
   CheckAllState,
   checkAllState,
   clearSelection,
@@ -19,6 +25,7 @@ import {
 } from "./selection-statement.js";
 
 const CHECKBOX_SELECTOR = "[data-selection-checkbox]";
+const HIDDEN_CHECKBOX_CLASS = "invisible";
 const ROW_SELECTOR = "tbody tr[data-selection-key]";
 const LINE_HEIGHT_PROPERTY = "--selection-line";
 
@@ -29,27 +36,33 @@ export class SelectableTableElement extends HTMLElement {
   private mode = false;
   private line: HTMLElement | null = null;
   private controls: HTMLElement | null = null;
-  private toggle: HTMLElement | null = null;
+  private toggles: HTMLElement[] = [];
   private checkAll: HTMLInputElement | null = null;
   private countText: HTMLElement | null = null;
   private announcement: HTMLElement | null = null;
   private checkboxTemplate: HTMLTemplateElement | null = null;
   private rowObserver: MutationObserver | null = null;
+  private storageKey = "";
+  private knownKeys = new Set<string>();
 
   connectedCallback(): void {
     this.props = readSelectableTableProps(this);
     this.line = this.querySelector("[data-selection-line]");
     this.controls = this.querySelector("[data-selection-controls]");
-    this.toggle = this.querySelector("[data-selection-toggle]");
+    this.toggles = Array.from(
+      this.querySelectorAll<HTMLElement>("[data-selection-toggle]"),
+    );
     this.checkAll = this.querySelector("[data-selection-check-all]");
     this.countText = this.querySelector("[data-selection-count]");
     this.announcement = this.querySelector("[data-selection-announcement]");
     this.checkboxTemplate = this.querySelector(
       "template[data-selection-checkbox-template]",
     );
-    if (!this.line || !this.toggle) return;
+    if (!this.line || !this.toggles.length) return;
 
-    this.toggle.addEventListener("click", () => this.setMode(!this.mode));
+    for (const toggle of this.toggles) {
+      toggle.addEventListener("click", () => this.setMode(!this.mode));
+    }
     this.checkAll?.addEventListener("change", () => this.onCheckAll());
     this.querySelector("[data-selection-all-matching]")?.addEventListener(
       "click",
@@ -60,6 +73,21 @@ export class SelectableTableElement extends HTMLElement {
     );
     this.addEventListener("click", (event) => this.onBodyClick(event));
     this.addEventListener("keydown", (event) => this.onKeyDown(event));
+
+    // Built at connect, hidden until the mode: a checkbox added later would
+    // move every row.
+    this.decorateRows();
+    this.knownKeys = new Set(this.pageKeys());
+
+    // A selection outlives the page it was made on: the list's other pages
+    // find it again, and the mode comes back with it.
+    this.storageKey = storageKeyFor(window.location.pathname);
+    const stored = readSelection(this.storageKey, this.props.filter);
+    if (stored) {
+      this.state = stored;
+      // Nothing changed for the reader: the page arrived this way.
+      this.setMode(true, false);
+    }
 
     const body = this.querySelector("tbody");
     if (body && typeof MutationObserver !== "undefined") {
@@ -84,21 +112,21 @@ export class SelectableTableElement extends HTMLElement {
   }
 
   /** The mode, and with it every checkbox. */
-  setMode(on: boolean): void {
+  setMode(on: boolean, announce = true): void {
     this.mode = on;
     this.toggleAttribute("data-selection-mode", false);
     if (on) this.setAttribute("data-selection-mode", "on");
-    this.toggle?.setAttribute("aria-pressed", String(on));
-    if (this.controls) this.controls.hidden = !on;
-    if (on) {
-      this.decorateRows();
-      this.announce("Selecting rows.");
-    } else {
+    for (const toggle of this.toggles) {
+      toggle.setAttribute("aria-pressed", String(on));
+    }
+    if (this.line) this.line.hidden = !on;
+    if (!on) {
       this.state = clearSelection();
       this.anchorKey = null;
-      this.undecorateRows();
-      this.announce("Selection off.");
+      if (this.storageKey) forgetSelection(this.storageKey);
     }
+    this.showCheckboxes(on);
+    if (announce) this.announce(on ? "Selecting rows." : "Selection off.");
     this.render();
     this.publishLineHeight();
   }
@@ -114,13 +142,16 @@ export class SelectableTableElement extends HTMLElement {
       ) as HTMLInputElement | null;
       if (!checkbox) continue;
       checkbox.setAttribute("aria-label", identityName(cell));
+      checkbox.classList.toggle(HIDDEN_CHECKBOX_CLASS, !this.mode);
       cell.insertBefore(checkbox, cell.firstChild);
     }
   }
 
-  private undecorateRows(): void {
+  /** Visibility, never presence: a checkbox that comes and goes would move
+   * every row under the reader's hand. */
+  private showCheckboxes(on: boolean): void {
     this.querySelectorAll(CHECKBOX_SELECTOR).forEach((checkbox) =>
-      checkbox.remove(),
+      checkbox.classList.toggle(HIDDEN_CHECKBOX_CLASS, !on),
     );
   }
 
@@ -188,15 +219,23 @@ export class SelectableTableElement extends HTMLElement {
   private onClear(): void {
     this.state = clearSelection();
     this.anchorKey = null;
+    if (this.storageKey) forgetSelection(this.storageKey);
     this.render();
     this.announce("Selection cleared.");
   }
 
   private onRowsChanged(): void {
-    if (!this.mode) return;
     this.decorateRows();
+    // A key this page held and holds no longer has left the table; a key it
+    // never held belongs to another page of the same list.
     const present = new Set(this.pageKeys());
-    const kept = [...this.state.keys].filter((key) => present.has(key));
+    const gone = [...this.knownKeys].filter((key) => !present.has(key));
+    this.knownKeys = present;
+    if (!gone.length) {
+      if (this.mode) this.render();
+      return;
+    }
+    const kept = [...this.state.keys].filter((key) => !gone.includes(key));
     this.state = { ...this.state, keys: new Set(kept) };
     this.render();
   }
@@ -226,6 +265,9 @@ export class SelectableTableElement extends HTMLElement {
       this.checkAll.indeterminate = all === "indeterminate";
     }
     if (this.countText) this.countText.textContent = this.countSentence();
+    if (this.storageKey) {
+      writeSelection(this.storageKey, this.props.filter, this.state);
+    }
     this.dispatchEvent(
       new CustomEvent("selectable-table:change", {
         bubbles: true,

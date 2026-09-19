@@ -862,7 +862,7 @@ _SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
 # md:p-0) contradicts the base and the sizing scale, so it alone carries its
 # complete look and skips both.
 _OUTLINE_VARIANT_CLASS = (
-    f"{CONTROL_SIZE_CLASS} text-heading bg-neutral-primary-medium border "
+    f"{CONTROL_SIZE_CLASS} gap-2 text-heading bg-neutral-primary-medium border "
     "border-default-medium hover:bg-neutral-tertiary-medium "
     "hover:border-default-strong focus:outline-hidden focus:ring-2 "
     "focus:ring-fg-brand whitespace-nowrap"
@@ -2503,9 +2503,13 @@ def _header_cell(
     *,
     data_table: bool = False,
     pinned: bool = False,
+    selectable: bool = False,
 ) -> Node:
     """One ``<th>``: a static header for a non-sortable column, else a clickable
-    sort link wrapped in ``<sort-header>`` with both navigation targets baked in."""
+    sort link wrapped in ``<sort-header>`` with both navigation targets baked in.
+
+    ``selectable`` insets the label by the checkbox its column reserves, so the
+    label still stands over the names under it."""
     base_class = "px-2 sm:px-3 lg:px-6 py-3" + (
         " text-right" if column.align == "right" else ""
     )
@@ -2527,8 +2531,11 @@ def _header_cell(
             policy_attrs.append(("data-wrap", ""))
         if column.shrinkable:
             policy_attrs.append(("data-shrinkable", ""))
+    inset = _SELECTION_LABEL_INSET_CLASS if selectable else ""
     if column.sort_key is None:
-        return Th(policy_attrs, scope="col", class_=base_class)[column.label]
+        return Th(policy_attrs, scope="col", class_=base_class)[
+            Div(class_=inset)[column.label] if inset else column.label
+        ]
 
     active = next(
         (
@@ -2550,8 +2557,9 @@ def _header_cell(
         data_shift_href=_sort_href(request, cycle_sort(sort_terms, column.sort_key)),
         class_=_SORT_HEADER_LINK_CLASS,
     )[column.label, indicator]
+    header = _SortHeader()[link]
     return Th(policy_attrs, scope="col", class_=base_class, aria_sort=aria_sort)[
-        _SortHeader()[link]
+        Div(class_=inset)[header] if inset else header
     ]
 
 
@@ -2596,8 +2604,40 @@ _SELECTION_LINE_STICKY_CLASS = (
 # Checkbox() bakes no size; 24px minimum.
 SELECTION_CHECKBOX_CLASS = "w-6 h-6"
 
+# The cells' own inset, so the line aligns with the checkbox column.
+_SELECTION_INSET_CLASS = "px-2 sm:px-3 lg:px-6"
+
+# The checkbox and its gap, which the header label clears.
+_SELECTION_LABEL_INSET_CLASS = "ms-8"
+
 # The element unhides these with the mode.
-_SELECTION_CONTROLS_CLASS = "flex items-center gap-3"
+_SELECTION_CONTROLS_CLASS = "flex flex-wrap items-center gap-x-3 gap-y-2"
+
+
+def SelectionToggle(*, pressed: bool = False) -> Node:
+    """The control that turns the selection mode on and off."""
+    return ControlButton(
+        [
+            ("data-selection-toggle", ""),
+            ("aria-pressed", "true" if pressed else "false"),
+            ("aria-label", "Select rows"),
+        ],
+        variant="outline",
+        # Outline bakes no shape; a standalone one states its own.
+        class_="ms-auto rounded-base",
+    )[Icon("checkbox"), Span(class_="max-sm:sr-only")["Select"]]
+
+
+def SelectionBar() -> Node:
+    """The strip above the table, which holds the toggle at rest."""
+    return Div(
+        [("data-selection-bar", "")],
+        class_=(
+            f"flex items-center {_SELECTION_INSET_CLASS} py-1 "
+            f"bg-neutral-primary-soft border-b border-default-medium "
+            f"{_SELECTION_LINE_HIDE_CLASS}"
+        ),
+    )[SelectionToggle()]
 
 
 def SelectionLine(
@@ -2618,17 +2658,27 @@ def SelectionLine(
             ),
             Span(class_="sr-only")["Select every row on this page"],
         ],
-        Span([("data-selection-count", "")], class_="text-type-body text-heading")[
-            "0 selected"
-        ],
+        Span(
+            [("data-selection-count", "")],
+            class_="text-type-body text-heading whitespace-nowrap",
+        )["0 selected"],
     ]
     # No paginator: the page is the set.
     if page_obj is not None:
         controls.append(
             ControlButton(
-                [("data-selection-all-matching", "")],
+                [
+                    ("data-selection-all-matching", ""),
+                    ("aria-label", f"Select all {page_obj.paginator.count} matching"),
+                ],
                 variant="ghost",
-            )[f"Select all {page_obj.paginator.count} matching"]
+                class_="whitespace-nowrap",
+            )[
+                Span(class_="max-sm:hidden")[
+                    f"Select all {page_obj.paginator.count} matching"
+                ],
+                Span(class_="sm:hidden")[f"All {page_obj.paginator.count}"],
+            ]
         )
     controls.append(
         ControlButton([("data-selection-clear", "")], variant="ghost")["Clear"]
@@ -2652,20 +2702,23 @@ def SelectionLine(
     )
 
     return Div(
-        [("data-selection-line", ""), ("data-selection-filter", declaration["filter"])],
+        [
+            ("data-selection-line", ""),
+            ("data-selection-filter", declaration["filter"]),
+            ("hidden", ""),
+        ],
         class_=(
-            "flex items-center gap-3 px-6 py-3 bg-neutral-primary-soft "
+            f"flex flex-wrap items-center gap-x-3 gap-y-2 "
+            f"{_SELECTION_INSET_CLASS} py-3 "
+            f"bg-neutral-primary-soft border-t border-default-medium "
             f"{_SELECTION_LINE_STICKY_CLASS} {_SELECTION_LINE_HIDE_CLASS}"
         ),
     )[
-        ControlButton(
-            [("data-selection-toggle", ""), ("aria-pressed", "false")],
-            variant="ghost",
-        )["Select"],
         Div(
-            [("data-selection-controls", ""), ("hidden", "")],
+            [("data-selection-controls", "")],
             class_=_SELECTION_CONTROLS_CLASS,
         )[*controls],
+        SelectionToggle(pressed=True),
         # Two regions: the count ticks, this announces.
         #
         # One region would speak every tick, over the checkbox that already
@@ -2792,6 +2845,7 @@ def StyledTable(
                     request,
                     data_table=data_table,
                     pinned=data_table and index == 0,
+                    selectable=selection is not None and index == 0,
                 )
                 for index, column in enumerate(columns)
             ]
@@ -2887,6 +2941,7 @@ def StyledTable(
         else footer
     )
     if selection is not None:
+        inner_children.insert(0, SelectionBar())
         # A named region, not the general slot.
         inner_children.append(
             SelectionLine(selection, page_obj=page_obj if paginated else None)

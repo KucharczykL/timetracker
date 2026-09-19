@@ -94,7 +94,7 @@ def test_the_csrf_token_and_the_version_footer_are_normalised(furnished):
     assert "csrfmiddlewaretoken" in first
     assert normalise(first) == normalise(second)
     assert 'value="CSRF"' in normalise(first)
-    assert ">VERSION</span>" in normalise(first)
+    assert ">VERSION</footer>" in normalise(first)
 
 
 def test_the_command_writes_one_file_per_url_with_its_status_first(furnished, tmp_path):

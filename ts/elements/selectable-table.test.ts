@@ -4,7 +4,12 @@ import { SelectionStatement } from "./selection-statement.js";
 // Importing the module defines <selectable-table>.
 import "./selectable-table.js";
 
-function mount(keys: string[]): HTMLElement {
+beforeEach(() => {
+  // A selection outlives its page now, so each case starts with none.
+  sessionStorage.clear();
+});
+
+function mount(keys: string[], filter = '{"year":2025}'): HTMLElement {
   const rows = keys
     .map(
       (key) =>
@@ -13,19 +18,22 @@ function mount(keys: string[]): HTMLElement {
     )
     .join("");
   document.body.innerHTML = `
-    <selectable-table filter='{"year":2025}' count="50">
-      <table><tbody>${rows}</tbody></table>
-      <div data-selection-line>
+    <selectable-table filter='${filter}' count="50">
+      <div data-selection-bar>
         <button data-selection-toggle aria-pressed="false">Select</button>
-        <div data-selection-controls hidden>
+      </div>
+      <table><tbody>${rows}</tbody></table>
+      <div data-selection-line hidden>
+        <div data-selection-controls>
           <input type="checkbox" data-selection-check-all>
           <span data-selection-count>0 selected</span>
           <button data-selection-all-matching>Select all 50 matching</button>
           <button data-selection-clear>Clear</button>
         </div>
+        <button data-selection-toggle aria-pressed="false">Select</button>
         <div data-selection-announcement role="status"></div>
         <template data-selection-checkbox-template>
-          <input type="checkbox" data-selection-checkbox>
+          <input type="checkbox" data-selection-checkbox class="invisible">
         </template>
       </div>
     </selectable-table>`;
@@ -50,7 +58,14 @@ function tick(element: HTMLElement, index: number, shiftKey = false): void {
 }
 
 function toggle(element: HTMLElement): void {
-  press(element.querySelector("[data-selection-toggle]"));
+  press(element.querySelector("[data-selection-bar] [data-selection-toggle]"));
+}
+
+/** The checkboxes a reader can see: built at connect, hidden until the mode. */
+function shownCheckboxes(element: HTMLElement): HTMLInputElement[] {
+  return checkboxes(element).filter(
+    (checkbox) => !checkbox.classList.contains("invisible"),
+  );
 }
 
 function statements(element: HTMLElement): SelectionStatement[] {
@@ -74,21 +89,38 @@ describe("the mode", () => {
     element = mount(["a", "b", "c"]);
   });
 
-  it("renders no checkbox until Select is pressed", () => {
-    expect(checkboxes(element)).toHaveLength(0);
+  it("shows no checkbox until Select is pressed", () => {
+    expect(checkboxes(element)).toHaveLength(3);
+    expect(shownCheckboxes(element)).toHaveLength(0);
   });
 
-  it("builds one checkbox per row, named by the row", () => {
+  it("shows one checkbox per row, named by the row", () => {
     toggle(element);
-    expect(checkboxes(element)).toHaveLength(3);
+    expect(shownCheckboxes(element)).toHaveLength(3);
     expect(checkboxes(element)[0].getAttribute("aria-label")).toBe("Game a");
   });
 
-  it("takes every checkbox back when it turns off", () => {
+  it("hides every checkbox again without moving a row", () => {
     toggle(element);
     tick(element, 0);
     toggle(element);
-    expect(checkboxes(element)).toHaveLength(0);
+    expect(checkboxes(element)).toHaveLength(3);
+    expect(shownCheckboxes(element)).toHaveLength(0);
+  });
+
+  it("presses both toggles together", () => {
+    toggle(element);
+    const pressed = Array.from(
+      element.querySelectorAll("[data-selection-toggle]"),
+    ).map((button) => button.getAttribute("aria-pressed"));
+    expect(pressed).toEqual(["true", "true"]);
+  });
+
+  it("shows the line with the mode", () => {
+    const line = element.querySelector<HTMLElement>("[data-selection-line]")!;
+    expect(line.hidden).toBe(true);
+    toggle(element);
+    expect(line.hidden).toBe(false);
   });
 
   it("clears the selection when it turns off", () => {
@@ -228,7 +260,7 @@ describe("a row that arrives", () => {
     row.remove();
     body.insertBefore(row, body.firstChild);
     await Promise.resolve();
-    expect(checkboxes(element)).toHaveLength(2);
+    expect(shownCheckboxes(element)).toHaveLength(2);
     expect(checkboxes(element)[0].checked).toBe(true);
   });
 
@@ -260,5 +292,80 @@ describe("the announcement", () => {
     );
     press(element.querySelector("[data-selection-clear]"));
     expect(announcement(element)).toBe("Selection cleared.");
+  });
+});
+
+describe("a selection that outlives the page", () => {
+  it("says nothing on arrival: the page came that way", () => {
+    const first = mount(["a", "b"]);
+    toggle(first);
+    tick(first, 0);
+    const second = mount(["c", "d"]);
+    expect(announcement(second)).toBe("");
+  });
+
+  it("comes back with the mode, on the list's next page", () => {
+    const first = mount(["a", "b"]);
+    toggle(first);
+    tick(first, 0);
+
+    const second = mount(["c", "d"]);
+    expect(second.getAttribute("data-selection-mode")).toBe("on");
+    const seen = statements(second);
+    tick(second, 0);
+    expect(seen[seen.length - 1]).toEqual({ keys: ["a", "c"] });
+  });
+
+  it("counts the keys of every page", () => {
+    const first = mount(["a", "b"]);
+    toggle(first);
+    tick(first, 0);
+    tick(first, 1);
+    const second = mount(["c", "d"]);
+    expect(
+      second.querySelector("[data-selection-count]")?.textContent,
+    ).toBe("2 selected");
+  });
+
+  it("keeps a key no page in front of the reader holds", async () => {
+    const first = mount(["a", "b"]);
+    toggle(first);
+    tick(first, 0);
+    const second = mount(["c", "d"]);
+    const body = second.querySelector("tbody")!;
+    const seen = statements(second);
+    body.rows[0].remove();
+    await Promise.resolve();
+    // "c" left the table; "a" belongs to the page before it.
+    expect(seen[seen.length - 1]).toEqual({ keys: ["a"] });
+  });
+
+  it("is forgotten on Clear", () => {
+    const first = mount(["a", "b"]);
+    toggle(first);
+    tick(first, 0);
+    press(first.querySelector("[data-selection-clear]"));
+
+    const second = mount(["c", "d"]);
+    expect(second.getAttribute("data-selection-mode")).toBe(null);
+  });
+
+  it("is forgotten when the mode turns off", () => {
+    const first = mount(["a", "b"]);
+    toggle(first);
+    tick(first, 0);
+    toggle(first);
+
+    const second = mount(["c", "d"]);
+    expect(second.getAttribute("data-selection-mode")).toBe(null);
+  });
+
+  it("is not restored under another filter: the set is another set", () => {
+    const first = mount(["a", "b"]);
+    toggle(first);
+    tick(first, 0);
+
+    const second = mount(["c", "d"], '{"year":2024}');
+    expect(second.getAttribute("data-selection-mode")).toBe(null);
   });
 });

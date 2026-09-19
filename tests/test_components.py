@@ -3189,6 +3189,19 @@ class SelectionLineTest(SimpleTestCase):
         html = self._paginated(selection={"filter": ""})
         self.assertIn('aria-pressed="false"', html)
 
+    def test_every_button_variant_spaces_an_icon_from_its_label(self):
+        """Filled, ghost and outline share the icon-to-label gap; an outline
+        button is the one a caller composes children into directly."""
+        from common.components.primitives import control_button_class
+
+        for variant in ("filled", "ghost", "outline"):
+            self.assertIn("gap-2", control_button_class(variant=variant), variant)
+
+    def test_the_toggle_carries_an_icon(self):
+        html = self._paginated(selection={"filter": ""})
+        toggle = html.split("data-selection-toggle")[1].split("</button>")[0]
+        self.assertIn("<svg", toggle)
+
     def test_shell_clips_instead_of_hiding(self):
         """A sticky child needs a shell that is not a scroll container."""
         html = self._paginated(selection={"filter": ""})
@@ -3261,7 +3274,7 @@ class SelectableTableMountTest(SimpleTestCase):
 
 
 class BottomCornerTest(SimpleTestCase):
-    """The chrome that shares the line's corner stands off it."""
+    """The chrome at the page's foot, beside a sticky selection line."""
 
     def test_toast_stack_stands_off_the_selection_line(self):
         from common.components.toast import TOAST_STACK_CLASS
@@ -3270,7 +3283,9 @@ class BottomCornerTest(SimpleTestCase):
         # Above the line: a toast answers the act.
         self.assertIn("z-50", TOAST_STACK_CLASS)
 
-    def test_version_stamp_stands_off_the_selection_line(self):
+    def test_the_version_stamp_stands_in_the_page_flow(self):
+        """It is the page's last line, so nothing overlays a sticky line."""
         from common.layout import VERSION_STAMP_CLASS
 
-        self.assertIn("--selection-line", VERSION_STAMP_CLASS)
+        self.assertNotIn("fixed", VERSION_STAMP_CLASS)
+        self.assertNotIn("--selection-line", VERSION_STAMP_CLASS)

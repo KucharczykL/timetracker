@@ -46,7 +46,7 @@ LIST_ROUTES: frozenset[UrlName] = frozenset(
 #: `...csrf="..."` attribute; then the footer's build stamp.
 _CSRF_TOKEN = re.compile(r'((?:name="csrfmiddlewaretoken" value|[\w-]*csrf)=")[^"]*(")')
 _VERSION_FOOTER = re.compile(
-    rf'(class="{re.escape(escape(VERSION_STAMP_CLASS))}">)[^<]*(</span>)'
+    rf'(class="{re.escape(escape(VERSION_STAMP_CLASS))}">)[^<]*(</footer>)'
 )
 
 
