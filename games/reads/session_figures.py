@@ -5,7 +5,7 @@ the planner chose: value first, then the game's sort name, then
 the game's key, then the session's.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 from typing import NamedTuple
 
 from django.db.models import Avg, Count
@@ -35,11 +35,6 @@ class GameAverage(NamedTuple):
     average: timedelta
 
 
-class PlayDay(NamedTuple):
-    day: date
-    game: Game
-
-
 def scoped_sessions(library: UserLibrary, year: YearScope) -> PlayerSessionQuerySet:
     """Counted sessions, narrowed to a year; None is all-time."""
     sessions = library_sessions(library)
@@ -56,15 +51,6 @@ def games_in_scope(library: UserLibrary, year: YearScope):
 
 def session_count(library: UserLibrary, year: YearScope) -> int:
     return scoped_sessions(library, year).count()
-
-
-def distinct_days(library: UserLibrary, year: YearScope) -> int:
-    return (
-        scoped_sessions(library, year)
-        .values("effective_day")
-        .distinct()
-        .aggregate(days=Count("effective_day"))["days"]
-    )
 
 
 def longest_session(library: UserLibrary, year: YearScope) -> LongestSession | None:
@@ -114,31 +100,6 @@ def highest_average_game(library: UserLibrary, year: YearScope) -> GameAverage |
         return None
     game_id, average = row
     return GameAverage(Game.objects.get(pk=game_id), average)
-
-
-def _play_day(session: PlayerSession | None) -> PlayDay | None:
-    if session is None:
-        return None
-    return PlayDay(session.effective_day, session.playthrough.player_game.game)
-
-
-def first_play(library: UserLibrary, year: YearScope) -> PlayDay | None:
-    """The earliest day; within it, the lower key."""
-    return _play_day(
-        scoped_sessions(library, year)
-        .select_related(GAME)
-        .order_by("effective_day", "id")
-        .first()
-    )
-
-
-def last_play(library: UserLibrary, year: YearScope) -> PlayDay | None:
-    return _play_day(
-        scoped_sessions(library, year)
-        .select_related(GAME)
-        .order_by("-effective_day", "-id")
-        .first()
-    )
 
 
 def has_sessions(library: UserLibrary) -> bool:

@@ -36,6 +36,11 @@ from games.models import (
     PurchaseQueryset,
     UserLibrary,
 )
+from games.reads.play_figures import (
+    distinct_days,
+    first_play,
+    last_play,
+)
 from games.reads.player_sessions import library_sessions
 from games.reads.playthrough_completions import (
     YearScope,
@@ -54,11 +59,8 @@ from games.reads.playtime import (
     total_playtime,
 )
 from games.reads.session_figures import (
-    distinct_days,
-    first_play,
     games_in_scope,
     highest_average_game,
-    last_play,
     longest_session,
     most_sessions_game,
     session_count,

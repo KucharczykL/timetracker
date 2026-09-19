@@ -12,6 +12,11 @@ from django.utils import timezone
 
 from games.filters import FindFilter
 from games.models import UserLibrary
+from games.reads.play_figures import (
+    distinct_days,
+    first_play,
+    last_play,
+)
 from games.reads.player_sessions import readable_sessions
 from games.reads.playtime import (
     played_years,
@@ -20,10 +25,7 @@ from games.reads.playtime import (
     total_playtime,
 )
 from games.reads.session_figures import (
-    distinct_days,
-    first_play,
     highest_average_game,
-    last_play,
     longest_session,
     most_sessions_game,
     session_count,

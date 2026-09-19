@@ -284,7 +284,9 @@ def _day_records(library: UserLibrary, year: YearScope) -> HistoricalPlaytimeQue
 
 def distinct_days(library: UserLibrary, year: YearScope) -> int:
     """One query: UNION is distinct, so a day both sources hold counts once."""
-    session_days = scoped_sessions(library, year).values_list("effective_day").distinct()
+    session_days = (
+        scoped_sessions(library, year).values_list("effective_day").distinct()
+    )
     record_days = _day_records(library, year).values_list("when_lower").distinct()
     return session_days.union(record_days).count()
 ```
@@ -332,9 +334,7 @@ def test_a_record_earlier_than_every_session_answers_the_first_play(
     assert earliest == PlayDay(date(2024, 1, 2), alpha, True)
 
 
-def test_a_record_later_than_every_session_answers_the_last_play(
-    owned_library, games
-):
+def test_a_record_later_than_every_session_answers_the_last_play(owned_library, games):
     beta, alpha = games
     timed(tracked_run(owned_library, beta), date(2024, 6, 1), 10, 1)
     record_row([tracked_run(owned_library, alpha)], when="2024-09-09")
@@ -598,7 +598,9 @@ flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make test-fast ARGS="
 - [ ] **Step 3: state the two legs as one `Q`**
 
 ```python
-def records_in_scope(library: UserLibrary, year: YearScope) -> HistoricalPlaytimeQuerySet:
+def records_in_scope(
+    library: UserLibrary, year: YearScope
+) -> HistoricalPlaytimeQuerySet:
     """Live records wholly inside the year; None is all-time."""
     records = library_records(library)
     days = year_days(year)
@@ -662,9 +664,7 @@ git add -A && git commit -m "feat: a contained record makes a played game (#1126
 if modifier == Modifier.WITHIN:
     low, high = min(value, value2), max(value, value2)
     return (
-        stated
-        & Q(**{f"{lower_field}__gte": low})
-        & Q(**{f"{upper_field}__lte": high})
+        stated & Q(**{f"{lower_field}__gte": low}) & Q(**{f"{upper_field}__lte": high})
     )
 ```
 

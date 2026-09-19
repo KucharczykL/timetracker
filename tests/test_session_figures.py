@@ -8,11 +8,8 @@ from session_rows import duration_only_row, timed_row, tracked_run
 
 from games.models import Game, PlayerSession
 from games.reads.session_figures import (
-    distinct_days,
-    first_play,
     has_sessions,
     highest_average_game,
-    last_play,
     longest_session,
     most_sessions_game,
     session_count,
@@ -89,37 +86,16 @@ def test_a_year_scope_excludes_the_other_year(owned_library, games):
     timed(tracked_run(owned_library, beta), date(2024, 1, 1), 10, 1)
 
     assert session_count(owned_library, 2024) == 1
-    assert distinct_days(owned_library, 2024) == 1
     longest = longest_session(owned_library, 2024)
     assert longest is not None and longest.game == beta
     assert session_count(owned_library, None) == 2
 
 
-def test_first_play_on_a_shared_day_picks_the_lower_key(owned_library, games):
-    beta, alpha = games
-    day = date(2024, 1, 1)
-    first = duration_only_row(
-        tracked_run(owned_library, alpha), day, timedelta(hours=1)
-    )
-    second = timed(tracked_run(owned_library, beta), day, 8, 1)
-    lower, higher = sorted((first, second), key=lambda row: row.pk)
-
-    earliest = first_play(owned_library, None)
-    latest = last_play(owned_library, None)
-
-    assert earliest is not None and latest is not None
-    assert (earliest.day, earliest.game) == (day, lower.playthrough.player_game.game)
-    assert (latest.day, latest.game) == (day, higher.playthrough.player_game.game)
-
-
 def test_an_empty_library_answers_none_and_zero(owned_library):
     assert session_count(owned_library, None) == 0
-    assert distinct_days(owned_library, None) == 0
     assert longest_session(owned_library, None) is None
     assert most_sessions_game(owned_library, None) is None
     assert highest_average_game(owned_library, None) is None
-    assert first_play(owned_library, None) is None
-    assert last_play(owned_library, None) is None
     assert has_sessions(owned_library) is False
 
 
