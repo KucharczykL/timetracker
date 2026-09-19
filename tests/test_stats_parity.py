@@ -14,6 +14,7 @@ from games.events.dispatch import dispatch
 from games.models import (
     Game,
     HistoricalPlaytime,
+    HistoricalPlaytimeRun,
     LibraryEvent,
     PlayerSession,
     Playthrough,
@@ -586,6 +587,22 @@ def test_the_conversion_is_judged_clean(owned_user, owned_library, review_popula
         assert lines_naming(output, key) == []
     assert HistoricalPlaytime.objects.filter(library=owned_library).count() == 2
     assert PlayerSession.objects.alive().filter(library=owned_library).count() == 3
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_the_conversion_leaves_statistics_on_the_record_tables(
+    owned_user, review_population, monkeypatch
+):
+    analyzed: list[object] = []
+    monkeypatch.setattr(
+        "games.management.commands.verify_reclassification_parity.analyze_tables",
+        analyzed.append,
+    )
+
+    run_parity(user=owned_user.username, confirm=owned_user.username)
+
+    assert analyzed == [(HistoricalPlaytime, HistoricalPlaytimeRun)]
 
 
 @pytest.mark.untracked_games

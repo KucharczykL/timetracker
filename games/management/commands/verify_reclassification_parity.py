@@ -8,6 +8,7 @@ from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 
 from games.commands.session_reclassification import statement_from_session
+from games.events.benchmark_workload import RECORD_TABLES, analyze_tables
 from games.models import PlayerSession, UserLibrary
 from games.reads.playtime import played_years
 from games.reads.session_figures import (
@@ -115,6 +116,8 @@ class Command(BaseCommand):
             )
 
         converted = Converted(tuple(self._convert(user, population)))
+        #: The bench that follows must not plan against empty statistics.
+        analyze_tables(RECORD_TABLES)
         after = {scope: read_scope(library, scope) for scope in scopes}
 
         changed = unattributed_count = 0

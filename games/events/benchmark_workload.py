@@ -78,6 +78,9 @@ _SEEDED_TABLES = (
     Playthrough,
 )
 
+#: The two tables a record writes.
+RECORD_TABLES = (HistoricalPlaytime, HistoricalPlaytimeRun)
+
 #: Days cycle over two years, so per-day and per-month
 #: reads aggregate many rows a cell and played_years stays small.
 SEEDED_DAY_CYCLE = 730
@@ -118,7 +121,7 @@ def seed_library(
             )
         events += 3 * len(batch)
     append_seconds = monotonic() - append_started
-    _analyze()
+    analyze_tables()
 
     return SeedReport(
         catalog_rows=games + spares,
@@ -140,7 +143,7 @@ def _seeded_events(
     return [*pair, *session_events(run_id, day=day, day_zone=day_zone)]
 
 
-def _analyze(tables: Sequence[type[Model]] = _SEEDED_TABLES) -> None:
+def analyze_tables(tables: Sequence[type[Model]] = _SEEDED_TABLES) -> None:
     """Leave statistics that describe the rows just written.
 
     Without this the command scenario races autovacuum's one-minute naptime,
@@ -330,7 +333,7 @@ def run_record_command_scenario(
         started = monotonic()
         _record_playtime(library, actor=actor, run=run)
         samples.append(monotonic() - started)
-    _analyze((HistoricalPlaytime, HistoricalPlaytimeRun))
+    analyze_tables(RECORD_TABLES)
     return summarize(samples)
 
 
