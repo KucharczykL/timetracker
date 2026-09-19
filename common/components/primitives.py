@@ -2670,9 +2670,9 @@ def SelectionBar() -> Node:
 def selection_scope(request, caption_key: str, caption: str) -> SelectionScope:
     """What tells one table's stored selection from another's.
 
-    The library owns the rows, so a second person at the same browser does not
-    inherit the first one's selection; the caption tells two tables on one page
-    apart, as it tells their scroll regions apart.
+    The library owns the rows: session storage outlives a sign-out, so without
+    it the next person at that browser inherits the selection. The caption
+    tells two tables of one page apart.
     """
     user = getattr(request, "user", None)
     library = ""
