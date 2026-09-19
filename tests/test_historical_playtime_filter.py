@@ -298,7 +298,7 @@ def test_an_unknown_key_is_refused():
 
 @pytest.fixture
 def shaped_records(owned_library):
-    """One record per shape of `when`, its note the shape."""
+    """One record per `when` shape, noted."""
     run = game_run(owned_library, "Shaped")
     for note, when in {
         "month": "2024-03",
@@ -311,7 +311,7 @@ def shaped_records(owned_library):
 
 
 def test_within_reads_containment(owned_library, shaped_records):
-    """A record counts when its whole interval lies inside the bounds."""
+    """Whole interval inside the bounds counts."""
     assert matched(
         owned_library,
         HistoricalPlaytimeFilter.where(when__within=("2024-01-01", "2024-12-31")),

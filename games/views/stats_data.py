@@ -102,7 +102,7 @@ class StatsData(TypedDict):
     highest_session_average_game: Any
     first_play_game: Any
     first_play_date: date | None
-    #: A record alone answered; the row then offers no session link.
+    #: A record alone answered; no session link.
     first_play_from_record: bool
     last_play_game: Any
     last_play_date: date | None
@@ -126,9 +126,7 @@ class StatsSource(Enum):
     game enters it through a session or through a record.
     """
 
-    #: Sessions, and records: a playtime figure and a played-game count
-    #: take a record wholly in scope, a day figure only a record naming
-    #: one day.
+    #: Sessions, and records in scope.
     BOTH = auto()
     #: A record states no sittings.
     SESSIONS_NO_SITTINGS = auto()

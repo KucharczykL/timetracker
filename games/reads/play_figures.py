@@ -1,10 +1,4 @@
-"""The day figures, counted over sessions and day-precision records.
-
-A record counts on its day when it names exactly one, so a month,
-a year and a range wider than a day count in no figure here. The
-tie-break names no source, so restating a session as a record
-cannot move an answer.
-"""
+"""Day figures over sessions and one-day records."""
 
 import uuid
 from datetime import date
@@ -23,11 +17,11 @@ from games.reads.session_figures import GAME_KEY, SORT_NAME, scoped_sessions
 class PlayDay(NamedTuple):
     day: date
     game: Game
-    #: A record alone answered; the stats row then offers no session link.
+    #: A record alone answered; no session link.
     from_record: bool
 
 
-#: The tie-break's two game columns, spelled from a record.
+#: The tie-break's game columns, from a record.
 RECORD_GAME = "player_game__game"
 RECORD_SORT_NAME = f"{RECORD_GAME}__sort_name"
 RECORD_GAME_KEY = f"{RECORD_GAME}_id"
@@ -36,14 +30,14 @@ type PlayKey = tuple[date, str, uuid.UUID]  # day, sort name, game key
 
 
 def _day_records(library: UserLibrary, year: YearScope) -> HistoricalPlaytimeQuerySet:
-    """Records naming exactly one day, that day inside the scope."""
+    """Records naming one day inside the scope."""
     records = library_records(library).filter(when_lower=F("when_upper"))
     days = year_days(year)
     return records if days is None else contained_in(records, days)
 
 
 def distinct_days(library: UserLibrary, year: YearScope) -> int:
-    """One query: UNION is distinct, so a day both sources hold counts once."""
+    """UNION is distinct: a shared day counts once."""
     session_days = (
         scoped_sessions(library, year).values_list("effective_day").distinct()
     )
@@ -86,11 +80,11 @@ def _record_end(
 
 
 def _pick(library: UserLibrary, year: YearScope, *, latest: bool) -> PlayDay | None:
-    """One read a source, then the tie-break in Python.
+    """One read a source; tie-break in Python.
 
-    The sort name compares the same way here and in the two SQL
-    orders because the database collates in C.UTF-8; a tie on all
-    three levels answers the session.
+    The Python comparison of sort_name agrees with the two SQL
+    orders only because the database collates in C.UTF-8. A tie on
+    all three levels answers the session.
     """
     candidates = [
         play
@@ -108,7 +102,7 @@ def _pick(library: UserLibrary, year: YearScope, *, latest: bool) -> PlayDay | N
 
 
 def first_play(library: UserLibrary, year: YearScope) -> PlayDay | None:
-    """The earliest day; within it, the lower sort name, then game key."""
+    """Earliest day; then sort name, game key."""
     return _pick(library, year, latest=False)
 
 

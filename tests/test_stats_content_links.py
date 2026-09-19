@@ -228,10 +228,7 @@ def test_play_glyph_is_an_icon_link_without_an_underline(rendered):
 
 
 def test_a_play_a_record_alone_answers_prints_no_session_link(db):
-    """The game link stays; the sessions link would open an empty list.
-
-    The top-10 row above still links to sessions; that row is #1105's.
-    """
+    """Sessions link omitted; top-10 row is #1105's."""
     library = get_user_model().objects.create_user(username="record-only").library
     game = create_tracked_game(library, "Recorded", status=PlayerGameStatus.PLAYED)
     record_row([tracked_run(library, game)], when=f"{YEAR}-03-05")

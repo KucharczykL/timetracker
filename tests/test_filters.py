@@ -2528,7 +2528,7 @@ class TestFilterDepthGuard:
             parse_game_filter(bad)
 
     def test_a_records_relation_cycle_is_bounded(self):
-        """historical_playtime_filter <-> game_filter, the newest cycle."""
+        """The records relation's cycle with game_filter."""
         node: dict = {}
         for position in range(MAX_FILTER_DEPTH + 4, -1, -1):
             key = "historical_playtime_filter" if position % 2 == 0 else "game_filter"

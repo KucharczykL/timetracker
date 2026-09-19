@@ -40,5 +40,5 @@ class DayInterval:
 
 
 def year_days(year: YearScope) -> DayInterval | None:
-    """The year's days; None is all-time, which bounds nothing."""
+    """The year's days; None bounds nothing."""
     return None if year is None else DayInterval.year(year)

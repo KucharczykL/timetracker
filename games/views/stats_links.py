@@ -53,7 +53,7 @@ def _session_bounds(year) -> dict:
 
 
 def _record_bounds(year) -> dict:
-    """`where()` kwargs scoping records to the year by containment."""
+    """`where()` kwargs scoping records by containment."""
     if not _is_year(year):
         return {}
     return {"when__within": _year_range(year)}
@@ -104,7 +104,7 @@ def sessions_for_platform(
 
 
 def games_in_month(year: int, month: int) -> GameFilter:
-    """A session that month, or a record wholly inside it."""
+    """A session or contained record that month."""
     last_day = monthrange(year, month)[1]
     start = f"{year}-{month:02d}-01"
     end = f"{year}-{month:02d}-{last_day:02d}"
@@ -130,7 +130,7 @@ def all_records(year) -> HistoricalPlaytimeFilter:
 
 
 def games_played(year) -> GameFilter:
-    """A session in scope, or a record within it (matches `total_games`)."""
+    """A session or record in scope (`total_games`)."""
     return GameFilter(
         OR=[
             GameFilter(session_filter=all_sessions(year)),

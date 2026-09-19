@@ -115,7 +115,7 @@ def world(db):
         type=Purchase.GAME,
     ).games.set([finished_game])
 
-    #: Two games only a record reaches: one inside the year, one outside.
+    #: Record-only games: one in-year, one outside.
     recorded_game = create_tracked_game(
         library, "Recorded", status=PlayerGameStatus.PLAYED, platform=pc
     )
@@ -303,7 +303,7 @@ def test_games_in_month_matches_that_month(world):
 
 
 def test_games_in_month_finds_a_game_only_a_record_reaches(world):
-    """May holds one contained record and no session."""
+    """May holds one record and no session."""
     assert _count(stats_links.games_in_month(YEAR, 5), Game, world["library"]) == 1
     assert _count(stats_links.games_in_month(YEAR, 4), Game, world["library"]) == 0
 
@@ -321,7 +321,7 @@ def test_all_sessions_matches_total_sessions(world):
 
 def test_games_played_matches_total_games(world):
     stats = _stats(world, YEAR)
-    #: Two session games and the in-year record; the other record is last year.
+    #: Two session games plus the in-year record.
     assert stats["total_games"] == 3
     assert (
         _count(stats_links.games_played(YEAR), Game, world["library"])

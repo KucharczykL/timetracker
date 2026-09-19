@@ -129,8 +129,7 @@ class Modifier(str, Enum):
     LESS_THAN_OR_EQUAL = "LESS_THAN_OR_EQUAL"
     BETWEEN = "BETWEEN"
     NOT_BETWEEN = "NOT_BETWEEN"
-    #: The whole interval a field states lies inside two bounds. On a
-    #: scalar date it is BETWEEN; only an interval-valued field offers it.
+    #: Whole interval inside two bounds; BETWEEN on scalars.
     WITHIN = "WITHIN"
     INCLUDES = "INCLUDES"
     EXCLUDES = "EXCLUDES"
@@ -569,7 +568,7 @@ class DateCriterion(_ScalarCriterion):
         if m == Modifier.LESS_THAN:
             return Q(**{f"{field_name}__lt": self.value})
         if m in (Modifier.BETWEEN, Modifier.WITHIN):
-            #: A scalar date has no interval to contain: WITHIN is BETWEEN.
+            #: A scalar date: WITHIN is BETWEEN.
             if self.value is None or self.value2 is None:
                 raise FilterError(f"{m.value} requires two bounds (value and value2)")
             return Q(
@@ -1028,7 +1027,7 @@ class FilterField:
     # Widget inputs a field with no column.
     choices: tuple[ChoiceMeta, ...] | None = None
     nullable: bool | None = None
-    # The field states an interval, so the builder offers WITHIN.
+    # States an interval, so WITHIN is offered.
     interval: bool = False
 
     def __post_init__(self) -> None:
@@ -2788,7 +2787,7 @@ def _modifiers_for_field(
     }
     modifiers = by_kind.get(kind, [])
     if interval and kind == "date":
-        #: A scalar date never lists a synonym of BETWEEN.
+        #: A scalar date lists no BETWEEN synonym.
         modifiers = [*modifiers, Modifier.WITHIN]
     if not nullable:
         modifiers = [
@@ -3179,7 +3178,7 @@ def temporal_interval_handler(
                     & _bound_at_least(upper_field, low)
                 )
             if modifier == Modifier.WITHIN:
-                #: Both bounds known and inside: the statistic's containment.
+                #: Both bounds known and inside: containment.
                 return (
                     stated
                     & Q(**{f"{lower_field}__gte": low})

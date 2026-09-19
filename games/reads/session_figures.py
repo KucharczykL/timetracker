@@ -54,7 +54,7 @@ def scoped_sessions(library: UserLibrary, year: YearScope) -> PlayerSessionQuery
 def records_in_scope(
     library: UserLibrary, year: YearScope
 ) -> HistoricalPlaytimeQuerySet:
-    """Live records wholly inside the year; None is all-time."""
+    """Live records wholly inside the year."""
     records = library_records(library)
     days = year_days(year)
     return records if days is None else contained_in(records, days)
@@ -65,7 +65,7 @@ GAME_RECORDS = "player_games__historical_playtime"
 
 
 def games_in_scope(library: UserLibrary, year: YearScope):
-    """Played: a session in scope, or a record contained in it."""
+    """A session in scope or contained record."""
     return Game.objects.filter(
         Q(**{f"{GAME_SESSIONS}__in": scoped_sessions(library, year)})
         | Q(**{f"{GAME_RECORDS}__in": records_in_scope(library, year)})

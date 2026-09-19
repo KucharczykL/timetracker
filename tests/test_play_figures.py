@@ -1,4 +1,4 @@
-"""The stats page's day figures: days played, first and last play."""
+"""The stats page's day figures."""
 
 from datetime import UTC, date, datetime, timedelta
 

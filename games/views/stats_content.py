@@ -56,7 +56,7 @@ def _session_link(game_id, year, label: str = "") -> Node:
 
 
 def _play_link(game, year, from_record: bool | None) -> Node:
-    """No sessions link where a record alone answered: the list would be empty."""
+    """No session link where a record answered."""
     if from_record:
         return Fragment()
     return _session_link(game.id, year, game.name)

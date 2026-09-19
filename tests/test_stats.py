@@ -226,8 +226,7 @@ def test_every_stats_key_states_its_sources_once():
     assert sum(map(len, STATS_SOURCE_GROUPS.values())) == len(STATS_SOURCES)
 
 
-#: Named, not derived from the groups: a key moved out of them would
-#: otherwise leave this comparison in silence.
+#: Named: a moved key cannot vanish silently.
 SESSIONS_ONLY_KEYS = (
     "total_sessions",
     "longest_session_time",
@@ -238,7 +237,7 @@ SESSIONS_ONLY_KEYS = (
     "highest_session_average_game",
 )
 
-#: The played-game counts: a record in scope counts, as the totals do.
+#: A record in scope counts here too.
 PLAYED_KEYS = ("total_games", "total_year_games")
 
 DAY_KEYS = (
@@ -275,7 +274,7 @@ def played_and_recorded(owned_library):
     )
     start = datetime(2022, 3, 1, 10, tzinfo=TZ)
     session_row(played, started_at=start, ended_at=start + HOUR)
-    #: A purchase, so the recorded game can enter the purchase count.
+    #: The recorded game's purchase, for the count.
     Purchase.objects.create(
         library=owned_library,
         price_currency="CZK",
@@ -303,7 +302,7 @@ def test_a_contained_record_moves_only_the_playtime_figures(
     assert after[2021]["total_hours"] == before[2021]["total_hours"]
     assert after[2021]["total_games"] == before[2021]["total_games"]
     assert after[2022]["total_games"] == before[2022]["total_games"] + 1
-    #: The year's purchase count also wants a game released that year.
+    #: Year count also wants that year's release.
     assert after[2022]["total_year_games"] == before[2022]["total_year_games"]
     assert after[None]["total_year_games"] == before[None]["total_year_games"] + 1
 
