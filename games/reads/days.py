@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Self
 
+type YearScope = int | None  # a year, or None for all-time
+
 
 @dataclass(frozen=True, slots=True)
 class DayInterval:
@@ -35,3 +37,8 @@ class DayInterval:
         if days < 1:
             raise ValueError(f"a window of {days} days is empty")
         return cls(day - timedelta(days=days - 1), day)
+
+
+def year_days(year: YearScope) -> DayInterval | None:
+    """The year's days; None bounds nothing."""
+    return None if year is None else DayInterval.year(year)

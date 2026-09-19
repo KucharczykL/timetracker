@@ -1,6 +1,6 @@
 """The records a library counts, and the row path a page reads."""
 
-from django.db.models import F
+from django.db.models import F, Q
 
 from games.models import (
     Game,
@@ -8,6 +8,7 @@ from games.models import (
     HistoricalPlaytimeQuerySet,
     UserLibrary,
 )
+from games.reads.days import DayInterval, YearScope, year_days
 from games.reads.unscoped import require_library
 
 #: Newest first; an unknown `when` last; then newest recorded.
@@ -42,3 +43,36 @@ def readable_records(library: UserLibrary) -> HistoricalPlaytimeQuerySet:
 def game_records(library: UserLibrary, game: Game) -> HistoricalPlaytimeQuerySet:
     """The counted records at one catalog game."""
     return library_records(library).filter(player_game__game=game)
+
+
+def contains(days: DayInterval) -> Q:
+    """The whole interval lies inside `days`."""
+    return Q(when_lower__gte=days.first, when_upper__lte=days.last)
+
+
+def contained_in(
+    records: HistoricalPlaytimeQuerySet, days: DayInterval
+) -> HistoricalPlaytimeQuerySet:
+    return records.filter(contains(days))
+
+
+def records_within(
+    library: UserLibrary, within: DayInterval | None
+) -> HistoricalPlaytimeQuerySet:
+    """Live records contained in `within`; None is every one."""
+    records = library_records(library)
+    return records if within is None else contained_in(records, within)
+
+
+def records_in_scope(
+    library: UserLibrary, year: YearScope
+) -> HistoricalPlaytimeQuerySet:
+    """Live records in the year; None is all-time."""
+    return records_within(library, year_days(year))
+
+
+def one_day_records(
+    library: UserLibrary, year: YearScope
+) -> HistoricalPlaytimeQuerySet:
+    """Records in scope that name a single day."""
+    return records_in_scope(library, year).filter(when_lower=F("when_upper"))

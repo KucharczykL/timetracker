@@ -58,6 +58,8 @@ class RangeValues(NamedTuple):
 
     min: str
     max: str
+    #: A modifier the bounds alone cannot state; "" is BETWEEN.
+    modifier: str = ""
 
 
 class NumberValues(NamedTuple):
@@ -136,9 +138,11 @@ def _range_from_field(field: dict) -> RangeValues:
     if not isinstance(field, dict):
         return RangeValues("", "")
     value = str(field.get("value", ""))
-    if field.get("modifier") == "LESS_THAN":
+    modifier = field.get("modifier")
+    if modifier == "LESS_THAN":
         return RangeValues("", value)
-    return RangeValues(value, str(field.get("value2", "")))
+    value2 = str(field.get("value2", ""))
+    return RangeValues(value, value2, "WITHIN" if modifier == "WITHIN" else "")
 
 
 def _number_from_field(field: dict) -> NumberValues:
@@ -422,6 +426,7 @@ def field_widget(
             input_name_prefix=prefix,
             min_value=bounds.min,
             max_value=bounds.max,
+            modifier=bounds.modifier,
             path=widget_path,
         )
     if kind == "bool":

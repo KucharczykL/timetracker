@@ -20,7 +20,7 @@
  */
 
 export const PRESENCE_MODIFIERS = ["IS_NULL", "NOT_NULL"] as const;
-export const RANGE_MODIFIERS = ["BETWEEN", "NOT_BETWEEN"] as const;
+export const RANGE_MODIFIERS = ["BETWEEN", "NOT_BETWEEN", "WITHIN"] as const;
 
 export function isPresenceModifier(modifier: string): boolean {
   return (PRESENCE_MODIFIERS as readonly string[]).includes(modifier);

@@ -90,12 +90,24 @@ export function readNumberWidget(element: HTMLElement): Criterion | Record<strin
   return null;
 }
 
+// The one modifier two bounds cannot state; a hidden input carries it through.
+const CARRIED_DATE_MODIFIER = "WITHIN";
+
+function resolveModifierInput(element: HTMLElement): HTMLInputElement | null {
+  return element.querySelector<HTMLInputElement>("[data-range-modifier]");
+}
+
 export function readDateWidget(element: HTMLElement): Criterion | null {
   const valueMin =
     element.querySelector<HTMLInputElement>("[data-range-min]")?.value ?? "";
   const valueMax =
     element.querySelector<HTMLInputElement>("[data-range-max]")?.value ?? "";
-  return buildRangeCriterion(valueMin, valueMax);
+  const built = buildRangeCriterion(valueMin, valueMax);
+  const carried = resolveModifierInput(element)?.value ?? "";
+  if (built && built["modifier"] === "BETWEEN" && carried === CARRIED_DATE_MODIFIER) {
+    return criterion(valueMin, valueMax, CARRIED_DATE_MODIFIER);
+  }
+  return built;
 }
 
 export function readBoolWidget(element: HTMLElement): Criterion | null {
@@ -288,12 +300,17 @@ export function writeNumberWidget(element: HTMLElement, criterion: Record<string
 // of side (the modifier decides the slot, mirroring _range_from_field);
 // EQUALS(d) is written as the exactly-equivalent day range d..d (DateCriterion
 // compiles both to the same rows — every datetime field filters via a __date
-// lookup). NOT_EQUALS (a hole), NOT_BETWEEN (two rays), and presence modifiers
-// have no faithful min/max form: leave the widget blank (the leaf prunes, the
-// pre-hydration behavior) rather than apply a different query.
+// lookup). WITHIN keeps both bounds and rides the hidden modifier input, which
+// readDateWidget hands back. NOT_EQUALS (a hole), NOT_BETWEEN (two rays), and
+// presence modifiers have no faithful min/max form: leave the widget blank (the
+// leaf prunes, the pre-hydration behavior) rather than apply a different query.
 export function writeDateWidget(element: HTMLElement, criterion: Record<string, unknown>): void {
   const value = scalarToInputValue(criterion["value"]);
   const value2 = scalarToInputValue(criterion["value2"]);
+  const modifierInput = resolveModifierInput(element);
+  if (modifierInput) {
+    modifierInput.value = criterion["modifier"] === CARRIED_DATE_MODIFIER ? CARRIED_DATE_MODIFIER : "";
+  }
   let bounds: { min: string; max: string } | null;
   switch (criterion["modifier"]) {
     case "LESS_THAN":
@@ -303,6 +320,7 @@ export function writeDateWidget(element: HTMLElement, criterion: Record<string, 
       bounds = { min: value, max: "" };
       break;
     case "BETWEEN":
+    case "WITHIN":
       bounds = { min: value, max: value2 };
       break;
     case "EQUALS":

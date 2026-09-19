@@ -9,27 +9,37 @@ from common.components.filters import _bool_from_field, _range_from_field
 class RangeFromFieldTest(SimpleTestCase):
     def test_non_dict_value(self):
         """A non-dict criterion blob is coerced to ("", "")."""
-        self.assertEqual(_range_from_field("not_a_dict"), ("", ""))  # type: ignore[arg-type]
-        self.assertEqual(_range_from_field(None), ("", ""))  # type: ignore[arg-type]
+        self.assertEqual(_range_from_field("not_a_dict"), ("", "", ""))  # type: ignore[arg-type]
+        self.assertEqual(_range_from_field(None), ("", "", ""))  # type: ignore[arg-type]
 
     def test_empty_dict(self):
-        self.assertEqual(_range_from_field({}), ("", ""))
+        self.assertEqual(_range_from_field({}), ("", "", ""))
 
     def test_value_only(self):
-        self.assertEqual(_range_from_field({"value": "10"}), ("10", ""))
+        self.assertEqual(_range_from_field({"value": "10"}), ("10", "", ""))
 
     def test_value_and_value2(self):
         self.assertEqual(
-            _range_from_field({"value": "10", "value2": "20"}), ("10", "20")
+            _range_from_field({"value": "10", "value2": "20"}), ("10", "20", "")
         )
 
     def test_less_than_maps_to_max(self):
         self.assertEqual(
-            _range_from_field({"value": "10", "modifier": "LESS_THAN"}), ("", "10")
+            _range_from_field({"value": "10", "modifier": "LESS_THAN"}), ("", "10", "")
+        )
+
+    def test_within_rides_the_third_slot(self):
+        self.assertEqual(
+            _range_from_field({"value": "1", "value2": "2", "modifier": "WITHIN"}),
+            ("1", "2", "WITHIN"),
+        )
+        self.assertEqual(
+            _range_from_field({"value": "1", "value2": "2", "modifier": "BETWEEN"}),
+            ("1", "2", ""),
         )
 
     def test_integer_values_become_strings(self):
-        self.assertEqual(_range_from_field({"value": 5, "value2": 15}), ("5", "15"))
+        self.assertEqual(_range_from_field({"value": 5, "value2": 15}), ("5", "15", ""))
 
 
 class BoolFromFieldTest(SimpleTestCase):

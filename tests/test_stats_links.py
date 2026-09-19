@@ -16,7 +16,8 @@ from uuid import UUID
 import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-from session_rows import session_row
+from historical_playtime_rows import record_row
+from session_rows import session_row, tracked_run
 from tracked_games import create_tracked_game
 
 from common.criteria import Modifier
@@ -27,12 +28,14 @@ from games.filters import (
 )
 from games.models import (
     Game,
+    HistoricalPlaytime,
     Platform,
     PlayerGameStatus,
     PlayerSession,
     Playthrough,
     Purchase,
 )
+from games.reads.play_figures import games_in_scope
 from games.reads.player_sessions import GAME, library_sessions
 from games.views import stats_links
 from games.views.stats_data import compute_stats
@@ -40,6 +43,7 @@ from timetracker.temporal import TemporalValue
 
 # Only the link URL is under test here; the id never reaches the database.
 SAMPLE_PLATFORM_ID = UUID("018f5e66-e800-7000-8000-000000000001")
+SAMPLE_GAME_ID = UUID("018f5e66-e800-7000-8000-000000000002")
 
 YEAR = 2024
 
@@ -114,6 +118,16 @@ def world(db):
         type=Purchase.GAME,
     ).games.set([finished_game])
 
+    #: Record-only games: one in-year, one outside.
+    recorded_game = create_tracked_game(
+        library, "Recorded", status=PlayerGameStatus.PLAYED, platform=pc
+    )
+    record_row([tracked_run(library, recorded_game)], when=f"{YEAR}-05")
+    recorded_elsewhere = create_tracked_game(
+        library, "Recorded elsewhere", status=PlayerGameStatus.PLAYED, platform=pc
+    )
+    record_row([tracked_run(library, recorded_elsewhere)], when=f"{YEAR - 1}-05")
+
     foreign_library = (
         get_user_model().objects.create_user(username="stats-links-foreign").library
     )
@@ -137,6 +151,7 @@ def world(db):
 
     return {
         "library": library,
+        "recorded_game": recorded_game,
         "foreign_library": foreign_library,
         "pc": pc,
         "switch": switch,
@@ -291,6 +306,12 @@ def test_games_in_month_matches_that_month(world):
     )
 
 
+def test_games_in_month_finds_a_game_only_a_record_reaches(world):
+    """May holds one record and no session."""
+    assert _count(stats_links.games_in_month(YEAR, 5), Game, world["library"]) == 1
+    assert _count(stats_links.games_in_month(YEAR, 4), Game, world["library"]) == 0
+
+
 def test_all_sessions_matches_total_sessions(world):
     stats = _stats(world, YEAR)
     assert (
@@ -304,10 +325,32 @@ def test_all_sessions_matches_total_sessions(world):
 
 def test_games_played_matches_total_games(world):
     stats = _stats(world, YEAR)
+    #: The record-only game is inside the count.
+    assert world["recorded_game"] in games_in_scope(world["library"], YEAR)
     assert (
         _count(stats_links.games_played(YEAR), Game, world["library"])
         == stats["total_games"]
     )
+
+
+def test_games_in_month_drops_a_record_that_crosses_the_boundary(world):
+    straddling = create_tracked_game(
+        world["library"], "Straddling", status=PlayerGameStatus.PLAYED
+    )
+    record_row(
+        [tracked_run(world["library"], straddling)],
+        when=f"{YEAR}-06-15/{YEAR}-07-02",
+    )
+
+    june = _count(stats_links.games_in_month(YEAR, 6), Game, world["library"])
+    july = _count(stats_links.games_in_month(YEAR, 7), Game, world["library"])
+    played = _count(stats_links.games_played(YEAR), Game, world["library"])
+    assert (june, july) == (2, 1)
+    assert played == _stats(world, YEAR)["total_games"]
+
+
+def test_games_played_all_time_counts_every_record(world):
+    assert _count(stats_links.games_played(None), Game, world["library"]) == 4
 
 
 def test_total_purchases_matches_count(world):
@@ -471,6 +514,13 @@ _NESTED_BUILDERS = [
         Purchase,
     ),
     ("games_played", lambda: stats_links.games_played(YEAR), Game),
+    ("games_played_alltime", lambda: stats_links.games_played(None), Game),
+    ("games_in_month", lambda: stats_links.games_in_month(YEAR, 5), Game),
+    (
+        "records_for_game",
+        lambda: stats_links.records_for_game(SAMPLE_GAME_ID, YEAR),
+        HistoricalPlaytime,
+    ),
     (
         "sessions_for_platform",
         lambda: stats_links.sessions_for_platform(SAMPLE_PLATFORM_ID, YEAR),

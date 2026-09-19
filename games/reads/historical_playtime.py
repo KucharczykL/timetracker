@@ -5,9 +5,10 @@ from datetime import date, timedelta
 from typing import NamedTuple
 from uuid import UUID
 
-from django.db.models import DurationField, F, OuterRef, Q, Subquery, Sum
+from django.db.models import DurationField, F, OuterRef, Subquery, Sum
 from django.db.models.functions import Coalesce, ExtractYear, TruncMonth
 
+from games.filters import HistoricalPlaytimeFilter, filter_query_context_for_library
 from games.models import (
     Game,
     HistoricalPlaytimeProvenance,
@@ -15,7 +16,13 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.days import DayInterval
-from games.reads.historical_playtime_records import game_records, library_records
+from games.reads.historical_playtime_records import (
+    contained_in,
+    contains,
+    game_records,
+    library_records,
+    records_within,
+)
 from games.reads.sums import ZERO, PlaytimeSum, UnscopedSum
 
 __all__ = [
@@ -49,21 +56,10 @@ class MonthHistorical(NamedTuple):
     playtime: timedelta
 
 
-def _contains(days: DayInterval) -> Q:
-    return Q(when_lower__gte=days.first, when_upper__lte=days.last)
-
-
-def contained_in(
-    records: HistoricalPlaytimeQuerySet, days: DayInterval
-) -> HistoricalPlaytimeQuerySet:
-    return records.filter(_contains(days))
-
-
 def _records(
     library: UserLibrary, within: DayInterval | None
 ) -> HistoricalPlaytimeQuerySet:
-    records = library_records(library)
-    return records if within is None else contained_in(records, within)
+    return records_within(library, within)
 
 
 def _total(records: HistoricalPlaytimeQuerySet) -> timedelta:
@@ -84,11 +80,21 @@ def historical_totals(
         return []
     sums = library_records(library).aggregate(
         **{
-            f"window_{index}": Coalesce(Sum("duration", filter=_contains(days)), ZERO)
+            f"window_{index}": Coalesce(Sum("duration", filter=contains(days)), ZERO)
             for index, days in enumerate(windows)
         }
     )
     return [sums[f"window_{index}"] for index in range(len(windows))]
+
+
+def _summed_by_game(records: HistoricalPlaytimeQuerySet) -> PlaytimeSum:
+    return Subquery(
+        records.filter(**{GAME: OuterRef("pk")})
+        .values(GAME)
+        .annotate(total=Sum("duration"))
+        .values("total"),
+        output_field=DurationField(),
+    )
 
 
 def historical_summed_by_game(
@@ -97,14 +103,15 @@ def historical_summed_by_game(
     """NULL when no record is in scope."""
     if library is None:
         return UnscopedSum()
-    return Subquery(
-        _records(library, within)
-        .filter(**{GAME: OuterRef("pk")})
-        .values(GAME)
-        .annotate(total=Sum("duration"))
-        .values("total"),
-        output_field=DurationField(),
-    )
+    return _summed_by_game(_records(library, within))
+
+
+def historical_summed_by_game_matching(
+    library: UserLibrary, record_filter: HistoricalPlaytimeFilter
+) -> PlaytimeSum:
+    """Matching records' sum a game; NULL when none."""
+    context = filter_query_context_for_library(library)
+    return _summed_by_game(library_records(library).filter(record_filter.to_q(context)))
 
 
 def historical_by_platform(

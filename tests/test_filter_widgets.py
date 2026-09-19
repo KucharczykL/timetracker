@@ -148,7 +148,15 @@ class ReachableModelsTest(TestCase):
 
         self.assertEqual(
             set(reachable_models("game")),
-            {"game", "playersession", "purchase", "playthrough", "platform", "device"},
+            {
+                "game",
+                "playersession",
+                "purchase",
+                "playthrough",
+                "historicalplaytime",
+                "platform",
+                "device",
+            },
         )
 
     def test_reachable_models_maps_keys_to_filter_classes(self):
@@ -164,7 +172,15 @@ class ReachableModelsTest(TestCase):
         registry = model_field_registry("game")
         self.assertEqual(
             set(registry),
-            {"game", "playersession", "purchase", "playthrough", "platform", "device"},
+            {
+                "game",
+                "playersession",
+                "purchase",
+                "playthrough",
+                "historicalplaytime",
+                "platform",
+                "device",
+            },
         )
         session = registry["playersession"]
         self.assertIn("fields", session)
@@ -191,28 +207,12 @@ class ReachableModelsTest(TestCase):
             "playersession",
             "purchase",
             "playthrough",
+            "historicalplaytime",
             "platform",
             "device",
         }
         for root in full:
             self.assertEqual(set(reachable_models(root)), full, f"root={root}")
-
-    def test_historical_playtime_reaches_the_whole_set_one_way(self):
-        """Relations point out; none point back."""
-        from games.filters import reachable_models
-
-        self.assertEqual(
-            set(reachable_models("historicalplaytime")),
-            {
-                "historicalplaytime",
-                "game",
-                "playersession",
-                "purchase",
-                "playthrough",
-                "platform",
-                "device",
-            },
-        )
 
     def test_registry_covers_every_reachable_model_and_relation_target(self):
         """The server invariant the client's bundle() fallback relies on: every
@@ -354,3 +354,9 @@ class ListUrlForTest(SimpleTestCase):
         from games.filters import MODE_PARSERS
 
         self.assertEqual(set(FILTER_MODE_LIST_URLS), set(MODE_PARSERS))
+
+
+def test_the_game_registry_reaches_historical_playtime():
+    from games.filters import model_field_registry
+
+    assert "historicalplaytime" in model_field_registry("game")

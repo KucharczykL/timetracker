@@ -28,6 +28,7 @@ describe("filter behavioral tokens", () => {
     expect(isPresenceModifier("EQUALS")).toBe(false);
     expect(isRangeModifier("BETWEEN")).toBe(true);
     expect(isRangeModifier("NOT_BETWEEN")).toBe(true);
+    expect(isRangeModifier("WITHIN")).toBe(true);
     expect(isRangeModifier("EQUALS")).toBe(false);
   });
 

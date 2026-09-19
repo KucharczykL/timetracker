@@ -28,6 +28,7 @@ from common.criteria import (
 )
 from games.filters import (
     GameFilter,
+    HistoricalPlaytimeFilter,
     PlayerSessionFilter,
     PlaythroughFilter,
     PurchaseFilter,
@@ -49,6 +50,13 @@ def _session_bounds(year) -> dict:
     if not _is_year(year):
         return {}
     return {"day__between": _year_range(year)}
+
+
+def _record_bounds(year) -> dict:
+    """`where()` kwargs scoping records by containment."""
+    if not _is_year(year):
+        return {}
+    return {"when__within": _year_range(year)}
 
 
 def _purchase_bounds(year) -> dict:
@@ -96,20 +104,48 @@ def sessions_for_platform(
 
 
 def games_in_month(year: int, month: int) -> GameFilter:
+    """A session or contained record that month."""
     last_day = monthrange(year, month)[1]
     start = f"{year}-{month:02d}-01"
     end = f"{year}-{month:02d}-{last_day:02d}"
     return GameFilter(
-        session_filter=PlayerSessionFilter.where(day__between=(start, end))
+        OR=[
+            GameFilter(
+                session_filter=PlayerSessionFilter.where(day__between=(start, end))
+            ),
+            GameFilter(
+                historical_playtime_filter=HistoricalPlaytimeFilter.where(
+                    when__within=(start, end)
+                )
+            ),
+        ]
     )
 
 
 # ── Games ────────────────────────────────────────────────────────────────────
 
 
+def all_records(year) -> HistoricalPlaytimeFilter:
+    return HistoricalPlaytimeFilter.where(**_record_bounds(year))
+
+
+def records_for_game(game_id: UUID, year, label: str = "") -> HistoricalPlaytimeFilter:
+    """One game's records in scope, the game named as a pill."""
+    record_filter = all_records(year)
+    record_filter.game = UUIDMultiCriterion(
+        value=[game_id], labels={game_id: label} if label else {}
+    )
+    return record_filter
+
+
 def games_played(year) -> GameFilter:
-    """Games with at least one session in scope (matches `total_games`)."""
-    return GameFilter(session_filter=all_sessions(year))
+    """A session or record in scope (`total_games`)."""
+    return GameFilter(
+        OR=[
+            GameFilter(session_filter=all_sessions(year)),
+            GameFilter(historical_playtime_filter=all_records(year)),
+        ]
+    )
 
 
 # ── Purchases ────────────────────────────────────────────────────────────────

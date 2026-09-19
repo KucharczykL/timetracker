@@ -8,20 +8,24 @@ from uuid import UUID
 from django.db.models import DurationField, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Coalesce, NullIf, TruncMonth
 
-from games.filters import PlayerSessionFilter, filter_query_context_for_library
+from games.filters import (
+    HistoricalPlaytimeFilter,
+    PlayerSessionFilter,
+    filter_query_context_for_library,
+)
 from games.models import Game, GameQuerySet, PlayerSessionQuerySet, UserLibrary
-from games.reads.days import DayInterval
+from games.reads.days import DayInterval, YearScope, year_days
 from games.reads.historical_playtime import (
     game_historical_playtime,
     historical_by_month,
     historical_by_platform,
     historical_summed_by_game,
+    historical_summed_by_game_matching,
     historical_total,
     historical_totals,
     historical_years,
 )
 from games.reads.player_sessions import GAME, library_sessions
-from games.reads.playthrough_completions import YearScope
 from games.reads.sums import (
     ZERO,
     Playtime,
@@ -83,10 +87,6 @@ class GameByPlaytime(NamedTuple):
     playtime: PlaytimeBreakdown
 
 
-def _year_days(year: YearScope) -> DayInterval | None:
-    return None if year is None else DayInterval.year(year)
-
-
 def _on_days(days: DayInterval) -> Q:
     return Q(effective_day__range=(days.first, days.last))
 
@@ -143,7 +143,7 @@ def tracked_summed_by_game(
     """No library compiles, then refuses to execute."""
     if library is None:
         return UnscopedSum()
-    return _summed(_sessions(library, _year_days(year)))
+    return _summed(_sessions(library, year_days(year)))
 
 
 def tracked_summed_by_game_matching(
@@ -154,7 +154,7 @@ def tracked_summed_by_game_matching(
 ) -> PlaytimeSum:
     context = filter_query_context_for_library(library)
     return _summed(
-        _sessions(library, _year_days(year)).filter(session_filter.to_q(context))
+        _sessions(library, year_days(year)).filter(session_filter.to_q(context))
     )
 
 
@@ -164,7 +164,7 @@ def playtime_by_game(
     """Each game's playtime, zero when unplayed."""
     tracked = zero_when_null(tracked_summed_by_game(library, year=year))
     historical = zero_when_null(
-        historical_summed_by_game(library, within=_year_days(year))
+        historical_summed_by_game(library, within=year_days(year))
     )
     return Playtime(tracked + historical)
 
@@ -208,7 +208,7 @@ def games_by_playtime(
         .annotate(
             tracked=zero_when_null(tracked_summed_by_game(library, year=year)),
             historical=zero_when_null(
-                historical_summed_by_game(library, within=_year_days(year))
+                historical_summed_by_game(library, within=year_days(year))
             ),
         )
     }
@@ -246,10 +246,36 @@ def playtime_matching(
     return tracked_summed_by_game_matching(library, session_filter)
 
 
+def historical_matching(
+    library: UserLibrary, record_filter: HistoricalPlaytimeFilter
+) -> PlaytimeSum:
+    """Matching records' sum; NULL when none match."""
+    return historical_summed_by_game_matching(library, record_filter)
+
+
+def playtime_matching_both(
+    library: UserLibrary,
+    session_filter: PlayerSessionFilter | None,
+    record_filter: HistoricalPlaytimeFilter | None,
+) -> Playtime:
+    """The narrowed column: whichever legs the filter states, zero when none."""
+    tracked = (
+        ZERO
+        if session_filter is None
+        else zero_when_null(playtime_matching(library, session_filter))
+    )
+    historical = (
+        ZERO
+        if record_filter is None
+        else zero_when_null(historical_matching(library, record_filter))
+    )
+    return Playtime(tracked + historical)
+
+
 def total_playtime(
     library: UserLibrary, *, year: YearScope = None
 ) -> PlaytimeBreakdown:
-    within = _year_days(year)
+    within = year_days(year)
     return PlaytimeBreakdown(
         tracked=_total(_sessions(library, within)),
         historical=historical_total(library, within=within),
@@ -316,7 +342,7 @@ def _platform_order(row: PlatformPlaytime) -> PlatformOrder:
 def playtime_by_platform(
     library: UserLibrary, *, year: YearScope = None
 ) -> list[PlatformPlaytime]:
-    within = _year_days(year)
+    within = year_days(year)
     #: By id: names may differ between reads.
     names: dict[PlatformId, PlatformName] = {}
     tracked: list[KeyedPlaytime[PlatformId]] = []

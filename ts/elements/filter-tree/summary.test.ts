@@ -90,6 +90,7 @@ describe("summarize — modifier families", () => {
         fields: new Map([
           ["name", field({ name: "name", label: "Name", kind: "string" })],
           ["playtime", field({ name: "playtime", label: "Playtime", kind: "number" })],
+          ["started", field({ name: "started", label: "Started", kind: "date" })],
           ["mastered", field({ name: "mastered", label: "Mastered", kind: "bool" })],
           [
             "owned",
@@ -136,6 +137,11 @@ describe("summarize — modifier families", () => {
     expect(one("playtime", { value: "2", value2: "5", modifier: "NOT_BETWEEN" })).toBe(
       "Games where Playtime is not between 2 and 5.",
     );
+  });
+  it("phrases WITHIN with both bounds", () => {
+    expect(
+      one("started", { value: "2024-01-01", value2: "2024-12-31", modifier: "WITHIN" }),
+    ).toBe("Games where Started is wholly within 2024-01-01 and 2024-12-31.");
   });
   it("phrases presence modifiers with no value", () => {
     expect(one("name", { modifier: "IS_NULL" })).toBe("Games where Name is empty.");

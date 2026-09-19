@@ -30,7 +30,9 @@ game, highest-average game, first play, last play, and whether any session
 exists. The legacy side reads `duration_total`, so a manual entry counts its
 stated time on both sides. The projection side wraps the readers in
 `games/reads/session_figures.py`, which `compute_stats` calls, so the figure
-compared is the figure served.
+compared is the figure served. (#1126 later moved the distinct days and the
+first and last play to `games/reads/play_figures.py`, where they count
+day-precision records as well.)
 
 Every tie is broken: value, then the game's `sort_name`, then the game's key,
 then the session's. The converted session keeps the legacy row's id, so both

@@ -129,6 +129,8 @@ class Modifier(str, Enum):
     LESS_THAN_OR_EQUAL = "LESS_THAN_OR_EQUAL"
     BETWEEN = "BETWEEN"
     NOT_BETWEEN = "NOT_BETWEEN"
+    #: Whole interval inside two bounds; BETWEEN on scalars.
+    WITHIN = "WITHIN"
     INCLUDES = "INCLUDES"
     EXCLUDES = "EXCLUDES"
     INCLUDES_ALL = "INCLUDES_ALL"
@@ -565,12 +567,12 @@ class DateCriterion(_ScalarCriterion):
             return Q(**{f"{field_name}__gt": self.value})
         if m == Modifier.LESS_THAN:
             return Q(**{f"{field_name}__lt": self.value})
-        if m == Modifier.BETWEEN:
+        if m in (Modifier.BETWEEN, Modifier.WITHIN):
+            #: A scalar date: WITHIN is BETWEEN.
             if self.value is None or self.value2 is None:
-                raise FilterError("BETWEEN requires two bounds (value and value2)")
-            return Q(
-                **{f"{field_name}__gte": self.value, f"{field_name}__lte": self.value2}
-            )
+                raise FilterError(f"{m.value} requires two bounds (value and value2)")
+            low, high = min(self.value, self.value2), max(self.value, self.value2)
+            return Q(**{f"{field_name}__gte": low, f"{field_name}__lte": high})
         if m == Modifier.NOT_BETWEEN:
             if self.value is None or self.value2 is None:
                 raise FilterError("NOT_BETWEEN requires two bounds (value and value2)")
@@ -1025,6 +1027,11 @@ class FilterField:
     choices: tuple[ChoiceMeta, ...] | None = None
     nullable: bool | None = None
 
+    @property
+    def interval(self) -> bool:
+        """The handler reads two bound columns, so WITHIN is offered."""
+        return getattr(self.handler, "interval_bounds", None) is not None
+
     def __post_init__(self) -> None:
         # Same loud-at-import contract as the lookup/handler check: reject the
         # config combinations whose widget/Q axes silently cancel each other, so a
@@ -1305,6 +1312,7 @@ _SUFFIX_MODIFIER: dict[str, Modifier] = {
     "ne": Modifier.NOT_EQUALS,
     "between": Modifier.BETWEEN,
     "not_between": Modifier.NOT_BETWEEN,
+    "within": Modifier.WITHIN,
     "in": Modifier.INCLUDES,
     "exclude": Modifier.EXCLUDES,
     "all": Modifier.INCLUDES_ALL,
@@ -1532,7 +1540,16 @@ class OperatorFilter:
             criterion_arguments: dict[str, Any] = {"modifier": modifier}
             if suffix in ("isnull", "notnull"):
                 pass  # presence test ignores the value
-            elif modifier in (Modifier.BETWEEN, Modifier.NOT_BETWEEN):
+            elif modifier in (Modifier.BETWEEN, Modifier.NOT_BETWEEN, Modifier.WITHIN):
+                if not issubclass(criterion_class, _ScalarCriterion):
+                    raise TypeError(
+                        f"{field_name!r} takes no bound pair for {modifier.value}"
+                    )
+                if not isinstance(value, tuple | list) or len(value) != 2:
+                    raise TypeError(
+                        f"{field_name!r} with {modifier.value} takes a "
+                        f"(lower, upper) pair, got {value!r}"
+                    )
                 lower_bound, upper_bound = value
                 criterion_arguments["value"] = lower_bound
                 criterion_arguments["value2"] = upper_bound
@@ -1916,11 +1933,10 @@ class OperatorFilter:
             if f.name in _OPERATOR_FIELDS:
                 if v:
                     result[f.name] = [sub.to_json() for sub in v]
-            elif (
-                isinstance(v, _Criterion)
-                or isinstance(v, OperatorFilter)
-                and f.name not in _OPERATOR_FIELDS
-            ):
+            elif isinstance(v, OperatorFilter) and f.name not in _OPERATOR_FIELDS:
+                #: An empty sub-filter still states "has one": keep it.
+                result[f.name] = v.to_json()
+            elif isinstance(v, _Criterion):
                 j = v.to_json()
                 if j:
                     result[f.name] = j
@@ -2761,7 +2777,9 @@ def _static_choices(model_field: models.Field | None) -> list[ChoiceMeta]:
     return [ChoiceMeta(value=str(value), label=str(label)) for value, label in choices]
 
 
-def _modifiers_for_field(kind: FieldMetaKind, nullable: bool) -> list[ModifierToken]:
+def _modifiers_for_field(
+    kind: FieldMetaKind, nullable: bool, *, interval: bool = False
+) -> list[ModifierToken]:
     """Ordered modifier vocabulary for a leaf field of the given kind.
 
     Reuses the ``Modifier.for_*`` lists (the single home for "which operators a
@@ -2778,6 +2796,10 @@ def _modifiers_for_field(kind: FieldMetaKind, nullable: bool) -> list[ModifierTo
         "bool": [Modifier.EQUALS, Modifier.NOT_EQUALS],
     }
     modifiers = by_kind.get(kind, [])
+    #: A scalar date lists no BETWEEN synonym.
+    if interval and kind == "date":
+        after = modifiers.index(Modifier.NOT_BETWEEN) + 1
+        modifiers = [*modifiers[:after], Modifier.WITHIN, *modifiers[after:]]
     if not nullable:
         modifiers = [
             modifier
@@ -2932,7 +2954,11 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                     kind=kind,
                     nullable=nullable,
                     choices=choices,
-                    modifiers=_modifiers_for_field(kind, nullable),
+                    modifiers=_modifiers_for_field(
+                        kind,
+                        nullable,
+                        interval=field_spec is not None and field_spec.interval,
+                    ),
                     relations=[],
                     search_url=search_url or "",
                     is_m2m=is_m2m,
@@ -3150,9 +3176,11 @@ def temporal_interval_handler(
             return stated & Q(**{f"{lower_field}__gt": value})
         if modifier == Modifier.LESS_THAN:
             return stated & Q(**{f"{upper_field}__lt": value})
-        if modifier in (Modifier.BETWEEN, Modifier.NOT_BETWEEN):
+        if modifier in (Modifier.BETWEEN, Modifier.NOT_BETWEEN, Modifier.WITHIN):
             if value is None or value2 is None:
-                raise FilterError(f"{modifier} requires two bounds (value and value2)")
+                raise FilterError(
+                    f"{modifier.value} requires two bounds (value and value2)"
+                )
             low, high = min(value, value2), max(value, value2)
             if modifier == Modifier.BETWEEN:
                 return (
@@ -3160,11 +3188,20 @@ def temporal_interval_handler(
                     & _bound_at_most(lower_field, high)
                     & _bound_at_least(upper_field, low)
                 )
+            if modifier == Modifier.WITHIN:
+                #: Both bounds known and inside: containment.
+                return (
+                    stated
+                    & Q(**{f"{lower_field}__gte": low})
+                    & Q(**{f"{upper_field}__lte": high})
+                )
             return stated & (
                 Q(**{f"{lower_field}__gt": high}) | Q(**{f"{upper_field}__lt": low})
             )
         raise FilterError(f"Unsupported modifier {modifier} for a temporal endpoint")
 
+    #: The field's `interval` reads this off the handler.
+    handler.interval_bounds = (lower_field, upper_field)  # type: ignore[attr-defined]
     return handler
 
 

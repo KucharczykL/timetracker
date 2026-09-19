@@ -294,3 +294,82 @@ def test_an_unknown_key_is_refused():
 
     with pytest.raises(FilterError):
         parse_historical_playtime_filter('{"run": {"value": []}}')
+
+
+@pytest.fixture
+def shaped_records(owned_library):
+    """One record per `when` shape, noted."""
+    run = game_run(owned_library, "Shaped")
+    for note, when in {
+        "month": "2024-03",
+        "year": "2024",
+        "straddling": "2023-12/2024-01",
+        "open start": "/2024-06",
+        "unknown": None,
+    }.items():
+        record_row([run], when=when, note=note)
+
+
+def test_within_reads_containment(owned_library, shaped_records):
+    """Whole interval inside the bounds counts."""
+    assert matched(
+        owned_library,
+        HistoricalPlaytimeFilter.where(when__within=("2024-01-01", "2024-12-31")),
+    ) == {"month", "year"}
+
+
+def test_between_reads_overlap(owned_library, shaped_records):
+    assert matched(
+        owned_library,
+        HistoricalPlaytimeFilter.where(when__between=("2024-01-01", "2024-12-31")),
+    ) == {"month", "year", "straddling", "open start"}
+
+
+def test_within_normalises_reversed_bounds(owned_library, shaped_records):
+    assert matched(
+        owned_library,
+        HistoricalPlaytimeFilter.where(when__within=("2024-12-31", "2024-01-01")),
+    ) == {"month", "year"}
+
+
+def test_within_sits_beside_between_in_the_vocabulary():
+    when = next(
+        entry
+        for entry in field_metadata(HistoricalPlaytimeFilter)
+        if entry["name"] == "when"
+    )
+    modifiers = when["modifiers"]
+    assert modifiers.index("WITHIN") == modifiers.index("NOT_BETWEEN") + 1
+
+
+def test_within_is_offered_on_an_interval_field_alone():
+    from games.filters import PurchaseFilter
+
+    when = next(
+        entry
+        for entry in field_metadata(HistoricalPlaytimeFilter)
+        if entry["name"] == "when"
+    )
+    purchased = next(
+        entry
+        for entry in field_metadata(PurchaseFilter)
+        if entry["name"] == "date_purchased"
+    )
+    assert Modifier.WITHIN.value in when["modifiers"]
+    assert Modifier.WITHIN.value not in purchased["modifiers"]
+
+
+def test_within_on_a_scalar_date_is_between():
+    bounds = {"value": "2024-01-01", "value2": "2024-12-31"}
+    assert str(DateCriterion(modifier=Modifier.WITHIN, **bounds).to_q("day")) == str(
+        DateCriterion(modifier=Modifier.BETWEEN, **bounds).to_q("day")
+    )
+
+
+def test_within_wants_two_bounds():
+    from common.criteria import FilterError
+
+    with pytest.raises(FilterError, match="WITHIN"):
+        HistoricalPlaytimeFilter(
+            when=DateCriterion(value="2024-01-01", modifier=Modifier.WITHIN)
+        ).to_q()

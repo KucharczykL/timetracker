@@ -243,6 +243,19 @@ def test_between_overlaps(owned_library, shaped_runs, endpoint):
 
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
+def test_within_is_containment(owned_library, shaped_runs, endpoint):
+    """Only a shape wholly inside March answers."""
+    shaped_runs(endpoint)
+
+    assert matched(
+        owned_library,
+        PlaythroughFilter.where(
+            **{f"{endpoint}__within": ("2025-03-01", "2025-03-31")}
+        ),
+    ) == {"day", "month", "range"}
+
+
+@pytest.mark.parametrize("endpoint", ENDPOINTS)
 def test_not_between_is_certain(owned_library, shaped_runs, endpoint):
     """Outside 2024: no day it names qualifies."""
     shaped_runs(endpoint)

@@ -559,3 +559,65 @@ def test_purchase_finished_widget_json_selects_purchases(db):
         .values_list("id", flat=True)
     )
     assert purchase_ids == {bought_finished.id}
+
+
+def test_historical_playtime_widget_json_selects_games(owned_library):
+    from historical_playtime_rows import record_row
+    from session_rows import tracked_run
+
+    from games.models import HistoricalPlaytimeProvenance
+
+    estimated = Game.objects.create(library=owned_library, name="Estimated")
+    measured = Game.objects.create(library=owned_library, name="Measured")
+    record_row(
+        [tracked_run(owned_library, estimated)],
+        provenance=HistoricalPlaytimeProvenance.ESTIMATED,
+    )
+    record_row(
+        [tracked_run(owned_library, measured)],
+        provenance=HistoricalPlaytimeProvenance.EXTERNALLY_MEASURED,
+    )
+
+    filter_json = json.dumps(
+        {
+            "historical_playtime_filter": {
+                "provenance": {"value": ["estimated"], "modifier": "INCLUDES"}
+            }
+        }
+    )
+    assert _game_ids(filter_json) == {estimated.id}
+
+    none_json = json.dumps(
+        {
+            "historical_playtime_filter": {
+                "match": "NONE",
+                "provenance": {"value": ["estimated"], "modifier": "INCLUDES"},
+            }
+        }
+    )
+    unrecorded = Game.objects.create(library=owned_library, name="Unrecorded")
+    assert _game_ids(none_json) >= {measured.id, unrecorded.id}
+    assert estimated.id not in _game_ids(none_json)
+
+
+def test_a_record_within_the_year_selects_the_game(owned_library):
+    from historical_playtime_rows import record_row
+    from session_rows import tracked_run
+
+    inside = Game.objects.create(library=owned_library, name="Inside")
+    straddling = Game.objects.create(library=owned_library, name="Straddling")
+    record_row([tracked_run(owned_library, inside)], when="2024-03")
+    record_row([tracked_run(owned_library, straddling)], when="2023-12/2024-01")
+
+    filter_json = json.dumps(
+        {
+            "historical_playtime_filter": {
+                "when": {
+                    "value": "2024-01-01",
+                    "value2": "2024-12-31",
+                    "modifier": "WITHIN",
+                }
+            }
+        }
+    )
+    assert _game_ids(filter_json) == {inside.id}

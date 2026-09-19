@@ -64,13 +64,13 @@ sessions)", because a session filter cannot narrow records.
 key under one `StatsSource`. A test compares the keys with `StatsData`.
 
 - **Both sources:** `total_hours`, the top 10, the platform rows, the month
-  rows. Records reach a platform through the game's platform column until
+  rows, the played-game counts, and -- since #1126 -- the unique days and
+  the first and last play. A playtime figure and a played-game count take a
+  record wholly inside the scope; a day figure takes only a record naming
+  one day. Records reach a platform through the game's platform column until
   #889.
 - **Sessions only, a record states no sittings:** the session count, the
-  unique days, the longest session, the highest count, the highest average,
-  and the first and last play.
-- **Sessions only, the count names played games:** `total_games` and
-  `total_year_games`.
+  longest session, the highest count and the highest average.
 - **Purchases**, and **not a figure**, for the rest.
 
 Game detail's hours read both sources. Its other figures read sessions.
@@ -79,7 +79,6 @@ Game detail's hours read both sources. Its other figures read sessions.
 
 These links open lists that show sessions only:
 
-- the per-year "View all" link and the month links;
 - the top-10 row links;
 - the platform row links;
 - the navbar links.

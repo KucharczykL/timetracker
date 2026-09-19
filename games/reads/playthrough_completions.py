@@ -10,10 +10,8 @@ from django.db.models import Exists, F, Max, Min, OuterRef, QuerySet, Subquery
 
 from games.filters import PlaythroughFilter, filter_query_context_for_library
 from games.models import Playthrough, UserLibrary
+from games.reads.days import YearScope
 from games.reads.playthrough_runs import library_runs
-
-#: A year, or None for all-time.
-type YearScope = int | None
 
 #: A row's path to its runs.
 type RunPath = str

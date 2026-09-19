@@ -10,9 +10,9 @@ with AND/OR/NOT composition and typed criterion fields.
 """
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from functools import cache
-from typing import TYPE_CHECKING, Any, ClassVar, Final
+from typing import TYPE_CHECKING, Any, ClassVar, Final, NamedTuple
 
 if TYPE_CHECKING:
     from games.models import (
@@ -92,6 +92,13 @@ class FindFilter:
 # ── GameFilter ─────────────────────────────────────────────────────────────
 
 
+class NarrowingLegs(NamedTuple):
+    """What the Playtime column narrows by; None counts all."""
+
+    sessions: PlayerSessionFilter | None
+    records: HistoricalPlaytimeFilter | None
+
+
 @dataclass
 class GameFilter(OperatorFilter):
     """Filter for the Game model."""
@@ -136,6 +143,7 @@ class GameFilter(OperatorFilter):
     session_filter: PlayerSessionFilter | None = None
     purchase_filter: PurchaseFilter | None = None
     playthrough_filter: PlaythroughFilter | None = None
+    historical_playtime_filter: HistoricalPlaytimeFilter | None = None
     platform_filter: PlatformFilter | None = None
 
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
@@ -177,6 +185,36 @@ class GameFilter(OperatorFilter):
 
         return Game
 
+    def narrowing(self) -> NarrowingLegs:
+        """The legs the Playtime column narrows by.
+
+        The top level's own, or -- for a filter that is one `OR` of
+        members each stating one relation and nothing else, the shape
+        the stats links state -- the members'. Anything else narrows
+        nothing.
+        """
+        own = NarrowingLegs(self.session_filter, self.historical_playtime_filter)
+        if own.sessions is not None or own.records is not None:
+            return own
+        if not self.OR or self.AND or self.NOT or self._states_a_leaf():
+            return NarrowingLegs(None, None)
+        sessions = records = None
+        for member in self.OR:
+            if member._states_a_leaf() or member.AND or member.OR or member.NOT:
+                return NarrowingLegs(None, None)
+            sessions = member.session_filter or sessions
+            records = member.historical_playtime_filter or records
+        return NarrowingLegs(sessions, records)
+
+    def _states_a_leaf(self) -> bool:
+        """Any criterion or comparison at this level."""
+        return any(
+            getattr(self, f.name) is not None
+            for f in fields(self)
+            if f.name not in ("AND", "OR", "NOT", "match", "field_comparisons")
+            and not f.name.endswith("_filter")
+        ) or bool(self.field_comparisons)
+
     def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
         q = Q()
 
@@ -212,6 +250,16 @@ class GameFilter(OperatorFilter):
                 self.playthrough_filter,
                 context=context,
                 related_model=Playthrough,
+                related_lookup="player_game__game__id",
+            )
+
+        if self.historical_playtime_filter is not None:
+            from games.models import HistoricalPlaytime
+
+            q &= relation_to_q(
+                self.historical_playtime_filter,
+                context=context,
+                related_model=HistoricalPlaytime,
                 related_lookup="player_game__game__id",
             )
 
