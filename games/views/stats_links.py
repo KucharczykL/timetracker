@@ -28,6 +28,7 @@ from common.criteria import (
 )
 from games.filters import (
     GameFilter,
+    HistoricalPlaytimeFilter,
     PlayerSessionFilter,
     PlaythroughFilter,
     PurchaseFilter,
@@ -49,6 +50,13 @@ def _session_bounds(year) -> dict:
     if not _is_year(year):
         return {}
     return {"day__between": _year_range(year)}
+
+
+def _record_bounds(year) -> dict:
+    """`where()` kwargs scoping records to the year by containment."""
+    if not _is_year(year):
+        return {}
+    return {"when__within": _year_range(year)}
 
 
 def _purchase_bounds(year) -> dict:
@@ -96,20 +104,39 @@ def sessions_for_platform(
 
 
 def games_in_month(year: int, month: int) -> GameFilter:
+    """A session that month, or a record wholly inside it."""
     last_day = monthrange(year, month)[1]
     start = f"{year}-{month:02d}-01"
     end = f"{year}-{month:02d}-{last_day:02d}"
     return GameFilter(
-        session_filter=PlayerSessionFilter.where(day__between=(start, end))
+        OR=[
+            GameFilter(
+                session_filter=PlayerSessionFilter.where(day__between=(start, end))
+            ),
+            GameFilter(
+                historical_playtime_filter=HistoricalPlaytimeFilter.where(
+                    when__within=(start, end)
+                )
+            ),
+        ]
     )
 
 
 # ── Games ────────────────────────────────────────────────────────────────────
 
 
+def all_records(year) -> HistoricalPlaytimeFilter:
+    return HistoricalPlaytimeFilter.where(**_record_bounds(year))
+
+
 def games_played(year) -> GameFilter:
-    """Games with at least one session in scope (matches `total_games`)."""
-    return GameFilter(session_filter=all_sessions(year))
+    """A session in scope, or a record within it (matches `total_games`)."""
+    return GameFilter(
+        OR=[
+            GameFilter(session_filter=all_sessions(year)),
+            GameFilter(historical_playtime_filter=all_records(year)),
+        ]
+    )
 
 
 # ── Purchases ────────────────────────────────────────────────────────────────

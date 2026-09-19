@@ -16,7 +16,8 @@ from uuid import UUID
 import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
-from session_rows import session_row
+from historical_playtime_rows import record_row
+from session_rows import session_row, tracked_run
 from tracked_games import create_tracked_game
 
 from common.criteria import Modifier
@@ -113,6 +114,16 @@ def world(db):
         date_purchased=_dt(YEAR - 1, 5, 5),
         type=Purchase.GAME,
     ).games.set([finished_game])
+
+    #: Two games only a record reaches: one inside the year, one outside.
+    recorded_game = create_tracked_game(
+        library, "Recorded", status=PlayerGameStatus.PLAYED, platform=pc
+    )
+    record_row([tracked_run(library, recorded_game)], when=f"{YEAR}-05")
+    recorded_elsewhere = create_tracked_game(
+        library, "Recorded elsewhere", status=PlayerGameStatus.PLAYED, platform=pc
+    )
+    record_row([tracked_run(library, recorded_elsewhere)], when=f"{YEAR - 1}-05")
 
     foreign_library = (
         get_user_model().objects.create_user(username="stats-links-foreign").library
@@ -291,6 +302,12 @@ def test_games_in_month_matches_that_month(world):
     )
 
 
+def test_games_in_month_finds_a_game_only_a_record_reaches(world):
+    """May holds one contained record and no session."""
+    assert _count(stats_links.games_in_month(YEAR, 5), Game, world["library"]) == 1
+    assert _count(stats_links.games_in_month(YEAR, 4), Game, world["library"]) == 0
+
+
 def test_all_sessions_matches_total_sessions(world):
     stats = _stats(world, YEAR)
     assert (
@@ -304,10 +321,16 @@ def test_all_sessions_matches_total_sessions(world):
 
 def test_games_played_matches_total_games(world):
     stats = _stats(world, YEAR)
+    #: Two session games and the in-year record; the other record is last year.
+    assert stats["total_games"] == 3
     assert (
         _count(stats_links.games_played(YEAR), Game, world["library"])
         == stats["total_games"]
     )
+
+
+def test_games_played_all_time_counts_every_record(world):
+    assert _count(stats_links.games_played(None), Game, world["library"]) == 4
 
 
 def test_total_purchases_matches_count(world):
