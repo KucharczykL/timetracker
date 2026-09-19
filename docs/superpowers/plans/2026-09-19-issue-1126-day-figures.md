@@ -1,15 +1,19 @@
-# Day figures count a day-precision record — Implementation Plan
+# Records in the day figures and the played-game counts — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The days played and the first and last play count a historical
-playtime record that names one day, as the charter states.
+**Goal:** The days played, the first and last play and the two played-game
+counts count a historical playtime record, as the charter states, and the
+`games_played` link compiles the same predicate as its figure.
 
-**Architecture:** Three readers move out of `games/reads/session_figures.py`
-into a new `games/reads/play_figures.py` that states it takes both sources.
-Each reader gains a records leg scoped by `contained_in` narrowed to
-`when_lower == when_upper`. The tie-break becomes source-blind, so a
-reclassification cannot move an answer.
+**Architecture:** Member 1: three readers move out of
+`games/reads/session_figures.py` into `games/reads/play_figures.py`, each with
+a records leg scoped by `contained_in` narrowed to `when_lower == when_upper`,
+under a source-blind tie-break. Member 2: `games_in_scope` and the purchase
+count gain a containment leg; `GameFilter` gains `historical_playtime_filter`
+and the criteria algebra gains `Modifier.WITHIN`, so `games_played` and
+`games_in_month` state "a session in scope or a record within it". One
+`gh stack` of two members.
 
 **Tech Stack:** Django 6, PostgreSQL 18, Python 3.14, pytest-xdist.
 
@@ -31,9 +35,11 @@ reclassification cannot move an answer.
 - `make vale` after every prose change. A projector *replays*; the row is a
   *projection*. Never "delete" for a removal.
 - Rebase onto `origin/main` before the first edit.
-- Scope: the four day keys only. `total_games`, `total_year_games`,
-  `games_played`, `games_in_month` and any `GameFilter` records relation belong
-  to #1105 and stay untouched.
+- Scope: six keys and two links. The top-10, platform and navbar links and the
+  narrowed Playtime column stay #1105's.
+- Two members, one stack: `gh stack init` after Task 6, `gh stack add` for
+  member 2, `gh stack submit`, merge with `gh stack merge` (merge commits).
+  Never retarget a PR base by hand.
 
 ---
 
@@ -46,7 +52,8 @@ A pure move, so a later task's diff shows only behaviour.
 - Modify: `games/reads/session_figures.py` (remove `PlayDay`, `_play_day`,
   `distinct_days`, `first_play`, `last_play`; keep `scoped_sessions`,
   `games_in_scope`, `session_count`, the three superlatives, `has_sessions`,
-  `SORT_NAME`, `GAME_KEY`, the three other NamedTuples)
+  `SORT_NAME`, `GAME_KEY`, the three other NamedTuples, and the module
+  docstring's tie-break sentence, which describes the three superlatives)
 - Modify: `games/views/stats_data.py:56-65` (split the import)
 - Modify: `games/events/benchmark_reads.py:22-30` (split the import)
 - Create: `tests/test_play_figures.py`
@@ -75,7 +82,9 @@ cannot move an answer.
 ```
 
 Copy `PlayDay`, `_play_day`, `distinct_days`, `first_play`, `last_play` across
-verbatim. Import `SORT_NAME`, `scoped_sessions` from `session_figures`.
+verbatim. Import `SORT_NAME`, `GAME_KEY`, `scoped_sessions` from
+`session_figures` and `GAME` from `games/reads/player_sessions.py`, which the
+readers' `select_related(GAME)` names.
 
 - [ ] **Step 2: move the tests**
 
@@ -138,7 +147,7 @@ def test_a_shared_day_answers_by_sort_name_at_each_end(owned_library, games):
     assert (latest.day, latest.game) == (day, alpha)
 ```
 
-Delete `test_first_play_on_a_shared_day_picks_the_lower_key`, whose
+Remove `test_first_play_on_a_shared_day_picks_the_lower_key`, whose
 `sorted(..., key=lambda row: row.pk)` construction states the rule this task
 replaces.
 
@@ -148,8 +157,8 @@ replaces.
 flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make test-fast ARGS="tests/test_play_figures.py -x -k shared_day"
 ```
 
-Expected: FAIL. Today's order is the row key, so both ends answer by insertion
-order.
+Expected: FAIL. Today's order is the day, then the row key, so both ends
+answer by insertion order within the day.
 
 - [ ] **Step 3: order on the three levels**
 
@@ -191,7 +200,9 @@ git add -A && git commit -m "fix: order the day figures by the game, not the row
 - Consumes: `library_records` from `games/reads/historical_playtime_records.py`,
   `contained_in` from `games/reads/historical_playtime.py`, `DayInterval`.
 - Produces: `year_days(year: YearScope) -> DayInterval | None` in
-  `games/reads/days.py`; a private
+  `games/reads/days.py`, where `type YearScope = int | None` now lives (moved
+  from `games/reads/playthrough_completions.py`, which re-exports it, because
+  `days.py` is a leaf and must not import `games.filters`); a private
   `_day_records(library, year) -> HistoricalPlaytimeQuerySet` in
   `play_figures.py`, which every reader in that module shares.
 
@@ -253,7 +264,7 @@ Expected: FAIL, every count one short.
 - [ ] **Step 3: add `year_days` to `games/reads/days.py`**
 
 ```python
-def year_days(year: int | None) -> DayInterval | None:
+def year_days(year: YearScope) -> DayInterval | None:
     """The year's days; None is all-time, which bounds nothing."""
     return None if year is None else DayInterval.year(year)
 ```
@@ -285,7 +296,7 @@ the union would refuse.
 - [ ] **Step 5: run the file, then the empty-library case**
 
 ```bash
-flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make test-fast ARGS="tests/test_play_figures.py tests/test_playtime_reads.py -x"
+flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make test-fast ARGS="tests/test_play_figures.py tests/test_playtime_sources.py -x"
 ```
 
 - [ ] **Step 6: commit**
@@ -385,7 +396,12 @@ legs in one private function per direction so the tie-break is written once:
   session, which is the `from_record=False` row.
 
 Reach the game through `player_game__game` for a record and through
-`playthrough__player_game__game` for a session, both already `select_related`.
+`playthrough__player_game__game` for a session. Neither scope selects it:
+the session leg keeps its `.select_related(GAME)`, and the record leg adds
+`.select_related("player_game__game")`, so the pick reads no further query.
+The Python comparison of `sort_name` and the SQL orders agree only because
+the database collation is `C.UTF-8` (`docs/database.md`); say so in one
+comment at the comparison.
 
 - [ ] **Step 4: run the file and the stats page**
 
@@ -470,7 +486,7 @@ git add -A && git commit -m "feat: drop the session link where a record answers 
 
 ---
 
-### Task 6: The classification states the charter
+### Task 6: The classification states the charter for the day keys
 
 **Files:**
 - Modify: `games/views/stats_data.py:116-190`
@@ -488,9 +504,13 @@ Two changes in `tests/test_stats.py`:
   case beside it for a day-precision record, asserting the day count, the
   percent, and the first and last play all move, and that the session count,
   the longest session, the two highest-session keys, `total_games` and
-  `total_year_games` do not.
+  `total_year_games` do not (member 2 moves those two).
 
-- [ ] **Step 2: run and watch the new case fail on the classification walk**
+- [ ] **Step 2: run and watch it fail**
+
+Keep one derived assertion so the step is red: `STATS_SOURCES["unique_days"]
+is StatsSource.BOTH`, and the same for the five siblings. Without it nothing
+fails here, because Tasks 3 and 4 already made the readers count records.
 
 ```bash
 flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make test-fast ARGS="tests/test_stats.py -x"
@@ -504,9 +524,7 @@ Task 5's two flag keys join `NOT_A_FIGURE`. Then:
 
 - `StatsSource.BOTH`'s member comment states both record rules: a playtime
   figure counts a record wholly inside the scope, a day figure counts only a
-  record naming one day;
-- the `StatsSource` class docstring states what the code does about a count of
-  games, and names #1105 as the issue that gives those two keys a record leg.
+  record naming one day. Member 2 adds the third.
 
 - [ ] **Step 4: run the stats tests and the classification walk**
 
@@ -520,9 +538,279 @@ flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make test-fast ARGS="
 git add -A && git commit -m "feat: classify the day figures as both sources (#1126)"
 ```
 
+- [ ] **Step 6: open the stack**
+
+```bash
+gh stack init
+```
+
+Member 1 ends here. Every task below is member 2: `gh stack add` before Task 7's
+first commit.
+
 ---
 
-### Task 7: The documents and the sibling issues
+### Task 7: `games_in_scope` and the purchase count take a records leg
+
+**Files:**
+- Modify: `games/reads/session_figures.py` (`games_in_scope`)
+- Modify: `games/views/stats_data.py:343-350` (`played_purchases`)
+- Test: `tests/test_session_figures.py`, `tests/test_stats.py`
+
+**Interfaces:**
+- Consumes: `library_records`, `contained_in`, `year_days` (Task 3).
+- Produces: `records_in_scope(library, year) -> HistoricalPlaytimeQuerySet`
+  in `session_figures.py` (live records, contained in the year; all-time takes
+  every one); `games_in_scope` unchanged in signature; `played_purchases(library_purchases, sessions, records, year)`
+  as a small function in `stats_data.py` so the count states its predicate
+  once.
+
+- [ ] **Step 1: write the failing tests**
+
+```python
+def test_a_game_only_a_contained_record_reaches_is_in_scope(owned_library, games):
+    beta, _alpha = games
+    record_row([tracked_run(owned_library, beta)], when="2024-03")
+
+    assert list(games_in_scope(owned_library, 2024)) == [beta]
+    assert list(games_in_scope(owned_library, None)) == [beta]
+
+
+def test_a_record_wider_than_the_year_enters_all_time_alone(owned_library, games):
+    beta, _alpha = games
+    record_row([tracked_run(owned_library, beta)], when="2023/2024")
+
+    assert list(games_in_scope(owned_library, 2024)) == []
+    assert list(games_in_scope(owned_library, None)) == [beta]
+```
+
+In `tests/test_stats.py`, the month-precision case
+`test_a_contained_record_moves_only_the_playtime_figures` now expects
+`total_games` and `total_year_games` to rise by one in 2022 and all-time (the
+recorded game holds a purchase there; add one to the fixture), and every
+other sessions-only key unchanged.
+
+- [ ] **Step 2: run and watch them fail**
+
+```bash
+flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make test-fast ARGS="tests/test_session_figures.py tests/test_stats.py -x -k 'record'"
+```
+
+- [ ] **Step 3: state the two legs as one `Q`**
+
+```python
+def records_in_scope(library: UserLibrary, year: YearScope) -> HistoricalPlaytimeQuerySet:
+    """Live records wholly inside the year; None is all-time."""
+    records = library_records(library)
+    days = year_days(year)
+    return records if days is None else contained_in(records, days)
+
+
+def games_in_scope(library: UserLibrary, year: YearScope):
+    """Played: a session in scope, or a record contained in it."""
+    return Game.objects.filter(
+        Q(**{f"{GAME_SESSIONS}__in": scoped_sessions(library, year)})
+        | Q(player_games__historical_playtime__in=records_in_scope(library, year))
+    ).distinct()
+```
+
+`played_purchases` states the same two through `games__`, and the per-year
+`games__year_released` filter stays as it is.
+
+- [ ] **Step 4: run the two files, commit**
+
+```bash
+git add -A && git commit -m "feat: a contained record makes a played game (#1126)"
+```
+
+---
+
+### Task 8: `Modifier.WITHIN`
+
+**Files:**
+- Modify: `common/criteria.py` (`Modifier`, `_SUFFIX_MODIFIER`,
+  `DateCriterion.to_q`, `temporal_interval_handler`, `FilterField`,
+  `_modifiers_for_field`, the `FieldMeta` builder)
+- Modify: `games/filters.py` (the three temporal `FilterField`s: Playthrough
+  `started`, `completed`, HistoricalPlaytime `when` set `interval=True`)
+- Test: `tests/test_filters.py`, `tests/test_filter_paths.py`,
+  `tests/test_playthrough_filter.py`
+
+**Interfaces:**
+- Produces: `Modifier.WITHIN = "WITHIN"`; suffix `within`;
+  `FilterField(interval: bool = False)`; `_modifiers_for_field(kind, nullable, interval)`
+  appends `WITHIN` after `NOT_BETWEEN` for a date field with `interval`.
+
+- [ ] **Step 1: write the failing tests**
+
+- `DateCriterion(value="2024-01-01", value2="2024-12-31", modifier=WITHIN).to_q("day")`
+  equals the `BETWEEN` `Q`.
+- On `HistoricalPlaytimeFilter.where(when__within=("2024-01-01", "2024-12-31"))`:
+  a record `2024-03` matches, `2023-12/2024-01` does not, `2024` matches,
+  `../2024-06` does not, `None` does not; `when__between` over the same bounds
+  matches the overlapping one.
+- `field_metadata(HistoricalPlaytimeFilter)`'s `when` lists `WITHIN`;
+  `PurchaseFilter`'s `date_purchased` does not.
+- A missing `value2` raises `FilterError` naming `WITHIN`.
+
+- [ ] **Step 2: run and watch them fail**
+
+- [ ] **Step 3: implement**
+
+`temporal_interval_handler`: beside the `BETWEEN` branch,
+
+```python
+if modifier == Modifier.WITHIN:
+    low, high = min(value, value2), max(value, value2)
+    return (
+        stated
+        & Q(**{f"{lower_field}__gte": low})
+        & Q(**{f"{upper_field}__lte": high})
+    )
+```
+
+`DateCriterion.to_q` treats `WITHIN` as `BETWEEN`. `for_dates()` does not
+list it; `_modifiers_for_field` appends it when `interval` is set, and the
+`FieldMeta` builder passes the flag through. `where()` learns `within` through
+`_SUFFIX_MODIFIER`, consuming a 2-tuple like `between`.
+
+- [ ] **Step 4: run the three test files, commit**
+
+```bash
+git add -A && git commit -m "feat: a wholly-within modifier for interval-valued dates (#1126)"
+```
+
+---
+
+### Task 9: `WITHIN` on the client
+
+**Files:**
+- Modify: `ts/elements/filter-tree/summary.ts` (`MODIFIER_PHRASES`:
+  `WITHIN: "is wholly within"`)
+- Modify: `ts/elements/filter-tokens.ts` (`RANGE_MODIFIERS` gains `WITHIN`)
+- Modify: `ts/elements/filter-widgets.ts` (`writeDateWidget`: `case "WITHIN"`
+  beside `BETWEEN`; the reader that serialises a date range keeps emitting
+  `BETWEEN` from the widget, since the widget cannot choose; the modifier
+  dropdown is where a person picks `WITHIN`)
+- Test: `ts/elements/filter-tree/summary.test.ts`,
+  `ts/elements/filter-tokens.test.ts`; the two contracts
+  `tests/test_summary_modifier_contract.py`, `tests/test_filter_tokens_contract.py`
+
+- [ ] **Step 1: write the failing vitest cases** (a `WITHIN` phrase; `isRangeModifier("WITHIN")`)
+- [ ] **Step 2: `make test-ts`**, watch them fail
+- [ ] **Step 3: implement, `make test-ts`**, then the two contracts:
+
+```bash
+flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make test-fast ARGS="tests/test_summary_modifier_contract.py tests/test_filter_tokens_contract.py tests/test_filter_tree_contract.py -x"
+```
+
+- [ ] **Step 4: `make ts-check`, commit**
+
+```bash
+git add -A && git commit -m "feat: the client phrases and writes WITHIN (#1126)"
+```
+
+---
+
+### Task 10: `GameFilter.historical_playtime_filter`
+
+**Files:**
+- Modify: `games/filters.py:136-139,208-215` (the field and its `relation_to_q`
+  through `HistoricalPlaytime`, `related_lookup="player_game__game__id"`)
+- Test: `tests/test_filters.py`, `tests/test_filter_paths.py`,
+  `tests/test_filter_cross_entity.py`
+
+- [ ] **Step 1: write the failing tests**
+
+- `GameFilter.from_json({"historical_playtime_filter": {"provenance": {...}}})`
+  parses and selects the games whose records match; `match: "none"` selects
+  the others.
+- `resolve_path_kind(GameFilter, ["historical_playtime_filter", "when"]) == "date"`.
+- A blob nesting `game_filter` and `historical_playtime_filter` past
+  `MAX_FILTER_DEPTH` raises `FilterError`.
+- `model_field_registry("game")` reaches `historicalplaytime`.
+
+- [ ] **Step 2: run, watch them fail; implement; run**
+
+The field metadata derives the relation from the annotation, so no builder
+template is written. Run `make gen-element-types` and `make ts-check` in case
+a generated prop lists relations.
+
+- [ ] **Step 3: commit**
+
+```bash
+git add -A && git commit -m "feat: a game filter reaches its historical playtime records (#1126)"
+```
+
+---
+
+### Task 11: The two links state the figure's predicate
+
+**Files:**
+- Modify: `games/views/stats_links.py` (`games_played`, `games_in_month`, a
+  `_records_within(year)` / month helper beside `_session_bounds`)
+- Modify: `tests/test_stats_links.py` (`world` fixture; parity cases)
+- Modify: `games/views/stats_data.py` (the classification: `total_games`,
+  `total_year_games` to `BOTH`; `SESSIONS_PLAYED_GAMES` removed; `BOTH`'s
+  comment states the third rule; the `StatsSource` docstring)
+- Test: `tests/test_stats.py` (`_session_figures` names its keys; the walk)
+
+- [ ] **Step 1: seed the divergence**
+
+In `world`: a fourth tracked game `Recorded` with one record `when=f"{YEAR}-05"`
+and no session, and a fifth `Recorded elsewhere` with a record
+`when=f"{YEAR - 1}-05"`. `test_games_played_matches_total_games` and
+`test_games_in_month_matches_that_month` now fail, because the figure counts
+`Recorded` and the link does not.
+
+- [ ] **Step 2: state the links**
+
+```python
+def games_played(year) -> GameFilter:
+    """Games with a session in scope or a record within it (matches `total_games`)."""
+    return GameFilter(
+        OR=[
+            GameFilter(session_filter=all_sessions(year)),
+            GameFilter(historical_playtime_filter=all_records(year)),
+        ]
+    )
+
+
+def all_records(year) -> HistoricalPlaytimeFilter:
+    return HistoricalPlaytimeFilter.where(**_record_bounds(year))
+
+
+def _record_bounds(year) -> dict:
+    if not _is_year(year):
+        return {}
+    return {"when__within": _year_range(year)}
+```
+
+`games_in_month` takes the same `OR` with the month's two bounds. Confirm
+`GameFilter(OR=[...])` with an empty top level compiles to the disjunction
+alone (read `OperatorFilter.to_q`).
+
+- [ ] **Step 3: move the two keys and remove the empty group**
+
+`total_games`, `total_year_games` join `BOTH`; `StatsSource.SESSIONS_PLAYED_GAMES`
+is removed with its docstring line; `BOTH`'s comment states all three record
+rules; the class docstring's claim about a count of games now holds.
+`_session_figures` in `tests/test_stats.py` names its keys.
+
+- [ ] **Step 4: run parity, stats and filters**
+
+```bash
+flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make test-fast ARGS="tests/test_stats_links.py tests/test_stats.py tests/test_filters.py -x"
+```
+
+- [ ] **Step 5: commit**
+
+```bash
+git add -A && git commit -m "feat: the played-game links count a contained record (#1126)"
+```
+
+---
+
+### Task 12: The documents and the sibling issues
 
 **Files:**
 - Modify: `docs/superpowers/specs/2026-09-17-issue-709-historical-playtime-reads-design.md:61-77`
@@ -532,17 +820,16 @@ git add -A && git commit -m "feat: classify the day figures as both sources (#11
 
 - [ ] **Step 1: amend #709's Classification section**
 
-The day figures read both sources at day precision. The two played-games keys
-stay under "sessions only" with a sentence naming #1105 as the issue that
-corrects them, so the deviation is recorded rather than silent.
+The day figures read both sources at day precision; the two played-game
+counts read a record by containment; the link machinery they needed is named.
 
 - [ ] **Step 2: amend the wave document's classification table**
 
 Split the "never" row: the session count, the longest session and the two
 highest-session keys keep it; the unique days and the first and last play take
 "only a record naming one day". Add the rows the table never had —
-`unique_days_percent`, `total_games` and `total_year_games` — the last two
-naming #1105.
+`unique_days_percent` (derived), `total_games` and `total_year_games` (yes, by
+containment).
 
 - [ ] **Step 3: follow the readers in `CLAUDE.md` and #704's specification**
 
@@ -569,17 +856,16 @@ git add -A && git commit -m "docs: state the day figures' record leg (#1126)"
 
 With `gh issue comment`:
 
-- **#1126** — the cut: this PR takes the four day keys; `total_games` and
-  `total_year_games` move with #1105, which owns the predicate their link needs.
-- **#1105** — its scope gains the two played-games keys, because the figure and
-  the link have to move together or the parity test holds a divergence.
-- **#1099** — its rule table: strict equality for the four day keys after this
-  lands, the attributed rule kept for the two played-games keys until #1105,
-  and the spec on its branch amended when it rebases.
+- **#1105** — its scope loses the `GameFilter` records relation, the
+  containment modifier and the `games_played`/`games_in_month` links, which
+  landed here; it keeps the top-10 and platform row links, the narrowed
+  Playtime column and the navbar.
+- **#1099** — the two `NOT_A_FIGURE` flags need their rule: a flag flips only
+  where the row that answered was converted.
 
 ---
 
-### Task 8: The gate
+### Task 13: The gate
 
 - [ ] **Step 1: rebase onto `origin/main`**
 
@@ -599,4 +885,5 @@ flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make check-fast
 flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make check 2>&1 | tee /tmp/check.log; echo "exit=$?"
 ```
 
-Read the exit code, never a grep of the output. Then open the pull request.
+Read the exit code, never a grep of the output. Then `gh stack submit`, and
+merge with `gh stack merge` when the user says merge.
