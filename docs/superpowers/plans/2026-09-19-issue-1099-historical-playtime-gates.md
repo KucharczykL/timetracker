@@ -27,7 +27,83 @@ migration, no event.
   nest. Tests that dispatch need `@pytest.mark.django_db(transaction=True)`.
 - No `QuerySet.iterator()`; page with `keyset_pages` from `common/keyset.py`.
 - Unabbreviated identifiers; compound types named (`NamedTuple`, `type`
-  alias); primitive roles aliased (`type ScopeKey = int | None  # a year, or None for all-time
+  alias); primitive roles aliased (`type ScopeKey = int | None`).
+- Comments explain intent only, no issue or PR references. Docstrings
+  terse, present tense.
+- `make vale` runs in `make check`: `fold`, `seam`, `heal`, `delete`,
+  `tombstone`, `archive` are refused in prose and comments.
+- Nothing here changes a served figure. #1126 lands first and moves six keys
+  to `StatsSource.BOTH`; rebase onto it before Task 1, and read the mapping as
+  it then is.
+- Rebase onto `origin/main` before the first edit.
+
+## Reference material
+
+- The model: `docs/superpowers/specs/2026-09-15-issue-704-session-gates-design.md`
+  and the parity command it had, `git show 86fe1562:games/management/commands/verify_session_parity.py`
+  and `git show 86fe1562:games/reads/session_parity.py` (shape only; the
+  legacy side is gone).
+- Source groups: `STATS_SOURCE_GROUPS` at `games/views/stats_data.py:138-185`;
+  the test that walks it, `tests/test_stats.py:220-226`.
+- Readers with identities: `games/reads/session_figures.py` (`LongestSession`,
+  `GameCount`, `GameAverage`, `PlayDay`, `games_in_scope`).
+- The charter's contribution table:
+  `docs/superpowers/specs/2026-08-09-timetracker-overhaul-design.md:1129-1135`.
+- The write the confirm page calls: `reclassify_session` at
+  `games/writes/playersession.py:294`; its caller `_convert_each` at
+  `games/views/session_reclassification.py:270-330` (token, key shape,
+  `CommandFailed` handling); `reviewable_sessions` at `:194`;
+  `statement_from_session` at `games/commands/session_reclassification.py:74`.
+- `--confirm` precedent: `games/management/commands/purge_user_library.py:20-46`
+  (copy the dry run and the mismatch refusal; do **not** copy the
+  `transaction.atomic`).
+- Benchmark: `games/events/benchmark_workload.py` (`run_session_command_scenario`
+  is the template, `seeded_runs`, `_analyze`), `games/events/benchmark_run.py`
+  (`_measure_scratch`, budgets tuple), `games/events/benchmark.py`
+  (`session_command_budget`, `REPORT_SCHEMA = 3`, `BenchmarkReport`),
+  `games/management/commands/benchmark_events.py` (`_write_estimate`,
+  `_write_report`), `tests/test_event_benchmark.py:633-700`.
+- Record command: `RecordHistoricalPlaytime` and `HistoricalPlaytimeStatement`
+  at `games/commands/historical_playtime.py:113,279`.
+- Rehearsal tooling: `scripts/db_dump.py` (`restore` prints `DATABASE_URL`),
+  `make render-pages`, `Makefile:323` on `DATABASE_URL` override.
+- Where numbers land: the session wave's Delivered block at
+  `docs/superpowers/specs/2026-09-12-session-wave-design.md:742-775`;
+  `docs/event-benchmarks.md` "The #704 recording" for the paste format.
+
+## File structure
+
+| File | Responsibility |
+|---|---|
+| `games/stats_parity.py` | `ScopeIdentities`, `Converted`, `FigureChange`, `judge_scope()`, `RULES` keyed by `StatsKey` |
+| `games/management/commands/verify_reclassification_parity.py` | user resolve, scopes, read, convert, read, print, exit code |
+| `games/events/benchmark_workload.py` | `run_record_command_scenario`, `_analyze(tables)` |
+| `games/events/benchmark.py` | `record_command_budget`, `BenchmarkReport.record_command`, `REPORT_SCHEMA = 4` |
+| `games/events/benchmark_run.py` | `records` parameter, scenario placement, budgets order |
+| `games/management/commands/benchmark_events.py` | `IMPORT_SHAPE_RECORDS`, estimate, report line |
+| `Makefile`, `CLAUDE.md` | `verify-reclassification-parity` target and its row |
+| `tests/test_stats_parity.py` | rules, walk guard, end-to-end run, command |
+| `tests/test_event_benchmark.py` | records scenario, schema, budget count |
+| `docs/event-benchmarks.md`, wave doc, this spec | the recordings and the Delivered blocks |
+
+---
+
+### Task 0: Land the documents
+
+- [ ] Rebase onto `origin/main`.
+- [ ] Spec and this plan are committed already on the branch; confirm with
+  `git log --oneline -3` and `make vale`.
+
+---
+
+### Task 1: The rules
+
+**Files:** create `games/stats_parity.py`; test `tests/test_stats_parity.py`.
+
+**Produces:**
+
+```python
+type ScopeKey = int | None  # a year, or None for all-time
 
 class ScopeIdentities(NamedTuple):
     longest_session_id: UUID | None
@@ -87,7 +163,7 @@ Rules, one each, named after the spec's table:
 
 ---
 
-### Task 1: The command
+### Task 2: The command
 
 **Files:** create `games/management/commands/verify_reclassification_parity.py`;
 modify `Makefile` (after `verify-replay-parity`), `CLAUDE.md` commands table;
@@ -132,7 +208,7 @@ verify-reclassification-parity: ensure-postgres
 
 ---
 
-### Task 1: The records workload
+### Task 3: The records workload
 
 **Files:** modify `games/events/benchmark_workload.py`, `benchmark.py`,
 `benchmark_run.py`, `games/management/commands/benchmark_events.py`; test
@@ -183,7 +259,7 @@ and names the count in the notice. `_write_report` prints
 
 ---
 
-### Task 1: The rehearsal
+### Task 4: The rehearsal
 
 Manual, on this machine, no code. Each step's output goes into the
 recordings; nothing is edited by hand.
@@ -209,7 +285,7 @@ recordings; nothing is edited by hand.
 
 ---
 
-### Task 1: Record it
+### Task 5: Record it
 
 **Files:** `docs/event-benchmarks.md` (new heading "The #1099 recording",
 scratch run then production-shape run, the machine block if it changed),
