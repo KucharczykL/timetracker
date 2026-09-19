@@ -5788,8 +5788,11 @@ class TestFieldMetadata:
         from common.criteria import _modifiers_for_field
 
         for entry in field_metadata(filter_cls):
+            field_spec = filter_cls.fields.get(entry["name"])
             assert entry["modifiers"] == _modifiers_for_field(
-                entry["kind"], entry["nullable"]
+                entry["kind"],
+                entry["nullable"],
+                interval=field_spec is not None and field_spec.interval,
             )
 
     @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)

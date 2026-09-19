@@ -701,12 +701,14 @@ class PlaythroughFilter(OperatorFilter):
                 "started", "started_lower", "started_upper"
             ),
             metadata_lookup="started_lower",
+            interval=True,
         ),
         "completed": FilterField(
             handler=temporal_interval_handler(
                 "completed", "completed_lower", "completed_upper"
             ),
             metadata_lookup="completed_lower",
+            interval=True,
         ),
         "is_started": FilterField(
             handler=bool_isnull_handler("start_recorded_at", invert=True),
@@ -808,6 +810,7 @@ class HistoricalPlaytimeFilter(OperatorFilter):
             handler=temporal_interval_handler("when", "when_lower", "when_upper"),
             metadata_lookup="when_lower",
             label="When",
+            interval=True,
         ),
         "note": FilterField(),
         "created_at": FilterField("created_at__date"),
