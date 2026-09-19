@@ -132,10 +132,15 @@ dropping. The charter's rules hold, and this wave settles the shape:
   bar and whose rows also do not toggle on click.
 - A selection outlives the page. The element keeps the statement, never
   the rows: the keys a person clicked, or the scope and its exclusions,
-  in session storage keyed on the list's path and its filter, so paging
-  keeps it and a filter change restores nothing. Clear, the mode turned
-  off and the submit of a bulk action forget it, so a statement acted on
-  is never restored over the rows it changed. An "all matching" statement
+  in session storage keyed on the library, the table's caption and the
+  list's path, one per table, with the filter inside the value: paging
+  keeps it, a filter that does not match restores nothing and keeps the
+  value for a person who goes back, two tables on one page keep two, and a
+  second person signing in at the same browser inherits none, since session
+  storage outlives a logout. Clear, the mode turned off and the submit of a bulk action forget
+  it, so a statement acted on is never restored over the rows it changed:
+  the element answers a `submit` in the actions slot itself, and a tray
+  that posts without a form calls its public `forgetAndClose()`. An "all matching" statement
   is not restored on a page that reports no count. The runner reads the
   statement the POST carries and nothing else, so what the element keeps
   changes nothing in the runner; a count that no longer matches is the
@@ -188,8 +193,9 @@ becomes `overflow-clip`, which clips the corners the same and is no scroll
 container. The line sits under the menu stratum (`z-20`), so an actions
 menu opens over it, and under the toasts (`z-50`). The toast stack is
 fixed to the same bottom edge, so the element publishes the line's height
-as `--selection-line` on the root while the mode is on, and the stack reads
-it in its own classes for its bottom offset. The version stamp is a
+as `--selection-line` on the root while the mode is on, the tallest line
+any connected table shows, and the stack reads it in its own classes for
+its bottom offset. The version stamp is a
 `<footer>` in the flow on every page's last line, moved out of the fixed
 corner by #711, so nothing sticky covers it.
 `StyledTable`'s footer slot holds one region today and refuses a second;
@@ -251,6 +257,9 @@ defect.
 
 The confirmation and the progress page are one route each, classified
 `CONFIRMATION` in `games/views/returns.py`; the batch Undo is `IN_PLACE`.
+An overlay either page closes on Escape marks the press spent, as the
+menus, tooltip, date pickers and toast stack do, because the selectable
+table decides its own Escape in the task after the press.
 
 ### Batch Undo
 
