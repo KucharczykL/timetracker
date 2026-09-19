@@ -1,11 +1,4 @@
-/** Where a table's selection waits while a person turns the page.
- *
- * The statement is kept, never the marks: what is stored is the keys a person
- * clicked, or the scope and the rows taken out of it — both bounded by the
- * clicking, not by the rows the list holds. It lives for the tab alone, and a
- * list whose filter has changed is a different set, so its selection is not
- * restored.
- */
+/** Where a selection waits while a person turns the page. */
 
 import { emptySelection, SelectionState } from "./selection-statement.js";
 
@@ -52,7 +45,7 @@ export function writeSelection(
   try {
     store()?.setItem(key, JSON.stringify(value));
   } catch {
-    // A selection nobody can store is still a selection on this page.
+    // An unstorable selection still stands on this page.
   }
 }
 
@@ -86,6 +79,6 @@ export function forgetSelection(key: string): void {
   try {
     store()?.removeItem(key);
   } catch {
-    // Nothing to forget where nothing could be kept.
+    // Nothing kept, nothing to forget.
   }
 }

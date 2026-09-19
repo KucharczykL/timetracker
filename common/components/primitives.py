@@ -2615,7 +2615,7 @@ _SELECTION_CONTROLS_CLASS = "flex flex-wrap items-center gap-x-3 gap-y-2"
 
 
 def SelectionToggle(*, pressed: bool = False) -> Node:
-    """The control that turns the selection mode on and off."""
+    """The control that turns the selection mode on."""
     return ControlButton(
         [
             ("data-selection-toggle", ""),
@@ -2629,7 +2629,7 @@ def SelectionToggle(*, pressed: bool = False) -> Node:
 
 
 def SelectionBar() -> Node:
-    """The strip above the table, which holds the toggle at rest."""
+    """The strip above the table, holding the toggle."""
     return Div(
         [("data-selection-bar", "")],
         class_=(

@@ -74,13 +74,11 @@ export class SelectableTableElement extends HTMLElement {
     this.addEventListener("click", (event) => this.onBodyClick(event));
     this.addEventListener("keydown", (event) => this.onKeyDown(event));
 
-    // Built at connect, hidden until the mode: a checkbox added later would
-    // move every row.
+    // Built at connect, hidden until the mode.
     this.decorateRows();
     this.knownKeys = new Set(this.pageKeys());
 
-    // A selection outlives the page it was made on: the list's other pages
-    // find it again, and the mode comes back with it.
+    // A selection outlives the page it was made on.
     this.storageKey = storageKeyFor(window.location.pathname);
     const stored = readSelection(this.storageKey, this.props.filter);
     if (stored) {
@@ -147,8 +145,7 @@ export class SelectableTableElement extends HTMLElement {
     }
   }
 
-  /** Visibility, never presence: a checkbox that comes and goes would move
-   * every row under the reader's hand. */
+  /** Visibility, never presence, so no row moves. */
   private showCheckboxes(on: boolean): void {
     this.querySelectorAll(CHECKBOX_SELECTOR).forEach((checkbox) =>
       checkbox.classList.toggle(HIDDEN_CHECKBOX_CLASS, !on),
@@ -226,8 +223,10 @@ export class SelectableTableElement extends HTMLElement {
 
   private onRowsChanged(): void {
     this.decorateRows();
-    // A key this page held and holds no longer has left the table; a key it
-    // never held belongs to another page of the same list.
+    // A key this page held and holds no longer has left.
+    //
+    // One it never held belongs to another page of the same list, which is
+    // why the pruning reads what this page had rather than what it has.
     const present = new Set(this.pageKeys());
     const gone = [...this.knownKeys].filter((key) => !present.has(key));
     this.knownKeys = present;

@@ -151,8 +151,7 @@ def test_the_mode_shows_and_hides_the_checkboxes(page: Page, live_server):
 
 
 def test_the_mode_moves_no_row(page: Page, live_server):
-    """The checkboxes are built at connect and only shown, so the rows keep
-    their height and the names their place."""
+    """The checkboxes are built at connect, then only shown."""
     _open(page, live_server)
     at_rest = page.evaluate(ROW_GEOMETRY)
     _select_mode(page)
@@ -247,8 +246,7 @@ def test_the_region_speaks_at_a_change_of_scope_and_not_at_a_tick(
 
 
 def test_a_selection_survives_the_next_page(page: Page, live_server):
-    """The statement waits in the tab: the list's other pages find it, and the
-    mode comes back with it."""
+    """The statement waits in the tab for the list's other pages."""
     _open(page, live_server)
     _select_mode(page)
     _checkboxes(page).nth(0).click()

@@ -3190,8 +3190,7 @@ class SelectionLineTest(SimpleTestCase):
         self.assertIn('aria-pressed="false"', html)
 
     def test_every_button_variant_spaces_an_icon_from_its_label(self):
-        """Filled, ghost and outline share the icon-to-label gap; an outline
-        button is the one a caller composes children into directly."""
+        """Every variant spaces an icon from its label."""
         from common.components.primitives import control_button_class
 
         for variant in ("filled", "ghost", "outline"):

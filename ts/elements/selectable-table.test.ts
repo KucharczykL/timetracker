@@ -5,7 +5,7 @@ import { SelectionStatement } from "./selection-statement.js";
 import "./selectable-table.js";
 
 beforeEach(() => {
-  // A selection outlives its page now, so each case starts with none.
+  // A selection outlives its page; each case starts clean.
   sessionStorage.clear();
 });
 
@@ -61,7 +61,7 @@ function toggle(element: HTMLElement): void {
   press(element.querySelector("[data-selection-bar] [data-selection-toggle]"));
 }
 
-/** The checkboxes a reader can see: built at connect, hidden until the mode. */
+/** The checkboxes a reader can see. */
 function shownCheckboxes(element: HTMLElement): HTMLInputElement[] {
   return checkboxes(element).filter(
     (checkbox) => !checkbox.classList.contains("invisible"),
@@ -336,7 +336,7 @@ describe("a selection that outlives the page", () => {
     const seen = statements(second);
     body.rows[0].remove();
     await Promise.resolve();
-    // "c" left the table; "a" belongs to the page before it.
+    // "c" left the table; "a" is the page before.
     expect(seen[seen.length - 1]).toEqual({ keys: ["a"] });
   });
 
