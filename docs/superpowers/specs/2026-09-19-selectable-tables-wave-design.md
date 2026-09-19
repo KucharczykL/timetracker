@@ -103,11 +103,17 @@ dropping. The charter's rules hold, and this wave settles the shape:
 
 - The checkbox is the first child of the pinned identity cell, so the cell
   stays the row's `<th scope="row">` and its pinning and shadow above the
-  `md` breakpoint hold. `TableRow` renders the first cell's content
-  verbatim, so the personality places the checkbox and the view's row
-  builder does not know it is there. Only the checkbox selects; the row's
-  links and immediate controls keep their meaning. The checkbox is not a
-  column and does not count against `MAX_DATA_TABLE_COLUMNS`.
+  `md` breakpoint hold. The element builds it: the server renders one
+  `data-selection-key` attribute on each `<tr>`, through `make_row`'s
+  attributes, and `<selectable-table>` inserts the checkbox when the mode
+  turns on and takes it out when the mode turns off, so `TableRow` renders
+  the first cell's content verbatim and the view's row builder does not
+  know the checkbox exists. A row swapped into the live `tbody` while the
+  mode is on arrives bare, so the element observes the `tbody` and
+  decorates the new row, checked when its key was checked before the swap.
+  Only the checkbox selects; the row's links and immediate controls keep
+  their meaning. The checkbox is not a column and does not count against
+  `MAX_DATA_TABLE_COLUMNS`.
 - Selection is a mode. A Select toggle in the table's footer turns it on,
   and only then does the checkbox render in the identity cell. The mode is
   off on every page load, stored nowhere: the table a person reads most
@@ -116,7 +122,8 @@ dropping. The charter's rules hold, and this wave settles the shape:
   checkbox. Check-all for the page, "Select all N matching" with N read
   from the paginator, the count, Clear and the actions all live in the
   footer's selection line, which the toggle opens above the pagination
-  row. Prior art, settled by the user: PatternFly, Carbon, Polaris, Helios
+  row. Without a paginator there is no "all matching": the page is the
+  matching set, on Game detail's tables and on a list shown whole. Prior art, settled by the user: PatternFly, Carbon, Polaris, Helios
   and SABnzbd's Glitter queue, whose check-all also lives in its multi-edit
   bar and whose rows also do not toggle on click.
 - Selection lives in the page and nowhere else. Navigating a page clears it.
@@ -134,9 +141,9 @@ dropping. The charter's rules hold, and this wave settles the shape:
   element announces the count through one live region it owns, because it
   owns the selection; the tray shows the same count and announces nothing.
   The contract is verified with Orca in #718, on the finished pages.
-- Selection needs scripting. The server renders every checkbox hidden and
-  the element reveals them when it connects, so a page with scripting off
-  shows the table it shows today. The runner reads one shape, the selection
+- Selection needs scripting. The server renders no checkbox and the footer
+  renders its selection line hidden until the element connects, so a page
+  with scripting off shows the table it shows today. The runner reads one shape, the selection
   statement below; a second, one-field-per-row shape for scripting off was
   rejected, because it doubles the runner's grammar for a reader that also
   never sees the selection line. After #718 such a reader has no per-row act either,
@@ -160,7 +167,17 @@ count and gets acted on unseen, and the act stops meaning "these rows".
 
 ## The tray
 
-The tray is the footer's selection line, not a surface of its own.
+The tray is the footer's selection line, not a surface of its own. While
+the mode is on the line is sticky to the viewport's bottom inside the
+table's shell, so it takes its own height in the flow and nothing reserves
+for it, and it stops sticking once the table has scrolled past. The shell's
+`overflow-hidden` would make the shell the sticky containing block, so it
+becomes `overflow-clip`, which clips the corners the same and is no scroll
+container. The line sits under the menu stratum (`z-20`), so an actions
+menu opens over it, and under the toasts (`z-50`). The toast stack and the
+version stamp are fixed to the same bottom edge, so the element publishes
+the line's height as `--selection-line` on the root while the mode is on,
+and each of the two reads it in its own classes for its bottom offset.
 `StyledTable`'s footer slot holds one region today and refuses a second;
 #711 makes it a composite the table builds: the selection line above the
 pagination row, either alone, so a table with no pagination, Game detail's
@@ -437,7 +454,11 @@ Amended after #711's planning: selection is a mode a footer toggle opens,
 with no header checkbox, and the tray is the footer's selection line, so
 the footer composite and the line's furniture moved from #712 into #711;
 the live region is the element's; selection needs scripting; an "all
-matching" selection records exclusions.
+matching" selection records exclusions. Corrected by the review of #711's
+spec: the element builds the checkboxes from a row key the server renders,
+rather than revealing hidden ones, so the row builder stays unaware; no
+all-matching control without a paginator; the sticky line needs the shell
+to clip rather than hide, verified in a browser.
 
 Deviations recorded: the empty bucket is removed, not archived; Finish stays
 inline as an immediate control; a cross-game move is refused rather than
