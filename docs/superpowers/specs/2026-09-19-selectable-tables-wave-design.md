@@ -119,9 +119,17 @@ dropping. The charter's rules hold, and this wave settles the shape:
   dropping as `<responsive-table>` decides. This is #716's whole substance:
   the mobile organizer is the table's own personality, not a second screen.
 - Keyboard: Space toggles the focused checkbox, Shift+Space extends from the
-  last toggled row, the header checkbox is a tri-state control, and the tray
-  announces the count through a live region. The contract is verified with
-  Orca in #718, on the finished pages.
+  last toggled row, the header checkbox is a tri-state control, and the
+  element announces the count through one live region it owns, because it
+  owns the selection; the tray shows the same count and announces nothing.
+  The contract is verified with Orca in #718, on the finished pages.
+- Selection needs scripting. The server renders every checkbox hidden and
+  the element reveals them when it connects, so a page with scripting off
+  shows the table it shows today. The runner reads one shape, the selection
+  statement below; a second, one-field-per-row shape for scripting off was
+  rejected, because it doubles the runner's grammar for a reader that also
+  never sees the tray. After #718 such a reader has no per-row act either,
+  and that is the accepted cost.
 
 The selection travels as the **selection statement**: one hidden field
 holding a JSON list of row keys, or the word `all` beside the list's filter
