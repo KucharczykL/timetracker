@@ -109,6 +109,8 @@ class ScopeIdentities(NamedTuple):
     longest_session_id: UUID | None
     highest_count_game_id: UUID | None
     highest_average_game_id: UUID | None
+    first_play_session_id: UUID | None   # None where a record answered
+    last_play_session_id: UUID | None
 
 class ConvertedRow(NamedTuple):
     session_id: UUID; day: date; game_id: UUID; platform_id: UUID | None
@@ -142,7 +144,11 @@ Rules, one each, named after the spec's table:
   `last_play_*`): equal. A change is unattributed by design: it means the
   read disagrees with the charter.
 - `PURCHASES`: `list(queryset.values_list("pk", flat=True))` equal, ints equal.
-- `NOT_A_FIGURE`: equal.
+- `NOT_A_FIGURE`: equal, except the two `*_from_record` flags #1126 adds:
+  a flip is attributed where `identities.first_play_session_id` (or last) is
+  in `{row.session_id}`; `ScopeIdentities` gains those two ids, read off
+  `first_play(...)`/`last_play(...)` through the session leg's row when the
+  `PlayDay` came from a session.
 - `total_sessions`: `before - after == len(rows)`.
 - `longest_session_*`: equal, or `identities.longest_session_id` in
   `{row.session_id}`. The `_game` and `_time` siblings share one rule bound
