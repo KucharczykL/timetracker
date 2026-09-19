@@ -14,7 +14,7 @@ from django.db.models import Count
 from games.models import Game, PlayerSession, UserLibrary
 from games.reads.player_sessions import GAME
 from games.reads.playthrough_completions import YearScope
-from games.reads.session_figures import scoped_sessions
+from games.reads.session_figures import GAME_KEY, SORT_NAME, scoped_sessions
 
 
 class PlayDay(NamedTuple):
@@ -38,19 +38,20 @@ def _play_day(session: PlayerSession | None) -> PlayDay | None:
 
 
 def first_play(library: UserLibrary, year: YearScope) -> PlayDay | None:
-    """The earliest day; within it, the lower key."""
+    """The earliest day; within it, the lower sort name, then game key."""
     return _play_day(
         scoped_sessions(library, year)
         .select_related(GAME)
-        .order_by("effective_day", "id")
+        .order_by("effective_day", SORT_NAME, GAME_KEY)
         .first()
     )
 
 
 def last_play(library: UserLibrary, year: YearScope) -> PlayDay | None:
+    """The mirror of `first_play`, level for level."""
     return _play_day(
         scoped_sessions(library, year)
         .select_related(GAME)
-        .order_by("-effective_day", "-id")
+        .order_by("-effective_day", f"-{SORT_NAME}", f"-{GAME_KEY}")
         .first()
     )

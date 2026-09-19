@@ -42,21 +42,18 @@ def test_a_year_scope_counts_that_year_s_days(owned_library, games):
     assert distinct_days(owned_library, None) == 2
 
 
-def test_first_play_on_a_shared_day_picks_the_lower_key(owned_library, games):
+def test_a_shared_day_answers_by_sort_name_at_each_end(owned_library, games):
     beta, alpha = games
     day = date(2024, 1, 1)
-    first = duration_only_row(
-        tracked_run(owned_library, alpha), day, timedelta(hours=1)
-    )
-    second = timed(tracked_run(owned_library, beta), day, 8, 1)
-    lower, higher = sorted((first, second), key=lambda row: row.pk)
+    duration_only_row(tracked_run(owned_library, alpha), day, timedelta(hours=1))
+    timed(tracked_run(owned_library, beta), day, 8, 1)
 
     earliest = first_play(owned_library, None)
     latest = last_play(owned_library, None)
 
     assert earliest is not None and latest is not None
-    assert (earliest.day, earliest.game) == (day, lower.playthrough.player_game.game)
-    assert (latest.day, latest.game) == (day, higher.playthrough.player_game.game)
+    assert (earliest.day, earliest.game) == (day, beta)
+    assert (latest.day, latest.game) == (day, alpha)
 
 
 def test_an_empty_library_answers_none_and_zero(owned_library):
