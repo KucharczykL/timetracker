@@ -134,3 +134,25 @@ The parity command and the page diff stay out of `make check`. No read of
 the Historical list joins the six. The review population converts in one
 pass with no chunking. Nothing here changes a figure; #1126 owns the reads
 and lands first.
+
+## Delivered
+
+Run on the 2026-09-19 dump, restored at 0007 and migrated through 0011: one
+library, 2,819 sessions on 861 tracked games, 93 written-down sessions in the
+review population.
+
+- Replay: 7,277 events through six tables after the conversion, 0 rows only
+  live, only rebuilt or differing; `make verify-replay-parity` clean.
+- Statistics: 21 scopes, 199 figures changed, 0 unattributed, 93 rows
+  converted. 18 scopes moved. The counts, the days and the first and last
+  plays held in every scope; the two play-source flags flipped 22 times, each
+  on a converted row.
+- Budget: `record command p95` 5.0 ms over 600 dispatches. On production
+  shape with the records present, `session_page` 3.8 ms, `game_playtime_sort`
+  15.9 ms, `stats_totals` 6.9 ms, `stats_by_platform` 3.3 ms,
+  `stats_by_month` 6.2 ms, `stats_superlatives` 14.0 ms. The first run
+  measured the sort read at 49.1 ms, before autovacuum analyzed the tables
+  the conversion filled; the command analyzes them now. #1131 owns the sort
+  read's record leg.
+- Pages: 1,704 rendered at `855c276f`, 1,706 at the head, 1,702 differ, all
+  attributed in the wave document. No page names #1115 or #1120. No defect.
