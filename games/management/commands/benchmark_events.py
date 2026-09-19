@@ -18,7 +18,7 @@ from games.events.rebuild import RebuildReport
 from games.models import UserLibrary
 
 DEFAULT_SEED_EVENTS = 100_000
-#: One import's worth of records, dispatched one by one.
+#: An import's worth of records.
 IMPORT_SHAPE_RECORDS = 600
 
 #: Measured; see docs/event-benchmarks.md.

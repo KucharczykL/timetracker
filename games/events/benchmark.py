@@ -265,7 +265,7 @@ def session_command_budget(timings: Timings) -> Budget:
 
 
 def record_command_budget(timings: Timings) -> Budget:
-    """The same 100 ms, judged under an import's shape."""
+    """The same 100 ms, an import's shape."""
     return _p95_budget("record command p95", timings, COMMAND_BUDGET_SECONDS)
 
 
@@ -359,7 +359,7 @@ class BenchmarkReport:
     command: Timings | None
     #: None in --library mode: a command on a real library writes to it.
     session_command: Timings | None
-    #: None in --library mode, as `session_command` is.
+    #: None in --library mode.
     record_command: Timings | None
     #: Empty only where no read ran.
     reads: tuple[ReadTimings, ...]

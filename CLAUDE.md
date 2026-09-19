@@ -453,6 +453,13 @@ docs/           — Additional documentation
   narrows provenance and device choices and leaves every other rule to the
   command
   ([entry](docs/superpowers/specs/2026-09-17-issue-706-historical-playtime-entry-design.md)).
+  #1099's gates: `make verify-reclassification-parity` converts a library's
+  review population and judges every `StatsData` key by the rule
+  `games/stats_parity.py` states for its source group; `make bench`
+  dispatches 600 records between the session command and the reads. Ran on
+  the 2026-09-19 dump: replay clean, 0 of 199 changed figures unattributed,
+  every read inside 20 ms
+  ([gates](docs/superpowers/specs/2026-09-19-issue-1099-historical-playtime-gates-design.md)).
   Contract is
   [HistoricalPlaytime aggregate](docs/superpowers/specs/2026-09-17-issue-705-historical-playtime-aggregate-design.md);
   wave is

@@ -300,7 +300,7 @@ def _record_playtime(library: UserLibrary, *, actor: User, run: Playthrough) -> 
 def _cycling(
     library: UserLibrary, runs: Iterator[Playthrough]
 ) -> Iterator[Playthrough]:
-    """A run takes many records: start over when they run out."""
+    """Start over when the runs run out."""
     yield from runs
     while True:
         again = seeded_runs(library)
@@ -319,11 +319,9 @@ def run_record_command_scenario(
     records: int,
     warmup: int,
 ) -> Timings:
-    """Dispatch RecordHistoricalPlaytime `records` times: an import's shape.
+    """Dispatch `records` records: an import's shape.
 
-    Ten hours at year precision, Estimated, no device. Ends with an
-    ANALYZE of the two record tables, so the reads that follow plan
-    against statistics that know the rows exist.
+    ANALYZE last, so the reads plan right.
     """
     cycle = _cycling(library, runs)
     for run in islice(cycle, warmup):

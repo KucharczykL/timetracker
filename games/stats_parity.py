@@ -1,8 +1,6 @@
 """Judge every statistics figure across a reclassification.
 
-Two readings of one scope, the rows converted between them, and one
-rule per `StatsData` key: the rule answers how the conversion explains
-the pair, or `None` where it cannot.
+One rule a key; None is unattributed.
 """
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -61,7 +59,7 @@ class Converted(NamedTuple):
 
 
 class Comparison(NamedTuple):
-    """One key, both readings, and the conversion between them."""
+    """One key, both readings, the conversion."""
 
     key: StatsKey
     before: Mapping[StatsKey, object]
@@ -78,11 +76,11 @@ class FigureChange(NamedTuple):
     key: StatsKey
     before: object
     after: object
-    #: None is unattributed: the read disagrees with the charter.
+    #: None: the read disagrees with the charter.
     attribution: str | None
 
 
-#: The sentence explaining the pair, or None.
+#: The attribution, or None.
 type Rule = Callable[[Comparison], str | None]
 
 ZERO_DURATION = timedelta(0)
@@ -105,7 +103,7 @@ def _unchanged(comparison: Comparison) -> str | None:
     return UNCHANGED if comparable(before) == comparable(after) else None
 
 
-# ── Playtime: the total holds; hours move between the halves ────────────────
+# ── Playtime: totals hold, halves move ──────────────────────────────────────
 
 type BreakdownKey = object
 type KeyedBreakdown = tuple[BreakdownKey, PlaytimeBreakdown]
@@ -164,7 +162,7 @@ def _month_of(row: ConvertedRow) -> date:
     return row.day.replace(day=1)
 
 
-# ── Sessions: a record is never a sitting ───────────────────────────────────
+# ── Sessions: a record is no sitting ────────────────────────────────────────
 
 
 def _session_count(comparison: Comparison) -> str | None:
@@ -195,7 +193,7 @@ def _highest_count(comparison: Comparison) -> str | None:
 
 
 def _highest_average(comparison: Comparison) -> str | None:
-    """Taking a short row away raises an average."""
+    """Taking a short row away raises averages."""
     if _unchanged(comparison):
         return UNCHANGED
     before = comparison.identities.highest_average_game_id
@@ -212,7 +210,7 @@ def _highest_average(comparison: Comparison) -> str | None:
 
 
 def _from_record_flag(date_key: StatsKey, game_key: StatsKey) -> Rule:
-    """Flips only where a converted row is the play it named."""
+    """Flips only on the play it named."""
 
     def rule(comparison: Comparison) -> str | None:
         before, after = comparison.values
@@ -288,10 +286,9 @@ def judge_scope(
     identities: ScopeIdentities,
     converted: Converted,
 ) -> tuple[FigureChange, ...]:
-    """Every figure the conversion moved, or a rule refuses.
+    """Every change, and every refusal.
 
-    A key absent from both readings is skipped; present in one alone
-    is a change nothing attributes.
+    Absent from both: skipped. From one: unattributed.
     """
     was = cast("Mapping[StatsKey, object]", before)
     now = cast("Mapping[StatsKey, object]", after)

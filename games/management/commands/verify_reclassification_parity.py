@@ -1,4 +1,4 @@
-"""Convert the review population; judge every figure by its rule."""
+"""Convert the review population; judge every figure."""
 
 import uuid
 from typing import NamedTuple
@@ -32,12 +32,12 @@ from games.writes.answers import CommandFailed
 from games.writes.playergame import new_correlation_id
 from games.writes.playersession import reclassify_session
 
-#: The whole path a row's game sits behind.
+#: The path from a row to its game.
 GAME = "playthrough__player_game__game"
 
 
 class Reading(NamedTuple):
-    """One scope's figures and the rows behind its superlatives."""
+    """One scope's figures and its superlatives' rows."""
 
     figures: StatsData
     identities: ScopeIdentities
@@ -116,7 +116,7 @@ class Command(BaseCommand):
             )
 
         converted = Converted(tuple(self._convert(user, population)))
-        #: The bench that follows must not plan against empty statistics.
+        #: The bench that follows plans on these.
         analyze_tables(RECORD_TABLES)
         after = {scope: read_scope(library, scope) for scope in scopes}
 
@@ -143,7 +143,7 @@ class Command(BaseCommand):
     def _convert(
         self, user: User, population: list[PlayerSession]
     ) -> list[ConvertedRow]:
-        """Every row through the confirm page's write; one correlation."""
+        """Each row through the confirm page's write."""
         token = uuid.uuid7()
         correlation_id = new_correlation_id()
         rows: list[ConvertedRow] = []

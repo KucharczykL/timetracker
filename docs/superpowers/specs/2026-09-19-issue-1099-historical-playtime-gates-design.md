@@ -2,157 +2,76 @@
 
 Issue: [#1099](https://github.com/KucharczykL/timetracker/issues/1099). Last
 member of the
-[Historical Playtime delivery wave](2026-09-17-historical-playtime-wave-design.md);
+[Historical Playtime wave](2026-09-17-historical-playtime-wave-design.md);
 [#704](2026-09-15-issue-704-session-gates-design.md) is the model.
 
 ## Purpose
 
-The wave is proven on a production copy and measured. Four gates: replay,
-statistics, budget, pages. The replay gate already holds: the stream in
-`tests/test_projection_replay_gate.py` records a record in every leg, one
-naming two runs, one restated, one removed and one restored, a reclassified
-session and one reclassified and undone. This design adds the other three
-instruments and runs all four on a dump fetched on the day of the run. It
-waits on #1126, which restores the charter's contribution table to the reads
-the statistics gate judges.
+Four gates prove the wave on a production copy: replay, statistics, budget,
+pages. The replay gate is `tests/test_projection_replay_gate.py`, which
+records a record in every leg. This design adds the other three instruments.
 
 ## Statistics
 
-`make verify-reclassification-parity ARGS="--user NAME --confirm NAME"` is
-one command over one library. It reads every statistics scope, converts the
-review population, reads every scope again, and judges each figure by the
-rule its source group states. Without `--confirm` it reads once and prints
-the figures and the population's count; with it, it converts. It writes, so
-it runs on a scratch restore only, and it names the user twice, as
-`purge-library` does. It opens no transaction of its own: every conversion
-dispatches through `run_in_transaction`, which refuses to nest.
+`make verify-reclassification-parity ARGS="--user NAME --confirm NAME"` reads
+every statistics scope, converts the review population and reads every scope
+again. Without `--confirm` it reads once and prints. It writes, so it runs on
+a scratch restore only, and it names the user twice, as `purge-library`
+does. Each conversion dispatches through `reclassify_session`, the write the
+confirm page calls, under one correlation id and an idempotency key of a
+fresh token and the row's key. It ends with an `ANALYZE` of the two record
+tables, so a benchmark that follows plans on statistics that know the rows.
 
-The scopes are all-time and every year `played_years` answers, read before
-the conversion. `games/stats_parity.py` holds the pure half: the rules, over
-two `StatsData` per scope and a `ScopeIdentities` beside each -- the longest
-session's row and the highest-count and highest-average games, which the
-`session_figures` readers already answer. The command holds the reads and
-the conversion: `compute_stats` and those three readers a scope, then
-`reviewable_sessions(library)`, each row through `reclassify_session`, the
-write the confirm page calls, under one correlation id with an idempotency
-key of a fresh token and the row's key, so a second run against one database
-converts nothing and says so rather than replaying. `statement_from_session`
-states day precision and provenance Manually entered. The converted rows'
-ids, days, games and seconds, narrowed to each scope, are the `Converted`
-fact every rule reads.
-
-The rules prove the charter's contribution table, which #1126 restores to
-the reads ahead of this issue: a day-precision record counts in unique days
-and first and last play, a contained record makes a played game and its link
-finds it, and a record is never a sitting. One rule per member of `STATS_SOURCE_GROUPS`, so a key
-added to the mapping without a rule fails the test that walks it:
+`games/stats_parity.py` holds the rules, one per `StatsData` key, and a test
+holds the mapping equal to `STATS_SOURCES`. A rule reads both values, the
+whole readings, the `ScopeIdentities` behind the session superlatives, and
+the `Converted` rows narrowed to the scope. It answers an attribution or
+`None`. The judge reports every changed key and every refusal.
 
 | group or key | rule |
 |---|---|
-| `BOTH`, playtime keys | every `PlaytimeBreakdown` keeps its `total`; `tracked` falls and `historical` rises by the converted seconds its row's key holds in scope; row order kept |
-| `BOTH`, the counts and days -- `games_by_playtime_count`, `total_games`, `total_year_games`, `unique_days`, `unique_days_percent`, `first_play_*`, `last_play_*` | equal |
-| `PURCHASES` | equal, a queryset compared as its ordered keys |
-| `NOT_A_FIGURE` | equal, except `first_play_from_record` and `last_play_from_record`, which flip only where a converted row states the day and game the figure answered before |
-| `total_sessions` | down by the converted rows in scope, exactly |
-| `longest_session_*` | unchanged, or the row before was converted |
-| `highest_session_count*` | unchanged, or the game before held a converted row in scope |
-| `highest_session_average*` | unchanged, or the game before or the game after held a converted row in scope, because taking a short row away raises an average |
+| `BOTH`, playtime keys | each `PlaytimeBreakdown` keeps its total; `tracked` falls and `historical` rises by the converted rows' hours under its key; row order kept |
+| `BOTH`, counts and days | equal |
+| `PURCHASES` | equal, a queryset as its ordered keys |
+| `NOT_A_FIGURE` | equal, except the two `*_from_record` flags, which flip only where a converted row is the play the figure named |
+| `total_sessions` | down by the rows in scope, exactly |
+| `longest_session_*` | equal, or the row before was converted |
+| `highest_session_count*` | equal, or the game before held a converted row |
+| `highest_session_average*` | equal, or the game before or after held one |
 
-The longest session sits under a total order that ends on the row's key,
-and a session count only falls, so no tie flips either without a converted
-row. A record dated the session's day keeps every day, every first and last
-play and every played game where it was, which is why those rows read
-"equal" and not "attributed": a change there is the read disagreeing with
-the charter, and the gate says so.
-
-The verdict prints one line per changed figure with its attribution and
-exits non-zero on a change no rule attributes. `CommandFailed` from any row's
-conversion is its sentence on stdout and a non-zero exit before the second
-read: a population partly converted has no parity to judge.
+A change no rule attributes exits non-zero. A refused conversion stops the
+run before the second read.
 
 ## Budget
 
-`make bench` gains a records workload between the session command and the
-reads: `IMPORT_SHAPE_RECORDS = 600` dispatches of `RecordHistoricalPlaytime`,
-one seeded run each, ten hours at year precision, Estimated, no device, with
-the same warmup the other commands take. Six hundred dispatches in one run is
-an import's shape, which is why the count is a constant the command passes
-and not `--iterations`; `run_benchmark` takes it as a parameter, so the tests
-pass a small one. A run takes many records, so the scenario walks the seeded
-runs and starts over when they run out, and the count holds under `--seed 0`
-as well. The estimate the command prints before it seeds counts the 600
-dispatches. The scenario ends with an `ANALYZE` of the two record tables,
-through the seed's helper given the tables to name, for the same reason the
-seed analyzes what it wrote: the reads that follow plan against statistics
-that know the rows exist.
-
-`record command p95` is judged at the charter's 100 ms beside the other two,
-placed after the session budget and before the reads. The six reads are
-unchanged and now run with 600 records present on the scratch library; under
-`--library` they run with the records the parity command converted.
-`--library` dispatches nothing, as before, so its report carries
-`record_command` as `None` and its seven budgets stay. `REPORT_SCHEMA` moves
-from 3 to 4.
-
-Both recordings are pasted into `docs/event-benchmarks.md` under one
-heading, the scratch run and the production-shape run, the way every
-recording before them was.
+`make bench` dispatches `IMPORT_SHAPE_RECORDS` records after the session
+command and before the reads: 600, one seeded run each, ten hours at year
+precision, cycling the runs when they run out. `record command p95` is judged
+at 100 ms. `--library` dispatches nothing and carries the scenario as `None`.
+`REPORT_SCHEMA` is 4.
 
 ## Pages
 
-`make render-pages` runs twice against one restored database: at
-`855c276f`, the last merge before the wave's code, from a second worktree
-with its own `uv sync`, and at the head that carries this issue, the
-database migrated forward between them, each run given the restore's
-`DATABASE_URL`. The base commit holds migrations through 0008 and the head
-adds 0009 to 0011; the dump must stand at 0008 or earlier, which
-`django_migrations` says after the restore. A dump the deployment took after
-running the wave holds the new tables already and the base render would run
-over them; that is a different rehearsal and is not this one.
-
-The directories diff on content. Every differing file is attributed by name:
-a wave PR, or one of the two merges inside the wave that touched rendering
-(#1115, #1120). A page nothing explains gets a third render at the
-intermediate merge that separates the candidates; a page still unexplained
-is a defect.
-
-## Rehearsal
-
-One scratch database, in this order: `make fetch-dump`, `make restore-dump`,
-render at the base commit, migrate, render at the head, diff and attribute,
-`verify-reclassification-parity`, `make bench ARGS="--library <id> --gate"`,
-`make verify-replay-parity` over six tables. The parity command prints the
-population it converts; the issue's 93 was counted before the review kept the
-bucket out, so the count is read, not assumed. The numbers land where #704's
-did: a Delivered block under the wave's delivery order, the benchmarks
-document, and this specification's Delivered section. The wave's "What was
-applied" names #1126's restoration of the charter's table.
-
-## Out
-
-The parity command and the page diff stay out of `make check`. No read of
-the Historical list joins the six. The review population converts in one
-pass with no chunking. Nothing here changes a figure; #1126 owns the reads
-and lands first.
+`make render-pages` runs at the last merge before the wave and at the head,
+against one restored database migrated between the runs. Every differing
+page is attributed to a wave PR by name.
 
 ## Delivered
 
-Run on the 2026-09-19 dump, restored at 0007 and migrated through 0011: one
-library, 2,819 sessions on 861 tracked games, 93 written-down sessions in the
-review population.
+On the 2026-09-19 dump, one library of 2,819 sessions on 861 tracked games,
+93 rows in the review population:
 
-- Replay: 7,277 events through six tables after the conversion, 0 rows only
-  live, only rebuilt or differing; `make verify-replay-parity` clean.
-- Statistics: 21 scopes, 199 figures changed, 0 unattributed, 93 rows
-  converted. 18 scopes moved. The counts, the days and the first and last
-  plays held in every scope; the two play-source flags flipped 22 times, each
-  on a converted row.
-- Budget: `record command p95` 5.0 ms over 600 dispatches. On production
-  shape with the records present, `session_page` 3.8 ms, `game_playtime_sort`
-  15.9 ms, `stats_totals` 6.9 ms, `stats_by_platform` 3.3 ms,
-  `stats_by_month` 6.2 ms, `stats_superlatives` 14.0 ms. The first run
-  measured the sort read at 49.1 ms, before autovacuum analyzed the tables
-  the conversion filled; the command analyzes them now. #1131 owns the sort
-  read's record leg.
-- Pages: 1,704 rendered at `855c276f`, 1,706 at the head, 1,702 differ, all
-  attributed in the wave document. No page names #1115 or #1120. No defect.
+- Replay: 7,277 events through six tables, no row differing.
+- Statistics: 21 scopes, 199 figures changed, 0 unattributed.
+- Budget: `record command p95` 5.0 ms. Six reads inside 20 ms with the
+  records present; `game_playtime_sort` 15.9 ms against 8.9 ms without them,
+  which #1131 owns. A run before autovacuum had analyzed the record tables
+  measured 49.1 ms, which is why the command analyzes them.
+- Pages: 1,702 of 1,704 differ, every one attributed; no defect.
+
+The recordings are in `docs/event-benchmarks.md` and the wave document.
+
+## Out
+
+The parity command and the page diff stay out of `make check`. The review
+population converts in one pass.
