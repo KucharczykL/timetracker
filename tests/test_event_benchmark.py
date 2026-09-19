@@ -29,6 +29,7 @@ from games.events.benchmark import (
     nearest_rank,
     read_budget,
     rebuild_budget,
+    record_command_budget,
     session_command_budget,
     summarize,
 )
@@ -39,6 +40,7 @@ from games.events.benchmark_workload import (
     run_command_scenario,
     run_read_scenario,
     run_rebuild_scenario,
+    run_record_command_scenario,
     run_session_command_scenario,
     seed_library,
     seeded_runs,
@@ -237,6 +239,13 @@ def test_the_session_command_budget_is_the_charters():
     assert (budget.name, budget.limit) == ("session command p95", 0.100)
     assert budget.verdict is BudgetVerdict.PASSED
     assert session_command_budget(timings(0.15)).verdict is BudgetVerdict.MISSED
+
+
+def test_the_record_command_budget_is_the_charters():
+    budget = record_command_budget(timings(0.05))
+    assert (budget.name, budget.limit) == ("record command p95", 0.100)
+    assert budget.verdict is BudgetVerdict.PASSED
+    assert record_command_budget(timings(0.15)).verdict is BudgetVerdict.MISSED
 
 
 def test_a_read_inside_the_budget_passes():
@@ -518,9 +527,9 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_run_replays_the_events_both_write_paths_produced():
-    report = run_benchmark(seed=30, iterations=3, warmup=1, keep=True)
-    #: 30 seeded, 8 tracked, 6 amplified, 4 sessions recorded.
-    assert report.rebuild.replayed_through == 48
+    report = run_benchmark(records=2, seed=30, iterations=3, warmup=1, keep=True)
+    #: 30 seeded, 8 tracked, 6 amplified, 4 sessions, 3 records.
+    assert report.rebuild.replayed_through == 51
     assert all(
         table.only_live == table.only_rebuilt == table.differing == 0
         for table in report.rebuild.tables
@@ -538,7 +547,7 @@ def test_a_run_purges_its_scratch_user_after_a_scenario_raises(monkeypatch):
     monkeypatch.setattr(run_module, "run_command_scenario", explode)
     before = set(User.objects.values_list("username", flat=True))
     with pytest.raises(RuntimeError, match="the scenario failed"):
-        run_benchmark(seed=5, iterations=2, warmup=0)
+        run_benchmark(records=2, seed=5, iterations=2, warmup=0)
     assert set(User.objects.values_list("username", flat=True)) == before
 
 
@@ -547,6 +556,7 @@ def test_a_kept_run_names_its_scratch_user_before_it_can_fail():
     """--keep prints the cleanup, even when raising."""
     announced: list[str] = []
     report = run_benchmark(
+        records=2,
         seed=5,
         iterations=1,
         warmup=0,
@@ -559,7 +569,9 @@ def test_a_kept_run_names_its_scratch_user_before_it_can_fail():
 
 @pytest.mark.django_db(transaction=True)
 def test_no_count_replay_leaves_the_replay_unmeasured():
-    report = run_benchmark(seed=5, iterations=1, warmup=0, count_replay=False)
+    report = run_benchmark(
+        records=2, seed=5, iterations=1, warmup=0, count_replay=False
+    )
     assert report.replay is None
     assert report.rebuild is not None
 
@@ -573,7 +585,9 @@ def test_library_mode_writes_no_persistent_row(owned_library):
     head_before = LibraryEventStreamHead.objects.get(
         library=owned_library
     ).current_sequence
-    report = run_benchmark(seed=0, iterations=0, warmup=0, library=owned_library)
+    report = run_benchmark(
+        records=2, seed=0, iterations=0, warmup=0, library=owned_library
+    )
     assert report.seed is None
     assert report.command is None
     assert report.scratch_username is None
@@ -602,7 +616,7 @@ def test_a_non_empty_rebuild_diff_fails_the_run(owned_library):
         tracked_at=timezone.now(),
     )
     with pytest.raises(RebuildDiffNotEmpty):
-        run_benchmark(seed=0, iterations=0, warmup=0, library=owned_library)
+        run_benchmark(records=2, seed=0, iterations=0, warmup=0, library=owned_library)
 
 
 @pytest.mark.django_db
@@ -647,14 +661,62 @@ def test_the_session_command_scenario_records_on_the_seeded_runs(owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
+def test_the_record_command_scenario_records_on_the_seeded_runs(owned_library):
+    seed_library(owned_library, actor=owned_library.user, games=5, spares=0)
+
+    timings = run_record_command_scenario(
+        owned_library,
+        actor=owned_library.user,
+        runs=seeded_runs(owned_library),
+        records=3,
+        warmup=1,
+    )
+
+    assert timings.samples == 3
+    assert HistoricalPlaytime.objects.filter(library=owned_library).count() == 4
+    assert HistoricalPlaytimeRun.objects.filter(library=owned_library).count() == 4
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_record_scenario_cycles_the_runs(owned_library):
+    seed_library(owned_library, actor=owned_library.user, games=2, spares=0)
+
+    timings = run_record_command_scenario(
+        owned_library,
+        actor=owned_library.user,
+        runs=seeded_runs(owned_library),
+        records=5,
+        warmup=0,
+    )
+
+    assert timings.samples == 5
+    assert HistoricalPlaytime.objects.filter(library=owned_library).count() == 5
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_record_scenario_needs_a_run(owned_library):
+    with pytest.raises(ValueError, match="needs a run"):
+        run_record_command_scenario(
+            owned_library,
+            actor=owned_library.user,
+            runs=seeded_runs(owned_library),
+            records=1,
+            warmup=0,
+        )
+
+
+@pytest.mark.django_db(transaction=True)
 def test_library_mode_reads_without_dispatching(owned_library):
     seed_library(owned_library, actor=owned_library.user, games=6, spares=0)
     events_before = LibraryEvent.objects.filter(library=owned_library).count()
 
-    report = run_benchmark(seed=0, iterations=2, warmup=0, library=owned_library)
+    report = run_benchmark(
+        records=2, seed=0, iterations=2, warmup=0, library=owned_library
+    )
 
     assert report.command is None
     assert report.session_command is None
+    assert report.record_command is None
     assert len(report.reads) == 6
     assert LibraryEvent.objects.filter(library=owned_library).count() == events_before
     assert [budget.name for budget in report.budgets][-1] == "rebuild"
@@ -663,13 +725,21 @@ def test_library_mode_reads_without_dispatching(owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_the_report_carries_every_scenario_and_a_schema():
-    report = run_benchmark(seed=25, iterations=3, warmup=1)
+    report = run_benchmark(records=2, seed=25, iterations=3, warmup=1)
     assert isinstance(report, BenchmarkReport)
-    assert report.schema == 3
+    assert report.schema == 4
     assert report.seed is not None
     assert report.command is not None
     assert report.session_command is not None
+    assert report.record_command is not None
     assert len(report.reads) == 6
+    names = [budget.name for budget in report.budgets]
+    assert len(names) == 10
+    assert names[1:4] == [
+        "session command p95",
+        "record command p95",
+        "read session_page p95",
+    ]
     assert {
         budget.verdict for budget in report.budgets if budget.name.startswith("read ")
     } == {BudgetVerdict.NOT_GATED}
@@ -677,7 +747,7 @@ def test_the_report_carries_every_scenario_and_a_schema():
     assert report.replay is not None
     assert report.teardown_seconds is not None
     parsed = json.loads(report.as_json())
-    assert parsed["schema"] == 3
+    assert parsed["schema"] == 4
     assert set(parsed) >= {
         "environment",
         "scratch_username",
@@ -713,6 +783,7 @@ def test_an_unknown_library_is_named():
 def test_the_command_prints_what_it_will_create_before_creating_it():
     output = run_command(seed=25, iterations=2, warmup=1)
     assert "25" in output
+    assert "600 historical playtime records" in output
     #: A three-minute default says so first.
     assert "estimate" in output.lower()
 
@@ -734,7 +805,7 @@ def test_gate_is_silent_when_every_budget_passes():
 @pytest.mark.django_db(transaction=True)
 def test_json_output_parses_and_carries_the_schema():
     parsed = json.loads(run_command(seed=25, iterations=2, warmup=1, json=True))
-    assert parsed["schema"] == 3
+    assert parsed["schema"] == 4
 
 
 @pytest.mark.django_db(transaction=True)
@@ -747,7 +818,7 @@ def test_keep_names_the_scratch_user_it_leaves_behind():
 @pytest.mark.django_db(transaction=True)
 def test_a_seed_not_divisible_by_three_seeds_fewer_events():
     """Seven is two games and a remainder."""
-    report = run_benchmark(seed=7, iterations=1, warmup=0, keep=True)
+    report = run_benchmark(records=2, seed=7, iterations=1, warmup=0, keep=True)
     assert report.seed is not None
     assert report.seed.games == 2
     assert report.seed.events == 6

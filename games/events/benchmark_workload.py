@@ -1,7 +1,7 @@
 """Seeding, the scenarios, and the scratch teardown."""
 
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import date, datetime, timedelta
 from io import StringIO
 from itertools import batched, islice
@@ -11,8 +11,13 @@ from zoneinfo import ZoneInfo
 from django.contrib.auth.models import User
 from django.core.management import call_command
 from django.db import connection, transaction
+from django.db.models import Model
 
 from common.keyset import keyset_pages
+from games.commands.historical_playtime import (
+    HistoricalPlaytimeStatement,
+    RecordHistoricalPlaytime,
+)
 from games.commands.playergame import TrackGame, tracking_events
 from games.commands.playersession import (
     CreateSession,
@@ -34,6 +39,9 @@ from games.events.dispatch import dispatch
 from games.events.rebuild import RebuildMode, RebuildReport, rebuild_projections
 from games.models import (
     Game,
+    HistoricalPlaytime,
+    HistoricalPlaytimeProvenance,
+    HistoricalPlaytimeRun,
     LibraryEvent,
     LibraryEventReference,
     LibraryEventStreamHead,
@@ -132,17 +140,17 @@ def _seeded_events(
     return [*pair, *session_events(run_id, day=day, day_zone=day_zone)]
 
 
-def _analyze() -> None:
-    """Leave statistics that describe the seeded rows.
+def _analyze(tables: Sequence[type[Model]] = _SEEDED_TABLES) -> None:
+    """Leave statistics that describe the rows just written.
 
     Without this the command scenario races autovacuum's one-minute naptime,
     and measures which index the planner guessed at. Named tables rather than
     a bare `ANALYZE`, which would rewrite statistics for a whole database the
     benchmark did not touch.
     """
-    tables = ", ".join(f'"{model._meta.db_table}"' for model in _SEEDED_TABLES)
+    named = ", ".join(f'"{model._meta.db_table}"' for model in tables)
     with connection.cursor() as cursor:
-        cursor.execute(f"ANALYZE {tables}")
+        cursor.execute(f"ANALYZE {named}")
 
 
 def _create_catalog(library: UserLibrary, *, prefix: str, count: int) -> None:
@@ -264,6 +272,65 @@ def run_session_command_scenario(
         started = monotonic()
         _record(library, actor=actor, run=run)
         samples.append(monotonic() - started)
+    return summarize(samples)
+
+
+def _record_playtime(library: UserLibrary, *, actor: User, run: Playthrough) -> None:
+    dispatch(
+        RecordHistoricalPlaytime(
+            statement=HistoricalPlaytimeStatement(
+                duration=timedelta(hours=10),
+                when="2005",
+                provenance=HistoricalPlaytimeProvenance.ESTIMATED,
+                playthrough_ids=(run.pk,),
+                device_id=None,
+                emulated=False,
+                note="",
+            )
+        ),
+        actor=actor,
+        library=library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+
+
+def _cycling(
+    library: UserLibrary, runs: Iterator[Playthrough]
+) -> Iterator[Playthrough]:
+    """A run takes many records: start over when they run out."""
+    yield from runs
+    while True:
+        again = seeded_runs(library)
+        first = next(again, None)
+        if first is None:
+            raise ValueError("The records scenario needs a run to name.")
+        yield first
+        yield from again
+
+
+def run_record_command_scenario(
+    library: UserLibrary,
+    *,
+    actor: User,
+    runs: Iterator[Playthrough],
+    records: int,
+    warmup: int,
+) -> Timings:
+    """Dispatch RecordHistoricalPlaytime `records` times: an import's shape.
+
+    Ten hours at year precision, Estimated, no device. Ends with an
+    ANALYZE of the two record tables, so the reads that follow plan
+    against statistics that know the rows exist.
+    """
+    cycle = _cycling(library, runs)
+    for run in islice(cycle, warmup):
+        _record_playtime(library, actor=actor, run=run)
+    samples: list[Seconds] = []
+    for run in islice(cycle, records):
+        started = monotonic()
+        _record_playtime(library, actor=actor, run=run)
+        samples.append(monotonic() - started)
+    _analyze((HistoricalPlaytime, HistoricalPlaytimeRun))
     return summarize(samples)
 
 
