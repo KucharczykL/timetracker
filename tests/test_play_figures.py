@@ -3,6 +3,7 @@
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from historical_playtime_rows import record_row
 from session_rows import duration_only_row, timed_row, tracked_run
 
 from games.models import Game
@@ -60,3 +61,44 @@ def test_an_empty_library_answers_none_and_zero(owned_library):
     assert distinct_days(owned_library, None) == 0
     assert first_play(owned_library, None) is None
     assert last_play(owned_library, None) is None
+
+
+@pytest.mark.parametrize(
+    "when",
+    ["2024-03-05", "2024-03-05~", "2024-03-05?", "2024-03-05/2024-03-05"],
+)
+def test_a_record_naming_one_day_raises_the_day_count(owned_library, games, when):
+    beta, _alpha = games
+    record_row([tracked_run(owned_library, beta)], when=when)
+
+    assert distinct_days(owned_library, 2024) == 1
+    assert distinct_days(owned_library, None) == 1
+
+
+@pytest.mark.parametrize(
+    "when", ["2024", "2024-03", "2024-03-05/2024-03-06", "2024-03-05/..", None]
+)
+def test_a_record_naming_no_single_day_raises_nothing(owned_library, games, when):
+    beta, _alpha = games
+    record_row([tracked_run(owned_library, beta)], when=when)
+
+    assert distinct_days(owned_library, 2024) == 0
+    assert distinct_days(owned_library, None) == 0
+
+
+def test_a_record_on_a_day_a_session_holds_counts_once(owned_library, games):
+    beta, _alpha = games
+    run = tracked_run(owned_library, beta)
+    day = date(2024, 3, 5)
+    timed(run, day, 10, 1)
+    record_row([run], when="2024-03-05")
+
+    assert distinct_days(owned_library, 2024) == 1
+
+
+def test_a_day_outside_the_year_leaves_that_year(owned_library, games):
+    beta, _alpha = games
+    record_row([tracked_run(owned_library, beta)], when="2023-12-31")
+
+    assert distinct_days(owned_library, 2024) == 0
+    assert distinct_days(owned_library, None) == 1

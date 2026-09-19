@@ -12,8 +12,8 @@ from django.db.models import Avg, Count
 
 from games.filters import GAME_SESSIONS
 from games.models import Game, PlayerSession, PlayerSessionQuerySet, UserLibrary
+from games.reads.days import YearScope
 from games.reads.player_sessions import GAME, library_sessions
-from games.reads.playthrough_completions import YearScope
 
 #: The tie-break's two game columns, spelled from a session.
 SORT_NAME = f"{GAME}__sort_name"
