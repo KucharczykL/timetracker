@@ -321,13 +321,17 @@ correlation id: remove the record, restore the session.
    row of the stats page, the navbar figures and the Library card.
 6. **#1098** — reclassification: the `Reclassify` command, the review facet,
    "Was an estimate", the Library page's "Move all N", Undo of the pair.
-7. **#1099** — gates: replay parity with a record in every leg, the `make bench`
+7. **#1126** — the classification restored to the charter's contribution
+   table: a day-precision record counts in unique days and first and last
+   play, and a contained record makes a played game.
+8. **#1099** — gates: replay parity with a record in every leg, the `make bench`
    records workload and budgets, the `render_pages` diff attributed, the
    rehearsal on the production copy.
 
-`#705 → {#706, #709, #1097} → #710 → #1098 → #1099`. #706, #709 and #1097
+`#705 → {#706, #709, #1097} → #710 → #1098 → #1126 → #1099`. #706, #709 and #1097
 may start together after #705. #710 waits on #709. #1098 waits on #706, whose
-form it prefills, and on #1097, whose tab it lives on.
+form it prefills, and on #1097, whose tab it lives on. #1099 waits on #1126,
+because its statistics gate proves the classification #1126 restores.
 
 No deployment window. Each issue leaves `main` incomplete rather than
 inconsistent: #705 leaves tables nothing writes, #706 a form that records
@@ -341,7 +345,8 @@ Merged:
 - **#708** — the classification is #709's table, not a separate act.
 
 Opened: #1097 the Playtime page, #1098 the reclassification, #1099 the gates,
-and #1100 the union list as a follow-up outside the wave.
+#1100 the union list as a follow-up outside the wave, and #1126 the
+classification's return to the charter, found by #1099's design.
 
 ## Cross-wave handoffs
 
@@ -419,3 +424,8 @@ is part of the wave rather than a follow-up.
 
 Deviation recorded: records reach the per-platform figure through the game's
 platform column, as sessions do, until #889.
+
+Deviation found and reversed: #709's classification put unique days, first
+and last play, and the played-game counts under sessions only, against the
+charter's table, and recorded no deviation. #1126 restores the table's
+answer ahead of #1099, whose gate proves it.
