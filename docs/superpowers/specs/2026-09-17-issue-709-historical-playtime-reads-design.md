@@ -73,19 +73,12 @@ key under one `StatsSource`. A test compares the keys with `StatsData`.
   longest session, the highest count and the highest average.
 - **Purchases**, and **not a figure**, for the rest.
 
-As first delivered, this section put the unique days, the first and last play
-and the two played-game counts under sessions only, against the charter's
-contribution table, and recorded no deviation. #1126 restored the table's
-answer, and gave the `games_played` and `games_in_month` links the records
-relation and the containment word they needed to stay equal to their figures.
-
 Game detail's hours read both sources. Its other figures read sessions.
 
 ## Known gap
 
 These links open lists that show sessions only:
 
-- the per-year "View all" link and the month links;
 - the top-10 row links;
 - the platform row links;
 - the navbar links.

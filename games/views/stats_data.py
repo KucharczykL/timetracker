@@ -25,7 +25,7 @@ from django.db.models import (
 
 from common.time import available_stats_year_range
 from common.utils import safe_division
-from games.filters import GAME_SESSIONS
+from games.filters import SESSION_GAME
 from games.models import (
     DONE_STATUSES,
     Game,
@@ -36,17 +36,18 @@ from games.models import (
     PurchaseQueryset,
     UserLibrary,
 )
+from games.reads.days import YearScope
+from games.reads.historical_playtime_records import records_in_scope
 from games.reads.play_figures import (
+    RECORD_GAME,
+    PlaySource,
     distinct_days,
     first_play,
+    games_in_scope,
     last_play,
 )
 from games.reads.player_sessions import library_sessions
-from games.reads.playthrough_completions import (
-    YearScope,
-    completion_day,
-    completion_exists,
-)
+from games.reads.playthrough_completions import completion_day, completion_exists
 from games.reads.playtime import (
     GameByPlaytime,
     MonthPlaytime,
@@ -59,12 +60,9 @@ from games.reads.playtime import (
     total_playtime,
 )
 from games.reads.session_figures import (
-    GAME_RECORDS,
-    games_in_scope,
     highest_average_game,
     longest_session,
     most_sessions_game,
-    records_in_scope,
     session_count,
 )
 
@@ -102,7 +100,7 @@ class StatsData(TypedDict):
     highest_session_average_game: Any
     first_play_game: Any
     first_play_date: date | None
-    #: A record alone answered; no session link.
+    #: A record answered; the row links records.
     first_play_from_record: bool
     last_play_game: Any
     last_play_date: date | None
@@ -126,7 +124,7 @@ class StatsSource(Enum):
     game enters it through a session or through a record.
     """
 
-    #: Sessions, and records in scope.
+    #: Sessions, and a record the figure admits.
     BOTH = auto()
     #: A record states no sittings.
     SESSIONS_NO_SITTINGS = auto()
@@ -205,7 +203,7 @@ def _days_played_percent(unique_days: int, first: date, last: date) -> int:
     """Share of days played across the span actually played (all-time).
 
     Unlike the per-year metric (``unique_days / 365``), the all-time span is the
-    real number of days between the first and last session, so the result stays
+    real number of days between the first and last play, so the result stays
     meaningful (and ≤100%) across multiple years.
     """
     span = (last - first).days + 1
@@ -268,7 +266,7 @@ def _compute_stats_from_scoped_querysets(
     done = _games_at_status(library, *DONE_STATUSES)
     not_finished_q = ~Q(games__in=done) & ~completed_q
 
-    # ── Session figures, one reader each ─────────────────────────────────────
+    # ── Session and day figures, one reader each ─────────────────────────────────────
     longest = longest_session(library, year)
     most_sessions = most_sessions_game(library, year)
     highest_average = highest_average_game(library, year)
@@ -352,9 +350,10 @@ def _compute_stats_from_scoped_querysets(
     ranked_games = games_by_playtime(library, year=year, limit=LIST_CAP)
     ranked_games_count = games_by_playtime_queryset(library, year=year).count()
 
+    #: A bundle counts once, whichever of its games was played.
     played_purchases = library_purchases.filter(
-        Q(**{f"games__{GAME_SESSIONS}__in": sessions})
-        | Q(**{f"games__{GAME_RECORDS}__in": records_in_scope(library, year)})
+        Q(games__id__in=sessions.values(f"{SESSION_GAME}_id"))
+        | Q(games__id__in=records_in_scope(library, year).values(f"{RECORD_GAME}_id"))
     ).distinct()
     total_year_games = (
         played_purchases.count()
@@ -405,10 +404,10 @@ def _compute_stats_from_scoped_querysets(
         ),
         "first_play_game": first.game if first else None,
         "first_play_date": first.day if first else None,
-        "first_play_from_record": first.from_record if first else False,
+        "first_play_from_record": bool(first and first.source is PlaySource.RECORD),
         "last_play_game": last.game if last else None,
         "last_play_date": last.day if last else None,
-        "last_play_from_record": last.from_record if last else False,
+        "last_play_from_record": bool(last and last.source is PlaySource.RECORD),
         "stats_dropdown_year_range": available_stats_year_range(),
     }
 

@@ -8,19 +8,10 @@ the game's key, then the session's.
 from datetime import timedelta
 from typing import NamedTuple
 
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count
 
-from games.filters import GAME_SESSIONS
-from games.models import (
-    Game,
-    HistoricalPlaytimeQuerySet,
-    PlayerSession,
-    PlayerSessionQuerySet,
-    UserLibrary,
-)
-from games.reads.days import YearScope, year_days
-from games.reads.historical_playtime import contained_in
-from games.reads.historical_playtime_records import library_records
+from games.models import Game, PlayerSession, PlayerSessionQuerySet, UserLibrary
+from games.reads.days import YearScope
 from games.reads.player_sessions import GAME, library_sessions
 
 #: The tie-break's two game columns, spelled from a session.
@@ -49,27 +40,6 @@ def scoped_sessions(library: UserLibrary, year: YearScope) -> PlayerSessionQuery
     if year is None:
         return sessions
     return sessions.filter(effective_day__year=year)
-
-
-def records_in_scope(
-    library: UserLibrary, year: YearScope
-) -> HistoricalPlaytimeQuerySet:
-    """Live records wholly inside the year."""
-    records = library_records(library)
-    days = year_days(year)
-    return records if days is None else contained_in(records, days)
-
-
-#: A game's path to its records.
-GAME_RECORDS = "player_games__historical_playtime"
-
-
-def games_in_scope(library: UserLibrary, year: YearScope):
-    """A session in scope or contained record."""
-    return Game.objects.filter(
-        Q(**{f"{GAME_SESSIONS}__in": scoped_sessions(library, year)})
-        | Q(**{f"{GAME_RECORDS}__in": records_in_scope(library, year)})
-    ).distinct()
 
 
 def session_count(library: UserLibrary, year: YearScope) -> int:

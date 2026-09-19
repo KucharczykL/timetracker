@@ -348,6 +348,22 @@ def test_a_day_precision_record_moves_the_day_figures_too(
 
 
 @pytest.mark.django_db
+def test_a_bundle_two_records_reach_counts_once(owned_library):
+    first = Game.objects.create(library=owned_library, name="First")
+    second = Game.objects.create(library=owned_library, name="Second")
+    Purchase.objects.create(
+        library=owned_library,
+        price_currency="CZK",
+        date_purchased=datetime(2022, 1, 1, tzinfo=TZ),
+        type=Purchase.GAME,
+    ).games.set([first, second])
+    record_row([tracked_run(owned_library, first)], when="2022-03")
+    record_row([tracked_run(owned_library, second)], when="2022-04")
+
+    assert compute_stats(owned_library, None)["total_year_games"] == 1
+
+
+@pytest.mark.django_db
 def test_a_record_wider_than_a_year_counts_all_time_only(
     owned_library, played_and_recorded
 ):

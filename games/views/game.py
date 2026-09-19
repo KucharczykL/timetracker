@@ -76,6 +76,7 @@ from games.filters import (
     FindFilter,
     GameFilter,
     HistoricalPlaytimeFilter,
+    NarrowingLegs,
     PlayerSessionFilter,
     PlaythroughFilter,
     PurchaseFilter,
@@ -111,7 +112,11 @@ from games.reads.playergame_history import StatusEntry, status_history
 from games.reads.playthrough_completions import GAME_RUNS, reported_completion_day
 from games.reads.playthrough_numbering import numbered_for
 from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
-from games.reads.playtime import game_playtime, playtime_matching, playtime_sort_key
+from games.reads.playtime import (
+    game_playtime,
+    playtime_matching_both,
+    playtime_sort_key,
+)
 from games.reads.sums import PlaytimeBreakdown
 from games.reference_form import ReferenceSetForm
 from games.sorting import (
@@ -179,23 +184,29 @@ def games_for_list(
     One function, so the benchmark times the plan the page serves.
     """
     games = Game.objects.tracked_by(library).select_related("platform")
-    #: Narrows the Playtime column; None counts all.
-    session_filter: PlayerSessionFilter | None = None
+    #: Narrows the Playtime column; none counts all.
+    legs = NarrowingLegs(None, None)
     if game_filter is not None:
         context = filter_query_context_for_library(library)
         games = execute_filter(game_filter, games, context)
-        session_filter = game_filter.session_filter
+        legs = game_filter.narrowing()
     playtime_label = "Playtime"
-    if session_filter is None:
+    if legs.sessions is None and legs.records is None:
         #: The sort reuses the column's subqueries.
         games = games.annotate(filtered_playtime=playtime_sort_key(library)).alias(
             total_playtime=F("filtered_playtime")
         )
     else:
-        playtime_label = "Playtime (matching sessions)"
+        playtime_label = (
+            "Playtime (matching sessions)"
+            if legs.records is None
+            else "Playtime (matching)"
+        )
         #: An alias: only `?sort=playtime` reads it.
         games = games.alias(total_playtime=playtime_sort_key(library)).annotate(
-            filtered_playtime=playtime_matching(library, session_filter)
+            filtered_playtime=playtime_matching_both(
+                library, legs.sessions, legs.records
+            )
         )
     #: No column renders it; `?sort=finished` reads it.
     games = games.annotate(completed_day=reported_completion_day(library, GAME_RUNS))

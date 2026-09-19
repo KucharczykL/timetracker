@@ -220,7 +220,7 @@ carries for four fields. Stated once, in `stats_data.py`:
 | `month_playtimes` | yes | only when `when` lies inside the month |
 | `total_games`, `total_year_games` | yes | yes, by containment (#1126) |
 | `unique_days`, `first_play_*`, `last_play_*` | yes | only a record naming one day (#1126) |
-| `unique_days_percent` | derived from the three above | derived |
+| `unique_days_percent` | derived: all-time from the three above, per year from `unique_days` alone | derived |
 | `total_sessions`, `longest_session_*`, `highest_session_*` | yes | never |
 
 `playtime_by_day` and the streak helpers had no caller; #709 removed them.

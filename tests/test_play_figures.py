@@ -3,11 +3,19 @@
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from django.utils import timezone
 from historical_playtime_rows import record_row
 from session_rows import duration_only_row, timed_row, tracked_run
 
-from games.models import Game
-from games.reads.play_figures import PlayDay, distinct_days, first_play, last_play
+from games.models import Game, HistoricalPlaytime
+from games.reads.play_figures import (
+    PlayDay,
+    PlaySource,
+    distinct_days,
+    first_play,
+    games_in_scope,
+    last_play,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -113,7 +121,7 @@ def test_a_record_earlier_than_every_session_answers_the_first_play(
 
     earliest = first_play(owned_library, 2024)
 
-    assert earliest == PlayDay(date(2024, 1, 2), alpha, True)
+    assert earliest == PlayDay(date(2024, 1, 2), alpha, PlaySource.RECORD)
 
 
 def test_a_record_later_than_every_session_answers_the_last_play(owned_library, games):
@@ -123,7 +131,7 @@ def test_a_record_later_than_every_session_answers_the_last_play(owned_library, 
 
     latest = last_play(owned_library, 2024)
 
-    assert latest == PlayDay(date(2024, 9, 9), alpha, True)
+    assert latest == PlayDay(date(2024, 9, 9), alpha, PlaySource.RECORD)
 
 
 def test_a_session_and_a_record_at_one_game_on_one_day_answer_the_session(
@@ -134,8 +142,12 @@ def test_a_session_and_a_record_at_one_game_on_one_day_answer_the_session(
     timed(run, date(2024, 3, 5), 10, 1)
     record_row([run], when="2024-03-05")
 
-    assert first_play(owned_library, 2024) == PlayDay(date(2024, 3, 5), beta, False)
-    assert last_play(owned_library, 2024) == PlayDay(date(2024, 3, 5), beta, False)
+    assert first_play(owned_library, 2024) == PlayDay(
+        date(2024, 3, 5), beta, PlaySource.SESSION
+    )
+    assert last_play(owned_library, 2024) == PlayDay(
+        date(2024, 3, 5), beta, PlaySource.SESSION
+    )
 
 
 def test_a_record_naming_no_single_day_answers_neither_end(owned_library, games):
@@ -152,5 +164,91 @@ def test_a_record_and_a_session_on_one_day_answer_by_sort_name(owned_library, ga
     timed(tracked_run(owned_library, alpha), day, 10, 1)
     record_row([tracked_run(owned_library, beta)], when="2024-03-05")
 
-    assert first_play(owned_library, None) == PlayDay(day, beta, True)
-    assert last_play(owned_library, None) == PlayDay(day, alpha, False)
+    assert first_play(owned_library, None) == PlayDay(day, beta, PlaySource.RECORD)
+    assert last_play(owned_library, None) == PlayDay(day, alpha, PlaySource.SESSION)
+
+
+def test_two_records_on_one_day_answer_by_sort_name(owned_library, games):
+    beta, alpha = games
+    record_row([tracked_run(owned_library, beta)], when="2024-03-05")
+    record_row([tracked_run(owned_library, alpha)], when="2024-03-05")
+
+    assert first_play(owned_library, 2024) == PlayDay(
+        date(2024, 3, 5), beta, PlaySource.RECORD
+    )
+    assert last_play(owned_library, 2024) == PlayDay(
+        date(2024, 3, 5), alpha, PlaySource.RECORD
+    )
+
+
+def test_two_records_on_two_days_answer_each_end(owned_library, games):
+    beta, _alpha = games
+    run = tracked_run(owned_library, beta)
+    record_row([run], when="2024-09-09")
+    record_row([run], when="2024-01-02")
+
+    assert first_play(owned_library, 2024) == PlayDay(
+        date(2024, 1, 2), beta, PlaySource.RECORD
+    )
+    assert last_play(owned_library, 2024) == PlayDay(
+        date(2024, 9, 9), beta, PlaySource.RECORD
+    )
+
+
+def test_the_year_s_first_and_last_day_count(owned_library, games):
+    beta, _alpha = games
+    run = tracked_run(owned_library, beta)
+    record_row([run], when="2024-01-01")
+    record_row([run], when="2024-12-31")
+
+    assert distinct_days(owned_library, 2024) == 2
+    assert first_play(owned_library, 2024).day == date(2024, 1, 1)
+    assert last_play(owned_library, 2024).day == date(2024, 12, 31)
+
+
+def test_a_removed_record_leaves_every_figure(owned_library, games):
+    beta, _alpha = games
+    record = record_row([tracked_run(owned_library, beta)], when="2024-03-05")
+    HistoricalPlaytime.objects.filter(pk=record.pk).update(removed_at=timezone.now())
+
+    assert distinct_days(owned_library, 2024) == 0
+    assert first_play(owned_library, 2024) is None
+    assert list(games_in_scope(owned_library, 2024)) == []
+
+
+def test_another_library_s_record_is_out_of_scope(
+    owned_library, games, django_user_model
+):
+    beta, _alpha = games
+    other = django_user_model.objects.create_user(username="other").library
+    other_game = Game.objects.create(library=other, name="Elsewhere")
+    record_row([tracked_run(other, other_game)], when="2024-03-05")
+    record_row([tracked_run(owned_library, beta)], when="2024-06-06")
+
+    assert distinct_days(owned_library, 2024) == 1
+    assert list(games_in_scope(owned_library, 2024)) == [beta]
+
+
+def test_a_game_only_a_contained_record_reaches_is_in_scope(owned_library, games):
+    beta, _alpha = games
+    record_row([tracked_run(owned_library, beta)], when="2024-03")
+
+    assert list(games_in_scope(owned_library, 2024)) == [beta]
+    assert list(games_in_scope(owned_library, None)) == [beta]
+
+
+def test_a_record_wider_than_the_year_enters_all_time_alone(owned_library, games):
+    beta, _alpha = games
+    record_row([tracked_run(owned_library, beta)], when="2023/2024")
+
+    assert list(games_in_scope(owned_library, 2024)) == []
+    assert list(games_in_scope(owned_library, None)) == [beta]
+
+
+def test_a_game_with_a_session_and_a_record_is_in_scope_once(owned_library, games):
+    beta, _alpha = games
+    run = tracked_run(owned_library, beta)
+    timed(run, date(2024, 1, 1), 10, 1)
+    record_row([run], when="2024-03")
+
+    assert list(games_in_scope(owned_library, 2024)) == [beta]

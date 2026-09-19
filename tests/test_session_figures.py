@@ -4,12 +4,10 @@ from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.utils import timezone
-from historical_playtime_rows import record_row
 from session_rows import duration_only_row, timed_row, tracked_run
 
 from games.models import Game, PlayerSession
 from games.reads.session_figures import (
-    games_in_scope,
     has_sessions,
     highest_average_game,
     longest_session,
@@ -111,28 +109,3 @@ def test_a_removed_session_leaves_every_figure(owned_library, games):
 
     assert has_sessions(owned_library) is False
     assert most_sessions_game(owned_library, None) is None
-
-
-def test_a_game_only_a_contained_record_reaches_is_in_scope(owned_library, games):
-    beta, _alpha = games
-    record_row([tracked_run(owned_library, beta)], when="2024-03")
-
-    assert list(games_in_scope(owned_library, 2024)) == [beta]
-    assert list(games_in_scope(owned_library, None)) == [beta]
-
-
-def test_a_record_wider_than_the_year_enters_all_time_alone(owned_library, games):
-    beta, _alpha = games
-    record_row([tracked_run(owned_library, beta)], when="2023/2024")
-
-    assert list(games_in_scope(owned_library, 2024)) == []
-    assert list(games_in_scope(owned_library, None)) == [beta]
-
-
-def test_a_game_with_a_session_and_a_record_is_in_scope_once(owned_library, games):
-    beta, _alpha = games
-    run = tracked_run(owned_library, beta)
-    timed(run, date(2024, 1, 1), 10, 1)
-    record_row([run], when="2024-03")
-
-    assert list(games_in_scope(owned_library, 2024)) == [beta]

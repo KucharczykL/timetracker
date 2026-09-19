@@ -55,10 +55,19 @@ def _session_link(game_id, year, label: str = "") -> Node:
     )[Icon("play", size=ICON_BUTTON_SIZE_CLASS)]
 
 
-def _play_link(game, year, from_record: bool | None) -> Node:
-    """No session link where a record answered."""
+def _record_link(game_id, year, label: str = "") -> Node:
+    """The game's records in scope, where a record answered."""
+    return IconLink(
+        href=filter_url(stats_links.records_for_game(game_id, year, label)),
+        class_="ml-1 align-middle",
+        title="View historical playtime",
+    )[Icon("play", size=ICON_BUTTON_SIZE_CLASS)]
+
+
+def _play_link(game, year, from_record: bool) -> Node:
+    """Records where a record answered; sessions otherwise."""
     if from_record:
-        return Fragment()
+        return _record_link(game.id, year, game.name)
     return _session_link(game.id, year, game.name)
 
 
@@ -136,7 +145,7 @@ def _year_nav(year, year_range, url_template) -> Node:
 
 
 def _playtime_table(
-    ctx, presentation: DateTimePresentation, durations: DurationPresentation
+    ctx: StatsData, presentation: DateTimePresentation, durations: DurationPresentation
 ) -> Node:
     year = ctx.get("year")
     rows = [
@@ -232,7 +241,7 @@ def _playtime_table(
                 Fragment(
                     GameLink(first_game, first_game.name),
                     f" ({presentation.format(first_play_date, 'date') if first_play_date else 'N/A'})",
-                    _play_link(first_game, year, ctx.get("first_play_from_record")),
+                    _play_link(first_game, year, ctx["first_play_from_record"]),
                 ),
             )
         )
@@ -245,7 +254,7 @@ def _playtime_table(
                 Fragment(
                     GameLink(last_game, last_game.name),
                     f" ({presentation.format(last_play_date, 'date') if last_play_date else 'N/A'})",
-                    _play_link(last_game, year, ctx.get("last_play_from_record")),
+                    _play_link(last_game, year, ctx["last_play_from_record"]),
                 ),
             )
         )

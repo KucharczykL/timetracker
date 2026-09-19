@@ -1995,12 +1995,25 @@ class TestPurchaseFilterDates:
             original.to_q(UNRESTRICTED_FILTER_CONTEXT)
         )
 
-    def test_empty_subfilter_is_omitted_not_serialized_as_empty(self):
-        """An all-None sub-filter contributes no constraint, so to_json omits it
-        entirely rather than emitting `{"game_filter": {}}`."""
+    def test_an_empty_subfilter_still_states_has_one(self):
+        """An empty relation is EXISTS over any row: kept, not dropped."""
         from games.filters import GameFilter, PurchaseFilter
 
-        assert PurchaseFilter(game_filter=GameFilter()).to_json() == {}
+        blob = PurchaseFilter(game_filter=GameFilter()).to_json()
+        assert blob == {"game_filter": {}}
+        assert PurchaseFilter.from_json(blob).game_filter is not None
+
+    def test_where_refuses_a_bound_pair_on_a_string(self):
+        from games.filters import GameFilter
+
+        with pytest.raises(TypeError, match="takes no bound pair"):
+            GameFilter.where(name__within=("a", "b"))
+
+    def test_where_refuses_a_pair_that_is_not_one(self):
+        from games.filters import HistoricalPlaytimeFilter
+
+        with pytest.raises(TypeError, match="takes a \\(lower, upper\\) pair"):
+            HistoricalPlaytimeFilter.where(when__within="ab")
 
 
 class TestPlaythroughFilterDates:

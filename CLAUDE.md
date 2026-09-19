@@ -406,14 +406,20 @@ docs/           — Additional documentation
   figures -- count, longest, most sessions, highest average -- are readers in
   `games/reads/session_figures.py`, grouped on the session table, ties broken
   by value, `sort_name`, game key, session key; the day figures -- distinct
-  days, first and last play -- are `games/reads/play_figures.py`, which counts
-  a record on its day when it names exactly one (`when_lower == when_upper`)
-  and orders by day, `sort_name`, game key and no row key, so a
-  reclassification moves no answer. `games_in_scope` and the purchase count
-  take a record wholly in scope, and `games_played`/`games_in_month` say the
-  same through `GameFilter.historical_playtime_filter` and `Modifier.WITHIN`
-  ("is wholly within", offered on interval-valued dates alone; `BETWEEN` on
-  one is overlap). `compute_stats` calls them all, `make bench` times them.
+  days, first and last play, `games_in_scope` -- are
+  `games/reads/play_figures.py`, which counts a record on its day when it
+  names exactly one (`when_lower == when_upper`) and orders by day,
+  `sort_name`, game key and no row key, so a reclassification moves no
+  answer; the two record scopes are `records_in_scope` and `one_day_records`
+  in `games/reads/historical_playtime_records.py`. `games_in_scope` and the
+  purchase count take a record wholly in scope, and
+  `games_played`/`games_in_month` say the same through
+  `GameFilter.historical_playtime_filter` and `Modifier.WITHIN` ("is wholly
+  within", offered where a handler reads two bound columns; `BETWEEN` on one
+  is overlap; the date widget carries it in a hidden input). An empty
+  relation serializes as `{}` and means "has one". The game list narrows its
+  Playtime column by both legs a filter states (`GameFilter.narrowing`).
+  `compute_stats` calls them all, `make bench` times them.
   `readable_sessions()` is the row path list and API share; `games_for_list()`
   in `games/views/game.py` builds the game list's queryset so the bench times
   the served plan. Ran on the 2026-09-12 dump: replay clean, 0 of 4,649 figures

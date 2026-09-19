@@ -129,6 +129,15 @@ def all_records(year) -> HistoricalPlaytimeFilter:
     return HistoricalPlaytimeFilter.where(**_record_bounds(year))
 
 
+def records_for_game(game_id: UUID, year, label: str = "") -> HistoricalPlaytimeFilter:
+    """One game's records in scope, the game named as a pill."""
+    record_filter = all_records(year)
+    record_filter.game = UUIDMultiCriterion(
+        value=[game_id], labels={game_id: label} if label else {}
+    )
+    return record_filter
+
+
 def games_played(year) -> GameFilter:
     """A session or record in scope (`total_games`)."""
     return GameFilter(

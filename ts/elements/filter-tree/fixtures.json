@@ -1,28 +1,63 @@
 {
   "registry": {
     "game": {
-      "fields": ["name", "status", "year_released", "search", "session_count"],
-      "relations": { "session_filter": "playersession" },
-      "scopes": { "session_count": "playersession" }
+      "fields": [
+        "name",
+        "status",
+        "year_released",
+        "search",
+        "session_count"
+      ],
+      "relations": {
+        "session_filter": "playersession",
+        "historical_playtime_filter": "historicalplaytime"
+      },
+      "scopes": {
+        "session_count": "playersession"
+      }
     },
     "playersession": {
-      "fields": ["device", "note"],
-      "relations": { "game_filter": "game" },
+      "fields": [
+        "device",
+        "note",
+        "day"
+      ],
+      "relations": {
+        "game_filter": "game"
+      },
       "scopes": {}
     },
     "purchase": {
-      "fields": ["name"],
+      "fields": [
+        "name"
+      ],
       "relations": {},
       "scopes": {}
     },
     "playthrough": {
-      "fields": ["started", "completed", "days_to_finish", "note", "created_at"],
-      "relations": { "game_filter": "game" },
+      "fields": [
+        "started",
+        "completed",
+        "days_to_finish",
+        "note",
+        "created_at"
+      ],
+      "relations": {
+        "game_filter": "game"
+      },
       "scopes": {}
     },
     "historicalplaytime": {
-      "fields": ["provenance", "when", "duration_hours", "device", "note"],
-      "relations": { "game_filter": "game" },
+      "fields": [
+        "provenance",
+        "when",
+        "duration_hours",
+        "device",
+        "note"
+      ],
+      "relations": {
+        "game_filter": "game"
+      },
       "scopes": {}
     }
   },
@@ -30,15 +65,36 @@
     {
       "description": "single criterion",
       "model": "game",
-      "filter": { "status": { "value": ["completed"], "modifier": "INCLUDES" } }
+      "filter": {
+        "status": {
+          "value": [
+            "completed"
+          ],
+          "modifier": "INCLUDES"
+        }
+      }
     },
     {
       "description": "canonical OR",
       "model": "game",
       "filter": {
         "OR": [
-          { "status": { "value": ["completed"], "modifier": "INCLUDES" } },
-          { "status": { "value": ["played"], "modifier": "INCLUDES" } }
+          {
+            "status": {
+              "value": [
+                "completed"
+              ],
+              "modifier": "INCLUDES"
+            }
+          },
+          {
+            "status": {
+              "value": [
+                "played"
+              ],
+              "modifier": "INCLUDES"
+            }
+          }
         ]
       }
     },
@@ -46,16 +102,46 @@
       "description": "mixed name OR status (faithful grouping)",
       "model": "game",
       "filter": {
-        "name": { "value": "zelda", "modifier": "INCLUDES" },
-        "OR": [{ "status": { "value": ["completed"], "modifier": "INCLUDES" } }]
+        "name": {
+          "value": "zelda",
+          "modifier": "INCLUDES"
+        },
+        "OR": [
+          {
+            "status": {
+              "value": [
+                "completed"
+              ],
+              "modifier": "INCLUDES"
+            }
+          }
+        ]
       }
     },
     {
       "description": "OR with NOT",
       "model": "game",
       "filter": {
-        "OR": [{ "status": { "value": ["completed"], "modifier": "INCLUDES" } }],
-        "NOT": [{ "status": { "value": ["played"], "modifier": "INCLUDES" } }]
+        "OR": [
+          {
+            "status": {
+              "value": [
+                "completed"
+              ],
+              "modifier": "INCLUDES"
+            }
+          }
+        ],
+        "NOT": [
+          {
+            "status": {
+              "value": [
+                "played"
+              ],
+              "modifier": "INCLUDES"
+            }
+          }
+        ]
       }
     },
     {
@@ -65,8 +151,22 @@
         "NOT": [
           {
             "OR": [
-              { "status": { "value": ["completed"], "modifier": "INCLUDES" } },
-              { "status": { "value": ["played"], "modifier": "INCLUDES" } }
+              {
+                "status": {
+                  "value": [
+                    "completed"
+                  ],
+                  "modifier": "INCLUDES"
+                }
+              },
+              {
+                "status": {
+                  "value": [
+                    "played"
+                  ],
+                  "modifier": "INCLUDES"
+                }
+              }
             ]
           }
         ]
@@ -77,8 +177,20 @@
       "model": "game",
       "filter": {
         "NOT": [
-          { "status": { "value": ["completed"], "modifier": "INCLUDES" } },
-          { "name": { "value": "x", "modifier": "INCLUDES" } }
+          {
+            "status": {
+              "value": [
+                "completed"
+              ],
+              "modifier": "INCLUDES"
+            }
+          },
+          {
+            "name": {
+              "value": "x",
+              "modifier": "INCLUDES"
+            }
+          }
         ]
       }
     },
@@ -86,44 +198,103 @@
       "description": "relation ANY with child",
       "model": "game",
       "filter": {
-        "session_filter": { "device": { "value": ["018f5e66-e800-7000-8000-000000000001"], "modifier": "INCLUDES" } }
+        "session_filter": {
+          "device": {
+            "value": [
+              "018f5e66-e800-7000-8000-000000000001"
+            ],
+            "modifier": "INCLUDES"
+          }
+        }
       }
     },
     {
       "description": "relation NONE presence test",
       "model": "game",
-      "filter": { "session_filter": { "match": "NONE" } }
+      "filter": {
+        "session_filter": {
+          "match": "NONE"
+        }
+      }
     },
     {
       "description": "relation ANY presence test",
       "model": "game",
-      "filter": { "session_filter": {} }
+      "filter": {
+        "session_filter": {}
+      }
     },
     {
       "description": "field_comparisons precedence: (name OR status) AND comparison",
       "model": "game",
       "filter": {
-        "name": { "value": "x", "modifier": "INCLUDES" },
-        "OR": [ { "status": { "value": ["completed"], "modifier": "INCLUDES" } } ],
-        "field_comparisons": [ { "left": "original_year_released", "right": "year_released", "modifier": "LESS_THAN" } ]
+        "name": {
+          "value": "x",
+          "modifier": "INCLUDES"
+        },
+        "OR": [
+          {
+            "status": {
+              "value": [
+                "completed"
+              ],
+              "modifier": "INCLUDES"
+            }
+          }
+        ],
+        "field_comparisons": [
+          {
+            "left": "original_year_released",
+            "right": "year_released",
+            "modifier": "LESS_THAN"
+          }
+        ]
       }
     },
     {
       "description": "relation ALL quantifier",
       "model": "game",
-      "filter": { "session_filter": { "match": "ALL", "device": { "value": ["018f5e66-e800-7000-8000-000000000001"], "modifier": "INCLUDES" } } }
+      "filter": {
+        "session_filter": {
+          "match": "ALL",
+          "device": {
+            "value": [
+              "018f5e66-e800-7000-8000-000000000001"
+            ],
+            "modifier": "INCLUDES"
+          }
+        }
+      }
     },
     {
       "description": "negated relation (NOT EXISTS)",
       "model": "game",
-      "filter": { "NOT": [ { "session_filter": { "device": { "value": ["018f5e66-e800-7000-8000-000000000001"], "modifier": "INCLUDES" } } } ] }
+      "filter": {
+        "NOT": [
+          {
+            "session_filter": {
+              "device": {
+                "value": [
+                  "018f5e66-e800-7000-8000-000000000001"
+                ],
+                "modifier": "INCLUDES"
+              }
+            }
+          }
+        ]
+      }
     },
     {
       "description": "nested relation: game -> session -> game criterion",
       "model": "game",
       "filter": {
         "session_filter": {
-          "game_filter": { "name": { "value": "zelda", "modifier": "INCLUDES" } }
+          "game_filter": {
+            "name": {
+              "value": "zelda",
+              "modifier": "INCLUDES"
+            }
+          }
         }
       }
     },
@@ -134,7 +305,14 @@
         "session_count": {
           "value": 5,
           "modifier": "GREATER_THAN",
-          "scope": { "device": { "value": ["018f5e66-e800-7000-8000-000000000001"], "modifier": "INCLUDES" } }
+          "scope": {
+            "device": {
+              "value": [
+                "018f5e66-e800-7000-8000-000000000001"
+              ],
+              "modifier": "INCLUDES"
+            }
+          }
         }
       }
     },
@@ -147,7 +325,14 @@
             "session_count": {
               "value": 0,
               "modifier": "EQUALS",
-              "scope": { "device": { "value": ["018f5e66-e800-7000-8000-000000000001"], "modifier": "INCLUDES" } }
+              "scope": {
+                "device": {
+                  "value": [
+                    "018f5e66-e800-7000-8000-000000000001"
+                  ],
+                  "modifier": "INCLUDES"
+                }
+              }
             }
           }
         ]
@@ -162,8 +347,20 @@
           "modifier": "GREATER_THAN",
           "scope": {
             "OR": [
-              { "device": { "value": ["018f5e66-e800-7000-8000-000000000001"], "modifier": "INCLUDES" } },
-              { "note": { "value": "docked", "modifier": "INCLUDES" } }
+              {
+                "device": {
+                  "value": [
+                    "018f5e66-e800-7000-8000-000000000001"
+                  ],
+                  "modifier": "INCLUDES"
+                }
+              },
+              {
+                "note": {
+                  "value": "docked",
+                  "modifier": "INCLUDES"
+                }
+              }
             ]
           }
         }
@@ -172,14 +369,25 @@
     {
       "description": "scoped aggregate with empty scope normalizes to unscoped",
       "model": "game",
-      "filter": { "session_count": { "value": 1, "modifier": "EQUALS", "scope": {} } }
+      "filter": {
+        "session_count": {
+          "value": 1,
+          "modifier": "EQUALS",
+          "scope": {}
+        }
+      }
     },
     {
       "description": "session year-space: started_at year vs the game's year_released",
       "model": "playersession",
       "filter": {
         "field_comparisons": [
-          { "left": "started_at", "right": "playthrough__player_game__game__year_released", "modifier": "EQUALS", "granularity": "year" }
+          {
+            "left": "started_at",
+            "right": "playthrough__player_game__game__year_released",
+            "modifier": "EQUALS",
+            "granularity": "year"
+          }
         ]
       }
     },
@@ -188,7 +396,11 @@
       "model": "playersession",
       "filter": {
         "field_comparisons": [
-          { "left": "playthrough__player_game__game__name", "right": "device__name", "modifier": "EQUALS" }
+          {
+            "left": "playthrough__player_game__game__name",
+            "right": "device__name",
+            "modifier": "EQUALS"
+          }
         ]
       }
     },
@@ -197,7 +409,11 @@
       "model": "purchase",
       "filter": {
         "field_comparisons": [
-          { "left": "name", "right": "related_game__name", "modifier": "INCLUDES" }
+          {
+            "left": "name",
+            "right": "related_game__name",
+            "modifier": "INCLUDES"
+          }
         ]
       }
     },
@@ -205,54 +421,100 @@
       "description": "playthrough date-space: started vs created_at (date-vs-datetime)",
       "model": "playthrough",
       "filter": {
-        "started": { "value": "2025-03-15", "modifier": "EQUALS" },
-        "created_at": { "value": "2025-03-15", "modifier": "EQUALS" }
+        "started": {
+          "value": "2025-03-15",
+          "modifier": "EQUALS"
+        },
+        "created_at": {
+          "value": "2025-03-15",
+          "modifier": "EQUALS"
+        }
       }
     },
     {
       "description": "playthrough endpoints: completed between, days greater than",
       "model": "playthrough",
       "filter": {
-        "completed": { "value": "2025-01-01", "value2": "2025-12-31", "modifier": "BETWEEN" },
-        "days_to_finish": { "value": 3, "modifier": "GREATER_THAN" }
+        "completed": {
+          "value": "2025-01-01",
+          "value2": "2025-12-31",
+          "modifier": "BETWEEN"
+        },
+        "days_to_finish": {
+          "value": 3,
+          "modifier": "GREATER_THAN"
+        }
       }
     },
     {
       "description": "playthrough relation: runs at games matching a name",
       "model": "playthrough",
       "filter": {
-        "game_filter": { "name": { "value": "zelda", "modifier": "INCLUDES" } }
+        "game_filter": {
+          "name": {
+            "value": "zelda",
+            "modifier": "INCLUDES"
+          }
+        }
       }
     },
     {
       "description": "a percent in a text criterion survives the serializer",
       "model": "playthrough",
-      "filter": { "note": { "value": "100% run", "modifier": "INCLUDES" } }
+      "filter": {
+        "note": {
+          "value": "100% run",
+          "modifier": "INCLUDES"
+        }
+      }
     },
     {
       "description": "historical playtime: one provenance",
       "model": "historicalplaytime",
-      "filter": { "provenance": { "value": ["externally_measured"], "modifier": "INCLUDES" } }
+      "filter": {
+        "provenance": {
+          "value": [
+            "externally_measured"
+          ],
+          "modifier": "INCLUDES"
+        }
+      }
     },
     {
       "description": "historical playtime: when between two days",
       "model": "historicalplaytime",
       "filter": {
-        "when": { "value": "2020-01-01", "value2": "2022-12-31", "modifier": "BETWEEN" }
+        "when": {
+          "value": "2020-01-01",
+          "value2": "2022-12-31",
+          "modifier": "BETWEEN"
+        }
       }
     },
     {
       "description": "historical playtime: NOT a long duration",
       "model": "historicalplaytime",
       "filter": {
-        "NOT": [{ "duration_hours": { "value": 8, "modifier": "GREATER_THAN" } }]
+        "NOT": [
+          {
+            "duration_hours": {
+              "value": 8,
+              "modifier": "GREATER_THAN"
+            }
+          }
+        ]
       }
     },
     {
       "description": "historical playtime relation: records at games matching a name",
       "model": "historicalplaytime",
       "filter": {
-        "game_filter": { "name": { "value": "zelda", "modifier": "INCLUDES" } }
+        "game_filter": {
+          "name": {
+            "value": "zelda",
+            "modifier": "INCLUDES"
+          }
+        }
       }
     },
     {
@@ -260,7 +522,12 @@
       "model": "playersession",
       "filter": {
         "field_comparisons": [
-          { "left": "ended_at", "right": "playthrough__player_game__game__purchases__date_purchased", "modifier": "GREATER_THAN", "granularity": "date" }
+          {
+            "left": "ended_at",
+            "right": "playthrough__player_game__game__purchases__date_purchased",
+            "modifier": "GREATER_THAN",
+            "granularity": "date"
+          }
         ]
       }
     },
@@ -269,7 +536,13 @@
       "model": "playersession",
       "filter": {
         "field_comparisons": [
-          { "left": "ended_at", "right": "playthrough__player_game__game__purchases__date_purchased", "modifier": "GREATER_THAN", "granularity": "date", "quantifier": "ALL" }
+          {
+            "left": "ended_at",
+            "right": "playthrough__player_game__game__purchases__date_purchased",
+            "modifier": "GREATER_THAN",
+            "granularity": "date",
+            "quantifier": "ALL"
+          }
         ]
       }
     },
@@ -278,7 +551,13 @@
       "model": "playersession",
       "filter": {
         "field_comparisons": [
-          { "left": "ended_at", "right": "playthrough__player_game__game__purchases__date_purchased", "modifier": "GREATER_THAN", "granularity": "date", "quantifier": "NONE" }
+          {
+            "left": "ended_at",
+            "right": "playthrough__player_game__game__purchases__date_purchased",
+            "modifier": "GREATER_THAN",
+            "granularity": "date",
+            "quantifier": "NONE"
+          }
         ]
       }
     },
@@ -287,8 +566,60 @@
       "model": "purchase",
       "filter": {
         "field_comparisons": [
-          { "left": "name", "right": "games__name", "modifier": "INCLUDES", "quantifier": "ALL" }
+          {
+            "left": "name",
+            "right": "games__name",
+            "modifier": "INCLUDES",
+            "quantifier": "ALL"
+          }
         ]
+      }
+    },
+    {
+      "description": "game with a records relation",
+      "model": "game",
+      "filter": {
+        "historical_playtime_filter": {
+          "provenance": {
+            "value": [
+              "estimated"
+            ],
+            "modifier": "INCLUDES"
+          }
+        }
+      }
+    },
+    {
+      "description": "records wholly within a year",
+      "model": "game",
+      "filter": {
+        "OR": [
+          {
+            "session_filter": {
+              "day": {
+                "value": "2024-01-01",
+                "value2": "2024-12-31",
+                "modifier": "BETWEEN"
+              }
+            }
+          },
+          {
+            "historical_playtime_filter": {
+              "when": {
+                "value": "2024-01-01",
+                "value2": "2024-12-31",
+                "modifier": "WITHIN"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "description": "an empty relation states has-one",
+      "model": "game",
+      "filter": {
+        "session_filter": {}
       }
     }
   ]

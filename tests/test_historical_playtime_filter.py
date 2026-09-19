@@ -325,6 +325,23 @@ def test_between_reads_overlap(owned_library, shaped_records):
     ) == {"month", "year", "straddling", "open start"}
 
 
+def test_within_normalises_reversed_bounds(owned_library, shaped_records):
+    assert matched(
+        owned_library,
+        HistoricalPlaytimeFilter.where(when__within=("2024-12-31", "2024-01-01")),
+    ) == {"month", "year"}
+
+
+def test_within_sits_beside_between_in_the_vocabulary():
+    when = next(
+        entry
+        for entry in field_metadata(HistoricalPlaytimeFilter)
+        if entry["name"] == "when"
+    )
+    modifiers = when["modifiers"]
+    assert modifiers.index("WITHIN") == modifiers.index("NOT_BETWEEN") + 1
+
+
 def test_within_is_offered_on_an_interval_field_alone():
     from games.filters import PurchaseFilter
 

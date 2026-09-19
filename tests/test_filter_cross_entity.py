@@ -595,7 +595,8 @@ def test_historical_playtime_widget_json_selects_games(owned_library):
             }
         }
     )
-    assert measured.id in _game_ids(none_json)
+    unrecorded = Game.objects.create(library=owned_library, name="Unrecorded")
+    assert _game_ids(none_json) >= {measured.id, unrecorded.id}
     assert estimated.id not in _game_ids(none_json)
 
 

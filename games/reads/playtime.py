@@ -8,7 +8,11 @@ from uuid import UUID
 from django.db.models import DurationField, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Coalesce, NullIf, TruncMonth
 
-from games.filters import PlayerSessionFilter, filter_query_context_for_library
+from games.filters import (
+    HistoricalPlaytimeFilter,
+    PlayerSessionFilter,
+    filter_query_context_for_library,
+)
 from games.models import Game, GameQuerySet, PlayerSessionQuerySet, UserLibrary
 from games.reads.days import DayInterval, YearScope, year_days
 from games.reads.historical_playtime import (
@@ -16,6 +20,7 @@ from games.reads.historical_playtime import (
     historical_by_month,
     historical_by_platform,
     historical_summed_by_game,
+    historical_summed_by_game_matching,
     historical_total,
     historical_totals,
     historical_years,
@@ -239,6 +244,32 @@ def playtime_matching(
 ) -> PlaytimeSum:
     """Matching sessions' sum; NULL when none match."""
     return tracked_summed_by_game_matching(library, session_filter)
+
+
+def historical_matching(
+    library: UserLibrary, record_filter: HistoricalPlaytimeFilter
+) -> PlaytimeSum:
+    """Matching records' sum; NULL when none match."""
+    return historical_summed_by_game_matching(library, record_filter)
+
+
+def playtime_matching_both(
+    library: UserLibrary,
+    session_filter: PlayerSessionFilter | None,
+    record_filter: HistoricalPlaytimeFilter | None,
+) -> Playtime:
+    """The narrowed column: whichever legs the filter states, zero when none."""
+    tracked = (
+        ZERO
+        if session_filter is None
+        else zero_when_null(playtime_matching(library, session_filter))
+    )
+    historical = (
+        ZERO
+        if record_filter is None
+        else zero_when_null(historical_matching(library, record_filter))
+    )
+    return Playtime(tracked + historical)
 
 
 def total_playtime(

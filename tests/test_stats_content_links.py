@@ -228,7 +228,7 @@ def test_play_glyph_is_an_icon_link_without_an_underline(rendered):
 
 
 def test_a_play_a_record_alone_answers_prints_no_session_link(db):
-    """Sessions link omitted; top-10 row is #1105's."""
+    """The row links records; the top-10 row still links sessions."""
     library = get_user_model().objects.create_user(username="record-only").library
     game = create_tracked_game(library, "Recorded", status=PlayerGameStatus.PLAYED)
     record_row([tracked_run(library, game)], when=f"{YEAR}-03-05")
@@ -240,4 +240,7 @@ def test_a_play_a_record_alone_answers_prints_no_session_link(db):
     assert escape(game.name) in first_play_row
     sessions = _href(stats_links.sessions_for_game(game.id, YEAR, game.name))
     assert sessions not in first_play_row
+    assert (
+        _href(stats_links.records_for_game(game.id, YEAR, game.name)) in first_play_row
+    )
     assert sessions in html

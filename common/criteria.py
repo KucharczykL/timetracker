@@ -571,9 +571,8 @@ class DateCriterion(_ScalarCriterion):
             #: A scalar date: WITHIN is BETWEEN.
             if self.value is None or self.value2 is None:
                 raise FilterError(f"{m.value} requires two bounds (value and value2)")
-            return Q(
-                **{f"{field_name}__gte": self.value, f"{field_name}__lte": self.value2}
-            )
+            low, high = min(self.value, self.value2), max(self.value, self.value2)
+            return Q(**{f"{field_name}__gte": low, f"{field_name}__lte": high})
         if m == Modifier.NOT_BETWEEN:
             if self.value is None or self.value2 is None:
                 raise FilterError("NOT_BETWEEN requires two bounds (value and value2)")
@@ -1027,8 +1026,11 @@ class FilterField:
     # Widget inputs a field with no column.
     choices: tuple[ChoiceMeta, ...] | None = None
     nullable: bool | None = None
-    # States an interval, so WITHIN is offered.
-    interval: bool = False
+
+    @property
+    def interval(self) -> bool:
+        """The handler reads two bound columns, so WITHIN is offered."""
+        return getattr(self.handler, "interval_bounds", None) is not None
 
     def __post_init__(self) -> None:
         # Same loud-at-import contract as the lookup/handler check: reject the
@@ -1539,6 +1541,15 @@ class OperatorFilter:
             if suffix in ("isnull", "notnull"):
                 pass  # presence test ignores the value
             elif modifier in (Modifier.BETWEEN, Modifier.NOT_BETWEEN, Modifier.WITHIN):
+                if not issubclass(criterion_class, _ScalarCriterion):
+                    raise TypeError(
+                        f"{field_name!r} takes no bound pair for {modifier.value}"
+                    )
+                if not isinstance(value, tuple | list) or len(value) != 2:
+                    raise TypeError(
+                        f"{field_name!r} with {modifier.value} takes a "
+                        f"(lower, upper) pair, got {value!r}"
+                    )
                 lower_bound, upper_bound = value
                 criterion_arguments["value"] = lower_bound
                 criterion_arguments["value2"] = upper_bound
@@ -1922,11 +1933,10 @@ class OperatorFilter:
             if f.name in _OPERATOR_FIELDS:
                 if v:
                     result[f.name] = [sub.to_json() for sub in v]
-            elif (
-                isinstance(v, _Criterion)
-                or isinstance(v, OperatorFilter)
-                and f.name not in _OPERATOR_FIELDS
-            ):
+            elif isinstance(v, OperatorFilter) and f.name not in _OPERATOR_FIELDS:
+                #: An empty sub-filter still states "has one": keep it.
+                result[f.name] = v.to_json()
+            elif isinstance(v, _Criterion):
                 j = v.to_json()
                 if j:
                     result[f.name] = j
@@ -2786,9 +2796,10 @@ def _modifiers_for_field(
         "bool": [Modifier.EQUALS, Modifier.NOT_EQUALS],
     }
     modifiers = by_kind.get(kind, [])
+    #: A scalar date lists no BETWEEN synonym.
     if interval and kind == "date":
-        #: A scalar date lists no BETWEEN synonym.
-        modifiers = [*modifiers, Modifier.WITHIN]
+        after = modifiers.index(Modifier.NOT_BETWEEN) + 1
+        modifiers = [*modifiers[:after], Modifier.WITHIN, *modifiers[after:]]
     if not nullable:
         modifiers = [
             modifier
@@ -3189,6 +3200,8 @@ def temporal_interval_handler(
             )
         raise FilterError(f"Unsupported modifier {modifier} for a temporal endpoint")
 
+    #: The field's `interval` reads this off the handler.
+    handler.interval_bounds = (lower_field, upper_field)  # type: ignore[attr-defined]
     return handler
 
 

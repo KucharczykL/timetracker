@@ -28,12 +28,14 @@ from games.filters import (
 )
 from games.models import (
     Game,
+    HistoricalPlaytime,
     Platform,
     PlayerGameStatus,
     PlayerSession,
     Playthrough,
     Purchase,
 )
+from games.reads.play_figures import games_in_scope
 from games.reads.player_sessions import GAME, library_sessions
 from games.views import stats_links
 from games.views.stats_data import compute_stats
@@ -41,6 +43,7 @@ from timetracker.temporal import TemporalValue
 
 # Only the link URL is under test here; the id never reaches the database.
 SAMPLE_PLATFORM_ID = UUID("018f5e66-e800-7000-8000-000000000001")
+SAMPLE_GAME_ID = UUID("018f5e66-e800-7000-8000-000000000002")
 
 YEAR = 2024
 
@@ -148,6 +151,7 @@ def world(db):
 
     return {
         "library": library,
+        "recorded_game": recorded_game,
         "foreign_library": foreign_library,
         "pc": pc,
         "switch": switch,
@@ -321,12 +325,28 @@ def test_all_sessions_matches_total_sessions(world):
 
 def test_games_played_matches_total_games(world):
     stats = _stats(world, YEAR)
-    #: Two session games plus the in-year record.
-    assert stats["total_games"] == 3
+    #: The record-only game is inside the count.
+    assert world["recorded_game"] in games_in_scope(world["library"], YEAR)
     assert (
         _count(stats_links.games_played(YEAR), Game, world["library"])
         == stats["total_games"]
     )
+
+
+def test_games_in_month_drops_a_record_that_crosses_the_boundary(world):
+    straddling = create_tracked_game(
+        world["library"], "Straddling", status=PlayerGameStatus.PLAYED
+    )
+    record_row(
+        [tracked_run(world["library"], straddling)],
+        when=f"{YEAR}-06-15/{YEAR}-07-02",
+    )
+
+    june = _count(stats_links.games_in_month(YEAR, 6), Game, world["library"])
+    july = _count(stats_links.games_in_month(YEAR, 7), Game, world["library"])
+    played = _count(stats_links.games_played(YEAR), Game, world["library"])
+    assert (june, july) == (2, 1)
+    assert played == _stats(world, YEAR)["total_games"]
 
 
 def test_games_played_all_time_counts_every_record(world):
@@ -494,6 +514,13 @@ _NESTED_BUILDERS = [
         Purchase,
     ),
     ("games_played", lambda: stats_links.games_played(YEAR), Game),
+    ("games_played_alltime", lambda: stats_links.games_played(None), Game),
+    ("games_in_month", lambda: stats_links.games_in_month(YEAR, 5), Game),
+    (
+        "records_for_game",
+        lambda: stats_links.records_for_game(SAMPLE_GAME_ID, YEAR),
+        HistoricalPlaytime,
+    ),
     (
         "sessions_for_platform",
         lambda: stats_links.sessions_for_platform(SAMPLE_PLATFORM_ID, YEAR),

@@ -274,6 +274,7 @@ def DateRangeField(
     input_name_prefix: str,
     min_value: str = "",
     max_value: str = "",
+    modifier: str = "",
     calendar_toggle: bool = True,
 ) -> Node:
     """The visible half of the DateRangePicker: a single-input-looking
@@ -307,6 +308,13 @@ def DateRangeField(
             value=max_value,
             data_date_range_hidden="max",
             data_range_max="",
+        ),
+        #: A modifier the bounds cannot state; the reader keeps it.
+        Input(
+            type="hidden",
+            name=f"{input_name_prefix}-modifier",
+            value=modifier,
+            data_range_modifier="",
         ),
         date_segment_group(
             side="min",
@@ -498,6 +506,7 @@ def DateRangePicker(
     input_name_prefix: str,
     min_value: str = "",
     max_value: str = "",
+    modifier: str = "",
     path: FilterWidgetPath | None = None,
 ) -> Node:
     """A date-range widget: segmented manual entry plus a calendar popup.
@@ -527,6 +536,7 @@ def DateRangePicker(
             input_name_prefix=input_name_prefix,
             min_value=min_value,
             max_value=max_value,
+            modifier=modifier,
         ),
         DateRangeCalendar(input_name_prefix=input_name_prefix),
     ]
@@ -545,6 +555,7 @@ def DateRangePanel(
     input_name_prefix: str,
     min_value: str = "",
     max_value: str = "",
+    modifier: str = "",
     path: FilterWidgetPath | None = None,
 ) -> Node:
     """The dropdown-panel variant of :func:`DateRangePicker`: the
@@ -567,6 +578,7 @@ def DateRangePanel(
             input_name_prefix=input_name_prefix,
             min_value=min_value,
             max_value=max_value,
+            modifier=modifier,
             calendar_toggle=False,
         ),
         DateRangeCalendar(input_name_prefix=input_name_prefix, static=True),
