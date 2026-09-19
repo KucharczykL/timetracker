@@ -2527,6 +2527,15 @@ class TestFilterDepthGuard:
         with pytest.raises(FilterError, match="too deep"):
             parse_game_filter(bad)
 
+    def test_a_records_relation_cycle_is_bounded(self):
+        """historical_playtime_filter <-> game_filter, the newest cycle."""
+        node: dict = {}
+        for position in range(MAX_FILTER_DEPTH + 4, -1, -1):
+            key = "historical_playtime_filter" if position % 2 == 0 else "game_filter"
+            node = {key: node}
+        with pytest.raises(FilterError):
+            parse_game_filter(json.dumps(node))
+
     def test_operator_nesting_past_cap_raises(self):
         bad = json.dumps(_nest_operator(MAX_FILTER_DEPTH + 5))
         with pytest.raises(FilterError, match="too deep"):

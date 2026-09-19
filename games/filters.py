@@ -136,6 +136,7 @@ class GameFilter(OperatorFilter):
     session_filter: PlayerSessionFilter | None = None
     purchase_filter: PurchaseFilter | None = None
     playthrough_filter: PlaythroughFilter | None = None
+    historical_playtime_filter: HistoricalPlaytimeFilter | None = None
     platform_filter: PlatformFilter | None = None
 
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
@@ -212,6 +213,16 @@ class GameFilter(OperatorFilter):
                 self.playthrough_filter,
                 context=context,
                 related_model=Playthrough,
+                related_lookup="player_game__game__id",
+            )
+
+        if self.historical_playtime_filter is not None:
+            from games.models import HistoricalPlaytime
+
+            q &= relation_to_q(
+                self.historical_playtime_filter,
+                context=context,
+                related_model=HistoricalPlaytime,
                 related_lookup="player_game__game__id",
             )
 

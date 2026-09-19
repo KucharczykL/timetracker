@@ -147,6 +147,9 @@ def test_resolve_path_kind_resolves_leaf_kinds() -> None:
     assert resolve_path_kind(GameFilter, ["name"]) == "string"
     assert resolve_path_kind(GameFilter, ["year_released"]) == "number"
     assert resolve_path_kind(GameFilter, ["playthrough_filter", "completed"]) == "date"
+    assert (
+        resolve_path_kind(GameFilter, ["historical_playtime_filter", "when"]) == "date"
+    )
     assert resolve_path_kind(GameFilter, ["mastered"]) == "bool"
     assert resolve_path_kind(GameFilter, ["status"]) == "set"
 
