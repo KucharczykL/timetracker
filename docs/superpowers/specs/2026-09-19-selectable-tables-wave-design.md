@@ -346,9 +346,9 @@ Remove, in #712.
 
 ## Cross-wave handoffs
 
-- **The lists that stay** — Games, Devices and Platforms each get a
-  follow-up issue for the personality and the retirement of their column;
-  Purchases' table is #725–#736's.
+- **The lists that stay** — Games (#1134), Devices (#1135) and Platforms
+  (#1136) each inherit the personality and the retirement of their column
+  after #718; Purchases' table is #725–#736's.
 - **The Trash** — #795 inherits "recent batches": the batch's correlation id
   and the Undo route are what a Trash lists, and the correlation index is
   what it reads.
