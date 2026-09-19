@@ -3308,6 +3308,21 @@ class SelectableTableMountTest(SimpleTestCase):
         element = html.split("<selectable-table")[1].split(">")[0]
         self.assertIn('count="0"', element)
 
+    def test_a_named_role_still_emits_its_own_type(self):
+        """A prop annotated with a PEP 695 alias reaches the type map."""
+        from common.components.custom_elements import (
+            ElementSpec,
+            SelectableTableProps,
+            _ts_for_spec,
+        )
+
+        emitted = _ts_for_spec(
+            ElementSpec("selectable-table", "SelectableTable", SelectableTableProps)
+        )
+        self.assertIn("filter: string;", emitted)
+        self.assertIn("scope: string;", emitted)
+        self.assertIn("count: number;", emitted)
+
     def test_the_element_scopes_a_kept_selection(self):
         """The library and the table name it: neither the next person at this
         browser nor the table beside it inherits the selection."""

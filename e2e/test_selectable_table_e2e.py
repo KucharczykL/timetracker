@@ -9,7 +9,7 @@ import pytest
 from django.core.paginator import Paginator
 from django.http import HttpResponse
 from django.urls import path
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 from common import components
 from common.components.custom_elements import Dropdown, DropdownMenuPanel
@@ -341,10 +341,12 @@ def test_a_row_menu_opens_over_the_line_and_owns_escape(page: Page, live_server)
     panel = page.locator("[role='menu']").first
     panel.wait_for(state="visible")
     page.keyboard.press("Escape")
-    # The menu answered it; the selection stands.
-    assert _checkboxes(page).nth(0).is_checked()
+    # The menu answered it; the selection stands. Escape is decided in the
+    # task after the press, so the second reading has to be one that waits.
+    expect(panel).to_be_hidden()
+    expect(_checkboxes(page).nth(0)).to_be_checked()
     page.keyboard.press("Escape")
-    assert not _checkboxes(page).nth(0).is_checked()
+    expect(_checkboxes(page).nth(0)).not_to_be_checked()
 
 
 def test_the_name_keeps_its_floor_in_the_mode_at_a_phone_width(page: Page, live_server):
@@ -378,7 +380,8 @@ def test_a_tooltip_answers_escape_before_the_selection(page: Page, live_server):
     page.locator("pop-over button").first.click()
     page.locator("[data-pop-over-panel]:not([hidden])").first.wait_for()
     page.keyboard.press("Escape")
-    assert _checkboxes(page).nth(0).is_checked()
+    expect(page.locator("[data-pop-over-panel]:not([hidden])")).to_have_count(0)
+    expect(_checkboxes(page).nth(0)).to_be_checked()
 
 
 def test_the_stacked_identity_cell_at_a_phone_width(page: Page, live_server):

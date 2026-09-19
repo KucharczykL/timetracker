@@ -2069,7 +2069,7 @@ class TableRowData(TypedDict):
     cell_data: list[Cell]
     attributes: NotRequired[list[HTMLAttribute]]
     # Names the row for selection.
-    key: NotRequired[str]
+    key: NotRequired[SelectionKey]
     # One line under the name, below md.
     summary: NotRequired[str]
 
@@ -2103,11 +2103,15 @@ class Column(NamedTuple):
     priority: int = 1
 
 
+type SelectionKey = str  # a row's own name, e.g. "0193f0c2-…"
+type FilterJson = str  # the ?filter= JSON document, "" when unfiltered
+type SelectionScope = str  # the library and the table, e.g. "lib-1:Games"
+
+
 class SelectionDeclaration(TypedDict):
     """The declaration that makes a table selectable."""
 
-    # The list's filter JSON, empty when unfiltered.
-    filter: str
+    filter: FilterJson
 
 
 class TableData(TypedDict):
@@ -2129,7 +2133,7 @@ class TableData(TypedDict):
 
 def make_row(
     *cells: Cell,
-    key: str | None = None,
+    key: SelectionKey | None = None,
     summary: str | None = None,
     **attributes: object,
 ) -> TableRowData:
@@ -2663,7 +2667,7 @@ def SelectionBar() -> Node:
     )[SelectionToggle()]
 
 
-def selection_scope(request, caption_key: str, caption: str) -> str:
+def selection_scope(request, caption_key: str, caption: str) -> SelectionScope:
     """What tells one table's stored selection from another's.
 
     The library owns the rows, so a second person at the same browser does not
