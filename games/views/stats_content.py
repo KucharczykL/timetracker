@@ -55,6 +55,13 @@ def _session_link(game_id, year, label: str = "") -> Node:
     )[Icon("play", size=ICON_BUTTON_SIZE_CLASS)]
 
 
+def _play_link(game, year, from_record: bool | None) -> Node:
+    """No sessions link where a record alone answered: the list would be empty."""
+    if from_record:
+        return Fragment()
+    return _session_link(game.id, year, game.name)
+
+
 def _count_link(value, url: str) -> Node:
     return Link(href=url)[str(value)]
 
@@ -225,7 +232,7 @@ def _playtime_table(
                 Fragment(
                     GameLink(first_game, first_game.name),
                     f" ({presentation.format(first_play_date, 'date') if first_play_date else 'N/A'})",
-                    _session_link(first_game.id, year, first_game.name),
+                    _play_link(first_game, year, ctx.get("first_play_from_record")),
                 ),
             )
         )
@@ -238,7 +245,7 @@ def _playtime_table(
                 Fragment(
                     GameLink(last_game, last_game.name),
                     f" ({presentation.format(last_play_date, 'date') if last_play_date else 'N/A'})",
-                    _session_link(last_game.id, year, last_game.name),
+                    _play_link(last_game, year, ctx.get("last_play_from_record")),
                 ),
             )
         )

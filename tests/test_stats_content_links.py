@@ -7,7 +7,8 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.html import escape
-from session_rows import session_row
+from historical_playtime_rows import record_row
+from session_rows import session_row, tracked_run
 from tracked_games import create_tracked_game
 
 from common.date_time_presentation import (
@@ -224,3 +225,22 @@ def test_play_glyph_is_an_icon_link_without_an_underline(rendered):
     assert "underline" not in anchor
     assert "text-fg-link" not in anchor
     assert "decoration-transparent" not in anchor
+
+
+def test_a_play_a_record_alone_answers_prints_no_session_link(db):
+    """The game link stays; the sessions link would open an empty list.
+
+    The top-10 row above still links to sessions; that row is #1105's.
+    """
+    library = get_user_model().objects.create_user(username="record-only").library
+    game = create_tracked_game(library, "Recorded", status=PlayerGameStatus.PLAYED)
+    record_row([tracked_run(library, game)], when=f"{YEAR}-03-05")
+
+    html = str(stats_content(compute_stats(library, YEAR)))
+    first_play_row = html[html.index("First play") :]
+    first_play_row = first_play_row[: first_play_row.index("</tr>")]
+
+    assert escape(game.name) in first_play_row
+    sessions = _href(stats_links.sessions_for_game(game.id, YEAR, game.name))
+    assert sessions not in first_play_row
+    assert sessions in html

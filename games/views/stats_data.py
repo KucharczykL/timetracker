@@ -100,8 +100,11 @@ class StatsData(TypedDict):
     highest_session_average_game: Any
     first_play_game: Any
     first_play_date: date | None
+    #: A record alone answered; the row then offers no session link.
+    first_play_from_record: bool
     last_play_game: Any
     last_play_date: date | None
+    last_play_from_record: bool
     stats_dropdown_year_range: Any
     # --- per-year only (omitted for all-time, which hides these sections) ---
     total_games: NotRequired[int]
@@ -183,7 +186,13 @@ STATS_SOURCE_GROUPS: Mapping[StatsSource, tuple[StatsKey, ...]] = {
         "purchased_unfinished",
         "all_purchased_this_year",
     ),
-    StatsSource.NOT_A_FIGURE: ("year", "title", "stats_dropdown_year_range"),
+    StatsSource.NOT_A_FIGURE: (
+        "year",
+        "title",
+        "stats_dropdown_year_range",
+        "first_play_from_record",
+        "last_play_from_record",
+    ),
 }
 
 STATS_SOURCES: Mapping[StatsKey, StatsSource] = {
@@ -394,8 +403,10 @@ def _compute_stats_from_scoped_querysets(
         ),
         "first_play_game": first.game if first else None,
         "first_play_date": first.day if first else None,
+        "first_play_from_record": first.from_record if first else False,
         "last_play_game": last.game if last else None,
         "last_play_date": last.day if last else None,
+        "last_play_from_record": last.from_record if last else False,
         "stats_dropdown_year_range": available_stats_year_range(),
     }
 
