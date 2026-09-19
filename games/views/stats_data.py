@@ -59,10 +59,12 @@ from games.reads.playtime import (
     total_playtime,
 )
 from games.reads.session_figures import (
+    GAME_RECORDS,
     games_in_scope,
     highest_average_game,
     longest_session,
     most_sessions_game,
+    records_in_scope,
     session_count,
 )
 
@@ -124,13 +126,12 @@ class StatsSource(Enum):
     game enters it through a session or through a record.
     """
 
-    #: Sessions, and records: a playtime figure takes a record wholly
-    #: in scope, a day figure only a record naming one day.
+    #: Sessions, and records: a playtime figure and a played-game count
+    #: take a record wholly in scope, a day figure only a record naming
+    #: one day.
     BOTH = auto()
     #: A record states no sittings.
     SESSIONS_NO_SITTINGS = auto()
-    #: Counts games or purchases with a session.
-    SESSIONS_PLAYED_GAMES = auto()
     PURCHASES = auto()
     NOT_A_FIGURE = auto()
 
@@ -155,6 +156,8 @@ STATS_SOURCE_GROUPS: Mapping[StatsSource, tuple[StatsKey, ...]] = {
         "first_play_date",
         "last_play_game",
         "last_play_date",
+        "total_games",
+        "total_year_games",
     ),
     StatsSource.SESSIONS_NO_SITTINGS: (
         "total_sessions",
@@ -165,7 +168,6 @@ STATS_SOURCE_GROUPS: Mapping[StatsSource, tuple[StatsKey, ...]] = {
         "highest_session_average",
         "highest_session_average_game",
     ),
-    StatsSource.SESSIONS_PLAYED_GAMES: ("total_games", "total_year_games"),
     StatsSource.PURCHASES: (
         "this_year_finished_this_year_count",
         "total_spent",
@@ -353,7 +355,8 @@ def _compute_stats_from_scoped_querysets(
     ranked_games_count = games_by_playtime_queryset(library, year=year).count()
 
     played_purchases = library_purchases.filter(
-        **{f"games__{GAME_SESSIONS}__in": sessions}
+        Q(**{f"games__{GAME_SESSIONS}__in": sessions})
+        | Q(**{f"games__{GAME_RECORDS}__in": records_in_scope(library, year)})
     ).distinct()
     total_year_games = (
         played_purchases.count()

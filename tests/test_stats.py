@@ -18,7 +18,7 @@ from django.utils import timezone
 from historical_playtime_rows import record_row
 from session_rows import duration_only_row, session_row, tracked_run
 
-from games.models import Game, Platform, PlayerSession
+from games.models import Game, Platform, PlayerSession, Purchase
 from games.reads import playtime as playtime_reads
 from games.reads.playtime import (
     MonthPlaytime,
@@ -236,9 +236,10 @@ SESSIONS_ONLY_KEYS = (
     "highest_session_count_game",
     "highest_session_average",
     "highest_session_average_game",
-    "total_games",
-    "total_year_games",
 )
+
+#: The played-game counts: a record in scope counts, as the totals do.
+PLAYED_KEYS = ("total_games", "total_year_games")
 
 DAY_KEYS = (
     "unique_days",
@@ -251,7 +252,7 @@ DAY_KEYS = (
 
 
 def test_the_day_figures_read_both_sources():
-    for key in DAY_KEYS:
+    for key in DAY_KEYS + PLAYED_KEYS:
         assert STATS_SOURCES[key] is StatsSource.BOTH, key
     for key in SESSIONS_ONLY_KEYS:
         assert STATS_SOURCES[key] is not StatsSource.BOTH, key
@@ -274,6 +275,13 @@ def played_and_recorded(owned_library):
     )
     start = datetime(2022, 3, 1, 10, tzinfo=TZ)
     session_row(played, started_at=start, ended_at=start + HOUR)
+    #: A purchase, so the recorded game can enter the purchase count.
+    Purchase.objects.create(
+        library=owned_library,
+        price_currency="CZK",
+        date_purchased=start,
+        type=Purchase.GAME,
+    ).games.set([recorded])
     return played, recorded, platform
 
 
@@ -293,6 +301,11 @@ def test_a_contained_record_moves_only_the_playtime_figures(
         #: A month names no single day.
         assert _day_figures(after[year]) == _day_figures(before[year])
     assert after[2021]["total_hours"] == before[2021]["total_hours"]
+    assert after[2021]["total_games"] == before[2021]["total_games"]
+    assert after[2022]["total_games"] == before[2022]["total_games"] + 1
+    #: The year's purchase count also wants a game released that year.
+    assert after[2022]["total_year_games"] == before[2022]["total_year_games"]
+    assert after[None]["total_year_games"] == before[None]["total_year_games"] + 1
 
     this_year = after[2022]
     assert this_year["total_hours"] == PlaytimeBreakdown(HOUR, 3 * HOUR)
