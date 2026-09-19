@@ -12,7 +12,9 @@ statistics, budget, pages. The replay gate already holds: the stream in
 `tests/test_projection_replay_gate.py` records a record in every leg, one
 naming two runs, one restated, one removed and one restored, a reclassified
 session and one reclassified and undone. This design adds the other three
-instruments and runs all four on a dump fetched on the day of the run.
+instruments and runs all four on a dump fetched on the day of the run. It
+waits on #1126, which restores the charter's contribution table to the reads
+the statistics gate judges.
 
 ## Statistics
 
@@ -28,46 +30,40 @@ dispatches through `run_in_transaction`, which refuses to nest.
 The scopes are all-time and every year `played_years` answers, read before
 the conversion. `games/stats_parity.py` holds the pure half: the rules, over
 two `StatsData` per scope and a `ScopeIdentities` beside each -- the longest
-session's row, the first and last play's rows, the highest-count and
-highest-average games, the distinct days, the games and purchases the two
-count keys count. `PlayDay` gains the session it was read from, so first and
-last play name a row; every other identity the readers already answer. The
-command holds the reads and the conversion: `compute_stats` and the
-`session_figures` readers a scope, then `reviewable_sessions(library)`, each
-row through `reclassify_session`, the write the confirm page calls, under
-one correlation id with an idempotency key of a fresh token and the row's
-key, so a second run against one database converts nothing and says so
-rather than replaying. `statement_from_session` states day precision and
-provenance Manually entered. The converted rows' ids, days, games and the
-games' purchases, narrowed to each scope, are the `Converted` fact every rule
-reads.
+session's row and the highest-count and highest-average games, which the
+`session_figures` readers already answer. The command holds the reads and
+the conversion: `compute_stats` and those three readers a scope, then
+`reviewable_sessions(library)`, each row through `reclassify_session`, the
+write the confirm page calls, under one correlation id with an idempotency
+key of a fresh token and the row's key, so a second run against one database
+converts nothing and says so rather than replaying. `statement_from_session`
+states day precision and provenance Manually entered. The converted rows'
+ids, days, games and seconds, narrowed to each scope, are the `Converted`
+fact every rule reads.
 
-One rule per member of `STATS_SOURCE_GROUPS`, so a key added to the mapping
-without a rule fails the test that walks it:
+The rules prove the charter's contribution table, which #1126 restores to
+the reads ahead of this issue: a day-precision record counts in unique days
+and first and last play, a per-Game total makes a played game, and a record
+is never a sitting. One rule per member of `STATS_SOURCE_GROUPS`, so a key
+added to the mapping without a rule fails the test that walks it:
 
 | group or key | rule |
 |---|---|
-| `BOTH` | every `PlaytimeBreakdown` keeps its `total`; `tracked` falls and `historical` rises by the converted seconds its row's key holds in scope; row order kept |
+| `BOTH`, playtime keys | every `PlaytimeBreakdown` keeps its `total`; `tracked` falls and `historical` rises by the converted seconds its row's key holds in scope; row order kept |
+| `BOTH`, the counts and days -- `games_by_playtime_count`, `total_games`, `total_year_games`, `unique_days`, `unique_days_percent`, `first_play_*`, `last_play_*` | equal |
 | `PURCHASES` | equal, a queryset compared as its ordered keys |
 | `NOT_A_FIGURE` | equal |
 | `total_sessions` | down by the converted rows in scope, exactly |
-| `unique_days` | down by the days only converted rows held in scope, exactly |
-| `unique_days_percent` | equal to the page's formula over the after values of `unique_days`, `first_play_date` and `last_play_date` |
-| `longest_session_*`, `first_play_*`, `last_play_*` | unchanged, or the row before was converted |
+| `longest_session_*` | unchanged, or the row before was converted |
 | `highest_session_count*` | unchanged, or the game before held a converted row in scope |
 | `highest_session_average*` | unchanged, or the game before or the game after held a converted row in scope, because taking a short row away raises an average |
-| `total_games` | the games that left are exactly those with a converted row in scope and no session left in it |
-| `total_year_games` | the purchases that left are exactly those none of whose games keeps a session in scope; a purchase count, not a game count, in every scope |
 
-Longest session, first and last play sit under a total order that ends on the
-row's key, and a session count only falls, so no tie flips those without a
-converted row.
-
-The last two rules name a change the wave did not: both keys count through a
-session in scope, so a game whose sole session becomes a record leaves "games
-played" and takes its purchase with it. The gate attributes the change and
-passes; whether a contained record should count a game as played is a
-question for the read, filed as #1126.
+The longest session sits under a total order that ends on the row's key,
+and a session count only falls, so no tie flips either without a converted
+row. A record dated the session's day keeps every day, every first and last
+play and every played game where it was, which is why those rows read
+"equal" and not "attributed": a change there is the read disagreeing with
+the charter, and the gate says so.
 
 The verdict prints one line per changed figure with its attribution and
 exits non-zero on a change no rule attributes. `CommandFailed` from any row's
@@ -130,11 +126,11 @@ population it converts; the issue's 93 was counted before the review kept the
 bucket out, so the count is read, not assumed. The numbers land where #704's
 did: a Delivered block under the wave's delivery order, the benchmarks
 document, and this specification's Delivered section. The wave's "What was
-applied" gains the `total_games` finding.
+applied" names #1126's restoration of the charter's table.
 
 ## Out
 
 The parity command and the page diff stay out of `make check`. No read of
 the Historical list joins the six. The review population converts in one
-pass with no chunking. Nothing here changes a figure; #1126 owns
-`games_in_scope`.
+pass with no chunking. Nothing here changes a figure; #1126 owns the reads
+and lands first.
