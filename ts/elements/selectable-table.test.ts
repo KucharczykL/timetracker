@@ -43,8 +43,7 @@ function checkboxes(element: HTMLElement): HTMLInputElement[] {
 }
 
 function tick(element: HTMLElement, index: number, shiftKey = false): void {
-  // A dispatched click runs the checkbox's own activation behaviour first, as
-  // a real press does, so the handler reads the mark the press just made.
+  // The dispatched click toggles the box first, as a press does.
   checkboxes(element)[index].dispatchEvent(
     new MouseEvent("click", { bubbles: true, cancelable: true, shiftKey }),
   );

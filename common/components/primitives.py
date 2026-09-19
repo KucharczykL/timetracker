@@ -2066,11 +2066,9 @@ class TableRowData(TypedDict):
 
     cell_data: list[Cell]
     attributes: NotRequired[list[HTMLAttribute]]
-    # The row's name under a selectable table, rendered as
-    # ``data-selection-key``; the element reads it and the statement carries it.
+    # Names the row for selection.
     key: NotRequired[str]
-    # One line of text under the identity content, shown below ``md`` alone —
-    # where the columns that say the same thing have been dropped.
+    # One line under the name, below md.
     summary: NotRequired[str]
 
 
@@ -2104,11 +2102,9 @@ class Column(NamedTuple):
 
 
 class SelectionDeclaration(TypedDict):
-    """What a view says to make its table selectable. ``filter`` is the list's
-    own filter JSON (``""`` when the list is unfiltered), which the
-    all-matching statement carries; the matching count is the paginator's, so
-    it is not stated here."""
+    """The declaration that makes a table selectable."""
 
+    # The list's filter JSON, empty when unfiltered.
     filter: str
 
 
@@ -2125,8 +2121,7 @@ class TableData(TypedDict):
     # The resolved active sort (from `apply_sort`'s SortResult.terms). Present on
     # the sortable list views; omitted by views with no sortable columns.
     sort_terms: NotRequired[Sequence[SortTerm]]
-    # Present on a list that can act on many rows at once. Every row must then
-    # carry a ``key``.
+    # Present where a list selects rows.
     selection: NotRequired[SelectionDeclaration]
 
 
@@ -2144,10 +2139,8 @@ def make_row(
     :func:`TableRow` owns the styled row class; drop to the generic ``Tr`` builder
     for a custom-classed row.
 
-    ``key`` names the row for a selectable table; ``summary`` is one line under
-    the identity content, below ``md`` alone. Both are keyword-only and
-    declared before ``**attributes``, or they would render as ``<tr>``
-    attributes instead.
+    ``key`` and ``summary`` are keyword-only and declared before
+    ``**attributes``, or they would render as ``<tr>`` attributes instead.
     """
     if "class_" in attributes or "class" in attributes:
         raise ValueError(
@@ -2165,8 +2158,7 @@ def make_row(
     return data
 
 
-# The row's summary line: below md alone, where the columns that said the same
-# thing have been dropped. Weaker and smaller than the name above it.
+# The row's second line, below md alone.
 _ROW_SUMMARY_CLASS = (
     "md:hidden block overflow-hidden text-ellipsis "
     "text-type-micro text-body-subtle font-normal"
@@ -2228,8 +2220,7 @@ def TableRow(
             summary = data.get("summary")
             identity_children: list[Child] = [cell]
             if summary is not None:
-                # The cell is whitespace-nowrap and, below md, max-w-0, so the
-                # line states its own clipping rather than inheriting any.
+                # The nowrap cell clips nothing for it.
                 identity_children.append(
                     Div([("data-row-summary", "")], class_=_ROW_SUMMARY_CLASS)[summary]
                 )
@@ -2592,26 +2583,20 @@ def PageSizeSelect(request, current: int) -> Node:
     )
 
 
-# The selection line hides while <selectable-table> is not defined, in the
-# style of the column-drop fallback: with no scripting there are no checkboxes
-# to command, so the table renders exactly as it always did.
+# No scripting, no checkboxes, no line.
 _SELECTION_LINE_HIDE_CLASS = "[selectable-table:not(:defined)_&]:hidden"
 
-# The line sticks to the foot of the window while the mode is on, so a long
-# table keeps its commands in reach. The stratum is under the menus (z-20), so
-# an actions menu opens over the line rather than behind it. Stated on the
-# line's own class and scoped to the element's mode attribute, so nothing
-# styles it from a distance.
+# Sticky in the mode, under the menus.
 _SELECTION_LINE_STICKY_CLASS = (
     "[[data-selection-mode=on]_&]:sticky "
     "[[data-selection-mode=on]_&]:bottom-0 "
     "[[data-selection-mode=on]_&]:z-10"
 )
 
-# Checkbox() bakes no size, and a row checkbox is a touch target of its own.
+# Checkbox() bakes no size; 24px minimum.
 SELECTION_CHECKBOX_CLASS = "w-6 h-6"
 
-# Everything but the toggle waits for the mode: the element unhides this.
+# The element unhides these with the mode.
 _SELECTION_CONTROLS_CLASS = "flex items-center gap-3"
 
 
@@ -2619,13 +2604,7 @@ def SelectionLine(
     declaration: SelectionDeclaration,
     page_obj=None,
 ) -> Node:
-    """The footer's selection region: the Select toggle and, once the mode is
-    on, check-all for the page, the count, the matching scope, Clear and the
-    actions slot.
-
-    ``page_obj`` states the matching count. With no paginator the page is the
-    whole list, so there is no wider scope to offer and no such control.
-    """
+    """The footer's selection region."""
     controls: list[Node] = [
         Label(class_="flex items-center gap-2 text-type-body text-heading")[
             Input(
@@ -2643,6 +2622,7 @@ def SelectionLine(
             "0 selected"
         ],
     ]
+    # No paginator: the page is the set.
     if page_obj is not None:
         controls.append(
             ControlButton(
@@ -2653,13 +2633,10 @@ def SelectionLine(
     controls.append(
         ControlButton([("data-selection-clear", "")], variant="ghost")["Clear"]
     )
-    # #712 fills this; until then the line offers no act, which is what an
-    # empty selection would offer anyway.
+    # The tray fills this slot.
     controls.append(Div([("data-selection-actions", "")], class_="flex gap-2"))
 
-    # The element clones this per row when the mode turns on. A <template>
-    # renders nothing, so a page with no scripting still shows no checkbox,
-    # and the look stays where every other look is stated: in Python.
+    # Cloned per row; a template renders nothing.
     checkbox_template = Element(
         "template",
         [("data-selection-checkbox-template", "")],
@@ -2689,8 +2666,10 @@ def SelectionLine(
             [("data-selection-controls", ""), ("hidden", "")],
             class_=_SELECTION_CONTROLS_CLASS,
         )[*controls],
-        # The count above is read as it ticks; this region speaks only at a
-        # change of scope, so a single checkbox does not talk over itself.
+        # Two regions: the count ticks, this announces.
+        #
+        # One region would speak every tick, over the checkbox that already
+        # reports itself; this one is written at a change of scope alone.
         Div(
             [("data-selection-announcement", ""), ("role", "status")], class_="sr-only"
         ),
@@ -2761,9 +2740,10 @@ def StyledTable(
     rows = rows or []
     sort_terms = sort_terms or []
 
-    # Always, not in DEBUG alone (unlike the cell-count guard below): a ragged
-    # table is a cosmetic degradation, while a nameless row under a selectable
-    # table cannot be acted on and says nothing about why.
+    # Always, unlike the DEBUG cell-count guard.
+    #
+    # A ragged table is a cosmetic degradation; a nameless row under a
+    # selectable table cannot be acted on and says nothing about why.
     if selection is not None:
         for row in rows:
             if not row.get("key"):
@@ -2907,8 +2887,7 @@ def StyledTable(
         else footer
     )
     if selection is not None:
-        # A third, named region — not the general footer slot, which still
-        # holds one thing and refuses to share with pagination.
+        # A named region, not the general slot.
         inner_children.append(
             SelectionLine(selection, page_obj=page_obj if paginated else None)
         )
@@ -2916,9 +2895,7 @@ def StyledTable(
         inner_children.append(footer_node)
 
     if selection is not None:
-        # The selectable element wraps the whole composite — the rows it
-        # decorates and the line that commands them — and stays outside
-        # <responsive-table>, which keeps owning the column drop.
+        # Wraps the rows and their line.
         inner_children = [
             _SelectableTable(
                 class_="block",
@@ -2927,14 +2904,14 @@ def StyledTable(
             )[*inner_children]
         ]
 
-    # The shell owns the intrinsic radius symmetrically; `overflow-clip` clips
-    # the scroll wrapper and footer to it, so top+bottom corners are rounded
-    # regardless of which parts are present. `clip` rather than `hidden`: it
-    # clips the same way but is not a scroll container, so the selection line
-    # can stick to the window instead of to this box. The box-shadow follows this radius.
-    # Warning: never add `transform`/`filter`/`contain`/`backdrop-filter` here —
-    # it would make the shell a containing block for the `position: fixed`
-    # dropdown menus and clip them (see e2e/test_dropdown_clipping_e2e.py).
+    # The shell owns the radius and clips.
+    #
+    # `clip` rather than `hidden`: it clips the same way but is not a scroll
+    # container, so the sticky selection line can reach the window instead of
+    # this box. Never add `transform`/`filter`/`contain`/`backdrop-filter`
+    # here — it would make the shell a containing block for the
+    # `position: fixed` dropdown menus and clip them
+    # (see e2e/test_dropdown_clipping_e2e.py).
     return Div(class_="shadow-md sm:rounded-base overflow-clip", hx_boost="false")[
         *inner_children
     ]

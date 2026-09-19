@@ -24,10 +24,7 @@
 // name giving up a few pixels beats losing the row's actions.
 const NAME_FLOOR_PX = 160;
 
-// What the checkbox of a selectable table adds to that floor: the 24px touch
-// target plus the gap to the name. A stated constant, not a measurement: the
-// checkbox is one size everywhere, and measuring it per table would cost a
-// layout pass to learn what this line already says.
+// What a selection checkbox adds to that floor.
 const SELECTION_CHECKBOX_COST_PX = 32;
 
 // What a wrap column can cost at most: the 16rem TruncatedText cap plus cell
@@ -227,9 +224,7 @@ export class ResponsiveTableElement extends HTMLElement {
     return widths;
   }
 
-  /** Whether the host table is in its selection mode, where every identity
-   * cell also holds a checkbox. Read off the host rather than stated here:
-   * the mode turns on and off without this element being rebuilt. */
+  /** Whether the host table is selecting rows. */
   private isSelecting(): boolean {
     return (
       this.closest("[data-selection-mode]")?.getAttribute(

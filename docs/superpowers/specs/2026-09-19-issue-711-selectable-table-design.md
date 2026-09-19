@@ -1,84 +1,75 @@
 # A selectable table
 
-> This spec is 625 words. The band is 200 to 500. The overrun is an explicit
-> exception for this document: it holds one mode, one footer region, one
-> statement grammar, a row shape and a keyboard contract, and each is a rule
-> the code keeps. It is not a loosening of the band.
-
-`<selectable-table>` is the personality `StyledTable` gains for acting on many
-rows at once, around `<responsive-table>`, which keeps the column drop. The
-chrome's home is the wave's:
-[Selectable tables](2026-09-19-selectable-tables-wave-design.md).
+`<selectable-table>` is the personality `StyledTable` gains to act on many
+rows at once. It holds `<responsive-table>`, which keeps the column drop. The
+wave is [Selectable tables](2026-09-19-selectable-tables-wave-design.md).
 
 ## The mode
 
 Selection is a mode. A Select toggle in the footer turns it on, and only then
-is a checkbox in each row. The mode is off on every page load and is held
-nowhere else. Turning it off clears the selection; Escape clears the selection
-and keeps the mode, unless a menu in the table answered that Escape first.
+is there a checkbox in each row. The mode is off after each page load, and
+turned off it clears the selection. Escape clears the selection and keeps the
+mode; a menu that closes on that Escape keeps it, because a menu marks such a
+press spent.
 
-The element builds the checkboxes, so a page with no scripting renders none,
-and the selection line hides until the element is defined.
+The element makes the checkboxes, so a page with no scripting shows none.
+The selection line stays hidden until the element is defined.
 
 ## The checkbox
 
-The checkbox is the first child of the row's identity cell, which stays a
-`<th scope="row">` and keeps its pin above `md`. It is not a column:
-`MAX_DATA_TABLE_COLUMNS` and the drop classes count what they did before. It
-carries the row's name and the touch target every control holds.
+The checkbox is the first child of the identity cell, which stays a
+`<th scope="row">` and keeps its pin above `md`. It is not a column: the drop
+classes and `MAX_DATA_TABLE_COLUMNS` count as before. It carries the row name
+and a touch target.
 
-Only the checkbox selects, because the row holds links and immediate controls.
-Shift and a click, or Shift and Space, takes the range from the last checkbox
-toggled.
+Only the checkbox selects, because the row holds links and immediate
+controls. Shift and a click, or Shift and Space, takes the range from the
+last checkbox.
 
-A row that arrives while the mode is on is given a checkbox and keeps the mark
-its key held; a key the table no longer holds leaves the selection.
+A row that comes in while the mode is on gets a checkbox and keeps its mark.
+A key the table no longer holds leaves the selection.
 
 ## The footer
 
-The footer holds a second region, the selection line above the pagination row,
-and either stands alone. The general footer slot keeps refusing to share with
-pagination.
+The footer holds a second region, the selection line above the pagination
+row, and each can stand alone. The general slot still refuses pagination.
 
-The line holds the Select toggle, check-all for the page, the count and its
-scope, Clear, and the actions slot #712 fills; with nothing selected it offers
-no action. "Select all N matching" reads N from the paginator, so a table with
-none offers no such control: its page is the set.
+The line holds the Select toggle, the check-all for the page, the count and
+its scope, Clear, and the actions slot. "Select all N matching" reads N from
+the paginator, so a table with none offers no such control: its page is the
+set.
 
-While the mode is on the line sticks to the foot of the window, with the
-toggle, and stops at the end of its own table. A sticky child needs a shell
-that is not a scroll container, so the shell clips instead of hiding. The line
-sits under the menus, because the actions open one, and states its height, so
-the toasts and the version stamp stand off the corner they share with it.
+While the mode is on, the line sticks to the foot of the window and stops at
+the end of its own table. A sticky child needs a shell that does not scroll,
+thus the shell clips instead of hiding. The line stays under the menus and
+states its height, so the toasts and the version stamp stand off that
+corner.
 
 ## The statement
 
-A selection is one value: the keys, or `all` beside the list's filter, the
-count seen and the keys unmarked since, so unmarking a row under `all` records
-an exclusion and keeps the scope. The element holds the value and announces
-each change as `selectable-table:change`; the field that posts it is #712's.
+A selection is one value: the keys, or `all` beside the filter of the list,
+the count seen, and the keys unmarked since. A row unmarked under `all` records an
+exclusion and keeps the scope. The element holds the value and announces each
+change as `selectable-table:change`.
 
 ## What a view declares
 
-`make_row(..., key=...)` names the row, and the row states that name. The
-table declares that it is selectable; `TableData` carries the list's filter,
-and the count is the paginator's. A row with no name under such a table is
-refused at render, always and not in debug alone.
+`make_row(..., key=...)` names the row, and `TableData` carries the filter of
+the list; the count is the paginator's. A nameless row under such a table is
+refused at render, always.
 
 `make_row(..., summary=...)` is text under the identity content, shown below
-`md` alone: the stacked cell. It is text and not a cell, because a link there
-repeats the row's own. Each line clips on its own, and the checkbox and the
-line raise what the fit keeps free for the name below `md`.
+`md` alone. It is text and not a cell, because a link there repeats the row's
+own. It clips on its own, and the checkbox raises the space the fit keeps for
+the name.
 
 ## The announcement
 
-The element owns one `role="status"` region, because it owns the selection,
-and speaks at the four scope changes: the mode, check-all, all matching,
-Clear. A checkbox reports itself.
+The element owns one `role="status"` region. It speaks at the four changes of
+scope: the mode, check-all, all matching, Clear. A checkbox reports itself.
 
 ## Proof
 
-Vitest covers the selection model and the statement: the range, check-all's
-three states, the exclusions, a row arriving marked. One e2e page proves the
-mode, the keyboard, the sticky line, the region and the stacked cell at
-390 px. Pytest pins the row's name and the toggle.
+Vitest covers the selection model. One end-to-end page proves the mode, the
+keyboard, the sticky line, the region, and the stacked cell at 390 px. Pytest
+pins the row name.

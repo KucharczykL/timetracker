@@ -3039,7 +3039,7 @@ class TooltipPanelFontTest(unittest.TestCase):
 
 
 class SelectableRowTest(SimpleTestCase):
-    """The row's name and its mobile summary line (#711)."""
+    """The row's name and its mobile summary line."""
 
     @staticmethod
     def _selectable(rows, **kwargs):
@@ -3063,15 +3063,14 @@ class SelectableRowTest(SimpleTestCase):
         self.assertNotIn("data-selection-key", html)
 
     def test_make_row_treats_a_positional_argument_as_a_cell(self):
-        """``key`` and ``summary`` are keyword-only, so a positional value is a
-        cell — never a name that silently stops naming the row."""
+        """A positional value is a cell, never a name."""
         data = components.make_row("Game", "abc")
         self.assertEqual(data["cell_data"], ["Game", "abc"])
         self.assertNotIn("key", data)
 
     @override_settings(DEBUG=False)
     def test_selectable_table_refuses_a_row_with_no_key(self):
-        """Always, not in debug alone: a nameless row breaks an act silently."""
+        """Always, not in debug alone."""
         with self.assertRaises(ValueError):
             self._selectable([components.make_row("Game", "2025")])
 
@@ -3100,7 +3099,7 @@ class SelectableRowTest(SimpleTestCase):
         summary_class = identity_cell.split("2 hours")[0].rsplit('class="', 1)[1]
         summary_class = summary_class.split('"')[0]
         self.assertIn("md:hidden", summary_class)
-        # The cell is whitespace-nowrap, so the line clips on its own.
+        # The nowrap cell clips nothing for it.
         self.assertIn("overflow-hidden", summary_class)
         self.assertIn("text-ellipsis", summary_class)
 
@@ -3122,7 +3121,7 @@ class SelectableRowTest(SimpleTestCase):
 
 
 class SelectionLineTest(SimpleTestCase):
-    """The footer's second region (#711)."""
+    """The footer's second region."""
 
     @staticmethod
     def _paginated(**kwargs):
@@ -3204,7 +3203,7 @@ class SelectionLineTest(SimpleTestCase):
 
 
 class SelectableTableMountTest(SimpleTestCase):
-    """The element wraps the composite it commands (#711)."""
+    """The element wraps the composite it commands."""
 
     @staticmethod
     def _render(**kwargs):
@@ -3262,14 +3261,13 @@ class SelectableTableMountTest(SimpleTestCase):
 
 
 class BottomCornerTest(SimpleTestCase):
-    """The chrome that shares the bottom corner with the selection line stands
-    off it, each in its own class (#711)."""
+    """The chrome that shares the line's corner stands off it."""
 
     def test_toast_stack_stands_off_the_selection_line(self):
         from common.components.toast import TOAST_STACK_CLASS
 
         self.assertIn("bottom-[var(--selection-line,0px)]", TOAST_STACK_CLASS)
-        # Above the line on purpose: a toast is the answer to the act.
+        # Above the line: a toast answers the act.
         self.assertIn("z-50", TOAST_STACK_CLASS)
 
     def test_version_stamp_stands_off_the_selection_line(self):

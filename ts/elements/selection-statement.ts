@@ -1,10 +1,4 @@
-/** The selection a table holds, and the statement it makes of it.
- *
- * Pure: no DOM, no element. A selection is either the keys a person marked or
- * the whole matching set beside the exclusions taken off it since — never the
- * keys as a fallback for the set, because a page holds one page of keys and
- * the set is every row the filter matches.
- */
+/** A table's selection, and the statement it makes. */
 
 export type SelectionStatement =
   | { keys: string[] }
@@ -32,8 +26,7 @@ function copy(state: SelectionState): SelectionState {
   };
 }
 
-/** One row's mark. Under the matching set this records an exclusion, so the
- * scope survives a person taking one row back out of it. */
+/** One row's mark; under the set, an exclusion. */
 export function toggleKey(state: SelectionState, key: string): SelectionState {
   const next = copy(state);
   const marks = next.all ? next.except : next.keys;
@@ -42,8 +35,7 @@ export function toggleKey(state: SelectionState, key: string): SelectionState {
   return next;
 }
 
-/** Check-all for the page: every key on the page marked, or every one of them
- * taken back. */
+/** Check-all: the whole page marked, or taken back. */
 export function setPage(
   state: SelectionState,
   pageKeys: string[],
@@ -66,8 +58,7 @@ export function selectAllMatching(state: SelectionState): SelectionState {
   return next;
 }
 
-/** The keys between two rows of the page, inclusive, in page order. An anchor
- * the page no longer holds leaves the target alone. */
+/** The keys between two rows, inclusive. */
 export function rangeKeys(
   pageKeys: string[],
   anchorKey: string,
@@ -95,8 +86,7 @@ export function checkAllState(
   return marked === pageKeys.length ? "checked" : "indeterminate";
 }
 
-/** How many rows the selection holds. `matchingCount` is the paginator's, and
- * is read only under the matching set. */
+/** How many rows the selection holds. */
 export function selectionCount(
   state: SelectionState,
   matchingCount: number,
@@ -105,7 +95,7 @@ export function selectionCount(
   return Math.max(matchingCount - state.except.size, 0);
 }
 
-/** The statement, sorted so one selection reads as one value. */
+/** The statement, sorted: one selection, one value. */
 export function statementFor(
   state: SelectionState,
   filter: string,

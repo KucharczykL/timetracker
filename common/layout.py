@@ -74,9 +74,7 @@ def _main_script(mastered: bool) -> str:
 #: One page usually answers the whole scan.
 RESUME_PAGE_SIZE = 50
 
-# The build stamp's corner. Deliberately faint and decorative; fg-disabled is
-# the dimmest token. The offset reads the height a selectable table publishes
-# for its sticky selection line, so the stamp is never buried under it.
+# The build stamp's corner, off the selection line.
 VERSION_STAMP_CLASS = (
     "fixed left-2 bottom-[calc(0.5rem+var(--selection-line,0px))] "
     "text-type-micro text-fg-disabled"

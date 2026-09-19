@@ -1,16 +1,4 @@
-/** <selectable-table> — the personality a data table gains for acting on many
- * rows at once.
- *
- * Selection is a mode: off on every load, turned on by the Select toggle in
- * the footer's selection line. Only then does the element clone a checkbox
- * into each row's identity cell, so a page with no scripting renders none.
- * The element holds the selection, announces each change of scope, and
- * publishes the statement as `selectable-table:change` — the field that posts
- * it is #712's.
- *
- * The line's height is published as `--selection-line`, which the toast stack
- * and the version stamp read to stand off the corner they share with it.
- */
+/** <selectable-table> — a data table's selection mode. */
 
 import {
   readSelectableTableProps,
@@ -75,9 +63,7 @@ export class SelectableTableElement extends HTMLElement {
 
     const body = this.querySelector("tbody");
     if (body && typeof MutationObserver !== "undefined") {
-      // A row swapped in while the mode is on arrives undecorated, and a row
-      // swapped out takes its key with it. Attributes are not observed: the
-      // decoration is itself an attribute write.
+      // A swapped row arrives undecorated.
       this.rowObserver = new MutationObserver(() => this.onRowsChanged());
       this.rowObserver.observe(body, { childList: true });
     }
@@ -97,8 +83,7 @@ export class SelectableTableElement extends HTMLElement {
     return this.rows().map((row) => row.getAttribute("data-selection-key") ?? "");
   }
 
-  /** The mode, and with it every checkbox. Turning it off clears the
-   * selection: a mark nobody can see is a mark nobody stated. */
+  /** The mode, and with it every checkbox. */
   setMode(on: boolean): void {
     this.mode = on;
     this.toggleAttribute("data-selection-mode", false);
@@ -161,8 +146,7 @@ export class SelectableTableElement extends HTMLElement {
 
   private onKeyDown(event: KeyboardEvent): void {
     if (event.key === "Escape") {
-      // A menu inside the table answers Escape first and does not stop the
-      // event, so a cleared selection would be a second, unasked-for act.
+      // A menu that closed marks the press spent.
       if (event.defaultPrevented || !this.mode) return;
       this.onClear();
       return;
@@ -170,8 +154,10 @@ export class SelectableTableElement extends HTMLElement {
     if (event.key !== " " || !event.shiftKey) return;
     const key = this.keyOf(event.target);
     if (key === null || !this.anchorKey) return;
-    // The space would toggle the checkbox itself, which would take the anchor
-    // back out of the range this press is taking in.
+    // The space itself would toggle the anchor back.
+    //
+    // Without this the checkbox's own activation runs beside the range, and
+    // the row the range starts from ends the press unmarked.
     event.preventDefault();
     const checkbox = event.target as HTMLInputElement;
     this.applyRange(this.anchorKey, key, !checkbox.checked);
@@ -223,8 +209,7 @@ export class SelectableTableElement extends HTMLElement {
     return `${this.count()} selected`;
   }
 
-  /** The checkboxes, the check-all, the count and the statement, from one
-   * state — so nothing reads a mark off the DOM it wrote itself. */
+  /** One state, rendered to every part. */
   private render(): void {
     const pageKeys = this.pageKeys();
     for (const row of this.rows()) {
@@ -253,8 +238,7 @@ export class SelectableTableElement extends HTMLElement {
     if (this.announcement) this.announcement.textContent = sentence;
   }
 
-  /** Public so a test with no layout engine can drive it, as
-   * <responsive-table> exposes applyDecision. */
+  /** Public: jsdom has no layout engine. */
   publishLineHeight(): void {
     const style = document.documentElement.style;
     if (!this.mode || !this.line) {
@@ -266,8 +250,7 @@ export class SelectableTableElement extends HTMLElement {
   }
 }
 
-/** The row's name, for the checkbox that selects it: the identity cell's text
- * without the summary line, which repeats what the columns say. */
+/** The row's name, without its summary line. */
 function identityName(cell: HTMLElement): string {
   const clone = cell.cloneNode(true) as HTMLElement;
   clone.querySelectorAll(CHECKBOX_SELECTOR).forEach((node) => node.remove());

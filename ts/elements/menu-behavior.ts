@@ -308,10 +308,11 @@ export function attachMenu(
         if (!isOpen()) open();
         setActive(-1);
       } else if (event.key === "Escape") {
-        // An Escape that closed a menu is spent: a host that clears its own
-        // state on Escape (a selectable table's selection) reads
-        // defaultPrevented to tell a closing menu from a bare press. The
-        // panel's own handler already marks it this way.
+        // An Escape that closed a menu is spent.
+        //
+        // A host that clears its own state on Escape — a selectable table's
+        // selection — reads defaultPrevented to tell a closing menu from a
+        // bare press. The panel's own handler already marks it this way.
         if (isOpen()) event.preventDefault();
         close();
       }

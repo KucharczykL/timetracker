@@ -537,15 +537,11 @@ class ResponsiveTableProps(TypedDict):
 register_element("responsive-table", "ResponsiveTable", ResponsiveTableProps)
 
 
-# The <selectable-table> builder lives in primitives.py, wrapped around
-# <responsive-table>, which keeps owning the column drop. Its per-row contract
-# rides on the rows (data-selection-key); these two props are the scope of a
-# statement the page cannot state per row. Behavior:
-# ts/elements/selectable-table.ts.
+# Built in primitives.py; behavior in ts/elements/selectable-table.ts.
 class SelectableTableProps(TypedDict):
-    # The list's own filter JSON, carried by an all-matching statement.
+    # The list's filter JSON, for the wider scope.
     filter: str
-    # The paginator's matching count; 0 where the page is the whole list.
+    # The paginator's count; 0 without one.
     count: int
 
 

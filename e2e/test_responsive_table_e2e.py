@@ -182,9 +182,8 @@ def test_name_column_keeps_the_floor_at_mobile(
     """Below md the greed squeezes the name column; the fit budget must leave
     it at least the floor rather than letting kept columns crush it.
 
-    Measured on the name itself, not on the cell around it: the cell also
-    holds whatever a table puts beside the name — a selection checkbox — and a
-    floor satisfied by that chrome is no floor for the name."""
+    Measured on the name, not on the cell around it: chrome beside the name —
+    a selection checkbox — would otherwise satisfy the floor."""
     page = authenticated_page
     page.set_viewport_size({"width": 390, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")

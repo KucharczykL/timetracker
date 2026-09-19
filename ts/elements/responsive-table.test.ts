@@ -90,8 +90,7 @@ describe("columnCosts", () => {
   });
 
   it("raises the floor by the checkbox while a selection mode is on", () => {
-    // The floor budgets a name; with the mode on the same cell also holds the
-    // checkbox that selects the row.
+    // The mode adds a checkbox to that cell.
     expect(columnCosts(policies, [250, 120, 200], false, true)).toEqual([
       192, 120, 200,
     ]);

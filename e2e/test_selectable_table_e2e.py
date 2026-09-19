@@ -1,15 +1,8 @@
-"""Real-browser coverage for the selectable table (#711).
-
-The layers below this one are already proven: the selection model in vitest,
-the rendered markup in pytest. What only a browser states is the binding —
-the mode building checkboxes, Shift taking a range from the pointer and from
-the keyboard, the line sticking to the foot of the window, a menu answering
-Escape before the selection does, and the stacked identity cell at 390px.
+"""Real-browser proof of the selectable table.
 
 The page is synthetic, as the set-filter suite's is: a stripped ROOT_URLCONF
-with its own template, so the test needs no auth and no list view. StyledTable
-reverses no URL, so it renders happily there; the element modules are listed
-by hand, because render_page is not what serves this.
+with its own template, so the test needs no auth and no list view. The
+element modules are listed by hand, because render_page does not serve this.
 """
 
 import pytest
@@ -59,7 +52,7 @@ STATEMENT_LOG = """
 
 def _menu(index: int):
     return Dropdown(
-        # No id of our own: the dropdown contract stamps the trigger's.
+        # The dropdown contract stamps the trigger's id.
         trigger_element=components.Button()[f"Act {index}"],
         target_element=DropdownMenuPanel(
             items=[components.Li(role="presentation")["Nothing"]]
@@ -120,8 +113,7 @@ pytestmark = pytest.mark.django_db
 
 @pytest.fixture(autouse=True)
 def synthetic_urls(settings):
-    """Serve the two pages above instead of the site's own routes, so the test
-    needs neither a list view nor a login."""
+    """Serve the two pages above, not the site's routes."""
     settings.ROOT_URLCONF = "e2e.test_selectable_table_e2e"
 
 
@@ -171,8 +163,7 @@ def test_shift_click_takes_the_range(page: Page, live_server):
 def test_shift_space_takes_the_same_range_and_marks_the_anchor_once(
     page: Page, live_server
 ):
-    """The keyboard binding the review could not verify: the space must not
-    toggle the anchor a second time on its way through."""
+    """The space must not toggle the anchor twice."""
     _open(page, live_server)
     _select_mode(page)
     page.evaluate(STATEMENT_LOG)
@@ -239,8 +230,7 @@ def test_the_line_sticks_to_the_foot_of_the_window(page: Page, live_server):
     page.set_viewport_size({"width": 1280, "height": 600})
     _open(page, live_server)
     _select_mode(page)
-    # Mid-table: far enough that the line's own place in the page has scrolled
-    # past the fold, near enough that the table still runs below the window.
+    # Mid-table, with the table still below the window.
     page.evaluate("() => window.scrollTo(0, 300)")
     page.wait_for_timeout(100)
     bottom = page.evaluate(LINE_BOTTOM)
@@ -259,8 +249,7 @@ def test_the_line_stops_at_the_end_of_its_own_table(page: Page, live_server):
     nav_top = page.evaluate(
         "() => document.querySelector('nav').getBoundingClientRect().top"
     )
-    # At the end of the table the line takes its own place back, above the
-    # pagination row, rather than riding over it.
+    # At the end the line takes its place back.
     assert bottom < window_height
     assert bottom <= nav_top + 1
 
@@ -284,7 +273,7 @@ def test_a_row_menu_opens_over_the_line_and_owns_escape(page: Page, live_server)
     panel = page.locator("[role='menu']").first
     panel.wait_for(state="visible")
     page.keyboard.press("Escape")
-    # The menu answered it; the selection is still what the person stated.
+    # The menu answered it; the selection stands.
     assert _checkboxes(page).nth(0).is_checked()
     page.keyboard.press("Escape")
     assert not _checkboxes(page).nth(0).is_checked()
@@ -298,5 +287,5 @@ def test_the_stacked_identity_cell_at_a_phone_width(page: Page, live_server):
     box = summary.bounding_box()
     name_box = page.locator("tbody th").first.bounding_box()
     assert box is not None and name_box is not None
-    # A second line inside the same cell, not a second column.
+    # A second line, not a second column.
     assert box["y"] > name_box["y"]

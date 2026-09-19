@@ -11,9 +11,7 @@ from common.components.primitives import (
 
 _ToastStack = custom_element_builder("toast-stack")
 
-#: The corner the toasts stack in. The offset reads the height a selectable
-#: table publishes for its sticky selection line, so the two never cover each
-#: other; with no such line the variable is unset and the stack sits at 0.
+#: The corner the toasts stack in, off the selection line.
 TOAST_STACK_CLASS = (
     "fixed z-50 bottom-[var(--selection-line,0px)] right-0 flex flex-col "
     "items-end pointer-events-none p-4"
