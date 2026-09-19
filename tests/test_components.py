@@ -3036,3 +3036,86 @@ class TooltipPanelFontTest(unittest.TestCase):
         )
         panel_class = html.split('data-pop-over-panel=""')[1].split('class="')[1]
         self.assertIn("font-sans", panel_class.split('"')[0])
+
+
+class SelectableRowTest(SimpleTestCase):
+    """The row's name and its mobile summary line (#711)."""
+
+    @staticmethod
+    def _selectable(rows, **kwargs):
+        return str(
+            components.StyledTable(
+                columns=[components.Column("Name"), components.Column("Year")],
+                rows=rows,
+                data_table=True,
+                caption="Games",
+                selection={"filter": ""},
+                **kwargs,
+            )
+        )
+
+    def test_make_row_renders_the_key_as_a_row_attribute(self):
+        html = str(components.TableRow(components.make_row("Game", key="abc")))
+        self.assertIn('data-selection-key="abc"', html)
+
+    def test_a_row_with_no_key_carries_no_selection_attribute(self):
+        html = str(components.TableRow(components.make_row("Game")))
+        self.assertNotIn("data-selection-key", html)
+
+    def test_make_row_treats_a_positional_argument_as_a_cell(self):
+        """``key`` and ``summary`` are keyword-only, so a positional value is a
+        cell — never a name that silently stops naming the row."""
+        data = components.make_row("Game", "abc")
+        self.assertEqual(data["cell_data"], ["Game", "abc"])
+        self.assertNotIn("key", data)
+
+    @override_settings(DEBUG=False)
+    def test_selectable_table_refuses_a_row_with_no_key(self):
+        """Always, not in debug alone: a nameless row breaks an act silently."""
+        with self.assertRaises(ValueError):
+            self._selectable([components.make_row("Game", "2025")])
+
+    @override_settings(DEBUG=False)
+    def test_a_table_declaring_no_selection_admits_a_row_with_no_key(self):
+        html = str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game")],
+                data_table=True,
+                caption="Games",
+            )
+        )
+        self.assertNotIn("data-selection-key", html)
+
+    def test_summary_renders_inside_the_identity_cell_below_md_only(self):
+        html = str(
+            components.TableRow(
+                components.make_row("Game", key="abc", summary="2 hours"),
+                columns=[components.Column("Name")],
+                data_table=True,
+            )
+        )
+        identity_cell = html.split("</th>")[0]
+        self.assertIn("2 hours", identity_cell)
+        summary_class = identity_cell.split("2 hours")[0].rsplit('class="', 1)[1]
+        summary_class = summary_class.split('"')[0]
+        self.assertIn("md:hidden", summary_class)
+        # The cell is whitespace-nowrap, so the line clips on its own.
+        self.assertIn("overflow-hidden", summary_class)
+        self.assertIn("text-ellipsis", summary_class)
+
+    def test_a_row_with_no_summary_renders_one_line(self):
+        html = str(components.TableRow(components.make_row("Game")))
+        self.assertNotIn("md:hidden", html)
+
+    def test_a_table_with_no_selection_renders_as_before(self):
+        html = str(
+            components.StyledTable(
+                columns=[components.Column("Name"), components.Column("Year")],
+                rows=[components.make_row("Game", "2025")],
+                data_table=True,
+                caption="Games",
+            )
+        )
+        self.assertNotIn("selectable-table", html)
+        self.assertNotIn("data-selection-key", html)

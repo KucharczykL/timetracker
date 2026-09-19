@@ -2066,6 +2066,12 @@ class TableRowData(TypedDict):
 
     cell_data: list[Cell]
     attributes: NotRequired[list[HTMLAttribute]]
+    # The row's name under a selectable table, rendered as
+    # ``data-selection-key``; the element reads it and the statement carries it.
+    key: NotRequired[str]
+    # One line of text under the identity content, shown below ``md`` alone —
+    # where the columns that say the same thing have been dropped.
+    summary: NotRequired[str]
 
 
 type Align = Literal["left", "right"]  # column text alignment, e.g. "right"
@@ -2097,6 +2103,15 @@ class Column(NamedTuple):
     priority: int = 1
 
 
+class SelectionDeclaration(TypedDict):
+    """What a view says to make its table selectable. ``filter`` is the list's
+    own filter JSON (``""`` when the list is unfiltered), which the
+    all-matching statement carries; the matching count is the paginator's, so
+    it is not stated here."""
+
+    filter: str
+
+
 class TableData(TypedDict):
     """Canonical table shape consumed by :func:`StyledTable` /
     :func:`paginated_table_content`. Every list view builds this."""
@@ -2110,9 +2125,17 @@ class TableData(TypedDict):
     # The resolved active sort (from `apply_sort`'s SortResult.terms). Present on
     # the sortable list views; omitted by views with no sortable columns.
     sort_terms: NotRequired[Sequence[SortTerm]]
+    # Present on a list that can act on many rows at once. Every row must then
+    # carry a ``key``.
+    selection: NotRequired[SelectionDeclaration]
 
 
-def make_row(*cells: Cell, **attributes: object) -> TableRowData:
+def make_row(
+    *cells: Cell,
+    key: str | None = None,
+    summary: str | None = None,
+    **attributes: object,
+) -> TableRowData:
     """Build a :class:`TableRowData` from positional cells and htpy-style
     attribute kwargs (``id=...``, ``hx_select=...`` → ``hx-select`` …).
 
@@ -2120,6 +2143,11 @@ def make_row(*cells: Cell, **attributes: object) -> TableRowData:
     bare attribute, ``False``/``None`` omitted. Passing a ``class`` is rejected —
     :func:`TableRow` owns the styled row class; drop to the generic ``Tr`` builder
     for a custom-classed row.
+
+    ``key`` names the row for a selectable table; ``summary`` is one line under
+    the identity content, below ``md`` alone. Both are keyword-only and
+    declared before ``**attributes``, or they would render as ``<tr>``
+    attributes instead.
     """
     if "class_" in attributes or "class" in attributes:
         raise ValueError(
@@ -2127,10 +2155,22 @@ def make_row(*cells: Cell, **attributes: object) -> TableRowData:
             "styled row class. Use the generic Tr builder for a custom-classed row."
         )
     data: TableRowData = {"cell_data": list(cells)}
+    if key is not None:
+        data["key"] = key
+    if summary is not None:
+        data["summary"] = summary
     attrs = _attrs_from_kwargs(attributes)
     if attrs:
         data["attributes"] = attrs
     return data
+
+
+# The row's summary line: below md alone, where the columns that said the same
+# thing have been dropped. Weaker and smaller than the name above it.
+_ROW_SUMMARY_CLASS = (
+    "md:hidden block overflow-hidden text-ellipsis "
+    "text-type-micro text-body-subtle font-normal"
+)
 
 
 def TableRow(
@@ -2161,6 +2201,9 @@ def TableRow(
         "hover:text-heading"
     )
     tr_attrs: list[HTMLAttribute] = [("class", tr_class), *data.get("attributes", [])]
+    key = data.get("key")
+    if key is not None:
+        tr_attrs.append(("data-selection-key", key))
 
     # A ragged row is a documented prod degradation (see StyledTable's DEBUG
     # cell-count guard), so a missing column is read as "no policy", never as
@@ -2182,6 +2225,12 @@ def TableRow(
             # The row header has always been single-line; only an explicit
             # wrap opt-out releases it.
             wrap_class = "" if column and column.wrap else "whitespace-nowrap "
+            summary = data.get("summary")
+            identity_children: list[Child] = [cell]
+            if summary is not None:
+                # The cell is whitespace-nowrap and, below md, max-w-0, so the
+                # line states its own clipping rather than inheriting any.
+                identity_children.append(Div(class_=_ROW_SUMMARY_CLASS)[summary])
             cell_elements.append(
                 Th(
                     scope="row",
@@ -2190,7 +2239,7 @@ def TableRow(
                         f"{wrap_class}"
                         f"{column_class}"
                     ).strip(),
-                )[cell]
+                )[*identity_children]
             )
         else:
             nowrap = data_table and not (column and column.wrap)
@@ -2553,6 +2602,7 @@ def StyledTable(
     data_table: bool = False,
     caption: str = "",
     caption_key: str = "",
+    selection: SelectionDeclaration | None = None,
 ) -> Node:
     """Styled, paginated table — the opinionated wrapper over the generic
     ``Table`` primitive (shadow, rounded, zebra rows, responsive column-hiding,
@@ -2582,6 +2632,9 @@ def StyledTable(
     ``caption_key`` is what makes the caption's id unique where one page holds
     several tables that a reader would name the same. The id is hashed from the
     caption otherwise, so two equal captions would resolve to one element.
+
+    ``selection`` makes the table selectable: every row must then carry a
+    ``key``, and the footer gains the selection line.
     """
     if data_table and not caption:
         raise ValueError(
@@ -2598,6 +2651,18 @@ def StyledTable(
     columns = columns or []
     rows = rows or []
     sort_terms = sort_terms or []
+
+    # Always, not in DEBUG alone (unlike the cell-count guard below): a ragged
+    # table is a cosmetic degradation, while a nameless row under a selectable
+    # table cannot be acted on and says nothing about why.
+    if selection is not None:
+        for row in rows:
+            if not row.get("key"):
+                raise ValueError(
+                    "StyledTable(selection=...) needs a key on every row: an "
+                    "unnamed row cannot be selected. Pass make_row(..., "
+                    f"key=...) for {row['cell_data']!r}."
+                )
 
     # Dev-only guard: a row must have one cell per column, else cells render
     # misaligned under the headers and the position-based mobile column-hiding
@@ -2788,4 +2853,5 @@ def paginated_table_content(
         page_size=page_size,
         data_table=True,
         caption=data["caption"],
+        selection=data.get("selection"),
     )
