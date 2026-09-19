@@ -108,18 +108,29 @@ dropping. The charter's rules hold, and this wave settles the shape:
   builder does not know it is there. Only the checkbox selects; the row's
   links and immediate controls keep their meaning. The checkbox is not a
   column and does not count against `MAX_DATA_TABLE_COLUMNS`.
-- The header checkbox selects the page. On a filtered list it is followed by
-  "Select all N matching", N read from the paginator, which the tray shows
-  as the selection's scope.
+- Selection is a mode. A Select toggle in the table's footer turns it on,
+  and only then does the checkbox render in the identity cell. The mode is
+  off on every page load, stored nowhere: the table a person reads most
+  days is unchanged, and a selection is cleared on navigation anyway, so a
+  remembered mode would carry an empty selection. There is no header
+  checkbox. Check-all for the page, "Select all N matching" with N read
+  from the paginator, the count, Clear and the actions all live in the
+  footer's selection line, which the toggle opens above the pagination
+  row. Prior art, settled by the user: PatternFly, Carbon, Polaris, Helios
+  and SABnzbd's Glitter queue, whose check-all also lives in its multi-edit
+  bar and whose rows also do not toggle on click.
 - Selection lives in the page and nowhere else. Navigating a page clears it.
   A selection that must outlive a page is the "all matching" statement.
+  The cost of the mode: after #718 a single-row act is three presses,
+  Select, the checkbox, the action, one more than the charter counted.
 - Below `md` the identity cell is today a shrinkable, single-line name cell,
   and nothing stacks. #711 builds the stacked cell: the checkbox beside the
   row's essential summary on two lines, while lower-priority columns keep
   dropping as `<responsive-table>` decides. This is #716's whole substance:
   the mobile organizer is the table's own personality, not a second screen.
 - Keyboard: Space toggles the focused checkbox, Shift+Space extends from the
-  last toggled row, the header checkbox is a tri-state control, and the
+  last toggled row, Shift+click on a checkbox takes a range, the footer's
+  check-all is a tri-state control, and the
   element announces the count through one live region it owns, because it
   owns the selection; the tray shows the same count and announces nothing.
   The contract is verified with Orca in #718, on the finished pages.
@@ -128,14 +139,15 @@ dropping. The charter's rules hold, and this wave settles the shape:
   shows the table it shows today. The runner reads one shape, the selection
   statement below; a second, one-field-per-row shape for scripting off was
   rejected, because it doubles the runner's grammar for a reader that also
-  never sees the tray. After #718 such a reader has no per-row act either,
+  never sees the selection line. After #718 such a reader has no per-row act either,
   and that is the accepted cost.
 
 The selection travels as the **selection statement**: one hidden field
-holding a JSON list of row keys, or the word `all` beside the list's filter
-JSON and the count seen. It is always POSTed, because a page of keys does
-not fit a URL. The confirmation resolves it under the library into the keys
-the person saw, at the instant the confirmation rendered, and from then on
+holding a JSON list of row keys, or `all` beside the list's filter JSON,
+the count seen and the keys unchecked since, so an "all matching" selection
+records exclusions rather than falling back to keys. It is always POSTed,
+because a page of keys does not fit a URL. The confirmation resolves it
+under the library into the keys the person saw, the exclusions taken out, at the instant the confirmation rendered, and from then on
 the act names those keys and no others: a row gone by the act is counted
 lost, never converted; a row that entered the filter after the confirmation
 rendered is never touched.
@@ -148,9 +160,14 @@ count and gets acted on unseen, and the act stops meaning "these rows".
 
 ## The tray
 
-One `<selection-tray>` per selectable table, rendered by the server beneath
-the table and shown by the element once a row is selected: the selected count
-and scope, a Clear control, and the actions the table's view declares.
+The tray is the footer's selection line, not a surface of its own.
+`StyledTable`'s footer slot holds one region today and refuses a second;
+#711 makes it a composite the table builds: the selection line above the
+pagination row, either alone, so a table with no pagination, Game detail's
+playthroughs and records, gets the selection half by itself. #711 ships the
+line with the count and scope, check-all, "Select all N matching" and Clear,
+and an empty actions slot; #712 fills the slot with the actions the table's
+view declares.
 
 A `BulkAction` is a declaration, not a view: label, allowed cardinality
 (`one`, `many`), the confirmation route, and, for a `many` action, the
@@ -163,8 +180,8 @@ and Was-an-estimate exist today as `SessionActions` and keep their routes.
 Finish stays in the row: a running session is finished where it runs, the
 charter's named immediate control, beside the game-status selector.
 
-The tray is the same element on every table, and the actions differ by view.
-Nothing about the tray knows sessions.
+The selection line is the same on every table, and the actions differ by
+view. Nothing about it knows sessions.
 
 ## The runner
 
@@ -323,17 +340,19 @@ judged.
 
 ## Delivery order
 
-1. **#711** TABLE-01 — `<selectable-table>`: the checkbox in the identity
-   cell, page and all-matching selection, the selection statement, the
-   keyboard contract, the stacked identity cell below `md`. Proven on a
-   synthetic e2e page; nothing on `main` uses it yet. Absorbs #716.
+1. **#711** TABLE-01 — `<selectable-table>`: the Select toggle, the footer
+   composite with the selection line's count, check-all, all-matching and
+   Clear beside the pagination row, the checkbox in the identity cell, the
+   selection statement, the keyboard contract, the stacked identity cell
+   below `md`. Proven on a synthetic e2e page; nothing on `main` uses it
+   yet. Absorbs #716.
 2. **#713** TABLE-03 — the runner: `BulkAction`, the confirmation and
    progress pages, token and chunks, the two indexes and the aggregate
    reader, batch Undo with the partial report; the reclassification rebuilt
    on it, reached from today's Library button. Closes #1125 and #1123.
-3. **#712** TABLE-02 — `<selection-tray>` and bulk Remove on the four
-   tables; the reclassification moves into the tray and the Library page
-   keeps its count.
+3. **#712** TABLE-02 — the selection line's actions slot and bulk Remove on
+   the four tables; the reclassification moves into the line and the
+   Library page keeps its count.
 4. **#714** ORG-01 — bulk move: the confirmation with `<playthrough-select>`
    and the new-run field, the bucket removed when emptied, cross-game
    selections refused.
@@ -413,6 +432,12 @@ confirmation is a two-POST flow the removal helper does not model; the move
 inverse needs an aggregate reader and a second index; the stacked cell is
 built, not inherited; run grouping is a column, not header rows; the
 Library copy starts promising an Undo rather than stopping.
+
+Amended after #711's planning: selection is a mode a footer toggle opens,
+with no header checkbox, and the tray is the footer's selection line, so
+the footer composite and the line's furniture moved from #712 into #711;
+the live region is the element's; selection needs scripting; an "all
+matching" selection records exclusions.
 
 Deviations recorded: the empty bucket is removed, not archived; Finish stays
 inline as an immediate control; a cross-game move is refused rather than
