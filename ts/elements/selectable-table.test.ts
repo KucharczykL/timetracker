@@ -9,7 +9,11 @@ beforeEach(() => {
   sessionStorage.clear();
 });
 
-function mount(keys: string[], filter = '{"year":2025}'): HTMLElement {
+function mount(
+  keys: string[],
+  filter = '{"year":2025}',
+  count = "50",
+): HTMLElement {
   const rows = keys
     .map(
       (key) =>
@@ -18,7 +22,7 @@ function mount(keys: string[], filter = '{"year":2025}'): HTMLElement {
     )
     .join("");
   document.body.innerHTML = `
-    <selectable-table filter='${filter}' count="50">
+    <selectable-table filter='${filter}' count="${count}" scope="lib-1:Games">
       <div data-selection-bar>
         <button data-selection-toggle aria-pressed="false">Select</button>
       </div>
@@ -29,6 +33,7 @@ function mount(keys: string[], filter = '{"year":2025}'): HTMLElement {
           <span data-selection-count>0 selected</span>
           <button data-selection-all-matching>Select all 50 matching</button>
           <button data-selection-clear>Clear</button>
+          <div data-selection-actions></div>
         </div>
         <button data-selection-toggle aria-pressed="false">Select</button>
         <div data-selection-announcement role="status"></div>
@@ -76,6 +81,11 @@ function statements(element: HTMLElement): SelectionStatement[] {
   return seen;
 }
 
+/** Escape decides in the task after the press, so every overlay is heard. */
+function settled(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
 function announcement(element: HTMLElement): string {
   return (
     element.querySelector("[data-selection-announcement]")?.textContent ?? ""
@@ -116,6 +126,22 @@ describe("the mode", () => {
     expect(pressed).toEqual(["true", "true"]);
   });
 
+  it("keeps the mode on Escape, and only clears the selection", async () => {
+    toggle(element);
+    tick(element, 0);
+    element.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await settled();
+    expect(element.getAttribute("data-selection-mode")).toBe("on");
+    expect(shownCheckboxes(element)).toHaveLength(3);
+    expect(checkboxes(element)[0].checked).toBe(false);
+  });
+
   it("shows the line with the mode", () => {
     const line = element.querySelector<HTMLElement>("[data-selection-line]")!;
     expect(line.hidden).toBe(true);
@@ -129,7 +155,7 @@ describe("the mode", () => {
     toggle(element);
     const seen = statements(element);
     toggle(element);
-    expect(seen[seen.length - 1]).toEqual({ keys: [] });
+    expect(seen[seen.length - 1]).toEqual({ mode: "some", keys: [] });
   });
 
   it("presses the toggle", () => {
@@ -152,14 +178,14 @@ describe("the selection", () => {
   it("states the keys a person marked", () => {
     const seen = statements(element);
     tick(element, 0);
-    expect(seen[seen.length - 1]).toEqual({ keys: ["a"] });
+    expect(seen[seen.length - 1]).toEqual({ mode: "some", keys: ["a"] });
   });
 
   it("takes the range from the anchor on a shift-click", () => {
     const seen = statements(element);
     tick(element, 1);
     tick(element, 3, true);
-    expect(seen[seen.length - 1]).toEqual({ keys: ["b", "c", "d"] });
+    expect(seen[seen.length - 1]).toEqual({ mode: "some", keys: ["b", "c", "d"] });
   });
 
   it("takes the same range from the keyboard, the anchor marked once", () => {
@@ -174,7 +200,7 @@ describe("the selection", () => {
     });
     target.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(true);
-    expect(seen[seen.length - 1]).toEqual({ keys: ["b", "c", "d"] });
+    expect(seen[seen.length - 1]).toEqual({ mode: "some", keys: ["b", "c", "d"] });
   });
 
   it("checks every row on the page", () => {
@@ -184,7 +210,7 @@ describe("the selection", () => {
     );
     checkAll!.checked = true;
     checkAll!.dispatchEvent(new Event("change", { bubbles: true }));
-    expect(seen[seen.length - 1]).toEqual({ keys: ["a", "b", "c", "d"] });
+    expect(seen[seen.length - 1]).toEqual({ mode: "some", keys: ["a", "b", "c", "d"] });
   });
 
   it("reads indeterminate with one row of the page unmarked", () => {
@@ -200,7 +226,7 @@ describe("the selection", () => {
     press(element.querySelector("[data-selection-all-matching]"));
     tick(element, 1);
     expect(seen[seen.length - 1]).toEqual({
-      all: true,
+      mode: "all",
       filter: '{"year":2025}',
       count: 50,
       except: ["b"],
@@ -215,26 +241,93 @@ describe("the selection", () => {
     ).toBe("49 selected");
   });
 
+  it("clears a range from a row already marked", () => {
+    const seen = statements(element);
+    const checkAll = element.querySelector<HTMLInputElement>(
+      "[data-selection-check-all]",
+    );
+    checkAll!.checked = true;
+    checkAll!.dispatchEvent(new Event("change", { bubbles: true }));
+    tick(element, 1);
+    tick(element, 3, true);
+    expect(seen[seen.length - 1]).toEqual({ mode: "some", keys: ["a"] });
+  });
+
+  it("clears the same range from the keyboard", () => {
+    const seen = statements(element);
+    const checkAll = element.querySelector<HTMLInputElement>(
+      "[data-selection-check-all]",
+    );
+    checkAll!.checked = true;
+    checkAll!.dispatchEvent(new Event("change", { bubbles: true }));
+    tick(element, 1);
+    checkboxes(element)[3].dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: " ",
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    expect(seen[seen.length - 1]).toEqual({ mode: "some", keys: ["a"] });
+  });
+
+  it("announces the page a check-all took", () => {
+    const checkAll = element.querySelector<HTMLInputElement>(
+      "[data-selection-check-all]",
+    );
+    checkAll!.checked = true;
+    checkAll!.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(announcement(element)).toBe("4 selected");
+  });
+
+  it("forgets the selection when an action is submitted", () => {
+    tick(element, 0);
+    const actions = element.querySelector("[data-selection-actions]")!;
+    const form = document.createElement("form");
+    actions.appendChild(form);
+    form.dispatchEvent(new Event("submit", { bubbles: true }));
+    expect(element.getAttribute("data-selection-mode")).toBe(null);
+    expect(sessionStorage.length).toBe(0);
+  });
+
   it("empties on Clear", () => {
     const seen = statements(element);
     tick(element, 0);
     press(element.querySelector("[data-selection-clear]"));
-    expect(seen[seen.length - 1]).toEqual({ keys: [] });
+    expect(seen[seen.length - 1]).toEqual({ mode: "some", keys: [] });
   });
 });
 
 describe("Escape", () => {
-  it("clears the selection", () => {
+  it("clears the selection", async () => {
     const element = mount(["a", "b"]);
     toggle(element);
     tick(element, 0);
     element.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
     );
+    await settled();
     expect(announcement(element)).toBe("Selection cleared.");
   });
 
-  it("changes nothing when a menu answered it first", () => {
+  it("waits for the whole press, so a document-level closer is heard", async () => {
+    const element = mount(["a", "b"]);
+    toggle(element);
+    tick(element, 0);
+    // A tooltip and the date pickers close from a listener on the document,
+    // which runs after this element's own.
+    const closer = (event: Event) => event.preventDefault();
+    document.addEventListener("keydown", closer);
+    element.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    );
+    await settled();
+    document.removeEventListener("keydown", closer);
+    expect(checkboxes(element)[0].checked).toBe(true);
+  });
+
+  it("changes nothing when a menu answered it first", async () => {
     const element = mount(["a", "b"]);
     toggle(element);
     tick(element, 0);
@@ -245,6 +338,7 @@ describe("Escape", () => {
     });
     event.preventDefault();
     element.dispatchEvent(event);
+    await settled();
     expect(announcement(element)).not.toBe("Selection cleared.");
     expect(checkboxes(element)[0].checked).toBe(true);
   });
@@ -271,7 +365,7 @@ describe("a row that arrives", () => {
     const seen = statements(element);
     element.querySelector("tbody")!.rows[0].remove();
     await Promise.resolve();
-    expect(seen[seen.length - 1]).toEqual({ keys: [] });
+    expect(seen[seen.length - 1]).toEqual({ mode: "some", keys: [] });
   });
 });
 
@@ -304,6 +398,46 @@ describe("a selection that outlives the page", () => {
     expect(announcement(second)).toBe("");
   });
 
+  it("states itself to a listener that was there before the page", () => {
+    const first = mount(["a", "b"]);
+    toggle(first);
+    tick(first, 0);
+
+    const seen: unknown[] = [];
+    const listener = (event: Event) => seen.push((event as CustomEvent).detail);
+    document.addEventListener("selectable-table:change", listener);
+    mount(["c", "d"]);
+    document.removeEventListener("selectable-table:change", listener);
+    expect(seen[seen.length - 1]).toEqual({ mode: "some", keys: ["a"] });
+  });
+
+  it("brings a scope back, with every row of the next page marked", () => {
+    const first = mount(["a", "b"]);
+    toggle(first);
+    press(first.querySelector("[data-selection-all-matching]"));
+
+    const second = mount(["c", "d"]);
+    expect(second.getAttribute("data-selection-mode")).toBe("on");
+    expect(checkboxes(second).every((box) => box.checked)).toBe(true);
+    expect(
+      second.querySelector("[data-selection-count]")?.textContent,
+    ).toBe("50 selected");
+  });
+
+  it("refuses a scope on a page that states no count", () => {
+    // Rows per page raised to the whole list: same path, same filter, but the
+    // count that named the scope is gone, so the scope is not the same scope.
+    const first = mount(["a", "b"]);
+    toggle(first);
+    press(first.querySelector("[data-selection-all-matching]"));
+
+    const whole = mount(["a", "b", "c", "d"], '{"year":2025}', "0");
+    expect(whole.getAttribute("data-selection-mode")).toBe(null);
+    expect(whole.querySelector("[data-selection-count]")?.textContent).toBe(
+      "0 selected",
+    );
+  });
+
   it("comes back with the mode, on the list's next page", () => {
     const first = mount(["a", "b"]);
     toggle(first);
@@ -313,7 +447,7 @@ describe("a selection that outlives the page", () => {
     expect(second.getAttribute("data-selection-mode")).toBe("on");
     const seen = statements(second);
     tick(second, 0);
-    expect(seen[seen.length - 1]).toEqual({ keys: ["a", "c"] });
+    expect(seen[seen.length - 1]).toEqual({ mode: "some", keys: ["a", "c"] });
   });
 
   it("counts the keys of every page", () => {
@@ -337,7 +471,7 @@ describe("a selection that outlives the page", () => {
     body.rows[0].remove();
     await Promise.resolve();
     // "c" left the table; "a" is the page before.
-    expect(seen[seen.length - 1]).toEqual({ keys: ["a"] });
+    expect(seen[seen.length - 1]).toEqual({ mode: "some", keys: ["a"] });
   });
 
   it("is forgotten on Clear", () => {

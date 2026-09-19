@@ -24,7 +24,9 @@
 // name giving up a few pixels beats losing the row's actions.
 const NAME_FLOOR_PX = 160;
 
-// What a selection checkbox adds to that floor.
+// What a selection checkbox adds to that floor: the 24px box and its 8px
+// gap, which common/components/primitives.py states as SELECTION_RESERVE_PX
+// beside the classes that draw them.
 const SELECTION_CHECKBOX_COST_PX = 32;
 
 // What a wrap column can cost at most: the 16rem TruncatedText cap plus cell
@@ -91,15 +93,15 @@ export function computeHiddenColumns(
  * costs at most the cap. Below md the shrinkable first column is being
  * squeezed by the max-md greed, so its natural width is not what it will
  * render at — it costs the flat floor the fit must preserve for it, raised by
- * the checkbox while a selection mode is on.
+ * the checkbox a selectable table reserves in every row.
  */
 export function columnCosts(
   policies: ColumnPolicy[],
   naturalWidths: number[],
   aboveMd: boolean,
-  selecting = false,
+  selectable = false,
 ): number[] {
-  const floor = NAME_FLOOR_PX + (selecting ? SELECTION_CHECKBOX_COST_PX : 0);
+  const floor = NAME_FLOOR_PX + (selectable ? SELECTION_CHECKBOX_COST_PX : 0);
   return naturalWidths.map((width, index) => {
     const policy = policies[index];
     if (!policy) return width;
@@ -224,13 +226,16 @@ export class ResponsiveTableElement extends HTMLElement {
     return widths;
   }
 
-  /** Whether the host table is selecting rows. */
-  private isSelecting(): boolean {
-    return (
-      this.closest("[data-selection-mode]")?.getAttribute(
-        "data-selection-mode",
-      ) === "on"
-    );
+  /** Whether the host table reserves a checkbox in every row.
+   *
+   * The reserve is permanent, not the mode's: a checkbox is built when
+   * <selectable-table> connects and only shown with the mode, so the fit must
+   * budget it at every moment. Reading the mode instead would budget it at no
+   * moment, because a mode change mutates attributes alone and this element
+   * deliberately observes none.
+   */
+  isSelectable(): boolean {
+    return this.closest("selectable-table") !== null;
   }
 
   private fit(): void {
@@ -244,7 +249,7 @@ export class ResponsiveTableElement extends HTMLElement {
       this.naturalWidths,
       availableWidth,
       aboveMd,
-      this.isSelecting(),
+      this.isSelectable(),
     );
     this.fittedWidth = availableWidth;
   }
@@ -272,11 +277,11 @@ export class ResponsiveTableElement extends HTMLElement {
     naturalWidths: number[],
     availableWidth: number,
     aboveMd: boolean,
-    selecting = false,
+    selectable = false,
   ): void {
     const table = this.table;
     if (!table) return;
-    const costs = columnCosts(this.policies, naturalWidths, aboveMd, selecting);
+    const costs = columnCosts(this.policies, naturalWidths, aboveMd, selectable);
     const priorities = this.policies.map((policy) => policy.priority);
     const hidden = computeHiddenColumns(costs, priorities, availableWidth);
     this.policies.forEach((_, index) => {

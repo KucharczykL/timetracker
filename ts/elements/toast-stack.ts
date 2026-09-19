@@ -355,7 +355,10 @@ class ToastStackElement extends HTMLElement {
     wrapper.tabIndex = 0;
     wrapper.addEventListener("click", () => this.store.dismissToast(toast.id));
     wrapper.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") this.store.dismissToast(toast.id);
+      if (event.key !== "Escape") return;
+      // Spent: the press dismissed this toast and nothing else.
+      event.preventDefault();
+      this.store.dismissToast(toast.id);
     });
     wrapper.addEventListener("mouseenter", () => this.store.setHovered(toast.id, true));
     wrapper.addEventListener("mouseleave", () => this.store.setHovered(toast.id, false));

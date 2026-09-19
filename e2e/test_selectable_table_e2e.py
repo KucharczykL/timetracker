@@ -22,6 +22,7 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
     <script src="/static/js/dist/elements/responsive-table.js" type="module"></script>
     <script src="/static/js/dist/elements/selectable-table.js" type="module"></script>
     <script src="/static/js/dist/elements/drop-down.js" type="module"></script>
+    <script src="/static/js/dist/elements/pop-over.js" type="module"></script>
 </head>
 <body>
     <div style="height: 40px">a page above the table</div>
@@ -45,6 +46,24 @@ ROW_GEOMETRY = """
     const name = row.querySelector('th').getBoundingClientRect();
     return [Math.round(row.getBoundingClientRect().height), Math.round(name.left)];
 })
+"""
+
+SETTLED = """
+() => [...document.querySelectorAll('responsive-table')].every(
+    (table) => typeof table.isSettled !== 'function' || table.isSettled()
+)
+"""
+
+PUBLISHED_HEIGHT = """
+() => parseFloat(
+    getComputedStyle(document.documentElement)
+        .getPropertyValue('--selection-line')
+) || 0
+"""
+
+LINE_HEIGHT = """
+() => document.querySelector('[data-selection-line]')
+    .getBoundingClientRect().height
 """
 
 STATEMENT_LOG = """
@@ -72,7 +91,11 @@ def _table(paginated: bool):
     rows = [
         components.make_row(
             f"Game {index:02d}",
-            str(2000 + index),
+            components.Popover(
+                popover_content="The year it came out",
+                wrapped_content=str(2000 + index),
+                id=f"year-{index}",
+            ),
             _menu(index),
             key=str(index),
             summary=f"{index} hours, PC",
@@ -176,7 +199,7 @@ def test_shift_click_takes_the_range(page: Page, live_server):
     _checkboxes(page).nth(1).click()
     _checkboxes(page).nth(4).click(modifiers=["Shift"])
     statement = page.evaluate("() => window.statements.at(-1)")
-    assert statement == {"keys": ["1", "2", "3", "4"]}
+    assert statement == {"mode": "some", "keys": ["1", "2", "3", "4"]}
 
 
 def test_shift_space_takes_the_same_range_and_marks_the_anchor_once(
@@ -190,7 +213,7 @@ def test_shift_space_takes_the_same_range_and_marks_the_anchor_once(
     _checkboxes(page).nth(4).focus()
     page.keyboard.press("Shift+Space")
     statement = page.evaluate("() => window.statements.at(-1)")
-    assert statement == {"keys": ["1", "2", "3", "4"]}
+    assert statement == {"mode": "some", "keys": ["1", "2", "3", "4"]}
     assert _checkboxes(page).nth(1).is_checked()
 
 
@@ -214,7 +237,7 @@ def test_all_matching_keeps_the_scope_and_records_the_exclusion(
     _checkboxes(page).nth(2).click()
     statement = page.evaluate("() => window.statements.at(-1)")
     assert statement == {
-        "all": True,
+        "mode": "all",
         "filter": '{"year": 2025}',
         "count": MATCHING_COUNT,
         "except": ["2"],
@@ -322,6 +345,40 @@ def test_a_row_menu_opens_over_the_line_and_owns_escape(page: Page, live_server)
     assert _checkboxes(page).nth(0).is_checked()
     page.keyboard.press("Escape")
     assert not _checkboxes(page).nth(0).is_checked()
+
+
+def test_the_name_keeps_its_floor_in_the_mode_at_a_phone_width(page: Page, live_server):
+    """The reserve is permanent, so the fit budgets it before any mode."""
+    page.set_viewport_size({"width": 390, "height": 844})
+    _open(page, live_server)
+    _select_mode(page)
+    page.wait_for_function(SETTLED)
+    name_width = page.evaluate(
+        "() => document.querySelector('tbody th').getBoundingClientRect().width"
+        " - document.querySelector('tbody [data-selection-checkbox]')"
+        ".getBoundingClientRect().width"
+    )
+    assert name_width >= 150, f"name squeezed to {name_width}px"
+
+
+def test_the_published_height_follows_a_line_that_wraps(page: Page, live_server):
+    page.set_viewport_size({"width": 1280, "height": 900})
+    _open(page, live_server)
+    _select_mode(page)
+    published = page.evaluate(PUBLISHED_HEIGHT)
+    measured = page.evaluate(LINE_HEIGHT)
+    assert abs(published - measured) <= 1, f"{published} against {measured}"
+
+
+def test_a_tooltip_answers_escape_before_the_selection(page: Page, live_server):
+    """Every closer marks the press spent, not the menus alone."""
+    _open(page, live_server)
+    _select_mode(page)
+    _checkboxes(page).nth(0).click()
+    page.locator("pop-over button").first.click()
+    page.locator("[data-pop-over-panel]:not([hidden])").first.wait_for()
+    page.keyboard.press("Escape")
+    assert _checkboxes(page).nth(0).is_checked()
 
 
 def test_the_stacked_identity_cell_at_a_phone_width(page: Page, live_server):

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   checkAllState,
-  clearSelection,
   emptySelection,
+  forgetKeys,
+  isMarked,
+  markedKeys,
   rangeKeys,
   selectAllMatching,
   selectionCount,
@@ -13,48 +15,63 @@ import {
 
 const page = ["a", "b", "c", "d"];
 
+function marks(state: ReturnType<typeof emptySelection>): string[] {
+  return [...markedKeys(state)].sort();
+}
+
 describe("toggleKey", () => {
   it("adds a key that was not marked", () => {
-    const state = toggleKey(emptySelection(), "a");
-    expect([...state.keys]).toEqual(["a"]);
+    expect(marks(toggleKey(emptySelection(), "a"))).toEqual(["a"]);
   });
 
   it("removes a key that was marked", () => {
-    const state = toggleKey(toggleKey(emptySelection(), "a"), "a");
-    expect([...state.keys]).toEqual([]);
+    expect(marks(toggleKey(toggleKey(emptySelection(), "a"), "a"))).toEqual([]);
   });
 
   it("records an exclusion under all matching, keeping the scope", () => {
-    const state = toggleKey(selectAllMatching(emptySelection()), "b");
-    expect(state.all).toBe(true);
-    expect([...state.except]).toEqual(["b"]);
+    const state = toggleKey(selectAllMatching(), "b");
+    expect(state.mode).toBe("all");
+    expect(marks(state)).toEqual(["b"]);
+    expect(isMarked(state, "b")).toBe(false);
+    expect(isMarked(state, "a")).toBe(true);
   });
 
   it("takes an exclusion back", () => {
-    const state = toggleKey(
-      toggleKey(selectAllMatching(emptySelection()), "b"),
-      "b",
-    );
-    expect(state.all).toBe(true);
-    expect([...state.except]).toEqual([]);
+    const state = toggleKey(toggleKey(selectAllMatching(), "b"), "b");
+    expect(state.mode).toBe("all");
+    expect(marks(state)).toEqual([]);
   });
 });
 
 describe("setPage", () => {
   it("marks every key on the page", () => {
-    const state = setPage(emptySelection(), page, true);
-    expect([...state.keys].sort()).toEqual(page);
+    expect(marks(setPage(emptySelection(), page, true))).toEqual(page);
   });
 
   it("unmarks every key on the page and keeps the others", () => {
     const marked = toggleKey(setPage(emptySelection(), page, true), "z");
-    const state = setPage(marked, page, false);
-    expect([...state.keys]).toEqual(["z"]);
+    expect(marks(setPage(marked, page, false))).toEqual(["z"]);
   });
 
   it("excludes the whole page under all matching", () => {
-    const state = setPage(selectAllMatching(emptySelection()), page, false);
-    expect([...state.except].sort()).toEqual(page);
+    expect(marks(setPage(selectAllMatching(), page, false))).toEqual(page);
+  });
+
+  it("takes the exclusions back when the page is marked again", () => {
+    const excluded = setPage(selectAllMatching(), page, false);
+    expect(marks(setPage(excluded, page, true))).toEqual([]);
+  });
+});
+
+describe("forgetKeys", () => {
+  it("drops a key the table no longer holds", () => {
+    const state = setPage(emptySelection(), page, true);
+    expect(marks(forgetKeys(state, ["b"]))).toEqual(["a", "c", "d"]);
+  });
+
+  it("keeps an exclusion, because the row may be restored", () => {
+    const state = toggleKey(selectAllMatching(), "b");
+    expect(marks(forgetKeys(state, ["b"]))).toEqual(["b"]);
   });
 });
 
@@ -94,14 +111,13 @@ describe("checkAllState", () => {
   });
 
   it("is checked under all matching", () => {
-    expect(checkAllState(selectAllMatching(emptySelection()), page)).toBe(
-      "checked",
-    );
+    expect(checkAllState(selectAllMatching(), page)).toBe("checked");
   });
 
   it("is indeterminate under all matching minus one row", () => {
-    const state = toggleKey(selectAllMatching(emptySelection()), "b");
-    expect(checkAllState(state, page)).toBe("indeterminate");
+    expect(checkAllState(toggleKey(selectAllMatching(), "b"), page)).toBe(
+      "indeterminate",
+    );
   });
 });
 
@@ -111,21 +127,27 @@ describe("selectionCount", () => {
   });
 
   it("counts the matching set minus its exclusions", () => {
-    const state = toggleKey(selectAllMatching(emptySelection()), "b");
-    expect(selectionCount(state, 50)).toBe(49);
+    expect(selectionCount(toggleKey(selectAllMatching(), "b"), 50)).toBe(49);
+  });
+
+  it("counts nothing where the page states no count", () => {
+    expect(selectionCount(selectAllMatching(), Number.NaN)).toBe(0);
   });
 });
 
 describe("statementFor", () => {
   it("states the keys, sorted, so one selection has one statement", () => {
     const state = toggleKey(toggleKey(emptySelection(), "b"), "a");
-    expect(statementFor(state, "{}", 50)).toEqual({ keys: ["a", "b"] });
+    expect(statementFor(state, "{}", 50)).toEqual({
+      mode: "some",
+      keys: ["a", "b"],
+    });
   });
 
   it("states the scope, its filter and its exclusions", () => {
-    const state = toggleKey(selectAllMatching(emptySelection()), "b");
+    const state = toggleKey(selectAllMatching(), "b");
     expect(statementFor(state, '{"year":2025}', 50)).toEqual({
-      all: true,
+      mode: "all",
       filter: '{"year":2025}',
       count: 50,
       except: ["b"],
@@ -133,11 +155,10 @@ describe("statementFor", () => {
   });
 });
 
-describe("clearSelection", () => {
-  it("drops the scope and every exclusion", () => {
-    const state = clearSelection();
-    expect(state.all).toBe(false);
-    expect([...state.except]).toEqual([]);
-    expect([...state.keys]).toEqual([]);
+describe("emptySelection", () => {
+  it("holds no mark and names no scope", () => {
+    const state = emptySelection();
+    expect(state.mode).toBe("some");
+    expect(marks(state)).toEqual([]);
   });
 });

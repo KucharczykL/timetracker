@@ -543,6 +543,9 @@ class SelectableTableProps(TypedDict):
     filter: str
     # The paginator's count; 0 without one.
     count: int
+    # The library and the table, so a kept selection reaches neither another
+    # person at this browser nor another table on this page.
+    scope: str
 
 
 register_element("selectable-table", "SelectableTable", SelectableTableProps)

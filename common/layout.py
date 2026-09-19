@@ -74,6 +74,9 @@ def _main_script(mastered: bool) -> str:
 RESUME_PAGE_SIZE = 50
 
 # The build stamp, on the page's last line.
+#
+# fg-disabled deliberately: a decorative stamp, not content, and the dimmest
+# token the theme states.
 VERSION_STAMP_CLASS = f"{PAGE_GUTTER_CLASS} py-3 text-type-micro text-fg-disabled"
 
 # Shared classes for the plain navbar entries (Home/Stats/Log out).

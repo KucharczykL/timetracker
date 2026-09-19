@@ -1196,6 +1196,14 @@ def Input(
     return Element("input", merged)
 
 
+#: What a checkbox looks like, for the builder and for the two nameless ones
+#: a selectable table clones.
+CHECKBOX_LOOK_CLASS = (
+    "shrink-0 rounded border-default-medium bg-neutral-secondary-medium "
+    "text-brand focus:ring-brand"
+)
+
+
 def Checkbox(
     attrs: AttrsArg | None = None,
     *,
@@ -1209,13 +1217,7 @@ def Checkbox(
     baked: list[HTMLAttribute] = [
         ("name", name),
         ("value", value),
-        (
-            "class",
-            (
-                "shrink-0 rounded border-default-medium bg-neutral-secondary-medium "
-                f"text-brand focus:ring-brand {DISABLED_CONTROL_CLASS}"
-            ),
-        ),
+        ("class", f"{CHECKBOX_LOOK_CLASS} {DISABLED_CONTROL_CLASS}"),
     ]
     if checked:
         baked.append(("checked", "true"))
@@ -2170,6 +2172,7 @@ def TableRow(
     columns: Sequence[Column] | None = None,
     *,
     data_table: bool = False,
+    selectable: bool = False,
 ) -> Element:
     """Render a styled ``<tr>`` from a :class:`TableRowData`.
 
@@ -2182,8 +2185,19 @@ def TableRow(
     row fragment swapped into such a table must pass both this flag and the
     table's ``columns``, or it renders under a different width policy than the
     rows around it.
+
+    ``selectable`` mirrors the table's selection declaration, and a row with
+    no ``key`` under it is refused — always, and not in debug alone. A row
+    swapped into a selectable table must pass it, or it arrives unnamed: no
+    checkbox, no way to act on it, and nothing said.
     """
     cells = data["cell_data"]
+    if selectable and not data.get("key"):
+        raise ValueError(
+            "A selectable table needs a key on every row: an unnamed row "
+            "cannot be selected. Pass make_row(..., key=...) for "
+            f"{data['cell_data']!r}."
+        )
 
     # Hover lightens the text along with the surface: body-subtle text fails AA
     # on the tertiary hover surface in both themes.
@@ -2601,14 +2615,23 @@ _SELECTION_LINE_STICKY_CLASS = (
     "[[data-selection-mode=on]_&]:z-10"
 )
 
-# Checkbox() bakes no size; 24px minimum.
+# A checkbox is 24px, the touch target Checkbox() bakes no size for.
 SELECTION_CHECKBOX_CLASS = "w-6 h-6"
+
+# What stands between a row checkbox and the name beside it: 8px.
+SELECTION_CHECKBOX_GAP_CLASS = "me-2"
 
 # The cells' own inset, so the line aligns with the checkbox column.
 _SELECTION_INSET_CLASS = "px-2 sm:px-3 lg:px-6"
 
-# The checkbox and its gap, which the header label clears.
-_SELECTION_LABEL_INSET_CLASS = "ms-8"
+# What a row checkbox reserves: the 24px box and its 8px gap.
+#
+# ts/elements/responsive-table.ts states the same 32px as
+# SELECTION_CHECKBOX_COST_PX, because the fit budgets it below md. The header
+# label clears it with ms-8, and drops that while the element is undefined,
+# where no checkbox is built.
+SELECTION_RESERVE_PX = 32
+_SELECTION_LABEL_INSET_CLASS = "ms-8 [selectable-table:not(:defined)_&]:ms-0"
 
 # The element unhides these with the mode.
 _SELECTION_CONTROLS_CLASS = "flex flex-wrap items-center gap-x-3 gap-y-2"
@@ -2640,21 +2663,28 @@ def SelectionBar() -> Node:
     )[SelectionToggle()]
 
 
-def SelectionLine(
-    declaration: SelectionDeclaration,
-    page_obj=None,
-) -> Node:
-    """The footer's selection region."""
+def selection_scope(request, caption_key: str, caption: str) -> str:
+    """What tells one table's stored selection from another's.
+
+    The library owns the rows, so a second person at the same browser does not
+    inherit the first one's selection; the caption tells two tables on one page
+    apart, as it tells their scroll regions apart.
+    """
+    user = getattr(request, "user", None)
+    library = ""
+    if user is not None and getattr(user, "is_authenticated", False):
+        library = str(getattr(user, "library_id", "") or "")
+    return f"{library}:{caption_key or caption}"
+
+
+def SelectionLine(page_obj=None) -> Node:
+    """The selection region, above the pagination row."""
     controls: list[Node] = [
         Label(class_="flex items-center gap-2 text-type-body text-heading")[
             Input(
                 [("data-selection-check-all", "")],
                 type="checkbox",
-                class_=(
-                    "shrink-0 rounded border-default-medium "
-                    "bg-neutral-secondary-medium text-brand focus:ring-brand "
-                    f"{SELECTION_CHECKBOX_CLASS}"
-                ),
+                class_=f"{CHECKBOX_LOOK_CLASS} {SELECTION_CHECKBOX_CLASS}",
             ),
             Span(class_="sr-only")["Select every row on this page"],
         ],
@@ -2687,26 +2717,19 @@ def SelectionLine(
     controls.append(Div([("data-selection-actions", "")], class_="flex gap-2"))
 
     # Cloned per row; a template renders nothing.
-    checkbox_template = Element(
-        "template",
-        [("data-selection-checkbox-template", "")],
+    checkbox_template = Template([("data-selection-checkbox-template", "")])[
         Input(
             [("data-selection-checkbox", "")],
             type="checkbox",
             class_=(
-                "shrink-0 me-2 align-middle rounded border-default-medium "
-                "bg-neutral-secondary-medium text-brand focus:ring-brand "
-                f"{SELECTION_CHECKBOX_CLASS}"
+                f"{CHECKBOX_LOOK_CLASS} {SELECTION_CHECKBOX_CLASS} "
+                f"{SELECTION_CHECKBOX_GAP_CLASS} align-middle"
             ),
-        ),
-    )
+        )
+    ]
 
     return Div(
-        [
-            ("data-selection-line", ""),
-            ("data-selection-filter", declaration["filter"]),
-            ("hidden", ""),
-        ],
+        [("data-selection-line", ""), ("hidden", "")],
         class_=(
             f"flex flex-wrap items-center gap-x-3 gap-y-2 "
             f"{_SELECTION_INSET_CLASS} py-3 "
@@ -2796,15 +2819,18 @@ def StyledTable(
     # Always, unlike the DEBUG cell-count guard.
     #
     # A ragged table is a cosmetic degradation; a nameless row under a
-    # selectable table cannot be acted on and says nothing about why.
+    # selectable table cannot be acted on and says nothing about why. TableRow
+    # refuses the nameless row; only the whole table can see a repeated name,
+    # which would select two rows from one press.
     if selection is not None:
-        for row in rows:
-            if not row.get("key"):
-                raise ValueError(
-                    "StyledTable(selection=...) needs a key on every row: an "
-                    "unnamed row cannot be selected. Pass make_row(..., "
-                    f"key=...) for {row['cell_data']!r}."
-                )
+        keys = [row.get("key") for row in rows]
+        repeated = {key for key in keys if key and keys.count(key) > 1}
+        if repeated:
+            raise ValueError(
+                "StyledTable(selection=...) needs one key per row: "
+                f"{sorted(repeated)!r} names more than one row, which one "
+                "press would select together."
+            )
 
     # Dev-only guard: a row must have one cell per column, else cells render
     # misaligned under the headers and the position-based mobile column-hiding
@@ -2881,7 +2907,15 @@ def StyledTable(
         tbody_class = f"{tbody_class} {align_rules}"
     table_children.append(
         Tbody(class_=tbody_class)[
-            [TableRow(data=row, columns=columns, data_table=data_table) for row in rows]
+            [
+                TableRow(
+                    data=row,
+                    columns=columns,
+                    data_table=data_table,
+                    selectable=selection is not None,
+                )
+                for row in rows
+            ]
         ]
     )
 
@@ -2943,9 +2977,7 @@ def StyledTable(
     if selection is not None:
         inner_children.insert(0, SelectionBar())
         # A named region, not the general slot.
-        inner_children.append(
-            SelectionLine(selection, page_obj=page_obj if paginated else None)
-        )
+        inner_children.append(SelectionLine(page_obj=page_obj if paginated else None))
     if footer_node is not None:
         inner_children.append(footer_node)
 
@@ -2956,6 +2988,7 @@ def StyledTable(
                 class_="block",
                 filter=selection["filter"],
                 count=str(page_obj.paginator.count if paginated else 0),
+                scope=selection_scope(request, caption_key, caption),
             )[*inner_children]
         ]
 

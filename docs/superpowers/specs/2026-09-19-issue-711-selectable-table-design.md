@@ -9,8 +9,10 @@ wave is [Selectable tables](2026-09-19-selectable-tables-wave-design.md).
 Selection is a mode. A Select toggle turns it on, and only then is there a
 checkbox in each row. The mode is off after each page load, unless the list
 holds a selection, and turned off it clears the selection. Escape clears the
-selection and keeps the mode; a menu that closes on that Escape keeps it,
-because a menu marks such a press spent.
+selection and keeps the mode; an overlay that closes on that Escape keeps it,
+because each marks such a press spent. The table reads that mark in the task
+after the press, because an overlay may answer before this table or after
+it.
 
 The element makes the checkboxes when it connects and shows them with the
 mode, so the mode moves no row. A page with no scripting shows none, and the
@@ -23,17 +25,19 @@ for a reader at either end of a long table.
 The checkbox is the first child of the identity cell, which stays a
 `<th scope="row">` and keeps its pin above `md`. It is not a column: the drop
 classes and `MAX_DATA_TABLE_COLUMNS` count as before. It carries the row name
-and a touch target, and its column is reserved always, which the header label
-clears and the name floor below `md` budgets.
+and a touch target, and its column is reserved always, which the name floor
+below `md` budgets and the header label clears — the label takes that inset
+back while the element is undefined, where no checkbox is built.
 
 Only the checkbox selects, because the row holds links and immediate
 controls. Shift and a click, or Shift and Space, takes the range from the
 last checkbox. A row that comes in keeps the mark its key held.
 
-## The footer
+## The line
 
-The footer holds a second region, the selection line above the pagination
-row, and each can stand alone. The general slot still refuses pagination.
+The shell holds a second region below the rows, the selection line above the
+pagination row, and each can stand alone. The general footer slot still
+refuses pagination.
 
 The line holds the check-all for the page, under the row checkboxes, the
 count and its scope, Clear, the actions slot, and the toggle at its end.
@@ -54,17 +58,21 @@ the count seen, and the keys unmarked since. A row unmarked under `all`
 records an exclusion and keeps the scope. The element announces each change
 as `selectable-table:change`.
 
-The value waits in the tab under the path of the list, so its other pages
-restore it, the mode with it. A key of another page stays; a key this page
-held and holds no longer leaves. A filter change is another set and restores
-nothing; Clear and the mode turned off forget the value. What is kept is
-bounded by the clicking, never by the rows.
+The value waits in the tab under the library, the table and the path, so its
+other pages restore it, the mode with it, and neither the next person at that
+browser nor the table beside it inherits it. A key of another page stays; a
+key this page held and holds no longer leaves, while an exclusion stays,
+because its row may be restored. A filter change restores nothing, and so
+does a page that states no count under a kept scope. Clear, the mode turned
+off, and an act on the selection forget the value. What is kept is bounded by
+the clicking, never by the rows.
 
 ## What a view declares
 
 `make_row(..., key=...)` names the row, and `TableData` carries the filter;
-the count is the paginator's. A nameless row under such a table is refused at
-render, always. `make_row(..., summary=...)` is text under the identity
+the count is the paginator's. A nameless row is refused at render, always, by
+the row itself, so a row swapped into a selectable table is refused the same
+way; one name on two rows is refused by the table, which alone sees it. `make_row(..., summary=...)` is text under the identity
 content, shown below `md` alone — text and not a cell, because a link there
 repeats the row's own.
 
@@ -80,7 +88,8 @@ Vitest covers the selection model and what it keeps. One end-to-end page
 proves the mode, the steady rows, the keyboard, the sticky line, the region,
 the selection that survives the next page, and the stacked cell at 390 px.
 
-> This spec is over the 200 to 500 word band. It holds five rules the code
-> keeps: the mode and its reserved column, the footer composite, the
-> statement grammar and what outlives a page, what a view declares, and the
-> announcement. Cutting to the band drops a rule rather than a word.
+> This spec is over the 200 to 500 word band. It holds six rules the code
+> keeps: the mode and its reserved column, the line and where it sticks, the
+> statement grammar, what outlives a page and what forgets it, what a view
+> declares, and the announcement. Cutting to the band drops a rule rather
+> than a word.

@@ -139,7 +139,11 @@ function bindPopupDismiss(options: PopupDismissOptions): () => void {
     return extras.some((root) => !!root && root.contains(target));
   };
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape" && options.isOpen()) options.close();
+    if (event.key !== "Escape" || !options.isOpen()) return;
+    // An Escape that closed something is spent: a host that clears its own
+    // state on Escape reads defaultPrevented to tell the two apart.
+    event.preventDefault();
+    options.close();
   };
   const onOutsidePress = (event: Event): void => {
     if (options.isOpen() && !isInside(event.target as Node)) options.close();

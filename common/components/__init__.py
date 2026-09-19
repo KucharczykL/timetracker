@@ -207,6 +207,7 @@ from common.components.primitives import (
     custom_element_builder,
     make_row,
     paginated_table_content,
+    selection_scope,
 )
 from common.components.quick_filter import (
     QUICK_FACET_KINDS,
@@ -472,6 +473,7 @@ __all__ = [
     "register_element",
     "render",
     "searchselect_selected",
+    "selection_scope",
     "truncate",
     "truncate_info",
 ]

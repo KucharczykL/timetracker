@@ -3075,6 +3075,30 @@ class SelectableRowTest(SimpleTestCase):
             self._selectable([components.make_row("Game", "2025")])
 
     @override_settings(DEBUG=False)
+    def test_a_row_fragment_under_a_selection_refuses_the_same(self):
+        """The rule lives on the row, so an htmx swap obeys it too."""
+        with self.assertRaises(ValueError):
+            str(
+                components.TableRow(
+                    components.make_row("Game", "2025"),
+                    columns=[components.Column("Name"), components.Column("Year")],
+                    data_table=True,
+                    selectable=True,
+                )
+            )
+
+    @override_settings(DEBUG=False)
+    def test_a_table_refuses_one_key_naming_two_rows(self):
+        """One press would select both."""
+        with self.assertRaises(ValueError):
+            self._selectable(
+                [
+                    components.make_row("Game", "2025", key="1"),
+                    components.make_row("Other", "2024", key="1"),
+                ]
+            )
+
+    @override_settings(DEBUG=False)
     def test_a_table_declaring_no_selection_admits_a_row_with_no_key(self):
         html = str(
             components.StyledTable(
@@ -3207,6 +3231,34 @@ class SelectionLineTest(SimpleTestCase):
         self.assertIn("overflow-clip", html)
         self.assertNotIn("overflow-hidden", html.split("<table")[0])
 
+    def test_the_header_label_clears_the_reserved_column(self):
+        html = self._paginated(selection={"filter": ""})
+        first_header = html.split("<thead")[1].split("</th>")[0]
+        second_header = html.split("<thead")[1].split("</th>")[1]
+        self.assertIn("ms-8", first_header)
+        self.assertNotIn("ms-8", second_header)
+
+    def test_the_header_label_drops_the_inset_with_no_scripting(self):
+        """No element, no checkbox: the label stands over the names again."""
+        html = self._paginated(selection={"filter": ""})
+        first_header = html.split("<thead")[1].split("</th>")[0]
+        self.assertIn("[selectable-table:not(:defined)_&amp;]:ms-0", first_header)
+
+    def test_the_line_states_no_filter_of_its_own(self):
+        """The element carries it; two copies would drift."""
+        self.assertNotIn(
+            "data-selection-filter", self._paginated(selection={"filter": "{}"})
+        )
+
+    def test_the_checkboxes_wear_the_builder_look(self):
+        from common.components.primitives import CHECKBOX_LOOK_CLASS
+
+        html = self._paginated(selection={"filter": ""})
+        for marker in ("data-selection-check-all", 'data-selection-checkbox="'):
+            checkbox = html.split(marker)[1].split(">")[0]
+            for token in CHECKBOX_LOOK_CLASS.split():
+                self.assertIn(token, checkbox, marker)
+
     def test_the_check_all_checkbox_meets_the_touch_target(self):
         html = self._paginated(selection={"filter": ""})
         checkbox = html.split("data-selection-check-all")[1].split(">")[0]
@@ -3255,6 +3307,32 @@ class SelectableTableMountTest(SimpleTestCase):
         html = self._render(selection={"filter": ""})
         element = html.split("<selectable-table")[1].split(">")[0]
         self.assertIn('count="0"', element)
+
+    def test_the_element_scopes_a_kept_selection(self):
+        """The library and the table name it: neither the next person at this
+        browser nor the table beside it inherits the selection."""
+        from types import SimpleNamespace
+
+        request = SimpleNamespace(
+            user=SimpleNamespace(is_authenticated=True, library_id="lib-1")
+        )
+        html = str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game", key="1")],
+                data_table=True,
+                caption="Sessions",
+                selection={"filter": ""},
+                request=request,
+            )
+        )
+        element = html.split("<selectable-table")[1].split(">")[0]
+        self.assertIn('scope="lib-1:Sessions"', element)
+
+    def test_a_table_with_no_request_still_scopes_by_its_caption(self):
+        html = self._render(selection={"filter": ""})
+        element = html.split("<selectable-table")[1].split(">")[0]
+        self.assertIn('scope=":Games"', element)
 
     def test_a_table_with_no_selection_mounts_no_element(self):
         self.assertNotIn("<selectable-table", self._render())

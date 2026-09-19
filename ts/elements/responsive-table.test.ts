@@ -89,8 +89,8 @@ describe("columnCosts", () => {
     ]);
   });
 
-  it("raises the floor by the checkbox while a selection mode is on", () => {
-    // The mode adds a checkbox to that cell.
+  it("raises the floor by the checkbox a selectable table reserves", () => {
+    // The reserve is permanent, so the budget is too.
     expect(columnCosts(policies, [250, 120, 200], false, true)).toEqual([
       192, 120, 200,
     ]);
@@ -100,6 +100,26 @@ describe("columnCosts", () => {
     expect(columnCosts(policies, [250, 120, 200], true, true)).toEqual([
       250, 120, 200,
     ]);
+  });
+
+  it("reads the reserve off the host, not off the mode", () => {
+    // The mode changes attributes alone, which this element does not observe;
+    // the reserve is permanent, so the budget must not wait for a mode.
+    document.body.innerHTML = `
+      <selectable-table>
+        <responsive-table id="inside">
+          <div role="region"><table><thead><tr><th>Name</th></tr></thead>
+          <tbody></tbody></table></div>
+        </responsive-table>
+      </selectable-table>
+      <responsive-table id="outside">
+        <div role="region"><table><thead><tr><th>Name</th></tr></thead>
+        <tbody></tbody></table></div>
+      </responsive-table>`;
+    const inside = document.querySelector("#inside") as ResponsiveTableElement;
+    const outside = document.querySelector("#outside") as ResponsiveTableElement;
+    expect(inside.isSelectable()).toBe(true);
+    expect(outside.isSelectable()).toBe(false);
   });
 
   it("does not floor a shrinkable column that is not first", () => {
