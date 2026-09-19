@@ -24,6 +24,12 @@
 // name giving up a few pixels beats losing the row's actions.
 const NAME_FLOOR_PX = 160;
 
+// What the checkbox of a selectable table adds to that floor: the 24px touch
+// target plus the gap to the name. A stated constant, not a measurement: the
+// checkbox is one size everywhere, and measuring it per table would cost a
+// layout pass to learn what this line already says.
+const SELECTION_CHECKBOX_COST_PX = 32;
+
 // What a wrap column can cost at most: the 16rem TruncatedText cap plus cell
 // padding. Above this it wraps instead of widening the table.
 const WRAP_CAP_PX = 304;
@@ -87,18 +93,21 @@ export function computeHiddenColumns(
  * A wrap column is flexible (it wraps rather than widening the table), so it
  * costs at most the cap. Below md the shrinkable first column is being
  * squeezed by the max-md greed, so its natural width is not what it will
- * render at — it costs the flat floor the fit must preserve for it.
+ * render at — it costs the flat floor the fit must preserve for it, raised by
+ * the checkbox while a selection mode is on.
  */
 export function columnCosts(
   policies: ColumnPolicy[],
   naturalWidths: number[],
   aboveMd: boolean,
+  selecting = false,
 ): number[] {
+  const floor = NAME_FLOOR_PX + (selecting ? SELECTION_CHECKBOX_COST_PX : 0);
   return naturalWidths.map((width, index) => {
     const policy = policies[index];
     if (!policy) return width;
     if (policy.wrap) return Math.min(width, WRAP_CAP_PX);
-    if (index === 0 && policy.shrinkable && !aboveMd) return NAME_FLOOR_PX;
+    if (index === 0 && policy.shrinkable && !aboveMd) return floor;
     return width;
   });
 }
@@ -218,6 +227,17 @@ export class ResponsiveTableElement extends HTMLElement {
     return widths;
   }
 
+  /** Whether the host table is in its selection mode, where every identity
+   * cell also holds a checkbox. Read off the host rather than stated here:
+   * the mode turns on and off without this element being rebuilt. */
+  private isSelecting(): boolean {
+    return (
+      this.closest("[data-selection-mode]")?.getAttribute(
+        "data-selection-mode",
+      ) === "on"
+    );
+  }
+
   private fit(): void {
     const region = this.region;
     const table = this.table;
@@ -225,7 +245,12 @@ export class ResponsiveTableElement extends HTMLElement {
     const availableWidth = region.clientWidth;
     if (availableWidth === 0) return;
     const aboveMd = window.matchMedia?.(ABOVE_MD_QUERY).matches ?? true;
-    this.applyDecision(this.naturalWidths, availableWidth, aboveMd);
+    this.applyDecision(
+      this.naturalWidths,
+      availableWidth,
+      aboveMd,
+      this.isSelecting(),
+    );
     this.fittedWidth = availableWidth;
   }
 
@@ -252,10 +277,11 @@ export class ResponsiveTableElement extends HTMLElement {
     naturalWidths: number[],
     availableWidth: number,
     aboveMd: boolean,
+    selecting = false,
   ): void {
     const table = this.table;
     if (!table) return;
-    const costs = columnCosts(this.policies, naturalWidths, aboveMd);
+    const costs = columnCosts(this.policies, naturalWidths, aboveMd, selecting);
     const priorities = this.policies.map((policy) => policy.priority);
     const hidden = computeHiddenColumns(costs, priorities, availableWidth);
     this.policies.forEach((_, index) => {
