@@ -218,7 +218,10 @@ carries for four fields. Stated once, in `stats_data.py`:
 | `total_hours`, `games_by_playtime`, `games_by_playtime_count` | yes | yes, by containment |
 | `total_playtime_per_platform` | yes | yes, through the game's platform |
 | `month_playtimes` | yes | only when `when` lies inside the month |
-| `total_sessions`, `unique_days`, `longest_session_*`, `highest_session_*`, `first_play_*`, `last_play_*` | yes | never |
+| `total_games`, `total_year_games` | yes | yes, by containment (#1126) |
+| `unique_days`, `first_play_*`, `last_play_*` | yes | only a record naming one day (#1126) |
+| `unique_days_percent` | derived from the three above | derived |
+| `total_sessions`, `longest_session_*`, `highest_session_*` | yes | never |
 
 `playtime_by_day` and the streak helpers had no caller; #709 removed them.
 
