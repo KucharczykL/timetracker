@@ -67,7 +67,7 @@ The last two rules name a change the wave did not: both keys count through a
 session in scope, so a game whose sole session becomes a record leaves "games
 played" and takes its purchase with it. The gate attributes the change and
 passes; whether a contained record should count a game as played is a
-question for the read, filed as its own issue.
+question for the read, filed as #1126.
 
 The verdict prints one line per changed figure with its attribution and
 exits non-zero on a change no rule attributes. `CommandFailed` from any row's
@@ -136,5 +136,5 @@ applied" gains the `total_games` finding.
 
 The parity command and the page diff stay out of `make check`. No read of
 the Historical list joins the six. The review population converts in one
-pass with no chunking. Nothing here changes a figure; the follow-up issue
-owns `games_in_scope`.
+pass with no chunking. Nothing here changes a figure; #1126 owns
+`games_in_scope`.
