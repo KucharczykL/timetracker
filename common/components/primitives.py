@@ -2589,6 +2589,94 @@ def PageSizeSelect(request, current: int) -> Node:
     )
 
 
+# The selection line hides while <selectable-table> is not defined, in the
+# style of the column-drop fallback: with no scripting there are no checkboxes
+# to command, so the table renders exactly as it always did.
+_SELECTION_LINE_HIDE_CLASS = "[selectable-table:not(:defined)_&]:hidden"
+
+# The line sticks to the foot of the window while the mode is on, so a long
+# table keeps its commands in reach. The stratum is under the menus (z-20), so
+# an actions menu opens over the line rather than behind it. Stated on the
+# line's own class and scoped to the element's mode attribute, so nothing
+# styles it from a distance.
+_SELECTION_LINE_STICKY_CLASS = (
+    "[[data-selection-mode=on]_&]:sticky "
+    "[[data-selection-mode=on]_&]:bottom-0 "
+    "[[data-selection-mode=on]_&]:z-10"
+)
+
+# Checkbox() bakes no size, and a row checkbox is a touch target of its own.
+SELECTION_CHECKBOX_CLASS = "w-6 h-6"
+
+# Everything but the toggle waits for the mode: the element unhides this.
+_SELECTION_CONTROLS_CLASS = "flex items-center gap-3"
+
+
+def SelectionLine(
+    declaration: SelectionDeclaration,
+    page_obj=None,
+) -> Node:
+    """The footer's selection region: the Select toggle and, once the mode is
+    on, check-all for the page, the count, the matching scope, Clear and the
+    actions slot.
+
+    ``page_obj`` states the matching count. With no paginator the page is the
+    whole list, so there is no wider scope to offer and no such control.
+    """
+    controls: list[Node] = [
+        Label(class_="flex items-center gap-2 text-type-body text-heading")[
+            Input(
+                [("data-selection-check-all", "")],
+                type="checkbox",
+                class_=(
+                    "shrink-0 rounded border-default-medium "
+                    "bg-neutral-secondary-medium text-brand focus:ring-brand "
+                    f"{SELECTION_CHECKBOX_CLASS}"
+                ),
+            ),
+            Span(class_="sr-only")["Select every row on this page"],
+        ],
+        Span([("data-selection-count", "")], class_="text-type-body text-heading")[
+            "0 selected"
+        ],
+    ]
+    if page_obj is not None:
+        controls.append(
+            ControlButton(
+                [("data-selection-all-matching", "")],
+                variant="ghost",
+            )[f"Select all {page_obj.paginator.count} matching"]
+        )
+    controls.append(
+        ControlButton([("data-selection-clear", "")], variant="ghost")["Clear"]
+    )
+    # #712 fills this; until then the line offers no act, which is what an
+    # empty selection would offer anyway.
+    controls.append(Div([("data-selection-actions", "")], class_="flex gap-2"))
+
+    return Div(
+        [("data-selection-line", ""), ("data-selection-filter", declaration["filter"])],
+        class_=(
+            "flex items-center gap-3 px-6 py-3 bg-neutral-primary-soft "
+            f"{_SELECTION_LINE_STICKY_CLASS} {_SELECTION_LINE_HIDE_CLASS}"
+        ),
+    )[
+        ControlButton(
+            [("data-selection-toggle", ""), ("aria-pressed", "false")],
+            variant="ghost",
+        )["Select"],
+        Div(
+            [("data-selection-controls", ""), ("hidden", "")],
+            class_=_SELECTION_CONTROLS_CLASS,
+        )[*controls],
+        # The count above is read as it ticks; this region speaks only at a
+        # change of scope, so a single checkbox does not talk over itself.
+        Div(
+            [("data-selection-announcement", ""), ("role", "status")], class_="sr-only"
+        ),
+    ]
+
+
 def StyledTable(
     columns: list[Column] | None = None,
     rows: Sequence[TableRowData] | None = None,
@@ -2797,16 +2885,24 @@ def StyledTable(
         if paginated
         else footer
     )
+    if selection is not None:
+        # A third, named region — not the general footer slot, which still
+        # holds one thing and refuses to share with pagination.
+        inner_children.append(
+            SelectionLine(selection, page_obj=page_obj if paginated else None)
+        )
     if footer_node is not None:
         inner_children.append(footer_node)
 
-    # The shell owns the intrinsic radius symmetrically; `overflow-hidden` clips
+    # The shell owns the intrinsic radius symmetrically; `overflow-clip` clips
     # the scroll wrapper and footer to it, so top+bottom corners are rounded
-    # regardless of which parts are present. The box-shadow follows this radius.
+    # regardless of which parts are present. `clip` rather than `hidden`: it
+    # clips the same way but is not a scroll container, so the selection line
+    # can stick to the window instead of to this box. The box-shadow follows this radius.
     # Warning: never add `transform`/`filter`/`contain`/`backdrop-filter` here —
     # it would make the shell a containing block for the `position: fixed`
     # dropdown menus and clip them (see e2e/test_dropdown_clipping_e2e.py).
-    return Div(class_="shadow-md sm:rounded-base overflow-hidden", hx_boost="false")[
+    return Div(class_="shadow-md sm:rounded-base overflow-clip", hx_boost="false")[
         *inner_children
     ]
 

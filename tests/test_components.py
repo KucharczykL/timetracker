@@ -2162,7 +2162,7 @@ class StyledTableRoundingTest(SimpleTestCase):
         """A footerless table still gets the shell's rounded clip, no piecemeal
         top/bottom radii."""
         result = self._plain()
-        self.assertIn("sm:rounded-base overflow-hidden", result)
+        self.assertIn("sm:rounded-base overflow-clip", result)
         self.assertNotIn("rounded-t-base", result)
         self.assertNotIn("rounded-b-base", result)
 
@@ -2170,15 +2170,15 @@ class StyledTableRoundingTest(SimpleTestCase):
         """The pagination nav no longer re-supplies the bottom radius; the shell
         still owns it."""
         result = self._paginated()
-        self.assertIn("sm:rounded-base overflow-hidden", result)
+        self.assertIn("sm:rounded-base overflow-clip", result)
         self.assertNotIn("rounded-t-base", result)
         self.assertNotIn("rounded-b-base", result)
 
     def test_scroll_and_clip_live_on_separate_elements(self):
-        """The rounded clip (overflow-hidden) and horizontal scroll (overflow-x-auto)
+        """The rounded clip (overflow-clip) and horizontal scroll (overflow-x-auto)
         cannot share an element — assert each on its own wrapper."""
         result = self._plain()
-        self.assertIn("shadow-md sm:rounded-base overflow-hidden", result)
+        self.assertIn("shadow-md sm:rounded-base overflow-clip", result)
         self.assertIn("relative overflow-x-auto", result)
         # The scroll wrapper carries no rounding of its own.
         self.assertNotIn("overflow-x-auto sm:rounded", result)
@@ -3119,3 +3119,85 @@ class SelectableRowTest(SimpleTestCase):
         )
         self.assertNotIn("selectable-table", html)
         self.assertNotIn("data-selection-key", html)
+
+
+class SelectionLineTest(SimpleTestCase):
+    """The footer's second region (#711)."""
+
+    @staticmethod
+    def _paginated(**kwargs):
+        from django.core.paginator import Paginator
+
+        paginator = Paginator(list(range(1, 51)), 10)
+        return str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game", key="1")],
+                data_table=True,
+                caption="Games",
+                page_obj=paginator.page(1),
+                elided_page_range=list(paginator.get_elided_page_range(1)),
+                request=None,
+                **kwargs,
+            )
+        )
+
+    def test_selection_line_renders_above_the_pagination_nav(self):
+        html = self._paginated(selection={"filter": ""})
+        self.assertLess(
+            html.index("data-selection-line"),
+            html.index('aria-label="Table navigation"'),
+        )
+        self.assertLess(html.index("</table>"), html.index("data-selection-line"))
+
+    def test_a_table_with_no_selection_renders_no_line(self):
+        self.assertNotIn("data-selection-line", self._paginated())
+
+    def test_selection_line_states_the_matching_count(self):
+        html = self._paginated(selection={"filter": ""})
+        self.assertIn("data-selection-all-matching", html)
+        self.assertIn("50", html.split("data-selection-all-matching")[1][:200])
+
+    def test_selection_line_without_a_paginator_offers_no_all_matching(self):
+        html = str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game", key="1")],
+                data_table=True,
+                caption="Games",
+                selection={"filter": ""},
+            )
+        )
+        self.assertIn("data-selection-line", html)
+        self.assertNotIn("data-selection-all-matching", html)
+        self.assertIn("data-selection-check-all", html)
+        self.assertIn("data-selection-clear", html)
+
+    def test_selection_line_hides_until_the_element_is_defined(self):
+        html = self._paginated(selection={"filter": ""})
+        line_class = html.split("data-selection-line")[1].split('class="')[1]
+        self.assertIn("selectable-table:not(:defined)", line_class.split('"')[0])
+
+    def test_selection_line_holds_an_empty_actions_slot(self):
+        html = self._paginated(selection={"filter": ""})
+        self.assertIn("data-selection-actions", html)
+
+    def test_selection_line_announces_in_its_own_region(self):
+        html = self._paginated(selection={"filter": ""})
+        self.assertIn('role="status"', html)
+
+    def test_the_toggle_starts_unpressed(self):
+        html = self._paginated(selection={"filter": ""})
+        self.assertIn('aria-pressed="false"', html)
+
+    def test_shell_clips_instead_of_hiding(self):
+        """A sticky child needs a shell that is not a scroll container."""
+        html = self._paginated(selection={"filter": ""})
+        self.assertIn("overflow-clip", html)
+        self.assertNotIn("overflow-hidden", html.split("<table")[0])
+
+    def test_the_check_all_checkbox_meets_the_touch_target(self):
+        html = self._paginated(selection={"filter": ""})
+        checkbox = html.split("data-selection-check-all")[1].split(">")[0]
+        self.assertIn("w-6", checkbox)
+        self.assertIn("h-6", checkbox)
