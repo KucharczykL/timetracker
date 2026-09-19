@@ -321,18 +321,67 @@ correlation id: remove the record, restore the session.
    row of the stats page, the navbar figures and the Library card.
 6. **#1098** — reclassification: the `Reclassify` command, the review facet,
    "Was an estimate", the Library page's "Move all N", Undo of the pair.
-7. **#1099** — gates: replay parity with a record in every leg, the `make bench`
+7. **#1126** — the classification restored to the charter's contribution
+   table: a day-precision record counts in unique days and first and last
+   play, and a contained record makes a played game.
+8. **#1099** — gates: replay parity with a record in every leg, the `make bench`
    records workload and budgets, the `render_pages` diff attributed, the
    rehearsal on the production copy.
 
-`#705 → {#706, #709, #1097} → #710 → #1098 → #1099`. #706, #709 and #1097
+`#705 → {#706, #709, #1097} → #710 → #1098 → #1126 → #1099`. #706, #709 and #1097
 may start together after #705. #710 waits on #709. #1098 waits on #706, whose
-form it prefills, and on #1097, whose tab it lives on.
+form it prefills, and on #1097, whose tab it lives on. #1099 waits on #1126,
+because its statistics gate proves the classification #1126 restores.
 
 No deployment window. Each issue leaves `main` incomplete rather than
 inconsistent: #705 leaves tables nothing writes, #706 a form that records
 rows no statistic reads yet, #709 figures that change nothing while no record
 exists. Every issue merges alone. No stack.
+
+**Delivered.** The design is
+[Pass the historical-playtime replay, statistics and budget gates](2026-09-19-issue-1099-historical-playtime-gates-design.md).
+The gates ran on the 2026-09-19 dump, one library, migrated from 0007
+through 0011: 2,819 sessions on 861 tracked games, 93 of them the
+written-down rows the review offers.
+
+- **Replay.** 7,277 events through six tables after the conversion, no row
+  only live, only rebuilt or differing. The in-suite gate records a record in
+  every leg, one naming two runs, and a session reclassified and undone.
+- **Statistics.** `make verify-reclassification-parity` converted the 93
+  rows and judged 21 scopes: 199 figures changed, 0 unattributed. In the 18
+  scopes that moved, every playtime breakdown kept its total while its
+  tracked half fell and its historical half rose by the converted rows'
+  hours; the session count fell by exactly those rows; the longest session
+  and the highest average moved to another game only where the game before
+  held a converted row; the two play-source flags flipped in 11 years each,
+  each where the converted row was the play the figure named. No count of
+  days or played games moved, and no first or last play: the charter's
+  table holds.
+- **Pages.** 1,704 read-only pages rendered at `855c276f` and 1,706 at the
+  head on one database, the two new ones the Historical Playtime list and
+  its builder. 1,702 differ, every one attributed by name: 1,702 where #710
+  made the navbar's two figures totals of both sources and took their link
+  to the session list; 866 where #1097 reordered `ButtonGroup`'s classes;
+  861 game pages where #706 added the Historical playtime section; 21 stats
+  pages where #1126's links state both legs; 11 builders and lists where
+  #1098 offers at least and at most; 11 builders whose registry gained the
+  historicalplaytime model (#705, #706), the relation and the date widget's
+  modifier input (#1126); 7 where #1097 lists the Historical Playtime filter
+  in the nav menu; 3 stats pages where a first or last play tied on the day
+  is broken by sort name and game key rather than the row's key (#1126); 2
+  where the Sessions page is named Playtime (#1097); the library page's
+  Playtime card and section (#710); the session list's reclassify action
+  (#1098) and its tabs (#1097). Neither #1115 nor #1120 shows. No defect.
+- **Budget.** `RecordHistoricalPlaytime` 5.0 ms p95 over 600 dispatches, an
+  import's shape, beside the 100 ms budget. Six reads on production shape
+  with the 93 records present, each judged at 20 ms p95: `session_page`
+  3.8 ms, `game_playtime_sort` 15.9 ms, `stats_totals` 6.9 ms,
+  `stats_by_platform` 3.3 ms, `stats_by_month` 6.2 ms, `stats_superlatives`
+  14.0 ms. The sort read first measured 49.1 ms and missed: the bench ran
+  before autovacuum had analyzed the two tables the conversion filled. The
+  parity command analyzes them now. Its cost under records, 15.9 ms against
+  8.9 ms on the same dump without them, is #1131's. The numbers are in
+  `docs/event-benchmarks.md`.
 
 Merged:
 
@@ -341,7 +390,9 @@ Merged:
 - **#708** — the classification is #709's table, not a separate act.
 
 Opened: #1097 the Playtime page, #1098 the reclassification, #1099 the gates,
-and #1100 the union list as a follow-up outside the wave.
+#1100 the union list as a follow-up outside the wave, and #1126 the
+classification's return to the charter, found by #1099's design, and #1131
+the game list's record leg, found by #1099's budget gate.
 
 ## Cross-wave handoffs
 
@@ -419,3 +470,15 @@ is part of the wave rather than a follow-up.
 
 Deviation recorded: records reach the per-platform figure through the game's
 platform column, as sessions do, until #889.
+
+Deviation found and reversed: #709's classification put unique days, first
+and last play, and the played-game counts under sessions only, against the
+charter's table, and recorded no deviation. #1126 restores the table's
+answer ahead of #1099, whose gate proves it.
+
+Found by the gates: `total_games` and the five day keys held under the
+conversion, so the restored table is what the reads serve. A bench run
+straight after a bulk conversion plans against empty statistics and misses
+the sort read by three times; the parity command analyzes the record tables
+it fills. The sort read costs twice as much with records present as without,
+and #1131 owns the record leg.

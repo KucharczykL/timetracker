@@ -264,6 +264,11 @@ def session_command_budget(timings: Timings) -> Budget:
     return _p95_budget("session command p95", timings, COMMAND_BUDGET_SECONDS)
 
 
+def record_command_budget(timings: Timings) -> Budget:
+    """The same 100 ms, an import's shape."""
+    return _p95_budget("record command p95", timings, COMMAND_BUDGET_SECONDS)
+
+
 type ReadName = str
 
 
@@ -339,8 +344,8 @@ class RebuildDiffNotEmpty(RuntimeError):
     """The run's parity claim is false."""
 
 
-#: 3 since the session gates: `session_command` and `reads`.
-REPORT_SCHEMA = 3
+#: 4 since the historical-playtime gates: `record_command`.
+REPORT_SCHEMA = 4
 
 
 @dataclass(frozen=True, slots=True)
@@ -354,6 +359,8 @@ class BenchmarkReport:
     command: Timings | None
     #: None in --library mode: a command on a real library writes to it.
     session_command: Timings | None
+    #: None in --library mode.
+    record_command: Timings | None
     #: Empty only where no read ran.
     reads: tuple[ReadTimings, ...]
     #: Per command: the whole write path.

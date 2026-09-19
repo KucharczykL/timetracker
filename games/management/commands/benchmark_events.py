@@ -18,11 +18,14 @@ from games.events.rebuild import RebuildReport
 from games.models import UserLibrary
 
 DEFAULT_SEED_EVENTS = 100_000
+#: An import's worth of records.
+IMPORT_SHAPE_RECORDS = 600
 
 #: Measured; see docs/event-benchmarks.md.
 SECONDS_PER_SEEDED_EVENT = 35 / 100_000
 SECONDS_PER_REBUILT_EVENT = 29 / 100_000
 SECONDS_PER_PURGED_EVENT = 12 / 100_000
+SECONDS_PER_RECORD_DISPATCH = 5 / 1000
 
 CURSOR_UNDER_A_POOLER = (
     "A server-side cursor did not survive. A transaction-pooling connection "
@@ -91,6 +94,7 @@ class Command(BaseCommand):
                 seed=seed,
                 iterations=options["iterations"],
                 warmup=options["warmup"],
+                records=IMPORT_SHAPE_RECORDS,
                 #: --json owns stdout; the notice goes aside.
                 aside=options["json"],
             )
@@ -99,6 +103,7 @@ class Command(BaseCommand):
                 seed=seed,
                 iterations=options["iterations"],
                 warmup=options["warmup"],
+                records=IMPORT_SHAPE_RECORDS,
                 library=library,
                 keep=options["keep"],
                 count_replay=options["count_replay"],
@@ -144,19 +149,23 @@ class Command(BaseCommand):
         )
 
     def _write_estimate(
-        self, *, seed: int, iterations: int, warmup: int, aside: bool
+        self, *, seed: int, iterations: int, warmup: int, records: int, aside: bool
     ) -> None:
-        estimate = seed * (
-            SECONDS_PER_SEEDED_EVENT
-            + SECONDS_PER_REBUILT_EVENT
-            + SECONDS_PER_PURGED_EVENT
+        estimate = (
+            seed
+            * (
+                SECONDS_PER_SEEDED_EVENT
+                + SECONDS_PER_REBUILT_EVENT
+                + SECONDS_PER_PURGED_EVENT
+            )
+            + (records + warmup) * SECONDS_PER_RECORD_DISPATCH
         )
         #: Three events a game: a third of the rows.
         catalog_rows = seed // 3 + 2 * iterations + warmup
         notice = (
-            f"About to create a scratch user, {seed} events and "
-            f"{catalog_rows} catalog rows, then remove them. "
-            f"Estimate: {estimate / 60:.1f} minute(s)."
+            f"About to create a scratch user, {seed} events, "
+            f"{catalog_rows} catalog rows and {records} historical playtime "
+            f"records, then remove them. Estimate: {estimate / 60:.1f} minute(s)."
         )
         if aside:
             #: Unstyled: a notice, not a failure.
@@ -180,6 +189,8 @@ class Command(BaseCommand):
             self._write_timings("Command", report.command)
         if report.session_command is not None:
             self._write_timings("Session command", report.session_command)
+        if report.record_command is not None:
+            self._write_timings("Record command", report.record_command)
         for read in report.reads:
             self._write_timings(f"Read {read.name}", read.timings)
         if report.amplification is not None:

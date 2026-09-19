@@ -15,6 +15,7 @@ from games.events.benchmark import (
     environment,
     read_budget,
     rebuild_budget,
+    record_command_budget,
     session_command_budget,
 )
 from games.events.benchmark_workload import (
@@ -23,6 +24,7 @@ from games.events.benchmark_workload import (
     run_command_scenario,
     run_read_scenario,
     run_rebuild_scenario,
+    run_record_command_scenario,
     run_session_command_scenario,
     seed_library,
     seeded_runs,
@@ -41,6 +43,7 @@ def run_benchmark(
     seed: int,
     iterations: int,
     warmup: int,
+    records: int,
     library: UserLibrary | None = None,
     keep: bool = False,
     count_replay: bool = True,
@@ -49,7 +52,8 @@ def run_benchmark(
     """Seed a library, measure it, remove it.
 
     With `library`, run the read scenario and the read-only rebuild
-    against one that exists, dispatch nothing, and ignore `seed`.
+    against one that exists, dispatch nothing, and ignore `seed` and
+    `records`.
 
     `announce_scratch_user` takes the username as soon as the user exists,
     before any scenario can fail. --keep needs it: a run that raises leaves
@@ -70,6 +74,7 @@ def run_benchmark(
             seed=seed,
             iterations=iterations,
             warmup=warmup,
+            records=records,
             count_replay=count_replay,
         )
         teardown = None if keep else purge_scratch_user(username)
@@ -85,7 +90,13 @@ def run_benchmark(
 
 
 def _measure_scratch(
-    user: User, *, seed: int, iterations: int, warmup: int, count_replay: bool
+    user: User,
+    *,
+    seed: int,
+    iterations: int,
+    warmup: int,
+    records: int,
+    count_replay: bool,
 ) -> BenchmarkReport:
     library = user.library
     spares = 2 * iterations + warmup
@@ -106,6 +117,13 @@ def _measure_scratch(
         iterations=iterations,
         warmup=warmup,
     )
+    record_command = run_record_command_scenario(
+        library,
+        actor=user,
+        runs=seeded_runs(library),
+        records=records,
+        warmup=warmup,
+    )
     reads = run_read_scenario(library, iterations=iterations, warmup=warmup)
     rebuild, replay = run_rebuild_scenario(
         library, mode=RebuildMode.REBUILD, count_replay=count_replay
@@ -118,6 +136,7 @@ def _measure_scratch(
         seed=seeded,
         command=command,
         session_command=session_command,
+        record_command=record_command,
         reads=reads,
         amplification=amplification,
         replay=replay,
@@ -126,6 +145,7 @@ def _measure_scratch(
         budgets=(
             command_budget(command),
             session_command_budget(session_command),
+            record_command_budget(record_command),
             *(read_budget(read, on_real_library=False) for read in reads),
             rebuild_budget(rebuild),
         ),
@@ -147,6 +167,7 @@ def _measure_existing(
         seed=None,
         command=None,
         session_command=None,
+        record_command=None,
         reads=reads,
         amplification=None,
         replay=replay,

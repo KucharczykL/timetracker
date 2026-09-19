@@ -137,8 +137,9 @@ path**, so verify against `make check` before pushing when possible.
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Verify the UUID identity map | `make audit-uuid-identity` (read-only; fails on any violation) |
 | Render every read-only page as one user to files | `make render-pages ARGS="--user NAME --out DIR"` (read-only; run at two commits on one database and `diff -r`; lists whole, CSRF and version footer normalised) |
-| Benchmark commands, replay, reads, and per-event cost | `make bench` (~2 min, seeds three events a game and removes the scratch library; `ARGS="--library <id> --gate"` times the six reads and checks replay on a real library, where the 20 ms read budget is judged; **not** in `make check`) |
+| Benchmark commands, replay, reads, and per-event cost | `make bench` (~2 min, seeds three events a game, dispatches 600 historical playtime records and removes the scratch library; `ARGS="--library <id> --gate"` times the six reads and checks replay on a real library, where the 20 ms read budget is judged; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
+| Convert one library's review population and judge every statistics figure | `make verify-reclassification-parity ARGS="--user NAME --confirm NAME"` (writes; scratch restore only; without `--confirm` it reads and prints; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
 | Load platform fixtures / sample data | `make loadplatforms` / `make loadsample` |
 | Regenerate sample data (anonymized prod) | `make anonymize-sample` (see Testing) |
@@ -452,6 +453,13 @@ docs/           — Additional documentation
   narrows provenance and device choices and leaves every other rule to the
   command
   ([entry](docs/superpowers/specs/2026-09-17-issue-706-historical-playtime-entry-design.md)).
+  #1099's gates: `make verify-reclassification-parity` converts a library's
+  review population and judges every `StatsData` key by the rule
+  `games/stats_parity.py` states for its source group; `make bench`
+  dispatches 600 records between the session command and the reads. Ran on
+  the 2026-09-19 dump: replay clean, 0 of 199 changed figures unattributed,
+  every read inside 20 ms
+  ([gates](docs/superpowers/specs/2026-09-19-issue-1099-historical-playtime-gates-design.md)).
   Contract is
   [HistoricalPlaytime aggregate](docs/superpowers/specs/2026-09-17-issue-705-historical-playtime-aggregate-design.md);
   wave is
