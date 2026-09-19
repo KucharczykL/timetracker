@@ -1,11 +1,23 @@
 """Statistics parity across a reclassification: the rules, the command."""
 
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
+from io import StringIO
 
 import pytest
+from django.core.management import call_command
+from django.core.management.base import CommandError
 
-from games.models import Game
+from games.commands.playergame import TrackGame
+from games.commands.playersession import CreateSession, DurationOnlyTiming, TimedTiming
+from games.events.dispatch import dispatch
+from games.models import (
+    Game,
+    HistoricalPlaytime,
+    LibraryEvent,
+    PlayerSession,
+    Playthrough,
+)
 from games.reads.playtime import (
     GameByPlaytime,
     MonthPlaytime,
@@ -465,3 +477,175 @@ def test_a_scope_keeps_the_rows_dated_in_its_year():
 
     assert converted.in_scope(YEAR).rows == (in_year,)
     assert converted.in_scope(None).rows == (in_year, outside)
+
+
+# ── The command ─────────────────────────────────────────────────────────────
+
+MARCH_5 = date(2025, 3, 5)
+MIDDAY = datetime(2025, 3, 7, 12, tzinfo=UTC)
+
+
+@pytest.fixture
+def prague_calendar(owned_user, set_user_setting):
+    set_user_setting(owned_user, "DISPLAY_TIME_ZONE", "Europe/Prague")
+
+
+def tracked_run(library, actor, name: str) -> Playthrough:
+    game = Game.objects.create(library=library, name=name)
+    dispatch(
+        TrackGame(game_id=game.pk),
+        actor=actor,
+        library=library,
+        idempotency_key=f"track-{name}",
+    )
+    return Playthrough.objects.get(player_game__game=game)
+
+
+def a_session(library, actor, run, timing) -> None:
+    dispatch(
+        CreateSession(playthrough_id=run.pk, timing=timing),
+        actor=actor,
+        library=library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+
+
+@pytest.fixture
+def review_population(owned_user, owned_library, prague_calendar):
+    """Two rows the review offers, two it leaves alone."""
+    alpha = tracked_run(owned_library, owned_user, "Alpha")
+    beta = tracked_run(owned_library, owned_user, "Beta")
+    gamma = tracked_run(owned_library, owned_user, "Gamma")
+    delta = tracked_run(owned_library, owned_user, "Delta")
+    a_session(
+        owned_library,
+        owned_user,
+        alpha,
+        DurationOnlyTiming(day=MARCH_5, duration=timedelta(hours=9)),
+    )
+    a_session(
+        owned_library,
+        owned_user,
+        beta,
+        DurationOnlyTiming(day=date(2025, 3, 6), duration=timedelta(hours=10)),
+    )
+    a_session(
+        owned_library,
+        owned_user,
+        beta,
+        TimedTiming(
+            started_at=MIDDAY,
+            ended_at=MIDDAY + timedelta(hours=1),
+            day_zone="Europe/Prague",
+        ),
+    )
+    a_session(
+        owned_library,
+        owned_user,
+        gamma,
+        TimedTiming(
+            started_at=MIDDAY + timedelta(days=1),
+            ended_at=MIDDAY + timedelta(days=1, hours=2),
+            day_zone="Europe/Prague",
+        ),
+    )
+    a_session(
+        owned_library,
+        owned_user,
+        delta,
+        DurationOnlyTiming(day=date(2025, 3, 9), duration=timedelta(hours=3)),
+    )
+
+
+def run_parity(**options) -> str:
+    output = StringIO()
+    call_command("verify_reclassification_parity", stdout=output, **options)
+    return output.getvalue()
+
+
+def lines_naming(output: str, key: str) -> list[str]:
+    return [line for line in output.splitlines() if f": {key} " in line]
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_the_conversion_is_judged_clean(owned_user, owned_library, review_population):
+    output = run_parity(user=owned_user.username, confirm=owned_user.username)
+
+    assert "Review population: 2 session(s)" in output
+    assert "0 unattributed of" in output
+    assert "2 rows converted" in output
+    assert lines_naming(output, "total_sessions") == [
+        "all-time: total_sessions 5 -> 3 [2 row(s) converted]",
+        "2025: total_sessions 5 -> 3 [2 row(s) converted]",
+    ]
+    assert "was converted" in lines_naming(output, "longest_session_time")[0]
+    assert "19:00:00 moved" in lines_naming(output, "total_hours")[0]
+    assert "was converted" in lines_naming(output, "first_play_from_record")[0]
+    for key in ("total_games", "unique_days", "first_play_date", "last_play_date"):
+        assert lines_naming(output, key) == []
+    assert HistoricalPlaytime.objects.filter(library=owned_library).count() == 2
+    assert PlayerSession.objects.alive().filter(library=owned_library).count() == 3
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_without_confirm_nothing_is_appended(
+    owned_user, owned_library, review_population
+):
+    events = LibraryEvent.objects.filter(library=owned_library).count()
+
+    output = run_parity(user=owned_user.username)
+
+    assert "DRY RUN" in output
+    assert "Review population: 2 session(s)" in output
+    assert "2025:" in output
+    assert LibraryEvent.objects.filter(library=owned_library).count() == events
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_a_mismatched_confirm_is_refused(owned_user, review_population):
+    with pytest.raises(CommandError, match="--confirm must exactly match"):
+        run_parity(user=owned_user.username, confirm="someone-else")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_an_unknown_user_is_named():
+    with pytest.raises(CommandError, match="does not exist"):
+        run_parity(user="nobody")
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_a_second_run_converts_nothing_and_stays_clean(
+    owned_user, owned_library, review_population
+):
+    run_parity(user=owned_user.username, confirm=owned_user.username)
+    events = LibraryEvent.objects.filter(library=owned_library).count()
+
+    output = run_parity(user=owned_user.username, confirm=owned_user.username)
+
+    assert "Review population: 0 session(s)" in output
+    assert "0 unattributed of 0 changed" in output
+    assert LibraryEvent.objects.filter(library=owned_library).count() == events
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_an_unattributed_change_fails_the_run(
+    owned_user, review_population, monkeypatch
+):
+    monkeypatch.setitem(RULES, "total_sessions", lambda comparison: None)
+    output = StringIO()
+
+    #: Once a scope: all-time and the year.
+    with pytest.raises(CommandError, match="2 unattributed of"):
+        call_command(
+            "verify_reclassification_parity",
+            user=owned_user.username,
+            confirm=owned_user.username,
+            stdout=output,
+        )
+
+    assert "total_sessions 5 -> 3 [UNATTRIBUTED]" in output.getvalue()

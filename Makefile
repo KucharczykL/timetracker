@@ -387,6 +387,11 @@ purge-library: ensure-postgres
 verify-replay-parity: ensure-postgres
 	uv run --frozen python manage.py rebuild_projections --all-libraries --check --fail-on-drift
 
+# Converts the review population and judges every figure. Scratch restore only.
+# Usage: make verify-reclassification-parity ARGS="--user NAME --confirm NAME"
+verify-reclassification-parity: ensure-postgres
+	uv run --frozen python manage.py verify_reclassification_parity $(ARGS)
+
 # Usage: make bench ARGS="--seed 10000 --gate"
 bench: ensure-postgres
 	uv run --frozen python manage.py benchmark_events $(ARGS)
