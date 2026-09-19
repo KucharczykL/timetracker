@@ -3201,3 +3201,61 @@ class SelectionLineTest(SimpleTestCase):
         checkbox = html.split("data-selection-check-all")[1].split(">")[0]
         self.assertIn("w-6", checkbox)
         self.assertIn("h-6", checkbox)
+
+
+class SelectableTableMountTest(SimpleTestCase):
+    """The element wraps the composite it commands (#711)."""
+
+    @staticmethod
+    def _render(**kwargs):
+        return str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game", key="1")],
+                data_table=True,
+                caption="Games",
+                **kwargs,
+            )
+        )
+
+    def test_selectable_table_wraps_the_responsive_table(self):
+        html = self._render(selection={"filter": "{}"})
+        before_responsive = html.split("<responsive-table")[0]
+        self.assertIn("<selectable-table", before_responsive)
+        self.assertLess(
+            html.index("<selectable-table"), html.index("data-selection-line")
+        )
+
+    def test_the_element_carries_the_filter_and_the_count(self):
+        from django.core.paginator import Paginator
+
+        paginator = Paginator(list(range(1, 51)), 10)
+        html = self._render(
+            selection={"filter": '{"year":2025}'},
+            page_obj=paginator.page(1),
+            elided_page_range=list(paginator.get_elided_page_range(1)),
+            request=None,
+        )
+        element = html.split("<selectable-table")[1].split(">")[0]
+        self.assertIn("year", element)
+        self.assertIn('count="50"', element)
+
+    def test_a_table_with_no_paginator_states_no_count(self):
+        html = self._render(selection={"filter": ""})
+        element = html.split("<selectable-table")[1].split(">")[0]
+        self.assertIn('count="0"', element)
+
+    def test_a_table_with_no_selection_mounts_no_element(self):
+        self.assertNotIn("<selectable-table", self._render())
+
+    def test_the_element_brings_its_script(self):
+        table = components.StyledTable(
+            columns=[components.Column("Name")],
+            rows=[components.make_row("Game", key="1")],
+            data_table=True,
+            caption="Games",
+            selection={"filter": ""},
+        )
+        self.assertIn(
+            "dist/elements/selectable-table.js", components.collect_media(table).js
+        )

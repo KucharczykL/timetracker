@@ -2464,6 +2464,7 @@ def _pagination_nav(
 # to the multi-column target (data-shift-href). Registered in custom_elements.py.
 _SortHeader = custom_element_builder("sort-header")
 _ResponsiveTable = custom_element_builder("responsive-table")
+_SelectableTable = custom_element_builder("selectable-table")
 
 # The runtime column-drop state is a safelisted nth-child class family in
 # input.css (like the align rules), so it has a hard ceiling: a column past it
@@ -2893,6 +2894,18 @@ def StyledTable(
         )
     if footer_node is not None:
         inner_children.append(footer_node)
+
+    if selection is not None:
+        # The selectable element wraps the whole composite — the rows it
+        # decorates and the line that commands them — and stays outside
+        # <responsive-table>, which keeps owning the column drop.
+        inner_children = [
+            _SelectableTable(
+                class_="block",
+                filter=selection["filter"],
+                count=str(page_obj.paginator.count if paginated else 0),
+            )[*inner_children]
+        ]
 
     # The shell owns the intrinsic radius symmetrically; `overflow-clip` clips
     # the scroll wrapper and footer to it, so top+bottom corners are rounded
