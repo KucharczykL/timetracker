@@ -132,11 +132,12 @@ dropping. The charter's rules hold, and this wave settles the shape:
   bar and whose rows also do not toggle on click.
 - A selection outlives the page. The element keeps the statement, never
   the rows: the keys a person clicked, or the scope and its exclusions,
-  in session storage keyed on the library, the table's caption, the list's
-  path and its filter, so paging keeps it, a filter change restores
-  nothing, two tables on one page keep two, and a second person signing in
-  at the same browser inherits none, since session storage outlives a
-  logout. Clear, the mode turned off and the submit of a bulk action forget
+  in session storage keyed on the library, the table's caption and the
+  list's path, one per table, with the filter inside the value: paging
+  keeps it, a filter that does not match restores nothing and keeps the
+  value for a person who goes back, two tables on one page keep two, and a
+  second person signing in at the same browser inherits none, since session
+  storage outlives a logout. Clear, the mode turned off and the submit of a bulk action forget
   it, so a statement acted on is never restored over the rows it changed:
   the element answers a `submit` in the actions slot itself, and a tray
   that posts without a form calls its public `forgetAndClose()`. An "all matching" statement
