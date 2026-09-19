@@ -3259,3 +3259,20 @@ class SelectableTableMountTest(SimpleTestCase):
         self.assertIn(
             "dist/elements/selectable-table.js", components.collect_media(table).js
         )
+
+
+class BottomCornerTest(SimpleTestCase):
+    """The chrome that shares the bottom corner with the selection line stands
+    off it, each in its own class (#711)."""
+
+    def test_toast_stack_stands_off_the_selection_line(self):
+        from common.components.toast import TOAST_STACK_CLASS
+
+        self.assertIn("bottom-[var(--selection-line,0px)]", TOAST_STACK_CLASS)
+        # Above the line on purpose: a toast is the answer to the act.
+        self.assertIn("z-50", TOAST_STACK_CLASS)
+
+    def test_version_stamp_stands_off_the_selection_line(self):
+        from common.layout import VERSION_STAMP_CLASS
+
+        self.assertIn("--selection-line", VERSION_STAMP_CLASS)

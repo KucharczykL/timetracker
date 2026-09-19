@@ -74,6 +74,14 @@ def _main_script(mastered: bool) -> str:
 #: One page usually answers the whole scan.
 RESUME_PAGE_SIZE = 50
 
+# The build stamp's corner. Deliberately faint and decorative; fg-disabled is
+# the dimmest token. The offset reads the height a selectable table publishes
+# for its sticky selection line, so the stamp is never buried under it.
+VERSION_STAMP_CLASS = (
+    "fixed left-2 bottom-[calc(0.5rem+var(--selection-line,0px))] "
+    "text-type-micro text-fg-disabled"
+)
+
 # Shared classes for the plain navbar entries (Home/Stats/Log out).
 _NAV_LINK_CLASS = (
     "block py-2 px-3 rounded-base hover:bg-neutral-tertiary-medium "
@@ -342,11 +350,7 @@ def TimetrackerDocument(
             alt="loading indicator",
         )
 
-        version_footer_note = Span(
-            # Deliberately faint decorative build stamp; fg-disabled is the
-            # dimmest token (one shade brighter than the old slate-300 in light).
-            class_="fixed left-2 bottom-2 text-type-micro text-fg-disabled"
-        )[
+        version_footer_note = Span(class_=VERSION_STAMP_CLASS)[
             f"{version()} "
             f"({date_time_presentation.format(version_modified_at(), 'datetime')})"
         ]
