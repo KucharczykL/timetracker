@@ -114,20 +114,32 @@ dropping. The charter's rules hold, and this wave settles the shape:
   Only the checkbox selects; the row's links and immediate controls keep
   their meaning. The checkbox is not a column and does not count against
   `MAX_DATA_TABLE_COLUMNS`.
-- Selection is a mode. A Select toggle in the table's footer turns it on,
-  and only then does the checkbox render in the identity cell. The mode is
-  off on every page load, stored nowhere: the table a person reads most
-  days is unchanged, and a selection is cleared on navigation anyway, so a
-  remembered mode would carry an empty selection. There is no header
-  checkbox. Check-all for the page, "Select all N matching" with N read
+- Selection is a mode. A Select toggle turns it on: one ends a slim strip
+  above the table, always visible, and one ends the footer's selection
+  line, visible with the mode, so the control sits at an edge whichever end
+  of a long table the person is at. Every checkbox is built when the
+  element connects and shown only with the mode, so turning the mode on
+  moves no row; the column is reserved on a selectable table always, which
+  the header label clears and the name floor below `md` budgets. The mode
+  is off on a page load unless the list holds a selection, which the
+  element restores from session storage together with the mode. There is
+  no header checkbox. Check-all for the page, "Select all N matching" with N read
   from the paginator, the count, Clear and the actions all live in the
   footer's selection line, which the toggle opens above the pagination
   row. Without a paginator there is no "all matching": the page is the
   matching set, on Game detail's tables and on a list shown whole. Prior art, settled by the user: PatternFly, Carbon, Polaris, Helios
   and SABnzbd's Glitter queue, whose check-all also lives in its multi-edit
   bar and whose rows also do not toggle on click.
-- Selection lives in the page and nowhere else. Navigating a page clears it.
-  A selection that must outlive a page is the "all matching" statement.
+- A selection outlives the page. The element keeps the statement, never
+  the rows: the keys a person clicked, or the scope and its exclusions,
+  in session storage keyed on the list's path and its filter, so paging
+  keeps it and a filter change restores nothing. Clear, the mode turned
+  off and the submit of a bulk action forget it, so a statement acted on
+  is never restored over the rows it changed. An "all matching" statement
+  is not restored on a page that reports no count. The runner reads the
+  statement the POST carries and nothing else, so what the element keeps
+  changes nothing in the runner; a count that no longer matches is the
+  confirmation's to say, not the tray's to refuse.
   The cost of the mode: after #718 a single-row act is three presses,
   Select, the checkbox, the action, one more than the charter counted.
 - Below `md` the identity cell is today a shrinkable, single-line name cell,
@@ -174,10 +186,12 @@ for it, and it stops sticking once the table has scrolled past. The shell's
 `overflow-hidden` would make the shell the sticky containing block, so it
 becomes `overflow-clip`, which clips the corners the same and is no scroll
 container. The line sits under the menu stratum (`z-20`), so an actions
-menu opens over it, and under the toasts (`z-50`). The toast stack and the
-version stamp are fixed to the same bottom edge, so the element publishes
-the line's height as `--selection-line` on the root while the mode is on,
-and each of the two reads it in its own classes for its bottom offset.
+menu opens over it, and under the toasts (`z-50`). The toast stack is
+fixed to the same bottom edge, so the element publishes the line's height
+as `--selection-line` on the root while the mode is on, and the stack reads
+it in its own classes for its bottom offset. The version stamp is a
+`<footer>` in the flow on every page's last line, moved out of the fixed
+corner by #711, so nothing sticky covers it.
 `StyledTable`'s footer slot holds one region today and refuses a second;
 #711 makes it a composite the table builds: the selection line above the
 pagination row, either alone, so a table with no pagination, Game detail's
@@ -458,7 +472,10 @@ matching" selection records exclusions. Corrected by the review of #711's
 spec: the element builds the checkboxes from a row key the server renders,
 rather than revealing hidden ones, so the row builder stays unaware; no
 all-matching control without a paginator; the sticky line needs the shell
-to clip rather than hide, verified in a browser.
+to clip rather than hide, verified in a browser. Changed by #711's review
+against the rendered table: a selection outlives the page as a stored
+statement, two Select toggles bracket the table, every checkbox is built
+at connect, and the version stamp left the fixed corner.
 
 Deviations recorded: the empty bucket is removed, not archived; Finish stays
 inline as an immediate control; a cross-game move is refused rather than
