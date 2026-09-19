@@ -862,7 +862,7 @@ _SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
 # md:p-0) contradicts the base and the sizing scale, so it alone carries its
 # complete look and skips both.
 _OUTLINE_VARIANT_CLASS = (
-    f"{CONTROL_SIZE_CLASS} text-heading bg-neutral-primary-medium border "
+    f"{CONTROL_SIZE_CLASS} gap-2 text-heading bg-neutral-primary-medium border "
     "border-default-medium hover:bg-neutral-tertiary-medium "
     "hover:border-default-strong focus:outline-hidden focus:ring-2 "
     "focus:ring-fg-brand whitespace-nowrap"
@@ -1196,6 +1196,14 @@ def Input(
     return Element("input", merged)
 
 
+#: What a checkbox looks like, for the builder and for the two nameless ones
+#: a selectable table clones.
+CHECKBOX_LOOK_CLASS = (
+    "shrink-0 rounded border-default-medium bg-neutral-secondary-medium "
+    "text-brand focus:ring-brand"
+)
+
+
 def Checkbox(
     attrs: AttrsArg | None = None,
     *,
@@ -1209,13 +1217,7 @@ def Checkbox(
     baked: list[HTMLAttribute] = [
         ("name", name),
         ("value", value),
-        (
-            "class",
-            (
-                "shrink-0 rounded border-default-medium bg-neutral-secondary-medium "
-                f"text-brand focus:ring-brand {DISABLED_CONTROL_CLASS}"
-            ),
-        ),
+        ("class", f"{CHECKBOX_LOOK_CLASS} {DISABLED_CONTROL_CLASS}"),
     ]
     if checked:
         baked.append(("checked", "true"))
@@ -2066,6 +2068,10 @@ class TableRowData(TypedDict):
 
     cell_data: list[Cell]
     attributes: NotRequired[list[HTMLAttribute]]
+    # Names the row for selection.
+    key: NotRequired[SelectionKey]
+    # One line under the name, below md.
+    summary: NotRequired[str]
 
 
 type Align = Literal["left", "right"]  # column text alignment, e.g. "right"
@@ -2097,6 +2103,17 @@ class Column(NamedTuple):
     priority: int = 1
 
 
+type SelectionKey = str  # a row's own name, e.g. "0193f0c2-…"
+type FilterJson = str  # the ?filter= JSON document, "" when unfiltered
+type SelectionScope = str  # the library and the table, e.g. "lib-1:Games"
+
+
+class SelectionDeclaration(TypedDict):
+    """The declaration that makes a table selectable."""
+
+    filter: FilterJson
+
+
 class TableData(TypedDict):
     """Canonical table shape consumed by :func:`StyledTable` /
     :func:`paginated_table_content`. Every list view builds this."""
@@ -2110,9 +2127,16 @@ class TableData(TypedDict):
     # The resolved active sort (from `apply_sort`'s SortResult.terms). Present on
     # the sortable list views; omitted by views with no sortable columns.
     sort_terms: NotRequired[Sequence[SortTerm]]
+    # Present where a list selects rows.
+    selection: NotRequired[SelectionDeclaration]
 
 
-def make_row(*cells: Cell, **attributes: object) -> TableRowData:
+def make_row(
+    *cells: Cell,
+    key: SelectionKey | None = None,
+    summary: str | None = None,
+    **attributes: object,
+) -> TableRowData:
     """Build a :class:`TableRowData` from positional cells and htpy-style
     attribute kwargs (``id=...``, ``hx_select=...`` → ``hx-select`` …).
 
@@ -2120,6 +2144,9 @@ def make_row(*cells: Cell, **attributes: object) -> TableRowData:
     bare attribute, ``False``/``None`` omitted. Passing a ``class`` is rejected —
     :func:`TableRow` owns the styled row class; drop to the generic ``Tr`` builder
     for a custom-classed row.
+
+    ``key`` and ``summary`` are keyword-only and declared before
+    ``**attributes``, or they would render as ``<tr>`` attributes instead.
     """
     if "class_" in attributes or "class" in attributes:
         raise ValueError(
@@ -2127,10 +2154,21 @@ def make_row(*cells: Cell, **attributes: object) -> TableRowData:
             "styled row class. Use the generic Tr builder for a custom-classed row."
         )
     data: TableRowData = {"cell_data": list(cells)}
+    if key is not None:
+        data["key"] = key
+    if summary is not None:
+        data["summary"] = summary
     attrs = _attrs_from_kwargs(attributes)
     if attrs:
         data["attributes"] = attrs
     return data
+
+
+# The row's second line, below md alone.
+_ROW_SUMMARY_CLASS = (
+    "md:hidden block overflow-hidden text-ellipsis "
+    "text-type-micro text-body-subtle font-normal"
+)
 
 
 def TableRow(
@@ -2138,6 +2176,7 @@ def TableRow(
     columns: Sequence[Column] | None = None,
     *,
     data_table: bool = False,
+    selectable: bool = False,
 ) -> Element:
     """Render a styled ``<tr>`` from a :class:`TableRowData`.
 
@@ -2150,8 +2189,19 @@ def TableRow(
     row fragment swapped into such a table must pass both this flag and the
     table's ``columns``, or it renders under a different width policy than the
     rows around it.
+
+    ``selectable`` mirrors the table's selection declaration, and a row with
+    no ``key`` under it is refused — always, and not in debug alone. A row
+    swapped into a selectable table must pass it, or it arrives unnamed: no
+    checkbox, no way to act on it, and nothing said.
     """
     cells = data["cell_data"]
+    if selectable and not data.get("key"):
+        raise ValueError(
+            "A selectable table needs a key on every row: an unnamed row "
+            "cannot be selected. Pass make_row(..., key=...) for "
+            f"{data['cell_data']!r}."
+        )
 
     # Hover lightens the text along with the surface: body-subtle text fails AA
     # on the tertiary hover surface in both themes.
@@ -2161,6 +2211,9 @@ def TableRow(
         "hover:text-heading"
     )
     tr_attrs: list[HTMLAttribute] = [("class", tr_class), *data.get("attributes", [])]
+    key = data.get("key")
+    if key is not None:
+        tr_attrs.append(("data-selection-key", key))
 
     # A ragged row is a documented prod degradation (see StyledTable's DEBUG
     # cell-count guard), so a missing column is read as "no policy", never as
@@ -2182,6 +2235,13 @@ def TableRow(
             # The row header has always been single-line; only an explicit
             # wrap opt-out releases it.
             wrap_class = "" if column and column.wrap else "whitespace-nowrap "
+            summary = data.get("summary")
+            identity_children: list[Child] = [cell]
+            if summary is not None:
+                # The nowrap cell clips nothing for it.
+                identity_children.append(
+                    Div([("data-row-summary", "")], class_=_ROW_SUMMARY_CLASS)[summary]
+                )
             cell_elements.append(
                 Th(
                     scope="row",
@@ -2190,7 +2250,7 @@ def TableRow(
                         f"{wrap_class}"
                         f"{column_class}"
                     ).strip(),
-                )[cell]
+                )[*identity_children]
             )
         else:
             nowrap = data_table and not (column and column.wrap)
@@ -2415,6 +2475,7 @@ def _pagination_nav(
 # to the multi-column target (data-shift-href). Registered in custom_elements.py.
 _SortHeader = custom_element_builder("sort-header")
 _ResponsiveTable = custom_element_builder("responsive-table")
+_SelectableTable = custom_element_builder("selectable-table")
 
 # The runtime column-drop state is a safelisted nth-child class family in
 # input.css (like the align rules), so it has a hard ceiling: a column past it
@@ -2460,9 +2521,13 @@ def _header_cell(
     *,
     data_table: bool = False,
     pinned: bool = False,
+    selectable: bool = False,
 ) -> Node:
     """One ``<th>``: a static header for a non-sortable column, else a clickable
-    sort link wrapped in ``<sort-header>`` with both navigation targets baked in."""
+    sort link wrapped in ``<sort-header>`` with both navigation targets baked in.
+
+    ``selectable`` insets the label by the checkbox its column reserves, so the
+    label still stands over the names under it."""
     base_class = "px-2 sm:px-3 lg:px-6 py-3" + (
         " text-right" if column.align == "right" else ""
     )
@@ -2484,8 +2549,11 @@ def _header_cell(
             policy_attrs.append(("data-wrap", ""))
         if column.shrinkable:
             policy_attrs.append(("data-shrinkable", ""))
+    inset = _SELECTION_LABEL_INSET_CLASS if selectable else ""
     if column.sort_key is None:
-        return Th(policy_attrs, scope="col", class_=base_class)[column.label]
+        return Th(policy_attrs, scope="col", class_=base_class)[
+            Div(class_=inset)[column.label] if inset else column.label
+        ]
 
     active = next(
         (
@@ -2507,8 +2575,9 @@ def _header_cell(
         data_shift_href=_sort_href(request, cycle_sort(sort_terms, column.sort_key)),
         class_=_SORT_HEADER_LINK_CLASS,
     )[column.label, indicator]
+    header = _SortHeader()[link]
     return Th(policy_attrs, scope="col", class_=base_class, aria_sort=aria_sort)[
-        _SortHeader()[link]
+        Div(class_=inset)[header] if inset else header
     ]
 
 
@@ -2540,6 +2609,154 @@ def PageSizeSelect(request, current: int) -> Node:
     )
 
 
+# No scripting, no checkboxes, no line.
+_SELECTION_LINE_HIDE_CLASS = "[selectable-table:not(:defined)_&]:hidden"
+
+# Sticky in the mode, under the menus.
+_SELECTION_LINE_STICKY_CLASS = (
+    "[[data-selection-mode=on]_&]:sticky "
+    "[[data-selection-mode=on]_&]:bottom-0 "
+    "[[data-selection-mode=on]_&]:z-10"
+)
+
+# A checkbox is 24px, the touch target Checkbox() bakes no size for.
+SELECTION_CHECKBOX_CLASS = "w-6 h-6"
+
+# What stands between a row checkbox and the name beside it: 8px.
+SELECTION_CHECKBOX_GAP_CLASS = "me-2"
+
+# The cells' own inset, so the line aligns with the checkbox column.
+_SELECTION_INSET_CLASS = "px-2 sm:px-3 lg:px-6"
+
+# What a row checkbox reserves: the 24px box and its 8px gap.
+#
+# ts/elements/responsive-table.ts states the same 32px as
+# SELECTION_CHECKBOX_COST_PX, because the fit budgets it below md. The header
+# label clears it with ms-8, and drops that while the element is undefined,
+# where no checkbox is built.
+SELECTION_RESERVE_PX = 32
+_SELECTION_LABEL_INSET_CLASS = "ms-8 [selectable-table:not(:defined)_&]:ms-0"
+
+# The element unhides these with the mode.
+_SELECTION_CONTROLS_CLASS = "flex flex-wrap items-center gap-x-3 gap-y-2"
+
+
+def SelectionToggle(*, pressed: bool = False) -> Node:
+    """The control that turns the selection mode on."""
+    return ControlButton(
+        [
+            ("data-selection-toggle", ""),
+            ("aria-pressed", "true" if pressed else "false"),
+            ("aria-label", "Select rows"),
+        ],
+        variant="outline",
+        # Outline bakes no shape; a standalone one states its own.
+        class_="ms-auto rounded-base",
+    )[Icon("checkbox"), Span(class_="max-sm:sr-only")["Select"]]
+
+
+def SelectionBar() -> Node:
+    """The strip above the table, holding the toggle."""
+    return Div(
+        [("data-selection-bar", "")],
+        class_=(
+            f"flex items-center {_SELECTION_INSET_CLASS} py-1 "
+            f"bg-neutral-primary-soft border-b border-default-medium "
+            f"{_SELECTION_LINE_HIDE_CLASS}"
+        ),
+    )[SelectionToggle()]
+
+
+def selection_scope(request, caption_key: str, caption: str) -> SelectionScope:
+    """What tells one table's stored selection from another's.
+
+    The library owns the rows: session storage outlives a sign-out, so without
+    it the next person at that browser inherits the selection. The caption
+    tells two tables of one page apart.
+    """
+    user = getattr(request, "user", None)
+    library = ""
+    if user is not None and getattr(user, "is_authenticated", False):
+        library = str(getattr(user, "library_id", "") or "")
+    return f"{library}:{caption_key or caption}"
+
+
+def SelectionLine(page_obj=None) -> Node:
+    """The selection region, above the pagination row."""
+    controls: list[Node] = [
+        Label(class_="flex items-center gap-2 text-type-body text-heading")[
+            Input(
+                [("data-selection-check-all", "")],
+                type="checkbox",
+                class_=f"{CHECKBOX_LOOK_CLASS} {SELECTION_CHECKBOX_CLASS}",
+            ),
+            Span(class_="sr-only")["Select every row on this page"],
+        ],
+        Span(
+            [("data-selection-count", "")],
+            class_="text-type-body text-heading whitespace-nowrap",
+        )["0 selected"],
+    ]
+    # No paginator: the page is the set.
+    if page_obj is not None:
+        controls.append(
+            ControlButton(
+                [
+                    ("data-selection-all-matching", ""),
+                    ("aria-label", f"Select all {page_obj.paginator.count} matching"),
+                ],
+                variant="ghost",
+                class_="whitespace-nowrap",
+            )[
+                Span(class_="max-sm:hidden")[
+                    f"Select all {page_obj.paginator.count} matching"
+                ],
+                Span(class_="sm:hidden")[f"All {page_obj.paginator.count}"],
+            ]
+        )
+    controls.append(
+        ControlButton([("data-selection-clear", "")], variant="ghost")["Clear"]
+    )
+    # The tray fills this slot.
+    controls.append(Div([("data-selection-actions", "")], class_="flex gap-2"))
+
+    # Cloned per row; a template renders nothing.
+    checkbox_template = Template([("data-selection-checkbox-template", "")])[
+        Input(
+            [("data-selection-checkbox", "")],
+            type="checkbox",
+            class_=(
+                f"{CHECKBOX_LOOK_CLASS} {SELECTION_CHECKBOX_CLASS} "
+                f"{SELECTION_CHECKBOX_GAP_CLASS} align-middle"
+            ),
+        )
+    ]
+
+    return Div(
+        [("data-selection-line", ""), ("hidden", "")],
+        class_=(
+            f"flex flex-wrap items-center gap-x-3 gap-y-2 "
+            f"{_SELECTION_INSET_CLASS} py-3 "
+            f"bg-neutral-primary-soft border-t border-default-medium "
+            f"{_SELECTION_LINE_STICKY_CLASS} {_SELECTION_LINE_HIDE_CLASS}"
+        ),
+    )[
+        Div(
+            [("data-selection-controls", "")],
+            class_=_SELECTION_CONTROLS_CLASS,
+        )[*controls],
+        SelectionToggle(pressed=True),
+        # Two regions: the count ticks, this announces.
+        #
+        # One region would speak every tick, over the checkbox that already
+        # reports itself; this one is written at a change of scope alone.
+        Div(
+            [("data-selection-announcement", ""), ("role", "status")], class_="sr-only"
+        ),
+        checkbox_template,
+    ]
+
+
 def StyledTable(
     columns: list[Column] | None = None,
     rows: Sequence[TableRowData] | None = None,
@@ -2553,6 +2770,7 @@ def StyledTable(
     data_table: bool = False,
     caption: str = "",
     caption_key: str = "",
+    selection: SelectionDeclaration | None = None,
 ) -> Node:
     """Styled, paginated table — the opinionated wrapper over the generic
     ``Table`` primitive (shadow, rounded, zebra rows, responsive column-hiding,
@@ -2582,6 +2800,9 @@ def StyledTable(
     ``caption_key`` is what makes the caption's id unique where one page holds
     several tables that a reader would name the same. The id is hashed from the
     caption otherwise, so two equal captions would resolve to one element.
+
+    ``selection`` makes the table selectable: every row must then carry a
+    ``key``, and the footer gains the selection line.
     """
     if data_table and not caption:
         raise ValueError(
@@ -2598,6 +2819,22 @@ def StyledTable(
     columns = columns or []
     rows = rows or []
     sort_terms = sort_terms or []
+
+    # Always, unlike the DEBUG cell-count guard.
+    #
+    # A ragged table is a cosmetic degradation; a nameless row under a
+    # selectable table cannot be acted on and says nothing about why. TableRow
+    # refuses the nameless row; only the whole table can see a repeated name,
+    # which would select two rows from one press.
+    if selection is not None:
+        keys = [row.get("key") for row in rows]
+        repeated = {key for key in keys if key and keys.count(key) > 1}
+        if repeated:
+            raise ValueError(
+                "StyledTable(selection=...) needs one key per row: "
+                f"{sorted(repeated)!r} names more than one row, which one "
+                "press would select together."
+            )
 
     # Dev-only guard: a row must have one cell per column, else cells render
     # misaligned under the headers and the position-based mobile column-hiding
@@ -2638,6 +2875,7 @@ def StyledTable(
                     request,
                     data_table=data_table,
                     pinned=data_table and index == 0,
+                    selectable=selection is not None and index == 0,
                 )
                 for index, column in enumerate(columns)
             ]
@@ -2673,7 +2911,15 @@ def StyledTable(
         tbody_class = f"{tbody_class} {align_rules}"
     table_children.append(
         Tbody(class_=tbody_class)[
-            [TableRow(data=row, columns=columns, data_table=data_table) for row in rows]
+            [
+                TableRow(
+                    data=row,
+                    columns=columns,
+                    data_table=data_table,
+                    selectable=selection is not None,
+                )
+                for row in rows
+            ]
         ]
     )
 
@@ -2732,16 +2978,33 @@ def StyledTable(
         if paginated
         else footer
     )
+    if selection is not None:
+        inner_children.insert(0, SelectionBar())
+        # A named region, not the general slot.
+        inner_children.append(SelectionLine(page_obj=page_obj if paginated else None))
     if footer_node is not None:
         inner_children.append(footer_node)
 
-    # The shell owns the intrinsic radius symmetrically; `overflow-hidden` clips
-    # the scroll wrapper and footer to it, so top+bottom corners are rounded
-    # regardless of which parts are present. The box-shadow follows this radius.
-    # Warning: never add `transform`/`filter`/`contain`/`backdrop-filter` here —
-    # it would make the shell a containing block for the `position: fixed`
-    # dropdown menus and clip them (see e2e/test_dropdown_clipping_e2e.py).
-    return Div(class_="shadow-md sm:rounded-base overflow-hidden", hx_boost="false")[
+    if selection is not None:
+        # Wraps the rows and their line.
+        inner_children = [
+            _SelectableTable(
+                class_="block",
+                filter=selection["filter"],
+                count=str(page_obj.paginator.count if paginated else 0),
+                scope=selection_scope(request, caption_key, caption),
+            )[*inner_children]
+        ]
+
+    # The shell owns the radius and clips.
+    #
+    # `clip` rather than `hidden`: it clips the same way but is not a scroll
+    # container, so the sticky selection line can reach the window instead of
+    # this box. Never add `transform`/`filter`/`contain`/`backdrop-filter`
+    # here — it would make the shell a containing block for the
+    # `position: fixed` dropdown menus and clip them
+    # (see e2e/test_dropdown_clipping_e2e.py).
+    return Div(class_="shadow-md sm:rounded-base overflow-clip", hx_boost="false")[
         *inner_children
     ]
 
@@ -2788,4 +3051,5 @@ def paginated_table_content(
         page_size=page_size,
         data_table=True,
         caption=data["caption"],
+        selection=data.get("selection"),
     )

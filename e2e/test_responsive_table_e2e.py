@@ -180,15 +180,19 @@ def test_name_column_keeps_the_floor_at_mobile(
     authenticated_page: Page, live_server, populated
 ):
     """Below md the greed squeezes the name column; the fit budget must leave
-    it at least the floor rather than letting kept columns crush it."""
+    it at least the floor rather than letting kept columns crush it.
+
+    Measured on the name, not on the cell around it: chrome beside the name —
+    a selection checkbox — would otherwise satisfy the floor."""
     page = authenticated_page
     page.set_viewport_size({"width": 390, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     settle_layout(page)
-    name_cell_width = page.evaluate(
-        "() => document.querySelector('tbody th').getBoundingClientRect().width"
+    name_width = page.evaluate(
+        "() => document.querySelector('tbody th truncated-text')"
+        ".getBoundingClientRect().width"
     )
-    assert name_cell_width >= 150, f"name column squeezed to {name_cell_width}px"
+    assert name_width >= 150, f"name squeezed to {name_width}px"
 
 
 def test_columns_reappear_as_the_viewport_widens(

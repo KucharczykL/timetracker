@@ -11,9 +11,10 @@ from common.components.primitives import (
 
 _ToastStack = custom_element_builder("toast-stack")
 
-#: The corner the toasts stack in.
+#: The corner the toasts stack in, off the selection line.
 TOAST_STACK_CLASS = (
-    "fixed z-50 bottom-0 right-0 flex flex-col items-end pointer-events-none p-4"
+    "fixed z-50 bottom-[var(--selection-line,0px)] right-0 flex flex-col "
+    "items-end pointer-events-none p-4"
 )
 
 

@@ -109,7 +109,10 @@ export function attachTooltip(config: TooltipConfig): TooltipController {
   };
 
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape") close();
+    if (event.key !== "Escape") return;
+    // Spent, so a selectable table hosting this tooltip keeps its selection.
+    event.preventDefault();
+    close();
   };
 
   const open = (): void => {

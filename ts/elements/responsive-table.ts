@@ -24,6 +24,11 @@
 // name giving up a few pixels beats losing the row's actions.
 const NAME_FLOOR_PX = 160;
 
+// What a selection checkbox adds to that floor: the 24px box and its 8px
+// gap, which common/components/primitives.py states as SELECTION_RESERVE_PX
+// beside the classes that draw them.
+const SELECTION_CHECKBOX_COST_PX = 32;
+
 // What a wrap column can cost at most: the 16rem TruncatedText cap plus cell
 // padding. Above this it wraps instead of widening the table.
 const WRAP_CAP_PX = 304;
@@ -87,18 +92,21 @@ export function computeHiddenColumns(
  * A wrap column is flexible (it wraps rather than widening the table), so it
  * costs at most the cap. Below md the shrinkable first column is being
  * squeezed by the max-md greed, so its natural width is not what it will
- * render at — it costs the flat floor the fit must preserve for it.
+ * render at — it costs the flat floor the fit must preserve for it, raised by
+ * the checkbox a selectable table reserves in every row.
  */
 export function columnCosts(
   policies: ColumnPolicy[],
   naturalWidths: number[],
   aboveMd: boolean,
+  selectable = false,
 ): number[] {
+  const floor = NAME_FLOOR_PX + (selectable ? SELECTION_CHECKBOX_COST_PX : 0);
   return naturalWidths.map((width, index) => {
     const policy = policies[index];
     if (!policy) return width;
     if (policy.wrap) return Math.min(width, WRAP_CAP_PX);
-    if (index === 0 && policy.shrinkable && !aboveMd) return NAME_FLOOR_PX;
+    if (index === 0 && policy.shrinkable && !aboveMd) return floor;
     return width;
   });
 }
@@ -218,6 +226,18 @@ export class ResponsiveTableElement extends HTMLElement {
     return widths;
   }
 
+  /** Whether the host table reserves a checkbox in every row.
+   *
+   * The reserve is permanent, not the mode's: a checkbox is built when
+   * <selectable-table> connects and only shown with the mode, so the fit must
+   * budget it at every moment. Reading the mode instead would budget it at no
+   * moment, because a mode change mutates attributes alone and this element
+   * deliberately observes none.
+   */
+  isSelectable(): boolean {
+    return this.closest("selectable-table") !== null;
+  }
+
   private fit(): void {
     const region = this.region;
     const table = this.table;
@@ -225,7 +245,12 @@ export class ResponsiveTableElement extends HTMLElement {
     const availableWidth = region.clientWidth;
     if (availableWidth === 0) return;
     const aboveMd = window.matchMedia?.(ABOVE_MD_QUERY).matches ?? true;
-    this.applyDecision(this.naturalWidths, availableWidth, aboveMd);
+    this.applyDecision(
+      this.naturalWidths,
+      availableWidth,
+      aboveMd,
+      this.isSelectable(),
+    );
     this.fittedWidth = availableWidth;
   }
 
@@ -252,10 +277,11 @@ export class ResponsiveTableElement extends HTMLElement {
     naturalWidths: number[],
     availableWidth: number,
     aboveMd: boolean,
+    selectable = false,
   ): void {
     const table = this.table;
     if (!table) return;
-    const costs = columnCosts(this.policies, naturalWidths, aboveMd);
+    const costs = columnCosts(this.policies, naturalWidths, aboveMd, selectable);
     const priorities = this.policies.map((policy) => policy.priority);
     const hidden = computeHiddenColumns(costs, priorities, availableWidth);
     this.policies.forEach((_, index) => {

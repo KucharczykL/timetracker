@@ -15,8 +15,10 @@ from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand, CommandError
 from django.test import Client, override_settings
 from django.urls import NoReverseMatch, reverse
+from django.utils.html import escape
 
 from common.components.custom_elements import FILTER_MODE_MODELS
+from common.layout import VERSION_STAMP_CLASS
 from common.returns import UrlName
 from games.models import Game, Purchase, UserLibrary
 from games.reads.playtime import played_years
@@ -43,7 +45,9 @@ LIST_ROUTES: frozenset[UrlName] = frozenset(
 #: Every token in a page: the hidden input and any
 #: `...csrf="..."` attribute; then the footer's build stamp.
 _CSRF_TOKEN = re.compile(r'((?:name="csrfmiddlewaretoken" value|[\w-]*csrf)=")[^"]*(")')
-_VERSION_FOOTER = re.compile(r'(class="fixed left-2 bottom-2[^"]*">)[^<]*(</span>)')
+_VERSION_FOOTER = re.compile(
+    rf'(class="{re.escape(escape(VERSION_STAMP_CLASS))}">)[^<]*(</footer>)'
+)
 
 
 class RenderedUrl(NamedTuple):

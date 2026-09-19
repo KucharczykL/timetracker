@@ -37,6 +37,7 @@ from common.components.primitives import (
     ControlLink,
     Dialog,
     Div,
+    FilterJson,
     Form,
     Icon,
     Input,
@@ -45,6 +46,7 @@ from common.components.primitives import (
     P,
     PlainH2,
     Popover,
+    SelectionScope,
     Span,
     Template,
     Ul,
@@ -128,7 +130,22 @@ def _camel(name: str) -> str:
     return head + "".join(part.title() for part in tail)
 
 
-def _reader_expr(name: str, python_type: type) -> str:
+def _named_role(python_type: object) -> type:
+    """The type a PEP 695 alias names.
+
+    ``get_type_hints`` leaves an alias as itself, so a prop annotated with a
+    named role (``type SelectionKey = str``) would miss the type map — which
+    is a KeyError at codegen, not a sentence. The general emitter in
+    ts_codegen.py unwraps the same way.
+    """
+    unwrapped = getattr(python_type, "__value__", python_type)
+    if not isinstance(unwrapped, type):
+        raise TypeError(f"element prop is not a plain type: {python_type!r}")
+    return unwrapped
+
+
+def _reader_expr(name: str, python_type: object) -> str:
+    python_type = _named_role(python_type)
     attr = _kebab(name)
     if python_type in (int, float):
         return f'Number(el.getAttribute("{attr}"))'
@@ -140,7 +157,7 @@ def _reader_expr(name: str, python_type: type) -> str:
 def _ts_for_spec(spec: ElementSpec) -> str:
     hints = get_type_hints(spec.props)
     interface_lines = "\n".join(
-        f"  {_camel(name)}: {_TYPE_MAP[python_type]};"
+        f"  {_camel(name)}: {_TYPE_MAP[_named_role(python_type)]};"
         for name, python_type in hints.items()
     )
     reader_lines = "\n".join(
@@ -535,6 +552,20 @@ class ResponsiveTableProps(TypedDict):
 
 
 register_element("responsive-table", "ResponsiveTable", ResponsiveTableProps)
+
+
+# Built in primitives.py; behavior in ts/elements/selectable-table.ts.
+class SelectableTableProps(TypedDict):
+    # The list's filter JSON, for the wider scope.
+    filter: FilterJson
+    # The paginator's count; 0 without one.
+    count: int
+    # The library and the table, so a kept selection reaches neither another
+    # person at this browser nor another table on this page.
+    scope: SelectionScope
+
+
+register_element("selectable-table", "SelectableTable", SelectableTableProps)
 
 
 class SearchSelectProps(TypedDict):

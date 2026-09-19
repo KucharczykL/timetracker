@@ -93,6 +93,34 @@ describe("attachMenu outside-click containment", () => {
   });
 });
 
+describe("attachMenu Escape on the toggle", () => {
+  function escape(element: HTMLElement): KeyboardEvent {
+    const event = new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    });
+    element.dispatchEvent(event);
+    return event;
+  }
+
+  it("marks the press spent when it closed an open menu", () => {
+    const { host, menu } = mount();
+    const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
+    click(toggle);
+    const event = escape(toggle);
+    expect(menu.hidden).toBe(true);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("leaves a press that closed nothing to its host", () => {
+    const { host } = mount();
+    const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
+    const event = escape(toggle);
+    expect(event.defaultPrevented).toBe(false);
+  });
+});
+
 describe("attachMenu toggle-resize reposition (issue #355)", () => {
   it("observes the toggle and menu while open and disconnects on close", () => {
     // A `fixed` panel does not auto-follow the toggle when it grows/shrinks

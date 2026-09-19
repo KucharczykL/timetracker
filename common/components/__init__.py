@@ -88,7 +88,7 @@ from common.components.domain import (
     SessionDeviceSelector,
     _resolve_name_with_icon,
 )
-from common.components.elements import LinkTag
+from common.components.elements import Footer, LinkTag
 from common.components.filters import (
     FilterFieldPicker,
     NumberFilter,
@@ -127,6 +127,7 @@ from common.components.primitives import (
     MICRO_LABEL_CLASS,
     PAGE_GUTTER_CLASS,
     PAGE_SIZE_PRESETS,
+    SELECTION_CHECKBOX_CLASS,
     A,
     AddForm,
     Badge,
@@ -180,6 +181,10 @@ from common.components.primitives import (
     PopoverIf,
     Radio,
     Select,
+    SelectionBar,
+    SelectionDeclaration,
+    SelectionLine,
+    SelectionToggle,
     Span,
     StaticScript,
     StyledTable,
@@ -202,6 +207,7 @@ from common.components.primitives import (
     custom_element_builder,
     make_row,
     paginated_table_content,
+    selection_scope,
 )
 from common.components.quick_filter import (
     QUICK_FACET_KINDS,
@@ -267,6 +273,7 @@ __all__ = [
     "PAGE_SIZE_PRESETS",
     "QUICK_FACETS",
     "QUICK_FACET_KINDS",
+    "SELECTION_CHECKBOX_CLASS",
     "A",
     "AccountMenu",
     "AddForm",
@@ -338,6 +345,7 @@ __all__ = [
     "FilterSelect",
     "FilterSelectLayout",
     "FilterSummary",
+    "Footer",
     "Form",
     "FormFieldGroup",
     "FormFieldPresentation",
@@ -404,7 +412,11 @@ __all__ = [
     "SectionedPageSection",
     "Select",
     "SelectDropdown",
+    "SelectionBar",
+    "SelectionDeclaration",
     "SelectionFields",
+    "SelectionLine",
+    "SelectionToggle",
     "SessionActions",
     "SessionDeviceSelector",
     "SettingFieldState",
@@ -461,6 +473,7 @@ __all__ = [
     "register_element",
     "render",
     "searchselect_selected",
+    "selection_scope",
     "truncate",
     "truncate_info",
 ]

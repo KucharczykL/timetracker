@@ -2162,7 +2162,7 @@ class StyledTableRoundingTest(SimpleTestCase):
         """A footerless table still gets the shell's rounded clip, no piecemeal
         top/bottom radii."""
         result = self._plain()
-        self.assertIn("sm:rounded-base overflow-hidden", result)
+        self.assertIn("sm:rounded-base overflow-clip", result)
         self.assertNotIn("rounded-t-base", result)
         self.assertNotIn("rounded-b-base", result)
 
@@ -2170,15 +2170,15 @@ class StyledTableRoundingTest(SimpleTestCase):
         """The pagination nav no longer re-supplies the bottom radius; the shell
         still owns it."""
         result = self._paginated()
-        self.assertIn("sm:rounded-base overflow-hidden", result)
+        self.assertIn("sm:rounded-base overflow-clip", result)
         self.assertNotIn("rounded-t-base", result)
         self.assertNotIn("rounded-b-base", result)
 
     def test_scroll_and_clip_live_on_separate_elements(self):
-        """The rounded clip (overflow-hidden) and horizontal scroll (overflow-x-auto)
+        """The rounded clip (overflow-clip) and horizontal scroll (overflow-x-auto)
         cannot share an element — assert each on its own wrapper."""
         result = self._plain()
-        self.assertIn("shadow-md sm:rounded-base overflow-hidden", result)
+        self.assertIn("shadow-md sm:rounded-base overflow-clip", result)
         self.assertIn("relative overflow-x-auto", result)
         # The scroll wrapper carries no rounding of its own.
         self.assertNotIn("overflow-x-auto sm:rounded", result)
@@ -3036,3 +3036,348 @@ class TooltipPanelFontTest(unittest.TestCase):
         )
         panel_class = html.split('data-pop-over-panel=""')[1].split('class="')[1]
         self.assertIn("font-sans", panel_class.split('"')[0])
+
+
+class SelectableRowTest(SimpleTestCase):
+    """The row's name and its mobile summary line."""
+
+    @staticmethod
+    def _selectable(rows, **kwargs):
+        return str(
+            components.StyledTable(
+                columns=[components.Column("Name"), components.Column("Year")],
+                rows=rows,
+                data_table=True,
+                caption="Games",
+                selection={"filter": ""},
+                **kwargs,
+            )
+        )
+
+    def test_make_row_renders_the_key_as_a_row_attribute(self):
+        html = str(components.TableRow(components.make_row("Game", key="abc")))
+        self.assertIn('data-selection-key="abc"', html)
+
+    def test_a_row_with_no_key_carries_no_selection_attribute(self):
+        html = str(components.TableRow(components.make_row("Game")))
+        self.assertNotIn("data-selection-key", html)
+
+    def test_make_row_treats_a_positional_argument_as_a_cell(self):
+        """A positional value is a cell, never a name."""
+        data = components.make_row("Game", "abc")
+        self.assertEqual(data["cell_data"], ["Game", "abc"])
+        self.assertNotIn("key", data)
+
+    @override_settings(DEBUG=False)
+    def test_selectable_table_refuses_a_row_with_no_key(self):
+        """Always, not in debug alone."""
+        with self.assertRaises(ValueError):
+            self._selectable([components.make_row("Game", "2025")])
+
+    @override_settings(DEBUG=False)
+    def test_a_row_fragment_under_a_selection_refuses_the_same(self):
+        """The rule lives on the row, so an htmx swap obeys it too."""
+        with self.assertRaises(ValueError):
+            str(
+                components.TableRow(
+                    components.make_row("Game", "2025"),
+                    columns=[components.Column("Name"), components.Column("Year")],
+                    data_table=True,
+                    selectable=True,
+                )
+            )
+
+    @override_settings(DEBUG=False)
+    def test_a_table_refuses_one_key_naming_two_rows(self):
+        """One press would select both."""
+        with self.assertRaises(ValueError):
+            self._selectable(
+                [
+                    components.make_row("Game", "2025", key="1"),
+                    components.make_row("Other", "2024", key="1"),
+                ]
+            )
+
+    @override_settings(DEBUG=False)
+    def test_a_table_declaring_no_selection_admits_a_row_with_no_key(self):
+        html = str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game")],
+                data_table=True,
+                caption="Games",
+            )
+        )
+        self.assertNotIn("data-selection-key", html)
+
+    def test_summary_renders_inside_the_identity_cell_below_md_only(self):
+        html = str(
+            components.TableRow(
+                components.make_row("Game", key="abc", summary="2 hours"),
+                columns=[components.Column("Name")],
+                data_table=True,
+            )
+        )
+        identity_cell = html.split("</th>")[0]
+        self.assertIn("2 hours", identity_cell)
+        summary_class = identity_cell.split("2 hours")[0].rsplit('class="', 1)[1]
+        summary_class = summary_class.split('"')[0]
+        self.assertIn("md:hidden", summary_class)
+        # The nowrap cell clips nothing for it.
+        self.assertIn("overflow-hidden", summary_class)
+        self.assertIn("text-ellipsis", summary_class)
+
+    def test_a_row_with_no_summary_renders_one_line(self):
+        html = str(components.TableRow(components.make_row("Game")))
+        self.assertNotIn("md:hidden", html)
+
+    def test_a_table_with_no_selection_renders_as_before(self):
+        html = str(
+            components.StyledTable(
+                columns=[components.Column("Name"), components.Column("Year")],
+                rows=[components.make_row("Game", "2025")],
+                data_table=True,
+                caption="Games",
+            )
+        )
+        self.assertNotIn("selectable-table", html)
+        self.assertNotIn("data-selection-key", html)
+
+
+class SelectionLineTest(SimpleTestCase):
+    """The footer's second region."""
+
+    @staticmethod
+    def _paginated(**kwargs):
+        from django.core.paginator import Paginator
+
+        paginator = Paginator(list(range(1, 51)), 10)
+        return str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game", key="1")],
+                data_table=True,
+                caption="Games",
+                page_obj=paginator.page(1),
+                elided_page_range=list(paginator.get_elided_page_range(1)),
+                request=None,
+                **kwargs,
+            )
+        )
+
+    def test_selection_line_renders_above_the_pagination_nav(self):
+        html = self._paginated(selection={"filter": ""})
+        self.assertLess(
+            html.index("data-selection-line"),
+            html.index('aria-label="Table navigation"'),
+        )
+        self.assertLess(html.index("</table>"), html.index("data-selection-line"))
+
+    def test_a_table_with_no_selection_renders_no_line(self):
+        self.assertNotIn("data-selection-line", self._paginated())
+
+    def test_selection_line_states_the_matching_count(self):
+        html = self._paginated(selection={"filter": ""})
+        self.assertIn("data-selection-all-matching", html)
+        self.assertIn("50", html.split("data-selection-all-matching")[1][:200])
+
+    def test_selection_line_without_a_paginator_offers_no_all_matching(self):
+        html = str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game", key="1")],
+                data_table=True,
+                caption="Games",
+                selection={"filter": ""},
+            )
+        )
+        self.assertIn("data-selection-line", html)
+        self.assertNotIn("data-selection-all-matching", html)
+        self.assertIn("data-selection-check-all", html)
+        self.assertIn("data-selection-clear", html)
+
+    def test_selection_line_hides_until_the_element_is_defined(self):
+        html = self._paginated(selection={"filter": ""})
+        line_class = html.split("data-selection-line")[1].split('class="')[1]
+        self.assertIn("selectable-table:not(:defined)", line_class.split('"')[0])
+
+    def test_selection_line_holds_an_empty_actions_slot(self):
+        html = self._paginated(selection={"filter": ""})
+        self.assertIn("data-selection-actions", html)
+
+    def test_selection_line_announces_in_its_own_region(self):
+        html = self._paginated(selection={"filter": ""})
+        self.assertIn('role="status"', html)
+
+    def test_the_toggle_starts_unpressed(self):
+        html = self._paginated(selection={"filter": ""})
+        self.assertIn('aria-pressed="false"', html)
+
+    def test_every_button_variant_spaces_an_icon_from_its_label(self):
+        """Every variant spaces an icon from its label."""
+        from common.components.primitives import control_button_class
+
+        for variant in ("filled", "ghost", "outline"):
+            self.assertIn("gap-2", control_button_class(variant=variant), variant)
+
+    def test_the_toggle_carries_an_icon(self):
+        html = self._paginated(selection={"filter": ""})
+        toggle = html.split("data-selection-toggle")[1].split("</button>")[0]
+        self.assertIn("<svg", toggle)
+
+    def test_shell_clips_instead_of_hiding(self):
+        """A sticky child needs a shell that is not a scroll container."""
+        html = self._paginated(selection={"filter": ""})
+        self.assertIn("overflow-clip", html)
+        self.assertNotIn("overflow-hidden", html.split("<table")[0])
+
+    def test_the_header_label_clears_the_reserved_column(self):
+        html = self._paginated(selection={"filter": ""})
+        first_header = html.split("<thead")[1].split("</th>")[0]
+        second_header = html.split("<thead")[1].split("</th>")[1]
+        self.assertIn("ms-8", first_header)
+        self.assertNotIn("ms-8", second_header)
+
+    def test_the_header_label_drops_the_inset_with_no_scripting(self):
+        """No element, no checkbox: the label stands over the names again."""
+        html = self._paginated(selection={"filter": ""})
+        first_header = html.split("<thead")[1].split("</th>")[0]
+        self.assertIn("[selectable-table:not(:defined)_&amp;]:ms-0", first_header)
+
+    def test_the_line_states_no_filter_of_its_own(self):
+        """The element carries it; two copies would drift."""
+        self.assertNotIn(
+            "data-selection-filter", self._paginated(selection={"filter": "{}"})
+        )
+
+    def test_the_checkboxes_wear_the_builder_look(self):
+        from common.components.primitives import CHECKBOX_LOOK_CLASS
+
+        html = self._paginated(selection={"filter": ""})
+        for marker in ("data-selection-check-all", 'data-selection-checkbox="'):
+            checkbox = html.split(marker)[1].split(">")[0]
+            for token in CHECKBOX_LOOK_CLASS.split():
+                self.assertIn(token, checkbox, marker)
+
+    def test_the_check_all_checkbox_meets_the_touch_target(self):
+        html = self._paginated(selection={"filter": ""})
+        checkbox = html.split("data-selection-check-all")[1].split(">")[0]
+        self.assertIn("w-6", checkbox)
+        self.assertIn("h-6", checkbox)
+
+
+class SelectableTableMountTest(SimpleTestCase):
+    """The element wraps the composite it commands."""
+
+    @staticmethod
+    def _render(**kwargs):
+        return str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game", key="1")],
+                data_table=True,
+                caption="Games",
+                **kwargs,
+            )
+        )
+
+    def test_selectable_table_wraps_the_responsive_table(self):
+        html = self._render(selection={"filter": "{}"})
+        before_responsive = html.split("<responsive-table")[0]
+        self.assertIn("<selectable-table", before_responsive)
+        self.assertLess(
+            html.index("<selectable-table"), html.index("data-selection-line")
+        )
+
+    def test_the_element_carries_the_filter_and_the_count(self):
+        from django.core.paginator import Paginator
+
+        paginator = Paginator(list(range(1, 51)), 10)
+        html = self._render(
+            selection={"filter": '{"year":2025}'},
+            page_obj=paginator.page(1),
+            elided_page_range=list(paginator.get_elided_page_range(1)),
+            request=None,
+        )
+        element = html.split("<selectable-table")[1].split(">")[0]
+        self.assertIn("year", element)
+        self.assertIn('count="50"', element)
+
+    def test_a_table_with_no_paginator_states_no_count(self):
+        html = self._render(selection={"filter": ""})
+        element = html.split("<selectable-table")[1].split(">")[0]
+        self.assertIn('count="0"', element)
+
+    def test_a_named_role_still_emits_its_own_type(self):
+        """A prop annotated with a PEP 695 alias reaches the type map."""
+        from common.components.custom_elements import (
+            ElementSpec,
+            SelectableTableProps,
+            _ts_for_spec,
+        )
+
+        emitted = _ts_for_spec(
+            ElementSpec("selectable-table", "SelectableTable", SelectableTableProps)
+        )
+        self.assertIn("filter: string;", emitted)
+        self.assertIn("scope: string;", emitted)
+        self.assertIn("count: number;", emitted)
+
+    def test_the_element_scopes_a_kept_selection(self):
+        """The library and the table name it: neither the next person at this
+        browser nor the table beside it inherits the selection."""
+        from types import SimpleNamespace
+
+        request = SimpleNamespace(
+            user=SimpleNamespace(is_authenticated=True, library_id="lib-1")
+        )
+        html = str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game", key="1")],
+                data_table=True,
+                caption="Sessions",
+                selection={"filter": ""},
+                request=request,
+            )
+        )
+        element = html.split("<selectable-table")[1].split(">")[0]
+        self.assertIn('scope="lib-1:Sessions"', element)
+
+    def test_a_table_with_no_request_still_scopes_by_its_caption(self):
+        html = self._render(selection={"filter": ""})
+        element = html.split("<selectable-table")[1].split(">")[0]
+        self.assertIn('scope=":Games"', element)
+
+    def test_a_table_with_no_selection_mounts_no_element(self):
+        self.assertNotIn("<selectable-table", self._render())
+
+    def test_the_element_brings_its_script(self):
+        table = components.StyledTable(
+            columns=[components.Column("Name")],
+            rows=[components.make_row("Game", key="1")],
+            data_table=True,
+            caption="Games",
+            selection={"filter": ""},
+        )
+        self.assertIn(
+            "dist/elements/selectable-table.js", components.collect_media(table).js
+        )
+
+
+class BottomCornerTest(SimpleTestCase):
+    """The chrome at the page's foot, beside a sticky selection line."""
+
+    def test_toast_stack_stands_off_the_selection_line(self):
+        from common.components.toast import TOAST_STACK_CLASS
+
+        self.assertIn("bottom-[var(--selection-line,0px)]", TOAST_STACK_CLASS)
+        # Above the line: a toast answers the act.
+        self.assertIn("z-50", TOAST_STACK_CLASS)
+
+    def test_the_version_stamp_stands_in_the_page_flow(self):
+        """It is the page's last line, so nothing overlays a sticky line."""
+        from common.layout import VERSION_STAMP_CLASS
+
+        self.assertNotIn("fixed", VERSION_STAMP_CLASS)
+        self.assertNotIn("--selection-line", VERSION_STAMP_CLASS)
