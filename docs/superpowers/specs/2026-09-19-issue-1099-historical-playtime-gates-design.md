@@ -52,7 +52,7 @@ added to the mapping without a rule fails the test that walks it:
 | `BOTH`, playtime keys | every `PlaytimeBreakdown` keeps its `total`; `tracked` falls and `historical` rises by the converted seconds its row's key holds in scope; row order kept |
 | `BOTH`, the counts and days -- `games_by_playtime_count`, `total_games`, `total_year_games`, `unique_days`, `unique_days_percent`, `first_play_*`, `last_play_*` | equal |
 | `PURCHASES` | equal, a queryset compared as its ordered keys |
-| `NOT_A_FIGURE` | equal, except `first_play_from_record` and `last_play_from_record`, which flip only where the row that answered was converted |
+| `NOT_A_FIGURE` | equal, except `first_play_from_record` and `last_play_from_record`, which flip only where a converted row states the day and game the figure answered before |
 | `total_sessions` | down by the converted rows in scope, exactly |
 | `longest_session_*` | unchanged, or the row before was converted |
 | `highest_session_count*` | unchanged, or the game before held a converted row in scope |
