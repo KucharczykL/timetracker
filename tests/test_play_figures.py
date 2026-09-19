@@ -7,7 +7,7 @@ from historical_playtime_rows import record_row
 from session_rows import duration_only_row, timed_row, tracked_run
 
 from games.models import Game
-from games.reads.play_figures import distinct_days, first_play, last_play
+from games.reads.play_figures import PlayDay, distinct_days, first_play, last_play
 
 pytestmark = pytest.mark.django_db
 
@@ -102,3 +102,55 @@ def test_a_day_outside_the_year_leaves_that_year(owned_library, games):
 
     assert distinct_days(owned_library, 2024) == 0
     assert distinct_days(owned_library, None) == 1
+
+
+def test_a_record_earlier_than_every_session_answers_the_first_play(
+    owned_library, games
+):
+    beta, alpha = games
+    timed(tracked_run(owned_library, beta), date(2024, 6, 1), 10, 1)
+    record_row([tracked_run(owned_library, alpha)], when="2024-01-02")
+
+    earliest = first_play(owned_library, 2024)
+
+    assert earliest == PlayDay(date(2024, 1, 2), alpha, True)
+
+
+def test_a_record_later_than_every_session_answers_the_last_play(owned_library, games):
+    beta, alpha = games
+    timed(tracked_run(owned_library, beta), date(2024, 6, 1), 10, 1)
+    record_row([tracked_run(owned_library, alpha)], when="2024-09-09")
+
+    latest = last_play(owned_library, 2024)
+
+    assert latest == PlayDay(date(2024, 9, 9), alpha, True)
+
+
+def test_a_session_and_a_record_at_one_game_on_one_day_answer_the_session(
+    owned_library, games
+):
+    beta, _alpha = games
+    run = tracked_run(owned_library, beta)
+    timed(run, date(2024, 3, 5), 10, 1)
+    record_row([run], when="2024-03-05")
+
+    assert first_play(owned_library, 2024) == PlayDay(date(2024, 3, 5), beta, False)
+    assert last_play(owned_library, 2024) == PlayDay(date(2024, 3, 5), beta, False)
+
+
+def test_a_record_naming_no_single_day_answers_neither_end(owned_library, games):
+    beta, _alpha = games
+    record_row([tracked_run(owned_library, beta)], when="2024-03")
+
+    assert first_play(owned_library, 2024) is None
+    assert last_play(owned_library, 2024) is None
+
+
+def test_a_record_and_a_session_on_one_day_answer_by_sort_name(owned_library, games):
+    beta, alpha = games
+    day = date(2024, 3, 5)
+    timed(tracked_run(owned_library, alpha), day, 10, 1)
+    record_row([tracked_run(owned_library, beta)], when="2024-03-05")
+
+    assert first_play(owned_library, None) == PlayDay(day, beta, True)
+    assert last_play(owned_library, None) == PlayDay(day, alpha, False)
