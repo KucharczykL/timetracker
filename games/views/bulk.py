@@ -86,6 +86,9 @@ UNKNOWN_ACT = (
     "cannot be taken back. Nothing was changed."
 )
 
+#: An Undo acts on the rows its own batch wrote, and on no others.
+NOT_THIS_BATCH = "One of those rows is not part of this batch, so it was left as it is."
+
 
 @dataclass(frozen=True, slots=True)
 class SelectionStatement:
@@ -105,9 +108,10 @@ class Tally:
 
     It rides the progress form rather than the session, so the runner
     keeps nothing between requests -- as an origin is kept nowhere but
-    its own parameter. A person may edit their own tally; it names no
-    row and decides nothing, so the worst of that is a wrong number on
-    their own toast.
+    its own parameter. A person may edit their own tally: the counts
+    decide nothing beyond their own toast, and every key it names is
+    resolved again before a dispatch reads it, so a key that was never
+    theirs comes out counted and lost rather than acted on.
     """
 
     rows: tuple[uuid.UUID, ...]
@@ -306,9 +310,10 @@ class Leg:
 
     Forward, a key must become a row and may refuse on the way. Back,
     the row is removed by now -- that is what the act did to it -- so
-    the key is the work and nothing resolves it. The loop is otherwise
-    the same loop, and the two directions share one budget, one
-    progress page and one answer.
+    what the key is sorted against is the batch rather than the table.
+    Both legs answer one shape, so a key neither can act on is counted
+    and lost either way. The loop is otherwise the same loop, and the
+    two directions share one budget, one progress page and one answer.
     """
 
     #: The idempotency key's prefix, so a direction never claims the
@@ -326,13 +331,25 @@ def _forward(action: BulkAction) -> Leg:
     )
 
 
-def _backward(action: BulkAction) -> Leg:
+def _backward(action: BulkAction, written: frozenset[uuid.UUID]) -> Leg:
+    """The inverse, over the keys this batch wrote and no others.
+
+    The row is removed by now -- that is what the act did to it -- so
+    the batch itself is what says whether a key is one of its own. A key
+    that is not comes out counted and lost, as a row gone since the
+    confirmation does on the way forward: one rule, read by both legs.
+    """
     return Leg(
         name=f"{action.name}.undo",
-        #: Nothing to sort: the batch already said which rows these are.
-        resolve=lambda library, key: Resolution((key,), ()),
+        resolve=lambda library, key: _of_this_batch(key, written),
         run=action.inverse,
     )
+
+
+def _of_this_batch(key: uuid.UUID, written: frozenset[uuid.UUID]) -> Resolution:
+    if key in written:
+        return Resolution((key,), ())
+    return Resolution((), (Refused(str(key), NOT_THIS_BATCH, lost=True),))
 
 
 def _run_a_chunk(
@@ -588,6 +605,10 @@ def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpRes
             fallback=UNDO_FALLBACK,
         )
 
+    #: Read once a request, not once a row: this is the batch, and a
+    #: key the posted progress names that is not in it is not its own.
+    rows = batch_aggregate_ids(user.library, correlation_id, declared.inverse_aggregate)
+
     token = request.POST.get(TOKEN_FIELD, "")
     if token:
         try:
@@ -599,9 +620,6 @@ def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpRes
         if request.POST.get(STOP_FIELD):
             return _answer(request, declared, replace(tally, rows=()), undo_url=None)
     else:
-        rows = batch_aggregate_ids(
-            user.library, correlation_id, declared.inverse_aggregate
-        )
         tally = Tally(rows=tuple(rows), total=len(rows))
         token = str(uuid.uuid7())
 
@@ -610,6 +628,6 @@ def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpRes
         declared,
         token=token,
         tally=tally,
-        leg=_backward(declared),
+        leg=_backward(declared, frozenset(rows)),
         undo_url=None,
     )

@@ -31,6 +31,7 @@ from games.models import (
 )
 from games.reads.events import batch_aggregate_ids
 from games.views.bulk import (
+    NOT_THIS_BATCH,
     PROGRESS_FIELD,
     STATEMENT_FIELD,
     STOP_FIELD,
@@ -614,6 +615,45 @@ def test_an_undo_offers_no_further_undo(client_in, owned_library, game):
     undone = client_in.post(undo_url(token), {})
 
     assert actions_of(undone) == []
+
+
+def test_an_undo_leaves_alone_a_key_its_batch_never_wrote(
+    client_in, owned_library, game
+):
+    """A forged progress is counted and lost, as on the way forward.
+
+    The tally rides the form, so a person can name any key in it. The
+    Undo acts on the rows its own batch wrote, and a key that is not one
+    of them reaches no dispatch to answer a defect.
+    """
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    landed(client_in, act(client_in, confirmation))
+
+    undone = client_in.post(
+        undo_url(token),
+        {
+            TOKEN_FIELD: str(uuid.uuid7()),
+            PROGRESS_FIELD: json.dumps(
+                {
+                    "rows": [str(uuid.uuid7())],
+                    "done": 0,
+                    "unchanged": 0,
+                    "lost": 0,
+                    "refused": [],
+                    "total": 1,
+                }
+            ),
+        },
+    )
+
+    assert undone.status_code == 302
+    said = [str(message) for message in toasts(undone)]
+    assert NOT_THIS_BATCH in said
+    assert any("1 no longer there" in sentence for sentence in said)
+    #: The batch's own row was never touched by the forgery.
+    assert PlayerSession.objects.get(pk=session.pk).removed_at is not None
 
 
 def test_a_correlation_that_names_no_batch_is_not_found(client_in, owned_library):
