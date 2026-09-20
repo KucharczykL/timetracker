@@ -86,6 +86,13 @@ UNKNOWN_ACT = (
     "cannot be taken back. Nothing was changed."
 )
 
+#: What the page says when a defect ends a batch. How far it got is a
+#: toast, which is where the batch's Undo rides.
+DEFECT_SENTENCE = (
+    "A problem on our side stopped this request. It has been reported, and "
+    "the rows it had not reached were left as they are."
+)
+
 #: An Undo acts on the rows its own batch wrote, and on no others.
 NOT_THIS_BATCH = "One of those rows is not part of this batch, so it was left as it is."
 
@@ -389,7 +396,12 @@ def _run_a_chunk(
             except CommandFailed as failure:
                 if failure.status_code != CONFLICT_STATUS:
                     #: Ours, not theirs: the batch ends here.
-                    return _defect(request, action, replace(tally, rows=tuple(left)))
+                    return _defect(
+                        request,
+                        action,
+                        replace(tally, rows=tuple(left)),
+                        undo_url=undo_url,
+                    )
                 refusal = Refused(str(acted), failure.message)
                 _log_left_alone(leg.name, (refusal,), user.library, correlation_id)
                 tally = tally.with_reasons((refusal,))
@@ -454,26 +466,35 @@ def _progress(
     )
 
 
-def _defect(request: HttpRequest, action: BulkAction, tally: Tally) -> HttpResponse:
-    """A problem on our side stopped the batch; say how far it got."""
+def _defect(
+    request: HttpRequest,
+    action: BulkAction,
+    tally: Tally,
+    *,
+    undo_url: str | None,
+) -> HttpResponse:
+    """A problem on our side stopped the batch; say how far it got.
+
+    Every row already done committed on its own and stays done, so the
+    batch's Undo is the only way back from here. A batch that finishes
+    offers it on the answer it redirects to, which this one never
+    reaches, so it is offered on the toast beside the page. The rule is
+    the answer's own: an Undo offers none of its own.
+    """
+    notify(
+        request,
+        tally.sentence(),
+        level=messages.ERROR,
+        action=Undo(undo_url) if undo_url and tally.done else None,
+    )
     return render_page(
         request,
-        ConfirmBatch(
-            action,
-            rows=[],
-            refused=(
-                Refused(
-                    "",
-                    f"{tally.done} of {tally.total} were done before a problem on "
-                    "our side stopped the request. The problem has been reported, "
-                    "and the rest were left as they are.",
-                ),
-            ),
-            hidden=[],
+        RefusedBatch(
+            title=action.title,
+            sentence=DEFECT_SENTENCE,
             post_url=request.get_full_path(),
             csrf_token=get_token(request),
             cancel_url=return_url(request, fallback=action.fallback),
-            sample_cap=CONFIRMATION_SAMPLE,
         ),
         title=action.title,
         status=DEFECT_STATUS,

@@ -419,6 +419,69 @@ def test_a_defect_ends_the_batch_and_leaves_the_done_rows_done(
     )
 
 
+def test_a_defect_still_offers_the_batch_its_undo(
+    client_in, owned_library, game, monkeypatch
+):
+    """The rows it did reach stay done, so the way back must be offered.
+
+    A batch that finishes offers its Undo on the answer it redirects
+    to, and a batch a defect stopped never reaches one.
+    """
+    from games.writes.answers import DEFECT_STATUS, CommandFailed
+
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(2)
+    ]
+    real = bulk_reclassification.reclassify_session
+    calls = {"n": 0}
+
+    def breaks_after_one(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise CommandFailed("A problem on our side.", DEFECT_STATUS)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(bulk_reclassification, "reclassify_session", breaks_after_one)
+    confirmation = confirm(client_in, some(*sessions))
+    token = posted(confirmation)[TOKEN_FIELD]
+
+    stopped = act(client_in, confirmation)
+
+    assert stopped.status_code == DEFECT_STATUS
+    assert [toast["action"]["url"] for toast in page_toasts(stopped)] == [
+        undo_url(token)
+    ]
+
+    undone = client_in.post(undo_url(token), {})
+
+    assert undone.status_code == 302
+    assert PlayerSession.objects.alive().count() == 2
+    assert HistoricalPlaytime.objects.alive().count() == 0
+
+
+def test_an_undo_a_defect_stopped_offers_no_undo_of_its_own(
+    client_in, owned_library, game, monkeypatch
+):
+    """The answer's rule, read by the defect page too."""
+    from games.writes.answers import DEFECT_STATUS, CommandFailed
+
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    landed(client_in, act(client_in, confirmation))
+
+    def breaks(*args, **kwargs):
+        raise CommandFailed("A problem on our side.", DEFECT_STATUS)
+
+    monkeypatch.setattr(bulk_reclassification, "undo_reclassification", breaks)
+
+    stopped = client_in.post(undo_url(token), {})
+
+    assert stopped.status_code == DEFECT_STATUS
+    assert [toast.get("action") for toast in page_toasts(stopped)] == [None]
+
+
 def test_a_progress_page_carries_the_tally_and_the_rest(
     client_in, owned_library, game, monkeypatch
 ):
@@ -470,6 +533,16 @@ def landed(client, response) -> None:
     """
     assert response.status_code == 302
     client.get(response["Location"])
+
+
+def page_toasts(response) -> list[dict]:
+    """The toasts a rendered page carries, as it hands them to the element."""
+    html = response.content.decode()
+    marker = '<script id="django-messages" type="application/json">'
+    start = html.index(marker) + len(marker)
+    return json.loads(
+        html_module.unescape(html[start : html.index("</script>", start)])
+    )
 
 
 def actions_of(response) -> list[str]:
