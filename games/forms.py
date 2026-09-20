@@ -1350,6 +1350,11 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         # The bundle Price is optional: in price-per-game mode it is hidden and
         # the per-game inputs carry the prices instead. Empty falls back to 0.
         self.fields["price"].required = False
+        # A new row already carries a key, so adding is what tells the two
+        # apart. The model default renders as a literal "0", and typing at
+        # the autofocused caret would append to it.
+        if self.instance._state.adding:
+            self.initial["price"] = None
         if not self.initial.get("price_currency"):
             self.initial["price_currency"] = self.default_currency
         self.fields["price_currency"].widget.attrs["placeholder"] = (

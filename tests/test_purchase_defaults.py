@@ -1,3 +1,4 @@
+import re
 from datetime import date
 
 from django.contrib.auth.models import User
@@ -50,6 +51,46 @@ class AddPurchaseDefaultsTest(TestCase):
         purchase = Purchase.objects.get()
         self.assertIsNone(purchase.platform)
         self.assertEqual(purchase.price_currency, "CZK")
+
+    def test_add_form_leaves_price_empty(self):
+        for url in (
+            reverse("games:add_purchase"),
+            reverse("games:add_purchase_for_game", args=[self.game_a.id]),
+        ):
+            with self.subTest(url=url):
+                response = self.client.get(url)
+
+                self.assertEqual(response.status_code, 200)
+                price_input = re.search(
+                    r'<input[^>]*id="id_price"[^>]*>', response.content.decode()
+                )
+                assert price_input is not None
+                self.assertNotIn("value=", price_input.group())
+
+    def test_empty_price_saves_as_zero(self):
+        response = self.client.post(
+            reverse("games:add_purchase"),
+            self._base_data(pricing_mode="combined", price=""),
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(Purchase.objects.get().price, 0)
+
+    def test_edit_form_keeps_the_stored_price(self):
+        purchase = Purchase.objects.create(
+            library=self.library,
+            date_purchased=date(2025, 1, 1),
+            price=0,
+            price_currency="USD",
+        )
+
+        response = self.client.get(reverse("games:edit_purchase", args=[purchase.id]))
+
+        price_input = re.search(
+            r'<input[^>]*id="id_price"[^>]*>', response.content.decode()
+        )
+        assert price_input is not None
+        self.assertIn('value="0.0"', price_input.group())
 
     @override_settings(DEFAULT_PURCHASE_CURRENCY="CZK")
     def test_per_game_path_uses_explicit_form_currency(self):
