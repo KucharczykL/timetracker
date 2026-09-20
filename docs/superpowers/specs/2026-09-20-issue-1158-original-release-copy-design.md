@@ -161,6 +161,7 @@ place the commit event is proved.
 
 ## Afterwards
 
-`TemporalFieldProps.expanded` states what `canCollapse()` derives. It stays
-for now, because it paints the field before the element upgrades and with no
-script at all. Removing the duplication is its own change.
+`TemporalFieldProps.expanded` stated what `canCollapse()` derives. The
+element now derives it, and nothing reads the attribute: with no script the
+qualifiers are shown anyway, because hiding them is what the element does.
+The prop is dead and taking it out is its own change.

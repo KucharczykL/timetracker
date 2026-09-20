@@ -129,6 +129,18 @@ def type_year(card: Locator, year: str) -> None:
     card.page.keyboard.type(year)
 
 
+def type_original_release(page: Page, year: str) -> None:
+    """The segmented year of the Game's own Original release."""
+    field = page.locator('temporal-field[field-name="original_release_date"]')
+    expect(field.locator("[data-temporal-segments='start']")).to_be_visible()
+    field.locator("[data-date-part='year'][data-date-side='start']").click()
+    page.keyboard.type(year)
+
+
+def copy_button(card: Locator) -> Locator:
+    return card.locator("[data-temporal-copy]")
+
+
 #: The navbar's Log out is a submit button too, thus the form's own.
 SUBMIT = "#add-form button[type=submit]"
 
@@ -353,3 +365,49 @@ def test_a_row_names_its_controls_at_both_widths(signed_in, live_server, game):
     expect(headings).to_be_visible()
     expect(card.get_by_label("Platform", exact=True)).to_be_visible()
     expect(released).to_be_visible()
+
+
+def test_a_cloned_row_takes_the_original_release(
+    signed_in, live_server, e2e_library, amiga, dos
+):
+    """A row the browser cloned fills itself from the Game's own date.
+
+    The button rides in the template, thus the clone carries one and
+    its own element wires it on arrival.
+    """
+    page = signed_in
+    open_add_form(page, live_server)
+
+    page.fill("input[name='name']", "Grim Fandango")
+    type_original_release(page, "1998")
+    choose_platform(release_card(page, 0, 0), "Amiga")
+    page.click("[data-catalog-edition='0'] [data-catalog-add='release']")
+    added = release_card(page, 0, 1)
+    choose_platform(added, "DOS")
+    copy_button(added).click()
+    expect(
+        added.locator("[data-date-part='year'][data-date-side='start']")
+    ).to_have_value("1998")
+    saved(page, live_server)
+
+    written = Game.objects.get(library=e2e_library, name="Grim Fandango")
+    releases = live_releases(default_edition(written))
+    assert [release.platform for release in releases] == [amiga, dos]
+    assert releases[1].release_date.serialize() == "1998"
+
+
+def test_the_button_wakes_when_the_original_release_fills(signed_in, live_server):
+    """No reload tells the button that the source now states something.
+
+    The segment engine takes every digit keydown itself, so only the
+    field's own announcement can say this. The unit suite dispatches
+    that by hand; this is where a missing dispatch shows.
+    """
+    page = signed_in
+    open_add_form(page, live_server)
+    button = copy_button(release_card(page, 0, 0))
+    expect(button).to_be_disabled()
+
+    type_original_release(page, "1998")
+
+    expect(button).to_be_enabled()

@@ -89,7 +89,7 @@ def _copy_button(source: TemporalCopySource) -> Node:
     disabled control explains itself to nobody.
     """
     return ControlButton(
-        variant="ghost",
+        variant="outline",
         type="button",
         hidden=True,
         disabled=True,
