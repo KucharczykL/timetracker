@@ -343,7 +343,7 @@ def run_record_command_scenario(
 
 
 def _written_down(library: UserLibrary, *, actor: User, run: Playthrough) -> uuid.UUID:
-    """One Duration-only session long enough for the review to offer it."""
+    """One Duration-only session the review offers."""
     result = dispatch(
         CreateSession(
             playthrough_id=run.pk,
@@ -362,16 +362,12 @@ def _written_down(library: UserLibrary, *, actor: User, run: Playthrough) -> uui
 def _keys_to_convert(
     library: UserLibrary, *, actor: User, count: int
 ) -> list[uuid.UUID]:
-    """Write the batch's own rows and answer their keys.
+    """Write the batch's own rows, answer keys.
 
     Its own rows, because converting the seed's would take them out of
-    the population the read scenario measures. Keys rather than rows,
-    because the runner holds keys: it reads each row back at the press,
-    and that read is half of what a row costs.
-
-    Checked through the act's own scope, so a row this scenario wrote
-    that the review would not offer fails here rather than being timed
-    as though the act would reach it.
+    the population the read scenario measures. Checked through the
+    act's own scope, so a row it would not offer fails here rather
+    than being timed as one the act reaches.
     """
     cycle = _cycling(library, seeded_runs(library))
     keys = [
@@ -389,16 +385,11 @@ def _keys_to_convert(
 def run_bulk_command_scenario(
     library: UserLibrary, *, actor: User, sessions: int, warmup: int
 ) -> BulkTimings | None:
-    """Convert `sessions` written-down rows the way the runner does.
+    """Convert rows the way the runner does.
 
-    The runner's own loop and not its view: one resolve and one
-    dispatch a row, keyed from the batch's token and the row, every
-    append under the one correlation id the token states. The pair is
-    what a chunk budget is spent against, so the pair is timed, and the
-    resolve is timed inside it because a per-key read is a cost the
-    view's shape chose.
-
-    No row is no distribution, as no iteration is no read.
+    Its loop and not its view: one resolve and one dispatch a row,
+    keyed from the token and the row, under one correlation id. The
+    pair is timed, because the pair is what a chunk is spent on.
 
     ANALYZE last, so the reads that follow plan right.
     """
@@ -424,7 +415,10 @@ def run_bulk_command_scenario(
 def _convert(
     library: UserLibrary, actor: User, key: uuid.UUID, correlation_id: uuid.UUID
 ) -> Seconds:
-    """One row, resolve and run. Answers the instant the resolve ended."""
+    """One row, resolve and run.
+
+    Answers the instant the resolve ended.
+    """
     resolution = RECLASSIFY.resolve(library, [key])
     resolved = monotonic()
     if len(resolution.rows) != 1:

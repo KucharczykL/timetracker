@@ -1,27 +1,25 @@
-/** <continuing-batch> — the progress page's press, made unnecessary.
+/** <continuing-batch> — the waypoint's press, made unnecessary.
  *
- * A batch spans as many requests as its rows need. The server renders a
- * waypoint with a form that posts the rest; this element posts it, so a
- * person watches a count rise instead of pressing Continue. Stop is the
- * one press that still means something.
+ * The server renders a form that posts the rest of the batch; this
+ * posts it, so a person watches a count rise. Stop is the one press
+ * left.
  *
- * It is an element rather than an `onSwap` handler because each chunk
- * arrives as a whole document of its own, and connecting is the moment
- * it must act.
+ * An element and not `onSwap`: each chunk is a whole document, and
+ * connecting is the moment to act.
  */
 
 const FORM = "[data-continuing-batch-form]";
 const STOP = "[data-continuing-batch-stop]";
 
 class ContinuingBatchElement extends HTMLElement {
-  // Pressed once, and this host posts nothing again.
+  // Pressed once, and this host posts no more.
   private stopped = false;
 
   connectedCallback(): void {
     this.querySelector<HTMLButtonElement>(STOP)?.addEventListener("click", this.onStop);
     if (document.readyState === "loading") {
-      // The form is a child, so a parse that has reached the start tag
-      // has not read it yet. The same handler registers once.
+      // The form is a child: a parse at the start tag
+      // has not read it yet.
       document.addEventListener("DOMContentLoaded", this.onParsed, { once: true });
       return;
     }
@@ -37,7 +35,7 @@ class ContinuingBatchElement extends HTMLElement {
   };
 
   private readonly onStop = (): void => {
-    // The button posts its own name; this only keeps the host quiet.
+    // The button posts its own name.
     this.stopped = true;
   };
 

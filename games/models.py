@@ -2222,8 +2222,7 @@ class LibraryEvent(models.Model):
                 name="library_event_idempotency_key_not_empty",
             ),
         )
-        #: Two reads of a recorded stream, neither served by the
-        #: sequence: one batch's rows, and one aggregate's.
+        #: Two reads the sequence does not serve.
         indexes = (
             models.Index(
                 fields=("library", "correlation_id"),

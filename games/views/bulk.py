@@ -1,14 +1,4 @@
-"""One act on many rows, run as one batch.
-
-A new flow, not a generalisation of `confirm_and_apply`, whose one shape
-is "GET confirms, POST acts". Here both arrive by POST, and the
-submission token tells them apart: without one the request is asking
-what would happen, with one it is doing it.
-
-The token is also the batch's correlation id. One identity, so a batch
-that spans two requests is still one batch and its Undo names the value
-the confirmation wrote.
-"""
+"""One act on many rows, one batch."""
 
 import json
 import logging
@@ -54,21 +44,20 @@ from games.writes.answers import CONFLICT_STATUS, DEFECT_STATUS, CommandFailed
 
 logger = logging.getLogger("games")
 
-#: The statement a selection makes; the confirm POST carries it.
+#: What a selection states; the confirm POST.
 STATEMENT_FIELD = "selection"
 #: The batch's identity, minted by the confirmation.
 TOKEN_FIELD = "submission"
-#: The rows left and the tally so far; the act POST carries it.
+#: The rows left and the tally so far.
 PROGRESS_FIELD = "progress"
-#: Pressed on the progress page: end the batch where it stands.
+#: Pressed on the waypoint: end the batch.
 STOP_FIELD = "stop"
 
-#: A chunk is the rows one request acts on inside this. Not a
-#: transaction: each row commits on its own, so the budget bounds the
-#: request rather than the work that survives it.
+#: The rows one request acts on.
+#: No transaction: each row commits on its own.
 CHUNK_BUDGET = timedelta(seconds=3)
 
-#: What a person reads. Every key still rides PROGRESS_FIELD.
+#: What a person reads; keys ride PROGRESS_FIELD.
 CONFIRMATION_SAMPLE = 50
 
 UNREADABLE_STATEMENT = (
@@ -78,8 +67,7 @@ UNREADABLE_FILTER = (
     "The filter behind that selection could not be read, so nothing was "
     "changed. Open the list again and reapply it."
 )
-#: Where an Undo of an act nothing declares returns when it carries no
-#: origin. Every other return reads the act's own fallback.
+#: Where an undeclared act's Undo returns.
 UNDO_FALLBACK: UrlName = "games:library"
 
 UNKNOWN_ACT = (
@@ -87,54 +75,49 @@ UNKNOWN_ACT = (
     "cannot be taken back. Nothing was changed."
 )
 
-#: What the page says when a defect ends a batch. How far it got is a
-#: toast, which is where the batch's Undo rides.
+#: What the page says after a defect.
 DEFECT_SENTENCE = (
     "A problem on our side stopped this request. It has been reported, and "
     "the rows it had not reached were left as they are."
 )
 
-#: An Undo acts on the rows its own batch wrote, and on no others.
+#: An Undo acts on its batch's rows.
 NOT_THIS_BATCH = "One of those rows is not part of this batch, so it was left as it is."
 
-#: Why a row no dispatch reached was left. The log's words, not a
-#: person's: what a person is told is how far the batch got, and these
-#: two are what that leaves unsaid.
+#: The log's words for a row unreached.
 STOPPED_BY_HAND = "The batch was stopped before this row was reached."
 ENDED_BY_A_DEFECT = "A problem on our side ended the batch before this row was reached."
 
 
 @dataclass(frozen=True, slots=True)
 class SelectionStatement:
-    """What a person chose: the keys, or a scope and its exclusions."""
+    """Keys, or a scope and exclusions."""
 
-    #: None under "all": the scope names the rows, not a list of keys.
+    #: None under "all": the scope names them.
     keys: tuple[uuid.UUID, ...] | None
     filter_json: str
-    #: What the person was told the scope held.
+    #: What the person was told it held.
     count: int
     excluded: frozenset[uuid.UUID]
 
 
 @dataclass(frozen=True, slots=True)
 class Tally:
-    """What the batch has done so far, and what is left.
+    """What the batch did, and what remains.
 
-    It rides the progress form rather than the session, so the runner
-    keeps nothing between requests -- as an origin is kept nowhere but
-    its own parameter. A person may edit their own tally: the counts
-    decide nothing beyond their own toast, and every key it names is
-    resolved again before a dispatch reads it, so a key that was never
-    theirs comes out counted and lost rather than acted on.
+    It rides the progress form, so the runner keeps nothing between
+    requests, and a person may edit their own. The counts decide
+    nothing beyond their own toast, and every key is resolved again
+    before a dispatch reads it, so a forged key comes out lost.
     """
 
     rows: tuple[uuid.UUID, ...]
     done: int = 0
     unchanged: int = 0
     lost: int = 0
-    #: Rows refused on their merits: neither moved nor gone.
+    #: Refused on merits: not moved, not gone.
     refused: int = 0
-    #: Each distinct reason once, in the order they were met.
+    #: Each distinct reason once, in order.
     reasons: tuple[str, ...] = ()
     #: The denominator: what the confirmation resolved.
     total: int = 0
@@ -169,13 +152,7 @@ class Tally:
             raise StatementUnreadable(f"progress is unreadable: {error}") from error
 
     def left_alone(self, refused: Sequence[Refused]) -> Tally:
-        """Count the rows left alone, keeping each reason once.
-
-        Counted apart from the reasons, because the sentences are
-        deduplicated and the rows are not: ten rows under one reason
-        are ten rows, and a person told "1 left as it is" over them
-        would go looking for the nine.
-        """
+        """Count rows left alone, reasons once."""
         reasons = list(self.reasons)
         for entry in refused:
             if entry.sentence not in reasons:
@@ -204,12 +181,12 @@ class Tally:
 
 
 def _as_it_is(count: int) -> str:
-    """One row is left as it is; more are left as they are."""
+    """Singular or plural pronoun for a count."""
     return "it is" if count == 1 else "they are"
 
 
 class StatementUnreadable(Exception):
-    """The posted selection is not one this runner can read."""
+    """The posted selection cannot be read."""
 
 
 def _keys(raw: Any) -> tuple[uuid.UUID, ...]:
@@ -256,11 +233,10 @@ def parse_statement(posted: str) -> SelectionStatement:
 def resolved_keys(
     action: BulkAction, library: UserLibrary, statement: SelectionStatement
 ) -> list[uuid.UUID]:
-    """The keys the statement names, at this instant.
+    """The keys the statement names, now.
 
-    An "all" statement is resolved through the act's own scope rather
-    than through the filter alone, so a rule no filter field can state
-    still holds.
+    Through the act's own scope, never the filter alone, so a rule no
+    filter field can state still holds.
     """
     if statement.keys is not None:
         return list(statement.keys)
@@ -280,13 +256,10 @@ def _confirmation(
     refused: tuple[Refused, ...],
     keys: list[uuid.UUID],
 ) -> HttpResponse:
-    """What the act would do, and a fresh token to make it do it."""
-    #: The token is the batch's correlation id: one identity, so a
-    #: batch that spans two requests is still one batch.
+    """What the act would do."""
+    #: The token is the batch's correlation id.
     token = str(uuid.uuid7())
-    #: The keys of a row left alone reach the act no further than this:
-    #: the batch carries the rows it will act on. Here is where they are
-    #: named, once, under the identity the batch will run as.
+    #: Named once: the batch carries only its rows.
     _log_left_alone(
         action.name, refused, cast(User, request.user).library, uuid.UUID(token)
     )
@@ -315,7 +288,7 @@ def _refused_page(
     title: str,
     fallback: UrlName,
 ) -> HttpResponse:
-    """Nothing was done, and here is why."""
+    """Nothing was done, and why."""
     return render_page(
         request,
         RefusedBatch(
@@ -340,18 +313,9 @@ def _act_refused(
 
 @dataclass(frozen=True, slots=True)
 class Leg:
-    """One direction of an act, as the chunk loop needs it.
+    """One direction of an act."""
 
-    Forward, a key must become a row and may refuse on the way. Back,
-    the row is removed by now -- that is what the act did to it -- so
-    what the key is sorted against is the batch rather than the table.
-    Both legs answer one shape, so a key neither can act on is counted
-    and lost either way. The loop is otherwise the same loop, and the
-    two directions share one budget, one progress page and one answer.
-    """
-
-    #: The idempotency key's prefix, so a direction never claims the
-    #: key of the other.
+    #: The idempotency key's prefix, one per direction.
     name: str
     resolve: Callable[[UserLibrary, uuid.UUID], Resolution]
     run: Callable[[User, Any, IdempotencyKey, uuid.UUID], RowOutcome]
@@ -366,17 +330,16 @@ def _forward(action: BulkAction) -> Leg:
 
 
 def _undo_name(action: BulkAction) -> str:
-    """One spelling of the Undo's name, for the leg and the log alike."""
+    """One spelling, for leg and log."""
     return f"{action.name}.undo"
 
 
 def _backward(action: BulkAction, written: frozenset[uuid.UUID]) -> Leg:
-    """The inverse, over the keys this batch wrote and no others.
+    """The inverse, over this batch's keys.
 
-    The row is removed by now -- that is what the act did to it -- so
-    the batch itself is what says whether a key is one of its own. A key
-    that is not comes out counted and lost, as a row gone since the
-    confirmation does on the way forward: one rule, read by both legs.
+    The row is removed by now, so the batch says whether a key is its
+    own. A key that is not comes out lost, as a row gone since the
+    confirmation does forward: one rule, both legs.
     """
     return Leg(
         name=_undo_name(action),
@@ -400,13 +363,10 @@ def _run_a_chunk(
     leg: Leg,
     undo_url: str | None,
 ) -> HttpResponse:
-    """Act on as many of the rows left as the budget allows.
+    """Act on as many rows as allowed.
 
-    Each row is its own dispatch and its own transaction, keyed from
-    the token and the row, so a token posted twice converts nothing
-    twice. A refusal names its row and the next row runs; a defect ends
-    the batch, and the rows already done stay done because each
-    committed on its own.
+    Each row is its own dispatch and transaction, keyed from the token
+    and the row, so a token posted twice acts once.
     """
     user = cast(User, request.user)
     correlation_id = uuid.UUID(token)
@@ -414,8 +374,7 @@ def _run_a_chunk(
     started = monotonic()
 
     while left:
-        #: Re-resolved each time round, so a row gone since the
-        #: confirmation is counted lost rather than refused.
+        #: Re-resolved: a row gone since is lost.
         resolution = leg.resolve(user.library, left[0])
         _log_left_alone(leg.name, resolution.refused, user.library, correlation_id)
         tally = tally.left_alone(resolution.refused)
@@ -427,9 +386,9 @@ def _run_a_chunk(
                 )
             except CommandFailed as failure:
                 if failure.status_code != CONFLICT_STATUS:
-                    #: Ours, not theirs: the batch ends here. The row
-                    #: that met it is named beside the rows behind it,
-                    #: because no dispatch answered for any of them.
+                    #: Ours, not theirs: the batch ends here.
+                    #: No dispatch answered for the row that met
+                    #: it either, so it is named with the rest.
                     _log_abandoned(
                         leg.name,
                         [acted, *left],
@@ -463,13 +422,7 @@ def _log_left_alone(
     library: UserLibrary,
     correlation_id: uuid.UUID,
 ) -> None:
-    """The page prints sentences; the log prints keys.
-
-    A person reading a toast wants how many and why. Whoever reads the
-    log afterwards wants which ones, and a row refused before it
-    reaches a dispatch is left alone as surely as one the command
-    refused.
-    """
+    """The page prints sentences; the log, keys."""
     for entry in refused:
         logger.info(
             "[bulk]: %s left row %s of library %s under %s: %s",
@@ -488,13 +441,7 @@ def _log_abandoned(
     correlation_id: uuid.UUID,
     sentence: str,
 ) -> None:
-    """Name the rows no dispatch reached, under the batch's identity.
-
-    A row a Stop or a defect left behind is left alone as surely as one
-    a command refused, and the log is the only place it is named at
-    all: the tally counts what happened to a row, and to these nothing
-    did.
-    """
+    """Name the rows no dispatch reached."""
     _log_left_alone(
         name,
         [Refused(str(key), sentence) for key in keys],
@@ -504,7 +451,7 @@ def _log_abandoned(
 
 
 def _counted(tally: Tally, outcome: RowOutcome) -> Tally:
-    """A row the dispatch moved, or one already in that state."""
+    """Moved, or already in that state."""
     if outcome is RowOutcome.UNCHANGED:
         return replace(tally, unchanged=tally.unchanged + 1)
     return replace(tally, done=tally.done + 1)
@@ -537,13 +484,10 @@ def _defect(
     *,
     undo_url: str | None,
 ) -> HttpResponse:
-    """A problem on our side stopped the batch; say how far it got.
+    """A defect stopped the batch.
 
-    Every row already done committed on its own and stays done, so the
-    batch's Undo is the only way back from here. A batch that finishes
-    offers it on the answer it redirects to, which this one never
-    reaches, so it is offered on the toast beside the page. The rule is
-    the answer's own: an Undo offers none of its own.
+    The rows done stay done, so the Undo rides the toast beside this
+    page: the answer that would carry it is never reached.
     """
     notify(
         request,
@@ -572,11 +516,10 @@ def _answer(
     *,
     undo_url: str | None,
 ) -> HttpResponse:
-    """One toast, then back where the person stood.
+    """One toast, then back.
 
-    The Undo is offered only where there is something to take back, and
-    never by an Undo: taking back a batch that took one back is pressing
-    the act again, which is not what the word says.
+    The Undo is offered only where something was done, and never by an
+    Undo: undoing an Undo is pressing the act again.
     """
     notify(
         request,
@@ -592,7 +535,7 @@ def _answer(
 @login_required
 @require_POST
 def run_bulk_action(request: HttpRequest, action: BulkActionName) -> HttpResponse:
-    """Confirm the act, or run a chunk of it."""
+    """Confirm the act, or run a chunk."""
     declared = bulk_action(action)
     if declared is None:
         raise Http404("No such bulk action.")
@@ -607,7 +550,7 @@ def run_bulk_action(request: HttpRequest, action: BulkActionName) -> HttpRespons
             logger.warning("[bulk]: %s refused a progress: %s", action, unreadable)
             return _act_refused(request, declared, UNREADABLE_STATEMENT)
         if request.POST.get(STOP_FIELD):
-            #: Ended where it stands; the rows done stay done.
+            #: Ended here; the rows done stay done.
             _log_abandoned(
                 declared.name,
                 tally.rows,
@@ -636,8 +579,8 @@ def run_bulk_action(request: HttpRequest, action: BulkActionName) -> HttpRespons
     try:
         keys = resolved_keys(declared, user.library, statement)
     except FilterError as unreadable:
-        #: Never apply_structured_filter: dropping the filter would
-        #: widen the act to every row the act's base holds.
+        #: Never `apply_structured_filter`, which fails open.
+        #: A dropped filter would widen the act to the whole base.
         logger.warning("[bulk]: %s refused a filter: %s", action, unreadable)
         return _act_refused(request, declared, UNREADABLE_FILTER)
 
@@ -652,18 +595,16 @@ def run_bulk_action(request: HttpRequest, action: BulkActionName) -> HttpRespons
 
 
 def _undo_url(token: str) -> str:
-    """Where the act's toast points. The element stamps the origin."""
+    """Where the act's toast points."""
     return reverse("games:undo_bulk_action", args=[token])
 
 
 def _act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkAction | None:
-    """Which act wrote this batch, read from the batch itself.
+    """Which act wrote this batch.
 
-    Every append of a batch states the name, so one event answers. A
-    correlation nothing wrote, and one written by something that is no
-    batch, are both not found: neither names an act at all. A name the
-    table no longer holds answers None instead, because that batch is
-    real and it is the Undo that is gone.
+    A correlation nothing wrote, and one that is no batch, are not
+    found. A name the table no longer holds answers None: that batch
+    is real, and it is its Undo that is gone.
     """
     first = batch_events(library, correlation_id).first()
     if first is None:
@@ -672,19 +613,17 @@ def _act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkAction | Non
     name = stated.get("action") if isinstance(stated, dict) else None
     if not isinstance(name, str):
         raise Http404("That act is no batch.")
-    #: Nothing validates the name at the append, so this is where a
-    #: name the table does not hold is met.
+    #: Nothing validates the name at the append.
     return bulk_action(name)
 
 
 @login_required
 @require_POST
 def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpResponse:
-    """Apply the inverse of one batch, as a batch of its own.
+    """One batch's inverse, as its own batch.
 
-    Its own token and correlation id: sharing the act's would make the
-    Undo part of the batch it undoes, and a second press would read its
-    own appends as rows to take back.
+    Its own token and correlation id: sharing the act's would make a
+    second press read its own appends as rows to take back.
     """
     user = cast(User, request.user)
     declared = _act_of(user.library, correlation_id)
@@ -697,8 +636,7 @@ def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpRes
             fallback=UNDO_FALLBACK,
         )
 
-    #: Read once a request, not once a row: this is the batch, and a
-    #: key the posted progress names that is not in it is not its own.
+    #: Read once a request: this is it.
     rows = batch_aggregate_ids(user.library, correlation_id, declared.inverse_aggregate)
 
     token = request.POST.get(TOKEN_FIELD, "")

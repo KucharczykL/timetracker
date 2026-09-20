@@ -270,11 +270,10 @@ def record_command_budget(timings: Timings) -> Budget:
 
 
 class BulkTimings(NamedTuple):
-    """One row of a chunk, and the resolve inside it.
+    """One row of a chunk, resolve inside.
 
-    The runner resolves a key and then runs the row it answers, so a
-    row costs both. `whole` is what a chunk budget is spent against;
-    `resolve` says how much of it the per-key read takes.
+    A row costs both, so `whole` is what a chunk's budget is spent
+    against and `resolve` is the per-key read inside it.
     """
 
     whole: Timings
@@ -282,13 +281,10 @@ class BulkTimings(NamedTuple):
 
 
 def bulk_command_budget(timings: Timings) -> Budget:
-    """The same 100 ms, one row of a batch.
+    """The same 100 ms, one batch row.
 
-    A batch is many rows and no transaction, so the budget is still the
-    one command's. It is judged on the whole row -- the resolve and the
-    dispatch -- because that is what the runner spends a chunk on, and
-    what a chunk fits is this number divided into the budget a chunk is
-    given.
+    A batch is no transaction, so the budget is still one command's,
+    judged on the whole row: that is what a chunk is spent on.
     """
     return _p95_budget("bulk command p95", timings, COMMAND_BUDGET_SECONDS)
 
@@ -385,8 +381,7 @@ class BenchmarkReport:
     session_command: Timings | None
     #: None in --library mode.
     record_command: Timings | None
-    #: None in --library mode, and where no row was converted: one row
-    #: of a batch, resolve and dispatch, as the runner runs it.
+    #: None without a converted row: resolve and dispatch.
     bulk_command: Timings | None
     #: The resolve alone, out of the number above.
     bulk_resolve: Timings | None

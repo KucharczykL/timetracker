@@ -20,7 +20,7 @@ from games.models import UserLibrary
 DEFAULT_SEED_EVENTS = 100_000
 #: An import's worth of records.
 IMPORT_SHAPE_RECORDS = 600
-#: A batch's worth of rows, the same size: one act on a library.
+#: A batch's worth of rows: one act on a library.
 BATCH_SHAPE_SESSIONS = 600
 
 #: Measured; see docs/event-benchmarks.md.
@@ -222,7 +222,7 @@ class Command(BaseCommand):
         if report.bulk_command is not None:
             self._write_timings("Bulk command", report.bulk_command)
         if report.bulk_resolve is not None:
-            #: Inside the line above, not beside it; no budget of its own.
+            #: Inside the line above; no budget of its own.
             self._write_timings("  of which resolve", report.bulk_resolve)
         for read in report.reads:
             self._write_timings(f"Read {read.name}", read.timings)

@@ -594,10 +594,9 @@ the two record tables before the reads. `--bulk` states another size, and
 `--bulk 0` leaves the batch out of the report. Paste what the tool prints; do
 not edit a number here.
 
-Taken at `c85c88f3`. The first paste of this section, at `6c1e6ae9`, timed the
-act's `run` over a row read back before the loop began, so it left out the
-resolve the runner does at the press. The loop times both now, so the number
-below is a row rather than the half of one that reaches a dispatch.
+Taken at `c85c88f3`. The row is the resolve and the dispatch together, as the
+runner spends a chunk on both. The paste at `6c1e6ae9` timed the dispatch
+alone.
 
 `make bench`, 2026-09-20:
 

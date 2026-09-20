@@ -555,9 +555,8 @@ register_element("responsive-table", "ResponsiveTable", ResponsiveTableProps)
 
 
 # Built in games/views/bulk_pages.py; behavior in
-# ts/elements/continuing-batch.ts. The form it posts is its child and the
-# batch's state rides that form's hidden fields, so it states no props;
-# registration here is codegen-only.
+# ts/elements/continuing-batch.ts. The batch's state rides the hidden
+# fields of the form it posts, so it states no props.
 class ContinuingBatchProps(TypedDict):
     pass
 

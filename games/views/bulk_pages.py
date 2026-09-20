@@ -1,9 +1,4 @@
-"""The pages the runner renders.
-
-What the act will do, how far it got, and why nothing more happened.
-Its words are the reclassification's, because that is the one act
-declared; #712 brings the second, and the nouns move to the act then.
-"""
+"""The pages the runner renders."""
 
 from collections.abc import Sequence
 from typing import Any
@@ -31,29 +26,24 @@ from common.components.primitives import (
 from common.duration_presentation import DurationPresentation
 from games.bulk_actions import BulkAction, Refused
 
-#: What the confirmation says of the rows the act will not reach, and
-#: what the waypoint says of the ones it has met so far. One row is
-#: "it is", and a batch of one is the ordinary case on a row's own
-#: control, so neither line may read as though it were many.
+#: The confirmation's words, and the waypoint's.
 WILL_BE_LEFT_ALONE = "{count} of them will be left as {pronoun}:"
 LEFT_ALONE = "{count} left as {pronoun} so far:"
 
-#: Carries its own script, so the waypoint needs no `scripts=`.
+#: Carries its own script; no `scripts=` needed.
 _ContinuingBatch = custom_element_builder("continuing-batch")
 
 
 def _reasons(refused: Sequence[Refused]) -> list[str]:
-    """One sentence per distinct reason, in the order they were met."""
+    """Each distinct reason once, in order."""
     return list(dict.fromkeys(entry.sentence for entry in refused))
 
 
 def _refusals(count: int, reasons: Sequence[str], lead: str) -> Node:
-    """How many rows are left alone, and why.
+    """How many rows are left, and why.
 
-    The count is the rows and the list is the reasons, which are two
-    numbers: one reason may stand over many rows, and a heading that
-    counted sentences would tell a person fewer rows were left than
-    were.
+    The count is rows, the list is reasons: one sentence can stand over
+    many rows, so a heading counting sentences would say fewer.
     """
     if not reasons:
         return Fragment()
@@ -71,11 +61,7 @@ def _refusals(count: int, reasons: Sequence[str], lead: str) -> Node:
 def _sample(
     rows: Sequence[Any], total: int, cap: int, durations: DurationPresentation
 ) -> Node:
-    """The rows, to a cap.
-
-    Every key still rides the hidden field; this is what a person
-    reads, and a table of thousands is not read.
-    """
+    """The rows, to a cap; keys ride the field."""
     if not rows:
         return Fragment()
     shown = rows[:cap]
@@ -113,11 +99,7 @@ def RefusedBatch(
     csrf_token: str,
     cancel_url: str,
 ) -> Node:
-    """Nothing was done, and here is why.
-
-    It states no act, because the reason may be that there is none left
-    to state. No submit and no token, so the page it draws cannot act.
-    """
+    """Nothing was done, and why: no submit."""
     return ConfirmPage(
         title=title,
         message=sentence,
@@ -140,7 +122,7 @@ def ConfirmBatch(
     sample_cap: int,
     durations: DurationPresentation,
 ) -> Node:
-    """What the act will do, and the fields that make it do it."""
+    """What the act will do, plus fields."""
     total = len(rows)
     return ConfirmPage(
         title=action.title,
@@ -174,11 +156,9 @@ def ProgressBatch(
     csrf_token: str,
     stop_name: str,
 ) -> Node:
-    """How far the batch got, and the press that carries it on.
+    """How far the batch got.
 
-    A waypoint, not a question: the act is already running. With
-    scripting the element around the form continues by itself, so the
-    Continue press is what a reader without it uses.
+    Continue is for a reader whose element posts nothing.
     """
     return _ContinuingBatch()[
         Div(class_="mx-auto w-full max-w-xl p-5 @container")[

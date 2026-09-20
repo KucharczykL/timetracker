@@ -1,9 +1,4 @@
-"""Recording written-down sessions as historical playtime, in bulk.
-
-The act's own half: which rows the review offers, which it refuses and
-why, and how one row is converted and returned. The table in
-`games/bulk_actions.py` names them; `games/views/bulk.py` runs them.
-"""
+"""Written-down sessions recorded as playtime, in bulk."""
 
 import uuid
 from collections.abc import Sequence
@@ -56,25 +51,24 @@ ALREADY_RECORDED = "Some of the sessions were already recorded as historical pla
 def reviewable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
     """Live written-down rows at the threshold.
 
-    Three rules, and one of them no filter field can state: the bucket
-    is told apart by its run's kind, which `PlayerSessionFilter` does
-    not carry. That is why this is the scope's base rather than
-    something a filter could express.
+    One of the three rules no filter field can state: the bucket is
+    told apart by its run's kind, which `PlayerSessionFilter` does not
+    carry. A rule moved into the filter would widen the act.
     """
     return library_sessions(library).filter(
         timing_mode=PlayerSessionTimingMode.DURATION_ONLY,
         effective_duration__gte=timedelta(hours=REVIEW_THRESHOLD_HOURS),
-        #: The bulk act cannot ask for a run.
+        #: No filter field states a run.
         playthrough__kind=PlaythroughKind.ORDINARY,
     )
 
 
 def review_scope(library: UserLibrary, filter_json: str) -> QuerySet[PlayerSession]:
-    """The review, narrowed by what the statement's filter says.
+    """The review, narrowed by the statement's filter.
 
-    The filter narrows this base and never replaces it, and an
-    unreadable one raises rather than being dropped: a dropped filter
-    widens an act, where on a list it only widens a page.
+    Never `apply_structured_filter`, which drops a filter it cannot
+    read: on a list that widens a page, and here it would widen the
+    act to every row the base holds.
     """
     rows = reviewable_sessions(library)
     parsed = parse_session_filter(filter_json) if filter_json else None
@@ -84,12 +78,11 @@ def review_scope(library: UserLibrary, filter_json: str) -> QuerySet[PlayerSessi
 
 
 def review_resolution(library: UserLibrary, keys: Sequence[uuid.UUID]) -> Resolution:
-    """Sort keys into the rows the review offers, and sentences."""
+    """Keys to rows, and to sentences."""
     wanted = list(dict.fromkeys(keys))
-    #: Over every key, not only the ones the review leaves out. A live
-    #: session beside a live record made from it is a state no command
-    #: admits, so the one that meets it answers a defect, and a defect
-    #: ends the whole batch over one row.
+    #: Over every key, not only those left out.
+    #: A live session beside its live record is a state no command
+    #: admits, so the dispatch that met it would end the batch.
     recorded = set(
         HistoricalPlaytime.objects.filter(
             library=library, reclassified_from__in=wanted, removed_at__isnull=True
@@ -112,7 +105,7 @@ def review_resolution(library: UserLibrary, keys: Sequence[uuid.UUID]) -> Resolu
         if key in recorded:
             refused.append(Refused(str(key), ALREADY_RECORDED))
         elif row is None:
-            #: Gone, or never this library's: either way nothing to act on.
+            #: Gone, or never this library's.
             refused.append(Refused(str(key), NOT_AVAILABLE, lost=True))
         elif row.playthrough.kind == PlaythroughKind.IMPORTED_HISTORY:
             refused.append(Refused(str(key), IN_THE_BUCKET))
@@ -129,7 +122,7 @@ def convert_one(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """Always moved: the resolution refused every row already recorded."""
+    """Always moved: the resolution refused the rest."""
     reclassify_session(
         actor,
         session,
@@ -147,11 +140,10 @@ def return_one(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """The inverse, by key: the row it names is removed by now.
+    """The inverse, by key.
 
-    A plain manager, because every scoped read of a session reads its
-    marks and this one is removed. The library is still stated, so the
-    key names this person's row or none.
+    A plain manager, because the row is removed by now and every
+    scoped read reads that mark. The library is still stated.
     """
     return RowOutcome.of(
         undo_reclassification(
