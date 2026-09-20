@@ -294,7 +294,7 @@ before the write path sees one, so the guard is unproven. Write the pair.
 `_dispatch` at `:37` takes the session's shape from
 `games/writes/playersession.py:62-68`, comment included:
 
-```python
+```text
         idempotency_key=(
             str(uuid.uuid7()) if idempotency_key is None else idempotency_key
         ),

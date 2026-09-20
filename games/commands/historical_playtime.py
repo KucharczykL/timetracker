@@ -201,8 +201,7 @@ def library_record(context: CommandContext, record_id: uuid.UUID) -> HistoricalP
         context,
         HistoricalPlaytime.objects.select_related("player_game"),
         Refusal(
-            message=f"This library holds no historical playtime record {record_id}.",
-            sentence="That record is not available.",
+            message=f"This library holds no historical playtime record {record_id}."
         ),
         pk=record_id,
     )

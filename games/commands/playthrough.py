@@ -15,6 +15,7 @@ from games.events.dispatch import (
     CommandContext,
     CommandName,
     CommandRejected,
+    RowNotHeld,
     RowUnreadable,
 )
 from games.events.playthrough import (
@@ -181,8 +182,12 @@ class CreatePlaythrough(Command):
         return events
 
 
-class PlaythroughNotHeld(CommandRejected):
-    """The library holds no such run."""
+class PlaythroughNotHeld(RowNotHeld):
+    """The library holds no such run.
+
+    Its own class, because a session names a run its own row already
+    holds: a miss there is drift, not an absence a client stated.
+    """
 
 
 def library_playthrough(
@@ -198,7 +203,6 @@ def library_playthrough(
                 f"This library holds no playthrough {playthrough_id}. A stated "
                 "fact belongs to a run the library records."
             ),
-            sentence="That playthrough is not available.",
             raises=PlaythroughNotHeld,
         ),
         pk=playthrough_id,

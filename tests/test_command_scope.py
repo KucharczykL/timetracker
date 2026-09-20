@@ -6,7 +6,7 @@ import pytest
 from django.utils import timezone
 
 from games.commands.scope import Refusal, library_row
-from games.events.dispatch import CommandContext, CommandRejected
+from games.events.dispatch import CommandContext, CommandRejected, RowNotHeld
 from games.models import Game, PlayerGame
 
 
@@ -25,10 +25,7 @@ def other_library(other_user):
 
 
 def refusal(**overrides) -> Refusal:
-    stated = {
-        "message": "This library tracks no such game.",
-        "sentence": "That game is not available.",
-    } | overrides
+    stated = {"message": "This library tracks no such game."} | overrides
     return Refusal(**stated)
 
 
@@ -50,13 +47,33 @@ def test_another_library_row_and_a_missing_row_refuse_alike(
     theirs = Game.objects.create(library=other_library, name="Outer Wilds")
     context = CommandContext(library=owned_library, actor=owned_user)
 
-    with pytest.raises(CommandRejected) as across:
+    with pytest.raises(RowNotHeld) as across:
         library_row(context, PlayerGame.objects.all(), refusal(), game_id=theirs.pk)
-    with pytest.raises(CommandRejected) as absent:
+    with pytest.raises(RowNotHeld) as absent:
         library_row(context, PlayerGame.objects.all(), refusal(), game_id=uuid.uuid7())
 
-    assert across.value.sentence == absent.value.sentence
     assert str(across.value) == str(absent.value)
+
+
+def test_a_row_the_library_does_not_hold_states_no_sentence(owned_user, owned_library):
+    """The boundary owns the answer, so nothing shows a sentence."""
+    context = CommandContext(library=owned_library, actor=owned_user)
+
+    with pytest.raises(RowNotHeld) as refused:
+        library_row(context, PlayerGame.objects.all(), refusal(), game_id=uuid.uuid7())
+
+    assert not hasattr(refused.value, "sentence")
+    assert not isinstance(refused.value, CommandRejected)
+
+
+def test_a_sentence_with_no_rejection_to_carry_it_is_refused():
+    with pytest.raises(TypeError):
+        refusal(sentence="That game is not available.")
+
+
+def test_a_rejection_that_states_no_sentence_is_refused():
+    with pytest.raises(TypeError):
+        refusal(raises=Nowhere)
 
 
 def test_a_removed_row_still_resolves(owned_user, owned_library):
@@ -81,7 +98,7 @@ def test_the_caller_states_the_class_it_refuses_with(owned_user, owned_library):
         library_row(
             context,
             PlayerGame.objects.all(),
-            refusal(raises=Nowhere),
+            refusal(raises=Nowhere, sentence="That game is not available."),
             game_id=uuid.uuid7(),
         )
 

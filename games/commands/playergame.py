@@ -55,6 +55,10 @@ def tracked_game(context: CommandContext, game_id: uuid.UUID) -> PlayerGame:
                 "to a tracked game, and #676 backfills one for every game a "
                 "library has."
             ),
+            #: The one resolver that refuses rather than answers an
+            #: absence: the write path takes this class, tracks the game
+            #: and states the fact again, so a 404 would end a request
+            #: the program repairs.
             sentence="This game is not tracked yet. Reload the page and try again.",
             raises=PlayerGameNotTracked,
         ),

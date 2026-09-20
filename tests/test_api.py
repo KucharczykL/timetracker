@@ -1134,8 +1134,8 @@ def test_post_session_carries_its_message(auth_client, user):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_session_patch_409s_a_run_another_library_holds(auth_client, user):
-    """The asymmetry the POST's 404 creates: the move resolves in the command."""
+def test_session_patch_404s_a_run_another_library_holds(auth_client, user):
+    """One rule for a body's identifier: the command answers the absence."""
     _prague_calendar(user)
     session = _row()
     theirs = _stranger_run()
@@ -1144,7 +1144,7 @@ def test_session_patch_409s_a_run_another_library_holds(auth_client, user):
         auth_client, session.id, {"playthrough_id": str(theirs.pk)}
     )
 
-    assert response.status_code == 409
+    assert response.status_code == 404
     session.refresh_from_db()
     assert session.playthrough_id != theirs.pk
 

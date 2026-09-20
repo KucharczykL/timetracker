@@ -183,9 +183,7 @@ def answered(subject: SubjectNoun) -> Iterator[None]:
         #: identifier this library does not hold. Recorded all the same,
         #: because an invisible 404 is how a client comes to retry a
         #: request that already succeeded.
-        logger.warning(
-            "[answers]: a %s this library does not hold: %s", subject, error
-        )
+        logger.warning("[answers]: a %s this library does not hold: %s", subject, error)
         raise Http404(f"No such {subject}.") from error
     except RowUnreadable as error:
         #: The argument in the message, so one line names the row.

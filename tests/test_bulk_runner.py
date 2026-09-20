@@ -518,6 +518,39 @@ def test_a_defect_ends_the_batch_and_leaves_the_done_rows_done(
     )
 
 
+def test_a_row_the_library_does_not_hold_ends_the_batch(
+    client_in, owned_library, game, monkeypatch
+):
+    """The leg re-resolved these rows, so nothing inside can miss."""
+    from django.http import Http404
+
+    from games.writes.answers import DEFECT_STATUS
+
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(3)
+    ]
+    real = bulk_reclassification.reclassify_session
+    calls = {"n": 0}
+
+    def absent_after_one(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise Http404("No such session.")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(bulk_reclassification, "reclassify_session", absent_after_one)
+
+    response = act(client_in, confirm(client_in, some(*sessions)))
+
+    assert response.status_code == DEFECT_STATUS
+    assert HistoricalPlaytime.objects.count() == 1
+    assert (
+        BULK_ACTIONS["session.reclassify"].confirm_label.encode()
+        not in response.content
+    )
+
+
 def test_a_defect_still_offers_the_batch_its_undo(
     client_in, owned_library, game, monkeypatch
 ):
