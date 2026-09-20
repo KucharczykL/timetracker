@@ -747,7 +747,13 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
 - `PATCH /api/session/{id}` — body `extra="forbid"`: `timing` (one whole
   statement told apart by shape) is a correction, `note`/`device_id`/`emulated`
   a description, `playthrough_id` a move; named key is the act, omitted key
-  states nothing. Device outside library answers 404. No POST: #1074
+  states nothing. Device outside library answers 404
+- `POST /api/session/` — body `extra="forbid"`: `playthrough_id` and one whole
+  `timing` statement, `device_id`, `note` and `emulated` beside them. Answers
+  201 and the row. An `Idempotency-Key` header absorbs a repeat, measured at
+  the route because the plain `ValueError` no answer maps would read as a
+  defect. A run or device the library does not hold answers 404; every other
+  rule keeps the command's sentence at 409
 - `PATCH /api/session/{id}/device` — `DescribeSession(StatedDevice(...))`
 - `GET /api/historical-playtime/`, `GET /{id}` — live records through
   `readable_records`: `filter`/`sort`/`page` as the session list, `when` as

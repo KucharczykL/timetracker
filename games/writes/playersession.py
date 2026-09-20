@@ -58,8 +58,14 @@ def _dispatch(
         command,
         actor=actor,
         library=library,
-        #: Caller's key, else none; builds absorb repeats.
-        idempotency_key=idempotency_key or str(uuid.uuid7()),
+        #: Caller's key, else one per request.
+        #:
+        #: Not `or`: a blank key is falsy, so it would be minted
+        #: over, and the caller that asked for one write would get
+        #: a second on its retry rather than a refusal.
+        idempotency_key=(
+            str(uuid.uuid7()) if idempotency_key is None else idempotency_key
+        ),
         correlation_id=correlation_id,
     )
 
@@ -73,9 +79,16 @@ def _created_id(result: CommandResult) -> uuid.UUID:
 
 
 def record_session(
-    actor: User, draft: SessionDraft, *, correlation_id: uuid.UUID
+    actor: User,
+    draft: SessionDraft,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
 ) -> uuid.UUID:
-    """Record one session on the run the draft names; answer its id."""
+    """Record one session on the run the draft names; answer its id.
+
+    A stated key absorbs its own repeat.
+    """
     with answered("session"):
         result = _dispatch(
             CreateSession(
@@ -88,6 +101,7 @@ def record_session(
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
         )
     return _created_id(result)
 

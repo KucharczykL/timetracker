@@ -26,7 +26,7 @@ from django.db.models.functions import Coalesce, Greatest
 from django.http import HttpResponse
 from django.urls import reverse
 from django.utils.timezone import now as django_timezone_now
-from ninja import Field, NinjaAPI, Query, Router, Schema, Status
+from ninja import Field, Header, NinjaAPI, Query, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.security import django_auth
 from pydantic import BeforeValidator, ConfigDict, PlainSerializer, WithJsonSchema
@@ -42,6 +42,8 @@ from games.commands.playersession import (
     TimingStatement,
 )
 from games.commands.playthrough import ActStatement
+from games.events.dispatch import IDEMPOTENCY_KEY_MAX_LENGTH
+from games.events.idempotency import IdempotencyKey
 from games.filters import (
     MODE_PARSERS,
     filter_for_model,
@@ -86,7 +88,13 @@ from games.sorting import (
 )
 from games.writes.answers import CommandFailed, answered
 from games.writes.playergame import new_correlation_id, record_facts
-from games.writes.playersession import correct_session, describe_session, move_session
+from games.writes.playersession import (
+    SessionDraft,
+    correct_session,
+    describe_session,
+    move_session,
+    record_session,
+)
 from games.writes.playthrough import RunDraft, record_run, remove_run, restate_run
 from timetracker.config import SettingSource
 from timetracker.settings_commands import (
@@ -688,6 +696,19 @@ def _library_device_or_404(library: UserLibrary, device_id: UUIDv7 | None) -> No
         owned_or_404(Device.objects.for_library(library), library, id=device_id)
 
 
+def _library_run_or_404(library: UserLibrary, playthrough_id: UUIDv7) -> None:
+    """Scope: every kind, removed or not.
+
+    `library_playthrough`'s scope, so 404 says one thing only: this
+    library holds no such run. Narrowing it to live ordinary runs
+    would turn the bucket, a removed run and a removed game into 404s
+    and take away the sentences that say what to state instead.
+    """
+    owned_or_404(
+        Playthrough.objects.filter(library=library), library, id=playthrough_id
+    )
+
+
 @session_router.patch("/{session_id}/device", response={204: None})
 def partial_update_session_device(
     request, session_id: UUIDv7, payload: SessionDeviceUpdate
@@ -719,13 +740,27 @@ class TimedIn(Schema):
     ended_at_zone: str | None = None
 
 
+#: What `timedelta` can hold, read off it.
+MAX_DURATION_SECONDS: Final[int] = int(timedelta.max.total_seconds())
+
+#: The seconds one timing statement carries.
+#:
+#: Bounded because `timedelta(seconds=...)` runs before the dispatch,
+#: where an `OverflowError` reaches no answer. The bound is the
+#: type's own range and not zero: the sign is the command's rule,
+#: and it has a sentence for it.
+type DurationSeconds = Annotated[
+    int, Field(ge=-MAX_DURATION_SECONDS, le=MAX_DURATION_SECONDS)
+]
+
+
 class DurationOnlyIn(Schema):
     """A written day and how long it lasted."""
 
     model_config = ConfigDict(extra="forbid")
 
     day: date
-    duration_seconds: int
+    duration_seconds: DurationSeconds
 
 
 class CorrectedIn(Schema):
@@ -735,7 +770,7 @@ class CorrectedIn(Schema):
 
     started_at: datetime
     ended_at: datetime
-    duration_seconds: int
+    duration_seconds: DurationSeconds
     started_at_zone: str | None = None
     ended_at_zone: str | None = None
 
@@ -788,6 +823,77 @@ def _timing_statement(timing: TimingIn, day_zone: str) -> TimingStatement:
             )
         case _:
             assert_never(timing)
+
+
+class SessionIn(Schema):
+    """One session, stated whole: the run and one timing."""
+
+    #: An unknown key is a mistake, not silence.
+    model_config = ConfigDict(extra="forbid")
+
+    playthrough_id: UUIDv7
+    timing: TimingIn
+    device_id: UUIDv7 | None = None
+    note: str = ""
+    emulated: bool = False
+
+
+def _stated_idempotency_key(header: str | None) -> IdempotencyKey | None:
+    """The key the caller states, or none.
+
+    Measured here because neither length reaches an answer:
+    `validate_idempotency_key` raises a plain `ValueError` that no
+    answer maps. The strip comes first, and the stripped key is the
+    one claimed: a key of spaces alone passes both that check and
+    the not-empty constraint on either key column, and a trailing
+    space is not a second key.
+    """
+    if header is None:
+        return None
+    key = header.strip()
+    if not key or len(key) > IDEMPOTENCY_KEY_MAX_LENGTH:
+        raise HttpError(
+            422,
+            "An Idempotency-Key is one to "
+            f"{IDEMPOTENCY_KEY_MAX_LENGTH} characters, spaces aside.",
+        )
+    return key
+
+
+@session_router.post("/", response={201: SessionOut})
+def create_session(
+    request,
+    payload: SessionIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    actor = cast(User, request.user)
+    library = actor.library
+    stated_key = _stated_idempotency_key(idempotency_key)
+    _library_run_or_404(library, payload.playthrough_id)
+    _library_device_or_404(library, payload.device_id)
+    try:
+        session_id = record_session(
+            actor,
+            SessionDraft(
+                playthrough_id=payload.playthrough_id,
+                timing=_timing_statement(
+                    payload.timing, calendar_day_zone(library).key
+                ),
+                device_id=payload.device_id,
+                note=payload.note,
+                emulated=payload.emulated,
+            ),
+            correlation_id=new_correlation_id(),
+            idempotency_key=stated_key,
+        )
+    except CommandFailed as failure:
+        _answered_or_http(failure)
+    #: Read before the message: a repeat under the key of a session
+    #: since removed answers no row, and a toast queued ahead of
+    #: that read would say the opposite of the status.
+    recorded = owned_or_404(readable_sessions(library), library, pk=session_id)
+    messages.success(request, "Session recorded.")
+    return Status(201, recorded)
 
 
 @session_router.patch("/{session_id}", response={200: SessionOut})
