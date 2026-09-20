@@ -9,7 +9,7 @@ from datetime import UTC
 
 import pytest
 from django.urls import reverse
-from playwright.sync_api import Page, expect
+from playwright.sync_api import ConsoleMessage, Page, expect
 from session_rows import session_row
 
 from e2e.tracked_games import create_tracked_game
@@ -107,6 +107,11 @@ def test_quick_scalar_facet_filters_sessions(
     )
 
     page = authenticated_page
+    # Wide enough that no facet is in the ⋯ menu. The bar's row now leads with
+    # the free-text field, so at a narrower width the last facet collapses —
+    # which is test_priority_plus_overflow_collapses_and_restores's subject,
+    # not this test's.
+    page.set_viewport_size({"width": 1600, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
     # The Duration facet is a dropdown: open its panel first.
@@ -406,3 +411,130 @@ def test_preset_pick_on_builderless_mode(
     assert "?filter=" in page.url
     expect(page.locator("table")).to_contain_text("Steam Deck")
     expect(page.locator("table")).not_to_contain_text("Desktop")
+
+
+def test_the_search_field_applies_on_enter(
+    authenticated_page: Page, live_server, e2e_library
+):
+    """Typing and pressing Enter applies, and the URL carries the search."""
+    page = authenticated_page
+    create_tracked_game(e2e_library, name="Hollow Knight")
+    create_tracked_game(e2e_library, name="Celeste")
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+
+    page.locator("search-field [data-match-value]").fill("Hollow")
+    page.locator("search-field [data-match-value]").press("Enter")
+    page.wait_for_url("**filter=**")
+
+    assert _filter_from_url(page.url)["search"] == {
+        "value": "Hollow",
+        "modifier": "INCLUDES",
+    }
+    expect(page.locator("table")).to_contain_text("Hollow Knight")
+    expect(page.locator("table")).not_to_contain_text("Celeste")
+
+
+def test_a_chosen_mode_reaches_the_filter(
+    authenticated_page: Page, live_server, e2e_library
+):
+    """The mode the menu states is the one applied, not the default."""
+    page = authenticated_page
+    create_tracked_game(e2e_library, name="Hollow Knight")
+    create_tracked_game(e2e_library, name="Celeste")
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+
+    page.locator("search-field [data-match-trigger]").click()
+    page.locator('search-field [data-match-mode="EXCLUDES"]').click()
+    # The trigger states the mode it now holds, for a reader who cannot see it.
+    expect(page.locator("search-field [data-match-trigger]")).to_have_attribute(
+        "aria-label", "Match mode: excludes"
+    )
+
+    page.locator("search-field [data-match-value]").fill("Hollow")
+    _quick_apply(page)
+    page.wait_for_url("**filter=**")
+
+    assert _filter_from_url(page.url)["search"]["modifier"] == "EXCLUDES"
+    expect(page.locator("table")).to_contain_text("Celeste")
+    expect(page.locator("table")).not_to_contain_text("Hollow Knight")
+
+
+def test_the_menu_is_operable_by_keyboard(
+    authenticated_page: Page, live_server, e2e_library
+):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    menu = page.locator("search-field [role='menu']")
+
+    page.locator("search-field [data-match-trigger]").focus()
+    page.keyboard.press("Enter")
+    expect(menu).to_be_visible()
+    page.keyboard.press("Escape")
+    expect(menu).to_be_hidden()
+
+
+def test_a_stated_search_prefills_the_field(
+    authenticated_page: Page, live_server, e2e_library
+):
+    """A filter the bar can edit renders its search in the field, not a pill."""
+    page = authenticated_page
+    stated = json.dumps({"search": {"value": "zelda", "modifier": "MATCHES_REGEX"}})
+    page.goto(
+        f"{live_server.url}{reverse('games:list_games')}"
+        f"?filter={urllib.parse.quote(stated)}"
+    )
+    expect(page.locator("search-field [data-match-value]")).to_have_value("zelda")
+    expect(page.locator("search-field")).to_have_attribute(
+        "data-modifier", "MATCHES_REGEX"
+    )
+    expect(page.locator("text=Advanced filter active")).to_have_count(0)
+
+
+def test_a_search_the_field_cannot_state_degrades(
+    authenticated_page: Page, live_server, e2e_library
+):
+    page = authenticated_page
+    stated = json.dumps({"search": {"value": "zelda", "modifier": "IS_NULL"}})
+    page.goto(
+        f"{live_server.url}{reverse('games:list_games')}"
+        f"?filter={urllib.parse.quote(stated)}"
+    )
+    expect(page.locator("text=Advanced filter active")).to_be_visible()
+    # The degraded pill holds no field and mounts no element.
+    expect(page.locator("search-field")).to_have_count(0)
+
+
+def test_the_field_stays_in_the_row_on_a_phone(
+    authenticated_page: Page, live_server, e2e_library
+):
+    """At 390px the field keeps its place and the row keeps its gutter."""
+    page = authenticated_page
+    page.set_viewport_size({"width": 390, "height": 800})
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+
+    field = page.locator("search-field")
+    expect(field).to_be_visible()
+    # Never in the overflow menu, at any width.
+    expect(page.locator("[data-quick-overflow-items] search-field")).to_have_count(0)
+    # The row does not scroll the page sideways.
+    assert page.evaluate(
+        "document.documentElement.scrollWidth <= document.documentElement.clientWidth"
+    )
+
+
+def test_the_bar_logs_no_console_error(
+    authenticated_page: Page, live_server, e2e_library
+):
+    page = authenticated_page
+    # Collected before navigating so nothing is missed.
+    messages: list[ConsoleMessage] = []
+
+    def record(message: ConsoleMessage) -> None:
+        messages.append(message)
+
+    page.on("console", record)
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    page.locator("search-field [data-match-trigger]").click()
+    page.locator('search-field [data-match-mode="EQUALS"]').click()
+    errors = [message.text for message in messages if message.type == "error"]
+    assert errors == [], errors

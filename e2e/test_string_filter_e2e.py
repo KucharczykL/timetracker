@@ -30,6 +30,7 @@ def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:
     <script src="/static/js/dist/elements/search-select.js" type="module"></script>
     <script src="/static/js/dist/elements/drop-down.js" type="module"></script>
     <script src="/static/js/dist/elements/quick-filter-bar.js" type="module"></script>
+    <script src="/static/js/dist/elements/search-field.js" type="module"></script>
 </head>
 <body>
     {bar}

@@ -28,6 +28,7 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
     <script src="/static/js/dist/elements/search-select.js" type="module"></script>
     <script src="/static/js/dist/elements/drop-down.js" type="module"></script>
     <script src="/static/js/dist/elements/quick-filter-bar.js" type="module"></script>
+    <script src="/static/js/dist/elements/search-field.js" type="module"></script>
 </head>
 <body>
     {body}
@@ -81,7 +82,17 @@ def _filter_from_url(url: str) -> dict:
 
 
 def _open_facet(page, field: str):
-    page.locator(f"#quick-{field}-dropdownLink").click()
+    """Open one facet's panel, wherever the row put it.
+
+    The bar's row leads with the free-text field, so at this page's width a
+    facet may sit in the "⋯" overflow menu rather than inline. Opening that
+    menu first is what a person does, and it keeps these tests about the
+    widget rather than about where the row fitted it.
+    """
+    trigger = page.locator(f"#quick-{field}-dropdownLink")
+    if not trigger.is_visible():
+        page.locator("[data-quick-overflow] [data-toggle]").first.click()
+    trigger.click()
 
 
 def _submit(page):
