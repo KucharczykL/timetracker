@@ -22,8 +22,12 @@ for a reader at either end of a long table.
 
 ## The checkbox
 
-The checkbox is the first child of the identity cell, which stays a
-`<th scope="row">` and keeps its pin above `md`. It is not a column: the drop
+The checkbox leads the row the identity cell states for the name, and that
+cell stays a `<th scope="row">` and keeps its pin above `md`. The row is
+what the box centres on: the cell also holds the summary under the name
+below `md`, so a box placed in the cell would centre on both lines and sit
+below the name it marks. A cell that states no such row takes the box
+itself. It is not a column: the drop
 classes and `MAX_DATA_TABLE_COLUMNS` count as before. It carries the row name
 and a touch target, and its column is reserved always, which the name floor
 below `md` budgets and the header label clears — the label takes that inset

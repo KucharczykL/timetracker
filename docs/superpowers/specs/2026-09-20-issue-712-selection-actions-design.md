@@ -86,6 +86,10 @@ holds. The Library page's Playtime section keeps its explanation, its count
 and the link to the review, and presses nothing, so the sentence promising an
 Undo went with the button. The Actions columns stand until #718.
 
+Each selectable row states one row for its name and the checkbox that marks
+it, so the two centre on each other and the summary keeps its own line
+below them.
+
 Vitest covers the statement the slot posts, a selection restored before the
 slot upgrades, the press that stops the writing, and the page the browser
 brings back. Pytest covers each act's scope, resolve, run and inverse, and

@@ -181,13 +181,41 @@ def test_the_mode_moves_no_row(page: Page, live_server):
     assert page.evaluate(ROW_GEOMETRY) == at_rest
 
 
-def test_the_checkbox_is_the_first_child_of_the_identity_cell(page: Page, live_server):
+def test_the_checkbox_leads_the_name_it_marks(page: Page, live_server):
+    """First in the row the name states, and centred on it.
+
+    The cell holds the summary under the name, so a checkbox placed in
+    the cell would centre on both lines and sit below the name.
+    """
     _open(page, live_server)
     _select_mode(page)
-    first_child = page.evaluate(
-        "() => document.querySelector('tbody th').firstElementChild.tagName"
+    placed = page.evaluate(
+        """() => {
+            const identity = document.querySelector('tbody th [data-row-identity]');
+            const box = identity.firstElementChild;
+            // The name is a text node here, so a range measures it.
+            const text = [...identity.childNodes].find(
+                (node) => node.nodeType === Node.TEXT_NODE && node.textContent.trim()
+            );
+            const range = document.createRange();
+            range.selectNodeContents(text);
+            const middle = (shape) => shape.top + shape.height / 2;
+            return {
+                tag: box.tagName,
+                outsideTheSummary: !document
+                    .querySelector('tbody th [data-row-summary]')
+                    ?.contains(box),
+                offBy: Math.abs(
+                    middle(box.getBoundingClientRect())
+                    - middle(range.getBoundingClientRect())
+                ),
+            };
+        }"""
     )
-    assert first_child == "INPUT"
+    assert placed["tag"] == "INPUT"
+    assert placed["outsideTheSummary"]
+    #: One line's rounding, not the four the cell's own middle costs.
+    assert placed["offBy"] < 1
     label = _checkboxes(page).first.get_attribute("aria-label")
     assert label is not None and label.startswith("Game 00")
 
