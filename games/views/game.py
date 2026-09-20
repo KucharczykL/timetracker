@@ -540,7 +540,6 @@ def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
 
     count_button = ControlButton(
         variant="outline",
-        shape="start",
         href=action_url("games:add_playthrough", origin=origin),
     )[
         # One prose phrase = one flex item: the button is inline-flex, and flex

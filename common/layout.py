@@ -145,7 +145,6 @@ def NavbarLogButton(
         color="green",
         href=action_url("games:add_session", origin=origin),
         aria_label="Log game",
-        shape="start",
     )[Icon("play"), Span(class_="hidden sm:inline")["Log game"]]
 
     if recent_resumes:

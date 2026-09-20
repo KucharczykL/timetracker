@@ -253,14 +253,14 @@ class DropdownWrapperTest(unittest.TestCase):
 
     def test_split_button_groups_primary_with_caret(self):
         from common.components import (
+            ControlButton,
             DropdownActionItem,
             DropdownLinkItem,
-            Span,
             SplitButtonDropdown,
             render,
         )
 
-        primary = Span(class_="rounded-s-base")["Played 3 times"]
+        primary = ControlButton(variant="outline")["Played 3 times"]
         html = render(
             SplitButtonDropdown(
                 primary=primary,
@@ -273,11 +273,31 @@ class DropdownWrapperTest(unittest.TestCase):
             )
         )
         self.assertIn("inline-flex items-stretch", html)  # the flex group
-        self.assertIn("rounded-s-base", html)  # caller's primary
+        self.assertIn("rounded-s-base", html)  # the builder shaped the primary
         self.assertIn("rounded-e-base", html)  # the caret
         self.assertIn("data-add-play", html)
         self.assertIn('aria-label="Playthrough actions"', html)
         self.assertNotIn("aria-labelledby", html)  # icon-only caret → explicit label
+
+    def test_the_split_button_states_its_primary_shape(self):
+        """A caller that had to remember `start` would render a primary rounded
+        on four corners with a notch at the join, and nothing would say so."""
+        from common.components import ControlButton, SplitButtonDropdown
+
+        html = str(
+            SplitButtonDropdown(
+                primary=ControlButton(variant="outline")["Played 3 times"],
+                id="played-1",
+                aria_label="Playthrough actions",
+                items=[],
+            )
+        )
+        primary = html[html.index("<button") : html.index("</button>")]
+        self.assertIn("rounded-s-base", primary)
+        # Not both: a primary keeping the full round would show a rounded
+        # corner sitting inside the join against the caret.
+        self.assertNotIn("rounded-base", primary)
+        self.assertIn("rounded-e-base", html[html.index("<drop-down") :])
 
 
 class DropdownMenuItemTest(unittest.TestCase):

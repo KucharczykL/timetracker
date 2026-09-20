@@ -1180,7 +1180,7 @@ def ButtonDropdown(
 
 def SplitButtonDropdown(
     *,
-    primary: Node,
+    primary: ControlButton,
     items: list[Node],
     id: str,
     placement: str = "bottom-start",
@@ -1192,10 +1192,15 @@ def SplitButtonDropdown(
     the menu. The Dropdown attaches to the caret only — ``primary`` is a plain
     sibling, so the core never needs to know it exists.
 
+    Both ends are this builder's: the caret is the row's end, and ``primary`` is
+    restated as its start. A caller that had to remember the start would render a
+    primary rounded on four corners with a notch at the join, and no error and no
+    test would say so — which is why ``primary`` is typed as a
+    :class:`ControlButton` rather than any node.
+
     ``caret_color`` defaults to an outline caret; pass a color to render a filled
-    caret matching a filled ``primary``. Either way the caret is the row's end and
-    states ``shape="end"``, and the caller's ``primary`` states ``shape="start"``.
-    ``menu_width`` overrides the menu panel width (default ``w-44``).
+    caret matching a filled ``primary``. ``menu_width`` overrides the menu panel
+    width (default ``w-44``).
 
     Both caret variants take ``focus:ring-inset`` so the focus ring is contained
     inside the small caret box instead of bleeding across the join into the
@@ -1223,7 +1228,7 @@ def SplitButtonDropdown(
         placement=placement,
     )
     return Div(class_="inline-flex items-stretch rounded-base shadow-2xs")[
-        primary, dropdown
+        primary.with_shape("start"), dropdown
     ]
 
 

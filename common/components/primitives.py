@@ -1033,6 +1033,12 @@ class ControlButton(BaseComponent):
                         '("full", "start", "end" or "square"), never a class.'
                     )
         self._merged_attributes: list[HTMLAttribute] = [*class_attrs, *caller_attrs]
+        # Kept so `with_shape` can rebuild the class string. Reading them back
+        # off the rendered class is not possible — several variants share
+        # words, and a color leaves none of its own on a colorless variant.
+        self._color = color
+        self._variant = variant
+        self._align = align
         self._href = href
         self._method = method
         self._action = action
@@ -1048,6 +1054,33 @@ class ControlButton(BaseComponent):
         clone.__dict__.update(self.__dict__)
         clone.__dict__.pop("_tree_cache", None)
         clone._children = as_children(children)
+        return clone
+
+    def with_shape(self, shape: ButtonShape) -> ControlButton:
+        """This button, restated with different corners.
+
+        For a builder that composes a row out of buttons it did not build:
+        the row knows each member's place, and the caller that made the button
+        should not have to remember it. Like ``__getitem__``, a new instance
+        rather than a mutation — ``_tree()`` memoizes the rendered subtree.
+        """
+        clone = ControlButton.__new__(ControlButton)
+        clone.__dict__.update(self.__dict__)
+        clone.__dict__.pop("_tree_cache", None)
+        # Everything the caller stated survives; only the class this component
+        # put there is replaced, and it is always the first attribute.
+        clone._merged_attributes = [
+            (
+                "class",
+                control_button_class(
+                    color=self._color,
+                    variant=self._variant,
+                    align=self._align,
+                    shape=shape,
+                ),
+            ),
+            *self._merged_attributes[1:],
+        ]
         return clone
 
     def as_element(self) -> Element:
