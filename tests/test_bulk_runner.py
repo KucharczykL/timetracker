@@ -23,6 +23,7 @@ from games.bulk_reclassification import (
     IN_THE_BUCKET,
     NOT_AVAILABLE,
     REVIEW_THRESHOLD_HOURS,
+    UNDER_THRESHOLD,
 )
 from games.commands.session_reclassification import statement_from_session
 from games.models import (
@@ -35,16 +36,18 @@ from games.models import (
 )
 from games.reads.events import batch_aggregate_ids
 from games.views.bulk import (
+    ENDED_BY_A_DEFECT,
     NOT_THIS_BATCH,
     PROGRESS_FIELD,
     STATEMENT_FIELD,
     STOP_FIELD,
+    STOPPED_BY_HAND,
     TOKEN_FIELD,
     UNKNOWN_ACT,
 )
 from games.views.session_reclassification import review_filter
 from games.writes.historical_playtime import restate_historical_playtime
-from games.writes.playersession import reclassify_session
+from games.writes.playersession import reclassify_session, undo_reclassification
 from timetracker.uuidv7 import parse_uuidv7
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
@@ -397,6 +400,65 @@ def test_a_refused_row_leaves_the_rest_done(client_in, owned_library, game):
     assert HistoricalPlaytime.objects.count() == 1
 
 
+def test_a_refused_row_is_counted_and_its_reason_reaches_the_person(
+    client_in, owned_library, game
+):
+    """The toast says how many were left, and a second says why.
+
+    A count with no reason sends a person back to the list to work out
+    which rows those were, and a reason with no count hides that one
+    sentence stood over several rows.
+    """
+    wanted = a_written_session(owned_library, game)
+    short = a_written_session(
+        owned_library, game, day=date(2026, 3, 6), duration=timedelta(hours=1)
+    )
+    brief = a_written_session(
+        owned_library, game, day=date(2026, 3, 7), duration=timedelta(hours=2)
+    )
+
+    asked = confirm(client_in, some(wanted, short, brief))
+    assert "2 of them will be left as they are:" in asked.content.decode()
+
+    done = act(client_in, asked)
+
+    assert done.status_code == 302
+    assert [str(message) for message in toasts(done)] == [
+        "1 of 1 done, 2 left as they are.",
+        UNDER_THRESHOLD,
+    ]
+
+
+def test_a_row_lost_in_one_chunk_is_still_counted_by_the_next(
+    client_in, owned_library, game, monkeypatch
+):
+    """The tally rides the form, so a count must survive the round trip.
+
+    A row counted lost in the chunk that met it is answered for by a
+    later chunk, and a counter the progress field dropped would make
+    the batch's own answer disagree with what it did.
+    """
+    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(3)
+    ]
+    confirmation = confirm(client_in, some(*sessions))
+
+    response = act(client_in, confirmation)
+    #: Gone between the first chunk and the one that would reach it.
+    PlayerSession.objects.filter(pk=sessions[1].pk).update(removed_at=timezone.now())
+    middle = act(client_in, response)
+    assert tally_of(middle)["lost"] == 1
+    last = act(client_in, middle)
+
+    assert last.status_code == 302
+    assert [str(message) for message in toasts(last)] == [
+        "2 of 3 done, 1 no longer there.",
+        NOT_AVAILABLE,
+    ]
+
+
 def test_every_row_left_alone_is_logged_with_its_library(
     client_in, owned_library, game, caplog, capture_games_logger
 ):
@@ -535,6 +597,32 @@ def test_a_progress_page_carries_the_tally_and_the_rest(
     assert len(carried["rows"]) == 2
 
 
+def test_a_waypoint_says_what_has_been_left_alone_so_far(
+    client_in, owned_library, game, monkeypatch
+):
+    """A batch of thousands is read at its waypoints, not at its answer.
+
+    The reasons ride the tally from the confirmation onwards, so the
+    page a person watches can say them rather than holding them back
+    until the batch ends.
+    """
+    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(2)
+    ]
+    short = a_written_session(
+        owned_library, game, day=date(2026, 4, 1), duration=timedelta(hours=1)
+    )
+
+    progressing = act(client_in, confirm(client_in, some(*sessions, short)))
+
+    assert progressing.status_code == 200
+    page = progressing.content.decode()
+    assert "1 left as it is so far:" in page
+    assert html_module.escape(UNDER_THRESHOLD) in page
+
+
 def test_stopping_ends_the_batch_where_it_stands(
     client_in, owned_library, game, monkeypatch
 ):
@@ -549,6 +637,77 @@ def test_stopping_ends_the_batch_where_it_stands(
 
     assert stopped.status_code == 302
     assert HistoricalPlaytime.objects.count() == 1
+
+
+def test_stopping_names_the_rows_it_left(
+    client_in, owned_library, game, monkeypatch, caplog, capture_games_logger
+):
+    """A Stop leaves rows behind, and the log is where they are named.
+
+    The toast says how far the batch got; nothing else ever says which
+    rows it did not reach, and a person who presses Stop by accident
+    has only the log to read them back from.
+    """
+    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(3)
+    ]
+    confirmation = confirm(client_in, some(*sessions))
+    token = posted(confirmation)[TOKEN_FIELD]
+    progressing = act(client_in, confirmation)
+
+    with capture_games_logger() as captured:
+        captured.set_level(logging.INFO, logger="games")
+        act(client_in, progressing, **{STOP_FIELD: "1"})
+
+    said = " ".join(record.message for record in caplog.records)
+    left = [key for key in tally_of(progressing)["rows"]]
+    assert len(left) == 2
+    for key in left:
+        assert key in said
+    assert STOPPED_BY_HAND in said
+    assert token in said
+
+
+def test_a_defect_names_the_rows_it_left(
+    client_in, owned_library, game, monkeypatch, caplog, capture_games_logger
+):
+    """The row that met the defect, and the rows behind it.
+
+    No dispatch answered for any of them, so the tally counts none of
+    them, and the log is the only record that they were part of the
+    batch at all.
+    """
+    from games.writes.answers import DEFECT_STATUS, CommandFailed
+
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(3)
+    ]
+    real = bulk_reclassification.reclassify_session
+    calls = {"n": 0}
+
+    def breaks_after_one(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise CommandFailed("A problem on our side.", DEFECT_STATUS)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(bulk_reclassification, "reclassify_session", breaks_after_one)
+    confirmation = confirm(client_in, some(*sessions))
+    ordered = tally_of(confirmation)["rows"]
+
+    with capture_games_logger() as captured:
+        captured.set_level(logging.INFO, logger="games")
+        stopped = act(client_in, confirmation)
+
+    assert stopped.status_code == DEFECT_STATUS
+    said = " ".join(record.message for record in caplog.records)
+    #: The row the defect was met on, and the one it never reached.
+    assert ordered[1] in said
+    assert ordered[2] in said
+    assert ENDED_BY_A_DEFECT in said
 
 
 # ── The batch's Undo ─────────────────────────────────────────────────────────
@@ -681,7 +840,9 @@ def test_a_record_restated_since_is_named_and_the_rest_are_undone(
     assert undone.status_code == 302
     assert PlayerSession.objects.get(pk=sessions[0].pk).removed_at is not None
     assert PlayerSession.objects.get(pk=sessions[1].pk).removed_at is None
-    assert any("1 of 2 done" in str(message) for message in toasts(undone))
+    #: One refused row of an Undo, counted and said in its own number.
+    first = next(str(message) for message in toasts(undone))
+    assert first == "1 of 2 done, 1 left as it is."
 
 
 def test_a_batch_undo_chunks_under_its_own_token(
@@ -714,6 +875,37 @@ def test_a_batch_undo_chunks_under_its_own_token(
         library=owned_library, event_type="library.playersession.restored"
     )
     assert {event.correlation_id for event in restored} == {uuid.UUID(undo_token)}
+
+
+def test_a_row_undone_by_hand_is_counted_apart_from_one_the_undo_moved(
+    client_in, owned_user, owned_library, game
+):
+    """A count of what was done must not claim work nobody did.
+
+    The single-row Undo took one of these back already, so the batch's
+    Undo meets a command that answers Unchanged, which is neither a
+    row it moved nor a row it was refused.
+    """
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(2)
+    ]
+    confirmation = confirm(client_in, some(*sessions))
+    token = posted(confirmation)[TOKEN_FIELD]
+    landed(client_in, act(client_in, confirmation))
+    undo_reclassification(
+        owned_user,
+        PlayerSession.objects.get(pk=sessions[0].pk),
+        correlation_id=uuid.uuid7(),
+    )
+
+    undone = client_in.post(undo_url(token), {})
+
+    assert undone.status_code == 302
+    assert [str(message) for message in toasts(undone)] == [
+        "1 of 2 done, 1 already done."
+    ]
+    assert PlayerSession.objects.alive().count() == 2
 
 
 def test_an_undo_offers_no_further_undo(client_in, owned_library, game):
@@ -751,7 +943,8 @@ def test_an_undo_leaves_alone_a_key_its_batch_never_wrote(
                     "done": 0,
                     "unchanged": 0,
                     "lost": 0,
-                    "refused": [],
+                    "refused": 0,
+                    "reasons": [],
                     "total": 1,
                 }
             ),

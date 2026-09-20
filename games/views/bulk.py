@@ -97,6 +97,12 @@ DEFECT_SENTENCE = (
 #: An Undo acts on the rows its own batch wrote, and on no others.
 NOT_THIS_BATCH = "One of those rows is not part of this batch, so it was left as it is."
 
+#: Why a row no dispatch reached was left. The log's words, not a
+#: person's: what a person is told is how far the batch got, and these
+#: two are what that leaves unsaid.
+STOPPED_BY_HAND = "The batch was stopped before this row was reached."
+ENDED_BY_A_DEFECT = "A problem on our side ended the batch before this row was reached."
+
 
 @dataclass(frozen=True, slots=True)
 class SelectionStatement:
@@ -126,7 +132,10 @@ class Tally:
     done: int = 0
     unchanged: int = 0
     lost: int = 0
-    refused: tuple[str, ...] = ()
+    #: Rows refused on their merits: neither moved nor gone.
+    refused: int = 0
+    #: Each distinct reason once, in the order they were met.
+    reasons: tuple[str, ...] = ()
     #: The denominator: what the confirmation resolved.
     total: int = 0
 
@@ -137,7 +146,8 @@ class Tally:
                 "done": self.done,
                 "unchanged": self.unchanged,
                 "lost": self.lost,
-                "refused": list(self.refused),
+                "refused": self.refused,
+                "reasons": list(self.reasons),
                 "total": self.total,
             }
         )
@@ -151,15 +161,22 @@ class Tally:
                 done=int(stated.get("done", 0)),
                 unchanged=int(stated.get("unchanged", 0)),
                 lost=int(stated.get("lost", 0)),
-                refused=tuple(str(one) for one in stated.get("refused", [])),
+                refused=int(stated.get("refused", 0)),
+                reasons=tuple(str(one) for one in stated.get("reasons", [])),
                 total=int(stated.get("total", 0)),
             )
         except (ValueError, TypeError, AttributeError) as error:
             raise StatementUnreadable(f"progress is unreadable: {error}") from error
 
-    def with_reasons(self, refused: Sequence[Refused]) -> Tally:
-        """Count what was left alone, keeping each reason once."""
-        reasons = list(self.refused)
+    def left_alone(self, refused: Sequence[Refused]) -> Tally:
+        """Count the rows left alone, keeping each reason once.
+
+        Counted apart from the reasons, because the sentences are
+        deduplicated and the rows are not: ten rows under one reason
+        are ten rows, and a person told "1 left as it is" over them
+        would go looking for the nine.
+        """
+        reasons = list(self.reasons)
         for entry in refused:
             if entry.sentence not in reasons:
                 reasons.append(entry.sentence)
@@ -167,7 +184,8 @@ class Tally:
         return replace(
             self,
             lost=self.lost + lost,
-            refused=tuple(reasons),
+            refused=self.refused + len(refused) - lost,
+            reasons=tuple(reasons),
         )
 
     def sentence(self) -> str:
@@ -175,12 +193,19 @@ class Tally:
         parts = [f"{self.done} of {self.total} done"]
         if self.unchanged:
             parts.append(f"{self.unchanged} already done")
+        if self.refused:
+            parts.append(f"{self.refused} left as {_as_it_is(self.refused)}")
         if self.lost:
             parts.append(f"{self.lost} no longer there")
         left = len(self.rows)
         if left:
             parts.append(f"{left} left")
         return ", ".join(parts) + "."
+
+
+def _as_it_is(count: int) -> str:
+    """One row is left as it is; more are left as they are."""
+    return "it is" if count == 1 else "they are"
 
 
 class StatementUnreadable(Exception):
@@ -265,7 +290,7 @@ def _confirmation(
     _log_left_alone(
         action.name, refused, cast(User, request.user).library, uuid.UUID(token)
     )
-    progress = Tally(rows=tuple(keys), total=len(keys)).with_reasons(refused).as_json()
+    progress = Tally(rows=tuple(keys), total=len(keys)).left_alone(refused).as_json()
     return render_page(
         request,
         ConfirmBatch(
@@ -340,6 +365,11 @@ def _forward(action: BulkAction) -> Leg:
     )
 
 
+def _undo_name(action: BulkAction) -> str:
+    """One spelling of the Undo's name, for the leg and the log alike."""
+    return f"{action.name}.undo"
+
+
 def _backward(action: BulkAction, written: frozenset[uuid.UUID]) -> Leg:
     """The inverse, over the keys this batch wrote and no others.
 
@@ -349,7 +379,7 @@ def _backward(action: BulkAction, written: frozenset[uuid.UUID]) -> Leg:
     confirmation does on the way forward: one rule, read by both legs.
     """
     return Leg(
-        name=f"{action.name}.undo",
+        name=_undo_name(action),
         resolve=lambda library, key: _of_this_batch(key, written),
         run=action.inverse,
     )
@@ -388,7 +418,7 @@ def _run_a_chunk(
         #: confirmation is counted lost rather than refused.
         resolution = leg.resolve(user.library, left[0])
         _log_left_alone(leg.name, resolution.refused, user.library, correlation_id)
-        tally = tally.with_reasons(resolution.refused)
+        tally = tally.left_alone(resolution.refused)
         acted = left.pop(0)
         for row in resolution.rows:
             try:
@@ -397,7 +427,16 @@ def _run_a_chunk(
                 )
             except CommandFailed as failure:
                 if failure.status_code != CONFLICT_STATUS:
-                    #: Ours, not theirs: the batch ends here.
+                    #: Ours, not theirs: the batch ends here. The row
+                    #: that met it is named beside the rows behind it,
+                    #: because no dispatch answered for any of them.
+                    _log_abandoned(
+                        leg.name,
+                        [acted, *left],
+                        user.library,
+                        correlation_id,
+                        ENDED_BY_A_DEFECT,
+                    )
                     return _defect(
                         request,
                         action,
@@ -406,7 +445,7 @@ def _run_a_chunk(
                     )
                 refusal = Refused(str(acted), failure.message)
                 _log_left_alone(leg.name, (refusal,), user.library, correlation_id)
-                tally = tally.with_reasons((refusal,))
+                tally = tally.left_alone((refusal,))
             else:
                 tally = _counted(tally, outcome)
         if monotonic() - started >= CHUNK_BUDGET.total_seconds():
@@ -442,6 +481,28 @@ def _log_left_alone(
         )
 
 
+def _log_abandoned(
+    name: str,
+    keys: Sequence[uuid.UUID],
+    library: UserLibrary,
+    correlation_id: uuid.UUID,
+    sentence: str,
+) -> None:
+    """Name the rows no dispatch reached, under the batch's identity.
+
+    A row a Stop or a defect left behind is left alone as surely as one
+    a command refused, and the log is the only place it is named at
+    all: the tally counts what happened to a row, and to these nothing
+    did.
+    """
+    _log_left_alone(
+        name,
+        [Refused(str(key), sentence) for key in keys],
+        library,
+        correlation_id,
+    )
+
+
 def _counted(tally: Tally, outcome: RowOutcome) -> Tally:
     """A row the dispatch moved, or one already in that state."""
     if outcome is RowOutcome.UNCHANGED:
@@ -458,7 +519,8 @@ def _progress(
             action,
             done=tally.done,
             total=tally.total,
-            refused=(),
+            refused=tally.refused,
+            reasons=tally.reasons,
             hidden=[(TOKEN_FIELD, token), (PROGRESS_FIELD, tally.as_json())],
             post_url=request.get_full_path(),
             csrf_token=get_token(request),
@@ -522,7 +584,7 @@ def _answer(
         level=messages.SUCCESS if tally.done else messages.INFO,
         action=Undo(undo_url) if undo_url and tally.done else None,
     )
-    for reason in tally.refused:
+    for reason in tally.reasons:
         notify(request, reason, level=messages.INFO)
     return redirect(return_url(request, fallback=action.fallback))
 
@@ -546,6 +608,13 @@ def run_bulk_action(request: HttpRequest, action: BulkActionName) -> HttpRespons
             return _act_refused(request, declared, UNREADABLE_STATEMENT)
         if request.POST.get(STOP_FIELD):
             #: Ended where it stands; the rows done stay done.
+            _log_abandoned(
+                declared.name,
+                tally.rows,
+                user.library,
+                uuid.UUID(token),
+                STOPPED_BY_HAND,
+            )
             return _answer(
                 request, declared, replace(tally, rows=()), undo_url=_undo_url(token)
             )
@@ -641,6 +710,13 @@ def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpRes
             logger.warning("[bulk]: an undo refused a progress: %s", unreadable)
             return _act_refused(request, declared, UNREADABLE_STATEMENT)
         if request.POST.get(STOP_FIELD):
+            _log_abandoned(
+                _undo_name(declared),
+                tally.rows,
+                user.library,
+                uuid.UUID(token),
+                STOPPED_BY_HAND,
+            )
             return _answer(request, declared, replace(tally, rows=()), undo_url=None)
     else:
         tally = Tally(rows=tuple(rows), total=len(rows))

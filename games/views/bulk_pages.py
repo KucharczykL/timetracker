@@ -31,6 +31,13 @@ from common.components.primitives import (
 from common.duration_presentation import DurationPresentation
 from games.bulk_actions import BulkAction, Refused
 
+#: What the confirmation says of the rows the act will not reach, and
+#: what the waypoint says of the ones it has met so far. One row is
+#: "it is", and a batch of one is the ordinary case on a row's own
+#: control, so neither line may read as though it were many.
+WILL_BE_LEFT_ALONE = "{count} of them will be left as {pronoun}:"
+LEFT_ALONE = "{count} left as {pronoun} so far:"
+
 #: Carries its own script, so the waypoint needs no `scripts=`.
 _ContinuingBatch = custom_element_builder("continuing-batch")
 
@@ -40,13 +47,20 @@ def _reasons(refused: Sequence[Refused]) -> list[str]:
     return list(dict.fromkeys(entry.sentence for entry in refused))
 
 
-def _refusals(refused: Sequence[Refused]) -> Node:
-    reasons = _reasons(refused)
+def _refusals(count: int, reasons: Sequence[str], lead: str) -> Node:
+    """How many rows are left alone, and why.
+
+    The count is the rows and the list is the reasons, which are two
+    numbers: one reason may stand over many rows, and a heading that
+    counted sentences would tell a person fewer rows were left than
+    were.
+    """
     if not reasons:
         return Fragment()
+    pronoun = "it is" if count == 1 else "they are"
     return Div(class_="mb-4")[
         P(class_="text-type-body text-body mb-2")[
-            f"{len(refused)} of them will be left as they are:"
+            lead.format(count=count, pronoun=pronoun)
         ],
         Ul(class_="list-disc ps-5 text-type-body text-body")[
             Fragment(*(Li()[reason] for reason in reasons))
@@ -137,7 +151,7 @@ def ConfirmBatch(
         ),
         details=Fragment(
             *(Input(type="hidden", name=name, value=value) for name, value in hidden),
-            _refusals(refused),
+            _refusals(len(refused), _reasons(refused), WILL_BE_LEFT_ALONE),
             _sample(rows, total, sample_cap, durations),
         ),
         post_url=post_url,
@@ -153,7 +167,8 @@ def ProgressBatch(
     *,
     done: int,
     total: int,
-    refused: Sequence[Refused],
+    refused: int,
+    reasons: Sequence[str],
     hidden: Sequence[tuple[str, str]],
     post_url: str,
     csrf_token: str,
@@ -171,7 +186,7 @@ def ProgressBatch(
             P(class_="text-type-body text-body mb-4")[
                 f"{done} of {total} done. Continuing with the rest."
             ],
-            _refusals(refused),
+            _refusals(refused, reasons, LEFT_ALONE),
             Form(method="post", action=post_url, data_continuing_batch_form="")[
                 Safe(
                     '<input type="hidden" name="csrfmiddlewaretoken" '
