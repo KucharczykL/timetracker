@@ -283,24 +283,19 @@ function createCalendarState(picker: HTMLElement): CalendarState {
     if (isAnchor && !state.readOnly) variant = "anchor";
     else if (isStart || isEnd) variant = "selected";
     else variant = inViewMonth ? "default" : "adjacent";
-    // A day's place in the run states its corners, exactly as a member's place
-    // in a ButtonGroup does. The one thing the two cannot share is who
-    // decides: a range is defined by data and wraps across week rows, so the
-    // run's ends are not the grid's — :first-child would match the first day
-    // of the month, not of the range. The cell knows its place from the range
-    // state, and nothing else does.
+    // A day's place in the run states its corners, as a ButtonGroup member's
+    // does — but no selector can find them: a run wraps across week rows, so
+    // :first-child would match the first day of the MONTH, not of the range.
     //
-    // An endpoint rounds only the edge facing AWAY from the run, so the band
-    // joins the pill flush. Round both and a notch of background shows above
-    // and below the join: the range then reads as three separate chips instead
-    // of one continuous selection.
+    // An endpoint rounds the edge facing AWAY from the run. Round both and a
+    // notch of background shows above and below the join, so the range reads
+    // as three chips instead of one selection.
     const track = trackBounds();
     const classes: string[] = [];
     let shape: ButtonShape = "full";
     if (track !== null && isoString > track[0] && isoString < track[1]) {
       shape = "square";
-      // The track is the genuinely additive layer: it paints the days between
-      // the endpoints. Fill, not a corner.
+      // Fill, not a corner.
       classes.push(track[2]);
     } else if (track !== null && track[0] !== track[1]) {
       if (isoString === track[0]) shape = "start";

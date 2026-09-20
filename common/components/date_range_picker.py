@@ -97,11 +97,9 @@ _NAV_BUTTON_GEOMETRY_CLASS = "w-11 shrink-0"
 # `manage.py gen_element_types` (ts/generated/calendar-classes.ts) because the
 # 42 cells are cloned client-side — see date_calendar_shell's day template.
 #
-# Every variant is built square, and the client states the corner. Rounding,
-# fill and dimming stay orthogonal — merging them into one if/else chain is
-# exactly what left selected and adjacent-month cells square — but only the
-# client knows where a run ends: a range wraps across week rows, so the run's
-# ends are not the grid's.
+# Built square; the client states the corner, because a run wraps across week
+# rows. Each variant stays a COMPLETE string: merging fill and dimming into one
+# if/else chain is what left selected and adjacent-month cells square.
 type CalendarDayVariant = str  # e.g. "selected"
 CALENDAR_DAY_CLASSES: dict[CalendarDayVariant, str] = {
     # Unselected, in-month: transparent chrome until hover.

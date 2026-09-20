@@ -168,10 +168,7 @@ type ButtonVariant = Literal[
 # order, not class-attribute order, so `class_="justify-start"` on a button
 # whose baked class already says `justify-center` wins only by luck.
 type ButtonAlign = Literal["center", "start"]
-# Which corners a button rounds. A place in a joined row, not a size: "start"
-# and "end" are the row's two ends, "square" a member between them, and "full"
-# a button standing alone. A shape never states a radius — the radius is one
-# tier (rounded-base) everywhere, decided once in #411.
+# A place in a joined row, never a radius: one tier rounds every control.
 type ButtonShape = Literal["full", "start", "end", "square"]  # e.g. "start"
 type BadgeSize = Literal["sm", "base", "lg"]
 type BadgeTone = Literal["brand", "neutral", "success", "warning", "danger"]
@@ -786,9 +783,7 @@ _ALIGN_CLASSES: dict[ButtonAlign, str] = {
     "start": "justify-start text-start",
 }
 
-# Corners, never a radius: every entry is the one tier #411 left standing.
-# "square" appends nothing at all, so a joined row's middle member carries no
-# rounding word rather than a word that zeroes one.
+#: A shape's corners. "square" is no word, not a word that zeroes one.
 _SHAPE_CLASSES: dict[ButtonShape, str] = {
     "full": "rounded-base",
     "start": "rounded-s-base",
@@ -938,9 +933,7 @@ def control_button_class(
             parts += [_FILLED_VARIANT_CLASS, _FILLED_COLOR_CLASSES[color]]
         else:
             parts += [_SEGMENTED_VARIANT_CLASS, _SEGMENTED_COLOR_CLASSES[color]]
-    # Appended only when it says something: "square" is the absence of a
-    # rounding word, and an empty part would leave a trailing space that two
-    # exact-equality assertions compare.
+    # Never an empty part: two assertions compare this string exactly.
     if shape_class:
         parts.append(shape_class)
     return " ".join(parts)
@@ -976,9 +969,9 @@ class ControlButton(BaseComponent):
 
     ``shape=`` states which corners the button rounds, and is the only way to
     state them: ``"full"`` (the default) rounds all four, ``"start"``/``"end"``
-    the two ends of a joined row, ``"square"`` none. A caller class is refused,
-    because a caller class and a baked class both set the radius and the
-    stylesheet — not the class attribute — decides which one wins.
+    the two ends of a joined row, ``"square"`` none. A caller class holding a
+    rounding is refused — the stylesheet, not the class attribute, decides
+    between two classes setting one radius.
 
     ``align="start"`` left-aligns the content for buttons rendered as a list of
     choices (the date picker's preset column); the default is centered. It is a
@@ -1023,19 +1016,16 @@ class ControlButton(BaseComponent):
                 continue
             for word in value.split():
                 if word.startswith("rounded-"):
-                    # Refused where the caller that stated it is still on the
-                    # stack. Two classes both setting a radius are resolved by
-                    # stylesheet order, not by the class attribute, so which
-                    # one wins is not something the call site can read.
+                    # Stylesheet order decides between two radius classes,
+                    # so the call site cannot read which one wins.
                     raise TypeError(
                         f"ControlButton refuses the class {word!r}: "
                         "a button states its corners with shape= "
                         '("full", "start", "end" or "square"), never a class.'
                     )
         self._merged_attributes: list[HTMLAttribute] = [*class_attrs, *caller_attrs]
-        # Kept so `with_shape` can rebuild the class string. Reading them back
-        # off the rendered class is not possible — several variants share
-        # words, and a color leaves none of its own on a colorless variant.
+        # `with_shape` rebuilds the class from these; the rendered
+        # string cannot give them back.
         self._color = color
         self._variant = variant
         self._align = align
@@ -1057,18 +1047,15 @@ class ControlButton(BaseComponent):
         return clone
 
     def with_shape(self, shape: ButtonShape) -> ControlButton:
-        """This button, restated with different corners.
+        """This button, restated with different corners — for a builder
+        composing a row out of buttons it did not build.
 
-        For a builder that composes a row out of buttons it did not build:
-        the row knows each member's place, and the caller that made the button
-        should not have to remember it. Like ``__getitem__``, a new instance
-        rather than a mutation — ``_tree()`` memoizes the rendered subtree.
+        A new instance, never a mutation: ``_tree()`` memoizes its subtree.
         """
         clone = ControlButton.__new__(ControlButton)
         clone.__dict__.update(self.__dict__)
         clone.__dict__.pop("_tree_cache", None)
-        # Everything the caller stated survives; only the class this component
-        # put there is replaced, and it is always the first attribute.
+        # This component's own class is always the first attribute.
         clone._merged_attributes = [
             (
                 "class",
@@ -1179,8 +1166,7 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
     for conditional buttons (e.g., end-session only when session is active).
     Every button uses one responsive size (small on mobile, larger from ``lg``).
     """
-    # Counted after the empty entries go, so a hidden member never takes an
-    # end away from the member that is really there.
+    # A skipped entry is not an end.
     present = [
         member for member in (buttons or []) if member and member.get("slot", "")
     ]

@@ -34,8 +34,7 @@ export type DayVariant = "default" | "selected" | "adjacent" | "anchor";
 export type TrackVariant = "outlined" | "filled" | "muted";
 export type ButtonShape = "full" | "start" | "end" | "square";
 
-// The variants are generated square, so the corner is stated here. A single
-// date is a run of one and rounds both ends, which is the default.
+// The variants are generated square. A single date is a run of one.
 export function dayVariantClass(variant: DayVariant, shape: ButtonShape = "full"): string {
   const look = CALENDAR_DAY_CLASSES[variant] ?? CALENDAR_DAY_CLASSES.default;
   const corners = BUTTON_SHAPE_CLASSES[shape] ?? "";

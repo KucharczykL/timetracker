@@ -108,9 +108,7 @@ class Command(BaseCommand):
                     TsConstant(
                         "YEAR_PICKER_CLASSES", dict[str, str], YEAR_PICKER_CLASSES
                     ),
-                    # The shapes the variants above are built without. The
-                    # client states the corner, so it needs the same table
-                    # ControlButton reads.
+                    # The corner the day variants above are built without.
                     TsConstant("BUTTON_SHAPE_CLASSES", dict[str, str], _SHAPE_CLASSES),
                 ],
             ),
