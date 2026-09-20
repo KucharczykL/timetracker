@@ -253,8 +253,12 @@ the submission token.
    finds all of it. A refusal names its
    row and its sentence, and the next row runs. A **chunk** is the rows one
    request acts on inside a time budget of a few seconds; it is not a
-   transaction. The budget is the runner's constant, measured by
-   `make bench`.
+   transaction. The budget is the runner's constant, `CHUNK_BUDGET` of
+   three seconds. `make bench` measured a reclassification row at 9.1 ms
+   at p95, the resolve and the dispatch together, so a chunk holds about
+   300 rows; a move is one event a row against the reclassification's two,
+   so it holds more. "Select all N matching" on the session list is about
+   ten requests, so the progress page is the ordinary sight there.
 3. **Continue.** Rows left when the budget is spent render a progress page
    that resubmits the token and the remaining keys with scripting off, and
    auto-submits with it on. Every real population above fits one request;
@@ -341,7 +345,11 @@ From it a person:
   "new playthrough" name field; naming a new one creates it first, then
   moves, under one correlation id;
 - sees the session's day, duration, device and note in the row before
-  moving it, as the charter asks.
+  moving it, as the charter asks. The runner's confirmation lists rows to
+  `CONFIRMATION_SAMPLE`, fifty, in three columns, game, day and duration.
+  Whether the cap rises, the columns grow, or the organizer leans on the
+  list for that reading is #714's call, made on the row renderer #712
+  adds.
 
 The action is declared on the session list whether or not the filter names
 a game. A selection spanning games is refused at the confirmation with a
@@ -412,10 +420,15 @@ judged.
    Closes #1125 and #1123.
 3. **#712** TABLE-02 — the selection line's actions slot and bulk Remove on
    the four tables; the reclassification moves into the line and the
-   Library page keeps its count.
+   Library page keeps its count. The confirmation's row renderer becomes
+   the act's and `BulkAction` generic over its row type, because
+   `_sample` in `games/views/bulk_pages.py` renders session columns only,
+   so no act on runs, records or platforms ships before it.
 4. **#714** ORG-01 — bulk move: the confirmation with `<playthrough-select>`
    and the new-run field, the bucket removed when emptied, cross-game
-   selections refused, the aggregate reader beside the move inverse.
+   selections refused, the aggregate reader beside the move inverse over
+   the `(library, aggregate_id)` index #713 shipped, and the confirmation's
+   cap and columns judged against the organizer's promise.
 5. **#715** ORG-02 — the organizer: the Playthrough column and sort on the
    session list, Game detail's "Organize" link, the mobile cell verified on
    the list. Absorbs #716.
@@ -515,7 +528,10 @@ at connect, and the version stamp left the fixed corner. Corrected by
 the runner refuses a filter it cannot parse rather than acting unfiltered.
 Corrected by the review of #713's spec: the confirmation lists rows to a
 cap, the token is the correlation id, and a `BulkAction` names the
-aggregate its inverse takes.
+aggregate its inverse takes. Recorded after #713 merged: a chunk is about
+300 reclassification rows at 9.1 ms a row; the row renderer and
+`BulkAction`'s row type are #712's; #714 writes the aggregate reader over
+an index that exists and judges the confirmation's cap and columns.
 
 Deviations recorded: the empty bucket is removed, not archived; Finish stays
 inline as an immediate control; a cross-game move is refused rather than
