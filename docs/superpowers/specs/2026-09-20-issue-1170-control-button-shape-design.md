@@ -11,9 +11,15 @@ rounding, and no call site states one by class.
 Two classes that set the same corner are ordered by the stylesheet, not by
 the call. A caller class thus cannot replace a baked class, and the call
 site cannot read which one wins. `ControlButton` refuses a caller class
-that holds `rounded-`, so the parameter is the only way in. A rule in a
+that states a corner, so the parameter is the only way in. A rule in a
 document becomes stale. A `TypeError` on the stack of the caller that
 forgot does not.
+
+The refusal reads every spelling, because Tailwind gives one property
+many: a breakpoint or state prefix, a whole arbitrary selector as a
+prefix, the important marker, and the bare `rounded`. A prefixed one gets
+its own sentence — `shape=` states one set of corners for every state and
+every width, so it cannot replace a corner that applies to one of them.
 
 **A shape states corners, never a radius.**
 [#411](https://github.com/KucharczykL/timetracker/issues/411) decided the
@@ -48,8 +54,10 @@ and nothing would say so.
 ## The calendar states its own square
 
 The date range picker paints its day cells in the client. The four day
-variants are generated square, `_SHAPE_CLASSES` is published beside them,
-and the client states the corner.
+variants are generated square, `SHAPE_CLASSES` is published beside them,
+and the client states the corner. Each table is published on its key
+type, not on `str`, so a key renamed in Python fails `tsc` rather than
+resolving to nothing at run time.
 
 Only the client can. A range is defined by data, and it wraps across week
 rows, so the run's ends are not the grid's ends.
@@ -61,12 +69,19 @@ adjacent-month cells square.
 ## Tests
 
 `tests/test_components.py` walks every variant against every shape, and
-states that the emitted classes are exactly the classes `_SHAPE_CLASSES`
-holds. It also states that a caller class holding a rounding is refused.
+states that the emitted classes are exactly the classes `SHAPE_CLASSES`
+holds — beside the values that table holds, because the walk compares
+against the table itself. It also states every spelling of a caller class
+that is refused, and that a caller class stating no corner still reaches
+the element.
 
 Rows of one, two and three members state that the ends round and the
-middle does not. A `method="post"` member states its shape on the button
-inside its form.
+middle does not, through the builder as well as through `shaped()`. A
+`method="post"` member states its shape on the button inside its form,
+and a tab row states its own ends.
 
-`ts/elements/date-range-picker.test.ts` states that a day cell carries
-exactly one rounding, inside a run, at each end of one, and outside one.
+`ts/elements/date-range-picker.test.ts` picks days on a rendered grid and
+reads the corners back: at each end of a run, between them, outside one,
+across a week row, on a run of one, and on the provisional run under the
+pointer. The shape there is derived from the picked dates, so the test
+drives the derivation and not the table.
