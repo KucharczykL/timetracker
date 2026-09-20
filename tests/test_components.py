@@ -1267,6 +1267,71 @@ class ControlButtonTest(SimpleTestCase):
         html = str(components.ButtonGroup([{}, {"slot": "Only", "href": "/a"}]))
         self.assertIn("rounded-base", html[html.index("<a") :])
 
+    def test_each_shape_names_the_corners_it_states(self):
+        """The table's values, not just its shape. The matrix test below
+        compares what a button emits against this table, so without these
+        literals `SHAPE_CLASSES["full"] = ""` squares every button in the app
+        and stays green."""
+        from common.components.primitives import SHAPE_CLASSES
+
+        self.assertEqual(
+            SHAPE_CLASSES,
+            {
+                "full": "rounded-base",
+                "start": "rounded-s-base",
+                "end": "rounded-e-base",
+                "square": "",
+            },
+        )
+
+    def test_every_variant_and_shape_emits_exactly_its_shape_class(self):
+        """A button states one corner set: the variant never adds a second and
+        never omits the first. Nothing else in the suite would catch either."""
+        from common.components.primitives import SHAPE_CLASSES, control_button_class
+
+        for variant in ("filled", "segmented", "outline", "ghost", "plain"):
+            for shape, expected in SHAPE_CLASSES.items():
+                with self.subTest(variant=variant, shape=shape):
+                    emitted = {
+                        word
+                        for word in control_button_class(
+                            variant=variant, shape=shape
+                        ).split()
+                        if word.startswith("rounded-")
+                    }
+                    self.assertEqual(emitted, set(expected.split()))
+
+    def test_a_built_row_rounds_its_first_and_last_member_only(self):
+        """`shaped()` is tested on its own, and the last member and the lone
+        member are asserted through the builder. The FIRST of several and a
+        middle one are not, so a wiring bug there passes everything."""
+        html = str(
+            components.ButtonGroup(
+                [
+                    {"slot": "First", "href": "/a"},
+                    {"slot": "Middle", "href": "/b"},
+                    {"slot": "Last", "href": "/c"},
+                ]
+            )
+        )
+        corners = [
+            [
+                word
+                for word in link.split('class="')[1].split('"')[0].split()
+                if word.startswith("rounded-")
+            ]
+            for link in html.split("<a ")[1:]
+        ]
+        self.assertEqual(corners, [["rounded-s-base"], [], ["rounded-e-base"]])
+
+    def test_a_caller_class_that_states_no_corner_reaches_the_element(self):
+        """The refusal reads the class attribute, so it has to hand back every
+        class it does not refuse — through the positional slot as well as
+        through `class_`."""
+        html = str(components.ControlButton([("class", "ms-auto")])["x"])
+        self.assertIn("ms-auto", html)
+        self.assertIn("rounded-base", html)
+
     def test_a_caller_cannot_state_a_corner_by_class(self):
         """The parameter is the only way in. A caller class and a baked class
         both set the radius, and the stylesheet decides which wins, so the
@@ -3302,23 +3367,6 @@ class SelectionLineTest(SimpleTestCase):
 
         for variant in ("filled", "ghost", "outline"):
             self.assertIn("gap-2", control_button_class(variant=variant), variant)
-
-    def test_every_variant_and_shape_emits_exactly_its_shape_class(self):
-        """A button states one corner set: the variant never adds a second and
-        never omits the first. Nothing else in the suite would catch either."""
-        from common.components.primitives import SHAPE_CLASSES, control_button_class
-
-        for variant in ("filled", "segmented", "outline", "ghost", "plain"):
-            for shape, expected in SHAPE_CLASSES.items():
-                with self.subTest(variant=variant, shape=shape):
-                    emitted = {
-                        word
-                        for word in control_button_class(
-                            variant=variant, shape=shape
-                        ).split()
-                        if word.startswith("rounded-")
-                    }
-                    self.assertEqual(emitted, set(expected.split()))
 
     def test_the_toggle_carries_an_icon(self):
         html = self._paginated(selection={"filter": ""})

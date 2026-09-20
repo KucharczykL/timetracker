@@ -286,7 +286,9 @@ class DropdownWrapperTest(unittest.TestCase):
 
         html = str(
             SplitButtonDropdown(
-                primary=ControlButton(variant="outline")["Played 3 times"],
+                primary=ControlButton(
+                    variant="outline", title="Log a play", data_played=""
+                )["Played 3 times"],
                 id="played-1",
                 aria_label="Playthrough actions",
                 items=[],
@@ -296,6 +298,30 @@ class DropdownWrapperTest(unittest.TestCase):
         self.assertIn("rounded-s-base", primary)
         # Not both: a primary keeping the full round would show a rounded
         # corner sitting inside the join against the caret.
+        self.assertNotIn("rounded-base", primary)
+        self.assertIn("rounded-e-base", html[html.index("<drop-down") :])
+        # Restating one look-fact keeps every other attribute the caller set:
+        # a dropped one would be a missing tooltip or a dead behaviour hook,
+        # and no radius would look wrong.
+        self.assertIn('title="Log a play"', primary)
+        self.assertIn("data-played", primary)
+
+    def test_the_split_button_shapes_a_filled_caret_too(self):
+        """The filled caret is the navbar's Log-game button, and it is where
+        the joined row's compensating CSS used to live."""
+        from common.components import ControlButton, SplitButtonDropdown
+
+        html = str(
+            SplitButtonDropdown(
+                primary=ControlButton(color="green")["Log a game"],
+                id="log-1",
+                aria_label="Log actions",
+                caret_color="green",
+                items=[],
+            )
+        )
+        primary = html[html.index("<button") : html.index("</button>")]
+        self.assertIn("rounded-s-base", primary)
         self.assertNotIn("rounded-base", primary)
         self.assertIn("rounded-e-base", html[html.index("<drop-down") :])
 
