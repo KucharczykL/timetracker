@@ -67,6 +67,12 @@ def _encode_filter(filter_dict: dict) -> str:
     return urllib.parse.quote(json.dumps(filter_dict))
 
 
+def _filter_from_url(url: str) -> dict:
+    """The ?filter= JSON a navigation carries, decoded."""
+    params = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+    return json.loads(params.get("filter", ["{}"])[0])
+
+
 # ── tests ──────────────────────────────────────────────────────────────────────
 
 
@@ -234,9 +240,16 @@ def test_prefill_apply_roundtrip_carries_filter(
         e2e_library, "PlayGame", status=PlayerGameStatus.PLAYED, platform=platform
     )
 
-    # Same filter JSON used by the other tests in this file: status INCLUDES
-    # "completed".
-    filter_json = {"status": {"modifier": "INCLUDES", "value": ["completed"]}}
+    # The other tests' status filter, with a search beside it. The search is
+    # here because the builder's client registry keeps only the fields its
+    # metadata names, and a filter that carried a search lost it on Apply
+    # (#1166). "one" is in "DoneGame" and not in "PlayGame", so both legs
+    # narrow to the same row and the visibility assertions below hold either
+    # way — the URL assertion is what catches a dropped search.
+    filter_json = {
+        "status": {"modifier": "INCLUDES", "value": ["completed"]},
+        "search": {"value": "one", "modifier": "INCLUDES"},
+    }
     filter_param = _encode_filter(filter_json)
 
     builder_url = (
@@ -258,6 +271,12 @@ def test_prefill_apply_roundtrip_carries_filter(
     assert "?filter=" in current_url, (
         f"Expected Apply to carry ?filter= but got: {current_url}"
     )
+    # The builder normalises two top-level leaves into an AND, so read the legs.
+    applied = _filter_from_url(current_url)
+    legs = applied.get("AND", [applied])
+    assert any(
+        leg.get("search") == {"value": "one", "modifier": "INCLUDES"} for leg in legs
+    ), f"Apply dropped the search: {applied}"
 
     # With the prefilled filter active, only the finished game should appear.
     expect(page.locator("[data-truncated-clip]", has_text="DoneGame")).to_be_visible()
