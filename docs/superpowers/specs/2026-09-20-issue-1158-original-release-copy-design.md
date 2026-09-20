@@ -74,5 +74,5 @@ draft with no change, for every stored shape. It then copies each shape.
 the template.
 
 `e2e/test_game_form_catalog_e2e.py` presses the button on a cloned row.
-It also proves that the button becomes enabled with no reload. Only that
-test proves the commit event.
+It also proves that the button becomes enabled with no reload, with a
+real key through the real engine.

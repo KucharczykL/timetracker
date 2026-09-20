@@ -390,13 +390,15 @@ def test_a_cloned_row_takes_the_original_release(
     releases = live_releases(default_edition(written))
     assert [release.platform for release in releases] == [amiga, dos]
     assert releases[1].release_date.serialize() == "1998"
+    # The button sits in the row, not inside the mark's label.
+    assert [release.is_default for release in releases] == [True, False]
 
 
 def test_the_button_wakes_when_the_original_release_fills(signed_in, live_server):
     """The button wakes with no reload.
 
-    The unit suite dispatches the commit event by hand, thus only
-    this test proves that anything dispatches it.
+    Here a real key reaches the real engine across two upgraded
+    elements, which jsdom states but does not run.
     """
     page = signed_in
     open_add_form(page, live_server)

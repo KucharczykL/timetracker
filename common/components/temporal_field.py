@@ -14,7 +14,8 @@ The precision is never picked from a menu. It is derived from which
 parts a person filled, which is why there is no precision control here.
 
 Only what a script would use is rendered hidden: the segments, the
-nameless toggles, the end-shape radios and the disclosure. Every
+nameless toggles, the end-shape radios, the disclosure and any copy
+button. Every
 posted control is shown, so
 with no script a person still reaches both endpoints and both
 qualifiers. The element hides what a person does not need yet.
@@ -74,13 +75,13 @@ class TemporalCopySource(NamedTuple):
 
     field_name: str  # the source field's Django name
     label: str  # what the button says
+    unfilled_title: str  # the title while the source states nothing
 
 
 def _copy_button(source: TemporalCopySource) -> Node:
     """Inert until the element reaches it.
 
-    Both attributes are load-bearing: with no script, neither the
-    press nor the source exists.
+    The element takes the title away once it enables the button.
     """
     return ControlButton(
         variant="outline",
@@ -88,7 +89,7 @@ def _copy_button(source: TemporalCopySource) -> Node:
         hidden=True,
         disabled=True,
         data_temporal_copy=source.field_name,
-        title=f"Fill {source.label.removeprefix('Use ')} first",
+        title=source.unfilled_title,
         # Outline bakes no shape; state our own.
         class_="self-start rounded-base",
     )[source.label]

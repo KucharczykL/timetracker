@@ -47,7 +47,7 @@ MARK_FIELD: Final[str] = "in_library"
 
 #: Unprefixed name, thus unique on the page.
 ORIGINAL_RELEASE_SOURCE: Final[TemporalCopySource] = TemporalCopySource(
-    "original_release_date", "Use original release"
+    "original_release_date", "Use original release", "Fill Original release first"
 )
 #: How many Edition blocks were posted, the way a formset states it.
 EDITION_COUNT_FIELD: Final[str] = "editions-count"

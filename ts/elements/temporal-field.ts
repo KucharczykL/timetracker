@@ -4,7 +4,7 @@
  * The server renders every control (common/components/temporal_field.py):
  * a shape select, four number inputs and two checkboxes per endpoint, and
  * — hidden — a segmented date, three nameless toggles, a disabled radio
- * group for how the value ends, and a live region.
+ * group for how the value ends, the disclosure and any copy button.
  * This element hides the first set, shows the second, and derives the
  * shape from what a person fills. With no script the first set stands and
  * stores the same value.
@@ -292,8 +292,9 @@ function syncScratch(host: HTMLElement, endpoint: Endpoint): void {
 }
 
 export function commitEndpoint(host: HTMLElement, endpoint: Endpoint): void {
-  if (isToggled(host, `whole_decade_${endpoint}`)) snapYearToDecade(host, endpoint);
   ENDPOINTS.forEach((each) => {
+    // Both ends, or the one not named here shows a year it does not post.
+    if (isToggled(host, `whole_decade_${each}`)) snapYearToDecade(host, each);
     syncScratch(host, each);
     writeNamedParts(host, each);
   });
@@ -377,6 +378,24 @@ export function readDraft(host: HTMLElement): TemporalDraft {
   return draft;
 }
 
+/** Whether the draft states anything at the end. */
+function draftStatesEnd(draft: TemporalDraft): boolean {
+  return ["year", "month", "day", "decade"].some(
+    (part) => draftPart(draft, "end", part) !== "",
+  );
+}
+
+/** A part stated with a coarser part missing beside it. */
+function statesAHole(host: HTMLElement): boolean {
+  return ENDPOINTS.some(
+    (endpoint) =>
+      holeIn(
+        readSideParts(host, endpoint).values,
+        isToggled(host, `whole_decade_${endpoint}`),
+      ) !== null,
+  );
+}
+
 function draftPart(draft: TemporalDraft, endpoint: Endpoint, part: string): string {
   return draft[`${endpoint}_${part}` as DraftKey] ?? "";
 }
@@ -402,8 +421,10 @@ function adoptEndpoint(
     day: whole ? "" : draftPart(draft, endpoint, "day"),
   };
   segmentsForSide(host, endpoint).forEach((segment) => {
-    const width = segmentSpec(segment)?.width ?? 0;
-    setSegmentBuffer(segment, paddedDigits(parts[segment.dataset.datePart ?? ""] ?? "", width));
+    const spec = segmentSpec(segment);
+    // The engine states no bounds for a part it does not name.
+    if (!spec) return;
+    setSegmentBuffer(segment, paddedDigits(parts[spec.name] ?? "", spec.width));
   });
   ["approximate", "uncertain"].forEach((qualifier) => {
     const box = namedInput(host, `${endpoint}_${qualifier}`);
@@ -413,6 +434,8 @@ function adoptEndpoint(
   });
   const decadeBox = toggleBox(host, `whole_decade_${endpoint}`);
   if (decadeBox) decadeBox.checked = whole;
+  // The remembered year describes a value this one replaces.
+  rememberYear(host, endpoint, "");
   paintDecade(host, endpoint, whole);
 }
 
@@ -429,9 +452,13 @@ export function adoptDraft(host: HTMLElement, draft: TemporalDraft): void {
   setEndpointOpen(host, "start", open);
 
   ENDPOINTS.forEach((endpoint) => adoptEndpoint(host, draft, endpoint));
+  // The engine commits on a change against this value, and the buffers
+  // above just moved. Leave it stale and the next keystroke that lands
+  // back on the old value is swallowed.
+  ENDPOINTS.forEach((endpoint) => syncScratch(host, endpoint));
 
   if (draft.kind === "since") setEndShape(host, "end_open");
-  else if (open || draft.kind === "range" || endpointHasValue(host, "end"))
+  else if (open || draft.kind === "range" || draftStatesEnd(draft))
     setEndShape(host, "end_date");
   else setEndShape(host, "end_none");
   paintEndShape(host);
@@ -440,13 +467,19 @@ export function adoptDraft(host: HTMLElement, draft: TemporalDraft): void {
     box.disabled = open;
   });
 
-  commitEndpoint(host, "start");
   setExpanded(host, !canCollapse(host));
 }
 
-/** One field takes another's whole value. */
+/**
+ * One field takes another's whole value.
+ *
+ * The commit belongs here and not in adoptDraft: a page load adopts what
+ * the server just rendered, and committing there would rewrite a value
+ * the server refused, under the sentence that refuses it.
+ */
 export function copyTemporalDraft(source: HTMLElement, target: HTMLElement): void {
   adoptDraft(target, readDraft(source));
+  commitEndpoint(target, "start");
 }
 
 function revealSegments(host: HTMLElement): void {
@@ -538,16 +571,24 @@ function initCopyControl(host: HTMLElement): void {
   const button = host.querySelector<HTMLButtonElement>("[data-temporal-copy]");
   if (!button) return;
   const sourceName = button.getAttribute("data-temporal-copy") ?? "";
-  const source = document.querySelector<HTMLElement>(
-    `temporal-field[field-name="${sourceName}"]`,
-  );
+  // Resolved on every press: the source may upgrade after this row does.
+  const findSource = () =>
+    document.querySelector<HTMLElement>(`temporal-field[field-name="${sourceName}"]`);
+  const unfilledTitle = button.getAttribute("title") ?? "";
   const paint = () => {
-    button.disabled = !source || currentKind(source) === "unknown";
+    const source = findSource();
+    const ready = source !== null && currentKind(source) !== "unknown" && !statesAHole(source);
+    button.disabled = !ready;
+    // A working control carries no instruction to fix it.
+    if (ready) button.removeAttribute("title");
+    else button.setAttribute("title", unfilledTitle);
   };
   button.hidden = false;
   paint();
-  source?.addEventListener(TEMPORAL_FIELD_CHANGE_EVENT, paint);
+  // On the document, because a source that upgrades later is still a source.
+  document.addEventListener(TEMPORAL_FIELD_CHANGE_EVENT, paint);
   button.addEventListener("click", () => {
+    const source = findSource();
     if (source) copyTemporalDraft(source, host);
   });
 }

@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
+// Bare, so the element still registers if the named uses below go.
+import "./temporal-field.js";
 import {
   TEMPORAL_FIELD_CHANGE_EVENT,
   adoptDraft,
@@ -66,6 +68,7 @@ function endpointMarkup(
         ${prefix}
         <input data-date-part="${name}" data-date-side="${endpoint}"
                maxlength="${name === "year" ? 4 : 2}"
+               placeholder="${name === "year" ? "YYYY" : name === "month" ? "MM" : "DD"}"
                value="${buffers[name]}">
       </span>`;
     })
@@ -152,13 +155,27 @@ function fieldMarkup(
         <p data-temporal-announcement="" role="status" aria-live="polite"></p>
         ${
           copySource
-            ? `<button type="button" data-temporal-copy="${copySource}" hidden disabled>
+            ? `<button type="button" data-temporal-copy="${copySource}"
+                       title="Fill Original release first" hidden disabled>
                  Use original release
                </button>`
             : ""
         }
       </div>
     </temporal-field>`;
+}
+
+/** What a commit writes back: the same draft, padded to the segments. */
+function normalized(stored: Draft): Draft {
+  const draft: Draft = { ...EMPTY_DRAFT, ...stored };
+  ["start", "end"].forEach((endpoint) => {
+    const whole = draft[`${endpoint}_decade`] !== "";
+    draft[`${endpoint}_year`] = whole ? "" : padded(draft[`${endpoint}_year`], 4);
+    draft[`${endpoint}_month`] = whole ? "" : padded(draft[`${endpoint}_month`], 2);
+    draft[`${endpoint}_day`] = whole ? "" : padded(draft[`${endpoint}_day`], 2);
+    draft[`${endpoint}_decade`] = whole ? padded(draft[`${endpoint}_decade`], 4) : "";
+  });
+  return draft;
 }
 
 function mountDraft(
@@ -784,26 +801,16 @@ describe("temporal-field", () => {
     ["a range", { kind: "range", start_year: "1997", end_year: "1999" }],
     ["a since", { kind: "since", start_year: "1997" }],
     ["an until", { kind: "until", end_year: "1999" }],
+    // Two the server refuses and echoes back. A load must not repair
+    // them, or the sentence refusing them names a value nobody sees.
+    ["a decade off its boundary", { kind: "date", start_decade: "1995" }],
+    ["a decade beside a year", { kind: "date", start_year: "1997", start_decade: "1990" }],
   ];
-
-  /** The same draft, padded to the segments. */
-  function normalized(stored: Draft): Draft {
-    const draft: Draft = { ...EMPTY_DRAFT, ...stored };
-    ["start", "end"].forEach((endpoint) => {
-      const whole = draft[`${endpoint}_decade`] !== "";
-      const year = draft[`${endpoint}_year`];
-      draft[`${endpoint}_year`] = whole ? "" : padded(year, 4);
-      draft[`${endpoint}_month`] = whole ? "" : padded(draft[`${endpoint}_month`], 2);
-      draft[`${endpoint}_day`] = whole ? "" : padded(draft[`${endpoint}_day`], 2);
-      draft[`${endpoint}_decade`] = whole ? padded(draft[`${endpoint}_decade`], 4) : "";
-    });
-    return draft;
-  }
 
   it.each(STORED_SHAPES)("keeps what the server stored: %s", (_name, stored) => {
     const host = mountDraft(stored, "true");
 
-    expect(readDraft(host)).toEqual(normalized(stored));
+    expect(readDraft(host)).toEqual({ ...EMPTY_DRAFT, ...stored });
   });
 
   it.each(STORED_SHAPES)("adopts its own draft unchanged: %s", (_name, stored) => {
@@ -845,7 +852,9 @@ describe("temporal-field copy", () => {
 
     copyTemporalDraft(source, target);
 
-    expect(readDraft(target)).toEqual(readDraft(source));
+    expect(readDraft(target)).toEqual(
+      normalized({ kind: "date", start_year: "1997", start_month: "3", start_day: "15" }),
+    );
     expect(named(target, "kind").value).toBe("date");
   });
 
@@ -1023,3 +1032,87 @@ describe("temporal-field copy control", () => {
   });
 });
 
+describe("temporal-field copy, the cases that bit", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  it("forgets the year the target remembered", () => {
+    const { source, target } = mountPair({ kind: "date", start_decade: "1990" });
+    type(target, "start", "year", "1995");
+    check(target, "whole_decade_start");
+
+    copyTemporalDraft(source, target);
+    check(target, "whole_decade_start", false);
+
+    expect(named(target, "start_year").value).toBe("1990");
+  });
+
+  it("takes the decade box off a target that had one", () => {
+    const { source, target } = mountPair(
+      { kind: "date", start_year: "1997", start_month: "3" },
+      { kind: "date", start_decade: "1980" },
+    );
+
+    copyTemporalDraft(source, target);
+
+    expect(toggle(target, "whole_decade_start").checked).toBe(false);
+    expect(named(target, "start_decade").value).toBe("");
+    expect(named(target, "start_month").value).toBe("03");
+    expect(
+      target
+        .querySelector('[data-temporal-endpoint="start"] [data-temporal-part="month"]')!
+        .hasAttribute("hidden"),
+    ).toBe(false);
+  });
+
+  it("snaps a copied end decade to its own boundary", () => {
+    const { source, target } = mountPair({
+      kind: "range",
+      start_year: "1997",
+      end_decade: "1995",
+    });
+
+    copyTemporalDraft(source, target);
+
+    expect(segment(target, "end", "year").dataset.typedDigits).toBe(
+      named(target, "end_decade").value,
+    );
+  });
+
+  it("stays disabled while the source states a hole", () => {
+    const { source, target } = mountPair();
+    const button = target.querySelector<HTMLButtonElement>("[data-temporal-copy]")!;
+    check(source, "whole_decade_start");
+
+    type(source, "start", "year", "19");
+
+    expect(button.disabled).toBe(true);
+  });
+
+  it("takes its title away once it works", () => {
+    const { source, target } = mountPair();
+    const button = target.querySelector<HTMLButtonElement>("[data-temporal-copy]")!;
+    expect(button.getAttribute("title")).toBe("Fill Original release first");
+
+    type(source, "start", "year", "1997");
+
+    expect(button.hasAttribute("title")).toBe(false);
+  });
+
+  it("backspaces a copied end year", () => {
+    const { source, target } = mountPair({
+      kind: "range",
+      start_year: "1997",
+      end_year: "1999",
+    });
+    copyTemporalDraft(source, target);
+
+    segment(target, "end", "year").focus();
+    document.activeElement!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }),
+    );
+
+    expect(named(target, "end_year").value).toBe("");
+  });
+});
