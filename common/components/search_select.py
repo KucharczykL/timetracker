@@ -934,8 +934,8 @@ def _preset_option_row(option: SearchSelectOption) -> Node:
             # mouse-reachable, and the row itself is the keyboard pick target.
             tabindex="-1",
             data_search_select_action="delete",
-            aria_label="Delete preset",
-            title="Delete preset",
+            aria_label="Remove preset",
+            title="Remove preset",
             class_=_PRESET_DELETE_BUTTON_CLASS,
         )["×"],
     ]

@@ -119,7 +119,7 @@ def _render_purchase_buttons(
             {
                 "href": action_url("games:remove_purchase", purchase_id, origin=origin),
                 "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
-                "title": "Delete",
+                "title": "Remove",
                 "color": "red",
             },
         ]

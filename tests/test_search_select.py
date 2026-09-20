@@ -899,7 +899,7 @@ class PresetSelectComponentTest(unittest.TestCase):
         # order (#119) with an accessible name.
         button_tag = _tag_around(self.html, 'data-search-select-action="delete"')
         self.assertIn('tabindex="-1"', button_tag)
-        self.assertIn('aria-label="Delete preset"', button_tag)
+        self.assertIn('aria-label="Remove preset"', button_tag)
         self.assertIn('type="button"', button_tag)
 
     def test_aria_combobox_contract(self):
