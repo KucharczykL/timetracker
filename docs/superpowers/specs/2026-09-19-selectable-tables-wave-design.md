@@ -140,7 +140,16 @@ dropping. The charter's rules hold, and this wave settles the shape:
   storage outlives a logout. Clear, the mode turned off and the submit of a bulk action forget
   it, so a statement acted on is never restored over the rows it changed:
   the element answers a `submit` in the actions slot itself, and a tray
-  that posts without a form calls its public `forgetAndClose()`. An "all matching" statement
+  that posts without a form calls its public `forgetAndClose()`. That
+  answer runs inside the submit, before the form's entry list is built,
+  and dispatches `selectable-table:change` with an empty statement, so
+  the slot's form carries the statement it latched at the press and
+  writes nothing on that event; a slot that wrote there would post zero
+  rows to the runner and see a confirmation with no submit. The element
+  dispatches at connect only when it restores, on itself, and the slot's
+  element upgrades after it, so the slot reads the element's public
+  `statement()` when it connects rather than waiting for a change. Every
+  act's slot content, #714's move included, keeps both rules. An "all matching" statement
   is not restored on a page that reports no count. The runner reads the
   statement the POST carries and nothing else, so what the element keeps
   changes nothing in the runner; a count that no longer matches is the
@@ -471,6 +480,8 @@ Remove, in #712.
   of more than one chunk, an act after a row was removed (counted lost), a
   repeated POST of one token (idempotent, same counts), a row whose command
   refuses (named, the rest done), a defect (the batch ends, done rows stay).
+  The runner's e2e cover drives the selection line's action from #712 on,
+  since the Library button it drove until then is gone.
 - Batch Undo is proven on each inverse: reclassify, remove, move; a move
   undone to the run the `created` payload named and to one an earlier
   `moved` named; a batch one of whose rows was restated since (named, the
@@ -537,7 +548,9 @@ aggregate its inverse takes. Recorded after #713 merged: a chunk is about
 an index that exists and judges the confirmation's cap and columns.
 Settled by #712's planning: the Playthrough list is selectable beside the
 four tables, `one` actions render first in #718, and the confirmation's
-rows are a columns spec the act declares.
+rows are a columns spec the act declares. Found by #712's review in
+#711's element: the slot latches the statement at the press and pulls it
+at connect.
 
 Deviations recorded: the empty bucket is removed, not archived; Finish stays
 inline as an immediate control; a cross-game move is refused rather than
