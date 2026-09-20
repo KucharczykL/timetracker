@@ -178,7 +178,7 @@ gets a second write on its retry rather than a refusal. The session twin states
 ## Left for later
 
 Two rows that this rule touches state the wrong ending, before and after it.
-Each gets an issue of its own.
+Each has an issue of its own: #1180 and #1181.
 
 A record and a reclassification each resolve the device their row already
 names, with `library_device_row`. A library that does not hold that device has
