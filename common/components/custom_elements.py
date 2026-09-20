@@ -1192,12 +1192,10 @@ def SplitButtonDropdown(
     the menu. The Dropdown attaches to the caret only — ``primary`` is a plain
     sibling, so the core never needs to know it exists.
 
-    ``caret_color`` defaults to an outline caret (bakes no rounding, so the join
-    against an outline ``primary`` is clean). Pass a color to render a filled caret
-    matching a filled ``primary``; the filled variant bakes all-corner rounding, so
-    the caret zeroes its start corners (``rounded-s-none``) and the caller's primary
-    must zero its end corners for a clean join. ``menu_width`` overrides the menu
-    panel width (default ``w-44``).
+    ``caret_color`` defaults to an outline caret; pass a color to render a filled
+    caret matching a filled ``primary``. Either way the caret is the row's end and
+    states ``shape="end"``, and the caller's ``primary`` states ``shape="start"``.
+    ``menu_width`` overrides the menu panel width (default ``w-44``).
 
     Both caret variants take ``focus:ring-inset`` so the focus ring is contained
     inside the small caret box instead of bleeding across the join into the
@@ -1207,20 +1205,13 @@ def SplitButtonDropdown(
     caret_focus = "focus:ring-inset"
     if caret_color is None:
         caret_button = ControlButton(
-            [("class", f"rounded-e-base {caret_focus}")], variant="outline"
+            [("class", caret_focus)], variant="outline", shape="end"
         )[Icon("arrowdown")]
     else:
         caret_button = ControlButton(
-            [
-                (
-                    "class",
-                    (
-                        "rounded-e-base rounded-s-none border-l border-l-white/30 "
-                        f"{caret_focus}"
-                    ),
-                )
-            ],
+            [("class", f"border-l border-l-white/30 {caret_focus}")],
             color=caret_color,
+            shape="end",
         )[Icon("arrowdown")]
     caret = _as_menu_trigger(caret_button.as_element())
     dropdown = Dropdown(
