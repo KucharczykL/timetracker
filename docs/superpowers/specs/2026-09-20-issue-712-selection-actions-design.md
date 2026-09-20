@@ -16,8 +16,9 @@ on, so the act returns there. The line reverses nothing and names no route,
 which is what lets a page with a stripped URL table render one.
 
 The line renders one form into `[data-selection-actions]`: the token, a
-hidden `selection` field, and one submit for each act, each with its own
-`formaction`. One form, because a button that posts on its own renders a
+hidden field, and one submit for each act, each with its own `formaction`.
+The field's name is stated once, where the line is built, and the route
+reads that statement. One form, because a button that posts on its own renders a
 form of its own, and every such form would carry a copy of the statement.
 Only a `many` act is rendered; `ONE` waits for #718, which puts the row's
 own pages in the line.
@@ -49,6 +50,14 @@ run, and a run sessions name, are refused this way. A run another library's
 row names is no refusal but a defect, and ends the batch, as it does
 everywhere. The inverse is the restore, which refuses a session a live
 record was made from.
+
+Each scope compiles the filter with the library's query context, so a
+statement that names a related entity narrows the act as it narrowed the
+list. The run's scope reads the list's queryset with its condition aliases,
+because the condition is counted at read time and is no column, and a
+statement that names it does not compile without them. The run's resolve
+numbers each row across every live ordinary run of its game, never across
+the selection, or each row a person selects is called the first.
 
 The six removal and restoration wrappers take an idempotency key and source
 metadata, both optional and keyword-only, and answer the command's result,
