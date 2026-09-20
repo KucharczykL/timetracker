@@ -28,7 +28,7 @@ from common.components.primitives import (
 )
 from common.criteria import SEARCH_LOOKUPS
 
-#: A mode this field can state, as the wire spells it.
+#: A mode this field can state.
 type MatchModeToken = Literal[
     "INCLUDES",
     "EXCLUDES",
@@ -40,18 +40,18 @@ type MatchModeToken = Literal[
 
 
 class MatchMode(NamedTuple):
-    """One mode: its token, its mark's slug, its words."""
+    """One mode: token, mark, words."""
 
     token: MatchModeToken
     mark: str
     words: str
 
 
-#: The modes, in the menu's order; the first is a fresh field's.
+#: The modes, in the menu's order.
 #:
-#: The order is the menu's and lives here. Which modes exist does not: the
-#: check below reads ``SEARCH_LOOKUPS``, so a mode ``search_q`` gains or loses
-#: fails at import rather than rendering a control the server refuses.
+#: The order is editorial and lives here; which modes exist does not. The check
+#: below reads ``SEARCH_LOOKUPS``, so a mode ``search_q`` gains or loses fails
+#: at import rather than rendering a control the server refuses.
 MATCH_MODES: tuple[MatchMode, ...] = (
     MatchMode("INCLUDES", "match-includes", "includes"),
     MatchMode("EXCLUDES", "match-not-includes", "excludes"),
@@ -61,7 +61,7 @@ MATCH_MODES: tuple[MatchMode, ...] = (
     MatchMode("NOT_MATCHES_REGEX", "match-not-regex", "not matches regex"),
 )
 
-#: Every token the field renders, for a membership test per key per render.
+#: Every token the field renders.
 MATCH_MODE_TOKENS: frozenset[str] = frozenset(mode.token for mode in MATCH_MODES)
 
 if MATCH_MODE_TOKENS != {modifier.value for modifier in SEARCH_LOOKUPS}:
@@ -71,15 +71,15 @@ if MATCH_MODE_TOKENS != {modifier.value for modifier in SEARCH_LOOKUPS}:
         f"{sorted(modifier.value for modifier in SEARCH_LOOKUPS)}"
     )
 
-# A mark no snippet draws reads as ``unspecified``, and six alike.
+# A mark no snippet draws reads as ``unspecified``.
 #
-# ``get_icon_node`` falls back rather than raising, so a mistyped slug renders
-# the placeholder mark in the trigger and in every menu row, with every test
-# still green. The slugs are pinned here instead.
+# ``get_icon_node`` falls back rather than raising, so a mistyped slug draws the
+# placeholder in the trigger and in every menu row, with every test still green.
+# The slugs are pinned here instead.
 if _absent := sorted(mode.mark for mode in MATCH_MODES if mode.mark not in ICON_NODES):
     raise RuntimeError(f"No icon snippet draws these match marks: {_absent}")
 
-#: A fresh field's mode, which is what people reach for.
+#: A fresh field's mode, which people reach for.
 DEFAULT_MATCH_MODE: MatchModeToken = "INCLUDES"
 
 _BY_TOKEN: dict[str, MatchMode] = {mode.token: mode for mode in MATCH_MODES}
@@ -122,7 +122,7 @@ def SearchField(
     placeholder: str = "",
     id: str = "quick-search-field",
 ) -> Node:
-    """A match-mode trigger and a text box, joined.
+    """A match-mode trigger and a box, joined.
 
     ``placeholder`` names the columns this list's search reads, which differ
     per filter, and is the box's accessible name: the field carries no visible

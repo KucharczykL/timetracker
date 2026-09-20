@@ -40,7 +40,7 @@ class MatchModeVocabularyTest(SimpleTestCase):
         )
 
     def test_every_mark_is_a_snippet_the_codegen_holds(self):
-        # get_icon_node falls back silently, so a typo renders six alike.
+        # get_icon_node falls back silently on a typo.
         from common.components.icons_generated import ICON_NODES
 
         for mode in MATCH_MODES:
@@ -70,9 +70,10 @@ class SearchFieldMarkupTest(SimpleTestCase):
         self.assertNotIn("data-string-modifier-select", render(SearchField()))
 
     def test_a_mode_it_cannot_state_is_refused(self):
-        # is_quick_editable is the one place allowed to degrade a filter the
-        # bar cannot render. Coercing here would show one mode over a filter
-        # the server reads as another, and Apply would write the shown one back.
+        # One place may degrade a filter: the gate.
+        #
+        # Coercing here would show one mode over a filter the server reads as
+        # another, and Apply would write the shown one back.
         with self.assertRaises(ValueError):
             SearchField(modifier="IS_NULL")  # type: ignore[arg-type]
 
@@ -99,7 +100,7 @@ class SearchFieldMarkupTest(SimpleTestCase):
         self.assertIn('placeholder="Search game, platform, device"', html)
 
     def test_the_box_states_an_accessible_name(self):
-        # The field carries no visible label, so the placeholder is the name.
+        # No visible label: the placeholder names it.
         html = render(SearchField(placeholder=SEARCH_PLACEHOLDERS["games"]))
         self.assertIn('aria-label="Search name, platform"', html)
         self.assertIn('aria-label="Search"', render(SearchField()))

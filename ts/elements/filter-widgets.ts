@@ -59,10 +59,10 @@ export function buildRangeCriterion(
 
 // A widget states its modifier on a <select>, or on its own root.
 //
-// A widget that states neither is a wiring defect, not a shape to serve: it is
-// reported, and the read falls back to INCLUDES. EQUALS reads as `iexact`, so
-// guessing it turns a whole-text search into one that matches almost no row,
-// with nothing on the page to say the mode was invented.
+// A widget stating neither is a defect, not a shape to serve: it is reported and
+// read as INCLUDES. EQUALS reads as `iexact`, so guessing it turns a whole-text
+// search into one matching almost no row, with nothing on the page to say the
+// mode was invented.
 function stringModifier(element: HTMLElement): string {
   const select = element.querySelector<HTMLSelectElement>(
     "select[data-string-modifier-select]",

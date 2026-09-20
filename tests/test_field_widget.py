@@ -106,9 +106,10 @@ class TestFieldWidgetKindDispatch:
         assert 'name="filter-session_count"' in html
 
     def test_a_string_offers_only_the_modes_its_field_states(self):
-        # A widget that offers a mode the field refuses builds a filter that
-        # cannot apply: search reads several columns, so it states no presence
-        # pair, and neither does a column that cannot be NULL.
+        # A mode the field refuses builds an unappliable filter.
+        #
+        # search reads several columns, so it states no presence pair, and
+        # neither does a column that cannot be NULL.
         html = str(field_widget(GameFilter, "search"))
         assert 'data-kind="string"' in html
         assert 'value="IS_NULL"' not in html
@@ -132,8 +133,10 @@ class TestFieldWidgetKindDispatch:
         assert 'value="NOT_NULL"' not in html
 
     def test_an_averaged_aggregate_keeps_the_presence_pair(self):
-        # Avg answers NULL over no rows, so "is null" reads as "never played" —
-        # the one way to ask that, and a working filter the picker had hidden.
+        # Avg answers NULL over no rows.
+        #
+        # So "is null" reads as "never played", which nothing else asks — a
+        # working filter the picker had hidden.
         html = str(field_widget(GameFilter, "session_average"))
         assert 'value="IS_NULL"' in html
         assert 'value="NOT_NULL"' in html

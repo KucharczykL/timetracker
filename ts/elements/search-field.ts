@@ -56,11 +56,11 @@ class SearchFieldElement extends HTMLElement {
       trigger.setAttribute("aria-label", `Match mode: ${words}`);
       trigger.setAttribute("title", `Match mode: ${words}`);
     }
-    // A picked mode closes the menu, which the generic behavior does not.
+    // A picked mode closes the menu.
     //
-    // attachMenu treats every menuitemcheckbox and menuitemradio as a toggle and
-    // closes only for other roles. A radio is one choice of six, so the panel
-    // would otherwise stay open over the box a person types in next.
+    // attachMenu reads every checkbox and radio row as a toggle and closes only
+    // for other roles. A radio is one choice of six, so the panel would
+    // otherwise stay open over the box a person types in next.
     chosen
       .closest<HTMLElement & { close(): void }>("drop-down")
       ?.close();

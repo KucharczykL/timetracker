@@ -759,7 +759,7 @@ def _find_label(options: list[LabeledOption], value: str) -> str:
     return value
 
 
-#: One label per string modifier, in the vocabulary's order.
+#: One label per string modifier, in order.
 STRING_MODIFIER_LABELS: dict[ModifierToken, str] = {
     "EQUALS": "is",
     "NOT_EQUALS": "is not",
@@ -781,13 +781,13 @@ def StringFilter(
     path: FilterWidgetPath,
     modifiers: Sequence[ModifierToken] | None = None,
 ) -> Node:
-    """Renders a string filter: a modifier ``<select>`` and a text input.
+    """A modifier ``<select>`` and a text input.
 
-    ``modifiers`` is the field's own vocabulary, which the caller reads off
-    ``FieldMeta``. It matters because a field states fewer modes than the eight
-    a string shape allows: a non-nullable column drops the presence pair, and
-    ``search`` reads several columns, so it drops it too. Offering a mode the
-    server refuses is a filter a person can build and not apply.
+    ``modifiers`` is the field's own vocabulary, read off ``FieldMeta``. A field
+    states fewer modes than the eight a string shape allows: a non-nullable
+    column drops the presence pair, and ``search`` reads several columns, so it
+    drops the pair too. A mode the server refuses builds a filter that cannot
+    apply.
     """
     from games.forms import SELECT_CLASS
 
@@ -850,7 +850,7 @@ _NUMBER_FILTER_INPUT_CLASS = (
 )
 
 
-#: One label per number modifier, in the vocabulary's order.
+#: One label per number modifier, in order.
 NUMBER_MODIFIER_LABELS: dict[ModifierToken, str] = {
     "EQUALS": "is",
     "NOT_EQUALS": "is not",
@@ -877,17 +877,15 @@ def NumberFilter(
     path: FilterWidgetPath,
     modifiers: Sequence[ModifierToken] | None = None,
 ) -> Node:
-    """Renders a numeric filter: a modifier ``<select>`` and two inputs.
+    """A modifier ``<select>`` and two number inputs.
 
-    Modeled 1:1 on :func:`StringFilter`, ``modifiers`` included: the field's own
-    vocabulary, which the caller reads off ``FieldMeta``. A column that cannot
-    be NULL states no presence pair, and neither does a ``count`` aggregate,
-    which answers 0 over no rows rather than NULL.
+    Modeled 1:1 on :func:`StringFilter`, ``modifiers`` included. A column that
+    cannot be NULL states no presence pair, and neither does a ``count``, which
+    answers 0 over no rows rather than NULL.
 
-    Both inputs are disabled for the presence modifiers (IS_NULL/NOT_NULL); the
-    second input is shown only for the range modifiers (BETWEEN/NOT_BETWEEN).
-    Initial state is server-rendered so the widget never flashes before its JS
-    runs.
+    Both inputs disable for a presence modifier; the second shows only for a
+    range one. Initial state is server-rendered, so the widget never flashes
+    before its JS runs.
     """
     from games.forms import SELECT_CLASS
 

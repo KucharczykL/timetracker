@@ -2906,10 +2906,11 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # hops say nothing; read the terminal column.
             # A column-less field states its own nullability.
             #
-            # An aggregate's reducer decides it. ``Count`` answers 0 over no
-            # rows, so a count is never null and a presence test on one matches
-            # nothing; ``Sum`` and ``Avg`` answer NULL there, so "is null" on
-            # one reads as "no related rows" — the one way to ask that.
+            # An aggregate's reducer decides its nullability.
+            #
+            # ``Count`` answers 0 over no rows, so a presence test on one
+            # matches nothing. ``Sum`` and ``Avg`` answer NULL there, so "is
+            # null" on one reads as "no related rows".
             if field_spec is not None and field_spec.nullable is not None:
                 nullable = field_spec.nullable
             elif field_spec is not None and field_spec.metadata_lookup is not None:
@@ -3268,12 +3269,12 @@ def days_touched_handler(lower_field: str, upper_field: str) -> FieldHandler:
     return handler
 
 
-#: The modifier a stored criterion that names none reads as.
+#: The modifier a criterion naming none reads.
 #:
 #: Every criterion class defaults to ``EQUALS`` and ``to_json`` drops a value
 #: equal to its default, so a stored exact comparison carries no modifier at
-#: all. A reader that supplies a different default there shows one comparison
-#: over a filter the server applies as another.
+#: all. Another default there shows one comparison over a filter the server
+#: applies as another.
 DEFAULT_STATED_MODIFIER: ModifierToken = Modifier.EQUALS.value
 
 

@@ -215,14 +215,13 @@ def is_quick_editable(
         if key == "search":
             if not isinstance(value, dict):
                 return False
-            # The value goes into a text box, so it has to be text.
+            # The value goes into a text box.
             #
-            # A dict, list or number reaches the box as its repr and Apply
-            # writes that back, turning a filter the person did not state into
-            # one they did.
+            # A dict, list or number reaches it as a repr, and Apply writes
+            # that back as a filter the person never stated.
             if not isinstance(value.get("value", ""), str):
                 return False
-            # An absent modifier is the criterion's own default, which is exact.
+            # An absent modifier is the criterion's default.
             return value.get("modifier", DEFAULT_STATED_MODIFIER) in MATCH_MODE_TOKENS
         if key not in facet_fields or not isinstance(value, dict):
             return False
@@ -290,8 +289,7 @@ class QuickFilterBar(BaseComponent):
         return self.apply_url or list_url_for(self.mode)
 
     def render(self) -> Node:
-        # Function-local: games.filters imports common.criteria (and the app
-        # layer generally); keep the component library import-light.
+        # Function-local: keep the component library import-light.
         from games.filters import filter_for_model
 
         facets = QUICK_FACETS[self.mode]
@@ -318,10 +316,11 @@ class QuickFilterBar(BaseComponent):
             *[self._facet(filter_cls, facet) for facet in facets],
             self._overflow_dropdown(),
         ]
-        # Everything from the overflow host on is non-collapsible row
-        # furniture: the preset picker, then the action group. The TS reserve
-        # walks every row child but the host and the facets, so a child added
-        # here needs no second registration.
+        # From the overflow host on, the row is furniture.
+        #
+        # The preset picker, then the action group. The TS reserve walks every
+        # row child but the host and the facets, so one added here needs no
+        # second registration.
         if self.preset_api_url:
             row_children.append(
                 LoadPresetDropdown(
@@ -350,16 +349,17 @@ class QuickFilterBar(BaseComponent):
     def _search_field(self) -> Node:
         stated = self.existing.get("search")
         criterion = stated if isinstance(stated, dict) else {}
-        # A stated search that names no mode reads as the criterion's default;
-        # a field with no search behind it opens on a fresh field's mode.
+        # A stated search may name no mode.
+        #
+        # It then reads as the criterion's default. A field with no search
+        # behind it opens on a fresh field's mode instead.
         default = (
             DEFAULT_STATED_MODIFIER if isinstance(stated, dict) else DEFAULT_MATCH_MODE
         )
         modifier = criterion.get("modifier", default)
         return SearchField(
             value=str(criterion.get("value", "") or ""),
-            # is_quick_editable admitted this filter, so the mode is one of the
-            # six; the cast states what that gate already checked.
+            # The gate above already admitted this mode.
             modifier=cast(MatchModeToken, modifier),
             name=f"quick-{self.mode}-search",
             placeholder=SEARCH_PLACEHOLDERS[self.mode],

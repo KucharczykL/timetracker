@@ -51,8 +51,9 @@ def prefilled_bar_view(request):
                 "value": "Switch",
                 "modifier": "INCLUDES",
             },
-            # "is empty" on a NOT NULL column is the empty string, never
-            # a presence test, so this is the shape the widget states.
+            # "Is empty" on a NOT NULL column is "".
+            #
+            # Never a presence test, so this is the shape the widget states.
             "group": {"value": "", "modifier": "EQUALS"},
         }
     )
@@ -104,7 +105,7 @@ def test_string_filter_defaults_and_toggles(live_server, page):
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_string_filter_e2e")
 def test_string_filter_offers_no_presence_modifier(live_server, page):
-    """A string widget states only the modes its field does.
+    """A string widget states only its field's modes.
 
     Every string column here is NOT NULL, so "is null" would match no row. The
     widget offers the six a value shape allows, and "is empty" is the empty
@@ -128,7 +129,7 @@ def test_string_filter_offers_no_presence_modifier(live_server, page):
         "NOT_MATCHES_REGEX",
     ]
 
-    # The input never disables, because no offered mode carries no value.
+    # No offered mode carries no value.
     name_input = page.locator('input[name="quick-name"]')
     for modifier in offered:
         modifier_select.select_option(modifier)
@@ -151,7 +152,7 @@ def test_string_filter_prefilled_states(live_server, page):
         page.locator('select[name="quick-name-modifier"]').input_value() == "INCLUDES"
     )
 
-    # Verifies group prefills the empty string under "is", enabled throughout
+    # group prefills the empty string under "is".
     page.locator("#quick-group-dropdownLink").click()
     assert group_input.input_value() == ""
     assert group_input.is_enabled()
@@ -161,7 +162,7 @@ def test_string_filter_prefilled_states(live_server, page):
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_string_filter_e2e")
 def test_string_filter_serializes_the_empty_string(live_server, page):
-    """ "Is empty" is a value, not a presence test, so it must survive Apply."""
+    """ "Is empty" is a value, not presence."""
     page.goto(live_server.url + "/test-string-filter-empty/")
     page.locator("#quick-name-dropdownLink").click()
 
@@ -171,6 +172,7 @@ def test_string_filter_serializes_the_empty_string(live_server, page):
 
     with page.expect_navigation():
         page.locator('quick-filter-bar button[type="submit"]').click()
-    # An empty box states no criterion; the bar drops the key rather than
-    # sending a filter that narrows to the rows holding "".
+    # An empty box states no criterion.
+    #
+    # The bar drops the key rather than narrowing to the rows holding "".
     assert "name" not in _filter_from_url(page.url)

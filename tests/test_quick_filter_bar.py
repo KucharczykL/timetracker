@@ -124,8 +124,10 @@ class IsQuickEditableTest(SimpleTestCase):
         )
 
     def test_a_search_whose_value_is_not_text_degrades(self):
-        # The value goes into a text box. A dict, list or number reaches it as
-        # its repr, and Apply writes that back as the filter.
+        # The value goes into a text box.
+        #
+        # A dict, list or number reaches it as a repr, and Apply writes that
+        # back as the filter.
         for value in ({"id": "mario"}, ["mario"], 7, True):
             with self.subTest(value=value):
                 self.assertFalse(
@@ -137,9 +139,11 @@ class IsQuickEditableTest(SimpleTestCase):
                 )
 
     def test_a_search_that_names_no_mode_is_editable_as_exact(self):
-        # to_json drops a default modifier, so a stored exact search carries
-        # none at all. Reading it as a fresh field's mode would show *includes*
-        # over a filter the server applies as *is*, and Apply would widen it.
+        # A stored exact search carries no modifier.
+        #
+        # to_json drops a default. Reading a fresh field's mode there would show
+        # *includes* over a filter the server applies as *is*, and Apply would
+        # widen it.
         parsed = {"search": {"value": "mario"}}
         self.assertTrue(is_quick_editable(parsed, _GAME_FACETS, filter_cls=GameFilter))
         html = str(QuickFilterBar(mode="games", filter_json=json.dumps(parsed)))
@@ -147,17 +151,20 @@ class IsQuickEditableTest(SimpleTestCase):
         self.assertIn('aria-label="Match mode: is"', html)
 
     def test_a_bar_with_no_search_opens_on_includes(self):
-        # A fresh field's mode is the one people reach for; it is not the
-        # criterion's default, which only a stated search reads.
+        # A fresh field's mode is not the criterion's.
+        #
+        # It is the one people reach for; the criterion's default is read only
+        # where a search is already stated.
         html = str(QuickFilterBar(mode="games", filter_json=""))
         self.assertIn('data-modifier="INCLUDES"', html)
         self.assertIn('aria-label="Match mode: includes"', html)
 
     def test_a_string_facet_in_a_mode_its_widget_lacks_degrades(self):
-        # Every string column here is NOT NULL, so no string widget offers the
-        # presence pair: "is null" over such a column matches no row, and the
-        # empty string is what "is empty" tests. A stored one would otherwise
-        # render as *is* and Apply would write that back.
+        # No string column here can be NULL.
+        #
+        # So no string widget offers the presence pair: "is null" matches no
+        # row, and "is empty" tests the empty string. A stored one would render
+        # as *is* and Apply would write that back.
         for modifier in ("IS_NULL", "NOT_NULL"):
             with self.subTest(modifier=modifier):
                 self.assertFalse(
@@ -176,8 +183,10 @@ class IsQuickEditableTest(SimpleTestCase):
         )
 
     def test_a_count_facet_in_a_presence_mode_degrades(self):
-        # A count answers 0 over no rows, so its widget offers no presence
-        # pair; a stored one would render as *is* and Apply would write it back.
+        # A count answers 0 over no rows.
+        #
+        # So its widget offers no presence pair, and a stored one would render
+        # as *is* for Apply to write back.
         self.assertFalse(
             is_quick_editable(
                 {"session_count": {"modifier": "IS_NULL"}},
@@ -197,8 +206,9 @@ class IsQuickEditableTest(SimpleTestCase):
         )
 
     def test_a_date_facet_keeps_whatever_modifier_it_holds(self):
-        # A date widget carries the modifier in a hidden input and returns it
-        # untouched, so it rewrites nothing and needs no check.
+        # A date widget returns its modifier untouched.
+        #
+        # It rides in a hidden input, so the widget rewrites nothing.
         self.assertTrue(
             is_quick_editable(
                 {"created_at": {"modifier": "IS_NULL"}},
@@ -208,9 +218,10 @@ class IsQuickEditableTest(SimpleTestCase):
         )
 
     def test_a_set_facet_keeps_the_modifiers_its_widget_pins(self):
-        # A set widget pins (Any)/(None) and, for a many-to-many, (All)/(Only),
-        # so its rendered vocabulary is wider than its metadata's. Checking a
-        # set against the metadata would degrade a filter the bar can hold.
+        # A set widget renders more than its metadata names.
+        #
+        # It pins (Any)/(None) and, for a many-to-many, (All)/(Only), so a check
+        # against the metadata would degrade a filter the bar can hold.
         self.assertTrue(
             is_quick_editable(
                 {"games": {"value": ["1"], "modifier": "INCLUDES_ALL"}},

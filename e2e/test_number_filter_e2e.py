@@ -56,8 +56,9 @@ def prefilled_bar_view(request):
     filter_json = json.dumps(
         {
             "year_released": {"value": 2000, "value2": 2010, "modifier": "BETWEEN"},
-            # A count answers 0 over no rows, so its widget states no
-            # presence pair; this is a mode it does state.
+            # A count answers 0 over no rows.
+            #
+            # Its widget states no presence pair; this is a mode it states.
             "session_count": {"value": 5, "modifier": "GREATER_THAN"},
         }
     )
@@ -195,7 +196,7 @@ def test_number_filter_prefilled_states(live_server, page):
     assert session_input.input_value() == "5"
     modifier_select = page.locator('select[name="quick-session_count-modifier"]')
     assert modifier_select.input_value() == "GREATER_THAN"
-    # A count states no presence pair, so its widget offers neither.
+    # A count states no presence pair.
     offered = modifier_select.locator("option").evaluate_all(
         "options => options.map(option => option.value)"
     )
