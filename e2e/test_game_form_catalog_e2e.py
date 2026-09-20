@@ -130,7 +130,7 @@ def type_year(card: Locator, year: str) -> None:
 
 
 def type_original_release(page: Page, year: str) -> None:
-    """The segmented year of the Game's own Original release."""
+    """The Game's own Original release year."""
     field = page.locator('temporal-field[field-name="original_release_date"]')
     expect(field.locator("[data-temporal-segments='start']")).to_be_visible()
     field.locator("[data-date-part='year'][data-date-side='start']").click()
@@ -370,11 +370,7 @@ def test_a_row_names_its_controls_at_both_widths(signed_in, live_server, game):
 def test_a_cloned_row_takes_the_original_release(
     signed_in, live_server, e2e_library, amiga, dos
 ):
-    """A row the browser cloned fills itself from the Game's own date.
-
-    The button rides in the template, thus the clone carries one and
-    its own element wires it on arrival.
-    """
+    """A cloned row fills itself from the Game."""
     page = signed_in
     open_add_form(page, live_server)
 
@@ -397,11 +393,10 @@ def test_a_cloned_row_takes_the_original_release(
 
 
 def test_the_button_wakes_when_the_original_release_fills(signed_in, live_server):
-    """No reload tells the button that the source now states something.
+    """The button wakes with no reload.
 
-    The segment engine takes every digit keydown itself, so only the
-    field's own announcement can say this. The unit suite dispatches
-    that by hand; this is where a missing dispatch shows.
+    The unit suite dispatches the commit event by hand, thus only
+    this test proves that anything dispatches it.
     """
     page = signed_in
     open_add_form(page, live_server)

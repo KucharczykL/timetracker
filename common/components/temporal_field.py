@@ -70,23 +70,17 @@ _PART_WIDTHS = {"year": 4, "month": 2, "day": 2, "decade": 4}
 
 
 class TemporalCopySource(NamedTuple):
-    """Another temporal field this one can take its whole value from.
+    """The field this one copies from."""
 
-    A Release row reads the Original release, never the other way: one
-    field is always the source, thus the control sits on the taker and
-    names what it takes from.
-    """
-
-    field_name: str  # the source field's Django name, e.g. "original_release_date"
-    label: str  # what the button says, e.g. "Use original release"
+    field_name: str  # the source field's Django name
+    label: str  # what the button says
 
 
 def _copy_button(source: TemporalCopySource) -> Node:
     """Inert until the element reaches it.
 
-    Hidden and disabled from the server, thus no script means no button
-    that does nothing. The title names what to fill first, because a
-    disabled control explains itself to nobody.
+    Both attributes are load-bearing: with no script, neither the
+    press nor the source exists.
     """
     return ControlButton(
         variant="outline",
@@ -95,7 +89,7 @@ def _copy_button(source: TemporalCopySource) -> Node:
         disabled=True,
         data_temporal_copy=source.field_name,
         title=f"Fill {source.label.removeprefix('Use ')} first",
-        # Outline bakes no shape; a standalone one states its own.
+        # Outline bakes no shape; state our own.
         class_="self-start rounded-base",
     )[source.label]
 

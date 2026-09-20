@@ -259,7 +259,7 @@ _DatePicker = custom_element_builder("date-picker")
 class TemporalFieldProps(TypedDict):
     # The stored value needs the precision controls, so open showing them.
     expanded: bool
-    #: The posted name of this field, so a peer can address it.
+    #: The posted name a peer addresses.
     field_name: str
 
 

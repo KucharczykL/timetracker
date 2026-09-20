@@ -35,15 +35,12 @@ const EMPTY_DRAFT: Draft = {
   end_uncertain: "",
 };
 
-/** Digits right-aligned in one segment's width, as the server pads them. */
+/** Digits right-aligned in the segment's width. */
 function padded(text: string, width: number): string {
   return /^\d+$/.test(text) ? text.padStart(width, "0") : "";
 }
 
-/**
- * One endpoint as the server renders it: the named inputs hold the raw
- * draft text, the segments hold the same digits padded.
- */
+/** One endpoint as the server renders it. */
 function endpointMarkup(
   endpoint: string,
   openToggle: string,
@@ -106,7 +103,7 @@ function endpointMarkup(
     </fieldset>`;
 }
 
-/** One whole control, as the server renders it for this draft. */
+/** One whole control, as the server renders it. */
 function fieldMarkup(
   stored: Draft = {},
   expanded = "false",
@@ -115,7 +112,7 @@ function fieldMarkup(
   copySource = "",
 ): string {
   const draft: Draft = { ...EMPTY_DRAFT, ...stored };
-  // Radios are one group per field, so two fields on a page stay apart.
+  // One radio group per field.
   const shapeName = `${fieldName || "field"}-end-shape`;
   const kindOption = (value: string, text: string) =>
     `<option value="${value}"${value === draft.kind ? " selected" : ""}>${text}</option>`;
@@ -173,7 +170,7 @@ function mountDraft(
   return document.querySelector("temporal-field")!;
 }
 
-/** A source named on the page and a target that may copy from it. */
+/** A source, and a target that copies it. */
 function mountPair(
   sourceDraft: Draft = {},
   targetDraft: Draft = {},
@@ -772,7 +769,7 @@ describe("temporal-field", () => {
     expect(named(host, "kind").value).toBe("until");
   });
 
-  /** Every shape the server can render back into the control. */
+  /** Every shape the server can render. */
   const STORED_SHAPES: Array<[string, Draft]> = [
     ["nothing", {}],
     ["a day", { kind: "date", start_year: "1997", start_month: "3", start_day: "15" }],
@@ -789,7 +786,7 @@ describe("temporal-field", () => {
     ["an until", { kind: "until", end_year: "1999" }],
   ];
 
-  /** What the control writes back: the same draft, padded to the segments. */
+  /** The same draft, padded to the segments. */
   function normalized(stored: Draft): Draft {
     const draft: Draft = { ...EMPTY_DRAFT, ...stored };
     ["start", "end"].forEach((endpoint) => {

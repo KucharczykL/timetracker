@@ -26,11 +26,10 @@ import {
 import { decadeStart, temporalCodec } from "./temporal-codec.js";
 
 /**
- * What one control announces when its value moves.
+ * Announced when the value moves.
  *
- * The segment engine takes every digit keydown and writes the buffers
- * itself, so nothing native fires. A peer that watches this field has no
- * other way to hear it.
+ * The engine takes every digit keydown and writes the buffers itself,
+ * so nothing native fires. A peer has no other way to hear this field.
  */
 export const TEMPORAL_FIELD_CHANGE_EVENT = "temporal-field:change";
 
@@ -340,7 +339,7 @@ function setExpanded(host: HTMLElement, expanded: boolean): void {
   paintDisclosure(host);
 }
 
-/** The thirteen posted inputs, which together are the whole value. */
+/** The thirteen posted inputs are the value. */
 const DRAFT_KEYS = [
   "kind",
   "start_year",
@@ -361,7 +360,7 @@ type DraftKey = (typeof DRAFT_KEYS)[number];
 
 export type TemporalDraft = Record<DraftKey, string>;
 
-/** A box states itself; every other control states its value. */
+/** A box states itself; others state value. */
 function draftValue(control: HTMLInputElement | HTMLSelectElement | null): string {
   if (!control) return "";
   if (control instanceof HTMLInputElement && control.type === "checkbox") {
@@ -382,13 +381,13 @@ function draftPart(draft: TemporalDraft, endpoint: Endpoint, part: string): stri
   return draft[`${endpoint}_${part}` as DraftKey] ?? "";
 }
 
-/** Digits right-aligned in one segment's width, as the server pads them. */
+/** Digits right-aligned in the segment's width. */
 function paddedDigits(text: string, width: number): string {
   const stripped = text.trim();
   return /^\d+$/.test(stripped) ? stripped.padStart(width, "0") : "";
 }
 
-/** One end takes the parts, the qualifiers and the decade a draft states. */
+/** One end takes what the draft states. */
 function adoptEndpoint(
   host: HTMLElement,
   draft: TemporalDraft,
@@ -418,11 +417,10 @@ function adoptEndpoint(
 }
 
 /**
- * The state one draft implies, over whatever the field holds now.
+ * The state one draft implies.
  *
- * Both the page load and a copy from another field come through here, so
- * the order below is exercised by every render rather than by the rarer
- * path alone.
+ * The order below is load-bearing, and a page load runs it too, so a
+ * reorder breaks every render rather than the copy alone.
  */
 export function adoptDraft(host: HTMLElement, draft: TemporalDraft): void {
   const open = draft.kind === "until";
@@ -437,8 +435,7 @@ export function adoptDraft(host: HTMLElement, draft: TemporalDraft): void {
     setEndShape(host, "end_date");
   else setEndShape(host, "end_none");
   paintEndShape(host);
-  // The server disables the group, so no script posts no answer. Only an
-  // open start takes the choice away again.
+  // Only an open start disables these.
   endShapeBoxes(host).forEach((box) => {
     box.disabled = open;
   });
@@ -447,7 +444,7 @@ export function adoptDraft(host: HTMLElement, draft: TemporalDraft): void {
   setExpanded(host, !canCollapse(host));
 }
 
-/** One field takes the whole value another states. */
+/** One field takes another's whole value. */
 export function copyTemporalDraft(source: HTMLElement, target: HTMLElement): void {
   adoptDraft(target, readDraft(source));
 }
@@ -532,12 +529,10 @@ function bindControls(host: HTMLElement): void {
 }
 
 /**
- * The button that takes another field's whole value.
+ * The button that copies another field.
  *
- * The source may be on no page at all: a value a segment cannot hold
- * renders the native controls alone, with no element around them. That
- * reads as a source stating nothing, so the button stays inert and says
- * which field to correct.
+ * The source may be absent: a value no segment can hold renders the
+ * native controls alone. Treat that as a source stating nothing.
  */
 function initCopyControl(host: HTMLElement): void {
   const button = host.querySelector<HTMLButtonElement>("[data-temporal-copy]");

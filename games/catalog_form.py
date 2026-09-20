@@ -45,8 +45,7 @@ RELEASE_PLACEHOLDER: Final[str] = "__release__"
 #: One radio group over the whole Game; its value is a release prefix.
 MARK_FIELD: Final[str] = "in_library"
 
-#: A row takes the Game's own date. The source carries no form prefix,
-#: thus one page holds exactly one of it.
+#: Unprefixed name, thus unique on the page.
 ORIGINAL_RELEASE_SOURCE: Final[TemporalCopySource] = TemporalCopySource(
     "original_release_date", "Use original release"
 )

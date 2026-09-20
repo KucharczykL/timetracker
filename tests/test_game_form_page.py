@@ -119,7 +119,7 @@ def test_the_page_threads_the_temporal_element(logged_in, plain_game):
 
 
 def test_every_release_row_offers_the_original_release(logged_in, plain_game):
-    """One button per row, inert until the element reaches it."""
+    """One button per row, inert until upgrade."""
     body = live(page(logged_in, plain_game))
 
     assert body.count('data-temporal-copy="original_release_date"') == 1
@@ -132,7 +132,7 @@ def test_every_release_row_offers_the_original_release(logged_in, plain_game):
 
 
 def test_the_original_release_names_itself_to_the_rows(logged_in, plain_game):
-    """The source carries no form prefix, thus one page holds one."""
+    """No form prefix, thus one per page."""
     body = live(page(logged_in, plain_game))
 
     assert body.count('field-name="original_release_date"') == 1
@@ -140,10 +140,10 @@ def test_the_original_release_names_itself_to_the_rows(logged_in, plain_game):
 
 
 def test_a_cloned_row_carries_the_button_too(logged_in, plain_game):
-    """The template is what `Add release` clones, so it needs one.
+    """The clone source needs one too.
 
-    `live()` cuts the page at the first template, thus this reads the
-    whole body on purpose.
+    `live()` cuts at the first template, thus this reads the whole
+    body on purpose.
     """
     body = page(logged_in, plain_game)
     templates = body.split("<template data-catalog-template=")[1:]
@@ -155,7 +155,7 @@ def test_a_cloned_row_carries_the_button_too(logged_in, plain_game):
 
 
 def test_add_game_offers_the_original_release_too(logged_in):
-    """Add Game hosts the same area, thus the same button."""
+    """Add Game hosts the same area."""
     response = logged_in.get(reverse("games:add_game"))
     body = response.content.decode()
 
