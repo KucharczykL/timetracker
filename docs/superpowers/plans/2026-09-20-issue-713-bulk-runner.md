@@ -421,7 +421,7 @@ def run_bulk_command_scenario(
 
 ### Task 10: The gate
 
-- [ ] **Step 1: Docs sweep.** Delete this plan file. Fold the bench's figures
+- [ ] **Step 1: Docs sweep.** Remove this plan file. Write the bench's figures
   into the spec. Add the runner to `CLAUDE.md`'s architecture notes, one
   paragraph in the house voice, beside the PlayerSession entries.
 - [ ] **Step 2: `make vale`.**

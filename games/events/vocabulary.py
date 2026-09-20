@@ -275,6 +275,19 @@ class EventTypeRegistry:
     def spec_for(self, event_type: EventType) -> EventSpec[Any]:
         return self._registration_for(event_type).spec
 
+    def event_types_for(self, aggregate_type: AggregateType) -> frozenset[EventType]:
+        """Every event type that speaks about this aggregate.
+
+        An event row states its type and never its aggregate type, so a
+        read that wants one aggregate's rows asks here for the types to
+        filter on. An aggregate type nothing declares names no type.
+        """
+        return frozenset(
+            event_type
+            for event_type, registered in self._registered.items()
+            if registered.spec.aggregate_type == aggregate_type
+        )
+
     def reference_fields_for(self, event_type: EventType) -> ReferenceFields:
         """Which of this payload's fields hold references."""
         return self._registration_for(event_type).references
