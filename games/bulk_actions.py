@@ -105,7 +105,9 @@ class PreviewColumn:
 #: What an "all" statement names, before exclusions.
 type Scope[RowT: Model] = Callable[[UserLibrary, FilterJson], QuerySet[RowT]]
 #: Keys to rows, or to sentences.
-type Resolve[RowT: Model] = Callable[[UserLibrary, Sequence[uuid.UUID]], Resolution[RowT]]
+type Resolve[RowT: Model] = Callable[
+    [UserLibrary, Sequence[uuid.UUID]], Resolution[RowT]
+]
 #: One row, through its `games/writes/` wrapper.
 type RunRow[RowT: Model] = Callable[[User, RowT, IdempotencyKey, uuid.UUID], RowOutcome]
 #: One row's opposite, by key.

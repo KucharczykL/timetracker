@@ -16,6 +16,7 @@ from games.commands.session_reclassification import (
     STILL_RUNNING,
     statement_from_session,
 )
+from games.events.dispatch import CommandOutcome
 from games.models import (
     Device,
     Game,
@@ -477,3 +478,45 @@ def test_undoing_carries_its_own_source(owned_user, owned_library, game):
     stamped = LibraryEvent.objects.filter(correlation_id=correlation_id)
     assert stamped
     assert all(event.source_metadata["bulk"] for event in stamped)
+
+
+def test_an_idempotent_session_removal_writes_one_event_and_names_its_source(
+    owned_user, owned_library, game
+):
+    """The runner's two facts: the key absorbs, the source rides."""
+    row = session_row(game, started_at=STARTED_AT)
+    source = {"bulk": {"action": "session.remove"}}
+
+    first = remove_session(
+        owned_user,
+        row,
+        correlation_id=uuid.uuid7(),
+        idempotency_key="one-removal",
+        source_metadata=source,
+    )
+    repeat = remove_session(
+        owned_user,
+        row,
+        correlation_id=uuid.uuid7(),
+        idempotency_key="one-removal",
+        source_metadata=source,
+    )
+
+    assert first.outcome is CommandOutcome.APPENDED
+    assert repeat.outcome is CommandOutcome.REPLAYED
+    removals = LibraryEvent.objects.filter(
+        aggregate_id=row.pk, event_type="library.playersession.removed"
+    )
+    assert [event.source_metadata for event in removals] == [source]
+
+
+def test_removing_a_removed_session_under_a_new_key_answers_unchanged(
+    owned_user, owned_library, game
+):
+    """What tells the runner a row was already so."""
+    row = session_row(game, started_at=STARTED_AT)
+    remove_session(owned_user, row, correlation_id=uuid.uuid7())
+
+    repeat = remove_session(owned_user, row, correlation_id=uuid.uuid7())
+
+    assert repeat.outcome is CommandOutcome.UNCHANGED
