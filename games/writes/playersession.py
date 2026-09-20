@@ -67,8 +67,11 @@ def _dispatch(
     )
 
 
-def _created_id(result: CommandResult) -> uuid.UUID:
-    """The row a creation wrote: its event's aggregate id."""
+def created_aggregate_id(result: CommandResult) -> uuid.UUID:
+    """The row a creation wrote: its first event's aggregate id.
+
+    Never `stream_id`, which is the library's one stream head.
+    """
     assert result.sequences is not None
     return LibraryEvent.objects.get(
         stream_id=result.stream_id, sequence=result.sequences.first
@@ -92,7 +95,7 @@ def record_session(
             library=actor.library,
             correlation_id=correlation_id,
         )
-    return _created_id(result)
+    return created_aggregate_id(result)
 
 
 def restate_session(
@@ -315,7 +318,7 @@ def reclassify_session(
             idempotency_key=idempotency_key,
             source_metadata=source_metadata,
         )
-    return _created_id(result)
+    return created_aggregate_id(result)
 
 
 def undo_reclassification(
@@ -390,4 +393,4 @@ def clone_session(
             library=actor.library,
             correlation_id=correlation_id,
         )
-    return _created_id(result)
+    return created_aggregate_id(result)

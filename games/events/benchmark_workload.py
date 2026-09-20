@@ -57,6 +57,7 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.calendar import calendar_day_zone
+from games.writes.playersession import created_aggregate_id
 
 #: The seeded rows, and the untracked spares.
 SEEDED_NAME_PREFIX = "Benchmark game "
@@ -340,9 +341,9 @@ def run_record_command_scenario(
     return summarize(samples)
 
 
-def _written_down(library: UserLibrary, *, actor: User, run: Playthrough) -> None:
+def _written_down(library: UserLibrary, *, actor: User, run: Playthrough) -> uuid.UUID:
     """One Duration-only session long enough for the review to offer it."""
-    dispatch(
+    result = dispatch(
         CreateSession(
             playthrough_id=run.pk,
             timing=DurationOnlyTiming(
@@ -354,30 +355,38 @@ def _written_down(library: UserLibrary, *, actor: User, run: Playthrough) -> Non
         library=library,
         idempotency_key=str(uuid.uuid7()),
     )
+    return created_aggregate_id(result)
 
 
 def _rows_to_convert(
     library: UserLibrary, *, actor: User, count: int
 ) -> list[PlayerSession]:
-    """Write the batch's own rows, then read back what the act offers.
+    """Write the batch's own rows, then read them back.
 
     Its own rows, because converting the seed's would take them out of
     the population the read scenario measures. Read back rather than
     kept, because the statement a conversion makes is built from
     columns the database generates.
 
-    The act's own scope answers, newest first: a key sorts by the
-    instant it was minted, so the rows just written are the ones it
-    hands back.
+    Read through the act's own scope, so a seed whose sessions cross
+    the review threshold fails here rather than quietly timing rows
+    this scenario did not write.
     """
     cycle = _cycling(library, seeded_runs(library))
-    for run in islice(cycle, count):
-        _written_down(library, actor=actor, run=run)
-    return list(
+    keys = [
+        _written_down(library, actor=actor, run=run) for run in islice(cycle, count)
+    ]
+    rows = list(
         reviewable_sessions(library)
+        .filter(pk__in=keys)
         .select_related("playthrough__player_game__game")
-        .order_by("-id")[:count]
     )
+    if len(rows) != count:
+        raise ValueError(
+            f"The review offers {len(rows)} of the {count} session(s) this "
+            "scenario wrote, so the rows it would time are not its own."
+        )
+    return rows
 
 
 def run_bulk_command_scenario(

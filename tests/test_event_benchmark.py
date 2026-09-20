@@ -725,6 +725,21 @@ def test_the_bulk_scenario_appends_under_one_correlation_id(owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
+def test_the_bulk_scenario_refuses_rows_the_review_does_not_offer(
+    owned_library, monkeypatch
+):
+    """Its own rows, or none: a silent substitution times the wrong thing."""
+    seed_library(owned_library, actor=owned_library.user, games=4, spares=0)
+    #: Written at the threshold, read back under a higher one.
+    monkeypatch.setattr("games.bulk_reclassification.REVIEW_THRESHOLD_HOURS", 1_000)
+
+    with pytest.raises(ValueError, match="not its own"):
+        run_bulk_command_scenario(
+            owned_library, actor=owned_library.user, sessions=2, warmup=0
+        )
+
+
+@pytest.mark.django_db(transaction=True)
 def test_the_bulk_scenario_needs_a_run(owned_library):
     with pytest.raises(ValueError, match="needs a run"):
         run_bulk_command_scenario(

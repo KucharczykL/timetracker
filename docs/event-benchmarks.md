@@ -664,6 +664,13 @@ at a time, so at 7.2 ms it reaches about four hundred rows before it renders a
 waypoint. A library with more than that walks two requests, which is the case
 the correlation id has to survive.
 
+**The batch crosses the gating floor on a small seed.** At `seed=25` the
+600 rows take the run to roughly 2,400 events, the rebuild budget starts
+being judged, and a scratch rebuild misses it at 1.561 s against 1.465 s.
+Nothing under test is slow: the run above passes at 30.4 s against 62.1 s.
+The floor assumes the seed's mix, and this one writes two projections a row.
+`--bulk` keeps the tests that drive the command small; #1160 owns the floor.
+
 **The reads with 600 more converted rows.** Every read moved with the seed
 rather than with the batch: `game_playtime_sort` 161 ms to 180 ms,
 `stats_superlatives` 104 ms to 95 ms, `stats_totals` 82 ms to 69 ms. The
