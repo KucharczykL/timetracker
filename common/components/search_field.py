@@ -60,9 +60,12 @@ _INPUT_CLASS = (
     "focus:ring-1 focus:ring-brand focus:border-brand focus:outline-hidden"
 )
 
-#: The trigger. Ghost, like the facet triggers beside it, so the field reads as
-#: one quiet control rather than a button bolted to a box.
-_TRIGGER_CLASS = "border border-default-medium"
+#: The trigger states no rounding and no border colour of its own. It is
+#: ``segmented``, the variant a member of a joined control takes: it carries the
+#: shared border and leaves every corner to whatever joins it. The ghost variant
+#: would fight that twice — it bakes ``rounded-base``, and its
+#: ``border-transparent`` ties on specificity with any colour added beside it, so
+#: which one wins is decided by stylesheet order.
 
 _MENU_ROW_CLASS = f"{DROPDOWN_ITEM_CLASS} flex items-center gap-3 whitespace-nowrap"
 
@@ -120,9 +123,9 @@ def SearchField(
             # hears the mode rather than a button with none.
             ("aria-label", f"Match mode: {words}"),
             ("title", f"Match mode: {words}"),
-            ("class", _TRIGGER_CLASS),
         ],
-        variant="ghost",
+        variant="segmented",
+        color="gray",
     )[
         Icon(icon, attributes=[("data-match-mark", "")]),
         Icon("arrowdown", attributes=[("class", "h-3 w-3")]),

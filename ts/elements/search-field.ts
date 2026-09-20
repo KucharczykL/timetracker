@@ -48,10 +48,13 @@ class SearchFieldElement extends HTMLElement {
     const chosenMark = chosen.querySelector<SVGElement>("svg");
     if (trigger && mark && chosenMark) {
       // The menu row already holds the mode's mark, server-rendered — clone it
-      // rather than keep a second copy of the six in the client.
+      // rather than keep a second copy of the six in the client. The clone takes
+      // the class the trigger's own mark carries, never the row's: the sizing
+      // lives in that class, so a clone stripped of it renders at the SVG's
+      // intrinsic size instead of the trigger's.
       const replacement = chosenMark.cloneNode(true) as SVGElement;
+      replacement.setAttribute("class", mark.getAttribute("class") ?? "");
       replacement.setAttribute("data-match-mark", "");
-      replacement.removeAttribute("class");
       mark.replaceWith(replacement);
     }
     const words = chosen.querySelector("span")?.textContent?.trim() ?? mode;
