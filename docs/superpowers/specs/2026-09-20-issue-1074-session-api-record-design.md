@@ -27,19 +27,12 @@ The sign is not bounded: the command has a sentence for it.
 
 ## The two identifiers
 
-The route resolves the run and the device before it dispatches. Each resolution
-answers 404 for an identifier that this library does not hold.
+The route states them and dispatches. The command resolves both, under the
+stream head's lock, which alone proves a row is still there.
 
-The run scope is this library's rows of every kind, removed or not: the scope
-of `library_playthrough`, which the command uses. Thus 404 says one thing only:
-this library holds no such run. Every other refusal stays with the command,
-which alone can say what to state instead.
-
-The device scope is narrower, because `for_library` calls `alive()`: a removed
-device is absent to the API. The route keeps the asymmetry of its neighbours.
-
-The command resolves both again under the lock, which alone proves a row is
-still there.
+A row this library does not hold answers 404, and a row it holds but cannot
+use answers 409 and one sentence. The rule is stated once, for every command:
+[Where a scope miss is answered](2026-09-20-issue-1167-1174-scope-boundary-design.md).
 
 ## The retry
 
@@ -54,7 +47,8 @@ The route measures the header before it dispatches, because
 `validate_idempotency_key` raises a plain `ValueError` that no answer maps. It
 refuses a blank key, and a key of more than 255 characters, at 422. It strips
 the two ends first: a key of spaces alone passes both that check and the
-column's constraint.
+column's constraint. Nothing else reads the state ahead of the key: a resolve
+that did would answer the second request about a row the first never saw.
 
 ## The answer
 
@@ -69,6 +63,5 @@ would state the opposite of the answer.
 
 ## What stays
 
-`PATCH /api/session/{id}` answers 409 for a run that another library holds,
-because its move resolves the run in the command alone. One rule for the two
-routes is a change to `library_playthrough`.
+`PATCH /api/session/{id}` states its `playthrough_id` the same way, and answers
+the same 404. The two routes read one rule.
