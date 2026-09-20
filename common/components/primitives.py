@@ -18,6 +18,7 @@ from django.conf import settings
 from django.http import QueryDict
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
+from django.utils.html import escape
 from django.utils.safestring import SafeText
 
 from common.components.core import (
@@ -2270,11 +2271,34 @@ type SelectionKey = str  # a row's own name, e.g. "0193f0c2-…"
 type FilterJson = str  # the ?filter= JSON document, "" when unfiltered
 type SelectionScope = str  # the library and the table, e.g. "lib-1:Games"
 
+#: What the line posts the statement as; `games/views/bulk.py` reads it.
+SELECTION_STATEMENT_FIELD = "selection"
+
+
+#: How many rows an act offers, in this layer's own words.
+type SelectionCardinality = Literal["one", "many"]
+
+
+class SelectionAction(TypedDict):
+    """One act the line offers, as a view states it.
+
+    The URL is built and the word is spelled by the view: this layer
+    reverses no route and reads no act table.
+    """
+
+    label: str
+    url: str
+    cardinality: SelectionCardinality
+
 
 class SelectionDeclaration(TypedDict):
     """The declaration that makes a table selectable."""
 
     filter: FilterJson
+    #: The acts the line offers; none renders an empty slot.
+    actions: NotRequired[Sequence[SelectionAction]]
+    #: One form posts every act, so one token serves them all.
+    csrf_token: NotRequired[str]
 
 
 class TableData(TypedDict):
@@ -2843,7 +2867,55 @@ def selection_scope(request, caption_key: str, caption: str) -> SelectionScope:
     return f"{library}:{caption_key or caption}"
 
 
-def SelectionLine(page_obj=None) -> Node:
+def _SelectionActions(actions: Sequence[SelectionAction], csrf_token: str) -> Node:
+    """The acts the view stated, in one form.
+
+    One form, not one for each act: a submit that posts on its own
+    renders a form of its own, and every one of them would carry a
+    copy of the statement. Each submit names its own act through
+    `formaction`.
+
+    Every submit is rendered disabled, because nothing is selected
+    yet; `<selection-actions>` clears that with the first count.
+    """
+    offered = [action for action in actions if action["cardinality"] == "many"]
+    slot = Div([("data-selection-actions", "")], class_="flex gap-2")
+    if not offered:
+        return slot
+    return slot[
+        Form(
+            [("data-selection-actions-form", "")],
+            method="post",
+            class_="flex gap-2",
+        )[
+            Safe(
+                '<input type="hidden" name="csrfmiddlewaretoken" '
+                f'value="{escape(csrf_token)}">'
+            ),
+            Input(
+                [("data-selection-statement", "")],
+                type="hidden",
+                name=SELECTION_STATEMENT_FIELD,
+            ),
+            Fragment(
+                *(
+                    ControlButton(
+                        [("formaction", action["url"]), ("disabled", "")],
+                        type="submit",
+                    )[action["label"]]
+                    for action in offered
+                )
+            ),
+        ]
+    ]
+
+
+def SelectionLine(
+    page_obj=None,
+    *,
+    actions: Sequence[SelectionAction] = (),
+    csrf_token: str = "",
+) -> Node:
     """The selection region, above the pagination row."""
     controls: list[Node] = [
         Label(class_="flex items-center gap-2 text-type-body text-heading")[
@@ -2879,8 +2951,7 @@ def SelectionLine(page_obj=None) -> Node:
     controls.append(
         ControlButton([("data-selection-clear", "")], variant="ghost")["Clear"]
     )
-    # The tray fills this slot.
-    controls.append(Div([("data-selection-actions", "")], class_="flex gap-2"))
+    controls.append(_SelectionActions(actions, csrf_token))
 
     # Cloned per row; a template renders nothing.
     checkbox_template = Template([("data-selection-checkbox-template", "")])[
@@ -3143,7 +3214,13 @@ def StyledTable(
     if selection is not None:
         inner_children.insert(0, SelectionBar())
         # A named region, not the general slot.
-        inner_children.append(SelectionLine(page_obj=page_obj if paginated else None))
+        inner_children.append(
+            SelectionLine(
+                page_obj=page_obj if paginated else None,
+                actions=selection.get("actions", ()),
+                csrf_token=selection.get("csrf_token", ""),
+            )
+        )
     if footer_node is not None:
         inner_children.append(footer_node)
 

@@ -3350,6 +3350,93 @@ class SelectionLineTest(SimpleTestCase):
         html = self._paginated(selection={"filter": ""})
         self.assertIn("data-selection-actions", html)
 
+    def test_a_declaration_with_no_actions_renders_the_slot_alone(self):
+        html = self._paginated(selection={"filter": ""})
+        self.assertIn("data-selection-actions", html)
+        self.assertNotIn("data-selection-actions-form", html)
+
+    def test_selection_actions_render_one_form_and_one_submit_each(self):
+        html = self._paginated(
+            selection={
+                "filter": "",
+                "csrf_token": "a-token",
+                "actions": [
+                    {
+                        "label": "Remove",
+                        "url": "/bulk/session.remove/?origin=%2Fsession%2Flist",
+                        "cardinality": "many",
+                    },
+                    {
+                        "label": "Record as historical playtime",
+                        "url": "/bulk/session.reclassify/?origin=%2Fsession%2Flist",
+                        "cardinality": "many",
+                    },
+                ],
+            }
+        )
+        self.assertEqual(html.count("data-selection-actions-form"), 1)
+        self.assertEqual(html.count('type="submit"'), 2)
+        self.assertIn(
+            'formaction="/bulk/session.remove/?origin=%2Fsession%2Flist"', html
+        )
+        self.assertIn(
+            'formaction="/bulk/session.reclassify/?origin=%2Fsession%2Flist"', html
+        )
+        self.assertIn(">Remove<", html)
+        self.assertIn(">Record as historical playtime<", html)
+
+    def test_selection_actions_carry_one_statement_field_and_one_token(self):
+        html = self._paginated(
+            selection={
+                "filter": "",
+                "csrf_token": "a-token",
+                "actions": [
+                    {
+                        "label": "Remove",
+                        "url": "/bulk/session.remove/",
+                        "cardinality": "many",
+                    }
+                ],
+            }
+        )
+        self.assertEqual(html.count("data-selection-statement"), 1)
+        self.assertIn('name="selection"', html)
+        self.assertEqual(html.count('name="csrfmiddlewaretoken"'), 1)
+        self.assertIn('value="a-token"', html)
+
+    def test_every_selection_submit_starts_disabled(self):
+        html = self._paginated(
+            selection={
+                "filter": "",
+                "csrf_token": "a-token",
+                "actions": [
+                    {
+                        "label": "Remove",
+                        "url": "/bulk/session.remove/",
+                        "cardinality": "many",
+                    }
+                ],
+            }
+        )
+        form = html.split("data-selection-actions-form")[1]
+        self.assertIn("disabled", form.split("</form>")[0])
+
+    def test_a_one_row_act_is_not_offered_yet(self):
+        html = self._paginated(
+            selection={
+                "filter": "",
+                "csrf_token": "a-token",
+                "actions": [
+                    {
+                        "label": "Edit",
+                        "url": "/bulk/session.edit/",
+                        "cardinality": "one",
+                    }
+                ],
+            }
+        )
+        self.assertNotIn("data-selection-actions-form", html)
+
     def test_selection_line_announces_in_its_own_region(self):
         html = self._paginated(selection={"filter": ""})
         self.assertIn('role="status"', html)
