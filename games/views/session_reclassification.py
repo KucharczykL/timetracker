@@ -4,7 +4,6 @@ import json
 import logging
 import uuid
 from collections.abc import Sequence
-from datetime import timedelta
 from functools import partial
 from typing import NamedTuple, cast
 from urllib.parse import quote
@@ -39,12 +38,20 @@ from common.duration_presentation import (
 from common.layout import render_page
 from common.notices import Undo, notify
 from common.returns import OriginUrl, action_url
+from games.bulk_reclassification import (
+    ALREADY_RECORDED,
+    IN_THE_BUCKET,
+    NOT_AVAILABLE,
+    NOT_WRITTEN,
+    REVIEW_THRESHOLD_HOURS,
+    UNDER_THRESHOLD,
+    reviewable_sessions,
+)
 from games.commands.session_reclassification import statement_from_session
 from games.forms import HistoricalPlaytimeForm
 from games.models import (
     HistoricalPlaytime,
     PlayerSession,
-    PlayerSessionQuerySet,
     PlayerSessionTimingMode,
     PlaythroughKind,
     UserLibrary,
@@ -144,10 +151,6 @@ def _back_to(request: HttpRequest) -> str:
     return return_url(request, fallback="games:list_sessions")
 
 
-#: Longer than a sitting a person recalls.
-REVIEW_THRESHOLD_HOURS = 8
-
-
 def review_filter() -> str:
     """The rows worth reviewing, as `?filter=` JSON."""
     from games.filters import PlayerSessionFilter
@@ -171,34 +174,8 @@ def review_url() -> str:
     return f"{reverse('games:list_sessions')}?filter={quote(review_filter())}"
 
 
-NOT_WRITTEN = (
-    "A session whose time the app measured is not one the review offers, so "
-    "it was left as it is."
-)
-NOT_AVAILABLE = "One of the sessions is no longer available, so it was left as it is."
-UNDER_THRESHOLD = (
-    f"A session shorter than {REVIEW_THRESHOLD_HOURS} hours is not one the "
-    "review offers, so it was left as it is."
-)
-IN_THE_BUCKET = (
-    "A session in imported history is not one the review offers, because it "
-    "must be told which playthrough its hours belong to. Move it from its own "
-    "row."
-)
-ALREADY_RECORDED = "Some of the sessions were already recorded as historical playtime."
-
 #: A session key as posted.
 type PostedKey = str
-
-
-def reviewable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
-    """Live written-down rows at the threshold."""
-    return library_sessions(library).filter(
-        timing_mode=PlayerSessionTimingMode.DURATION_ONLY,
-        effective_duration__gte=timedelta(hours=REVIEW_THRESHOLD_HOURS),
-        #: The bulk act cannot ask for a run.
-        playthrough__kind=PlaythroughKind.ORDINARY,
-    )
 
 
 def _reviewable(
