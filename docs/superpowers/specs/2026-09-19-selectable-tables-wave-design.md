@@ -120,7 +120,10 @@ dropping. The charter's rules hold, and this wave settles the shape:
   of a long table the person is at. Every checkbox is built when the
   element connects and shown only with the mode, so turning the mode on
   moves no row; the column is reserved on a selectable table always, which
-  the header label clears and the name floor below `md` budgets. The mode
+  the header label clears and the name floor below `md` budgets. The
+  reserve stands empty while the mode is off, which the user finds
+  awkward on the shipped list; #1212 decides whether it collapses while
+  the mode is off, before #718 judges the finished pages. The mode
   is off on a page load unless the list holds a selection, which the
   element restores from session storage together with the mode. There is
   no header checkbox. Check-all for the page, "Select all N matching" with N read
@@ -154,8 +157,9 @@ dropping. The charter's rules hold, and this wave settles the shape:
   statement the POST carries and nothing else, so what the element keeps
   changes nothing in the runner; a count that no longer matches is the
   confirmation's to say, not the tray's to refuse.
-  The cost of the mode: after #718 a single-row act is three presses,
-  Select, the checkbox, the action, one more than the charter counted.
+  The cost of the mode: after #718 a single-row bulk act is three
+  presses, Select, the checkbox, the action, one more than the charter
+  counted; the row's own Edit and Reset stay two, the ⋯ menu and the item.
 - Below `md` the identity cell is today a shrinkable, single-line name cell,
   and nothing stacks. #711 builds the stacked cell: the checkbox beside the
   row's essential summary on two lines, while lower-priority columns keep
@@ -215,19 +219,23 @@ line with the count and scope, check-all, "Select all N matching" and Clear,
 and an empty actions slot; #712 fills the slot with the actions the table's
 view declares.
 
-A `BulkAction` is a declaration, not a view: label, allowed cardinality
-(`one`, `many`), the confirmation route, and, for a `many` action, the
-per-row command, its inverse, and the aggregate the inverse takes. One
-batch can append events under two aggregates: the reclassification mints
-a record beside each session it marks, so its Undo reads the batch's
-session events and not its record events. The tray offers a `one` action while exactly
-one row is selected and a `many` action while at least one is. A `many`
-action POSTs the selection statement to its confirmation route with the
-origin, so the act returns where the person stands (`?origin=`, as every
-mutating link). A `one` action is a link to the row's own page: Edit, Reset
-and Was-an-estimate exist today as `SessionActions` and keep their routes.
-Finish stays in the row: a running session is finished where it runs, the
-charter's named immediate control, beside the game-status selector.
+A `BulkAction` is a declaration, not a view: label, the confirmation
+route, the per-row command, its inverse, and the aggregate the inverse
+takes. One batch can append events under two aggregates: the
+reclassification mints a record beside each session it marks, so its Undo
+reads the batch's session events and not its record events. The tray
+offers an action while at least one row is selected, and every action is
+a `many` act: it POSTs the selection statement to its confirmation route
+with the origin, so the act returns where the person stands (`?origin=`,
+as every mutating link). The wave first planned a `one` cardinality, a
+link to the row's own page offered while exactly one row was selected,
+for Edit, Reset and Was-an-estimate. The user overturned it on the
+shipped tray: no act in the Actions column must be single, because bulk
+Edit is a different act from the row's Edit (it sets one value on every
+selected row, #1211) and Finish is coherent over many running sessions.
+What stays single, the row's own Edit form and Reset, lives in a ⋯ menu
+on the row, not in the tray, so the tray renders no `one` path and
+`Cardinality.ONE` leaves with #718.
 
 The selection line is the same on every table, and the actions differ by
 view. Nothing about it knows sessions.
@@ -418,14 +426,21 @@ loses the button.
 #718 retires the Actions column on every table on the two pages this wave
 touches that has one: Game detail's playthroughs and historical playtime,
 and the Playtime page's sessions and historical playtime, four columns.
-Game detail's session preview has none. Edit, Remove, Reset and
-Was-an-estimate become tray actions; Finish stays inline. Games, Purchases,
+Game detail's session preview has none. Every act that is coherent over
+many rows is a tray action: Remove and Was-an-estimate (shipped), Finish
+(#718 declares it, `EndSession` at now per running row, no form), and
+Edit as set-one-value (#1211, after #714, whose move confirmation is the
+form-over-a-selection precedent). The residue, the row's own Edit form
+and Reset, moves into a ⋯ menu on the row, the user's preference over a
+row of icons; a single running session is finished from the tray, from
+the navbar, or from its own page. Games, Purchases,
 Devices and Platforms keep their columns, each filed as a follow-up;
 Purchases' is the Purchases wave's, which rebuilds that table.
 
-The cost the charter accepted holds: a single-row act is select, then act,
-one press more than an icon. The Orca pass in #718 is where that cost is
-judged.
+The cost the charter accepted holds: a single-row bulk act is select,
+then act, one press more than an icon, and the residue menu costs the
+same two presses an icon row did. The Orca pass in #718 is where that
+cost is judged.
 
 ## Delivery order
 
@@ -459,7 +474,12 @@ judged.
    the list. Absorbs #716.
 6. **#717** ORG-04 — `outside_playthrough_dates`, the Library page's two
    counts and their links.
-7. **#718** ORG-05 — the four Actions columns retired, the Orca pass.
+7. **#1212** TABLE-05 — the checkbox reserve while the mode is off,
+   decided before the pages are judged.
+8. **#718** ORG-05 — the four Actions columns retired into the tray's
+   `many` acts (Finish declared here) and the row's ⋯ menu,
+   `Cardinality.ONE` removed, the Orca pass.
+9. **#1211** TABLE-04 — bulk Edit on the session tables, after #714.
 
 `#711 → #713 → #712 → #714 → #715 → #717 → #718`. #713 needs no table, so it
 runs beside #711. Every issue merges alone and leaves `main` incomplete
@@ -568,10 +588,14 @@ rows are a columns spec the act declares. Found by #712's review in
 #711's element: the slot latches the statement at the press and pulls it
 at connect. Measured after #712 shipped: the confirmation lists only the
 refusals the resolve owns, a command's rule is read at the press, and the
-forecast of it is #1209, parked with the numbers.
+forecast of it is #1209, parked with the numbers. Overturned by the user
+on the shipped tray: no `one` cardinality; bulk Edit (#1211) and Finish
+are `many` acts, the residue is a ⋯ menu on the row, and the empty
+checkbox reserve is #1212's to decide before #718.
 
-Deviations recorded: the empty bucket is removed, not archived; Finish stays
-inline as an immediate control; a cross-game move is refused rather than
+Deviations recorded: the empty bucket is removed, not archived; Finish is
+a tray act rather than the charter's inline control, beside the navbar's;
+a cross-game move is refused rather than
 picked; the organizer is reached from Game detail's Sessions section rather
 than its Playthrough section, and a date range is selected through the date
 facet and "all matching".
