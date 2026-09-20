@@ -766,8 +766,7 @@ def TruncatedText(
 
 
 # The classes every ControlButton variant truly shares. Sizing and focus
-# treatment belong to the variant, so the segmented look stays what ButtonGroup
-# members rendered before the unification. Rounding belongs to neither: it is
+# treatment belong to the variant; rounding belongs to neither — it is
 # `shape=`, and SHAPE_CLASSES below is its one table.
 # inline-flex keeps every button the same height regardless of content — an
 # icon+text button (e.g. "Log this game") would otherwise sit taller than its
@@ -953,13 +952,12 @@ def _refuse_a_stated_corner(value: object) -> None:
     """Refuse a class attribute that states a corner.
 
     Stylesheet order decides between two radius classes, so a call site that
-    writes one cannot read which one wins. ``normalize_attributes`` stringifies
-    a class value, so this reads it the same way rather than skipping whatever
-    is not a ``str``.
+    writes one cannot read which one wins. Reads the value through ``str``, as
+    ``normalize_attributes`` will.
 
-    Every spelling reaches the same property: Tailwind writes its variants as
-    a ``:``-separated prefix — a breakpoint, a state, or a whole arbitrary
-    selector — and the important marker as a leading ``!`` on the utility.
+    Every spelling reaches the same property: Tailwind writes a variant as a
+    ``:``-separated prefix — a breakpoint, a state, or a whole arbitrary
+    selector — and the important marker as a leading ``!``.
     """
     for word in str(value).split():
         token = word.rpartition(":")[2].lstrip("!")
@@ -1081,10 +1079,8 @@ class ControlButton(BaseComponent):
     def _merged_attributes(self) -> list[HTMLAttribute]:
         """This button's own class, then the caller's attributes.
 
-        Composed rather than stored, so restating a look-fact cannot disturb
-        the caller's attributes: ``normalize_attributes`` ACCUMULATES `class`,
-        so a rebuild that left the old one behind would render two radii and
-        say nothing.
+        Composed, not stored: ``normalize_attributes`` ACCUMULATES `class`, so
+        a rebuild that left the old one behind renders two radii in silence.
         """
         return [
             (

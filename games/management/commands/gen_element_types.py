@@ -118,10 +118,9 @@ class Command(BaseCommand):
                     TsConstant(
                         "YEAR_PICKER_CLASSES", dict[str, str], YEAR_PICKER_CLASSES
                     ),
-                    # Every key typed, so renaming one in Python fails
-                    # `tsc` rather than resolving to `undefined` at runtime:
-                    # a lost "full" would square every cell in both pickers,
-                    # which is the drift the generation exists to stop.
+                    # Typed keys, so a rename fails `tsc` rather than
+                    # resolving to `undefined`: a lost "full" would square
+                    # every day cell in both pickers.
                     TsConstant(
                         "BUTTON_SHAPE_CLASSES", dict[ButtonShape, str], SHAPE_CLASSES
                     ),

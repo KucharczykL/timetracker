@@ -1268,10 +1268,9 @@ class ControlButtonTest(SimpleTestCase):
         self.assertIn("rounded-base", html[html.index("<a") :])
 
     def test_each_shape_names_the_corners_it_states(self):
-        """The table's values, not just its shape. The matrix test below
-        compares what a button emits against this table, so without these
-        literals `SHAPE_CLASSES["full"] = ""` squares every button in the app
-        and stays green."""
+        """The matrix test below compares a button against this table, so the
+        table needs its own assertion: otherwise `SHAPE_CLASSES["full"] = ""`
+        squares every button in the app and stays green."""
         from common.components.primitives import SHAPE_CLASSES
 
         self.assertEqual(
@@ -1302,9 +1301,8 @@ class ControlButtonTest(SimpleTestCase):
                     self.assertEqual(emitted, set(expected.split()))
 
     def test_a_built_row_rounds_its_first_and_last_member_only(self):
-        """`shaped()` is tested on its own, and the last member and the lone
-        member are asserted through the builder. The FIRST of several and a
-        middle one are not, so a wiring bug there passes everything."""
+        """The first of several and a middle one, through the builder — a
+        wiring bug between `shaped()` and the members it shapes."""
         html = str(
             components.ButtonGroup(
                 [
