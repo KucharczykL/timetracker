@@ -25,9 +25,11 @@
 # `ensure-postgres`, which builds an ignored loopback cluster (docs/database.md),
 # so a box with no PostgreSQL 18 fails `make check` no matter how good its Python
 # is. Step 5 provisions it here instead of leaving it to the first `make check`.
-# It is the one non-fatal step — a box that cannot host a cluster (running as
-# root, no matching build published) can still borrow one via DATABASE_URL, and
-# the Python and JS toolchains above remain useful either way.
+# It is the one non-fatal step — a box that cannot host a cluster (no matching
+# build published, or nobody unprivileged to run the postmaster as) can still
+# borrow one via DATABASE_URL, and the Python and JS toolchains above remain
+# useful either way. Running as root is no longer among those reasons: the
+# harness demotes initdb and the postmaster to an unprivileged account.
 #
 # Idempotent: re-running skips whatever already exists.
 set -euo pipefail

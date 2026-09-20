@@ -19,6 +19,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypedDict
 from urllib.parse import urlsplit, urlunsplit
 
 from django.core.exceptions import ImproperlyConfigured
@@ -85,8 +86,129 @@ def executable_name(name: str) -> str:
     return f"{name}.exe" if os.name == "nt" else name
 
 
-def run(args: list[str], *, capture: bool = False) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(args, check=True, text=True, capture_output=capture)
+SERVER_ACCOUNT_VARIABLE = "TIMETRACKER_POSTGRES_USER"
+# Tried in order when make runs as root and nothing named an account.
+SERVER_ACCOUNT_FALLBACKS = ("postgres", "nobody")
+
+
+@dataclass(frozen=True)
+class ServerAccount:
+    """The unprivileged account initdb and the postmaster run under.
+
+    Set only where make itself runs as root, which PostgreSQL refuses outright.
+    Demoting those two server-side programs costs nothing elsewhere: the client
+    tools keep the caller's identity, and on every ordinary machine this stays
+    None and not one subprocess changes.
+    """
+
+    name: str
+    uid: int
+    gid: int
+
+
+class AccountKwargs(TypedDict, total=False):
+    """The subprocess keywords that hand one child to another account."""
+
+    user: int
+    group: int
+    extra_groups: list[int]
+
+
+def account_kwargs(account: ServerAccount | None) -> AccountKwargs:
+    """Those keywords for one account, or none at all where nothing was picked."""
+    if account is None:
+        return {}
+    # extra_groups is spelled out because inheriting root's supplementary groups
+    # would hand the postmaster back a slice of what demoting it just took away.
+    return {"user": account.uid, "group": account.gid, "extra_groups": []}
+
+
+def _named_account(name: str) -> ServerAccount | None:
+    # pwd is POSIX-only and this module runs on Windows too, where the whole
+    # question is moot, so the import sits here rather than at the top.
+    import pwd
+
+    try:
+        entry = pwd.getpwnam(name)
+    except KeyError:
+        return None
+    if entry.pw_uid == 0:
+        return None
+    return ServerAccount(name, entry.pw_uid, entry.pw_gid)
+
+
+def checkout_owner() -> ServerAccount | None:
+    """Whoever owns this checkout, where that is not root."""
+    import pwd
+
+    owner = Path(__file__).parents[1].stat().st_uid
+    if owner == 0:
+        return None
+    try:
+        entry = pwd.getpwuid(owner)
+    except KeyError:
+        return None
+    return ServerAccount(entry.pw_name, entry.pw_uid, entry.pw_gid)
+
+
+def resolve_server_account() -> ServerAccount | None:
+    """Pick who owns the managed cluster when make runs as root.
+
+    An explicitly named account wins. Otherwise the checkout's own owner, so a
+    cluster made here stays reachable to whoever normally works in it; the
+    conventional system accounts are the last resort, for the sandbox where root
+    owns the checkout too.
+    """
+    named = os.environ.get(SERVER_ACCOUNT_VARIABLE, "").strip()
+    if named:
+        account = _named_account(named)
+        if account is None:
+            raise HarnessError(
+                f"{SERVER_ACCOUNT_VARIABLE} names {named!r}, which is not an "
+                "unprivileged account on this machine."
+            )
+        return account
+    if owner := checkout_owner():
+        return owner
+    for candidate in SERVER_ACCOUNT_FALLBACKS:
+        if account := _named_account(candidate):
+            return account
+    return None
+
+
+def open_build_to_account(tools: Tools, cache: Path) -> None:
+    """Let the account read the PostgreSQL build this harness downloaded.
+
+    Only the harness's own copy under .cache is touched: tools already on PATH
+    belong to the machine, and widening their permissions is not this script's
+    business.
+    """
+    root = tools.postgres.parent.parent
+    if root != cache and cache not in root.parents:
+        return
+    for path in [root, *root.rglob("*")]:
+        mode = path.stat().st_mode
+        path.chmod(mode | (0o555 if path.is_dir() or mode & 0o100 else 0o444))
+
+
+def give_to_account(directory: Path, account: ServerAccount) -> None:
+    """Hand one directory over so the postmaster can create its files there."""
+    os.chown(directory, account.uid, account.gid)
+
+
+def run(
+    args: list[str],
+    *,
+    capture: bool = False,
+    account: ServerAccount | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        args,
+        check=True,
+        text=True,
+        capture_output=capture,
+        **account_kwargs(account),
+    )
 
 
 def postgres_major(postgres: Path) -> int:
@@ -247,7 +369,9 @@ def choose_port() -> int:
         return int(probe.getsockname()[1])
 
 
-def initialize_cluster(tools: Tools, data_dir: Path) -> None:
+def initialize_cluster(
+    tools: Tools, data_dir: Path, account: ServerAccount | None = None
+) -> None:
     data_dir.parent.mkdir(parents=True, exist_ok=True)
     run(
         [
@@ -258,15 +382,19 @@ def initialize_cluster(tools: Tools, data_dir: Path) -> None:
             "--locale-provider=builtin",
             "--builtin-locale=C.UTF-8",
             "--auth=trust",
-        ]
+        ],
+        account=account,
     )
 
 
-def cluster_is_running(tools: Tools, data_dir: Path) -> bool:
+def cluster_is_running(
+    tools: Tools, data_dir: Path, account: ServerAccount | None = None
+) -> bool:
     result = subprocess.run(
         [str(tools.pg_ctl), "status", "-D", str(data_dir)],
         check=False,
         capture_output=True,
+        **account_kwargs(account),
     )
     return result.returncode == 0
 
@@ -290,15 +418,20 @@ def server_log_tail(log_file: Path, offset: int) -> str:
     return f" Last lines of {log_file}:\n" + "\n".join(lines[-SERVER_LOG_TAIL_LINES:])
 
 
-def start_cluster(tools: Tools, data_dir: Path, port: int) -> None:
+def start_cluster(
+    tools: Tools, data_dir: Path, port: int, account: ServerAccount | None = None
+) -> None:
     pid_file = data_dir / "postmaster.pid"
-    if pid_file.exists() and not cluster_is_running(tools, data_dir):
+    if pid_file.exists() and not cluster_is_running(tools, data_dir, account):
         pid_file.unlink()
-    if not cluster_is_running(tools, data_dir):
+    if not cluster_is_running(tools, data_dir, account):
         socket_dir = Path(tempfile.gettempdir()) / (
             "timetracker-pg-" + hashlib.sha256(str(data_dir).encode()).hexdigest()[:12]
         )
         socket_dir.mkdir(exist_ok=True)
+        if account is not None:
+            # make made this directory, but the postmaster is what binds in it.
+            give_to_account(socket_dir, account)
         # Without -l, pg_ctl hands the postmaster its own stdout and stderr, and
         # the daemon keeps holding them long after make exits. Under a pipeline
         # those are the write end of the pipe, so the reader never sees EOF and
@@ -317,7 +450,8 @@ def start_cluster(tools: Tools, data_dir: Path, port: int) -> None:
                     f"-h 127.0.0.1 -p {port} -k {socket_dir}",
                     "-w",
                     "start",
-                ]
+                ],
+                account=account,
             )
         except subprocess.CalledProcessError as exc:
             raise HarnessError(
@@ -325,12 +459,15 @@ def start_cluster(tools: Tools, data_dir: Path, port: int) -> None:
             ) from exc
 
 
-def stop_cluster(tools: Tools, data_dir: Path) -> bool:
+def stop_cluster(
+    tools: Tools, data_dir: Path, account: ServerAccount | None = None
+) -> bool:
     status = subprocess.run(
         [str(tools.pg_ctl), "status", "-D", str(data_dir)],
         check=False,
         capture_output=True,
         text=True,
+        **account_kwargs(account),
     )
     if status.returncode == PG_CTL_NOT_RUNNING:
         return False
@@ -349,7 +486,8 @@ def stop_cluster(tools: Tools, data_dir: Path) -> bool:
             "-m",
             "fast",
             "-w",
-        ]
+        ],
+        account=account,
     )
     return True
 
@@ -371,7 +509,8 @@ def stop(cache: Path) -> None:
             "PostgreSQL 18 tools are unavailable; cannot stop the managed "
             "cluster without provisioning them."
         )
-    if stop_cluster(tools, data_dir):
+    account = resolve_server_account() if running_as_root() else None
+    if stop_cluster(tools, data_dir, account):
         print("==> Worktree-managed PostgreSQL stopped.", file=sys.stderr)
     else:
         print(
@@ -401,8 +540,14 @@ def wait_for_ready(tools: Tools, port: int) -> None:
     raise HarnessError("PostgreSQL did not become ready within 6 seconds.")
 
 
-def provision_database(tools: Tools, port: int) -> None:
+def provision_database(
+    tools: Tools, port: int, account: ServerAccount | None = None
+) -> None:
     base = ["-h", "127.0.0.1", "-p", str(port)]
+    if account is not None:
+        # initdb named its superuser after the account it ran as, and these
+        # clients still run as root, whose role the cluster never heard of.
+        base += ["-U", account.name]
     exists = run(
         [
             str(tools.psql),
@@ -516,28 +661,40 @@ def ensure(cache: Path) -> str:
     if url := explicit_database_url():
         print(f"==> Using explicit DATABASE_URL: {redact_url(url)}", file=sys.stderr)
         return url
-    # initdb and the server both refuse to run as root, several steps apart, so
-    # without this the failure arrives as a bare initdb error after a 12 MB
-    # download. Some cloud sandboxes log in as root, where an external server is
-    # the only route — hence the check sits after the DATABASE_URL branch above.
-    if running_as_root():
+    # initdb and the postmaster both refuse to run as root, several steps
+    # apart, so without this the failure arrives as a bare initdb error after a
+    # 12 MB download. Some cloud sandboxes log in as root: there the two
+    # server-side programs are demoted to an unprivileged account rather than
+    # refused. Only they move — the client tools keep the caller's identity,
+    # which is why provision_database has to name the role initdb made.
+    account = resolve_server_account() if running_as_root() else None
+    if running_as_root() and account is None:
         raise HarnessError(
-            "PostgreSQL refuses to run as root, so the managed cluster cannot be "
-            "created here. Run make as an unprivileged user, or set DATABASE_URL "
-            f"to an existing PostgreSQL {REQUIRED_MAJOR} server that satisfies the "
-            "collation contract (see docs/database.md)."
+            "PostgreSQL refuses to run as root, and no unprivileged account was "
+            "found to own the managed cluster. Name one in "
+            f"{SERVER_ACCOUNT_VARIABLE}, run make as an unprivileged user, or "
+            f"set DATABASE_URL to an existing PostgreSQL {REQUIRED_MAJOR} server "
+            "that satisfies the collation contract (see docs/database.md)."
         )
     tools = path_tools() or fallback_tools(cache)
     data_dir = cache / "postgres" / "data"
     port_file = cache / "postgres" / "port"
+    if account is not None:
+        print(
+            f"==> make runs as root, so the cluster runs as {account.name}",
+            file=sys.stderr,
+        )
+        open_build_to_account(tools, cache)
+        data_dir.parent.mkdir(parents=True, exist_ok=True)
+        give_to_account(data_dir.parent, account)
     if not data_dir.exists():
-        initialize_cluster(tools, data_dir)
+        initialize_cluster(tools, data_dir, account)
     port = int(port_file.read_text()) if port_file.exists() else choose_port()
     port_file.parent.mkdir(parents=True, exist_ok=True)
     port_file.write_text(f"{port}\n")
-    start_cluster(tools, data_dir, port)
+    start_cluster(tools, data_dir, port, account)
     wait_for_ready(tools, port)
-    provision_database(tools, port)
+    provision_database(tools, port, account)
     verify_contract(tools, port)
     url = f"postgresql://timetracker@127.0.0.1:{port}/timetracker"
     print(
