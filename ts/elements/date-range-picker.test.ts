@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { DATE_RANGE_CHANGE_EVENT, type DateRangeChangeDetail } from "./date-range-picker.js";
+import { dayVariantClass } from "./date-calendar-core.js";
 
 const formatCalendarMonthYear = vi.hoisted(() => vi.fn(() => "Contract month"));
 const calendarWeekdayLabels = vi.hoisted(() =>
@@ -231,5 +232,17 @@ describe("date-range-picker static-calendar variant", () => {
     const max = picker.querySelector<HTMLInputElement>('[data-date-range-hidden="max"]')!;
     expect(min.value).toBe("2027-03-05");
     expect(max.value).toBe(min.value);
+  });
+});
+
+describe("the day cell's corners", () => {
+  const rounding = (classes: string) =>
+    classes.split(" ").filter((word) => word.startsWith("rounded-"));
+
+  it("gives every day cell exactly one corner set", () => {
+    expect(rounding(dayVariantClass("default"))).toEqual(["rounded-base"]);
+    expect(rounding(dayVariantClass("default", "square"))).toEqual([]);
+    expect(rounding(dayVariantClass("selected", "start"))).toEqual(["rounded-s-base"]);
+    expect(rounding(dayVariantClass("selected", "end"))).toEqual(["rounded-e-base"]);
   });
 });

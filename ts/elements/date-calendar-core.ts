@@ -14,6 +14,7 @@
  * logic differ.
  */
 import {
+  BUTTON_SHAPE_CLASSES,
   CALENDAR_DAY_CLASSES,
   CALENDAR_TRACK_CLASSES,
   CALENDAR_WEEKDAY_CLASS,
@@ -31,9 +32,14 @@ import { addDays, isoFromDate, todayInDisplayZone } from "./date-field-core.js";
 // if/else chain is what dropped rounding from the filled variants.
 export type DayVariant = "default" | "selected" | "adjacent" | "anchor";
 export type TrackVariant = "outlined" | "filled" | "muted";
+export type ButtonShape = "full" | "start" | "end" | "square";
 
-export function dayVariantClass(variant: DayVariant): string {
-  return CALENDAR_DAY_CLASSES[variant] ?? CALENDAR_DAY_CLASSES.default;
+// The variants are generated square, so the corner is stated here. A single
+// date is a run of one and rounds both ends, which is the default.
+export function dayVariantClass(variant: DayVariant, shape: ButtonShape = "full"): string {
+  const look = CALENDAR_DAY_CLASSES[variant] ?? CALENDAR_DAY_CLASSES.default;
+  const corners = BUTTON_SHAPE_CLASSES[shape] ?? "";
+  return corners ? `${look} ${corners}` : look;
 }
 
 export function trackVariantClass(variant: TrackVariant): string {

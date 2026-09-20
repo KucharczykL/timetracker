@@ -45,6 +45,7 @@ import {
   bindCalendarNav,
   bindCalendarPopupHost,
   dayVariantClass,
+  type ButtonShape,
   renderMonthCalendar,
   trackVariantClass,
   todayView,
@@ -282,31 +283,30 @@ function createCalendarState(picker: HTMLElement): CalendarState {
     if (isAnchor && !state.readOnly) variant = "anchor";
     else if (isStart || isEnd) variant = "selected";
     else variant = inViewMonth ? "default" : "adjacent";
-    const classes = [dayVariantClass(variant)];
-    // The track is the one genuinely ADDITIVE layer — it paints the days
-    // between the endpoints, and deliberately squares their corners so the
-    // run reads as one continuous bar rather than separate pills.
+    // A day's place in the run states its corners, exactly as a member's place
+    // in a ButtonGroup does. The one thing the two cannot share is who
+    // decides: a range is defined by data and wraps across week rows, so the
+    // run's ends are not the grid's — :first-child would match the first day
+    // of the month, not of the range. The cell knows its place from the range
+    // state, and nothing else does.
     //
-    // This is the same idea as ButtonGroup — a joined run rounded only at its
-    // outer ends — and now the same mechanism: each cell states its own
-    // corners. What the two cannot share is who decides. A range is defined by
-    // data, and it wraps across week rows, so the run's ends are not the grid's
-    // ends: :first-child would match the first day of the month, not of the
-    // range. The cell knows its place from the range state, and nothing else
-    // does.
+    // An endpoint rounds only the edge facing AWAY from the run, so the band
+    // joins the pill flush. Round both and a notch of background shows above
+    // and below the join: the range then reads as three separate chips instead
+    // of one continuous selection.
     const track = trackBounds();
+    const classes: string[] = [];
+    let shape: ButtonShape = "full";
     if (track !== null && isoString > track[0] && isoString < track[1]) {
-      classes.push("rounded-none", track[2]);
+      shape = "square";
+      // The track is the genuinely additive layer: it paints the days between
+      // the endpoints. Fill, not a corner.
+      classes.push(track[2]);
     } else if (track !== null && track[0] !== track[1]) {
-      // An endpoint that FACES the track squares only the edge it meets, so
-      // the band joins the pill flush. Leaving both corners rounded leaves a
-      // notch of background above and below the join — the range then reads
-      // as three separate chips instead of one continuous selection.
-      // (`rounded-base` + `rounded-e-none` is the documented Tailwind
-      // shorthand-then-longhand pattern, as in `rounded-lg rounded-t-none`.)
-      if (isoString === track[0]) classes.push("rounded-e-none");
-      else if (isoString === track[1]) classes.push("rounded-s-none");
+      if (isoString === track[0]) shape = "start";
+      else if (isoString === track[1]) shape = "end";
     }
+    classes.unshift(dayVariantClass(variant, shape));
     return classes.join(" ");
   }
 

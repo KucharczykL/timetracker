@@ -15,7 +15,7 @@ from common.components.date_range_picker import (
     CALENDAR_TRACK_CLASSES,
     CALENDAR_WEEKDAY_CLASS,
 )
-from common.components.primitives import YEAR_PICKER_CLASSES
+from common.components.primitives import _SHAPE_CLASSES, YEAR_PICKER_CLASSES
 from common.components.ts_codegen import (
     ChoiceVocab,
     TsConstant,
@@ -108,6 +108,10 @@ class Command(BaseCommand):
                     TsConstant(
                         "YEAR_PICKER_CLASSES", dict[str, str], YEAR_PICKER_CLASSES
                     ),
+                    # The shapes the variants above are built without. The
+                    # client states the corner, so it needs the same table
+                    # ControlButton reads.
+                    TsConstant("BUTTON_SHAPE_CLASSES", dict[str, str], _SHAPE_CLASSES),
                 ],
             ),
         }
