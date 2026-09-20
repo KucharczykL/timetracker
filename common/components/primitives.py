@@ -2864,10 +2864,10 @@ def selection_scope(request, caption_key: str, caption: str) -> SelectionScope:
     user = getattr(request, "user", None)
     library = ""
     if user is not None and getattr(user, "is_authenticated", False):
-        #: `library` is the reverse side of UserLibrary.user, so the row
-        #: carries the key and the user carries no `library_id`. A user
-        #: holding no library answers the default, because the relation
-        #: raises an AttributeError of its own.
+        #: The reverse side of UserLibrary.user: the row carries the
+        #: key, and no user carries a `library_id`. A user holding no
+        #: library answers the default, because that relation raises
+        #: an AttributeError of its own.
         held = getattr(user, "library", None)
         library = str(getattr(held, "pk", "") or "")
     return f"{library}:{caption_key or caption}"

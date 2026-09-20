@@ -63,9 +63,9 @@ for the move inverse in #714.
 
 ## Delivered
 
-The reclassification is the first act. "Move all" on the Library page states an
-`all` selection over the review. A selection names a scope and a count, never
-keys, so the runner resolves the scope again at the press.
+The reclassification is the first act. #712 states it from the selection line
+of the session list, narrowed to the review. A selection names a scope and a
+count, never keys, so the runner resolves the scope again at the press.
 
 Tests cover two chunks under one correlation, a token posted twice, a lost row,
 a refused row, a defect, an unreadable filter, a count that moved, a Stop, and

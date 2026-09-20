@@ -10,7 +10,7 @@ import uuid
 from collections.abc import Sequence
 
 from django.contrib.auth.models import User
-from django.db.models import Model, QuerySet
+from django.db.models import QuerySet
 
 from common.components.primitives import Cell
 from common.temporal_presentation import TemporalText
@@ -24,9 +24,9 @@ from games.bulk_actions import (
     Resolution,
     RowOutcome,
 )
+from games.bulk_narrowing import narrowed
 from games.events.idempotency import IdempotencyKey
 from games.filters import (
-    filter_query_context_for_library,
     parse_historical_playtime_filter,
     parse_playthrough_filter,
     parse_session_filter,
@@ -54,30 +54,10 @@ RUN_GONE = "One of the playthroughs is no longer available, so it was left as it
 RECORD_GONE = "One of the records is no longer available, so it was left as it is."
 
 
-def _narrowed[RowT: Model](
-    rows: QuerySet[RowT], library: UserLibrary, filter_json: FilterJson, parse
-) -> QuerySet[RowT]:
-    """The act's base, narrowed by the statement's filter.
-
-    Never `apply_structured_filter`, which drops a filter it cannot
-    read: on a list that widens a page, and here it would widen the
-    act to every row the base holds.
-    """
-    if not filter_json:
-        return rows
-    parsed = parse(filter_json)
-    if parsed is None:
-        return rows
-    return parsed.apply(rows, filter_query_context_for_library(library))
-
-
 def _lost(
     keys: Sequence[uuid.UUID], found: set[uuid.UUID], sentence: str
 ) -> list[Refused]:
-    """Every key the read did not answer.
-
-    Gone since the confirmation, or never this library's.
-    """
+    """Gone since the confirmation, or never this library's."""
     return [Refused(str(key), sentence, lost=True) for key in keys if key not in found]
 
 
@@ -87,7 +67,7 @@ def _lost(
 def session_scope(
     library: UserLibrary, filter_json: FilterJson
 ) -> QuerySet[PlayerSession]:
-    return _narrowed(
+    return narrowed(
         library_sessions(library), library, filter_json, parse_session_filter
     )
 
@@ -165,7 +145,7 @@ def run_scope(library: UserLibrary, filter_json: FilterJson) -> QuerySet[Playthr
     facet of this mode, and a statement carrying it would not compile
     over a queryset no clock reached.
     """
-    return _narrowed(
+    return narrowed(
         runs_with_condition(library), library, filter_json, parse_playthrough_filter
     )
 
@@ -264,7 +244,7 @@ RUN_PREVIEW = (
 def record_scope(
     library: UserLibrary, filter_json: FilterJson
 ) -> QuerySet[HistoricalPlaytime]:
-    return _narrowed(
+    return narrowed(
         library_records(library),
         library,
         filter_json,

@@ -7,9 +7,7 @@ from common.returns import OriginUrl, action_url
 from games.bulk_actions import BULK_ACTIONS, BulkActionName, Cardinality
 
 #: The act's word, in the line's own vocabulary.
-#:
-#: The mapping is here because `common/` declares no act: it states
-#: what it renders, and this layer says which of its words an act is.
+#: `common/` declares no act, so this layer maps.
 SPELLED: Mapping[Cardinality, SelectionCardinality] = {
     Cardinality.ONE: "one",
     Cardinality.MANY: "many",

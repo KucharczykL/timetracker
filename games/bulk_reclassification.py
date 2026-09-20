@@ -15,6 +15,7 @@ from games.bulk_actions import (
     Resolution,
     RowOutcome,
 )
+from games.bulk_narrowing import narrowed
 from games.commands.session_reclassification import statement_from_session
 from games.events.idempotency import IdempotencyKey
 from games.filters import parse_session_filter
@@ -65,17 +66,10 @@ def reviewable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
 
 
 def review_scope(library: UserLibrary, filter_json: str) -> QuerySet[PlayerSession]:
-    """The review, narrowed by the statement's filter.
-
-    Never `apply_structured_filter`, which drops a filter it cannot
-    read: on a list that widens a page, and here it would widen the
-    act to every row the base holds.
-    """
-    rows = reviewable_sessions(library)
-    parsed = parse_session_filter(filter_json) if filter_json else None
-    if parsed is None:
-        return rows
-    return rows.filter(parsed.to_q())
+    """The review, narrowed by the statement's filter."""
+    return narrowed(
+        reviewable_sessions(library), library, filter_json, parse_session_filter
+    )
 
 
 def review_resolution(
