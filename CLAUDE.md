@@ -508,8 +508,11 @@ id, so a batch spanning chunks stays one batch. A chunk is the rows one request
 acts on inside `CHUNK_BUDGET` and is no transaction -- each row is its own
 dispatch, keyed from the token and the row, so a token posted twice acts once.
 A refusal names its row and the next row runs, a row gone since the
-confirmation is counted lost, a defect ends the batch, and the rows done stay
-done and keep their Undo. `<continuing-batch>` posts the waypoint's form on
+confirmation is counted lost and one refused on its merits counted apart from
+it, a defect ends the batch, and the rows done stay done and keep their Undo.
+Every row left alone is named in the log, the ones a Stop or a defect never
+reached included; the counts ride the progress form, so a waypoint says what
+has been left alone so far. `<continuing-batch>` posts the waypoint's form on
 connect, so only Stop is pressed. The Undo reads the act's name out of the
 batch's `source_metadata` and its rows out of `batch_aggregate_ids` in
 `games/reads/events.py`, one of the two reads that answer from events rather

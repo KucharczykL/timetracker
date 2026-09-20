@@ -68,14 +68,19 @@ a Stop. With scripting the page continues by itself; without it, a person
 presses Continue.
 
 A refusal names its row and the next row runs. A row gone since the
-confirmation is counted lost. A row a command finds already in the state it
-would state is counted apart from one the act moved, because a count of what
-was done must not claim work nobody did. A defect ends the batch, the rows
+confirmation is counted lost, and a row refused on its merits is counted apart
+from it: one is the person's doing and the other is not. A row a command finds
+already in the state it would state is counted apart again, because a count of
+what was done must not claim work nobody did. A defect ends the batch, the rows
 already done stay done, and the answer says how many.
 
-The answer states sentences and the log states keys. Every row left alone is
-named there under the batch's identity, a row the resolve refused as surely as
-one the command refused, because the person reading a toast asks how many and
+The answer states counts and sentences; the log states keys. The counts ride
+the progress form, so the waypoint says what has been left alone so far rather
+than holding it to the end, and the rows are counted apart from the reasons,
+because one sentence may stand over many rows. Every row left alone is named in
+the log under the batch's identity -- a row the resolve refused, a row the
+command refused, and a row no dispatch reached at all, because a Stop or a
+defect ended the batch in front of it. The person reading a toast asks how many;
 whoever reads the log afterwards asks which.
 
 ## The batch
