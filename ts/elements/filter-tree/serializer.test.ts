@@ -584,11 +584,9 @@ describe("aggregate scope malformations — backend parity (#151 review)", () =>
   });
 });
 
-// The builder read a filter, dropped every key its registry did not name, and
-// Apply wrote the filter back without them. `search` was the one key in that
-// position: every filter declares it, the backend applies it, and the server's
-// metadata excluded it — so a filter carrying a search silently widened
-// (#1166). The client was always able to carry it; the registry now names it.
+// The builder dropped every key its registry did not name, so Apply wrote the
+// filter back without it and the filter silently widened. The client could
+// always carry a search; the server's metadata excluded it.
 describe("a search survives a builder round trip (#1166)", () => {
   const modes = [
     "EQUALS",
@@ -599,10 +597,8 @@ describe("a search survives a builder round trip (#1166)", () => {
     "NOT_MATCHES_REGEX",
   ];
 
-  // A read-then-write states the builder's canonical shape, which wraps a
-  // top-level criterion in its connective — every field, not just this one. So
-  // what is pinned is that the search is still there, and that a second pass
-  // moves nothing.
+  // The canonical shape wraps a top-level criterion in its connective, for
+  // every field. Pinned: the search survives, and a second pass moves nothing.
   it.each(modes)("carries a %s search back out", (modifier) => {
     const criterion = { value: "zelda", modifier };
     const once = serialize(deserialize({ search: criterion }, "game", registry));
@@ -626,10 +622,8 @@ describe("a search survives a builder round trip (#1166)", () => {
   });
 
   it("carries a search inside an AND group", () => {
-    // Every node applies its own search: to_q ends with `q &= self._extra_q()`
-    // and _apply_operators composes each sub-filter with sub.to_q(), so a
-    // nested search is this node's free-text constraint, composed by the
-    // operator that holds it.
+    // Every node applies its own search: to_q ends with _extra_q, and
+    // _apply_operators composes each sub-filter with sub.to_q().
     const filter = {
       AND: [
         { search: { value: "zelda", modifier: "INCLUDES" } },

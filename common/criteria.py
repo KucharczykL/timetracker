@@ -2844,14 +2844,13 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
 
     One ``FieldMeta`` per filterable field: leaf criteria and aggregates as value
     fields (``kind`` from the criterion type), each cross-entity sub-filter as a
-    ``kind="relation"`` entry naming its target. ``search`` is among them: it is a
-    string leaf that reads several columns instead of one, applied in each
-    filter's ``_extra_q`` via ``search_q``, and it names no column of its own, so
-    it states no choices, no ``search_url``, and is never null. Its six modes are
-    then ``Modifier.for_strings()`` with the null pair dropped, which is exactly
-    what ``search_q`` admits. Non-recursive: a relation entry names its target
-    only; callers descend by calling ``field_metadata`` on the target filter
-    class, which bounds the ``GameFilter`` ↔ ``SessionFilter`` relation cycle.
+    ``kind="relation"`` entry naming its target. ``search`` is among them — a
+    string leaf reading several columns, applied in ``_extra_q``. It names no
+    column, so it states no choices, no ``search_url``, and is never null, which
+    leaves ``for_strings()`` less the null pair: what ``search_q`` admits.
+    Non-recursive: a relation entry names its target only; callers descend by
+    calling ``field_metadata`` on the target filter class, which bounds the
+    ``GameFilter`` ↔ ``SessionFilter`` relation cycle.
     """
     cached = _FIELD_METADATA_CACHE.get(filter_cls)
     if cached is not None:
@@ -3259,13 +3258,13 @@ def days_touched_handler(lower_field: str, upper_field: str) -> FieldHandler:
 
 
 class SearchLookup(NamedTuple):
-    """One mode's ORM lookup, and whether its disjunction is negated."""
+    """One mode's lookup, and its negation flag."""
 
     lookup: ORMLookup
     negated: bool
 
 
-#: The lookup each match mode reads, keyed by the mode.
+#: Each match mode's lookup, keyed by mode.
 #:
 #: A negative mode builds its positive partner's OR and negates the whole of
 #: it, because "excludes Zelda" means no column holds it. The exact pair alone
@@ -3284,19 +3283,14 @@ SEARCH_LOOKUPS: dict[Modifier, SearchLookup] = {
 
 
 def search_q(criterion: StringCriterion, *field_names: str) -> Q:
-    """Free-text OR across several columns, in the mode the criterion states.
+    """Free-text OR across columns, in the stated mode.
 
-    Each column is OR'd under the mode's lookup and a negative mode negates the
-    whole disjunction. An empty value contributes no constraint.
-    ``field_names`` must be non-empty.
-
-    ``IS_NULL`` and ``NOT_NULL`` are refused: ``search`` reads several columns
-    at once, and "is null" across an OR of them states nothing a person could
-    mean.
+    An empty value adds no constraint. ``field_names`` must be non-empty.
+    ``IS_NULL`` and ``NOT_NULL`` are refused: "is null" across an OR of several
+    columns states nothing a person could mean.
 
     The mode is read before the value, because a presence modifier carries no
-    value: checking the value first would answer every refused mode as "no
-    constraint" and never reach this refusal at all.
+    value: checking the value first answers a refused mode as "no constraint".
     """
     entry = SEARCH_LOOKUPS.get(criterion.modifier)
     if entry is None:

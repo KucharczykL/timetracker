@@ -5426,16 +5426,13 @@ class TestSearchQHelper:
         ) == ~(Q(a__icontains="x") | Q(b__icontains="x"))
 
     def test_is_matches_a_whole_value_in_any_column(self):
-        # The exact pair reads case-insensitively: every other mode ignores
-        # case, and a field that matches "zelda" for includes and refuses it
-        # for is reads as broken.
+        # The exact pair reads without case; every other mode does.
         assert search_q(
             StringCriterion(value="x", modifier=Modifier.EQUALS), "a", "b"
         ) == (Q(a__iexact="x") | Q(b__iexact="x"))
 
     def test_is_not_negates_the_whole_disjunction(self):
-        # ~Q(a) | ~Q(b) is true for nearly every row; "is not x" means no
-        # column holds x, so the negation wraps the OR.
+        # "is not x" means no column holds x, so negation wraps the OR.
         assert search_q(
             StringCriterion(value="x", modifier=Modifier.NOT_EQUALS), "a", "b"
         ) == ~(Q(a__iexact="x") | Q(b__iexact="x"))
@@ -5466,9 +5463,10 @@ class TestSearchQHelper:
 
     @pytest.mark.parametrize("value", ["", "x"])
     def test_is_null_is_refused(self, value):
-        # The empty value is the shape a person produces: a presence modifier
-        # carries none, so a value-first guard would answer "no constraint"
-        # and never reach the refusal.
+        # An empty value is what people send.
+        #
+        # A presence modifier carries none, so a value-first guard answers "no
+        # constraint" and never reaches the refusal.
         for modifier in (Modifier.IS_NULL, Modifier.NOT_NULL):
             with pytest.raises(FilterError):
                 search_q(StringCriterion(value=value, modifier=modifier), "a", "b")
@@ -5498,8 +5496,7 @@ class TestSearchQHelper:
 
     @pytest.mark.django_db
     def test_a_pattern_postgresql_refuses_raises_at_parse(self):
-        # from_json validates the regex before any query runs, so search_q
-        # never sees a pattern the database would refuse.
+        # from_json validates before any query runs.
         with pytest.raises(FilterError):
             StringCriterion.from_json({"value": "x[", "modifier": "MATCHES_REGEX"})
 
@@ -5542,8 +5539,7 @@ class TestPerFilterSearchColumns:
 
     @pytest.mark.parametrize("filter_cls,columns", list(SEARCH_COLUMNS.items()))
     def test_search_spans_expected_columns(self, filter_cls, columns):
-        # The mode is stated, because which columns a search reads is this
-        # test's subject and how it reads them is TestSearchQHelper's.
+        # The mode is stated; which columns it reads is the subject.
         produced = filter_cls(
             search=StringCriterion(value="needle", modifier=Modifier.INCLUDES)
         ).to_q()
@@ -5639,10 +5635,8 @@ class TestFieldMetadata:
     @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
     def test_does_not_raise_and_holds_search(self, filter_cls):
         names = {entry["name"] for entry in field_metadata(filter_cls)}
-        # search is a declared StringCriterion on every filter and a pickable
-        # field like any other string leaf. It was excluded here, and because
-        # the builder's client registry reads this metadata and keeps only the
-        # keys it names, a filter that carried a search lost it on Apply (#1166).
+        # Excluding it here lost a filter's search on Apply: the builder's
+        # client registry reads this metadata and keeps only what it names.
         assert "search" in {f.name for f in dataclasses.fields(filter_cls)}
         assert "search" in names
 
@@ -5651,9 +5645,8 @@ class TestFieldMetadata:
         entry = self._by_name(filter_cls)["search"]
         assert entry["kind"] == "string"
         assert entry["label"] == "Search"
-        # search names no single column, so it states no choices and no
-        # search_url, and it is never null: the six modes search_q admits are
-        # exactly for_strings() with the null pair dropped.
+        # No column: no choices, no search_url, never null — which leaves
+        # for_strings() less the null pair, what search_q admits.
         assert entry["nullable"] is False
         assert entry["choices"] == []
         assert entry["search_url"] == ""

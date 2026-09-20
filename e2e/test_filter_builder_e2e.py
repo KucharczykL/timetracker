@@ -68,7 +68,7 @@ def _encode_filter(filter_dict: dict) -> str:
 
 
 def _filter_from_url(url: str) -> dict:
-    """The ?filter= JSON a navigation carries, decoded."""
+    """The ?filter= JSON a navigation carries."""
     params = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
     return json.loads(params.get("filter", ["{}"])[0])
 
@@ -240,12 +240,12 @@ def test_prefill_apply_roundtrip_carries_filter(
         e2e_library, "PlayGame", status=PlayerGameStatus.PLAYED, platform=platform
     )
 
-    # The other tests' status filter, with a search beside it. The search is
-    # here because the builder's client registry keeps only the fields its
-    # metadata names, and a filter that carried a search lost it on Apply
-    # (#1166). "one" is in "DoneGame" and not in "PlayGame", so both legs
-    # narrow to the same row and the visibility assertions below hold either
-    # way — the URL assertion is what catches a dropped search.
+    # A search rides beside the status leg.
+    #
+    # The client registry keeps only the fields its metadata names, so a filter
+    # that carried a search lost it on Apply. "one" is in "DoneGame" and not in
+    # "PlayGame", so both legs narrow to the same row and the visibility
+    # assertions below hold either way: the URL assertion catches the loss.
     filter_json = {
         "status": {"modifier": "INCLUDES", "value": ["completed"]},
         "search": {"value": "one", "modifier": "INCLUDES"},
@@ -271,7 +271,7 @@ def test_prefill_apply_roundtrip_carries_filter(
     assert "?filter=" in current_url, (
         f"Expected Apply to carry ?filter= but got: {current_url}"
     )
-    # The builder normalises two top-level leaves into an AND, so read the legs.
+    # Two top-level leaves normalise into an AND.
     applied = _filter_from_url(current_url)
     legs = applied.get("AND", [applied])
     assert any(

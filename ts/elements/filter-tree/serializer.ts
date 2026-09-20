@@ -110,10 +110,8 @@ function deserializeNode(json: Json, modelKey: string, registry: MetadataRegistr
         baseChildren.push(relationNode(key, value, meta.relations[key], registry, depth));
       }
     }
-    // else: dropped. Not backend parity — from_json refuses a key it does not
-    // know as a FilterError (criteria.py) rather than dropping it, so a key the
-    // registry lacks but the backend knows is data loss, not agreement. `search`
-    // was the one such key (#1166); the registry names it now.
+    // else: dropped. Not backend parity — from_json refuses an unknown key as
+    // a FilterError, so a key the registry lacks but the backend knows is loss.
   }
   const andSubfilters = asArray(json.AND);
   checkBreadth(andSubfilters);
