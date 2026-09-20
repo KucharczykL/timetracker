@@ -14,6 +14,11 @@ from django.db import connection, transaction
 from django.db.models import Model
 
 from common.keyset import keyset_pages
+from games.bulk_reclassification import (
+    RECLASSIFY,
+    REVIEW_THRESHOLD_HOURS,
+    reviewable_sessions,
+)
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
     RecordHistoricalPlaytime,
@@ -333,6 +338,78 @@ def run_record_command_scenario(
         samples.append(monotonic() - started)
     analyze_tables(RECORD_TABLES)
     return summarize(samples)
+
+
+def _written_down(library: UserLibrary, *, actor: User, run: Playthrough) -> None:
+    """One Duration-only session long enough for the review to offer it."""
+    dispatch(
+        CreateSession(
+            playthrough_id=run.pk,
+            timing=DurationOnlyTiming(
+                day=date(2024, 6, 1),
+                duration=timedelta(hours=REVIEW_THRESHOLD_HOURS),
+            ),
+        ),
+        actor=actor,
+        library=library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+
+
+def _rows_to_convert(
+    library: UserLibrary, *, actor: User, count: int
+) -> list[PlayerSession]:
+    """Write the batch's own rows, then read back what the act offers.
+
+    Its own rows, because converting the seed's would take them out of
+    the population the read scenario measures. Read back rather than
+    kept, because the statement a conversion makes is built from
+    columns the database generates.
+
+    The act's own scope answers, newest first: a key sorts by the
+    instant it was minted, so the rows just written are the ones it
+    hands back.
+    """
+    cycle = _cycling(library, seeded_runs(library))
+    for run in islice(cycle, count):
+        _written_down(library, actor=actor, run=run)
+    return list(
+        reviewable_sessions(library)
+        .select_related("playthrough__player_game__game")
+        .order_by("-id")[:count]
+    )
+
+
+def run_bulk_command_scenario(
+    library: UserLibrary, *, actor: User, sessions: int, warmup: int
+) -> Timings:
+    """Convert `sessions` written-down rows the way the runner does.
+
+    The runner's own loop and not its view: one dispatch a row, keyed
+    from the batch's token and the row, every append under the one
+    correlation id the token states. The per-row number is what a chunk
+    budget is spent against, so it is the number worth having.
+
+    ANALYZE last, so the reads that follow plan right.
+    """
+    rows = iter(_rows_to_convert(library, actor=actor, count=sessions + warmup))
+    #: The token is the batch's correlation id, as the runner mints it.
+    correlation_id = uuid.uuid7()
+    for row in islice(rows, warmup):
+        _convert(actor, row, correlation_id)
+    samples: list[Seconds] = []
+    for row in islice(rows, sessions):
+        started = monotonic()
+        _convert(actor, row, correlation_id)
+        samples.append(monotonic() - started)
+    analyze_tables(RECORD_TABLES)
+    return summarize(samples)
+
+
+def _convert(actor: User, row: PlayerSession, correlation_id: uuid.UUID) -> None:
+    RECLASSIFY.run(
+        actor, row, f"{RECLASSIFY.name}-{correlation_id}-{row.pk}", correlation_id
+    )
 
 
 def run_read_scenario(

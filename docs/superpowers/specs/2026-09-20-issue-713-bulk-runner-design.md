@@ -94,7 +94,11 @@ Tests cover two chunks under one correlation, a token posted twice, a row lost,
 a row refused, a defect, a filter that cannot be parsed, a count that moved,
 and a batch whose Undo reads past the record events to the sessions.
 `make bench` times 600 sessions through the runner against the per-command
-budget.
+budget. Measured on the 2026-09-20 seed: p50 6.3 ms, p95 7.2 ms, max 10.9 ms,
+against the 100 ms a command is given. It is the most expensive of the four
+commands the bench times, because one row is two events. At that cost a
+three-second chunk holds about four hundred rows, and the replay of the batch
+it wrote reconciles clean. The recording is `docs/event-benchmarks.md`.
 
 > This spec is over the 200 to 500 word band. It holds six rules the code
 > keeps: what an action declares and why it names an aggregate type, how one

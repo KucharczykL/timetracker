@@ -20,6 +20,8 @@ from games.models import UserLibrary
 DEFAULT_SEED_EVENTS = 100_000
 #: An import's worth of records.
 IMPORT_SHAPE_RECORDS = 600
+#: A batch's worth of rows, the same size: one act on a library.
+BATCH_SHAPE_SESSIONS = 600
 
 #: Measured; see docs/event-benchmarks.md.
 SECONDS_PER_SEEDED_EVENT = 35 / 100_000
@@ -55,6 +57,16 @@ class Command(BaseCommand):
                 "are seeded per game, so a count not divisible by three seeds "
                 "one or two events fewer. 0 seeds nothing and measures the "
                 "commands alone."
+            ),
+        )
+        parser.add_argument(
+            "--bulk",
+            type=int,
+            default=BATCH_SHAPE_SESSIONS,
+            help=(
+                f"Rows in the timed batch (default {BATCH_SHAPE_SESSIONS}). Each "
+                "is one written-down session, converted the way the runner "
+                "converts one."
             ),
         )
         parser.add_argument("--library", help="Check this library instead; read-only.")
@@ -95,6 +107,7 @@ class Command(BaseCommand):
                 iterations=options["iterations"],
                 warmup=options["warmup"],
                 records=IMPORT_SHAPE_RECORDS,
+                bulk=options["bulk"],
                 #: --json owns stdout; the notice goes aside.
                 aside=options["json"],
             )
@@ -104,6 +117,7 @@ class Command(BaseCommand):
                 iterations=options["iterations"],
                 warmup=options["warmup"],
                 records=IMPORT_SHAPE_RECORDS,
+                bulk=options["bulk"],
                 library=library,
                 keep=options["keep"],
                 count_replay=options["count_replay"],
@@ -149,7 +163,14 @@ class Command(BaseCommand):
         )
 
     def _write_estimate(
-        self, *, seed: int, iterations: int, warmup: int, records: int, aside: bool
+        self,
+        *,
+        seed: int,
+        iterations: int,
+        warmup: int,
+        records: int,
+        bulk: int,
+        aside: bool,
     ) -> None:
         estimate = (
             seed
@@ -158,14 +179,15 @@ class Command(BaseCommand):
                 + SECONDS_PER_REBUILT_EVENT
                 + SECONDS_PER_PURGED_EVENT
             )
-            + (records + warmup) * SECONDS_PER_RECORD_DISPATCH
+            + (records + bulk * 2 + 2 * warmup) * SECONDS_PER_RECORD_DISPATCH
         )
         #: Three events a game: a third of the rows.
         catalog_rows = seed // 3 + 2 * iterations + warmup
         notice = (
             f"About to create a scratch user, {seed} events, "
-            f"{catalog_rows} catalog rows and {records} historical playtime "
-            f"records, then remove them. Estimate: {estimate / 60:.1f} minute(s)."
+            f"{catalog_rows} catalog rows, {records} historical playtime "
+            f"records and a batch of {bulk} conversions, then remove them. "
+            f"Estimate: {estimate / 60:.1f} minute(s)."
         )
         if aside:
             #: Unstyled: a notice, not a failure.
@@ -191,6 +213,8 @@ class Command(BaseCommand):
             self._write_timings("Session command", report.session_command)
         if report.record_command is not None:
             self._write_timings("Record command", report.record_command)
+        if report.bulk_command is not None:
+            self._write_timings("Bulk command", report.bulk_command)
         for read in report.reads:
             self._write_timings(f"Read {read.name}", read.timings)
         if report.amplification is not None:

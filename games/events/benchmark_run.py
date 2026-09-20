@@ -11,6 +11,7 @@ from games.events.benchmark import (
     REPORT_SCHEMA,
     BenchmarkReport,
     RebuildDiffNotEmpty,
+    bulk_command_budget,
     command_budget,
     environment,
     read_budget,
@@ -21,6 +22,7 @@ from games.events.benchmark import (
 from games.events.benchmark_workload import (
     purge_scratch_user,
     run_amplification_scenario,
+    run_bulk_command_scenario,
     run_command_scenario,
     run_read_scenario,
     run_rebuild_scenario,
@@ -44,6 +46,7 @@ def run_benchmark(
     iterations: int,
     warmup: int,
     records: int,
+    bulk: int,
     library: UserLibrary | None = None,
     keep: bool = False,
     count_replay: bool = True,
@@ -75,6 +78,7 @@ def run_benchmark(
             iterations=iterations,
             warmup=warmup,
             records=records,
+            bulk=bulk,
             count_replay=count_replay,
         )
         teardown = None if keep else purge_scratch_user(username)
@@ -96,6 +100,7 @@ def _measure_scratch(
     iterations: int,
     warmup: int,
     records: int,
+    bulk: int,
     count_replay: bool,
 ) -> BenchmarkReport:
     library = user.library
@@ -124,6 +129,9 @@ def _measure_scratch(
         records=records,
         warmup=warmup,
     )
+    bulk_command = run_bulk_command_scenario(
+        library, actor=user, sessions=bulk, warmup=warmup
+    )
     reads = run_read_scenario(library, iterations=iterations, warmup=warmup)
     rebuild, replay = run_rebuild_scenario(
         library, mode=RebuildMode.REBUILD, count_replay=count_replay
@@ -137,6 +145,7 @@ def _measure_scratch(
         command=command,
         session_command=session_command,
         record_command=record_command,
+        bulk_command=bulk_command,
         reads=reads,
         amplification=amplification,
         replay=replay,
@@ -146,6 +155,7 @@ def _measure_scratch(
             command_budget(command),
             session_command_budget(session_command),
             record_command_budget(record_command),
+            bulk_command_budget(bulk_command),
             *(read_budget(read, on_real_library=False) for read in reads),
             rebuild_budget(rebuild),
         ),
@@ -168,6 +178,7 @@ def _measure_existing(
         command=None,
         session_command=None,
         record_command=None,
+        bulk_command=None,
         reads=reads,
         amplification=None,
         replay=replay,
