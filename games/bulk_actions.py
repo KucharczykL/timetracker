@@ -165,5 +165,5 @@ def bulk_action(name: BulkActionName) -> BulkAction[Any] | None:
 BULK_ACTIONS: Mapping[BulkActionName, BulkAction[Any]] = MappingProxyType(_TABLE)
 
 
-#: Imported last: each module declares one act.
-from games import bulk_reclassification  # noqa: F401
+#: Imported last: each module declares its acts.
+from games import bulk_reclassification, bulk_removal  # noqa: F401
