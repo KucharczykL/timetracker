@@ -1176,7 +1176,7 @@ def test_session_patch_404s_a_run_another_library_holds(auth_client, user):
 
 @pytest.mark.django_db(transaction=True)
 def test_session_patch_404s_a_move_onto_an_untracked_game(auth_client, user):
-    """The move lands and the read refuses the row: absence, not a defect."""
+    """The move lands, the read refuses it."""
     _prague_calendar(user)
     session = _row()
     elsewhere = _tracked_run(name="Elsewhere")

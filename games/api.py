@@ -903,9 +903,8 @@ def partial_update_session(request, session_id: UUIDv7, payload: SessionUpdate):
             )
     except CommandFailed as failure:
         _answered_or_http(failure)
-    #: Read before the message, as the POST does: a move onto a run
-    #: at an untracked game leaves a row this scope refuses, and a
-    #: toast queued ahead of that read would deny the status.
+    #: Read before the message: this scope reads a catalog
+    #: mark no command reads, so a move can lose the row.
     updated = owned_or_404(readable_sessions(library), library, pk=session.pk)
     messages.success(request, "Session updated.")
     return updated
