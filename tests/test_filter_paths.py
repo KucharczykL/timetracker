@@ -109,9 +109,14 @@ def test_every_widget_path_resolves_to_its_kind(case: _BarCase) -> None:
         )
     )
     widgets = _collect_widgets(html)
-    assert len(widgets) == len(QUICK_FACETS[case.mode]), (
+    # One per facet, plus the leading field. It is no facet, but it is a
+    # filter widget the bar's serializer reads the same generic way.
+    assert [widget.path for widget in widgets].count(["search"]) == 1, (
+        f"{case.mode} bar rendered no search field"
+    )
+    assert len(widgets) == len(QUICK_FACETS[case.mode]) + 1, (
         f"{case.mode} bar rendered {len(widgets)} filter widgets, expected one "
-        f"per facet (a forgotten path= silently drops a widget)"
+        f"per facet plus the search field (a forgotten path= silently drops one)"
     )
     for widget in widgets:
         assert len(widget.path) == 1, (
@@ -132,7 +137,9 @@ def test_the_run_bar_round_trips_completed() -> None:
     parsed = parse_filter_dict(filter_to_json(filter_object))
 
     assert is_quick_editable(
-        parsed, {facet.field for facet in QUICK_FACETS["playthroughs"]}
+        parsed,
+        {facet.field for facet in QUICK_FACETS["playthroughs"]},
+        filter_cls=PlaythroughFilter,
     )
 
 

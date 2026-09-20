@@ -20,7 +20,8 @@
       "fields": [
         "device",
         "note",
-        "day"
+        "day",
+        "search"
       ],
       "relations": {
         "game_filter": "game"
@@ -620,6 +621,38 @@
       "model": "game",
       "filter": {
         "session_filter": {}
+      }
+    },
+    {
+      "description": "a top-level search",
+      "model": "game",
+      "filter": {
+        "search": {
+          "value": "zelda",
+          "modifier": "INCLUDES"
+        }
+      }
+    },
+    {
+      "description": "a search inside an OR, beside one in a relation",
+      "model": "game",
+      "filter": {
+        "OR": [
+          {
+            "search": {
+              "value": "zelda",
+              "modifier": "EXCLUDES"
+            }
+          },
+          {
+            "session_filter": {
+              "search": {
+                "value": "handheld",
+                "modifier": "MATCHES_REGEX"
+              }
+            }
+          }
+        ]
       }
     }
   ]

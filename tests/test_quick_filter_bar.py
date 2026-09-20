@@ -24,7 +24,12 @@ from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
-from games.filters import MODE_PARSERS, filter_for_model
+from games.filters import (
+    MODE_PARSERS,
+    GameFilter,
+    PurchaseFilter,
+    filter_for_model,
+)
 from games.views.filtering import BUILDER_MODES, builder_url_for
 
 _GAME_FACETS = {"status", "platform"}
@@ -42,22 +47,26 @@ class IsQuickEditableTest(SimpleTestCase):
     facet fields with dict (criterion) values."""
 
     def test_empty_filter_is_editable(self):
-        self.assertTrue(is_quick_editable({}, _GAME_FACETS))
+        self.assertTrue(is_quick_editable({}, _GAME_FACETS, filter_cls=GameFilter))
 
     def test_single_facet_is_editable(self):
         parsed = {"status": {"value": [{"id": "f", "label": "Finished"}]}}
-        self.assertTrue(is_quick_editable(parsed, _GAME_FACETS))
+        self.assertTrue(is_quick_editable(parsed, _GAME_FACETS, filter_cls=GameFilter))
 
     def test_all_facets_are_editable(self):
         parsed = {
             "status": {"value": [{"id": "f", "label": "Finished"}]},
             "platform": {"value": [{"id": "1", "label": "PC"}]},
         }
-        self.assertTrue(is_quick_editable(parsed, _GAME_FACETS))
+        self.assertTrue(is_quick_editable(parsed, _GAME_FACETS, filter_cls=GameFilter))
 
     def test_presence_modifier_facet_is_editable(self):
         self.assertTrue(
-            is_quick_editable({"platform": {"modifier": "IS_NULL"}}, _GAME_FACETS)
+            is_quick_editable(
+                {"platform": {"modifier": "IS_NULL"}},
+                _GAME_FACETS,
+                filter_cls=GameFilter,
+            )
         )
 
     def test_operator_keys_degrade(self):
@@ -65,28 +74,180 @@ class IsQuickEditableTest(SimpleTestCase):
         for operator in ("AND", "OR", "NOT"):
             with self.subTest(operator=operator):
                 self.assertFalse(
-                    is_quick_editable({operator: [criterion]}, _GAME_FACETS)
+                    is_quick_editable(
+                        {operator: [criterion]}, _GAME_FACETS, filter_cls=GameFilter
+                    )
                 )
 
     def test_relation_key_degrades(self):
         parsed = {"session_filter": {"device": {"value": [{"id": "1", "label": "PC"}]}}}
-        self.assertFalse(is_quick_editable(parsed, _GAME_FACETS))
+        self.assertFalse(is_quick_editable(parsed, _GAME_FACETS, filter_cls=GameFilter))
 
     def test_field_comparisons_degrade(self):
         parsed = {"field_comparisons": [{"left": "created_at", "right": "updated_at"}]}
-        self.assertFalse(is_quick_editable(parsed, _GAME_FACETS))
+        self.assertFalse(is_quick_editable(parsed, _GAME_FACETS, filter_cls=GameFilter))
 
-    def test_search_degrades(self):
+    def test_a_search_in_one_of_the_six_modes_is_editable(self):
+        # Six modes the bar can edit without rewriting them.
+        for modifier in (
+            "INCLUDES",
+            "EXCLUDES",
+            "EQUALS",
+            "NOT_EQUALS",
+            "MATCHES_REGEX",
+            "NOT_MATCHES_REGEX",
+        ):
+            with self.subTest(modifier=modifier):
+                self.assertTrue(
+                    is_quick_editable(
+                        {"search": {"value": "mario", "modifier": modifier}},
+                        _GAME_FACETS,
+                        filter_cls=GameFilter,
+                    )
+                )
+
+    def test_a_search_the_field_cannot_state_degrades(self):
+        # The bar shows no control for a filter it would rewrite.
+        for modifier in ("IS_NULL", "NOT_NULL", "GREATER_THAN"):
+            with self.subTest(modifier=modifier):
+                self.assertFalse(
+                    is_quick_editable(
+                        {"search": {"value": "mario", "modifier": modifier}},
+                        _GAME_FACETS,
+                        filter_cls=GameFilter,
+                    )
+                )
+
+    def test_a_search_that_is_not_a_criterion_degrades(self):
+        self.assertFalse(
+            is_quick_editable({"search": "mario"}, _GAME_FACETS, filter_cls=GameFilter)
+        )
+
+    def test_a_search_whose_value_is_not_text_degrades(self):
+        # The value goes into a text box.
+        #
+        # A dict, list or number reaches it as a repr, and Apply writes that
+        # back as the filter.
+        for value in ({"id": "mario"}, ["mario"], 7, True):
+            with self.subTest(value=value):
+                self.assertFalse(
+                    is_quick_editable(
+                        {"search": {"value": value, "modifier": "INCLUDES"}},
+                        _GAME_FACETS,
+                        filter_cls=GameFilter,
+                    )
+                )
+
+    def test_a_search_that_names_no_mode_is_editable_as_exact(self):
+        # A stored exact search carries no modifier.
+        #
+        # to_json drops a default. Reading a fresh field's mode there would show
+        # *includes* over a filter the server applies as *is*, and Apply would
+        # widen it.
+        parsed = {"search": {"value": "mario"}}
+        self.assertTrue(is_quick_editable(parsed, _GAME_FACETS, filter_cls=GameFilter))
+        html = str(QuickFilterBar(mode="games", filter_json=json.dumps(parsed)))
+        self.assertIn('data-modifier="EQUALS"', html)
+        self.assertIn('aria-label="Match mode: is"', html)
+
+    def test_a_bar_with_no_search_opens_on_includes(self):
+        # A fresh field's mode is not the criterion's.
+        #
+        # It is the one people reach for; the criterion's default is read only
+        # where a search is already stated.
+        html = str(QuickFilterBar(mode="games", filter_json=""))
+        self.assertIn('data-modifier="INCLUDES"', html)
+        self.assertIn('aria-label="Match mode: includes"', html)
+
+    def test_a_string_facet_in_a_mode_its_widget_lacks_degrades(self):
+        # No string column here can be NULL.
+        #
+        # So no string widget offers the presence pair: "is null" matches no
+        # row, and "is empty" tests the empty string. A stored one would render
+        # as *is* and Apply would write that back.
+        for modifier in ("IS_NULL", "NOT_NULL"):
+            with self.subTest(modifier=modifier):
+                self.assertFalse(
+                    is_quick_editable(
+                        {"name": {"modifier": modifier}},
+                        {"name"},
+                        filter_cls=GameFilter,
+                    )
+                )
+        self.assertTrue(
+            is_quick_editable(
+                {"name": {"value": "", "modifier": "EQUALS"}},
+                {"name"},
+                filter_cls=GameFilter,
+            )
+        )
+
+    def test_a_count_facet_in_a_presence_mode_degrades(self):
+        # A count answers 0 over no rows.
+        #
+        # So its widget offers no presence pair, and a stored one would render
+        # as *is* for Apply to write back.
         self.assertFalse(
             is_quick_editable(
-                {"search": {"value": "mario", "modifier": "INCLUDES"}}, _GAME_FACETS
+                {"session_count": {"modifier": "IS_NULL"}},
+                {"session_count"},
+                filter_cls=GameFilter,
+            )
+        )
+
+    def test_an_averaged_facet_in_a_presence_mode_is_editable(self):
+        # Avg answers NULL over no rows, so "is null" is a mode it states.
+        self.assertTrue(
+            is_quick_editable(
+                {"session_average": {"modifier": "IS_NULL"}},
+                {"session_average"},
+                filter_cls=GameFilter,
+            )
+        )
+
+    def test_a_date_facet_keeps_whatever_modifier_it_holds(self):
+        # A date widget returns its modifier untouched.
+        #
+        # It rides in a hidden input, so the widget rewrites nothing.
+        self.assertTrue(
+            is_quick_editable(
+                {"created_at": {"modifier": "IS_NULL"}},
+                {"created_at"},
+                filter_cls=GameFilter,
+            )
+        )
+
+    def test_a_set_facet_keeps_the_modifiers_its_widget_pins(self):
+        # A set widget renders more than its metadata names.
+        #
+        # It pins (Any)/(None) and, for a many-to-many, (All)/(Only), so a check
+        # against the metadata would degrade a filter the bar can hold.
+        self.assertTrue(
+            is_quick_editable(
+                {"games": {"value": ["1"], "modifier": "INCLUDES_ALL"}},
+                {"games"},
+                filter_cls=PurchaseFilter,
+            )
+        )
+
+    def test_a_search_beside_a_facet_is_editable(self):
+        self.assertTrue(
+            is_quick_editable(
+                {
+                    "search": {"value": "mario", "modifier": "INCLUDES"},
+                    "status": {"value": ["f"], "modifier": "INCLUDES"},
+                },
+                _GAME_FACETS,
+                filter_cls=GameFilter,
             )
         )
 
     def test_non_facet_flat_leaf_degrades(self):
         self.assertFalse(
             is_quick_editable(
-                {"year_released": {"value": 2020, "modifier": "EQUALS"}}, _GAME_FACETS
+                {"year_released": {"value": 2020, "modifier": "EQUALS"}},
+                _GAME_FACETS,
+                filter_cls=GameFilter,
             )
         )
 
@@ -95,11 +256,15 @@ class IsQuickEditableTest(SimpleTestCase):
             "status": {"value": ["f"], "modifier": "INCLUDES"},
             "AND": [{"platform": {"value": ["1"]}}],
         }
-        self.assertFalse(is_quick_editable(parsed, _GAME_FACETS))
+        self.assertFalse(is_quick_editable(parsed, _GAME_FACETS, filter_cls=GameFilter))
 
     def test_facet_with_non_dict_value_degrades(self):
-        self.assertFalse(is_quick_editable({"status": "f"}, _GAME_FACETS))
-        self.assertFalse(is_quick_editable({"status": ["f"]}, _GAME_FACETS))
+        self.assertFalse(
+            is_quick_editable({"status": "f"}, _GAME_FACETS, filter_cls=GameFilter)
+        )
+        self.assertFalse(
+            is_quick_editable({"status": ["f"]}, _GAME_FACETS, filter_cls=GameFilter)
+        )
 
 
 class QuickFilterBarRenderingTest(TestCase):
@@ -122,7 +287,12 @@ class QuickFilterBarRenderingTest(TestCase):
         # Anchored on ButtonGroup's own wrapper class, not on the first
         # role="group" in the document — the date facets' fields are labelled
         # groups too, and they come earlier.
-        group_html = html[html.index('class="inline-flex rounded-base shadow-xs') :]
+        #
+        # The closing quote is load-bearing: the search field's row opens with
+        # the same joined-row shell and then states more, so a prefix match
+        # would start the slice at the field and take the date facets' own
+        # ">Clear<" with it.
+        group_html = html[html.index('class="inline-flex rounded-base shadow-xs"') :]
         self.assertLess(group_html.index(">Apply<"), group_html.index(">Clear<"))
         derived_labels = {
             meta["name"]: meta["label"]
@@ -179,6 +349,8 @@ class QuickFilterBarRenderingTest(TestCase):
                     "modifier": "INCLUDES",
                 },
                 "platform": {"modifier": "IS_NULL"},
+                # The serializer emits the field, so this covers it.
+                "search": {"value": "mario", "modifier": "EXCLUDES"},
             }
         )
         html = str(
@@ -321,7 +493,9 @@ class QuickFacetsContractTest(TestCase):
                         filter_class,
                     )
                     self.assertEqual(set(parsed), {new})
-                    self.assertTrue(is_quick_editable(parsed, facets))
+                    self.assertTrue(
+                        is_quick_editable(parsed, facets, filter_cls=filter_class)
+                    )
 
     def test_every_facet_is_an_own_model_leaf_field(self):
         for mode, facets in QUICK_FACETS.items():
@@ -460,8 +634,8 @@ class PresetPickerTest(TestCase):
         self.assertIn("data-preset-picker", html)
         self.assertIn('id="quick-games-preset-picker"', html)
         self.assertIn('search-url="/api/presets/?mode=games"', html)
-        # Furniture placement: picker AFTER the ⋯ overflow host (the TS
-        # reserve calc treats post-overflow siblings as non-collapsible).
+        # Furniture placement: picker AFTER the ⋯ overflow host, which is
+        # where a reader looks for the row's non-collapsible tail.
         self.assertLess(
             html.index("data-quick-overflow"), html.index("data-preset-picker")
         )

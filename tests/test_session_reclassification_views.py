@@ -277,7 +277,9 @@ def test_the_review_filter_parses_and_stays_quick_editable(logged_in):
 
     assert set(parsed) == {"timing_mode", "duration_hours"}
     assert is_quick_editable(
-        parsed, {facet.field for facet in QUICK_FACETS["sessions"]}
+        parsed,
+        {facet.field for facet in QUICK_FACETS["sessions"]},
+        filter_cls=PlayerSessionFilter,
     )
     rendered = logged_in.get(review_url()).content.decode()
     assert "Advanced filter active" not in rendered

@@ -50,6 +50,8 @@ class QuickFilterBarElement extends HTMLElement {
   private overflowItems: HTMLElement | null = null;
   private rowGap = 0;
   private reservedWidth = 0;
+  // Measured unhidden; re-reading it while hidden answers 0.
+  private overflowWidth = 0;
   private resizeObserver: ResizeObserver | null = null;
   private layoutQueued = false;
   private disposePresetDelete: (() => void) | null = null;
@@ -132,17 +134,20 @@ class QuickFilterBarElement extends HTMLElement {
       width: element.offsetWidth,
     }));
     this.overflowHost.classList.remove("hidden");
-    const overflowWidth = this.overflowHost.offsetWidth;
+    this.overflowWidth = this.overflowHost.offsetWidth;
     this.overflowHost.classList.add("hidden");
-    // Everything after the overflow host (preset picker, action group) is
-    // permanent row furniture the facets must leave room for.
+    // Every non-facet child is permanent row furniture.
+    //
+    // Reading only the host's following siblings missed the leading field, so
+    // the facets claimed room that was taken and the row wrapped instead of
+    // collapsing one. The host is measured above, unhidden, and added once.
     let furnitureWidth = 0;
-    let sibling = this.overflowHost.nextElementSibling;
-    while (sibling) {
-      furnitureWidth += (sibling as HTMLElement).offsetWidth + this.rowGap;
-      sibling = sibling.nextElementSibling;
+    for (const child of Array.from(this.row.children)) {
+      if (child === this.overflowHost) continue;
+      if ((child as HTMLElement).matches("[data-quick-facet]")) continue;
+      furnitureWidth += (child as HTMLElement).offsetWidth + this.rowGap;
     }
-    this.reservedWidth = furnitureWidth + overflowWidth + this.rowGap;
+    this.reservedWidth = furnitureWidth + this.overflowWidth + this.rowGap;
 
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => this.queueLayout());
@@ -173,7 +178,7 @@ class QuickFilterBarElement extends HTMLElement {
     // permanent furniture, nothing collapses.
     const facetWidths = this.facets.map((facet) => facet.width);
     const totalFacetsWidth = priorityPlusTotalWidth(facetWidths, this.rowGap);
-    const furnitureOnly = this.reservedWidth - this.rowGap - overflowHost.offsetWidth;
+    const furnitureOnly = this.reservedWidth - this.rowGap - this.overflowWidth;
     let fitCount: number;
     if (totalFacetsWidth + Math.max(furnitureOnly, 0) <= rowWidth) {
       fitCount = this.facets.length;

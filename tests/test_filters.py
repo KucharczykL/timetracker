@@ -21,6 +21,7 @@ from common.criteria import (
     MAX_FILTER_DEPTH,
     MAX_REGEX_PATTERN_LENGTH,
     MAX_SET_VALUES,
+    SEARCH_LOOKUPS,
     AggregateCriterion,
     BoolCriterion,
     ChoiceCriterion,
@@ -5401,7 +5402,7 @@ class TestFilterFieldHandlers:
 
 
 class TestSearchQHelper:
-    """search_q: empty short-circuit, multi-column OR, EXCLUDES negation."""
+    """search_q: one lookup per mode, negation, refusals, empty value."""
 
     def test_empty_value_no_constraint(self):
         assert search_q(StringCriterion(value=""), "name", "note") == Q()
@@ -5415,14 +5416,89 @@ class TestSearchQHelper:
         )
 
     def test_multi_column_or(self):
-        assert search_q(StringCriterion(value="x"), "a", "b") == (
-            Q(a__icontains="x") | Q(b__icontains="x")
-        )
+        assert search_q(
+            StringCriterion(value="x", modifier=Modifier.INCLUDES), "a", "b"
+        ) == (Q(a__icontains="x") | Q(b__icontains="x"))
 
     def test_excludes_negates_whole_disjunction(self):
         assert search_q(
             StringCriterion(value="x", modifier=Modifier.EXCLUDES), "a", "b"
         ) == ~(Q(a__icontains="x") | Q(b__icontains="x"))
+
+    def test_is_matches_a_whole_value_in_any_column(self):
+        # The exact pair reads without case; every other mode does.
+        assert search_q(
+            StringCriterion(value="x", modifier=Modifier.EQUALS), "a", "b"
+        ) == (Q(a__iexact="x") | Q(b__iexact="x"))
+
+    def test_is_not_negates_the_whole_disjunction(self):
+        # "is not x" means no column holds x, so negation wraps the OR.
+        assert search_q(
+            StringCriterion(value="x", modifier=Modifier.NOT_EQUALS), "a", "b"
+        ) == ~(Q(a__iexact="x") | Q(b__iexact="x"))
+
+    def test_matches_regex_answers_a_regex(self):
+        assert search_q(
+            StringCriterion(value="^x", modifier=Modifier.MATCHES_REGEX), "a", "b"
+        ) == (Q(a__regex="^x") | Q(b__regex="^x"))
+
+    def test_not_matches_regex_is_its_complement(self):
+        assert search_q(
+            StringCriterion(value="^x", modifier=Modifier.NOT_MATCHES_REGEX), "a", "b"
+        ) == ~(Q(a__regex="^x") | Q(b__regex="^x"))
+
+    @pytest.mark.parametrize(
+        "modifier",
+        [
+            Modifier.EQUALS,
+            Modifier.NOT_EQUALS,
+            Modifier.INCLUDES,
+            Modifier.EXCLUDES,
+            Modifier.MATCHES_REGEX,
+            Modifier.NOT_MATCHES_REGEX,
+        ],
+    )
+    def test_an_empty_value_states_no_constraint_in_every_mode(self, modifier):
+        assert search_q(StringCriterion(value="", modifier=modifier), "a", "b") == Q()
+
+    @pytest.mark.parametrize("value", ["", "x"])
+    def test_is_null_is_refused(self, value):
+        # An empty value is what people send.
+        #
+        # A presence modifier carries none, so a value-first guard answers "no
+        # constraint" and never reaches the refusal.
+        for modifier in (Modifier.IS_NULL, Modifier.NOT_NULL):
+            with pytest.raises(FilterError):
+                search_q(StringCriterion(value=value, modifier=modifier), "a", "b")
+
+    @pytest.mark.parametrize("value", ["", "x"])
+    def test_a_modifier_no_string_states_is_refused(self, value):
+        with pytest.raises(FilterError):
+            search_q(
+                StringCriterion(value=value, modifier=Modifier.GREATER_THAN), "a", "b"
+            )
+
+    def test_the_refusal_names_the_modes_a_search_can_state(self):
+        with pytest.raises(FilterError, match="INCLUDES"):
+            search_q(StringCriterion(value="x", modifier=Modifier.IS_NULL), "a")
+
+    def test_a_criterion_that_states_no_mode_reads_as_exact(self):
+        # StringCriterion defaults to EQUALS and to_json drops a default, so
+        # {"search": {"value": "x"}} is the shape a stored exact search takes.
+        assert search_q(StringCriterion(value="x"), "a", "b") == (
+            Q(a__iexact="x") | Q(b__iexact="x")
+        )
+
+    def test_the_regex_pair_keeps_to_q_case_sensitive_lookup(self):
+        # Only the exact pair departs from StringCriterion.to_q.
+        assert SEARCH_LOOKUPS[Modifier.MATCHES_REGEX].lookup == "regex"
+        assert SEARCH_LOOKUPS[Modifier.EQUALS].lookup == "iexact"
+
+    @pytest.mark.django_db
+    def test_a_pattern_postgresql_refuses_raises_at_parse(self):
+        # from_json validates before any query runs.
+        with pytest.raises(FilterError):
+            StringCriterion.from_json({"value": "x[", "modifier": "MATCHES_REGEX"})
 
 
 class TestPerFilterSearchColumns:
@@ -5463,7 +5539,10 @@ class TestPerFilterSearchColumns:
 
     @pytest.mark.parametrize("filter_cls,columns", list(SEARCH_COLUMNS.items()))
     def test_search_spans_expected_columns(self, filter_cls, columns):
-        produced = filter_cls(search=StringCriterion(value="needle")).to_q()
+        # The mode is stated; which columns it reads is the subject.
+        produced = filter_cls(
+            search=StringCriterion(value="needle", modifier=Modifier.INCLUDES)
+        ).to_q()
         expected = reduce(
             operator.or_, (Q(**{f"{col}__icontains": "needle"}) for col in columns)
         )
@@ -5554,24 +5633,41 @@ class TestFieldMetadata:
         return [{"value": str(value), "label": str(label)} for value, label in choices]
 
     @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
-    def test_does_not_raise_and_excludes_search(self, filter_cls):
+    def test_does_not_raise_and_holds_search(self, filter_cls):
         names = {entry["name"] for entry in field_metadata(filter_cls)}
-        # search is a declared StringCriterion on every filter but is deliberately
-        # excluded from the per-field picker: it is the filter bar's dedicated
-        # free-text box, applied in _extra_q via search_q, not a pickable field.
+        # Excluding it here lost a filter's search on Apply: the builder's
+        # client registry reads this metadata and keeps only what it names.
         assert "search" in {f.name for f in dataclasses.fields(filter_cls)}
-        assert "search" not in names
+        assert "search" in names
+
+    @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
+    def test_search_is_a_string_leaf_in_the_six_modes(self, filter_cls):
+        entry = self._by_name(filter_cls)["search"]
+        assert entry["kind"] == "string"
+        assert entry["label"] == "Search"
+        # No column: no choices, no search_url, never null — which leaves
+        # for_strings() less the null pair, what search_q admits.
+        assert entry["nullable"] is False
+        assert entry["choices"] == []
+        assert entry["search_url"] == ""
+        assert entry["is_m2m"] is False
+        assert entry["scope_model"] == ""
+        assert entry["modifiers"] == [
+            "EQUALS",
+            "NOT_EQUALS",
+            "INCLUDES",
+            "EXCLUDES",
+            "MATCHES_REGEX",
+            "NOT_MATCHES_REGEX",
+        ]
 
     @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
     def test_covers_every_criterion_and_relation_field(self, filter_cls):
         expected = {
             f.name
             for f in dataclasses.fields(filter_cls)
-            if f.name != "search"
-            and (
-                _criterion_class_for(filter_cls, f.name) is not None
-                or _filter_class_for(filter_cls, f.name) is not None
-            )
+            if _criterion_class_for(filter_cls, f.name) is not None
+            or _filter_class_for(filter_cls, f.name) is not None
         }
         names = {entry["name"] for entry in field_metadata(filter_cls)}
         assert names == expected

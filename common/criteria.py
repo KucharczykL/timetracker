@@ -2844,13 +2844,13 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
 
     One ``FieldMeta`` per filterable field: leaf criteria and aggregates as value
     fields (``kind`` from the criterion type), each cross-entity sub-filter as a
-    ``kind="relation"`` entry naming its target. The ``search`` free-text field is
-    excluded — it is not a pickable per-field criterion but the filter bar's
-    dedicated free-text search criterion (the ``search`` key), applied imperatively in
-    each filter's ``_extra_q`` via ``search_q``. Non-recursive: a relation entry
-    names its target only; callers descend by calling ``field_metadata`` on the
-    target filter class, which bounds the ``GameFilter`` ↔ ``SessionFilter``
-    relation cycle.
+    ``kind="relation"`` entry naming its target. ``search`` is among them — a
+    string leaf reading several columns, applied in ``_extra_q``. It names no
+    column, so it states no choices, no ``search_url``, and is never null, which
+    leaves ``for_strings()`` less the null pair: what ``search_q`` admits.
+    Non-recursive: a relation entry names its target only; callers descend by
+    calling ``field_metadata`` on the target filter class, which bounds the
+    ``GameFilter`` ↔ ``SessionFilter`` relation cycle.
     """
     cached = _FIELD_METADATA_CACHE.get(filter_cls)
     if cached is not None:
@@ -2859,9 +2859,6 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
     entries: list[FieldMeta] = []
     for dataclass_field in dc_fields(filter_cls):
         name = dataclass_field.name
-        if name == "search":
-            # The filter bar's free-text box, not a pickable field — excluded here.
-            continue
         criterion_cls = _criterion_class_for(filter_cls, name)
         if criterion_cls is not None:
             # Resolve the model column for any field in ``fields`` with a lookup
@@ -2908,12 +2905,24 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # A metadata_lookup path is not the queried path, so its
             # hops say nothing; read the terminal column.
             # A column-less field states its own nullability.
+            #
+            # An aggregate's reducer decides its nullability.
+            #
+            # ``Count`` answers 0 over no rows, so a presence test on one
+            # matches nothing. ``Sum`` and ``Avg`` answer NULL there, so "is
+            # null" on one reads as "no related rows".
             if field_spec is not None and field_spec.nullable is not None:
                 nullable = field_spec.nullable
             elif field_spec is not None and field_spec.metadata_lookup is not None:
                 nullable = bool(getattr(model_field, "null", False))
             elif resolved_lookup is not None:
                 nullable = _lookup_is_nullable(model, resolved_lookup)
+            elif is_aggregate:
+                aggregate_spec = filter_cls.aggregates.get(name)
+                nullable = aggregate_spec is not None and aggregate_spec.reducer in (
+                    "sum",
+                    "avg",
+                )
             else:
                 nullable = False
             # Value-widget config (issue #242). ``field_spec`` is None for
@@ -3260,21 +3269,62 @@ def days_touched_handler(lower_field: str, upper_field: str) -> FieldHandler:
     return handler
 
 
-def search_q(criterion: StringCriterion, *field_names: str) -> Q:
-    """Free-text OR across several ``__icontains`` columns, negated on EXCLUDES.
+#: The modifier a criterion naming none reads.
+#:
+#: Every criterion class defaults to ``EQUALS`` and ``to_json`` drops a value
+#: equal to its default, so a stored exact comparison carries no modifier at
+#: all. Another default there shows one comparison over a filter the server
+#: applies as another.
+DEFAULT_STATED_MODIFIER: ModifierToken = Modifier.EQUALS.value
 
-    Mirrors the per-filter free-text ``search`` block: an empty value contributes
-    no constraint; otherwise each column is OR'd, and ``EXCLUDES`` negates the
-    whole disjunction. ``field_names`` must be non-empty.
+
+class SearchLookup(NamedTuple):
+    """One mode's lookup, and its negation flag."""
+
+    lookup: ORMLookup
+    negated: bool
+
+
+#: Each match mode's lookup, keyed by mode.
+#:
+#: A negative mode builds its positive partner's OR and negates the whole of
+#: it, because "excludes Zelda" means no column holds it. The exact pair alone
+#: departs from ``StringCriterion.to_q``, which compiles EQUALS to a
+#: case-sensitive ``exact``: a field that matches "zelda" for includes and
+#: refuses it for is reads as broken. The regex pair keeps ``to_q``'s
+#: case-sensitive ``regex``.
+SEARCH_LOOKUPS: dict[Modifier, SearchLookup] = {
+    Modifier.INCLUDES: SearchLookup("icontains", False),
+    Modifier.EXCLUDES: SearchLookup("icontains", True),
+    Modifier.EQUALS: SearchLookup("iexact", False),
+    Modifier.NOT_EQUALS: SearchLookup("iexact", True),
+    Modifier.MATCHES_REGEX: SearchLookup("regex", False),
+    Modifier.NOT_MATCHES_REGEX: SearchLookup("regex", True),
+}
+
+
+def search_q(criterion: StringCriterion, *field_names: str) -> Q:
+    """Free-text OR across columns, in the stated mode.
+
+    An empty value adds no constraint. ``field_names`` must be non-empty.
+    ``IS_NULL`` and ``NOT_NULL`` are refused: "is null" across an OR of several
+    columns states nothing a person could mean.
+
+    The mode is read before the value, because a presence modifier carries no
+    value: checking the value first answers a refused mode as "no constraint".
     """
+    entry = SEARCH_LOOKUPS.get(criterion.modifier)
+    if entry is None:
+        raise FilterError(
+            f"A search cannot state {criterion.modifier.value}. State one of: "
+            + ", ".join(modifier.value for modifier in SEARCH_LOOKUPS)
+        )
     if not criterion.value:
         return Q()
-    combined = Q(**{f"{field_names[0]}__icontains": criterion.value})
+    combined = Q(**{f"{field_names[0]}__{entry.lookup}": criterion.value})
     for field_name in field_names[1:]:
-        combined |= Q(**{f"{field_name}__icontains": criterion.value})
-    if criterion.modifier == Modifier.EXCLUDES:
-        combined = ~combined
-    return combined
+        combined |= Q(**{f"{field_name}__{entry.lookup}": criterion.value})
+    return ~combined if entry.negated else combined
 
 
 # The related/parent model is the concrete Django model the filter targets.

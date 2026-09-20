@@ -28,6 +28,7 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
     <script src="/static/js/dist/elements/search-select.js" type="module"></script>
     <script src="/static/js/dist/elements/drop-down.js" type="module"></script>
     <script src="/static/js/dist/elements/quick-filter-bar.js" type="module"></script>
+    <script src="/static/js/dist/elements/search-field.js" type="module"></script>
 </head>
 <body>
     {body}
@@ -55,7 +56,10 @@ def prefilled_bar_view(request):
     filter_json = json.dumps(
         {
             "year_released": {"value": 2000, "value2": 2010, "modifier": "BETWEEN"},
-            "session_count": {"modifier": "IS_NULL"},
+            # A count answers 0 over no rows.
+            #
+            # Its widget states no presence pair; this is a mode it states.
+            "session_count": {"value": 5, "modifier": "GREATER_THAN"},
         }
     )
     return HttpResponse(
@@ -81,7 +85,15 @@ def _filter_from_url(url: str) -> dict:
 
 
 def _open_facet(page, field: str):
-    page.locator(f"#quick-{field}-dropdownLink").click()
+    """Open one facet's panel, wherever the row put it.
+
+    The leading field takes width, so a facet may sit in the "⋯" menu. Opening
+    it is what a person does, and keeps these tests about the widget.
+    """
+    trigger = page.locator(f"#quick-{field}-dropdownLink")
+    if not trigger.is_visible():
+        page.locator("[data-quick-overflow] [data-toggle]").first.click()
+    trigger.click()
 
 
 def _submit(page):
@@ -177,11 +189,16 @@ def test_number_filter_prefilled_states(live_server, page):
         == "BETWEEN"
     )
 
-    # session_count: IS_NULL — value input disabled, modifier selected.
+    # session_count: GREATER_THAN 5 — value prefilled, input enabled.
     _open_facet(page, "session_count")
     session_input = page.locator('input[name="quick-session_count"]')
-    assert not session_input.is_enabled()
-    assert (
-        page.locator('select[name="quick-session_count-modifier"]').input_value()
-        == "IS_NULL"
+    assert session_input.is_enabled()
+    assert session_input.input_value() == "5"
+    modifier_select = page.locator('select[name="quick-session_count-modifier"]')
+    assert modifier_select.input_value() == "GREATER_THAN"
+    # A count states no presence pair.
+    offered = modifier_select.locator("option").evaluate_all(
+        "options => options.map(option => option.value)"
     )
+    assert "IS_NULL" not in offered
+    assert "NOT_NULL" not in offered

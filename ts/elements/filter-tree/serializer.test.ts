@@ -583,3 +583,54 @@ describe("aggregate scope malformations — backend parity (#151 review)", () =>
     expect(leaf.scope).toBeUndefined();
   });
 });
+
+// The builder dropped every key its registry did not name, so Apply wrote the
+// filter back without it and the filter silently widened. The client could
+// always carry a search; the server's metadata excluded it.
+describe("a search survives a builder round trip (#1166)", () => {
+  const modes = [
+    "EQUALS",
+    "NOT_EQUALS",
+    "INCLUDES",
+    "EXCLUDES",
+    "MATCHES_REGEX",
+    "NOT_MATCHES_REGEX",
+  ];
+
+  // The canonical shape wraps a top-level criterion in its connective, for
+  // every field. Pinned: the search survives, and a second pass moves nothing.
+  it.each(modes)("carries a %s search back out", (modifier) => {
+    const criterion = { value: "zelda", modifier };
+    const once = serialize(deserialize({ search: criterion }, "game", registry));
+    expect(once).toEqual({ AND: [{ search: criterion }] });
+    expect(serialize(deserialize(once as Json, "game", registry))).toEqual(once);
+  });
+
+  it("carries a search beside a facet", () => {
+    const filter = {
+      search: { value: "zelda", modifier: "INCLUDES" },
+      status: { value: ["f"], modifier: "INCLUDES" },
+    };
+    const out = serialize(deserialize(filter, "game", registry)) as Json;
+    const members = out.AND as Json[];
+    expect(members).toEqual(
+      expect.arrayContaining([
+        { search: { value: "zelda", modifier: "INCLUDES" } },
+        { status: { value: ["f"], modifier: "INCLUDES" } },
+      ]),
+    );
+  });
+
+  it("carries a search inside an AND group", () => {
+    // Every node applies its own search: to_q ends with _extra_q, and
+    // _apply_operators composes each sub-filter with sub.to_q().
+    const filter = {
+      AND: [
+        { search: { value: "zelda", modifier: "INCLUDES" } },
+        { search: { value: "mario", modifier: "EXCLUDES" } },
+      ],
+    };
+    const out = serialize(deserialize(filter, "game", registry)) as Json;
+    expect(out.AND).toEqual(filter.AND);
+  });
+});

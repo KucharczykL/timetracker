@@ -110,7 +110,8 @@ function deserializeNode(json: Json, modelKey: string, registry: MetadataRegistr
         baseChildren.push(relationNode(key, value, meta.relations[key], registry, depth));
       }
     }
-    // else: unknown key or non-object value -> dropped (backend from_json parity)
+    // else: dropped. Not backend parity — from_json refuses an unknown key as
+    // a FilterError, so a key the registry lacks but the backend knows is loss.
   }
   const andSubfilters = asArray(json.AND);
   checkBreadth(andSubfilters);

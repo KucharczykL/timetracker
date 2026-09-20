@@ -34,6 +34,7 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
     <script src="/static/js/dist/elements/search-select.js" type="module"></script>
     <script src="/static/js/dist/elements/drop-down.js" type="module"></script>
     <script src="/static/js/dist/elements/quick-filter-bar.js" type="module"></script>
+    <script src="/static/js/dist/elements/search-field.js" type="module"></script>
 </head>
 <body>
     {body}

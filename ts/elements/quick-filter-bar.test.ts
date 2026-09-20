@@ -244,11 +244,14 @@ function stubWidth(element: HTMLElement, width: number): void {
   });
 }
 
-function mountOverflow(): OverflowFixture {
+function mountOverflow(options: { leadingWidth?: number } = {}): OverflowFixture {
+  // No data-quick-facet: furniture the reserve counts, the overflow never takes.
+  const leading = options.leadingWidth ? '<search-field id="lead"></search-field>' : "";
   document.body.innerHTML = `
     <quick-filter-bar apply-url="${LIST_URL}">
       <form>
         <div data-quick-row>
+          ${leading}
           <drop-down data-quick-facet id="f1"></drop-down>
           <drop-down data-quick-facet id="f2"></drop-down>
           <drop-down data-quick-facet id="f3"></drop-down>
@@ -268,6 +271,8 @@ function mountOverflow(): OverflowFixture {
   // Measurement already happened in connectedCallback (all zeros), so stub
   // and re-run setup by reconnecting the node.
   facets.forEach((facet) => stubWidth(facet, 100));
+  const lead = bar.querySelector<HTMLElement>("#lead");
+  if (lead && options.leadingWidth) stubWidth(lead, options.leadingWidth);
   stubWidth(host, 40);
   stubWidth(bar.querySelector<HTMLElement>("#group")!, 80);
   let rowWidth = 1000;
@@ -292,6 +297,27 @@ function mountOverflow(): OverflowFixture {
 }
 
 describe("quick-filter-bar priority-plus overflow", () => {
+  it("reserves the width of a field that leads the row", () => {
+    // Reading only the host's following siblings missed a leading member.
+    const fixture = mountOverflow({ leadingWidth: 200 });
+    // reserved = field(200) + group(80) + overflow(40) = 320.
+    // available = 520 - 320 = 200 → two 100px facets fit.
+    fixture.setRowWidth(520);
+    fixture.bar.layoutOverflow();
+    expect(fixture.facets[0].parentElement).toBe(fixture.row);
+    expect(fixture.facets[1].parentElement).toBe(fixture.row);
+    expect(fixture.facets[2].parentElement).toBe(fixture.items);
+  });
+
+  it("never moves the leading field into the overflow menu", () => {
+    const fixture = mountOverflow({ leadingWidth: 200 });
+    fixture.setRowWidth(240);
+    fixture.bar.layoutOverflow();
+    const field = fixture.bar.querySelector("#lead")!;
+    expect(field.parentElement).toBe(fixture.row);
+    expect(fixture.items.contains(field)).toBe(false);
+  });
+
   it("keeps all facets in the row when they fit", () => {
     const fixture = mountOverflow();
     fixture.setRowWidth(1000);

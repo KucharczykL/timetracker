@@ -3526,3 +3526,126 @@ class BottomCornerTest(SimpleTestCase):
 
         self.assertNotIn("fixed", VERSION_STAMP_CLASS)
         self.assertNotIn("--selection-line", VERSION_STAMP_CLASS)
+
+
+class SegmentedFieldTest(SimpleTestCase):
+    """One border line, one shadow, one height.
+
+    A slot is a function of its shape, so the row counts and each member states
+    the corners its place gives it — the same mechanism ``ButtonGroup`` uses.
+    Nothing here reaches into a member to round it.
+    """
+
+    @staticmethod
+    def _span(marker: str, label: str):
+        """A slot that records the shape the row handed it."""
+        return lambda shape: components.Span(
+            {"data-" + marker: "", "data-shape": shape}
+        )[label]
+
+    def test_members_render_in_slot_order(self):
+        html = str(
+            components.SegmentedField(
+                leading=self._span("lead", "L"),
+                field=lambda shape: components.Input(name="q"),
+                trailing=self._span("trail", "T"),
+            )
+        )
+        self.assertLess(html.index("data-lead"), html.index('name="q"'))
+        self.assertLess(html.index('name="q"'), html.index("data-trail"))
+
+    def test_absent_slots_cost_no_markup(self):
+        html = str(
+            components.SegmentedField(field=lambda shape: components.Input(name="q"))
+        )
+        self.assertEqual(html.count("<"), html.count("</") + 2)  # row + void input
+
+    def test_each_place_gets_the_shape_it_rounds(self):
+        html = str(
+            components.SegmentedField(
+                leading=self._span("lead", "L"),
+                field=self._span("field", "F"),
+                trailing=self._span("trail", "T"),
+            )
+        )
+        self.assertIn('data-lead="" data-shape="start"', html)
+        self.assertIn('data-field="" data-shape="square"', html)
+        self.assertIn('data-trail="" data-shape="end"', html)
+
+    def test_a_lone_member_is_the_whole_row(self):
+        # It rounds both ends, because there is no join to square.
+        html = str(components.SegmentedField(field=self._span("field", "F")))
+        self.assertIn('data-shape="full"', html)
+
+    def test_two_members_round_one_end_each(self):
+        html = str(
+            components.SegmentedField(
+                leading=self._span("lead", "L"), field=self._span("field", "F")
+            )
+        )
+        self.assertIn('data-shape="start"', html)
+        self.assertIn('data-shape="end"', html)
+        self.assertNotIn('data-shape="square"', html)
+
+    def test_the_row_rounds_nothing_itself(self):
+        # A corner belongs to the member that draws it; the row's own
+        # rounded-base shapes the shadow alone.
+        row_class = components.SEGMENTED_FIELD_CLASS
+        stacking = ("[&>*+*]:-ms-px", "[&>*]:relative")
+        rounding = row_class
+        for rule in stacking:
+            rounding = rounding.replace(rule, "")
+        self.assertNotIn("[&>", rounding)
+        self.assertNotIn("rounded-s", row_class)
+        self.assertNotIn("rounded-e", row_class)
+
+    def test_the_row_shares_the_joined_row_shell(self):
+        # One shell for every joined row, ButtonGroup's included.
+        self.assertIn("shadow-xs", components.SEGMENTED_FIELD_CLASS)
+        self.assertIn("rounded-base", components.SEGMENTED_FIELD_CLASS)
+
+    def test_a_slot_bearing_call_refuses_the_htpy_child_form(self):
+        # Element.__getitem__ replaces children, so [] on a slot-bearing
+        # builder would drop every slot. Returning Node is what makes mypy
+        # refuse it; this pins the annotation mypy reads.
+        import inspect
+
+        annotation = inspect.signature(components.SegmentedField).return_annotation
+        self.assertIn(annotation, (components.Node, "Node"))
+
+    def test_neighbours_share_one_border_line(self):
+        # Adjacency, not appearance: the pull-back is the row's business.
+        self.assertIn("[&>*+*]:-ms-px", components.SEGMENTED_FIELD_CLASS)
+
+    def test_a_member_can_lift_out_of_the_overlap(self):
+        # A focused member whose neighbour overlaps it has its ring clipped
+        # unless it is positioned; only the row knows an overlap exists.
+        self.assertIn("[&>*]:relative", components.SEGMENTED_FIELD_CLASS)
+
+    def test_the_row_floors_to_the_shared_control_height(self):
+        self.assertIn("min-h-control", components.SEGMENTED_FIELD_CLASS)
+        self.assertIn("items-stretch", components.SEGMENTED_FIELD_CLASS)
+
+    def test_caller_classes_append_to_the_row(self):
+        html = str(
+            components.SegmentedField(
+                field=lambda shape: components.Input(name="q"), class_="w-full"
+            )
+        )
+        self.assertIn("w-full", html)
+        self.assertIn("shadow-xs", html)
+
+
+class ControlButtonGapTest(SimpleTestCase):
+    """Every button variant spaces the children it may hold."""
+
+    def test_every_variant_states_the_gap(self):
+        # No gap renders a mark and its chevron as one glyph.
+        for variant in ("filled", "segmented", "outline", "ghost"):
+            with self.subTest(variant=variant):
+                html = str(
+                    components.ControlButton(variant=variant)[
+                        components.Span()["a"], components.Span()["b"]
+                    ]
+                )
+                self.assertIn("gap-2", html)
