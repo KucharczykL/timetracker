@@ -5415,14 +5415,80 @@ class TestSearchQHelper:
         )
 
     def test_multi_column_or(self):
-        assert search_q(StringCriterion(value="x"), "a", "b") == (
-            Q(a__icontains="x") | Q(b__icontains="x")
-        )
+        assert search_q(
+            StringCriterion(value="x", modifier=Modifier.INCLUDES), "a", "b"
+        ) == (Q(a__icontains="x") | Q(b__icontains="x"))
 
     def test_excludes_negates_whole_disjunction(self):
         assert search_q(
             StringCriterion(value="x", modifier=Modifier.EXCLUDES), "a", "b"
         ) == ~(Q(a__icontains="x") | Q(b__icontains="x"))
+
+    def test_is_matches_a_whole_value_in_any_column(self):
+        # The exact pair reads case-insensitively: every other mode ignores
+        # case, and a field that matches "zelda" for includes and refuses it
+        # for is reads as broken.
+        assert search_q(
+            StringCriterion(value="x", modifier=Modifier.EQUALS), "a", "b"
+        ) == (Q(a__iexact="x") | Q(b__iexact="x"))
+
+    def test_is_not_negates_the_whole_disjunction(self):
+        # ~Q(a) | ~Q(b) is true for nearly every row; "is not x" means no
+        # column holds x, so the negation wraps the OR.
+        assert search_q(
+            StringCriterion(value="x", modifier=Modifier.NOT_EQUALS), "a", "b"
+        ) == ~(Q(a__iexact="x") | Q(b__iexact="x"))
+
+    def test_matches_regex_answers_a_regex(self):
+        assert search_q(
+            StringCriterion(value="^x", modifier=Modifier.MATCHES_REGEX), "a", "b"
+        ) == (Q(a__regex="^x") | Q(b__regex="^x"))
+
+    def test_not_matches_regex_is_its_complement(self):
+        assert search_q(
+            StringCriterion(value="^x", modifier=Modifier.NOT_MATCHES_REGEX), "a", "b"
+        ) == ~(Q(a__regex="^x") | Q(b__regex="^x"))
+
+    def test_includes_keeps_todays_answer(self):
+        assert search_q(
+            StringCriterion(value="x", modifier=Modifier.INCLUDES), "a", "b"
+        ) == (Q(a__icontains="x") | Q(b__icontains="x"))
+
+    @pytest.mark.parametrize(
+        "modifier",
+        [
+            Modifier.EQUALS,
+            Modifier.NOT_EQUALS,
+            Modifier.INCLUDES,
+            Modifier.EXCLUDES,
+            Modifier.MATCHES_REGEX,
+            Modifier.NOT_MATCHES_REGEX,
+        ],
+    )
+    def test_an_empty_value_states_no_constraint_in_every_mode(self, modifier):
+        assert search_q(StringCriterion(value="", modifier=modifier), "a", "b") == Q()
+
+    def test_is_null_is_refused(self):
+        # search reads several columns at once, and "is null" across an OR of
+        # them states nothing a person could mean. A stored filter is the only
+        # way one reaches here, and it is answered as the filter error it is
+        # rather than silently as a substring match.
+        for modifier in (Modifier.IS_NULL, Modifier.NOT_NULL):
+            with pytest.raises(FilterError):
+                search_q(StringCriterion(value="x", modifier=modifier), "a", "b")
+
+    def test_a_modifier_no_string_states_is_refused(self):
+        with pytest.raises(FilterError):
+            search_q(
+                StringCriterion(value="x", modifier=Modifier.GREATER_THAN), "a", "b"
+            )
+
+    @pytest.mark.django_db
+    def test_a_pattern_postgresql_refuses_raises_at_parse(self):
+        # from_json validates the regex before any query runs, so search_q
+        # never sees a pattern the database would refuse.
+        with pytest.raises(FilterError):
+            StringCriterion.from_json({"value": "x[", "modifier": "MATCHES_REGEX"})
 
 
 class TestPerFilterSearchColumns:
@@ -5463,7 +5529,11 @@ class TestPerFilterSearchColumns:
 
     @pytest.mark.parametrize("filter_cls,columns", list(SEARCH_COLUMNS.items()))
     def test_search_spans_expected_columns(self, filter_cls, columns):
-        produced = filter_cls(search=StringCriterion(value="needle")).to_q()
+        # The mode is stated, because which columns a search reads is this
+        # test's subject and how it reads them is TestSearchQHelper's.
+        produced = filter_cls(
+            search=StringCriterion(value="needle", modifier=Modifier.INCLUDES)
+        ).to_q()
         expected = reduce(
             operator.or_, (Q(**{f"{col}__icontains": "needle"}) for col in columns)
         )

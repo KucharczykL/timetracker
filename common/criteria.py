@@ -3260,21 +3260,47 @@ def days_touched_handler(lower_field: str, upper_field: str) -> FieldHandler:
     return handler
 
 
-def search_q(criterion: StringCriterion, *field_names: str) -> Q:
-    """Free-text OR across several ``__icontains`` columns, negated on EXCLUDES.
+#: What each match mode reads in one column, and whether the disjunction it
+#: builds is then negated. The lookup is the positive form of the mode: a
+#: negative mode builds the same OR and negates it whole, because "excludes
+#: Zelda" means no column holds it, not that each column separately does not.
+#:
+#: The exact pair reads case-insensitively. Every other mode ignores case, and a
+#: field that matches "zelda" for includes and refuses it for is reads as
+#: broken. This is the one place the reader does not take the criterion's own
+#: lookup.
+_SEARCH_LOOKUPS: dict[Modifier, tuple[str, bool]] = {
+    Modifier.INCLUDES: ("icontains", False),
+    Modifier.EXCLUDES: ("icontains", True),
+    Modifier.EQUALS: ("iexact", False),
+    Modifier.NOT_EQUALS: ("iexact", True),
+    Modifier.MATCHES_REGEX: ("regex", False),
+    Modifier.NOT_MATCHES_REGEX: ("regex", True),
+}
 
-    Mirrors the per-filter free-text ``search`` block: an empty value contributes
-    no constraint; otherwise each column is OR'd, and ``EXCLUDES`` negates the
-    whole disjunction. ``field_names`` must be non-empty.
+
+def search_q(criterion: StringCriterion, *field_names: str) -> Q:
+    """Free-text OR across several columns, in the mode the criterion states.
+
+    An empty value contributes no constraint, whatever the mode. Otherwise each
+    column is OR'd under the mode's lookup and a negative mode negates the whole
+    disjunction. ``field_names`` must be non-empty.
+
+    ``IS_NULL`` and ``NOT_NULL`` are refused: ``search`` reads several columns at
+    once, and "is null" across an OR of them states nothing a person could mean.
+    A mode outside the six reaches here only from a stored filter, and is
+    answered as the filter error it is rather than silently as a substring match.
     """
     if not criterion.value:
         return Q()
-    combined = Q(**{f"{field_names[0]}__icontains": criterion.value})
+    entry = _SEARCH_LOOKUPS.get(criterion.modifier)
+    if entry is None:
+        raise FilterError(f"Unsupported modifier {criterion.modifier} for a search")
+    lookup, negated = entry
+    combined = Q(**{f"{field_names[0]}__{lookup}": criterion.value})
     for field_name in field_names[1:]:
-        combined |= Q(**{f"{field_name}__icontains": criterion.value})
-    if criterion.modifier == Modifier.EXCLUDES:
-        combined = ~combined
-    return combined
+        combined |= Q(**{f"{field_name}__{lookup}": criterion.value})
+    return ~combined if negated else combined
 
 
 # The related/parent model is the concrete Django model the filter targets.
