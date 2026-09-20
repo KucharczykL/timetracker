@@ -2354,6 +2354,9 @@ def make_row(
 
 
 # The row's second line, below md alone.
+# The checkbox and the name share a line, centred on each other.
+_ROW_IDENTITY_CLASS = "flex items-center min-w-0"
+
 _ROW_SUMMARY_CLASS = (
     "md:hidden block overflow-hidden text-ellipsis "
     "text-type-micro text-body-subtle font-normal"
@@ -2425,7 +2428,18 @@ def TableRow(
             # wrap opt-out releases it.
             wrap_class = "" if column and column.wrap else "whitespace-nowrap "
             summary = data.get("summary")
-            identity_children: list[Child] = [cell]
+            # A selectable row's checkbox joins the name on one line.
+            #
+            # The cell holds the name and, below md, a summary under it, so a
+            # checkbox placed in the cell centres on both lines and drifts
+            # away from the name it marks. This row is what it centres on
+            # instead; `<selectable-table>` fills it.
+            identity: Child = (
+                Div([("data-row-identity", "")], class_=_ROW_IDENTITY_CLASS)[cell]
+                if selectable
+                else cell
+            )
+            identity_children: list[Child] = [identity]
             if summary is not None:
                 # The nowrap cell clips nothing for it.
                 identity_children.append(

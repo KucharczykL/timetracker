@@ -27,6 +27,7 @@ import {
 } from "./selection-statement.js";
 
 const CHECKBOX_SELECTOR = "[data-selection-checkbox]";
+const IDENTITY_SELECTOR = "[data-row-identity]";
 // Every connected table, so the published height is the tallest line rather
 // than whichever table wrote last.
 const connected = new Set<SelectableTableElement>();
@@ -158,7 +159,11 @@ export class SelectableTableElement extends HTMLElement {
       if (!checkbox) continue;
       checkbox.setAttribute("aria-label", identityName(cell));
       checkbox.classList.toggle(HIDDEN_CHECKBOX_CLASS, !this.mode);
-      cell.insertBefore(checkbox, cell.firstChild);
+      // The row a selectable cell states for it: the name's own line,
+      // so the box centres on the name rather than on the summary
+      // under it. A cell that states none takes the box itself.
+      const identity = cell.querySelector<HTMLElement>(IDENTITY_SELECTOR) ?? cell;
+      identity.insertBefore(checkbox, identity.firstChild);
     }
   }
 

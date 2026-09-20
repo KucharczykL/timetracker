@@ -3203,6 +3203,35 @@ class SelectableRowTest(SimpleTestCase):
         html = str(components.TableRow(components.make_row("Game", key="abc")))
         self.assertIn('data-selection-key="abc"', html)
 
+    def test_a_selectable_rows_name_states_the_row_the_checkbox_joins(self):
+        """The checkbox centres on the name, not on the summary under it."""
+        html = str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game", key="abc", summary="2 hours, PC")],
+                data_table=True,
+                caption="Games",
+                selection={"filter": ""},
+            )
+        )
+        identity = html.split("data-row-identity")[1].split("</div>")[0]
+        #: The name inside the row, the summary outside it.
+        self.assertIn("Game", identity)
+        self.assertNotIn("data-row-summary", identity)
+        self.assertIn("items-center", identity)
+
+    def test_a_table_with_no_selection_states_no_identity_row(self):
+        """Nothing joins the name there, so the cell keeps its shape."""
+        html = str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game", summary="2 hours, PC")],
+                data_table=True,
+                caption="Games",
+            )
+        )
+        self.assertNotIn("data-row-identity", html)
+
     def test_a_row_with_no_key_carries_no_selection_attribute(self):
         html = str(components.TableRow(components.make_row("Game")))
         self.assertNotIn("data-selection-key", html)
