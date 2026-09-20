@@ -7,8 +7,8 @@ the shape this issue builds and the reasons behind it.
 ## The declaration
 
 A bulk action is a value in one table, `games/bulk_actions.py`, constructed
-only through `BulkAction.on`, as `BLOCKING_REFERRERS` is, and a test holds the
-table complete against the routed names. Each states its name, its label, the
+only through `BulkAction.on`, as `BLOCKING_REFERRERS` is, and a test holds
+every entry keyed by the name it states. Each states its name, its label, the
 noun its answer speaks of, and the cardinality the tray reads later, beside
 five things:
 
@@ -28,7 +28,9 @@ five things:
   this the Undo would hand each record's key to a command that reads sessions
   and refuse every row of its own batch.
 
-This issue declares one action, the reclassification.
+One action is declared, the reclassification. Each act's own half lives in
+its own module, imported at the foot of the table, so one grep is the whole
+inventory.
 
 ## The two POSTs
 
@@ -62,16 +64,23 @@ a Stop. With scripting the page continues by itself; without it, a person
 presses Continue.
 
 A refusal names its row and the next row runs. A row gone since the
-confirmation is counted lost. A defect ends the batch, the rows already done
-stay done, and the answer says how many.
+confirmation is counted lost. A row a command finds already in the state it
+would state is counted apart from one the act moved, because a count of what
+was done must not claim work nobody did. A defect ends the batch, the rows
+already done stay done, and the answer says how many.
+
+The answer states sentences and the log states keys. Every row left alone is
+named there under the batch's identity, a row the resolve refused as surely as
+one the command refused, because the person reading a toast asks how many and
+whoever reads the log afterwards asks which.
 
 ## The batch
 
 Every append of a batch shares the correlation id and states the action's name
-in its source metadata. Each wrapper the runner drives gains a source-metadata
-parameter; none takes one today, and the field has no reader in the app before
-this one. Nothing validates the name at the append, so the Undo refuses a name
-the table does not hold.
+in its source metadata. Each wrapper the runner drives takes a source-metadata
+parameter to carry it. Nothing validates the name at the append, so the Undo
+refuses a name the table does not hold, and a correlation that states no name
+is no batch and is not found.
 
 The Undo reads one event of that correlation to learn which action ran, and the
 aggregates of the events of that action's aggregate type to learn its rows. It
@@ -79,14 +88,16 @@ then applies the inverse to each, as a batch of its own: its own token and
 correlation id, the same budget, the same progress page, its own answer. A row
 whose inverse is refused is named, and the rest are undone.
 
-That read needs an index. Migration `0012` adds `(library, correlation_id)`,
-which the batch reader uses, and `(library, aggregate_id)`, which the move
-inverse uses in its own issue. `LibraryEvent` declares no index today.
+That read needs an index. `LibraryEvent` declares two beside its sequence:
+`(library, correlation_id)`, which the batch reader uses, and
+`(library, aggregate_id)`, which the move inverse uses in its own issue.
 
 ## The Library page
 
 The reclassification is the runner's first act. Its "Move all" button states an
-`all` selection over the review, and its words start promising the Undo.
+`all` selection over the review, and its words promise the Undo. A selection
+names a scope and a count, never a list of keys: the runner resolves the scope
+again at the press, so a page left open acts on what is there.
 
 ## Proof
 
