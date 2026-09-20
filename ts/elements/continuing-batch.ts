@@ -5,9 +5,9 @@
  * person watches a count rise instead of pressing Continue. Stop is the
  * one press that still means something.
  *
- * It is an element rather than an `onSwap` handler because connecting is
- * the moment it must act, and a chunk arrives both ways: by navigation
- * on one and by swap on the next.
+ * It is an element rather than an `onSwap` handler because each chunk
+ * arrives as a whole document of its own, and connecting is the moment
+ * it must act.
  */
 
 const FORM = "[data-continuing-batch-form]";

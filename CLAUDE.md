@@ -495,11 +495,11 @@ Contract is [Undo a removal](docs/superpowers/specs/2026-09-16-issue-695-undo-re
 **One act on many rows is declared, not routed** (#713). An act is a value in
 `games/bulk_actions.py`, built only through `BulkAction.on`, which refuses a
 name twice declared and an `inverse_aggregate` no `EventSpec` speaks about.
-The declaration states five callables -- scope, resolve, run, inverse, and the
-aggregate the inverse takes -- and the last is not decoration: one act may
-write two aggregates, as the reclassification writes a created record beside
-the reclassified session, so a batch Undo that read both would hand a record's
-key to a command that reads sessions. Each act's own half lives beside it
+The declaration states four callables -- scope, resolve, run and inverse --
+beside the aggregate the inverse takes, and that last is not decoration: one
+act may write two aggregates, as the reclassification writes a created record
+beside the reclassified session, so a batch Undo that read both would hand a
+record's key to a command that reads sessions. Each act's own half lives beside it
 (`games/bulk_reclassification.py`), imported at the foot of the table, so one
 grep is the whole inventory. `games/views/bulk.py` runs any of them: one route,
 two POSTs told apart by a submission token that **is** the batch's correlation
@@ -507,12 +507,13 @@ id, so a batch spanning chunks stays one batch. A chunk is the rows one request
 acts on inside `CHUNK_BUDGET` and is no transaction -- each row is its own
 dispatch, keyed from the token and the row, so a token posted twice acts once.
 A refusal names its row and the next row runs, a row gone since the
-confirmation is counted lost, a defect ends the batch and the rows done stay
-done. `<continuing-batch>` posts the waypoint's form on connect, so only Stop
-is pressed. The Undo reads the act's name out of the batch's `source_metadata`
-and its rows out of `batch_aggregate_ids` in `games/reads/events.py`, the one
-read that answers from events rather than a projection, and runs as a batch of
-its own. An act's scope is its own base narrowed by the statement's filter,
+confirmation is counted lost, a defect ends the batch, and the rows done stay
+done and keep their Undo. `<continuing-batch>` posts the waypoint's form on
+connect, so only Stop is pressed. The Undo reads the act's name out of the
+batch's `source_metadata` and its rows out of `batch_aggregate_ids` in
+`games/reads/events.py`, one of the two reads that answer from events rather
+than a projection, and runs as a batch of its own, over the keys that batch
+wrote and no others. An act's scope is its own base narrowed by the statement's filter,
 never the filter alone, and an unreadable filter refuses rather than widening
 the act -- `apply_structured_filter` fails open, which a list may do and an act
 may not. Contract is

@@ -78,8 +78,8 @@ UNREADABLE_FILTER = (
     "The filter behind that selection could not be read, so nothing was "
     "changed. Open the list again and reapply it."
 )
-#: Where an Undo returns when it carries no origin: an act it cannot
-#: name states no fallback of its own.
+#: Where an Undo of an act nothing declares returns when it carries no
+#: origin. Every other return reads the act's own fallback.
 UNDO_FALLBACK: UrlName = "games:library"
 
 UNKNOWN_ACT = (

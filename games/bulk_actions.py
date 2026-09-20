@@ -4,7 +4,7 @@ The readable inventory, as the command vocabulary is: one grep, and no
 entry that is not a thing the app does. An act is a value here and a
 route nowhere; `games/views/bulk.py` runs any of them.
 
-A declaration states five callables, and the aggregate its inverse
+A declaration states four callables, and the aggregate its inverse
 takes. That last one is not decoration: one act may write more than one
 aggregate. The reclassification appends a created record beside the
 session that became it, under one correlation id, so a batch's Undo
@@ -53,9 +53,10 @@ class Cardinality(StrEnum):
 class RowOutcome(StrEnum):
     """What a dispatch did to one row the act reached.
 
-    A refusal is no outcome: it never reaches a dispatch. These two are
-    what a dispatch that ran answers, and the tally counts them apart
-    because "done" should not claim work nobody did.
+    A refusal is no outcome, whether the resolution met it or the
+    dispatch did. These two are what a dispatch that ran answers, and
+    the tally counts them apart because "done" should not claim work
+    nobody did.
     """
 
     MOVED = "moved"
@@ -111,7 +112,8 @@ class BulkAction:
     """One act, and everything the runner needs to run and undo it."""
 
     name: BulkActionName
-    #: What the tray's control says.
+    #: The act in a person's words. The confirmation asks with it, and
+    #: the tray's control will say it.
     label: str
     #: The confirmation's heading.
     title: str

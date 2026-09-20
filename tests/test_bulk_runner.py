@@ -221,6 +221,21 @@ def test_a_confirmation_lists_the_rows_to_a_cap(client_in, owned_library, game):
     assert len(json.loads(posted(response)[PROGRESS_FIELD])["rows"]) == len(sessions)
 
 
+def test_a_confirmation_names_the_act_and_what_it_counts(
+    client_in, owned_library, game
+):
+    """The noun is the act's own, so a second act needs no second page."""
+    action = BULK_ACTIONS["session.reclassify"]
+    one = a_written_session(owned_library, game)
+    two = a_written_session(owned_library, game, day=date(2026, 3, 6))
+
+    alone = confirm(client_in, some(one)).content.decode()
+    both = confirm(client_in, some(one, two)).content.decode()
+
+    assert f"{action.label}: 1 {action.subject}?" in alone
+    assert f"{action.label}: 2 {action.subject}s?" in both
+
+
 def test_a_confirmation_prints_a_duration_the_way_a_person_reads_it(
     client_in, owned_library, game
 ):

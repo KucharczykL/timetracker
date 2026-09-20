@@ -368,9 +368,9 @@ def _rows_to_convert(
     kept, because the statement a conversion makes is built from
     columns the database generates.
 
-    Read through the act's own scope, so a seed whose sessions cross
-    the review threshold fails here rather than quietly timing rows
-    this scenario did not write.
+    Read through the act's own scope, so a row this scenario wrote that
+    the review would not offer fails here rather than being timed as
+    though the act would reach it.
     """
     cycle = _cycling(library, seeded_runs(library))
     keys = [

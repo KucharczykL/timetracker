@@ -1,7 +1,14 @@
-"""The two pages the runner renders: what it will do, and how far it got."""
+"""The pages the runner renders.
+
+What the act will do, how far it got, and why nothing more happened.
+Its words are the reclassification's, because that is the one act
+declared; #712 brings the second, and the nouns move to the act then.
+"""
 
 from collections.abc import Sequence
 from typing import Any
+
+from django.template.defaultfilters import pluralize
 
 from common.components import (
     ConfirmPage,
@@ -124,7 +131,7 @@ def ConfirmBatch(
     return ConfirmPage(
         title=action.title,
         message=(
-            f"{action.label}: {total} sessions?"
+            f"{action.label}: {total} {action.subject}{pluralize(total)}?"
             if total
             else "None of those sessions can be recorded."
         ),

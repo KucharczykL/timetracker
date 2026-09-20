@@ -36,9 +36,9 @@ inventory.
 
 One route, `/bulk/<action>/`, tells its two POSTs apart by the submission
 token. A POST without one resolves the selection statement under the library,
-and answers a confirmation naming the act, its count and its scope, the rows to
-a cap, every refusal with its reason, a fresh token, and the resolved keys.
-A POST with one acts.
+and answers a confirmation naming the act and how many rows it reaches, the
+rows themselves to a cap, every refusal with its reason, a fresh token, and
+the resolved keys. A POST with one acts.
 
 The keys ride one field, never one per row: a field per row meets Django's cap
 at a thousand, and a page of keys does not fit a URL. The same field carries

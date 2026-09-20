@@ -1,8 +1,8 @@
 """Reading one library's recorded stream by the batch that wrote it.
 
-Every other read in this package answers from a projection. This one
-answers from the events, because what it asks about — which rows one
-human act changed — no projection keeps.
+Nearly every read in this package answers from a projection. This one
+answers from the events, as `playergame_history` does, because what it
+asks about — which rows one human act changed — no projection keeps.
 """
 
 import uuid
