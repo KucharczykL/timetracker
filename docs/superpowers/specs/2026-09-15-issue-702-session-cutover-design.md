@@ -40,7 +40,11 @@ one run. A session on a game nothing tracks is refused on the run.
 `PATCH /api/session/{id}` takes a body with `extra="forbid"`: `timing`
 is a correction, `note`, `device_id` and `emulated` a description,
 `playthrough_id` a move. A named key is the act. A device outside the
-library answers 404. There is no POST; #1074 owns it.
+library answers 404.
+
+`POST /api/session/` records one: the run, one whole timing statement,
+and the three described facts. It answers 201 and the row, and an
+`Idempotency-Key` header absorbs a repeat.
 
 ## Reads
 
@@ -60,6 +64,6 @@ sits in the bucket reads Never played until the sessions are moved.
 
 ## Out
 
-`POST /api/session/` is #1074. A restore route is #695. Preset
+A restore route is #695. Preset
 migration is #767. The legacy table is #772. The bulk move and the
 organizer are #714, #715 and #716.
