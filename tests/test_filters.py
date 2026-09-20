@@ -5637,24 +5637,44 @@ class TestFieldMetadata:
         return [{"value": str(value), "label": str(label)} for value, label in choices]
 
     @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
-    def test_does_not_raise_and_excludes_search(self, filter_cls):
+    def test_does_not_raise_and_holds_search(self, filter_cls):
         names = {entry["name"] for entry in field_metadata(filter_cls)}
-        # search is a declared StringCriterion on every filter but is deliberately
-        # excluded from the per-field picker: it is the filter bar's dedicated
-        # free-text box, applied in _extra_q via search_q, not a pickable field.
+        # search is a declared StringCriterion on every filter and a pickable
+        # field like any other string leaf. It was excluded here, and because
+        # the builder's client registry reads this metadata and keeps only the
+        # keys it names, a filter that carried a search lost it on Apply (#1166).
         assert "search" in {f.name for f in dataclasses.fields(filter_cls)}
-        assert "search" not in names
+        assert "search" in names
+
+    @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
+    def test_search_is_a_string_leaf_in_the_six_modes(self, filter_cls):
+        entry = self._by_name(filter_cls)["search"]
+        assert entry["kind"] == "string"
+        assert entry["label"] == "Search"
+        # search names no single column, so it states no choices and no
+        # search_url, and it is never null: the six modes search_q admits are
+        # exactly for_strings() with the null pair dropped.
+        assert entry["nullable"] is False
+        assert entry["choices"] == []
+        assert entry["search_url"] == ""
+        assert entry["is_m2m"] is False
+        assert entry["scope_model"] == ""
+        assert entry["modifiers"] == [
+            "EQUALS",
+            "NOT_EQUALS",
+            "INCLUDES",
+            "EXCLUDES",
+            "MATCHES_REGEX",
+            "NOT_MATCHES_REGEX",
+        ]
 
     @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
     def test_covers_every_criterion_and_relation_field(self, filter_cls):
         expected = {
             f.name
             for f in dataclasses.fields(filter_cls)
-            if f.name != "search"
-            and (
-                _criterion_class_for(filter_cls, f.name) is not None
-                or _filter_class_for(filter_cls, f.name) is not None
-            )
+            if _criterion_class_for(filter_cls, f.name) is not None
+            or _filter_class_for(filter_cls, f.name) is not None
         }
         names = {entry["name"] for entry in field_metadata(filter_cls)}
         assert names == expected

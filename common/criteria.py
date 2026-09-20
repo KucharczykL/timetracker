@@ -2844,13 +2844,14 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
 
     One ``FieldMeta`` per filterable field: leaf criteria and aggregates as value
     fields (``kind`` from the criterion type), each cross-entity sub-filter as a
-    ``kind="relation"`` entry naming its target. The ``search`` free-text field is
-    excluded — it is not a pickable per-field criterion but the filter bar's
-    dedicated free-text search criterion (the ``search`` key), applied imperatively in
-    each filter's ``_extra_q`` via ``search_q``. Non-recursive: a relation entry
-    names its target only; callers descend by calling ``field_metadata`` on the
-    target filter class, which bounds the ``GameFilter`` ↔ ``SessionFilter``
-    relation cycle.
+    ``kind="relation"`` entry naming its target. ``search`` is among them: it is a
+    string leaf that reads several columns instead of one, applied in each
+    filter's ``_extra_q`` via ``search_q``, and it names no column of its own, so
+    it states no choices, no ``search_url``, and is never null. Its six modes are
+    then ``Modifier.for_strings()`` with the null pair dropped, which is exactly
+    what ``search_q`` admits. Non-recursive: a relation entry names its target
+    only; callers descend by calling ``field_metadata`` on the target filter
+    class, which bounds the ``GameFilter`` ↔ ``SessionFilter`` relation cycle.
     """
     cached = _FIELD_METADATA_CACHE.get(filter_cls)
     if cached is not None:
@@ -2859,9 +2860,6 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
     entries: list[FieldMeta] = []
     for dataclass_field in dc_fields(filter_cls):
         name = dataclass_field.name
-        if name == "search":
-            # The filter bar's free-text box, not a pickable field — excluded here.
-            continue
         criterion_cls = _criterion_class_for(filter_cls, name)
         if criterion_cls is not None:
             # Resolve the model column for any field in ``fields`` with a lookup
