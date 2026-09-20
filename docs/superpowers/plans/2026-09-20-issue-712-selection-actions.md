@@ -31,8 +31,6 @@ in TypeScript with vitest, Playwright for e2e.
   directly. Iterate with `make check-fast`; the gate is full `make check`
   under the shared lock:
   `flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make check`.
-- `make vale` guards prose in docs *and code comments*: no "delete", no
-  "fold". A projector *replays*; the row is a *projection*.
 - Complete words in identifiers, Python and TypeScript alike.
 - UI is Python components, htpy form: `Builder(class_="x")[child]`.
 - No dispatch inside a transaction. A test that POSTs through a dispatching
@@ -75,16 +73,19 @@ in TypeScript with vitest, Playwright for e2e.
 ```python
 type PreviewCell = Callable[[Any, Presentations], Cell]
 
+
 @dataclass(frozen=True, slots=True)
 class PreviewColumn:
     heading: str
     cell: PreviewCell
     align: Align = "left"  # the Column alias, primitives.py:2190
 
+
 @dataclass(frozen=True, slots=True)
 class Presentations:
     dates: DateTimePresentation
     durations: DurationPresentation
+
 
 class BulkAction[RowT]:  # every field as today, plus:
     preview: tuple[PreviewColumn, ...]
@@ -258,10 +259,12 @@ class SelectionAction(TypedDict):
     url: str
     cardinality: Literal["one", "many"]
 
+
 class SelectionDeclaration(TypedDict):
     filter: FilterJson
     actions: NotRequired[Sequence[SelectionAction]]
     csrf_token: NotRequired[str]
+
 
 # games/bulk_tray.py
 def tray_actions(
