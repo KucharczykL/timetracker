@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
-import { adoptDraft, readDraft } from "./temporal-field.js";
+import {
+  TEMPORAL_FIELD_CHANGE_EVENT,
+  adoptDraft,
+  copyTemporalDraft,
+  readDraft,
+} from "./temporal-field.js";
 
 const PARTS = ["year", "month", "day"] as const;
 type PartOrder = readonly string[];
@@ -101,16 +106,20 @@ function endpointMarkup(
     </fieldset>`;
 }
 
-function mountDraft(
+/** One whole control, as the server renders it for this draft. */
+function fieldMarkup(
   stored: Draft = {},
   expanded = "false",
   order: PartOrder = PARTS,
   fieldName = "",
-): HTMLElement {
+  copySource = "",
+): string {
   const draft: Draft = { ...EMPTY_DRAFT, ...stored };
+  // Radios are one group per field, so two fields on a page stay apart.
+  const shapeName = `${fieldName || "field"}-end-shape`;
   const kindOption = (value: string, text: string) =>
     `<option value="${value}"${value === draft.kind ? " selected" : ""}>${text}</option>`;
-  document.body.innerHTML = `
+  return `
     <temporal-field expanded="${expanded}"${
       fieldName ? ` field-name="${fieldName}"` : ""
     }>
@@ -127,11 +136,11 @@ function mountDraft(
         ${endpointMarkup("start", "open_start", draft, order)}
         <fieldset data-temporal-extra="" hidden>
           <legend>After the start date</legend>
-          <input type="radio" name="end-shape" value="end_none"
+          <input type="radio" name="${shapeName}" value="end_none"
                  data-temporal-toggle="end_none" disabled>
-          <input type="radio" name="end-shape" value="end_date"
+          <input type="radio" name="${shapeName}" value="end_date"
                  data-temporal-toggle="end_date" disabled>
-          <input type="radio" name="end-shape" value="end_open"
+          <input type="radio" name="${shapeName}" value="end_open"
                  data-temporal-toggle="end_open" disabled>
         </fieldset>
         <div data-temporal-end-group="">
@@ -144,9 +153,37 @@ function mountDraft(
           </button>
         </div>
         <p data-temporal-announcement="" role="status" aria-live="polite"></p>
+        ${
+          copySource
+            ? `<button type="button" data-temporal-copy="${copySource}" hidden disabled>
+                 Use original release
+               </button>`
+            : ""
+        }
       </div>
     </temporal-field>`;
+}
+
+function mountDraft(
+  stored: Draft = {},
+  expanded = "false",
+  order: PartOrder = PARTS,
+): HTMLElement {
+  document.body.innerHTML = fieldMarkup(stored, expanded, order);
   return document.querySelector("temporal-field")!;
+}
+
+/** A source named on the page and a target that may copy from it. */
+function mountPair(
+  sourceDraft: Draft = {},
+  targetDraft: Draft = {},
+  copySource = "original_release_date",
+): { source: HTMLElement; target: HTMLElement } {
+  document.body.innerHTML =
+    fieldMarkup(sourceDraft, "false", PARTS, "original_release_date") +
+    fieldMarkup(targetDraft, "false", PARTS, "release_date", copySource);
+  const fields = document.querySelectorAll<HTMLElement>("temporal-field");
+  return { source: fields[0], target: fields[1] };
 }
 
 function mount(
@@ -779,5 +816,158 @@ describe("temporal-field", () => {
     adoptDraft(host, readDraft(host));
 
     expect(readDraft(host)).toEqual(before);
+  });
+});
+
+describe("temporal-field copy", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  function isExpanded(host: HTMLElement): boolean {
+    return (
+      host
+        .querySelector("[data-temporal-disclosure]")!
+        .getAttribute("aria-expanded") === "true"
+    );
+  }
+
+  function part(host: HTMLElement, endpoint: string, name: string): HTMLElement {
+    return host.querySelector<HTMLElement>(
+      `[data-temporal-endpoint="${endpoint}"] [data-temporal-part="${name}"]`,
+    )!;
+  }
+
+  it("copies a day whole", () => {
+    const { source, target } = mountPair({
+      kind: "date",
+      start_year: "1997",
+      start_month: "3",
+      start_day: "15",
+    });
+
+    copyTemporalDraft(source, target);
+
+    expect(readDraft(target)).toEqual(readDraft(source));
+    expect(named(target, "kind").value).toBe("date");
+  });
+
+  it("copies a range onto both ends", () => {
+    const { source, target } = mountPair({
+      kind: "range",
+      start_year: "1997",
+      end_year: "1999",
+    });
+
+    copyTemporalDraft(source, target);
+
+    expect(named(target, "end_year").value).toBe("1999");
+    expect(toggle(target, "end_date").checked).toBe(true);
+    expect(named(target, "kind").value).toBe("range");
+  });
+
+  it("copies a since as a since", () => {
+    const { source, target } = mountPair({ kind: "since", start_year: "1997" });
+
+    copyTemporalDraft(source, target);
+
+    expect(toggle(target, "end_open").checked).toBe(true);
+    expect(named(target, "kind").value).toBe("since");
+  });
+
+  it("copies an until as an until", () => {
+    const { source, target } = mountPair({ kind: "until", end_year: "1999" });
+
+    copyTemporalDraft(source, target);
+
+    expect(toggle(target, "open_start").checked).toBe(true);
+    expect(toggle(target, "end_date").checked).toBe(true);
+    expect(named(target, "kind").value).toBe("until");
+    expect(toggle(target, "end_none").disabled).toBe(true);
+  });
+
+  it("hands the end choices back when a date lands on an until", () => {
+    const { source, target } = mountPair(
+      { kind: "date", start_year: "1997" },
+      { kind: "until", end_year: "1999" },
+    );
+
+    copyTemporalDraft(source, target);
+
+    expect(toggle(target, "open_start").checked).toBe(false);
+    ["end_none", "end_date", "end_open"].forEach((shape) => {
+      expect(toggle(target, shape).disabled).toBe(false);
+    });
+    expect(named(target, "end_year").value).toBe("");
+  });
+
+  it("opens a collapsed target that a since needs open", () => {
+    const { source, target } = mountPair({ kind: "since", start_year: "1997" });
+    expect(isExpanded(target)).toBe(false);
+
+    copyTemporalDraft(source, target);
+
+    expect(isExpanded(target)).toBe(true);
+  });
+
+  it("copies a whole decade with its box", () => {
+    const { source, target } = mountPair({ kind: "date", start_decade: "1990" });
+
+    copyTemporalDraft(source, target);
+
+    expect(toggle(target, "whole_decade_start").checked).toBe(true);
+    expect(named(target, "start_decade").value).toBe("1990");
+    expect(named(target, "start_year").value).toBe("");
+    expect(part(target, "start", "month").hasAttribute("hidden")).toBe(true);
+    expect(part(target, "start", "day").hasAttribute("hidden")).toBe(true);
+  });
+
+  it("copies both qualifiers and opens for them", () => {
+    const { source, target } = mountPair({
+      kind: "date",
+      start_year: "1997",
+      start_approximate: "on",
+      start_uncertain: "on",
+    });
+
+    copyTemporalDraft(source, target);
+
+    expect(named(target, "start_approximate").checked).toBe(true);
+    expect(named(target, "start_uncertain").checked).toBe(true);
+    expect(isExpanded(target)).toBe(true);
+  });
+
+  it("leaves nothing of the value it overwrites", () => {
+    const { source, target } = mountPair(
+      { kind: "date", start_year: "1997" },
+      { kind: "date", start_year: "2019", start_month: "8", start_day: "4" },
+    );
+
+    copyTemporalDraft(source, target);
+
+    expect(named(target, "start_year").value).toBe("1997");
+    expect(named(target, "start_month").value).toBe("");
+    expect(named(target, "start_day").value).toBe("");
+  });
+
+  it("empties a target from a source that states nothing", () => {
+    const { source, target } = mountPair({}, { kind: "date", start_year: "2019" });
+
+    copyTemporalDraft(source, target);
+
+    expect(named(target, "start_year").value).toBe("");
+    expect(named(target, "kind").value).toBe("unknown");
+  });
+
+  it("announces every commit, because typing announces none", () => {
+    const { source } = mountPair();
+    const heard: string[] = [];
+    document.body.addEventListener(TEMPORAL_FIELD_CHANGE_EVENT, () => {
+      heard.push(named(source, "kind").value);
+    });
+
+    type(source, "start", "year", "1997");
+
+    expect(heard).toContain("date");
   });
 });

@@ -25,6 +25,15 @@ import {
 } from "./date-field-core.js";
 import { decadeStart, temporalCodec } from "./temporal-codec.js";
 
+/**
+ * What one control announces when its value moves.
+ *
+ * The segment engine takes every digit keydown and writes the buffers
+ * itself, so nothing native fires. A peer that watches this field has no
+ * other way to hear it.
+ */
+export const TEMPORAL_FIELD_CHANGE_EVENT = "temporal-field:change";
+
 const ENDPOINTS = ["start", "end"] as const;
 /** Which end a control names. */
 type Endpoint = (typeof ENDPOINTS)[number];
@@ -292,6 +301,7 @@ export function commitEndpoint(host: HTMLElement, endpoint: Endpoint): void {
   setNamed(host, "kind", currentKind(host));
   announce(host);
   paintDisclosure(host);
+  host.dispatchEvent(new CustomEvent(TEMPORAL_FIELD_CHANGE_EVENT, { bubbles: true }));
 }
 
 function show(element: Element | null, visible: boolean): void {
@@ -435,6 +445,11 @@ export function adoptDraft(host: HTMLElement, draft: TemporalDraft): void {
 
   commitEndpoint(host, "start");
   setExpanded(host, !canCollapse(host));
+}
+
+/** One field takes the whole value another states. */
+export function copyTemporalDraft(source: HTMLElement, target: HTMLElement): void {
+  adoptDraft(target, readDraft(source));
 }
 
 function revealSegments(host: HTMLElement): void {
