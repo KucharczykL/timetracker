@@ -903,8 +903,11 @@ def partial_update_session(request, session_id: UUIDv7, payload: SessionUpdate):
             )
     except CommandFailed as failure:
         _answered_or_http(failure)
+    #: Read before the message: this scope reads a catalog
+    #: mark no command reads, so a move can lose the row.
+    updated = owned_or_404(readable_sessions(library), library, pk=session.pk)
     messages.success(request, "Session updated.")
-    return readable_sessions(library).get(pk=session.pk)
+    return updated
 
 
 api.add_router("/session", session_router)

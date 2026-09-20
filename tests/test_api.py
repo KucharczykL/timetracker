@@ -1136,6 +1136,7 @@ def test_post_session_404s_a_repeat_of_a_session_since_removed(auth_client, user
     second = _post_session(auth_client, body, headers=headers)
 
     assert second.status_code == 404
+    assert "HX-Trigger" not in second.headers
     assert PlayerSession.objects.filter(playthrough=run).count() == 1
 
 
@@ -1171,6 +1172,26 @@ def test_session_patch_404s_a_run_another_library_holds(auth_client, user):
     assert response.status_code == 404
     session.refresh_from_db()
     assert session.playthrough_id != theirs.pk
+
+
+@pytest.mark.django_db(transaction=True)
+def test_session_patch_404s_a_move_onto_an_untracked_game(auth_client, user):
+    """The move lands, the read refuses it."""
+    _prague_calendar(user)
+    session = _row()
+    elsewhere = _tracked_run(name="Elsewhere")
+    Game.objects.filter(pk=elsewhere.player_game.game_id).update(
+        removed_at=datetime.now(UTC)
+    )
+
+    response = _patch_session(
+        auth_client, session.id, {"playthrough_id": str(elsewhere.pk)}
+    )
+
+    assert response.status_code == 404
+    assert "HX-Trigger" not in response.headers
+    session.refresh_from_db()
+    assert session.playthrough_id == elsewhere.pk
 
 
 # ── PATCH /api/session/{id}/device — nullable device (#290) ──────────────────

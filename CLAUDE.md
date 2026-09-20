@@ -773,8 +773,10 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
 - `PATCH /api/session/{id}` — body `extra="forbid"`: `timing` (one whole
   statement told apart by shape) is a correction, `note`/`device_id`/`emulated`
   a description, `playthrough_id` a move; named key is the act, omitted key
-  states nothing. A run or device the library does not hold answers 404,
-  from the command
+  states nothing. A run or device the library does not hold answers 404, from
+  the command, and so does the row the read-back refuses: a move onto a run at
+  an untracked game lands, and `library_sessions` reads a catalog mark no
+  session command reads (#1169)
 - `POST /api/session/` — body `extra="forbid"`: `playthrough_id` and one whole
   `timing` statement, `device_id`, `note` and `emulated` beside them. Answers
   201 and the row. An `Idempotency-Key` header absorbs a repeat; the header
