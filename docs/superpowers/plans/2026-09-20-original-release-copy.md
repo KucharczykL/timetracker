@@ -217,7 +217,7 @@ Alignment gets verified by looking, not measuring. Open Add Game at a wide viewp
 
 ## Follow-up issues to file
 
-- **`TemporalFieldProps.expanded` duplicates `canCollapse()`.** The server computes `_needs_precision_controls()` and the element computes the same predicate. The prop has to stay — it paints the field before upgrade and with no script — but the two rules should be generated from one. File after Task 1 lands, when the client-side half has a name.
-- **The thirteen draft keys are spelled in two languages.** `TEMPORAL_INPUT_SUFFIXES` in Python and the `data-temporal-input` keys in TypeScript. `gen_element_types` already emits `ts/generated/date-time-presentation.ts` from Python, so emitting these would make a renamed key fail `tsc`. File; do not do it here.
+- [#1164](https://github.com/KucharczykL/timetracker/issues/1164) — `TemporalFieldProps.expanded` is dead. The element derives the same answer through `canCollapse()`, and nothing else reads the attribute.
+- [#1165](https://github.com/KucharczykL/timetracker/issues/1165) — the thirteen draft keys are spelled in two languages, with no codegen binding them.
 
 [#1159](https://github.com/KucharczykL/timetracker/issues/1159) is already filed and independent.
