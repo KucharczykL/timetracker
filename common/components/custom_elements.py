@@ -606,6 +606,17 @@ register_element("quick-filter-bar", "QuickFilterBar", QuickFilterBarProps)
 _QuickFilterBarElement = custom_element_builder("quick-filter-bar")
 
 
+class SearchFieldProps(TypedDict):
+    # No prop: the mode lives in ``data-modifier``, which is the contract the
+    # bar's generic string reader already needs on a widget root. One attribute,
+    # read by the element and by the serializer alike.
+    pass
+
+
+register_element("search-field", "SearchField", SearchFieldProps)
+_SearchFieldElement = custom_element_builder("search-field")
+
+
 class CopyControlProps(TypedDict):
     value: str
 

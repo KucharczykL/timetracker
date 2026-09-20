@@ -50,6 +50,8 @@ class QuickFilterBarElement extends HTMLElement {
   private overflowItems: HTMLElement | null = null;
   private rowGap = 0;
   private reservedWidth = 0;
+  // Measured once, unhidden. Re-reading it while hidden answers 0.
+  private overflowWidth = 0;
   private resizeObserver: ResizeObserver | null = null;
   private layoutQueued = false;
   private disposePresetDelete: (() => void) | null = null;
@@ -132,17 +134,22 @@ class QuickFilterBarElement extends HTMLElement {
       width: element.offsetWidth,
     }));
     this.overflowHost.classList.remove("hidden");
-    const overflowWidth = this.overflowHost.offsetWidth;
+    this.overflowWidth = this.overflowHost.offsetWidth;
     this.overflowHost.classList.add("hidden");
-    // Everything after the overflow host (preset picker, action group) is
-    // permanent row furniture the facets must leave room for.
+    // Every child that is not a facet is permanent row furniture the facets
+    // must leave room for: the free-text field that leads the row, and the
+    // preset picker and action group that follow the overflow host. Reading
+    // only the host's following siblings missed a leading member, so the
+    // facets claimed room that was taken and the row wrapped to a second line
+    // instead of moving a facet into the overflow. The host itself is measured
+    // above, unhidden, and is added once below.
     let furnitureWidth = 0;
-    let sibling = this.overflowHost.nextElementSibling;
-    while (sibling) {
-      furnitureWidth += (sibling as HTMLElement).offsetWidth + this.rowGap;
-      sibling = sibling.nextElementSibling;
+    for (const child of Array.from(this.row.children)) {
+      if (child === this.overflowHost) continue;
+      if ((child as HTMLElement).matches("[data-quick-facet]")) continue;
+      furnitureWidth += (child as HTMLElement).offsetWidth + this.rowGap;
     }
-    this.reservedWidth = furnitureWidth + overflowWidth + this.rowGap;
+    this.reservedWidth = furnitureWidth + this.overflowWidth + this.rowGap;
 
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => this.queueLayout());
@@ -173,7 +180,7 @@ class QuickFilterBarElement extends HTMLElement {
     // permanent furniture, nothing collapses.
     const facetWidths = this.facets.map((facet) => facet.width);
     const totalFacetsWidth = priorityPlusTotalWidth(facetWidths, this.rowGap);
-    const furnitureOnly = this.reservedWidth - this.rowGap - overflowHost.offsetWidth;
+    const furnitureOnly = this.reservedWidth - this.rowGap - this.overflowWidth;
     let fitCount: number;
     if (totalFacetsWidth + Math.max(furnitureOnly, 0) <= rowWidth) {
       fitCount = this.facets.length;

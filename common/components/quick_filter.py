@@ -8,10 +8,12 @@ form: Apply (or Enter in a facet input) serializes them and navigates
 (``ts/elements/quick-filter-bar.ts``); anything richer belongs to the nested
 builder, reachable from the action group's "Advanced filter…" segment.
 
-Row anatomy: facets (collapsible), the "⋯" priority-plus overflow menu, the
-Load-preset picker, and the Apply | Clear [| Advanced filter…] ButtonGroup.
-Everything after the overflow host is non-collapsible row furniture — the
-bar's ResizeObserver layout reserves its width and moves only facets.
+Row anatomy: the free-text field, then the facets (collapsible), the "⋯"
+priority-plus overflow menu, the Load-preset picker, and the Apply | Clear
+[| Advanced filter…] ButtonGroup. Everything that is not a facet is
+non-collapsible row furniture — the bar's ResizeObserver layout reserves its
+width and moves only facets, so the field never enters the overflow at any
+width.
 
 The bar is editable only when :func:`is_quick_editable` accepts the active
 filter; otherwise it degrades to a read-only "Advanced filter active" pill
@@ -45,6 +47,12 @@ from common.components.primitives import (
     Form,
     Link,
     Span,
+)
+from common.components.search_field import (
+    DEFAULT_MATCH_MODE,
+    MATCH_MODES,
+    SEARCH_PLACEHOLDERS,
+    SearchField,
 )
 from common.components.search_select import ComboboxDropdown, LoadPresetDropdown
 from common.criteria import AttrName
@@ -171,21 +179,32 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
 def is_quick_editable(parsed: dict, facet_fields: Collection[AttrName]) -> bool:
     """Whether the quick bar may edit ``parsed`` — THE pinned predicate.
 
-    True iff ``parsed`` is empty or every top-level key is one of
-    ``facet_fields`` with a dict (criterion) value. Everything else degrades
-    the bar to the read-only pill: operator keys (``AND``/``OR``/``NOT``),
-    relation keys (``*_filter``), ``field_comparisons``, ``search``, any
-    non-facet flat leaf (e.g. ``year_released``), or a facet key whose value
-    is not a dict. Unparseable / absent filter JSON parses to ``{}`` (see
-    ``parse_filter_dict``) and is therefore editable.
+    True iff ``parsed`` is empty or every top-level key is either one of
+    ``facet_fields`` with a dict (criterion) value, or ``search`` in one of the
+    six modes the field can state. Everything else degrades the bar to the
+    read-only pill: operator keys (``AND``/``OR``/``NOT``), relation keys
+    (``*_filter``), ``field_comparisons``, any non-facet flat leaf (e.g.
+    ``year_released``), a facet key whose value is not a dict, or a ``search``
+    in a mode the field has no control for. Unparseable / absent filter JSON
+    parses to ``{}`` (see ``parse_filter_dict``) and is therefore editable.
 
-    Round-trip guarantee: the bar's serializer emits only ``{facet: criterion
-    dict}`` entries, so a filter the quick bar itself produced always passes —
+    A ``search`` the field cannot state degrades rather than renders, because
+    the bar must never show a control for a filter it would rewrite: the field
+    holds one of six modes, so a seventh would be silently changed on apply.
+
+    Round-trip guarantee: the bar's serializer emits only flat facet criteria
+    and ``search``, so a filter the quick bar itself produced always passes —
     it can never lock itself out (pinned by the round-trip test).
     """
-    return all(
-        key in facet_fields and isinstance(value, dict) for key, value in parsed.items()
-    )
+
+    def admits(key: str, value: object) -> bool:
+        if key == "search":
+            return isinstance(value, dict) and value.get(
+                "modifier", DEFAULT_MATCH_MODE
+            ) in {token for token, _, _ in MATCH_MODES}
+        return key in facet_fields and isinstance(value, dict)
+
+    return all(admits(key, value) for key, value in parsed.items())
 
 
 _QUICK_BAR_ROW_CLASS = "flex flex-wrap items-center gap-x-4 gap-y-2 mb-3"
@@ -256,7 +275,11 @@ class QuickFilterBar(BaseComponent):
         from games.filters import filter_for_model
 
         filter_cls = filter_for_model(FILTER_MODE_MODELS[self.mode])
+        # The field leads the row and is not a facet, so the overflow never
+        # holds it: a free-text box a person has to go looking for in a menu is
+        # worse than one facet fewer in the row.
         row_children: list[Node] = [
+            self._search_field(),
             *[self._facet(filter_cls, facet) for facet in facets],
             self._overflow_dropdown(),
         ]
@@ -287,6 +310,17 @@ class QuickFilterBar(BaseComponent):
             # intercepts submit and navigates.
             Form()[Div(class_=_QUICK_BAR_ROW_CLASS, data_quick_row="")[row_children]]
         ]
+
+    def _search_field(self) -> Node:
+        stated = self.existing.get("search")
+        criterion = stated if isinstance(stated, dict) else {}
+        return SearchField(
+            value=str(criterion.get("value", "") or ""),
+            modifier=str(criterion.get("modifier", DEFAULT_MATCH_MODE)),
+            name=f"quick-{self.mode}-search",
+            placeholder=SEARCH_PLACEHOLDERS[self.mode],
+            id=f"quick-{self.mode}-search",
+        )
 
     def _facet(self, filter_cls: type, facet: QuickFacet) -> Node:
         """A GitHub-style compact facet: a ghost "Label ▾" trigger

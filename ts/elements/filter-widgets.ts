@@ -57,10 +57,19 @@ export function buildRangeCriterion(
 // ── Per-kind readers: each scoped to a single widget element, returns a criterion
 // object or null to omit the field. ──
 
+// A widget states its modifier one of two ways: the builder's leaves render a
+// <select>, and a widget that renders none declares it on its own root. Read the
+// select first, so the builder's leaves are unaffected.
+function stringModifier(element: HTMLElement): string {
+  const select = element.querySelector<HTMLSelectElement>(
+    "select[data-string-modifier-select]",
+  );
+  if (select) return select.value;
+  return element.getAttribute("data-modifier") ?? "EQUALS";
+}
+
 export function readStringWidget(element: HTMLElement): Record<string, unknown> | null {
-  const modifier =
-    element.querySelector<HTMLSelectElement>("select[data-string-modifier-select]")?.value ??
-    "EQUALS";
+  const modifier = stringModifier(element);
   if (isPresenceModifier(modifier)) {
     return { modifier };
   }
@@ -267,7 +276,12 @@ export function writeStringWidget(element: HTMLElement, criterion: Record<string
   const select = element.querySelector<HTMLSelectElement>("select[data-string-modifier-select]");
   selectModifier(select, criterion["modifier"]);
   if (select) toggleStringFilterInput(select);
-  const modifier = select?.value ?? "EQUALS";
+  // Mirrors the read side: a widget with no select carries its mode on the root,
+  // so hydrate-then-serialize stays stable for both shapes.
+  if (!select && typeof criterion["modifier"] === "string") {
+    element.setAttribute("data-modifier", criterion["modifier"]);
+  }
+  const modifier = stringModifier(element);
   if (isPresenceModifier(modifier)) return; // presence carries no value; input stays disabled+empty
   const textInput = element.querySelector<HTMLInputElement>('input[type="text"]');
   // Trimmed like the read side (readStringWidget), so hydrate → serialize is stable.
