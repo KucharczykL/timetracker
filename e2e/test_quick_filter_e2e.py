@@ -447,6 +447,9 @@ def test_a_chosen_mode_reaches_the_filter(
     expect(page.locator("search-field [data-match-trigger]")).to_have_attribute(
         "aria-label", "Match mode: excludes"
     )
+    # A picked mode closes the menu, which otherwise covers the box. Playwright's
+    # fill does no hit-testing, so the assertion below would pass either way.
+    expect(page.locator("search-field [role='menu']")).to_be_hidden()
 
     page.locator("search-field [data-match-value]").fill("Hollow")
     _quick_apply(page)

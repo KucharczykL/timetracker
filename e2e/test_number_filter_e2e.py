@@ -56,7 +56,9 @@ def prefilled_bar_view(request):
     filter_json = json.dumps(
         {
             "year_released": {"value": 2000, "value2": 2010, "modifier": "BETWEEN"},
-            "session_count": {"modifier": "IS_NULL"},
+            # A count answers 0 over no rows, so its widget states no
+            # presence pair; this is a mode it does state.
+            "session_count": {"value": 5, "modifier": "GREATER_THAN"},
         }
     )
     return HttpResponse(
@@ -186,11 +188,16 @@ def test_number_filter_prefilled_states(live_server, page):
         == "BETWEEN"
     )
 
-    # session_count: IS_NULL — value input disabled, modifier selected.
+    # session_count: GREATER_THAN 5 — value prefilled, input enabled.
     _open_facet(page, "session_count")
     session_input = page.locator('input[name="quick-session_count"]')
-    assert not session_input.is_enabled()
-    assert (
-        page.locator('select[name="quick-session_count-modifier"]').input_value()
-        == "IS_NULL"
+    assert session_input.is_enabled()
+    assert session_input.input_value() == "5"
+    modifier_select = page.locator('select[name="quick-session_count-modifier"]')
+    assert modifier_select.input_value() == "GREATER_THAN"
+    # A count states no presence pair, so its widget offers neither.
+    offered = modifier_select.locator("option").evaluate_all(
+        "options => options.map(option => option.value)"
     )
+    assert "IS_NULL" not in offered
+    assert "NOT_NULL" not in offered

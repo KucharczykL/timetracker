@@ -2905,12 +2905,23 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
             # A metadata_lookup path is not the queried path, so its
             # hops say nothing; read the terminal column.
             # A column-less field states its own nullability.
+            #
+            # An aggregate's reducer decides it. ``Count`` answers 0 over no
+            # rows, so a count is never null and a presence test on one matches
+            # nothing; ``Sum`` and ``Avg`` answer NULL there, so "is null" on
+            # one reads as "no related rows" — the one way to ask that.
             if field_spec is not None and field_spec.nullable is not None:
                 nullable = field_spec.nullable
             elif field_spec is not None and field_spec.metadata_lookup is not None:
                 nullable = bool(getattr(model_field, "null", False))
             elif resolved_lookup is not None:
                 nullable = _lookup_is_nullable(model, resolved_lookup)
+            elif is_aggregate:
+                aggregate_spec = filter_cls.aggregates.get(name)
+                nullable = aggregate_spec is not None and aggregate_spec.reducer in (
+                    "sum",
+                    "avg",
+                )
             else:
                 nullable = False
             # Value-widget config (issue #242). ``field_spec`` is None for
@@ -3255,6 +3266,15 @@ def days_touched_handler(lower_field: str, upper_field: str) -> FieldHandler:
         raise FilterError(f"Unsupported modifier {modifier} for a day count")
 
     return handler
+
+
+#: The modifier a stored criterion that names none reads as.
+#:
+#: Every criterion class defaults to ``EQUALS`` and ``to_json`` drops a value
+#: equal to its default, so a stored exact comparison carries no modifier at
+#: all. A reader that supplies a different default there shows one comparison
+#: over a filter the server applies as another.
+DEFAULT_STATED_MODIFIER: ModifierToken = Modifier.EQUALS.value
 
 
 class SearchLookup(NamedTuple):

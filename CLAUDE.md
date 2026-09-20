@@ -608,7 +608,7 @@ Submodules re-exported via `common/components/__init__.py`:
   `ControlButton()` (one polymorphic button/link builder: `href=` renders `<a>`,
   `method="post"` renders `<form>`+submit, default `<button>`), `ButtonGroup()`,
   `Input()`, `Checkbox()`, `Radio()`, `Pill()`, `Icon()`, `Popover()`,
-  `TruncatedText()`, `SearchField()`, `PageHeading()` (badge heading; plain `<h1>`
+  `TruncatedText()`, `SegmentedField()`, `PageHeading()` (badge heading; plain `<h1>`
   is generated `H1`), `Modal()`, `ConfirmPage()` (full-page POST confirmation —
   canonical removal affordance; `details` is block slot beside `message`, which
   renders inside `<p>`), `StyledTable()`, `TableRow()`, `TableTd()`,
@@ -627,6 +627,11 @@ Submodules re-exported via `common/components/__init__.py`:
   templates, and `FilterFieldPicker`
 - **`quick_filter.py`** — `QuickFilterBar()`, `QUICK_FACETS`, `is_quick_editable`
   (see Filter system below)
+- **`search_field.py`** — `SearchField()`, the quick bar's free-text field:
+  a match-mode trigger joined to a text box in one `SegmentedField`, wired by
+  `ts/elements/search-field.ts`. `MATCH_MODES` names the six modes `search_q`
+  reads, pinned against `SEARCH_LOOKUPS` at import; `SEARCH_PLACEHOLDERS` names
+  the columns each mode's search reads
 - **`search_select.py`** — combobox family, all built on shared `_combobox_shell`
   and wired by `ts/elements/search-select.ts`: `SearchSelect()` (form combobox;
   with `host_dropdown=True`, set by `SearchSelectWidget` form adapter, lives in
@@ -664,6 +669,14 @@ structured filtering.
   EQUALS, NOT_EQUALS, INCLUDES, EXCLUDES, GREATER_THAN, LESS_THAN, BETWEEN,
   IS_NULL, …) and `to_q(field_name)` method. `OperatorFilter` provides AND/OR/NOT
   sub-filter composition and JSON serialization.
+- A leaf's modifier vocabulary is `FieldMeta.modifiers`, built by
+  `_modifiers_for_field` from the criterion's value shape less the presence pair
+  for a non-nullable field. No string column here is nullable (`blank=True
+  default="" null=False`), so no string widget offers "is null" — "is empty" is
+  the empty string under "is". An aggregate's nullability comes from its
+  reducer: `count` answers 0 over no rows and is never null, while `sum` and
+  `avg` answer NULL there, so "is null" on one reads as "no related rows".
+  `StringFilter`/`NumberFilter` render exactly this list.
 - `games/filters.py` defines `GameFilter`, `PlayerSessionFilter`,
   `PurchaseFilter` (all `@dataclass` subclasses of `OperatorFilter`) and
   `FindFilter` (sort/pagination). Filters serialize to/from JSON and travel in
@@ -686,8 +699,9 @@ structured filtering.
 - **Quick filter bar** (#197/#315, `common/components/quick_filter.py` +
   `ts/elements/quick-filter-bar.ts`) is **THE one filter tier** above every list
   view — GitHub-style row of ghost "Label ▾" dropdown facets directly above table.
-  Flat FilterBar family gone (#315), as is free-text search UI (`search` criterion
-  remains server-side inside `?filter=` JSON; no `?search_string=` fallback).
+  Flat FilterBar family gone (#315). The row leads with the `search` field
+  (#1146) and never puts it in the overflow; the criterion still travels
+  inside `?filter=` JSON, with no `?search_string=` fallback.
   - Facets are own-model leaf fields of any `QUICK_FACET_KINDS` kind
     (set/number/date/string/bool; flat aggregates like `session_count` count as
     number, and `activity` names a queryset alias rather than a column, so its
@@ -705,8 +719,12 @@ structured filtering.
     segment). `apply_url` overrides every derived list URL (#304
     synthetic-harness constraint).
   - Editable only when every top-level filter key is facet field with dict
-    criterion (`is_quick_editable`); operator keys, `*_filter` relations,
-    `field_comparisons`, `search`, or any non-facet leaf degrade it to read-only
+    criterion whose modifier its widget renders, or a `search` whose value is
+    text in one of the six modes the field states (`is_quick_editable`, which
+    takes the filter class so it can read each field's `FieldMeta` vocabulary;
+    string and number kinds are checked against it, set/date/bool are not — see
+    its docstring); operator keys, `*_filter` relations,
+    `field_comparisons`, or any non-facet leaf degrade it to read-only
     "Advanced filter active" pill with Edit-in-builder/Clear links. Bar's
     serializer emits only flat facet criteria, so its own output always
     round-trips back to editable. Anything facets can't express lives in nested
@@ -1008,7 +1026,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `Builder(class_="x", hx_get="/y")[child1, child2]`. Dynamic attributes (runtime
   `list[(name, value)]` or `Mapping`) go through single positional slot. Generic
   and six styled builders (`Input`, `Checkbox`, `Radio`, `Pill`, `ControlButton`,
-  `SearchField`) **do not accept `attributes=`/`children=`** — passing either
+  `SegmentedField`) **do not accept `attributes=`/`children=`** — passing either
   raises `TypeError`. Semantic params keyword-only (`ControlButton(color="red")`,
   `Checkbox(name=…, checked=…)`, `Pill(label=…)`). Reach for named builder a tag
   has; if tag has none, add it to whitelist in `primitives.py` and export from

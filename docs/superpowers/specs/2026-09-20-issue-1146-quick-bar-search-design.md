@@ -1,64 +1,66 @@
 # The quick bar's search field
 
-`search` is a criterion on all seven filters, and it reads several columns at
-once. The quick filter bar renders it as one field at the start of the row.
+`search` is a criterion on all seven filters, reading several columns. The quick
+bar renders it as one field at the start of the row.
 
 ## The field
 
-`SegmentedField` joins a match-mode trigger to a text box. Position decides the
-rounding of each member, because a member does not know its own. The row draws
-one border line and one shadow. A focused member goes above its neighbour, or
-the neighbour cuts its focus ring. A member can wrap its control, so the rules
-also reach a button in a member.
+`SegmentedField` joins a match-mode trigger to a text box. Position decides each
+member's rounding; the row draws one border and one shadow, and a focused member
+lifts above its neighbour.
 
-The trigger shows a mark and a chevron, and its accessible name states the mode
-(`Match mode: excludes`). Each row of the wider menu shows a mark and its mode
-in words. The menu marks the current mode.
+The trigger shows a mark and a chevron; its accessible name states the mode
+(`Match mode: excludes`). The wider menu shows each mark beside its words,
+marking the current mode. A chosen mode closes the menu, which the shared radio
+behaviour does not. The box has no label, so its placeholder names it.
 
-The field is not a facet. The overflow never holds it.
-
-A widget states its modifier on a `select`, or on its root as `data-modifier`.
-The reader takes the `select` first. This field has none.
+A widget states its modifier on a `select`, read first, or on its root as
+`data-modifier`; this field has only the second. A widget with neither is a
+defect: it is reported, and reads includes.
 
 ## The modes
 
-There are six modes: includes, excludes, is, is not, matches regex, and not
-matches regex. `IS_NULL` and `NOT_NULL` are not available, because "is null"
-across several columns has no meaning.
+The six modes are includes, excludes, is, is not, matches regex, and not matches
+regex. `IS_NULL` and `NOT_NULL` mean nothing across several columns. The field
+states the same six as `search_q`, or it stops at import.
 
 ## The marks
 
-An arc that a bar crosses is `includes`. Two bars are `is`. `.*` is the regex.
-
-A negative mark adds a diagonal from the top left to the bottom right, and the
-glyph has a gap where it crosses. The gap is part of the path: a stroke in the
-colour of the surface makes a halo when the surface changes. The regex marks
-keep the dot low and the asterisk high, so the diagonal cuts neither.
+An arc a bar crosses is `includes`. Two bars are `is`. `.*` is the regex. A
+negative mark adds a diagonal, with a gap in the glyph where it crosses. The gap
+is a stroke in the surface colour.
 
 ## What `search_q` reads
 
-Each mode names a lookup. A negative mode makes the same disjunction and negates
-all of it: "excludes Zelda" means that no column holds the text. The exact pair
-reads without case, because all other modes ignore case. An empty value adds no
-constraint. `search_q` refuses a mode that is not one of the six.
+Each mode names a lookup. A negative mode negates its positive partner's whole
+disjunction: "excludes Zelda" means no column holds it. The exact pair reads
+without case; the regex pair does not. An empty value adds no constraint.
+`search_q` reads the mode before the value: a refused mode carries none.
 
 ## The bar
 
-`is_quick_editable` accepts a top-level `search` in one of the six modes. Any
-other mode degrades the bar to the read-only pill, which holds no field: the bar
-must not show a control for a filter it would rewrite.
+`is_quick_editable` accepts a `search` holding text in one of the six modes, and
+a facet whose mode its widget renders. Anything else degrades the bar to the
+read-only pill, which holds no field. The field refuses a mode it cannot show,
+because such a control widens the filter on the next apply.
 
-The row reserves width for each child that is not a facet, and measures the
-overflow host once, unhidden.
+A stated `search` naming no mode reads as is: `to_json` removes a default. A
+bar with no `search` opens the field on includes.
 
-Enter applies the filter, and so does Apply. Clear removes the filter and the
-field together. There is no live apply, because each apply loads a page.
+The row reserves width for every child but the facets, and measures the overflow
+host once, unhidden; the field is no facet, so the overflow never holds it.
+
+Enter applies, and so does Apply. Clear removes the filter and the field.
 
 ## The builder
 
-`field_metadata` includes `search`. The client registry keeps only the fields it
-names, so the builder removed a `search` from a filter it read. `search` has no
-column: no choices, no `search_url`, never null.
+`field_metadata` includes `search`: the client registry keeps only the fields it
+names, so the builder removed a filter's `search`. `search` has no column: no
+choices, no `search_url`, never null.
 
-Each node applies its own `search`, at any depth. `to_q` ends with `_extra_q`,
-and `_apply_operators` composes each sub-filter with `to_q`.
+A string or number widget offers only the modes its field states. No string
+column here can be null, so none shows the presence pair: "is empty" is the
+empty string under "is". A `count` is never null either; a `sum` and an `avg`
+are, and keep the pair.
+
+Each node applies its own `search`, at any depth: `to_q` ends with `_extra_q`.

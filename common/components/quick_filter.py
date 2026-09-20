@@ -22,7 +22,7 @@ next apply, and Clear always discards the *whole* filter.
 """
 
 from collections.abc import Collection
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 from common.components.core import BaseComponent, Node
 from common.components.custom_elements import (
@@ -49,12 +49,13 @@ from common.components.primitives import (
 )
 from common.components.search_field import (
     DEFAULT_MATCH_MODE,
-    MATCH_MODES,
+    MATCH_MODE_TOKENS,
     SEARCH_PLACEHOLDERS,
+    MatchModeToken,
     SearchField,
 )
 from common.components.search_select import ComboboxDropdown, LoadPresetDropdown
-from common.criteria import AttrName
+from common.criteria import DEFAULT_STATED_MODIFIER, AttrName, OperatorFilter
 from common.date_time_presentation import DateTimePresentation
 
 
@@ -175,20 +176,35 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
 }
 
 
-def is_quick_editable(parsed: dict, facet_fields: Collection[AttrName]) -> bool:
+def is_quick_editable(
+    parsed: dict,
+    facet_fields: Collection[AttrName],
+    *,
+    filter_cls: type[OperatorFilter],
+) -> bool:
     """Whether the quick bar may edit ``parsed`` — THE pinned predicate.
 
     True iff ``parsed`` is empty or every top-level key is either one of
-    ``facet_fields`` with a dict (criterion) value, or ``search`` in one of the
-    six modes the field can state. Everything else degrades the bar to the
-    read-only pill: operator keys (``AND``/``OR``/``NOT``), relation keys
-    (``*_filter``), ``field_comparisons``, any non-facet flat leaf (e.g.
-    ``year_released``), a facet key whose value is not a dict, or a ``search``
-    in a mode the field has no control for. Unparseable / absent filter JSON
-    parses to ``{}`` (see ``parse_filter_dict``) and is therefore editable.
+    ``facet_fields`` with a dict (criterion) value whose modifier its widget can
+    render, or ``search`` holding text in one of the six modes the field can
+    state. Everything else degrades the bar to the read-only pill: operator keys
+    (``AND``/``OR``/``NOT``), relation keys (``*_filter``),
+    ``field_comparisons``, any non-facet flat leaf (e.g. ``year_released``), or a
+    facet key whose value is not a dict. Unparseable / absent filter JSON parses
+    to ``{}`` (see ``parse_filter_dict``) and is therefore editable.
 
-    A ``search`` the field cannot state degrades: the bar must never show a
+    A criterion the field cannot state degrades: the bar must never show a
     control for a filter it would rewrite.
+
+    ``filter_cls`` is what makes the per-field check possible: a field's
+    modifier vocabulary lives on its ``FieldMeta``, not in its name. The string
+    and number kinds are checked against it, because their widgets render
+    exactly those modes. The other two are not: a set widget pins
+    ``(Any)``/``(None)`` and, for a many-to-many, ``(All)``/``(Only)`` beside
+    its metadata's modifiers, so a check here would degrade a filter the bar can
+    hold; a date widget carries a stored modifier in a hidden input and returns
+    it untouched, so it can rewrite nothing; and a bool widget renders no
+    modifier control at all.
 
     Round-trip guarantee: the bar's serializer emits only flat facet criteria
     and ``search``, so a filter the quick bar itself produced always passes —
@@ -197,10 +213,23 @@ def is_quick_editable(parsed: dict, facet_fields: Collection[AttrName]) -> bool:
 
     def admits(key: str, value: object) -> bool:
         if key == "search":
-            return isinstance(value, dict) and value.get(
-                "modifier", DEFAULT_MATCH_MODE
-            ) in {token for token, _, _ in MATCH_MODES}
-        return key in facet_fields and isinstance(value, dict)
+            if not isinstance(value, dict):
+                return False
+            # The value goes into a text box, so it has to be text.
+            #
+            # A dict, list or number reaches the box as its repr and Apply
+            # writes that back, turning a filter the person did not state into
+            # one they did.
+            if not isinstance(value.get("value", ""), str):
+                return False
+            # An absent modifier is the criterion's own default, which is exact.
+            return value.get("modifier", DEFAULT_STATED_MODIFIER) in MATCH_MODE_TOKENS
+        if key not in facet_fields or not isinstance(value, dict):
+            return False
+        meta = _field_meta(filter_cls, key)
+        if meta["kind"] in ("string", "number"):
+            return value.get("modifier", DEFAULT_STATED_MODIFIER) in meta["modifiers"]
+        return True
 
     return all(admits(key, value) for key, value in parsed.items())
 
@@ -261,8 +290,17 @@ class QuickFilterBar(BaseComponent):
         return self.apply_url or list_url_for(self.mode)
 
     def render(self) -> Node:
+        # Function-local: games.filters imports common.criteria (and the app
+        # layer generally); keep the component library import-light.
+        from games.filters import filter_for_model
+
         facets = QUICK_FACETS[self.mode]
-        if not is_quick_editable(self.existing, {facet.field for facet in facets}):
+        filter_cls = filter_for_model(FILTER_MODE_MODELS[self.mode])
+        if not is_quick_editable(
+            self.existing,
+            {facet.field for facet in facets},
+            filter_cls=filter_cls,
+        ):
             return self._degraded()
         return self._editable(facets)
 
@@ -281,8 +319,9 @@ class QuickFilterBar(BaseComponent):
             self._overflow_dropdown(),
         ]
         # Everything from the overflow host on is non-collapsible row
-        # furniture (the TS reserve calc walks the host's following
-        # siblings): the preset picker, then the action group.
+        # furniture: the preset picker, then the action group. The TS reserve
+        # walks every row child but the host and the facets, so a child added
+        # here needs no second registration.
         if self.preset_api_url:
             row_children.append(
                 LoadPresetDropdown(
@@ -311,9 +350,17 @@ class QuickFilterBar(BaseComponent):
     def _search_field(self) -> Node:
         stated = self.existing.get("search")
         criterion = stated if isinstance(stated, dict) else {}
+        # A stated search that names no mode reads as the criterion's default;
+        # a field with no search behind it opens on a fresh field's mode.
+        default = (
+            DEFAULT_STATED_MODIFIER if isinstance(stated, dict) else DEFAULT_MATCH_MODE
+        )
+        modifier = criterion.get("modifier", default)
         return SearchField(
             value=str(criterion.get("value", "") or ""),
-            modifier=str(criterion.get("modifier", DEFAULT_MATCH_MODE)),
+            # is_quick_editable admitted this filter, so the mode is one of the
+            # six; the cast states what that gate already checked.
+            modifier=cast(MatchModeToken, modifier),
             name=f"quick-{self.mode}-search",
             placeholder=SEARCH_PLACEHOLDERS[self.mode],
             id=f"quick-{self.mode}-search",

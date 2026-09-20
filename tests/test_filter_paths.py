@@ -137,7 +137,9 @@ def test_the_run_bar_round_trips_completed() -> None:
     parsed = parse_filter_dict(filter_to_json(filter_object))
 
     assert is_quick_editable(
-        parsed, {facet.field for facet in QUICK_FACETS["playthroughs"]}
+        parsed,
+        {facet.field for facet in QUICK_FACETS["playthroughs"]},
+        filter_cls=PlaythroughFilter,
     )
 
 

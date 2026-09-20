@@ -51,7 +51,9 @@ def prefilled_bar_view(request):
                 "value": "Switch",
                 "modifier": "INCLUDES",
             },
-            "group": {"modifier": "IS_NULL"},
+            # "is empty" on a NOT NULL column is the empty string, never
+            # a presence test, so this is the shape the widget states.
+            "group": {"value": "", "modifier": "EQUALS"},
         }
     )
     return HttpResponse(
@@ -101,24 +103,36 @@ def test_string_filter_defaults_and_toggles(live_server, page):
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_string_filter_e2e")
-def test_string_filter_null_states(live_server, page):
+def test_string_filter_offers_no_presence_modifier(live_server, page):
+    """A string widget states only the modes its field does.
+
+    Every string column here is NOT NULL, so "is null" would match no row. The
+    widget offers the six a value shape allows, and "is empty" is the empty
+    string under "is".
+    """
     page.goto(live_server.url + "/test-string-filter-empty/")
     page.locator("#quick-name-dropdownLink").click()
 
+    modifier_select = page.locator('select[name="quick-name-modifier"]')
+    offered = modifier_select.locator("option").evaluate_all(
+        "options => options.map(option => option.value)"
+    )
+    assert "IS_NULL" not in offered
+    assert "NOT_NULL" not in offered
+    assert offered == [
+        "EQUALS",
+        "NOT_EQUALS",
+        "INCLUDES",
+        "EXCLUDES",
+        "MATCHES_REGEX",
+        "NOT_MATCHES_REGEX",
+    ]
+
+    # The input never disables, because no offered mode carries no value.
     name_input = page.locator('input[name="quick-name"]')
-    name_input.fill("Xbox")
-
-    # Choose "is null"
-    page.locator('select[name="quick-name-modifier"]').select_option("IS_NULL")
-
-    # Verification of interactive disabling
-    assert not name_input.is_enabled()
-    assert name_input.input_value() == ""
-
-    with page.expect_navigation():
-        page.locator('quick-filter-bar button[type="submit"]').click()
-    parsed = _filter_from_url(page.url)
-    assert parsed["name"] == {"modifier": "IS_NULL"}
+    for modifier in offered:
+        modifier_select.select_option(modifier)
+        assert name_input.is_enabled(), modifier
 
 
 @pytest.mark.django_db
@@ -137,28 +151,26 @@ def test_string_filter_prefilled_states(live_server, page):
         page.locator('select[name="quick-name-modifier"]').input_value() == "INCLUDES"
     )
 
-    # Verifies group is empty, disabled, and "is null" is selected
+    # Verifies group prefills the empty string under "is", enabled throughout
     page.locator("#quick-group-dropdownLink").click()
     assert group_input.input_value() == ""
-    assert not group_input.is_enabled()
-    assert (
-        page.locator('select[name="quick-group-modifier"]').input_value() == "IS_NULL"
-    )
+    assert group_input.is_enabled()
+    assert page.locator('select[name="quick-group-modifier"]').input_value() == "EQUALS"
 
 
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_string_filter_e2e")
-def test_string_filter_modifier_switch_re_enables(live_server, page):
+def test_string_filter_serializes_the_empty_string(live_server, page):
+    """ "Is empty" is a value, not a presence test, so it must survive Apply."""
     page.goto(live_server.url + "/test-string-filter-empty/")
     page.locator("#quick-name-dropdownLink").click()
 
-    name_input = page.locator('input[name="quick-name"]')
-    modifier_select = page.locator('select[name="quick-name-modifier"]')
+    page.locator('input[name="quick-name"]').fill("Xbox")
+    page.locator('select[name="quick-name-modifier"]').select_option("EQUALS")
+    page.locator('input[name="quick-name"]').fill("")
 
-    # 1. Choose "is null" -> disables the text input
-    modifier_select.select_option("IS_NULL")
-    assert not name_input.is_enabled()
-
-    # 2. Switch back to a value modifier -> re-enables the text input
-    modifier_select.select_option("EQUALS")
-    assert name_input.is_enabled()
+    with page.expect_navigation():
+        page.locator('quick-filter-bar button[type="submit"]').click()
+    # An empty box states no criterion; the bar drops the key rather than
+    # sending a filter that narrows to the rows holding "".
+    assert "name" not in _filter_from_url(page.url)

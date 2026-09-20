@@ -3,6 +3,7 @@ widgets, and ``field_widget`` — the single dispatcher the quick filter bar
 and the nested builder render every leaf field through."""
 
 import json
+from collections.abc import Sequence
 from typing import Literal, NamedTuple
 
 from common.components.core import Node
@@ -34,6 +35,7 @@ from common.criteria import (
     ComparisonGranularity,
     FieldMeta,
     FieldMetaKind,
+    ModifierToken,
     OperatorFilter,
     field_metadata,
 )
@@ -404,6 +406,7 @@ def field_widget(
             modifier=text.modifier,
             placeholder=placeholder,
             path=widget_path,
+            modifiers=meta["modifiers"],
         )
     if kind == "number":
         number = _number_from_field(blob)
@@ -416,6 +419,7 @@ def field_widget(
             placeholder2=placeholder2,
             step=step,
             path=widget_path,
+            modifiers=meta["modifiers"],
         )
     if kind == "date":
         bounds = _range_from_field(blob)
@@ -755,6 +759,19 @@ def _find_label(options: list[LabeledOption], value: str) -> str:
     return value
 
 
+#: One label per string modifier, in the vocabulary's order.
+STRING_MODIFIER_LABELS: dict[ModifierToken, str] = {
+    "EQUALS": "is",
+    "NOT_EQUALS": "is not",
+    "INCLUDES": "includes",
+    "EXCLUDES": "excludes",
+    "MATCHES_REGEX": "matches regex",
+    "NOT_MATCHES_REGEX": "not matches regex",
+    "IS_NULL": "is null",
+    "NOT_NULL": "is not null",
+}
+
+
 def StringFilter(
     input_name_prefix: str,
     value: str = "",
@@ -762,24 +779,23 @@ def StringFilter(
     placeholder: str = "",
     *,
     path: FilterWidgetPath,
+    modifiers: Sequence[ModifierToken] | None = None,
 ) -> Node:
-    """Renders a string filter: a modifier ``<select>`` and a text input."""
-    from common.criteria import Modifier
+    """Renders a string filter: a modifier ``<select>`` and a text input.
+
+    ``modifiers`` is the field's own vocabulary, which the caller reads off
+    ``FieldMeta``. It matters because a field states fewer modes than the eight
+    a string shape allows: a non-nullable column drops the presence pair, and
+    ``search`` reads several columns, so it drops it too. Offering a mode the
+    server refuses is a filter a person can build and not apply.
+    """
     from games.forms import SELECT_CLASS
 
-    if modifier not in [m.value for m in Modifier.for_strings()]:
-        modifier = "EQUALS"
+    offered = list(modifiers) if modifiers else list(STRING_MODIFIER_LABELS)
+    if modifier not in offered:
+        modifier = offered[0]
 
-    options = [
-        ("EQUALS", "is"),
-        ("NOT_EQUALS", "is not"),
-        ("INCLUDES", "includes"),
-        ("EXCLUDES", "excludes"),
-        ("MATCHES_REGEX", "matches regex"),
-        ("NOT_MATCHES_REGEX", "not matches regex"),
-        ("IS_NULL", "is null"),
-        ("NOT_NULL", "is not null"),
-    ]
+    options = [(token, STRING_MODIFIER_LABELS[token]) for token in offered]
 
     # A compact modifier dropdown: one control reads well both as a quick-bar
     # facet and nested in the filter builder's tree.
@@ -834,6 +850,21 @@ _NUMBER_FILTER_INPUT_CLASS = (
 )
 
 
+#: One label per number modifier, in the vocabulary's order.
+NUMBER_MODIFIER_LABELS: dict[ModifierToken, str] = {
+    "EQUALS": "is",
+    "NOT_EQUALS": "is not",
+    "GREATER_THAN": "is greater than",
+    "LESS_THAN": "is less than",
+    "GREATER_THAN_OR_EQUAL": "is at least",
+    "LESS_THAN_OR_EQUAL": "is at most",
+    "BETWEEN": "between",
+    "NOT_BETWEEN": "not between",
+    "IS_NULL": "is null",
+    "NOT_NULL": "is not null",
+}
+
+
 def NumberFilter(
     input_name_prefix: str,
     value: str = "",
@@ -844,32 +875,27 @@ def NumberFilter(
     step: str = "1",
     *,
     path: FilterWidgetPath,
+    modifiers: Sequence[ModifierToken] | None = None,
 ) -> Node:
-    """Renders a numeric filter with 10 modifier radio options and two inputs.
+    """Renders a numeric filter: a modifier ``<select>`` and two inputs.
 
-    Modeled 1:1 on :func:`StringFilter`. Both inputs are disabled for the
-    presence modifiers (IS_NULL/NOT_NULL); the second input is shown only for
-    the range modifiers (BETWEEN/NOT_BETWEEN). Initial state is server-rendered
-    so the widget never flashes before its JS runs.
+    Modeled 1:1 on :func:`StringFilter`, ``modifiers`` included: the field's own
+    vocabulary, which the caller reads off ``FieldMeta``. A column that cannot
+    be NULL states no presence pair, and neither does a ``count`` aggregate,
+    which answers 0 over no rows rather than NULL.
+
+    Both inputs are disabled for the presence modifiers (IS_NULL/NOT_NULL); the
+    second input is shown only for the range modifiers (BETWEEN/NOT_BETWEEN).
+    Initial state is server-rendered so the widget never flashes before its JS
+    runs.
     """
-    from common.criteria import Modifier
     from games.forms import SELECT_CLASS
 
-    if modifier not in [m.value for m in Modifier.for_numbers()]:
-        modifier = "EQUALS"
+    offered = list(modifiers) if modifiers else list(NUMBER_MODIFIER_LABELS)
+    if modifier not in offered:
+        modifier = offered[0]
 
-    options = [
-        ("EQUALS", "is"),
-        ("NOT_EQUALS", "is not"),
-        ("GREATER_THAN", "is greater than"),
-        ("LESS_THAN", "is less than"),
-        ("GREATER_THAN_OR_EQUAL", "is at least"),
-        ("LESS_THAN_OR_EQUAL", "is at most"),
-        ("BETWEEN", "between"),
-        ("NOT_BETWEEN", "not between"),
-        ("IS_NULL", "is null"),
-        ("NOT_NULL", "is not null"),
-    ]
+    options = [(token, NUMBER_MODIFIER_LABELS[token]) for token in offered]
 
     modifier_select = Select(
         [

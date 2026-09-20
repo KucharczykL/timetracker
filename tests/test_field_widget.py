@@ -6,6 +6,7 @@ flat bars consume it and #192's nested leaf row clones it, so these tests pin th
 acceptance cases from the issue plus the dispatch, prefill, and guard behaviour.
 """
 
+import re
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -16,11 +17,30 @@ from common.components.filters import (
 from common.components.filters import (
     field_widget_templates as _field_widget_templates,
 )
+from common.criteria import field_metadata
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
-from games.filters import GameFilter, PurchaseFilter
+from games.filters import (
+    DeviceFilter,
+    GameFilter,
+    HistoricalPlaytimeFilter,
+    PlatformFilter,
+    PlayerSessionFilter,
+    PlaythroughFilter,
+    PurchaseFilter,
+)
+
+_ALL_FILTERS = [
+    GameFilter,
+    PlayerSessionFilter,
+    PurchaseFilter,
+    DeviceFilter,
+    PlatformFilter,
+    PlaythroughFilter,
+    HistoricalPlaytimeFilter,
+]
 
 _PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
@@ -84,6 +104,43 @@ class TestFieldWidgetKindDispatch:
         html = str(field_widget(GameFilter, "session_count"))
         assert 'data-kind="number"' in html
         assert 'name="filter-session_count"' in html
+
+    def test_a_string_offers_only_the_modes_its_field_states(self):
+        # A widget that offers a mode the field refuses builds a filter that
+        # cannot apply: search reads several columns, so it states no presence
+        # pair, and neither does a column that cannot be NULL.
+        html = str(field_widget(GameFilter, "search"))
+        assert 'data-kind="string"' in html
+        assert 'value="IS_NULL"' not in html
+        assert 'value="NOT_NULL"' not in html
+        assert 'value="INCLUDES"' in html
+
+    @pytest.mark.parametrize("filter_cls", _ALL_FILTERS)
+    @pytest.mark.parametrize("kind", ["string", "number"])
+    def test_every_widget_offers_its_field_s_own_vocabulary(self, filter_cls, kind):
+        for meta in field_metadata(filter_cls):
+            if meta["kind"] != kind:
+                continue
+            html = str(field_widget(filter_cls, meta["name"]))
+            rendered = re.findall(r'<option value="([A-Z_]+)"', html)
+            assert rendered == list(meta["modifiers"]), meta["name"]
+
+    def test_a_count_aggregate_offers_no_presence_modifier(self):
+        # Count answers 0 over no rows, so "is null" on one matches nothing.
+        html = str(field_widget(GameFilter, "session_count"))
+        assert 'value="IS_NULL"' not in html
+        assert 'value="NOT_NULL"' not in html
+
+    def test_an_averaged_aggregate_keeps_the_presence_pair(self):
+        # Avg answers NULL over no rows, so "is null" reads as "never played" —
+        # the one way to ask that, and a working filter the picker had hidden.
+        html = str(field_widget(GameFilter, "session_average"))
+        assert 'value="IS_NULL"' in html
+        assert 'value="NOT_NULL"' in html
+
+    def test_a_summed_aggregate_keeps_the_presence_pair(self):
+        html = str(field_widget(GameFilter, "purchase_price_total"))
+        assert 'value="IS_NULL"' in html
 
     def test_enum_options_render_in_model_choice_order(self):
         # The enum widget's options come from FieldMeta["choices"] (the model

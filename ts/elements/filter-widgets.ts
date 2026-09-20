@@ -6,7 +6,7 @@
  * widget contract the bars produce via the Python `field_widget` builder (#242).
  */
 import type { LeafWidgetKind } from "../generated/filter-metadata.js";
-import { readJSONProp } from "../client-errors.js";
+import { readJSONProp, reportClientError } from "../client-errors.js";
 import { writeSideValue } from "./date-range-picker.js";
 import { isPresenceModifier, isRangeModifier } from "./filter-tokens.js";
 import { readFilterSelect, writeFilterSelect } from "./search-select.js";
@@ -58,12 +58,22 @@ export function buildRangeCriterion(
 // object or null to omit the field. ──
 
 // A widget states its modifier on a <select>, or on its own root.
+//
+// A widget that states neither is a wiring defect, not a shape to serve: it is
+// reported, and the read falls back to INCLUDES. EQUALS reads as `iexact`, so
+// guessing it turns a whole-text search into one that matches almost no row,
+// with nothing on the page to say the mode was invented.
 function stringModifier(element: HTMLElement): string {
   const select = element.querySelector<HTMLSelectElement>(
     "select[data-string-modifier-select]",
   );
   if (select) return select.value;
-  return element.getAttribute("data-modifier") ?? "EQUALS";
+  const stated = element.getAttribute("data-modifier");
+  if (stated) return stated;
+  reportClientError("filter-widgets", "a string widget states no match mode", {
+    toast: false,
+  });
+  return "INCLUDES";
 }
 
 export function readStringWidget(element: HTMLElement): Record<string, unknown> | null {
@@ -274,10 +284,6 @@ export function writeStringWidget(element: HTMLElement, criterion: Record<string
   const select = element.querySelector<HTMLSelectElement>("select[data-string-modifier-select]");
   selectModifier(select, criterion["modifier"]);
   if (select) toggleStringFilterInput(select);
-  // Mirrors the read side, so hydrate-then-serialize stays stable.
-  if (!select && typeof criterion["modifier"] === "string") {
-    element.setAttribute("data-modifier", criterion["modifier"]);
-  }
   const modifier = stringModifier(element);
   if (isPresenceModifier(modifier)) return; // presence carries no value; input stays disabled+empty
   const textInput = element.querySelector<HTMLInputElement>('input[type="text"]');
