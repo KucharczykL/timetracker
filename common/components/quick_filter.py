@@ -11,9 +11,8 @@ builder, reachable from the action group's "Advanced filter…" segment.
 Row anatomy: the free-text field, then the facets (collapsible), the "⋯"
 priority-plus overflow menu, the Load-preset picker, and the Apply | Clear
 [| Advanced filter…] ButtonGroup. Everything that is not a facet is
-non-collapsible row furniture — the bar's ResizeObserver layout reserves its
-width and moves only facets, so the field never enters the overflow at any
-width.
+non-collapsible row furniture — the layout reserves its width and moves only
+facets, so the field never enters the overflow.
 
 The bar is editable only when :func:`is_quick_editable` accepts the active
 filter; otherwise it degrades to a read-only "Advanced filter active" pill
@@ -188,9 +187,8 @@ def is_quick_editable(parsed: dict, facet_fields: Collection[AttrName]) -> bool:
     in a mode the field has no control for. Unparseable / absent filter JSON
     parses to ``{}`` (see ``parse_filter_dict``) and is therefore editable.
 
-    A ``search`` the field cannot state degrades rather than renders, because
-    the bar must never show a control for a filter it would rewrite: the field
-    holds one of six modes, so a seventh would be silently changed on apply.
+    A ``search`` the field cannot state degrades: the bar must never show a
+    control for a filter it would rewrite.
 
     Round-trip guarantee: the bar's serializer emits only flat facet criteria
     and ``search``, so a filter the quick bar itself produced always passes —
@@ -275,9 +273,8 @@ class QuickFilterBar(BaseComponent):
         from games.filters import filter_for_model
 
         filter_cls = filter_for_model(FILTER_MODE_MODELS[self.mode])
-        # The field leads the row and is not a facet, so the overflow never
-        # holds it: a free-text box a person has to go looking for in a menu is
-        # worse than one facet fewer in the row.
+        # The field leads the row and is never a facet: a box a person must
+        # hunt for in a menu is worse than one facet fewer in the row.
         row_children: list[Node] = [
             self._search_field(),
             *[self._facet(filter_cls, facet) for facet in facets],

@@ -245,8 +245,7 @@ function stubWidth(element: HTMLElement, width: number): void {
 }
 
 function mountOverflow(options: { leadingWidth?: number } = {}): OverflowFixture {
-  // The free-text field leads the row and carries no data-quick-facet, so it is
-  // furniture the reserve counts and the overflow never takes.
+  // No data-quick-facet: furniture the reserve counts, the overflow never takes.
   const leading = options.leadingWidth ? '<search-field id="lead"></search-field>' : "";
   document.body.innerHTML = `
     <quick-filter-bar apply-url="${LIST_URL}">
@@ -299,9 +298,7 @@ function mountOverflow(options: { leadingWidth?: number } = {}): OverflowFixture
 
 describe("quick-filter-bar priority-plus overflow", () => {
   it("reserves the width of a field that leads the row", () => {
-    // The reserve used to read only the overflow host's following siblings, so
-    // a member before the facets was not counted: the facets claimed room that
-    // was taken and the row wrapped instead of collapsing one into the menu.
+    // Reading only the host's following siblings missed a leading member.
     const fixture = mountOverflow({ leadingWidth: 200 });
     // reserved = field(200) + group(80) + overflow(40) = 320.
     // available = 520 - 320 = 200 → two 100px facets fit.

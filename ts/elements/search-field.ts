@@ -1,18 +1,15 @@
 /**
  * SearchField — the quick bar's free-text field.
  *
- * A match-mode trigger joined to a text box. The mode lives in one place, the
- * root's `data-modifier`: this element writes it, and the bar's generic string
- * reader reads it. There is no hidden <select> carrying the mode, deliberately —
- * `setupModifierToggles` reacts to a change on `select[data-string-modifier-select]`
- * and `toggleStringFilterInput` then walks `closest(".flex-col")` to find a value
- * input to disable. The segmented field is not that layout, so a select added
- * here to "reuse" the reader would disable an unrelated input in the row.
+ * The mode lives once, in the root's `data-modifier`: this element writes it
+ * and the bar's string reader reads it. No hidden <select> carries it,
+ * deliberately — `setupModifierToggles` reacts to a change on
+ * `select[data-string-modifier-select]`, and `toggleStringFilterInput` then
+ * walks `closest(".flex-col")` for an input to disable. The segmented field is
+ * not that layout, so a select added here would disable an unrelated input.
  *
- * Choosing a mode changes what the field means, not what it shows: no apply
- * happens until Enter or Apply, because each apply is a page the browser loads
- * and a filter that applied while a person typed would take the focus and the
- * scroll position with every pause.
+ * Choosing a mode applies nothing. Each apply loads a page, so one that fired
+ * while a person typed would take the focus and scroll with every pause.
  */
 import { onSwap } from "../utils.js";
 
@@ -35,7 +32,6 @@ class SearchFieldElement extends HTMLElement {
     const mode = item.getAttribute("data-match-mode");
     if (!mode) return;
     this.applyMode(mode, item);
-    // The mode is picked; the dropdown's own behavior closes on the click.
   };
 
   private applyMode(mode: string, chosen: HTMLElement): void {
@@ -47,11 +43,10 @@ class SearchFieldElement extends HTMLElement {
     const mark = this.querySelector<SVGElement>("[data-match-mark]");
     const chosenMark = chosen.querySelector<SVGElement>("svg");
     if (trigger && mark && chosenMark) {
-      // The menu row already holds the mode's mark, server-rendered — clone it
-      // rather than keep a second copy of the six in the client. The clone takes
-      // the class the trigger's own mark carries, never the row's: the sizing
-      // lives in that class, so a clone stripped of it renders at the SVG's
-      // intrinsic size instead of the trigger's.
+      // Clone the row's server-rendered mark, not a second copy of the six.
+      //
+      // The clone takes the trigger mark's class, never the row's: the sizing
+      // lives there, so a clone stripped of it renders at intrinsic size.
       const replacement = chosenMark.cloneNode(true) as SVGElement;
       replacement.setAttribute("class", mark.getAttribute("class") ?? "");
       replacement.setAttribute("data-match-mark", "");
@@ -59,8 +54,7 @@ class SearchFieldElement extends HTMLElement {
     }
     const words = chosen.querySelector("span")?.textContent?.trim() ?? mode;
     if (trigger) {
-      // The trigger's name states the value it holds, so the mode is spoken
-      // rather than left to the mark.
+      // The name states the value, not just the control.
       trigger.setAttribute("aria-label", `Match mode: ${words}`);
       trigger.setAttribute("title", `Match mode: ${words}`);
     }
@@ -69,9 +63,7 @@ class SearchFieldElement extends HTMLElement {
 
 customElements.define("search-field", SearchFieldElement);
 
-// Enter in the box applies, the way Enter in a facet input does. The bar owns
-// the submit; this only keeps the keystroke from being swallowed where the
-// field sits outside a <form> (the synthetic harness pages).
+// Enter applies, as in a facet input. The bar owns the submit.
 onSwap("search-field [data-match-value]", (input) => {
   input.addEventListener("keydown", (event) => {
     if ((event as KeyboardEvent).key !== "Enter") return;

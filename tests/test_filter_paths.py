@@ -109,9 +109,8 @@ def test_every_widget_path_resolves_to_its_kind(case: _BarCase) -> None:
         )
     )
     widgets = _collect_widgets(html)
-    # One per facet, plus the free-text field that leads the row. The field is
-    # not a facet — the overflow never holds it — but it is a filter widget and
-    # the bar's serializer reads it the same generic way.
+    # One per facet, plus the leading field. It is no facet, but it is a
+    # filter widget the bar's serializer reads the same generic way.
     assert [widget.path for widget in widgets].count(["search"]) == 1, (
         f"{case.mode} bar rendered no search field"
     )

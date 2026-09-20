@@ -50,7 +50,7 @@ class QuickFilterBarElement extends HTMLElement {
   private overflowItems: HTMLElement | null = null;
   private rowGap = 0;
   private reservedWidth = 0;
-  // Measured once, unhidden. Re-reading it while hidden answers 0.
+  // Measured unhidden; re-reading it while hidden answers 0.
   private overflowWidth = 0;
   private resizeObserver: ResizeObserver | null = null;
   private layoutQueued = false;
@@ -136,13 +136,11 @@ class QuickFilterBarElement extends HTMLElement {
     this.overflowHost.classList.remove("hidden");
     this.overflowWidth = this.overflowHost.offsetWidth;
     this.overflowHost.classList.add("hidden");
-    // Every child that is not a facet is permanent row furniture the facets
-    // must leave room for: the free-text field that leads the row, and the
-    // preset picker and action group that follow the overflow host. Reading
-    // only the host's following siblings missed a leading member, so the
-    // facets claimed room that was taken and the row wrapped to a second line
-    // instead of moving a facet into the overflow. The host itself is measured
-    // above, unhidden, and is added once below.
+    // Every non-facet child is permanent row furniture.
+    //
+    // Reading only the host's following siblings missed the leading field, so
+    // the facets claimed room that was taken and the row wrapped instead of
+    // collapsing one. The host is measured above, unhidden, and added once.
     let furnitureWidth = 0;
     for (const child of Array.from(this.row.children)) {
       if (child === this.overflowHost) continue;

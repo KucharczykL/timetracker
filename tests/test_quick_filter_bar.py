@@ -77,9 +77,7 @@ class IsQuickEditableTest(SimpleTestCase):
         self.assertFalse(is_quick_editable(parsed, _GAME_FACETS))
 
     def test_a_search_in_one_of_the_six_modes_is_editable(self):
-        # The field states six modes, so the bar can edit a search in any of
-        # them without rewriting it. It used to degrade every search, because
-        # there was no control to render.
+        # Six modes the bar can edit without rewriting them.
         for modifier in (
             "INCLUDES",
             "EXCLUDES",
@@ -97,8 +95,7 @@ class IsQuickEditableTest(SimpleTestCase):
                 )
 
     def test_a_search_the_field_cannot_state_degrades(self):
-        # The bar never shows a control for a filter it would rewrite: the
-        # field holds one of six modes, so a seventh would be changed on apply.
+        # The bar shows no control for a filter it would rewrite.
         for modifier in ("IS_NULL", "NOT_NULL", "GREATER_THAN"):
             with self.subTest(modifier=modifier):
                 self.assertFalse(
@@ -218,7 +215,7 @@ class QuickFilterBarRenderingTest(TestCase):
                     "modifier": "INCLUDES",
                 },
                 "platform": {"modifier": "IS_NULL"},
-                # The serializer emits the field too, so the guarantee covers it.
+                # The serializer emits the field, so this covers it.
                 "search": {"value": "mario", "modifier": "EXCLUDES"},
             }
         )

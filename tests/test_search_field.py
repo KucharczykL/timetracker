@@ -28,8 +28,7 @@ class MatchModeVocabularyTest(SimpleTestCase):
         )
 
     def test_the_presence_pair_is_absent(self):
-        # search reads several columns at once, and "is null" across an OR of
-        # them states nothing a person could mean.
+        # "Is null" across an OR of several columns means nothing.
         tokens = {token for token, _, _ in MATCH_MODES}
         self.assertNotIn("IS_NULL", tokens)
         self.assertNotIn("NOT_NULL", tokens)
@@ -54,16 +53,15 @@ class SearchFieldMarkupTest(SimpleTestCase):
         self.assertIn('data-kind="string"', html)
 
     def test_the_root_states_the_mode_it_holds(self):
-        # The field renders no modifier select, so the root is where the mode
-        # lives — for the element and for the bar's string reader alike.
+        # No modifier select, so the root is where the mode lives.
         self.assertIn(
             'data-modifier="EXCLUDES"', render(SearchField(modifier="EXCLUDES"))
         )
 
     def test_it_renders_no_modifier_select(self):
-        # A hidden select here would reach setupModifierToggles, whose
-        # toggleStringFilterInput walks closest(".flex-col") and would disable
-        # an unrelated input in the row.
+        # One would reach setupModifierToggles, whose
+        # toggleStringFilterInput walks closest(".flex-col") and would then
+        # disable an unrelated input in the row.
         self.assertNotIn("data-string-modifier-select", render(SearchField()))
 
     def test_a_mode_it_cannot_state_falls_back_to_the_default(self):
@@ -82,7 +80,7 @@ class SearchFieldMarkupTest(SimpleTestCase):
         for token, _, words in MATCH_MODES:
             self.assertIn(f'data-match-mode="{token}"', html)
             self.assertIn(f">{words}<", html)
-        # One row is marked, and it is the mode the field holds.
+        # One row is marked: the mode the field holds.
         self.assertEqual(html.count('aria-checked="true"'), 1)
         marked = html.index('aria-checked="true"')
         self.assertLess(marked, html.index('data-match-mode="NOT_MATCHES_REGEX"'))
@@ -107,8 +105,7 @@ class SearchFieldMarkupTest(SimpleTestCase):
         self.assertIn("[&amp;&gt;*+*]:-ms-px", html)
 
     def test_the_box_states_no_rounding_of_its_own(self):
-        # The segmented field decides every member's rounding; a rounding here
-        # would win only by stylesheet order.
+        # The field decides it; one here wins only by stylesheet order.
         from common.components.search_field import _INPUT_CLASS
 
         self.assertNotIn("rounded", _INPUT_CLASS)

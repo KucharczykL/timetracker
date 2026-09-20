@@ -57,9 +57,7 @@ export function buildRangeCriterion(
 // ── Per-kind readers: each scoped to a single widget element, returns a criterion
 // object or null to omit the field. ──
 
-// A widget states its modifier one of two ways: the builder's leaves render a
-// <select>, and a widget that renders none declares it on its own root. Read the
-// select first, so the builder's leaves are unaffected.
+// A widget states its modifier on a <select>, or on its own root.
 function stringModifier(element: HTMLElement): string {
   const select = element.querySelector<HTMLSelectElement>(
     "select[data-string-modifier-select]",
@@ -276,8 +274,7 @@ export function writeStringWidget(element: HTMLElement, criterion: Record<string
   const select = element.querySelector<HTMLSelectElement>("select[data-string-modifier-select]");
   selectModifier(select, criterion["modifier"]);
   if (select) toggleStringFilterInput(select);
-  // Mirrors the read side: a widget with no select carries its mode on the root,
-  // so hydrate-then-serialize stays stable for both shapes.
+  // Mirrors the read side, so hydrate-then-serialize stays stable.
   if (!select && typeof criterion["modifier"] === "string") {
     element.setAttribute("data-modifier", criterion["modifier"]);
   }

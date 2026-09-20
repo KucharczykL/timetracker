@@ -84,10 +84,8 @@ def _filter_from_url(url: str) -> dict:
 def _open_facet(page, field: str):
     """Open one facet's panel, wherever the row put it.
 
-    The bar's row leads with the free-text field, so at this page's width a
-    facet may sit in the "⋯" overflow menu rather than inline. Opening that
-    menu first is what a person does, and it keeps these tests about the
-    widget rather than about where the row fitted it.
+    The leading field takes width, so a facet may sit in the "⋯" menu. Opening
+    it is what a person does, and keeps these tests about the widget.
     """
     trigger = page.locator(f"#quick-{field}-dropdownLink")
     if not trigger.is_visible():

@@ -107,10 +107,8 @@ def test_quick_scalar_facet_filters_sessions(
     )
 
     page = authenticated_page
-    # Wide enough that no facet is in the ⋯ menu. The bar's row now leads with
-    # the free-text field, so at a narrower width the last facet collapses —
-    # which is test_priority_plus_overflow_collapses_and_restores's subject,
-    # not this test's.
+    # Wide enough that no facet is in the ⋯ menu: collapsing is
+    # test_priority_plus_overflow_collapses_and_restores's subject.
     page.set_viewport_size({"width": 1600, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
@@ -445,7 +443,7 @@ def test_a_chosen_mode_reaches_the_filter(
 
     page.locator("search-field [data-match-trigger]").click()
     page.locator('search-field [data-match-mode="EXCLUDES"]').click()
-    # The trigger states the mode it now holds, for a reader who cannot see it.
+    # The trigger states the mode it now holds.
     expect(page.locator("search-field [data-match-trigger]")).to_have_attribute(
         "aria-label", "Match mode: excludes"
     )
@@ -500,7 +498,7 @@ def test_a_search_the_field_cannot_state_degrades(
         f"?filter={urllib.parse.quote(stated)}"
     )
     expect(page.locator("text=Advanced filter active")).to_be_visible()
-    # The degraded pill holds no field and mounts no element.
+    # The pill holds no field and mounts no element.
     expect(page.locator("search-field")).to_have_count(0)
 
 
