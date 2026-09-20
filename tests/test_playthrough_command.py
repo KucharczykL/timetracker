@@ -657,7 +657,6 @@ def test_stating_an_endpoint_of_another_library_is_refused(
     with pytest.raises(PlaythroughNotHeld) as absent:
         _start(owned_user, owned_library, hidden, when=None, key="foreign")
 
-    #: Absent, not refused: no sentence, and the boundary answers 404.
     assert not hasattr(absent.value, "sentence")
 
 
@@ -674,7 +673,6 @@ def test_stating_an_endpoint_of_no_playthrough_is_refused_alike(
             idempotency_key="nowhere",
         )
 
-    #: Absent, not refused: no sentence, and the boundary answers 404.
     assert not hasattr(absent.value, "sentence")
 
 
@@ -1000,7 +998,6 @@ def test_describing_a_run_of_another_library_is_refused(
     with pytest.raises(PlaythroughNotHeld) as absent:
         _describe(owned_user, owned_library, hidden, name="Ironman", note=None)
 
-    #: Absent, not refused: no sentence, and the boundary answers 404.
     assert not hasattr(absent.value, "sentence")
 
 
@@ -1404,7 +1401,6 @@ def test_correcting_an_endpoint_of_another_library_is_refused(
     with pytest.raises(PlaythroughNotHeld) as absent:
         _correct_start(owned_user, owned_library, hidden, when=None)
 
-    #: Absent, not refused: no sentence, and the boundary answers 404.
     assert not hasattr(absent.value, "sentence")
 
 
@@ -1680,7 +1676,6 @@ def test_removing_a_run_of_another_library_is_refused(
     with pytest.raises(PlaythroughNotHeld) as absent:
         _remove(owned_user, owned_library, hidden, key="foreign")
 
-    #: Absent, not refused: no sentence, and the boundary answers 404.
     assert not hasattr(absent.value, "sentence")
 
 

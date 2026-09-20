@@ -179,10 +179,8 @@ def answered(subject: SubjectNoun) -> Iterator[None]:
             answer.sentence.format(subject=subject), answer.status_code
         ) from error
     except RowNotHeld as error:
-        #: No traceback: the program is correct, and a client stated an
-        #: identifier this library does not hold. Recorded all the same,
-        #: because an invisible 404 is how a client comes to retry a
-        #: request that already succeeded.
+        #: No traceback: the program is right, the id wrong.
+        #: Recorded: an invisible 404 invites a second write.
         logger.warning("[answers]: a %s this library does not hold: %s", subject, error)
         raise Http404(f"No such {subject}.") from error
     except RowUnreadable as error:

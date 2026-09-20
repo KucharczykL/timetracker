@@ -385,9 +385,8 @@ def _run_a_chunk(
                     user, row, f"{leg.name}-{token}-{acted}", correlation_id
                 )
             except Http404 as absent:
-                #: Unreachable by construction: the leg re-resolved this
-                #: row moments ago, so every resolve inside finds one.
-                #: Stated all the same, so the batch cannot end quietly.
+                #: The leg re-resolved this row moments ago.
+                #: Said anyway, so no batch ends in silence.
                 _log_abandoned(
                     leg.name,
                     [acted, *left],

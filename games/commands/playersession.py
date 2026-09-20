@@ -192,11 +192,7 @@ def _check_representable(instant: datetime, *zones: tzinfo | None) -> None:
 
 
 class SessionNotHeld(RowNotHeld):
-    """The library holds no such session.
-
-    Its own class, because a record names the session it was made
-    from: a miss there is drift, not an absence a client stated.
-    """
+    """The library holds no such session; caught by name."""
 
 
 def library_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSession:

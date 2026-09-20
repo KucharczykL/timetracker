@@ -183,11 +183,7 @@ class CreatePlaythrough(Command):
 
 
 class PlaythroughNotHeld(RowNotHeld):
-    """The library holds no such run.
-
-    Its own class, because a session names a run its own row already
-    holds: a miss there is drift, not an absence a client stated.
-    """
+    """The library holds no such run; caught by name."""
 
 
 def library_playthrough(

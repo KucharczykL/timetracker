@@ -14,34 +14,27 @@ from games.models import Device
 class Refusal:
     """What a caller says when nothing resolves.
 
-    A row the library does not hold is absent: 404, and no sentence,
-    which is the default. A row it holds but cannot use is refused:
-    409, and a sentence naming the remedy.
-
     `message` reaches a log and may name an id.
     `sentence` is the only thing a person sees.
     """
 
     message: str
-    #: Stated by a caller that answers a refusal, not an absence.
+    #: Only a refusal states one.
     sentence: str | None = None
-    #: A subclass for a separately answered case.
+    #: A rejection refuses; the default answers absent.
     raises: type[RowNotHeld | CommandRejected] = RowNotHeld
 
     def __post_init__(self) -> None:
         absent = issubclass(self.raises, RowNotHeld)
         if absent and self.sentence is not None:
             raise TypeError(
-                f"{self.raises.__name__} carries no sentence, because nothing "
-                "shows one for a row this library does not hold. State a "
-                "CommandRejected subclass beside the sentence, or take the "
-                "sentence away."
+                f"{self.raises.__name__} shows no sentence. State a "
+                "CommandRejected subclass beside it, or take it away."
             )
         if not absent and self.sentence is None:
             raise TypeError(
-                f"{self.raises.__name__} reaches a person, so it needs a "
-                "sentence naming the remedy. State one, or let `raises` "
-                "default to RowNotHeld."
+                f"{self.raises.__name__} reaches a person. State a sentence "
+                "naming the remedy, or let `raises` default to RowNotHeld."
             )
 
     def raised(self) -> RowNotHeld | CommandRejected:

@@ -210,17 +210,9 @@ class RowUnreadable(Exception):
 class RowNotHeld(Exception):
     """A row this library does not hold; an absence.
 
-    A resolve has two endings. A row the library holds but cannot use
-    is refused: 409, and a sentence naming the remedy. A row it does
-    not hold is absent: 404, and nothing more, so one library learns
-    nothing about another library's rows.
-
-    A sibling of `CommandRejected`, not a subclass, because the
-    boundary answers it differently. It carries no sentence: the
-    boundary owns the answer, and a sentence that nothing shows
-    becomes wrong with nobody to see it. Its argument names the row,
-    the identifier and the library, because the log is the only
-    record of one.
+    A sibling of `CommandRejected`, not a subclass: the boundary
+    answers 404 and nothing more, so no sentence, and no handler
+    that means a rule may take it.
     """
 
 

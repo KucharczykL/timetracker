@@ -844,9 +844,7 @@ def create_session(
     actor = cast(User, request.user)
     library = actor.library
     stated_key = _stated_idempotency_key(idempotency_key)
-    #: The run and the device resolve inside `build`, under the stream
-    #: head's lock and behind the key: a repeat appends nothing and
-    #: resolves nothing, so a row removed since answers the first one.
+    #: Both resolve inside `build`, behind the key.
     try:
         session_id = record_session(
             actor,
