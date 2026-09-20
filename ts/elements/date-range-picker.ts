@@ -287,23 +287,13 @@ function createCalendarState(picker: HTMLElement): CalendarState {
     // between the endpoints, and deliberately squares their corners so the
     // run reads as one continuous bar rather than separate pills.
     //
-    // This is the same VISUAL idea as ButtonGroup (a joined run rounded only
-    // at its outer ends) but necessarily the opposite MECHANISM, so don't try
-    // to share them:
-    //
-    // - ButtonGroup rounds from the parent, keyed on DOM position
-    //   ([&>*:first-child]:rounded-s-base). It has to: a member cannot know
-    //   its own position — the one styling-at-a-distance exception the
-    //   primitives module documents.
-    // - A range is data-defined, not DOM-positional. It is a subrange of a
-    //   7-column grid that WRAPS ACROSS WEEK ROWS, so :first-child/:last-child
-    //   would match the first and last day of the month, not of the range.
-    //   The cell does know its own position here, from the range state.
-    //
-    // Hence subtractive (un-round the joined edges) rather than additive:
-    // going additive would mean day variants that ship unrounded, which means
-    // a `rounded` knob on ControlButton for one caller's benefit. Removing one
-    // override is not worth a parameter on a shared primitive.
+    // This is the same idea as ButtonGroup — a joined run rounded only at its
+    // outer ends — and now the same mechanism: each cell states its own
+    // corners. What the two cannot share is who decides. A range is defined by
+    // data, and it wraps across week rows, so the run's ends are not the grid's
+    // ends: :first-child would match the first day of the month, not of the
+    // range. The cell knows its place from the range state, and nothing else
+    // does.
     const track = trackBounds();
     if (track !== null && isoString > track[0] && isoString < track[1]) {
       classes.push("rounded-none", track[2]);

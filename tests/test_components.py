@@ -1229,6 +1229,44 @@ class ControlButtonTest(SimpleTestCase):
         html = str(components.ControlButton(variant="outline", shape="end")["x"])
         self.assertIn("rounded-e-base", html)
 
+    def test_a_joined_row_states_each_member_shape(self):
+        """One member rounds both ends; the middle of three rounds neither."""
+        from common.components.primitives import shaped
+
+        self.assertEqual([shape for shape, _ in shaped(["a"])], ["full"])
+        self.assertEqual([shape for shape, _ in shaped(["a", "b"])], ["start", "end"])
+        self.assertEqual(
+            [shape for shape, _ in shaped(["a", "b", "c"])],
+            ["start", "square", "end"],
+        )
+        self.assertEqual(list(shaped([])), [])
+
+    def test_a_post_member_states_its_shape_on_its_button(self):
+        """The form around a post member has inline-flex and nothing else — no
+        border, no background — so the radius belongs on the button inside it."""
+        html = str(
+            components.ButtonGroup(
+                [
+                    {"slot": "First", "href": "/a"},
+                    {
+                        "slot": "Stop",
+                        "method": "post",
+                        "action": "/b",
+                        "csrf_token": "t",
+                    },
+                ]
+            )
+        )
+        form = html[html.index("<form") :]
+        self.assertNotIn("rounded-e-base", form[: form.index("<button")])
+        self.assertIn("rounded-e-base", form[form.index("<button") :])
+
+    def test_a_skipped_member_is_not_an_end(self):
+        """Entries with no slot are dropped before the row is counted — the
+        game header emits empty dicts for members a state hides."""
+        html = str(components.ButtonGroup([{}, {"slot": "Only", "href": "/a"}]))
+        self.assertIn("rounded-base", html[html.index("<a") :])
+
     def test_a_caller_cannot_state_a_corner_by_class(self):
         """The parameter is the only way in. A caller class and a baked class
         both set the radius, and the stylesheet decides which wins, so the

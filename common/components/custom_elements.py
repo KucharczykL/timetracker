@@ -744,9 +744,8 @@ _Dropdown = custom_element_builder("drop-down")
 # dropdowns (the value selectors, the played-row split button); menu-like
 # dropdowns (the navbar) stay borderless (shadow only). Behavior is shared via
 # attachMenu. Toggle looks live on ControlButton (issue #272):
-# variant="outline" is the bordered toggle (no base rounding — Dropdown adds
-# rounded-base / rounded-e-base by shape; standalone consumers add their own),
-# variant="plain" the borderless navbar trigger.
+# variant="outline" is the bordered toggle, variant="plain" the borderless
+# navbar trigger. Corners come from the toggle's own shape= either way.
 
 # Panel: white (light) / frosted (dark). Clips horizontally; scrolls vertically
 # when the positioner caps its height (overflow-y lives here, not inline on the

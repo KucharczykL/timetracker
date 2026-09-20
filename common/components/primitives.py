@@ -10,7 +10,7 @@ widgets return :class:`Safe`.
 """
 
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Literal, NamedTuple, NotRequired, TypedDict
 
@@ -1144,12 +1144,26 @@ class ButtonGroupMember(TypedDict, total=False):
     type: str
 
 
-#: Rounds a group's outer corners.
-_GROUP_ENDS_CLASS = (
-    "inline-flex rounded-base shadow-xs "
-    "[&>*:first-child]:rounded-s-base "
-    "[&>*:last-child]:rounded-e-base"
-)
+def shaped[T](members: Sequence[T]) -> Iterator[tuple[ButtonShape, T]]:
+    """Each member of a joined row, with the shape its place gives it.
+
+    The row counts; no member and no call site holds an index. A lone member
+    is the whole row and rounds both ends.
+    """
+    last = len(members) - 1
+    for index, member in enumerate(members):
+        if last == 0:
+            yield "full", member
+        elif index == 0:
+            yield "start", member
+        elif index == last:
+            yield "end", member
+        else:
+            yield "square", member
+
+
+#: The shell a joined row shares. Its members state their own corners.
+_GROUP_ENDS_CLASS = "inline-flex rounded-base shadow-xs"
 
 
 def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
@@ -1165,12 +1179,14 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
     for conditional buttons (e.g., end-session only when session is active).
     Every button uses one responsive size (small on mobile, larger from ``lg``).
     """
-    buttons = buttons or []
+    # Counted after the empty entries go, so a hidden member never takes an
+    # end away from the member that is really there.
+    present = [
+        member for member in (buttons or []) if member and member.get("slot", "")
+    ]
     children: list[Node] = []
-    for member in buttons:
-        slot = member.get("slot", "")
-        if not member or not slot:
-            continue
+    for shape, member in shaped(present):
+        slot = member["slot"]
         # Attributes are added only when non-empty: an empty ``hx-get=""``
         # would still register with htmx and hijack the link's click into an
         # AJAX GET of the current URL.
@@ -1192,11 +1208,7 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
             ControlButton(
                 member_attributes,
                 variant="segmented",
-                # Temporary: the row still rounds its own two ends from the
-                # parent selectors below, and a member states no corner of its
-                # own yet. Without this the `full` default would round every
-                # middle button in the row.
-                shape="square",
+                shape=shape,
                 color=member.get("color", "gray"),
                 href="" if is_plain_button else member.get("href", "#"),
                 method="" if is_plain_button else member.get("method", ""),
@@ -1210,20 +1222,7 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
     # Alignment-agnostic: the group sits where its container puts it. In a table
     # Actions cell the <td> is right-aligned (table-level Column.align rule), so
     # this inline-flex group is pushed right; in the game header it sits left.
-    # End-rounding lives here (keyed on child position, not member tag — the one
-    # documented styling-at-a-distance exception, because a member cannot know
-    # its own position) so a group can freely mix <a> links, <form> submit
-    # buttons, and bare buttons: the direct-child selectors round <a>/<button>
-    # members, the descendant `_button` ones round a <form> member's inner
-    # button.
-    return Div(
-        class_=(
-            f"{_GROUP_ENDS_CLASS} "
-            "[&>*:first-child_button]:rounded-s-base "
-            "[&>*:last-child_button]:rounded-e-base"
-        ),
-        role="group",
-    )[children]
+    return Div(class_=_GROUP_ENDS_CLASS, role="group")[children]
 
 
 type TabLabel = str  # e.g. "Sessions"
@@ -1254,10 +1253,17 @@ def PageTabs(aria_label: NavLabel, tabs: Sequence[PageTab]) -> Node:
         ControlLink(
             href=tab.href,
             aria_current="page" if tab.current else None,
-            class_=f"{_TAB_CLASS} "
-            f"{_TAB_CURRENT_CLASS if tab.current else _TAB_IDLE_CLASS}",
+            class_=" ".join(
+                part
+                for part in (
+                    _TAB_CLASS,
+                    _TAB_CURRENT_CLASS if tab.current else _TAB_IDLE_CLASS,
+                    _SHAPE_CLASSES[shape],
+                )
+                if part
+            ),
         )[tab.label]
-        for tab in tabs
+        for shape, tab in shaped(tabs)
     ]
     return Nav(aria_label=aria_label, class_="mb-4")[
         Div(class_=_GROUP_ENDS_CLASS)[links]
