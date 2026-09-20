@@ -1052,8 +1052,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `segmented` (ButtonGroup members), plus colorless single-look toggles that ignore
   `color` — `outline` (bordered dropdown toggle), `ghost` (transparent until hover;
   quick-facet triggers), `plain` (navbar nav-link). No size parameter and no
-  `icon=` flag: buttons compact by default and upsize inside `@container` ancestor
-  ≥28rem (form/modal/confirm containers declare `@container`); icon+text layout
+  `icon=` flag: one size everywhere (`min-h-control`, 42px floored), the same in
+  every row and at every width; icon+text layout
   (`inline-flex items-center gap-2`) baked in. Never wrap button in `A(href=…)` —
   pass `href=` to `ControlButton`; `method="post"` renders no-JS `<form>` submit.
 - **Read settings via `config()`** from `timetracker/config.py`, never bare

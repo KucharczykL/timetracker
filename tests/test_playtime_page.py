@@ -48,6 +48,41 @@ def test_page_tabs_mark_only_the_current_tab():
     assert "Two &amp; more" in html
 
 
+def _tab_corners(html: str) -> list[list[str]]:
+    """The rounding classes each tab link carries, in render order."""
+    return [
+        [
+            word
+            for word in link.split('class="')[1].split('"')[0].split()
+            if word.startswith("rounded-")
+        ]
+        for link in html.split("<a ")[1:]
+    ]
+
+
+def test_page_tabs_round_the_row_at_its_ends_only():
+    """A tab row is a joined row, so only its two outer ends round. The tabs
+    are ``ControlLink``, so nothing refuses a corner stated by class here —
+    only this assertion does."""
+    two = str(PageTabs("Playtime", [PageTab("One", "/one"), PageTab("Two", "/two")]))
+    assert _tab_corners(two) == [["rounded-s-base"], ["rounded-e-base"]]
+
+    three = str(
+        PageTabs(
+            "Playtime",
+            [
+                PageTab("One", "/one"),
+                PageTab("Two", "/two"),
+                PageTab("Three", "/three"),
+            ],
+        )
+    )
+    assert _tab_corners(three) == [["rounded-s-base"], [], ["rounded-e-base"]]
+
+    lone = str(PageTabs("Playtime", [PageTab("Only", "/only")]))
+    assert _tab_corners(lone) == [["rounded-base"]]
+
+
 def test_a_statistic_card_states_its_title_only_when_given():
     assert 'title="What it counts"' in str(
         StatisticCard("Playtime", 3, title="What it counts")

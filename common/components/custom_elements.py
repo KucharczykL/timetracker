@@ -51,6 +51,7 @@ from common.components.primitives import (
     Template,
     Ul,
     custom_element_builder,
+    shaped,
 )
 
 if TYPE_CHECKING:
@@ -259,6 +260,8 @@ _DatePicker = custom_element_builder("date-picker")
 class TemporalFieldProps(TypedDict):
     # The stored value needs the precision controls, so open showing them.
     expanded: bool
+    #: The posted name a peer addresses.
+    field_name: str
 
 
 register_element("temporal-field", "TemporalField", TemporalFieldProps)
@@ -450,9 +453,10 @@ def FilterBuilder(
     # and the panel constant), so a top-level import here would be a cycle.
     from common.components.search_select import LoadPresetDropdown
 
-    # ControlButton bakes the app's button look (color/rounded/disabled); per-attr
+    # ControlButton bakes the app's button look (color/corners/disabled); per-attr
     # kwargs pass straight through **kwargs -> _attrs_from_kwargs, so data_* hooks
-    # work and a caller class_ ACCUMULATES onto the baked classes. Do NOT pass
+    # work and a caller class_ ACCUMULATES onto the baked classes — except a
+    # class stating a corner, which is refused: that is `shape=`. Do NOT pass
     # `attributes=` — that name is reserved and raises TypeError (use per-attr kwargs
     # or the positional attrs slot; not needed here).
     return _FilterBuilder(
@@ -752,9 +756,8 @@ _Dropdown = custom_element_builder("drop-down")
 # dropdowns (the value selectors, the played-row split button); menu-like
 # dropdowns (the navbar) stay borderless (shadow only). Behavior is shared via
 # attachMenu. Toggle looks live on ControlButton (issue #272):
-# variant="outline" is the bordered toggle (no base rounding — Dropdown adds
-# rounded-base / rounded-e-base by shape; standalone consumers add their own),
-# variant="plain" the borderless navbar trigger.
+# variant="outline" is the bordered toggle, variant="plain" the borderless
+# navbar trigger. Corners come from the toggle's own shape= either way.
 
 # Panel: white (light) / frosted (dark). Clips horizontally; scrolls vertically
 # when the positioner caps its height (overflow-y lives here, not inline on the
@@ -1091,7 +1094,7 @@ def BottomSheet(
         [
             ("data-sheet-dismiss", ""),
             ("aria-label", close_label),
-            ("class", "shrink-0 rounded-base focus:ring-inset"),
+            ("class", "shrink-0 focus:ring-inset"),
         ],
         variant="ghost",
     )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
@@ -1188,7 +1191,7 @@ def ButtonDropdown(
 
 def SplitButtonDropdown(
     *,
-    primary: Node,
+    primary: ControlButton,
     items: list[Node],
     id: str,
     placement: str = "bottom-start",
@@ -1200,12 +1203,18 @@ def SplitButtonDropdown(
     the menu. The Dropdown attaches to the caret only — ``primary`` is a plain
     sibling, so the core never needs to know it exists.
 
-    ``caret_color`` defaults to an outline caret (bakes no rounding, so the join
-    against an outline ``primary`` is clean). Pass a color to render a filled caret
-    matching a filled ``primary``; the filled variant bakes all-corner rounding, so
-    the caret zeroes its start corners (``rounded-s-none``) and the caller's primary
-    must zero its end corners for a clean join. ``menu_width`` overrides the menu
-    panel width (default ``w-44``).
+    Both ends are this builder's: the caret is the row's end, and ``primary``
+    is restated as its start. Hence ``primary`` is a :class:`ControlButton` and
+    not any node — a caller left to remember the start would render a primary
+    rounded on four corners with a notch at the join, silently. The cost is
+    that a decorated primary (a button beside a badge, say) cannot be passed;
+    the route for one is a ``Shapeable`` protocol
+    (``def with_shape(self, shape) -> Self``), never a widening back to
+    :class:`Node`.
+
+    ``caret_color`` defaults to an outline caret; pass a color to render a filled
+    caret matching a filled ``primary``. ``menu_width`` overrides the menu panel
+    width (default ``w-44``).
 
     Both caret variants take ``focus:ring-inset`` so the focus ring is contained
     inside the small caret box instead of bleeding across the join into the
@@ -1214,23 +1223,19 @@ def SplitButtonDropdown(
     # (contained in the caret box) rather than as an outset halo over the join.
     caret_focus = "focus:ring-inset"
     if caret_color is None:
-        caret_button = ControlButton(
-            [("class", f"rounded-e-base {caret_focus}")], variant="outline"
-        )[Icon("arrowdown")]
+        caret_button = ControlButton([("class", caret_focus)], variant="outline")[
+            Icon("arrowdown")
+        ]
     else:
         caret_button = ControlButton(
-            [
-                (
-                    "class",
-                    (
-                        "rounded-e-base rounded-s-none border-l border-l-white/30 "
-                        f"{caret_focus}"
-                    ),
-                )
-            ],
+            [("class", f"border-l border-l-white/30 {caret_focus}")],
             color=caret_color,
         )[Icon("arrowdown")]
-    caret = _as_menu_trigger(caret_button.as_element())
+    # The row's two places, counted rather than remembered: a third element
+    # here would reshape all three, where two hand-written shapes would leave
+    # the new middle rounded on both sides.
+    (start_shape, primary), (end_shape, caret_button) = shaped([primary, caret_button])
+    caret = _as_menu_trigger(caret_button.with_shape(end_shape).as_element())
     dropdown = Dropdown(
         trigger_element=caret,
         target_element=DropdownMenuPanel(
@@ -1240,7 +1245,7 @@ def SplitButtonDropdown(
         placement=placement,
     )
     return Div(class_="inline-flex items-stretch rounded-base shadow-2xs")[
-        primary, dropdown
+        primary.with_shape(start_shape), dropdown
     ]
 
 
@@ -1298,9 +1303,9 @@ def SelectDropdown(
     """A value-selector dropdown: a current-value trigger + a listbox whose picks
     PATCH the server (via the client `select` behavior). The per-entity specifics
     (endpoint, body key, empty/null policy) are the caller's; this owns the shared
-    shape."""
+    look."""
     trigger = ControlButton(
-        [("class", "rounded-base" + (f" {class_}" if class_ else ""))],
+        [("class", class_)] if class_ else None,
         variant="outline",
         aria_haspopup="listbox",
     )[

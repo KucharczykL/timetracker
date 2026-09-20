@@ -14,9 +14,13 @@
  * logic differ.
  */
 import {
+  BUTTON_SHAPE_CLASSES,
   CALENDAR_DAY_CLASSES,
   CALENDAR_TRACK_CLASSES,
   CALENDAR_WEEKDAY_CLASS,
+  type ButtonShape,
+  type CalendarDayVariant as DayVariant,
+  type CalendarTrackVariant as TrackVariant,
 } from "../generated/calendar-classes.js";
 import { calendarWeekdayLabels, formatCalendarMonthYear } from "../date-time-presentation.js";
 import { addDays, isoFromDate, todayInDisplayZone } from "./date-field-core.js";
@@ -26,18 +30,27 @@ import { addDays, isoFromDate, todayInDisplayZone } from "./date-field-core.js";
 // that is what let the calendar drift from every other button in the app —
 // square corners on selected/adjacent cells, and a 16px-wide nav hit area.
 //
-// Each entry is a COMPLETE class list for that state, so states cannot be
-// combined by accident: rounding and fill are orthogonal, and the old additive
-// if/else chain is what dropped rounding from the filled variants.
-export type DayVariant = "default" | "selected" | "adjacent" | "anchor";
-export type TrackVariant = "outlined" | "filled" | "muted";
+// Each entry is a COMPLETE look for that state, so fill and dimming cannot be
+// combined by accident. The corner is the one orthogonal fact, composed on
+// top: a range wraps across week rows, so only the client knows which cell
+// ends a run.
+//
+// The key types are generated too. Hand-mirroring the unions here is how a
+// renamed key becomes `undefined` at runtime instead of an error at `tsc`.
+export type {
+  ButtonShape,
+  CalendarDayVariant as DayVariant,
+  CalendarTrackVariant as TrackVariant,
+} from "../generated/calendar-classes.js";
 
-export function dayVariantClass(variant: DayVariant): string {
-  return CALENDAR_DAY_CLASSES[variant] ?? CALENDAR_DAY_CLASSES.default;
+// The variants are generated square. A single date is a run of one.
+export function dayVariantClass(variant: DayVariant, shape: ButtonShape = "full"): string {
+  const corners = BUTTON_SHAPE_CLASSES[shape];
+  return corners ? `${CALENDAR_DAY_CLASSES[variant]} ${corners}` : CALENDAR_DAY_CLASSES[variant];
 }
 
 export function trackVariantClass(variant: TrackVariant): string {
-  return CALENDAR_TRACK_CLASSES[variant] ?? "";
+  return CALENDAR_TRACK_CLASSES[variant];
 }
 
 export interface MonthCalendarView {

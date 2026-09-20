@@ -124,7 +124,7 @@ def SectionNav(
     trigger = ControlButton(
         [
             ("data-section-nav-trigger", ""),
-            ("class", "w-full rounded-base py-2 focus:ring-inset"),
+            ("class", "w-full py-2 focus:ring-inset"),
         ],
         variant="outline",
     )[

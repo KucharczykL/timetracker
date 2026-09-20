@@ -190,15 +190,20 @@ class CalendarControlButtonTest(SimpleTestCase):
                 self.assertIn("min-h-control", classes)
                 self.assertIn("disabled:opacity-50", classes)
 
-    def test_every_day_variant_is_rounded(self):
-        """Rounding, fill and dimming are orthogonal. Merging them into one
+    def test_every_day_variant_is_square(self):
+        """Rounding, fill and dimming stay orthogonal — merging them into one
         if/else chain is exactly what left selected and adjacent-month cells
-        square, so each variant must carry the radius independently."""
+        square. The corner now comes from the client, which is the only thing
+        that knows where a run ends: a range wraps across week rows, so the
+        run's ends are not the grid's."""
         from common.components.date_range_picker import CALENDAR_DAY_CLASSES
 
         for variant, classes in CALENDAR_DAY_CLASSES.items():
             with self.subTest(variant=variant):
-                self.assertIn("rounded-base", classes)
+                self.assertEqual(
+                    [word for word in classes.split() if word.startswith("rounded-")],
+                    [],
+                )
 
     def test_selected_variant_never_pairs_a_text_colour_with_the_brand_fill(self):
         """solid-brand carries its own APCA-picked on-colour; adding

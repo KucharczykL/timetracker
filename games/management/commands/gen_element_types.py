@@ -14,8 +14,14 @@ from common.components.date_range_picker import (
     CALENDAR_DAY_CLASSES,
     CALENDAR_TRACK_CLASSES,
     CALENDAR_WEEKDAY_CLASS,
+    CalendarDayVariant,
+    CalendarTrackVariant,
 )
-from common.components.primitives import YEAR_PICKER_CLASSES
+from common.components.primitives import (
+    SHAPE_CLASSES,
+    YEAR_PICKER_CLASSES,
+    ButtonShape,
+)
 from common.components.ts_codegen import (
     ChoiceVocab,
     TsConstant,
@@ -99,14 +105,24 @@ class Command(BaseCommand):
                 [],
                 constants=[
                     TsConstant(
-                        "CALENDAR_DAY_CLASSES", dict[str, str], CALENDAR_DAY_CLASSES
+                        "CALENDAR_DAY_CLASSES",
+                        dict[CalendarDayVariant, str],
+                        CALENDAR_DAY_CLASSES,
                     ),
                     TsConstant(
-                        "CALENDAR_TRACK_CLASSES", dict[str, str], CALENDAR_TRACK_CLASSES
+                        "CALENDAR_TRACK_CLASSES",
+                        dict[CalendarTrackVariant, str],
+                        CALENDAR_TRACK_CLASSES,
                     ),
                     TsConstant("CALENDAR_WEEKDAY_CLASS", str, CALENDAR_WEEKDAY_CLASS),
                     TsConstant(
                         "YEAR_PICKER_CLASSES", dict[str, str], YEAR_PICKER_CLASSES
+                    ),
+                    # Typed keys, so a rename fails `tsc` rather than
+                    # resolving to `undefined`: a lost "full" would square
+                    # every day cell in both pickers.
+                    TsConstant(
+                        "BUTTON_SHAPE_CLASSES", dict[ButtonShape, str], SHAPE_CLASSES
                     ),
                 ],
             ),

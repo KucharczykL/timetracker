@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { DATE_RANGE_CHANGE_EVENT, type DateRangeChangeDetail } from "./date-range-picker.js";
+import { dayVariantClass } from "./date-calendar-core.js";
 
 const formatCalendarMonthYear = vi.hoisted(() => vi.fn(() => "Contract month"));
 const calendarWeekdayLabels = vi.hoisted(() =>
@@ -231,5 +232,80 @@ describe("date-range-picker static-calendar variant", () => {
     const max = picker.querySelector<HTMLInputElement>('[data-date-range-hidden="max"]')!;
     expect(min.value).toBe("2027-03-05");
     expect(max.value).toBe(min.value);
+  });
+});
+
+describe("the day cell's corners", () => {
+  const rounding = (classes: string) =>
+    classes.split(" ").filter((word) => word.startsWith("rounded-"));
+
+  it("gives every day cell exactly one corner set", () => {
+    expect(rounding(dayVariantClass("default"))).toEqual(["rounded-base"]);
+    expect(rounding(dayVariantClass("default", "square"))).toEqual([]);
+    expect(rounding(dayVariantClass("selected", "start"))).toEqual(["rounded-s-base"]);
+    expect(rounding(dayVariantClass("selected", "end"))).toEqual(["rounded-e-base"]);
+  });
+
+  function pickDay(picker: HTMLElement, isoDate: string): HTMLElement {
+    const cell = picker.querySelector<HTMLElement>(`[data-date="${isoDate}"]`)!;
+    cell.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return cell;
+  }
+
+  const cornersOf = (picker: HTMLElement, isoDate: string) =>
+    rounding(picker.querySelector(`[data-date="${isoDate}"]`)!.className);
+
+  // The shape is DERIVED from the picked range, and getting start and end the
+  // wrong way round rounds the edges that face INTO the run — the range then
+  // reads as three chips rather than one selection, with nothing else failing.
+  it("rounds a picked run at its ends and nowhere between", () => {
+    const picker = mountStatic();
+    pickDay(picker, "2027-03-10");
+    pickDay(picker, "2027-03-13");
+
+    expect(cornersOf(picker, "2027-03-10")).toEqual(["rounded-s-base"]);
+    expect(cornersOf(picker, "2027-03-11")).toEqual([]);
+    expect(cornersOf(picker, "2027-03-12")).toEqual([]);
+    expect(cornersOf(picker, "2027-03-13")).toEqual(["rounded-e-base"]);
+    // Outside the run, a day is a button like any other.
+    expect(cornersOf(picker, "2027-03-09")).toEqual(["rounded-base"]);
+    expect(cornersOf(picker, "2027-03-14")).toEqual(["rounded-base"]);
+  });
+
+  it("rounds a run that wraps a week row at its ends, not the row's", () => {
+    const picker = mountStatic();
+    pickDay(picker, "2027-03-11");
+    pickDay(picker, "2027-03-16");
+
+    // 14 March 2027 is a Sunday: the run crosses a grid row between 14 and 15.
+    expect(cornersOf(picker, "2027-03-11")).toEqual(["rounded-s-base"]);
+    for (const day of ["12", "13", "14", "15"]) {
+      expect(cornersOf(picker, `2027-03-${day}`)).toEqual([]);
+    }
+    expect(cornersOf(picker, "2027-03-16")).toEqual(["rounded-e-base"]);
+  });
+
+  it("rounds a single picked day on all four corners", () => {
+    const picker = mountStatic();
+    pickDay(picker, "2027-03-10");
+
+    // One end picked: a run of one is the whole run, and the second click
+    // has not narrowed it yet.
+    expect(cornersOf(picker, "2027-03-10")).toEqual(["rounded-base"]);
+
+    pickDay(picker, "2027-03-10");
+    expect(cornersOf(picker, "2027-03-10")).toEqual(["rounded-base"]);
+  });
+
+  it("rounds the provisional run under the pointer while the second end is open", () => {
+    const picker = mountStatic();
+    pickDay(picker, "2027-03-10");
+    picker
+      .querySelector<HTMLElement>('[data-date="2027-03-12"]')!
+      .dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+
+    expect(cornersOf(picker, "2027-03-10")).toEqual(["rounded-s-base"]);
+    expect(cornersOf(picker, "2027-03-11")).toEqual([]);
+    expect(cornersOf(picker, "2027-03-12")).toEqual(["rounded-e-base"]);
   });
 });

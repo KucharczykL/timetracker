@@ -434,7 +434,7 @@ class RenderedPagesTest(TestCase):
         self.assertNotIn("<button", control)
         # the anchor itself carries the outline-toggle look and its shape class
         self.assertIn("border-default-medium", control)
-        self.assertIn("rounded-s-lg", control)
+        self.assertIn("rounded-s-base", control)
 
     def test_played_row_label_is_one_flex_item(self):
         """'N times' is one prose phrase, so it must be a single flex item:

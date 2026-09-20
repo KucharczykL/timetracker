@@ -10,7 +10,7 @@ widgets return :class:`Safe`.
 """
 
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Literal, NamedTuple, NotRequired, TypedDict
 
@@ -168,6 +168,11 @@ type ButtonVariant = Literal[
 # order, not class-attribute order, so `class_="justify-start"` on a button
 # whose baked class already says `justify-center` wins only by luck.
 type ButtonAlign = Literal["center", "start"]
+# A place in a joined row, never a radius: one tier rounds every control.
+# "full" is the button standing on its own, "start"/"end" the two outer ends
+# of a row, and "square" the absence of an end — a member with a neighbour on
+# both sides.
+type ButtonShape = Literal["full", "start", "end", "square"]
 type BadgeSize = Literal["sm", "base", "lg"]
 type BadgeTone = Literal["brand", "neutral", "success", "warning", "danger"]
 
@@ -760,9 +765,9 @@ def TruncatedText(
     )[*children]
 
 
-# The classes both ControlButton variants truly share. Everything else —
-# sizing, rounding, focus treatment — belongs to the variant, so the segmented
-# look stays what ButtonGroup members rendered before the unification.
+# The classes every ControlButton variant truly shares. Sizing and focus
+# treatment belong to the variant; rounding belongs to neither — it is
+# `shape=`, and SHAPE_CLASSES below is its one table.
 # inline-flex keeps every button the same height regardless of content — an
 # icon+text button (e.g. "Log this game") would otherwise sit taller than its
 # text-only siblings and step a segmented group's bottom edge.
@@ -781,6 +786,14 @@ _ALIGN_CLASSES: dict[ButtonAlign, str] = {
     "start": "justify-start text-start",
 }
 
+#: A shape's corners. "square" is no word, not a word that zeroes one.
+SHAPE_CLASSES: dict[ButtonShape, str] = {
+    "full": "rounded-base",
+    "start": "rounded-s-base",
+    "end": "rounded-e-base",
+    "square": "",
+}
+
 # Shared by EVERY button-shaped variant. Height is the canonical control
 # height (min-h-control = 42px, from --height-control), floored not fixed so a
 # multi-line control still grows; the inline-flex base centers content in it.
@@ -790,8 +803,7 @@ _ALIGN_CLASSES: dict[ButtonAlign, str] = {
 CONTROL_SIZE_CLASS = "min-h-control px-3"
 
 _FILLED_VARIANT_CLASS = (
-    "gap-2 leading-5 focus:outline-hidden focus:ring-4 rounded-base "
-    f"{CONTROL_SIZE_CLASS}"
+    f"gap-2 leading-5 focus:outline-hidden focus:ring-4 {CONTROL_SIZE_CLASS}"
 )
 
 _SEGMENTED_VARIANT_CLASS = f"focus:z-10 {CONTROL_SIZE_CLASS}"
@@ -874,14 +886,14 @@ _OUTLINE_VARIANT_CLASS = (
 # compact triggers that would read as clutter in a row of many (the quick
 # filter bar's facet dropdowns).
 _GHOST_VARIANT_CLASS = (
-    f"{CONTROL_SIZE_CLASS} gap-2 rounded-base bg-transparent border "
+    f"{CONTROL_SIZE_CLASS} gap-2 bg-transparent border "
     "border-transparent text-heading hover:bg-neutral-tertiary-medium "
     "hover:border-default-strong focus:outline-hidden focus:ring-2 "
     "focus:ring-fg-brand whitespace-nowrap"
 )
 
 _PLAIN_VARIANT_CLASS = (
-    "flex items-center justify-between w-full py-2 px-3 text-gray-900 rounded-base "
+    "flex items-center justify-between w-full py-2 px-3 text-gray-900 "
     "hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 "
     "md:p-0 md:w-auto dark:text-white md:dark:hover:text-blue-500 "
     "dark:focus:text-white dark:border-gray-700 dark:hover:bg-gray-700 "
@@ -894,6 +906,7 @@ def control_button_class(
     color: ButtonColor = "blue",
     variant: ButtonVariant = "filled",
     align: ButtonAlign = "center",
+    shape: ButtonShape = "full",
 ) -> str:
     """The exact class string :class:`ControlButton` renders for a combination.
 
@@ -906,12 +919,18 @@ def control_button_class(
     adjacent-month cells).
 
     ControlButton itself renders through this, so the two cannot disagree.
+
+    It states a look; it does not police one. The component refuses a caller
+    class that states a corner, and a caller that concatenates onto this
+    string instead stands outside that refusal — which is the route the
+    calendar drifted through.
     """
+    shape_class = SHAPE_CLASSES[shape]
     if variant == "plain":
         # The navbar nav-link owns its whole layout (flex justify-between,
         # md:p-0) and sits outside both the base and the sizing contract, so
         # neither the base nor alignment applies to it.
-        return _PLAIN_VARIANT_CLASS
+        return " ".join(part for part in (_PLAIN_VARIANT_CLASS, shape_class) if part)
     parts = [_CONTROL_BASE_CLASS, _ALIGN_CLASSES[align]]
     if variant == "outline":
         parts.append(_OUTLINE_VARIANT_CLASS)
@@ -922,7 +941,42 @@ def control_button_class(
             parts += [_FILLED_VARIANT_CLASS, _FILLED_COLOR_CLASSES[color]]
         else:
             parts += [_SEGMENTED_VARIANT_CLASS, _SEGMENTED_COLOR_CLASSES[color]]
+    # "square" is no class, and joining an empty part would put a double
+    # space in the class attribute.
+    if shape_class:
+        parts.append(shape_class)
     return " ".join(parts)
+
+
+def _refuse_a_stated_corner(value: object) -> None:
+    """Refuse a class attribute that states a corner.
+
+    Stylesheet order decides between two radius classes, so a call site that
+    writes one cannot read which one wins. Reads the value through ``str``, as
+    ``normalize_attributes`` will.
+
+    Every spelling reaches the same property: Tailwind writes a variant as a
+    ``:``-separated prefix — a breakpoint, a state, or a whole arbitrary
+    selector — and the important marker as a leading ``!``.
+    """
+    for word in str(value).split():
+        token = word.rpartition(":")[2].lstrip("!")
+        if token != "rounded" and not token.startswith("rounded-"):
+            continue
+        if word != token:
+            # A prefixed rounding is a corner per state or per width, and
+            # `shape=` has no such value: the parameter states one set of
+            # corners for every state and every width.
+            raise TypeError(
+                f"ControlButton refuses the class {word!r}: a button has "
+                "no per-state radius, and shape= states one set of corners "
+                "for every state and width."
+            )
+        raise TypeError(
+            f"ControlButton refuses the class {word!r}: "
+            "a button states its corners with shape= "
+            '("full", "start", "end" or "square"), never a class.'
+        )
 
 
 class ControlButton(BaseComponent):
@@ -939,19 +993,27 @@ class ControlButton(BaseComponent):
       ``action`` defaults to ``href``;
     - otherwise → a ``<button>`` with ``type`` (default ``"button"``).
 
-    Sizing contract: compact by default; upsizes inside an ``@container``
-    ancestor at least 28rem wide (``@md``). There is no size parameter — the
-    container decides, and every button-shaped variant follows the same scale.
+    Sizing contract: one size everywhere. Every button-shaped variant carries
+    ``CONTROL_SIZE_CLASS``, whose ``min-h-control`` is 42px floored, so a
+    button is the same height in every row. There is no size parameter and no
+    breakpoint or container step: height stopped depending on font, padding
+    and ancestor alike, which is what made it differ across rows.
     ``variant="segmented"`` is the ButtonGroup-member look (white background,
     hover hue).
 
     The dropdown-toggle variants are single-look and ignore ``color``:
     ``variant="outline"`` is the bordered toggle (split-button carets, value
-    selectors — callers add rounding by shape, e.g. ``rounded-e-base``);
+    selectors);
     ``variant="ghost"`` is the transparent-until-hover toggle (quick-facet
     dropdown triggers) — outline's look on hover, invisible chrome at rest;
     ``variant="plain"`` is the borderless navbar nav-link trigger, the one
     variant outside the sizing contract (its navbar layout is its own).
+
+    ``shape=`` states which corners the button rounds, and is the only way to
+    state them: ``"full"`` (the default) rounds all four, ``"start"``/``"end"``
+    the two ends of a joined row, ``"square"`` none. A caller class holding a
+    rounding is refused — the stylesheet, not the class attribute, decides
+    between two classes setting one radius.
 
     ``align="start"`` left-aligns the content for buttons rendered as a list of
     choices (the date picker's preset column); the default is centered. It is a
@@ -972,6 +1034,7 @@ class ControlButton(BaseComponent):
         color: ButtonColor = "blue",
         variant: ButtonVariant = "filled",
         align: ButtonAlign = "center",
+        shape: ButtonShape = "full",
         href: str = "",
         method: str = "",
         action: str = "",
@@ -981,14 +1044,20 @@ class ControlButton(BaseComponent):
         _children: Children = None,
         **kwargs: object,
     ) -> None:
-        class_attrs: list[HTMLAttribute] = [
-            ("class", control_button_class(color=color, variant=variant, align=align))
-        ]
-        self._merged_attributes: list[HTMLAttribute] = [
-            *class_attrs,
+        self._caller_attributes: list[HTMLAttribute] = [
             *_coerce_attrs(attrs),
             *_attrs_from_kwargs(kwargs),
         ]
+        for name, value in self._caller_attributes:
+            if name == "class":
+                _refuse_a_stated_corner(value)
+        # Every look-fact is kept, never only the class string it composes to:
+        # `with_shape` restates one of them, and a rendered string cannot be
+        # read back into the facts that produced it.
+        self._color = color
+        self._variant = variant
+        self._align = align
+        self._shape = shape
         self._href = href
         self._method = method
         self._action = action
@@ -1004,6 +1073,38 @@ class ControlButton(BaseComponent):
         clone.__dict__.update(self.__dict__)
         clone.__dict__.pop("_tree_cache", None)
         clone._children = as_children(children)
+        return clone
+
+    @property
+    def _merged_attributes(self) -> list[HTMLAttribute]:
+        """This button's own class, then the caller's attributes.
+
+        Composed, not stored: ``normalize_attributes`` ACCUMULATES `class`, so
+        a rebuild that left the old one behind renders two radii in silence.
+        """
+        return [
+            (
+                "class",
+                control_button_class(
+                    color=self._color,
+                    variant=self._variant,
+                    align=self._align,
+                    shape=self._shape,
+                ),
+            ),
+            *self._caller_attributes,
+        ]
+
+    def with_shape(self, shape: ButtonShape) -> ControlButton:
+        """This button, restated with different corners — for a builder
+        composing a row out of buttons it did not build.
+
+        A new instance, never a mutation: ``_tree()`` memoizes its subtree.
+        """
+        clone = ControlButton.__new__(ControlButton)
+        clone.__dict__.update(self.__dict__)
+        clone.__dict__.pop("_tree_cache", None)
+        clone._shape = shape
         return clone
 
     def as_element(self) -> Element:
@@ -1067,12 +1168,28 @@ class ButtonGroupMember(TypedDict, total=False):
     type: str
 
 
-#: Rounds a group's outer corners.
-_GROUP_ENDS_CLASS = (
-    "inline-flex rounded-base shadow-xs "
-    "[&>*:first-child]:rounded-s-base "
-    "[&>*:last-child]:rounded-e-base"
-)
+def shaped[T](members: Sequence[T]) -> Iterator[tuple[ButtonShape, T]]:
+    """Each member of a joined row, with the shape its place gives it.
+
+    The row counts; no member and no call site holds an index. A lone member
+    is the whole row and rounds both ends.
+    """
+    last = len(members) - 1
+    for index, member in enumerate(members):
+        if last == 0:
+            yield "full", member
+        elif index == 0:
+            yield "start", member
+        elif index == last:
+            yield "end", member
+        else:
+            yield "square", member
+
+
+#: The shell a joined row shares. Its members state their own corners; the
+#: residual `rounded-base` shapes the shadow alone — the box carries no
+#: background, no border and no `overflow-hidden` to clip anything.
+_JOINED_ROW_CLASS = "inline-flex rounded-base shadow-xs"
 
 
 def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
@@ -1086,14 +1203,15 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
     those attributes (a JS-driven action with no navigation).
     Empty dicts (no slot) are silently skipped — matching the template behavior
     for conditional buttons (e.g., end-session only when session is active).
-    Every button uses one responsive size (small on mobile, larger from ``lg``).
+    Every member is the one button size; no member resizes at any width.
     """
-    buttons = buttons or []
+    # A skipped entry is not an end.
+    present = [
+        member for member in (buttons or []) if member and member.get("slot", "")
+    ]
     children: list[Node] = []
-    for member in buttons:
-        slot = member.get("slot", "")
-        if not member or not slot:
-            continue
+    for shape, member in shaped(present):
+        slot = member["slot"]
         # Attributes are added only when non-empty: an empty ``hx-get=""``
         # would still register with htmx and hijack the link's click into an
         # AJAX GET of the current URL.
@@ -1115,6 +1233,7 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
             ControlButton(
                 member_attributes,
                 variant="segmented",
+                shape=shape,
                 color=member.get("color", "gray"),
                 href="" if is_plain_button else member.get("href", "#"),
                 method="" if is_plain_button else member.get("method", ""),
@@ -1128,20 +1247,7 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
     # Alignment-agnostic: the group sits where its container puts it. In a table
     # Actions cell the <td> is right-aligned (table-level Column.align rule), so
     # this inline-flex group is pushed right; in the game header it sits left.
-    # End-rounding lives here (keyed on child position, not member tag — the one
-    # documented styling-at-a-distance exception, because a member cannot know
-    # its own position) so a group can freely mix <a> links, <form> submit
-    # buttons, and bare buttons: the direct-child selectors round <a>/<button>
-    # members, the descendant `_button` ones round a <form> member's inner
-    # button.
-    return Div(
-        class_=(
-            f"{_GROUP_ENDS_CLASS} "
-            "[&>*:first-child_button]:rounded-s-base "
-            "[&>*:last-child_button]:rounded-e-base"
-        ),
-        role="group",
-    )[children]
+    return Div(class_=_JOINED_ROW_CLASS, role="group")[children]
 
 
 type TabLabel = str  # e.g. "Sessions"
@@ -1172,13 +1278,20 @@ def PageTabs(aria_label: NavLabel, tabs: Sequence[PageTab]) -> Node:
         ControlLink(
             href=tab.href,
             aria_current="page" if tab.current else None,
-            class_=f"{_TAB_CLASS} "
-            f"{_TAB_CURRENT_CLASS if tab.current else _TAB_IDLE_CLASS}",
+            class_=" ".join(
+                part
+                for part in (
+                    _TAB_CLASS,
+                    _TAB_CURRENT_CLASS if tab.current else _TAB_IDLE_CLASS,
+                    SHAPE_CLASSES[shape],
+                )
+                if part
+            ),
         )[tab.label]
-        for tab in tabs
+        for shape, tab in shaped(tabs)
     ]
     return Nav(aria_label=aria_label, class_="mb-4")[
-        Div(class_=_GROUP_ENDS_CLASS)[links]
+        Div(class_=_JOINED_ROW_CLASS)[links]
     ]
 
 
@@ -2650,8 +2763,7 @@ def SelectionToggle(*, pressed: bool = False) -> Node:
             ("aria-label", "Select rows"),
         ],
         variant="outline",
-        # Outline bakes no shape; a standalone one states its own.
-        class_="ms-auto rounded-base",
+        class_="ms-auto",
     )[Icon("checkbox"), Span(class_="max-sm:sr-only")["Select"]]
 
 

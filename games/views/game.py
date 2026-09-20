@@ -539,7 +539,6 @@ def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
     )
 
     count_button = ControlButton(
-        [("class", "rounded-s-lg")],
         variant="outline",
         href=action_url("games:add_playthrough", origin=origin),
     )[

@@ -16,6 +16,8 @@ serializers read into a ``DateCriterion``. All behaviour is wired by
 ``ts/elements/date-range-picker.ts``.
 """
 
+from typing import Literal
+
 from common.components.core import Node, Safe
 from common.components.custom_elements import (
     OVERLAY_SURFACE_CLASS,
@@ -97,25 +99,29 @@ _NAV_BUTTON_GEOMETRY_CLASS = "w-11 shrink-0"
 # `manage.py gen_element_types` (ts/generated/calendar-classes.ts) because the
 # 42 cells are cloned client-side — see date_calendar_shell's day template.
 #
-# Rounding is applied to EVERY variant, not just the unselected one: rounding,
-# fill and dimming are orthogonal, and merging them into one if/else chain is
-# exactly what left selected and adjacent-month cells square.
-type CalendarDayVariant = str  # e.g. "selected"
+# Built square; the client states the corner, because a run wraps across week
+# rows. Each variant stays a COMPLETE string: merging fill and dimming into one
+# if/else chain is what left selected and adjacent-month cells square.
+type CalendarDayVariant = Literal["default", "selected", "adjacent", "anchor"]
 CALENDAR_DAY_CLASSES: dict[CalendarDayVariant, str] = {
     # Unselected, in-month: transparent chrome until hover.
-    "default": f"{control_button_class(variant='ghost')} {_DAY_CELL_GEOMETRY_CLASS}",
+    "default": (
+        f"{control_button_class(variant='ghost', shape='square')} "
+        f"{_DAY_CELL_GEOMETRY_CLASS}"
+    ),
     # Picked date (both pickers) — the filled brand button.
     "selected": (
-        f"{control_button_class(color='blue', variant='filled')} "
+        f"{control_button_class(color='blue', variant='filled', shape='square')} "
         f"{_DAY_CELL_GEOMETRY_CLASS}"
     ),
     # Leading/trailing days from the adjacent month: the default look, dimmed.
     "adjacent": (
-        f"{control_button_class(variant='ghost')} {_DAY_CELL_GEOMETRY_CLASS} opacity-40"
+        f"{control_button_class(variant='ghost', shape='square')} "
+        f"{_DAY_CELL_GEOMETRY_CLASS} opacity-40"
     ),
     # Range-picker only: the fixed endpoint while the other end is being picked.
     "anchor": (
-        f"{control_button_class(color='blue', variant='filled')} "
+        f"{control_button_class(color='blue', variant='filled', shape='square')} "
         f"{_DAY_CELL_GEOMETRY_CLASS} ring-2 ring-inset ring-brand-strong"
     ),
 }
@@ -132,7 +138,7 @@ CALENDAR_DAY_CLASSES: dict[CalendarDayVariant, str] = {
 # highlight between the two endpoints disappeared. The border colour needs no
 # such treatment — the variant sets `border-transparent`, a different property
 # value, and `border-y` only re-widens the edges this rule colours.
-type CalendarTrackVariant = str  # e.g. "filled"
+type CalendarTrackVariant = Literal["outlined", "filled", "muted"]
 CALENDAR_TRACK_CLASSES: dict[CalendarTrackVariant, str] = {
     "outlined": "border-y border-brand/70! bg-brand/10!",
     "filled": "bg-brand/30!",

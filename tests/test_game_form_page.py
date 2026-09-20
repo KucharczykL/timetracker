@@ -118,6 +118,57 @@ def test_the_page_threads_the_temporal_element(logged_in, plain_game):
     assert "dist/elements/catalog-editor.js" in body
 
 
+def test_every_release_row_offers_the_original_release(logged_in, plain_game):
+    """One button per row, inert until upgrade."""
+    Release.objects.create(
+        edition=Edition.objects.get(game=plain_game, is_default=True),
+        release_date=TemporalValue.from_year(2011),
+    )
+    body = live(page(logged_in, plain_game))
+
+    assert body.count('data-temporal-copy="original_release_date"') == 2
+    button = re.search(r"<button[^>]*data-temporal-copy[^>]*>", body)
+    assert button is not None
+    assert 'type="button"' in button.group(0)
+    # The bare words also occur in `focus:outline-hidden` and
+    # `disabled:opacity-50`, thus both are matched as attributes.
+    assert 'hidden="hidden"' in button.group(0)
+    assert 'disabled="disabled"' in button.group(0)
+    assert "Use original release" in body
+
+
+def test_the_original_release_names_itself_to_the_rows(logged_in, plain_game):
+    """No form prefix, thus one per page."""
+    body = live(page(logged_in, plain_game))
+
+    assert body.count('field-name="original_release_date"') == 1
+    assert 'field-name="edition-0-release-0-release_date"' in body
+
+
+def test_a_cloned_row_carries_the_button_too(logged_in, plain_game):
+    """The clone source needs one too.
+
+    `live()` cuts at the first template, thus this reads the whole
+    body on purpose.
+    """
+    body = page(logged_in, plain_game)
+    templates = body.split("<template data-catalog-template=")[1:]
+
+    assert templates
+    assert all(
+        'data-temporal-copy="original_release_date"' in each for each in templates
+    )
+
+
+def test_add_game_offers_the_original_release_too(logged_in):
+    """Add Game hosts the same area."""
+    response = logged_in.get(reverse("games:add_game"))
+    body = response.content.decode()
+
+    assert 'data-temporal-copy="original_release_date"' in live(body)
+    assert 'field-name="original_release_date"' in live(body)
+
+
 def test_every_row_carries_the_input_the_bin_states(logged_in, plain_game):
     """The bin writes `removed`, thus the row has to post it.
 

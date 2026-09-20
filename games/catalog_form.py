@@ -14,6 +14,7 @@ from uuid import UUID
 from django import forms
 from django.core.exceptions import ValidationError
 
+from common.components import TemporalCopySource
 from common.date_time_presentation import DateTimePresentation
 from common.naming import NameKey, name_key
 from games.catalog_compat import MirroredIdentity, mirrored_identity, write_and_mirror
@@ -43,6 +44,11 @@ RELEASE_PLACEHOLDER: Final[str] = "__release__"
 
 #: One radio group over the whole Game; its value is a release prefix.
 MARK_FIELD: Final[str] = "in_library"
+
+#: Unprefixed name, thus unique on the page.
+ORIGINAL_RELEASE_SOURCE: Final[TemporalCopySource] = TemporalCopySource(
+    "original_release_date", "Use original release", "Fill Original release first"
+)
 #: How many Edition blocks were posted, the way a formset states it.
 EDITION_COUNT_FIELD: Final[str] = "editions-count"
 
@@ -133,7 +139,9 @@ class ReleaseRowForm(PrimitiveWidgetsMixin, forms.Form):
             forms.ModelChoiceField, self.fields["platform"]
         ).queryset = Platform.objects.visible_to(library).order_by("name")
         self.fields["release_date"] = TemporalFormField(
-            presentation=presentation, label="Released"
+            presentation=presentation,
+            label="Released",
+            copy_source=ORIGINAL_RELEASE_SOURCE,
         )
         #: `release_date` joins the form last, thus it sorts last too.
         self.order_fields(("release_id", "platform", "release_date", "removed"))

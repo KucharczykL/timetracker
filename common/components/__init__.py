@@ -139,6 +139,7 @@ from common.components.primitives import (
     ButtonColor,
     ButtonGroup,
     ButtonGroupMember,
+    ButtonShape,
     ButtonVariant,
     Caption,
     Cell,
@@ -208,6 +209,7 @@ from common.components.primitives import (
     make_row,
     paginated_table_content,
     selection_scope,
+    shaped,
 )
 from common.components.quick_filter import (
     QUICK_FACET_KINDS,
@@ -246,7 +248,7 @@ from common.components.settings_kit import (
     SettingSourceBadge,
     prepare_setting_fields,
 )
-from common.components.temporal_field import TemporalField
+from common.components.temporal_field import TemporalCopySource, TemporalField
 from common.components.theme import ThemeSetting, ThemeToggle
 from common.components.time_zone_row import TimeZoneRow
 from common.components.toast import ToastStack
@@ -291,6 +293,7 @@ __all__ = [
     "ButtonDropdown",
     "ButtonGroup",
     "ButtonGroupMember",
+    "ButtonShape",
     "ButtonVariant",
     "Caption",
     "Cell",
@@ -442,6 +445,7 @@ __all__ = [
     "Tbody",
     "Td",
     "Template",
+    "TemporalCopySource",
     "TemporalField",
     "Th",
     "Thead",
@@ -474,6 +478,7 @@ __all__ = [
     "render",
     "searchselect_selected",
     "selection_scope",
+    "shaped",
     "truncate",
     "truncate_info",
 ]

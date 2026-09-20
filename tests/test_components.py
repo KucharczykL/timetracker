@@ -1223,13 +1223,158 @@ class ControlButtonTest(SimpleTestCase):
         self.assertNotIn("justify-start", html)
         self.assertIn("justify-between", html)
 
-    def test_outline_variant_takes_extra_shape_classes(self):
-        html = str(
-            components.ControlButton([("class", "rounded-e-lg")], variant="outline")[
-                "x"
-            ]
+    def test_outline_variant_takes_a_shape(self):
+        """The shape parameter is the route; the caller-class route is refused
+        by :meth:`test_a_caller_cannot_state_a_corner_by_class`."""
+        html = str(components.ControlButton(variant="outline", shape="end")["x"])
+        self.assertIn("rounded-e-base", html)
+
+    def test_a_joined_row_states_each_member_shape(self):
+        """One member rounds both ends; the middle of three rounds neither."""
+        from common.components import shaped
+
+        self.assertEqual([shape for shape, _ in shaped(["a"])], ["full"])
+        self.assertEqual([shape for shape, _ in shaped(["a", "b"])], ["start", "end"])
+        self.assertEqual(
+            [shape for shape, _ in shaped(["a", "b", "c"])],
+            ["start", "square", "end"],
         )
-        self.assertIn("rounded-e-lg", html)
+        self.assertEqual(list(shaped([])), [])
+
+    def test_a_post_member_states_its_shape_on_its_button(self):
+        """The form around a post member has inline-flex and nothing else — no
+        border, no background — so the radius belongs on the button inside it."""
+        html = str(
+            components.ButtonGroup(
+                [
+                    {"slot": "First", "href": "/a"},
+                    {
+                        "slot": "Stop",
+                        "method": "post",
+                        "action": "/b",
+                        "csrf_token": "t",
+                    },
+                ]
+            )
+        )
+        form = html[html.index("<form") :]
+        self.assertNotIn("rounded-e-base", form[: form.index("<button")])
+        self.assertIn("rounded-e-base", form[form.index("<button") :])
+
+    def test_a_skipped_member_is_not_an_end(self):
+        """Entries with no slot are dropped before the row is counted — the
+        game header emits empty dicts for members a state hides."""
+        html = str(components.ButtonGroup([{}, {"slot": "Only", "href": "/a"}]))
+        self.assertIn("rounded-base", html[html.index("<a") :])
+
+    def test_each_shape_names_the_corners_it_states(self):
+        """The matrix test below compares a button against this table, so the
+        table needs its own assertion: otherwise `SHAPE_CLASSES["full"] = ""`
+        squares every button in the app and stays green."""
+        from common.components.primitives import SHAPE_CLASSES
+
+        self.assertEqual(
+            SHAPE_CLASSES,
+            {
+                "full": "rounded-base",
+                "start": "rounded-s-base",
+                "end": "rounded-e-base",
+                "square": "",
+            },
+        )
+
+    def test_every_variant_and_shape_emits_exactly_its_shape_class(self):
+        """A button states one corner set: the variant never adds a second and
+        never omits the first. Nothing else in the suite would catch either."""
+        from common.components.primitives import SHAPE_CLASSES, control_button_class
+
+        for variant in ("filled", "segmented", "outline", "ghost", "plain"):
+            for shape, expected in SHAPE_CLASSES.items():
+                with self.subTest(variant=variant, shape=shape):
+                    emitted = {
+                        word
+                        for word in control_button_class(
+                            variant=variant, shape=shape
+                        ).split()
+                        if word.startswith("rounded-")
+                    }
+                    self.assertEqual(emitted, set(expected.split()))
+
+    def test_a_built_row_rounds_its_first_and_last_member_only(self):
+        """The first of several and a middle one, through the builder — a
+        wiring bug between `shaped()` and the members it shapes."""
+        html = str(
+            components.ButtonGroup(
+                [
+                    {"slot": "First", "href": "/a"},
+                    {"slot": "Middle", "href": "/b"},
+                    {"slot": "Last", "href": "/c"},
+                ]
+            )
+        )
+        corners = [
+            [
+                word
+                for word in link.split('class="')[1].split('"')[0].split()
+                if word.startswith("rounded-")
+            ]
+            for link in html.split("<a ")[1:]
+        ]
+        self.assertEqual(corners, [["rounded-s-base"], [], ["rounded-e-base"]])
+
+    def test_a_caller_class_that_states_no_corner_reaches_the_element(self):
+        """The refusal reads the class attribute, so it has to hand back every
+        class it does not refuse — through the positional slot as well as
+        through `class_`."""
+        html = str(components.ControlButton([("class", "ms-auto")])["x"])
+        self.assertIn("ms-auto", html)
+        self.assertIn("rounded-base", html)
+
+    def test_a_caller_cannot_state_a_corner_by_class(self):
+        """The parameter is the only way in. A caller class and a baked class
+        both set the radius, and the stylesheet decides which wins, so the
+        rule has to be refused rather than written down.
+
+        Every spelling Tailwind admits, not just the bare one: a variant
+        prefix, an arbitrary-selector prefix and the important suffix all
+        reach the same property."""
+        with self.assertRaises(TypeError) as refusal:
+            components.ControlButton(class_="rounded-e-lg", variant="outline")["x"]
+        self.assertIn("shape", str(refusal.exception))
+
+        with self.assertRaises(TypeError):
+            components.ControlButton([("class", "ms-auto rounded-base")])["x"]
+
+        for spelling in (
+            "rounded",
+            "sm:rounded-base",
+            "hover:rounded-full",
+            "[&>*:first-child]:rounded-s-base",
+            "!rounded-full",
+            "sm:!rounded-full",
+        ):
+            with self.subTest(spelling=spelling), self.assertRaises(TypeError):
+                components.ControlButton(class_=spelling)["x"]
+
+    def test_a_state_variant_rounding_says_no_shape_expresses_it(self):
+        """`hover:rounded-full` is not a shape= the parameter can state, so
+        the refusal cannot send the caller to a parameter that has no such
+        value."""
+        with self.assertRaises(TypeError) as refusal:
+            components.ControlButton(class_="hover:rounded-full")["x"]
+        self.assertIn("no per-state radius", str(refusal.exception))
+
+    def test_a_non_string_class_value_is_read_for_a_corner(self):
+        """`normalize_attributes` stringifies a class value later, so a
+        rounding that arrives as anything but `str` still reaches the
+        element."""
+
+        class Spelled:
+            def __str__(self) -> str:
+                return "rounded-full"
+
+        with self.assertRaises(TypeError):
+            components.ControlButton([("class", Spelled())])["x"]
 
 
 class ModalContractTest(SimpleTestCase):
