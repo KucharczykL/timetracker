@@ -51,6 +51,7 @@ from common.components.primitives import (
     Template,
     Ul,
     custom_element_builder,
+    shaped,
 )
 
 if TYPE_CHECKING:
@@ -452,9 +453,10 @@ def FilterBuilder(
     # and the panel constant), so a top-level import here would be a cycle.
     from common.components.search_select import LoadPresetDropdown
 
-    # ControlButton bakes the app's button look (color/rounded/disabled); per-attr
+    # ControlButton bakes the app's button look (color/corners/disabled); per-attr
     # kwargs pass straight through **kwargs -> _attrs_from_kwargs, so data_* hooks
-    # work and a caller class_ ACCUMULATES onto the baked classes. Do NOT pass
+    # work and a caller class_ ACCUMULATES onto the baked classes — except a
+    # class stating a corner, which is refused: that is `shape=`. Do NOT pass
     # `attributes=` — that name is reserved and raises TypeError (use per-attr kwargs
     # or the positional attrs slot; not needed here).
     return _FilterBuilder(
@@ -1194,7 +1196,11 @@ def SplitButtonDropdown(
     Both ends are this builder's: the caret is the row's end, and ``primary``
     is restated as its start. Hence ``primary`` is a :class:`ControlButton` and
     not any node — a caller left to remember the start would render a primary
-    rounded on four corners with a notch at the join, silently.
+    rounded on four corners with a notch at the join, silently. The cost is
+    that a decorated primary (a button beside a badge, say) cannot be passed;
+    the route for one is a ``Shapeable`` protocol
+    (``def with_shape(self, shape) -> Self``), never a widening back to
+    :class:`Node`.
 
     ``caret_color`` defaults to an outline caret; pass a color to render a filled
     caret matching a filled ``primary``. ``menu_width`` overrides the menu panel
@@ -1207,16 +1213,19 @@ def SplitButtonDropdown(
     # (contained in the caret box) rather than as an outset halo over the join.
     caret_focus = "focus:ring-inset"
     if caret_color is None:
-        caret_button = ControlButton(
-            [("class", caret_focus)], variant="outline", shape="end"
-        )[Icon("arrowdown")]
+        caret_button = ControlButton([("class", caret_focus)], variant="outline")[
+            Icon("arrowdown")
+        ]
     else:
         caret_button = ControlButton(
             [("class", f"border-l border-l-white/30 {caret_focus}")],
             color=caret_color,
-            shape="end",
         )[Icon("arrowdown")]
-    caret = _as_menu_trigger(caret_button.as_element())
+    # The row's two places, counted rather than remembered: a third element
+    # here would reshape all three, where two hand-written shapes would leave
+    # the new middle rounded on both sides.
+    (start_shape, primary), (end_shape, caret_button) = shaped([primary, caret_button])
+    caret = _as_menu_trigger(caret_button.with_shape(end_shape).as_element())
     dropdown = Dropdown(
         trigger_element=caret,
         target_element=DropdownMenuPanel(
@@ -1226,7 +1235,7 @@ def SplitButtonDropdown(
         placement=placement,
     )
     return Div(class_="inline-flex items-stretch rounded-base shadow-2xs")[
-        primary.with_shape("start"), dropdown
+        primary.with_shape(start_shape), dropdown
     ]
 
 
@@ -1284,7 +1293,7 @@ def SelectDropdown(
     """A value-selector dropdown: a current-value trigger + a listbox whose picks
     PATCH the server (via the client `select` behavior). The per-entity specifics
     (endpoint, body key, empty/null policy) are the caller's; this owns the shared
-    shape."""
+    look."""
     trigger = ControlButton(
         [("class", class_)] if class_ else None,
         variant="outline",

@@ -169,7 +169,10 @@ type ButtonVariant = Literal[
 # whose baked class already says `justify-center` wins only by luck.
 type ButtonAlign = Literal["center", "start"]
 # A place in a joined row, never a radius: one tier rounds every control.
-type ButtonShape = Literal["full", "start", "end", "square"]  # e.g. "start"
+# "full" is the button standing on its own, "start"/"end" the two outer ends
+# of a row, and "square" the absence of an end — a member with a neighbour on
+# both sides.
+type ButtonShape = Literal["full", "start", "end", "square"]
 type BadgeSize = Literal["sm", "base", "lg"]
 type BadgeTone = Literal["brand", "neutral", "success", "warning", "danger"]
 
@@ -762,9 +765,10 @@ def TruncatedText(
     )[*children]
 
 
-# The classes both ControlButton variants truly share. Everything else —
-# sizing, rounding, focus treatment — belongs to the variant, so the segmented
-# look stays what ButtonGroup members rendered before the unification.
+# The classes every ControlButton variant truly shares. Sizing and focus
+# treatment belong to the variant, so the segmented look stays what ButtonGroup
+# members rendered before the unification. Rounding belongs to neither: it is
+# `shape=`, and SHAPE_CLASSES below is its one table.
 # inline-flex keeps every button the same height regardless of content — an
 # icon+text button (e.g. "Log this game") would otherwise sit taller than its
 # text-only siblings and step a segmented group's bottom edge.
@@ -916,6 +920,11 @@ def control_button_class(
     adjacent-month cells).
 
     ControlButton itself renders through this, so the two cannot disagree.
+
+    It states a look; it does not police one. The component refuses a caller
+    class that states a corner, and a caller that concatenates onto this
+    string instead stands outside that refusal — which is the route the
+    calendar drifted through.
     """
     shape_class = SHAPE_CLASSES[shape]
     if variant == "plain":
@@ -933,7 +942,8 @@ def control_button_class(
             parts += [_FILLED_VARIANT_CLASS, _FILLED_COLOR_CLASSES[color]]
         else:
             parts += [_SEGMENTED_VARIANT_CLASS, _SEGMENTED_COLOR_CLASSES[color]]
-    # Never an empty part: two assertions compare this string exactly.
+    # "square" is no class, and joining an empty part would put a double
+    # space in the class attribute.
     if shape_class:
         parts.append(shape_class)
     return " ".join(parts)
@@ -1178,8 +1188,10 @@ def shaped[T](members: Sequence[T]) -> Iterator[tuple[ButtonShape, T]]:
             yield "square", member
 
 
-#: The shell a joined row shares. Its members state their own corners.
-_GROUP_ENDS_CLASS = "inline-flex rounded-base shadow-xs"
+#: The shell a joined row shares. Its members state their own corners; the
+#: residual `rounded-base` shapes the shadow alone — the box carries no
+#: background, no border and no `overflow-hidden` to clip anything.
+_JOINED_ROW_CLASS = "inline-flex rounded-base shadow-xs"
 
 
 def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
@@ -1237,7 +1249,7 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
     # Alignment-agnostic: the group sits where its container puts it. In a table
     # Actions cell the <td> is right-aligned (table-level Column.align rule), so
     # this inline-flex group is pushed right; in the game header it sits left.
-    return Div(class_=_GROUP_ENDS_CLASS, role="group")[children]
+    return Div(class_=_JOINED_ROW_CLASS, role="group")[children]
 
 
 type TabLabel = str  # e.g. "Sessions"
@@ -1281,7 +1293,7 @@ def PageTabs(aria_label: NavLabel, tabs: Sequence[PageTab]) -> Node:
         for shape, tab in shaped(tabs)
     ]
     return Nav(aria_label=aria_label, class_="mb-4")[
-        Div(class_=_GROUP_ENDS_CLASS)[links]
+        Div(class_=_JOINED_ROW_CLASS)[links]
     ]
 
 

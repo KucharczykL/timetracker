@@ -284,8 +284,9 @@ function createCalendarState(picker: HTMLElement): CalendarState {
     else if (isStart || isEnd) variant = "selected";
     else variant = inViewMonth ? "default" : "adjacent";
     // A day's place in the run states its corners, as a ButtonGroup member's
-    // does — but no selector can find them: a run wraps across week rows, so
-    // :first-child would match the first day of the MONTH, not of the range.
+    // does — but no selector can find them. A run's ends are data: they move
+    // with the picked dates, they wrap across week rows, and the grid the
+    // cells sit in also holds the weekday headers and both adjacent months.
     //
     // An endpoint rounds the edge facing AWAY from the run. Round both and a
     // notch of background shows above and below the join, so the range reads

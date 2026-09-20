@@ -1231,7 +1231,7 @@ class ControlButtonTest(SimpleTestCase):
 
     def test_a_joined_row_states_each_member_shape(self):
         """One member rounds both ends; the middle of three rounds neither."""
-        from common.components.primitives import shaped
+        from common.components import shaped
 
         self.assertEqual([shape for shape, _ in shaped(["a"])], ["full"])
         self.assertEqual([shape for shape, _ in shaped(["a", "b"])], ["start", "end"])
@@ -1355,9 +1355,8 @@ class ControlButtonTest(SimpleTestCase):
             "!rounded-full",
             "sm:!rounded-full",
         ):
-            with self.subTest(spelling=spelling):
-                with self.assertRaises(TypeError):
-                    components.ControlButton(class_=spelling)["x"]
+            with self.subTest(spelling=spelling), self.assertRaises(TypeError):
+                components.ControlButton(class_=spelling)["x"]
 
     def test_a_state_variant_rounding_says_no_shape_expresses_it(self):
         """`hover:rounded-full` is not a shape= the parameter can state, so

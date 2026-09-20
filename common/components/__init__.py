@@ -209,6 +209,7 @@ from common.components.primitives import (
     make_row,
     paginated_table_content,
     selection_scope,
+    shaped,
 )
 from common.components.quick_filter import (
     QUICK_FACET_KINDS,
@@ -477,6 +478,7 @@ __all__ = [
     "render",
     "searchselect_selected",
     "selection_scope",
+    "shaped",
     "truncate",
     "truncate_info",
 ]
