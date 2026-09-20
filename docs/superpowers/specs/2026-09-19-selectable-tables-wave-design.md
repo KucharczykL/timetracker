@@ -399,8 +399,9 @@ judged.
    yet. Absorbs #716.
 2. **#713** TABLE-03 — the runner: `BulkAction`, the confirmation and
    progress pages, token and chunks, the two indexes and the batch
-   reader, batch Undo with the partial report; the reclassification rebuilt
-   on it, reached from today's Library button. Closes #1125 and #1123.
+   reader, batch Undo with the partial report, the bulk `make bench`; the
+   reclassification rebuilt on it, reached from today's Library button.
+   Closes #1125 and #1123.
 3. **#712** TABLE-02 — the selection line's actions slot and bulk Remove on
    the four tables; the reclassification moves into the line and the
    Library page keeps its count.
@@ -455,7 +456,12 @@ Remove, in #712.
 - `outside_playthrough_dates` answers 113 on the 2026-09-19 dump, the Elden
   Ring run 32.
 - `make bench` times one bulk of 600 sessions through the runner against the
-  100 ms per-command budget at p95, and records the rows written.
+  100 ms per-command budget at p95, and records the rows written. #713
+  ships it, because the chunk budget is the runner's constant and a
+  constant nobody measured is a guess; the seeder extends
+  `games/events/benchmark_workload.py`, which already dispatches 600
+  records. That the reclassification's real population fits one chunk is
+  why the bench, not production, is where the second chunk is first seen.
 - `render_pages` before and after #718, every differing file attributed.
 - Full `make check` green at every merged commit.
 
