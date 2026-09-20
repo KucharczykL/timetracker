@@ -10,6 +10,7 @@ from django.db.models import QuerySet
 from games.bulk_actions import (
     BulkAction,
     Cardinality,
+    PreviewColumn,
     Refused,
     Resolution,
     RowOutcome,
@@ -77,7 +78,9 @@ def review_scope(library: UserLibrary, filter_json: str) -> QuerySet[PlayerSessi
     return rows.filter(parsed.to_q())
 
 
-def review_resolution(library: UserLibrary, keys: Sequence[uuid.UUID]) -> Resolution:
+def review_resolution(
+    library: UserLibrary, keys: Sequence[uuid.UUID]
+) -> Resolution[PlayerSession]:
     """Keys to rows, and to sentences."""
     wanted = list(dict.fromkeys(keys))
     #: Over every key, not only those left out.
@@ -160,6 +163,19 @@ def _source() -> dict[str, object]:
     return {"bulk": {"action": RECLASSIFY.name}}
 
 
+PREVIEW = (
+    PreviewColumn("Game", lambda row, _: row.playthrough.player_game.game.name),
+    PreviewColumn("Day", lambda row, _: str(row.effective_day)),
+    PreviewColumn(
+        "Duration",
+        lambda row, presentations: presentations.durations.format(
+            row.effective_duration
+        ),
+        align="right",
+    ),
+)
+
+
 RECLASSIFY = BulkAction(
     name="session.reclassify",
     label="Record as historical playtime",
@@ -173,4 +189,5 @@ RECLASSIFY = BulkAction(
     resolve=review_resolution,
     run=convert_one,
     inverse=return_one,
+    preview=PREVIEW,
 )

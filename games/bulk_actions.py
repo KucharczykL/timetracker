@@ -16,8 +16,11 @@ from types import MappingProxyType
 from typing import Any
 
 from django.contrib.auth.models import User
-from django.db.models import QuerySet
+from django.db.models import Model, QuerySet
 
+from common.components.primitives import Align, Cell
+from common.date_time_presentation import DateTimePresentation
+from common.duration_presentation import DurationPresentation
 from common.returns import UrlName
 from games.events.dispatch import CommandOutcome, CommandResult
 from games.events.idempotency import IdempotencyKey
@@ -71,27 +74,48 @@ class Refused:
 
 
 @dataclass(frozen=True, slots=True)
-class Resolution:
+class Resolution[RowT: Model]:
     """Rows to act on, and sentences."""
 
-    rows: tuple[Any, ...]
+    rows: tuple[RowT, ...]
     refused: tuple[Refused, ...]
 
 
-#: What an "all" statement names, before exclusions.
-type Scope = Callable[[UserLibrary, FilterJson], QuerySet[Any]]
-#: Keys to rows, or to sentences.
-type Resolve = Callable[[UserLibrary, Sequence[uuid.UUID]], Resolution]
-#: One row, through its `games/writes/` wrapper.
-type RunRow = Callable[[User, Any, IdempotencyKey, uuid.UUID], RowOutcome]
-#: One row's opposite, by key.
-type UndoRow = Callable[[User, uuid.UUID, IdempotencyKey, uuid.UUID], RowOutcome]
+@dataclass(frozen=True, slots=True)
+class Presentations:
+    """How this request writes days and durations."""
 
-_TABLE: dict[BulkActionName, BulkAction] = {}
+    dates: DateTimePresentation
+    durations: DurationPresentation
+
+
+#: One fact of one row, written for a person.
+type PreviewCell = Callable[[Any, Presentations], Cell]
 
 
 @dataclass(frozen=True, slots=True)
-class BulkAction:
+class PreviewColumn:
+    """One column of the confirmation's table."""
+
+    heading: str
+    cell: PreviewCell
+    align: Align = "left"
+
+
+#: What an "all" statement names, before exclusions.
+type Scope[RowT: Model] = Callable[[UserLibrary, FilterJson], QuerySet[RowT]]
+#: Keys to rows, or to sentences.
+type Resolve[RowT: Model] = Callable[[UserLibrary, Sequence[uuid.UUID]], Resolution[RowT]]
+#: One row, through its `games/writes/` wrapper.
+type RunRow[RowT: Model] = Callable[[User, RowT, IdempotencyKey, uuid.UUID], RowOutcome]
+#: One row's opposite, by key.
+type UndoRow = Callable[[User, uuid.UUID, IdempotencyKey, uuid.UUID], RowOutcome]
+
+_TABLE: dict[BulkActionName, BulkAction[Any]] = {}
+
+
+@dataclass(frozen=True, slots=True)
+class BulkAction[RowT: Model]:
     """One act, run and undone."""
 
     name: BulkActionName
@@ -108,10 +132,12 @@ class BulkAction:
     inverse_aggregate: AggregateType
     #: Where the act returns without an origin.
     fallback: UrlName
-    scope: Scope
-    resolve: Resolve
-    run: RunRow
+    scope: Scope[RowT]
+    resolve: Resolve[RowT]
+    run: RunRow[RowT]
     inverse: UndoRow
+    #: What the confirmation shows of each row.
+    preview: tuple[PreviewColumn, ...]
 
     def __post_init__(self) -> None:
         """Refuse a declaration that cannot run."""
@@ -128,13 +154,13 @@ class BulkAction:
         _TABLE[self.name] = self
 
 
-def bulk_action(name: BulkActionName) -> BulkAction | None:
+def bulk_action(name: BulkActionName) -> BulkAction[Any] | None:
     """The act that name declares, or none."""
     return _TABLE.get(name)
 
 
 #: Every act, keyed by name. Read-only.
-BULK_ACTIONS: Mapping[BulkActionName, BulkAction] = MappingProxyType(_TABLE)
+BULK_ACTIONS: Mapping[BulkActionName, BulkAction[Any]] = MappingProxyType(_TABLE)
 
 
 #: Imported last: each module declares one act.

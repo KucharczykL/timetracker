@@ -31,6 +31,9 @@ in TypeScript with vitest, Playwright for e2e.
   directly. Iterate with `make check-fast`; the gate is full `make check`
   under the shared lock:
   `flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make check`.
+- `make vale` guards prose in docs *and code comments*. A projector
+  *replays*; the row it writes is a *projection*. `docs/vocabulary.md`
+  lists every refused word.
 - Complete words in identifiers, Python and TypeScript alike.
 - UI is Python components, htpy form: `Builder(class_="x")[child]`.
 - No dispatch inside a transaction. A test that POSTs through a dispatching

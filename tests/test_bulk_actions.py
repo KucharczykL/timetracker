@@ -12,6 +12,8 @@ from games.bulk_actions import (
     BULK_ACTIONS,
     BulkAction,
     Cardinality,
+    Presentations,
+    PreviewColumn,
 )
 from games.bulk_reclassification import (
     ALREADY_RECORDED,
@@ -115,6 +117,7 @@ def test_an_aggregate_no_event_declares_is_refused(reclassify):
             resolve=reclassify.resolve,
             run=reclassify.run,
             inverse=reclassify.inverse,
+            preview=reclassify.preview,
         )
 
 
@@ -133,6 +136,7 @@ def test_a_name_the_table_already_holds_is_refused(reclassify):
             resolve=reclassify.resolve,
             run=reclassify.run,
             inverse=reclassify.inverse,
+            preview=reclassify.preview,
         )
 
 
@@ -157,6 +161,7 @@ def test_making_the_value_declares_it(reclassify):
             resolve=reclassify.resolve,
             run=reclassify.run,
             inverse=reclassify.inverse,
+            preview=reclassify.preview,
         )
         assert BULK_ACTIONS[name] is spare
     finally:
@@ -329,3 +334,113 @@ def test_the_run_converts_and_the_inverse_returns(
     reclassify.inverse(owned_user, session.pk, "undo-one", uuid.uuid7())
     session.refresh_from_db()
     assert session.removed_at is None
+
+
+# ── The confirmation's rows ──────────────────────────────────────────────────
+
+
+@pytest.fixture
+def presentations() -> Presentations:
+    from zoneinfo import ZoneInfo
+
+    from common.date_time_presentation import (
+        DEFAULT_DATE_TIME_FORMAT_PROFILE,
+        DateTimePresentation,
+    )
+    from common.duration_presentation import (
+        DEFAULT_DURATION_FORMAT_PROFILE,
+        DurationPresentation,
+    )
+
+    return Presentations(
+        dates=DateTimePresentation(
+            profile=DEFAULT_DATE_TIME_FORMAT_PROFILE,
+            locale="en-us",
+            timezone=ZoneInfo("UTC"),
+        ),
+        durations=DurationPresentation(
+            profile=DEFAULT_DURATION_FORMAT_PROFILE,
+            locale="en-us",
+        ),
+    )
+
+
+def _spare(reclassify: BulkAction, name: str, preview) -> BulkAction:
+    return BulkAction(
+        name=name,
+        label=reclassify.label,
+        title=reclassify.title,
+        confirm_label=reclassify.confirm_label,
+        subject="record",
+        cardinality=Cardinality.MANY,
+        inverse_aggregate="playersession",
+        fallback=reclassify.fallback,
+        scope=reclassify.scope,
+        resolve=reclassify.resolve,
+        run=reclassify.run,
+        inverse=reclassify.inverse,
+        preview=preview,
+    )
+
+
+def test_the_confirmation_renders_the_columns_the_act_states(reclassify, presentations):
+    """Any number, and one row apiece: the runner owns neither."""
+    from games.views.bulk_pages import ConfirmBatch
+
+    rows = [object(), object()]
+    preview = tuple(
+        PreviewColumn(f"Fact {number}", lambda row, _, number=number: f"cell {number}")
+        for number in range(4)
+    )
+    name = "session.four_columns"
+    try:
+        page = ConfirmBatch(
+            _spare(reclassify, name, preview),
+            rows=rows,
+            refused=(),
+            hidden=[],
+            post_url="/bulk/x/",
+            csrf_token="token",
+            cancel_url="/",
+            sample_cap=50,
+            presentations=presentations,
+        )
+    finally:
+        _TABLE.pop(name, None)
+
+    html = str(page)
+    assert html.count("data-bulk-sample-row") == len(rows)
+    for number in range(4):
+        assert f"Fact {number}" in html
+        assert html.count(f"cell {number}") == len(rows)
+
+
+def test_a_confirmation_over_no_rows_names_the_acts_subject(reclassify, presentations):
+    from games.views.bulk_pages import ConfirmBatch
+
+    name = "session.no_rows"
+    try:
+        page = ConfirmBatch(
+            _spare(reclassify, name, reclassify.preview),
+            rows=[],
+            refused=(),
+            hidden=[],
+            post_url="/bulk/x/",
+            csrf_token="token",
+            cancel_url="/",
+            sample_cap=50,
+            presentations=presentations,
+        )
+    finally:
+        _TABLE.pop(name, None)
+
+    assert "None of those records can be changed." in str(page)
+
+
+def test_the_reclassification_states_its_three_columns(reclassify):
+    assert [column.heading for column in reclassify.preview] == [
+        "Game",
+        "Day",
+        "Duration",
+    ]
+    assert reclassify.preview[-1].align == "right"
