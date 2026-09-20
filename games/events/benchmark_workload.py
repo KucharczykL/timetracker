@@ -31,6 +31,7 @@ from games.commands.playersession import (
 )
 from games.events.append import NewEvent, lock_stream
 from games.events.benchmark import (
+    BulkTimings,
     ReadTimings,
     Seconds,
     SeedReport,
@@ -358,67 +359,86 @@ def _written_down(library: UserLibrary, *, actor: User, run: Playthrough) -> uui
     return created_aggregate_id(result)
 
 
-def _rows_to_convert(
+def _keys_to_convert(
     library: UserLibrary, *, actor: User, count: int
-) -> list[PlayerSession]:
-    """Write the batch's own rows, then read them back.
+) -> list[uuid.UUID]:
+    """Write the batch's own rows and answer their keys.
 
     Its own rows, because converting the seed's would take them out of
-    the population the read scenario measures. Read back rather than
-    kept, because the statement a conversion makes is built from
-    columns the database generates.
+    the population the read scenario measures. Keys rather than rows,
+    because the runner holds keys: it reads each row back at the press,
+    and that read is half of what a row costs.
 
-    Read through the act's own scope, so a row this scenario wrote that
-    the review would not offer fails here rather than being timed as
-    though the act would reach it.
+    Checked through the act's own scope, so a row this scenario wrote
+    that the review would not offer fails here rather than being timed
+    as though the act would reach it.
     """
     cycle = _cycling(library, seeded_runs(library))
     keys = [
         _written_down(library, actor=actor, run=run) for run in islice(cycle, count)
     ]
-    rows = list(
-        reviewable_sessions(library)
-        .filter(pk__in=keys)
-        .select_related("playthrough__player_game__game")
-    )
-    if len(rows) != count:
+    offered = reviewable_sessions(library).filter(pk__in=keys).count()
+    if offered != count:
         raise ValueError(
-            f"The review offers {len(rows)} of the {count} session(s) this "
+            f"The review offers {offered} of the {count} session(s) this "
             "scenario wrote, so the rows it would time are not its own."
         )
-    return rows
+    return keys
 
 
 def run_bulk_command_scenario(
     library: UserLibrary, *, actor: User, sessions: int, warmup: int
-) -> Timings:
+) -> BulkTimings | None:
     """Convert `sessions` written-down rows the way the runner does.
 
-    The runner's own loop and not its view: one dispatch a row, keyed
-    from the batch's token and the row, every append under the one
-    correlation id the token states. The per-row number is what a chunk
-    budget is spent against, so it is the number worth having.
+    The runner's own loop and not its view: one resolve and one
+    dispatch a row, keyed from the batch's token and the row, every
+    append under the one correlation id the token states. The pair is
+    what a chunk budget is spent against, so the pair is timed, and the
+    resolve is timed inside it because a per-key read is a cost the
+    view's shape chose.
+
+    No row is no distribution, as no iteration is no read.
 
     ANALYZE last, so the reads that follow plan right.
     """
-    rows = iter(_rows_to_convert(library, actor=actor, count=sessions + warmup))
+    if sessions == 0:
+        return None
+    keys = iter(_keys_to_convert(library, actor=actor, count=sessions + warmup))
     #: The token is the batch's correlation id, as the runner mints it.
     correlation_id = uuid.uuid7()
-    for row in islice(rows, warmup):
-        _convert(actor, row, correlation_id)
-    samples: list[Seconds] = []
-    for row in islice(rows, sessions):
+    for key in islice(keys, warmup):
+        _convert(library, actor, key, correlation_id)
+    whole: list[Seconds] = []
+    resolving: list[Seconds] = []
+    for key in islice(keys, sessions):
         started = monotonic()
-        _convert(actor, row, correlation_id)
-        samples.append(monotonic() - started)
+        resolved = _convert(library, actor, key, correlation_id)
+        finished = monotonic()
+        whole.append(finished - started)
+        resolving.append(resolved - started)
     analyze_tables(RECORD_TABLES)
-    return summarize(samples)
+    return BulkTimings(whole=summarize(whole), resolve=summarize(resolving))
 
 
-def _convert(actor: User, row: PlayerSession, correlation_id: uuid.UUID) -> None:
+def _convert(
+    library: UserLibrary, actor: User, key: uuid.UUID, correlation_id: uuid.UUID
+) -> Seconds:
+    """One row, resolve and run. Answers the instant the resolve ended."""
+    resolution = RECLASSIFY.resolve(library, [key])
+    resolved = monotonic()
+    if len(resolution.rows) != 1:
+        raise ValueError(
+            f"The review no longer offers {key}, so the row this scenario "
+            "would time is not its own."
+        )
     RECLASSIFY.run(
-        actor, row, f"{RECLASSIFY.name}-{correlation_id}-{row.pk}", correlation_id
+        actor,
+        resolution.rows[0],
+        f"{RECLASSIFY.name}-{correlation_id}-{key}",
+        correlation_id,
     )
+    return resolved
 
 
 def run_read_scenario(

@@ -702,10 +702,50 @@ def test_the_bulk_scenario_converts_the_rows_it_wrote(owned_library):
         owned_library, actor=owned_library.user, sessions=3, warmup=1
     )
 
-    assert timings.samples == 3
+    assert timings is not None
+    assert timings.whole.samples == 3
     assert HistoricalPlaytime.objects.filter(library=owned_library).count() == 4
     #: Four written, four converted; the seed's own rows are untouched.
     assert PlayerSession.objects.alive().filter(library=owned_library).count() == before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_bulk_scenario_times_the_resolve_inside_the_row(owned_library):
+    """The runner reads a row back before it runs it, and that read costs.
+
+    Timed inside the row rather than beside it, so the two numbers are
+    one span and its part, never two spans that overlap. The share is
+    what says the read is in the span at all: the loop's own overhead
+    around a timestamp is a thousandth of a row, and a resolve is two
+    queries against a dispatch's ten statements.
+    """
+    seed_library(owned_library, actor=owned_library.user, games=4, spares=0)
+
+    timings = run_bulk_command_scenario(
+        owned_library, actor=owned_library.user, sessions=3, warmup=0
+    )
+
+    assert timings is not None
+    assert timings.resolve.samples == timings.whole.samples == 3
+    assert timings.resolve.maximum <= timings.whole.maximum
+    assert timings.resolve.p50 >= timings.whole.p50 / 20
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_bulk_scenario_converts_nothing_when_no_row_is_asked_for(owned_library):
+    """No row is no distribution, and no row written to make one."""
+    seed_library(owned_library, actor=owned_library.user, games=4, spares=0)
+    before = PlayerSession.objects.filter(library=owned_library).count()
+
+    assert (
+        run_bulk_command_scenario(
+            owned_library, actor=owned_library.user, sessions=0, warmup=10
+        )
+        is None
+    )
+
+    assert PlayerSession.objects.filter(library=owned_library).count() == before
+    assert not HistoricalPlaytime.objects.filter(library=owned_library).exists()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -798,12 +838,13 @@ def test_library_mode_reads_without_dispatching(owned_library):
 def test_the_report_carries_every_scenario_and_a_schema():
     report = run_benchmark(records=2, bulk=2, seed=25, iterations=3, warmup=1)
     assert isinstance(report, BenchmarkReport)
-    assert report.schema == 5
+    assert report.schema == 6
     assert report.seed is not None
     assert report.command is not None
     assert report.session_command is not None
     assert report.record_command is not None
     assert report.bulk_command is not None
+    assert report.bulk_resolve is not None
     assert len(report.reads) == 6
     names = [budget.name for budget in report.budgets]
     assert len(names) == 11
@@ -820,12 +861,14 @@ def test_the_report_carries_every_scenario_and_a_schema():
     assert report.replay is not None
     assert report.teardown_seconds is not None
     parsed = json.loads(report.as_json())
-    assert parsed["schema"] == 5
+    assert parsed["schema"] == 6
     assert set(parsed) >= {
         "environment",
         "scratch_username",
         "seed",
         "command",
+        "bulk_command",
+        "bulk_resolve",
         "amplification",
         "replay",
         "rebuild",
@@ -894,7 +937,7 @@ def test_gate_is_silent_when_every_budget_passes():
 @pytest.mark.django_db(transaction=True)
 def test_json_output_parses_and_carries_the_schema():
     parsed = json.loads(run_command(seed=25, iterations=2, warmup=1, json=True))
-    assert parsed["schema"] == 5
+    assert parsed["schema"] == 6
 
 
 @pytest.mark.django_db(transaction=True)
@@ -954,6 +997,13 @@ def test_a_seed_under_three_is_refused(seed):
 def test_a_negative_seed_is_refused():
     with pytest.raises(CommandError, match="smallest seeded run"):
         run_command(seed=-4, iterations=1, warmup=0)
+
+
+@pytest.mark.django_db
+def test_a_negative_batch_is_refused():
+    """Zero states itself; below zero is a typo."""
+    with pytest.raises(CommandError, match="converts no row"):
+        run_command(seed=0, iterations=1, warmup=0, bulk=-1)
 
 
 @pytest.mark.django_db(transaction=True)

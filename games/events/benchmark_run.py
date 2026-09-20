@@ -129,7 +129,7 @@ def _measure_scratch(
         records=records,
         warmup=warmup,
     )
-    bulk_command = run_bulk_command_scenario(
+    bulk_timings = run_bulk_command_scenario(
         library, actor=user, sessions=bulk, warmup=warmup
     )
     reads = run_read_scenario(library, iterations=iterations, warmup=warmup)
@@ -145,7 +145,8 @@ def _measure_scratch(
         command=command,
         session_command=session_command,
         record_command=record_command,
-        bulk_command=bulk_command,
+        bulk_command=bulk_timings.whole if bulk_timings else None,
+        bulk_resolve=bulk_timings.resolve if bulk_timings else None,
         reads=reads,
         amplification=amplification,
         replay=replay,
@@ -155,7 +156,8 @@ def _measure_scratch(
             command_budget(command),
             session_command_budget(session_command),
             record_command_budget(record_command),
-            bulk_command_budget(bulk_command),
+            #: No row converted, nothing to judge.
+            *([bulk_command_budget(bulk_timings.whole)] if bulk_timings else []),
             *(read_budget(read, on_real_library=False) for read in reads),
             rebuild_budget(rebuild),
         ),
@@ -179,6 +181,7 @@ def _measure_existing(
         session_command=None,
         record_command=None,
         bulk_command=None,
+        bulk_resolve=None,
         reads=reads,
         amplification=None,
         replay=replay,

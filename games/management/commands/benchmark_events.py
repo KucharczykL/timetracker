@@ -65,8 +65,9 @@ class Command(BaseCommand):
             default=BATCH_SHAPE_SESSIONS,
             help=(
                 f"Rows in the timed batch (default {BATCH_SHAPE_SESSIONS}). Each "
-                "is one written-down session, converted the way the runner "
-                "converts one."
+                "is one written-down session, resolved and converted the way "
+                "the runner does one. 0 converts nothing and leaves the batch "
+                "out of the report."
             ),
         )
         parser.add_argument("--library", help="Check this library instead; read-only.")
@@ -95,6 +96,11 @@ class Command(BaseCommand):
         #: Here, so --library sees an unset seed.
         seed = DEFAULT_SEED_EVENTS if options["seed"] is None else options["seed"]
         if library is None:
+            if options["bulk"] < 0:
+                raise CommandError(
+                    f"--bulk {options['bulk']} converts no row, and it does "
+                    "not say so the way --bulk 0 does."
+                )
             #: Zero is the stated no-seed run; one or two is a typo.
             if seed < 0 or seed in (1, 2):
                 raise CommandError(
@@ -215,6 +221,9 @@ class Command(BaseCommand):
             self._write_timings("Record command", report.record_command)
         if report.bulk_command is not None:
             self._write_timings("Bulk command", report.bulk_command)
+        if report.bulk_resolve is not None:
+            #: Inside the line above, not beside it; no budget of its own.
+            self._write_timings("  of which resolve", report.bulk_resolve)
         for read in report.reads:
             self._write_timings(f"Read {read.name}", read.timings)
         if report.amplification is not None:
