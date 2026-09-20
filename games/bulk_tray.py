@@ -16,7 +16,9 @@ SPELLED: Mapping[Cardinality, SelectionCardinality] = {
 }
 
 
-def tray_actions(*names: BulkActionName, origin: OriginUrl) -> list[SelectionAction]:
+def tray_actions(
+    *names: BulkActionName, origin: OriginUrl | None
+) -> list[SelectionAction]:
     """Each named act, as the line renders it.
 
     A `one` act is left out: the line states no row, and #718 puts the

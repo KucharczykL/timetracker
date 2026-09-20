@@ -7,6 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
+from django.middleware.csrf import get_token
 from django.urls import reverse
 
 from common.components import (
@@ -43,6 +44,8 @@ from common.returns import OriginUrl, action_url
 from common.sorting import SortTerm
 from common.temporal_presentation import TemporalText
 from common.utils import paginate
+from games.bulk_removal import REMOVE_RECORD
+from games.bulk_tray import tray_actions
 from games.filters import (
     HistoricalPlaytimeFilter,
     filter_query_context_for_library,
@@ -153,6 +156,7 @@ def historical_playtime_tabledata(
                 presentation.format(record.created_at, "date"),
                 record_actions(record, origin),
                 id=f"record-row-{record.pk}",
+                key=str(record.pk),
             )
             for record in records
         ],
@@ -194,6 +198,11 @@ def list_historical_playtime(request: HttpRequest) -> HttpResponse:
         origin=request.get_full_path(),
         sort_terms=sort.terms,
     )
+    data["selection"] = {
+        "filter": filter_json,
+        "csrf_token": get_token(request),
+        "actions": tray_actions(REMOVE_RECORD.name, origin=request.get_full_path()),
+    }
     table = paginated_table_content(
         data,
         page_obj=page_obj,

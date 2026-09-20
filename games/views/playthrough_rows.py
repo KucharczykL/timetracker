@@ -113,7 +113,10 @@ def playthrough_tabledata(
         "caption": "Playthroughs",
         "columns": kept_columns,
         "sort_terms": sort_terms,
-        "rows": [make_row(*cells) for cells in kept_rows],
+        "rows": [
+            make_row(*cells, key=str(run.pk))
+            for run, cells in zip(runs, kept_rows, strict=True)
+        ],
     }
 
 

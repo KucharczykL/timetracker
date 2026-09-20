@@ -3561,7 +3561,11 @@ class SelectableTableMountTest(SimpleTestCase):
         from types import SimpleNamespace
 
         request = SimpleNamespace(
-            user=SimpleNamespace(is_authenticated=True, library_id="lib-1")
+            user=SimpleNamespace(
+                is_authenticated=True,
+                #: The reverse side of UserLibrary.user: a row, not a key.
+                library=SimpleNamespace(pk="lib-1"),
+            )
         )
         html = str(
             components.StyledTable(

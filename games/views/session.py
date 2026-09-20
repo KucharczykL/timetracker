@@ -43,6 +43,9 @@ from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl
 from common.utils import paginate
+from games.bulk_reclassification import RECLASSIFY
+from games.bulk_removal import REMOVE_SESSION
+from games.bulk_tray import tray_actions
 from games.formatting import session_time_range
 from games.forms import SESSION_TIMEZONE_EMBEDS, SessionForm
 from games.models import (
@@ -153,6 +156,7 @@ def session_row_data(
         presentation.format(session.created_at, "date"),
         SessionActions(session, csrf_token, origin),
         id=f"session-row-{session.pk}",
+        key=str(session.pk),
     )
 
 
@@ -213,6 +217,13 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
             )
             for session in page_sessions
         ],
+        "selection": {
+            "filter": filter_json,
+            "csrf_token": csrf_token,
+            "actions": tray_actions(
+                REMOVE_SESSION.name, RECLASSIFY.name, origin=origin
+            ),
+        },
     }
     content = paginated_table_content(
         data,
