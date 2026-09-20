@@ -104,6 +104,18 @@ def test_record_session_absorbs_a_repeat_under_one_key(owned_user, owned_library
     assert PlayerSession.objects.filter(playthrough=run).count() == 1
 
 
+def test_record_session_refuses_a_blank_key(owned_user, owned_library, game):
+    """A caller that stated a key gets a refusal, never a second write."""
+    run = tracked_run(owned_library, game)
+
+    with pytest.raises(ValueError):
+        record_session(
+            owned_user, _draft(run), correlation_id=uuid.uuid7(), idempotency_key=""
+        )
+
+    assert not PlayerSession.objects.filter(playthrough=run).exists()
+
+
 def test_record_session_refuses_a_key_that_names_another_statement(
     owned_user, owned_library, game
 ):

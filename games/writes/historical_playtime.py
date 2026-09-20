@@ -33,8 +33,14 @@ def _dispatch(
         command,
         actor=actor,
         library=actor.library,
-        #: No key: the build absorbs a repeat.
-        idempotency_key=idempotency_key or str(uuid.uuid7()),
+        #: Caller's key, else one per request.
+        #:
+        #: Not `or`: a blank key is falsy, so it would be minted
+        #: over, and the caller that asked for one write would get
+        #: a second on its retry rather than a refusal.
+        idempotency_key=(
+            str(uuid.uuid7()) if idempotency_key is None else idempotency_key
+        ),
         correlation_id=correlation_id,
     )
 
