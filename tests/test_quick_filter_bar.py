@@ -287,7 +287,12 @@ class QuickFilterBarRenderingTest(TestCase):
         # Anchored on ButtonGroup's own wrapper class, not on the first
         # role="group" in the document — the date facets' fields are labelled
         # groups too, and they come earlier.
-        group_html = html[html.index('class="inline-flex rounded-base shadow-xs') :]
+        #
+        # The closing quote is load-bearing: the search field's row opens with
+        # the same joined-row shell and then states more, so a prefix match
+        # would start the slice at the field and take the date facets' own
+        # ">Clear<" with it.
+        group_html = html[html.index('class="inline-flex rounded-base shadow-xs"') :]
         self.assertLess(group_html.index(">Apply<"), group_html.index(">Clear<"))
         derived_labels = {
             meta["name"]: meta["label"]

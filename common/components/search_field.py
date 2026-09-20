@@ -17,7 +17,9 @@ from common.components.custom_elements import (
 )
 from common.components.icons_generated import ICON_NODES
 from common.components.primitives import (
+    SHAPE_CLASSES,
     Button,
+    ButtonShape,
     ControlButton,
     Icon,
     Input,
@@ -84,10 +86,15 @@ DEFAULT_MATCH_MODE: MatchModeToken = "INCLUDES"
 
 _BY_TOKEN: dict[str, MatchMode] = {mode.token: mode for mode in MATCH_MODES}
 
-#: The box states no rounding and no shadow; the field decides both.
+#: The box, less the corners it rounds.
+#:
+#: ``relative focus:z-10`` is the box's own: the member beside it pulls back
+#: over its border, and a focused box that does not lift has its ring clipped
+#: by that overlap. A segmented button already carries the pair.
 _INPUT_CLASS = (
     "min-w-0 w-48 sm:w-56 border border-default-medium bg-neutral-secondary-medium "
     "text-heading text-type-input px-3 min-h-control placeholder:text-body "
+    "relative focus:z-10 "
     "focus:ring-1 focus:ring-brand focus:border-brand focus:outline-hidden"
 )
 
@@ -142,23 +149,6 @@ def SearchField(
             + ", ".join(sorted(MATCH_MODE_TOKENS))
         )
 
-    trigger = ControlButton(
-        [
-            ("data-match-trigger", ""),
-            ("aria-haspopup", "menu"),
-            # The name states the value, not just the control.
-            ("aria-label", f"Match mode: {mode.words}"),
-            ("title", f"Match mode: {mode.words}"),
-        ],
-        # segmented, not ghost: ghost bakes rounded-base for the field to undo,
-        # and its border-transparent ties with any colour added beside it.
-        variant="segmented",
-        color="gray",
-    )[
-        Icon(mode.mark, attributes=[("data-match-mark", "")]),
-        Icon("arrowdown", attributes=[("class", "h-3 w-3")]),
-    ].as_element()
-
     menu = DropdownMenuPanel(
         items=[
             _mode_row(candidate, current=candidate.token == modifier)
@@ -168,32 +158,51 @@ def SearchField(
         menu_width="w-max",
     )
 
-    field = Input(
-        [("data-match-value", "")],
-        type="text",
-        name=name,
-        value=value,
-        placeholder=placeholder,
-        aria_label=placeholder or "Search",
-        class_=_INPUT_CLASS,
-        autocomplete="off",
-    )
+    def mode_trigger(shape: ButtonShape) -> Node:
+        """The trigger, in a corner-less dropdown."""
+        trigger = ControlButton(
+            [
+                ("data-match-trigger", ""),
+                ("aria-haspopup", "menu"),
+                # The name states the value, not just the control.
+                ("aria-label", f"Match mode: {mode.words}"),
+                ("title", f"Match mode: {mode.words}"),
+            ],
+            # segmented, not ghost: ghost states "full" corners for the row to
+            # undo, and its border-transparent ties with any colour beside it.
+            variant="segmented",
+            color="gray",
+            shape=shape,
+        )[
+            Icon(mode.mark, attributes=[("data-match-mark", "")]),
+            Icon("arrowdown", attributes=[("class", "h-3 w-3")]),
+        ].as_element()
+        # The wrapper draws nothing; the button rounds.
+        return Dropdown(
+            trigger_element=trigger,
+            target_element=menu,
+            id=f"{id}-mode",
+        )
+
+    def box(shape: ButtonShape) -> Node:
+        """The box, stating the corners it rounds."""
+        return Input(
+            [("data-match-value", "")],
+            type="text",
+            name=name,
+            value=value,
+            placeholder=placeholder,
+            aria_label=placeholder or "Search",
+            class_=f"{_INPUT_CLASS} {SHAPE_CLASSES[shape]}".strip(),
+            autocomplete="off",
+        )
 
     return _SearchFieldElement(
         [
             *filter_widget_attributes(["search"], "string"),
             ("data-modifier", modifier),
         ]
-    )[
-        SegmentedField(
-            leading=Dropdown(
-                trigger_element=trigger,
-                target_element=menu,
-                id=f"{id}-mode",
-            ),
-            field=field,
-        )
-    ]
+    )[SegmentedField(leading=mode_trigger, field=box)]
 
 
 #: The columns each list's search reads, in the field's own words.
