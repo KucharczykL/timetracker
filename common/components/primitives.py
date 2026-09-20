@@ -995,9 +995,11 @@ class ControlButton(BaseComponent):
       ``action`` defaults to ``href``;
     - otherwise → a ``<button>`` with ``type`` (default ``"button"``).
 
-    Sizing contract: compact by default; upsizes inside an ``@container``
-    ancestor at least 28rem wide (``@md``). There is no size parameter — the
-    container decides, and every button-shaped variant follows the same scale.
+    Sizing contract: one size everywhere. Every button-shaped variant carries
+    ``CONTROL_SIZE_CLASS``, whose ``min-h-control`` is 42px floored, so a
+    button is the same height in every row. There is no size parameter and no
+    breakpoint or container step: height stopped depending on font, padding
+    and ancestor alike, which is what made it differ across rows.
     ``variant="segmented"`` is the ButtonGroup-member look (white background,
     hover hue).
 
@@ -1205,7 +1207,7 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
     those attributes (a JS-driven action with no navigation).
     Empty dicts (no slot) are silently skipped — matching the template behavior
     for conditional buttons (e.g., end-session only when session is active).
-    Every button uses one responsive size (small on mobile, larger from ``lg``).
+    Every member is the one button size; no member resizes at any width.
     """
     # A skipped entry is not an end.
     present = [
