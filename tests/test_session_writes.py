@@ -385,3 +385,46 @@ def test_undoing_a_session_that_became_nothing_answers_a_sentence(
         undo_reclassification(owned_user, row, correlation_id=uuid.uuid7())
 
     assert refusal.value.message == NEVER_RECLASSIFIED
+
+
+def test_a_source_names_every_event_of_the_append(owned_user, owned_library, game):
+    """The record's event and the session's alike.
+
+    A batch's Undo reads the action's name back off one event, so an
+    append that stamped only its first would leave half a batch unnamed.
+    """
+    tracked_run(owned_library, game)
+    row = session_row(game, started_at=STARTED_AT, duration_manual=timedelta(hours=9))
+    correlation_id = uuid.uuid7()
+    source = {"bulk": {"action": "session.reclassify"}}
+
+    reclassify_session(
+        owned_user,
+        row,
+        statement_from_session(row),
+        idempotency_key="one-conversion",
+        correlation_id=correlation_id,
+        source_metadata=source,
+    )
+
+    stamped = LibraryEvent.objects.filter(correlation_id=correlation_id)
+    assert stamped.count() == 2
+    assert [event.source_metadata for event in stamped] == [source, source]
+
+
+def test_undoing_carries_its_own_source(owned_user, owned_library, game):
+    tracked_run(owned_library, game)
+    row = session_row(game, started_at=STARTED_AT, duration_manual=timedelta(hours=9))
+    _reclassified(owned_user, row, uuid.uuid7())
+    correlation_id = uuid.uuid7()
+
+    undo_reclassification(
+        owned_user,
+        row,
+        correlation_id=correlation_id,
+        source_metadata={"bulk": {"action": "session.reclassify"}},
+    )
+
+    stamped = LibraryEvent.objects.filter(correlation_id=correlation_id)
+    assert stamped
+    assert all(event.source_metadata["bulk"] for event in stamped)

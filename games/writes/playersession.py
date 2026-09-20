@@ -27,6 +27,7 @@ from games.commands.session_reclassification import (
     ReclassifySessionAsHistoricalPlaytime,
     UndoSessionReclassification,
 )
+from games.events.append import SourceMetadata
 from games.events.dispatch import Command, CommandRejected, CommandResult, dispatch
 from games.events.idempotency import IdempotencyKey
 from games.events.playersession import ZoneName
@@ -53,6 +54,7 @@ def _dispatch(
     library: UserLibrary,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
 ) -> CommandResult:
     return dispatch(
         command,
@@ -61,6 +63,7 @@ def _dispatch(
         #: Caller's key, else none; builds absorb repeats.
         idempotency_key=idempotency_key or str(uuid.uuid7()),
         correlation_id=correlation_id,
+        source_metadata=source_metadata,
     )
 
 
@@ -298,6 +301,7 @@ def reclassify_session(
     *,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
+    source_metadata: SourceMetadata | None = None,
 ) -> uuid.UUID:
     """Make the session a record; answer its id."""
     with answered("session"):
@@ -309,12 +313,18 @@ def reclassify_session(
             library=actor.library,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
     return _created_id(result)
 
 
 def undo_reclassification(
-    actor: User, session: PlayerSession, *, correlation_id: uuid.UUID
+    actor: User,
+    session: PlayerSession,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
 ) -> CommandResult:
     """Remove the record; restore the session."""
     with answered("session"):
@@ -323,6 +333,8 @@ def undo_reclassification(
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
 
 
