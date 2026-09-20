@@ -2663,6 +2663,7 @@ def _pagination_nav(
 _SortHeader = custom_element_builder("sort-header")
 _ResponsiveTable = custom_element_builder("responsive-table")
 _SelectableTable = custom_element_builder("selectable-table")
+_SelectionActionsElement = custom_element_builder("selection-actions")
 
 # The runtime column-drop state is a safelisted nth-child class family in
 # input.css (like the align rules), so it has a hard ceiling: a column past it
@@ -2867,7 +2868,9 @@ def selection_scope(request, caption_key: str, caption: str) -> SelectionScope:
     return f"{library}:{caption_key or caption}"
 
 
-def _SelectionActions(actions: Sequence[SelectionAction], csrf_token: str) -> Node:
+def _selection_actions_slot(
+    actions: Sequence[SelectionAction], csrf_token: str
+) -> Node:
     """The acts the view stated, in one form.
 
     One form, not one for each act: a submit that posts on its own
@@ -2883,29 +2886,31 @@ def _SelectionActions(actions: Sequence[SelectionAction], csrf_token: str) -> No
     if not offered:
         return slot
     return slot[
-        Form(
-            [("data-selection-actions-form", "")],
-            method="post",
-            class_="flex gap-2",
-        )[
-            Safe(
-                '<input type="hidden" name="csrfmiddlewaretoken" '
-                f'value="{escape(csrf_token)}">'
-            ),
-            Input(
-                [("data-selection-statement", "")],
-                type="hidden",
-                name=SELECTION_STATEMENT_FIELD,
-            ),
-            Fragment(
-                *(
-                    ControlButton(
-                        [("formaction", action["url"]), ("disabled", "")],
-                        type="submit",
-                    )[action["label"]]
-                    for action in offered
-                )
-            ),
+        _SelectionActionsElement(class_="flex gap-2")[
+            Form(
+                [("data-selection-actions-form", "")],
+                method="post",
+                class_="flex gap-2",
+            )[
+                Safe(
+                    '<input type="hidden" name="csrfmiddlewaretoken" '
+                    f'value="{escape(csrf_token)}">'
+                ),
+                Input(
+                    [("data-selection-statement", "")],
+                    type="hidden",
+                    name=SELECTION_STATEMENT_FIELD,
+                ),
+                Fragment(
+                    *(
+                        ControlButton(
+                            [("formaction", action["url"]), ("disabled", "")],
+                            type="submit",
+                        )[action["label"]]
+                        for action in offered
+                    )
+                ),
+            ]
         ]
     ]
 
@@ -2951,7 +2956,7 @@ def SelectionLine(
     controls.append(
         ControlButton([("data-selection-clear", "")], variant="ghost")["Clear"]
     )
-    controls.append(_SelectionActions(actions, csrf_token))
+    controls.append(_selection_actions_slot(actions, csrf_token))
 
     # Cloned per row; a template renders nothing.
     checkbox_template = Template([("data-selection-checkbox-template", "")])[

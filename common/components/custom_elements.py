@@ -582,6 +582,15 @@ class SelectableTableProps(TypedDict):
 register_element("selectable-table", "SelectableTable", SelectableTableProps)
 
 
+# Built in primitives.py; behavior in ts/elements/selection-actions.ts. The
+# statement it posts comes from the table above it, so it states no props.
+class SelectionActionsProps(TypedDict):
+    pass
+
+
+register_element("selection-actions", "SelectionActions", SelectionActionsProps)
+
+
 class SearchSelectProps(TypedDict):
     name: str
     search_url: str

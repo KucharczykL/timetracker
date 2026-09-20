@@ -18,6 +18,7 @@ import {
   isMarked,
   rangeKeys,
   selectAllMatching,
+  SelectionStatement,
   SelectionState,
   selectionCount,
   setPage,
@@ -240,6 +241,18 @@ export class SelectableTableElement extends HTMLElement {
   /** What an act on the selection leaves behind: nothing kept, mode off. */
   forgetAndClose(): void {
     this.setMode(false);
+  }
+
+  /** The statement this table stands on, asked for.
+   *
+   * The change event carries the same value, and is dispatched from
+   * `render()` alone -- which at connect runs on the restore branch only,
+   * before a descendant element upgrades. So the slot that posts the
+   * statement pulls it once rather than waiting for a change that already
+   * happened.
+   */
+  statement(): SelectionStatement {
+    return statementFor(this.state, this.props.filter, this.props.count);
   }
 
   private onClear(): void {
