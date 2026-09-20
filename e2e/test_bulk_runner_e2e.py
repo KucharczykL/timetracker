@@ -1,8 +1,6 @@
 """A batch walks its own chunks, with nobody pressing Continue."""
 
-import json
 from datetime import date, timedelta
-from urllib.parse import quote
 
 from django.urls import reverse
 from playwright.sync_api import Page, expect
@@ -20,32 +18,6 @@ def _login(page: Page, live_server) -> None:
     page.wait_for_url(f"{live_server.url}/tracker**")
 
 
-#: The tray that posts this statement is #712's. Until it lands, the
-#: browser states the same thing the same way: one POST of a selection
-#: to the act's route, from the page the act returns to.
-_POST_THE_SELECTION = """
-(stated) => {
-  const token = document.querySelector('input[name="csrfmiddlewaretoken"]');
-  if (!token) throw new Error("no csrf input on the origin page");
-  const form = document.createElement("form");
-  form.method = "post";
-  form.action = stated.url;
-  for (const [name, value] of [
-    ["csrfmiddlewaretoken", token.value],
-    ["selection", stated.selection],
-  ]) {
-    const field = document.createElement("input");
-    field.type = "hidden";
-    field.name = name;
-    field.value = value;
-    form.append(field);
-  }
-  document.body.append(form);
-  form.submit();
-}
-"""
-
-
 def test_a_batch_carries_itself_from_one_chunk_to_the_next(
     live_server, page: Page, e2e_user, e2e_library, monkeypatch
 ):
@@ -60,10 +32,8 @@ def test_a_batch_carries_itself_from_one_chunk_to_the_next(
     monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
     game = create_tracked_game(e2e_library, "Outer Wilds")
     run = tracked_run(e2e_library, game)
-    sessions = [
+    for day in (5, 6, 7):
         duration_only_row(run, date(2026, 3, day), timedelta(hours=9))
-        for day in (5, 6, 7)
-    ]
     errors: list[str] = []
     page.on(
         "console",
@@ -75,17 +45,7 @@ def test_a_batch_carries_itself_from_one_chunk_to_the_next(
 
     origin = reverse("games:library")
     page.goto(f"{live_server.url}{origin}")
-    act = reverse("games:run_bulk_action", args=["session.reclassify"])
-    page.evaluate(
-        _POST_THE_SELECTION,
-        {
-            "url": f"{live_server.url}{act}?origin={quote(origin)}",
-            "selection": json.dumps(
-                {"mode": "some", "keys": [str(row.pk) for row in sessions]}
-            ),
-        },
-    )
-
+    page.get_by_role("button", name="Move all 3 to historical playtime").click()
     page.get_by_role("button", name="Record as historical playtime").click()
 
     #: Server-rendered, and the last thing the batch does, so the rows
@@ -95,3 +55,29 @@ def test_a_batch_carries_itself_from_one_chunk_to_the_next(
     assert PlayerSession.objects.alive().count() == 0
     assert HistoricalPlaytime.objects.alive().count() == 3
     assert errors == []
+
+
+def test_the_batchs_toast_offers_an_undo_that_puts_every_session_back(
+    live_server, page: Page, e2e_user, e2e_library
+):
+    """The press the act's words promise."""
+    game = create_tracked_game(e2e_library, "Outer Wilds")
+    run = tracked_run(e2e_library, game)
+    for day in (5, 6):
+        duration_only_row(run, date(2026, 3, day), timedelta(hours=9))
+    _login(page, live_server)
+
+    page.goto(f"{live_server.url}{reverse('games:library')}")
+    page.get_by_role("button", name="Move all 2 to historical playtime").click()
+    page.get_by_role("button", name="Record as historical playtime").click()
+    expect(page.get_by_text("2 of 2 done.")).to_be_visible()
+
+    page.get_by_role("button", name="Undo").click()
+
+    #: The panel offers the two again, which only a committed undo
+    #: makes it say. A toast would say the same before the write lands.
+    expect(
+        page.get_by_role("button", name="Move all 2 to historical playtime")
+    ).to_be_visible()
+    assert PlayerSession.objects.alive().count() == 2
+    assert HistoricalPlaytime.objects.alive().count() == 0

@@ -2,10 +2,8 @@
 
 import json
 import logging
-import uuid
-from collections.abc import Sequence
 from functools import partial
-from typing import NamedTuple, cast
+from typing import cast
 from urllib.parse import quote
 from uuid import UUID
 
@@ -28,40 +26,25 @@ from common.components import (
 )
 from common.components.core import Node
 from common.components.library_kit import EmptyState
-from common.components.primitives import Column, Input, StyledTable, make_row
+from common.components.primitives import Input
 from common.criteria import ChoiceCriterion, IntCriterion, Modifier
 from common.date_time_presentation import date_time_presentation_for_request
-from common.duration_presentation import (
-    DurationPresentation,
-    duration_presentation_for_request,
-)
 from common.layout import render_page
 from common.notices import Undo, notify
 from common.returns import OriginUrl, action_url
 from games.bulk_reclassification import (
-    ALREADY_RECORDED,
-    IN_THE_BUCKET,
-    NOT_AVAILABLE,
-    NOT_WRITTEN,
+    RECLASSIFY,
     REVIEW_THRESHOLD_HOURS,
-    UNDER_THRESHOLD,
     reviewable_sessions,
 )
-from games.commands.session_reclassification import statement_from_session
 from games.forms import HistoricalPlaytimeForm
-from games.models import (
-    HistoricalPlaytime,
-    PlayerSession,
-    PlayerSessionTimingMode,
-    PlaythroughKind,
-    UserLibrary,
-)
+from games.models import PlayerSession, PlayerSessionTimingMode, UserLibrary
 from games.ownership import owned_or_404
-from games.reads.player_sessions import library_sessions
+from games.views.bulk import STATEMENT_FIELD
 from games.views.historical_playtime_entry import FORM_SCRIPTS
-from games.views.removal import confirm_and_apply, restore_and_return
+from games.views.removal import restore_and_return
 from games.views.returns import return_url
-from games.writes.answers import CONFLICT_STATUS, CommandFailed
+from games.writes.answers import CommandFailed
 from games.writes.playergame import new_correlation_id
 from games.writes.playersession import reclassify_session as state_reclassification
 from games.writes.playersession import undo_reclassification
@@ -174,194 +157,6 @@ def review_url() -> str:
     return f"{reverse('games:list_sessions')}?filter={quote(review_filter())}"
 
 
-#: A session key as posted.
-type PostedKey = str
-
-
-def _reviewable(
-    library: UserLibrary, keys: Sequence[UUID] | None = None
-) -> list[PlayerSession]:
-    """The review's rows; `keys` narrows them."""
-    rows = reviewable_sessions(library)
-    if keys is not None:
-        rows = rows.filter(pk__in=keys)
-    return list(
-        rows.select_related("playthrough__player_game__game").order_by(
-            "-effective_duration", "id"
-        )
-    )
-
-
-class Refused(NamedTuple):
-    """A key left alone, and why."""
-
-    key: PostedKey
-    sentence: str
-
-
-class Classified(NamedTuple):
-    """The review's rows, and the rest's sentences."""
-
-    convertible: tuple[PlayerSession, ...]
-    refused: tuple[Refused, ...]
-    #: Distinct keys sent: the count's denominator.
-    posted: int
-
-
-def _classified(library: UserLibrary, posted: Sequence[PostedKey]) -> Classified:
-    """Sort posted keys: convertible or a sentence."""
-    keys: dict[UUID, PostedKey] = {}
-    refused: list[Refused] = []
-    for value in dict.fromkeys(posted):
-        try:
-            keys.setdefault(UUID(value), value)
-        except ValueError:
-            refused.append(Refused(value, NOT_AVAILABLE))
-    convertible = _reviewable(library, list(keys))
-    offered = {row.pk for row in convertible}
-    rest = [key for key in keys if key not in offered]
-    recorded = set(
-        HistoricalPlaytime.objects.filter(
-            library=library, reclassified_from__in=rest, removed_at__isnull=True
-        ).values_list("reclassified_from_id", flat=True)
-    )
-    live = library_sessions(library).select_related("playthrough").in_bulk(rest)
-    for key in rest:
-        row = live.get(key)
-        if key in recorded:
-            sentence = ALREADY_RECORDED
-        elif row is None:
-            sentence = NOT_AVAILABLE
-        elif row.playthrough.kind == PlaythroughKind.IMPORTED_HISTORY:
-            sentence = IN_THE_BUCKET
-        elif row.timing_mode != PlayerSessionTimingMode.DURATION_ONLY:
-            sentence = NOT_WRITTEN
-        else:
-            sentence = UNDER_THRESHOLD
-        refused.append(Refused(keys[key], sentence))
-    return Classified(
-        tuple(convertible), tuple(refused), posted=len(keys) + len(refused) - len(rest)
-    )
-
-
-def _convert_each(
-    request: HttpRequest, user: User, classified: Classified, token: str
-) -> None:
-    """Convert each; refusal a sentence, defect stops."""
-    correlation_id = new_correlation_id()
-    recorded = 0
-    sentences: list[str] = []
-
-    def left(key: object, sentence: str, cause: object = None) -> None:
-        if sentence not in sentences:
-            sentences.append(sentence)
-        #: The page prints sentences; the log, keys.
-        logger.info(
-            "Session %s of library %s was not recorded under %s: %s%s",
-            key,
-            user.library.pk,
-            correlation_id,
-            sentence,
-            "" if cause is None else f" ({cause})",
-        )
-
-    def say() -> None:
-        if recorded:
-            level = messages.SUCCESS
-        elif sentences == [ALREADY_RECORDED]:
-            level = messages.INFO
-        else:
-            level = messages.ERROR
-        notify(
-            request,
-            f"{recorded} of {classified.posted} sessions recorded as historical "
-            "playtime.",
-            level=level,
-        )
-        for sentence in sentences:
-            notify(
-                request,
-                sentence,
-                level=messages.INFO if sentence == ALREADY_RECORDED else messages.ERROR,
-            )
-
-    for key, sentence in classified.refused:
-        left(key, sentence)
-    for row in classified.convertible:
-        try:
-            state_reclassification(
-                user,
-                row,
-                statement_from_session(row),
-                idempotency_key=f"reclassify-{token}-{row.pk}",
-                correlation_id=correlation_id,
-            )
-        except CommandFailed as failure:
-            #: One type; the status tells defect apart.
-            if failure.status_code != CONFLICT_STATUS:
-                say()
-                raise CommandFailed(
-                    f"{recorded} of {classified.posted} sessions were recorded "
-                    "before a problem on our side stopped the request. The "
-                    "problem has been reported, and the review still lists the "
-                    "rest.",
-                    failure.status_code,
-                ) from failure
-            left(row.pk, failure.message, failure.__cause__)
-            continue
-        recorded += 1
-    say()
-
-
-@login_required
-def reclassify_reviewed_sessions(request: HttpRequest) -> HttpResponse:
-    user = cast(User, request.user)
-    #: GET the filter; POST the page's keys.
-    if request.method == "POST":
-        classified = _classified(user.library, request.POST.getlist("session"))
-    else:
-        classified = Classified(tuple(_reviewable(user.library)), (), posted=0)
-    rows = classified.convertible
-    token = request.POST.get("submission") or str(uuid.uuid7())
-    return confirm_and_apply(
-        request,
-        action=partial(_convert_each, request, user, classified, token),
-        title="Record these sessions as historical playtime",
-        message=(
-            f"Record {len(rows)} written-down sessions of "
-            f"{REVIEW_THRESHOLD_HOURS} hours or longer as historical playtime?"
-        ),
-        details=Fragment(
-            Input(type="hidden", name="submission", value=token),
-            *(Input(type="hidden", name="session", value=str(row.pk)) for row in rows),
-            _review_table(rows, duration_presentation_for_request(request)),
-        ),
-        confirm_label="Record as historical playtime",
-        fallback="games:list_sessions",
-    )
-
-
-def _review_table(
-    rows: Sequence[PlayerSession], durations: DurationPresentation
-) -> Node:
-    """Every row, not one page of them."""
-    return StyledTable(
-        columns=[
-            Column("Game", None),
-            Column("Day", None),
-            Column("Duration", None, align="right"),
-        ],
-        rows=[
-            make_row(
-                row.playthrough.player_game.game.name,
-                str(row.effective_day),
-                durations.format(row.effective_duration),
-            )
-            for row in rows
-        ],
-    )
-
-
 #: The panel has no permanent home yet.
 TEMPORARY_NOTE = (
     "This section is temporary. It moves into the Playtime page once that "
@@ -369,7 +164,26 @@ TEMPORARY_NOTE = (
 )
 
 
-def PlaytimeReviewPanel(library: UserLibrary, *, origin: OriginUrl) -> Node:
+def review_selection(waiting: int) -> str:
+    """The whole review, as the runner reads a selection.
+
+    A scope and a count, never a list of keys: the count is what the
+    person was told, and the runner resolves the scope again at the
+    press. Keys would freeze a page-old answer into the act.
+    """
+    return json.dumps(
+        {
+            "mode": "all",
+            "filter": review_filter(),
+            "count": waiting,
+            "except": [],
+        }
+    )
+
+
+def PlaytimeReviewPanel(
+    library: UserLibrary, *, origin: OriginUrl, csrf_token: str
+) -> Node:
     """The review, in a person's words."""
     waiting = reviewable_sessions(library).count()
     if not waiting:
@@ -397,13 +211,22 @@ def PlaytimeReviewPanel(library: UserLibrary, *, origin: OriginUrl) -> Node:
             "your longest session and your busiest day tell the truth again."
         ],
         P(class_="text-type-body text-body mb-4")[
-            "Nothing is thrown away. Moving one session offers an Undo; moving "
-            "all of them at once does not."
+            "Nothing is thrown away. Moving them offers an Undo that puts "
+            "every session back."
         ],
         Div(class_="flex flex-wrap items-center gap-2")[
             ControlButton(href=review_url(), color="gray")["See these sessions"],
             ControlButton(
-                href=action_url("games:reclassify_reviewed_sessions", origin=origin),
+                method="post",
+                action=action_url(
+                    "games:run_bulk_action", RECLASSIFY.name, origin=origin
+                ),
+                csrf_token=csrf_token,
+                hidden_fields=Input(
+                    type="hidden",
+                    name=STATEMENT_FIELD,
+                    value=review_selection(waiting),
+                ),
                 color="blue",
             )[f"Move all {waiting} to historical playtime"],
         ],

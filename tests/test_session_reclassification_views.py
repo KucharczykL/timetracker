@@ -1,20 +1,20 @@
 """The reclassification acts through the routes."""
 
+import html as html_module
 import json
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from django.contrib.messages import get_messages
-from django.urls import reverse
-from django.utils import timezone
+from django.urls import NoReverseMatch, reverse
 from historical_playtime_posts import posted_record
 from session_rows import duration_only_row, timed_row, tracked_run
 
 from common.returns import action_url
+from games.bulk_actions import BULK_ACTIONS
 from games.commands.session_reclassification import (
     STILL_RUNNING,
-    statement_from_session,
 )
 from games.models import (
     Game,
@@ -22,18 +22,12 @@ from games.models import (
     LibraryEvent,
     PlayerSession,
     Playthrough,
-    PlaythroughKind,
 )
+from games.views.bulk import STATEMENT_FIELD
 from games.views.session_reclassification import (
-    ALREADY_RECORDED,
-    IN_THE_BUCKET,
-    NOT_AVAILABLE,
-    NOT_WRITTEN,
-    UNDER_THRESHOLD,
+    review_filter,
 )
-from games.writes.answers import CONFLICT_STATUS, DEFECT_STATUS, CommandFailed
-from games.writes.playergame import new_correlation_id
-from games.writes.playersession import reclassify_session as state_reclassification
+from games.writes.answers import CONFLICT_STATUS
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -192,12 +186,15 @@ def test_the_row_action_appears_on_a_duration_only_row_alone(run):
 # --- The review and the bulk conversion ---------------------------------------
 
 
-def _bulk_url() -> str:
-    return reverse("games:reclassify_reviewed_sessions")
-
-
 def _long_row(run, day=A_DAY, hours=9) -> PlayerSession:
     return duration_only_row(run, day, timedelta(hours=hours))
+
+
+def _hidden(html: str, name: str) -> str:
+    """One hidden input's value, as the form would post it."""
+    marker = f'name="{name}" value="'
+    start = html.index(marker) + len(marker)
+    return html_module.unescape(html[start : html.index('"', start)])
 
 
 def test_the_library_offers_the_review(logged_in, session):
@@ -208,6 +205,51 @@ def test_the_library_offers_the_review(logged_in, session):
     assert "See these sessions" in html
     assert "Move all 1 to historical playtime" in html
     assert "Playtime" in html
+
+
+def test_the_panel_states_the_whole_review_as_one_selection(logged_in, session):
+    """The button posts a statement, not a list of keys.
+
+    The review is what the act is offered on, so the panel names the
+    scope and the runner resolves it at the press. A list of keys would
+    freeze a page-old answer into the act.
+    """
+    html = logged_in.get(reverse("games:library")).content.decode()
+
+    assert (
+        action_url(
+            "games:run_bulk_action",
+            "session.reclassify",
+            origin=reverse("games:library"),
+        )
+        in html
+    )
+    assert json.loads(_hidden(html, STATEMENT_FIELD)) == {
+        "mode": "all",
+        "filter": review_filter(),
+        "count": 1,
+        "except": [],
+    }
+
+
+def test_the_panels_count_is_the_scope_the_act_resolves(logged_in, owned_library, run):
+    """What a person is told, and what the press acts on, are one read."""
+    for day in (1, 2, 3):
+        _long_row(run, date(2026, 3, day))
+    _long_row(run, date(2026, 4, 1), hours=1)
+
+    html = logged_in.get(reverse("games:library")).content.decode()
+
+    assert "Move all 3 to historical playtime" in html
+    assert json.loads(_hidden(html, STATEMENT_FIELD))["count"] == 3
+    scope = BULK_ACTIONS["session.reclassify"].scope(owned_library, review_filter())
+    assert scope.count() == 3
+
+
+def test_the_review_has_no_route_of_its_own(logged_in):
+    """One runner, so the act's own route is gone."""
+    with pytest.raises(NoReverseMatch):
+        reverse("games:reclassify_reviewed_sessions")
 
 
 def test_the_library_says_so_when_nothing_waits(logged_in, run):
@@ -263,131 +305,6 @@ def test_the_review_filter_answers_the_rows_it_names(owned_library, run):
     assert matched == {long_enough}
 
 
-def test_the_confirmation_lists_every_matching_row(logged_in, run):
-    rows = [_long_row(run, date(2026, 3, day)) for day in (1, 2, 3)]
-
-    response = logged_in.get(_bulk_url())
-
-    html = response.content.decode()
-    assert response.status_code == 200
-    for row in rows:
-        assert f'value="{row.pk}"' in html
-
-
-def test_the_post_converts_exactly_the_posted_keys(logged_in, run):
-    first = _long_row(run, date(2026, 3, 1))
-    second = _long_row(run, date(2026, 3, 2))
-
-    logged_in.post(_bulk_url(), {"session": [str(first.pk)], "submission": "one"})
-
-    first.refresh_from_db()
-    second.refresh_from_db()
-    assert first.removed_at is not None
-    assert second.removed_at is None
-    assert HistoricalPlaytime.objects.count() == 1
-
-
-def test_a_posted_row_that_is_not_written_down_is_refused(logged_in, run):
-    measured = timed_row(run, START, START + timedelta(hours=20))
-
-    response = logged_in.post(
-        _bulk_url(), {"session": [str(measured.pk)], "submission": "one"}
-    )
-
-    assert ("error", NOT_WRITTEN) in _messages_of(response)
-    assert not HistoricalPlaytime.objects.exists()
-
-
-def test_a_row_of_another_library_is_refused(
-    client, django_user_model, owned_library, run
-):
-    row = _long_row(run)
-    other = django_user_model.objects.create_user(username="stranger")
-    client.force_login(other)
-
-    response = client.post(_bulk_url(), {"session": [str(row.pk)], "submission": "one"})
-
-    assert ("error", NOT_AVAILABLE) in _messages_of(response)
-    row.refresh_from_db()
-    assert row.removed_at is None
-
-
-def test_a_written_down_row_under_the_threshold_is_refused_in_its_own_words(
-    logged_in, run
-):
-    short = _long_row(run, hours=7)
-
-    response = logged_in.post(
-        _bulk_url(), {"session": [str(short.pk)], "submission": "one"}
-    )
-
-    assert ("error", UNDER_THRESHOLD) in _messages_of(response)
-    assert ("error", NOT_WRITTEN) not in _messages_of(response)
-    short.refresh_from_db()
-    assert short.removed_at is None
-
-
-def test_a_key_that_is_no_session_counts_against_the_posted_total(logged_in, run):
-    row = _long_row(run)
-
-    response = logged_in.post(
-        _bulk_url(), {"session": [str(row.pk), "not-a-key"], "submission": "one"}
-    )
-
-    said = _messages_of(response)
-    assert ("error", NOT_AVAILABLE) in said
-    assert any("1 of 2" in message for _level, message in said)
-
-
-def test_a_row_removed_since_the_page_opened_counts_as_lost(logged_in, owned_user, run):
-    kept = _long_row(run, date(2026, 3, 1))
-    gone = _long_row(run, date(2026, 3, 2))
-    PlayerSession.objects.filter(pk=gone.pk).update(removed_at=START)
-
-    response = logged_in.post(
-        _bulk_url(),
-        {"session": [str(kept.pk), str(gone.pk)], "submission": "one"},
-    )
-
-    said = _messages_of(response)
-    assert any("1 of 2" in message for _level, message in said)
-    assert ("error", NOT_AVAILABLE) in said
-
-
-def test_a_defect_stops_the_request_and_offers_no_second_press(
-    logged_in, run, monkeypatch
-):
-    """Rows before it stay recorded and counted."""
-    from games.views import session_reclassification as views
-
-    rows = [_long_row(run, date(2026, 3, day)) for day in (1, 2, 3)]
-    real = views.state_reclassification
-
-    def failing(user, row, *args, **kwargs):
-        if row.pk == rows[1].pk:
-            raise CommandFailed("Nothing was saved.", DEFECT_STATUS)
-        return real(user, row, *args, **kwargs)
-
-    monkeypatch.setattr(views, "state_reclassification", failing)
-
-    response = logged_in.post(
-        _bulk_url(),
-        {"session": [str(row.pk) for row in rows] + ["not-a-key"], "submission": "one"},
-    )
-
-    assert response.status_code == DEFECT_STATUS
-    html = response.content.decode()
-    assert "1 of 4" in html
-    assert ">Record as historical playtime<" not in html
-    #: Sentences before the defect still reach the page.
-    assert NOT_AVAILABLE in html
-    for row in rows:
-        row.refresh_from_db()
-    assert rows[0].removed_at is not None
-    assert rows[1].removed_at is None
-    assert rows[2].removed_at is None
-
-
 def test_the_undo_route_says_when_nothing_changed(logged_in, session, run):
     logged_in.post(_url(session), posted_record([run.pk], hours="9", when_year="2026"))
     url = reverse("games:undo_reclassify_session", args=[session.pk])
@@ -403,148 +320,9 @@ def test_the_undo_route_says_when_nothing_changed(logged_in, session, run):
     assert not any("restored" in message for _level, message in said)
 
 
-def test_the_library_promises_no_undo_for_the_bulk_act(logged_in, session):
+def test_the_library_promises_the_undo(logged_in, session):
+    """The runner offers one, so the words stop saying it does not."""
     html = logged_in.get(reverse("games:library")).content.decode()
 
-    assert "every change offers an Undo" not in html
-    assert "all of them at once does not." in html
-
-
-def test_one_refused_row_does_not_stop_the_rest(logged_in, owned_user, run, game):
-    """Both counts named; the rest converted."""
-    refused = _long_row(run, date(2026, 3, 1))
-    fine = _long_row(run, date(2026, 3, 2))
-    #: Already a record; its conversion is refused.
-    state_reclassification(
-        owned_user,
-        refused,
-        statement_from_session(refused),
-        idempotency_key="earlier",
-        correlation_id=new_correlation_id(),
-    )
-
-    response = logged_in.post(
-        _bulk_url(),
-        {"session": [str(refused.pk), str(fine.pk)], "submission": "one"},
-    )
-
-    fine.refresh_from_db()
-    assert fine.removed_at is not None
-    #: The refused row counts: two were sent.
-    said = _messages_of(response)
-    assert any("1 of 2" in message for _level, message in said)
-    assert ("info", ALREADY_RECORDED) in said
-
-
-def test_a_command_refusal_does_not_stop_the_rest(logged_in, run, monkeypatch):
-    """A refusal is a sentence; the loop continues."""
-    from games.views import session_reclassification as views
-
-    rows = [_long_row(run, date(2026, 3, day)) for day in (1, 2, 3)]
-    real = views.state_reclassification
-
-    def refusing(user, row, *args, **kwargs):
-        if row.pk == rows[1].pk:
-            raise CommandFailed("That one was refused.", CONFLICT_STATUS)
-        return real(user, row, *args, **kwargs)
-
-    monkeypatch.setattr(views, "state_reclassification", refusing)
-
-    response = logged_in.post(
-        _bulk_url(),
-        {"session": [str(row.pk) for row in rows], "submission": "one"},
-    )
-
-    assert response.status_code == 302
-    said = _messages_of(response)
-    assert any("2 of 3" in message for _level, message in said)
-    assert ("error", "That one was refused.") in said
-    assert HistoricalPlaytime.objects.count() == 2
-
-
-def test_a_second_submit_says_the_rows_were_already_recorded(logged_in, run):
-    row = _long_row(run)
-    posted = {"session": [str(row.pk)], "submission": "one"}
-    logged_in.post(_bulk_url(), posted)
-    logged_in.get(reverse("games:list_sessions"))
-
-    response = logged_in.post(_bulk_url(), posted)
-
-    said = _messages_of(response)
-    assert ("info", ALREADY_RECORDED) in said
-    assert not any(level == "error" for level, _message in said)
-    assert any("0 of 1" in message for _level, message in said)
-
-
-def test_a_key_posted_twice_counts_once(logged_in, run):
-    row = _long_row(run)
-
-    response = logged_in.post(
-        _bulk_url(), {"session": [str(row.pk), str(row.pk)], "submission": "one"}
-    )
-
-    assert any("1 of 1" in message for _level, message in _messages_of(response))
-
-
-def test_a_bucket_session_is_not_reviewed_and_is_refused_in_its_own_words(
-    logged_in, run
-):
-    bucket = Playthrough.objects.create(
-        id=uuid.uuid7(),
-        library=run.library,
-        player_game=run.player_game,
-        kind=PlaythroughKind.IMPORTED_HISTORY,
-        created_at=timezone.now(),
-    )
-    in_the_bucket = _long_row(bucket)
-
-    assert (
-        "Nothing to review" in logged_in.get(reverse("games:library")).content.decode()
-    )
-    response = logged_in.post(
-        _bulk_url(), {"session": [str(in_the_bucket.pk)], "submission": "one"}
-    )
-
-    assert ("error", IN_THE_BUCKET) in _messages_of(response)
-    in_the_bucket.refresh_from_db()
-    assert in_the_bucket.removed_at is None
-
-
-def test_every_key_left_alone_is_logged_with_its_library(logged_in, run, caplog):
-    import logging
-
-    short = _long_row(run, hours=7)
-    #: The games logger does not propagate.
-    logging.getLogger("games").addHandler(caplog.handler)
-    with caplog.at_level("INFO", logger="games"):
-        logged_in.post(_bulk_url(), {"session": [str(short.pk)], "submission": "one"})
-    logging.getLogger("games").removeHandler(caplog.handler)
-
-    (line,) = [
-        record for record in caplog.records if "was not recorded" in record.message
-    ]
-    assert str(short.pk) in line.message
-    assert str(run.library_id) in line.message
-    assert UNDER_THRESHOLD in line.message
-
-
-def test_the_bulk_toast_offers_no_undo(logged_in, run):
-    row = _long_row(run)
-
-    response = logged_in.post(
-        _bulk_url(), {"session": [str(row.pk)], "submission": "one"}
-    )
-
-    stored = list(get_messages(response.wsgi_request))
-    assert stored
-    assert all(not message.extra_tags for message in stored)
-
-
-def test_a_second_submit_converts_nothing_new(logged_in, run):
-    row = _long_row(run)
-    posted = {"session": [str(row.pk)], "submission": "one"}
-
-    logged_in.post(_bulk_url(), posted)
-    logged_in.post(_bulk_url(), posted)
-
-    assert HistoricalPlaytime.objects.count() == 1
+    assert "all of them at once does not" not in html
+    assert "offers an Undo that puts every session back" in html

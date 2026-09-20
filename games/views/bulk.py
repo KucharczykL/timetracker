@@ -247,6 +247,12 @@ def _confirmation(
     #: The token is the batch's correlation id: one identity, so a
     #: batch that spans two requests is still one batch.
     token = str(uuid.uuid7())
+    #: The keys of a row left alone reach the act no further than this:
+    #: the batch carries the rows it will act on. Here is where they are
+    #: named, once, under the identity the batch will run as.
+    _log_left_alone(
+        action.name, refused, cast(User, request.user).library, uuid.UUID(token)
+    )
     progress = Tally(rows=tuple(keys), total=len(keys)).with_reasons(refused).as_json()
     return render_page(
         request,
@@ -355,6 +361,7 @@ def _run_a_chunk(
         #: Re-resolved each time round, so a row gone since the
         #: confirmation is counted lost rather than refused.
         resolution = leg.resolve(user.library, left[0])
+        _log_left_alone(leg.name, resolution.refused, user.library, correlation_id)
         tally = tally.with_reasons(resolution.refused)
         acted = left.pop(0)
         for row in resolution.rows:
@@ -366,15 +373,9 @@ def _run_a_chunk(
                 if failure.status_code != CONFLICT_STATUS:
                     #: Ours, not theirs: the batch ends here.
                     return _defect(request, action, replace(tally, rows=tuple(left)))
-                logger.info(
-                    "[bulk]: %s left row %s of library %s under %s: %s",
-                    leg.name,
-                    acted,
-                    user.library.pk,
-                    correlation_id,
-                    failure.message,
-                )
-                tally = tally.with_reasons((Refused(str(acted), failure.message),))
+                refusal = Refused(str(acted), failure.message)
+                _log_left_alone(leg.name, (refusal,), user.library, correlation_id)
+                tally = tally.with_reasons((refusal,))
             else:
                 tally = _counted(tally, outcome)
         if monotonic() - started >= CHUNK_BUDGET.total_seconds():
@@ -384,6 +385,30 @@ def _run_a_chunk(
     if left:
         return _progress(request, action, token=token, tally=tally)
     return _answer(request, action, tally, undo_url=undo_url)
+
+
+def _log_left_alone(
+    name: str,
+    refused: Sequence[Refused],
+    library: UserLibrary,
+    correlation_id: uuid.UUID,
+) -> None:
+    """The page prints sentences; the log prints keys.
+
+    A person reading a toast wants how many and why. Whoever reads the
+    log afterwards wants which ones, and a row refused before it
+    reaches a dispatch is left alone as surely as one the command
+    refused.
+    """
+    for entry in refused:
+        logger.info(
+            "[bulk]: %s left row %s of library %s under %s: %s",
+            name,
+            entry.key,
+            library.pk,
+            correlation_id,
+            entry.sentence,
+        )
 
 
 def _counted(tally: Tally, outcome: RowOutcome) -> Tally:

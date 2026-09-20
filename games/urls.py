@@ -224,11 +224,6 @@ urlpatterns = [
         name="undo_reclassify_session",
     ),
     path(
-        "session/reclassify-reviewed",
-        session_reclassification.reclassify_reviewed_sessions,
-        name="reclassify_reviewed_sessions",
-    ),
-    path(
         "game/<uuidv7:game_id>/historical-playtime/add",
         historical_playtime_entry.add_historical_playtime,
         name="add_historical_playtime",

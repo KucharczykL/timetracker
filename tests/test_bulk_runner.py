@@ -2,6 +2,7 @@
 
 import html as html_module
 import json
+import logging
 import uuid
 from datetime import date, timedelta
 
@@ -356,6 +357,28 @@ def test_a_refused_row_leaves_the_rest_done(client_in, owned_library, game):
 
     assert response.status_code == 302
     assert HistoricalPlaytime.objects.count() == 1
+
+
+def test_every_row_left_alone_is_logged_with_its_library(
+    client_in, owned_library, game, caplog, capture_games_logger
+):
+    """The page prints sentences; the log prints keys.
+
+    A person reading a toast wants to know how many were left and why.
+    Whoever reads the log afterwards wants to know which ones.
+    """
+    short = a_written_session(owned_library, game, duration=timedelta(hours=1))
+    fine = a_written_session(owned_library, game, day=date(2026, 3, 6))
+
+    with capture_games_logger() as captured:
+        #: The fixture pins WARNING; a row left alone is ordinary.
+        captured.set_level(logging.INFO, logger="games")
+        act(client_in, confirm(client_in, some(short, fine)))
+
+    assert HistoricalPlaytime.objects.count() == 1
+    said = " ".join(record.message for record in caplog.records)
+    assert str(short.pk) in said
+    assert str(owned_library.pk) in said
 
 
 def test_a_defect_ends_the_batch_and_leaves_the_done_rows_done(
