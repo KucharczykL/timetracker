@@ -1017,11 +1017,22 @@ class ControlButton(BaseComponent):
                 ),
             )
         ]
-        self._merged_attributes: list[HTMLAttribute] = [
-            *class_attrs,
-            *_coerce_attrs(attrs),
-            *_attrs_from_kwargs(kwargs),
-        ]
+        caller_attrs = [*_coerce_attrs(attrs), *_attrs_from_kwargs(kwargs)]
+        for name, value in caller_attrs:
+            if name != "class" or not isinstance(value, str):
+                continue
+            for word in value.split():
+                if word.startswith("rounded-"):
+                    # Refused where the caller that stated it is still on the
+                    # stack. Two classes both setting a radius are resolved by
+                    # stylesheet order, not by the class attribute, so which
+                    # one wins is not something the call site can read.
+                    raise TypeError(
+                        f"ControlButton refuses the class {word!r}: "
+                        "a button states its corners with shape= "
+                        '("full", "start", "end" or "square"), never a class.'
+                    )
+        self._merged_attributes: list[HTMLAttribute] = [*class_attrs, *caller_attrs]
         self._href = href
         self._method = method
         self._action = action

@@ -1223,13 +1223,22 @@ class ControlButtonTest(SimpleTestCase):
         self.assertNotIn("justify-start", html)
         self.assertIn("justify-between", html)
 
-    def test_outline_variant_takes_extra_shape_classes(self):
-        html = str(
-            components.ControlButton([("class", "rounded-e-lg")], variant="outline")[
-                "x"
-            ]
-        )
-        self.assertIn("rounded-e-lg", html)
+    def test_outline_variant_takes_a_shape(self):
+        """The shape parameter is the route; the caller-class route is refused
+        by :meth:`test_a_caller_cannot_state_a_corner_by_class`."""
+        html = str(components.ControlButton(variant="outline", shape="end")["x"])
+        self.assertIn("rounded-e-base", html)
+
+    def test_a_caller_cannot_state_a_corner_by_class(self):
+        """The parameter is the only way in. A caller class and a baked class
+        both set the radius, and the stylesheet decides which wins, so the
+        rule has to be refused rather than written down."""
+        with self.assertRaises(TypeError) as refusal:
+            components.ControlButton(class_="rounded-e-lg", variant="outline")["x"]
+        self.assertIn("shape", str(refusal.exception))
+
+        with self.assertRaises(TypeError):
+            components.ControlButton([("class", "ms-auto rounded-base")])["x"]
 
 
 class ModalContractTest(SimpleTestCase):
