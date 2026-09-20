@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Every Release row on the Game form gets a **Use original release** button that copies the Original release value into that row's date.
+**Goal:** Every Release row on the Game form gets a **Use original release** button that fills that row's date from the Original release field.
 
-**Architecture:** A new `<temporal-copy>` custom element wraps the button, so a row the browser clones self-wires on arrival. The copy itself is `copyTemporalDraft(source, target)`, exported from the module that owns the temporal control's internals. `<catalog-editor>` is untouched.
+**Architecture:** The button lives inside `<temporal-field>` and is wired by it, the way `<date-time-field>` already wires its copy arrow. The copy is `adoptDraft(target, readDraft(source))` over the thirteen posted inputs, and `initField` adopts through the same function, so the copy path and the page-load path are one piece of code.
 
-**Tech Stack:** TypeScript custom elements (no framework), Django forms, the project's Python component tree, vitest, pytest, Playwright.
+**Tech Stack:** TypeScript custom elements (no framework), Django forms and widgets, the project's Python component tree, vitest, pytest, Playwright.
 
 **Spec:** [2026-09-20-issue-1158-original-release-copy-design.md](../specs/2026-09-20-issue-1158-original-release-copy-design.md)
 
@@ -15,150 +15,175 @@
 ## Global Constraints
 
 - Run everything through `make`. No `direnv exec .`, no bare `uv run` / `pnpm` / `pytest`.
-- Iterate with `make check-fast`. The gate is a full `make check` under the shared lock, once, at the end: `flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make check`.
+- Iterate with `make check-fast`. The gate is a full `make check` under the shared lock, once, at the end: `flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make check`. Read its exit code from a log, never a grepped tail.
 - `make ts` after editing any `.ts`, or e2e serves stale `dist/`.
 - Never run e2e while `make dev` is up.
 - Unabbreviated identifiers in Python and TypeScript.
 - Components are htpy-style builders: static attributes as kwargs, children via `[]`, runtime attribute lists in the single positional slot.
 - Comments explain obscure intent only. No issue or PR references in code comments.
-- `make vale` governs prose in docs and comments. A projector *replays*; the row is a *projection*; nothing is *folded*.
+- `make vale` governs prose in docs and comments.
 - Commit messages end with `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
+
+## The precedent to copy from
+
+Read these before starting. Every shape in this plan mirrors one of them.
+
+| Concern | Where it is already solved |
+|---|---|
+| A copy control inside a date field | `ts/elements/date-time-field.ts:251-260` (`initCopyControl`) |
+| Addressing a peer field by posted name | same, `date-time-field[field-name="…"]` |
+| A commit event, because typing fires none | `ts/elements/date-time-field.ts:51-54`, dispatched at `:164-171` |
+| The Python side of a copy control | `common/components/date_time_picker.py:51-61`, threaded in `games/forms.py:562,605,651-652,808-814` |
 
 ## File Structure
 
 | File | Responsibility |
 |---|---|
-| `ts/elements/temporal-field.ts` | Gains exported `copyTemporalDraft()`. One closure (`paintEndShape`) is hoisted to module scope so both `initField` and the copy can call it. `initField`'s derive block stays where it is. |
-| `ts/elements/temporal-field.test.ts` | Covers `copyTemporalDraft` over every shape. |
-| `ts/elements/temporal-copy.ts` | **New.** The element: resolves two hosts by id, enables itself, watches the source, calls `copyTemporalDraft` on click. |
-| `ts/elements/temporal-copy.test.ts` | **New.** Covers connect, the clone, the disabled states. |
-| `common/components/custom_elements.py` | `TemporalCopyProps` + `register_element`. |
-| `common/components/temporal_field.py` | `TemporalCopy()` builder: the element wrapping an inert `ControlButton`. |
-| `games/views/catalog_section.py` | `_labelled()` gains an `extra` slot; `_release_card()` fills it; `editions_area()` takes `original_release_id`; the stale module docstring is corrected. |
-| `games/views/game.py` | Both `editions_area()` call sites pass `form["original_release_date"].id_for_label`. |
+| `ts/elements/temporal-field.ts` | `initField` split into reveal / bind-engine / bind-controls / adopt. New `readDraft`, `adoptDraft`, exported `copyTemporalDraft`. New `temporal-field:change` event. New `initCopyControl`. |
+| `ts/elements/temporal-field.test.ts` | The adopt fixed point, then the copy over every shape. |
+| `common/components/custom_elements.py` | `TemporalFieldProps` gains `field_name`. |
+| `common/components/temporal_field.py` | `TemporalCopySource` NamedTuple; `TemporalField()` takes `copy_source` and renders the inert button inside the group. |
+| `games/forms.py` | `TemporalWidget` and `TemporalFormField` thread `copy_source`. |
+| `games/catalog_form.py` | `ReleaseRowForm` names the one source. |
+| `games/views/catalog_section.py` | Stale module docstring only. |
 | `ts/generated/props.ts` | Regenerated by `make gen-element-types`. Committed. |
 | `tests/test_game_form_page.py` | Server-render assertions. |
-| `e2e/test_game_form_catalog_e2e.py` | The end-to-end press on a cloned row. |
+| `e2e/test_game_form_catalog_e2e.py` | The press on a cloned row, and the enable-without-reload. |
+
+**Note what is *not* here.** No new element, no new registry entry, no new `dist/` file, no `_labelled(extra=)` slot, no `editions_area()` signature change, no change to `games/views/game.py`. An earlier draft of this plan had all six; the field owning its own copy removes them.
 
 ---
 
-### Task 1: `copyTemporalDraft`
+### Task 1: refactor `initField` around `readDraft`/`adoptDraft`
+
+Pure refactor. No behaviour change, no new feature. It lands on its own so that if it breaks a date field anywhere on the site, the bisect lands here and not on a button.
 
 **Files:**
 - Modify: `ts/elements/temporal-field.ts`
 - Test: `ts/elements/temporal-field.test.ts`
 
 **Interfaces:**
-- Consumes: nothing from earlier tasks.
-- Produces: `export function copyTemporalDraft(source: HTMLElement, target: HTMLElement): void` — both arguments are `<temporal-field>` hosts. Task 2 calls it.
+- Produces, for Task 2 and Task 3:
+  - `type TemporalDraft = Record<DraftKey, string>` — the thirteen keys of `TemporalDraftData` (`timetracker/temporal.py:841-861`), checkbox state as `"on"` / `""`.
+  - `export function readDraft(host: HTMLElement): TemporalDraft`
+  - `export function adoptDraft(host: HTMLElement, draft: TemporalDraft): void`
 
-**What the function does, in this order.** The order is the whole point; a test pins each step.
+**Current structure of `initField`** (roughly lines 332-431), and where each part goes:
 
-1. `open_start` — copy `toggleBox(source, "open_start").checked`, then `setEndpointOpen(target, "start", open)`. **First**, because `setEndpointOpen(…, true)` calls `clearEndpoint`, which would wipe buffers written before it.
-2. Segment buffers — for each endpoint, for each of `year`/`month`/`day`, `setSegmentBuffer(targetSegment, segmentBuffer(sourceSegment))`. Use `segmentsForSide()` to find them. **Never assign `.value`**: the buffer lives in `data-typed-digits` and the two would disagree.
-3. Qualifier boxes — `{endpoint}_approximate` and `{endpoint}_uncertain`. These are reached with `namedInput()`, not `toggleBox()`: for these four keys the posted input *is* the checkbox.
-4. `whole_decade_{endpoint}` — `toggleBox()`, then `paintDecade(target, endpoint, whole)`.
-5. End shape — read which of `end_none` / `end_open` / `end_date` is checked on the source with the existing `endShape()`, `setEndShape()` on the target, then `paintEndShape(target)`.
-6. `commitEndpoint(target, "start")` — one call writes both endpoints and `kind`.
-7. `setExpanded(target, true)` if any qualifier box or either decade box came across checked.
+| Lines | What it does | Goes to |
+|---|---|---|
+| 333-338 | hide natives, show segments | `revealSegments(host)` |
+| 340-350 | `bindSegmentField`, `syncScratch` | `bindEngine(host)` |
+| 352-363 | `paintEndShape` / `syncEndShape` closures | module scope; `syncEndShape` stays a bind-pass concern |
+| 366-368 | enable radios **and** bind their `change` | split: enable moves to adopt, bind stays |
+| 371-390 | decade boxes: bind, then `paintDecade` | bind stays; the paint moves to adopt |
+| 392-405 | `open_start` bind | `bindControls(host)` |
+| 407-420 | **derive shape from the `kind` input** | `adoptDraft` — this is the block the whole design turns on |
+| 421 | `paintEndShape` | adopt |
+| 422-424 | disclosure bind, `change` → `paintDisclosure` | `bindControls(host)` |
+| 426 | `setExpanded` from the server attribute | adopt, as `!canCollapse(host)` |
+| 428-430 | clear the announcement | stays last in `initField` |
 
-**Two gotchas that are the reason this is a sequence and not a repaint:**
+`initField` becomes: `revealSegments` → `bindEngine` → `bindControls` → `adoptDraft(host, readDraft(host))` → clear the announcement.
 
-- **Do not call `initField`'s derive block (currently lines ~407-420).** It reads the `kind` named input, which step 6 has not written yet, and states `end_none` whenever the end holds no value. Copying a *since* would produce a *date*. That block belongs to init alone.
-- **Step 7 is not cosmetic.** `setExpanded` normally reads the server-rendered `expanded` attribute. Skip step 7 and a copied qualifier or decade ticks a box inside a collapsed disclosure: it posts, and nobody sees it.
+**What `adoptDraft` does, and why the order inside it is safe.** It is one function on both paths, so a reorder breaks page load, not just the copy:
 
-**Refactor this task needs:** `paintEndShape` is currently a closure inside `initField`. Hoist it to module scope taking `host`, and have `initField` call the module-level one. Do not touch `syncEndShape` — it calls `commitEndpoint` and belongs to the bind pass.
+1. `open_start` from `draft.kind === "until"`; `setEndpointOpen(host, "start", open)` **and** `endShapeBoxes(host).forEach(box => box.disabled = open)`. The second half is the one `setEndpointOpen` does not do (it only touches `endpointBoxes`, `:92-98`); the existing `open_start` change handler does it at `:400-402`. Miss it and a date adopted over an *until* leaves the radios dead.
+2. Segment buffers, via `setSegmentBuffer`. Under a decade the year buffer takes `{endpoint}_decade`; otherwise `{endpoint}_year`. Never assign `.value` — the buffer lives in `data-typed-digits`.
+3. Qualifier boxes: `{endpoint}_approximate`, `{endpoint}_uncertain`. Reach these with `namedInput()`, **not** `toggleBox()` — for these four keys the posted input *is* the checkbox (`common/components/temporal_field.py:404-417`).
+4. `whole_decade_{endpoint}` from `draft["{endpoint}_decade"] !== ""`, then `paintDecade`.
+5. End shape from `kind` and end presence, exactly as the old lines 407-420 did. Then `paintEndShape`, then enable the radios unless the start is open.
+6. `commitEndpoint(host, "start")` — writes both endpoints and `kind`.
+7. `setExpanded(host, !canCollapse(host))`. `canCollapse` (`:306-313`) already answers "could the collapsed field still state this", and is the same predicate the server's `_needs_precision_controls()` (`common/components/temporal_field.py:142-167`) computes. Do not invent a third rule.
 
-- [ ] **Step 1: Write the failing tests** in `ts/elements/temporal-field.test.ts`. Follow the file's existing fixture style for building a host. Cases, one test each:
-  - a day (`1997-03-15`) copies year, month and day
-  - a *range* copies both endpoints and leaves `end_date` checked
-  - a ***since*** copies and the target still reads `end_open` — **this is the regression pin for the fatal flaw**; assert on the end-shape radio and on the `kind` named input after the copy
-  - an *until* copies `open_start` checked, and a copy from a non-*until* source into an *until* target leaves `open_start` unchecked
-  - a whole decade copies the box and the snapped year, and month and day are hidden on the target
-  - both qualifiers copy, **and the target's disclosure is expanded afterwards**
-  - a target that already holds a different date is overwritten completely, with no part of the old value surviving
-  - a source that holds nothing empties the target
-- [ ] **Step 2: Run them and confirm they fail.** `make test-ts` — expect "copyTemporalDraft is not a function".
-- [ ] **Step 3: Hoist `paintEndShape` to module scope**, `initField` calls it. `make test-ts` stays green on the existing tests.
-- [ ] **Step 4: Write `copyTemporalDraft`** in the seven steps above.
-- [ ] **Step 5: `make test-ts`** — all green.
-- [ ] **Step 6: Commit.** `feat: a temporal control copies another's whole value`
+- [ ] **Step 1: Write the failing test — the fixed point.** For every stored shape the server can render (unknown, date, date with approximate, date with uncertain, whole decade, range, *since*, *until*, partial year-only, year-and-month), build a host from the server markup, then assert `adoptDraft(host, readDraft(host))` leaves all thirteen named inputs byte-identical. This is the one test that makes the refactor safe, because `adoptDraft` commits where `initField` did not.
+- [ ] **Step 2: Run it.** `make test-ts` — expect "readDraft is not a function".
+- [ ] **Step 3: Do the refactor** per the table above. Move code; do not rewrite it. Resist improving anything you move.
+- [ ] **Step 4: Run the whole TS suite.** `make test-ts`. The existing tests around `temporal-field.test.ts:642-668` ("adopts an end", "keeps a stored since", "keeps a stored until") must pass untouched — they are the regression net for this move.
+- [ ] **Step 5: `make ts-check`,** then `make check-fast`.
+- [ ] **Step 6: Commit.** `refactor: a temporal control adopts a draft on every path`
 
 ---
 
-### Task 2: the `<temporal-copy>` element
+### Task 2: `copyTemporalDraft` and the commit event
 
 **Files:**
-- Create: `ts/elements/temporal-copy.ts`
-- Create: `ts/elements/temporal-copy.test.ts`
-- Modify: `common/components/custom_elements.py`
+- Modify: `ts/elements/temporal-field.ts`
+- Test: `ts/elements/temporal-field.test.ts`
+
+**Interfaces:**
+- Consumes: `readDraft`, `adoptDraft` from Task 1.
+- Produces:
+  - `export function copyTemporalDraft(source: HTMLElement, target: HTMLElement): void` — one line: `adoptDraft(target, readDraft(source))`.
+  - `export const TEMPORAL_FIELD_CHANGE_EVENT = "temporal-field:change"` and the `CustomEvent` dispatched by `commitEndpoint`, `bubbles: true`.
+
+**Why the event.** The segment engine `preventDefault`s every digit keydown (`ts/elements/date-field-core.ts:655`) and writes `.value` programmatically, so typing fires no native `input` or `change`. `<date-time-field>` hit this and defined its own event (`date-time-field.ts:51-54`). Without it the button in Task 3 never learns that Original release was filled.
+
+**One caution:** `adoptDraft` calls `commitEndpoint`, which now dispatches. On page load that means every field announces one commit before anyone touches it. Check no existing listener acts on it — at the time of writing there are none, since the event is new — and keep the `bubbles: true`, because the button listens from outside the source host.
+
+- [ ] **Step 1: Write the failing tests.** Copy cases, one test each:
+  - a day copies year, month and day
+  - a range copies both endpoints and the target reads `end_date`
+  - a ***since*** copies and the target reads `end_open`, and its `kind` input reads `since`
+  - an *until* copies `open_start` checked and the radios disabled
+  - **a date copied over an *until* target leaves the end-shape radios enabled** — the divergence that a hand-ordered sequence got wrong
+  - **a *since* copied into a collapsed target expands the disclosure** — likewise
+  - a whole decade copies the box and the snapped year; month and day hidden
+  - both qualifiers copy and the disclosure expands
+  - a target holding a different date is overwritten with nothing of the old value left
+  - a source holding nothing empties the target
+  - a commit dispatches `temporal-field:change` and it reaches a listener on an ancestor
+- [ ] **Step 2: Run them and confirm they fail.** `make test-ts`
+- [ ] **Step 3: Add the event to `commitEndpoint`, and `copyTemporalDraft`.**
+- [ ] **Step 4: `make test-ts`** — green, including every Task 1 test.
+- [ ] **Step 5: Commit.** `feat: a temporal control copies another's whole value`
+
+---
+
+### Task 3: the button, wired by the field
+
+**Files:**
+- Modify: `ts/elements/temporal-field.ts` — `initCopyControl`
+- Modify: `common/components/custom_elements.py` — `TemporalFieldProps.field_name`
+- Modify: `common/components/temporal_field.py` — `TemporalCopySource`, render the button
+- Modify: `games/forms.py` — thread `copy_source` through widget and form field
+- Modify: `games/catalog_form.py` — `ReleaseRowForm` names the source
+- Modify: `games/views/catalog_section.py` — the stale module docstring
 - Modify (generated, commit it): `ts/generated/props.ts`
+- Test: `ts/elements/temporal-field.test.ts`, `tests/test_game_form_page.py`
 
 **Interfaces:**
-- Consumes: `copyTemporalDraft` from Task 1.
-- Produces: the custom element `temporal-copy`, and `TemporalCopyProps` with `source_id: str` and `target_id: str`. Task 3 renders it.
+- Consumes: `copyTemporalDraft`, `TEMPORAL_FIELD_CHANGE_EVENT` from Task 2.
+- Produces: `class TemporalCopySource(NamedTuple)` with `field_name: str` and `label: str`, in `common/components/temporal_field.py`, beside `DateTimeCopyTarget`'s place in `date_time_picker.py`.
 
-**Props.** `TemporalCopyProps(TypedDict)` with `source_id: str`, `target_id: str`. Register as `register_element("temporal-copy", "TemporalCopy", TemporalCopyProps)` beside the existing `TemporalField` registration, and add `_TemporalCopy = custom_element_builder("temporal-copy")` — the builder auto-attaches `dist/elements/temporal-copy.js` as Media, so no view threads a script for it.
+**Python threading, mirroring `DateTimeCopyTarget` exactly:**
+- `TemporalField(..., copy_source: TemporalCopySource | None = None)` renders the button inside the group when given one: `ControlButton(variant="ghost", type="button")`, `data-temporal-copy="<source field name>"`, `hidden`, `disabled`, and a `title` naming Original release as the field to fill first.
+- `TemporalWidget.__init__(..., copy_source=None)`, passed through `render()`.
+- `TemporalFormField.__init__(..., copy_source=None)`, into the widget default.
+- `ReleaseRowForm.__init__` (`games/catalog_form.py:135`) passes `copy_source=TemporalCopySource("original_release_date", "Use original release")`.
 
-**Element behaviour.**
-- `connectedCallback` guards on a `wired` flag (htmx can move the node), finds its button via `[data-temporal-copy]`, resolves both hosts, binds the click, then paints its own enabled state.
-- Host resolution: `document.getElementById(id)?.closest("temporal-field")`. **Both lookups can return `null`** — `TemporalField()` renders no `<temporal-field>` wrapper at all when a part holds more characters than a segment (that is how a refused value echoes back). Treat a missing host exactly like an empty source: stay disabled, set the title.
-- Enabled when the source host exists *and* states something. Reuse `currentKind(source) !== "unknown"` rather than re-deriving — it is already exported.
-- Watch the source: listen for `change` on the source host (it bubbles from every control inside) and repaint the enabled state. A field filled after page load must enable the button.
-- Click: `copyTemporalDraft(source, target)`. Nothing else — no toast, no announcement beyond what `commitEndpoint` already does.
-- Unhide: clear `hidden` and `disabled` on the button when a source exists. The server renders both; see Task 3.
-- `disconnectedCallback` removes the source listener.
+**`field_name` is free.** `TemporalField()` already takes `name`, which for a release row is `edition-0-release-1-release_date` and for the source is `original_release_date`. Put it on the host as the `field_name` prop. The source carries no form prefix, so `temporal-field[field-name="original_release_date"]` is unique on the page.
 
-**The clone is the whole reason this is an element.** Do not be tempted to fold it into `<catalog-editor>`: that element's `connectedCallback` is guarded by `this.wired` and runs once at page load, and `addRelease()` clones `template.innerHTML` verbatim, so a plain button in a clone would stay `hidden disabled` forever.
+**`type="button"` matters twice:** a submit would answer the Enter key, and the e2e suite's `SUBMIT = "#add-form button[type=submit]"` would then name two controls and trip Playwright's strict mode.
 
-- [ ] **Step 1: Write the failing tests** in `ts/elements/temporal-copy.test.ts`. Model the fixture on `ts/elements/copy-control.test.ts`. Cases:
-  - a connected element with a filled source enables and unhides its button
-  - a click copies: assert the target's segments hold the source's values
-  - an empty source leaves the button disabled, with the title naming Original release
-  - filling the source afterwards (dispatch `change` on it) enables the button
-  - a source id that resolves to no `<temporal-field>` leaves the button disabled and does not throw
-  - **an element inserted after first paint** (append the markup to the DOM, as `addRelease` does) wires itself and works — the clone pin
-- [ ] **Step 2: Run them and confirm they fail.** `make test-ts`.
-- [ ] **Step 3: Add `TemporalCopyProps` and register it.** Run `make gen-element-types`.
-- [ ] **Step 4: Write `ts/elements/temporal-copy.ts`.**
-- [ ] **Step 5: `make test-ts` and `make ts-check`** — green.
-- [ ] **Step 6: Commit,** including the regenerated `ts/generated/props.ts`. `feat: a control copies one temporal field onto another`
+**`initCopyControl(host)`**, called from `initField`, mirroring `date-time-field.ts:251-260`:
+- find `[data-temporal-copy]` inside the host; return if absent
+- resolve the source as `document.querySelector('temporal-field[field-name="…"]')`
+- **the source may be `null`**: `TemporalField()` renders no `<temporal-field>` wrapper when a part holds more characters than a segment (`common/components/temporal_field.py:135-139`). Treat it as an empty source — stay disabled, keep the title.
+- paint the enabled state: enabled when a source exists and `currentKind(source) !== "unknown"`; clear `hidden` either way once a source exists
+- listen for `TEMPORAL_FIELD_CHANGE_EVENT` on the source and repaint
+- on click: `copyTemporalDraft(source, host)`
 
----
+**Correct the stale module docstring** in `games/views/catalog_section.py:3-5`. It says the whole row is the radio's label; `ChoiceCard` renders a `Div` and the `Label` wraps the radio and its own text alone (`common/components/choice_card.py:134-152`). Say what is true: the mark is one group over the whole Game and exactly one row carries it.
 
-### Task 3: render it in the Released cell
-
-**Files:**
-- Modify: `common/components/temporal_field.py` — add `TemporalCopy()`
-- Modify: `games/views/catalog_section.py` — `_labelled`, `_field_cell`, `_release_card`, `editions_area`, module docstring
-- Modify: `games/views/game.py` — two call sites
-- Test: `tests/test_game_form_page.py`
-
-**Interfaces:**
-- Consumes: the `temporal-copy` element and `TemporalCopyProps` from Task 2.
-- Produces: `TemporalCopy(*, source_id: str, target_id: str, label: str = "Use original release") -> Node` in `common/components/temporal_field.py`; `editions_area(graph, *, original_release_id: str) -> Node`.
-
-**The builder.** `_TemporalCopy(source_id=…, target_id=…)[ControlButton(…)]`. The button is `variant="ghost"`, `type="button"`, carries `data-temporal-copy`, and is rendered `hidden` and `disabled` with a `title` naming Original release as the field to fill first. `type="button"` matters twice: a submit would answer the Enter key, and the e2e suite's `SUBMIT = "#add-form button[type=submit]"` selector would then name two controls and trip Playwright's strict mode.
-
-**Threading the ids.** `editions_area()` takes a keyword-only `original_release_id`, passes it down to `_release_card()`, which reads its own as `row["release_date"].id_for_label`. Both views already hold a bound `GameForm` named `form` at the call site, and `original_release_date` is added unconditionally in `GameForm.__init__`, so `form["original_release_date"].id_for_label` is safe in both.
-
-**The clone needs no work.** A Release row form is prefixed `edition-{n}-release-{n}`, so the target id is `id_edition-__edition__-release-__release__-release_date` inside the template, and `renumbered()` rewrites it along with the rest of the markup.
-
-**`_labelled` gains a keyword-only `extra: Node | None = None`,** appended after the control and before the errors. `_field_cell` grows a matching pass-through. The Released cell is one grid item and the button goes inside it, so the card's four tracks are unchanged.
-
-**Correct the stale module docstring.** `games/views/catalog_section.py` opens by saying the whole row is the radio's label. `ChoiceCard` renders a `Div`; the `Label` wraps the radio and its own text alone. Rewrite that sentence to say what is true — the mark is one group over the whole Game, exactly one row carries it, and the card is a plain container.
-
-- [ ] **Step 1: Write the failing tests** in `tests/test_game_form_page.py`:
-  - one `<temporal-copy>` per live Release row, against `live(body)`
-  - its `source_id` equals the Original release control's id, and its `target_id` equals that row's release-date control's id
-  - the button inside it carries `hidden`, `disabled` and `type="button"`
-  - the `<template data-catalog-template="release">` contains a `<temporal-copy>` whose `target_id` still holds both placeholders — **assert against the raw body, not `live(body)`**, which cuts the markup at the first template
-  - the Add Game page renders it too, not only Edit Game
-- [ ] **Step 2: Run them and confirm they fail.** `make test-fast ARGS="tests/test_game_form_page.py -x"`
-- [ ] **Step 3: Add `TemporalCopy()`** to `common/components/temporal_field.py`.
-- [ ] **Step 4: Thread it through** `catalog_section.py` and both `game.py` call sites. Correct the module docstring in the same commit.
-- [ ] **Step 5: `make test-fast ARGS="tests/test_game_form_page.py -x"`** — green. Then `make check-fast`.
-- [ ] **Step 6: Commit.** `feat: a Release row copies the Original release date`
+- [ ] **Step 1: Write the failing vitest cases** in `ts/elements/temporal-field.test.ts`: a field with a `copy_source` and a filled source enables and unhides its button; a click copies; an empty source leaves it disabled; dispatching the commit event on the source enables it; a source name that resolves to nothing leaves it disabled and does not throw.
+- [ ] **Step 2: Write the failing pytest cases** in `tests/test_game_form_page.py`: one button per live Release row against `live(body)`; `hidden`, `disabled`, `type="button"`; `data-temporal-copy="original_release_date"`; the host's `field-name`; the button present inside `<template data-catalog-template="release">` — **assert against the raw body, not `live(body)`**, which cuts at the first template; and the Add Game page renders it too, not only Edit Game.
+- [ ] **Step 3: Run both and confirm they fail.** `make test-ts`, then `make test-fast ARGS="tests/test_game_form_page.py -x"`
+- [ ] **Step 4: Add `field_name` to `TemporalFieldProps`,** run `make gen-element-types`.
+- [ ] **Step 5: Write the Python half** — `TemporalCopySource`, the button in `TemporalField()`, the two threading layers, the one line in `ReleaseRowForm`. Correct the docstring.
+- [ ] **Step 6: Write `initCopyControl`** and call it from `initField`.
+- [ ] **Step 7: `make test-ts`, `make ts-check`, `make test-fast ARGS="tests/test_game_form_page.py -x"`,** then `make check-fast`.
+- [ ] **Step 8: Commit,** including the regenerated `ts/generated/props.ts`. `feat: a Release row fills its date from the Original release`
 
 ---
 
@@ -167,32 +192,32 @@
 **Files:**
 - Test: `e2e/test_game_form_catalog_e2e.py`
 
-**Interfaces:**
-- Consumes: everything above. Produces nothing.
+**Interfaces:** consumes everything above; produces nothing.
 
-**Add to `_upgraded()`** a wait on `customElements.get('temporal-copy') !== undefined`, beside the existing `catalog-editor` wait.
+**Add a helper** for typing into the top-level Original release control. The existing `type_year(card, year)` is scoped to a release card; give the new one the same shape, scoped to the page.
 
-**Add a helper** for typing into the top-level Original release control — the existing `type_year(card, year)` is scoped to a release card. Give it the same shape, scoped to the page.
+**Test 1 — the cloned row.** Open Add Game. Type a year into Original release. Press **Add release** so the browser clones a row. Press **Use original release** on the *cloned* row. Assert its year segment reads the typed year. Choose a platform, submit through `saved()`, and read the written `Release.release_date` back through `live_releases(default_edition(game))`.
 
-**Test 1 — the cloned row, which is the defect this design exists to avoid.** Open Add Game. Type a year into Original release. Press **Add release** so the browser clones a row. Press **Use original release** on the *cloned* row. Assert its year segment reads the typed year. Choose a platform, submit, and read the written `Release.release_date` back through `live_releases(default_edition(game))`.
+**Test 2 — the enable, which proves the commit event.** Open Add Game with Original release empty; assert the button on row 0 is disabled. Type a year into Original release; assert it becomes enabled with no reload. **This is the only place the event is proved** — the jsdom test dispatches it by hand, so a missing dispatch would pass there and fail only here.
 
-**Test 2 — the disabled state.** Open Add Game with Original release empty; assert the button on row 0 is disabled. Type a year into Original release; assert it becomes enabled without a reload.
-
-**Remember the UI-is-not-the-database rule:** before reading the ORM, wait on something server-rendered. `saved()` already waits for the redirect, so use it rather than asserting straight after the click.
+**Remember the UI-is-not-the-database rule:** before reading the ORM, wait on something server-rendered. `saved()` already waits for the redirect.
 
 - [ ] **Step 1: Write both tests.**
-- [ ] **Step 2: `make ts`,** so `dist/` serves the new element. Confirm `make dev` is not running.
+- [ ] **Step 2: `make ts`,** so `dist/` serves the new code. Confirm `make dev` is not running.
 - [ ] **Step 3: Run them.** `make test-e2e ARGS="-k catalog -x"`
 - [ ] **Step 4: Fix what fails,** re-running `make ts` after any `.ts` edit.
-- [ ] **Step 5: The gate.** `flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make check` — read the exit code from a log, never a grepped tail. Confirm green.
+- [ ] **Step 5: The gate.** `flock "$(git rev-parse --git-common-dir)/heavy-tests.lock" make check`. This run matters more than usual: Task 1 touched the module behind every date field on the site, so the whole e2e suite is the proof, not just `-k catalog`.
 - [ ] **Step 6: Commit and open the PR** against `main`, closing #1158.
 
 ---
 
 ## Visual check before the PR
 
-Spacing and alignment get verified by looking, not by measuring. Open the Add Game form in the browser, at a wide viewport and at ~400px, and confirm the button sits sensibly under the Released control in both — the block is its own container query, so the row stacks below the `@2xl/edition` breakpoint and the labels stop being `sr-only`. Screenshot both and attach them to the PR.
+Alignment gets verified by looking, not measuring. Open Add Game at a wide viewport and at ~400px and confirm the button sits sensibly inside the Released control in both — the Editions block is its own container query, so the row stacks below `@2xl/edition` and the labels stop being `sr-only`. Check the session form's datetime copy arrows still look right, since Task 3 touches the shared field component. Screenshot and attach to the PR.
 
 ## Follow-up issues to file
 
-None new. [#1159](https://github.com/KucharczykL/timetracker/issues/1159) (a segmented date field takes a pasted date and gives none back) is already filed and is independent of this work.
+- **`TemporalFieldProps.expanded` duplicates `canCollapse()`.** The server computes `_needs_precision_controls()` and the element computes the same predicate. The prop has to stay — it paints the field before upgrade and with no script — but the two rules should be generated from one. File after Task 1 lands, when the client-side half has a name.
+- **The thirteen draft keys are spelled in two languages.** `TEMPORAL_INPUT_SUFFIXES` in Python and the `data-temporal-input` keys in TypeScript. `gen_element_types` already emits `ts/generated/date-time-presentation.ts` from Python, so emitting these would make a renamed key fail `tsc`. File; do not do it here.
+
+[#1159](https://github.com/KucharczykL/timetracker/issues/1159) is already filed and independent.
