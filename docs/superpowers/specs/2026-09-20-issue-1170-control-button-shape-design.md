@@ -41,9 +41,17 @@ _SHAPE_CLASSES: dict[ButtonShape, str] = {
 
 `control_button_class()` appends exactly one entry, and no variant string
 holds a `rounded-*` any more. `full` is the default, so every variant
-rounds unless told otherwise. `plain` returns before the base and the
-alignment, which its navbar layout contradicts; it still takes its shape,
-so the rule holds for every variant.
+rounds unless told otherwise. An empty shape appends nothing rather than
+an empty word, so a `square` button carries no trailing space.
+
+`plain` returns before the base class and the alignment, because its
+layout contradicts both. It still takes its shape, so the rule holds for
+every variant. No page renders `plain` today: the navbar link its
+docstring names is a `ControlLink` carrying `_NAV_LINK_CLASS`, and the
+only callers left are two tests. The shape guarantee for that one variant
+is therefore a guarantee about tests. Taking the variant away is a
+separate question, filed as
+[#1177](https://github.com/KucharczykL/timetracker/issues/1177).
 
 **The invariant:** for each pair of a variant and a shape, the emitted
 `rounded-*` classes are exactly the classes `_SHAPE_CLASSES` states for
@@ -82,10 +90,17 @@ end. `PageTabs` states the same shapes in the class it already composes
 per tab, because its tabs are anchors and not buttons.
 
 `_GROUP_ENDS_CLASS` keeps `inline-flex rounded-base shadow-xs`, which
-rounds the group's own shadow. Its four child selectors go, the two
-`_button` descendant ones included: a `method="post"` member renders a
-form around a button, and the shape now rides on that button, which is
-the box that holds the border.
+rounds the group's own shadow, and loses its two child selectors. The two
+`_button` descendant selectors are not in that constant — `ButtonGroup`
+composes them into its own `Div` — and they go with it. A `method="post"`
+member renders a form around a button, and the shape now rides on that
+button, which is the box that holds the border. The form carries no
+border, no background and no shadow, and the group clips nothing, so
+nothing rounds the form any more and nothing needs to.
+
+`PageTabs` has to move in the same change, not after it. Its tabs take
+every corner they have from those selectors, so removing them alone
+ships square tabs.
 
 ## The split button
 
@@ -93,6 +108,30 @@ Both carets take `shape="end"`. The filled one drops `rounded-s-none`,
 because a shape replaces the rounding rather than overriding it. Both
 primaries take `shape="start"`: the Played N times button on Game detail
 and the navbar's Log game button.
+
+## The calendar keeps subtracting
+
+The date range picker paints its day cells client-side from a class
+string the codegen publishes, and it squares the joined edges of a
+selected run by pushing `rounded-none`, `rounded-e-none` and
+`rounded-s-none` onto that string. It keeps doing so. A range is defined
+by data and not by position in the DOM: it wraps across week rows, so the
+run's ends are not the grid's ends, and a shape the server picks cannot
+state them.
+
+The comment above that code argues against this change in two sentences
+that stop being true, and both are rewritten here. One states that a
+group member cannot know its own position, which a loop that counts its
+members disproves. The other states that removing one override is not
+worth a parameter on a shared primitive, which was true when the calendar
+was the only caller asking and is false for ten. The conclusion survives
+its premises: the calendar subtracts, because the grid cannot say where a
+range ends.
+
+Two more comments state the old rule and go: the `ControlButton`
+docstring telling callers to add rounding by shape, and the
+`SplitButtonDropdown` docstring explaining which corners a filled caret
+must zero.
 
 ## What this fixes on screen
 
@@ -128,8 +167,10 @@ away.
 
 Every other caller of `control_button_class()` — the date picker's day
 cells, the year picker's cells, the toast's action — names its arguments
-by keyword and takes the `full` default, so its class string does not
-change.
+by keyword and takes the `full` default, so the classes it emits are the
+same set. The order moves: `rounded-base` leaves the middle of a variant
+string and joins at the end. Nothing compares those strings by substring,
+and the generated TypeScript that holds them is built, not committed.
 
 ## Tests
 
@@ -141,3 +182,17 @@ It also states a group of one, two and three members: the single member
 rounds both ends, the first rounds the start, the middle rounds nothing,
 the last rounds the end. A `method="post"` member states its shape on the
 button inside its form. `PageTabs` states the same shapes.
+
+Three tests hold the old rule.
+
+`tests/test_rendered_pages.py` states `rounded-s-lg` for the Played N
+times button and states `rounded-s-base` instead.
+
+`tests/test_components.py` builds an outline button with a caller class
+of `rounded-e-lg` and states that the class survives. It still would, but
+the premise is gone: the button now carries a shape as well, and the two
+classes round its two ends differently. The test states `shape="end"`.
+
+`tests/test_quick_filter_bar.py` finds a group by the exact opening of
+its class attribute, so `_GROUP_ENDS_CLASS` keeps `inline-flex
+rounded-base shadow-xs` in that order.
