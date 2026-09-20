@@ -90,6 +90,45 @@ def test_recording_answers_the_new_rows_id(owned_user, owned_library, game):
     assert _events(correlation_id) == ["library.playersession.created"]
 
 
+def test_record_session_absorbs_a_repeat_under_one_key(
+    owned_user, owned_library, game
+):
+    run = tracked_run(owned_library, game)
+
+    first = record_session(
+        owned_user, _draft(run), correlation_id=uuid.uuid7(), idempotency_key="k-1"
+    )
+    second = record_session(
+        owned_user, _draft(run), correlation_id=uuid.uuid7(), idempotency_key="k-1"
+    )
+
+    assert first == second
+    assert PlayerSession.objects.filter(playthrough=run).count() == 1
+
+
+def test_record_session_refuses_a_key_that_names_another_statement(
+    owned_user, owned_library, game
+):
+    run = tracked_run(owned_library, game)
+    record_session(
+        owned_user,
+        _draft(run, note="first"),
+        correlation_id=uuid.uuid7(),
+        idempotency_key="k-1",
+    )
+
+    with pytest.raises(CommandFailed) as refusal:
+        record_session(
+            owned_user,
+            _draft(run, note="second"),
+            correlation_id=uuid.uuid7(),
+            idempotency_key="k-1",
+        )
+
+    assert refusal.value.status_code == 409
+    assert PlayerSession.objects.filter(playthrough=run).count() == 1
+
+
 def test_an_edit_from_timed_to_duration_only_records_one_correction(
     owned_user, owned_library, game
 ):

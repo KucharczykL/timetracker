@@ -73,9 +73,16 @@ def _created_id(result: CommandResult) -> uuid.UUID:
 
 
 def record_session(
-    actor: User, draft: SessionDraft, *, correlation_id: uuid.UUID
+    actor: User,
+    draft: SessionDraft,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
 ) -> uuid.UUID:
-    """Record one session on the run the draft names; answer its id."""
+    """Record one session on the run the draft names; answer its id.
+
+    A key the caller states absorbs its own repeat.
+    """
     with answered("session"):
         result = _dispatch(
             CreateSession(
@@ -88,6 +95,7 @@ def record_session(
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
         )
     return _created_id(result)
 
