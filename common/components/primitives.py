@@ -806,7 +806,9 @@ _FILLED_VARIANT_CLASS = (
     f"gap-2 leading-5 focus:outline-hidden focus:ring-4 {CONTROL_SIZE_CLASS}"
 )
 
-_SEGMENTED_VARIANT_CLASS = f"focus:z-10 {CONTROL_SIZE_CLASS}"
+# gap-2 like every other variant: a mark beside a chevron reads as one glyph
+# without it. Existing members carry a bare label, which hid the omission.
+_SEGMENTED_VARIANT_CLASS = f"gap-2 focus:z-10 {CONTROL_SIZE_CLASS}"
 
 # Status-token notes shared by both tables:
 # - danger/success -subtle rings shade-match brand-medium (x-200 light /
@@ -1293,6 +1295,54 @@ def PageTabs(aria_label: NavLabel, tabs: Sequence[PageTab]) -> Node:
     return Nav(aria_label=aria_label, class_="mb-4")[
         Div(class_=_JOINED_ROW_CLASS)[links]
     ]
+
+
+#: A field row, on top of the shell every joined row shares.
+#:
+#: ``items-stretch`` and the height floor are this row's own: a box and a
+#: trigger must meet at one height. The last two rules are adjacency and
+#: stacking rather than appearance, and only the row knows either: each member
+#: after the first pulls back over its predecessor's border so neighbours share
+#: one line, and a positioned member lets a focused one lift out of that
+#: overlap instead of having its ring clipped. No selector here rounds
+#: anything: a member states its own corners.
+SEGMENTED_FIELD_CLASS = (
+    f"{_JOINED_ROW_CLASS} items-stretch min-h-control [&>*+*]:-ms-px [&>*]:relative"
+)
+
+
+#: A member of a joined row, as a function of the shape its place gives it.
+type ShapedMember = Callable[[ButtonShape], Node]
+
+
+def SegmentedField(
+    attrs: AttrsArg | None = None,
+    *,
+    leading: ShapedMember | None = None,
+    field: ShapedMember,
+    trailing: ShapedMember | None = None,
+    **kwargs: object,
+) -> Node:
+    """A field and its joined members, as one control.
+
+    A slot is a function of its shape, not a built node. The row counts and
+    ``shaped`` says which corners each place rounds, so no call site holds an
+    index and no selector reaches into a member to round it. A member that
+    wraps its control — a ``<drop-down>`` around its trigger — hands the shape
+    on to the control, which is the one thing that draws a corner.
+
+    An absent slot costs no markup and leaves its neighbour's shape whole.
+
+    The return is a ``Node``, not an ``Element``: ``Element.__getitem__``
+    replaces children, so ``SegmentedField(field=box)[extra]`` — the htpy
+    form taught everywhere here — would discard every slot in silence.
+    ``Node`` states no ``__getitem__``, so mypy refuses it.
+    """
+    slots = [slot for slot in (leading, field, trailing) if slot is not None]
+    members = [slot(shape) for shape, slot in shaped(slots)]
+    baked: list[HTMLAttribute] = [("class", SEGMENTED_FIELD_CLASS)]
+    row_attrs = baked + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
+    return Element("div", row_attrs, members)
 
 
 def Input(

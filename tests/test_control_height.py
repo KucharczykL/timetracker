@@ -9,7 +9,11 @@ from pathlib import Path
 
 from common.components import render
 from common.components.filters import _NUMBER_FILTER_INPUT_CLASS
-from common.components.primitives import CONTROL_SIZE_CLASS, ControlButton
+from common.components.primitives import (
+    CONTROL_SIZE_CLASS,
+    SEGMENTED_FIELD_CLASS,
+    ControlButton,
+)
 from common.components.search_select import _CONTAINER_CLASS
 from games.forms import INPUT_CLASS, SELECT_CLASS
 
@@ -23,6 +27,7 @@ HEIGHT_BEARING_CONSTANTS = {
     "SELECT_CLASS": SELECT_CLASS,
     "SearchSelect._CONTAINER_CLASS": _CONTAINER_CLASS,
     "_NUMBER_FILTER_INPUT_CLASS": _NUMBER_FILTER_INPUT_CLASS,
+    "SEGMENTED_FIELD_CLASS": SEGMENTED_FIELD_CLASS,
 }
 
 

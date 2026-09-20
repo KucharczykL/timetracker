@@ -62,8 +62,14 @@ elements in `ts/elements/`, pytest, vitest, Playwright.
 **Interfaces — produces:**
 
 ```python
-def SegmentedField(*, leading: Node | None = None, field: Node,
-                   trailing: Node | None = None) -> Node: ...
+def SegmentedField(
+    attrs: AttrsArg | None = None,
+    *,
+    leading: Node | None = None,
+    field: Node,
+    trailing: Node | None = None,
+    **kwargs: object,
+) -> Element: ...
 ```
 
 Renders one flex row that carries the shared shadow and joins its members with
@@ -207,8 +213,9 @@ tests `tests/test_search_field.py`, `ts/elements/filter-widgets.test.ts`.
 **Interfaces — produces:**
 
 ```python
-def SearchField(*, value: str = "", modifier: str = "INCLUDES",
-                mode: FilterMode) -> Node: ...
+def SearchField(
+    *, value: str = "", modifier: str = "INCLUDES", mode: FilterMode
+) -> Node: ...
 ```
 
 The root carries `filter_widget_attributes(["search"], "string")`
