@@ -740,13 +740,27 @@ class TimedIn(Schema):
     ended_at_zone: str | None = None
 
 
+#: What `timedelta` can hold, read off it.
+MAX_DURATION_SECONDS: Final[int] = int(timedelta.max.total_seconds())
+
+#: The seconds one timing statement carries.
+#:
+#: Bounded because `timedelta(seconds=...)` runs before the dispatch,
+#: where an `OverflowError` reaches no answer. The bound is the
+#: type's own range and not zero: the sign is the command's rule,
+#: and it has a sentence for it.
+type DurationSeconds = Annotated[
+    int, Field(ge=-MAX_DURATION_SECONDS, le=MAX_DURATION_SECONDS)
+]
+
+
 class DurationOnlyIn(Schema):
     """A written day and how long it lasted."""
 
     model_config = ConfigDict(extra="forbid")
 
     day: date
-    duration_seconds: int
+    duration_seconds: DurationSeconds
 
 
 class CorrectedIn(Schema):
@@ -756,7 +770,7 @@ class CorrectedIn(Schema):
 
     started_at: datetime
     ended_at: datetime
-    duration_seconds: int
+    duration_seconds: DurationSeconds
     started_at_zone: str | None = None
     ended_at_zone: str | None = None
 
@@ -814,6 +828,7 @@ def _timing_statement(timing: TimingIn, day_zone: str) -> TimingStatement:
 class SessionIn(Schema):
     """One session, stated whole: the run and one timing."""
 
+    #: An unknown key is a mistake, not silence.
     model_config = ConfigDict(extra="forbid")
 
     playthrough_id: UUIDv7
@@ -826,10 +841,12 @@ class SessionIn(Schema):
 def _stated_idempotency_key(header: str | None) -> IdempotencyKey | None:
     """The key the caller states, or none.
 
-    Measured here because `validate_idempotency_key` raises a plain
-    `ValueError` that no answer maps: a blank key would read as a
-    defect. The strip comes first, because a key of spaces alone
-    passes both that check and the column's constraint.
+    Measured here because neither length reaches an answer:
+    `validate_idempotency_key` raises a plain `ValueError` that no
+    answer maps. The strip comes first, and the stripped key is the
+    one claimed: a key of spaces alone passes both that check and
+    the not-empty constraint on either key column, and a trailing
+    space is not a second key.
     """
     if header is None:
         return None
@@ -849,8 +866,8 @@ def create_session(
     payload: SessionIn,
     idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
 ):
-    library = cast(User, request.user).library
     actor = cast(User, request.user)
+    library = actor.library
     stated_key = _stated_idempotency_key(idempotency_key)
     _library_run_or_404(library, payload.playthrough_id)
     _library_device_or_404(library, payload.device_id)
@@ -871,8 +888,12 @@ def create_session(
         )
     except CommandFailed as failure:
         _answered_or_http(failure)
+    #: Read before the message: a repeat under the key of a session
+    #: since removed answers no row, and a toast queued ahead of
+    #: that read would say the opposite of the status.
+    recorded = owned_or_404(readable_sessions(library), library, pk=session_id)
     messages.success(request, "Session recorded.")
-    return Status(201, readable_sessions(library).get(pk=session_id))
+    return Status(201, recorded)
 
 
 @session_router.patch("/{session_id}", response={200: SessionOut})

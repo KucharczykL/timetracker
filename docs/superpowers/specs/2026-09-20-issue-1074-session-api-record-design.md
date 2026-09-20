@@ -21,6 +21,10 @@ validation refuses an unknown key in the body and in the timing.
 The day zone is not a key. The library states it, and the route reads it with
 `calendar_day_zone`.
 
+`duration_seconds` is bounded by what a `timedelta` holds, because the
+conversion runs before the dispatch, where no answer maps an `OverflowError`.
+The sign is not bounded: the command has a sentence for it.
+
 ## The two identifiers
 
 The route resolves the run and the device before it dispatches. Each resolution
@@ -34,17 +38,17 @@ which alone can say what to state instead.
 The device scope is narrower, because `for_library` calls `alive()`: a removed
 device is absent to the API. The route keeps the asymmetry of its neighbours.
 
-The command resolves both again under the lock, which alone proves that a row
-is still there.
+The command resolves both again under the lock, which alone proves a row is
+still there.
 
 ## The retry
 
-`record_session` accepts a keyword-only key for the dispatch. The route reads
-the `Idempotency-Key` header, and makes a key when the header is absent.
+`record_session` accepts a keyword-only key for the dispatch, which makes one
+when the caller states none. The route reads the `Idempotency-Key` header.
 
 A second request under the key of the first appends nothing. Its result holds
-the first append's sequence range, thus the route answers the row that the
-first request recorded. A key that belongs to a different body answers 409.
+the first append's range, thus the route answers the row the first request
+recorded. A key that belongs to a different body answers 409.
 
 The route measures the header before it dispatches, because
 `validate_idempotency_key` raises a plain `ValueError` that no answer maps. It
@@ -58,16 +62,13 @@ The route answers 201 and the projection row, as `SessionOut`, thus a client
 knows what it recorded and makes no second request.
 
 The read is `readable_sessions`, which refuses a session under four removal
-marks. No session command reads the mark on the catalog game. Thus a person who
-stops tracking the game between the append and the read receives a defect. The
-correction route holds the same window.
-
-The route queues a message, which the middleware empties on this response:
-every caller is a cookie-authenticated browser.
+marks. A row the marks refuse answers 404: a repeat under the key of a session
+since removed, and the window where the game stops being tracked between the
+append and the read. The read comes first, because a message queued ahead of it
+would state the opposite of the answer.
 
 ## What stays
 
 `PATCH /api/session/{id}` answers 409 for a run that another library holds,
-because its move resolves the run in the command alone. One rule for every
-route is a change to `library_playthrough` and to the callers that catch its
-refusal by class.
+because its move resolves the run in the command alone. One rule for the two
+routes is a change to `library_playthrough`.
