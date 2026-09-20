@@ -1034,24 +1034,20 @@ class ControlButton(BaseComponent):
         _children: Children = None,
         **kwargs: object,
     ) -> None:
-        class_attrs: list[HTMLAttribute] = [
-            (
-                "class",
-                control_button_class(
-                    color=color, variant=variant, align=align, shape=shape
-                ),
-            )
+        self._caller_attributes: list[HTMLAttribute] = [
+            *_coerce_attrs(attrs),
+            *_attrs_from_kwargs(kwargs),
         ]
-        caller_attrs = [*_coerce_attrs(attrs), *_attrs_from_kwargs(kwargs)]
-        for name, value in caller_attrs:
+        for name, value in self._caller_attributes:
             if name == "class":
                 _refuse_a_stated_corner(value)
-        self._merged_attributes: list[HTMLAttribute] = [*class_attrs, *caller_attrs]
-        # `with_shape` rebuilds the class from these; the rendered
-        # string cannot give them back.
+        # Every look-fact is kept, never only the class string it composes to:
+        # `with_shape` restates one of them, and a rendered string cannot be
+        # read back into the facts that produced it.
         self._color = color
         self._variant = variant
         self._align = align
+        self._shape = shape
         self._href = href
         self._method = method
         self._action = action
@@ -1069,6 +1065,28 @@ class ControlButton(BaseComponent):
         clone._children = as_children(children)
         return clone
 
+    @property
+    def _merged_attributes(self) -> list[HTMLAttribute]:
+        """This button's own class, then the caller's attributes.
+
+        Composed rather than stored, so restating a look-fact cannot disturb
+        the caller's attributes: ``normalize_attributes`` ACCUMULATES `class`,
+        so a rebuild that left the old one behind would render two radii and
+        say nothing.
+        """
+        return [
+            (
+                "class",
+                control_button_class(
+                    color=self._color,
+                    variant=self._variant,
+                    align=self._align,
+                    shape=self._shape,
+                ),
+            ),
+            *self._caller_attributes,
+        ]
+
     def with_shape(self, shape: ButtonShape) -> ControlButton:
         """This button, restated with different corners — for a builder
         composing a row out of buttons it did not build.
@@ -1078,19 +1096,7 @@ class ControlButton(BaseComponent):
         clone = ControlButton.__new__(ControlButton)
         clone.__dict__.update(self.__dict__)
         clone.__dict__.pop("_tree_cache", None)
-        # This component's own class is always the first attribute.
-        clone._merged_attributes = [
-            (
-                "class",
-                control_button_class(
-                    color=self._color,
-                    variant=self._variant,
-                    align=self._align,
-                    shape=shape,
-                ),
-            ),
-            *self._merged_attributes[1:],
-        ]
+        clone._shape = shape
         return clone
 
     def as_element(self) -> Element:
