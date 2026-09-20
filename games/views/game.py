@@ -638,7 +638,7 @@ def _game_action_buttons(game: Game, origin: OriginUrl | None) -> Node:
                 },
                 {
                     "href": action_url("games:remove_game", game.id, origin=origin),
-                    "slot": "Delete",
+                    "slot": "Remove",
                     "color": "red",
                 },
             ],
