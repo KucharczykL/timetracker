@@ -232,7 +232,11 @@ the submission token.
    under the library, lists the rows, and renders one `ConfirmPage` naming
    the act, its count, what will be refused (a running session, a bucket, a
    last live run) with the reason, and a fresh token beside the resolved
-   keys.
+   keys. The runner parses an `all` statement's filter itself and refuses
+   one it cannot parse, with a sentence and no act. It does not reuse
+   `apply_structured_filter`, which drops an invalid filter and renders
+   the list unfiltered: harmless on a list page, and on a bulk act the
+   scope widened to every row.
 2. **Act.** A POST with a token dispatches the action's per-row command
    through the row's `games/writes/` wrapper, under `answered()`, one
    transaction per row as every dispatch is, each row's idempotency key
@@ -255,8 +259,12 @@ press after one, the rows already done stay done because each committed on
 its own, and the toast says how many. The progress page does not follow a
 defect.
 
-The confirmation and the progress page are one route each, classified
-`CONFIRMATION` in `games/views/returns.py`; the batch Undo is `IN_PLACE`.
+The runner's route and the batch Undo's are classified `ORIGIN_AWARE` in
+`games/views/returns.py`, as `reclassify_reviewed_sessions` and every
+restore route are: each is a POST that acts and then redirects to the
+origin it carried. `CONFIRMATION` stays the GET-only bucket, and
+`IN_PLACE` the partial swap that leaves the person where they are;
+neither describes a route that acts on POST and leaves the page.
 An overlay either page closes on Escape marks the press spent, as the
 menus, tooltip, date pickers and toast stack do, because the selectable
 table decides its own Escape in the task after the press.
@@ -276,10 +284,13 @@ row's restore command; move → `MoveSessionToPlaythrough` back to the run
 the session named before the batch. The move event carries its target only,
 and the run before is the target of the session's latest earlier `moved`
 event, or of its `created` payload. Reading that is new: nothing today reads
-events by aggregate, and `aggregate_id` is unindexed. #713 adds one reader,
-`aggregate_events(library, aggregate_id)`, and one migration with two
-indexes, `(library, correlation_id)` and `(library, aggregate_id)`. The
-event's shape does not change and no column is added to the row.
+events by aggregate, and `aggregate_id` is unindexed. #713 adds one
+migration with two indexes, `(library, correlation_id)` and
+`(library, aggregate_id)`, and the one reader its own Undo calls, the
+batch's events by `(library, correlation_id)`. The aggregate reader,
+`aggregate_events(library, aggregate_id)`, lands in #714 beside the move
+inverse, the only caller it has, so #713 merges no reader nothing runs.
+The event's shape does not change and no column is added to the row.
 
 The Undo is offered on the act's toast, as every removal's is (#695), through
 `UndoOffer`, whose route takes the correlation id. The removal helper's
@@ -387,7 +398,7 @@ judged.
    below `md`. Proven on a synthetic e2e page; nothing on `main` uses it
    yet. Absorbs #716.
 2. **#713** TABLE-03 — the runner: `BulkAction`, the confirmation and
-   progress pages, token and chunks, the two indexes and the aggregate
+   progress pages, token and chunks, the two indexes and the batch
    reader, batch Undo with the partial report; the reclassification rebuilt
    on it, reached from today's Library button. Closes #1125 and #1123.
 3. **#712** TABLE-02 — the selection line's actions slot and bulk Remove on
@@ -395,7 +406,7 @@ judged.
    Library page keeps its count.
 4. **#714** ORG-01 — bulk move: the confirmation with `<playthrough-select>`
    and the new-run field, the bucket removed when emptied, cross-game
-   selections refused.
+   selections refused, the aggregate reader beside the move inverse.
 5. **#715** ORG-02 — the organizer: the Playthrough column and sort on the
    session list, Game detail's "Organize" link, the mobile cell verified on
    the list. Absorbs #716.
@@ -484,7 +495,10 @@ all-matching control without a paginator; the sticky line needs the shell
 to clip rather than hide, verified in a browser. Changed by #711's review
 against the rendered table: a selection outlives the page as a stored
 statement, two Select toggles bracket the table, every checkbox is built
-at connect, and the version stamp left the fixed corner.
+at connect, and the version stamp left the fixed corner. Corrected by
+#713's planning against the route table: the runner and the batch Undo are
+`ORIGIN_AWARE`, the aggregate reader moved to #714 with its one caller, and
+the runner refuses a filter it cannot parse rather than acting unfiltered.
 
 Deviations recorded: the empty bucket is removed, not archived; Finish stays
 inline as an immediate control; a cross-game move is refused rather than
