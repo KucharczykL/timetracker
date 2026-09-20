@@ -554,6 +554,17 @@ class ResponsiveTableProps(TypedDict):
 register_element("responsive-table", "ResponsiveTable", ResponsiveTableProps)
 
 
+# Built in games/views/bulk_pages.py; behavior in
+# ts/elements/continuing-batch.ts. The form it posts is its child and the
+# batch's state rides that form's hidden fields, so it states no props;
+# registration here is codegen-only.
+class ContinuingBatchProps(TypedDict):
+    pass
+
+
+register_element("continuing-batch", "ContinuingBatch", ContinuingBatchProps)
+
+
 # Built in primitives.py; behavior in ts/elements/selectable-table.ts.
 class SelectableTableProps(TypedDict):
     # The list's filter JSON, for the wider scope.

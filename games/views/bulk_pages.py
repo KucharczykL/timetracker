@@ -13,9 +13,18 @@ from common.components import (
     P,
     Ul,
 )
-from common.components.core import Element, Node, Safe
-from common.components.primitives import Column, Input, StyledTable, make_row
+from common.components.core import Node, Safe
+from common.components.primitives import (
+    Column,
+    Input,
+    StyledTable,
+    custom_element_builder,
+    make_row,
+)
 from games.bulk_actions import BulkAction, Refused
+
+#: Carries its own script, so the waypoint needs no `scripts=`.
+_ContinuingBatch = custom_element_builder("continuing-batch")
 
 
 def _reasons(refused: Sequence[Refused]) -> list[str]:
@@ -122,7 +131,7 @@ def ProgressBatch(
     scripting the element around the form continues by itself, so the
     Continue press is what a reader without it uses.
     """
-    return Element("continuing-batch")[
+    return _ContinuingBatch()[
         Div(class_="mx-auto w-full max-w-xl p-5 @container")[
             P(class_="text-type-heading text-heading mb-2")[action.title],
             P(class_="text-type-body text-body mb-4")[
