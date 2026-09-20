@@ -419,8 +419,11 @@ judged.
    reclassification rebuilt on it, reached from today's Library button.
    Closes #1125 and #1123.
 3. **#712** TABLE-02 — the selection line's actions slot and bulk Remove on
-   the four tables; the reclassification moves into the line and the
-   Library page keeps its count. The confirmation's row renderer becomes
+   the four tables and on the Playthrough list, which shares the run
+   builder and its act and is the run table with a paginator; `many`
+   actions only, the `one` link path landing with #718's actions; the
+   reclassification moves into the line and the Library page keeps its
+   count. The confirmation's row renderer becomes
    the act's and `BulkAction` generic over its row type, because
    `_sample` in `games/views/bulk_pages.py` renders session columns only,
    so no act on runs, records or platforms ships before it.
@@ -532,6 +535,9 @@ aggregate its inverse takes. Recorded after #713 merged: a chunk is about
 300 reclassification rows at 9.1 ms a row; the row renderer and
 `BulkAction`'s row type are #712's; #714 writes the aggregate reader over
 an index that exists and judges the confirmation's cap and columns.
+Settled by #712's planning: the Playthrough list is selectable beside the
+four tables, `one` actions render first in #718, and the confirmation's
+rows are a columns spec the act declares.
 
 Deviations recorded: the empty bucket is removed, not archived; Finish stays
 inline as an immediate control; a cross-game move is refused rather than
