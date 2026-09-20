@@ -86,7 +86,13 @@ from games.sorting import (
 )
 from games.writes.answers import CommandFailed, answered
 from games.writes.playergame import new_correlation_id, record_facts
-from games.writes.playersession import correct_session, describe_session, move_session
+from games.writes.playersession import (
+    SessionDraft,
+    correct_session,
+    describe_session,
+    move_session,
+    record_session,
+)
 from games.writes.playthrough import RunDraft, record_run, remove_run, restate_run
 from timetracker.config import SettingSource
 from timetracker.settings_commands import (
@@ -788,6 +794,51 @@ def _timing_statement(timing: TimingIn, day_zone: str) -> TimingStatement:
             )
         case _:
             assert_never(timing)
+
+
+class SessionIn(Schema):
+    """One session, stated whole.
+
+    The run is named, never derived from a game, and the timing is one
+    whole statement of the union the correction takes. A key the body
+    does not know is refused, so a stale spelling cannot pass unread.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    playthrough_id: UUIDv7
+    timing: TimingIn
+    device_id: UUIDv7 | None = None
+    note: str = ""
+    emulated: bool = False
+
+
+@session_router.post("/", response={201: SessionOut})
+def create_session(request, payload: SessionIn):
+    library = cast(User, request.user).library
+    actor = cast(User, request.user)
+    owned_or_404(
+        Playthrough.objects.filter(library=library), library, id=payload.playthrough_id
+    )
+    _library_device_or_404(library, payload.device_id)
+    try:
+        session_id = record_session(
+            actor,
+            SessionDraft(
+                playthrough_id=payload.playthrough_id,
+                timing=_timing_statement(
+                    payload.timing, calendar_day_zone(library).key
+                ),
+                device_id=payload.device_id,
+                note=payload.note,
+                emulated=payload.emulated,
+            ),
+            correlation_id=new_correlation_id(),
+        )
+    except CommandFailed as failure:
+        _answered_or_http(failure)
+    messages.success(request, "Session recorded.")
+    return Status(201, readable_sessions(library).get(pk=session_id))
 
 
 @session_router.patch("/{session_id}", response={200: SessionOut})

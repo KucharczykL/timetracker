@@ -90,9 +90,7 @@ def test_recording_answers_the_new_rows_id(owned_user, owned_library, game):
     assert _events(correlation_id) == ["library.playersession.created"]
 
 
-def test_record_session_absorbs_a_repeat_under_one_key(
-    owned_user, owned_library, game
-):
+def test_record_session_absorbs_a_repeat_under_one_key(owned_user, owned_library, game):
     run = tracked_run(owned_library, game)
 
     first = record_session(

@@ -583,6 +583,136 @@ def test_session_patch_requires_auth():
     assert response.status_code == 401
 
 
+# ── POST /api/session/ — record a session (#1074) ────────────────────────────
+
+
+def _post_session(client, body, **extra):
+    return client.post(
+        "/api/session/",
+        data=json.dumps(body),
+        content_type="application/json",
+        **extra,
+    )
+
+
+def _tracked_run(name="Hades"):
+    """This library's ordinary run at a game of its own."""
+    platform, _ = Platform.objects.get_or_create(name="PC")
+    return tracked_run(_test_library(), _owned_game(name=name, platform=platform))
+
+
+#: Every POST dispatches, which opens its own transaction.
+@pytest.mark.django_db(transaction=True)
+def test_post_session_records_a_timed_session(auth_client, user):
+    _prague_calendar(user)
+    run = _tracked_run()
+
+    response = _post_session(
+        auth_client,
+        {
+            "playthrough_id": str(run.pk),
+            "timing": {"started_at": "2026-06-24T18:00:00Z"},
+        },
+    )
+
+    assert response.status_code == 201, response.content
+    body = response.json()
+    row = PlayerSession.objects.get(pk=body["id"])
+    assert row.playthrough_id == run.pk
+    assert body["timing_mode"] == "timed"
+    assert body["day"] == row.effective_day.isoformat()
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "timing,mode,duration_seconds",
+    [
+        ({"day": "2026-06-25", "duration_seconds": 2700}, "duration_only", 2700),
+        (
+            {
+                "started_at": "2026-06-24T18:00:00Z",
+                "ended_at": "2026-06-24T19:00:00Z",
+                "duration_seconds": 5400,
+            },
+            "corrected",
+            5400,
+        ),
+    ],
+)
+def test_post_session_records_each_timing_shape(
+    auth_client, user, timing, mode, duration_seconds
+):
+    _prague_calendar(user)
+    run = _tracked_run()
+
+    response = _post_session(
+        auth_client, {"playthrough_id": str(run.pk), "timing": timing}
+    )
+
+    assert response.status_code == 201, response.content
+    body = response.json()
+    assert body["timing_mode"] == mode
+    assert body["duration_seconds"] == duration_seconds
+
+
+@pytest.mark.django_db(transaction=True)
+def test_post_session_records_the_described_facts(auth_client, user):
+    _prague_calendar(user)
+    run = _tracked_run()
+    device = _owned_device(name="Deck", type="h")
+
+    response = _post_session(
+        auth_client,
+        {
+            "playthrough_id": str(run.pk),
+            "timing": {"started_at": "2026-06-24T18:00:00Z"},
+            "device_id": str(device.pk),
+            "note": "one sitting",
+            "emulated": True,
+        },
+    )
+
+    assert response.status_code == 201, response.content
+    body = response.json()
+    assert body["note"] == "one sitting"
+    assert body["emulated"] is True
+    assert body["device"]["id"] == str(device.pk)
+    row = PlayerSession.objects.get(pk=body["id"])
+    assert row.device_id == device.pk
+    assert row.note == "one sitting"
+    assert row.emulated is True
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize(
+    "stale",
+    [
+        {"timing": {"started_at": "2026-06-24T18:00:00Z"}, "timestamp_end": "x"},
+        {"timing": {"started_at": "2026-06-24T18:00:00Z", "end": "x"}},
+    ],
+)
+def test_post_session_refuses_a_key_it_does_not_know(auth_client, user, stale):
+    _prague_calendar(user)
+    run = _tracked_run()
+
+    response = _post_session(auth_client, {"playthrough_id": str(run.pk), **stale})
+
+    assert response.status_code == 422
+    assert not PlayerSession.objects.filter(playthrough=run).exists()
+
+
+def test_post_session_requires_auth():
+    run = _tracked_run()
+    response = _post_session(
+        Client(),
+        {
+            "playthrough_id": str(run.pk),
+            "timing": {"started_at": "2026-06-24T18:00:00Z"},
+        },
+    )
+    assert response.status_code == 401
+
+
 # ── PATCH /api/session/{id}/device — nullable device (#290) ──────────────────
 
 

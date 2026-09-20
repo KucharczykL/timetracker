@@ -122,7 +122,7 @@
 - No migration, no codegen, no `.ts`.
 
 **Gotchas:**
-- `make vale` reads docs *and* code comments; keep the refused words out (no "delete", no "fold").
+- `make vale` reads docs *and* code comments; keep the refused words out. `docs/vocabulary.md` lists them.
 - Docs-only edits still go through `make vale`; the full gate runs once at the end of this task.
 
 - [ ] **Step 1: Edit the two documents.**
