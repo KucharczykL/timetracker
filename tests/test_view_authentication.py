@@ -54,6 +54,8 @@ def world(owned_library):
         "platform_id": Platform.objects.create(
             library=owned_library, name="Private"
         ).id,
+        #: A declared act; the guard only needs the route to reverse.
+        "action": "session.reclassify",
         "preset_id": FilterPreset.objects.create(
             library=owned_library, name="Mine", mode="games"
         ).id,

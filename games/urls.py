@@ -2,6 +2,7 @@ from django.conf import settings
 from django.urls import path, register_converter
 
 from games.views import (
+    bulk,
     device,
     game,
     general,
@@ -169,6 +170,11 @@ urlpatterns = [
         "purchase/<uuidv7:purchase_id>/split",
         purchase.split_purchase,
         name="split_purchase",
+    ),
+    path(
+        "bulk/<str:action>/",
+        bulk.run_bulk_action,
+        name="run_bulk_action",
     ),
     path("session/add", session.add_session, name="add_session"),
     path(
