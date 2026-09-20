@@ -3260,47 +3260,58 @@ def days_touched_handler(lower_field: str, upper_field: str) -> FieldHandler:
     return handler
 
 
-#: What each match mode reads in one column, and whether the disjunction it
-#: builds is then negated. The lookup is the positive form of the mode: a
-#: negative mode builds the same OR and negates it whole, because "excludes
-#: Zelda" means no column holds it, not that each column separately does not.
+class SearchLookup(NamedTuple):
+    """One mode's ORM lookup, and whether its disjunction is negated."""
+
+    lookup: ORMLookup
+    negated: bool
+
+
+#: The lookup each match mode reads, keyed by the mode.
 #:
-#: The exact pair reads case-insensitively. Every other mode ignores case, and a
-#: field that matches "zelda" for includes and refuses it for is reads as
-#: broken. This is the one place the reader does not take the criterion's own
-#: lookup.
-_SEARCH_LOOKUPS: dict[Modifier, tuple[str, bool]] = {
-    Modifier.INCLUDES: ("icontains", False),
-    Modifier.EXCLUDES: ("icontains", True),
-    Modifier.EQUALS: ("iexact", False),
-    Modifier.NOT_EQUALS: ("iexact", True),
-    Modifier.MATCHES_REGEX: ("regex", False),
-    Modifier.NOT_MATCHES_REGEX: ("regex", True),
+#: A negative mode builds its positive partner's OR and negates the whole of
+#: it, because "excludes Zelda" means no column holds it. The exact pair alone
+#: departs from ``StringCriterion.to_q``, which compiles EQUALS to a
+#: case-sensitive ``exact``: a field that matches "zelda" for includes and
+#: refuses it for is reads as broken. The regex pair keeps ``to_q``'s
+#: case-sensitive ``regex``.
+SEARCH_LOOKUPS: dict[Modifier, SearchLookup] = {
+    Modifier.INCLUDES: SearchLookup("icontains", False),
+    Modifier.EXCLUDES: SearchLookup("icontains", True),
+    Modifier.EQUALS: SearchLookup("iexact", False),
+    Modifier.NOT_EQUALS: SearchLookup("iexact", True),
+    Modifier.MATCHES_REGEX: SearchLookup("regex", False),
+    Modifier.NOT_MATCHES_REGEX: SearchLookup("regex", True),
 }
 
 
 def search_q(criterion: StringCriterion, *field_names: str) -> Q:
     """Free-text OR across several columns, in the mode the criterion states.
 
-    An empty value contributes no constraint, whatever the mode. Otherwise each
-    column is OR'd under the mode's lookup and a negative mode negates the whole
-    disjunction. ``field_names`` must be non-empty.
+    Each column is OR'd under the mode's lookup and a negative mode negates the
+    whole disjunction. An empty value contributes no constraint.
+    ``field_names`` must be non-empty.
 
-    ``IS_NULL`` and ``NOT_NULL`` are refused: ``search`` reads several columns at
-    once, and "is null" across an OR of them states nothing a person could mean.
-    A mode outside the six reaches here only from a stored filter, and is
-    answered as the filter error it is rather than silently as a substring match.
+    ``IS_NULL`` and ``NOT_NULL`` are refused: ``search`` reads several columns
+    at once, and "is null" across an OR of them states nothing a person could
+    mean.
+
+    The mode is read before the value, because a presence modifier carries no
+    value: checking the value first would answer every refused mode as "no
+    constraint" and never reach this refusal at all.
     """
+    entry = SEARCH_LOOKUPS.get(criterion.modifier)
+    if entry is None:
+        raise FilterError(
+            f"A search cannot state {criterion.modifier.value}. State one of: "
+            + ", ".join(modifier.value for modifier in SEARCH_LOOKUPS)
+        )
     if not criterion.value:
         return Q()
-    entry = _SEARCH_LOOKUPS.get(criterion.modifier)
-    if entry is None:
-        raise FilterError(f"Unsupported modifier {criterion.modifier} for a search")
-    lookup, negated = entry
-    combined = Q(**{f"{field_names[0]}__{lookup}": criterion.value})
+    combined = Q(**{f"{field_names[0]}__{entry.lookup}": criterion.value})
     for field_name in field_names[1:]:
-        combined |= Q(**{f"{field_name}__{lookup}": criterion.value})
-    return ~combined if negated else combined
+        combined |= Q(**{f"{field_name}__{entry.lookup}": criterion.value})
+    return ~combined if entry.negated else combined
 
 
 # The related/parent model is the concrete Django model the filter targets.

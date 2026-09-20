@@ -21,6 +21,7 @@ from common.criteria import (
     MAX_FILTER_DEPTH,
     MAX_REGEX_PATTERN_LENGTH,
     MAX_SET_VALUES,
+    SEARCH_LOOKUPS,
     AggregateCriterion,
     BoolCriterion,
     ChoiceCriterion,
@@ -5401,7 +5402,7 @@ class TestFilterFieldHandlers:
 
 
 class TestSearchQHelper:
-    """search_q: empty short-circuit, multi-column OR, EXCLUDES negation."""
+    """search_q: one lookup per mode, negation, refusals, empty value."""
 
     def test_empty_value_no_constraint(self):
         assert search_q(StringCriterion(value=""), "name", "note") == Q()
@@ -5449,11 +5450,6 @@ class TestSearchQHelper:
             StringCriterion(value="^x", modifier=Modifier.NOT_MATCHES_REGEX), "a", "b"
         ) == ~(Q(a__regex="^x") | Q(b__regex="^x"))
 
-    def test_includes_keeps_todays_answer(self):
-        assert search_q(
-            StringCriterion(value="x", modifier=Modifier.INCLUDES), "a", "b"
-        ) == (Q(a__icontains="x") | Q(b__icontains="x"))
-
     @pytest.mark.parametrize(
         "modifier",
         [
@@ -5468,20 +5464,37 @@ class TestSearchQHelper:
     def test_an_empty_value_states_no_constraint_in_every_mode(self, modifier):
         assert search_q(StringCriterion(value="", modifier=modifier), "a", "b") == Q()
 
-    def test_is_null_is_refused(self):
-        # search reads several columns at once, and "is null" across an OR of
-        # them states nothing a person could mean. A stored filter is the only
-        # way one reaches here, and it is answered as the filter error it is
-        # rather than silently as a substring match.
+    @pytest.mark.parametrize("value", ["", "x"])
+    def test_is_null_is_refused(self, value):
+        # The empty value is the shape a person produces: a presence modifier
+        # carries none, so a value-first guard would answer "no constraint"
+        # and never reach the refusal.
         for modifier in (Modifier.IS_NULL, Modifier.NOT_NULL):
             with pytest.raises(FilterError):
-                search_q(StringCriterion(value="x", modifier=modifier), "a", "b")
+                search_q(StringCriterion(value=value, modifier=modifier), "a", "b")
 
-    def test_a_modifier_no_string_states_is_refused(self):
+    @pytest.mark.parametrize("value", ["", "x"])
+    def test_a_modifier_no_string_states_is_refused(self, value):
         with pytest.raises(FilterError):
             search_q(
-                StringCriterion(value="x", modifier=Modifier.GREATER_THAN), "a", "b"
+                StringCriterion(value=value, modifier=Modifier.GREATER_THAN), "a", "b"
             )
+
+    def test_the_refusal_names_the_modes_a_search_can_state(self):
+        with pytest.raises(FilterError, match="INCLUDES"):
+            search_q(StringCriterion(value="x", modifier=Modifier.IS_NULL), "a")
+
+    def test_a_criterion_that_states_no_mode_reads_as_exact(self):
+        # StringCriterion defaults to EQUALS and to_json drops a default, so
+        # {"search": {"value": "x"}} is the shape a stored exact search takes.
+        assert search_q(StringCriterion(value="x"), "a", "b") == (
+            Q(a__iexact="x") | Q(b__iexact="x")
+        )
+
+    def test_the_regex_pair_keeps_to_q_case_sensitive_lookup(self):
+        # Only the exact pair departs from StringCriterion.to_q.
+        assert SEARCH_LOOKUPS[Modifier.MATCHES_REGEX].lookup == "regex"
+        assert SEARCH_LOOKUPS[Modifier.EQUALS].lookup == "iexact"
 
     @pytest.mark.django_db
     def test_a_pattern_postgresql_refuses_raises_at_parse(self):
