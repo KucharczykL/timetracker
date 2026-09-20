@@ -95,7 +95,8 @@ def _copy_button(source: TemporalCopySource) -> Node:
         disabled=True,
         data_temporal_copy=source.field_name,
         title=f"Fill {source.label.removeprefix('Use ')} first",
-        class_="self-start",
+        # Outline bakes no shape; a standalone one states its own.
+        class_="self-start rounded-base",
     )[source.label]
 
 
