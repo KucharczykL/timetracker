@@ -18,6 +18,7 @@ import {
   bindSegmentField,
   readSideParts,
   segmentBuffer,
+  segmentSpec,
   segmentsForSide,
   setSegmentBuffer,
   type PartValues,
@@ -329,14 +330,123 @@ function setExpanded(host: HTMLElement, expanded: boolean): void {
   paintDisclosure(host);
 }
 
-function initField(host: HTMLElement): void {
+/** The thirteen posted inputs, which together are the whole value. */
+const DRAFT_KEYS = [
+  "kind",
+  "start_year",
+  "start_month",
+  "start_day",
+  "start_decade",
+  "start_approximate",
+  "start_uncertain",
+  "end_year",
+  "end_month",
+  "end_day",
+  "end_decade",
+  "end_approximate",
+  "end_uncertain",
+] as const;
+
+type DraftKey = (typeof DRAFT_KEYS)[number];
+
+export type TemporalDraft = Record<DraftKey, string>;
+
+/** A box states itself; every other control states its value. */
+function draftValue(control: HTMLInputElement | HTMLSelectElement | null): string {
+  if (!control) return "";
+  if (control instanceof HTMLInputElement && control.type === "checkbox") {
+    return control.checked ? "on" : "";
+  }
+  return control.value;
+}
+
+export function readDraft(host: HTMLElement): TemporalDraft {
+  const draft = {} as TemporalDraft;
+  DRAFT_KEYS.forEach((key) => {
+    draft[key] = draftValue(namedInput(host, key));
+  });
+  return draft;
+}
+
+function draftPart(draft: TemporalDraft, endpoint: Endpoint, part: string): string {
+  return draft[`${endpoint}_${part}` as DraftKey] ?? "";
+}
+
+/** Digits right-aligned in one segment's width, as the server pads them. */
+function paddedDigits(text: string, width: number): string {
+  const stripped = text.trim();
+  return /^\d+$/.test(stripped) ? stripped.padStart(width, "0") : "";
+}
+
+/** One end takes the parts, the qualifiers and the decade a draft states. */
+function adoptEndpoint(
+  host: HTMLElement,
+  draft: TemporalDraft,
+  endpoint: Endpoint,
+): void {
+  const whole = draftPart(draft, endpoint, "decade") !== "";
+  const parts: Record<string, string> = {
+    year: whole
+      ? draftPart(draft, endpoint, "decade")
+      : draftPart(draft, endpoint, "year"),
+    month: whole ? "" : draftPart(draft, endpoint, "month"),
+    day: whole ? "" : draftPart(draft, endpoint, "day"),
+  };
+  segmentsForSide(host, endpoint).forEach((segment) => {
+    const width = segmentSpec(segment)?.width ?? 0;
+    setSegmentBuffer(segment, paddedDigits(parts[segment.dataset.datePart ?? ""] ?? "", width));
+  });
+  ["approximate", "uncertain"].forEach((qualifier) => {
+    const box = namedInput(host, `${endpoint}_${qualifier}`);
+    if (box instanceof HTMLInputElement) {
+      box.checked = draftPart(draft, endpoint, qualifier) !== "";
+    }
+  });
+  const decadeBox = toggleBox(host, `whole_decade_${endpoint}`);
+  if (decadeBox) decadeBox.checked = whole;
+  paintDecade(host, endpoint, whole);
+}
+
+/**
+ * The state one draft implies, over whatever the field holds now.
+ *
+ * Both the page load and a copy from another field come through here, so
+ * the order below is exercised by every render rather than by the rarer
+ * path alone.
+ */
+export function adoptDraft(host: HTMLElement, draft: TemporalDraft): void {
+  const open = draft.kind === "until";
+  const openStart = toggleBox(host, "open_start");
+  if (openStart) openStart.checked = open;
+  setEndpointOpen(host, "start", open);
+
+  ENDPOINTS.forEach((endpoint) => adoptEndpoint(host, draft, endpoint));
+
+  if (draft.kind === "since") setEndShape(host, "end_open");
+  else if (open || draft.kind === "range" || endpointHasValue(host, "end"))
+    setEndShape(host, "end_date");
+  else setEndShape(host, "end_none");
+  paintEndShape(host);
+  // The server disables the group, so no script posts no answer. Only an
+  // open start takes the choice away again.
+  endShapeBoxes(host).forEach((box) => {
+    box.disabled = open;
+  });
+
+  commitEndpoint(host, "start");
+  setExpanded(host, !canCollapse(host));
+}
+
+function revealSegments(host: HTMLElement): void {
   host.querySelectorAll("[data-temporal-native]").forEach((wrapper) => {
     show(wrapper, false);
   });
   ENDPOINTS.forEach((endpoint) => {
     show(host.querySelector(`[data-temporal-segments="${endpoint}"]`), true);
   });
+}
 
+function bindEngine(host: HTMLElement): void {
   bindSegmentField({
     picker: host,
     field: host.querySelector<HTMLElement>("[data-temporal-field]")!,
@@ -346,56 +456,52 @@ function initField(host: HTMLElement): void {
     },
     codec: temporalCodec,
   });
+}
 
-  // The server renders the scratch input empty beside filled segments, so
-  // clearing the only filled one would encode "" over "" and commit nothing.
-  ENDPOINTS.forEach((endpoint) => syncScratch(host, endpoint));
+function paintEndShape(host: HTMLElement): void {
+  // Only a date at the end needs the fields for one.
+  show(host.querySelector("[data-temporal-end-group]"), endShape(host) === "end_date");
+}
 
-  function paintEndShape(): void {
-    // Only a date at the end needs the fields for one.
-    show(host.querySelector("[data-temporal-end-group]"), endShape(host) === "end_date");
-  }
+function syncEndShape(host: HTMLElement): void {
+  if (endShape(host) !== "end_date") clearEndpoint(host, "end");
+  paintEndShape(host);
+  commitEndpoint(host, "end");
+}
 
-  function syncEndShape(): void {
-    if (endShape(host) !== "end_date") clearEndpoint(host, "end");
-    paintEndShape();
-    commitEndpoint(host, "end");
-  }
-
-  // The server disables them, so no script posts no answer.
-  endShapeBoxes(host).forEach((box) => {
-    box.disabled = false;
-    box.addEventListener("change", syncEndShape);
-  });
-
-  ENDPOINTS.forEach((endpoint) => {
-    const box = toggleBox(host, `whole_decade_${endpoint}`);
-    box?.addEventListener("change", () => {
-      const whole = isToggled(host, `whole_decade_${endpoint}`);
-      const yearSegment = yearSegmentFor(host, endpoint);
-      if (yearSegment) {
-        if (whole) rememberYear(host, endpoint, segmentBuffer(yearSegment));
-        else {
-          // Give back the year the snap took, never a year typed since.
-          const remembered = typedYears.get(host)?.[endpoint] ?? "";
-          if (segmentBuffer(yearSegment) === decadeStart(remembered)) {
-            setSegmentBuffer(yearSegment, remembered);
-          }
+function bindDecadeBox(host: HTMLElement, endpoint: Endpoint): void {
+  const box = toggleBox(host, `whole_decade_${endpoint}`);
+  box?.addEventListener("change", () => {
+    const whole = isToggled(host, `whole_decade_${endpoint}`);
+    const yearSegment = yearSegmentFor(host, endpoint);
+    if (yearSegment) {
+      if (whole) rememberYear(host, endpoint, segmentBuffer(yearSegment));
+      else {
+        // Give back the year the snap took, never a year typed since.
+        const remembered = typedYears.get(host)?.[endpoint] ?? "";
+        if (segmentBuffer(yearSegment) === decadeStart(remembered)) {
+          setSegmentBuffer(yearSegment, remembered);
         }
       }
-      paintDecade(host, endpoint, whole);
-      commitEndpoint(host, endpoint);
-    });
-    paintDecade(host, endpoint, isToggled(host, `whole_decade_${endpoint}`));
+    }
+    paintDecade(host, endpoint, whole);
+    commitEndpoint(host, endpoint);
+  });
+}
+
+function bindControls(host: HTMLElement): void {
+  endShapeBoxes(host).forEach((box) => {
+    box.addEventListener("change", () => syncEndShape(host));
   });
 
-  const openStart = toggleBox(host, "open_start");
-  openStart?.addEventListener("change", () => {
+  ENDPOINTS.forEach((endpoint) => bindDecadeBox(host, endpoint));
+
+  toggleBox(host, "open_start")?.addEventListener("change", () => {
     const open = isToggled(host, "open_start");
     // An until ends on a date. It is the only end it can have.
     if (open) {
       setEndShape(host, "end_date");
-      syncEndShape();
+      syncEndShape(host);
     }
     endShapeBoxes(host).forEach((box) => {
       box.disabled = open;
@@ -404,27 +510,17 @@ function initField(host: HTMLElement): void {
     commitEndpoint(host, "start");
   });
 
-  // The stored shape, before a keystroke derives a new one.
-  const storedKind = namedInput(host, "kind")?.value ?? "";
-  if (storedKind === "since") setEndShape(host, "end_open");
-  else if (storedKind === "until" || endpointHasValue(host, "end"))
-    setEndShape(host, "end_date");
-  else setEndShape(host, "end_none");
-  if (storedKind === "until" && openStart) {
-    openStart.checked = true;
-    endShapeBoxes(host).forEach((box) => {
-      box.disabled = true;
-    });
-    setEndpointOpen(host, "start", true);
-  }
-  paintEndShape();
-
   const disclosure = host.querySelector("[data-temporal-disclosure]");
   disclosure?.addEventListener("click", () => setExpanded(host, !isExpanded(host)));
   // A qualifier box owns no handler, yet it decides the button.
   host.addEventListener("change", () => paintDisclosure(host));
+}
 
-  setExpanded(host, host.getAttribute("expanded") === "true");
+function initField(host: HTMLElement): void {
+  revealSegments(host);
+  bindEngine(host);
+  bindControls(host);
+  adoptDraft(host, readDraft(host));
   // A field nobody has touched announces nothing.
   const region = host.querySelector("[data-temporal-announcement]");
   if (region) region.textContent = "";

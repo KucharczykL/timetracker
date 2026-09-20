@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
-import "./temporal-field.js";
+import { adoptDraft, readDraft } from "./temporal-field.js";
 
 const PARTS = ["year", "month", "day"] as const;
 type PartOrder = readonly string[];
@@ -11,59 +11,109 @@ const ORDERS: PartOrder[] = [
   ["month", "day", "year"],
 ];
 
+type Draft = Record<string, string>;
+
+/** The thirteen posted inputs, empty. */
+const EMPTY_DRAFT: Draft = {
+  kind: "unknown",
+  start_year: "",
+  start_month: "",
+  start_day: "",
+  start_decade: "",
+  start_approximate: "",
+  start_uncertain: "",
+  end_year: "",
+  end_month: "",
+  end_day: "",
+  end_decade: "",
+  end_approximate: "",
+  end_uncertain: "",
+};
+
+/** Digits right-aligned in one segment's width, as the server pads them. */
+function padded(text: string, width: number): string {
+  return /^\d+$/.test(text) ? text.padStart(width, "0") : "";
+}
+
+/**
+ * One endpoint as the server renders it: the named inputs hold the raw
+ * draft text, the segments hold the same digits padded.
+ */
 function endpointMarkup(
   endpoint: string,
-  openToggle = "",
-  storedYear = "",
-  order: PartOrder = PARTS,
+  openToggle: string,
+  draft: Draft,
+  order: PartOrder,
 ): string {
-  const cells = order.map(
-    (part, index) => `
-      <span data-temporal-part="${part}">
-        ${index > 0 ? '<span data-temporal-prefix="">-</span>' : ""}
-        <input data-date-part="${part}" data-date-side="${endpoint}"
-               maxlength="${part === "year" ? 4 : 2}"
-               value="${part === "year" ? storedYear : ""}">
-      </span>`,
-  ).join("");
+  const part = (name: string) => draft[`${endpoint}_${name}`] ?? "";
+  const whole = part("decade") !== "";
+  const buffers: Record<string, string> = {
+    year: padded(whole ? part("decade") : part("year"), 4),
+    month: whole ? "" : padded(part("month"), 2),
+    day: whole ? "" : padded(part("day"), 2),
+  };
+  const shown = order.filter((name) => !whole || name === "year");
+  const cells = order
+    .map((name, index) => {
+      const prefix =
+        index > 0
+          ? `<span data-temporal-prefix=""${name === shown[0] ? " hidden" : ""}>-</span>`
+          : "";
+      return `
+      <span data-temporal-part="${name}"${shown.includes(name) ? "" : " hidden"}>
+        ${prefix}
+        <input data-date-part="${name}" data-date-side="${endpoint}"
+               maxlength="${name === "year" ? 4 : 2}"
+               value="${buffers[name]}">
+      </span>`;
+    })
+    .join("");
+  const box = (key: string) =>
+    `<input type="checkbox" data-temporal-input="${endpoint}_${key}"${
+      part(key) ? " checked" : ""
+    }>`;
   return `
     <fieldset data-temporal-endpoint="${endpoint}">
       <legend data-temporal-extra="">${endpoint}</legend>
       <div data-temporal-native="">
-        <input data-temporal-input="${endpoint}_year" value="">
-        <input data-temporal-input="${endpoint}_month" value="">
-        <input data-temporal-input="${endpoint}_day" value="">
-        <input data-temporal-input="${endpoint}_decade" value="">
+        <input data-temporal-input="${endpoint}_year" value="${part("year")}">
+        <input data-temporal-input="${endpoint}_month" value="${part("month")}">
+        <input data-temporal-input="${endpoint}_day" value="${part("day")}">
+        <input data-temporal-input="${endpoint}_decade" value="${part("decade")}">
       </div>
       <div data-temporal-segments="${endpoint}" hidden>
         <span data-date-field-side="${endpoint}">
           <input type="hidden" data-temporal-scratch="${endpoint}">
           ${cells}
-          <span data-temporal-decade-suffix="" hidden>s</span>
+          <span data-temporal-decade-suffix=""${whole ? "" : " hidden"}>s</span>
         </span>
       </div>
       <div data-temporal-extra="">
-        <input type="checkbox" data-temporal-input="${endpoint}_approximate">
-        <input type="checkbox" data-temporal-input="${endpoint}_uncertain">
+        ${box("approximate")}
+        ${box("uncertain")}
       </div>
       <div data-temporal-extra="" hidden>
-        <input type="checkbox" data-temporal-toggle="whole_decade_${endpoint}">
+        <input type="checkbox" data-temporal-toggle="whole_decade_${endpoint}"${
+          whole ? " checked" : ""
+        }>
         ${openToggle ? `<input type="checkbox" data-temporal-toggle="${openToggle}">` : ""}
       </div>
     </fieldset>`;
 }
 
-function mount(
+function mountDraft(
+  stored: Draft = {},
   expanded = "false",
-  storedEndYear = "",
-  storedKind = "unknown",
   order: PartOrder = PARTS,
-  storedStartYear = "",
+  fieldName = "",
 ): HTMLElement {
+  const draft: Draft = { ...EMPTY_DRAFT, ...stored };
   const kindOption = (value: string, text: string) =>
-    `<option value="${value}"${value === storedKind ? " selected" : ""}>${text}</option>`;
+    `<option value="${value}"${value === draft.kind ? " selected" : ""}>${text}</option>`;
   document.body.innerHTML = `
-    <temporal-field expanded="${expanded}">
+    <temporal-field expanded="${expanded}"${
+      fieldName ? ` field-name="${fieldName}"` : ""
+    }>
       <div data-temporal-field="">
         <div data-temporal-native="">
           <select data-temporal-input="kind">
@@ -74,7 +124,7 @@ function mount(
             ${kindOption("unknown", "Unknown")}
           </select>
         </div>
-        ${endpointMarkup("start", "open_start", storedStartYear, order)}
+        ${endpointMarkup("start", "open_start", draft, order)}
         <fieldset data-temporal-extra="" hidden>
           <legend>After the start date</legend>
           <input type="radio" name="end-shape" value="end_none"
@@ -85,7 +135,7 @@ function mount(
                  data-temporal-toggle="end_open" disabled>
         </fieldset>
         <div data-temporal-end-group="">
-          ${endpointMarkup("end", "", storedEndYear, order)}
+          ${endpointMarkup("end", "", draft, order)}
         </div>
         <div hidden data-temporal-disclosure-row="">
           <button type="button" data-temporal-disclosure="" aria-expanded="false">
@@ -97,6 +147,20 @@ function mount(
       </div>
     </temporal-field>`;
   return document.querySelector("temporal-field")!;
+}
+
+function mount(
+  expanded = "false",
+  storedEndYear = "",
+  storedKind = "unknown",
+  order: PartOrder = PARTS,
+  storedStartYear = "",
+): HTMLElement {
+  return mountDraft(
+    { kind: storedKind, end_year: storedEndYear, start_year: storedStartYear },
+    expanded,
+    order,
+  );
 }
 
 function segment(
@@ -383,7 +447,8 @@ describe("temporal-field", () => {
   });
 
   it("offers no way to close while the extras hold the value", () => {
-    const host = mount("true");
+    const host = mount();
+    toggleDisclosure(host);
 
     check(host, "whole_decade_start");
 
@@ -399,7 +464,8 @@ describe("temporal-field", () => {
   });
 
   it("keeps an end date from being hidden away", () => {
-    const host = mount("true");
+    const host = mount();
+    toggleDisclosure(host);
     pick(host, "end_date");
     type(host, "end", "year", "1986");
 
@@ -409,7 +475,7 @@ describe("temporal-field", () => {
   });
 
   it("opens already expanded when the stored value needs it", () => {
-    const host = mount("true");
+    const host = mountDraft({ kind: "date", start_year: "1997", start_uncertain: "on" });
 
     expect(label(host, "expanded").hasAttribute("hidden")).toBe(false);
     expect(
@@ -667,5 +733,51 @@ describe("temporal-field", () => {
     type(host, "end", "month", "06");
 
     expect(named(host, "kind").value).toBe("until");
+  });
+
+  /** Every shape the server can render back into the control. */
+  const STORED_SHAPES: Array<[string, Draft]> = [
+    ["nothing", {}],
+    ["a day", { kind: "date", start_year: "1997", start_month: "3", start_day: "15" }],
+    ["a year alone", { kind: "date", start_year: "1997" }],
+    ["a year and a month", { kind: "date", start_year: "1997", start_month: "3" }],
+    [
+      "an approximate day",
+      { kind: "date", start_year: "1997", start_month: "3", start_approximate: "on" },
+    ],
+    ["an uncertain year", { kind: "date", start_year: "1997", start_uncertain: "on" }],
+    ["a whole decade", { kind: "date", start_decade: "1990" }],
+    ["a range", { kind: "range", start_year: "1997", end_year: "1999" }],
+    ["a since", { kind: "since", start_year: "1997" }],
+    ["an until", { kind: "until", end_year: "1999" }],
+  ];
+
+  /** What the control writes back: the same draft, padded to the segments. */
+  function normalized(stored: Draft): Draft {
+    const draft: Draft = { ...EMPTY_DRAFT, ...stored };
+    ["start", "end"].forEach((endpoint) => {
+      const whole = draft[`${endpoint}_decade`] !== "";
+      const year = draft[`${endpoint}_year`];
+      draft[`${endpoint}_year`] = whole ? "" : padded(year, 4);
+      draft[`${endpoint}_month`] = whole ? "" : padded(draft[`${endpoint}_month`], 2);
+      draft[`${endpoint}_day`] = whole ? "" : padded(draft[`${endpoint}_day`], 2);
+      draft[`${endpoint}_decade`] = whole ? padded(draft[`${endpoint}_decade`], 4) : "";
+    });
+    return draft;
+  }
+
+  it.each(STORED_SHAPES)("keeps what the server stored: %s", (_name, stored) => {
+    const host = mountDraft(stored, "true");
+
+    expect(readDraft(host)).toEqual(normalized(stored));
+  });
+
+  it.each(STORED_SHAPES)("adopts its own draft unchanged: %s", (_name, stored) => {
+    const host = mountDraft(stored, "true");
+    const before = readDraft(host);
+
+    adoptDraft(host, readDraft(host));
+
+    expect(readDraft(host)).toEqual(before);
   });
 });
