@@ -4,6 +4,7 @@ The Ninja API is covered separately by ``NinjaAPI(auth=django_auth)``
 (games/api.py:52) and is not routed from games/urls.py.
 """
 
+import uuid
 from datetime import UTC, date, datetime
 
 import pytest
@@ -56,6 +57,7 @@ def world(owned_library):
         ).id,
         #: A declared act; the guard only needs the route to reverse.
         "action": "session.reclassify",
+        "correlation_id": uuid.uuid7(),
         "preset_id": FilterPreset.objects.create(
             library=owned_library, name="Mine", mode="games"
         ).id,

@@ -172,6 +172,11 @@ urlpatterns = [
         name="split_purchase",
     ),
     path(
+        "bulk/undo/<uuidv7:correlation_id>/",
+        bulk.undo_bulk_action,
+        name="undo_bulk_action",
+    ),
+    path(
         "bulk/<str:action>/",
         bulk.run_bulk_action,
         name="run_bulk_action",

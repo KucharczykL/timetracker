@@ -81,6 +81,29 @@ def _sample(rows: Sequence[Any], total: int, cap: int) -> Node:
     )
 
 
+def RefusedBatch(
+    *,
+    title: str,
+    sentence: str,
+    post_url: str,
+    csrf_token: str,
+    cancel_url: str,
+) -> Node:
+    """Nothing was done, and here is why.
+
+    It states no act, because the reason may be that there is none left
+    to state. No submit and no token, so the page it draws cannot act.
+    """
+    return ConfirmPage(
+        title=title,
+        message=sentence,
+        post_url=post_url,
+        csrf_token=csrf_token,
+        cancel_url=cancel_url,
+        confirm_label=None,
+    )
+
+
 def ConfirmBatch(
     action: BulkAction,
     *,

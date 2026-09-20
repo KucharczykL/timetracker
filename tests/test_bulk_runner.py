@@ -6,6 +6,8 @@ import uuid
 from datetime import date, timedelta
 
 import pytest
+from django.contrib.messages import get_messages
+from django.contrib.messages.storage.base import Message
 from django.urls import reverse
 from django.utils import timezone
 from session_rows import duration_only_row, tracked_run
@@ -17,6 +19,7 @@ from games.bulk_reclassification import (
     NOT_AVAILABLE,
     REVIEW_THRESHOLD_HOURS,
 )
+from games.commands.session_reclassification import statement_from_session
 from games.models import (
     Game,
     HistoricalPlaytime,
@@ -25,13 +28,17 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
 )
+from games.reads.events import batch_aggregate_ids
 from games.views.bulk import (
     PROGRESS_FIELD,
     STATEMENT_FIELD,
     STOP_FIELD,
     TOKEN_FIELD,
+    UNKNOWN_ACT,
 )
 from games.views.session_reclassification import review_filter
+from games.writes.historical_playtime import restate_historical_playtime
+from games.writes.playersession import reclassify_session
 from timetracker.uuidv7 import parse_uuidv7
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
@@ -418,3 +425,232 @@ def test_stopping_ends_the_batch_where_it_stands(
 
     assert stopped.status_code == 302
     assert HistoricalPlaytime.objects.count() == 1
+
+
+# ── The batch's Undo ─────────────────────────────────────────────────────────
+
+
+def undo_url(token: str) -> str:
+    return reverse("games:undo_bulk_action", args=[token])
+
+
+def toasts(response) -> list[Message]:
+    return list(get_messages(response.wsgi_request))
+
+
+def landed(client, response) -> None:
+    """Follow the answer, so a page reads its toasts and the queue empties.
+
+    The test client follows nothing on its own, and an unread toast is
+    still queued when the next request loads the storage.
+    """
+    assert response.status_code == 302
+    client.get(response["Location"])
+
+
+def actions_of(response) -> list[str]:
+    """The URL each toast's action posts to, for the toasts that carry one."""
+    return [
+        json.loads(message.extra_tags)["action"]["url"]
+        for message in toasts(response)
+        if message.extra_tags
+    ]
+
+
+def test_the_answer_of_a_batch_offers_the_batch_its_undo(
+    client_in, owned_library, game
+):
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+
+    done = act(client_in, confirmation)
+
+    assert actions_of(done) == [undo_url(token)]
+
+
+def test_a_batch_that_did_nothing_offers_no_undo(client_in, owned_library, game):
+    """Nothing to take back, so no press that says there is."""
+    session = a_written_session(owned_library, game, duration=timedelta(hours=1))
+
+    done = act(client_in, confirm(client_in, some(session)))
+
+    assert actions_of(done) == []
+
+
+def test_undoing_a_batch_restores_every_session_and_removes_every_record(
+    client_in, owned_library, game
+):
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(3)
+    ]
+    confirmation = confirm(client_in, some(*sessions))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+
+    undone = client_in.post(undo_url(token), {})
+
+    assert undone.status_code == 302
+    assert PlayerSession.objects.alive().count() == 3
+    assert HistoricalPlaytime.objects.alive().count() == 0
+
+
+def test_a_batch_undo_reads_only_the_aggregate_its_inverse_takes(
+    client_in, owned_library, game
+):
+    """The batch wrote two aggregates; its inverse reads one.
+
+    Each row appends a created record beside the reclassified session,
+    under one correlation. An Undo that handed every aggregate of the
+    batch to a command that reads sessions would refuse a record's key
+    for every row of its own batch.
+    """
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(2)
+    ]
+    confirmation = confirm(client_in, some(*sessions))
+    token = posted(confirmation)[TOKEN_FIELD]
+    landed(client_in, act(client_in, confirmation))
+    batch = uuid.UUID(token)
+    #: The batch really is mixed, or this proves nothing.
+    assert batch_aggregate_ids(owned_library, batch, "historicalplaytime")
+    assert len(batch_aggregate_ids(owned_library, batch, "playersession")) == 2
+
+    undone = client_in.post(undo_url(token), {})
+
+    assert [str(message) for message in toasts(undone)] == ["2 of 2 done."]
+    assert PlayerSession.objects.alive().count() == 2
+
+
+def test_a_record_restated_since_is_named_and_the_rest_are_undone(
+    client_in, owned_user, owned_library, game
+):
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(2)
+    ]
+    confirmation = confirm(client_in, some(*sessions))
+    token = posted(confirmation)[TOKEN_FIELD]
+    landed(client_in, act(client_in, confirmation))
+    moved = HistoricalPlaytime.objects.get(reclassified_from=sessions[0])
+    restate_historical_playtime(
+        owned_user,
+        moved,
+        statement_from_session(sessions[0])._replace(note="Counted again."),
+        correlation_id=uuid.uuid7(),
+    )
+
+    undone = client_in.post(undo_url(token), {})
+
+    assert undone.status_code == 302
+    assert PlayerSession.objects.get(pk=sessions[0].pk).removed_at is not None
+    assert PlayerSession.objects.get(pk=sessions[1].pk).removed_at is None
+    assert any("1 of 2 done" in str(message) for message in toasts(undone))
+
+
+def test_a_batch_undo_chunks_under_its_own_token(
+    client_in, owned_library, game, monkeypatch
+):
+    """A batch of its own: its own token, and its own correlation id.
+
+    Sharing the act's correlation would make the Undo part of the batch
+    it undoes, and a second Undo would read its own appends as rows.
+    """
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(3)
+    ]
+    confirmation = confirm(client_in, some(*sessions))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+
+    response = client_in.post(undo_url(token), {})
+    assert response.status_code == 200
+    undo_token = posted(response)[TOKEN_FIELD]
+    assert undo_token != token
+    while response.status_code == 200:
+        response = act(client_in, response, url=undo_url(token))
+
+    assert response.status_code == 302
+    assert PlayerSession.objects.alive().count() == 3
+    restored = LibraryEvent.objects.filter(
+        library=owned_library, event_type="library.playersession.restored"
+    )
+    assert {event.correlation_id for event in restored} == {uuid.UUID(undo_token)}
+
+
+def test_an_undo_offers_no_further_undo(client_in, owned_library, game):
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    landed(client_in, act(client_in, confirmation))
+
+    undone = client_in.post(undo_url(token), {})
+
+    assert actions_of(undone) == []
+
+
+def test_a_correlation_that_names_no_batch_is_not_found(client_in, owned_library):
+    response = client_in.post(undo_url(str(uuid.uuid7())), {})
+
+    assert response.status_code == 404
+
+
+def test_another_librarys_batch_is_not_found(
+    client_in, client, owned_library, django_user_model, game
+):
+    """The read is scoped, or a guessed token undoes another library's act."""
+    stranger = django_user_model.objects.create_user("stranger", password="secret123")
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+    client.force_login(stranger)
+
+    response = client.post(undo_url(token), {})
+
+    assert response.status_code == 404
+    assert PlayerSession.objects.get(pk=session.pk).removed_at is not None
+
+
+def test_an_act_the_table_no_longer_holds_refuses(client_in, owned_library, game):
+    """A batch whose act was retired states a sentence, not a traceback."""
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation)
+    LibraryEvent.objects.filter(correlation_id=uuid.UUID(token)).update(
+        source_metadata={"bulk": {"action": "session.retired"}}
+    )
+
+    response = client_in.post(undo_url(token), {})
+
+    assert response.status_code == 400
+    assert UNKNOWN_ACT.encode() in response.content
+    assert PlayerSession.objects.get(pk=session.pk).removed_at is not None
+
+
+def test_an_ordinary_act_is_no_batch(client_in, owned_user, owned_library, game):
+    """One row's own button writes no batch, so its correlation undoes none."""
+    session = a_written_session(owned_library, game)
+    alone = uuid.uuid7()
+    reclassify_session(
+        owned_user,
+        session,
+        statement_from_session(session),
+        idempotency_key=f"one-{session.pk}",
+        correlation_id=alone,
+    )
+
+    response = client_in.post(undo_url(str(alone)), {})
+
+    assert response.status_code == 404
+
+
+def test_the_batch_undo_needs_a_login(client, owned_library, game):
+    response = client.post(undo_url(str(uuid.uuid7())), {})
+
+    assert response.status_code == 302

@@ -12,7 +12,13 @@ from datetime import timedelta
 from django.contrib.auth.models import User
 from django.db.models import QuerySet
 
-from games.bulk_actions import BulkAction, Cardinality, Refused, Resolution
+from games.bulk_actions import (
+    BulkAction,
+    Cardinality,
+    Refused,
+    Resolution,
+    RowOutcome,
+)
 from games.commands.session_reclassification import statement_from_session
 from games.events.idempotency import IdempotencyKey
 from games.filters import parse_session_filter
@@ -116,7 +122,8 @@ def convert_one(
     session: PlayerSession,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
-) -> None:
+) -> RowOutcome:
+    """Always moved: the resolution refused every row already recorded."""
     reclassify_session(
         actor,
         session,
@@ -125,15 +132,29 @@ def convert_one(
         correlation_id=correlation_id,
         source_metadata=_source(),
     )
+    return RowOutcome.MOVED
 
 
-def return_one(actor: User, session_id: uuid.UUID, correlation_id: uuid.UUID) -> None:
-    """The inverse, by key: the row it names is removed by now."""
-    undo_reclassification(
-        actor,
-        PlayerSession.objects.get(library=actor.library, pk=session_id),
-        correlation_id=correlation_id,
-        source_metadata=_source(),
+def return_one(
+    actor: User,
+    session_id: uuid.UUID,
+    idempotency_key: IdempotencyKey,
+    correlation_id: uuid.UUID,
+) -> RowOutcome:
+    """The inverse, by key: the row it names is removed by now.
+
+    A plain manager, because every scoped read of a session reads its
+    marks and this one is removed. The library is still stated, so the
+    key names this person's row or none.
+    """
+    return RowOutcome.of(
+        undo_reclassification(
+            actor,
+            PlayerSession.objects.get(library=actor.library, pk=session_id),
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
+            source_metadata=_source(),
+        )
     )
 
 

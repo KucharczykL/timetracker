@@ -13,7 +13,7 @@ the confirmation wrote.
 import json
 import logging
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import timedelta
 from time import monotonic
@@ -25,14 +25,29 @@ from django.contrib.auth.models import User
 from django.http import Http404, HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from common.criteria import FilterError
 from common.layout import render_page
-from common.notices import notify
-from games.bulk_actions import BulkAction, BulkActionName, Refused, bulk_action
+from common.notices import Undo, notify
+from common.returns import UrlName
+from games.bulk_actions import (
+    BulkAction,
+    BulkActionName,
+    Refused,
+    Resolution,
+    RowOutcome,
+    bulk_action,
+)
+from games.events.idempotency import IdempotencyKey
 from games.models import UserLibrary
-from games.views.bulk_pages import ConfirmBatch, ProgressBatch
+from games.reads.events import batch_aggregate_ids, batch_events
+from games.views.bulk_pages import (
+    ConfirmBatch,
+    ProgressBatch,
+    RefusedBatch,
+)
 from games.views.returns import return_url
 from games.writes.answers import CONFLICT_STATUS, DEFECT_STATUS, CommandFailed
 
@@ -61,6 +76,14 @@ UNREADABLE_STATEMENT = (
 UNREADABLE_FILTER = (
     "The filter behind that selection could not be read, so nothing was "
     "changed. Open the list again and reapply it."
+)
+#: Where an Undo returns when it carries no origin: an act it cannot
+#: name states no fallback of its own.
+UNDO_FALLBACK: UrlName = "games:library"
+
+UNKNOWN_ACT = (
+    "That batch was made by something this app no longer does, so it "
+    "cannot be taken back. Nothing was changed."
 )
 
 
@@ -242,26 +265,67 @@ def _confirmation(
 
 
 def _refused_page(
-    request: HttpRequest, action: BulkAction, sentence: str
+    request: HttpRequest,
+    sentence: str,
+    *,
+    title: str,
+    fallback: UrlName,
 ) -> HttpResponse:
-    """Nothing was done, and here is why.
-
-    Rendered without a token, so the page it draws cannot act.
-    """
+    """Nothing was done, and here is why."""
     return render_page(
         request,
-        ConfirmBatch(
-            action,
-            rows=[],
-            refused=(Refused("", sentence),),
-            hidden=[],
+        RefusedBatch(
+            title=title,
+            sentence=sentence,
             post_url=request.get_full_path(),
             csrf_token=get_token(request),
-            cancel_url=return_url(request, fallback=action.fallback),
-            sample_cap=CONFIRMATION_SAMPLE,
+            cancel_url=return_url(request, fallback=fallback),
         ),
-        title=action.title,
+        title=title,
         status=400,
+    )
+
+
+def _act_refused(
+    request: HttpRequest, action: BulkAction, sentence: str
+) -> HttpResponse:
+    return _refused_page(
+        request, sentence, title=action.title, fallback=action.fallback
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Leg:
+    """One direction of an act, as the chunk loop needs it.
+
+    Forward, a key must become a row and may refuse on the way. Back,
+    the row is removed by now -- that is what the act did to it -- so
+    the key is the work and nothing resolves it. The loop is otherwise
+    the same loop, and the two directions share one budget, one
+    progress page and one answer.
+    """
+
+    #: The idempotency key's prefix, so a direction never claims the
+    #: key of the other.
+    name: str
+    resolve: Callable[[UserLibrary, uuid.UUID], Resolution]
+    run: Callable[[User, Any, IdempotencyKey, uuid.UUID], RowOutcome]
+
+
+def _forward(action: BulkAction) -> Leg:
+    return Leg(
+        name=action.name,
+        resolve=lambda library, key: action.resolve(library, [key]),
+        run=action.run,
+    )
+
+
+def _backward(action: BulkAction) -> Leg:
+    return Leg(
+        name=f"{action.name}.undo",
+        #: Nothing to sort: the batch already said which rows these are.
+        resolve=lambda library, key: Resolution((key,), ()),
+        run=action.inverse,
     )
 
 
@@ -271,6 +335,8 @@ def _run_a_chunk(
     *,
     token: str,
     tally: Tally,
+    leg: Leg,
+    undo_url: str | None,
 ) -> HttpResponse:
     """Act on as many of the rows left as the budget allows.
 
@@ -288,19 +354,21 @@ def _run_a_chunk(
     while left:
         #: Re-resolved each time round, so a row gone since the
         #: confirmation is counted lost rather than refused.
-        resolution = action.resolve(user.library, [left[0]])
+        resolution = leg.resolve(user.library, left[0])
         tally = tally.with_reasons(resolution.refused)
         acted = left.pop(0)
         for row in resolution.rows:
             try:
-                action.run(user, row, f"{action.name}-{token}-{acted}", correlation_id)
+                outcome = leg.run(
+                    user, row, f"{leg.name}-{token}-{acted}", correlation_id
+                )
             except CommandFailed as failure:
                 if failure.status_code != CONFLICT_STATUS:
                     #: Ours, not theirs: the batch ends here.
                     return _defect(request, action, replace(tally, rows=tuple(left)))
                 logger.info(
                     "[bulk]: %s left row %s of library %s under %s: %s",
-                    action.name,
+                    leg.name,
                     acted,
                     user.library.pk,
                     correlation_id,
@@ -308,14 +376,21 @@ def _run_a_chunk(
                 )
                 tally = tally.with_reasons((Refused(str(acted), failure.message),))
             else:
-                tally = replace(tally, done=tally.done + 1)
+                tally = _counted(tally, outcome)
         if monotonic() - started >= CHUNK_BUDGET.total_seconds():
             break
 
     tally = replace(tally, rows=tuple(left))
     if left:
         return _progress(request, action, token=token, tally=tally)
-    return _answer(request, action, tally)
+    return _answer(request, action, tally, undo_url=undo_url)
+
+
+def _counted(tally: Tally, outcome: RowOutcome) -> Tally:
+    """A row the dispatch moved, or one already in that state."""
+    if outcome is RowOutcome.UNCHANGED:
+        return replace(tally, unchanged=tally.unchanged + 1)
+    return replace(tally, done=tally.done + 1)
 
 
 def _progress(
@@ -363,12 +438,24 @@ def _defect(request: HttpRequest, action: BulkAction, tally: Tally) -> HttpRespo
     )
 
 
-def _answer(request: HttpRequest, action: BulkAction, tally: Tally) -> HttpResponse:
-    """One toast, then back where the person stood."""
+def _answer(
+    request: HttpRequest,
+    action: BulkAction,
+    tally: Tally,
+    *,
+    undo_url: str | None,
+) -> HttpResponse:
+    """One toast, then back where the person stood.
+
+    The Undo is offered only where there is something to take back, and
+    never by an Undo: taking back a batch that took one back is pressing
+    the act again, which is not what the word says.
+    """
     notify(
         request,
         tally.sentence(),
         level=messages.SUCCESS if tally.done else messages.INFO,
+        action=Undo(undo_url) if undo_url and tally.done else None,
     )
     for reason in tally.refused:
         notify(request, reason, level=messages.INFO)
@@ -391,17 +478,26 @@ def run_bulk_action(request: HttpRequest, action: BulkActionName) -> HttpRespons
             uuid.UUID(token)
         except (StatementUnreadable, ValueError) as unreadable:
             logger.warning("[bulk]: %s refused a progress: %s", action, unreadable)
-            return _refused_page(request, declared, UNREADABLE_STATEMENT)
+            return _act_refused(request, declared, UNREADABLE_STATEMENT)
         if request.POST.get(STOP_FIELD):
             #: Ended where it stands; the rows done stay done.
-            return _answer(request, declared, replace(tally, rows=()))
-        return _run_a_chunk(request, declared, token=token, tally=tally)
+            return _answer(
+                request, declared, replace(tally, rows=()), undo_url=_undo_url(token)
+            )
+        return _run_a_chunk(
+            request,
+            declared,
+            token=token,
+            tally=tally,
+            leg=_forward(declared),
+            undo_url=_undo_url(token),
+        )
 
     try:
         statement = parse_statement(request.POST.get(STATEMENT_FIELD, ""))
     except StatementUnreadable as unreadable:
         logger.warning("[bulk]: %s refused a statement: %s", action, unreadable)
-        return _refused_page(request, declared, UNREADABLE_STATEMENT)
+        return _act_refused(request, declared, UNREADABLE_STATEMENT)
 
     try:
         keys = resolved_keys(declared, user.library, statement)
@@ -409,7 +505,7 @@ def run_bulk_action(request: HttpRequest, action: BulkActionName) -> HttpRespons
         #: Never apply_structured_filter: dropping the filter would
         #: widen the act to every row the act's base holds.
         logger.warning("[bulk]: %s refused a filter: %s", action, unreadable)
-        return _refused_page(request, declared, UNREADABLE_FILTER)
+        return _act_refused(request, declared, UNREADABLE_FILTER)
 
     resolution = declared.resolve(user.library, keys)
     return _confirmation(
@@ -418,4 +514,77 @@ def run_bulk_action(request: HttpRequest, action: BulkActionName) -> HttpRespons
         rows=list(resolution.rows),
         refused=resolution.refused,
         keys=[row.pk for row in resolution.rows],
+    )
+
+
+def _undo_url(token: str) -> str:
+    """Where the act's toast points. The element stamps the origin."""
+    return reverse("games:undo_bulk_action", args=[token])
+
+
+def _act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkAction | None:
+    """Which act wrote this batch, read from the batch itself.
+
+    Every append of a batch states the name, so one event answers. A
+    correlation nothing wrote, and one written by something that is no
+    batch, are both not found: neither names an act at all. A name the
+    table no longer holds answers None instead, because that batch is
+    real and it is the Undo that is gone.
+    """
+    first = batch_events(library, correlation_id).first()
+    if first is None:
+        raise Http404("No such batch.")
+    stated = first.source_metadata.get("bulk", {})
+    name = stated.get("action") if isinstance(stated, dict) else None
+    if not isinstance(name, str):
+        raise Http404("That act is no batch.")
+    #: Nothing validates the name at the append, so this is where a
+    #: name the table does not hold is met.
+    return bulk_action(name)
+
+
+@login_required
+@require_POST
+def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpResponse:
+    """Apply the inverse of one batch, as a batch of its own.
+
+    Its own token and correlation id: sharing the act's would make the
+    Undo part of the batch it undoes, and a second press would read its
+    own appends as rows to take back.
+    """
+    user = cast(User, request.user)
+    declared = _act_of(user.library, correlation_id)
+    if declared is None:
+        logger.warning("[bulk]: %s names an act nothing declares", correlation_id)
+        return _refused_page(
+            request,
+            UNKNOWN_ACT,
+            title="Undo",
+            fallback=UNDO_FALLBACK,
+        )
+
+    token = request.POST.get(TOKEN_FIELD, "")
+    if token:
+        try:
+            tally = Tally.read(request.POST.get(PROGRESS_FIELD, ""))
+            uuid.UUID(token)
+        except (StatementUnreadable, ValueError) as unreadable:
+            logger.warning("[bulk]: an undo refused a progress: %s", unreadable)
+            return _act_refused(request, declared, UNREADABLE_STATEMENT)
+        if request.POST.get(STOP_FIELD):
+            return _answer(request, declared, replace(tally, rows=()), undo_url=None)
+    else:
+        rows = batch_aggregate_ids(
+            user.library, correlation_id, declared.inverse_aggregate
+        )
+        tally = Tally(rows=tuple(rows), total=len(rows))
+        token = str(uuid.uuid7())
+
+    return _run_a_chunk(
+        request,
+        declared,
+        token=token,
+        tally=tally,
+        leg=_backward(declared),
+        undo_url=None,
     )

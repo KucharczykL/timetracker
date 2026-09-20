@@ -259,6 +259,6 @@ def test_the_run_converts_and_the_inverse_returns(
     session.refresh_from_db()
     assert session.removed_at is not None
 
-    reclassify.inverse(owned_user, session.pk, uuid.uuid7())
+    reclassify.inverse(owned_user, session.pk, "undo-one", uuid.uuid7())
     session.refresh_from_db()
     assert session.removed_at is None

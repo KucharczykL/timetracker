@@ -22,6 +22,7 @@ from django.contrib.auth.models import User
 from django.db.models import QuerySet
 
 from common.returns import UrlName
+from games.events.dispatch import CommandOutcome, CommandResult
 from games.events.idempotency import IdempotencyKey
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, AggregateType
 from games.models import UserLibrary
@@ -49,6 +50,29 @@ class Cardinality(StrEnum):
     MANY = "many"
 
 
+class RowOutcome(StrEnum):
+    """What a dispatch did to one row the act reached.
+
+    A refusal is no outcome: it never reaches a dispatch. These two are
+    what a dispatch that ran answers, and the tally counts them apart
+    because "done" should not claim work nobody did.
+    """
+
+    MOVED = "moved"
+    UNCHANGED = "unchanged"
+
+    @classmethod
+    def of(cls, result: CommandResult) -> RowOutcome:
+        """What one dispatch answered, as the runner counts it.
+
+        A replay is moved: the key was this batch's own, so the row is
+        where the batch put it.
+        """
+        return (
+            cls.UNCHANGED if result.outcome is CommandOutcome.UNCHANGED else cls.MOVED
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class Refused:
     """A key the act leaves alone, and why."""
@@ -74,9 +98,10 @@ type Scope = Callable[[UserLibrary, FilterJson], QuerySet[Any]]
 #: Keys to rows, or to sentences.
 type Resolve = Callable[[UserLibrary, Sequence[uuid.UUID]], Resolution]
 #: One row, dispatched through its wrapper in games/writes/.
-type RunRow = Callable[[User, Any, IdempotencyKey, uuid.UUID], None]
+type RunRow = Callable[[User, Any, IdempotencyKey, uuid.UUID], RowOutcome]
 #: One row's opposite, by key: the row itself may be unreadable by now.
-type UndoRow = Callable[[User, uuid.UUID, uuid.UUID], None]
+#: Keyed like the act, because an Undo is a batch of its own.
+type UndoRow = Callable[[User, uuid.UUID, IdempotencyKey, uuid.UUID], RowOutcome]
 
 _TABLE: dict[BulkActionName, BulkAction] = {}
 
