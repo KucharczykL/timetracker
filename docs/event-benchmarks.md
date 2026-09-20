@@ -593,6 +593,9 @@ correlation id -- the runner's loop, not its view -- and analyzes the two
 record tables before the reads. `--bulk` states another size. Paste what the
 tool prints; do not edit a number here.
 
+Taken at `6c1e6ae9`. `41d9e970` changed how the scenario picks its rows,
+which is setup outside the sample window; the timed loop is the same.
+
 `make bench`, 2026-09-20:
 
 ```
