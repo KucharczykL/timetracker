@@ -784,7 +784,7 @@ _ALIGN_CLASSES: dict[ButtonAlign, str] = {
 }
 
 #: A shape's corners. "square" is no word, not a word that zeroes one.
-_SHAPE_CLASSES: dict[ButtonShape, str] = {
+SHAPE_CLASSES: dict[ButtonShape, str] = {
     "full": "rounded-base",
     "start": "rounded-s-base",
     "end": "rounded-e-base",
@@ -917,7 +917,7 @@ def control_button_class(
 
     ControlButton itself renders through this, so the two cannot disagree.
     """
-    shape_class = _SHAPE_CLASSES[shape]
+    shape_class = SHAPE_CLASSES[shape]
     if variant == "plain":
         # The navbar nav-link owns its whole layout (flex justify-between,
         # md:p-0) and sits outside both the base and the sizing contract, so
@@ -1267,7 +1267,7 @@ def PageTabs(aria_label: NavLabel, tabs: Sequence[PageTab]) -> Node:
                 for part in (
                     _TAB_CLASS,
                     _TAB_CURRENT_CLASS if tab.current else _TAB_IDLE_CLASS,
-                    _SHAPE_CLASSES[shape],
+                    SHAPE_CLASSES[shape],
                 )
                 if part
             ),

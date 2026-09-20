@@ -14,8 +14,14 @@ from common.components.date_range_picker import (
     CALENDAR_DAY_CLASSES,
     CALENDAR_TRACK_CLASSES,
     CALENDAR_WEEKDAY_CLASS,
+    CalendarDayVariant,
+    CalendarTrackVariant,
 )
-from common.components.primitives import _SHAPE_CLASSES, YEAR_PICKER_CLASSES
+from common.components.primitives import (
+    SHAPE_CLASSES,
+    YEAR_PICKER_CLASSES,
+    ButtonShape,
+)
 from common.components.ts_codegen import (
     ChoiceVocab,
     TsConstant,
@@ -99,17 +105,26 @@ class Command(BaseCommand):
                 [],
                 constants=[
                     TsConstant(
-                        "CALENDAR_DAY_CLASSES", dict[str, str], CALENDAR_DAY_CLASSES
+                        "CALENDAR_DAY_CLASSES",
+                        dict[CalendarDayVariant, str],
+                        CALENDAR_DAY_CLASSES,
                     ),
                     TsConstant(
-                        "CALENDAR_TRACK_CLASSES", dict[str, str], CALENDAR_TRACK_CLASSES
+                        "CALENDAR_TRACK_CLASSES",
+                        dict[CalendarTrackVariant, str],
+                        CALENDAR_TRACK_CLASSES,
                     ),
                     TsConstant("CALENDAR_WEEKDAY_CLASS", str, CALENDAR_WEEKDAY_CLASS),
                     TsConstant(
                         "YEAR_PICKER_CLASSES", dict[str, str], YEAR_PICKER_CLASSES
                     ),
-                    # The corner the day variants above are built without.
-                    TsConstant("BUTTON_SHAPE_CLASSES", dict[str, str], _SHAPE_CLASSES),
+                    # Every key typed, so renaming one in Python fails
+                    # `tsc` rather than resolving to `undefined` at runtime:
+                    # a lost "full" would square every cell in both pickers,
+                    # which is the drift the generation exists to stop.
+                    TsConstant(
+                        "BUTTON_SHAPE_CLASSES", dict[ButtonShape, str], SHAPE_CLASSES
+                    ),
                 ],
             ),
         }

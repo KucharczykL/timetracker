@@ -3306,10 +3306,10 @@ class SelectionLineTest(SimpleTestCase):
     def test_every_variant_and_shape_emits_exactly_its_shape_class(self):
         """A button states one corner set: the variant never adds a second and
         never omits the first. Nothing else in the suite would catch either."""
-        from common.components.primitives import _SHAPE_CLASSES, control_button_class
+        from common.components.primitives import SHAPE_CLASSES, control_button_class
 
         for variant in ("filled", "segmented", "outline", "ghost", "plain"):
-            for shape, expected in _SHAPE_CLASSES.items():
+            for shape, expected in SHAPE_CLASSES.items():
                 with self.subTest(variant=variant, shape=shape):
                     emitted = {
                         word

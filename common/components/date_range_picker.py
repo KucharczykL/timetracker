@@ -16,6 +16,8 @@ serializers read into a ``DateCriterion``. All behaviour is wired by
 ``ts/elements/date-range-picker.ts``.
 """
 
+from typing import Literal
+
 from common.components.core import Node, Safe
 from common.components.custom_elements import (
     OVERLAY_SURFACE_CLASS,
@@ -100,7 +102,7 @@ _NAV_BUTTON_GEOMETRY_CLASS = "w-11 shrink-0"
 # Built square; the client states the corner, because a run wraps across week
 # rows. Each variant stays a COMPLETE string: merging fill and dimming into one
 # if/else chain is what left selected and adjacent-month cells square.
-type CalendarDayVariant = str  # e.g. "selected"
+type CalendarDayVariant = Literal["default", "selected", "adjacent", "anchor"]
 CALENDAR_DAY_CLASSES: dict[CalendarDayVariant, str] = {
     # Unselected, in-month: transparent chrome until hover.
     "default": (
@@ -136,7 +138,7 @@ CALENDAR_DAY_CLASSES: dict[CalendarDayVariant, str] = {
 # highlight between the two endpoints disappeared. The border colour needs no
 # such treatment — the variant sets `border-transparent`, a different property
 # value, and `border-y` only re-widens the edges this rule colours.
-type CalendarTrackVariant = str  # e.g. "filled"
+type CalendarTrackVariant = Literal["outlined", "filled", "muted"]
 CALENDAR_TRACK_CLASSES: dict[CalendarTrackVariant, str] = {
     "outlined": "border-y border-brand/70! bg-brand/10!",
     "filled": "bg-brand/30!",
