@@ -26,7 +26,7 @@ from django.db.models.functions import Coalesce, Greatest
 from django.http import HttpResponse
 from django.urls import reverse
 from django.utils.timezone import now as django_timezone_now
-from ninja import Field, NinjaAPI, Query, Router, Schema, Status
+from ninja import Field, Header, NinjaAPI, Query, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.security import django_auth
 from pydantic import BeforeValidator, ConfigDict, PlainSerializer, WithJsonSchema
@@ -42,6 +42,8 @@ from games.commands.playersession import (
     TimingStatement,
 )
 from games.commands.playthrough import ActStatement
+from games.events.dispatch import IDEMPOTENCY_KEY_MAX_LENGTH
+from games.events.idempotency import IdempotencyKey
 from games.filters import (
     MODE_PARSERS,
     filter_for_model,
@@ -694,6 +696,19 @@ def _library_device_or_404(library: UserLibrary, device_id: UUIDv7 | None) -> No
         owned_or_404(Device.objects.for_library(library), library, id=device_id)
 
 
+def _library_run_or_404(library: UserLibrary, playthrough_id: UUIDv7) -> None:
+    """The scope is every kind this library holds, removed or not.
+
+    That is `library_playthrough`'s scope, the one the command resolves
+    over, so 404 says one thing only: this library holds no such run.
+    Every other rule keeps the command's own sentence, which alone says
+    what to state instead.
+    """
+    owned_or_404(
+        Playthrough.objects.filter(library=library), library, id=playthrough_id
+    )
+
+
 @session_router.patch("/{session_id}/device", response={204: None})
 def partial_update_session_device(
     request, session_id: UUIDv7, payload: SessionDeviceUpdate
@@ -813,13 +828,36 @@ class SessionIn(Schema):
     emulated: bool = False
 
 
+def _stated_idempotency_key(header: str | None) -> IdempotencyKey | None:
+    """The key the caller states, or none.
+
+    Measured here because `validate_idempotency_key` raises a plain
+    `ValueError` that no answer maps. The spaces at the two ends go
+    first: a key of spaces alone passes both that check and the
+    constraint on the column, and it names no request.
+    """
+    if header is None:
+        return None
+    key = header.strip()
+    if not key or len(key) > IDEMPOTENCY_KEY_MAX_LENGTH:
+        raise HttpError(
+            422,
+            "An Idempotency-Key is one to "
+            f"{IDEMPOTENCY_KEY_MAX_LENGTH} characters, spaces aside.",
+        )
+    return key
+
+
 @session_router.post("/", response={201: SessionOut})
-def create_session(request, payload: SessionIn):
+def create_session(
+    request,
+    payload: SessionIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
     library = cast(User, request.user).library
     actor = cast(User, request.user)
-    owned_or_404(
-        Playthrough.objects.filter(library=library), library, id=payload.playthrough_id
-    )
+    stated_key = _stated_idempotency_key(idempotency_key)
+    _library_run_or_404(library, payload.playthrough_id)
     _library_device_or_404(library, payload.device_id)
     try:
         session_id = record_session(
@@ -834,6 +872,7 @@ def create_session(request, payload: SessionIn):
                 emulated=payload.emulated,
             ),
             correlation_id=new_correlation_id(),
+            idempotency_key=stated_key,
         )
     except CommandFailed as failure:
         _answered_or_http(failure)

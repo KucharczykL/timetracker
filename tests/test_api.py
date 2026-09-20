@@ -10,12 +10,15 @@ from django.test import Client
 from django.test.utils import CaptureQueriesContext
 from session_rows import duration_only_row, session_row, timed_row, tracked_run
 
+from games.commands.playersession import INTO_THE_BUCKET
 from games.filters import parse_game_filter
 from games.models import (
     Device,
     Game,
     Platform,
     PlayerSession,
+    Playthrough,
+    PlaythroughKind,
     Purchase,
     UserPreferences,
 )
@@ -711,6 +714,198 @@ def test_post_session_requires_auth():
         },
     )
     assert response.status_code == 401
+
+
+def _stranger_run():
+    """Another library's ordinary run."""
+    stranger = get_user_model().objects.create_user(username="stranger", password="p")
+    game = Game.objects.create(library=stranger.library, name="Theirs")
+    return tracked_run(stranger.library, game)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_post_session_404s_a_run_another_library_holds(auth_client, user):
+    _prague_calendar(user)
+    theirs = _stranger_run()
+
+    response = _post_session(
+        auth_client,
+        {
+            "playthrough_id": str(theirs.pk),
+            "timing": {"started_at": "2026-06-24T18:00:00Z"},
+        },
+    )
+
+    assert response.status_code == 404
+    assert not PlayerSession.objects.filter(playthrough=theirs).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_post_session_404s_an_unknown_run(auth_client, user):
+    _prague_calendar(user)
+
+    response = _post_session(
+        auth_client,
+        {
+            "playthrough_id": str(uuid.uuid7()),
+            "timing": {"started_at": "2026-06-24T18:00:00Z"},
+        },
+    )
+
+    assert response.status_code == 404
+    assert not PlayerSession.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_post_session_404s_a_device_another_library_holds(auth_client, user):
+    _prague_calendar(user)
+    run = _tracked_run()
+    stranger = get_user_model().objects.create_user(username="stranger", password="p")
+    theirs = Device.objects.create(library=stranger.library, name="Theirs")
+
+    response = _post_session(
+        auth_client,
+        {
+            "playthrough_id": str(run.pk),
+            "timing": {"started_at": "2026-06-24T18:00:00Z"},
+            "device_id": str(theirs.pk),
+        },
+    )
+
+    assert response.status_code == 404
+    assert not PlayerSession.objects.filter(playthrough=run).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_post_session_refuses_the_imported_history_bucket(auth_client, user):
+    _prague_calendar(user)
+    run = _tracked_run()
+    bucket = Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=run.library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=datetime.now(UTC),
+    )
+
+    response = _post_session(
+        auth_client,
+        {
+            "playthrough_id": str(bucket.pk),
+            "timing": {"started_at": "2026-06-24T18:00:00Z"},
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == INTO_THE_BUCKET
+
+
+@pytest.mark.django_db(transaction=True)
+def test_post_session_refuses_a_removed_run(auth_client, user):
+    _prague_calendar(user)
+    run = _tracked_run()
+    Playthrough.objects.filter(pk=run.pk).update(removed_at=datetime.now(UTC))
+
+    response = _post_session(
+        auth_client,
+        {
+            "playthrough_id": str(run.pk),
+            "timing": {"started_at": "2026-06-24T18:00:00Z"},
+        },
+    )
+
+    assert response.status_code == 409
+    assert "removed" in response.json()["detail"]
+    assert not PlayerSession.objects.filter(playthrough=run).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_post_session_refuses_an_end_before_its_start(auth_client, user):
+    _prague_calendar(user)
+    run = _tracked_run()
+
+    response = _post_session(
+        auth_client,
+        {
+            "playthrough_id": str(run.pk),
+            "timing": {
+                "started_at": "2026-06-24T19:00:00Z",
+                "ended_at": "2026-06-24T18:00:00Z",
+                "duration_seconds": 3600,
+            },
+        },
+    )
+
+    assert response.status_code == 409
+    assert not PlayerSession.objects.filter(playthrough=run).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_post_session_absorbs_a_repeated_idempotency_key(auth_client, user):
+    _prague_calendar(user)
+    run = _tracked_run()
+    body = {
+        "playthrough_id": str(run.pk),
+        "timing": {"started_at": "2026-06-24T18:00:00Z"},
+    }
+    headers = {"idempotency-key": "k-1"}
+
+    first = _post_session(auth_client, body, headers=headers)
+    second = _post_session(auth_client, body, headers=headers)
+
+    assert first.status_code == 201, first.content
+    assert second.status_code == 201, second.content
+    assert first.json()["id"] == second.json()["id"]
+    assert PlayerSession.objects.filter(playthrough=run).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_post_session_refuses_a_reused_key_for_another_statement(auth_client, user):
+    _prague_calendar(user)
+    run = _tracked_run()
+    headers = {"idempotency-key": "k-1"}
+    first = _post_session(
+        auth_client,
+        {
+            "playthrough_id": str(run.pk),
+            "timing": {"started_at": "2026-06-24T18:00:00Z"},
+            "note": "first",
+        },
+        headers=headers,
+    )
+    assert first.status_code == 201, first.content
+
+    second = _post_session(
+        auth_client,
+        {
+            "playthrough_id": str(run.pk),
+            "timing": {"started_at": "2026-06-24T18:00:00Z"},
+            "note": "second",
+        },
+        headers=headers,
+    )
+
+    assert second.status_code == 409
+    assert PlayerSession.objects.filter(playthrough=run).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("key", ["   ", "k" * 256])
+def test_post_session_refuses_an_unusable_idempotency_key(auth_client, user, key):
+    _prague_calendar(user)
+    run = _tracked_run()
+
+    response = _post_session(
+        auth_client,
+        {
+            "playthrough_id": str(run.pk),
+            "timing": {"started_at": "2026-06-24T18:00:00Z"},
+        },
+        headers={"idempotency-key": key},
+    )
+
+    assert response.status_code == 422
+    assert not PlayerSession.objects.filter(playthrough=run).exists()
 
 
 # ── PATCH /api/session/{id}/device — nullable device (#290) ──────────────────
