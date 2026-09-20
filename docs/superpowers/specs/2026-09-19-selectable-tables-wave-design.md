@@ -208,7 +208,10 @@ view declares.
 
 A `BulkAction` is a declaration, not a view: label, allowed cardinality
 (`one`, `many`), the confirmation route, and, for a `many` action, the
-per-row command and its inverse. The tray offers a `one` action while exactly
+per-row command, its inverse, and the aggregate the inverse takes. One
+batch can append events under two aggregates: the reclassification mints
+a record beside each session it marks, so its Undo reads the batch's
+session events and not its record events. The tray offers a `one` action while exactly
 one row is selected and a `many` action while at least one is. A `many`
 action POSTs the selection statement to its confirmation route with the
 origin, so the act returns where the person stands (`?origin=`, as every
@@ -229,10 +232,13 @@ runner's confirmation arrives by POST, so it tells its two POSTs apart by
 the submission token.
 
 1. **Confirm.** A POST without a token resolves the selection statement
-   under the library, lists the rows, and renders one `ConfirmPage` naming
-   the act, its count, what will be refused (a running session, a bucket, a
-   last live run) with the reason, and a fresh token beside the resolved
-   keys. The runner parses an `all` statement's filter itself and refuses
+   under the library and renders one `ConfirmPage` that leads with the act,
+   its count and its scope, lists the rows to a cap, lists every refusal
+   (a running session, a bucket, a last live run) with its reason in full,
+   and carries a fresh token beside the resolved keys. Today's review
+   confirmation lists every row; an `all` statement over the session list
+   resolves to thousands, which is megabytes on the page that exists to be
+   read, so the cap is the accepted trade. The runner parses an `all` statement's filter itself and refuses
    one it cannot parse, with a sentence and no act. It does not reuse
    `apply_structured_filter`, which drops an invalid filter and renders
    the list unfiltered: harmless on a list page, and on a bulk act the
@@ -241,7 +247,10 @@ the submission token.
    through the row's `games/writes/` wrapper, under `answered()`, one
    transaction per row as every dispatch is, each row's idempotency key
    derived from the token and the row key, every row under **one
-   `correlation_id`**, which is the batch's identity. A refusal names its
+   `correlation_id`**, which is the batch's identity. The token is that
+   correlation id: it is minted once at the confirmation and resubmitted
+   by every chunk, so a batch of two requests has one id and its Undo
+   finds all of it. A refusal names its
    row and its sentence, and the next row runs. A **chunk** is the rows one
    request acts on inside a time budget of a few seconds; it is not a
    transaction. The budget is the runner's constant, measured by
@@ -505,6 +514,9 @@ at connect, and the version stamp left the fixed corner. Corrected by
 #713's planning against the route table: the runner and the batch Undo are
 `ORIGIN_AWARE`, the aggregate reader moved to #714 with its one caller, and
 the runner refuses a filter it cannot parse rather than acting unfiltered.
+Corrected by the review of #713's spec: the confirmation lists rows to a
+cap, the token is the correlation id, and a `BulkAction` names the
+aggregate its inverse takes.
 
 Deviations recorded: the empty bucket is removed, not archived; Finish stays
 inline as an immediate control; a cross-game move is refused rather than
