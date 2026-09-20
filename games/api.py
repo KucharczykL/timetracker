@@ -685,37 +685,12 @@ def _answered_or_http(failure: CommandFailed) -> NoReturn:
     raise HttpError(failure.status_code, failure.message)
 
 
-def _library_device_or_404(library: UserLibrary, device_id: UUIDv7 | None) -> None:
-    """A stale id, or another library's, is absent: it discloses nothing.
-
-    The command would refuse it with a sentence; the API answers 404 as
-    it did before, and a stale id (a device removed in another tab) never
-    surfaces as a refusal the client's retry toast cannot resolve.
-    """
-    if device_id is not None:
-        owned_or_404(Device.objects.for_library(library), library, id=device_id)
-
-
-def _library_run_or_404(library: UserLibrary, playthrough_id: UUIDv7) -> None:
-    """Scope: every kind, removed or not.
-
-    `library_playthrough`'s scope, so 404 says one thing only: this
-    library holds no such run. Narrowing it to live ordinary runs
-    would turn the bucket, a removed run and a removed game into 404s
-    and take away the sentences that say what to state instead.
-    """
-    owned_or_404(
-        Playthrough.objects.filter(library=library), library, id=playthrough_id
-    )
-
-
 @session_router.patch("/{session_id}/device", response={204: None})
 def partial_update_session_device(
     request, session_id: UUIDv7, payload: SessionDeviceUpdate
 ):
     library = cast(User, request.user).library
     session = owned_or_404(readable_sessions(library), library, id=session_id)
-    _library_device_or_404(library, payload.device_id)
     try:
         describe_session(
             cast(User, request.user),
@@ -869,8 +844,9 @@ def create_session(
     actor = cast(User, request.user)
     library = actor.library
     stated_key = _stated_idempotency_key(idempotency_key)
-    _library_run_or_404(library, payload.playthrough_id)
-    _library_device_or_404(library, payload.device_id)
+    #: The run and the device resolve inside `build`, under the stream
+    #: head's lock and behind the key: a repeat appends nothing and
+    #: resolves nothing, so a row removed since answers the first one.
     try:
         session_id = record_session(
             actor,
@@ -902,8 +878,6 @@ def partial_update_session(request, session_id: UUIDv7, payload: SessionUpdate):
     actor = cast(User, request.user)
     session = owned_or_404(readable_sessions(library), library, id=session_id)
     stated = payload.dict(exclude_unset=True)
-    if "device_id" in stated:
-        _library_device_or_404(library, payload.device_id)
     correlation_id = new_correlation_id()
     try:
         if payload.timing is not None:
