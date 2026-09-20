@@ -178,7 +178,7 @@ def library(request: HttpRequest) -> HttpResponse:
         SectionedPageSection(
             "playtime",
             "Playtime",
-            PlaytimeReviewPanel(library, origin=origin, csrf_token=get_token(request)),
+            PlaytimeReviewPanel(library),
             description=TEMPORARY_NOTE,
         ),
         SectionedPageSection(

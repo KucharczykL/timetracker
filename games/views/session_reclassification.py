@@ -26,21 +26,17 @@ from common.components import (
 )
 from common.components.core import Node
 from common.components.library_kit import EmptyState
-from common.components.primitives import Input
 from common.criteria import ChoiceCriterion, IntCriterion, Modifier
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
 from common.notices import Undo, notify
-from common.returns import OriginUrl, action_url
 from games.bulk_reclassification import (
-    RECLASSIFY,
     REVIEW_THRESHOLD_HOURS,
     reviewable_sessions,
 )
 from games.forms import HistoricalPlaytimeForm
 from games.models import PlayerSession, PlayerSessionTimingMode, UserLibrary
 from games.ownership import owned_or_404
-from games.views.bulk import STATEMENT_FIELD
 from games.views.historical_playtime_entry import FORM_SCRIPTS
 from games.views.removal import restore_and_return
 from games.views.returns import return_url
@@ -164,26 +160,7 @@ TEMPORARY_NOTE = (
 )
 
 
-def review_selection(waiting: int) -> str:
-    """The whole review, as the runner reads a selection.
-
-    A scope and a count, never a list of keys: the count is what the
-    person was told, and the runner resolves the scope again at the
-    press. Keys would freeze a page-old answer into the act.
-    """
-    return json.dumps(
-        {
-            "mode": "all",
-            "filter": review_filter(),
-            "count": waiting,
-            "except": [],
-        }
-    )
-
-
-def PlaytimeReviewPanel(
-    library: UserLibrary, *, origin: OriginUrl, csrf_token: str
-) -> Node:
+def PlaytimeReviewPanel(library: UserLibrary) -> Node:
     """The review, in a person's words."""
     waiting = reviewable_sessions(library).count()
     if not waiting:
@@ -210,24 +187,7 @@ def PlaytimeReviewPanel(
             "hours stop pretending to be one enormous session, so figures like "
             "your longest session and your busiest day tell the truth again."
         ],
-        P(class_="text-type-body text-body mb-4")[
-            "Nothing is thrown away. Moving them offers an Undo that puts "
-            "every session back."
-        ],
         Div(class_="flex flex-wrap items-center gap-2")[
             ControlButton(href=review_url(), color="gray")["See these sessions"],
-            ControlButton(
-                method="post",
-                action=action_url(
-                    "games:run_bulk_action", RECLASSIFY.name, origin=origin
-                ),
-                csrf_token=csrf_token,
-                hidden_fields=Input(
-                    type="hidden",
-                    name=STATEMENT_FIELD,
-                    value=review_selection(waiting),
-                ),
-                color="blue",
-            )[f"Move all {waiting} to historical playtime"],
         ],
     )
