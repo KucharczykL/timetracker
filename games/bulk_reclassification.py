@@ -86,19 +86,25 @@ def review_scope(library: UserLibrary, filter_json: str) -> QuerySet[PlayerSessi
 def review_resolution(library: UserLibrary, keys: Sequence[uuid.UUID]) -> Resolution:
     """Sort keys into the rows the review offers, and sentences."""
     wanted = list(dict.fromkeys(keys))
-    offered = list(
-        reviewable_sessions(library)
+    #: Over every key, not only the ones the review leaves out. A live
+    #: session beside a live record made from it is a state no command
+    #: admits, so the one that meets it answers a defect, and a defect
+    #: ends the whole batch over one row.
+    recorded = set(
+        HistoricalPlaytime.objects.filter(
+            library=library, reclassified_from__in=wanted, removed_at__isnull=True
+        ).values_list("reclassified_from_id", flat=True)
+    )
+    offered = [
+        row
+        for row in reviewable_sessions(library)
         .filter(pk__in=wanted)
         .select_related("playthrough__player_game__game")
         .order_by("-effective_duration", "id")
-    )
+        if row.pk not in recorded
+    ]
     taken = {row.pk for row in offered}
     rest = [key for key in wanted if key not in taken]
-    recorded = set(
-        HistoricalPlaytime.objects.filter(
-            library=library, reclassified_from__in=rest, removed_at__isnull=True
-        ).values_list("reclassified_from_id", flat=True)
-    )
     live = library_sessions(library).select_related("playthrough").in_bulk(rest)
     refused: list[Refused] = []
     for key in rest:

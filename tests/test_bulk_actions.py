@@ -25,6 +25,7 @@ from games.commands.playersession import CreateSession, DurationOnlyTiming
 from games.events.dispatch import dispatch
 from games.models import (
     Game,
+    HistoricalPlaytime,
     PlayerSession,
     Playthrough,
     PlaythroughKind,
@@ -235,6 +236,26 @@ def test_a_row_already_recorded_is_refused(owned_user, owned_library, run, recla
     assert [refused.sentence for refused in resolution.refused] == [ALREADY_RECORDED]
 
 
+def test_a_row_live_beside_its_record_is_refused(
+    owned_user, owned_library, run, reclassify
+):
+    """Drift, met at the resolve rather than at a dispatch.
+
+    A live session beside a live record made from it is a state no
+    command admits, so the command that meets it answers a defect, and
+    a defect ends the whole batch rather than one row.
+    """
+    session = a_written_session(owned_library, owned_user, run)
+    reclassify.run(owned_user, session, "one-conversion", uuid.uuid7())
+    #: No command writes this; an audit reports it.
+    PlayerSession.objects.filter(pk=session.pk).update(removed_at=None)
+
+    resolution = reclassify.resolve(owned_library, [session.pk])
+
+    assert resolution.rows == ()
+    assert [refused.sentence for refused in resolution.refused] == [ALREADY_RECORDED]
+
+
 def test_another_librarys_row_is_lost(owned_library, reclassify, django_user_model):
     stranger = django_user_model.objects.create_user(username="stranger", password="p")
     game = Game.objects.create(library=stranger.library, name="Celeste")
@@ -247,6 +268,22 @@ def test_another_librarys_row_is_lost(owned_library, reclassify, django_user_mod
 
 
 # ── The run and its inverse ──────────────────────────────────────────────────
+
+
+def test_one_key_twice_converts_once(owned_user, owned_library, run, reclassify):
+    """The runner keys a row from the token, so a key is the act.
+
+    A chunk that is posted twice acts once only while the run passes
+    the key it is given through to the dispatch. A run that minted its
+    own key would convert the same session twice.
+    """
+    session = a_written_session(owned_library, owned_user, run)
+    correlation_id = uuid.uuid7()
+
+    reclassify.run(owned_user, session, "one-conversion", correlation_id)
+    reclassify.run(owned_user, session, "one-conversion", correlation_id)
+
+    assert HistoricalPlaytime.objects.filter(library=owned_library).count() == 1
 
 
 def test_the_run_converts_and_the_inverse_returns(
