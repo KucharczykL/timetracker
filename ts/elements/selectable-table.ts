@@ -77,8 +77,8 @@ export class SelectableTableElement extends HTMLElement {
     );
     // An act on the selection ends it: the rows it named are gone, moved or
     // changed, so restoring that statement over what is left would act on
-    // rows nobody chose. The tray's form is #712's; the rule is stated here,
-    // where the statement is kept.
+    // rows nobody chose. The slot below renders the form; the rule is stated
+    // here, where the statement is kept.
     this.querySelector("[data-selection-actions]")?.addEventListener(
       "submit",
       () => this.forgetAndClose(),

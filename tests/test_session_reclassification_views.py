@@ -200,24 +200,34 @@ def test_the_library_offers_the_review(logged_in, session):
     assert "Playtime" in html
 
 
+def _playtime_panel(html: str) -> str:
+    """The section the review lives in, and nothing else.
+
+    A negative assertion over the whole page would answer to any other
+    section growing a form or a toast.
+    """
+    return html.split('id="playtime"')[1].split("</section>")[0]
+
+
 def test_the_panel_presses_nothing(logged_in, session):
     """The act is offered from the line the session list renders.
 
     One place presses it, so the review is a link to those rows
     rather than a second way to run the same batch.
     """
-    html = logged_in.get(reverse("games:library")).content.decode()
+    panel = _playtime_panel(logged_in.get(reverse("games:library")).content.decode())
 
-    assert "Move all" not in html
+    assert "See these sessions" in panel
+    assert "Move all" not in panel
     assert (
         action_url(
             "games:run_bulk_action",
             "session.reclassify",
             origin=reverse("games:library"),
         )
-        not in html
+        not in panel
     )
-    assert f'name="{STATEMENT_FIELD}"' not in html
+    assert f'name="{STATEMENT_FIELD}"' not in panel
 
 
 def test_the_panels_count_is_the_scope_the_act_resolves(logged_in, owned_library, run):
@@ -328,7 +338,7 @@ def test_the_library_promises_nothing_it_does_not_do(logged_in, session):
     What must stay gone is the older sentence, which told a person the
     batch could not be taken back.
     """
-    html = logged_in.get(reverse("games:library")).content.decode()
+    panel = _playtime_panel(logged_in.get(reverse("games:library")).content.decode())
 
-    assert "all of them at once does not" not in html
-    assert "Undo" not in html
+    assert "all of them at once does not" not in panel
+    assert "Undo" not in panel

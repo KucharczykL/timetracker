@@ -1,5 +1,7 @@
 """What the line is told to offer."""
 
+import json
+
 import pytest
 from django.urls import reverse
 
@@ -39,10 +41,31 @@ def test_a_name_no_act_declares_is_refused():
         tray_actions("session.remoove", origin=ORIGIN)
 
 
-def test_the_line_and_the_route_spell_the_statement_one_way():
-    from common.components import SELECTION_STATEMENT_FIELD
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_the_field_the_line_renders_is_the_field_the_route_reads(
+    client_in, owned_user, owned_library, game
+):
+    """Posted under the name the page states, not a name a test knows.
 
-    assert STATEMENT_FIELD == SELECTION_STATEMENT_FIELD
+    Comparing the two constants proves nothing: one is assigned from
+    the other.
+    """
+    session = _a_session(owned_user, owned_library, game)
+    html = client_in.get(reverse("games:list_sessions")).content.decode()
+    form = html.split("data-selection-actions-form")[1].split("</form>")[0]
+    field = form.split("data-selection-statement")[1]
+    marker = 'name="'
+    start = field.index(marker) + len(marker)
+    rendered = field[start : field.index('"', start)]
+
+    confirmation = client_in.post(
+        reverse("games:run_bulk_action", args=["session.remove"]),
+        {rendered: json.dumps({"mode": "some", "keys": [str(session.pk)]})},
+    )
+
+    assert rendered == STATEMENT_FIELD
+    assert "Remove these sessions" in confirmation.content.decode()
 
 
 # ── The pages that offer them ────────────────────────────────────────────────
@@ -166,3 +189,23 @@ def test_game_detail_offers_both_acts_and_scopes_its_stored_selection(
     #: Never an empty library segment: the next person at this
     #: browser would inherit the selection.
     assert f'scope="{owned_library.pk}:' in html
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_game_detail_can_state_no_wider_selection(
+    client_in, owned_user, owned_library, game
+):
+    """Its acts scope the library, so the page must name its rows.
+
+    Both sections declare an empty filter, which narrows nothing: an
+    "all" statement from either would name every run and every record
+    the library holds. No paginator is what keeps that statement
+    unreachable, and this says so.
+    """
+    _a_record(owned_user, owned_library, game)
+
+    html = client_in.get(game.get_absolute_url()).content.decode()
+
+    assert "data-selection-all-matching" not in html
+    assert 'count="0"' in html

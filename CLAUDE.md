@@ -350,8 +350,9 @@ docs/           — Additional documentation
   refused, already undone `Unchanged`, record restated since refused whole,
   removed parent refused -- then appends each event still to happen. Library
   page's Playtime section reviews Duration-only rows of
-  `REVIEW_THRESHOLD_HOURS` or longer; since #713 its button states that
-  review as a selection and the bulk runner acts on it (below). Contract is
+  `REVIEW_THRESHOLD_HOURS` or longer and links to them; since #712 the
+  session list's selection line states that review and the bulk runner
+  acts on it (below). Contract is
   [Reclassify a session](docs/superpowers/specs/2026-09-18-issue-1098-session-reclassification-design.md)
 
   #700 converted every legacy `Session` row into these events, under the

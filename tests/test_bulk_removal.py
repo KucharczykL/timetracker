@@ -1,11 +1,14 @@
 """The three Remove acts: what they offer, and what the command refuses."""
 
+import html as html_module
 import json
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.http import Http404
+from django.urls import reverse
 from session_rows import duration_only_row, tracked_run
 
 from common.criteria import FilterError
@@ -369,9 +372,195 @@ def test_removing_a_record_and_putting_it_back(
 # ── The declaration ──────────────────────────────────────────────────────────
 
 
-def test_each_act_names_the_aggregate_its_undo_reads(
-    remove_session_action, remove_run_action, remove_record_action
+@pytest.mark.parametrize(
+    "name", ["session.remove", "playthrough.remove", "historicalplaytime.remove"]
+)
+def test_each_acts_undo_reads_the_rows_its_act_wrote(
+    owned_user, owned_library, game, name
 ):
-    assert remove_session_action.inverse_aggregate == "playersession"
-    assert remove_run_action.inverse_aggregate == "playthrough"
-    assert remove_record_action.inverse_aggregate == "historicalplaytime"
+    """The declaration against the stream, not against a copy of itself.
+
+    `__post_init__` already refuses an aggregate no event speaks
+    about; what is left to prove is that the aggregate named is the
+    one the removal appends under.
+    """
+    from games.reads.events import batch_aggregate_ids
+
+    action = BULK_ACTIONS[name]
+    row = _a_row_for(name, owned_user, owned_library, game)
+    correlation_id = uuid.uuid7()
+
+    action.run(owned_user, row, str(uuid.uuid7()), correlation_id)
+
+    assert batch_aggregate_ids(
+        owned_library, correlation_id, action.inverse_aggregate
+    ) == [row.pk]
+
+
+# ── Through the route ────────────────────────────────────────────────────────
+
+
+def _act_url(name: str) -> str:
+    return reverse("games:run_bulk_action", args=[name])
+
+
+@pytest.fixture
+def client_in(client, owned_user):
+    client.force_login(owned_user)
+    return client
+
+
+def _statement(*keys) -> str:
+    return json.dumps({"mode": "some", "keys": sorted(str(key) for key in keys)})
+
+
+def _hidden(html: str) -> dict[str, str]:
+    """The fields the confirmation would submit."""
+    fields: dict[str, str] = {}
+    for name in ("submission", "progress"):
+        marker = f'name="{name}" value="'
+        if marker in html:
+            start = html.index(marker) + len(marker)
+            fields[name] = html_module.unescape(html[start : html.index('"', start)])
+    return fields
+
+
+@pytest.mark.parametrize(
+    "name, headings",
+    [
+        ("session.remove", ("Game", "Day", "Duration")),
+        ("playthrough.remove", ("Playthrough", "Game", "Started", "Completed")),
+        ("historicalplaytime.remove", ("Game", "When", "Duration")),
+    ],
+)
+def test_each_acts_confirmation_states_its_own_columns(
+    client_in, owned_user, owned_library, game, name, headings
+):
+    """The cells run, which is the one thing a declaration cannot prove.
+
+    Nothing reads a preview until a person stands on the confirmation,
+    so a wrong path there is a defect page between the press and the
+    write.
+    """
+    row = _a_row_for(name, owned_user, owned_library, game)
+
+    html = client_in.post(
+        _act_url(name), {"selection": _statement(row.pk)}
+    ).content.decode()
+
+    for heading in headings:
+        assert heading in html
+    assert html.count("data-bulk-sample-row") == 1
+
+
+@pytest.mark.parametrize(
+    "name", ["session.remove", "playthrough.remove", "historicalplaytime.remove"]
+)
+def test_each_act_removes_the_row_it_confirmed(
+    client_in, owned_user, owned_library, game, name
+):
+    row = _a_row_for(name, owned_user, owned_library, game)
+    confirmation = client_in.post(_act_url(name), {"selection": _statement(row.pk)})
+
+    client_in.post(
+        _act_url(name),
+        {
+            "selection": _statement(row.pk),
+            **_hidden(confirmation.content.decode()),
+        },
+    )
+
+    row.refresh_from_db()
+    assert row.removed_at is not None
+
+
+def _a_row_for(name: str, owned_user, owned_library, game):
+    """One row of the kind the named act takes."""
+    if name == "session.remove":
+        return a_session(owned_library, game)
+    if name == "historicalplaytime.remove":
+        return a_record(owned_user, owned_library, game)
+    #: A second run, so its game keeps one and the act is not refused.
+    return two_runs(owned_user, game)[1]
+
+
+def test_an_endpoint_no_act_stated_reads_as_a_dash(
+    owned_user, owned_library, game, remove_run_action, presentations
+):
+    """The dash the list writes, so both screens read alike.
+
+    An act with no day is a stated endpoint of unknown day, which
+    reads `Unknown`; the dash is for the act that never happened.
+    """
+    _one_run(owned_user, game, A_DAY)
+    record_run(
+        owned_user,
+        game,
+        RunDraft(
+            started=ActStatement(TemporalValue.from_day(ANOTHER_DAY)),
+            #: Never finished, so no act to date.
+            completed=None,
+            note="",
+        ),
+        correlation_id=new_correlation_id(),
+    )
+    second = Playthrough.objects.filter(
+        player_game__game=game, kind=PlaythroughKind.ORDINARY
+    ).order_by("created_at", "pk")[1]
+    resolution = remove_run_action.resolve(owned_library, [second.pk])
+
+    completed = remove_run_action.preview[3].cell(resolution.rows[0], presentations)
+
+    assert completed == "-"
+
+
+def test_a_removed_run_is_put_back_by_its_inverse(
+    owned_user, owned_library, game, remove_run_action
+):
+    """The one inverse that reads a run through a plain manager."""
+    _, second = two_runs(owned_user, game)
+    remove_run_action.run(owned_user, second, "remove-one", uuid.uuid7())
+
+    back = remove_run_action.inverse(owned_user, second.pk, "restore-one", uuid.uuid7())
+
+    assert back is RowOutcome.MOVED
+    second.refresh_from_db()
+    assert second.removed_at is None
+
+
+def test_an_inverse_that_finds_no_row_is_not_found(
+    owned_user, owned_library, game, remove_run_action
+):
+    """`Http404`, which the runner catches, not the manager's own.
+
+    A `DoesNotExist` is neither of the two the batch catches, so it
+    would leave through the view and the rows the batch never reached
+    would go unnamed in the log.
+    """
+    with pytest.raises(Http404):
+        remove_run_action.inverse(owned_user, uuid.uuid7(), "restore-one", uuid.uuid7())
+
+
+def test_a_statement_naming_a_related_entity_narrows_the_act(
+    owned_library, game, other_game, remove_session_action
+):
+    """What the query context buys: a relation leg compiles.
+
+    Without it the leg refuses outright, so the act would answer a
+    defect where the list the person read answered rows.
+    """
+    wanted = a_session(owned_library, game)
+    a_session(owned_library, other_game)
+
+    scoped = remove_session_action.scope(
+        owned_library,
+        narrowing(game_filter={"name": {"value": game.name, "modifier": "EQUALS"}}),
+    )
+
+    assert set(scoped.values_list("pk", flat=True)) == {wanted.pk}
+
+
+def test_a_filter_naming_no_criteria_is_refused(owned_library, remove_session_action):
+    """`null` parses, states nothing, and must not read the whole base."""
+    with pytest.raises(FilterError):
+        remove_session_action.scope(owned_library, "null")

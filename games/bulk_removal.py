@@ -10,7 +10,7 @@ import uuid
 from collections.abc import Sequence
 
 from django.contrib.auth.models import User
-from django.db.models import QuerySet
+from django.db.models import Model, QuerySet
 
 from common.components.primitives import Cell
 from common.temporal_presentation import TemporalText
@@ -25,6 +25,7 @@ from games.bulk_actions import (
     RowOutcome,
 )
 from games.bulk_narrowing import narrowed
+from games.events.dispatch import RowNotHeld
 from games.events.idempotency import IdempotencyKey
 from games.filters import (
     parse_historical_playtime_filter,
@@ -39,15 +40,23 @@ from games.models import (
 )
 from games.reads.historical_playtime_records import library_records
 from games.reads.player_sessions import library_sessions
-from games.reads.playthrough_endpoints import stated_completion, stated_start
+from games.reads.playthrough_endpoints import (
+    StatedEndpoint,
+    stated_completion,
+    stated_start,
+)
 from games.reads.playthrough_numbering import display_name, numbered_for
 from games.reads.playthrough_runs import library_runs, runs_with_condition
+from games.writes.answers import SubjectNoun, answered
 from games.writes.historical_playtime import (
     remove_historical_playtime,
     restore_historical_playtime,
 )
 from games.writes.playersession import remove_session, restore_session
 from games.writes.playthrough import remove_run, restore_run
+
+#: What `answered` calls a record; the confirmation says "record".
+RECORD_SUBJECT: SubjectNoun = "historical playtime"
 
 SESSION_GONE = "One of the sessions is no longer available, so it was left as it is."
 RUN_GONE = "One of the playthroughs is no longer available, so it was left as it is."
@@ -59,6 +68,30 @@ def _lost(
 ) -> list[Refused]:
     """Gone since the confirmation, or never this library's."""
     return [Refused(str(key), sentence, lost=True) for key in keys if key not in found]
+
+
+def _removed_row[RowT: Model](
+    rows: QuerySet[RowT], actor: User, key: uuid.UUID, subject: SubjectNoun
+) -> RowT:
+    """The row an inverse puts back, by key.
+
+    A plain manager, because the row is removed by now and every scoped
+    read reads that mark. The library is still stated.
+
+    Under `answered`, and raising its own absence: the manager's
+    `DoesNotExist` is neither of the two the runner catches, so it
+    would leave the batch through the view, and every row the batch
+    never reached would go unnamed in the log.
+    """
+    with answered(subject):
+        row = rows.filter(library=actor.library, pk=key).first()
+        if row is None:
+            raise RowNotHeld(
+                f"{rows.model.__name__} {key} is not library "
+                f"{actor.library.pk}'s, so the batch's inverse has no row to "
+                "state a fact about."
+            )
+    return row
 
 
 # ── Sessions ─────────────────────────────────────────────────────────────────
@@ -110,11 +143,10 @@ def restore_one_session(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """A plain manager: the row is removed by now."""
     return RowOutcome.of(
         restore_session(
             actor,
-            PlayerSession.objects.get(library=actor.library, pk=session_id),
+            _removed_row(PlayerSession.objects.all(), actor, session_id, "session"),
             idempotency_key=idempotency_key,
             correlation_id=correlation_id,
             source_metadata=_source(REMOVE_SESSION.name),
@@ -122,7 +154,7 @@ def restore_one_session(
     )
 
 
-SESSION_PREVIEW = (
+SESSION_PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
     PreviewColumn("Game", lambda row, _: row.playthrough.player_game.game.name),
     PreviewColumn("Day", lambda row, _: str(row.effective_day)),
     PreviewColumn(
@@ -207,7 +239,7 @@ def restore_one_run(
     return RowOutcome.of(
         restore_run(
             actor,
-            Playthrough.objects.get(library=actor.library, pk=run_id),
+            _removed_row(Playthrough.objects.all(), actor, run_id, "playthrough"),
             idempotency_key=idempotency_key,
             correlation_id=correlation_id,
             source_metadata=_source(REMOVE_RUN.name),
@@ -223,14 +255,14 @@ def _completion_cell(row: Playthrough, presentations: Presentations) -> Cell:
     return _endpoint_cell(stated_completion(row), presentations)
 
 
-def _endpoint_cell(stated, presentations: Presentations) -> Cell:
+def _endpoint_cell(stated: StatedEndpoint | None, presentations: Presentations) -> Cell:
     """No act reads a dash, as the list writes it."""
     if stated is None:
         return "-"
     return TemporalText(stated.when, presentations.dates)
 
 
-RUN_PREVIEW = (
+RUN_PREVIEW: tuple[PreviewColumn[Playthrough], ...] = (
     PreviewColumn("Playthrough", lambda row, _: display_name(row)),
     PreviewColumn("Game", lambda row, _: row.player_game.game.name),
     PreviewColumn("Started", _start_cell),
@@ -291,7 +323,12 @@ def restore_one_record(
     return RowOutcome.of(
         restore_historical_playtime(
             actor,
-            HistoricalPlaytime.objects.get(library=actor.library, pk=record_id),
+            _removed_row(
+                HistoricalPlaytime.objects.all(),
+                actor,
+                record_id,
+                RECORD_SUBJECT,
+            ),
             idempotency_key=idempotency_key,
             correlation_id=correlation_id,
             source_metadata=_source(REMOVE_RECORD.name),
@@ -299,7 +336,7 @@ def restore_one_record(
     )
 
 
-RECORD_PREVIEW = (
+RECORD_PREVIEW: tuple[PreviewColumn[HistoricalPlaytime], ...] = (
     PreviewColumn("Game", lambda row, _: row.player_game.game.name),
     PreviewColumn(
         "When", lambda row, presentations: TemporalText(row.when, presentations.dates)
@@ -323,6 +360,7 @@ REMOVE_SESSION = BulkAction(
     confirm_label="Remove",
     subject="session",
     cardinality=Cardinality.MANY,
+    color="red",
     inverse_aggregate="playersession",
     fallback="games:list_sessions",
     scope=session_scope,
@@ -339,6 +377,7 @@ REMOVE_RUN = BulkAction(
     confirm_label="Remove",
     subject="playthrough",
     cardinality=Cardinality.MANY,
+    color="red",
     inverse_aggregate="playthrough",
     fallback="games:list_playthroughs",
     scope=run_scope,
@@ -353,8 +392,11 @@ REMOVE_RECORD = BulkAction(
     label="Remove",
     title="Remove these records",
     confirm_label="Remove",
-    subject="historical playtime",
+    #: The word the lists use, and the one that counts: three
+    #: "historical playtimes" is nobody's sentence.
+    subject="record",
     cardinality=Cardinality.MANY,
+    color="red",
     inverse_aggregate="historicalplaytime",
     fallback="games:list_historical_playtime",
     scope=record_scope,

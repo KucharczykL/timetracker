@@ -157,7 +157,7 @@ def _source() -> dict[str, object]:
     return {"bulk": {"action": RECLASSIFY.name}}
 
 
-PREVIEW = (
+PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
     PreviewColumn("Game", lambda row, _: row.playthrough.player_game.game.name),
     PreviewColumn("Day", lambda row, _: str(row.effective_day)),
     PreviewColumn(
@@ -177,6 +177,8 @@ RECLASSIFY = BulkAction(
     confirm_label="Record as historical playtime",
     subject="session",
     cardinality=Cardinality.MANY,
+    #: A move, not a removal: the hours stay.
+    color="blue",
     inverse_aggregate="playersession",
     fallback="games:list_sessions",
     scope=review_scope,

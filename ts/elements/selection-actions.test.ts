@@ -94,6 +94,11 @@ function submit(): void {
     ?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 }
 
+/** A back-navigation the browser serves from its cache. */
+function restored(): void {
+  window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+}
+
 describe("<selection-actions>", () => {
   it("writes an empty statement and disables every submit at connect", () => {
     mount(["a", "b"]);
@@ -181,6 +186,39 @@ describe("<selection-actions>", () => {
     tick(table, 0);
     submit();
 
+    tick(table, 1);
+
+    expect(posted()).toEqual({ mode: "some", keys: ["a"] });
+  });
+
+  it("chooses again on a page the browser brought back", () => {
+    // A restored document runs no connectedCallback, so the latch the
+    // press set would stand for the life of the tab and the next press
+    // would post the statement of the press before it.
+    const table = mount(["a", "b"]);
+    toggle(table);
+    tick(table, 0);
+    submit();
+
+    restored();
+
+    expect(posted()).toEqual({ mode: "some", keys: [] });
+    expect(submits().every((button) => button.disabled)).toBe(true);
+
+    tick(table, 1);
+
+    expect(posted()).toEqual({ mode: "some", keys: ["b"] });
+  });
+
+  it("keeps the press when the page was never restored", () => {
+    const table = mount(["a", "b"]);
+    toggle(table);
+    tick(table, 0);
+    submit();
+
+    window.dispatchEvent(
+      new PageTransitionEvent("pageshow", { persisted: false }),
+    );
     tick(table, 1);
 
     expect(posted()).toEqual({ mode: "some", keys: ["a"] });

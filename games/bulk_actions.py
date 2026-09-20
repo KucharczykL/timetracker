@@ -18,7 +18,7 @@ from typing import Any
 from django.contrib.auth.models import User
 from django.db.models import Model, QuerySet
 
-from common.components.primitives import Align, Cell
+from common.components.primitives import Align, ButtonColor, Cell
 from common.date_time_presentation import DateTimePresentation
 from common.duration_presentation import DurationPresentation
 from common.returns import UrlName
@@ -90,15 +90,20 @@ class Presentations:
 
 
 #: One fact of one row, written for a person.
-type PreviewCell = Callable[[Any, Presentations], Cell]
+type PreviewCell[RowT: Model] = Callable[[RowT, Presentations], Cell]
 
 
 @dataclass(frozen=True, slots=True)
-class PreviewColumn:
-    """One column of the confirmation's table."""
+class PreviewColumn[RowT: Model]:
+    """One column of the confirmation's table.
+
+    Generic in the row, so an act cannot state the columns of another
+    act's rows: nothing reads a preview until a person stands on the
+    confirmation, which is the one screen before the write.
+    """
 
     heading: str
-    cell: PreviewCell
+    cell: PreviewCell[RowT]
     align: Align = "left"
 
 
@@ -130,6 +135,8 @@ class BulkAction[RowT: Model]:
     #: The noun `answered()` speaks of.
     subject: SubjectNoun
     cardinality: Cardinality
+    #: What the act does to a row, in the button's colours.
+    color: ButtonColor
     #: Which half a mixed batch's Undo reads.
     inverse_aggregate: AggregateType
     #: Where the act returns without an origin.
@@ -139,7 +146,7 @@ class BulkAction[RowT: Model]:
     run: RunRow[RowT]
     inverse: UndoRow
     #: What the confirmation shows of each row.
-    preview: tuple[PreviewColumn, ...]
+    preview: tuple[PreviewColumn[RowT], ...]
 
     def __post_init__(self) -> None:
         """Refuse a declaration that cannot run."""

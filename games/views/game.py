@@ -1111,7 +1111,11 @@ def _historical_playtime_section(
         #: The request scopes the kept selection to this library.
         request=request,
         selection=SelectionDeclaration(
-            #: This page is the set; no list filter narrows it.
+            #: The act's scope is the library's, not this game's: an
+            #: "all" statement here would name every record the library
+            #: holds. This section states no paginator, so the line
+            #: renders no "select all matching" and the statement it
+            #: posts is always the keys a person marked.
             filter="",
             csrf_token=get_token(request),
             actions=tray_actions(REMOVE_RECORD.name, origin=origin),
@@ -1153,7 +1157,11 @@ def _playthroughs_section(
         #: The request scopes the kept selection to this library.
         request=request,
         selection=SelectionDeclaration(
-            #: This page is the set; no list filter narrows it.
+            #: The act's scope is the library's, not this game's: an
+            #: "all" statement here would name every run the library
+            #: holds. This section states no paginator, so the line
+            #: renders no "select all matching" and the statement it
+            #: posts is always the keys a person marked.
             filter="",
             csrf_token=csrf_token,
             actions=tray_actions(REMOVE_RUN.name, origin=origin),

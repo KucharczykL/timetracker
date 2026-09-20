@@ -443,7 +443,10 @@ def test_an_open_row_menu_is_not_covered_by_a_pinned_cell(
     # original screen position, regardless of how much extra width is forced.
     # The forced width has to exceed that gap before the scrollable range can
     # carry a later column in from the right far enough to slide under the pin.
-    page.add_style_tag(content="table { min-width: 2200px !important; }")
+    # The gap is the pinned column's own width: this list is selectable, so the
+    # first column reserves a checkbox and the columns after it start further
+    # right, and a width that staged the overlap without one no longer does.
+    page.add_style_tag(content="table { min-width: 2600px !important; }")
     toggle = page.locator("tbody tr [data-toggle]:visible").first
     assert toggle.count() > 0, (
         "expected a visible row-menu toggle in tbody tr [data-toggle] at this "

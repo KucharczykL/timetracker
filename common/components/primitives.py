@@ -2282,13 +2282,15 @@ type SelectionCardinality = Literal["one", "many"]
 class SelectionAction(TypedDict):
     """One act the line offers, as a view states it.
 
-    The URL is built and the word is spelled by the view: this layer
+    The URL is built and the words are spelled by the view: this layer
     reverses no route and reads no act table.
     """
 
     label: str
     url: str
     cardinality: SelectionCardinality
+    #: What the act does to a row, in the button's colours.
+    color: ButtonColor
 
 
 class SelectionDeclaration(TypedDict):
@@ -2890,6 +2892,12 @@ def _selection_actions_slot(
     slot = Div([("data-selection-actions", "")], class_="flex gap-2")
     if not offered:
         return slot
+    if not csrf_token:
+        #: A defect here, or a 403 at the press that names nothing.
+        raise ValueError(
+            "A selection line offering acts states a csrf_token; without one "
+            "every press is refused as a forgery, and the page looks right."
+        )
     return slot[
         _SelectionActionsElement(class_="flex gap-2")[
             Form(
@@ -2911,6 +2919,7 @@ def _selection_actions_slot(
                         ControlButton(
                             [("formaction", action["url"]), ("disabled", "")],
                             type="submit",
+                            color=action["color"],
                         )[action["label"]]
                         for action in offered
                     )

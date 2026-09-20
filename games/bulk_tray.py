@@ -37,6 +37,7 @@ def tray_actions(
                 label=action.label,
                 url=action_url("games:run_bulk_action", action.name, origin=origin),
                 cardinality=SPELLED[action.cardinality],
+                color=action.color,
             )
         )
     return offered

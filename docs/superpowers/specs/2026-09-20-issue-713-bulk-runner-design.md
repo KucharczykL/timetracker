@@ -64,8 +64,9 @@ for the move inverse in #714.
 ## Delivered
 
 The reclassification is the first act. #712 states it from the selection line
-of the session list, narrowed to the review. A selection names a scope and a
-count, never keys, so the runner resolves the scope again at the press.
+of the session list, narrowed to the review. A wider statement names a scope
+and a count, never keys, so the runner resolves the scope again at the press;
+a narrower one names the keys a person marked.
 
 Tests cover two chunks under one correlation, a token posted twice, a lost row,
 a refused row, a defect, an unreadable filter, a count that moved, a Stop, and

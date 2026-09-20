@@ -3365,11 +3365,13 @@ class SelectionLineTest(SimpleTestCase):
                         "label": "Remove",
                         "url": "/bulk/session.remove/?origin=%2Fsession%2Flist",
                         "cardinality": "many",
+                        "color": "red",
                     },
                     {
                         "label": "Record as historical playtime",
                         "url": "/bulk/session.reclassify/?origin=%2Fsession%2Flist",
                         "cardinality": "many",
+                        "color": "red",
                     },
                 ],
             }
@@ -3395,6 +3397,7 @@ class SelectionLineTest(SimpleTestCase):
                         "label": "Remove",
                         "url": "/bulk/session.remove/",
                         "cardinality": "many",
+                        "color": "red",
                     }
                 ],
             }
@@ -3405,6 +3408,8 @@ class SelectionLineTest(SimpleTestCase):
         self.assertIn('value="a-token"', html)
 
     def test_every_selection_submit_starts_disabled(self):
+        """The attribute, never the class: every button carries
+        `disabled:opacity-50`, so a substring proves nothing."""
         html = self._paginated(
             selection={
                 "filter": "",
@@ -3414,12 +3419,36 @@ class SelectionLineTest(SimpleTestCase):
                         "label": "Remove",
                         "url": "/bulk/session.remove/",
                         "cardinality": "many",
-                    }
+                        "color": "red",
+                    },
+                    {
+                        "label": "Record as historical playtime",
+                        "url": "/bulk/session.reclassify/",
+                        "cardinality": "many",
+                        "color": "red",
+                    },
                 ],
             }
         )
-        form = html.split("data-selection-actions-form")[1]
-        self.assertIn("disabled", form.split("</form>")[0])
+        form = html.split("data-selection-actions-form")[1].split("</form>")[0]
+        self.assertEqual(form.count('disabled=""'), 2)
+
+    def test_acts_with_no_token_are_refused_rather_than_rendered(self):
+        """A 403 at the press would name the page, not the omission."""
+        with self.assertRaises(ValueError):
+            self._paginated(
+                selection={
+                    "filter": "",
+                    "actions": [
+                        {
+                            "label": "Remove",
+                            "url": "/bulk/session.remove/",
+                            "cardinality": "many",
+                            "color": "red",
+                        }
+                    ],
+                }
+            )
 
     def test_a_one_row_act_is_not_offered_yet(self):
         html = self._paginated(
@@ -3431,6 +3460,7 @@ class SelectionLineTest(SimpleTestCase):
                         "label": "Edit",
                         "url": "/bulk/session.edit/",
                         "cardinality": "one",
+                        "color": "red",
                     }
                 ],
             }
