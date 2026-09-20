@@ -323,20 +323,24 @@ def test_a_joined_row_states_each_member_shape(self):
     )
     self.assertEqual(list(shaped([])), [])
 
+
 def test_a_post_member_states_its_shape_on_its_button(self):
     """The form around a post member has inline-flex and nothing else — no
     border, no background — so the radius belongs on the button inside it."""
     from common.components import ButtonGroup
 
     html = str(
-        ButtonGroup([
-            {"slot": "First", "href": "/a"},
-            {"slot": "Stop", "method": "post", "action": "/b", "csrf_token": "t"},
-        ])
+        ButtonGroup(
+            [
+                {"slot": "First", "href": "/a"},
+                {"slot": "Stop", "method": "post", "action": "/b", "csrf_token": "t"},
+            ]
+        )
     )
     form = html[html.index("<form") :]
     self.assertNotIn("rounded-e-base", form[: form.index("<button")])
     self.assertIn("rounded-e-base", form[form.index("<button") :])
+
 
 def test_a_skipped_member_is_not_an_end(self):
     """Entries with no slot are dropped before the row is counted — the

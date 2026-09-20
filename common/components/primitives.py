@@ -168,6 +168,11 @@ type ButtonVariant = Literal[
 # order, not class-attribute order, so `class_="justify-start"` on a button
 # whose baked class already says `justify-center` wins only by luck.
 type ButtonAlign = Literal["center", "start"]
+# Which corners a button rounds. A place in a joined row, not a size: "start"
+# and "end" are the row's two ends, "square" a member between them, and "full"
+# a button standing alone. A shape never states a radius — the radius is one
+# tier (rounded-base) everywhere, decided once in #411.
+type ButtonShape = Literal["full", "start", "end", "square"]  # e.g. "start"
 type BadgeSize = Literal["sm", "base", "lg"]
 type BadgeTone = Literal["brand", "neutral", "success", "warning", "danger"]
 
@@ -781,6 +786,16 @@ _ALIGN_CLASSES: dict[ButtonAlign, str] = {
     "start": "justify-start text-start",
 }
 
+# Corners, never a radius: every entry is the one tier #411 left standing.
+# "square" appends nothing at all, so a joined row's middle member carries no
+# rounding word rather than a word that zeroes one.
+_SHAPE_CLASSES: dict[ButtonShape, str] = {
+    "full": "rounded-base",
+    "start": "rounded-s-base",
+    "end": "rounded-e-base",
+    "square": "",
+}
+
 # Shared by EVERY button-shaped variant. Height is the canonical control
 # height (min-h-control = 42px, from --height-control), floored not fixed so a
 # multi-line control still grows; the inline-flex base centers content in it.
@@ -790,8 +805,7 @@ _ALIGN_CLASSES: dict[ButtonAlign, str] = {
 CONTROL_SIZE_CLASS = "min-h-control px-3"
 
 _FILLED_VARIANT_CLASS = (
-    "gap-2 leading-5 focus:outline-hidden focus:ring-4 rounded-base "
-    f"{CONTROL_SIZE_CLASS}"
+    f"gap-2 leading-5 focus:outline-hidden focus:ring-4 {CONTROL_SIZE_CLASS}"
 )
 
 _SEGMENTED_VARIANT_CLASS = f"focus:z-10 {CONTROL_SIZE_CLASS}"
@@ -874,14 +888,14 @@ _OUTLINE_VARIANT_CLASS = (
 # compact triggers that would read as clutter in a row of many (the quick
 # filter bar's facet dropdowns).
 _GHOST_VARIANT_CLASS = (
-    f"{CONTROL_SIZE_CLASS} gap-2 rounded-base bg-transparent border "
+    f"{CONTROL_SIZE_CLASS} gap-2 bg-transparent border "
     "border-transparent text-heading hover:bg-neutral-tertiary-medium "
     "hover:border-default-strong focus:outline-hidden focus:ring-2 "
     "focus:ring-fg-brand whitespace-nowrap"
 )
 
 _PLAIN_VARIANT_CLASS = (
-    "flex items-center justify-between w-full py-2 px-3 text-gray-900 rounded-base "
+    "flex items-center justify-between w-full py-2 px-3 text-gray-900 "
     "hover:bg-gray-100 md:hover:bg-transparent md:border-0 md:hover:text-blue-700 "
     "md:p-0 md:w-auto dark:text-white md:dark:hover:text-blue-500 "
     "dark:focus:text-white dark:border-gray-700 dark:hover:bg-gray-700 "
@@ -894,6 +908,7 @@ def control_button_class(
     color: ButtonColor = "blue",
     variant: ButtonVariant = "filled",
     align: ButtonAlign = "center",
+    shape: ButtonShape = "full",
 ) -> str:
     """The exact class string :class:`ControlButton` renders for a combination.
 
@@ -907,11 +922,12 @@ def control_button_class(
 
     ControlButton itself renders through this, so the two cannot disagree.
     """
+    shape_class = _SHAPE_CLASSES[shape]
     if variant == "plain":
         # The navbar nav-link owns its whole layout (flex justify-between,
         # md:p-0) and sits outside both the base and the sizing contract, so
         # neither the base nor alignment applies to it.
-        return _PLAIN_VARIANT_CLASS
+        return " ".join(part for part in (_PLAIN_VARIANT_CLASS, shape_class) if part)
     parts = [_CONTROL_BASE_CLASS, _ALIGN_CLASSES[align]]
     if variant == "outline":
         parts.append(_OUTLINE_VARIANT_CLASS)
@@ -922,6 +938,11 @@ def control_button_class(
             parts += [_FILLED_VARIANT_CLASS, _FILLED_COLOR_CLASSES[color]]
         else:
             parts += [_SEGMENTED_VARIANT_CLASS, _SEGMENTED_COLOR_CLASSES[color]]
+    # Appended only when it says something: "square" is the absence of a
+    # rounding word, and an empty part would leave a trailing space that two
+    # exact-equality assertions compare.
+    if shape_class:
+        parts.append(shape_class)
     return " ".join(parts)
 
 
@@ -947,11 +968,17 @@ class ControlButton(BaseComponent):
 
     The dropdown-toggle variants are single-look and ignore ``color``:
     ``variant="outline"`` is the bordered toggle (split-button carets, value
-    selectors — callers add rounding by shape, e.g. ``rounded-e-base``);
+    selectors);
     ``variant="ghost"`` is the transparent-until-hover toggle (quick-facet
     dropdown triggers) — outline's look on hover, invisible chrome at rest;
     ``variant="plain"`` is the borderless navbar nav-link trigger, the one
     variant outside the sizing contract (its navbar layout is its own).
+
+    ``shape=`` states which corners the button rounds, and is the only way to
+    state them: ``"full"`` (the default) rounds all four, ``"start"``/``"end"``
+    the two ends of a joined row, ``"square"`` none. A caller class is refused,
+    because a caller class and a baked class both set the radius and the
+    stylesheet — not the class attribute — decides which one wins.
 
     ``align="start"`` left-aligns the content for buttons rendered as a list of
     choices (the date picker's preset column); the default is centered. It is a
@@ -972,6 +999,7 @@ class ControlButton(BaseComponent):
         color: ButtonColor = "blue",
         variant: ButtonVariant = "filled",
         align: ButtonAlign = "center",
+        shape: ButtonShape = "full",
         href: str = "",
         method: str = "",
         action: str = "",
@@ -982,7 +1010,12 @@ class ControlButton(BaseComponent):
         **kwargs: object,
     ) -> None:
         class_attrs: list[HTMLAttribute] = [
-            ("class", control_button_class(color=color, variant=variant, align=align))
+            (
+                "class",
+                control_button_class(
+                    color=color, variant=variant, align=align, shape=shape
+                ),
+            )
         ]
         self._merged_attributes: list[HTMLAttribute] = [
             *class_attrs,
