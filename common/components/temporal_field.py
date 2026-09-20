@@ -23,6 +23,8 @@ Nothing the element hides carries a Tailwind ``display`` utility: the
 ``hidden`` attribute is a user-agent rule any such class outranks.
 """
 
+from typing import NamedTuple
+
 from common.components.core import Element, Node
 from common.components.custom_elements import _TemporalField
 from common.components.date_range_picker import (
@@ -39,7 +41,13 @@ from common.components.elements import (
     Select,
     Span,
 )
-from common.components.primitives import Checkbox, Input, Radio, field_label_id
+from common.components.primitives import (
+    Checkbox,
+    ControlButton,
+    Input,
+    Radio,
+    field_label_id,
+)
 from common.date_time_presentation import DateTimePresentation
 from timetracker.temporal import (
     TEMPORAL_DRAFT_KIND_LABELS,
@@ -61,6 +69,36 @@ _DISCLOSURE_CLASS = (
 _PART_WIDTHS = {"year": 4, "month": 2, "day": 2, "decade": 4}
 
 
+class TemporalCopySource(NamedTuple):
+    """Another temporal field this one can take its whole value from.
+
+    A Release row reads the Original release, never the other way: one
+    field is always the source, thus the control sits on the taker and
+    names what it takes from.
+    """
+
+    field_name: str  # the source field's Django name, e.g. "original_release_date"
+    label: str  # what the button says, e.g. "Use original release"
+
+
+def _copy_button(source: TemporalCopySource) -> Node:
+    """Inert until the element reaches it.
+
+    Hidden and disabled from the server, thus no script means no button
+    that does nothing. The title names what to fill first, because a
+    disabled control explains itself to nobody.
+    """
+    return ControlButton(
+        variant="ghost",
+        type="button",
+        hidden=True,
+        disabled=True,
+        data_temporal_copy=source.field_name,
+        title=f"Fill {source.label.removeprefix('Use ')} first",
+        class_="self-start",
+    )[source.label]
+
+
 def TemporalField(
     *,
     name: str,
@@ -70,6 +108,7 @@ def TemporalField(
     input_id: str = "",
     required: bool = False,
     invalid: bool = False,
+    copy_source: TemporalCopySource | None = None,
 ) -> Node:
     """The whole control: a shape, two endpoints, two qualifiers.
 
@@ -131,11 +170,13 @@ def TemporalField(
             aria_live="polite",
             class_="sr-only",
         ),
+        *([_copy_button(copy_source)] if copy_source else []),
     ]
     if not _segments_can_hold(data):
         return group
     return _TemporalField(
-        expanded="true" if _needs_precision_controls(data) else "false"
+        expanded="true" if _needs_precision_controls(data) else "false",
+        field_name=name,
     )[group]
 
 

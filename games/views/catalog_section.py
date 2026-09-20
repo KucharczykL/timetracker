@@ -1,8 +1,9 @@
 """The Editions area of the Game form.
 
-A Release row is not a table row with a radio at the end: the whole row
-is the radio's label, and the mark is one group over the whole Game, so
-exactly one row across every Edition carries it.
+A Release row is not a table row with a radio at the end. The mark is
+one group over the whole Game, so exactly one row across every Edition
+carries it. Only the radio and its own text sit inside the label, thus
+a control elsewhere in the row owns its own press.
 
 The block is a container query of its own. Narrow, a row stacks and each
 control keeps a visible label; wide, the labels go `sr-only` and one

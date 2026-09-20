@@ -971,3 +971,58 @@ describe("temporal-field copy", () => {
     expect(heard).toContain("date");
   });
 });
+
+describe("temporal-field copy control", () => {
+  beforeEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  function copyButton(host: HTMLElement): HTMLButtonElement {
+    return host.querySelector<HTMLButtonElement>("[data-temporal-copy]")!;
+  }
+
+  it("shows and enables the button a filled source stands behind", () => {
+    const { target } = mountPair({ kind: "date", start_year: "1997" });
+
+    expect(copyButton(target).hasAttribute("hidden")).toBe(false);
+    expect(copyButton(target).disabled).toBe(false);
+  });
+
+  it("copies the source on a press", () => {
+    const { target } = mountPair({
+      kind: "date",
+      start_year: "1997",
+      start_month: "3",
+    });
+
+    copyButton(target).click();
+
+    expect(named(target, "start_year").value).toBe("1997");
+    expect(named(target, "start_month").value).toBe("03");
+  });
+
+  it("leaves the button disabled while the source states nothing", () => {
+    const { target } = mountPair();
+
+    expect(copyButton(target).disabled).toBe(true);
+    expect(copyButton(target).hasAttribute("hidden")).toBe(false);
+  });
+
+  it("enables the button when the source fills without a reload", () => {
+    const { source, target } = mountPair();
+    expect(copyButton(target).disabled).toBe(true);
+
+    type(source, "start", "year", "1997");
+
+    expect(copyButton(target).disabled).toBe(false);
+  });
+
+  it("stays disabled and quiet when the source is on no page", () => {
+    const { target } = mountPair({ kind: "date", start_year: "1997" }, {}, "absent");
+
+    expect(copyButton(target).disabled).toBe(true);
+    expect(() => copyButton(target).click()).not.toThrow();
+    expect(named(target, "start_year").value).toBe("");
+  });
+});
+

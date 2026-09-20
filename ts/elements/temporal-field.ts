@@ -531,11 +531,38 @@ function bindControls(host: HTMLElement): void {
   host.addEventListener("change", () => paintDisclosure(host));
 }
 
+/**
+ * The button that takes another field's whole value.
+ *
+ * The source may be on no page at all: a value a segment cannot hold
+ * renders the native controls alone, with no element around them. That
+ * reads as a source stating nothing, so the button stays inert and says
+ * which field to correct.
+ */
+function initCopyControl(host: HTMLElement): void {
+  const button = host.querySelector<HTMLButtonElement>("[data-temporal-copy]");
+  if (!button) return;
+  const sourceName = button.getAttribute("data-temporal-copy") ?? "";
+  const source = document.querySelector<HTMLElement>(
+    `temporal-field[field-name="${sourceName}"]`,
+  );
+  const paint = () => {
+    button.disabled = !source || currentKind(source) === "unknown";
+  };
+  button.hidden = false;
+  paint();
+  source?.addEventListener(TEMPORAL_FIELD_CHANGE_EVENT, paint);
+  button.addEventListener("click", () => {
+    if (source) copyTemporalDraft(source, host);
+  });
+}
+
 function initField(host: HTMLElement): void {
   revealSegments(host);
   bindEngine(host);
   bindControls(host);
   adoptDraft(host, readDraft(host));
+  initCopyControl(host);
   // A field nobody has touched announces nothing.
   const region = host.querySelector("[data-temporal-announcement]");
   if (region) region.textContent = "";

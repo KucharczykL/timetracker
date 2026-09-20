@@ -20,6 +20,7 @@ from common.components import (
     DateTimePicker,
     SearchSelect,
     SearchSelectOption,
+    TemporalCopySource,
     TemporalField,
     TimeZoneRow,
     render,
@@ -399,11 +400,17 @@ class TemporalWidget(forms.Widget):
     """
 
     def __init__(
-        self, *, presentation: DateTimePresentation, label: str, attrs=None
+        self,
+        *,
+        presentation: DateTimePresentation,
+        label: str,
+        attrs=None,
+        copy_source: TemporalCopySource | None = None,
     ) -> None:
         super().__init__(attrs)
         self.presentation = presentation
         self.label = label
+        self.copy_source = copy_source
 
     def _data(self, value) -> TemporalDraftData:
         if isinstance(value, dict):
@@ -424,6 +431,7 @@ class TemporalWidget(forms.Widget):
                 input_id=str(final_attrs.get("id", "")),
                 required=bool(final_attrs.get("required")),
                 invalid=final_attrs.get("aria-invalid") == "true",
+                copy_source=self.copy_source,
             )
         )
 
@@ -459,10 +467,18 @@ class TemporalFormField(forms.Field):
     """
 
     def __init__(
-        self, *, presentation: DateTimePresentation, label: str = "Date", **kwargs
+        self,
+        *,
+        presentation: DateTimePresentation,
+        label: str = "Date",
+        copy_source: TemporalCopySource | None = None,
+        **kwargs,
     ) -> None:
         kwargs.setdefault(
-            "widget", TemporalWidget(presentation=presentation, label=label)
+            "widget",
+            TemporalWidget(
+                presentation=presentation, label=label, copy_source=copy_source
+            ),
         )
         kwargs.setdefault("required", False)
         super().__init__(label=label, **kwargs)

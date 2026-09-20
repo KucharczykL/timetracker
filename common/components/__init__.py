@@ -246,7 +246,7 @@ from common.components.settings_kit import (
     SettingSourceBadge,
     prepare_setting_fields,
 )
-from common.components.temporal_field import TemporalField
+from common.components.temporal_field import TemporalCopySource, TemporalField
 from common.components.theme import ThemeSetting, ThemeToggle
 from common.components.time_zone_row import TimeZoneRow
 from common.components.toast import ToastStack
@@ -442,6 +442,7 @@ __all__ = [
     "Tbody",
     "Td",
     "Template",
+    "TemporalCopySource",
     "TemporalField",
     "Th",
     "Thead",

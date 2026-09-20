@@ -118,6 +118,51 @@ def test_the_page_threads_the_temporal_element(logged_in, plain_game):
     assert "dist/elements/catalog-editor.js" in body
 
 
+def test_every_release_row_offers_the_original_release(logged_in, plain_game):
+    """One button per row, inert until the element reaches it."""
+    body = live(page(logged_in, plain_game))
+
+    assert body.count('data-temporal-copy="original_release_date"') == 1
+    button = re.search(r"<button[^>]*data-temporal-copy[^>]*>", body)
+    assert button is not None
+    assert 'type="button"' in button.group(0)
+    assert "hidden" in button.group(0)
+    assert "disabled" in button.group(0)
+    assert "Use original release" in body
+
+
+def test_the_original_release_names_itself_to_the_rows(logged_in, plain_game):
+    """The source carries no form prefix, thus one page holds one."""
+    body = live(page(logged_in, plain_game))
+
+    assert body.count('field-name="original_release_date"') == 1
+    assert 'field-name="edition-0-release-0-release_date"' in body
+
+
+def test_a_cloned_row_carries_the_button_too(logged_in, plain_game):
+    """The template is what `Add release` clones, so it needs one.
+
+    `live()` cuts the page at the first template, thus this reads the
+    whole body on purpose.
+    """
+    body = page(logged_in, plain_game)
+    templates = body.split("<template data-catalog-template=")[1:]
+
+    assert templates
+    assert all(
+        'data-temporal-copy="original_release_date"' in each for each in templates
+    )
+
+
+def test_add_game_offers_the_original_release_too(logged_in):
+    """Add Game hosts the same area, thus the same button."""
+    response = logged_in.get(reverse("games:add_game"))
+    body = response.content.decode()
+
+    assert 'data-temporal-copy="original_release_date"' in live(body)
+    assert 'field-name="original_release_date"' in live(body)
+
+
 def test_every_row_carries_the_input_the_bin_states(logged_in, plain_game):
     """The bin writes `removed`, thus the row has to post it.
 
