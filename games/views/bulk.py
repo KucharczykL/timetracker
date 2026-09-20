@@ -384,6 +384,28 @@ def _run_a_chunk(
                 outcome = leg.run(
                     user, row, f"{leg.name}-{token}-{acted}", correlation_id
                 )
+            except Http404 as absent:
+                #: The leg re-resolved this row moments ago.
+                #: Said anyway, so no batch ends in silence.
+                _log_abandoned(
+                    leg.name,
+                    [acted, *left],
+                    user.library,
+                    correlation_id,
+                    ENDED_BY_A_DEFECT,
+                )
+                logger.error(
+                    "[bulk]: %s met a row library %s does not hold: %s",
+                    leg.name,
+                    user.library.pk,
+                    absent,
+                )
+                return _defect(
+                    request,
+                    action,
+                    replace(tally, rows=tuple(left)),
+                    undo_url=undo_url,
+                )
             except CommandFailed as failure:
                 if failure.status_code != CONFLICT_STATUS:
                     #: Ours, not theirs: the batch ends here.

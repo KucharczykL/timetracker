@@ -22,17 +22,20 @@ from games.commands.playersession import (
     MoveSessionToPlaythrough,
     RemoveSession,
     RestoreSession,
+    SessionNotHeld,
     StatedDevice,
     TimedTiming,
 )
 from games.commands.playthrough import (
     CreatePlaythrough,
+    PlaythroughNotHeld,
     RemovePlaythrough,
     RestorePlaythrough,
 )
 from games.events.dispatch import (
     CommandOutcome,
     CommandRejected,
+    RowNotHeld,
     RowUnreadable,
     dispatch,
 )
@@ -130,6 +133,19 @@ def refused(library, actor, run, timing, **stated) -> CommandRejected:
     return refusal.value
 
 
+def not_held(library, actor, run, timing, **stated) -> RowNotHeld:
+    """A row this library does not hold; the boundary owns the answer."""
+    with pytest.raises(RowNotHeld) as absent:
+        dispatch(
+            CreateSession(playthrough_id=run.pk, timing=timing, **stated),
+            actor=actor,
+            library=library,
+            idempotency_key=str(uuid.uuid7()),
+        )
+    assert not hasattr(absent.value, "sentence")
+    return absent.value
+
+
 def test_a_timed_session_is_recorded(owned_user, owned_library, run):
     session = record(owned_library, owned_user, run, a_timed())
 
@@ -205,7 +221,7 @@ def test_it_refuses_a_run_another_library_holds(
         created_at=timezone.now(),
     )
 
-    refused(owned_library, owned_user, other_run, a_timed())
+    not_held(owned_library, owned_user, other_run, a_timed())
 
 
 def test_it_refuses_a_removed_run(owned_user, owned_library, run):
@@ -225,7 +241,7 @@ def test_it_refuses_a_device_another_library_holds(
 ):
     device = Device.objects.create(library=second_library, name="Elsewhere")
 
-    refused(owned_library, owned_user, run, a_timed(), device_id=device.pk)
+    not_held(owned_library, owned_user, run, a_timed(), device_id=device.pk)
 
 
 def test_it_refuses_a_removed_device(owned_user, owned_library, run):
@@ -501,6 +517,14 @@ def ends(library, actor, session, *, ended_at, ended_at_zone=None, key=None):
     return result
 
 
+def states_the_sentence(refusal: Exception, saying: str | None) -> None:
+    """A rejection states one; a row the library does not hold states none."""
+    if isinstance(refusal, CommandRejected):
+        assert refusal.sentence == saying
+    else:
+        assert saying is None
+
+
 def refused_end(
     library,
     actor,
@@ -521,11 +545,7 @@ def refused_end(
             library=library,
             idempotency_key=str(uuid.uuid7()),
         )
-    if raising is RowUnreadable:
-        assert saying is None
-    else:
-        assert isinstance(refusal.value, CommandRejected)
-        assert refusal.value.sentence == saying
+    states_the_sentence(refusal.value, saying)
     return refusal.value
 
 
@@ -693,7 +713,8 @@ def test_an_unknown_session_is_refused(owned_user, owned_library, run):
         owned_user,
         uuid.uuid7(),
         ended_at=AN_END,
-        saying="That session is not available.",
+        saying=None,
+        raising=SessionNotHeld,
     )
 
 
@@ -768,7 +789,8 @@ def test_a_session_another_library_holds_is_refused(
         owned_user,
         elsewhere.pk,
         ended_at=AN_END,
-        saying=("That session is not available."),
+        saying=None,
+        raising=SessionNotHeld,
     )
 
 
@@ -868,10 +890,18 @@ def corrects(library, actor, session_id, timing, *, key=None):
     )
 
 
-def refused_correction(library, actor, session_id, timing, *, saying):
-    with pytest.raises(CommandRejected) as refusal:
+def refused_correction(
+    library,
+    actor,
+    session_id,
+    timing,
+    *,
+    saying,
+    raising: type[Exception] = CommandRejected,
+):
+    with pytest.raises(raising) as refusal:
         corrects(library, actor, session_id, timing)
-    assert refusal.value.sentence == saying
+    states_the_sentence(refusal.value, saying)
     return refusal.value
 
 
@@ -1122,7 +1152,8 @@ def test_an_unknown_session_has_no_timing_to_correct(owned_user, owned_library):
         owned_user,
         uuid.uuid7(),
         a_timed(),
-        saying="That session is not available.",
+        saying=None,
+        raising=SessionNotHeld,
     )
 
 
@@ -1136,7 +1167,8 @@ def test_another_librarys_session_has_no_timing_to_correct(
         owned_user,
         elsewhere.pk,
         a_timed(),
-        saying="That session is not available.",
+        saying=None,
+        raising=SessionNotHeld,
     )
 
 
@@ -1221,10 +1253,18 @@ def describes(library, actor, session_id, *, key=None, **stated):
     )
 
 
-def refused_description(library, actor, session_id, *, saying, **stated):
-    with pytest.raises(CommandRejected) as refusal:
+def refused_description(
+    library,
+    actor,
+    session_id,
+    *,
+    saying,
+    raising: type[Exception] = CommandRejected,
+    **stated,
+):
+    with pytest.raises(raising) as refusal:
         describes(library, actor, session_id, **stated)
-    assert refusal.value.sentence == saying
+    states_the_sentence(refusal.value, saying)
     return refusal.value
 
 
@@ -1403,7 +1443,8 @@ def test_another_librarys_device_is_refused(
         owned_user,
         session.pk,
         device=StatedDevice(elsewhere.pk),
-        saying="That device is not available.",
+        saying=None,
+        raising=RowNotHeld,
     )
 
 
@@ -1449,7 +1490,8 @@ def test_an_unknown_session_has_nothing_to_describe(owned_user, owned_library):
         owned_user,
         uuid.uuid7(),
         note="played",
-        saying="That session is not available.",
+        saying=None,
+        raising=SessionNotHeld,
     )
 
 
@@ -1463,7 +1505,8 @@ def test_another_librarys_session_has_nothing_to_describe(
         owned_user,
         elsewhere.pk,
         note="played",
-        saying="That session is not available.",
+        saying=None,
+        raising=SessionNotHeld,
     )
 
 
@@ -1520,10 +1563,18 @@ def moves(library, actor, session_id, playthrough_id, *, key=None):
     )
 
 
-def refused_move(library, actor, session_id, playthrough_id, *, saying):
-    with pytest.raises(CommandRejected) as refusal:
+def refused_move(
+    library,
+    actor,
+    session_id,
+    playthrough_id,
+    *,
+    saying,
+    raising: type[Exception] = CommandRejected,
+):
+    with pytest.raises(raising) as refusal:
         moves(library, actor, session_id, playthrough_id)
-    assert refusal.value.sentence == saying
+    states_the_sentence(refusal.value, saying)
     return refusal.value
 
 
@@ -1611,7 +1662,8 @@ def test_a_run_another_library_holds_is_refused(
         owned_user,
         session.pk,
         elsewhere.playthrough_id,
-        saying="That playthrough is not available.",
+        saying=None,
+        raising=PlaythroughNotHeld,
     )
 
 
@@ -1623,7 +1675,8 @@ def test_an_unknown_run_is_refused(owned_user, owned_library, run):
         owned_user,
         session.pk,
         uuid.uuid7(),
-        saying="That playthrough is not available.",
+        saying=None,
+        raising=PlaythroughNotHeld,
     )
 
 
@@ -1688,7 +1741,8 @@ def test_an_unknown_session_cannot_be_moved(owned_user, owned_library, run):
         owned_user,
         uuid.uuid7(),
         run.pk,
-        saying="That session is not available.",
+        saying=None,
+        raising=SessionNotHeld,
     )
 
 
@@ -1718,15 +1772,23 @@ def restores(library, actor, session_id, *, key=None):
     )
 
 
-def refused_lifecycle(command, library, actor, session_id, *, saying):
-    with pytest.raises(CommandRejected) as refusal:
+def refused_lifecycle(
+    command,
+    library,
+    actor,
+    session_id,
+    *,
+    saying,
+    raising: type[Exception] = CommandRejected,
+):
+    with pytest.raises(raising) as refusal:
         dispatch(
             command(session_id=session_id),
             actor=actor,
             library=library,
             idempotency_key=str(uuid.uuid7()),
         )
-    assert refusal.value.sentence == saying
+    states_the_sentence(refusal.value, saying)
     return refusal.value
 
 
@@ -1823,7 +1885,8 @@ def test_an_unknown_session_is_refused_alike(owned_user, owned_library, command)
         owned_library,
         owned_user,
         uuid.uuid7(),
-        saying="That session is not available.",
+        saying=None,
+        raising=SessionNotHeld,
     )
 
 
@@ -1838,7 +1901,8 @@ def test_another_librarys_session_is_refused_alike(
         owned_library,
         owned_user,
         elsewhere.pk,
-        saying="That session is not available.",
+        saying=None,
+        raising=SessionNotHeld,
     )
     elsewhere.refresh_from_db()
     assert elsewhere.removed_at is None

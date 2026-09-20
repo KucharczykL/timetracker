@@ -998,8 +998,8 @@ def test_post_session_refuses_a_timing_that_matches_no_shape(auth_client, user):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_post_session_404s_a_removed_device(auth_client, user):
-    """`for_library` calls `alive()`, so the route answers before the command."""
+def test_post_session_refuses_a_removed_device(auth_client, user):
+    """The library holds it, so the answer names the remedy."""
     _prague_calendar(user)
     run = _tracked_run()
     device = _owned_device(name="Deck", type="h")
@@ -1014,8 +1014,32 @@ def test_post_session_404s_a_removed_device(auth_client, user):
         },
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 409
+    assert "Restore it" in response.json()["detail"]
     assert not PlayerSession.objects.filter(playthrough=run).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_post_session_absorbs_a_repeat_naming_a_device_since_removed(auth_client, user):
+    """The key answers before `build` resolves anything."""
+    _prague_calendar(user)
+    run = _tracked_run()
+    device = _owned_device(name="Deck", type="h")
+    body = {
+        "playthrough_id": str(run.pk),
+        "timing": {"started_at": "2026-06-24T18:00:00Z"},
+        "device_id": str(device.pk),
+    }
+    headers = {"idempotency-key": "k-2"}
+    first = _post_session(auth_client, body, headers=headers)
+    assert first.status_code == 201, first.content
+    Device.objects.filter(pk=device.pk).update(removed_at=datetime.now(UTC))
+
+    second = _post_session(auth_client, body, headers=headers)
+
+    assert second.status_code == 201, second.content
+    assert second.json()["id"] == first.json()["id"]
+    assert PlayerSession.objects.filter(playthrough=run).count() == 1
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1134,8 +1158,8 @@ def test_post_session_carries_its_message(auth_client, user):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_session_patch_409s_a_run_another_library_holds(auth_client, user):
-    """The asymmetry the POST's 404 creates: the move resolves in the command."""
+def test_session_patch_404s_a_run_another_library_holds(auth_client, user):
+    """One rule for a body's identifier: the command answers the absence."""
     _prague_calendar(user)
     session = _row()
     theirs = _stranger_run()
@@ -1144,7 +1168,7 @@ def test_session_patch_409s_a_run_another_library_holds(auth_client, user):
         auth_client, session.id, {"playthrough_id": str(theirs.pk)}
     )
 
-    assert response.status_code == 409
+    assert response.status_code == 404
     session.refresh_from_db()
     assert session.playthrough_id != theirs.pk
 

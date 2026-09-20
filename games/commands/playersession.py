@@ -23,6 +23,7 @@ from games.events.dispatch import (
     CommandContext,
     CommandName,
     CommandRejected,
+    RowNotHeld,
     RowUnreadable,
 )
 from games.events.playersession import (
@@ -190,8 +191,8 @@ def _check_representable(instant: datetime, *zones: tzinfo | None) -> None:
             ) from None
 
 
-class SessionNotHeld(CommandRejected):
-    """The library holds no such session."""
+class SessionNotHeld(RowNotHeld):
+    """The library holds no such session; caught by name."""
 
 
 def library_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSession:
@@ -205,7 +206,6 @@ def library_session(context: CommandContext, session_id: uuid.UUID) -> PlayerSes
                 f"This library holds no session {session_id}. A stated fact "
                 "belongs to a session the library records."
             ),
-            sentence="That session is not available.",
             raises=SessionNotHeld,
         ),
         pk=session_id,

@@ -207,6 +207,15 @@ class RowUnreadable(Exception):
     """
 
 
+class RowNotHeld(Exception):
+    """A row this library does not hold; an absence.
+
+    A sibling of `CommandRejected`, not a subclass: the boundary
+    answers 404 and nothing more, so no sentence, and no handler
+    that means a rule may take it.
+    """
+
+
 def authorize(actor: User, library: UserLibrary) -> None:
     """Refuse anyone but the library's own active owner.
 

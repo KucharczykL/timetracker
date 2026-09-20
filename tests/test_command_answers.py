@@ -9,7 +9,12 @@ from django.http import Http404
 
 from games.events.append import StreamSequenceMismatch
 from games.events.conflicts import CommandConflict
-from games.events.dispatch import CommandNotPermitted, CommandRejected, RowUnreadable
+from games.events.dispatch import (
+    CommandNotPermitted,
+    CommandRejected,
+    RowNotHeld,
+    RowUnreadable,
+)
 from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.retry import RetryBudgetExhausted
 from games.writes.answers import (
@@ -176,6 +181,32 @@ def test_an_unreadable_row_states_no_sentence():
 def test_an_unreadable_row_is_no_rejection():
     """A sibling: no rule's handler may take it."""
     assert not issubclass(RowUnreadable, CommandRejected)
+
+
+def test_a_row_not_held_is_no_rejection():
+    """A sibling as well: the boundary answers it another way."""
+    assert not issubclass(RowNotHeld, CommandRejected)
+
+
+def test_a_row_the_library_does_not_hold_is_absent():
+    """No sentence: one library learns nothing of another's rows."""
+    with pytest.raises(Http404), answered("session"):
+        raise RowNotHeld(_FOR_A_DEVELOPER)
+
+
+def test_a_row_the_library_does_not_hold_is_recorded(capture_games_logger):
+    """An invisible 404 is how a client retries a request that landed."""
+    with (
+        capture_games_logger() as caplog,
+        pytest.raises(Http404),
+        answered("session"),
+    ):
+        raise RowNotHeld(_FOR_A_DEVELOPER)
+
+    (record,) = caplog.records
+    assert record.levelname == "WARNING"
+    assert record.exc_info is None
+    assert "0192f3d4" in record.getMessage()
 
 
 def test_a_subclass_of_a_mapped_leaf_takes_its_parents_answer():

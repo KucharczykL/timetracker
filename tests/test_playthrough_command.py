@@ -25,6 +25,7 @@ from games.commands.playthrough import (
     CorrectPlaythroughStart,
     CreatePlaythrough,
     DescribePlaythrough,
+    PlaythroughNotHeld,
     RemovePlaythrough,
     RestorePlaythrough,
     StartPlaythrough,
@@ -653,10 +654,10 @@ def test_stating_an_endpoint_of_another_library_is_refused(
         created_at=timezone.now(),
     )
 
-    with pytest.raises(CommandRejected) as refusal:
+    with pytest.raises(PlaythroughNotHeld) as absent:
         _start(owned_user, owned_library, hidden, when=None, key="foreign")
 
-    assert refusal.value.sentence == "That playthrough is not available."
+    assert not hasattr(absent.value, "sentence")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -664,7 +665,7 @@ def test_stating_an_endpoint_of_no_playthrough_is_refused_alike(
     owned_user, owned_library
 ):
     """A row of another library and no row answer in one sentence."""
-    with pytest.raises(CommandRejected) as refusal:
+    with pytest.raises(PlaythroughNotHeld) as absent:
         dispatch(
             StartPlaythrough(playthrough_id=uuid.uuid7(), when=None, note=""),
             actor=owned_user,
@@ -672,7 +673,7 @@ def test_stating_an_endpoint_of_no_playthrough_is_refused_alike(
             idempotency_key="nowhere",
         )
 
-    assert refusal.value.sentence == "That playthrough is not available."
+    assert not hasattr(absent.value, "sentence")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -994,10 +995,10 @@ def test_describing_a_run_of_another_library_is_refused(
         created_at=timezone.now(),
     )
 
-    with pytest.raises(CommandRejected) as refusal:
+    with pytest.raises(PlaythroughNotHeld) as absent:
         _describe(owned_user, owned_library, hidden, name="Ironman", note=None)
 
-    assert refusal.value.sentence == "That playthrough is not available."
+    assert not hasattr(absent.value, "sentence")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1397,10 +1398,10 @@ def test_correcting_an_endpoint_of_another_library_is_refused(
         created_at=timezone.now(),
     )
 
-    with pytest.raises(CommandRejected) as refusal:
+    with pytest.raises(PlaythroughNotHeld) as absent:
         _correct_start(owned_user, owned_library, hidden, when=None)
 
-    assert refusal.value.sentence == "That playthrough is not available."
+    assert not hasattr(absent.value, "sentence")
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1672,10 +1673,10 @@ def test_removing_a_run_of_another_library_is_refused(
         created_at=timezone.now(),
     )
 
-    with pytest.raises(CommandRejected) as refusal:
+    with pytest.raises(PlaythroughNotHeld) as absent:
         _remove(owned_user, owned_library, hidden, key="foreign")
 
-    assert refusal.value.sentence == "That playthrough is not available."
+    assert not hasattr(absent.value, "sentence")
 
 
 @pytest.mark.django_db(transaction=True)

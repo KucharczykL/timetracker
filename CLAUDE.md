@@ -773,13 +773,16 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
 - `PATCH /api/session/{id}` — body `extra="forbid"`: `timing` (one whole
   statement told apart by shape) is a correction, `note`/`device_id`/`emulated`
   a description, `playthrough_id` a move; named key is the act, omitted key
-  states nothing. Device outside library answers 404
+  states nothing. A run or device the library does not hold answers 404,
+  from the command
 - `POST /api/session/` — body `extra="forbid"`: `playthrough_id` and one whole
   `timing` statement, `device_id`, `note` and `emulated` beside them. Answers
-  201 and the row. An `Idempotency-Key` header absorbs a repeat, measured at
-  the route because the plain `ValueError` no answer maps would read as a
-  defect. A run or device the library does not hold answers 404; every other
-  rule keeps the command's sentence at 409
+  201 and the row. An `Idempotency-Key` header absorbs a repeat; the header
+  itself is measured at the route, because the plain `ValueError` no answer
+  maps would read as a defect, and nothing else reads the state ahead of it.
+  A run or device the library does not hold answers 404, from the command,
+  under the lock and behind the key; every other rule keeps the command's
+  sentence at 409
 - `PATCH /api/session/{id}/device` — `DescribeSession(StatedDevice(...))`
 - `GET /api/historical-playtime/`, `GET /{id}` — live records through
   `readable_records`: `filter`/`sort`/`page` as the session list, `when` as
@@ -1145,6 +1148,20 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   keys, because boundary's record is the only log. Scope miss a site wraps
   into one is caught by own class (`PlaythroughNotHeld`), never bare
   `CommandRejected`, so later rule is not relabelled defect.
+- **A row library does not hold is absent, not refused** — resolve that finds
+  nothing raises `RowNotHeld`, third sibling in `games/events/dispatch.py`,
+  which boundary answers `Http404` and one WARNING line, no traceback: program
+  is right, client named row this library does not hold. Carries no sentence,
+  because nothing shows one and 404 that states nothing teaches one library
+  nothing about another's rows. `Refusal` in `games/commands/scope.py` states
+  rule once — `raises` defaults to it, `sentence` to none, and
+  `__post_init__` refuses both wrong pairs — so every `library_row` caller
+  inherits it. Row library *holds* but cannot use is other ending: 409 and
+  sentence naming remedy. Rule governs identifier in a **body**; row in
+  route's **path** is route's own subject, scoped by `owned_or_404`.
+  `PlayerGameNotTracked` is one exception: write path takes it, tracks game,
+  states fact again, so 404 would end request program repairs. Contract is
+  [Where a scope miss is answered](docs/superpowers/specs/2026-09-20-issue-1167-1174-scope-boundary-design.md)
 - **A command scopes a resolve by calling one** — resolve UUID command carries with
   `library_row` from `games/commands/scope.py`, never `Model.objects.get(...)`
   inside a `build`. It applies `library=context.library` itself, so no caller holds

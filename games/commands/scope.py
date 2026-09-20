@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Model, QuerySet
 
-from games.events.dispatch import CommandContext, CommandRejected
+from games.events.dispatch import CommandContext, CommandRejected, RowNotHeld
 from games.models import Device
 
 
@@ -19,11 +19,28 @@ class Refusal:
     """
 
     message: str
-    sentence: str
-    #: A subclass for a separately answered case.
-    raises: type[CommandRejected] = CommandRejected
+    #: Only a refusal states one.
+    sentence: str | None = None
+    #: A rejection refuses; the default answers absent.
+    raises: type[RowNotHeld | CommandRejected] = RowNotHeld
 
-    def raised(self) -> CommandRejected:
+    def __post_init__(self) -> None:
+        absent = issubclass(self.raises, RowNotHeld)
+        if absent and self.sentence is not None:
+            raise TypeError(
+                f"{self.raises.__name__} shows no sentence. State a "
+                "CommandRejected subclass beside it, or take it away."
+            )
+        if not absent and self.sentence is None:
+            raise TypeError(
+                f"{self.raises.__name__} reaches a person. State a sentence "
+                "naming the remedy, or let `raises` default to RowNotHeld."
+            )
+
+    def raised(self) -> RowNotHeld | CommandRejected:
+        #: RowNotHeld holds no sentence keyword.
+        if issubclass(self.raises, RowNotHeld):
+            return self.raises(self.message)
         return self.raises(self.message, sentence=self.sentence)
 
 
@@ -61,8 +78,7 @@ def library_device_row(
             message=(
                 f"This library holds no device {device_id}. A stated fact "
                 "names a device the library records."
-            ),
-            sentence="That device is not available.",
+            )
         ),
         pk=device_id,
     )

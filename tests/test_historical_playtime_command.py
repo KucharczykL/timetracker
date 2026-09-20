@@ -25,11 +25,13 @@ from games.commands.playergame import RemovePlayerGame, TrackGame
 from games.commands.playthrough import (
     HISTORICAL_PLAYTIME_RECORDED,
     CreatePlaythrough,
+    PlaythroughNotHeld,
     RemovePlaythrough,
 )
 from games.events.dispatch import (
     CommandOutcome,
     CommandRejected,
+    RowNotHeld,
     RowUnreadable,
     dispatch,
 )
@@ -114,6 +116,16 @@ def _refused(library, actor, command) -> CommandRejected:
         )
     assert refused.value.sentence
     return refused.value
+
+
+def _not_held(library, actor, command, raising=RowNotHeld) -> RowNotHeld:
+    """A row this library does not hold; the boundary owns the answer."""
+    with pytest.raises(raising) as absent:
+        dispatch(
+            command, actor=actor, library=library, idempotency_key=str(uuid.uuid7())
+        )
+    assert not hasattr(absent.value, "sentence")
+    return absent.value
 
 
 def test_it_records_the_statement(owned_user, owned_library, run, second_run):
@@ -231,10 +243,12 @@ def test_it_refuses_a_run_another_library_holds(
     owned_user, owned_library, run, second_library
 ):
     Playthrough.objects.filter(pk=run.pk).update(library=second_library)
-    refused = _refused(
-        owned_library, owned_user, RecordHistoricalPlaytime(statement=stated(run))
+    _not_held(
+        owned_library,
+        owned_user,
+        RecordHistoricalPlaytime(statement=stated(run)),
+        raising=PlaythroughNotHeld,
     )
-    assert refused.sentence == "That playthrough is not available."
 
 
 def test_it_refuses_a_removed_run(owned_user, owned_library, run):
@@ -276,12 +290,11 @@ def test_it_refuses_a_device_another_library_holds(
     owned_user, owned_library, run, second_library
 ):
     device = Device.objects.create(library=second_library, name="Deck")
-    refused = _refused(
+    _not_held(
         owned_library,
         owned_user,
         RecordHistoricalPlaytime(statement=stated(run, device_id=device.pk)),
     )
-    assert refused.sentence == "That device is not available."
 
 
 @pytest.mark.parametrize(
@@ -496,8 +509,8 @@ def test_a_record_another_library_holds_is_refused(
 ):
     stored = record(owned_library, owned_user, stated(run))
     HistoricalPlaytime.objects.filter(pk=stored.pk).update(library=second_library)
-    _refused(owned_library, owned_user, RemoveHistoricalPlaytime(record_id=stored.pk))
-    _refused(owned_library, owned_user, RestoreHistoricalPlaytime(record_id=stored.pk))
+    _not_held(owned_library, owned_user, RemoveHistoricalPlaytime(record_id=stored.pk))
+    _not_held(owned_library, owned_user, RestoreHistoricalPlaytime(record_id=stored.pk))
     assert HistoricalPlaytimeRun.objects.count() == 1
 
 

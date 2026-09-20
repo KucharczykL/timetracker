@@ -55,6 +55,7 @@ def tracked_game(context: CommandContext, game_id: uuid.UUID) -> PlayerGame:
                 "to a tracked game, and #676 backfills one for every game a "
                 "library has."
             ),
+            #: A refusal, not an absence: see the class.
             sentence="This game is not tracked yet. Reload the page and try again.",
             raises=PlayerGameNotTracked,
         ),
