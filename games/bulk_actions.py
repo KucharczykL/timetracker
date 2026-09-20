@@ -2,7 +2,8 @@
 
 The readable inventory, as the command vocabulary is: one grep, and no
 entry that is not a thing the app does. An act is a value here and a
-route nowhere; `games/views/bulk.py` runs any of them.
+route nowhere; `games/views/bulk.py` runs any of them. Making the value
+is declaring it, so the table holds every act and nothing else.
 
 A declaration states four callables, and the aggregate its inverse
 takes. That last one is not decoration: one act may write more than one
@@ -13,9 +14,10 @@ command that reads sessions, and refuse every row of its own batch.
 """
 
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any
 
 from django.contrib.auth.models import User
@@ -109,7 +111,11 @@ _TABLE: dict[BulkActionName, BulkAction] = {}
 
 @dataclass(frozen=True, slots=True)
 class BulkAction:
-    """One act, and everything the runner needs to run and undo it."""
+    """One act, and everything the runner needs to run and undo it.
+
+    Constructing one declares it. There is no second path that reaches
+    the table, and none that skips the two refusals below.
+    """
 
     name: BulkActionName
     #: The act in a person's words. The confirmation asks with it, and
@@ -132,27 +138,24 @@ class BulkAction:
     run: RunRow
     inverse: UndoRow
 
-    @classmethod
-    def on(cls, **stated: Any) -> BulkAction:
-        """The one construction path; refuses a declaration that cannot run.
+    def __post_init__(self) -> None:
+        """Refuse a declaration that cannot run, then declare it.
 
         Both refusals state themselves at import rather than at the
         press: a batch that discovers its own declaration is wrong has
         already written half its rows.
         """
-        action = cls(**stated)
-        if action.name in _TABLE:
+        if self.name in _TABLE:
             raise ValueError(
-                f"{action.name!r} is already declared. An act names itself once."
+                f"{self.name!r} is already declared. An act names itself once."
             )
-        if not DEFAULT_EVENT_TYPES.event_types_for(action.inverse_aggregate):
+        if not DEFAULT_EVENT_TYPES.event_types_for(self.inverse_aggregate):
             raise ValueError(
-                f"{action.name!r} names {action.inverse_aggregate!r} as the "
+                f"{self.name!r} names {self.inverse_aggregate!r} as the "
                 "aggregate its inverse takes, and no event type speaks about "
                 "it. Its Undo would read an empty batch."
             )
-        _TABLE[action.name] = action
-        return action
+        _TABLE[self.name] = self
 
 
 def bulk_action(name: BulkActionName) -> BulkAction | None:
@@ -160,11 +163,13 @@ def bulk_action(name: BulkActionName) -> BulkAction | None:
     return _TABLE.get(name)
 
 
-#: Every act, keyed by its name. Filled by the imports below.
-BULK_ACTIONS: dict[BulkActionName, BulkAction] = _TABLE
+#: Every act, keyed by its name. A live view of the table the imports
+#: below fill, so a reader sees every act and writes none.
+BULK_ACTIONS: Mapping[BulkActionName, BulkAction] = MappingProxyType(_TABLE)
 
 
-#: Last, and this is the whole inventory: each module below declares one
-#: act through `BulkAction.on`. It imports the value types above, so the
-#: import waits until they exist rather than sitting at the top.
+#: Last, and this is the whole inventory: each module below makes one
+#: `BulkAction`, which is what declaring one is. It imports the value
+#: types above, so the import waits until they exist rather than
+#: sitting at the top.
 from games import bulk_reclassification  # noqa: F401

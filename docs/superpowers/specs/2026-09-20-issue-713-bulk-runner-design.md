@@ -6,9 +6,13 @@ the shape this issue builds and the reasons behind it.
 
 ## The declaration
 
-A bulk action is a value in one table, `games/bulk_actions.py`, constructed
-only through `BulkAction.on`, as `BLOCKING_REFERRERS` is, and a test holds
-every entry keyed by the name it states. Each states its name, its label, the
+A bulk action is a value in one table, `games/bulk_actions.py`. Making the
+value declares it: `__post_init__` refuses a name twice stated and an inverse
+aggregate no event speaks about, then fills the table, so no construction
+reaches the table with those refusals unread. `BLOCKING_REFERRERS` validates
+through a classmethod instead, because its registry is the tuple at the call
+site rather than the type itself. The table is read through a view that admits
+no write, and a test holds every entry keyed by the name it states. Each states its name, its label, the
 noun its answer speaks of, and the cardinality the tray reads later, beside
 five things:
 

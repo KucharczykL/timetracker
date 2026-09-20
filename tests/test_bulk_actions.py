@@ -8,6 +8,7 @@ from django.utils import timezone
 from session_rows import duration_only_row, timed_row, tracked_run
 
 from games.bulk_actions import (
+    _TABLE,
     BULK_ACTIONS,
     BulkAction,
     Cardinality,
@@ -101,7 +102,7 @@ def test_the_table_holds_the_reclassification(reclassify):
 
 def test_an_aggregate_no_event_declares_is_refused(reclassify):
     with pytest.raises(ValueError, match="playersesion"):
-        BulkAction.on(
+        BulkAction(
             name="session.typo",
             label=reclassify.label,
             title=reclassify.title,
@@ -119,7 +120,7 @@ def test_an_aggregate_no_event_declares_is_refused(reclassify):
 
 def test_a_name_the_table_already_holds_is_refused(reclassify):
     with pytest.raises(ValueError, match="already"):
-        BulkAction.on(
+        BulkAction(
             name="session.reclassify",
             label=reclassify.label,
             title=reclassify.title,
@@ -137,6 +138,35 @@ def test_a_name_the_table_already_holds_is_refused(reclassify):
 
 def test_every_act_names_itself_as_the_table_keys_it():
     assert all(name == action.name for name, action in BULK_ACTIONS.items())
+
+
+def test_making_the_value_declares_it(reclassify):
+    """One path, so a declaration cannot reach the table unrefused."""
+    name = "session.spare"
+    try:
+        spare = BulkAction(
+            name=name,
+            label=reclassify.label,
+            title=reclassify.title,
+            confirm_label=reclassify.confirm_label,
+            subject=reclassify.subject,
+            cardinality=Cardinality.ONE,
+            inverse_aggregate="playersession",
+            fallback=reclassify.fallback,
+            scope=reclassify.scope,
+            resolve=reclassify.resolve,
+            run=reclassify.run,
+            inverse=reclassify.inverse,
+        )
+        assert BULK_ACTIONS[name] is spare
+    finally:
+        #: The table outlives the test; nothing else takes an act away.
+        _TABLE.pop(name, None)
+
+
+def test_the_table_is_read_and_not_written():
+    with pytest.raises(TypeError):
+        BULK_ACTIONS["session.reclassify"] = None  # type: ignore[index]
 
 
 # ── The scope ────────────────────────────────────────────────────────────────

@@ -493,8 +493,9 @@ reversed. The preset picker gets its restore URL from the API's DELETE answer.
 Contract is [Undo a removal](docs/superpowers/specs/2026-09-16-issue-695-undo-removal-design.md).
 
 **One act on many rows is declared, not routed** (#713). An act is a value in
-`games/bulk_actions.py`, built only through `BulkAction.on`, which refuses a
-name twice declared and an `inverse_aggregate` no `EventSpec` speaks about.
+`games/bulk_actions.py`, and making the value declares it: `__post_init__`
+refuses a name twice declared and an `inverse_aggregate` no `EventSpec` speaks
+about, then fills the table, so nothing reaches the table another way.
 The declaration states four callables -- scope, resolve, run and inverse --
 beside the aggregate the inverse takes, and that last is not decoration: one
 act may write two aggregates, as the reclassification writes a created record

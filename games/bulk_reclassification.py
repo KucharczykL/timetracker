@@ -168,7 +168,7 @@ def _source() -> dict[str, object]:
     return {"bulk": {"action": RECLASSIFY.name}}
 
 
-RECLASSIFY = BulkAction.on(
+RECLASSIFY = BulkAction(
     name="session.reclassify",
     label="Record as historical playtime",
     title="Record these sessions as historical playtime",
