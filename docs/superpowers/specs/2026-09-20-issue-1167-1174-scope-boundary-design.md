@@ -145,17 +145,17 @@ its own rule: a session removed since the first request answers 404, because
 `readable_sessions` refuses it. The retry answers what the library holds now,
 and the change is about the device alone.
 
-## The batch conversion
+## The batch runner
 
-`_convert_each` converts each reviewed session in turn. It takes
-`CommandFailed` and reads the status: a conflict becomes a sentence on the
-page, and anything else stops the run and reports. An `Http404` is neither,
-thus it would leave the loop with rows already recorded and no message.
+The bulk runner acts on each row of a batch in turn. It takes `CommandFailed`
+and reads the status: a conflict leaves that row alone and counts it, and
+anything else ends the batch and reports. An `Http404` is neither, thus it
+would leave the loop with rows already acted on and no message.
 
-The rows come from `library_sessions` moments before, so this library holds
-each of them and `library_session` cannot miss. The loop states that, and takes
-`Http404` beside `CommandFailed` to say what happens if it ever does: the same
-stop, and the same report.
+Each leg re-resolves its rows moments before it runs them, so the library
+holds every one and no resolve inside can miss. The loop states that, and
+takes `Http404` beside `CommandFailed` to say what happens if it ever does:
+the same end, the same report, and one ERROR line naming the row.
 
 ## What a 404 cannot say
 
