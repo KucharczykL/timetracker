@@ -57,15 +57,14 @@ unchanged.
 
 The Library page's Playtime section counts the written-down sessions that
 wait: live Duration-only rows of eight hours or longer on an ordinary run. One
-control opens the session list narrowed to them; one opens a confirmation that
-converts them in one request.
+control opens the session list narrowed to them; one states that review as a
+selection and hands it to the bulk runner, which #713 owns.
 
-The confirmation converts the posted keys the review names now. Every other
-key is left alone with the sentence true of it: not available, already
-recorded, in the bucket, measured, or under the threshold. The denominator is
-the distinct keys sent; each key left alone is logged with its library. A
-defect stops the loop and answers on a page with no submit. The page offers no
-Undo; #1123 owns that.
+The runner resolves the review again at the press, so the rows it converts are
+the rows that still qualify rather than the ones a page-old count named. Every
+other key is left alone with the sentence true of it: not available, already
+recorded, in the bucket, measured, or under the threshold. Each key left alone
+is logged with its library.
 
 ## Dates
 

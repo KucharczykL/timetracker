@@ -269,6 +269,26 @@ def record_command_budget(timings: Timings) -> Budget:
     return _p95_budget("record command p95", timings, COMMAND_BUDGET_SECONDS)
 
 
+class BulkTimings(NamedTuple):
+    """One row of a chunk, resolve inside.
+
+    A row costs both, so `whole` is what a chunk's budget is spent
+    against and `resolve` is the per-key read inside it.
+    """
+
+    whole: Timings
+    resolve: Timings
+
+
+def bulk_command_budget(timings: Timings) -> Budget:
+    """The same 100 ms, one batch row.
+
+    A batch is no transaction, so the budget is still one command's,
+    judged on the whole row: that is what a chunk is spent on.
+    """
+    return _p95_budget("bulk command p95", timings, COMMAND_BUDGET_SECONDS)
+
+
 type ReadName = str
 
 
@@ -344,8 +364,8 @@ class RebuildDiffNotEmpty(RuntimeError):
     """The run's parity claim is false."""
 
 
-#: 4 since the historical-playtime gates: `record_command`.
-REPORT_SCHEMA = 4
+#: 6 since the runner's resolve is timed beside its run: `bulk_resolve`.
+REPORT_SCHEMA = 6
 
 
 @dataclass(frozen=True, slots=True)
@@ -361,6 +381,10 @@ class BenchmarkReport:
     session_command: Timings | None
     #: None in --library mode.
     record_command: Timings | None
+    #: None without a converted row: resolve and dispatch.
+    bulk_command: Timings | None
+    #: The resolve alone, out of the number above.
+    bulk_resolve: Timings | None
     #: Empty only where no read ran.
     reads: tuple[ReadTimings, ...]
     #: Per command: the whole write path.

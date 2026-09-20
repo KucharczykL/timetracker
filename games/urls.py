@@ -2,6 +2,7 @@ from django.conf import settings
 from django.urls import path, register_converter
 
 from games.views import (
+    bulk,
     device,
     game,
     general,
@@ -170,6 +171,16 @@ urlpatterns = [
         purchase.split_purchase,
         name="split_purchase",
     ),
+    path(
+        "bulk/undo/<uuidv7:correlation_id>/",
+        bulk.undo_bulk_action,
+        name="undo_bulk_action",
+    ),
+    path(
+        "bulk/<str:action>/",
+        bulk.run_bulk_action,
+        name="run_bulk_action",
+    ),
     path("session/add", session.add_session, name="add_session"),
     path(
         "session/add/for-game/<uuidv7:game_id>",
@@ -211,11 +222,6 @@ urlpatterns = [
         "session/<uuidv7:session_id>/reclassify/undo",
         session_reclassification.undo_reclassify_session,
         name="undo_reclassify_session",
-    ),
-    path(
-        "session/reclassify-reviewed",
-        session_reclassification.reclassify_reviewed_sessions,
-        name="reclassify_reviewed_sessions",
     ),
     path(
         "game/<uuidv7:game_id>/historical-playtime/add",

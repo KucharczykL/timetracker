@@ -24,6 +24,7 @@ from games.events.benchmark import (
     SeedReport,
     StatementCounter,
     Timings,
+    bulk_command_budget,
     command_budget,
     environment,
     nearest_rank,
@@ -37,6 +38,7 @@ from games.events.benchmark_run import run_benchmark
 from games.events.benchmark_workload import (
     purge_scratch_user,
     run_amplification_scenario,
+    run_bulk_command_scenario,
     run_command_scenario,
     run_read_scenario,
     run_rebuild_scenario,
@@ -239,6 +241,13 @@ def test_the_session_command_budget_is_the_charters():
     assert (budget.name, budget.limit) == ("session command p95", 0.100)
     assert budget.verdict is BudgetVerdict.PASSED
     assert session_command_budget(timings(0.15)).verdict is BudgetVerdict.MISSED
+
+
+def test_the_bulk_command_budget_is_the_charters():
+    budget = bulk_command_budget(timings(0.05))
+
+    assert budget.verdict is BudgetVerdict.PASSED
+    assert bulk_command_budget(timings(0.15)).verdict is BudgetVerdict.MISSED
 
 
 def test_the_record_command_budget_is_the_charters():
@@ -527,9 +536,12 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_run_replays_the_events_both_write_paths_produced():
-    report = run_benchmark(records=2, seed=30, iterations=3, warmup=1, keep=True)
-    #: 30 seeded, 8 tracked, 6 amplified, 4 sessions, 3 records.
-    assert report.rebuild.replayed_through == 51
+    report = run_benchmark(
+        records=2, bulk=2, seed=30, iterations=3, warmup=1, keep=True
+    )
+    #: 30 seeded, 8 tracked, 6 amplified, 4 sessions, 3 records,
+    #: 3 written down and 6 for the batch that converted them.
+    assert report.rebuild.replayed_through == 60
     assert all(
         table.only_live == table.only_rebuilt == table.differing == 0
         for table in report.rebuild.tables
@@ -547,7 +559,7 @@ def test_a_run_purges_its_scratch_user_after_a_scenario_raises(monkeypatch):
     monkeypatch.setattr(run_module, "run_command_scenario", explode)
     before = set(User.objects.values_list("username", flat=True))
     with pytest.raises(RuntimeError, match="the scenario failed"):
-        run_benchmark(records=2, seed=5, iterations=2, warmup=0)
+        run_benchmark(records=2, bulk=2, seed=5, iterations=2, warmup=0)
     assert set(User.objects.values_list("username", flat=True)) == before
 
 
@@ -557,6 +569,7 @@ def test_a_kept_run_names_its_scratch_user_before_it_can_fail():
     announced: list[str] = []
     report = run_benchmark(
         records=2,
+        bulk=2,
         seed=5,
         iterations=1,
         warmup=0,
@@ -570,7 +583,7 @@ def test_a_kept_run_names_its_scratch_user_before_it_can_fail():
 @pytest.mark.django_db(transaction=True)
 def test_no_count_replay_leaves_the_replay_unmeasured():
     report = run_benchmark(
-        records=2, seed=5, iterations=1, warmup=0, count_replay=False
+        records=2, bulk=2, seed=5, iterations=1, warmup=0, count_replay=False
     )
     assert report.replay is None
     assert report.rebuild is not None
@@ -586,7 +599,7 @@ def test_library_mode_writes_no_persistent_row(owned_library):
         library=owned_library
     ).current_sequence
     report = run_benchmark(
-        records=2, seed=0, iterations=0, warmup=0, library=owned_library
+        records=2, bulk=2, seed=0, iterations=0, warmup=0, library=owned_library
     )
     assert report.seed is None
     assert report.command is None
@@ -616,7 +629,9 @@ def test_a_non_empty_rebuild_diff_fails_the_run(owned_library):
         tracked_at=timezone.now(),
     )
     with pytest.raises(RebuildDiffNotEmpty):
-        run_benchmark(records=2, seed=0, iterations=0, warmup=0, library=owned_library)
+        run_benchmark(
+            records=2, bulk=2, seed=0, iterations=0, warmup=0, library=owned_library
+        )
 
 
 @pytest.mark.django_db
@@ -678,6 +693,101 @@ def test_the_record_command_scenario_records_on_the_seeded_runs(owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
+def test_the_bulk_scenario_converts_the_rows_it_wrote(owned_library):
+    """Its own rows, so the read population is what the seed left."""
+    seed_library(owned_library, actor=owned_library.user, games=4, spares=0)
+    before = PlayerSession.objects.filter(library=owned_library).count()
+
+    timings = run_bulk_command_scenario(
+        owned_library, actor=owned_library.user, sessions=3, warmup=1
+    )
+
+    assert timings is not None
+    assert timings.whole.samples == 3
+    assert HistoricalPlaytime.objects.filter(library=owned_library).count() == 4
+    #: Four written, four converted; the seed's own rows are untouched.
+    assert PlayerSession.objects.alive().filter(library=owned_library).count() == before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_bulk_scenario_times_the_resolve_inside_the_row(owned_library):
+    """The runner reads a row back before it runs it, and that read costs.
+
+    Timed inside the row rather than beside it, so the two numbers are
+    one span and its part, never two spans that overlap. The share is
+    what says the read is in the span at all: the loop's own overhead
+    around a timestamp is a thousandth of a row, and a resolve is two
+    queries against a dispatch's ten statements.
+    """
+    seed_library(owned_library, actor=owned_library.user, games=4, spares=0)
+
+    timings = run_bulk_command_scenario(
+        owned_library, actor=owned_library.user, sessions=3, warmup=0
+    )
+
+    assert timings is not None
+    assert timings.resolve.samples == timings.whole.samples == 3
+    assert timings.resolve.maximum <= timings.whole.maximum
+    assert timings.resolve.p50 >= timings.whole.p50 / 20
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_bulk_scenario_converts_nothing_when_no_row_is_asked_for(owned_library):
+    """No row is no distribution, and no row written to make one."""
+    seed_library(owned_library, actor=owned_library.user, games=4, spares=0)
+    before = PlayerSession.objects.filter(library=owned_library).count()
+
+    assert (
+        run_bulk_command_scenario(
+            owned_library, actor=owned_library.user, sessions=0, warmup=10
+        )
+        is None
+    )
+
+    assert PlayerSession.objects.filter(library=owned_library).count() == before
+    assert not HistoricalPlaytime.objects.filter(library=owned_library).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_bulk_scenario_appends_under_one_correlation_id(owned_library):
+    """A batch, not a series of acts: that is what it exists to time."""
+    seed_library(owned_library, actor=owned_library.user, games=4, spares=0)
+
+    run_bulk_command_scenario(
+        owned_library, actor=owned_library.user, sessions=3, warmup=0
+    )
+
+    reclassified = LibraryEvent.objects.filter(
+        library=owned_library, event_type="library.playersession.reclassified"
+    )
+    assert reclassified.count() == 3
+    assert len({event.correlation_id for event in reclassified}) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_bulk_scenario_refuses_rows_the_review_does_not_offer(
+    owned_library, monkeypatch
+):
+    """Its own rows, or none: a silent substitution times the wrong thing."""
+    seed_library(owned_library, actor=owned_library.user, games=4, spares=0)
+    #: Written at the threshold, read back under a higher one.
+    monkeypatch.setattr("games.bulk_reclassification.REVIEW_THRESHOLD_HOURS", 1_000)
+
+    with pytest.raises(ValueError, match="not its own"):
+        run_bulk_command_scenario(
+            owned_library, actor=owned_library.user, sessions=2, warmup=0
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_bulk_scenario_needs_a_run(owned_library):
+    with pytest.raises(ValueError, match="needs a run"):
+        run_bulk_command_scenario(
+            owned_library, actor=owned_library.user, sessions=1, warmup=0
+        )
+
+
+@pytest.mark.django_db(transaction=True)
 def test_the_record_scenario_cycles_the_runs(owned_library):
     seed_library(owned_library, actor=owned_library.user, games=2, spares=0)
 
@@ -711,12 +821,13 @@ def test_library_mode_reads_without_dispatching(owned_library):
     events_before = LibraryEvent.objects.filter(library=owned_library).count()
 
     report = run_benchmark(
-        records=2, seed=0, iterations=2, warmup=0, library=owned_library
+        records=2, bulk=2, seed=0, iterations=2, warmup=0, library=owned_library
     )
 
     assert report.command is None
     assert report.session_command is None
     assert report.record_command is None
+    assert report.bulk_command is None
     assert len(report.reads) == 6
     assert LibraryEvent.objects.filter(library=owned_library).count() == events_before
     assert [budget.name for budget in report.budgets][-1] == "rebuild"
@@ -725,19 +836,22 @@ def test_library_mode_reads_without_dispatching(owned_library):
 
 @pytest.mark.django_db(transaction=True)
 def test_the_report_carries_every_scenario_and_a_schema():
-    report = run_benchmark(records=2, seed=25, iterations=3, warmup=1)
+    report = run_benchmark(records=2, bulk=2, seed=25, iterations=3, warmup=1)
     assert isinstance(report, BenchmarkReport)
-    assert report.schema == 4
+    assert report.schema == 6
     assert report.seed is not None
     assert report.command is not None
     assert report.session_command is not None
     assert report.record_command is not None
+    assert report.bulk_command is not None
+    assert report.bulk_resolve is not None
     assert len(report.reads) == 6
     names = [budget.name for budget in report.budgets]
-    assert len(names) == 10
-    assert names[1:4] == [
+    assert len(names) == 11
+    assert names[1:5] == [
         "session command p95",
         "record command p95",
+        "bulk command p95",
         "read session_page p95",
     ]
     assert {
@@ -747,12 +861,14 @@ def test_the_report_carries_every_scenario_and_a_schema():
     assert report.replay is not None
     assert report.teardown_seconds is not None
     parsed = json.loads(report.as_json())
-    assert parsed["schema"] == 4
+    assert parsed["schema"] == 6
     assert set(parsed) >= {
         "environment",
         "scratch_username",
         "seed",
         "command",
+        "bulk_command",
+        "bulk_resolve",
         "amplification",
         "replay",
         "rebuild",
@@ -763,6 +879,9 @@ def test_the_report_carries_every_scenario_and_a_schema():
 
 def run_command(**options) -> str:
     output = StringIO()
+    #: A small batch unless a test states one: the default is 600,
+    #: which is a bench rather than a test.
+    options.setdefault("bulk", 2)
     call_command("benchmark_events", stdout=output, **options)
     return output.getvalue()
 
@@ -784,8 +903,21 @@ def test_the_command_prints_what_it_will_create_before_creating_it():
     output = run_command(seed=25, iterations=2, warmup=1)
     assert "25" in output
     assert "600 historical playtime records" in output
+    assert "batch of 2 conversions" in output
     #: A three-minute default says so first.
     assert "estimate" in output.lower()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_batch_is_600_rows_unless_the_operator_says_otherwise():
+    """The bench's shape, and the knob that shrinks it."""
+    from games.management.commands.benchmark_events import BATCH_SHAPE_SESSIONS
+
+    assert BATCH_SHAPE_SESSIONS == 600
+    output = run_command(seed=25, iterations=2, warmup=1, bulk=4)
+
+    assert "batch of 4 conversions" in output
+    assert "Bulk command" in output
 
 
 @pytest.mark.django_db(transaction=True)
@@ -805,7 +937,7 @@ def test_gate_is_silent_when_every_budget_passes():
 @pytest.mark.django_db(transaction=True)
 def test_json_output_parses_and_carries_the_schema():
     parsed = json.loads(run_command(seed=25, iterations=2, warmup=1, json=True))
-    assert parsed["schema"] == 4
+    assert parsed["schema"] == 6
 
 
 @pytest.mark.django_db(transaction=True)
@@ -818,7 +950,7 @@ def test_keep_names_the_scratch_user_it_leaves_behind():
 @pytest.mark.django_db(transaction=True)
 def test_a_seed_not_divisible_by_three_seeds_fewer_events():
     """Seven is two games and a remainder."""
-    report = run_benchmark(records=2, seed=7, iterations=1, warmup=0, keep=True)
+    report = run_benchmark(records=2, bulk=2, seed=7, iterations=1, warmup=0, keep=True)
     assert report.seed is not None
     assert report.seed.games == 2
     assert report.seed.events == 6
@@ -865,6 +997,13 @@ def test_a_seed_under_three_is_refused(seed):
 def test_a_negative_seed_is_refused():
     with pytest.raises(CommandError, match="smallest seeded run"):
         run_command(seed=-4, iterations=1, warmup=0)
+
+
+@pytest.mark.django_db
+def test_a_negative_batch_is_refused():
+    """Zero states itself; below zero is a typo."""
+    with pytest.raises(CommandError, match="converts no row"):
+        run_command(seed=0, iterations=1, warmup=0, bulk=-1)
 
 
 @pytest.mark.django_db(transaction=True)

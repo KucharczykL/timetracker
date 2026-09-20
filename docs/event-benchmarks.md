@@ -584,6 +584,116 @@ filled: the planner worked from empty statistics. The parity command
 analyzes those tables now, for the reason the seed does, and the analyzed run
 is the one pasted above.
 
+## The #713 recording
+
+Recorded when the bulk runner landed. The seed is #704's; after the record
+command the run writes `BATCH_SHAPE_SESSIONS` written-down sessions at the
+review threshold, resolves and converts each through the act's own callables
+under one correlation id -- the runner's loop, not its view -- and analyzes
+the two record tables before the reads. `--bulk` states another size, and
+`--bulk 0` leaves the batch out of the report. Paste what the tool prints; do
+not edit a number here.
+
+Taken at `c85c88f3`. The row is the resolve and the dispatch together, as the
+runner spends a chunk on both. The paste at `6c1e6ae9` timed the dispatch
+alone.
+
+`make bench`, 2026-09-20:
+
+```
+About to create a scratch user, 100000 events, 33743 catalog rows, 600 historical playtime records and a batch of 600 conversions, then remove them. Estimate: 1.4 minute(s).
+Linux-6.18.49-x86_64-with-glibc2.42, 32 CPU(s), Python 3.14.2, PostgreSQL 18.6.
+  shared_buffers 128MB, work_mem 4MB, DEBUG True.
+  scratch user benchmark-01a0be1c-8b3c-749f-8802-297d8f665349
+Seed: 99999 event(s) in 41.01s (2,438 event/s), 33743 catalog row(s) in 2.36s.
+  The event/s figure is a bulk append, not a command.
+Command: 200 sample(s), p50 4.4ms, p95 4.9ms, max 6.3ms.
+Session command: 200 sample(s), p50 4.0ms, p95 4.6ms, max 5.8ms.
+Record command: 600 sample(s), p50 4.6ms, p95 5.2ms, max 6.8ms.
+Bulk command: 600 sample(s), p50 8.3ms, p95 9.1ms, max 14.0ms.
+  of which resolve: 600 sample(s), p50 1.7ms, p95 1.9ms, max 2.8ms.
+Read session_page: 200 sample(s), p50 2.4ms, p95 2.6ms, max 2.8ms.
+Read game_playtime_sort: 200 sample(s), p50 179.0ms, p95 181.8ms, max 184.7ms.
+Read stats_totals: 200 sample(s), p50 63.9ms, p95 67.4ms, max 76.9ms.
+Read stats_by_platform: 200 sample(s), p50 25.1ms, p95 26.9ms, max 28.8ms.
+Read stats_by_month: 200 sample(s), p50 46.1ms, p95 53.5ms, max 59.1ms.
+Read stats_superlatives: 200 sample(s), p50 92.3ms, p95 97.4ms, max 106.1ms.
+Per command: 10.0 statement(s), 2.0 to projections (2.0 row(s)), 4.0 to the event store (5.0 row(s)), over 200 event(s).
+    games_libraryevent: 200 statement(s), 400 row(s)
+    games_libraryeventreference: 200 statement(s), 200 row(s)
+    games_libraryeventstreamhead: 200 statement(s), 200 row(s)
+    games_libraryidempotencyrecord: 200 statement(s), 200 row(s)
+    games_playergame: 200 statement(s), 200 row(s)
+    games_playthrough: 200 statement(s), 200 row(s)
+Per replayed event: 1.0 statement(s), 1.0 to projections (3.0 row(s)), 0.0 to the event store (0.0 row(s)), over 103469 event(s).
+    games_historicalplaytime: 2 statement(s), 2440 row(s)
+    games_historicalplaytime__shadow: 1220 statement(s), 1220 row(s)
+    games_historicalplaytimerun: 2 statement(s), 2440 row(s)
+    games_historicalplaytimerun__shadow: 2440 statement(s), 1220 row(s)
+    games_librarycalendar: 2 statement(s), 0 row(s)
+    games_playergame: 2 statement(s), 67486 row(s)
+    games_playergame__shadow: 33743 statement(s), 33743 row(s)
+    games_playersession: 2 statement(s), 68306 row(s)
+    games_playersession__shadow: 34763 statement(s), 34763 row(s)
+    games_playthrough: 2 statement(s), 67486 row(s)
+    games_playthrough__shadow: 33743 statement(s), 33743 row(s)
+Rebuild: replayed 103469 event(s) through 6 table(s) in 31.33s over 1 attempt(s).
+    attempt 1: replay 29.54s, diff 0.09s, swap 1.68s
+    games_historicalplaytime: 1220 live, 1220 rebuilt, no difference
+    games_historicalplaytimerun: 1220 live, 1220 rebuilt, no difference
+    games_librarycalendar: 0 live, 0 rebuilt, no difference
+    games_playergame: 33743 live, 33743 rebuilt, no difference
+    games_playersession: 34153 live, 34153 rebuilt, no difference
+    games_playthrough: 33743 live, 33743 rebuilt, no difference
+Teardown: 14.77s.
+command p95: 0.005s against 0.100s -- passed
+session command p95: 0.005s against 0.100s -- passed
+record command p95: 0.005s against 0.100s -- passed
+bulk command p95: 0.009s against 0.100s -- passed
+read session_page p95: 0.003s against 0.020s -- not_gated
+read game_playtime_sort p95: 0.182s against 0.020s -- not_gated
+read stats_totals p95: 0.067s against 0.020s -- not_gated
+read stats_by_platform p95: 0.027s against 0.020s -- not_gated
+read stats_by_month p95: 0.053s against 0.020s -- not_gated
+read stats_superlatives p95: 0.097s against 0.020s -- not_gated
+rebuild: 31.310s against 62.081s -- passed
+```
+
+**The most expensive row the bench times.** A row costs 9.1 ms p95 over 600
+samples, against `TrackGame`'s 4.9 ms, `RecordHistoricalPlaytime`'s 5.2 ms and
+`CreateSession`'s 4.6 ms. The resolve is 1.9 ms of it, about a fifth. The
+dispatch is the rest, and the paste this section replaced timed it alone at
+7.2 ms: dearest of the four because one row is two events -- the created
+record and the reclassified session -- so it pays a second append and a
+second projector.
+
+**What the resolve costs, and why it is per row.** The runner resolves one key
+at a time, because a row gone since the confirmation must be counted lost
+rather than refused, and that costs two queries a row: the records made from
+the batch's keys, and the review's own scope over the key. At 1.9 ms it is
+not the larger half of a row, and it is not noise either. Resolving a whole
+chunk at once would take it off the per-row number; it would also read the
+rows before the batch acts on any of them, which is the thing the loop exists
+not to do.
+
+**What a chunk holds.** A chunk is given three seconds and spends it one row
+at a time, so at 9.1 ms it reaches about three hundred rows before it renders
+a waypoint. A library with more than that walks two requests, which is the
+case the correlation id has to survive.
+
+**The batch crosses the gating floor on a small seed.** At `seed=25` the
+600 rows take the run to roughly 2,400 events, the rebuild budget starts
+being judged, and a scratch rebuild misses it at 1.561 s against 1.465 s.
+Nothing under test is slow: the run above passes at 31.3 s against 62.1 s.
+The floor assumes the seed's mix, and this one writes two projections a row.
+`--bulk` keeps the tests that drive the command small; #1160 owns the floor.
+
+**The reads with 600 more converted rows.** Every read moved with the seed
+rather than with the batch: `game_playtime_sort` 161 ms to 182 ms,
+`stats_superlatives` 104 ms to 97 ms, `stats_totals` 82 ms to 67 ms. The
+scratch seed's reads are measured and never gated, for the reason
+`read_budget` states.
+
 ## Teardown
 
 `19.09s` deletes roughly 350,000 rows — the events, their reference rows, the

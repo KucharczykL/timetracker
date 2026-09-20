@@ -14,6 +14,11 @@ from django.db import connection, transaction
 from django.db.models import Model
 
 from common.keyset import keyset_pages
+from games.bulk_reclassification import (
+    RECLASSIFY,
+    REVIEW_THRESHOLD_HOURS,
+    reviewable_sessions,
+)
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
     RecordHistoricalPlaytime,
@@ -26,6 +31,7 @@ from games.commands.playersession import (
 )
 from games.events.append import NewEvent, lock_stream
 from games.events.benchmark import (
+    BulkTimings,
     ReadTimings,
     Seconds,
     SeedReport,
@@ -52,6 +58,7 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.calendar import calendar_day_zone
+from games.writes.playersession import created_aggregate_id
 
 #: The seeded rows, and the untracked spares.
 SEEDED_NAME_PREFIX = "Benchmark game "
@@ -333,6 +340,99 @@ def run_record_command_scenario(
         samples.append(monotonic() - started)
     analyze_tables(RECORD_TABLES)
     return summarize(samples)
+
+
+def _written_down(library: UserLibrary, *, actor: User, run: Playthrough) -> uuid.UUID:
+    """One Duration-only session the review offers."""
+    result = dispatch(
+        CreateSession(
+            playthrough_id=run.pk,
+            timing=DurationOnlyTiming(
+                day=date(2024, 6, 1),
+                duration=timedelta(hours=REVIEW_THRESHOLD_HOURS),
+            ),
+        ),
+        actor=actor,
+        library=library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+    return created_aggregate_id(result)
+
+
+def _keys_to_convert(
+    library: UserLibrary, *, actor: User, count: int
+) -> list[uuid.UUID]:
+    """Write the batch's own rows, answer keys.
+
+    Its own rows, because converting the seed's would take them out of
+    the population the read scenario measures. Checked through the
+    act's own scope, so a row it would not offer fails here rather
+    than being timed as one the act reaches.
+    """
+    cycle = _cycling(library, seeded_runs(library))
+    keys = [
+        _written_down(library, actor=actor, run=run) for run in islice(cycle, count)
+    ]
+    offered = reviewable_sessions(library).filter(pk__in=keys).count()
+    if offered != count:
+        raise ValueError(
+            f"The review offers {offered} of the {count} session(s) this "
+            "scenario wrote, so the rows it would time are not its own."
+        )
+    return keys
+
+
+def run_bulk_command_scenario(
+    library: UserLibrary, *, actor: User, sessions: int, warmup: int
+) -> BulkTimings | None:
+    """Convert rows the way the runner does.
+
+    Its loop and not its view: one resolve and one dispatch a row,
+    keyed from the token and the row, under one correlation id. The
+    pair is timed, because the pair is what a chunk is spent on.
+
+    ANALYZE last, so the reads that follow plan right.
+    """
+    if sessions == 0:
+        return None
+    keys = iter(_keys_to_convert(library, actor=actor, count=sessions + warmup))
+    #: The token is the batch's correlation id, as the runner mints it.
+    correlation_id = uuid.uuid7()
+    for key in islice(keys, warmup):
+        _convert(library, actor, key, correlation_id)
+    whole: list[Seconds] = []
+    resolving: list[Seconds] = []
+    for key in islice(keys, sessions):
+        started = monotonic()
+        resolved = _convert(library, actor, key, correlation_id)
+        finished = monotonic()
+        whole.append(finished - started)
+        resolving.append(resolved - started)
+    analyze_tables(RECORD_TABLES)
+    return BulkTimings(whole=summarize(whole), resolve=summarize(resolving))
+
+
+def _convert(
+    library: UserLibrary, actor: User, key: uuid.UUID, correlation_id: uuid.UUID
+) -> Seconds:
+    """One row, resolve and run.
+
+    Answers the instant the resolve ended.
+    """
+    resolution = RECLASSIFY.resolve(library, [key])
+    resolved = monotonic()
+    if len(resolution.rows) != 1:
+        raise ValueError(
+            f"The review no longer offers {key}, so the row this scenario "
+            "would time is not its own."
+        )
+    RECLASSIFY.run(
+        actor,
+        resolution.rows[0],
+        f"{RECLASSIFY.name}-{correlation_id}-{key}",
+        correlation_id,
+    )
+    return resolved
 
 
 def run_read_scenario(

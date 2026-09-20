@@ -350,9 +350,8 @@ docs/           — Additional documentation
   refused, already undone `Unchanged`, record restated since refused whole,
   removed parent refused -- then appends each event still to happen. Library
   page's Playtime section reviews Duration-only rows of
-  `REVIEW_THRESHOLD_HOURS` or longer; the confirmation converts posted keys
-  the review names, answers with the posted count as denominator, and a
-  defect stops it on a page with no submit. Contract is
+  `REVIEW_THRESHOLD_HOURS` or longer; since #713 its button states that
+  review as a selection and the bulk runner acts on it (below). Contract is
   [Reclassify a session](docs/superpowers/specs/2026-09-18-issue-1098-session-reclassification-design.md)
 
   #700 converted every legacy `Session` row into these events, under the
@@ -492,6 +491,33 @@ foreign `extra_tags` value is logged and the toast shows without its action. A g
 catalog stamp first and states `RestorePlayerGame` second, the removal's order
 reversed. The preset picker gets its restore URL from the API's DELETE answer.
 Contract is [Undo a removal](docs/superpowers/specs/2026-09-16-issue-695-undo-removal-design.md).
+
+**One act on many rows is declared, not routed** (#713). An act is a value in
+`games/bulk_actions.py`, and making the value declares it: `__post_init__`
+refuses a name twice declared and an `inverse_aggregate` no `EventSpec` speaks
+about. It states scope, resolve, run and inverse, beside the aggregate the
+inverse takes -- one act may write two, as the reclassification writes a
+created record beside the reclassified session, and an Undo reading both would
+hand a record's key to a command that reads sessions. Each act's own half lives
+beside it (`games/bulk_reclassification.py`), imported at the foot of the
+table. `games/views/bulk.py` runs any of them: one route, two POSTs told apart
+by a submission token that **is** the batch's correlation id, so a batch
+spanning chunks stays one batch. A chunk is the rows one request acts on inside
+`CHUNK_BUDGET` and is no transaction -- each row is its own dispatch, keyed
+from the token and the row, so a token posted twice acts once. The tally rides
+the progress form and counts four things apart: moved, already so, refused, and
+gone since the confirmation. A defect ends the batch; the rows done stay done
+and keep their Undo. The log names every row left alone, the ones a Stop or a
+defect never reached included. `<continuing-batch>` posts the waypoint's form
+on connect, so only Stop is pressed. The Undo reads the act's name out of the
+batch's `source_metadata` and its rows out of `batch_aggregate_ids` in
+`games/reads/events.py`, one of the two reads that answer from events rather
+than a projection, and runs as a batch of its own. An act's scope is its own
+base narrowed by the statement's filter, never the filter alone, and an
+unreadable filter refuses rather than widening the act --
+`apply_structured_filter` fails open, which a list may do and an act may not.
+Contract is
+[The bulk runner](docs/superpowers/specs/2026-09-20-issue-713-bulk-runner-design.md).
 
 **Multi-game Purchase is *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. Humble Bundle). Independently-refundable multi-item orders (e.g.

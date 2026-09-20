@@ -269,9 +269,8 @@ its own, and the toast says how many. The progress page does not follow a
 defect.
 
 The runner's route and the batch Undo's are classified `ORIGIN_AWARE` in
-`games/views/returns.py`, as `reclassify_reviewed_sessions` and every
-restore route are: each is a POST that acts and then redirects to the
-origin it carried. `CONFIRMATION` stays the GET-only bucket, and
+`games/views/returns.py`, as every restore route is: each is a POST that
+acts and then redirects to the origin it carried. `CONFIRMATION` stays the GET-only bucket, and
 `IN_PLACE` the partial swap that leaves the person where they are;
 neither describes a route that acts on POST and leaves the page.
 An overlay either page closes on Escape marks the press spent, as the

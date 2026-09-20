@@ -2222,6 +2222,17 @@ class LibraryEvent(models.Model):
                 name="library_event_idempotency_key_not_empty",
             ),
         )
+        #: Two reads the sequence does not serve.
+        indexes = (
+            models.Index(
+                fields=("library", "correlation_id"),
+                name="library_event_batch",
+            ),
+            models.Index(
+                fields=("library", "aggregate_id"),
+                name="library_event_aggregate",
+            ),
+        )
 
     id = UUIDv7Field(primary_key=True, editable=False)
     library = models.ForeignKey(
