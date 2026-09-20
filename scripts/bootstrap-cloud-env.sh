@@ -190,7 +190,30 @@ if [ "${SKIP_POSTGRES:-0}" != "1" ]; then
   fi
 fi
 
-# ── 6. e2e browser ───────────────────────────────────────────────────────────
+# ── 6. Git LFS payloads ──────────────────────────────────────────────────────
+# .gitattributes puts *.gz, *.png and *.woff2 through LFS, so a clone made
+# without the filter leaves pointer stubs where the files should be. Nothing
+# says so until a test opens one: `make loadsample` and the three suites that
+# read games/fixtures/sample.yaml.gz fail on a 131-byte "version
+# https://git-lfs.github.com/spec/v1", and the vendored woff2 faces never
+# arrive, which moves the text metrics the e2e layout assertions measure. CI
+# checks out with `lfs: true` and never sees any of it. Skip with SKIP_LFS=1.
+if [ "${SKIP_LFS:-0}" != "1" ] && [ -f "$PROJECT_DIR/.gitattributes" ]; then
+  if grep -q 'filter=lfs' "$PROJECT_DIR/.gitattributes" 2>/dev/null; then
+    if command -v git-lfs >/dev/null; then
+      log "Fetching Git LFS payloads"
+      git -C "$PROJECT_DIR" lfs install --local >/dev/null
+      git -C "$PROJECT_DIR" lfs pull || \
+        echo "warning: git lfs pull failed; fixtures and fonts stay as pointers" >&2
+    else
+      echo "warning: this checkout uses Git LFS but git-lfs is not installed;" >&2
+      echo "         sample-fixture tests and the vendored fonts will be wrong." >&2
+      echo "         Install it (apt-get install git-lfs) and re-run." >&2
+    fi
+  fi
+fi
+
+# ── 7. e2e browser ───────────────────────────────────────────────────────────
 # e2e/conftest.py launches a browser it finds on PATH (google-chrome / chromium
 # / chrome) via executable_path — the intended escape hatch from Nix/version
 # issues. The image pre-installs Chromium under PLAYWRIGHT_BROWSERS_PATH but not
