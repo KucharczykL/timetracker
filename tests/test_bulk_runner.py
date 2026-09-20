@@ -13,6 +13,10 @@ from django.urls import reverse
 from django.utils import timezone
 from session_rows import duration_only_row, tracked_run
 
+from common.duration_presentation import (
+    DEFAULT_DURATION_FORMAT_PROFILE,
+    DurationPresentation,
+)
 from games import bulk_reclassification
 from games.bulk_actions import BULK_ACTIONS
 from games.bulk_reclassification import (
@@ -215,6 +219,24 @@ def test_a_confirmation_lists_the_rows_to_a_cap(client_in, owned_library, game):
     assert html.count("data-bulk-sample-row") == CONFIRMATION_SAMPLE
     #: Every key still rides the field, capped or not.
     assert len(json.loads(posted(response)[PROGRESS_FIELD])["rows"]) == len(sessions)
+
+
+def test_a_confirmation_prints_a_duration_the_way_a_person_reads_it(
+    client_in, owned_library, game
+):
+    """`9:00:00` is a column, not a sentence.
+
+    Every other page states elapsed time through the person's own
+    duration setting, and the confirmation is where this act's rows are
+    read before it runs.
+    """
+    session = a_written_session(owned_library, game)
+    presentation = DurationPresentation(DEFAULT_DURATION_FORMAT_PROFILE, "en-us")
+
+    html = confirm(client_in, some(session)).content.decode()
+
+    assert presentation.format(session.effective_duration) in html
+    assert str(session.effective_duration) not in html
 
 
 def test_a_statement_naming_nothing_offers_no_submit(client_in, owned_library):

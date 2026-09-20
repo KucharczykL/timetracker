@@ -29,6 +29,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from common.criteria import FilterError
+from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
 from common.notices import Undo, notify
 from common.returns import UrlName
@@ -276,6 +277,7 @@ def _confirmation(
             csrf_token=get_token(request),
             cancel_url=return_url(request, fallback=action.fallback),
             sample_cap=CONFIRMATION_SAMPLE,
+            durations=duration_presentation_for_request(request),
         ),
         title=action.title,
     )

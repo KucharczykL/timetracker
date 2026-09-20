@@ -21,6 +21,7 @@ from common.components.primitives import (
     custom_element_builder,
     make_row,
 )
+from common.duration_presentation import DurationPresentation
 from games.bulk_actions import BulkAction, Refused
 
 #: Carries its own script, so the waypoint needs no `scripts=`.
@@ -46,7 +47,9 @@ def _refusals(refused: Sequence[Refused]) -> Node:
     ]
 
 
-def _sample(rows: Sequence[Any], total: int, cap: int) -> Node:
+def _sample(
+    rows: Sequence[Any], total: int, cap: int, durations: DurationPresentation
+) -> Node:
     """The rows, to a cap.
 
     Every key still rides the hidden field; this is what a person
@@ -65,7 +68,7 @@ def _sample(rows: Sequence[Any], total: int, cap: int) -> Node:
             make_row(
                 row.playthrough.player_game.game.name,
                 str(row.effective_day),
-                str(row.effective_duration),
+                durations.format(row.effective_duration),
                 data_bulk_sample_row="",
             )
             for row in shown
@@ -114,6 +117,7 @@ def ConfirmBatch(
     csrf_token: str,
     cancel_url: str,
     sample_cap: int,
+    durations: DurationPresentation,
 ) -> Node:
     """What the act will do, and the fields that make it do it."""
     total = len(rows)
@@ -127,7 +131,7 @@ def ConfirmBatch(
         details=Fragment(
             *(Input(type="hidden", name=name, value=value) for name, value in hidden),
             _refusals(refused),
-            _sample(rows, total, sample_cap),
+            _sample(rows, total, sample_cap, durations),
         ),
         post_url=post_url,
         csrf_token=csrf_token,
