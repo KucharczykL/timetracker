@@ -481,7 +481,7 @@ cost is judged.
    `Cardinality.ONE` removed, the Orca pass.
 9. **#1211** TABLE-04 — bulk Edit on the session tables, after #714.
 
-`#711 → #713 → #712 → #714 → #715 → #717 → #718`. #713 needs no table, so it
+`#711 → #713 → #712 → #714 → #715 → #717 → #1212 → #718 → #1211`. #713 needs no table, so it
 runs beside #711. Every issue merges alone and leaves `main` incomplete
 rather than inconsistent: #711 a personality nothing uses, #713 a runner one
 page uses, #712 a tray beside Actions columns it will replace. No stack.
