@@ -18,7 +18,12 @@ from games.events.append import (
     TransactionRequired,
 )
 from games.events.conflicts import CommandConflict
-from games.events.dispatch import CommandNotPermitted, CommandRejected, RowUnreadable
+from games.events.dispatch import (
+    CommandNotPermitted,
+    CommandRejected,
+    RowNotHeld,
+    RowUnreadable,
+)
 from games.events.envelope import DeferredRowRefused
 from games.events.idempotency import IdempotencyKeyMismatch
 from games.events.projection import ProjectionRowMissing
@@ -119,7 +124,7 @@ CONFLICT_ANSWERS: dict[type[CommandConflict], ConflictAnswer] = {
 
 #: Own clause each. Not CommandConflict subclasses.
 ANSWERED_DIRECTLY: frozenset[type[Exception]] = frozenset(
-    {CommandNotPermitted, CommandRejected, RowUnreadable}
+    {CommandNotPermitted, CommandRejected, RowNotHeld, RowUnreadable}
 )
 
 #: Defects in the program, not conflicts. Each one means a command
@@ -173,6 +178,15 @@ def answered(subject: SubjectNoun) -> Iterator[None]:
         raise CommandFailed(
             answer.sentence.format(subject=subject), answer.status_code
         ) from error
+    except RowNotHeld as error:
+        #: No traceback: the program is correct, and a client stated an
+        #: identifier this library does not hold. Recorded all the same,
+        #: because an invisible 404 is how a client comes to retry a
+        #: request that already succeeded.
+        logger.warning(
+            "[answers]: a %s this library does not hold: %s", subject, error
+        )
+        raise Http404(f"No such {subject}.") from error
     except RowUnreadable as error:
         #: The argument in the message, so one line names the row.
         logger.error(
