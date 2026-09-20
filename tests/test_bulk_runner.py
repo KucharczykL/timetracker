@@ -10,6 +10,8 @@ from django.urls import reverse
 from django.utils import timezone
 from session_rows import duration_only_row, tracked_run
 
+from games import bulk_reclassification
+from games.bulk_actions import BULK_ACTIONS
 from games.bulk_reclassification import (
     IN_THE_BUCKET,
     NOT_AVAILABLE,
@@ -18,11 +20,17 @@ from games.bulk_reclassification import (
 from games.models import (
     Game,
     HistoricalPlaytime,
+    LibraryEvent,
     PlayerSession,
     Playthrough,
     PlaythroughKind,
 )
-from games.views.bulk import PROGRESS_FIELD, STATEMENT_FIELD, TOKEN_FIELD
+from games.views.bulk import (
+    PROGRESS_FIELD,
+    STATEMENT_FIELD,
+    STOP_FIELD,
+    TOKEN_FIELD,
+)
 from games.views.session_reclassification import review_filter
 from timetracker.uuidv7 import parse_uuidv7
 
@@ -236,3 +244,177 @@ def test_the_runner_needs_a_login(client, owned_library, game):
 
     assert response.status_code == 302
     assert PlayerSession.objects.get(pk=session.pk).removed_at is None
+
+
+# ── The act ──────────────────────────────────────────────────────────────────
+
+
+def act(client, response, url=RECLASSIFY, **extra):
+    """The second POST: the token, so it acts."""
+    fields = posted(response)
+    return client.post(url, {**fields, **extra})
+
+
+def tally_of(response) -> dict:
+    return json.loads(posted(response)[PROGRESS_FIELD])
+
+
+def test_a_batch_converts_every_row_and_returns(client_in, owned_library, game):
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(3)
+    ]
+
+    done = act(client_in, confirm(client_in, some(*sessions)))
+
+    assert done.status_code == 302
+    assert HistoricalPlaytime.objects.count() == 3
+    for session in sessions:
+        assert PlayerSession.objects.get(pk=session.pk).removed_at is not None
+
+
+def test_every_chunk_of_a_batch_shares_one_correlation_id(
+    client_in, owned_library, game, monkeypatch
+):
+    """The token is the batch's identity.
+
+    A fresh correlation id per request would make a two-chunk batch two
+    batches, and its Undo would find half of it.
+    """
+    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(3)
+    ]
+    confirmation = confirm(client_in, some(*sessions))
+    token = posted(confirmation)[TOKEN_FIELD]
+
+    response = act(client_in, confirmation)
+    #: Each request spends its budget after one row.
+    assert response.status_code == 200
+    assert tally_of(response)["done"] == 1
+    while response.status_code == 200:
+        response = act(client_in, response)
+
+    assert response.status_code == 302
+    assert HistoricalPlaytime.objects.count() == 3
+    correlations = set(
+        LibraryEvent.objects.filter(
+            event_type="library.playersession.reclassified"
+        ).values_list("correlation_id", flat=True)
+    )
+    assert correlations == {uuid.UUID(token)}
+
+
+def test_the_same_token_twice_converts_nothing_twice(client_in, owned_library, game):
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session))
+
+    first = act(client_in, confirmation)
+    second = act(client_in, confirmation)
+
+    assert first.status_code == second.status_code == 302
+    assert HistoricalPlaytime.objects.count() == 1
+
+
+def test_a_row_gone_since_the_confirmation_is_counted_lost(
+    client_in, owned_library, game, monkeypatch
+):
+    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    staying = a_written_session(owned_library, game)
+    leaving = a_written_session(owned_library, game, day=date(2026, 3, 6))
+    confirmation = confirm(client_in, some(staying, leaving))
+
+    response = act(client_in, confirmation)
+    #: Gone between the confirmation and its own chunk.
+    PlayerSession.objects.filter(pk=leaving.pk).update(removed_at=timezone.now())
+    while response.status_code == 200:
+        response = act(client_in, response)
+
+    assert response.status_code == 302
+    assert HistoricalPlaytime.objects.count() == 1
+
+
+def test_a_refused_row_leaves_the_rest_done(client_in, owned_library, game):
+    wanted = a_written_session(owned_library, game)
+    short = a_written_session(
+        owned_library, game, day=date(2026, 3, 6), duration=timedelta(hours=1)
+    )
+    #: The short row is posted straight to the act, past the review.
+    confirmation = confirm(client_in, some(wanted))
+    fields = posted(confirmation)
+    fields[PROGRESS_FIELD] = json.dumps({"rows": [str(wanted.pk), str(short.pk)]})
+
+    response = client_in.post(RECLASSIFY, fields)
+
+    assert response.status_code == 302
+    assert HistoricalPlaytime.objects.count() == 1
+
+
+def test_a_defect_ends_the_batch_and_leaves_the_done_rows_done(
+    client_in, owned_library, game, monkeypatch
+):
+    """The act stops; what committed stays committed.
+
+    The declaration is frozen, so this breaks the write the act calls
+    rather than the act itself -- which is also the honest shape of a
+    defect: ours, underneath the command.
+    """
+    from games.writes.answers import DEFECT_STATUS, CommandFailed
+
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(3)
+    ]
+    real = bulk_reclassification.reclassify_session
+    calls = {"n": 0}
+
+    def breaks_after_one(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise CommandFailed("A problem on our side.", DEFECT_STATUS)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(bulk_reclassification, "reclassify_session", breaks_after_one)
+
+    response = act(client_in, confirm(client_in, some(*sessions)))
+
+    assert response.status_code == DEFECT_STATUS
+    assert HistoricalPlaytime.objects.count() == 1
+    #: A defect admits no second press.
+    assert (
+        BULK_ACTIONS["session.reclassify"].confirm_label.encode()
+        not in response.content
+    )
+
+
+def test_a_progress_page_carries_the_tally_and_the_rest(
+    client_in, owned_library, game, monkeypatch
+):
+    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(3)
+    ]
+
+    response = act(client_in, confirm(client_in, some(*sessions)))
+
+    carried = tally_of(response)
+    assert carried["done"] == 1
+    assert len(carried["rows"]) == 2
+
+
+def test_stopping_ends_the_batch_where_it_stands(
+    client_in, owned_library, game, monkeypatch
+):
+    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(3)
+    ]
+    progressing = act(client_in, confirm(client_in, some(*sessions)))
+
+    stopped = act(client_in, progressing, **{STOP_FIELD: "1"})
+
+    assert stopped.status_code == 302
+    assert HistoricalPlaytime.objects.count() == 1

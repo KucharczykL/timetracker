@@ -3,8 +3,17 @@
 from collections.abc import Sequence
 from typing import Any
 
-from common.components import ConfirmPage, Div, Fragment, Li, P, Ul
-from common.components.core import Node
+from common.components import (
+    ConfirmPage,
+    ControlButton,
+    Div,
+    Form,
+    Fragment,
+    Li,
+    P,
+    Ul,
+)
+from common.components.core import Element, Node, Safe
 from common.components.primitives import Column, Input, StyledTable, make_row
 from games.bulk_actions import BulkAction, Refused
 
@@ -94,3 +103,53 @@ def ConfirmBatch(
         #: Nothing to do admits no press.
         confirm_label=action.confirm_label if total else None,
     )
+
+
+def ProgressBatch(
+    action: BulkAction,
+    *,
+    done: int,
+    total: int,
+    refused: Sequence[Refused],
+    hidden: Sequence[tuple[str, str]],
+    post_url: str,
+    csrf_token: str,
+    stop_name: str,
+) -> Node:
+    """How far the batch got, and the press that carries it on.
+
+    A waypoint, not a question: the act is already running. With
+    scripting the element around the form continues by itself, so the
+    Continue press is what a reader without it uses.
+    """
+    return Element("continuing-batch")[
+        Div(class_="mx-auto w-full max-w-xl p-5 @container")[
+            P(class_="text-type-heading text-heading mb-2")[action.title],
+            P(class_="text-type-body text-body mb-4")[
+                f"{done} of {total} done. Continuing with the rest."
+            ],
+            _refusals(refused),
+            Form(method="post", action=post_url, data_continuing_batch_form="")[
+                Safe(
+                    '<input type="hidden" name="csrfmiddlewaretoken" '
+                    f'value="{csrf_token}">'
+                ),
+                Fragment(
+                    *(
+                        Input(type="hidden", name=name, value=value)
+                        for name, value in hidden
+                    )
+                ),
+                Div(class_="flex flex-wrap items-center gap-2")[
+                    ControlButton(type="submit", color="blue")["Continue"],
+                    ControlButton(
+                        type="submit",
+                        name=stop_name,
+                        value="1",
+                        color="gray",
+                        data_continuing_batch_stop="",
+                    )["Stop"],
+                ],
+            ],
+        ]
+    ]
