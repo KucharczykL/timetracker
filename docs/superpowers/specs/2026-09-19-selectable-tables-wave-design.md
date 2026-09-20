@@ -243,8 +243,14 @@ the submission token.
 1. **Confirm.** A POST without a token resolves the selection statement
    under the library and renders one `ConfirmPage` that leads with the act,
    its count and its scope, lists the rows to a cap, lists every refusal
-   (a running session, a bucket, a last live run) with its reason in full,
-   and carries a fresh token beside the resolved keys. Today's review
+   the resolve owns (a key outside the act's scope, a row the act already
+   covered, a selection spanning games) with its reason in full, and
+   carries a fresh token beside the resolved keys. A command's rule (a
+   running session, a bucket, a last live run, a run a live session
+   names) is read at the press, per row, under the lock, and the
+   confirmation does not restate it; a forecast that imports the
+   command's predicates to fill the "left as they are" block is #1209,
+   parked until the interface is rethought after #599's epics. Today's review
    confirmation lists every row; an `all` statement over the session list
    resolves to thousands, which is megabytes on the page that exists to be
    read, so the cap is the accepted trade. The runner parses an `all` statement's filter itself and refuses
@@ -329,7 +335,14 @@ summarises the scope, as the charter asks of a destructive act. It is added
 because it is the one action valid on every table, its inverse is trivial,
 and it proves the runner and the partial report on rows whose commands refuse
 for their own reasons: `RemovePlaythrough`'s last-live-run and referrer
-refusals surface per row here first. Without it a tray on runs or records
+refusals surface per row here first. Measured on the anonymized
+production sample after #712: of one library's 867 live ordinary runs,
+852 are the sole run of their game and 722 are named by a live session,
+so three are removable, and a batch of fifty runs answers "0 of 50
+done". Sessions and records refuse far less. The act stays as the
+runner's proof and the one act on the run tables; whether it earns a
+place in the product is judged in the rethink #1209 is parked against,
+not here. Without it a tray on runs or records
 would hold single-row acts only, and selecting ten runs would enable
 nothing.
 
@@ -471,6 +484,9 @@ Remove, in #712.
   construction; it inherits the runner.
 - **Audit History** — the aggregate reader is the first per-aggregate read
   of the stream, which the Journal and the Trash both need.
+- **The rethink** — #1209, a confirmation that forecasts a command's
+  refusal, waits for the interface work after #599's epics, which also
+  judges whether bulk Remove on runs is kept at all.
 
 ## Verification contract
 
@@ -550,7 +566,9 @@ Settled by #712's planning: the Playthrough list is selectable beside the
 four tables, `one` actions render first in #718, and the confirmation's
 rows are a columns spec the act declares. Found by #712's review in
 #711's element: the slot latches the statement at the press and pulls it
-at connect.
+at connect. Measured after #712 shipped: the confirmation lists only the
+refusals the resolve owns, a command's rule is read at the press, and the
+forecast of it is #1209, parked with the numbers.
 
 Deviations recorded: the empty bucket is removed, not archived; Finish stays
 inline as an immediate control; a cross-game move is refused rather than
