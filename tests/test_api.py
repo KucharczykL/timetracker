@@ -599,12 +599,12 @@ def _post_session(client, body, **extra):
 
 
 def _tracked_run(name="Hades"):
-    """This library's ordinary run at a game of its own."""
+    """The library's ordinary run and game."""
     platform, _ = Platform.objects.get_or_create(name="PC")
     return tracked_run(_test_library(), _owned_game(name=name, platform=platform))
 
 
-#: Every POST dispatches, which opens its own transaction.
+#: Every POST dispatches: its own transaction.
 @pytest.mark.django_db(transaction=True)
 def test_post_session_records_a_timed_session(auth_client, user):
     _prague_calendar(user)

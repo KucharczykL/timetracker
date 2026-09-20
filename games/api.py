@@ -697,12 +697,12 @@ def _library_device_or_404(library: UserLibrary, device_id: UUIDv7 | None) -> No
 
 
 def _library_run_or_404(library: UserLibrary, playthrough_id: UUIDv7) -> None:
-    """The scope is every kind this library holds, removed or not.
+    """Scope: every kind, removed or not.
 
-    That is `library_playthrough`'s scope, the one the command resolves
-    over, so 404 says one thing only: this library holds no such run.
-    Every other rule keeps the command's own sentence, which alone says
-    what to state instead.
+    `library_playthrough`'s scope, so 404 says one thing only: this
+    library holds no such run. Narrowing it to live ordinary runs
+    would turn the bucket, a removed run and a removed game into 404s
+    and take away the sentences that say what to state instead.
     """
     owned_or_404(
         Playthrough.objects.filter(library=library), library, id=playthrough_id
@@ -812,12 +812,7 @@ def _timing_statement(timing: TimingIn, day_zone: str) -> TimingStatement:
 
 
 class SessionIn(Schema):
-    """One session, stated whole.
-
-    The run is named, never derived from a game, and the timing is one
-    whole statement of the union the correction takes. A key the body
-    does not know is refused, so a stale spelling cannot pass unread.
-    """
+    """One session, stated whole: the run and one timing."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -832,9 +827,9 @@ def _stated_idempotency_key(header: str | None) -> IdempotencyKey | None:
     """The key the caller states, or none.
 
     Measured here because `validate_idempotency_key` raises a plain
-    `ValueError` that no answer maps. The spaces at the two ends go
-    first: a key of spaces alone passes both that check and the
-    constraint on the column, and it names no request.
+    `ValueError` that no answer maps: a blank key would read as a
+    defect. The strip comes first, because a key of spaces alone
+    passes both that check and the column's constraint.
     """
     if header is None:
         return None

@@ -81,7 +81,7 @@ def record_session(
 ) -> uuid.UUID:
     """Record one session on the run the draft names; answer its id.
 
-    A key the caller states absorbs its own repeat.
+    A stated key absorbs its own repeat.
     """
     with answered("session"):
         result = _dispatch(
