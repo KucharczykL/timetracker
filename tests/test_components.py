@@ -1270,13 +1270,49 @@ class ControlButtonTest(SimpleTestCase):
     def test_a_caller_cannot_state_a_corner_by_class(self):
         """The parameter is the only way in. A caller class and a baked class
         both set the radius, and the stylesheet decides which wins, so the
-        rule has to be refused rather than written down."""
+        rule has to be refused rather than written down.
+
+        Every spelling Tailwind admits, not just the bare one: a variant
+        prefix, an arbitrary-selector prefix and the important suffix all
+        reach the same property."""
         with self.assertRaises(TypeError) as refusal:
             components.ControlButton(class_="rounded-e-lg", variant="outline")["x"]
         self.assertIn("shape", str(refusal.exception))
 
         with self.assertRaises(TypeError):
             components.ControlButton([("class", "ms-auto rounded-base")])["x"]
+
+        for spelling in (
+            "rounded",
+            "sm:rounded-base",
+            "hover:rounded-full",
+            "[&>*:first-child]:rounded-s-base",
+            "!rounded-full",
+            "sm:!rounded-full",
+        ):
+            with self.subTest(spelling=spelling):
+                with self.assertRaises(TypeError):
+                    components.ControlButton(class_=spelling)["x"]
+
+    def test_a_state_variant_rounding_says_no_shape_expresses_it(self):
+        """`hover:rounded-full` is not a shape= the parameter can state, so
+        the refusal cannot send the caller to a parameter that has no such
+        value."""
+        with self.assertRaises(TypeError) as refusal:
+            components.ControlButton(class_="hover:rounded-full")["x"]
+        self.assertIn("no per-state radius", str(refusal.exception))
+
+    def test_a_non_string_class_value_is_read_for_a_corner(self):
+        """`normalize_attributes` stringifies a class value later, so a
+        rounding that arrives as anything but `str` still reaches the
+        element."""
+
+        class Spelled:
+            def __str__(self) -> str:
+                return "rounded-full"
+
+        with self.assertRaises(TypeError):
+            components.ControlButton([("class", Spelled())])["x"]
 
 
 class ModalContractTest(SimpleTestCase):

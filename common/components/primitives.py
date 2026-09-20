@@ -939,6 +939,38 @@ def control_button_class(
     return " ".join(parts)
 
 
+def _refuse_a_stated_corner(value: object) -> None:
+    """Refuse a class attribute that states a corner.
+
+    Stylesheet order decides between two radius classes, so a call site that
+    writes one cannot read which one wins. ``normalize_attributes`` stringifies
+    a class value, so this reads it the same way rather than skipping whatever
+    is not a ``str``.
+
+    Every spelling reaches the same property: Tailwind writes its variants as
+    a ``:``-separated prefix — a breakpoint, a state, or a whole arbitrary
+    selector — and the important marker as a leading ``!`` on the utility.
+    """
+    for word in str(value).split():
+        token = word.rpartition(":")[2].lstrip("!")
+        if token != "rounded" and not token.startswith("rounded-"):
+            continue
+        if word != token:
+            # A prefixed rounding is a corner per state or per width, and
+            # `shape=` has no such value: the parameter states one set of
+            # corners for every state and every width.
+            raise TypeError(
+                f"ControlButton refuses the class {word!r}: a button has "
+                "no per-state radius, and shape= states one set of corners "
+                "for every state and width."
+            )
+        raise TypeError(
+            f"ControlButton refuses the class {word!r}: "
+            "a button states its corners with shape= "
+            '("full", "start", "end" or "square"), never a class.'
+        )
+
+
 class ControlButton(BaseComponent):
     """The one polymorphic button/link builder — single home for button styling
     and the ``<a>``-vs-``<button>`` choice (issue #235).
@@ -1012,17 +1044,8 @@ class ControlButton(BaseComponent):
         ]
         caller_attrs = [*_coerce_attrs(attrs), *_attrs_from_kwargs(kwargs)]
         for name, value in caller_attrs:
-            if name != "class" or not isinstance(value, str):
-                continue
-            for word in value.split():
-                if word.startswith("rounded-"):
-                    # Stylesheet order decides between two radius classes,
-                    # so the call site cannot read which one wins.
-                    raise TypeError(
-                        f"ControlButton refuses the class {word!r}: "
-                        "a button states its corners with shape= "
-                        '("full", "start", "end" or "square"), never a class.'
-                    )
+            if name == "class":
+                _refuse_a_stated_corner(value)
         self._merged_attributes: list[HTMLAttribute] = [*class_attrs, *caller_attrs]
         # `with_shape` rebuilds the class from these; the rendered
         # string cannot give them back.
