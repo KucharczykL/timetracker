@@ -217,7 +217,7 @@ def _summary_action_menu(
         [
             ("aria-label", f"{label} actions"),
             ("aria-haspopup", "menu"),
-            ("class", "rounded-base p-2"),
+            ("class", "p-2"),
         ],
         variant="ghost",
     )[Icon("ellipsis", [("aria-hidden", "true")])].as_element()

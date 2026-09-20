@@ -1148,6 +1148,11 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
             ControlButton(
                 member_attributes,
                 variant="segmented",
+                # Temporary: the row still rounds its own two ends from the
+                # parent selectors below, and a member states no corner of its
+                # own yet. Without this the `full` default would round every
+                # middle button in the row.
+                shape="square",
                 color=member.get("color", "gray"),
                 href="" if is_plain_button else member.get("href", "#"),
                 method="" if is_plain_button else member.get("method", ""),
@@ -2683,8 +2688,7 @@ def SelectionToggle(*, pressed: bool = False) -> Node:
             ("aria-label", "Select rows"),
         ],
         variant="outline",
-        # Outline bakes no shape; a standalone one states its own.
-        class_="ms-auto rounded-base",
+        class_="ms-auto",
     )[Icon("checkbox"), Span(class_="max-sm:sr-only")["Select"]]
 
 

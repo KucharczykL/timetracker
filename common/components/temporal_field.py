@@ -90,8 +90,7 @@ def _copy_button(source: TemporalCopySource) -> Node:
         disabled=True,
         data_temporal_copy=source.field_name,
         title=source.unfilled_title,
-        # Outline bakes no shape; state our own.
-        class_="self-start rounded-base",
+        class_="self-start",
     )[source.label]
 
 

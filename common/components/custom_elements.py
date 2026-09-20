@@ -1083,7 +1083,7 @@ def BottomSheet(
         [
             ("data-sheet-dismiss", ""),
             ("aria-label", close_label),
-            ("class", "shrink-0 rounded-base focus:ring-inset"),
+            ("class", "shrink-0 focus:ring-inset"),
         ],
         variant="ghost",
     )[Span(aria_hidden="true", class_="text-type-section leading-none")["×"]]
@@ -1292,7 +1292,7 @@ def SelectDropdown(
     (endpoint, body key, empty/null policy) are the caller's; this owns the shared
     shape."""
     trigger = ControlButton(
-        [("class", "rounded-base" + (f" {class_}" if class_ else ""))],
+        [("class", class_)] if class_ else None,
         variant="outline",
         aria_haspopup="listbox",
     )[
