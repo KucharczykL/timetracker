@@ -1100,6 +1100,20 @@ describe("temporal-field copy, the cases that bit", () => {
     expect(button.hasAttribute("title")).toBe(false);
   });
 
+  it("drops an end qualifier that has no end date", () => {
+    const { source, target } = mountPair({
+      kind: "date",
+      start_year: "1997",
+      end_uncertain: "on",
+    });
+
+    copyTemporalDraft(source, target);
+
+    expect(named(target, "end_uncertain").checked).toBe(false);
+    expect(named(target, "end_uncertain").value).toBe("on");
+    expect(readDraft(target).end_uncertain).toBe("");
+  });
+
   it("backspaces a copied end year", () => {
     const { source, target } = mountPair({
       kind: "range",

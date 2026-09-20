@@ -378,9 +378,21 @@ export function readDraft(host: HTMLElement): TemporalDraft {
   return draft;
 }
 
+/** The six parts one endpoint states, as a draft spells them. */
+const DRAFT_PARTS = [
+  "year",
+  "month",
+  "day",
+  "decade",
+  "approximate",
+  "uncertain",
+] as const;
+
+type DraftPart = (typeof DRAFT_PARTS)[number];
+
 /** Whether the draft states anything at the end. */
 function draftStatesEnd(draft: TemporalDraft): boolean {
-  return ["year", "month", "day", "decade"].some(
+  return (["year", "month", "day", "decade"] as const).some(
     (part) => draftPart(draft, "end", part) !== "",
   );
 }
@@ -396,8 +408,12 @@ function statesAHole(host: HTMLElement): boolean {
   );
 }
 
-function draftPart(draft: TemporalDraft, endpoint: Endpoint, part: string): string {
-  return draft[`${endpoint}_${part}` as DraftKey] ?? "";
+function draftPart(
+  draft: TemporalDraft,
+  endpoint: Endpoint,
+  part: DraftPart,
+): string {
+  return draft[`${endpoint}_${part}`];
 }
 
 /** Digits right-aligned in the segment's width. */
@@ -426,7 +442,7 @@ function adoptEndpoint(
     if (!spec) return;
     setSegmentBuffer(segment, paddedDigits(parts[spec.name] ?? "", spec.width));
   });
-  ["approximate", "uncertain"].forEach((qualifier) => {
+  (["approximate", "uncertain"] as const).forEach((qualifier) => {
     const box = namedInput(host, `${endpoint}_${qualifier}`);
     if (box instanceof HTMLInputElement) {
       box.checked = draftPart(draft, endpoint, qualifier) !== "";
@@ -452,15 +468,18 @@ export function adoptDraft(host: HTMLElement, draft: TemporalDraft): void {
   setEndpointOpen(host, "start", open);
 
   ENDPOINTS.forEach((endpoint) => adoptEndpoint(host, draft, endpoint));
-  // The engine commits on a change against this value, and the buffers
-  // above just moved. Leave it stale and the next keystroke that lands
-  // back on the old value is swallowed.
-  ENDPOINTS.forEach((endpoint) => syncScratch(host, endpoint));
 
   if (draft.kind === "since") setEndShape(host, "end_open");
   else if (open || draft.kind === "range" || draftStatesEnd(draft))
     setEndShape(host, "end_date");
   else setEndShape(host, "end_none");
+  // A qualifier with no date beside it is refused, not stored.
+  if (endShape(host) !== "end_date") clearEndpoint(host, "end");
+
+  // The engine commits on a change against this value, and the buffers
+  // above just moved. Leave it stale and the next keystroke that lands
+  // back on the old value is swallowed.
+  ENDPOINTS.forEach((endpoint) => syncScratch(host, endpoint));
   paintEndShape(host);
   // Only an open start disables these.
   endShapeBoxes(host).forEach((box) => {
