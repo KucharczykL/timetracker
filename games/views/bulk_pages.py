@@ -23,8 +23,7 @@ from common.components.primitives import (
     custom_element_builder,
     make_row,
 )
-from common.duration_presentation import DurationPresentation
-from games.bulk_actions import BulkAction, Refused
+from games.bulk_actions import BulkAction, Presentations, Refused
 
 #: The confirmation's words, and the waypoint's.
 WILL_BE_LEFT_ALONE = "{count} of them will be left as {pronoun}:"
@@ -59,23 +58,24 @@ def _refusals(count: int, reasons: Sequence[str], lead: str) -> Node:
 
 
 def _sample(
-    rows: Sequence[Any], total: int, cap: int, durations: DurationPresentation
+    action: BulkAction[Any],
+    rows: Sequence[Any],
+    total: int,
+    cap: int,
+    presentations: Presentations,
 ) -> Node:
-    """The rows, to a cap; keys ride the field."""
+    """The rows the act states, to a cap; keys ride the field."""
     if not rows:
         return Fragment()
     shown = rows[:cap]
     table = StyledTable(
         columns=[
-            Column("Game", None),
-            Column("Day", None),
-            Column("Duration", None, align="right"),
+            Column(column.heading, None, align=column.align)
+            for column in action.preview
         ],
         rows=[
             make_row(
-                row.playthrough.player_game.game.name,
-                str(row.effective_day),
-                durations.format(row.effective_duration),
+                *(column.cell(row, presentations) for column in action.preview),
                 data_bulk_sample_row="",
             )
             for row in shown
@@ -111,7 +111,7 @@ def RefusedBatch(
 
 
 def ConfirmBatch(
-    action: BulkAction,
+    action: BulkAction[Any],
     *,
     rows: Sequence[Any],
     refused: Sequence[Refused],
@@ -120,7 +120,7 @@ def ConfirmBatch(
     csrf_token: str,
     cancel_url: str,
     sample_cap: int,
-    durations: DurationPresentation,
+    presentations: Presentations,
 ) -> Node:
     """What the act will do, plus fields."""
     total = len(rows)
@@ -129,12 +129,14 @@ def ConfirmBatch(
         message=(
             f"{action.label}: {total} {action.subject}{pluralize(total)}?"
             if total
-            else "None of those sessions can be recorded."
+            #: `pluralize` here too: a hardcoded "s" reads the plural
+            #: of one subject and mis-spells the next.
+            else f"None of those {action.subject}{pluralize(0)} can be changed."
         ),
         details=Fragment(
             *(Input(type="hidden", name=name, value=value) for name, value in hidden),
             _refusals(len(refused), _reasons(refused), WILL_BE_LEFT_ALONE),
-            _sample(rows, total, sample_cap, durations),
+            _sample(action, rows, total, sample_cap, presentations),
         ),
         post_url=post_url,
         csrf_token=csrf_token,
@@ -145,7 +147,7 @@ def ConfirmBatch(
 
 
 def ProgressBatch(
-    action: BulkAction,
+    action: BulkAction[Any],
     *,
     done: int,
     total: int,

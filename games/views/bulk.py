@@ -18,7 +18,9 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
+from common.components import SELECTION_STATEMENT_FIELD
 from common.criteria import FilterError
+from common.date_time_presentation import date_time_presentation_for_request
 from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
 from common.notices import Undo, notify
@@ -26,6 +28,7 @@ from common.returns import UrlName
 from games.bulk_actions import (
     BulkAction,
     BulkActionName,
+    Presentations,
     Refused,
     Resolution,
     RowOutcome,
@@ -45,7 +48,8 @@ from games.writes.answers import CONFLICT_STATUS, DEFECT_STATUS, CommandFailed
 logger = logging.getLogger("games")
 
 #: What a selection states; the confirm POST.
-STATEMENT_FIELD = "selection"
+#: One spelling: the line renders it, this route reads it.
+STATEMENT_FIELD = SELECTION_STATEMENT_FIELD
 #: The batch's identity, minted by the confirmation.
 TOKEN_FIELD = "submission"
 #: The rows left and the tally so far.
@@ -231,7 +235,7 @@ def parse_statement(posted: str) -> SelectionStatement:
 
 
 def resolved_keys(
-    action: BulkAction, library: UserLibrary, statement: SelectionStatement
+    action: BulkAction[Any], library: UserLibrary, statement: SelectionStatement
 ) -> list[uuid.UUID]:
     """The keys the statement names, now.
 
@@ -250,7 +254,7 @@ def resolved_keys(
 
 def _confirmation(
     request: HttpRequest,
-    action: BulkAction,
+    action: BulkAction[Any],
     *,
     rows: list[Any],
     refused: tuple[Refused, ...],
@@ -275,7 +279,10 @@ def _confirmation(
             csrf_token=get_token(request),
             cancel_url=return_url(request, fallback=action.fallback),
             sample_cap=CONFIRMATION_SAMPLE,
-            durations=duration_presentation_for_request(request),
+            presentations=Presentations(
+                dates=date_time_presentation_for_request(request),
+                durations=duration_presentation_for_request(request),
+            ),
         ),
         title=action.title,
     )
@@ -304,7 +311,7 @@ def _refused_page(
 
 
 def _act_refused(
-    request: HttpRequest, action: BulkAction, sentence: str
+    request: HttpRequest, action: BulkAction[Any], sentence: str
 ) -> HttpResponse:
     return _refused_page(
         request, sentence, title=action.title, fallback=action.fallback
@@ -321,7 +328,7 @@ class Leg:
     run: Callable[[User, Any, IdempotencyKey, uuid.UUID], RowOutcome]
 
 
-def _forward(action: BulkAction) -> Leg:
+def _forward(action: BulkAction[Any]) -> Leg:
     return Leg(
         name=action.name,
         resolve=lambda library, key: action.resolve(library, [key]),
@@ -329,12 +336,12 @@ def _forward(action: BulkAction) -> Leg:
     )
 
 
-def _undo_name(action: BulkAction) -> str:
+def _undo_name(action: BulkAction[Any]) -> str:
     """One spelling, for leg and log."""
     return f"{action.name}.undo"
 
 
-def _backward(action: BulkAction, written: frozenset[uuid.UUID]) -> Leg:
+def _backward(action: BulkAction[Any], written: frozenset[uuid.UUID]) -> Leg:
     """The inverse, over this batch's keys.
 
     The row is removed by now, so the batch says whether a key is its
@@ -356,7 +363,7 @@ def _of_this_batch(key: uuid.UUID, written: frozenset[uuid.UUID]) -> Resolution:
 
 def _run_a_chunk(
     request: HttpRequest,
-    action: BulkAction,
+    action: BulkAction[Any],
     *,
     token: str,
     tally: Tally,
@@ -480,7 +487,7 @@ def _counted(tally: Tally, outcome: RowOutcome) -> Tally:
 
 
 def _progress(
-    request: HttpRequest, action: BulkAction, *, token: str, tally: Tally
+    request: HttpRequest, action: BulkAction[Any], *, token: str, tally: Tally
 ) -> HttpResponse:
     return render_page(
         request,
@@ -501,7 +508,7 @@ def _progress(
 
 def _defect(
     request: HttpRequest,
-    action: BulkAction,
+    action: BulkAction[Any],
     tally: Tally,
     *,
     undo_url: str | None,
@@ -533,7 +540,7 @@ def _defect(
 
 def _answer(
     request: HttpRequest,
-    action: BulkAction,
+    action: BulkAction[Any],
     tally: Tally,
     *,
     undo_url: str | None,
@@ -621,7 +628,7 @@ def _undo_url(token: str) -> str:
     return reverse("games:undo_bulk_action", args=[token])
 
 
-def _act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkAction | None:
+def _act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkAction[Any] | None:
     """Which act wrote this batch.
 
     A correlation nothing wrote, and one that is no batch, are not

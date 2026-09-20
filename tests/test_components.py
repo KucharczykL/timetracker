@@ -3203,6 +3203,35 @@ class SelectableRowTest(SimpleTestCase):
         html = str(components.TableRow(components.make_row("Game", key="abc")))
         self.assertIn('data-selection-key="abc"', html)
 
+    def test_a_selectable_rows_name_states_the_row_the_checkbox_joins(self):
+        """The checkbox centres on the name, not on the summary under it."""
+        html = str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game", key="abc", summary="2 hours, PC")],
+                data_table=True,
+                caption="Games",
+                selection={"filter": ""},
+            )
+        )
+        identity = html.split("data-row-identity")[1].split("</div>")[0]
+        #: The name inside the row, the summary outside it.
+        self.assertIn("Game", identity)
+        self.assertNotIn("data-row-summary", identity)
+        self.assertIn("items-center", identity)
+
+    def test_a_table_with_no_selection_states_no_identity_row(self):
+        """Nothing joins the name there, so the cell keeps its shape."""
+        html = str(
+            components.StyledTable(
+                columns=[components.Column("Name")],
+                rows=[components.make_row("Game", summary="2 hours, PC")],
+                data_table=True,
+                caption="Games",
+            )
+        )
+        self.assertNotIn("data-row-identity", html)
+
     def test_a_row_with_no_key_carries_no_selection_attribute(self):
         html = str(components.TableRow(components.make_row("Game")))
         self.assertNotIn("data-selection-key", html)
@@ -3350,6 +3379,123 @@ class SelectionLineTest(SimpleTestCase):
         html = self._paginated(selection={"filter": ""})
         self.assertIn("data-selection-actions", html)
 
+    def test_a_declaration_with_no_actions_renders_the_slot_alone(self):
+        html = self._paginated(selection={"filter": ""})
+        self.assertIn("data-selection-actions", html)
+        self.assertNotIn("data-selection-actions-form", html)
+
+    def test_selection_actions_render_one_form_and_one_submit_each(self):
+        html = self._paginated(
+            selection={
+                "filter": "",
+                "csrf_token": "a-token",
+                "actions": [
+                    {
+                        "label": "Remove",
+                        "url": "/bulk/session.remove/?origin=%2Fsession%2Flist",
+                        "cardinality": "many",
+                        "color": "red",
+                    },
+                    {
+                        "label": "Record as historical playtime",
+                        "url": "/bulk/session.reclassify/?origin=%2Fsession%2Flist",
+                        "cardinality": "many",
+                        "color": "red",
+                    },
+                ],
+            }
+        )
+        self.assertEqual(html.count("data-selection-actions-form"), 1)
+        self.assertEqual(html.count('type="submit"'), 2)
+        self.assertIn(
+            'formaction="/bulk/session.remove/?origin=%2Fsession%2Flist"', html
+        )
+        self.assertIn(
+            'formaction="/bulk/session.reclassify/?origin=%2Fsession%2Flist"', html
+        )
+        self.assertIn(">Remove<", html)
+        self.assertIn(">Record as historical playtime<", html)
+
+    def test_selection_actions_carry_one_statement_field_and_one_token(self):
+        html = self._paginated(
+            selection={
+                "filter": "",
+                "csrf_token": "a-token",
+                "actions": [
+                    {
+                        "label": "Remove",
+                        "url": "/bulk/session.remove/",
+                        "cardinality": "many",
+                        "color": "red",
+                    }
+                ],
+            }
+        )
+        self.assertEqual(html.count("data-selection-statement"), 1)
+        self.assertIn('name="selection"', html)
+        self.assertEqual(html.count('name="csrfmiddlewaretoken"'), 1)
+        self.assertIn('value="a-token"', html)
+
+    def test_every_selection_submit_starts_disabled(self):
+        """The attribute, never the class: every button carries
+        `disabled:opacity-50`, so a substring proves nothing."""
+        html = self._paginated(
+            selection={
+                "filter": "",
+                "csrf_token": "a-token",
+                "actions": [
+                    {
+                        "label": "Remove",
+                        "url": "/bulk/session.remove/",
+                        "cardinality": "many",
+                        "color": "red",
+                    },
+                    {
+                        "label": "Record as historical playtime",
+                        "url": "/bulk/session.reclassify/",
+                        "cardinality": "many",
+                        "color": "red",
+                    },
+                ],
+            }
+        )
+        form = html.split("data-selection-actions-form")[1].split("</form>")[0]
+        self.assertEqual(form.count('disabled=""'), 2)
+
+    def test_acts_with_no_token_are_refused_rather_than_rendered(self):
+        """A 403 at the press would name the page, not the omission."""
+        with self.assertRaises(ValueError):
+            self._paginated(
+                selection={
+                    "filter": "",
+                    "actions": [
+                        {
+                            "label": "Remove",
+                            "url": "/bulk/session.remove/",
+                            "cardinality": "many",
+                            "color": "red",
+                        }
+                    ],
+                }
+            )
+
+    def test_a_one_row_act_is_not_offered_yet(self):
+        html = self._paginated(
+            selection={
+                "filter": "",
+                "csrf_token": "a-token",
+                "actions": [
+                    {
+                        "label": "Edit",
+                        "url": "/bulk/session.edit/",
+                        "cardinality": "one",
+                        "color": "red",
+                    }
+                ],
+            }
+        )
+        self.assertNotIn("data-selection-actions-form", html)
+
     def test_selection_line_announces_in_its_own_region(self):
         html = self._paginated(selection={"filter": ""})
         self.assertIn('role="status"', html)
@@ -3474,7 +3620,11 @@ class SelectableTableMountTest(SimpleTestCase):
         from types import SimpleNamespace
 
         request = SimpleNamespace(
-            user=SimpleNamespace(is_authenticated=True, library_id="lib-1")
+            user=SimpleNamespace(
+                is_authenticated=True,
+                #: The reverse side of UserLibrary.user: a row, not a key.
+                library=SimpleNamespace(pk="lib-1"),
+            )
         )
         html = str(
             components.StyledTable(

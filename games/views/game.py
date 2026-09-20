@@ -44,6 +44,7 @@ from common.components import (
     PurchasePrice,
     QuickFilterBar,
     Safe,
+    SelectionDeclaration,
     StyledTable,
     TableData,
     Ul,
@@ -69,6 +70,8 @@ from common.temporal_presentation import (
     present_temporal_value,
 )
 from common.utils import paginate, safe_division
+from games.bulk_removal import REMOVE_RECORD, REMOVE_RUN
+from games.bulk_tray import tray_actions
 from games.catalog_form import CatalogGraphForm
 from games.catalog_submit import submitted_game_or_form_error
 from games.external_references import CatalogTarget, external_reference_url_or_none
@@ -1069,6 +1072,7 @@ def _historical_playtime_section(
     presentation: DateTimePresentation,
     durations: DurationPresentation,
     origin: OriginUrl | None,
+    request: HttpRequest,
 ) -> Node:
     records = list(
         listed_records(library).filter(player_game__game=game).order_by(*RECORD_ORDER)
@@ -1088,6 +1092,7 @@ def _historical_playtime_section(
             record.device.name if record.device else "No device",
             record_actions(record, origin),
             id=f"historical-row-{record.pk}",
+            key=str(record.pk),
         )
         for record in records
     ]
@@ -1103,6 +1108,18 @@ def _historical_playtime_section(
         rows=rows,
         data_table=True,
         caption="Historical playtime of this game",
+        #: The request scopes the kept selection to this library.
+        request=request,
+        selection=SelectionDeclaration(
+            #: The act's scope is the library's, not this game's: an
+            #: "all" statement here would name every record the library
+            #: holds. This section states no paginator, so the line
+            #: renders no "select all matching" and the statement it
+            #: posts is always the keys a person marked.
+            filter="",
+            csrf_token=get_token(request),
+            actions=tray_actions(REMOVE_RECORD.name, origin=origin),
+        ),
     )
     section = _game_section(
         "Historical playtime",
@@ -1121,6 +1138,7 @@ def _playthroughs_section(
     presentation: DateTimePresentation,
     origin: OriginUrl | None,
     csrf_token: str,
+    request: HttpRequest,
 ) -> Node:
     data = playthrough_tabledata(
         runs,
@@ -1136,6 +1154,18 @@ def _playthroughs_section(
         rows=data["rows"],
         data_table=True,
         caption="Playthroughs of this game",
+        #: The request scopes the kept selection to this library.
+        request=request,
+        selection=SelectionDeclaration(
+            #: The act's scope is the library's, not this game's: an
+            #: "all" statement here would name every run the library
+            #: holds. This section states no paginator, so the line
+            #: renders no "select all matching" and the statement it
+            #: posts is always the keys a person marked.
+            filter="",
+            csrf_token=csrf_token,
+            actions=tray_actions(REMOVE_RUN.name, origin=origin),
+        ),
     )
     section = _game_section(
         "Playthroughs",
@@ -1216,8 +1246,12 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         ),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
-        _historical_playtime_section(game, library, presentation, durations, origin),
-        _playthroughs_section(game, runs, presentation, origin, get_token(request)),
+        _historical_playtime_section(
+            game, library, presentation, durations, origin, request
+        ),
+        _playthroughs_section(
+            game, runs, presentation, origin, get_token(request), request
+        ),
         _history_section(game, library, presentation),
     ]
     return render_page(

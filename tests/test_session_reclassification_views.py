@@ -1,6 +1,5 @@
 """The reclassification acts through the routes."""
 
-import html as html_module
 import json
 import uuid
 from datetime import UTC, date, datetime, timedelta
@@ -26,6 +25,7 @@ from games.models import (
 from games.views.bulk import STATEMENT_FIELD
 from games.views.session_reclassification import (
     review_filter,
+    review_url,
 )
 from games.writes.answers import CONFLICT_STATUS
 
@@ -190,60 +190,69 @@ def _long_row(run, day=A_DAY, hours=9) -> PlayerSession:
     return duration_only_row(run, day, timedelta(hours=hours))
 
 
-def _hidden(html: str, name: str) -> str:
-    """One hidden input's value, as the form would post it."""
-    marker = f'name="{name}" value="'
-    start = html.index(marker) + len(marker)
-    return html_module.unescape(html[start : html.index('"', start)])
-
-
 def test_the_library_offers_the_review(logged_in, session):
-    """The entry points live here."""
+    """The panel explains and points; the act is not pressed here."""
     response = logged_in.get(reverse("games:library"))
 
     html = response.content.decode()
     assert "See these sessions" in html
-    assert "Move all 1 to historical playtime" in html
+    assert "1 of your play sessions" in html
     assert "Playtime" in html
 
 
-def test_the_panel_states_the_whole_review_as_one_selection(logged_in, session):
-    """The button posts a statement, not a list of keys.
+def _playtime_panel(html: str) -> str:
+    """The section the review lives in, and nothing else.
 
-    The review is what the act is offered on, so the panel names the
-    scope and the runner resolves it at the press. A list of keys would
-    freeze a page-old answer into the act.
+    A negative assertion over the whole page would answer to any other
+    section growing a form or a toast.
     """
-    html = logged_in.get(reverse("games:library")).content.decode()
+    return html.split('id="playtime"')[1].split("</section>")[0]
 
+
+def test_the_panel_presses_nothing(logged_in, session):
+    """The act is offered from the line the session list renders.
+
+    One place presses it, so the review is a link to those rows
+    rather than a second way to run the same batch.
+    """
+    panel = _playtime_panel(logged_in.get(reverse("games:library")).content.decode())
+
+    assert "See these sessions" in panel
+    assert "Move all" not in panel
     assert (
         action_url(
             "games:run_bulk_action",
             "session.reclassify",
             origin=reverse("games:library"),
         )
-        in html
+        not in panel
     )
-    assert json.loads(_hidden(html, STATEMENT_FIELD)) == {
-        "mode": "all",
-        "filter": review_filter(),
-        "count": 1,
-        "except": [],
-    }
+    assert f'name="{STATEMENT_FIELD}"' not in panel
 
 
 def test_the_panels_count_is_the_scope_the_act_resolves(logged_in, owned_library, run):
-    """What a person is told, and what the press acts on, are one read."""
+    """What a person is told, and what the line acts on, are one read."""
     for day in (1, 2, 3):
         _long_row(run, date(2026, 3, day))
     _long_row(run, date(2026, 4, 1), hours=1)
 
     html = logged_in.get(reverse("games:library")).content.decode()
 
-    assert "Move all 3 to historical playtime" in html
-    assert json.loads(_hidden(html, STATEMENT_FIELD))["count"] == 3
+    assert "3 of your play sessions" in html
     scope = BULK_ACTIONS["session.reclassify"].scope(owned_library, review_filter())
     assert scope.count() == 3
+
+
+def test_the_link_lands_on_the_rows_the_act_offers(logged_in, owned_library, run):
+    """The review's filter is the one the line's act narrows by."""
+    for day in (1, 2, 3):
+        _long_row(run, date(2026, 3, day))
+
+    listed = logged_in.get(review_url())
+
+    html = listed.content.decode()
+    assert html.count("data-selection-key=") == 3
+    assert "/bulk/session.reclassify/" in html
 
 
 def test_the_review_has_no_route_of_its_own(logged_in):
@@ -322,9 +331,14 @@ def test_the_undo_route_says_when_nothing_changed(logged_in, session, run):
     assert not any("restored" in message for _level, message in said)
 
 
-def test_the_library_promises_the_undo(logged_in, session):
-    """The runner offers one, so the words stop saying it does not."""
-    html = logged_in.get(reverse("games:library")).content.decode()
+def test_the_library_promises_nothing_it_does_not_do(logged_in, session):
+    """The panel runs no act, so it makes no promise about one.
 
-    assert "all of them at once does not" not in html
-    assert "offers an Undo that puts every session back" in html
+    The Undo is the runner's, and the line that presses it says so.
+    What must stay gone is the older sentence, which told a person the
+    batch could not be taken back.
+    """
+    panel = _playtime_panel(logged_in.get(reverse("games:library")).content.decode())
+
+    assert "all of them at once does not" not in panel
+    assert "Undo" not in panel

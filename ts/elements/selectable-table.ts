@@ -18,6 +18,7 @@ import {
   isMarked,
   rangeKeys,
   selectAllMatching,
+  SelectionStatement,
   SelectionState,
   selectionCount,
   setPage,
@@ -26,6 +27,7 @@ import {
 } from "./selection-statement.js";
 
 const CHECKBOX_SELECTOR = "[data-selection-checkbox]";
+const IDENTITY_SELECTOR = "[data-row-identity]";
 // Every connected table, so the published height is the tallest line rather
 // than whichever table wrote last.
 const connected = new Set<SelectableTableElement>();
@@ -76,8 +78,8 @@ export class SelectableTableElement extends HTMLElement {
     );
     // An act on the selection ends it: the rows it named are gone, moved or
     // changed, so restoring that statement over what is left would act on
-    // rows nobody chose. The tray's form is #712's; the rule is stated here,
-    // where the statement is kept.
+    // rows nobody chose. The slot below renders the form; the rule is stated
+    // here, where the statement is kept.
     this.querySelector("[data-selection-actions]")?.addEventListener(
       "submit",
       () => this.forgetAndClose(),
@@ -157,7 +159,11 @@ export class SelectableTableElement extends HTMLElement {
       if (!checkbox) continue;
       checkbox.setAttribute("aria-label", identityName(cell));
       checkbox.classList.toggle(HIDDEN_CHECKBOX_CLASS, !this.mode);
-      cell.insertBefore(checkbox, cell.firstChild);
+      // The row a selectable cell states for it: the name's own line,
+      // so the box centres on the name rather than on the summary
+      // under it. A cell that states none takes the box itself.
+      const identity = cell.querySelector<HTMLElement>(IDENTITY_SELECTOR) ?? cell;
+      identity.insertBefore(checkbox, identity.firstChild);
     }
   }
 
@@ -240,6 +246,18 @@ export class SelectableTableElement extends HTMLElement {
   /** What an act on the selection leaves behind: nothing kept, mode off. */
   forgetAndClose(): void {
     this.setMode(false);
+  }
+
+  /** The statement this table stands on, asked for.
+   *
+   * The change event carries the same value, and is dispatched from
+   * `render()` alone -- which at connect runs on the restore branch only,
+   * before a descendant element upgrades. So the slot that posts the
+   * statement pulls it once rather than waiting for a change that already
+   * happened.
+   */
+  statement(): SelectionStatement {
+    return statementFor(this.state, this.props.filter, this.props.count);
   }
 
   private onClear(): void {

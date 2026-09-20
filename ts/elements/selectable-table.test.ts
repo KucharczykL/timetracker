@@ -17,7 +17,8 @@ function mount(
   const rows = keys
     .map(
       (key) =>
-        `<tr data-selection-key="${key}"><th scope="row">Game ${key}` +
+        `<tr data-selection-key="${key}"><th scope="row">` +
+        `<div data-row-identity>Game ${key}</div>` +
         `<div data-row-summary>2 hours</div></th><td>2025</td></tr>`,
     )
     .join("");
@@ -501,5 +502,52 @@ describe("a selection that outlives the page", () => {
 
     const second = mount(["c", "d"], '{"year":2024}');
     expect(second.getAttribute("data-selection-mode")).toBe(null);
+  });
+});
+
+describe("the checkbox's place in the cell", () => {
+  it("joins the name's own row, leaving the summary below it", () => {
+    const table = mount(["a"]);
+    toggle(table);
+
+    const identity = table.querySelector("[data-row-identity]") as HTMLElement;
+    const box = table.querySelector("[data-selection-checkbox]") as HTMLElement;
+
+    expect(identity.contains(box)).toBe(true);
+    expect(identity.firstElementChild).toBe(box);
+    expect(
+      table.querySelector("[data-row-summary]")?.contains(box),
+    ).toBe(false);
+  });
+
+  it("takes the cell itself where no row is stated", () => {
+    document.body.innerHTML = `
+      <selectable-table filter="" count="0" scope="lib-1:Games">
+        <div data-selection-bar>
+          <button data-selection-toggle aria-pressed="false">Select</button>
+        </div>
+        <table><tbody>
+          <tr data-selection-key="a"><th scope="row">Game a</th><td>2025</td></tr>
+        </tbody></table>
+        <div data-selection-line hidden>
+          <div data-selection-controls>
+            <input type="checkbox" data-selection-check-all>
+            <span data-selection-count>0 selected</span>
+            <button data-selection-clear>Clear</button>
+            <div data-selection-actions></div>
+          </div>
+          <button data-selection-toggle aria-pressed="false">Select</button>
+          <div data-selection-announcement role="status"></div>
+          <template data-selection-checkbox-template>
+            <input type="checkbox" data-selection-checkbox class="invisible">
+          </template>
+        </div>
+      </selectable-table>`;
+    const table = document.querySelector("selectable-table") as HTMLElement;
+    const cell = table.querySelector("th") as HTMLElement;
+
+    expect(cell.firstElementChild?.matches("[data-selection-checkbox]")).toBe(
+      true,
+    );
   });
 });

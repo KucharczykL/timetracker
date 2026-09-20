@@ -10,10 +10,12 @@ from django.db.models import QuerySet
 from games.bulk_actions import (
     BulkAction,
     Cardinality,
+    PreviewColumn,
     Refused,
     Resolution,
     RowOutcome,
 )
+from games.bulk_narrowing import narrowed
 from games.commands.session_reclassification import statement_from_session
 from games.events.idempotency import IdempotencyKey
 from games.filters import parse_session_filter
@@ -64,20 +66,15 @@ def reviewable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
 
 
 def review_scope(library: UserLibrary, filter_json: str) -> QuerySet[PlayerSession]:
-    """The review, narrowed by the statement's filter.
-
-    Never `apply_structured_filter`, which drops a filter it cannot
-    read: on a list that widens a page, and here it would widen the
-    act to every row the base holds.
-    """
-    rows = reviewable_sessions(library)
-    parsed = parse_session_filter(filter_json) if filter_json else None
-    if parsed is None:
-        return rows
-    return rows.filter(parsed.to_q())
+    """The review, narrowed by the statement's filter."""
+    return narrowed(
+        reviewable_sessions(library), library, filter_json, parse_session_filter
+    )
 
 
-def review_resolution(library: UserLibrary, keys: Sequence[uuid.UUID]) -> Resolution:
+def review_resolution(
+    library: UserLibrary, keys: Sequence[uuid.UUID]
+) -> Resolution[PlayerSession]:
     """Keys to rows, and to sentences."""
     wanted = list(dict.fromkeys(keys))
     #: Over every key, not only those left out.
@@ -160,6 +157,19 @@ def _source() -> dict[str, object]:
     return {"bulk": {"action": RECLASSIFY.name}}
 
 
+PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
+    PreviewColumn("Game", lambda row, _: row.playthrough.player_game.game.name),
+    PreviewColumn("Day", lambda row, _: str(row.effective_day)),
+    PreviewColumn(
+        "Duration",
+        lambda row, presentations: presentations.durations.format(
+            row.effective_duration
+        ),
+        align="right",
+    ),
+)
+
+
 RECLASSIFY = BulkAction(
     name="session.reclassify",
     label="Record as historical playtime",
@@ -167,10 +177,13 @@ RECLASSIFY = BulkAction(
     confirm_label="Record as historical playtime",
     subject="session",
     cardinality=Cardinality.MANY,
+    #: A move, not a removal: the hours stay.
+    color="blue",
     inverse_aggregate="playersession",
     fallback="games:list_sessions",
     scope=review_scope,
     resolve=review_resolution,
     run=convert_one,
     inverse=return_one,
+    preview=PREVIEW,
 )

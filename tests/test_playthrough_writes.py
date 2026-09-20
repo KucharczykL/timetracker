@@ -5,6 +5,7 @@ from datetime import date
 import pytest
 
 from games.commands.playthrough import ActStatement
+from games.events.dispatch import CommandOutcome
 from games.models import Game, LibraryEvent, PlayerGame, Playthrough
 from games.writes.answers import CommandFailed
 from games.writes.playergame import new_correlation_id, track_game
@@ -385,3 +386,65 @@ class TestRemoveRun:
 
         second.refresh_from_db()
         assert second.removed_at is None
+
+    @pytest.mark.django_db(transaction=True)
+    def test_an_idempotent_removal_writes_one_event_and_names_its_source(
+        self, user, game
+    ):
+        """The runner's two facts: the key absorbs, the source rides."""
+        a_recorded_run(user, game, started=date(2026, 1, 2), ended=None)
+        record_run(
+            user,
+            game,
+            RunDraft(
+                started=_act(date(2026, 3, 4)),
+                completed=_act(None),
+                note="",
+            ),
+            correlation_id=new_correlation_id(),
+        )
+        second = Playthrough.objects.filter(player_game__game=game).latest("created_at")
+        source = {"bulk": {"action": "playthrough.remove"}}
+
+        first = remove_run(
+            user,
+            second,
+            correlation_id=new_correlation_id(),
+            idempotency_key="one-removal",
+            source_metadata=source,
+        )
+        repeat = remove_run(
+            user,
+            second,
+            correlation_id=new_correlation_id(),
+            idempotency_key="one-removal",
+            source_metadata=source,
+        )
+
+        assert first.outcome is CommandOutcome.APPENDED
+        assert repeat.outcome is CommandOutcome.REPLAYED
+        removals = LibraryEvent.objects.filter(
+            aggregate_id=second.pk, event_type="library.playthrough.removed"
+        )
+        assert [event.source_metadata for event in removals] == [source]
+
+    @pytest.mark.django_db(transaction=True)
+    def test_removing_a_removed_run_under_a_new_key_answers_unchanged(self, user, game):
+        """What tells the runner a row was already so."""
+        a_recorded_run(user, game, started=date(2026, 1, 2), ended=None)
+        record_run(
+            user,
+            game,
+            RunDraft(
+                started=_act(date(2026, 3, 4)),
+                completed=_act(None),
+                note="",
+            ),
+            correlation_id=new_correlation_id(),
+        )
+        second = Playthrough.objects.filter(player_game__game=game).latest("created_at")
+        remove_run(user, second, correlation_id=new_correlation_id())
+
+        repeat = remove_run(user, second, correlation_id=new_correlation_id())
+
+        assert repeat.outcome is CommandOutcome.UNCHANGED

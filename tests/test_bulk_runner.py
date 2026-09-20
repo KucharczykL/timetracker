@@ -224,6 +224,19 @@ def test_a_confirmation_lists_the_rows_to_a_cap(client_in, owned_library, game):
     assert len(json.loads(posted(response)[PROGRESS_FIELD])["rows"]) == len(sessions)
 
 
+def test_a_confirmation_shows_the_columns_the_act_states(
+    client_in, owned_library, game
+):
+    """Through the route, so the presentations reach the cells."""
+    session = a_written_session(owned_library, game)
+
+    html = confirm(client_in, some(session)).content.decode()
+
+    for heading in ("Game", "Day", "Duration"):
+        assert heading in html
+    assert str(session.effective_day) in html
+
+
 def test_a_confirmation_names_the_act_and_what_it_counts(
     client_in, owned_library, game
 ):

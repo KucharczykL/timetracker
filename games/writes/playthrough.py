@@ -23,7 +23,14 @@ from games.commands.playthrough import (
     StartPlaythrough,
     endpoints_certainly_reversed,
 )
-from games.events.dispatch import Command, CommandRejected, dispatch
+from games.events.append import SourceMetadata
+from games.events.dispatch import (
+    Command,
+    CommandRejected,
+    CommandResult,
+    dispatch,
+)
+from games.events.idempotency import IdempotencyKey
 from games.models import Game, PlayerGame, Playthrough, UserLibrary
 from games.reads.playthrough_endpoints import (
     StatedEndpoint,
@@ -56,14 +63,24 @@ def _dispatch(
     actor: User,
     library: UserLibrary,
     correlation_id: uuid.UUID,
-) -> None:
-    dispatch(
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
+    return dispatch(
         command,
         actor=actor,
         library=library,
-        #: Deduplicates nothing; each build absorbs a repeat.
-        idempotency_key=str(uuid.uuid7()),
+        #: Caller's key, else one per request, which deduplicates
+        #: nothing: each build absorbs a repeat.
+        #:
+        #: Not `or`: a blank key is falsy, so it would be minted
+        #: over, and the caller that asked for one write would get
+        #: a second on its retry rather than a refusal.
+        idempotency_key=(
+            str(uuid.uuid7()) if idempotency_key is None else idempotency_key
+        ),
         correlation_id=correlation_id,
+        source_metadata=source_metadata,
     )
 
 
@@ -355,23 +372,41 @@ def _record_once(
     )
 
 
-def remove_run(actor: User, run: Playthrough, *, correlation_id: uuid.UUID) -> None:
+def remove_run(
+    actor: User,
+    run: Playthrough,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
     """Take a run out of the lists."""
     with answered("playthrough"):
-        _dispatch(
+        return _dispatch(
             RemovePlaythrough(playthrough_id=run.pk),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
 
 
-def restore_run(actor: User, run: Playthrough, *, correlation_id: uuid.UUID) -> None:
+def restore_run(
+    actor: User,
+    run: Playthrough,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
     """Put a removed run back."""
     with answered("playthrough"):
-        _dispatch(
+        return _dispatch(
             RestorePlaythrough(playthrough_id=run.pk),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )

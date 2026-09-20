@@ -18,6 +18,7 @@ from django.conf import settings
 from django.http import QueryDict
 from django.middleware.csrf import get_token
 from django.templatetags.static import static
+from django.utils.html import escape
 from django.utils.safestring import SafeText
 
 from common.components.core import (
@@ -2270,11 +2271,36 @@ type SelectionKey = str  # a row's own name, e.g. "0193f0c2-…"
 type FilterJson = str  # the ?filter= JSON document, "" when unfiltered
 type SelectionScope = str  # the library and the table, e.g. "lib-1:Games"
 
+#: What the line posts the statement as; `games/views/bulk.py` reads it.
+SELECTION_STATEMENT_FIELD = "selection"
+
+
+#: How many rows an act offers, in this layer's own words.
+type SelectionCardinality = Literal["one", "many"]
+
+
+class SelectionAction(TypedDict):
+    """One act the line offers, as a view states it.
+
+    The URL is built and the words are spelled by the view: this layer
+    reverses no route and reads no act table.
+    """
+
+    label: str
+    url: str
+    cardinality: SelectionCardinality
+    #: What the act does to a row, in the button's colours.
+    color: ButtonColor
+
 
 class SelectionDeclaration(TypedDict):
     """The declaration that makes a table selectable."""
 
     filter: FilterJson
+    #: The acts the line offers; none renders an empty slot.
+    actions: NotRequired[Sequence[SelectionAction]]
+    #: One form posts every act, so one token serves them all.
+    csrf_token: NotRequired[str]
 
 
 class TableData(TypedDict):
@@ -2328,6 +2354,9 @@ def make_row(
 
 
 # The row's second line, below md alone.
+# The checkbox and the name share a line, centred on each other.
+_ROW_IDENTITY_CLASS = "flex items-center min-w-0"
+
 _ROW_SUMMARY_CLASS = (
     "md:hidden block overflow-hidden text-ellipsis "
     "text-type-micro text-body-subtle font-normal"
@@ -2399,7 +2428,18 @@ def TableRow(
             # wrap opt-out releases it.
             wrap_class = "" if column and column.wrap else "whitespace-nowrap "
             summary = data.get("summary")
-            identity_children: list[Child] = [cell]
+            # A selectable row's checkbox joins the name on one line.
+            #
+            # The cell holds the name and, below md, a summary under it, so a
+            # checkbox placed in the cell centres on both lines and drifts
+            # away from the name it marks. This row is what it centres on
+            # instead; `<selectable-table>` fills it.
+            identity: Child = (
+                Div([("data-row-identity", "")], class_=_ROW_IDENTITY_CLASS)[cell]
+                if selectable
+                else cell
+            )
+            identity_children: list[Child] = [identity]
             if summary is not None:
                 # The nowrap cell clips nothing for it.
                 identity_children.append(
@@ -2639,6 +2679,7 @@ def _pagination_nav(
 _SortHeader = custom_element_builder("sort-header")
 _ResponsiveTable = custom_element_builder("responsive-table")
 _SelectableTable = custom_element_builder("selectable-table")
+_SelectionActionsElement = custom_element_builder("selection-actions")
 
 # The runtime column-drop state is a safelisted nth-child class family in
 # input.css (like the align rules), so it has a hard ceiling: a column past it
@@ -2839,11 +2880,75 @@ def selection_scope(request, caption_key: str, caption: str) -> SelectionScope:
     user = getattr(request, "user", None)
     library = ""
     if user is not None and getattr(user, "is_authenticated", False):
-        library = str(getattr(user, "library_id", "") or "")
+        #: The reverse side of UserLibrary.user: the row carries the
+        #: key, and no user carries a `library_id`. A user holding no
+        #: library answers the default, because that relation raises
+        #: an AttributeError of its own.
+        held = getattr(user, "library", None)
+        library = str(getattr(held, "pk", "") or "")
     return f"{library}:{caption_key or caption}"
 
 
-def SelectionLine(page_obj=None) -> Node:
+def _selection_actions_slot(
+    actions: Sequence[SelectionAction], csrf_token: str
+) -> Node:
+    """The acts the view stated, in one form.
+
+    One form, not one for each act: a submit that posts on its own
+    renders a form of its own, and every one of them would carry a
+    copy of the statement. Each submit names its own act through
+    `formaction`.
+
+    Every submit is rendered disabled, because nothing is selected
+    yet; `<selection-actions>` clears that with the first count.
+    """
+    offered = [action for action in actions if action["cardinality"] == "many"]
+    slot = Div([("data-selection-actions", "")], class_="flex gap-2")
+    if not offered:
+        return slot
+    if not csrf_token:
+        #: A defect here, or a 403 at the press that names nothing.
+        raise ValueError(
+            "A selection line offering acts states a csrf_token; without one "
+            "every press is refused as a forgery, and the page looks right."
+        )
+    return slot[
+        _SelectionActionsElement(class_="flex gap-2")[
+            Form(
+                [("data-selection-actions-form", "")],
+                method="post",
+                class_="flex gap-2",
+            )[
+                Safe(
+                    '<input type="hidden" name="csrfmiddlewaretoken" '
+                    f'value="{escape(csrf_token)}">'
+                ),
+                Input(
+                    [("data-selection-statement", "")],
+                    type="hidden",
+                    name=SELECTION_STATEMENT_FIELD,
+                ),
+                Fragment(
+                    *(
+                        ControlButton(
+                            [("formaction", action["url"]), ("disabled", "")],
+                            type="submit",
+                            color=action["color"],
+                        )[action["label"]]
+                        for action in offered
+                    )
+                ),
+            ]
+        ]
+    ]
+
+
+def SelectionLine(
+    page_obj=None,
+    *,
+    actions: Sequence[SelectionAction] = (),
+    csrf_token: str = "",
+) -> Node:
     """The selection region, above the pagination row."""
     controls: list[Node] = [
         Label(class_="flex items-center gap-2 text-type-body text-heading")[
@@ -2879,8 +2984,7 @@ def SelectionLine(page_obj=None) -> Node:
     controls.append(
         ControlButton([("data-selection-clear", "")], variant="ghost")["Clear"]
     )
-    # The tray fills this slot.
-    controls.append(Div([("data-selection-actions", "")], class_="flex gap-2"))
+    controls.append(_selection_actions_slot(actions, csrf_token))
 
     # Cloned per row; a template renders nothing.
     checkbox_template = Template([("data-selection-checkbox-template", "")])[
@@ -3143,7 +3247,13 @@ def StyledTable(
     if selection is not None:
         inner_children.insert(0, SelectionBar())
         # A named region, not the general slot.
-        inner_children.append(SelectionLine(page_obj=page_obj if paginated else None))
+        inner_children.append(
+            SelectionLine(
+                page_obj=page_obj if paginated else None,
+                actions=selection.get("actions", ()),
+                csrf_token=selection.get("csrf_token", ""),
+            )
+        )
     if footer_node is not None:
         inner_children.append(footer_node)
 

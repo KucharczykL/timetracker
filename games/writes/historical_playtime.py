@@ -14,6 +14,7 @@ from games.commands.historical_playtime import (
     RestateHistoricalPlaytime,
     RestoreHistoricalPlaytime,
 )
+from games.events.append import SourceMetadata
 from games.events.dispatch import Command, CommandResult, dispatch
 from games.events.idempotency import IdempotencyKey
 from games.models import HistoricalPlaytime, LibraryEvent
@@ -28,6 +29,7 @@ def _dispatch(
     actor: User,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
 ) -> CommandResult:
     return dispatch(
         command,
@@ -42,6 +44,7 @@ def _dispatch(
             str(uuid.uuid7()) if idempotency_key is None else idempotency_key
         ),
         correlation_id=correlation_id,
+        source_metadata=source_metadata,
     )
 
 
@@ -90,24 +93,38 @@ def restate_historical_playtime(
 
 
 def remove_historical_playtime(
-    actor: User, record: HistoricalPlaytime, *, correlation_id: uuid.UUID
-) -> None:
+    actor: User,
+    record: HistoricalPlaytime,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
     """Take a record out of the totals."""
     with answered(SUBJECT):
-        _dispatch(
+        return _dispatch(
             RemoveHistoricalPlaytime(record_id=record.pk),
             actor=actor,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
 
 
 def restore_historical_playtime(
-    actor: User, record: HistoricalPlaytime, *, correlation_id: uuid.UUID
-) -> None:
+    actor: User,
+    record: HistoricalPlaytime,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
     """Put a removed record back."""
     with answered(SUBJECT):
-        _dispatch(
+        return _dispatch(
             RestoreHistoricalPlaytime(record_id=record.pk),
             actor=actor,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )

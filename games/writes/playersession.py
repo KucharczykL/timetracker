@@ -286,28 +286,42 @@ def reset_session(
 
 
 def remove_session(
-    actor: User, session: PlayerSession, *, correlation_id: uuid.UUID
-) -> None:
+    actor: User,
+    session: PlayerSession,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
     """Take a session out of the lists."""
     with answered("session"):
-        _dispatch(
+        return _dispatch(
             RemoveSession(session_id=session.pk),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
 
 
 def restore_session(
-    actor: User, session: PlayerSession, *, correlation_id: uuid.UUID
-) -> None:
+    actor: User,
+    session: PlayerSession,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
     """Put a removed session back."""
     with answered("session"):
-        _dispatch(
+        return _dispatch(
             RestoreSession(session_id=session.pk),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
 
 
