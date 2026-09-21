@@ -156,7 +156,7 @@ def ConfirmBatch(
         max_width=WIDE_CONFIRMATION if choice is not None else FORM_MAX_WIDTH_CLASS,
         #: Nothing to do admits no press.
         confirm_label=action.confirm_label if total else None,
-        #: The act declares one colour; the line and the press read it.
+        #: The act declares one colour.
         confirm_color=action.color,
     )
 

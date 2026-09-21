@@ -1282,7 +1282,7 @@ def test_an_undo_is_handed_the_batch_it_undoes(client_in, owned_library, game, a
 
 
 def _confirm_button(response, label: str) -> str:
-    """The confirmation's own submit, found by its words."""
+    """The confirmation's submit, found by its words."""
     html = response.content.decode()
     end = html.index(f">{label}</button>")
     return html[html.rindex("<button", 0, end) : end]
@@ -1298,11 +1298,7 @@ def _confirm_button(response, label: str) -> str:
 def test_a_confirmations_press_wears_the_acts_colour(
     client_in, owned_library, game, action_name, label, solid
 ):
-    """The act declares one colour; the line and the press both read it.
-
-    A red press on an act that takes nothing away reads as a
-    warning the act does not deserve.
-    """
+    """The press wears the colour the act declares."""
     session = a_written_session(owned_library, game)
     url = reverse("games:run_bulk_action", args=[action_name])
 
