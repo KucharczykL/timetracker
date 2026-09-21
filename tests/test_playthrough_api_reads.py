@@ -245,3 +245,79 @@ def test_a_row_states_its_display_name(client, user, game):
     assert client.get(f"/api/playthrough/{run.pk}").json()["display_name"] == (
         "Playthrough 1"
     )
+
+
+def _option_rows(client, game: Game, query: str = "") -> list[dict]:
+    url = f"/api/playthrough/search?game={game.pk}"
+    if query:
+        url = f"{url}&q={query}"
+    return client.get(url).json()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_search_answers_option_shaped_rows(client, user, game):
+    track_game(user, game, correlation_id=new_correlation_id())
+    run = only_run(user, game)
+    client.force_login(user)
+
+    assert _option_rows(client, game) == [
+        {"value": str(run.pk), "label": "Playthrough 1", "data": {}}
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_search_narrows_on_the_query(client, user, game):
+    track_game(user, game, correlation_id=new_correlation_id())
+    run = only_run(user, game)
+    named = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=user.library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.ORDINARY,
+        name="New Game Plus",
+        created_at=django_timezone_now(),
+    )
+    client.force_login(user)
+
+    assert [row["value"] for row in _option_rows(client, game, "plus")] == [
+        str(named.pk)
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_search_answers_no_run_of_another_game(client, user, game):
+    other_game, other_run = _second_game_with_run(user, "Portal")
+    track_game(user, game, correlation_id=new_correlation_id())
+    client.force_login(user)
+
+    assert [row["value"] for row in _option_rows(client, game)] != [str(other_run.pk)]
+    assert [row["value"] for row in _option_rows(client, other_game)] == [
+        str(other_run.pk)
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_search_answers_no_removed_run(client, user, game):
+    track_game(user, game, correlation_id=new_correlation_id())
+    run = only_run(user, game)
+    Playthrough.objects.filter(pk=run.pk).update(removed_at=django_timezone_now())
+    client.force_login(user)
+
+    assert _option_rows(client, game) == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_search_answers_no_imported_history_bucket(client, user, game):
+    track_game(user, game, correlation_id=new_correlation_id())
+    run = only_run(user, game)
+    bucket = Playthrough.objects.create(
+        id=uuid.uuid7(),
+        library=user.library,
+        player_game=run.player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=django_timezone_now(),
+    )
+    client.force_login(user)
+
+    assert [row["value"] for row in _option_rows(client, game)] == [str(run.pk)]
+    assert str(bucket.pk) not in {row["value"] for row in _option_rows(client, game)}

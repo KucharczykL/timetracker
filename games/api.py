@@ -253,6 +253,12 @@ class PlatformOption(Schema):  # mirrors SearchSelectOption
     data: dict
 
 
+class PlaythroughOption(Schema):  # mirrors SearchSelectOption
+    value: UUIDv7
+    label: str
+    data: dict
+
+
 class DeviceOption(Schema):  # mirrors SearchSelectOption
     value: UUIDv7
     label: str
@@ -366,6 +372,29 @@ def create_playthrough(request, payload: PlaythroughIn):
         #: Tracking is an act of its own, so it is said.
         messages.info(request, f"{game} is now tracked in your library.")
     return Status(204, None)
+
+
+@playthrough_router.get("/search", response=list[PlaythroughOption])
+def search_playthroughs(request, game: UUIDv7, q: str = "", limit: int = 10):
+    """One game's live ordinary runs, as picker options.
+
+    Declared ahead of the route that reads a key, which
+    would otherwise take `search` for one and answer 422.
+
+    The list route answers `PlaythroughOut`, which states a
+    `display_name` and no `value`, and reads no query. A
+    picker cannot read it, and widening it would make one
+    route answer two readers.
+
+    `game` is stated, unlike on the list: a picker offers
+    the runs of the game a form names, never every run.
+    """
+    library = cast(User, request.user).library
+    runs = _readable_runs(library).filter(player_game__game_id=game)
+    if q:
+        runs = runs.filter(name__icontains=q)
+    runs = runs.order_by("-created_at", "id")[:limit]
+    return [{"value": run.id, "label": display_name(run), "data": {}} for run in runs]
 
 
 @playthrough_router.get("/{playthrough_id}", response=PlaythroughOut)
