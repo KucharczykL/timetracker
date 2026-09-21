@@ -26,12 +26,8 @@ class RunActivity(models.TextChoices):
 class ActivityClock(NamedTuple):
     """How long is too long, today.
 
-    `today` is the day the library's calendar is on, and it
-    is kept rather than discarded so a renderer reading a
-    row's day can subtract the same one the word beside it
-    was counted against. A second today, derived from a
-    presentation zone or from `localdate()`, is the
-    disagreement #1047 named and #1217 found again.
+    `today` is kept so a renderer subtracts the same day
+    the word beside it was counted against.
     """
 
     threshold_days: int

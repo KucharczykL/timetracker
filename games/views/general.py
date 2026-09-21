@@ -46,13 +46,11 @@ _CALENDAR_TODAY_CACHE_ATTRIBUTE = "_calendar_today"
 
 
 def request_calendar_today(request: HttpRequest, library: UserLibrary) -> date:
-    """The day the library is on, read once for one request.
+    """The library's day, once per request.
 
-    Two context processors ask, and a second read costs a
-    second statement on every page. The answer is cached on
-    the request rather than on the library, because a change
-    of the display zone restates the calendar in the view,
-    which runs before anything here asks.
+    Cached on the request, not the library: a display-zone
+    change restates the calendar in the view, which runs
+    first, and a library object outlives that write.
     """
     cached = getattr(request, _CALENDAR_TODAY_CACHE_ATTRIBUTE, None)
     if isinstance(cached, date):
@@ -70,10 +68,7 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
     nothing = PlaytimeBreakdown(timedelta(0), timedelta(0))
     today_played = last_7_played = nothing
     if library is not None:
-        #: The sums below count days on the library's calendar,
-        #: so the window has to be cut on the same one. A
-        #: viewer without a library has no calendar to ask, and
-        #: needs no day either: both figures are zero.
+        #: The sums below count days here.
         today = request_calendar_today(request, library)
         #: Seven calendar days, today included.
         last_seven_days = DayInterval.ending(today, days=7)

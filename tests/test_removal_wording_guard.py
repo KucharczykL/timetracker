@@ -1,9 +1,8 @@
 """Refusing "delete" where a person reads it.
 
-Nothing a person removes is destroyed: the row keeps its place and the
-mark comes off again. `make vale` states the vocabulary over docs and
-code comments, and a string a screen renders is neither, so this walks
-the keys that carry one.
+`make vale` states the vocabulary over docs and comments.
+A string a screen renders is neither, so this walks the
+keys that carry one.
 """
 
 import ast
@@ -12,10 +11,10 @@ from pathlib import Path
 #: The packages that render for a person.
 GUARDED_PACKAGES = ("games", "common")
 
-#: Keyword arguments whose value a screen reads out.
+#: Keyword arguments a screen reads out.
 SPOKEN_KEYWORDS = frozenset({"title", "aria_label", "label", "confirm_label"})
 
-#: Keys of an action mapping that a screen reads out. `slot` carries
+#: Action-mapping keys a screen reads out; `slot` carries
 #: either an Icon node or the words beside it.
 SPOKEN_KEYS = frozenset({"title", "label", "slot", "confirm_label"})
 
@@ -31,7 +30,7 @@ REPORT = (
 
 
 def _refused(value: ast.expr) -> str | None:
-    """The string, where it names the refused word."""
+    """The string, where it names the word."""
     if (
         isinstance(value, ast.Constant)
         and isinstance(value.value, str)
@@ -42,7 +41,7 @@ def _refused(value: ast.expr) -> str | None:
 
 
 def spoken_strings(source: str, path: str) -> list[str]:
-    """Every rendered string that states the refused word."""
+    """Every rendered string stating the word."""
     reports: list[str] = []
     for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.keyword) and node.arg in SPOKEN_KEYWORDS:

@@ -30,13 +30,7 @@ from timetracker.temporal import TemporalValue
 
 
 def _stated_now(context: CommandContext) -> TemporalValue:
-    """A live change happens when recorded, on the library's calendar.
-
-    The context carries the library precisely so a command
-    states no day of its own: `localdate()` answers the
-    viewer's display zone, and two readers of one library
-    would then write two different days (#1047, #1217).
-    """
+    """A change happens on the library's calendar."""
     return TemporalValue.from_day(calendar_today(context.library))
 
 

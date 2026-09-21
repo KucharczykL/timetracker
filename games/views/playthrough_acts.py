@@ -25,13 +25,7 @@ from timetracker.temporal import TemporalValue
 
 
 def _today(library: UserLibrary) -> TemporalValue:
-    """The act happened when it was pressed, on the library's calendar.
-
-    Not `localdate()`: that is the viewer's display zone,
-    a per-user preference, and the day a run falls on is
-    the library's fact (#1047). Off a request it is not
-    even that, but `settings.TIME_ZONE` (#1217).
-    """
+    """The act happened on the library's calendar."""
     return TemporalValue.from_day(calendar_today(library))
 
 

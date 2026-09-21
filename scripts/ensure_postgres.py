@@ -87,18 +87,16 @@ def executable_name(name: str) -> str:
 
 
 SERVER_ACCOUNT_VARIABLE = "TIMETRACKER_POSTGRES_USER"
-# Tried in order when make runs as root and nothing named an account.
+# Tried in order under root, unnamed.
 SERVER_ACCOUNT_FALLBACKS = ("postgres", "nobody")
 
 
 @dataclass(frozen=True)
 class ServerAccount:
-    """The unprivileged account initdb and the postmaster run under.
+    """The account the server programs run under.
 
-    Set only where make itself runs as root, which PostgreSQL refuses outright.
-    Demoting those two server-side programs costs nothing elsewhere: the client
-    tools keep the caller's identity, and on every ordinary machine this stays
-    None and not one subprocess changes.
+    Set only where make runs as root, which PostgreSQL
+    refuses. The client tools keep the caller's identity.
     """
 
     name: str
@@ -107,7 +105,7 @@ class ServerAccount:
 
 
 class AccountKwargs(TypedDict, total=False):
-    """The subprocess keywords that hand one child to another account."""
+    """Keywords handing a child to another account."""
 
     user: int
     group: int
@@ -115,17 +113,16 @@ class AccountKwargs(TypedDict, total=False):
 
 
 def account_kwargs(account: ServerAccount | None) -> AccountKwargs:
-    """Those keywords for one account, or none at all where nothing was picked."""
+    """Those keywords, or none where unpicked."""
     if account is None:
         return {}
-    # extra_groups is spelled out because inheriting root's supplementary groups
-    # would hand the postmaster back a slice of what demoting it just took away.
+    # extra_groups: root's supplementary groups would hand back
+    # a slice of what demoting the postmaster just took away.
     return {"user": account.uid, "group": account.gid, "extra_groups": []}
 
 
 def _named_account(name: str) -> ServerAccount | None:
-    # pwd is POSIX-only and this module runs on Windows too, where the whole
-    # question is moot, so the import sits here rather than at the top.
+    # pwd is POSIX-only; this module runs on Windows too.
     import pwd
 
     try:
@@ -138,7 +135,7 @@ def _named_account(name: str) -> ServerAccount | None:
 
 
 def checkout_owner() -> ServerAccount | None:
-    """Whoever owns this checkout, where that is not root."""
+    """Whoever owns this checkout, if not root."""
     import pwd
 
     owner = Path(__file__).parents[1].stat().st_uid
@@ -152,7 +149,7 @@ def checkout_owner() -> ServerAccount | None:
 
 
 def resolve_server_account() -> ServerAccount | None:
-    """Pick who owns the managed cluster when make runs as root.
+    """Who owns the managed cluster under root.
 
     An explicitly named account wins. Otherwise the checkout's own owner, so a
     cluster made here stays reachable to whoever normally works in it; the
@@ -177,7 +174,7 @@ def resolve_server_account() -> ServerAccount | None:
 
 
 def open_build_to_account(tools: Tools, cache: Path) -> None:
-    """Let the account read the PostgreSQL build this harness downloaded.
+    """Let the account read the downloaded build.
 
     Only the harness's own copy under .cache is touched: tools already on PATH
     belong to the machine, and widening their permissions is not this script's
@@ -192,7 +189,7 @@ def open_build_to_account(tools: Tools, cache: Path) -> None:
 
 
 def give_to_account(directory: Path, account: ServerAccount) -> None:
-    """Hand one directory over so the postmaster can create its files there."""
+    """Hand a directory to the postmaster."""
     os.chown(directory, account.uid, account.gid)
 
 
@@ -545,8 +542,7 @@ def provision_database(
 ) -> None:
     base = ["-h", "127.0.0.1", "-p", str(port)]
     if account is not None:
-        # initdb named its superuser after the account it ran as, and these
-        # clients still run as root, whose role the cluster never heard of.
+        # initdb named its superuser after the account it ran as.
         base += ["-U", account.name]
     exists = run(
         [
@@ -661,12 +657,9 @@ def ensure(cache: Path) -> str:
     if url := explicit_database_url():
         print(f"==> Using explicit DATABASE_URL: {redact_url(url)}", file=sys.stderr)
         return url
-    # initdb and the postmaster both refuse to run as root, several steps
-    # apart, so without this the failure arrives as a bare initdb error after a
-    # 12 MB download. Some cloud sandboxes log in as root: there the two
-    # server-side programs are demoted to an unprivileged account rather than
-    # refused. Only they move — the client tools keep the caller's identity,
-    # which is why provision_database has to name the role initdb made.
+    # Demoted here, not refused several steps into a download.
+    # Only the server programs move: the clients keep the
+    # caller's identity, so provision_database names the role.
     account = resolve_server_account() if running_as_root() else None
     if running_as_root() and account is None:
         raise HarnessError(

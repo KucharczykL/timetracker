@@ -233,9 +233,7 @@ def test_starting_a_run_states_today_and_played(logged_in, owned_library, tracke
 
     run.refresh_from_db()
     assert run.start_recorded_at is not None
-    #: The library's calendar, not `localdate()`: off a request that
-    #: is `settings.TIME_ZONE`, which names another day for the two
-    #: hours a night it disagrees with the calendar (#1217).
+    #: The library's calendar, never the process clock.
     assert run.started_lower == calendar_today(owned_library)
     assert status_of(owned_library) == PlayerGameStatus.PLAYED
 
@@ -373,14 +371,11 @@ def test_the_pair_replays_to_the_same_rows(logged_in, owned_library, game):
 def test_a_start_states_the_librarys_day_not_the_processs(
     logged_in, owned_user, owned_library, tracked
 ):
-    """The calendar decides the day, whatever the process clock reads.
+    """The calendar decides the day, not the process clock.
 
-    `Pacific/Kiritimati` and `Pacific/Niue` are 25 hours
-    apart, so whatever `settings.TIME_ZONE` says right now,
-    at least one of them is on another date. Setting the
-    library's calendar to that one makes a day taken from
-    `localdate()` provably wrong at any hour, rather than
-    only for the two a night the defaults disagree (#1217).
+    The two zones are 25 hours apart, so one is always on
+    another date, which fails a process-clock day at any
+    hour rather than only where the defaults disagree.
     """
     elsewhere = next(
         zone

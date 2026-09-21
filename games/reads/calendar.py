@@ -47,13 +47,10 @@ def calendar_day_zone(library: UserLibrary) -> ZoneInfo:
 def calendar_today(library: UserLibrary) -> date:
     """The day this library is on.
 
-    Every day-grained reader and every act asks here. A day
-    derived from `timezone.localdate()` answers the viewer's
-    display zone, and one from a presentation zone answers
-    the viewer again; neither is the calendar the stored
-    days were counted in, and for the hours the two zones
-    name different dates the subtraction is a day out
-    (#1047's rule, #1217's four failures).
+    Every day-grained reader and act asks here. A day off
+    the process clock or a presentation zone answers the
+    viewer, not the calendar the stored days were counted
+    in, and the subtraction is then a day out.
     """
     return django_timezone.now().astimezone(calendar_day_zone(library)).date()
 

@@ -1,4 +1,4 @@
-"""The navbar counts its days on the library's calendar."""
+"""The navbar counts days on the calendar."""
 
 import uuid
 from datetime import timedelta
@@ -20,13 +20,10 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 @pytest.fixture
 def elsewhere(owned_user, owned_library) -> str:
-    """A calendar provably on another date than the process clock.
+    """A calendar provably on another date now.
 
-    `Pacific/Kiritimati` and `Pacific/Niue` are 25 hours
-    apart, so one of them is always on another date. A day
-    taken from the process clock is then wrong at every
-    hour, not only for the two a night the defaults
-    disagree.
+    The two zones are 25 hours apart, so one always is,
+    which fails a process-clock day at every hour.
     """
     zone = next(
         name
@@ -59,7 +56,7 @@ def _figures(owned_user) -> tuple[str, str]:
 def test_the_navbar_counts_today_on_the_library_calendar(
     owned_user, owned_library, elsewhere, run
 ):
-    """A day the library is on is today, whatever the process reads."""
+    """The library's day is today, not the process."""
     duration_only_row(run, calendar_today(owned_library), timedelta(hours=1))
 
     today_html, _ = _figures(owned_user)
@@ -70,11 +67,10 @@ def test_the_navbar_counts_today_on_the_library_calendar(
 def test_the_navbar_week_ends_on_the_calendar_day(
     owned_user, owned_library, elsewhere, run
 ):
-    """Seven calendar days, both ends counted on the calendar.
+    """Seven days, both ends on the calendar.
 
     A window a day out drops one end or the other,
-    whichever way the two zones differ right now, so both
-    ends are stated here.
+    whichever way the zones differ, so both are stated.
     """
     today = calendar_today(owned_library)
     duration_only_row(run, today, timedelta(hours=1))
