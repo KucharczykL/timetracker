@@ -1,8 +1,13 @@
-// Lint the prose in every tracked .md, .py and .ts file.
+// Lint the prose in .md, .py and .ts files.
 //
-// Tracked, rather than a directory walk with an exclusion list: the list would
-// have to name .venv, node_modules and seven scratch dotdirs, and it would go
-// stale the first time someone adds an eighth. `git ls-files` already knows.
+// Only the files this checkout changed, by default: a word banned today then
+// blocks the work that touches it, rather than every file that already holds
+// it. `--all` lints the whole codebase, which is how a new rule's backlog is
+// read, and `--since <rev>` states another base.
+//
+// The list comes from git, rather than a directory walk with an exclusion
+// list: the list would have to name .venv, node_modules and seven scratch
+// dotdirs, and it would go stale the first time someone adds an eighth.
 //
 // The files go to vale in chunks, because Windows caps a process's whole
 // command line at 32767 bytes and the full list is most of the way there.
@@ -18,6 +23,129 @@ import path from "node:path";
 
 const CHUNK_SIZE = 200;
 const EXTENSIONS = ["*.md", "*.py", "*.ts"];
+const SUFFIXES = [".md", ".py", ".ts"];
+//: Tried in order for the default base. A fetched remote branch is the
+//: honest answer; the local one may lag it, which widens the run rather
+//: than narrowing it, so it stands second and never first.
+const DEFAULT_BASES = ["origin/main", "main"];
+const USAGE = "usage: run-vale.mjs [--all] [--since <rev>]";
+
+function refuse(reason, ...hints) {
+  console.error(`==> ${reason}`);
+  for (const hint of hints) {
+    console.error(`    ${hint}`);
+  }
+  process.exit(2);
+}
+
+function git(...args) {
+  return spawnSync("git", args, { encoding: "utf8" });
+}
+
+function parseArguments(argv) {
+  let all = false;
+  let since = null;
+  for (let index = 0; index < argv.length; index += 1) {
+    const argument = argv[index];
+    if (argument === "--all") {
+      all = true;
+    } else if (argument === "--since") {
+      since = argv[index + 1];
+      index += 1;
+      if (since === undefined) {
+        refuse("--since needs a revision.", USAGE);
+      }
+    } else if (argument.startsWith("--since=")) {
+      since = argument.slice("--since=".length);
+      if (!since) {
+        refuse("--since needs a revision.", USAGE);
+      }
+    } else {
+      refuse(`unknown argument ${argument}.`, USAGE);
+    }
+  }
+  if (all && since !== null) {
+    refuse("--all lints every file, so --since says nothing beside it.", USAGE);
+  }
+  return { all, since };
+}
+
+function resolveCommit(revision) {
+  const resolved = git(
+    "rev-parse",
+    "--verify",
+    "--quiet",
+    `${revision}^{commit}`,
+  );
+  return resolved.status === 0 ? resolved.stdout.trim() : null;
+}
+
+// The merge base, never the revision itself: a diff against a branch that has
+// moved on reports its commits too, and prose someone else wrote is not this
+// checkout's to answer for. For an ancestor the two are the same revision.
+function resolveBase(stated) {
+  const candidates = stated === null ? DEFAULT_BASES : [stated];
+  for (const candidate of candidates) {
+    if (resolveCommit(candidate) === null) {
+      continue;
+    }
+    const base = git("merge-base", "HEAD", candidate);
+    if (base.status === 0) {
+      return { commit: base.stdout.trim(), label: candidate };
+    }
+  }
+  if (stated !== null) {
+    refuse(`git cannot resolve ${stated} to a commit.`, USAGE);
+  }
+  refuse(
+    `no base to compare against: ${DEFAULT_BASES.join(" and ")} both resolve to nothing.`,
+    "A shallow clone has no main to compare against. Fetch it, state one",
+    "with --since <rev>, or lint the whole codebase with --all.",
+  );
+}
+
+function lintable(names) {
+  return names.filter(
+    (name) =>
+      SUFFIXES.some((suffix) => name.endsWith(suffix)) && existsSync(name),
+  );
+}
+
+function readList(result, what) {
+  if (result.status !== 0) {
+    refuse(result.stderr.trim() || `${what} failed.`);
+  }
+  return result.stdout.split("\0").filter(Boolean);
+}
+
+function trackedFiles() {
+  return readList(git("ls-files", "-z", ...EXTENSIONS), "git ls-files");
+}
+
+// A new file is untracked and has no diff, so it is asked for separately.
+// Both lists name paths from the repository root, which is where make runs.
+function changedFiles(base) {
+  const changed = readList(
+    git("diff", "--name-only", "--diff-filter=d", "-z", base.commit, "--"),
+    "git diff",
+  );
+  const untracked = readList(
+    git("ls-files", "--others", "--exclude-standard", "-z"),
+    "git ls-files",
+  );
+  return [...new Set([...changed, ...untracked])];
+}
+
+function selectFiles({ all, since }) {
+  if (all) {
+    return { files: lintable(trackedFiles()).sort(), scope: "files" };
+  }
+  const base = resolveBase(since);
+  return {
+    files: lintable(changedFiles(base)).sort(),
+    scope: `changed files since ${base.label}`,
+  };
+}
 
 function missing() {
   console.error("==> vale is not installed. Run `make npm`.");
@@ -51,12 +179,11 @@ if (!existsSync(binary)) {
   missing();
 }
 
-const tracked = spawnSync("git", ["ls-files", "-z", ...EXTENSIONS], {
-  encoding: "utf8",
-});
-if (tracked.status !== 0) {
-  console.error(tracked.stderr || "==> git ls-files failed.");
-  process.exit(1);
+const { files, scope } = selectFiles(parseArguments(process.argv.slice(2)));
+
+if (files.length === 0) {
+  console.log(`==> vale: no ${scope}.`);
+  process.exit(0);
 }
 
 // A broad rule and a narrow one can both match the same words: the narrow rule
@@ -87,7 +214,6 @@ function withoutCoveredFindings(findings) {
   });
 }
 
-const files = tracked.stdout.split("\0").filter(Boolean);
 const findings = [];
 
 for (let start = 0; start < files.length; start += CHUNK_SIZE) {
@@ -138,7 +264,7 @@ const warningCount = reportable.length - errorCount;
 
 if (errorCount > 0) {
   console.error(
-    `==> ${errorCount} errors and ${warningCount} warnings in ${files.length} files. See docs/vocabulary.md.`,
+    `==> ${errorCount} errors and ${warningCount} warnings in ${files.length} ${scope}. See docs/vocabulary.md.`,
   );
   process.exit(1);
 }
@@ -147,9 +273,9 @@ if (warningCount > 0) {
   //: A warning does not fail the build. The word may be the right one;
   //: the rule cannot tell, and only a reader can.
   console.log(
-    `==> vale: ${files.length} files, ${warningCount} warnings, no errors.`,
+    `==> vale: ${files.length} ${scope}, ${warningCount} warnings, no errors.`,
   );
   process.exit(0);
 }
 
-console.log(`==> vale: ${files.length} files, no findings.`);
+console.log(`==> vale: ${files.length} ${scope}, no findings.`);

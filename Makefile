@@ -224,8 +224,12 @@ check-icons: ensure-postgres
 # Prose, in docs and in comments. The words this codebase refuses live in
 # .vale/styles; docs/vocabulary.md says why each one is refused. Through pnpm
 # like every other node target, so a box without Nix gets the same binary.
+#
+# The files this checkout changed, so a newly refused word is answered by the
+# work that touches it. `ARGS=--all` reads the whole backlog; `ARGS="--since
+# <rev>"` states another base.
 vale: ensure-node-deps
-	pnpm exec node scripts/run-vale.mjs
+	pnpm exec node scripts/run-vale.mjs $(ARGS)
 
 ts: ensure-node-deps gen-element-types
 	pnpm exec tsc

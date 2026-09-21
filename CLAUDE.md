@@ -128,7 +128,7 @@ path**, so verify against `make check` before pushing when possible.
 | Dev login (superuser + prefill) | `make devlogin` (idempotent `admin`/`admin`; pairs with `DEV_LOGIN_PREFILL`) |
 | Format / lint Python | `make format` / `make lint` / `make lint-fix` |
 | Type check (mypy) | `make typecheck` |
-| Lint prose (docs + code comments) | `make vale` (terminology; see [Vocabulary](docs/vocabulary.md)) |
+| Lint prose (docs + code comments) | `make vale` (terminology, over this checkout's changed files; `ARGS=--all` for every tracked file, `ARGS="--since <rev>"` for another base; see [Vocabulary](docs/vocabulary.md)) |
 | Codegen element types (TS props) | `make gen-element-types` |
 | Codegen icon nodes | `make gen-icons` (after editing `games/templates/icons/*.html`) |
 | Lint + format check + mypy + vale + ts-check + vitest + tests | `make check` (CI runs exactly this) |
