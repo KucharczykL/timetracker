@@ -458,9 +458,8 @@ class TestPlaythroughSorts:
 def grouped_runs(owned_library):
     """One game, three runs and a bucket, each played.
 
-    The third run states no start, which is what tells a
-    reversal from a mirror: NULLS LAST holds it last in
-    both directions.
+    The third states no start, which tells a reversal
+    from a mirror: NULLS LAST holds it last both ways.
     """
     game = Game.objects.create(
         library=owned_library, name="Outer Wilds", sort_name="Outer Wilds"

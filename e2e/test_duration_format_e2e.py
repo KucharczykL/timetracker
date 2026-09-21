@@ -38,8 +38,7 @@ def session(e2e_library) -> PlayerSession:
 def _duration_cell(page: Page, session: PlayerSession):
     """The cell holding the number, found by what it holds.
 
-    A fixed index moves whenever the list gains a column,
-    and #715 gives it one whenever the rows name one game.
+    A fixed index moves whenever the list gains a column.
     """
     return page.locator(
         f'#session-row-{session.pk} td:has([id="duration-session-{session.pk}"])'

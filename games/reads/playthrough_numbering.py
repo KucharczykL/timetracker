@@ -13,10 +13,7 @@ from games.reads.playthrough_activity import activity_clock
 #: A tracked game's key, as a caller holds it.
 type PlayerGameId = uuid.UUID
 
-#: The fields that order runs on a screen, in order.
-#:
-#: The window reads them, and so does any sort that
-#: means "the runs as the screen numbers them".
+#: The fields that order runs on a screen.
 DISPLAY_ORDER_FIELDS: tuple[str, ...] = (
     "started_lower",
     "completed_lower",
@@ -39,14 +36,10 @@ def display_order_through(path: str = "") -> tuple[str, ...]:
 def numbered_sort_key(path: str = "") -> Case:
     """Null where no number is counted across the run.
 
-    The ORM twin of `is_numbered`. The value itself says
-    nothing -- every numbered run answers the same one --
-    so a sort reading it separates the counted runs from
-    the rest and leaves the order to the fields beside it.
-
-    Null sorts last in both directions, because apply_sort
-    writes NULLS LAST on each branch. That is what puts a
-    bucket under its game rather than at one end.
+    The ORM twin of `is_numbered`. Only null against
+    not-null has meaning: every numbered run answers the
+    same value, so a sort reading it separates the counted
+    runs and leaves the order to the fields beside it.
     """
     return Case(
         When(

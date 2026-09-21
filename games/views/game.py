@@ -715,8 +715,7 @@ def _game_section(
     if buttons:
         # No margin: the section wrapper's gap owns the distance to the table, so
         # a section with buttons spaces exactly like one without.
-        # Three buttons beside a heading and a badge outruns a
-        # phone, and the row wraps rather than clipping one.
+        # Three buttons and a badge outrun a phone.
         header = Div(class_="flex flex-wrap items-center justify-between gap-2")[
             heading,
             Div(class_="flex flex-wrap items-center gap-2")[*buttons],

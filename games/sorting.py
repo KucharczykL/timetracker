@@ -82,11 +82,6 @@ class SortSpec:
     expression: OrderField  # unsigned; a real column path or an AnnotationName
     annotate: Annotations | None = None
     #: What orders the rows the head leaves as peers.
-    #:
-    #: A key names an ordering, not a field: grouping
-    #: sessions by their run takes the game, then the
-    #: run's own four-field display order, then time.
-    #: Every entry follows the term's own direction.
     then: tuple[OrderField, ...] = ()
 
 
@@ -120,9 +115,7 @@ SESSION_SORTS: SortMap = {
     "duration": SortSpec("effective_duration"),
     "device": SortSpec("device__name"),
     "created": SortSpec("created_at"),
-    #: The game first: a run's number means nothing outside it,
-    #: and the bucket belongs last under its own game rather
-    #: than after every game.
+    #: The game first: a number means nothing outside it.
     "playthrough": SortSpec(
         f"{SESSION_GAME}__sort_name",
         {"run_numbered": numbered_sort_key("playthrough__")},
@@ -167,8 +160,7 @@ PLAYTHROUGH_SORTS: SortMap = {
     "completed": SortSpec("completed_lower"),
     "days": SortSpec("days_span", {"days_span": _DAYS_SPAN}),
     "created": SortSpec("created_at"),
-    #: `started` alone would read nearly the same; the game
-    #: leading is what makes this the screen's own order.
+    #: The game leads, or `started` reads nearly the same.
     "playthrough": SortSpec(
         "player_game__game__sort_name",
         {"run_numbered": numbered_sort_key()},

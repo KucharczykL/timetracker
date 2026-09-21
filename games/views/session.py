@@ -114,11 +114,10 @@ def session_row_data(
     """Canonical session-list row, the single source of truth for the list
     table.
 
-    At most one of the two run arguments is stated. `run_label`
-    is the name cell's, which names a run only where the page
-    cannot tell them apart; `run_name` is the Playthrough
-    column's, which names every run and is what the summary
-    repeats below md.
+    At most one run argument is stated. `run_label` is the
+    name cell's, which names a run only where the page
+    cannot tell them apart; `run_name` is the column's,
+    which names every run.
     """
     cells: list[Cell] = [NameWithIcon(session=session, run_label=run_label)]
     if run_name is not None:
@@ -157,15 +156,12 @@ def _row_summary(
 ) -> str:
     """The second line, below md, where the columns went.
 
-    The run is named only while the list names one game,
-    which is the state that declares the column: below md
-    the column has dropped and the name cell states no
-    label, so nothing else would name the run.
+    The run is named only while the column is declared:
+    below md the column has dropped and the name cell
+    states no label, so nothing else names the run.
 
-    Commas, not a middle dot: the line is plain text with
-    no aria-hidden to hide a separator behind, and a
-    screen reader reads a comma as a pause and a middle
-    dot as a word.
+    Commas, not a middle dot: a screen reader speaks a
+    comma as a pause and a middle dot as a word.
     """
     parts = [
         run_name,
@@ -211,9 +207,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     sessions, page_obj, elided_page_range = paginate(sessions, find)
     csrf_token = get_token(request)
     page_sessions = list(sessions)
-    #: One game on the list makes the run the thing that
-    #: tells its rows apart, so it gets a column of its own
-    #: and the name cell stops repeating it.
+    #: One game makes the run what tells the rows apart.
     organized = one_game is not None
     run_labels = (
         every_run_label(library, page_sessions)
@@ -230,9 +224,8 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         Column("Actions", align="right", priority=4),
     ]
     if organized:
-        #: Ties with Date, and the rightmost of equals drops
-        #: first, so the grouping key outlives every column
-        #: the width can take.
+        #: Ties with Date; the rightmost of equals drops
+        #: first, so the grouping key outlives the others.
         columns.insert(
             1, Column("Playthrough", "playthrough", shrinkable=True, priority=3)
         )

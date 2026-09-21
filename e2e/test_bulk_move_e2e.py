@@ -72,9 +72,8 @@ def _select_rows(page: Page, *indexes: int) -> None:
 def _bucket_label(page: Page):
     """The bucket's name where this width shows it.
 
-    #715 names the run twice: the Playthrough column,
-    and the summary under the name, which is `md:hidden`
-    and so the hidden one at this width.
+    The run is named twice: the column, and the summary,
+    which is `md:hidden` and so hidden at this width.
     """
     return page.get_by_text(IMPORTED_HISTORY_LABEL).locator("visible=true").first
 

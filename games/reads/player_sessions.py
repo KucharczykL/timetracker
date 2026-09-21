@@ -52,14 +52,10 @@ def readable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
 def sole_game(sessions: QuerySet[PlayerSession]) -> GameId | None:
     """The one game these sessions name, or None.
 
-    Take the filtered rows, before a sort annotates them.
     Django puts every ordering expression in the SELECT
     DISTINCT list, so an ordered queryset distincts over
     the instant and the key beside the game and answers a
     row per session. Nothing raises; the answer is wrong.
-
-    Two is enough to know: the third row says nothing the
-    second does not.
     """
     keys = list(sessions.order_by().values_list(GAME, flat=True).distinct()[:2])
     return keys[0] if len(keys) == 1 else None

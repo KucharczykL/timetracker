@@ -53,11 +53,7 @@ def _cells(row: str) -> list[str]:
 
 
 def _run_column(body: str) -> list[str]:
-    """Each row's Playthrough cell.
-
-    The name cell is the row's `<th>`, so the column that
-    follows it is the first `<td>`.
-    """
+    """Each row's Playthrough cell, the first `<td>`."""
     names = []
     for row in _rows(body):
         clipped = re.findall(r'data-truncated-clip=""[^>]*>([^<]*)<', _cells(row)[0])

@@ -1,9 +1,7 @@
 """The real session list on a phone.
 
-The synthetic selectable-table suite proves the stacked cell against a
-table it builds itself. This proves the list view writes one: the
-summary the view states, at a width where every column but the pinned
-one has dropped.
+The synthetic suite proves the stacked cell against a table it builds.
+This proves the list view writes one.
 """
 
 import datetime as dt
