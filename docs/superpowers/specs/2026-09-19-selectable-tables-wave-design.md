@@ -252,8 +252,15 @@ the submission token.
    under the library and renders one `ConfirmPage` that leads with the act,
    its count and its scope, lists the rows to a cap, lists every refusal
    the resolve owns (a key outside the act's scope, a row the act already
-   covered, a selection spanning games) with its reason in full, and
-   carries a fresh token beside the resolved keys. A command's rule (a
+   covered) with its reason in full, and carries a fresh token beside the
+   resolved keys. An act that asks for a fact (#714's target run, #1211's
+   value) declares a choice: its controls are built from the offered rows
+   and may refuse the whole act there (a selection spanning games), its
+   value settles once at the confirmation press, before the first chunk,
+   into one runner-named hidden field beside the token, and `run` takes it
+   as one string; a write the settle makes (a new run) goes under the
+   batch's correlation id and is not the inverse's, which reads
+   `inverse_aggregate` alone. A command's rule (a
    running session, a bucket, a last live run, a run a live session
    names) is read at the press, per row, under the lock, and the
    confirmation does not restate it; a forecast that imports the
@@ -371,9 +378,12 @@ From it a person:
   and the sort, not header rows;
 - narrows by date and device, the session filter's own facets;
 - selects rows and moves them: "Move to playthrough…" opens a confirmation
-  hosting `<playthrough-select>` over the game's live ordinary runs and a
-  "new playthrough" name field; naming a new one creates it first, then
-  moves, under one correlation id;
+  hosting a plain select over the game's live ordinary runs and a "new
+  playthrough" name field, no `<playthrough-select>`, whose refill listens
+  for a game change that never comes here and hides a one-run select;
+  naming a new one creates it first, then moves, under one correlation id.
+  The Undo moves each session back, restoring the bucket first, and leaves
+  the run the batch created, empty, saying so;
 - sees the session's day, duration, device and note in the row before
   moving it, as the charter asks. The runner's confirmation lists rows to
   `CONFIRMATION_SAMPLE`, fifty, in three columns, game, day and duration.
@@ -464,8 +474,8 @@ cost is judged.
    the act's and `BulkAction` generic over its row type, because
    `_sample` in `games/views/bulk_pages.py` renders session columns only,
    so no act on runs, records or platforms ships before it.
-4. **#714** ORG-01 — bulk move: the confirmation with `<playthrough-select>`
-   and the new-run field, the bucket removed when emptied, cross-game
+4. **#714** ORG-01 — bulk move: the confirmation with the run select and
+   the new-run field, the bucket removed when emptied, cross-game
    selections refused, the aggregate reader beside the move inverse over
    the `(library, aggregate_id)` index #713 shipped, and the confirmation's
    cap and columns judged against the organizer's promise.
