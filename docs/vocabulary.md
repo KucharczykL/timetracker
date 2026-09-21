@@ -1,9 +1,13 @@
 # Vocabulary
 
 The words this codebase refuses, and the words it uses instead. `make vale`
-enforces them over every tracked `.md` file and over the comments and
-docstrings in every tracked `.py` and `.ts` file. The rules live in
-`.vale/styles/Timetracker/`; `make check` runs them.
+enforces them over `.md` files and over the comments and docstrings in `.py`
+and `.ts` files. The rules live in `.vale/styles/Timetracker/`; `make check`
+runs them.
+
+It reads the files this checkout changed, which it works out from the merge
+base with `main`. `make vale ARGS=--all` reads every tracked file, and
+`make vale ARGS="--since <rev>"` states another base.
 
 A rule here governs prose. Code is out of scope: an identifier, a flag name, a
 fenced block and an inline `code` span are all skipped, so `folder` and
@@ -250,8 +254,17 @@ the narrow one and both report the same words. `scripts/run-vale.mjs` drops a
 warning that an error already covers, which is why it reads Vale's JSON rather
 than its plain output.
 
-Purge the existing uses in the same commit. `make vale` fails on the first one
-that reaches error level, which is the point.
+The existing uses need no purge in the same commit. A rule reaches a file when
+the work does: `make vale` reads what this checkout changed, so a word refused
+today is answered where it is written next, one file at a time.
+`make vale ARGS=--all` reads the whole backlog a new rule inherits, which is
+worth one run before the rule is committed — a word with hundreds of uses is a
+word to think about twice.
+
+Two costs come with that. A file nobody touches keeps its refused words for as
+long as nobody touches it. And a file touched for another reason answers for
+every use it holds, which is what makes the backlog shrink instead of standing
+still.
 
 ## Not enforced here
 
