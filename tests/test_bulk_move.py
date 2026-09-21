@@ -12,7 +12,7 @@ from django.urls import reverse
 from django.utils import timezone
 from session_rows import duration_only_row, tracked_run
 
-from games.bulk_actions import Control, RefusedAct
+from games.bulk_actions import AsksNothing, Control, RefusedAct
 from games.bulk_move import (
     ANOTHER_GAME,
     NOT_MOVED_BY_THIS_BATCH,
@@ -223,10 +223,8 @@ def test_the_game_count_is_the_selection_not_the_sample(
 
 
 def test_no_rows_ask_nothing(owned_library):
-    answered = offer_target(owned_library, (), CHOICE_FIELD)
-
-    assert isinstance(answered, Control)
-    assert str(answered.node) == ""
+    """Not an empty control: there is no question to put."""
+    assert offer_target(owned_library, (), CHOICE_FIELD) == AsksNothing()
 
 
 # ── The settle ───────────────────────────────────────────────────────────────
@@ -808,3 +806,25 @@ def a_record(owned_user, owned_library, run):
         correlation_id=uuid.uuid7(),
     )
     return HistoricalPlaytime.objects.get(pk=record_id)
+
+
+def test_a_move_with_no_target_answers_a_defect(owned_user, owned_library, game):
+    """The runner settles before a row, so `None` is ours.
+
+    The guard sits inside `answered`, where a defect becomes
+    an answer the batch ends on. Carried out of that block by
+    a later edit it would escape as a bare 500, and the rows
+    left alone would go unnamed in the log.
+    """
+    session = a_session(tracked_run(owned_library, game))
+
+    with pytest.raises(CommandFailed) as defect:
+        move_one(
+            owned_user,
+            session,
+            choice=None,
+            idempotency_key="one-move",
+            correlation_id=uuid.uuid7(),
+        )
+
+    assert defect.value.status_code == 500

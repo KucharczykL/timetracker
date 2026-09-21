@@ -8,10 +8,10 @@ from django.contrib.auth.models import User
 from django.db.models import QuerySet
 from django.http import Http404, QueryDict
 
-from common.components.core import Fragment
 from common.components.primitives import Cell, Div, Label
 from common.components.search_select import DEFAULT_PREFETCH, SearchSelect
 from games.bulk_actions import (
+    AsksNothing,
     BulkAction,
     BulkChoice,
     Cardinality,
@@ -183,7 +183,7 @@ def offer_target(
     """
     if not rows:
         #: The confirmation says so itself.
-        return Control(Fragment())
+        return AsksNothing()
     games = {row.playthrough.player_game_id for row in rows}
     if len(games) > 1:
         return RefusedAct(TWO_GAMES.format(count=len(games)))
@@ -211,7 +211,7 @@ def settle_target(library: UserLibrary, post: QueryDict) -> ChoiceValue:
     can span two games, and there is then no one game to
     narrow to. The game is the row's own rule, below.
     """
-    #: Local: the view imports this module.
+    #: Local: the act table imports this module.
     from games.views.bulk import CHOICE_FIELD
 
     stated = post.get(CHOICE_FIELD, "")
@@ -250,12 +250,13 @@ def move_one(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """One session moved, and its bucket."""
+    """One session moved; the bucket it left."""
     with answered("session"):
         if choice is None:
             raise RowUnreadable(
-                f"{MOVE.name} ran with no target. The act declares a choice, "
-                "so the runner settles one before it reaches a row."
+                f"{MOVE.name} ran with no target for PlayerSession "
+                f"{session.pk} of library {actor.library.pk}. The act "
+                "declares a choice, so the runner settles one before a row."
             )
         target = _target(actor.library, choice)
         if session.playthrough.player_game_id != target.player_game_id:
@@ -441,20 +442,14 @@ def move_back(
     actor: User,
     session_id: uuid.UUID,
     *,
-    choice: ChoiceValue | None,
+    undoes: uuid.UUID,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
     """One session back to its earlier run."""
     with answered("session"):
-        if choice is None:
-            raise RowUnreadable(
-                f"{MOVE.name}'s inverse ran with no batch. The undo leg states "
-                "the correlation id it undoes."
-            )
-        batch_id = uuid.UUID(choice)
-        earlier = run_before(actor.library, session_id, batch_id)
-    _put_back_the_run(actor, batch_id, earlier, idempotency_key, correlation_id)
+        earlier = run_before(actor.library, session_id, undoes)
+    _put_back_the_run(actor, undoes, earlier, idempotency_key, correlation_id)
     return RowOutcome.of(
         move_session(
             actor,

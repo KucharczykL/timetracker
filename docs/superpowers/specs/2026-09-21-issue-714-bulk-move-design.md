@@ -6,9 +6,9 @@ playthrough. The batch is one act with one Undo. The code is in
 
 ## The question an act asks
 
-`BulkChoice` is a fact that an act asks for before it runs. `offer` gives the
-control the confirmation shows, or a sentence that refuses the act. `settle`
-gives the one string each row receives, or a refusal.
+`BulkChoice` is a fact that an act asks for before it runs. `offer` gives a
+`Control`, a `RefusedAct` or `AsksNothing`. `settle` gives the one string each
+row receives, or a refusal.
 
 `games/views/bulk.py` states `CHOICE_FIELD`. The act's control carries that
 name, and each later request posts the same field from the progress form.

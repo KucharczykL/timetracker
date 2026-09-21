@@ -144,7 +144,7 @@ def restore_one_session(
     actor: User,
     session_id: uuid.UUID,
     *,
-    choice: ChoiceValue | None,
+    undoes: uuid.UUID,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
@@ -241,7 +241,7 @@ def restore_one_run(
     actor: User,
     run_id: uuid.UUID,
     *,
-    choice: ChoiceValue | None,
+    undoes: uuid.UUID,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
@@ -329,7 +329,7 @@ def restore_one_record(
     actor: User,
     record_id: uuid.UUID,
     *,
-    choice: ChoiceValue | None,
+    undoes: uuid.UUID,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:

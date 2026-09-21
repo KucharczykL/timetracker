@@ -301,7 +301,7 @@ def test_removing_a_session_marks_it_and_restoring_clears_the_mark(
     back = remove_session_action.inverse(
         owned_user,
         session.pk,
-        choice=None,
+        undoes=uuid.uuid7(),
         idempotency_key="restore-one",
         correlation_id=uuid.uuid7(),
     )
@@ -385,7 +385,7 @@ def test_restoring_a_session_a_live_record_was_made_from_is_refused(
         remove_session_action.inverse(
             owned_user,
             session.pk,
-            choice=None,
+            undoes=uuid.uuid7(),
             idempotency_key="restore-one",
             correlation_id=uuid.uuid7(),
         )
@@ -411,7 +411,7 @@ def test_removing_a_record_and_putting_it_back(
     remove_record_action.inverse(
         owned_user,
         record.pk,
-        choice=None,
+        undoes=uuid.uuid7(),
         idempotency_key="restore-one",
         correlation_id=uuid.uuid7(),
     )
@@ -586,7 +586,7 @@ def test_a_removed_run_is_put_back_by_its_inverse(
     back = remove_run_action.inverse(
         owned_user,
         second.pk,
-        choice=None,
+        undoes=uuid.uuid7(),
         idempotency_key="restore-one",
         correlation_id=uuid.uuid7(),
     )
@@ -609,7 +609,7 @@ def test_an_inverse_that_finds_no_row_is_not_found(
         remove_run_action.inverse(
             owned_user,
             uuid.uuid7(),
-            choice=None,
+            undoes=uuid.uuid7(),
             idempotency_key="restore-one",
             correlation_id=uuid.uuid7(),
         )

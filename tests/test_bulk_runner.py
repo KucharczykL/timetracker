@@ -1095,7 +1095,7 @@ class Asked(NamedTuple):
     patched into.
     """
 
-    seen: list[str]
+    seen: list[str | None]
     settled: list[str]
     refusing: list[str]
 
@@ -1146,14 +1146,14 @@ def _declare(name, reclassify_declaration, run, inverse, choice=None):
 @pytest.fixture
 def recorder(reclassify_declaration):
     """An act with no choice, whose run remembers what it was handed."""
-    seen: list[str] = []
+    seen: list[str | None] = []
 
     def run(actor, row, *, choice, idempotency_key, correlation_id):
         seen.append(choice)
         return _removed(actor, row, idempotency_key, correlation_id, "session.recorder")
 
-    def inverse(actor, row_id, *, choice, idempotency_key, correlation_id):
-        seen.append(choice)
+    def inverse(actor, row_id, *, undoes, idempotency_key, correlation_id):
+        seen.append(str(undoes))
         return RowOutcome.MOVED
 
     _declare("session.recorder", reclassify_declaration, run, inverse)
@@ -1164,7 +1164,7 @@ def recorder(reclassify_declaration):
 @pytest.fixture
 def asker(request, reclassify_declaration):
     """An act that asks for a fact, and remembers what it settled."""
-    seen: list[str] = []
+    seen: list[str | None] = []
     settled: list[str] = []
     refusing: list[str] = [NO_GAME] if getattr(request, "param", False) else []
 
@@ -1186,8 +1186,8 @@ def asker(request, reclassify_declaration):
         seen.append(choice)
         return _removed(actor, row, idempotency_key, correlation_id, "session.asker")
 
-    def inverse(actor, row_id, *, choice, idempotency_key, correlation_id):
-        seen.append(choice)
+    def inverse(actor, row_id, *, undoes, idempotency_key, correlation_id):
+        seen.append(str(undoes))
         return RowOutcome.MOVED
 
     _declare(

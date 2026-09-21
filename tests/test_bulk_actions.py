@@ -1,6 +1,5 @@
 """What a bulk act declares, and what its declaration refuses."""
 
-import inspect
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
@@ -15,6 +14,7 @@ from games.bulk_actions import (
     Cardinality,
     Presentations,
     PreviewColumn,
+    RowOutcome,
 )
 from games.bulk_reclassification import (
     ALREADY_RECORDED,
@@ -368,7 +368,7 @@ def test_the_run_converts_and_the_inverse_returns(
     reclassify.inverse(
         owned_user,
         session.pk,
-        choice=None,
+        undoes=uuid.uuid7(),
         idempotency_key="undo-one",
         correlation_id=uuid.uuid7(),
     )
@@ -487,18 +487,57 @@ def test_the_reclassification_states_its_three_columns(reclassify):
     assert reclassify.preview[-1].align == "right"
 
 
-@pytest.mark.parametrize("name", sorted(BULK_ACTIONS))
-def test_an_act_takes_its_three_facts_by_keyword(name):
-    """Two of the three are text, so position cannot tell them apart.
+def test_an_act_whose_run_takes_a_fact_by_position_is_refused(reclassify):
+    """Two of the three facts are text.
 
-    `ChoiceValue` and `IdempotencyKey` are both `str`. Named,
-    they cannot be given in each other's place; positional,
-    no check refuses it.
+    Named, they cannot be given in each other's place;
+    positional, no check refuses it -- and a protocol does
+    not constrain an implementation's parameter kinds, so
+    the declaration is where this can be said.
     """
-    declared = BULK_ACTIONS[name]
-    for callable_ in (declared.run, declared.inverse):
-        stated = inspect.signature(callable_).parameters
-        for fact in ("choice", "idempotency_key", "correlation_id"):
-            assert stated[fact].kind is inspect.Parameter.KEYWORD_ONLY, (
-                f"{callable_.__name__} takes {fact} by position"
-            )
+
+    def takes_it_by_position(actor, row, choice, idempotency_key, correlation_id):
+        return RowOutcome.MOVED
+
+    with pytest.raises(ValueError, match="by position"):
+        BulkAction(
+            name="session.positional",
+            label=reclassify.label,
+            title=reclassify.title,
+            confirm_label=reclassify.confirm_label,
+            subject=reclassify.subject,
+            cardinality=Cardinality.MANY,
+            color=reclassify.color,
+            inverse_aggregate=reclassify.inverse_aggregate,
+            fallback=reclassify.fallback,
+            scope=reclassify.scope,
+            resolve=reclassify.resolve,
+            run=takes_it_by_position,
+            inverse=reclassify.inverse,
+            preview=reclassify.preview,
+        )
+
+
+def test_an_inverse_that_takes_no_batch_is_refused(reclassify):
+    """The undo leg states the batch it undoes."""
+
+    def takes_no_batch(actor, row_id, *, idempotency_key, correlation_id):
+        return RowOutcome.MOVED
+
+    with pytest.raises(ValueError, match="takes no undoes"):
+        BulkAction(
+            name="session.batchless",
+            label=reclassify.label,
+            title=reclassify.title,
+            confirm_label=reclassify.confirm_label,
+            subject=reclassify.subject,
+            cardinality=Cardinality.MANY,
+            color=reclassify.color,
+            inverse_aggregate=reclassify.inverse_aggregate,
+            fallback=reclassify.fallback,
+            scope=reclassify.scope,
+            resolve=reclassify.resolve,
+            run=reclassify.run,
+            inverse=takes_no_batch,
+            preview=reclassify.preview,
+        )

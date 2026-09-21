@@ -8,6 +8,7 @@ Undo reading every aggregate of the batch would hand a record's key to
 a command that reads sessions, and refuse every row of its own batch.
 """
 
+import inspect
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -126,10 +127,11 @@ type Resolve[RowT: Model] = Callable[
 class RunRow[RowT: Model](Protocol):
     """One row, through its `games/writes/` wrapper.
 
-    A protocol, not a `Callable` alias, so the three text
-    arguments are keywords: `ChoiceValue` and
-    `IdempotencyKey` are both text, and no check refuses
-    them in each other's place.
+    A protocol, not a `Callable` alias, so the three facts
+    are keywords: `ChoiceValue` and `IdempotencyKey` are
+    both text, and no check refuses them in each other's
+    place. The row is positional-only because every act
+    calls it something of its own.
     """
 
     def __call__(
@@ -145,7 +147,13 @@ class RunRow[RowT: Model](Protocol):
 
 
 class UndoRow(Protocol):
-    """One row's opposite, by key."""
+    """One row's opposite, by key.
+
+    Takes the batch it undoes, not a choice: the forward
+    slot answers a person's question, and this one never
+    does. Two facts in one slot would let a run's key and a
+    batch's id stand in for each other, and both are text.
+    """
 
     def __call__(
         self,
@@ -153,7 +161,21 @@ class UndoRow(Protocol):
         row_id: uuid.UUID,
         /,
         *,
-        choice: ChoiceValue | None,
+        undoes: uuid.UUID,
+        idempotency_key: IdempotencyKey,
+        correlation_id: uuid.UUID,
+    ) -> RowOutcome: ...
+
+
+class BoundRow(Protocol):
+    """One leg's row callable, its own fact bound."""
+
+    def __call__(
+        self,
+        actor: User,
+        row: Any,
+        /,
+        *,
         idempotency_key: IdempotencyKey,
         correlation_id: uuid.UUID,
     ) -> RowOutcome: ...
@@ -173,11 +195,16 @@ class RefusedAct:
     sentence: str
 
 
+@dataclass(frozen=True, slots=True)
+class AsksNothing:
+    """No rows, so no question to put."""
+
+
 #: What `offer` answers.
 #: Named, because `Child` is `Node | str`: bare
 #: text is a control as well as a refusal, and one
 #: return type cannot say which was meant.
-type Offered = Control | RefusedAct
+type Offered = Control | RefusedAct | AsksNothing
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,6 +258,23 @@ class BulkAction[RowT: Model]:
             raise ValueError(
                 f"{self.name!r} is already declared. An act names itself once."
             )
+        for role, callable_, facts in (
+            ("run", self.run, ("choice", "idempotency_key", "correlation_id")),
+            ("inverse", self.inverse, ("undoes", "idempotency_key", "correlation_id")),
+        ):
+            called = getattr(callable_, "__name__", repr(callable_))
+            stated = inspect.signature(callable_).parameters
+            for fact in facts:
+                if fact not in stated:
+                    raise ValueError(
+                        f"{self.name!r} states a {called} that takes no {fact}."
+                    )
+                if stated[fact].kind is not inspect.Parameter.KEYWORD_ONLY:
+                    raise ValueError(
+                        f"{self.name!r}'s {role} ({called}) takes {fact} "
+                        "by position. Two of the three facts are text, so "
+                        "position cannot tell them apart."
+                    )
         if not DEFAULT_EVENT_TYPES.event_types_for(self.inverse_aggregate):
             raise ValueError(
                 f"{self.name!r} names {self.inverse_aggregate!r} as the "

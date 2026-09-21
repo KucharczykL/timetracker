@@ -6,6 +6,7 @@ import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, replace
 from datetime import timedelta
+from functools import partial
 from time import monotonic
 from typing import Any, cast
 
@@ -27,16 +28,16 @@ from common.layout import render_page
 from common.notices import Undo, notify
 from common.returns import UrlName
 from games.bulk_actions import (
+    BoundRow,
     BulkAction,
     BulkActionName,
     ChoiceValue,
+    Control,
     Presentations,
     Refused,
     RefusedAct,
     Resolution,
     RowOutcome,
-    RunRow,
-    UndoRow,
     bulk_action,
 )
 from games.events.dispatch import CommandRejected
@@ -278,7 +279,7 @@ def _confirmation(
         offered = action.choice.offer(library, rows, CHOICE_FIELD)
         if isinstance(offered, RefusedAct):
             return _act_refused(request, action, offered.sentence)
-        choice = offered.node
+        choice = offered.node if isinstance(offered, Control) else None
     #: The token is the batch's correlation id.
     token = str(uuid.uuid7())
     #: Named once: the batch carries only its rows.
@@ -366,7 +367,7 @@ def _reconfirmation(
                 replace(tally, rows=(), reasons=(*tally.reasons, said)),
                 undo_url=undo_url,
             )
-        choice = offered.node
+        choice = offered.node if isinstance(offered, Control) else None
     return _confirm_page(
         request,
         action,
@@ -416,17 +417,16 @@ class Leg:
     #: The idempotency key's prefix, one per direction.
     name: str
     resolve: Callable[[UserLibrary, uuid.UUID], Resolution]
-    run: RunRow[Any] | UndoRow
-    #: What the act asked for, or nothing.
-    choice: ChoiceValue | None = None
+    #: Its own fact is bound; the row and the keys remain.
+    run: BoundRow
 
 
 def _forward(action: BulkAction[Any], choice: ChoiceValue | None = None) -> Leg:
+    """The act itself, over the settled answer."""
     return Leg(
         name=action.name,
         resolve=lambda library, key: action.resolve(library, [key]),
-        run=action.run,
-        choice=choice,
+        run=partial(action.run, choice=choice),
     )
 
 
@@ -446,15 +446,14 @@ def _backward(
     own. A key that is not comes out lost, as a row gone since the
     confirmation does forward: one rule, both legs.
 
-    The choice is the batch being undone. `_run_a_chunk` derives its
-    correlation id from the undo's own fresh token, so this is the one
-    way the batch's id reaches the inverse.
+    `_run_a_chunk` derives its correlation id from the undo's own
+    fresh token, so this is the one way the batch's id reaches the
+    inverse.
     """
     return Leg(
         name=_undo_name(action),
         resolve=lambda library, key: _of_this_batch(key, written),
-        run=action.inverse,
-        choice=str(correlation_id),
+        run=partial(action.inverse, undoes=correlation_id),
     )
 
 
@@ -495,7 +494,6 @@ def _run_a_chunk(
                 outcome = leg.run(
                     user,
                     row,
-                    choice=leg.choice,
                     idempotency_key=f"{leg.name}-{token}-{acted}",
                     correlation_id=correlation_id,
                 )

@@ -1,15 +1,13 @@
 # What the bulk runner asks of an act
 
-An act gives the runner four callables. Two of them take arguments the type
-checker cannot tell apart, and one uses its success type as its refusal
-channel. This states the shapes that close both. The code is in
+An act gives the runner `scope`, `resolve`, `run` and `inverse`, and a question
+of its own. This states the shapes each one takes. The code is in
 `games/bulk_actions.py`.
 
 ## The row callables
 
-`RunRow` and `UndoRow` are protocols, not `Callable` aliases. A `Callable`
-alias cannot declare a keyword-only parameter, and positional arguments are
-what the checker cannot help with here.
+`RunRow` and `UndoRow` are protocols, not `Callable` aliases. A `Callable` alias
+cannot declare a keyword-only parameter.
 
 ```python
 class RunRow[RowT: Model](Protocol):
@@ -19,48 +17,52 @@ class RunRow[RowT: Model](Protocol):
         row: RowT,
         /,
         *,
-        choice: ChoiceValue,
+        choice: ChoiceValue | None,
         idempotency_key: IdempotencyKey,
         correlation_id: uuid.UUID,
     ) -> RowOutcome: ...
 ```
 
-`UndoRow` has the same shape and takes a `uuid.UUID` for its row.
+`ChoiceValue` and `IdempotencyKey` are both text. The checker cannot compare
+two text arguments in the same position, but it does compare their names.
 
-`ChoiceValue` and `IdempotencyKey` are both text. As positional arguments they
-are exchangeable and no check refuses the exchange. As keywords they are not.
-The actor and the row stay positional, because their types differ.
+The row is positional-only. Each act calls it something of its own — `session`,
+`run`, `record` — and a protocol compares parameter names unless the mark is
+there.
+
+A protocol constrains the caller only: an implementation with positional
+parameters accepts each call the protocol permits, thus the checker admits it.
+`BulkAction.__post_init__` refuses such an implementation at the declaration.
+
+`UndoRow` takes `undoes: uuid.UUID`, the batch it undoes, and no choice. One
+slot for two facts would let a run's key and a batch's id stand in for each
+other, and both are text.
+
+`Leg` holds a `BoundRow`: the leg's builder binds its own fact, and the runner
+gives each row only the two keys.
 
 ## The question
 
-`offer` gives one of two values, and each has a name.
+`offer` gives one of three values, and each has a name.
 
 ```python
-@dataclass(frozen=True, slots=True)
-class Control:
-    node: Node
-
-
-@dataclass(frozen=True, slots=True)
-class RefusedAct:
-    sentence: str
-
-
-type Offered = Control | RefusedAct
+type Offered = Control | RefusedAct | AsksNothing
 ```
 
-Before, `offer` gave `Node | str` and text was the refusal. But `Child` is
-`Node | str` in the component system, so text is also a control. An act whose
-control was text showed a refusal page instead.
+A `Control` holds the node the confirmation shows. A `RefusedAct` holds one
+sentence and draws no press. `AsksNothing` is for a resolve that found no rows.
+
+`offer` cannot give bare text, because `Child` is `Node | str` in the component
+system: text is a control as well as a refusal, and one type cannot say which.
+A return type is compared against the declaration, thus the checker refuses
+text here.
 
 ## Absence
 
-One spelling. `Leg.choice` is `ChoiceValue | None`, and `None` is "this act
-asks nothing". `BulkAction.choice` and the value the waypoint carries are
-already `None` for the same idea. The row callables take `ChoiceValue | None`.
+`None` is the one spelling. `Leg` holds no choice, `BulkAction.choice` is
+`None` for an act that asks nothing, and a row callable takes
+`ChoiceValue | None`.
 
-## What does not change
-
-The runner asks the same questions in the same order. An act states the same
-facts. No event, no route and no page is different. Every existing test holds,
-after its call sites state keywords.
+A callable that needs a choice and receives `None` raises `RowUnreadable`: the
+runner settles before a row is reached, thus `None` there is a defect and not a
+statement.

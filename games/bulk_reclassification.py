@@ -138,7 +138,7 @@ def return_one(
     actor: User,
     session_id: uuid.UUID,
     *,
-    choice: ChoiceValue | None,
+    undoes: uuid.UUID,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
