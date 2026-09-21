@@ -3,7 +3,9 @@
 Issue: [#714](https://github.com/KucharczykL/timetracker/issues/714). Part of
 the [Selectable tables wave](2026-09-19-selectable-tables-wave-design.md).
 Prerequisite: [#1080](https://github.com/KucharczykL/timetracker/issues/1080),
-which supplies the confirmation's one control.
+which supplies the confirmation's one control; its contract is
+[the creating combobox](2026-09-21-issue-1080-search-select-create-design.md),
+and this act needs its first member only.
 
 A person selects sessions on the session list and states the run they belong
 to. The act is the bulk form of `MoveSessionToPlaythrough`, the command #692
@@ -134,18 +136,34 @@ games has no one run to state, and a two-step picker is not what this screen
 is. The sentence names the `game` facet, which the session list's quick bar
 carries, so the remedy it states exists.
 
-One game renders one `SearchSelect` with `create_url`, over
-`GET /api/playthrough/?game=`, which answers the library's live ordinary runs
-and no bucket. A run the person types and no option matches is created by
-#1080's create row, ahead of the submit, so the posted value is always the key
-of a run that exists.
+One game renders one `SearchSelect` with `create_url`, reading
+`GET /api/playthrough/search`, the route #1080 adds beside the three that
+already answer `{value, label, data}`. Not the list route: `GET
+/api/playthrough/` answers `PlaythroughOut`, which states `display_name` and no
+`value`, and reads no `q`, so a panel built on it renders nothing. The search
+route reads `_readable_runs`, so it answers this library's live ordinary runs
+and no bucket.
 
-**The control is always shown.** #1080's picker hides itself at one option or
-none, which suits the add-session form. Here it must not: a game holding
-exactly one ordinary run is the common case for a game whose history sits in
-the bucket, and a hidden control leaves the person unable to state a run at
-all. The hide rule stays in that form's own element and never in
-`SearchSelect`.
+The game rides in `params`, #1080's one prop for both the search query and the
+create POST. Its keys take a literal or the name of a sibling field; this
+screen states a literal, so it renders no hidden input. Props are attributes
+and the codegen maps only the four scalar kinds, so `params` travels as JSON
+text, the way `FilterJson` already does.
+
+A run the person types and no option matches is created ahead of the submit, so
+the posted value is always the key of a run that exists. It is not always a
+*new* run: #1080 lets a creation adopt the game's placeholder — its sole live
+ordinary run, stating no start, no completion and a blank name, named by no
+live session and no live record — and a game whose history sits in the bucket
+is exactly that shape. So the key may name a run the panel already listed.
+Nothing here reads it as new: `settle` validates a key, and adopting the
+placeholder is the right answer for this game anyway.
+
+**The control is always shown**, and #1080 needs no exception to make it so:
+the hide rule is gone from the picker entirely, because it hid the row at one
+option or none, and nobody types into a hidden control. `<playthrough-select>`
+goes with it, so this screen renders `SearchSelect` directly with no element to
+undo.
 
 `settle` resolves the posted key against `library_runs(library)` **narrowed to
 the game the rows name**. Library-wide is not enough: `library_runs` spans
@@ -287,8 +305,9 @@ that declares none still runs, and never settles.
 **The control.** `offer` refuses two games with the count, over every resolved
 row rather than the printed fifty. `settle` refuses a key that is no uuid, one
 of another library, a removed run, a bucket, and a live ordinary run **at
-another game**. The control renders for a game holding one run. A refused
-settle re-renders the confirmation with its rows and its token.
+another game**. The control renders for a game holding one run. A key naming
+the game's adopted placeholder settles like any other. A refused settle
+re-renders the confirmation with its rows and its token.
 
 **The label.** Every row of the confirmation reads a label, including a session
 whose game holds one ordinary run and the bucket. The session list's own column
