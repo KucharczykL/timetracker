@@ -1276,3 +1276,36 @@ def test_an_undo_is_handed_the_batch_it_undoes(client_in, owned_library, game, a
     client_in.post(reverse("games:undo_bulk_action", args=[token]))
 
     assert asker == [token]
+
+
+# ── The press wears the act's colour ─────────────────────────────────────────
+
+
+def _confirm_button(response, label: str) -> str:
+    """The confirmation's own submit, found by its words."""
+    html = response.content.decode()
+    end = html.index(f">{label}</button>")
+    return html[html.rindex("<button", 0, end) : end]
+
+
+@pytest.mark.parametrize(
+    ("action_name", "label", "solid"),
+    [
+        ("session.reclassify", "Record as historical playtime", "solid-brand"),
+        ("session.remove", "Remove", "solid-danger"),
+    ],
+)
+def test_a_confirmations_press_wears_the_acts_colour(
+    client_in, owned_library, game, action_name, label, solid
+):
+    """The act declares one colour; the line and the press both read it.
+
+    A red press on an act that takes nothing away reads as a
+    warning the act does not deserve.
+    """
+    session = a_written_session(owned_library, game)
+    url = reverse("games:run_bulk_action", args=[action_name])
+
+    response = confirm(client_in, some(session), url=url)
+
+    assert solid in _confirm_button(response, label)
