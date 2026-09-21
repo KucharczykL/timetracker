@@ -441,7 +441,7 @@ def test_a_name_alone_adopts_the_placeholder(client, user, game):
     )
 
     assert response.status_code == 201
-    assert response.json() == {"id": str(placeholder.pk), "label": "New Game Plus"}
+    assert response.json() == {"value": str(placeholder.pk), "label": "New Game Plus"}
     assert Playthrough.objects.filter(player_game__game=game).count() == 1
 
 
@@ -472,7 +472,7 @@ def test_a_name_the_game_already_holds_answers_that_run(client, user, game):
     response = client.post("/api/playthrough/", body, content_type="application/json")
 
     assert response.status_code == 201
-    assert response.json()["id"] == str(placeholder.pk)
+    assert response.json()["value"] == str(placeholder.pk)
     assert Playthrough.objects.filter(player_game__game=game).count() == 1
 
 

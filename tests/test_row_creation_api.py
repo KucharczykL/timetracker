@@ -27,7 +27,7 @@ def test_a_device_is_created_with_the_unknown_type(client, user):
 
     assert response.status_code == 201
     device = Device.objects.get(library=user.library, name="Steam Deck")
-    assert response.json() == {"id": str(device.pk), "label": "Steam Deck"}
+    assert response.json() == {"value": str(device.pk), "label": "Steam Deck"}
     assert device.type == Device.UNKNOWN
 
 
@@ -39,7 +39,7 @@ def test_a_platform_is_created_private_to_the_library(client, user):
     assert response.status_code == 201
     platform = Platform.objects.get(name="Arcade")
     assert platform.library_id == user.library.pk
-    assert response.json() == {"id": str(platform.pk), "label": "Arcade"}
+    assert response.json() == {"value": str(platform.pk), "label": "Arcade"}
 
 
 def test_a_created_platform_takes_its_icon_from_its_name(client, user):
@@ -111,7 +111,7 @@ def test_a_device_the_library_holds_is_answered_once(client, user):
     response = _create(client, "/api/devices/", "steam deck")
 
     assert response.status_code == 201
-    assert response.json() == {"id": str(held.pk), "label": "Steam Deck"}
+    assert response.json() == {"value": str(held.pk), "label": "Steam Deck"}
     assert Device.objects.filter(library=user.library).count() == 1
 
 

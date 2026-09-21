@@ -35,6 +35,7 @@
 import { isPresenceModifier } from "./filter-tokens.js";
 import { bindPopupDismiss } from "../utils.js";
 import { reportClientError } from "../client-errors.js";
+import { readSearchSelectProps } from "../generated/props.js";
 
 // The contract for the "search-select:change" CustomEvent this widget emits.
 // Consumers (e.g. add_purchase.ts) import these types — never redefine them.
@@ -204,19 +205,20 @@ const initWidget = (containerElement: Element) => {
   const alwaysVisible = container.getAttribute("always-visible") === "true";
   const prefetch = parseInt(container.getAttribute("prefetch") ?? "", 10) || 0;
   const syncUrl = container.getAttribute("sync-url") === "true";
-  const params = parseParams(container.getAttribute("params"));
+  //: Through the codegen's reader, so renaming one of these props in
+  //: `SearchSelectProps` fails `tsc` rather than the create row.
+  const props = readSearchSelectProps(container);
+  const params = parseParams(props.params || null);
   //: A filter panel states a criterion and a free-text panel is the
   //: typed text itself; neither holds a row to create.
-  const createUrl =
-    isFilter || freeText ? "" : (container.getAttribute("create-url") ?? "");
-  //: The hosting form renders one, so a consumer states no prop. The
-  //: prop is for a create row that stands outside a form.
-  //: A required field whose list usually holds one row: the native
-  //: select this replaced committed its first option, and without
-  //: this nothing is posted.
-  const commitSoleOption = container.getAttribute("commit-sole-option") === "true";
+  const createUrl = isFilter || freeText ? "" : props.createUrl;
+  //: A required field whose list usually holds one row commits it, so
+  //: a submit with no pick still posts one.
+  const commitSoleOption = props.commitSoleOption;
+  //: The hosting form renders a token, so a consumer states no prop.
+  //: The prop is for a create row that stands outside a form.
   const csrfToken = (): string =>
-    container.getAttribute("csrf") ||
+    props.csrf ||
     container
       .closest("form")
       ?.querySelector<HTMLInputElement>('[name="csrfmiddlewaretoken"]')?.value ||
@@ -648,7 +650,7 @@ const initWidget = (containerElement: Element) => {
       })
       .then(response => {
         if (response.ok)
-          return response.json() as Promise<{ id: string; label: string }>;
+          return response.json() as Promise<{ value: string; label: string }>;
         //: A refusal queues its own sentence, which rides the header.
         //: An answer that queues none says nothing at all, so this does.
         if (!response.headers.get("HX-Trigger")) {
@@ -664,7 +666,7 @@ const initWidget = (containerElement: Element) => {
         //: route queued. Nothing is selected.
         if (!created) return;
         const option: SearchSelectOption = {
-          value: created.id,
+          value: created.value,
           label: created.label,
           data: {},
         };

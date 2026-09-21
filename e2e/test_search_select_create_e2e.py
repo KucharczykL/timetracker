@@ -95,11 +95,14 @@ def test_a_refused_creation_makes_nothing(
     picker.wait_for(state="attached")
     search = picker.locator("[data-search-select-search]")
     search.click()
-    search.fill("Steam Deck")
-    page.wait_for_timeout(300)
+    with page.expect_response(lambda response: "/api/devices/search" in response.url):
+        search.fill("Steam Deck")
 
     #: A name the library already holds is an option, never a creation.
-    assert picker.locator("[data-search-select-create]").is_hidden()
+    expect(picker.locator("[data-search-select-option]").first).to_contain_text(
+        "Steam Deck"
+    )
+    expect(picker.locator("[data-search-select-create]")).to_be_hidden()
     assert Device.objects.filter(library=e2e_library).count() == 1
 
 
@@ -110,7 +113,7 @@ def _run_picker(page: Page):
 def test_the_run_picker_is_visible_on_a_game_holding_one_run(
     authenticated_page: Page, live_server, e2e_library
 ):
-    """The very game this picker is for: nobody types into a hidden row."""
+    """The very game this picker is for: a name is typed into it."""
     from tracked_games import create_tracked_game
 
     game = create_tracked_game(e2e_library, "Outer Wilds")

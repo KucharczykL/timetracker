@@ -1,6 +1,6 @@
-"""One library's stream, read by batch.
+"""One library's stream, read by batch or by one dispatch.
 
-From the events: no projection answers this.
+From the events: no projection answers these.
 """
 
 import uuid
@@ -37,8 +37,13 @@ def created_aggregate_id(result: CommandResult) -> uuid.UUID:
     """The row a creation wrote: its first event's aggregate id.
 
     Never `stream_id`, which is the library's one stream head.
+    The first event is the creation, which is the caller's to
+    know: an outcome that appended nothing states no sequence.
     """
-    assert result.sequences is not None
+    if result.sequences is None:
+        #: Not an assert: one stripped under `-O` answers the next
+        #: line an AttributeError naming nothing.
+        raise ValueError("An outcome that appended no event names no created row.")
     return LibraryEvent.objects.get(
         stream_id=result.stream_id, sequence=result.sequences.first
     ).aggregate_id

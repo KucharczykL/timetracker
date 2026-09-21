@@ -23,7 +23,7 @@ function stubEndpoints(rows: Row[]) {
     void options;
     return Promise.resolve({
       ok: true,
-      json: () => Promise.resolve({ id: "new-key", label: "New Game Plus" }),
+      json: () => Promise.resolve({ value: "new-key", label: "New Game Plus" }),
     } as Response);
   });
   window.fetchWithHtmxTriggers = createMock as unknown as typeof window.fetchWithHtmxTriggers;

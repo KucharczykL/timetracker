@@ -236,5 +236,5 @@ def test_the_page_seeds_a_sole_run_and_nothing_else(client, owned_user):
     later = another_run(owned_user, game)
     rendered = client.get(url).content.decode()
     assert born not in rendered
-    #: Nor the latest of them, which is the seed this replaced.
+    #: Nor the latest of them: the picker holds a sole run alone.
     assert str(later.pk) not in rendered

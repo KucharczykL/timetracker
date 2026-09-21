@@ -584,7 +584,7 @@ register_element("selection-actions", "SelectionActions", SelectionActionsProps)
 #: A JSON object of request parameters, carried as text. Props are
 #: attributes and the codegen knows four scalars, so a mapping travels
 #: the way FilterJson does: a string the element parses.
-type SearchSelectParams = str  # {"game": {"field": "game"}}
+type SearchSelectParams = str  # {"game_id": {"field": "game"}}
 
 
 class SearchSelectProps(TypedDict):
@@ -594,7 +594,8 @@ class SearchSelectProps(TypedDict):
     params: SearchSelectParams
     #: The endpoint the create row posts to; blank offers no row.
     create_url: str
-    #: The token that POST carries.
+    #: A token for a create row outside a form; a hosted row reads
+    #: the form's own.
     csrf: str
     #: Commit the one option a search answers, where nothing is held.
     commit_sole_option: bool

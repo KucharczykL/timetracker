@@ -220,13 +220,17 @@ class PlaythroughIn(Schema):
 
 
 class CreatedRow(Schema):
-    """The row a create route made, as a picker reads it.
+    """The row a create route reached, as a picker reads it.
 
     One answer for every create route, because one element
-    reads them all.
+    reads them all, and it spells its key the way a search
+    answer spells one: the element upserts both alike.
+
+    Reached, not made: a name the library already holds
+    answers that row.
     """
 
-    id: str
+    value: str
     label: str
 
 
@@ -349,7 +353,10 @@ def partial_update_game(request, game_id: UUIDv7, payload: GameStatusUpdate):
 
 
 def _readable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
-    """What the two GET routes answer about, each row numbered."""
+    """What every read answers about, each row numbered.
+
+    Three routes and the read-back a creation makes.
+    """
     return with_display_number(library_runs(library)).select_related(
         "player_game__game"
     )
@@ -445,13 +452,14 @@ def _created_run(
 ) -> CreatedRow:
     """The row a creation reached, as a picker reads it.
 
-    Read whole and picked in Python: a queryset narrowed to
-    one key counts the number over one row.
+    Narrowed on the partition the number counts over, then
+    picked in Python: a queryset narrowed to one key counts
+    the number over that one row.
     """
     numbered = _readable_runs(library).filter(player_game__game_id=game.pk)
     for run in numbered:
         if run.pk == playthrough_id:
-            return CreatedRow(id=str(run.pk), label=display_name(run))
+            return CreatedRow(value=str(run.pk), label=display_name(run))
     #: The row is this library's own, stated one act ago: absent here
     #: the row is wrong, not the statement, which is the defect the
     #: boundary records.
@@ -473,16 +481,18 @@ def search_playthroughs(request, game_id: UUIDv7, q: str = "", limit: int = 10):
     picker cannot read it, and widening it would make one
     route answer two readers.
 
-    The game is stated, unlike on the list: a picker offers
-    the runs of the game a form names, never every run. It is
-    `game_id`, as the creation body names it, because the picker
-    reads one mapping for its query and its POST alike.
+    The game is required, where the list leaves it optional:
+    a picker offers the runs of the game a form names, never
+    every run. It is `game_id`, as the creation body names it,
+    because the picker reads one mapping for its query and its
+    POST alike.
     """
     library = cast(User, request.user).library
     #: Narrowed on the partition the number counts over, so
     #: the rows keep the numbers the game's page shows. The
     #: query narrows further, and only ever to named rows: a
-    #: blank name holds no text for `icontains` to find.
+    #: blank name holds no text for `icontains` to find, thus
+    #: a numbered run leaves the panel as soon as one is typed.
     runs = _readable_runs(library).filter(player_game__game_id=game_id)
     if q:
         runs = runs.filter(name__icontains=q)
@@ -589,12 +599,12 @@ def create_device(request, payload: RowIn):
     )
     if held is not None:
         messages.info(request, f"{held.name} is already in your library")
-        return Status(201, CreatedRow(id=str(held.pk), label=held.name))
+        return Status(201, CreatedRow(value=str(held.pk), label=held.name))
     device = created_by_form(
         DeviceForm, library=library, name=payload.name, type=Device.UNKNOWN
     )
     messages.success(request, f"{device.name} added")
-    return Status(201, CreatedRow(id=str(device.pk), label=device.name))
+    return Status(201, CreatedRow(value=str(device.pk), label=device.name))
 
 
 @platform_router.post("/", response={201: CreatedRow})
@@ -610,7 +620,7 @@ def create_platform(request, payload: RowIn):
     library = cast(User, request.user).library
     platform = created_by_form(PlatformForm, library=library, name=payload.name)
     messages.success(request, f"{platform.name} added")
-    return Status(201, CreatedRow(id=str(platform.pk), label=platform.name))
+    return Status(201, CreatedRow(value=str(platform.pk), label=platform.name))
 
 
 @platform_router.get("/search", response=list[PlatformOption])

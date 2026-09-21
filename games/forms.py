@@ -729,9 +729,6 @@ _INSTANT_ZONE_FIELDS: Final[dict[str, str]] = {
     host_name: zone_name for zone_name, host_name in SESSION_TIMEZONE_EMBEDS.items()
 }
 
-#: The picker's route: `?game=` narrows it to one game's runs.
-PLAYTHROUGH_API_URL: Final = "/api/playthrough/"
-
 #: What the picker reads: option-shaped rows of one game's runs.
 PLAYTHROUGH_SEARCH_URL: Final = "/api/playthrough/search"
 
@@ -787,12 +784,11 @@ class PlaythroughSelectWidget(SearchSelectWidget):
 
     A `SearchSelect` whose `params` name the game field, so the
     search narrows on the game the form holds and a creation names
-    the same one. The element searches again when that field
-    changes, which is what `<playthrough-select>` used to do.
+    the same one, and a change to that field searches again.
 
-    Always visible. The old element hid its row while the game held
-    one run, and that is the very game this picker is for: nobody
-    types a second run's name into a hidden control.
+    The field row is never hidden. A game holding one run is the
+    very game this picker is for: nobody types a second run's name
+    into a hidden control.
     """
 
     def __init__(self, *, game_field: str, attrs=None):
@@ -801,7 +797,7 @@ class PlaythroughSelectWidget(SearchSelectWidget):
             options_resolver=_run_options,
             create_url=PLAYTHROUGH_CREATE_URL,
             params={"game_id": {"field": game_field}},
-            #: Required field; the select this replaced took its first option.
+            #: Required field: a submit with no pick posts a run.
             commit_sole_option=True,
             prefetch=DEFAULT_PREFETCH,
             attrs=attrs,

@@ -120,9 +120,9 @@ def placeholder_run(
 
     Narrower than `run_to_adopt`, which names any sole run
     that states neither act. A person who types a name asks
-    for the run they named: a run that already holds
-    sessions would take the new label and carry those
-    sessions under it.
+    for the run they named: a run that a registered referrer
+    names -- a live session, a live record -- would take the
+    new label and carry those rows under it.
 
     A blank name as well, because a named run is one
     somebody already called something.

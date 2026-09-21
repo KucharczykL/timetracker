@@ -1,7 +1,7 @@
 # The picker creates the row a person typed
 
 A `<search-select>` whose query names no option offers one more row,
-`Create “…”`. The row POSTs the typed name, takes back `{id, label}`, and holds
+`Create “…”`. The row POSTs the typed name, takes back `{value, label}`, and holds
 it.
 
 The row appears when the trimmed query is not blank and no loaded label equals

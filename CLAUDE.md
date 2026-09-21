@@ -376,9 +376,9 @@ docs/           — Additional documentation
   visible, holding the sole run an answer states while the box is untouched,
   because the field is required — which is what the page seeds as well,
   through `sole_ordinary_run` — and its create row names the placeholder
-  tracking minted rather than leaving a blank run beside a named one (#1080). Session on game nothing
-  tracks refused on run. Bucket takes no new session; `MoveSessionToPlaythrough` is only way in
-  or out. Resume keyed on game (`games:resume_session`). Read surfaces:
+  tracking minted rather than leaving a blank run beside a named one
+  (#1080). Session on game nothing tracks refused on run. Bucket takes no
+  new session; `MoveSessionToPlaythrough` is only way in or out. Resume keyed on game (`games:resume_session`). Read surfaces:
   `library_sessions` and `game_sessions` in `games/reads/player_sessions.py`;
   `PlayerSessionFilter` (below); stats scope year on `effective_day`, order
   first and last play by `sort_instant`, superlatives read
@@ -643,7 +643,7 @@ Submodules re-exported via `common/components/__init__.py`:
   `<drop-down behavior="inline-combobox">` so its panel shares the one attachMenu
   open/close/position/dismiss engine, #348; `create_url` offers a `Create “…”`
   row for a query no loaded label **equals**, which POSTs `{name, ...params}`
-  and upserts the answered `{id, label}` on its key, and `params` is one JSON
+  and upserts the answered `{value, label}` on its key, and `params` is one JSON
   mapping — a literal or a sibling field — read by that POST and by the search
   query alike, a field source being a dependency that re-searches, #1080),
   `FilterSelect()` (include/exclude
@@ -793,7 +793,7 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   bound columns and the marker naming the act. A key a body does not know is
   refused with 422 as well, so the old `ended` cannot pass unread. PATCH states
   the endpoints the request names and no others: a note-only PATCH records no
-  act, and a named key is the act, dated or not. POST answers `201 {id, label}`,
+  act, and a named key is the act, dated or not. POST answers `201 {value, label}`,
   and a body stating a `name` alone is the picker's create row: it runs
   `RecordPlaythroughByName`, which under the lock names the placeholder a
   tracked game holds — sole live ordinary run, no act, blank name, no live
@@ -806,7 +806,7 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   `DeviceForm` / `PlatformForm`, so one set of rules refuses on both paths. A
   device takes the Unknown its default names and a name the library holds is
   answered rather than made twice, case ignored; a platform is private to the
-  library. 201 and `{id, label}`, else 422 and one sentence naming the field
+  library. 201 and `{value, label}`, else 422 and one sentence naming the field
 - `GET /api/session/`, `GET /{id}` — projection rows through
   `library_sessions`: `playthrough_id`, `game` through run, `timing_mode`,
   instants with zones, `stated_day`, `stated_duration_seconds`, `day`,
