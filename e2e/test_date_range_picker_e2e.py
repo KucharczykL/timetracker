@@ -18,6 +18,7 @@ from html import escape
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.conf import settings
 from django.http import HttpResponse
 from django.test import override_settings
 from django.urls import path
@@ -340,6 +341,26 @@ def test_clicking_container_activates_the_nearest_part(live_server, page):
 
 def _open_calendar(page):
     page.locator(PICKER + " [data-date-range-calendar-toggle]").click()
+
+
+@pytest.fixture(scope="session")
+def browser_context_args(browser_context_args):
+    """Pin the browser to the clock this module asserts against.
+
+    The presets, the calendar's month and the year arrows
+    are all computed in the browser, in the browser's zone,
+    and every assertion here compares them against
+    `datetime.date.today()` -- the test process's day, which
+    Django sets from `TIME_ZONE`. Left unpinned the two name
+    different dates for the hours they disagree, and a
+    picker that is working fails: the `last_7_days` preset
+    read 2026-09-14 while the test wanted 2026-09-15.
+
+    Pinned rather than read back out of the browser, because
+    the picker's own correctness here is about arithmetic on
+    a day, not about which day it is.
+    """
+    return {**browser_context_args, "timezone_id": settings.TIME_ZONE}
 
 
 def _current_month_iso(day_of_month: int) -> str:
