@@ -333,6 +333,39 @@ class TestParseFindFilter:
         assert find.per_page_override == 50
 
 
+#: One key naming three fields.
+_GROUPED_MAP = {"grouped": SortSpec("name", then=("year_released", "created_at"))}
+
+
+class TestSortSpecThen:
+    """A key names an ordering, not one field."""
+
+    def _order_by(self, sort):
+        return apply_sort(
+            Game.objects.all(), _find(sort), _GROUPED_MAP, "grouped"
+        ).queryset.query.order_by
+
+    def test_every_field_is_emitted_head_first(self):
+        emitted = [str(term.expression.name) for term in self._order_by("grouped")]
+
+        assert emitted == ["name", "year_released", "created_at", "pk"]
+
+    def test_the_terms_direction_reaches_every_field(self):
+        ordered = self._order_by("-grouped")
+
+        assert [term.descending for term in ordered[:-1]] == [True, True, True]
+        assert all(term.nulls_last for term in ordered[:-1])
+
+    def test_a_spec_that_states_no_then_emits_one_field(self):
+        result = apply_sort(
+            Game.objects.all(), _find("name"), GAME_SORTS, GAME_DEFAULT_SORT
+        )
+
+        assert [
+            str(term.expression.name) for term in result.queryset.query.order_by
+        ] == ["name", "pk"]
+
+
 class TestSortMapShapes:
     def test_default_sort_keys_exist_in_maps(self):
         # every key referenced by a default sort string must be defined in its map

@@ -77,6 +77,13 @@ type Annotations = dict[AnnotationName, Expression]
 class SortSpec:
     expression: OrderField  # unsigned; a real column path or an AnnotationName
     annotate: Annotations | None = None
+    #: What orders the rows the head leaves as peers.
+    #:
+    #: A key names an ordering, not a field: grouping
+    #: sessions by their run takes the game, then the
+    #: run's own four-field display order, then time.
+    #: Every entry follows the term's own direction.
+    then: tuple[OrderField, ...] = ()
 
 
 type SortMap = dict[SortKey, SortSpec]
@@ -213,12 +220,13 @@ def apply_sort(
         spec = sort_map[term.key]
         if spec.annotate:
             annotations.update(spec.annotate)
-        expression = F(spec.expression)
-        order_by.append(
-            expression.desc(nulls_last=True)
-            if term.descending
-            else expression.asc(nulls_last=True)
-        )
+        for field in (spec.expression, *spec.then):
+            expression = F(field)
+            order_by.append(
+                expression.desc(nulls_last=True)
+                if term.descending
+                else expression.asc(nulls_last=True)
+            )
     order_by.append(F("pk").asc())
     if annotations:
         queryset = queryset.annotate(**annotations)

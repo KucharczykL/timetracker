@@ -3,7 +3,8 @@
 import uuid
 from collections.abc import Iterable
 
-from django.db.models import F, OrderBy, QuerySet, Window
+from django.db.models import Case, F, OrderBy, QuerySet, Value, When, Window
+from django.db.models.fields import SmallIntegerField
 from django.db.models.functions import RowNumber
 
 from games.models import Playthrough, PlaythroughKind, UserLibrary
@@ -12,14 +13,52 @@ from games.reads.playthrough_activity import activity_clock
 #: A tracked game's key, as a caller holds it.
 type PlayerGameId = uuid.UUID
 
-#: The window's order, and the screen's.
-#: Another order prints 2 above 1.
-DISPLAY_ORDER: tuple[OrderBy | str, ...] = (
-    F("started_lower").asc(nulls_last=True),
-    F("completed_lower").asc(nulls_last=True),
+#: The fields that order runs on a screen, in order.
+#:
+#: The window reads them, and so does any sort that
+#: means "the runs as the screen numbers them".
+DISPLAY_ORDER_FIELDS: tuple[str, ...] = (
+    "started_lower",
+    "completed_lower",
     "created_at",
     "id",
 )
+
+#: The window's order, and the screen's.
+#: Another order prints 2 above 1.
+DISPLAY_ORDER: tuple[OrderBy, ...] = tuple(
+    F(name).asc(nulls_last=True) for name in DISPLAY_ORDER_FIELDS
+)
+
+
+def display_order_through(path: str = "") -> tuple[str, ...]:
+    """DISPLAY_ORDER's fields, reached through a relation."""
+    return tuple(f"{path}{name}" for name in DISPLAY_ORDER_FIELDS)
+
+
+def numbered_sort_key(path: str = "") -> Case:
+    """Null where no number is counted across the run.
+
+    The ORM twin of `is_numbered`. The value itself says
+    nothing -- every numbered run answers the same one --
+    so a sort reading it separates the counted runs from
+    the rest and leaves the order to the fields beside it.
+
+    Null sorts last in both directions, because apply_sort
+    writes NULLS LAST on each branch. That is what puts a
+    bucket under its game rather than at one end.
+    """
+    return Case(
+        When(
+            **{
+                f"{path}kind": PlaythroughKind.ORDINARY,
+                f"{path}removed_at__isnull": True,
+            },
+            then=Value(0),
+        ),
+        default=None,
+        output_field=SmallIntegerField(),
+    )
 
 
 class UnnumberedPlaythrough(ValueError):
