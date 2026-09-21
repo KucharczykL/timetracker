@@ -2299,3 +2299,54 @@ def test_a_sole_run_with_a_session_is_refused_as_the_last_run(
         "This is the only playthrough of that game, and a tracked game keeps "
         "one. Remove the game itself instead."
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_creation_states_the_name_it_carries(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+
+    dispatch(
+        CreatePlaythrough(game_id=game.pk, name="  New Game Plus  "),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="named-run",
+    )
+
+    created = Playthrough.objects.order_by("created_at").last()
+    assert created is not None
+    assert created.name == "New Game Plus"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_creation_with_no_name_appends_no_name_event(owned_user, owned_library, game):
+    _track(owned_user, owned_library, game)
+    before = LibraryEvent.objects.count()
+
+    dispatch(
+        CreatePlaythrough(game_id=game.pk),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key="unnamed-run",
+    )
+
+    appended = LibraryEvent.objects.order_by("sequence")[before:]
+    assert [event.event_type for event in appended] == ["library.playthrough.created"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_creation_refuses_a_name_the_column_cannot_hold(
+    owned_user, owned_library, game
+):
+    _track(owned_user, owned_library, game)
+
+    with pytest.raises(CommandRejected) as refusal:
+        dispatch(
+            CreatePlaythrough(
+                game_id=game.pk, name="x" * (PLAYTHROUGH_NAME_MAX_LENGTH + 1)
+            ),
+            actor=owned_user,
+            library=owned_library,
+            idempotency_key="over-long",
+        )
+
+    assert "too long" in refusal.value.sentence

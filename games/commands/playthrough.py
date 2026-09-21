@@ -108,6 +108,24 @@ class ActStatement(NamedTuple):
     note: str = ""
 
 
+def refuse_name_the_column_cannot_hold(name: str) -> None:
+    """Refuse a name longer than the column holds.
+
+    In a build, not a __post_init__: a refusal carries a
+    sentence, and a value error carries none.
+    """
+    if len(name) <= PLAYTHROUGH_NAME_MAX_LENGTH:
+        return
+    raise CommandRejected(
+        f"The stated name is {len(name)} characters, and the "
+        f"column holds {PLAYTHROUGH_NAME_MAX_LENGTH}.",
+        sentence=(
+            "That name is too long. Keep it to "
+            f"{PLAYTHROUGH_NAME_MAX_LENGTH} characters or fewer."
+        ),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class CreatePlaythrough(Command):
     """State one more run at a game.
@@ -125,6 +143,8 @@ class CreatePlaythrough(Command):
     started: ActStatement | None = None
     completed: ActStatement | None = None
     note: str = ""
+    #: Blank is a run the display number names.
+    name: str = ""
 
     def __post_init__(self) -> None:
         for field_name in ("started", "completed"):
@@ -138,6 +158,7 @@ class CreatePlaythrough(Command):
                     ActStatement(stated_date(act.when), act.note.strip()),
                 )
         object.__setattr__(self, "note", self.note.strip())
+        object.__setattr__(self, "name", self.name.strip())
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         tracked = tracked_game(context, self.game_id)
@@ -160,11 +181,14 @@ class CreatePlaythrough(Command):
                 "before it began, and no run ends before it begins.",
                 sentence="This run finished before it started. Check the days.",
             )
+        refuse_name_the_column_cannot_hold(self.name)
         #: Minted here, so every event names it.
         run_id = uuid.uuid7()
         events: list[NewEvent] = [
             playthrough_created(tracked.pk, playthrough_id=run_id)
         ]
+        if self.name:
+            events.append(playthrough_name_changed(run_id, name=self.name))
         if self.note:
             events.append(playthrough_note_changed(run_id, note=self.note))
         if self.started is not None:
@@ -343,16 +367,8 @@ class DescribePlaythrough(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
-        #: In build, not __post_init__: a refusal carries a sentence.
-        if self.name is not None and len(self.name) > PLAYTHROUGH_NAME_MAX_LENGTH:
-            raise CommandRejected(
-                f"The stated name is {len(self.name)} characters, and the "
-                f"column holds {PLAYTHROUGH_NAME_MAX_LENGTH}.",
-                sentence=(
-                    "That name is too long. Keep it to "
-                    f"{PLAYTHROUGH_NAME_MAX_LENGTH} characters or fewer."
-                ),
-            )
+        if self.name is not None:
+            refuse_name_the_column_cannot_hold(self.name)
         #: Only a name being taken away. A row born blank is left as it
         #: is, so a save that repeats that blank still states its note.
         if self.name == "" and run.name != "" and run.kind != PlaythroughKind.ORDINARY:
