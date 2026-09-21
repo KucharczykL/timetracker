@@ -102,6 +102,18 @@ def _live_rows_naming(referrer: BlockingReferrer, run: Playthrough) -> QuerySet[
     return reads.alive().filter(**{referrer.field_name: run})
 
 
+def rows_naming(referrer: BlockingReferrer, run: Playthrough) -> QuerySet[Any]:
+    """Every row of the referrer naming the run, removed ones included.
+
+    Unscoped by the library as well. What this answers is
+    whether anything at all still points at the run, which
+    is what an act asks before it takes one away on its own:
+    a removed row is restorable and a foreign row is drift,
+    and either is a reason to leave the run alone.
+    """
+    return referrer.model._default_manager.filter(**{referrer.field_name: run})
+
+
 def blocking_referrer(run: Playthrough) -> BlockingReferrer | None:
     """The first registered entry a live row of this library answers.
 

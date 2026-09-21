@@ -9,6 +9,7 @@ from games.commands.playthrough import CreatePlaythrough
 from games.events.dispatch import dispatch
 from games.models import Game, PlayerGame, Playthrough, PlaythroughKind
 from games.reads.playthrough_runs import (
+    buckets_of,
     completed_run_count,
     live_ordinary_runs,
     run_to_adopt,
@@ -161,3 +162,46 @@ def test_completed_run_count_skips_a_removed_run(owned_user, owned_library, game
 @pytest.mark.django_db
 def test_completed_run_count_answers_zero_for_a_game_no_library_tracks(owned_library):
     assert completed_run_count(owned_library, None) == 0
+
+
+def a_bucket(owned_library, tracked) -> Playthrough:
+    """One imported-history run, as the conversion left it."""
+    return Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        player_game=tracked,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        name="Imported history",
+        created_at=timezone.now(),
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_buckets_of_answers_every_bucket_a_game_holds(owned_user, owned_library, game):
+    tracked = a_tracked_game(owned_user, game)
+    first = a_bucket(owned_library, tracked)
+    second = a_bucket(owned_library, tracked)
+
+    assert set(buckets_of(owned_library, tracked).values_list("pk", flat=True)) == {
+        first.pk,
+        second.pk,
+    }
+
+
+@pytest.mark.django_db(transaction=True)
+def test_buckets_of_skips_a_removed_bucket(owned_user, owned_library, game):
+    tracked = a_tracked_game(owned_user, game)
+    live = a_bucket(owned_library, tracked)
+    gone = a_bucket(owned_library, tracked)
+    Playthrough.objects.filter(pk=gone.pk).update(removed_at=timezone.now())
+
+    assert list(buckets_of(owned_library, tracked).values_list("pk", flat=True)) == [
+        live.pk
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_buckets_of_skips_an_ordinary_run(owned_user, owned_library, game):
+    tracked = a_tracked_game(owned_user, game)
+
+    assert not buckets_of(owned_library, tracked).exists()
