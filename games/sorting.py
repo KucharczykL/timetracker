@@ -29,7 +29,11 @@ from common.sorting import (
     SortTerm,
     parse_sort_terms,
 )
-from games.filters import FindFilter
+from games.filters import SESSION_GAME, FindFilter
+from games.reads.playthrough_numbering import (
+    display_order_through,
+    numbered_sort_key,
+)
 from timetracker.settings_resolver import resolve_for_user
 
 __all__ = [
@@ -116,6 +120,18 @@ SESSION_SORTS: SortMap = {
     "duration": SortSpec("effective_duration"),
     "device": SortSpec("device__name"),
     "created": SortSpec("created_at"),
+    #: The game first: a run's number means nothing outside it,
+    #: and the bucket belongs last under its own game rather
+    #: than after every game.
+    "playthrough": SortSpec(
+        f"{SESSION_GAME}__sort_name",
+        {"run_numbered": numbered_sort_key("playthrough__")},
+        then=(
+            "run_numbered",
+            *display_order_through("playthrough__"),
+            "sort_instant",
+        ),
+    ),
 }
 SESSION_DEFAULT_SORT: SortString = "-date,created"
 
@@ -145,13 +161,19 @@ _DAYS_SPAN = Case(
     output_field=DurationField(),
 )
 
-#: The Playthrough column carries no sort key.
 PLAYTHROUGH_SORTS: SortMap = {
     "name": SortSpec("player_game__game__sort_name"),
     "started": SortSpec("started_lower"),
     "completed": SortSpec("completed_lower"),
     "days": SortSpec("days_span", {"days_span": _DAYS_SPAN}),
     "created": SortSpec("created_at"),
+    #: `started` alone would read nearly the same; the game
+    #: leading is what makes this the screen's own order.
+    "playthrough": SortSpec(
+        "player_game__game__sort_name",
+        {"run_numbered": numbered_sort_key()},
+        then=("run_numbered", *display_order_through()),
+    ),
 }
 PLAYTHROUGH_DEFAULT_SORT: SortString = "-created"
 

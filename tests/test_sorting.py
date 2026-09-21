@@ -421,6 +421,7 @@ class TestPlaythroughSorts:
             "completed",
             "days",
             "created",
+            "playthrough",
         }
 
     @pytest.mark.django_db
@@ -444,6 +445,148 @@ class TestPlaythroughSorts:
 
             assert counted == ([30, 1] if descending else [1, 30])
             assert answers[: len(counted)] == counted
+
+
+@pytest.fixture
+def grouped_runs(owned_library):
+    """One game, three runs and a bucket, each played.
+
+    The third run states no start, which is what tells a
+    reversal from a mirror: NULLS LAST holds it last in
+    both directions.
+    """
+    import uuid as uuid_module
+
+    from django.utils import timezone as django_timezone
+
+    from games.models import Playthrough, PlaythroughKind
+    from session_rows import timed_row
+    from timetracker.temporal import TemporalValue
+
+    game = Game.objects.create(
+        library=owned_library, name="Outer Wilds", sort_name="Outer Wilds"
+    )
+    first = tracked_run(owned_library, game)
+    player_game = first.player_game
+    now = django_timezone.now()
+
+    def run(**columns):
+        return Playthrough.objects.create(
+            pk=uuid_module.uuid7(),
+            library=owned_library,
+            player_game=player_game,
+            created_at=now,
+            **columns,
+        )
+
+    Playthrough.objects.filter(pk=first.pk).update(
+        start_recorded_at=now, started=TemporalValue.parse("2025-01-01")
+    )
+    second = run(
+        kind=PlaythroughKind.ORDINARY,
+        start_recorded_at=now,
+        started=TemporalValue.parse("2025-02-01"),
+    )
+    undated = run(kind=PlaythroughKind.ORDINARY)
+    bucket = run(kind=PlaythroughKind.IMPORTED_HISTORY)
+
+    for index, each in enumerate([first, second, undated, bucket]):
+        for offset in range(2):
+            moment = datetime(2025, 6, 1, 8 + index, offset * 5, tzinfo=ZONEINFO)
+            timed_row(each, moment, moment + timedelta(minutes=30))
+
+    return {"game": game, "runs": [first.pk, second.pk, undated.pk, bucket.pk]}
+
+
+class TestSessionsGroupedByRun:
+    """`playthrough` groups a game's sessions by its runs."""
+
+    def _run_order(self, library, sort):
+        from games.reads.player_sessions import library_sessions
+
+        ordered = apply_sort(
+            library_sessions(library),
+            _find(sort),
+            SESSION_SORTS,
+            SESSION_DEFAULT_SORT,
+        ).queryset
+        seen = []
+        for session in ordered:
+            if session.playthrough_id not in seen:
+                seen.append(session.playthrough_id)
+        return seen
+
+    def test_ascending_reads_the_runs_as_the_screen_numbers_them(
+        self, owned_library, grouped_runs
+    ):
+        from games.reads.playthrough_numbering import numbered_for
+
+        first, second, undated, bucket = grouped_runs["runs"]
+        numbered = numbered_for(
+            owned_library, {grouped_runs["game"].player_games.get().pk}
+        )
+
+        assert [row.pk for row in numbered] == [first, second, undated]
+        assert self._run_order(owned_library, "playthrough") == [
+            first,
+            second,
+            undated,
+            bucket,
+        ]
+
+    def test_descending_is_no_mirror_and_still_ends_on_the_bucket(
+        self, owned_library, grouped_runs
+    ):
+        """A run stating no start sorts last both ways."""
+        first, second, undated, bucket = grouped_runs["runs"]
+
+        assert self._run_order(owned_library, "-playthrough") == [
+            second,
+            first,
+            undated,
+            bucket,
+        ]
+
+    def test_a_runs_sessions_come_out_in_time_order(self, owned_library, grouped_runs):
+        from games.reads.player_sessions import library_sessions
+
+        first = grouped_runs["runs"][0]
+        ordered = apply_sort(
+            library_sessions(owned_library),
+            _find("playthrough"),
+            SESSION_SORTS,
+            SESSION_DEFAULT_SORT,
+        ).queryset
+        instants = [
+            session.sort_instant
+            for session in ordered
+            if session.playthrough_id == first
+        ]
+
+        assert instants == sorted(instants)
+
+    def test_the_api_takes_the_key_in_both_directions(
+        self, logged_client, grouped_runs
+    ):
+        for raw in ("playthrough", "-playthrough"):
+            response = logged_client.get("/api/session/", {"sort": raw})
+
+            assert response.status_code == 200, raw
+
+    def test_two_games_sort_as_two_blocks(self, owned_library, grouped_runs):
+        from session_rows import timed_row
+
+        other = Game.objects.create(
+            library=owned_library, name="Anodyne", sort_name="Anodyne"
+        )
+        other_run = tracked_run(owned_library, other)
+        moment = datetime(2025, 6, 1, 7, 0, tzinfo=ZONEINFO)
+        timed_row(other_run, moment, moment + timedelta(minutes=30))
+
+        order = self._run_order(owned_library, "playthrough")
+
+        assert order[0] == other_run.pk
+        assert order[1:] == grouped_runs["runs"]
 
 
 @pytest.fixture
@@ -887,6 +1030,15 @@ def two_platforms(owned_library):
 
 
 class TestListPlaythroughsSort:
+    def test_the_run_column_offers_its_own_sort(self, logged_client, two_runs):
+        """The column the map had no key for."""
+        response = logged_client.get(
+            reverse("games:list_playthroughs"), {"sort": "playthrough"}
+        )
+
+        assert response.status_code == 200
+        assert "sort=playthrough" in response.content.decode()
+
     def test_sort_by_completed_ascending_overrides_default(
         self, logged_client, two_runs
     ):

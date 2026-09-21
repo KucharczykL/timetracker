@@ -119,6 +119,7 @@ def test_the_columns_sort_only_where_the_caller_says_so(
         for column in sortable["columns"]
         if column.sort_key is not None
     } == {
+        "Playthrough": "playthrough",
         "Game": "name",
         "Started": "started",
         "Completed": "completed",
