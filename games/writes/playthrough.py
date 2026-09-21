@@ -39,7 +39,6 @@ from games.reads.playthrough_endpoints import (
     stated_completion,
     stated_start,
 )
-from games.reads.playthrough_numbering import display_name
 from games.reads.playthrough_runs import live_ordinary_runs, run_to_adopt
 from games.writes.answers import answered
 from games.writes.playergame import track_game
@@ -295,8 +294,9 @@ def _restate(
 
 
 class RecordedRun(NamedTuple):
-    """What stating a run did besides state it."""
+    """The run a statement reached, and how."""
 
+    playthrough_id: uuid.UUID
     #: True where the game was tracked to hold the run.
     tracked_the_game: bool
 
@@ -324,14 +324,14 @@ def record_run(
     """
     with answered("playthrough"):
         try:
-            _record_once(actor, game, draft, correlation_id=correlation_id)
+            recorded = _record_once(actor, game, draft, correlation_id=correlation_id)
         except PlayerGameNotTracked:
             #: One retry only. TrackGame states a run,
             #: so the branch runs again rather than re-dispatching.
             track_game(actor, game, correlation_id=correlation_id)
-            _record_once(actor, game, draft, correlation_id=correlation_id)
-            return RecordedRun(tracked_the_game=True)
-    return RecordedRun(tracked_the_game=False)
+            recorded = _record_once(actor, game, draft, correlation_id=correlation_id)
+            return RecordedRun(playthrough_id=recorded, tracked_the_game=True)
+    return RecordedRun(playthrough_id=recorded, tracked_the_game=False)
 
 
 def _record_once(
@@ -340,8 +340,8 @@ def _record_once(
     draft: RunDraft,
     *,
     correlation_id: uuid.UUID,
-) -> None:
-    """Adopt the game's run, or create one.
+) -> uuid.UUID:
+    """Adopt the game's run, or create one; answer its key.
 
     The absent row is refused here rather than left to the
     command: a game tracked between this read and the
@@ -360,8 +360,8 @@ def _record_once(
     adopted = run_to_adopt(actor.library, tracked)
     if adopted is not None:
         _restate(actor, adopted, draft, correlation_id=correlation_id)
-        return
-    _dispatch(
+        return adopted.pk
+    result = _dispatch(
         CreatePlaythrough(
             game_id=game.pk,
             #: The acts the draft states; recording states both.
@@ -373,6 +373,7 @@ def _record_once(
         library=actor.library,
         correlation_id=correlation_id,
     )
+    return created_aggregate_id(result)
 
 
 def remove_run(
@@ -415,23 +416,13 @@ def restore_run(
         )
 
 
-class NamedRun(NamedTuple):
-    """The run a typed name reached, and how."""
-
-    playthrough_id: uuid.UUID
-    #: What a picker shows: the name, always stated here.
-    label: str
-    #: True where the game was tracked to hold the run.
-    tracked_the_game: bool
-
-
 def record_named_run(
     actor: User,
     game: Game,
     name: str,
     *,
     correlation_id: uuid.UUID,
-) -> NamedRun:
+) -> RecordedRun:
     """State the run a person typed a name for.
 
     The command decides between naming the placeholder and
@@ -471,7 +462,7 @@ def _named_run(
     result: CommandResult,
     *,
     tracked_the_game: bool,
-) -> NamedRun:
+) -> RecordedRun:
     """The run the dispatch reached.
 
     An appended outcome names it in its first event. An
@@ -480,17 +471,12 @@ def _named_run(
     where an earlier act left two of them.
     """
     if result.sequences is not None:
-        return NamedRun(
+        return RecordedRun(
             playthrough_id=created_aggregate_id(result),
-            label=command.name,
             tracked_the_game=tracked_the_game,
         )
     tracked = PlayerGame.objects.filter(library=actor.library, game=game).first()
     assert tracked is not None, "Unchanged answers about a run this game holds."
     run = live_ordinary_runs(actor.library, tracked).filter(name=command.name).first()
     assert run is not None, "Unchanged answers about a run that states the name."
-    return NamedRun(
-        playthrough_id=run.pk,
-        label=display_name(run),
-        tracked_the_game=tracked_the_game,
-    )
+    return RecordedRun(playthrough_id=run.pk, tracked_the_game=tracked_the_game)

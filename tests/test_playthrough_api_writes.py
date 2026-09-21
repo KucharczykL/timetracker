@@ -11,6 +11,7 @@ from games.commands.playthrough import ActStatement
 from games.models import Game, PlayerSession, PlayerSessionTimingMode, Playthrough
 from games.removal import remove
 from games.writes.answers import REFUSED_BY_AN_UNREADABLE_ROW
+from games.writes.playergame import new_correlation_id, track_game
 from timetracker.temporal import TemporalValue
 
 
@@ -49,7 +50,7 @@ def test_post_states_a_run_and_writes_no_row(client, user, game):
         content_type="application/json",
     )
 
-    assert response.status_code == 204
+    assert response.status_code == 201
     assert Playthrough.objects.filter(player_game__game=game).count() == 1
 
 
@@ -424,3 +425,51 @@ def test_a_run_under_a_removed_game_is_neither_read_nor_written(client, user, ga
         == 404
     )
     assert client.delete(f"/api/playthrough/{run.pk}").status_code == 404
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_name_alone_adopts_the_placeholder(client, user, game):
+    track_game(user, game, correlation_id=new_correlation_id())
+    placeholder = born_run(game)
+    client.force_login(user)
+
+    response = client.post(
+        "/api/playthrough/",
+        {"game_id": str(game.pk), "name": "New Game Plus"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 201
+    assert response.json() == {"id": str(placeholder.pk), "label": "New Game Plus"}
+    assert Playthrough.objects.filter(player_game__game=game).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_answer_labels_a_blank_name_by_its_number(client, user, game):
+    """The number the numbering derives, which the days order."""
+    state_run(user, game, started=day("2025-01-01"))
+    client.force_login(user)
+
+    response = client.post(
+        "/api/playthrough/",
+        {"game_id": str(game.pk), "started": "2026-01-02"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 201
+    assert response.json()["label"] == "Playthrough 2"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_name_the_game_already_holds_answers_that_run(client, user, game):
+    track_game(user, game, correlation_id=new_correlation_id())
+    placeholder = born_run(game)
+    client.force_login(user)
+    body = {"game_id": str(game.pk), "name": "New Game Plus"}
+
+    client.post("/api/playthrough/", body, content_type="application/json")
+    response = client.post("/api/playthrough/", body, content_type="application/json")
+
+    assert response.status_code == 201
+    assert response.json()["id"] == str(placeholder.pk)
+    assert Playthrough.objects.filter(player_game__game=game).count() == 1

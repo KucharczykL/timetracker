@@ -23,7 +23,7 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce, Greatest
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 from django.urls import reverse
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, Header, NinjaAPI, Query, Router, Schema, Status
@@ -95,7 +95,13 @@ from games.writes.playersession import (
     move_session,
     record_session,
 )
-from games.writes.playthrough import RunDraft, record_run, remove_run, restate_run
+from games.writes.playthrough import (
+    RunDraft,
+    record_named_run,
+    record_run,
+    remove_run,
+    restate_run,
+)
 from timetracker.config import SettingSource
 from timetracker.settings_commands import (
     SettingLockedError,
@@ -187,6 +193,18 @@ class PlaythroughIn(Schema):
     started: StatedTemporal = None
     completed: StatedTemporal = None
     note: str = ""
+    name: str = ""
+
+
+class CreatedRow(Schema):
+    """The row a create route made, as a picker reads it.
+
+    One answer for every create route, because one element
+    reads them all.
+    """
+
+    id: str
+    label: str
 
 
 class UpdatePlaythroughIn(Schema):
@@ -352,26 +370,58 @@ def list_playthroughs(
     return runs if limit == 0 else runs[:limit]
 
 
-@playthrough_router.post("/", response={204: None})
+@playthrough_router.post("/", response={201: CreatedRow})
 def create_playthrough(request, payload: PlaythroughIn):
-    library = cast(User, request.user).library
+    """State one run at a game; answer the row it reached.
+
+    Two write paths meet here, and the body says which. A
+    name alone is the picker's create row, which states no
+    act and adopts the placeholder a tracked game holds. A
+    body that states an act is the add-run form, which
+    keeps `record_run`'s own rule.
+    """
+    actor = cast(User, request.user)
+    library = actor.library
     game = owned_or_404(Game.objects.for_library(library), library, id=payload.game_id)
-    recorded = record_run(
-        cast("User", request.user),
-        game,
-        RunDraft(
-            #: Recording states both acts, dated or not.
-            started=ActStatement(payload.started),
-            completed=ActStatement(payload.completed),
-            note=payload.note,
-        ),
-        correlation_id=new_correlation_id(),
-    )
+    correlation_id = new_correlation_id()
+    if payload.name:
+        recorded = record_named_run(
+            actor, game, payload.name, correlation_id=correlation_id
+        )
+    else:
+        recorded = record_run(
+            actor,
+            game,
+            RunDraft(
+                #: Recording states both acts, dated or not.
+                started=ActStatement(payload.started),
+                completed=ActStatement(payload.completed),
+                note=payload.note,
+            ),
+            correlation_id=correlation_id,
+        )
     messages.success(request, "Playthrough recorded")
     if recorded.tracked_the_game:
         #: Tracking is an act of its own, so it is said.
         messages.info(request, f"{game} is now tracked in your library.")
-    return Status(204, None)
+    return Status(201, _created_run(library, game, recorded.playthrough_id))
+
+
+def _created_run(
+    library: UserLibrary, game: Game, playthrough_id: uuid.UUID
+) -> CreatedRow:
+    """The row a creation reached, as a picker reads it.
+
+    The game's runs are read whole and the row is picked in
+    Python. Narrowing the queryset to one key would leave
+    RowNumber counting over that one row, so every blank
+    name would read as Playthrough 1.
+    """
+    numbered = _readable_runs(library).filter(player_game__game_id=game.pk)
+    for run in numbered:
+        if run.pk == playthrough_id:
+            return CreatedRow(id=str(run.pk), label=display_name(run))
+    raise Http404("The run this library just recorded is no longer readable.")
 
 
 @playthrough_router.get("/search", response=list[PlaythroughOption])
@@ -390,6 +440,10 @@ def search_playthroughs(request, game: UUIDv7, q: str = "", limit: int = 10):
     the runs of the game a form names, never every run.
     """
     library = cast(User, request.user).library
+    #: Narrowed on the partition the number counts over, so
+    #: the rows keep the numbers the game's page shows. The
+    #: query narrows further, and only ever to named rows: a
+    #: blank name holds no text for `icontains` to find.
     runs = _readable_runs(library).filter(player_game__game_id=game)
     if q:
         runs = runs.filter(name__icontains=q)

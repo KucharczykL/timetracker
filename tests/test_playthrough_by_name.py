@@ -121,8 +121,9 @@ def test_a_placeholder_is_adopted_and_named(owned_user, game):
     named = _name(owned_user, game)
 
     assert named.playthrough_id == placeholder.pk
-    assert named.label == "New Game Plus"
     assert named.tracked_the_game is False
+    placeholder.refresh_from_db()
+    assert placeholder.name == "New Game Plus"
     assert _ordinary_runs(owned_user, game).count() == 1
 
 
