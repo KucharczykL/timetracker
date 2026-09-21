@@ -1425,7 +1425,9 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         queryset=Platform.objects.order_by("name"),
         required=False,
         widget=SearchSelectWidget(
-            search_url="/api/platforms/search", options_resolver=_platform_options
+            search_url="/api/platforms/search",
+            options_resolver=_platform_options,
+            create_url=PLATFORM_CREATE_URL,
         ),
     )
     related_game = forms.ModelChoiceField(

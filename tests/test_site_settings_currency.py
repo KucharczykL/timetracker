@@ -132,3 +132,12 @@ def test_convert_prices_targets_display_currency(
     purchase.refresh_from_db()
     assert purchase.converted_currency == "EUR"
     assert purchase.converted_price == 50
+
+
+def test_the_purchase_platform_offers_to_make_a_platform(user, clean_currency_env):
+    """A platform the library lacks is made from the picker."""
+    from games.forms import PurchaseForm
+
+    form = PurchaseForm(library=user.library, user=user, presentation=_PRESENTATION)
+
+    assert 'create-url="/api/platforms/"' in str(form["platform"])
