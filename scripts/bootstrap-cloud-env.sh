@@ -25,9 +25,11 @@
 # `ensure-postgres`, which builds an ignored loopback cluster (docs/database.md),
 # so a box with no PostgreSQL 18 fails `make check` no matter how good its Python
 # is. Step 5 provisions it here instead of leaving it to the first `make check`.
-# It is the one non-fatal step — a box that cannot host a cluster (running as
-# root, no matching build published) can still borrow one via DATABASE_URL, and
-# the Python and JS toolchains above remain useful either way.
+# It is the one non-fatal step — a box that cannot host a cluster (no matching
+# build published, or nobody unprivileged to run the postmaster as) can still
+# borrow one via DATABASE_URL, and the Python and JS toolchains above remain
+# useful either way. Running as root is no longer among those reasons: the
+# harness demotes initdb and the postmaster to an unprivileged account.
 #
 # Idempotent: re-running skips whatever already exists.
 set -euo pipefail
@@ -188,7 +190,35 @@ if [ "${SKIP_POSTGRES:-0}" != "1" ]; then
   fi
 fi
 
-# ── 6. e2e browser ───────────────────────────────────────────────────────────
+# ── 6. Git LFS payloads ──────────────────────────────────────────────────────
+# .gitattributes puts *.gz, *.png and *.woff2 through LFS, so a clone made
+# without the filter leaves pointer stubs where the files should be. Nothing
+# says so until a test opens one: `make loadsample` and the six checks that
+# read games/fixtures/sample.yaml.gz fail on a 131-byte stub naming the LFS
+# spec, and the vendored woff2 faces never arrive, which moves the text metrics
+# the e2e layout assertions measure. CI checks out with `lfs: true` and never
+# sees any of it. Skip with SKIP_LFS=1.
+#
+# Spelling that stub's first two lines out here would be the clearer comment
+# and a broken build: the Dockerfile greps the whole build context for exactly
+# that text to catch a checkout made without LFS, and cannot tell a real stub
+# from a comment quoting one.
+if [ "${SKIP_LFS:-0}" != "1" ] && [ -f "$PROJECT_DIR/.gitattributes" ]; then
+  if grep -q 'filter=lfs' "$PROJECT_DIR/.gitattributes" 2>/dev/null; then
+    if command -v git-lfs >/dev/null; then
+      log "Fetching Git LFS payloads"
+      git -C "$PROJECT_DIR" lfs install --local >/dev/null
+      git -C "$PROJECT_DIR" lfs pull || \
+        echo "warning: git lfs pull failed; fixtures and fonts stay as pointers" >&2
+    else
+      echo "warning: this checkout uses Git LFS but git-lfs is not installed;" >&2
+      echo "         sample-fixture tests and the vendored fonts will be wrong." >&2
+      echo "         Install it (apt-get install git-lfs) and re-run." >&2
+    fi
+  fi
+fi
+
+# ── 7. e2e browser ───────────────────────────────────────────────────────────
 # e2e/conftest.py launches a browser it finds on PATH (google-chrome / chromium
 # / chrome) via executable_path — the intended escape hatch from Nix/version
 # issues. The image pre-installs Chromium under PLAYWRIGHT_BROWSERS_PATH but not
@@ -198,8 +228,13 @@ fi
 # `chromium` makes conftest launch it directly, revision mismatch notwithstanding.
 if [ "${SKIP_E2E_BROWSER:-0}" != "1" ]; then
   have_browser=0
+  browser_bin=""
   for b in google-chrome-stable google-chrome chromium chrome; do
-    command -v "$b" >/dev/null && { have_browser=1; break; }
+    if command -v "$b" >/dev/null; then
+      have_browser=1
+      browser_bin="$(command -v "$b")"
+      break
+    fi
   done
   if [ "$have_browser" -eq 0 ]; then
     chrome_bin="$(find "${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers}" \
@@ -207,10 +242,35 @@ if [ "${SKIP_E2E_BROWSER:-0}" != "1" ]; then
     if [ -n "$chrome_bin" ]; then
       mkdir -p "$HOME/.local/bin"
       ln -sf "$chrome_bin" "$HOME/.local/bin/chromium"
+      browser_bin="$chrome_bin"
       log "Linked e2e browser: $HOME/.local/bin/chromium -> $chrome_bin"
     else
       echo "warning: no chromium found under PLAYWRIGHT_BROWSERS_PATH; e2e will fail" >&2
     fi
+  fi
+
+  # The browser half of the Node 26 rule: ts/date-time-presentation.ts reaches
+  # for Temporal, which lands in Chromium 143. An older build leaves it
+  # undefined, and the date/time formatters then answer null rather than
+  # throwing -- the calendar simply renders an empty month label, and
+  # test_alternate_presentation_localizes_calendar_but_serializes_iso fails
+  # with no hint as to why. ensure-node-runtime exists so the Node version of
+  # that never reaches a wall of null assertions; this says the same thing for
+  # the browser, as a warning, because a pre-installed browser is not ours to
+  # replace and every other e2e test passes on it.
+  CHROMIUM_TEMPORAL_MAJOR=143
+  browser_major="$(
+    [ -n "${browser_bin:-}" ] && "$browser_bin" --version 2>/dev/null \
+      | grep -oE '[0-9]+' | head -1
+  )" || true
+  if [ -n "$browser_major" ] \
+     && [ "$browser_major" -lt "$CHROMIUM_TEMPORAL_MAJOR" ] 2>/dev/null; then
+    echo "warning: the e2e browser is Chromium $browser_major, and Temporal needs" >&2
+    echo "         >= $CHROMIUM_TEMPORAL_MAJOR. Date and time formatters read undefined there, so" >&2
+    echo "         the date-range picker renders no month label and" >&2
+    echo "         test_alternate_presentation_localizes_calendar fails. CI installs" >&2
+    echo "         the build the lockfile pins and never sees this; the rest of the" >&2
+    echo "         suite does not depend on it." >&2
   fi
 fi
 

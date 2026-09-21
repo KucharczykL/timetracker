@@ -34,10 +34,16 @@ an existing server instead; `make stop-postgres` never stops that external
 server. Deployments should provide the URL through `DATABASE_URL__FILE` so
 credentials need not appear in the environment or the Compose configuration.
 
-The managed cluster needs an unprivileged user, because PostgreSQL refuses to
-run as root. Containers and cloud sandboxes that log in as root therefore cannot
-host it, and `make ensure-postgres` says so rather than attempting the download;
-point `DATABASE_URL` at an existing server there.
+The managed cluster needs an unprivileged user, because `initdb` and the
+postmaster both refuse to run as root. Where `make` itself runs as root — the
+containers and cloud sandboxes that log in that way — those two programs are
+demoted to an account the harness picks, and only those two: `psql`, `createdb`
+and `pg_isready` keep the caller's identity, which is why they name the role
+`initdb` made rather than the caller's own. The account is whatever
+`TIMETRACKER_POSTGRES_USER` names, else this checkout's owner, else `postgres`
+or `nobody`. A box offering none of those has nobody to demote to, and
+`make ensure-postgres` says so rather than attempting the download; point
+`DATABASE_URL` at an existing server there.
 
 ## Schema and migrations
 

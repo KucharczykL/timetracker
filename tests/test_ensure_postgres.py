@@ -2,9 +2,11 @@
 
 import hashlib
 import importlib.util
+import pwd
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -476,7 +478,9 @@ def test_ensure_reuses_existing_cluster_metadata(harness, monkeypatch, tmp_path)
     )
     monkeypatch.setattr(harness, "choose_port", lambda: pytest.fail("new port"))
     monkeypatch.setattr(
-        harness, "start_cluster", lambda _tools, _data_dir, port: started.append(port)
+        harness,
+        "start_cluster",
+        lambda _tools, _data_dir, port, _account=None: started.append(port),
     )
     monkeypatch.setattr(harness, "wait_for_ready", lambda *args: None)
     monkeypatch.setattr(harness, "provision_database", lambda *args: None)
@@ -653,10 +657,14 @@ def test_failed_curl_retry_discards_a_truncated_archive(harness, monkeypatch, tm
     assert not archive.exists()
 
 
-def test_root_cannot_provision_the_managed_cluster(harness, monkeypatch, tmp_path):
-    # initdb and the server both refuse root, several steps and one download apart.
+def test_root_without_an_account_cannot_provision_the_managed_cluster(
+    harness, monkeypatch, tmp_path
+):
+    # initdb and the postmaster both refuse root, several steps and one download
+    # apart, so a box with nobody to demote to has to say so before spending it.
     monkeypatch.setattr(harness, "explicit_database_url", lambda: None)
     monkeypatch.setattr(harness, "running_as_root", lambda: True)
+    monkeypatch.setattr(harness, "resolve_server_account", lambda: None)
     monkeypatch.setattr(
         harness,
         "fallback_tools",
@@ -666,6 +674,163 @@ def test_root_cannot_provision_the_managed_cluster(harness, monkeypatch, tmp_pat
 
     with pytest.raises(harness.HarnessError, match="refuses to run as root"):
         harness.ensure(tmp_path)
+
+
+def _passwd(name, uid, gid):
+    return SimpleNamespace(pw_name=name, pw_uid=uid, pw_gid=gid)
+
+
+def _passwd_table(entries):
+    """A pwd.getpwnam that knows exactly the accounts named here."""
+
+    def lookup(name):
+        if name not in entries:
+            raise KeyError(name)
+        return _passwd(name, *entries[name])
+
+    return lookup
+
+
+def test_account_kwargs_demote_only_where_an_account_was_picked(harness):
+    # Every ordinary machine passes None, and must get the subprocess it had.
+    assert harness.account_kwargs(None) == {}
+    assert harness.account_kwargs(harness.ServerAccount("pg", 101, 102)) == {
+        "user": 101,
+        "group": 102,
+        "extra_groups": [],
+    }
+
+
+def test_a_named_account_outranks_the_checkout_owner(harness, monkeypatch):
+    monkeypatch.setenv(harness.SERVER_ACCOUNT_VARIABLE, "chosen")
+    monkeypatch.setattr(harness, "checkout_owner", lambda: pytest.fail("owner"))
+    monkeypatch.setattr(pwd, "getpwnam", _passwd_table({"chosen": (4242, 4243)}))
+
+    account = harness.resolve_server_account()
+
+    assert (account.name, account.uid, account.gid) == ("chosen", 4242, 4243)
+
+
+def test_a_named_account_that_is_root_is_no_account_at_all(harness, monkeypatch):
+    monkeypatch.setenv(harness.SERVER_ACCOUNT_VARIABLE, "root")
+    monkeypatch.setattr(pwd, "getpwnam", _passwd_table({"root": (0, 0)}))
+
+    with pytest.raises(harness.HarnessError, match="not an unprivileged account"):
+        harness.resolve_server_account()
+
+
+def test_a_root_owned_checkout_falls_back_to_a_system_account(harness, monkeypatch):
+    # The cloud sandbox this path exists for: root owns the checkout as well.
+    monkeypatch.delenv(harness.SERVER_ACCOUNT_VARIABLE, raising=False)
+    monkeypatch.setattr(harness, "checkout_owner", lambda: None)
+    monkeypatch.setattr(pwd, "getpwnam", _passwd_table({"postgres": (102, 104)}))
+
+    assert harness.resolve_server_account().name == "postgres"
+
+
+def test_a_box_with_nobody_to_demote_to_picks_no_account(harness, monkeypatch):
+    monkeypatch.delenv(harness.SERVER_ACCOUNT_VARIABLE, raising=False)
+    monkeypatch.setattr(harness, "checkout_owner", lambda: None)
+    monkeypatch.setattr(pwd, "getpwnam", _passwd_table({}))
+
+    assert harness.resolve_server_account() is None
+
+
+def test_root_hands_the_server_side_to_the_account_it_picked(
+    harness, monkeypatch, tmp_path
+):
+    cache = tmp_path / ".cache"
+    (cache / "postgres" / "data").mkdir(parents=True)
+    (cache / "postgres" / "port").write_text("5432\n")
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+    account = harness.ServerAccount("postgres", 102, 104)
+    seen: dict[str, object] = {}
+
+    monkeypatch.setattr(harness, "explicit_database_url", lambda: None)
+    monkeypatch.setattr(harness, "running_as_root", lambda: True)
+    monkeypatch.setattr(harness, "resolve_server_account", lambda: account)
+    monkeypatch.setattr(harness, "path_tools", lambda: tools)
+    monkeypatch.setattr(harness, "open_build_to_account", lambda *args: None)
+    monkeypatch.setattr(
+        harness,
+        "give_to_account",
+        lambda directory, given: seen.__setitem__("given", (directory, given)),
+    )
+    monkeypatch.setattr(
+        harness,
+        "start_cluster",
+        lambda _tools, _data_dir, _port, given: seen.__setitem__("started", given),
+    )
+    monkeypatch.setattr(harness, "wait_for_ready", lambda *args: None)
+    monkeypatch.setattr(
+        harness,
+        "provision_database",
+        lambda _tools, _port, given: seen.__setitem__("provisioned", given),
+    )
+    monkeypatch.setattr(harness, "verify_contract", lambda *args: None)
+
+    assert (
+        harness.ensure(cache) == "postgresql://timetracker@127.0.0.1:5432/timetracker"
+    )
+    # The postmaster's directory changes hands, and both server-side steps plus
+    # the clients that must name its role learn who the cluster belongs to.
+    assert seen == {
+        "given": (cache / "postgres", account),
+        "started": account,
+        "provisioned": account,
+    }
+
+
+def test_initdb_runs_as_the_account_that_will_own_the_cluster(
+    harness, monkeypatch, tmp_path
+):
+    accounts: list[object] = []
+    monkeypatch.setattr(
+        harness, "run", lambda args, **kwargs: accounts.append(kwargs.get("account"))
+    )
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+    account = harness.ServerAccount("postgres", 102, 104)
+
+    harness.initialize_cluster(tools, tmp_path / "data", account)
+
+    assert accounts == [account]
+
+
+def test_a_demoted_cluster_is_provisioned_under_the_role_initdb_made(
+    harness, monkeypatch, tmp_path
+):
+    # The clients keep running as root, whose role the cluster never heard of.
+    commands: list[list[str]] = []
+
+    def record(args, **kwargs):
+        commands.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout="1", stderr="")
+
+    monkeypatch.setattr(harness, "run", record)
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+
+    harness.provision_database(tools, 5432, harness.ServerAccount("postgres", 102, 104))
+
+    assert commands and all(
+        command[command.index("-U") + 1] == "postgres" for command in commands
+    )
+
+
+def test_an_undemoted_cluster_names_no_role_for_its_clients(
+    harness, monkeypatch, tmp_path
+):
+    commands: list[list[str]] = []
+
+    def record(args, **kwargs):
+        commands.append(args)
+        return subprocess.CompletedProcess(args, 0, stdout="1", stderr="")
+
+    monkeypatch.setattr(harness, "run", record)
+    tools = harness.Tools(*(tmp_path / name for name in harness.TOOL_NAMES))
+
+    harness.provision_database(tools, 5432)
+
+    assert commands and all("-U" not in command for command in commands)
 
 
 def test_root_still_uses_an_explicit_database_url(harness, monkeypatch, tmp_path):
