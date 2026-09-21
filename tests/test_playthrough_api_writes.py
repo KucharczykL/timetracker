@@ -4,6 +4,7 @@ import uuid
 from datetime import date, timedelta
 
 import pytest
+from django.contrib.messages import get_messages
 from django.utils import timezone
 from stated_runs import another_run, state_run
 
@@ -384,7 +385,7 @@ def test_deleting_a_run_a_foreign_session_names_answers_500(
     assert response.status_code == 500
     assert response.json()["detail"] == REFUSED_BY_AN_UNREADABLE_ROW.format(
         subject="playthrough"
-    )
+    ).format(subject="playthrough")
     assert str(run.pk) not in response.content.decode()
     run.refresh_from_db()
     assert run.removed_at is None
@@ -473,3 +474,49 @@ def test_a_name_the_game_already_holds_answers_that_run(client, user, game):
     assert response.status_code == 201
     assert response.json()["id"] == str(placeholder.pk)
     assert Playthrough.objects.filter(player_game__game=game).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_name_beside_an_act_is_refused(client, user, game):
+    """Two write paths, and the body says which: never both."""
+    track_game(user, game, correlation_id=new_correlation_id())
+    client.force_login(user)
+
+    response = client.post(
+        "/api/playthrough/",
+        {"game_id": str(game.pk), "name": "New Game Plus", "started": "2026-01-02"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 422
+    assert Playthrough.objects.filter(player_game__game=game).count() == 1
+    assert Playthrough.objects.get(player_game__game=game).name == ""
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_row_the_creation_cannot_read_back_is_a_defect(
+    client, user, game, monkeypatch, capture_games_logger
+):
+    """The row is this library's own, so its absence is no 404."""
+    from games import api
+
+    track_game(user, game, correlation_id=new_correlation_id())
+    client.force_login(user)
+    monkeypatch.setattr(
+        api, "_readable_runs", lambda library: Playthrough.objects.none()
+    )
+
+    response = client.post(
+        "/api/playthrough/",
+        {"game_id": str(game.pk), "name": "New Game Plus"},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == REFUSED_BY_AN_UNREADABLE_ROW.format(
+        subject="playthrough"
+    )
+    #: The run was recorded, and no toast says it was.
+    assert Playthrough.objects.get(player_game__game=game).name == "New Game Plus"
+    messages = [str(message) for message in get_messages(response.wsgi_request)]
+    assert "Playthrough recorded" not in messages

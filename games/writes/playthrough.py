@@ -29,6 +29,7 @@ from games.events.dispatch import (
     Command,
     CommandRejected,
     CommandResult,
+    RowUnreadable,
     dispatch,
 )
 from games.events.idempotency import IdempotencyKey
@@ -452,7 +453,7 @@ def record_named_run(
                 correlation_id=correlation_id,
             )
             return _named_run(actor, game, command, result, tracked_the_game=True)
-    return _named_run(actor, game, command, result, tracked_the_game=False)
+        return _named_run(actor, game, command, result, tracked_the_game=False)
 
 
 def _named_run(
@@ -476,7 +477,20 @@ def _named_run(
             tracked_the_game=tracked_the_game,
         )
     tracked = PlayerGame.objects.filter(library=actor.library, game=game).first()
-    assert tracked is not None, "Unchanged answers about a run this game holds."
-    run = live_ordinary_runs(actor.library, tracked).filter(name=command.name).first()
-    assert run is not None, "Unchanged answers about a run that states the name."
+    run = (
+        None
+        if tracked is None
+        else live_ordinary_runs(actor.library, tracked)
+        .filter(name=command.name)
+        .first()
+    )
+    if run is None:
+        #: The read is outside the lock that answered Unchanged, so a
+        #: removal between the two lands here. The row is wrong, not
+        #: the statement.
+        raise RowUnreadable(
+            f"RecordPlaythroughByName answered Unchanged about name "
+            f"{command.name!r} at game {game.pk}, and library "
+            f"{actor.library.pk} holds no live ordinary run of that name."
+        )
     return RecordedRun(playthrough_id=run.pk, tracked_the_game=tracked_the_game)

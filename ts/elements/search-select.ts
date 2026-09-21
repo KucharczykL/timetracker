@@ -145,6 +145,22 @@ const resolveParams = (container: Element, params: ParamSources): Record<string,
   return resolved;
 };
 
+/** A field a param names and the form does not hold a value for. */
+const unfilledFields = (container: Element, params: ParamSources): string[] =>
+  Object.values(params)
+    .filter((source): source is FieldParam => "field" in source)
+    .map(source => source.field)
+    .filter(field => !fieldValue(container, field));
+
+/** What a person calls that field: its own label, or its name. */
+const fieldLabel = (container: Element, field: string): string => {
+  const form = container.closest("form");
+  const control = form?.elements.namedItem(field);
+  const id = control instanceof HTMLElement ? control.id : "";
+  const label = id ? form?.querySelector(`label[for="${cssEscape(id)}"]`) : null;
+  return (label?.textContent ?? "").trim().toLowerCase() || field;
+};
+
 /** What the dependencies hold, as one comparable string. */
 const dependencySignature = (container: Element, fields: string[]): string =>
   fields.map(field => `${field}=${fieldValue(container, field)}`).join("&");
@@ -304,6 +320,13 @@ const initWidget = (containerElement: Element) => {
       else options.classList.add("hidden");
     }
     syncExpanded();
+  };
+
+  //: One node says both "nothing matched" and "fill that in first",
+  //: so the stated message is put back when the search can run.
+  const emptyMessage = noResults?.textContent ?? "";
+  const setEmptyMessage = (message: string | null) => {
+    if (noResults) noResults.textContent = message ?? emptyMessage;
   };
 
   const setNoResults = (visible: boolean) => {
@@ -600,8 +623,17 @@ const initWidget = (containerElement: Element) => {
         body: JSON.stringify(body),
       })
       .then(response => {
-        if (!response.ok) return null;
-        return response.json() as Promise<{ id: string; label: string }>;
+        if (response.ok)
+          return response.json() as Promise<{ id: string; label: string }>;
+        //: A refusal queues its own sentence, which rides the header.
+        //: An answer that queues none says nothing at all, so this does.
+        if (!response.headers.get("HX-Trigger")) {
+          reportClientError(
+            "search-select[create]",
+            `${response.status} from ${createUrl}`
+          );
+        }
+        return null;
       })
       .then(created => {
         //: A refusal keeps the query, and its sentence is the toast the
@@ -616,6 +648,14 @@ const initWidget = (containerElement: Element) => {
         createRow.hidden = true;
         selectOption(option);
         hidePanel();
+      })
+      .catch(error => {
+        //: Nothing else reports here: the row would un-dim on a POST
+        //: that never landed, and a second press would look the same.
+        reportClientError(
+          "search-select[create]",
+          String((error as Error)?.message ?? error)
+        );
       })
       .finally(() => {
         creating = false;
@@ -653,6 +693,20 @@ const initWidget = (containerElement: Element) => {
   //    aborted so a slower earlier response can never overwrite a newer one. ──
   const fetchFromServer = (query: string) => {
     if (pendingRequest) pendingRequest.abort();
+    //: A param the route requires and the form has not filled in: the
+    //: request would be refused, and an empty panel reads as an answer.
+    //: The panel names the field to fill in instead.
+    const unfilled = unfilledFields(container, params);
+    if (unfilled.length) {
+      pendingRequest = null;
+      renderRows([]);
+      if (createRow) createRow.hidden = true;
+      const names = unfilled.map(field => fieldLabel(container, field));
+      setEmptyMessage(`Pick a ${names.join(" and a ")} first`);
+      setNoResults(true);
+      return;
+    }
+    setEmptyMessage(null);
     pendingRequest = new AbortController();
     // Built via URL so a search-url that already carries a query string (e.g.
     // the preset picker's ?mode=games) composes instead of double-`?`ing.

@@ -34,7 +34,9 @@ function mountDependentPicker(params: string): {
   picker.innerHTML = `
     <div data-search-select-pills></div>
     <input data-search-select-search />
-    <div data-search-select-options></div>
+    <div data-search-select-options>
+      <div data-search-select-no-results class="hidden">No results</div>
+    </div>
   `;
   form.appendChild(picker);
   document.body.appendChild(form);
@@ -227,6 +229,34 @@ describe("<search-select> params (#1080)", () => {
     expect(
       picker.querySelector('[data-search-select-pills] input[type="hidden"]')
     ).toBeNull();
+  });
+
+  it("names the field to fill in rather than searching without it", async () => {
+    const { picker, fetchMock } = mountDependentPicker(
+      JSON.stringify({ game_id: { field: "game" } })
+    );
+    const form = picker.closest("form")!;
+    //: The form holds the field and no value, which is the state a
+    //: person stands in before they pick a game.
+    form.querySelector<HTMLInputElement>('[name="game"]')!.value = "";
+    const label = document.createElement("label");
+    label.setAttribute("for", "id_game");
+    label.textContent = "Game";
+    form.querySelector<HTMLInputElement>('[name="game"]')!.id = "id_game";
+    form.prepend(label);
+
+    //: An earlier picker's debounce reaches the global mock, so the
+    //: count that matters starts here.
+    await new Promise(resolve => setTimeout(resolve, 250));
+    fetchMock.mockClear();
+
+    picker.querySelector<HTMLInputElement>("[data-search-select-search]")!.focus();
+    await new Promise(resolve => setTimeout(resolve, 150));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    const empty = picker.querySelector("[data-search-select-no-results]");
+    expect(empty?.textContent).toBe("Pick a game first");
+    expect(empty?.classList.contains("hidden")).toBe(false);
   });
 
   it("searches without params when the attribute cannot be parsed", async () => {

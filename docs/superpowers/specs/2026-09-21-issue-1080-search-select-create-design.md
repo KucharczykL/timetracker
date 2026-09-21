@@ -15,10 +15,19 @@ The element upserts the answer on its id. A creation can answer a key the panel
 already lists, because a run creation adopts a placeholder, and an element that
 always inserts shows one run two times.
 
+An answer that states no sentence of its own is reported, and so is a POST that
+never lands. A refusal queues its sentence and rides the header; a schema
+refusal, a lost connection and a defect queue nothing, and a row that un-dims
+with no word is the same to a person as a row that did nothing.
+
 ## The parameters a request rides
 
 `params` is one JSON object, carried as an attribute, because the codegen maps
 a prop to `int`, `float`, `str` or `bool` alone.
+
+A field a param names and the form leaves empty stops the search: the route
+requires that key, and an empty panel reads as an answer. The panel names the
+field to fill in, through that field's own label.
 
 Each key names a request parameter, and its value is a literal or the name of a
 sibling field. The search query and the create POST read the one mapping, thus
@@ -28,8 +37,15 @@ element searches again when that field changes.
 
 ## What a run creation states
 
+A body states a name or an act, never both: the name is read first, so a body
+stating both would record the name alone. The schema refuses it.
+
 `RecordPlaythroughByName` reads the game's runs in its build, under the stream
-head's lock. A game that already holds a live ordinary run of that name answers
+head's lock. The row it reached is read back before a word is said, because a
+queued message rides the answer whatever its status: a success stated ahead of
+a defect is a green toast over an empty field. A row this library wrote one act
+ago and cannot read is a defect, not a missing row, thus `RowUnreadable` and
+the record the boundary writes. A game that already holds a live ordinary run of that name answers
 `Unchanged`, read ahead of every other rule: that run is the one the person
 named.
 

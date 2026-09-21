@@ -23,7 +23,12 @@ from games.commands.playthrough import (
     ActStatement,
     RecordPlaythroughByName,
 )
-from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
+from games.events.dispatch import (
+    CommandOutcome,
+    CommandRejected,
+    RowUnreadable,
+    dispatch,
+)
 from games.models import (
     Game,
     HistoricalPlaytimeProvenance,
@@ -33,7 +38,7 @@ from games.models import (
 )
 from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 from games.writes.playergame import new_correlation_id
-from games.writes.playthrough import record_named_run
+from games.writes.playthrough import _named_run, record_named_run
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
 
@@ -237,3 +242,28 @@ def test_the_same_name_twice_answers_unchanged(owned_user, owned_library, game):
     assert _ordinary_runs(owned_user, game).count() == 1
     placeholder.refresh_from_db()
     assert placeholder.name == "New Game Plus"
+
+
+def test_a_name_the_read_back_cannot_reach_is_a_defect(owned_user, game):
+    """The read is outside the lock, so a removal lands here.
+
+    `Unchanged` names a run, and the row is read back by that
+    name. A removal between the two leaves nothing to read,
+    which the boundary answers as a defect rather than a
+    refusal the person could act on.
+    """
+    _name(owned_user, game)
+    run = _ordinary_runs(owned_user, game).get()
+    result = _state(owned_user, game, "New Game Plus")
+    assert result.outcome is CommandOutcome.UNCHANGED
+    run.removed_at = timezone.now()
+    run.save(update_fields=["removed_at"])
+
+    with pytest.raises(RowUnreadable):
+        _named_run(
+            owned_user,
+            game,
+            RecordPlaythroughByName(game_id=game.pk, name="New Game Plus"),
+            result,
+            tracked_the_game=False,
+        )

@@ -251,6 +251,76 @@ describe("<search-select> create row (#1080)", () => {
     ).toBeNull();
   });
 
+  it("reports a POST that never lands", async () => {
+    stubEndpoints([]);
+    window.fetchWithHtmxTriggers = (() =>
+      Promise.reject(new Error("offline"))) as unknown as typeof window.fetchWithHtmxTriggers;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const host = mount();
+
+    await type(host, "New Game Plus");
+    pressEnter(host);
+    await vi.waitFor(() =>
+      expect(createRow(host).hasAttribute("aria-disabled")).toBe(false)
+    );
+
+    expect(
+      consoleError.mock.calls.some(call =>
+        String(call[0]).includes("search-select[create]")
+      )
+    ).toBe(true);
+  });
+
+  it("reports an answer that queues no sentence of its own", async () => {
+    stubEndpoints([]);
+    //: A schema refusal, which no middleware turns into a toast.
+    window.fetchWithHtmxTriggers = (() =>
+      Promise.resolve({
+        ok: false,
+        status: 422,
+        headers: new Headers(),
+        json: () => Promise.resolve({ detail: "Field required" }),
+      } as Response)) as unknown as typeof window.fetchWithHtmxTriggers;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const host = mount();
+
+    await type(host, "New Game Plus");
+    pressEnter(host);
+    await vi.waitFor(() =>
+      expect(createRow(host).hasAttribute("aria-disabled")).toBe(false)
+    );
+
+    expect(
+      consoleError.mock.calls.some(call => String(call[0]).includes("422"))
+    ).toBe(true);
+  });
+
+  it("reports nothing when the refusal queued its own sentence", async () => {
+    stubEndpoints([]);
+    window.fetchWithHtmxTriggers = (() =>
+      Promise.resolve({
+        ok: false,
+        status: 422,
+        headers: new Headers({ "HX-Trigger": "{}" }),
+        json: () => Promise.resolve({ detail: "That name is taken." }),
+      } as Response)) as unknown as typeof window.fetchWithHtmxTriggers;
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    consoleError.mockClear();
+    const host = mount();
+
+    await type(host, "New Game Plus");
+    pressEnter(host);
+    await vi.waitFor(() =>
+      expect(createRow(host).hasAttribute("aria-disabled")).toBe(false)
+    );
+
+    expect(
+      consoleError.mock.calls.some(call =>
+        String(call[0]).includes("search-select[create]")
+      )
+    ).toBe(false);
+  });
+
   it("opens a panel holding only the create row", async () => {
     stubEndpoints([]);
     const host = mount();

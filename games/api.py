@@ -23,13 +23,19 @@ from django.db.models import (
     When,
 )
 from django.db.models.functions import Coalesce, Greatest
-from django.http import Http404, HttpResponse
+from django.http import HttpResponse
 from django.urls import reverse
 from django.utils.timezone import now as django_timezone_now
 from ninja import Field, Header, NinjaAPI, Query, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.security import django_auth
-from pydantic import BeforeValidator, ConfigDict, PlainSerializer, WithJsonSchema
+from pydantic import (
+    BeforeValidator,
+    ConfigDict,
+    PlainSerializer,
+    WithJsonSchema,
+    model_validator,
+)
 
 from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
@@ -43,7 +49,7 @@ from games.commands.playersession import (
     TimingStatement,
 )
 from games.commands.playthrough import ActStatement
-from games.events.dispatch import IDEMPOTENCY_KEY_MAX_LENGTH
+from games.events.dispatch import IDEMPOTENCY_KEY_MAX_LENGTH, RowUnreadable
 from games.events.idempotency import IdempotencyKey
 from games.filters import (
     MODE_PARSERS,
@@ -195,6 +201,22 @@ class PlaythroughIn(Schema):
     completed: StatedTemporal = None
     note: str = ""
     name: str = ""
+
+    @model_validator(mode="after")
+    def one_statement(self) -> PlaythroughIn:
+        """A name states a run; an act states one too.
+
+        The two write paths this body chooses between state
+        different facts, and the name is read first. A body
+        stating both would record the name alone, so it is
+        refused rather than half read.
+        """
+        if self.name and (self.started or self.completed or self.note):
+            raise ValueError(
+                "A named run states no act. Send the name alone, or send "
+                "the acts and the note without a name."
+            )
+        return self
 
 
 class CreatedRow(Schema):
@@ -401,11 +423,16 @@ def create_playthrough(request, payload: PlaythroughIn):
             ),
             correlation_id=correlation_id,
         )
+    #: Read back before a word is said: a queued message rides the
+    #: answer whatever its status, so a success stated ahead of a
+    #: defect is a green toast over an empty field.
+    with answered("playthrough"):
+        row = _created_run(library, game, recorded.playthrough_id)
     messages.success(request, "Playthrough recorded")
     if recorded.tracked_the_game:
         #: Tracking is an act of its own, so it is said.
         messages.info(request, f"{game} is now tracked in your library.")
-    return Status(201, _created_run(library, game, recorded.playthrough_id))
+    return Status(201, row)
 
 
 def _created_run(
@@ -420,7 +447,13 @@ def _created_run(
     for run in numbered:
         if run.pk == playthrough_id:
             return CreatedRow(id=str(run.pk), label=display_name(run))
-    raise Http404("The run this library just recorded is no longer readable.")
+    #: The row is this library's own, stated one act ago: absent here
+    #: the row is wrong, not the statement, which is the defect the
+    #: boundary records.
+    raise RowUnreadable(
+        f"Run {playthrough_id} at game {game.pk} was recorded in library "
+        f"{library.pk} and no read of that game's runs answers it."
+    )
 
 
 @playthrough_router.get("/search", response=list[PlaythroughOption])
