@@ -381,12 +381,15 @@ From it a person:
 - selects rows and moves them: "Move to playthrough…" opens a confirmation
   hosting one `SearchSelect` with `create_url` (#1080, a prerequisite)
   over the game's live ordinary runs, no name field and no second
-  control; a name typed there is created through `POST /api/playthrough/`
-  ahead of the submit, so the choice is always an existing run key. The
+  control; a name typed there goes through `POST /api/playthrough/` ahead
+  of the submit, so the choice is always an existing run key. That POST
+  runs `RecordPlaythroughByName`, which names the game's placeholder (its
+  sole live ordinary run, blank, never acted on, nothing naming it) rather
+  than creating a second run beside it, and creates one otherwise. The
   Undo moves each session back, restoring the bucket first, and the run
-  created ahead stays, empty, which the answer says: the batch never wrote
-  it. An abandoned confirmation leaves such a run, the cost #1080 accepts
-  by name;
+  named or created ahead stays, which the answer says: the batch never
+  wrote it. An abandoned confirmation leaves such a run, the cost #1080
+  accepts by name;
 - sees the session's day, duration, device and note in the row before
   moving it, as the charter asks. #714's confirmation lists rows to
   `CONFIRMATION_SAMPLE`, fifty, in five columns: Playthrough, through
@@ -443,7 +446,10 @@ Game detail's session preview has none. Every act that is coherent over
 many rows is a tray action: Remove and Was-an-estimate (shipped), Finish
 (#718 declares it, `EndSession` at now per running row, no form), and
 Edit as set-one-value (#1211, after #714, whose move confirmation is the
-form-over-a-selection precedent). The residue, the row's own Edit form
+form-over-a-selection precedent; its device control is the session
+form's creating `SearchSelect` over `POST /api/devices/`, #1080's, so a
+device the library does not hold yet is made at the confirmation). The
+residue, the row's own Edit form
 and Reset, moves into a ⋯ menu on the row, the user's preference over a
 row of icons; a single running session is finished from the tray, from
 the navbar, or from its own page. Games, Purchases,
@@ -496,7 +502,8 @@ cost is judged.
 
 `#711 → #713 → #712 → #714 → #715 → #717 → #1212 → #718 → #1211`. #713 needs no table, so it
 runs beside #711. One prerequisite lies outside the wave: #1080, in the
-Session wave, lands before #714 and has a planning gate of its own. Every issue merges alone and leaves `main` incomplete
+Session wave, landed before #714 as stack #1226–#1228 (`main` at
+63b5940f). Every issue merges alone and leaves `main` incomplete
 rather than inconsistent: #711 a personality nothing uses, #713 a runner one
 page uses, #712 a tray beside Actions columns it will replace. No stack.
 
@@ -518,9 +525,11 @@ Remove, in #712.
   construction; it inherits the runner.
 - **Audit History** — the aggregate reader is the first per-aggregate read
   of the stream, which the Journal and the Trash both need.
-- **The creating combobox** — #1080, in the Session wave, is #714's
-  prerequisite: the move confirmation is its consumer beside the three
-  its body names, and #714's requirements were sent to its implementer.
+- **The creating combobox** — #1080, in the Session wave, landed as
+  #714's prerequisite: the move confirmation is its fourth consumer, and
+  #1211's device control its fifth. Its picker is always visible and its
+  create row names a placeholder run rather than doubling it, which #714's
+  Undo sentence and #715's Playthrough column both inherit.
 - **The rethink** — #1209, a confirmation that forecasts a command's
   refusal, waits for the interface work after #599's epics, which also
   judges whether bulk Remove on runs is kept at all.
