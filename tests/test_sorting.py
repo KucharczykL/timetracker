@@ -2,6 +2,7 @@
 
 import logging
 import re
+import uuid
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -11,8 +12,9 @@ from django.contrib.messages import get_messages
 from django.db.models import Case, DateField, Value, When
 from django.test import RequestFactory
 from django.urls import reverse
+from django.utils import timezone
 from historical_playtime_rows import record_row
-from session_rows import session_row, tracked_run
+from session_rows import session_row, timed_row, tracked_run
 
 from common.criteria import filter_to_json
 from games.filters import FindFilter, GameFilter, PlayerSessionFilter
@@ -22,9 +24,13 @@ from games.models import (
     Platform,
     PlayerGame,
     PlayerGameStatus,
+    Playthrough,
+    PlaythroughKind,
     Purchase,
     UserPreferences,
 )
+from games.reads.player_sessions import library_sessions
+from games.reads.playthrough_numbering import numbered_for
 from games.reads.playtime import games_by_playtime_queryset, playtime_sort_key
 from games.sorting import (
     DEVICE_DEFAULT_SORT,
@@ -46,6 +52,7 @@ from games.sorting import (
     parse_sort_terms,
 )
 from games.views.game import games_for_list
+from timetracker.temporal import TemporalValue
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
@@ -455,24 +462,16 @@ def grouped_runs(owned_library):
     reversal from a mirror: NULLS LAST holds it last in
     both directions.
     """
-    import uuid as uuid_module
-
-    from django.utils import timezone as django_timezone
-
-    from games.models import Playthrough, PlaythroughKind
-    from session_rows import timed_row
-    from timetracker.temporal import TemporalValue
-
     game = Game.objects.create(
         library=owned_library, name="Outer Wilds", sort_name="Outer Wilds"
     )
     first = tracked_run(owned_library, game)
     player_game = first.player_game
-    now = django_timezone.now()
+    now = timezone.now()
 
     def run(**columns):
         return Playthrough.objects.create(
-            pk=uuid_module.uuid7(),
+            pk=uuid.uuid7(),
             library=owned_library,
             player_game=player_game,
             created_at=now,
@@ -502,8 +501,6 @@ class TestSessionsGroupedByRun:
     """`playthrough` groups a game's sessions by its runs."""
 
     def _run_order(self, library, sort):
-        from games.reads.player_sessions import library_sessions
-
         ordered = apply_sort(
             library_sessions(library),
             _find(sort),
@@ -519,8 +516,6 @@ class TestSessionsGroupedByRun:
     def test_ascending_reads_the_runs_as_the_screen_numbers_them(
         self, owned_library, grouped_runs
     ):
-        from games.reads.playthrough_numbering import numbered_for
-
         first, second, undated, bucket = grouped_runs["runs"]
         numbered = numbered_for(
             owned_library, {grouped_runs["game"].player_games.get().pk}
@@ -548,8 +543,6 @@ class TestSessionsGroupedByRun:
         ]
 
     def test_a_runs_sessions_come_out_in_time_order(self, owned_library, grouped_runs):
-        from games.reads.player_sessions import library_sessions
-
         first = grouped_runs["runs"][0]
         ordered = apply_sort(
             library_sessions(owned_library),
@@ -574,8 +567,6 @@ class TestSessionsGroupedByRun:
             assert response.status_code == 200, raw
 
     def test_two_games_sort_as_two_blocks(self, owned_library, grouped_runs):
-        from session_rows import timed_row
-
         other = Game.objects.create(
             library=owned_library, name="Anodyne", sort_name="Anodyne"
         )
