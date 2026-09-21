@@ -14,10 +14,9 @@ def daterange(start: date, end: date, end_inclusive: bool = False) -> list[date]
 
 
 def available_stats_year_range(today: date) -> range:
-    """The years the stats picker offers, newest first.
+    """The years the stats picker offers.
 
-    The day is stated rather than read: which year a
-    library is in is its calendar's answer, and this module
-    knows nothing about libraries.
+    The day is stated, because the year a library is in is
+    its calendar's answer and this module knows no library.
     """
     return range(today.year, 1999, -1)

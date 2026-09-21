@@ -1,17 +1,16 @@
-"""Refusing a day read off the process clock."""
+"""Refusing a day off the process clock."""
 
 import ast
 from pathlib import Path
 from typing import NamedTuple
 
-#: Not tests/ or e2e/: a test states the day it compares against.
+#: Not tests/ or e2e/: they state days.
 GUARDED_PACKAGES = ("games", "common", "timetracker", "contrib", "scripts")
 
-#: Names that answer a day from whatever zone is active.
+#: Names answering a day from the active zone.
 CLOCK_NAMES = frozenset({"localdate", "today"})
 
-#: A function, and why the clock is right inside it.
-#: The key is `<path>:<function>`.
+#: `<path>:<function>`, and why the clock is right there.
 ALLOWED_FUNCTIONS: dict[str, str] = {
     "games/views/general.py:global_current_year": (
         "a viewer with no library has no calendar to ask"
@@ -29,7 +28,7 @@ REPORT = (
 
 
 class FunctionSpan(NamedTuple):
-    """One function definition, and the lines it covers."""
+    """One definition, and the lines it covers."""
 
     name: str
     first_line: int
@@ -52,7 +51,7 @@ def _function_spans(tree: ast.AST) -> list[FunctionSpan]:
 
 
 def _holding_function(spans: list[FunctionSpan], line: int) -> str:
-    """The innermost function around a line; `<module>` outside every one."""
+    """The innermost function around a line."""
     holding = [span for span in spans if span.holds(line)]
     if not holding:
         return "<module>"
@@ -68,14 +67,14 @@ def _clock_name(called: ast.expr) -> str | None:
 
 
 def clock_calls(source: str, path: str) -> list[str]:
-    """Every call that answers today from the active zone."""
+    """Every call answering today from the clock."""
     tree = ast.parse(source)
     spans = _function_spans(tree)
     reports = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
-        #: A day built from a zone the caller states is not the clock.
+        #: A stated zone is not the clock.
         if node.args or node.keywords:
             continue
         if _clock_name(node.func) not in CLOCK_NAMES:
@@ -109,14 +108,14 @@ def test_the_guard_names_the_innermost_function() -> None:
 
 
 def test_the_guard_passes_a_day_built_from_a_stated_zone() -> None:
-    """An explicit zone is the caller's answer, not the clock's."""
+    """An explicit zone is the caller's answer."""
     source = "def read():\n    return datetime.now(tz=ZoneInfo(zone)).date()\n"
 
     assert clock_calls(source, "x.py") == []
 
 
 def test_the_guard_passes_a_name_that_is_never_called() -> None:
-    """`games/checks.py` names the function without calling it."""
+    """`games/checks.py` names it without calling it."""
     source = "FACTORIES = frozenset({timezone.localdate, date.today})\n"
 
     assert clock_calls(source, "x.py") == []
@@ -129,7 +128,7 @@ def test_an_allowed_function_is_passed() -> None:
 
 
 def _first_party_files() -> list[tuple[str, str]]:
-    """Every guarded module, as a relative path and its source."""
+    """Every guarded module, path and source."""
     root = Path(__file__).resolve().parent.parent
     files = []
     for package in GUARDED_PACKAGES:
@@ -152,7 +151,7 @@ def test_no_first_party_module_reads_a_day_from_the_clock() -> None:
 
 
 def test_every_allowed_function_still_reads_the_clock() -> None:
-    """An entry the walk no longer needs is a stale exemption."""
+    """An entry the walk no longer needs."""
     sources = dict(_first_party_files())
     for entry in ALLOWED_FUNCTIONS:
         path, function = entry.rsplit(":", 1)

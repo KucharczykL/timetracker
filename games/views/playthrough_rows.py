@@ -65,9 +65,8 @@ def playthrough_tabledata(
     form with no token renders a button that only 403s.
 
     The clock has none either, and is the one that read
-    these runs: the condition on the row and the recency
-    beside it are the same count, so they cannot be taken
-    from two calendars.
+    these runs, so the condition and the recency beside
+    it cannot come from two calendars.
     """
 
     def column(label: str, **options: Any) -> Column:
@@ -140,17 +139,12 @@ def _endpoint_cell(
 def _activity_cell(run: Playthrough, clock: ActivityClock) -> Cell:
     """The clock's word, and how long ago.
 
-    An absent alias is not a missing condition: it is a
-    caller who read the runs off a queryset no clock
-    reached, and a dash there prints every unfinished
-    run as finished.
+    An absent alias is a caller who read the runs off a
+    queryset no clock reached, and a dash there prints
+    every unfinished run as finished.
 
-    The word and the phrase beside it read one clock. The
-    day is the row's `effective_day`, counted in the
-    library's calendar, so today must come from that same
-    calendar; a today taken from the viewer's presentation
-    zone put the two a day apart for the two hours a night
-    the zones disagree (#1217).
+    Word and phrase read one clock: the row's day is
+    counted on the library's calendar, so today is too.
     """
     if not hasattr(run, "activity"):
         raise ValueError(

@@ -25,11 +25,8 @@
 # `ensure-postgres`, which builds an ignored loopback cluster (docs/database.md),
 # so a box with no PostgreSQL 18 fails `make check` no matter how good its Python
 # is. Step 5 provisions it here instead of leaving it to the first `make check`.
-# It is the one non-fatal step — a box that cannot host a cluster (no matching
-# build published, or nobody unprivileged to run the postmaster as) can still
-# borrow one via DATABASE_URL, and the Python and JS toolchains above remain
-# useful either way. Running as root is no longer among those reasons: the
-# harness demotes initdb and the postmaster to an unprivileged account.
+# It is the one non-fatal step: a box that cannot host a cluster still
+# borrows one through DATABASE_URL, and the toolchains stay useful.
 #
 # Idempotent: re-running skips whatever already exists.
 set -euo pipefail
@@ -191,13 +188,8 @@ if [ "${SKIP_POSTGRES:-0}" != "1" ]; then
 fi
 
 # ── 6. Git LFS payloads ──────────────────────────────────────────────────────
-# .gitattributes puts *.gz, *.png and *.woff2 through LFS, so a clone made
-# without the filter leaves pointer stubs where the files should be. Nothing
-# says so until a test opens one: `make loadsample` and the six checks that
-# read games/fixtures/sample.yaml.gz fail on a 131-byte stub naming the LFS
-# spec, and the vendored woff2 faces never arrive, which moves the text metrics
-# the e2e layout assertions measure. CI checks out with `lfs: true` and never
-# sees any of it. Skip with SKIP_LFS=1.
+# A clone without the filter leaves stubs, and tests fail on them.
+# Skip with SKIP_LFS=1.
 #
 # Spelling that stub's first two lines out here would be the clearer comment
 # and a broken build: the Dockerfile greps the whole build context for exactly

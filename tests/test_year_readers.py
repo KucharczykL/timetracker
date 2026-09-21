@@ -1,4 +1,4 @@
-"""Which year a page offers, and who decides it."""
+"""Which year a page offers, and whose."""
 
 import uuid
 from datetime import date, datetime
@@ -17,16 +17,14 @@ from games.reads.calendar import calendar_today
 from games.views.general import global_current_year
 from timetracker.settings_commands import change_user_setting
 
-#: An instant every zone from UTC-4 eastwards reads as New
-#: Year's Day, and `Pacific/Niue`, eleven hours behind UTC,
-#: still reads as the year before.
+#: New Year east of UTC-4; Niue is behind.
 NEW_YEAR = datetime(2031, 1, 1, 5, 0, tzinfo=ZoneInfo("UTC"))
 BEHIND = "Pacific/Niue"
 
 
 @pytest.fixture
 def new_year(owned_user, owned_library):
-    """The library one year behind the process clock."""
+    """The library a year behind the process."""
     dispatch(
         SetCalendarDayZone(day_zone=BEHIND),
         actor=owned_user,
@@ -39,15 +37,14 @@ def new_year(owned_user, owned_library):
 
 @pytest.fixture
 def logged_in(client, owned_user, settings):
-    #: The clock moves years ahead below, and a session
-    #: stamped at the real now would read as expired.
+    #: Years ahead below; a real-now session expires.
     settings.SESSION_COOKIE_AGE = 60 * 60 * 24 * 365 * 20
     client.force_login(owned_user)
     return client
 
 
 def test_the_year_range_starts_at_the_day_it_is_given():
-    """The range is stated, not read off a clock."""
+    """The range is stated, not read."""
     years = available_stats_year_range(date(2031, 2, 3))
 
     assert years[0] == 2031
@@ -56,7 +53,7 @@ def test_the_year_range_starts_at_the_day_it_is_given():
 
 @pytest.mark.django_db(transaction=True)
 def test_the_global_year_is_the_library_year(owned_user, owned_library, new_year):
-    """One library, one year, whatever the process reads."""
+    """One library, one year, not the process's."""
     request = RequestFactory().get("/")
     request.user = owned_user
 
@@ -68,7 +65,7 @@ def test_the_global_year_is_the_library_year(owned_user, owned_library, new_year
 
 @pytest.mark.django_db
 def test_the_global_year_stands_without_a_library():
-    """A viewer with no library still gets a year."""
+    """A viewer with no library gets one."""
     request = RequestFactory().get("/")
     request.user = AnonymousUser()
 
@@ -81,7 +78,7 @@ def test_the_global_year_stands_without_a_library():
 def test_the_landing_redirect_names_the_library_year(
     logged_in, owned_user, owned_library, new_year
 ):
-    """The stats page a landing lands on is the library's year."""
+    """A landing lands on the library's year."""
     change_user_setting(owned_user, "DEFAULT_LANDING_PAGE", "games:stats_by_year")
 
     response = logged_in.get(reverse("games:index"))

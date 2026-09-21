@@ -1,4 +1,4 @@
-"""A request loads its user and its library in one statement."""
+"""A request loads user and library together."""
 
 import pytest
 from django.db import connection
@@ -17,7 +17,7 @@ def _library_statements(captured: CaptureQueriesContext) -> list[str]:
 
 @pytest.mark.django_db
 def test_a_request_loads_its_user_and_library_together(client, django_user_model):
-    """The library rides along with the user, so no page reads it alone."""
+    """The library rides along with the user."""
     owner = django_user_model.objects.create_user(username="budget", password="p")
     client.force_login(owner)
 
@@ -30,7 +30,7 @@ def test_a_request_loads_its_user_and_library_together(client, django_user_model
 
 @pytest.mark.django_db
 def test_the_backend_answers_none_for_an_unknown_id(django_user_model):
-    """An id no user holds is no user."""
+    """An id no user holds is nobody."""
     taken = django_user_model.objects.create_user(username="taken", password="p")
 
     assert LibraryModelBackend().get_user(taken.pk + 1000) is None
@@ -38,7 +38,7 @@ def test_the_backend_answers_none_for_an_unknown_id(django_user_model):
 
 @pytest.mark.django_db
 def test_a_user_with_no_library_still_loads(django_user_model):
-    """The join is outer: a user missing its row is still a user."""
+    """A user missing its row still loads."""
     owner = django_user_model.objects.create_user(username="libraryless", password="p")
     owner.library.delete()
 

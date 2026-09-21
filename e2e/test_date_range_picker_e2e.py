@@ -347,18 +347,11 @@ def _open_calendar(page):
 def browser_context_args(browser_context_args):
     """Pin the browser to the clock this module asserts against.
 
-    The presets, the calendar's month and the year arrows
-    are all computed in the browser, in the browser's zone,
-    and every assertion here compares them against
-    `datetime.date.today()` -- the test process's day, which
-    Django sets from `TIME_ZONE`. Left unpinned the two name
-    different dates for the hours they disagree, and a
-    picker that is working fails: the `last_7_days` preset
-    read 2026-09-14 while the test wanted 2026-09-15.
-
-    Pinned rather than read back out of the browser, because
-    the picker's own correctness here is about arithmetic on
-    a day, not about which day it is.
+    The picker computes its days in the browser's zone, and
+    every assertion compares them against the process's day.
+    Unpinned, a working picker fails for the hours the two
+    disagree. Pinned rather than read back, because what is
+    asserted is arithmetic on a day, not which day it is.
     """
     return {**browser_context_args, "timezone_id": settings.TIME_ZONE}
 

@@ -46,12 +46,11 @@ def test_index_redirects_to_selected_landing_page(
 def test_index_redirects_to_current_year_stats_on_the_library_calendar(
     db, monkeypatch, django_capture_on_commit_callbacks
 ):
-    """The library's calendar names the year, not the process.
+    """The library's calendar names the year.
 
     `Pacific/Kiritimati` reads the instant below as New
-    Year's Day, and the library, which states no calendar
-    of its own and so falls back to its owner's display
-    zone, reads it as the year before.
+    Year's Day; the library, stating no calendar and so
+    reading its owner's display zone, reads the year before.
     """
     user = get_user_model().objects.create_user(username="tester", password="pw")
     preferences = UserPreferences.objects.get(user=user)

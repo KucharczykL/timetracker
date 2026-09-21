@@ -72,14 +72,10 @@ def timed_row(
     day_zone: str | None = None,
     **columns: object,
 ) -> PlayerSession:
-    """A Timed row, dated on its library's calendar by default.
+    """A Timed row on its library's calendar.
 
-    The default used to name a zone outright, which wrote
-    rows into a calendar their own library does not count
-    in: every read then compared that day against a today
-    from somewhere else, and the pair went one apart for
-    the hours the two zones disagree (#1217). Name a zone
-    only to test what happens when one differs.
+    Name a zone only to test a row a library does not
+    count days in; every read compares against its own.
     """
     if day_zone is None:
         day_zone = calendar_day_zone(run.library).key
@@ -114,7 +110,7 @@ def corrected_row(
     day_zone: str | None = None,
     **columns: object,
 ) -> PlayerSession:
-    """A Corrected row, dated on its library's calendar by default."""
+    """A Corrected row on its library's calendar."""
     if day_zone is None:
         day_zone = calendar_day_zone(run.library).key
     return projection_row(

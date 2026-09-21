@@ -310,11 +310,8 @@ def test_a_completed_run_prints_a_dash_for_its_activity(
 def test_the_recency_does_not_move_with_the_viewers_zone(owned_library, run):
     """The word and the phrase beside it read one clock.
 
-    The day is `effective_day`, counted in the library's
-    calendar, so the viewer's presentation zone has no
-    say in how long ago it was. It used to: today came
-    from that zone, and the phrase went a day out from
-    the badge it sits next to (#1217).
+    The day is counted on the library's calendar, so the
+    viewer's presentation zone has no say in how long ago.
     """
     started_at = timezone.now() - timedelta(days=4)
     timed_row(run, started_at, started_at + timedelta(hours=1))
