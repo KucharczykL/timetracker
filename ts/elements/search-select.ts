@@ -165,6 +165,11 @@ const initWidget = (containerElement: Element) => {
   const prefetch = parseInt(container.getAttribute("prefetch") ?? "", 10) || 0;
   const syncUrl = container.getAttribute("sync-url") === "true";
   const params = parseParams(container.getAttribute("params"));
+  //: A filter panel states a criterion and a free-text panel is the
+  //: typed text itself; neither holds a row to create.
+  const createUrl =
+    isFilter || freeText ? "" : (container.getAttribute("create-url") ?? "");
+  const csrf = container.getAttribute("csrf") ?? "";
   //: Every field a param names: a change to one searches again.
   const dependencyFields = Object.values(params)
     .filter((source): source is FieldParam => "field" in source)
@@ -261,6 +266,10 @@ const initWidget = (containerElement: Element) => {
     }
     if (noResults && !noResults.classList.contains("hidden")) return true;
     if (options.querySelector("[data-search-select-modifier-option]")) return true;
+    const createRowNode = options.querySelector<HTMLElement>(
+      "[data-search-select-create]"
+    );
+    if (createRowNode && !createRowNode.hidden) return true;
     return false;
   };
 
@@ -288,7 +297,8 @@ const initWidget = (containerElement: Element) => {
 
   const setNoResults = (visible: boolean) => {
     if (!noResults) return;
-    noResults.classList.toggle("hidden", !visible);
+    const offered = createRow !== null && !createRow.hidden;
+    noResults.classList.toggle("hidden", !visible || offered);
     if (visible) showPanel();
   };
 
@@ -324,9 +334,12 @@ const initWidget = (containerElement: Element) => {
   // by ArrowUp/ArrowDown, and modifier rows sit first in document order.
   const getVisibleOptions = (): HTMLElement[] => {
     const all = options.querySelectorAll<HTMLElement>(
-      "[data-search-select-option], [data-search-select-modifier-option]"
+      "[data-search-select-option], [data-search-select-modifier-option], " +
+        "[data-search-select-create]"
     );
-    return Array.from(all).filter(row => row.style.display !== "none");
+    return Array.from(all).filter(
+      row => row.style.display !== "none" && !row.hidden
+    );
   };
 
   const autoHighlight = (query: string) => {
@@ -360,6 +373,15 @@ const initWidget = (containerElement: Element) => {
     );
     if (firstValueRow) {
       highlightOption(firstValueRow);
+      return;
+    }
+    //: Before the modifier fallback: a create row is the one thing a
+    //: non-matching query can commit, which is why it was offered.
+    const createRowNode = visible.find(row =>
+      row.hasAttribute("data-search-select-create")
+    );
+    if (createRowNode) {
+      highlightOption(createRowNode);
     } else if (!lower) {
       highlightOption(visible[0]);
     } else {
@@ -499,6 +521,96 @@ const initWidget = (containerElement: Element) => {
     });
   };
 
+  const createRow = options.querySelector<HTMLElement>("[data-search-select-create]");
+  //: One POST at a time: no route absorbs a repeat, so a second
+  //: Enter would make a second row.
+  let creating = false;
+
+  /** Every label the panel holds, lowercased. */
+  const loadedLabels = (): string[] =>
+    Array.from(options.querySelectorAll<HTMLElement>("[data-search-select-option]")).map(
+      row => (row.getAttribute("data-label") ?? "").trim().toLowerCase()
+    );
+
+  // Equality, not the substring the panel filters with: `PlayStation`
+  // beside `PlayStation 4` matches that filter, and a rule built on it
+  // would refuse to create any name a longer one holds.
+  const createRowOffered = (query: string): boolean => {
+    if (!createUrl || !createRow) return false;
+    const wanted = query.trim().toLowerCase();
+    if (!wanted) return false;
+    return !loadedLabels().includes(wanted);
+  };
+
+  // Shown only once an answer has decided, which is the rule the
+  // no-results node already follows: a row judged on the loaded window
+  // alone flashes on every keystroke.
+  const setCreateRow = (query: string) => {
+    if (!createRow) return;
+    const offered = createRowOffered(query);
+    createRow.hidden = !offered;
+    if (offered) {
+      const label = createRow.querySelector<HTMLElement>("[data-label]") ?? createRow;
+      label.textContent = `Create \u201c${query.trim()}\u201d`;
+      //: It replaces the empty-state message rather than standing beside it.
+      noResults?.classList.add("hidden");
+    }
+  };
+
+  /** Put the created row in the panel: an id it holds takes the new label. */
+  const upsertOption = (option: SearchSelectOption) => {
+    const held = options.querySelector<HTMLElement>(
+      `[data-search-select-option][data-value="${cssEscape(option.value)}"]`
+    );
+    if (held) {
+      held.setAttribute("data-label", option.label);
+      setLabel(held, option.label);
+      (held as OptionRow)._searchSelectOption = option;
+      return held;
+    }
+    const row = buildRow(option);
+    options.insertBefore(row, noResults ?? createRow ?? null);
+    return row;
+  };
+
+  /** POST the typed name; take back the row and select it. */
+  const commitCreate = () => {
+    if (creating || !createRow || createRow.hidden) return;
+    const name = search.value.trim();
+    if (!name) return;
+    creating = true;
+    createRow.setAttribute("aria-disabled", "true");
+    const body = { name, ...resolveParams(container, params) };
+    void window
+      .fetchWithHtmxTriggers(createUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": csrf },
+        body: JSON.stringify(body),
+      })
+      .then(response => {
+        if (!response.ok) return null;
+        return response.json() as Promise<{ id: string; label: string }>;
+      })
+      .then(created => {
+        //: A refusal keeps the query, and its sentence is the toast the
+        //: route queued. Nothing is selected.
+        if (!created) return;
+        const option: SearchSelectOption = {
+          value: created.id,
+          label: created.label,
+          data: {},
+        };
+        upsertOption(option);
+        createRow.hidden = true;
+        selectOption(option);
+        hidePanel();
+      })
+      .finally(() => {
+        creating = false;
+        createRow.removeAttribute("aria-disabled");
+      });
+  };
+
   // ── A depended-on field changed: the loaded window is about another
   //    parent's rows, and so is any selection held from it. ──
   const onDependencyChange = () => {
@@ -531,8 +643,12 @@ const initWidget = (containerElement: Element) => {
         pendingRequest = null;
         renderRows(items);
         // Re-apply the live query: the box may hold more text than was sent.
-        setNoResults(filterRows(currentQuery()) === 0);
+        const remaining = filterRows(currentQuery());
+        setCreateRow(currentQuery());
+        setNoResults(remaining === 0);
         autoHighlight(currentQuery());
+        //: A panel holding the create row alone still opens.
+        if (createRow && !createRow.hidden) showPanel();
       })
       .catch(error => {
         if (error?.name === "AbortError") return; // superseded
@@ -572,13 +688,16 @@ const initWidget = (containerElement: Element) => {
     }
     if (searchUrl) {
       filterRows(query);
+      if (createRow) createRow.hidden = true;
       setNoResults(false);
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         fetchFromServer(query);
       }, DEBOUNCE_MS);
     } else {
-      setNoResults(filterRows(query) === 0);
+      const remaining = filterRows(query);
+      setCreateRow(query);
+      setNoResults(remaining === 0);
     }
     autoHighlight(query);
     showPanel();
@@ -691,6 +810,10 @@ const initWidget = (containerElement: Element) => {
     } else if (key === "Enter") {
       if (highlightedRow) {
         event.preventDefault();
+        if (highlightedRow.hasAttribute("data-search-select-create")) {
+          commitCreate();
+          return;
+        }
         const modifierValue = highlightedRow.getAttribute(
           "data-search-select-modifier-option"
         );
@@ -752,6 +875,11 @@ const initWidget = (containerElement: Element) => {
         );
         return;
       }
+    }
+
+    if (target.closest("[data-search-select-create]")) {
+      commitCreate();
+      return;
     }
 
     // A row action button — resolved before the plain-row pick so it never falls through.

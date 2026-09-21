@@ -313,6 +313,24 @@ def _option_row(option: SearchSelectOption, *, selected: bool = False) -> Node:
     )[_label_slot(option["label"])]
 
 
+def _create_row() -> Node:
+    """The row that makes the thing a person typed.
+
+    Rendered hidden, and shown by the element once the
+    answer decides that no loaded label equals the query.
+    Its own attribute, not an option's: `renderRows`
+    empties every option row on each answer, and a create
+    row wearing that attribute would vanish mid-keystroke.
+    """
+    return Div(
+        data_search_select_create="",
+        role="option",
+        aria_selected="false",
+        hidden="",
+        class_=_OPTION_ROW_CLASS,
+    )[Span(data_label="")]
+
+
 def _group_header(label: str) -> Node:
     return Div(
         data_search_select_group_header="",
@@ -341,6 +359,7 @@ def _combobox_children(
     templates: list[Node] | None = None,
     options_class: str | None = None,
     no_results_text: str = "No results",
+    create_row: Node | None = None,
     menu_target: bool = False,
     marker: list[Node] | None = None,
 ) -> list[Node]:
@@ -392,6 +411,9 @@ def _combobox_children(
         options_class = panel_class
     else:
         options_class = panel_class + " hidden"
+    panel_children = [*options_children, no_results]
+    if create_row:
+        panel_children.append(create_row)
     options_panel = Div(
         # The [data-menu] hook + initial hidden state when hosted in a <drop-down>.
         [("data-menu", ""), ("hidden", "")] if menu_target else [],
@@ -404,7 +426,7 @@ def _combobox_children(
         tabindex="-1",
         style=f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem",
         class_=options_class,
-    )[*options_children, no_results]
+    )[*panel_children]
 
     return [pills, search, *(marker or []), options_panel, *(templates or [])]
 
@@ -574,6 +596,7 @@ def SearchSelect(
         ]
 
     children = _combobox_children(
+        create_row=_create_row() if create_url else None,
         pills=pills,
         search_attributes=search_attrs,
         options_children=option_rows,
