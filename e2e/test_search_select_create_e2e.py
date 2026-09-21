@@ -101,3 +101,92 @@ def test_a_refused_creation_makes_nothing(
     #: A name the library already holds is an option, never a creation.
     assert picker.locator("[data-search-select-create]").is_hidden()
     assert Device.objects.filter(library=e2e_library).count() == 1
+
+
+def _run_picker(page: Page):
+    return page.locator("search-select[name='playthrough']")
+
+
+def test_the_run_picker_is_visible_on_a_game_holding_one_run(
+    authenticated_page: Page, live_server, e2e_library
+):
+    """The very game this picker is for: nobody types into a hidden row."""
+    from tracked_games import create_tracked_game
+
+    game = create_tracked_game(e2e_library, "Outer Wilds")
+    page = authenticated_page
+    page.goto(
+        f"{live_server.url}{reverse('games:add_session_for_game', args=[game.pk])}"
+    )
+
+    picker = _run_picker(page)
+    picker.wait_for(state="visible")
+    assert picker.locator("[data-search-select-search]").is_visible()
+
+
+def test_a_session_records_on_a_run_created_from_the_picker(
+    authenticated_page: Page, live_server, e2e_library
+):
+    from tracked_games import create_tracked_game
+
+    from games.models import PlayerSession, Playthrough
+
+    game = create_tracked_game(e2e_library, "Outer Wilds")
+    page = authenticated_page
+    page.goto(
+        f"{live_server.url}{reverse('games:add_session_for_game', args=[game.pk])}"
+    )
+
+    picker = _run_picker(page)
+    picker.wait_for(state="attached")
+    search = picker.locator("[data-search-select-search]")
+    search.click()
+    search.fill("New Game Plus")
+
+    with page.expect_response(
+        lambda response: (
+            response.url.endswith("/api/playthrough/")
+            and response.request.method == "POST"
+        )
+    ) as response_info:
+        picker.locator("[data-search-select-create]").click()
+    assert response_info.value.status == 201
+
+    #: The placeholder tracking minted is named, never left beside a new run.
+    run = Playthrough.objects.get(library=e2e_library, player_game__game=game)
+    assert run.name == "New Game Plus"
+
+    _fill_start(page)
+    with page.expect_navigation():
+        page.get_by_role("button", name="Submit", exact=True).click()
+
+    session = PlayerSession.objects.get(library=e2e_library)
+    assert session.playthrough_id == run.pk
+
+
+def test_the_run_picker_searches_again_when_the_game_changes(
+    authenticated_page: Page, live_server, e2e_library
+):
+    from tracked_games import create_tracked_game
+
+    from games.models import Playthrough
+
+    first = create_tracked_game(e2e_library, "Outer Wilds")
+    second = create_tracked_game(e2e_library, "Hades")
+    Playthrough.objects.filter(player_game__game=second).update(name="Hades run")
+    page = authenticated_page
+    page.goto(
+        f"{live_server.url}{reverse('games:add_session_for_game', args=[first.pk])}"
+    )
+
+    game_picker = page.locator("search-select[name='game']")
+    game_search = game_picker.locator("[data-search-select-search]")
+    game_search.click()
+    game_search.fill("Hades")
+    game_picker.locator("[data-search-select-option]").first.click()
+
+    runs = _run_picker(page)
+    runs.locator("[data-search-select-search]").click()
+    page.wait_for_timeout(400)
+    labels = runs.locator("[data-search-select-option]").all_inner_texts()
+    assert any("Hades run" in label for label in labels)

@@ -426,7 +426,7 @@ def _created_run(
 
 
 @playthrough_router.get("/search", response=list[PlaythroughOption])
-def search_playthroughs(request, game: UUIDv7, q: str = "", limit: int = 10):
+def search_playthroughs(request, game_id: UUIDv7, q: str = "", limit: int = 10):
     """One game's live ordinary runs, as picker options.
 
     Declared ahead of the route that reads a key, which
@@ -437,15 +437,17 @@ def search_playthroughs(request, game: UUIDv7, q: str = "", limit: int = 10):
     picker cannot read it, and widening it would make one
     route answer two readers.
 
-    `game` is stated, unlike on the list: a picker offers
-    the runs of the game a form names, never every run.
+    The game is stated, unlike on the list: a picker offers
+    the runs of the game a form names, never every run. It is
+    `game_id`, as the creation body names it, because the picker
+    reads one mapping for its query and its POST alike.
     """
     library = cast(User, request.user).library
     #: Narrowed on the partition the number counts over, so
     #: the rows keep the numbers the game's page shows. The
     #: query narrows further, and only ever to named rows: a
     #: blank name holds no text for `icontains` to find.
-    runs = _readable_runs(library).filter(player_game__game_id=game)
+    runs = _readable_runs(library).filter(player_game__game_id=game_id)
     if q:
         runs = runs.filter(name__icontains=q)
     runs = runs.order_by("-created_at", "id")[:limit]

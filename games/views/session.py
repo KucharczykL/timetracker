@@ -287,7 +287,6 @@ SESSION_FORM_SCRIPTS = (
     "dist/elements/date-time-field.js",
     "dist/elements/time-zone-row.js",
     "dist/elements/date-picker.js",
-    "dist/elements/playthrough-select.js",
 )
 
 

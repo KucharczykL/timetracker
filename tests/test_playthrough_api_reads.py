@@ -248,7 +248,7 @@ def test_a_row_states_its_display_name(client, user, game):
 
 
 def _option_rows(client, game: Game, query: str = "") -> list[dict]:
-    url = f"/api/playthrough/search?game={game.pk}"
+    url = f"/api/playthrough/search?game_id={game.pk}"
     if query:
         url = f"{url}&q={query}"
     return client.get(url).json()

@@ -259,6 +259,30 @@ def _device_options(values, *, library: UserLibrary) -> list[SearchSelectOption]
     ]
 
 
+def _run_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
+    """Resolve run ids to options, each by its display name.
+
+    A blank name is numbered rather than stored, so the rows are
+    read through the numbering, and the wanted keys are picked out
+    in Python: narrowing the queryset would leave the window
+    counting over the rows that survived, and every blank name
+    would read as Playthrough 1.
+
+    The keys are compared as text. A posted value is a string and a
+    column holds a UUID, and the other resolvers only avoid that
+    because `pk__in` coerces for them.
+    """
+    #: Function-local: this module is imported by the reads it names.
+    from games.reads.playthrough_numbering import display_name, with_display_number
+
+    wanted = {str(getattr(value, "pk", value)) for value in values}
+    return [
+        {"value": run.id, "label": display_name(run), "data": {}}
+        for run in with_display_number(library_runs(library))
+        if str(run.pk) in wanted
+    ]
+
+
 def _platform_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     return [
         {"value": p.id, "label": p.name, "data": {}}
@@ -701,6 +725,9 @@ _INSTANT_ZONE_FIELDS: Final[dict[str, str]] = {
 #: The picker's route: `?game=` narrows it to one game's runs.
 PLAYTHROUGH_API_URL: Final = "/api/playthrough/"
 
+#: What the picker reads: option-shaped rows of one game's runs.
+PLAYTHROUGH_SEARCH_URL: Final = "/api/playthrough/search"
+
 #: The two refusals the derivation states, on the field that caused each.
 START_WITH_DURATION_ALONE = (
     "Give an end as well, or leave the start empty and state the day."
@@ -748,31 +775,27 @@ class TimingDraft:
         )
 
 
-class PlaythroughSelectWidget(forms.Select):
-    """A native ``<select>`` inside ``<playthrough-select>``.
+class PlaythroughSelectWidget(SearchSelectWidget):
+    """The run picker: a combobox that makes the run a person named.
 
-    The options the server renders are the runs of the game the form
-    already knows; the element refills them when the game changes and
-    hides itself while the game holds one run.
+    A `SearchSelect` whose `params` name the game field, so the
+    search narrows on the game the form holds and a creation names
+    the same one. The element searches again when that field
+    changes, which is what `<playthrough-select>` used to do.
+
+    Always visible. The old element hid its row while the game held
+    one run, and that is the very game this picker is for: nobody
+    types a second run's name into a hidden control.
     """
 
-    def __init__(self, *, game_field: str, api_url: str, attrs=None):
-        super().__init__(attrs)
-        self.game_field = game_field
-        self.api_url = api_url
-
-    def render(self, name, value, attrs=None, renderer=None):
-        from common.components import Safe
-        from common.components.custom_elements import _PlaythroughSelect
-
-        select = super().render(name, value, attrs=attrs, renderer=renderer)
-        return render(
-            _PlaythroughSelect(
-                game_field=self.game_field,
-                api_url=self.api_url,
-                selected="" if value in (None, "") else str(value),
-                class_="block",
-            )[Safe(select)]
+    def __init__(self, *, game_field: str, attrs=None):
+        super().__init__(
+            search_url=PLAYTHROUGH_SEARCH_URL,
+            options_resolver=_run_options,
+            create_url=PLAYTHROUGH_CREATE_URL,
+            params={"game_id": {"field": game_field}},
+            prefetch=DEFAULT_PREFETCH,
+            attrs=attrs,
         )
 
 
@@ -825,7 +848,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
         )
         runs = cast(forms.ModelChoiceField, self.fields["playthrough"])
         runs.queryset = library_runs(library)
-        runs.choices = _run_choices(library, self._known_game())
+        runs.widget.options_resolver = partial(_run_options, library=library)
         cast(
             forms.ModelChoiceField, self.fields["device"]
         ).queryset = Device.objects.for_library(library).order_by("name")
@@ -869,15 +892,6 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
                 capture_default=captures_by_field[field_name],
             )
 
-    def _known_game(self) -> Game | None:
-        """The game the picker lists runs of: the bound one, else the initial."""
-        raw = self.data.get("game") if self.is_bound else self.initial.get("game")
-        if isinstance(raw, Game):
-            return raw
-        if raw in (None, ""):
-            return None
-        return Game.objects.for_library(self.library).filter(pk=raw).first()
-
     def _resolved_field_zone(self, zone_field_name: str) -> ZoneInfo:
         """The zone this instant's digits are meant in: the paired zone
         picker's current value when usable, else the account display zone."""
@@ -898,7 +912,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
     )
     playthrough = forms.ModelChoiceField(
         queryset=Playthrough.objects.none(),
-        widget=PlaythroughSelectWidget(game_field="game", api_url=PLAYTHROUGH_API_URL),
+        widget=PlaythroughSelectWidget(game_field="game"),
         label="Playthrough",
     )
     # started_at/ended_at get DateTimeFieldWidget in __init__ (needs the

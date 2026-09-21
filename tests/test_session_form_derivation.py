@@ -1,5 +1,6 @@
 """The session form derives one timing statement from what is filled."""
 
+import html
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -175,16 +176,25 @@ def test_the_picker_lists_the_known_games_runs_by_display_name(owned_library, ga
         initial={"game": game}, library=owned_library, presentation=PRESENTATION
     )
 
-    assert form.fields["playthrough"].choices == [
-        (run_id(owned_library, game), "Playthrough 1")
-    ]
-    assert "<playthrough-select" in str(form["playthrough"])
+    rendered = str(form["playthrough"])
+    assert 'search-url="/api/playthrough/search"' in rendered
+    assert 'create-url="/api/playthrough/"' in rendered
+    assert '"game_id": {"field": "game"}' in html.unescape(rendered)
+    assert str(run_id(owned_library, game)) not in rendered
 
 
-def test_the_picker_is_empty_before_a_game_is_known(owned_library):
-    form = SessionForm(library=owned_library, presentation=PRESENTATION)
+def test_the_picker_offers_the_run_the_form_holds(owned_library, game):
+    """A bound render labels the held run through the numbering."""
+    held = run_id(owned_library, game)
+    form = SessionForm(
+        initial={"game": game, "playthrough": held},
+        library=owned_library,
+        presentation=PRESENTATION,
+    )
 
-    assert form.fields["playthrough"].choices == []
+    rendered = str(form["playthrough"])
+    assert str(held) in rendered
+    assert "Playthrough 1" in rendered
 
 
 def test_the_device_picker_offers_to_make_a_device(owned_library):
