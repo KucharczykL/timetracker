@@ -113,7 +113,7 @@ def session_resolution(
     rows = tuple(
         library_sessions(library)
         .filter(pk__in=wanted)
-        .select_related("playthrough__player_game__game")
+        .select_related("playthrough__player_game__game", "device")
         .order_by("-sort_instant", "id")
     )
     return Resolution(
