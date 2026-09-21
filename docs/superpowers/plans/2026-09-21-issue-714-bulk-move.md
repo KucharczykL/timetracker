@@ -440,20 +440,16 @@ move_back(actor, session_id, choice, idempotency_key, correlation_id) -> RowOutc
 
 ## Follow-up issues to file
 
-File these with `gh issue create` when the plan is approved; none blocks #714.
+Filed. None blocks #714.
 
-1. **A picker cannot search a run's display number.** `GET
-   /api/playthrough/search` narrows on the `name` column, so every unnamed
-   `Playthrough N` leaves the panel as soon as a character is typed. Harmless
-   while no game holds more than three runs; wrong for a library that grows.
-   Belongs to #1080's route.
-2. **Nothing holds a game to one imported-history run.** `buckets_of` is plural
-   because no constraint says otherwise. Either a conditional
-   `UniqueConstraint` or a line in the audit.
-3. **The bulk confirmation's page width is a runner constant.** Task 4 gives
-   `ConfirmPage` a `max_width`; whether every bulk confirmation should be wide,
-   or only the ones with five columns, is an interface question for the rethink
-   #1209 is parked against.
+- #1231 — a picker cannot search a run's display number: the search route
+  narrows on the `name` column, so every unnamed `Playthrough N` leaves the
+  panel as soon as a character is typed. #1080's route to change.
+- #1232 — nothing holds a tracked game to one imported-history run, which is
+  why `buckets_of` answers a queryset and Task 5 walks it.
+- #1233 — a bulk confirmation's width is decided per act, not per page: Task 4
+  gives `ConfirmPage` a `max_width`, and the rule for every act is interface
+  work for the rethink #1209 is parked against.
 
 ## Self-review notes
 
