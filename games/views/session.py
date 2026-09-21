@@ -66,6 +66,7 @@ from games.reads.player_sessions import (
     readable_sessions,
 )
 from games.reads.playthrough_numbering import display_name, numbered_for
+from games.reads.playthrough_runs import sole_ordinary_run
 from games.sorting import (
     SESSION_DEFAULT_SORT,
     SESSION_SORTS,
@@ -83,7 +84,6 @@ from games.writes.playersession import (
     clone_session,
     end_session,
     is_running,
-    latest_ordinary_run,
     record_session,
     restate_session,
 )
@@ -287,7 +287,6 @@ SESSION_FORM_SCRIPTS = (
     "dist/elements/date-time-field.js",
     "dist/elements/time-zone-row.js",
     "dist/elements/date-picker.js",
-    "dist/elements/playthrough-select.js",
 )
 
 
@@ -336,7 +335,7 @@ def add_session(request: HttpRequest, game_id: UUID | None = None) -> HttpRespon
     if game_id:
         game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
         initial["game"] = game
-        run = latest_ordinary_run(library, game)
+        run = sole_ordinary_run(library, game)
         if run is not None:
             initial["playthrough"] = run.pk
 

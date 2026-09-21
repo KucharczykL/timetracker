@@ -34,6 +34,8 @@
 
 import { isPresenceModifier } from "./filter-tokens.js";
 import { bindPopupDismiss } from "../utils.js";
+import { reportClientError } from "../client-errors.js";
+import { readSearchSelectProps } from "../generated/props.js";
 
 // The contract for the "search-select:change" CustomEvent this widget emits.
 // Consumers (e.g. add_purchase.ts) import these types — never redefine them.
@@ -95,6 +97,99 @@ let listboxIdCounter = 0;
 // (INCLUDES_ALL, INCLUDES_ONLY) coexist with value pills. The token set lives in
 // ./filter-tokens (contract-guarded against common.criteria.Modifier, #152).
 
+
+/** A request parameter's source: a value the server stated, or a form field. */
+interface LiteralParam {
+  value: string;
+}
+
+export interface FieldParam {
+  field: string;
+}
+
+type ParamSource = LiteralParam | FieldParam;
+type ParamSources = Record<string, ParamSource>;
+
+/** The params attribute, which is JSON text: props are attributes. */
+const parseParams = (raw: string | null): ParamSources => {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      reportClientError("search-select[params]", `not an object: ${raw}`, {
+        toast: false,
+      });
+      return {};
+    }
+    //: One source each, checked rather than cast: the Python side
+    //: spells these keys, and a rename there is silent here — the
+    //: request would go out without the key the route requires.
+    const sources: ParamSources = {};
+    Object.entries(parsed as Record<string, unknown>).forEach(([key, source]) => {
+      const states = (name: string): boolean =>
+        typeof source === "object" &&
+        source !== null &&
+        typeof (source as Record<string, unknown>)[name] === "string";
+      if (states("field") !== states("value")) {
+        sources[key] = source as ParamSource;
+        return;
+      }
+      reportClientError(
+        "search-select[params]",
+        `${key} states no one source: ${JSON.stringify(source)}`,
+        { toast: false }
+      );
+    });
+    return sources;
+  } catch (error) {
+    // The widget searches without them rather than not at all.
+    reportClientError(
+      "search-select[params]",
+      String((error as Error)?.message ?? error),
+      { toast: false }
+    );
+    return {};
+  }
+};
+
+/** One form field's current value, read at the moment it is used. */
+const fieldValue = (container: Element, field: string): string => {
+  const form = container.closest("form");
+  if (!form) return "";
+  const value = new FormData(form).get(field);
+  return typeof value === "string" ? value : "";
+};
+
+/** Every param, resolved now. A blank field value states no parameter. */
+const resolveParams = (container: Element, params: ParamSources): Record<string, string> => {
+  const resolved: Record<string, string> = {};
+  Object.entries(params).forEach(([key, source]) => {
+    const value = "field" in source ? fieldValue(container, source.field) : source.value;
+    if (value) resolved[key] = value;
+  });
+  return resolved;
+};
+
+/** A field a param names and the form does not hold a value for. */
+const unfilledFields = (container: Element, params: ParamSources): string[] =>
+  Object.values(params)
+    .filter((source): source is FieldParam => "field" in source)
+    .map(source => source.field)
+    .filter(field => !fieldValue(container, field));
+
+/** What a person calls that field: its own label, or its name. */
+const fieldLabel = (container: Element, field: string): string => {
+  const form = container.closest("form");
+  const control = form?.elements.namedItem(field);
+  const id = control instanceof HTMLElement ? control.id : "";
+  const label = id ? form?.querySelector(`label[for="${cssEscape(id)}"]`) : null;
+  return (label?.textContent ?? "").trim().toLowerCase() || field;
+};
+
+/** What the dependencies hold, as one comparable string. */
+const dependencySignature = (container: Element, fields: string[]): string =>
+  fields.map(field => `${field}=${fieldValue(container, field)}`).join("&");
+
 const initWidget = (containerElement: Element) => {
   const container = containerElement as SearchSelectContainer;
   const search = container.querySelector<HTMLInputElement>("[data-search-select-search]");
@@ -110,6 +205,30 @@ const initWidget = (containerElement: Element) => {
   const alwaysVisible = container.getAttribute("always-visible") === "true";
   const prefetch = parseInt(container.getAttribute("prefetch") ?? "", 10) || 0;
   const syncUrl = container.getAttribute("sync-url") === "true";
+  //: Through the codegen's reader, so renaming one of these props in
+  //: `SearchSelectProps` fails `tsc` rather than the create row.
+  const props = readSearchSelectProps(container);
+  const params = parseParams(props.params || null);
+  //: A filter panel states a criterion and a free-text panel is the
+  //: typed text itself; neither holds a row to create.
+  const createUrl = isFilter || freeText ? "" : props.createUrl;
+  //: A required field whose list usually holds one row commits it, so
+  //: a submit with no pick still posts one.
+  const commitSoleOption = props.commitSoleOption;
+  //: The hosting form renders a token, so a consumer states no prop.
+  //: The prop is for a create row that stands outside a form.
+  const csrfToken = (): string =>
+    props.csrf ||
+    container
+      .closest("form")
+      ?.querySelector<HTMLInputElement>('[name="csrfmiddlewaretoken"]')?.value ||
+    "";
+  //: Every field a param names: a change to one searches again.
+  const dependencyFields = Object.values(params)
+    .filter((source): source is FieldParam => "field" in source)
+    .map(source => source.field);
+  //: What each dependency held when the loaded window was fetched.
+  let dependencyValues = "";
 
   // Issue #348: form comboboxes and filter-builder field-layout rows are hosted in
   // <drop-down behavior="inline-combobox">, which owns the panel's open/close/
@@ -200,6 +319,10 @@ const initWidget = (containerElement: Element) => {
     }
     if (noResults && !noResults.classList.contains("hidden")) return true;
     if (options.querySelector("[data-search-select-modifier-option]")) return true;
+    const createRowNode = options.querySelector<HTMLElement>(
+      "[data-search-select-create]"
+    );
+    if (createRowNode && !createRowNode.hidden) return true;
     return false;
   };
 
@@ -225,9 +348,17 @@ const initWidget = (containerElement: Element) => {
     syncExpanded();
   };
 
+  //: One node says both "nothing matched" and "fill that in first",
+  //: so the stated message is put back when the search can run.
+  const emptyMessage = noResults?.textContent ?? "";
+  const setEmptyMessage = (message: string | null) => {
+    if (noResults) noResults.textContent = message ?? emptyMessage;
+  };
+
   const setNoResults = (visible: boolean) => {
     if (!noResults) return;
-    noResults.classList.toggle("hidden", !visible);
+    const offered = createRow !== null && !createRow.hidden;
+    noResults.classList.toggle("hidden", !visible || offered);
     if (visible) showPanel();
   };
 
@@ -263,9 +394,12 @@ const initWidget = (containerElement: Element) => {
   // by ArrowUp/ArrowDown, and modifier rows sit first in document order.
   const getVisibleOptions = (): HTMLElement[] => {
     const all = options.querySelectorAll<HTMLElement>(
-      "[data-search-select-option], [data-search-select-modifier-option]"
+      "[data-search-select-option], [data-search-select-modifier-option], " +
+        "[data-search-select-create]"
     );
-    return Array.from(all).filter(row => row.style.display !== "none");
+    return Array.from(all).filter(
+      row => row.style.display !== "none" && !row.hidden
+    );
   };
 
   const autoHighlight = (query: string) => {
@@ -299,6 +433,15 @@ const initWidget = (containerElement: Element) => {
     );
     if (firstValueRow) {
       highlightOption(firstValueRow);
+      return;
+    }
+    //: Before the modifier fallback: a create row is the one thing a
+    //: non-matching query can commit, which is why it was offered.
+    const createRowNode = visible.find(row =>
+      row.hasAttribute("data-search-select-create")
+    );
+    if (createRowNode) {
+      highlightOption(createRowNode);
     } else if (!lower) {
       highlightOption(visible[0]);
     } else {
@@ -438,15 +581,167 @@ const initWidget = (containerElement: Element) => {
     });
   };
 
+  const createRow = options.querySelector<HTMLElement>("[data-search-select-create]");
+  //: One POST at a time: no route absorbs a repeat.
+  let creating = false;
+
+  /** Every label the panel holds, lowercased. */
+  const loadedLabels = (): string[] =>
+    Array.from(options.querySelectorAll<HTMLElement>("[data-search-select-option]")).map(
+      row => (row.getAttribute("data-label") ?? "").trim().toLowerCase()
+    );
+
+  // Equality, not the substring the panel filters with: `PlayStation`
+  // beside `PlayStation 4` matches that filter, and a rule built on it
+  // would refuse to create any name a longer one holds.
+  const createRowOffered = (query: string): boolean => {
+    if (!createUrl || !createRow) return false;
+    const wanted = query.trim().toLowerCase();
+    if (!wanted) return false;
+    return !loadedLabels().includes(wanted);
+  };
+
+  // Shown once an answer decides, as the no-results node is: a row
+  // judged on the loaded window alone flashes on every keystroke.
+  const setCreateRow = (query: string) => {
+    if (!createRow) return;
+    const offered = createRowOffered(query);
+    createRow.hidden = !offered;
+    if (offered) {
+      const label = createRow.querySelector<HTMLElement>("[data-label]") ?? createRow;
+      label.textContent = `Create \u201c${query.trim()}\u201d`;
+      //: It replaces the empty-state message rather than standing beside it.
+      noResults?.classList.add("hidden");
+    }
+  };
+
+  /** Put the created row in the panel: an id it holds takes the new label. */
+  const upsertOption = (option: SearchSelectOption) => {
+    const held = options.querySelector<HTMLElement>(
+      `[data-search-select-option][data-value="${cssEscape(option.value)}"]`
+    );
+    if (held) {
+      held.setAttribute("data-label", option.label);
+      setLabel(held, option.label);
+      (held as OptionRow)._searchSelectOption = option;
+      return held;
+    }
+    const row = buildRow(option);
+    options.insertBefore(row, noResults ?? createRow ?? null);
+    return row;
+  };
+
+  /** POST the typed name; take back the row and select it. */
+  const commitCreate = () => {
+    if (creating || !createRow || createRow.hidden) return;
+    const name = search.value.trim();
+    if (!name) return;
+    creating = true;
+    createRow.setAttribute("aria-disabled", "true");
+    const body = { name, ...resolveParams(container, params) };
+    void window
+      .fetchWithHtmxTriggers(createUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken(),
+        },
+        body: JSON.stringify(body),
+      })
+      .then(response => {
+        if (response.ok)
+          return response.json() as Promise<{ value: string; label: string }>;
+        //: A refusal queues its own sentence, which rides the header.
+        //: An answer that queues none says nothing at all, so this does.
+        if (!response.headers.get("HX-Trigger")) {
+          reportClientError(
+            "search-select[create]",
+            `${response.status} from ${createUrl}`
+          );
+        }
+        return null;
+      })
+      .then(created => {
+        //: A refusal keeps the query, and its sentence is the toast the
+        //: route queued. Nothing is selected.
+        if (!created) return;
+        const option: SearchSelectOption = {
+          value: created.value,
+          label: created.label,
+          data: {},
+        };
+        upsertOption(option);
+        createRow.hidden = true;
+        selectOption(option);
+        hidePanel();
+      })
+      .catch(error => {
+        //: Nothing else reports here: the row would un-dim on a POST
+        //: that never landed, and a second press would look the same.
+        reportClientError(
+          "search-select[create]",
+          String((error as Error)?.message ?? error)
+        );
+      })
+      .finally(() => {
+        creating = false;
+        createRow.removeAttribute("aria-disabled");
+      });
+  };
+
+  /** Hold the one option a search answered, where nothing is held. */
+  const commitTheSoleOption = () => {
+    if (!commitSoleOption || multi) return;
+    //: A typed box holds a name, not a label to overwrite.
+    if (container._searchSelectDirty) return;
+    if (pills.querySelector('input[type="hidden"]')) return;
+    const rows = options.querySelectorAll<HTMLElement>("[data-search-select-option]");
+    if (rows.length !== 1) return;
+    const option = optionFromRow(rows[0]);
+    container._searchSelectSetSelected?.(option.value, option.label);
+    //: Select it, as focus does, so the next key replaces it.
+    if (document.activeElement === search) search.select();
+  };
+
+  // ── A depended-on field changed: the loaded window is about another
+  //    parent's rows, and so is any selection held from it. ──
+  const onDependencyChange = () => {
+    if (!dependencyFields.length) return;
+    const signature = dependencySignature(container, dependencyFields);
+    if (signature === dependencyValues) return;
+    dependencyValues = signature;
+    container._searchSelectClear?.();
+    hasPrefetched = false;
+    if (searchUrl) fetchFromServer(currentQuery());
+  };
+
   // ── Fetch matching rows from the server. The previous in-flight request is
   //    aborted so a slower earlier response can never overwrite a newer one. ──
   const fetchFromServer = (query: string) => {
     if (pendingRequest) pendingRequest.abort();
+    //: A param the route requires and the form has not filled in: the
+    //: request would be refused, and an empty panel reads as an answer.
+    //: The panel names the field to fill in instead.
+    const unfilled = unfilledFields(container, params);
+    if (unfilled.length) {
+      pendingRequest = null;
+      renderRows([]);
+      if (createRow) createRow.hidden = true;
+      const names = unfilled.map(field => fieldLabel(container, field));
+      setEmptyMessage(`Pick a ${names.join(" and a ")} first`);
+      setNoResults(true);
+      return;
+    }
+    setEmptyMessage(null);
     pendingRequest = new AbortController();
     // Built via URL so a search-url that already carries a query string (e.g.
     // the preset picker's ?mode=games) composes instead of double-`?`ing.
     const url = new URL(searchUrl ?? "", window.location.origin);
     url.searchParams.set("q", query);
+    Object.entries(resolveParams(container, params)).forEach(([key, value]) => {
+      url.searchParams.set(key, value);
+    });
+    dependencyValues = dependencySignature(container, dependencyFields);
     if (prefetch && !query) url.searchParams.set("limit", String(prefetch));
     fetch(url.toString(), { credentials: "same-origin", signal: pendingRequest.signal })
       .then(response => response.json())
@@ -454,8 +749,13 @@ const initWidget = (containerElement: Element) => {
         pendingRequest = null;
         renderRows(items);
         // Re-apply the live query: the box may hold more text than was sent.
-        setNoResults(filterRows(currentQuery()) === 0);
+        const remaining = filterRows(currentQuery());
+        commitTheSoleOption();
+        setCreateRow(currentQuery());
+        setNoResults(remaining === 0);
         autoHighlight(currentQuery());
+        //: A panel holding the create row alone still opens.
+        if (createRow && !createRow.hidden) showPanel();
       })
       .catch(error => {
         if (error?.name === "AbortError") return; // superseded
@@ -495,13 +795,16 @@ const initWidget = (containerElement: Element) => {
     }
     if (searchUrl) {
       filterRows(query);
+      if (createRow) createRow.hidden = true;
       setNoResults(false);
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         fetchFromServer(query);
       }, DEBOUNCE_MS);
     } else {
-      setNoResults(filterRows(query) === 0);
+      const remaining = filterRows(query);
+      setCreateRow(query);
+      setNoResults(remaining === 0);
     }
     autoHighlight(query);
     showPanel();
@@ -614,6 +917,10 @@ const initWidget = (containerElement: Element) => {
     } else if (key === "Enter") {
       if (highlightedRow) {
         event.preventDefault();
+        if (highlightedRow.hasAttribute("data-search-select-create")) {
+          commitCreate();
+          return;
+        }
         const modifierValue = highlightedRow.getAttribute(
           "data-search-select-modifier-option"
         );
@@ -675,6 +982,11 @@ const initWidget = (containerElement: Element) => {
         );
         return;
       }
+    }
+
+    if (target.closest("[data-search-select-create]")) {
+      commitCreate();
+      return;
     }
 
     // A row action button — resolved before the plain-row pick so it never falls through.
@@ -988,6 +1300,15 @@ const initWidget = (containerElement: Element) => {
   // prefetch never open. Re-run the focus flow once wired so an autofocused
   // combobox seeds and opens on load like a real focus does. rAF lets a delegated
   // <drop-down> host finish upgrading first.
+  // A field source is a dependency: the hosting form is where both a native
+  // control's `change` and another combobox's own event arrive.
+  if (dependencyFields.length) {
+    dependencyValues = dependencySignature(container, dependencyFields);
+    const form = container.closest("form");
+    form?.addEventListener("change", onDependencyChange);
+    form?.addEventListener("search-select:change", onDependencyChange);
+  }
+
   if (search.hasAttribute("autofocus")) {
     // Only a fresh, empty add form should steal focus and drive the panel open;
     // a pre-committed single-select keeps its label and whatever native focus it

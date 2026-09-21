@@ -259,11 +259,45 @@ def _device_options(values, *, library: UserLibrary) -> list[SearchSelectOption]
     ]
 
 
+def _run_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
+    """Resolve run ids to options, each by its display name.
+
+    A blank name is numbered rather than stored, so the rows are
+    read through the numbering. The number counts over a tracked
+    game's runs, thus the games the wanted keys name are read
+    first and every run of those games is numbered: a queryset
+    narrowed inside one game numbers its row 1.
+
+    The keys are compared as text. A posted value is a string and a
+    column holds a UUID, and the other resolvers only avoid that
+    because `pk__in` coerces for them.
+    """
+    wanted = {str(getattr(value, "pk", value)) for value in values}
+    if not wanted:
+        return []
+    tracked_games = (
+        library_runs(library)
+        .filter(pk__in=[key for key in wanted])
+        .values_list("player_game_id", flat=True)
+    )
+    return [
+        {"value": run.id, "label": display_name(run), "data": {}}
+        for run in numbered_for(library, list(tracked_games))
+        if str(run.pk) in wanted
+    ]
+
+
 def _platform_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     return [
         {"value": p.id, "label": p.name, "data": {}}
         for p in Platform.objects.visible_to(library).filter(pk__in=values)
     ]
+
+
+#: Where a picker makes the row a person typed.
+DEVICE_CREATE_URL = "/api/devices/"
+PLATFORM_CREATE_URL = "/api/platforms/"
+PLAYTHROUGH_CREATE_URL = "/api/playthrough/"
 
 
 class SearchSelectWidget(forms.Widget):
@@ -278,6 +312,9 @@ class SearchSelectWidget(forms.Widget):
         *,
         search_url,
         options_resolver,
+        create_url="",
+        params=None,
+        commit_sole_option=False,
         multi_select=False,
         items_visible=5,
         items_scroll=10,
@@ -290,6 +327,9 @@ class SearchSelectWidget(forms.Widget):
         super().__init__(attrs)
         self.search_url = search_url
         self.options_resolver = options_resolver
+        self.create_url = create_url
+        self.params = params
+        self.commit_sole_option = commit_sole_option
         self.multi_select = multi_select
         self.items_visible = items_visible
         self.items_scroll = items_scroll
@@ -315,6 +355,9 @@ class SearchSelectWidget(forms.Widget):
                 selected=selected,
                 options=None,
                 search_url=self.search_url,
+                create_url=self.create_url,
+                params=self.params,
+                commit_sole_option=self.commit_sole_option,
                 multi_select=self.multi_select,
                 items_visible=self.items_visible,
                 items_scroll=self.items_scroll,
@@ -686,8 +729,8 @@ _INSTANT_ZONE_FIELDS: Final[dict[str, str]] = {
     host_name: zone_name for zone_name, host_name in SESSION_TIMEZONE_EMBEDS.items()
 }
 
-#: The picker's route: `?game=` narrows it to one game's runs.
-PLAYTHROUGH_API_URL: Final = "/api/playthrough/"
+#: What the picker reads: option-shaped rows of one game's runs.
+PLAYTHROUGH_SEARCH_URL: Final = "/api/playthrough/search"
 
 #: The two refusals the derivation states, on the field that caused each.
 START_WITH_DURATION_ALONE = (
@@ -736,31 +779,28 @@ class TimingDraft:
         )
 
 
-class PlaythroughSelectWidget(forms.Select):
-    """A native ``<select>`` inside ``<playthrough-select>``.
+class PlaythroughSelectWidget(SearchSelectWidget):
+    """The run picker: a combobox that makes the run a person named.
 
-    The options the server renders are the runs of the game the form
-    already knows; the element refills them when the game changes and
-    hides itself while the game holds one run.
+    A `SearchSelect` whose `params` name the game field, so the
+    search narrows on the game the form holds and a creation names
+    the same one, and a change to that field searches again.
+
+    The field row is never hidden. A game holding one run is the
+    very game this picker is for: nobody types a second run's name
+    into a hidden control.
     """
 
-    def __init__(self, *, game_field: str, api_url: str, attrs=None):
-        super().__init__(attrs)
-        self.game_field = game_field
-        self.api_url = api_url
-
-    def render(self, name, value, attrs=None, renderer=None):
-        from common.components import Safe
-        from common.components.custom_elements import _PlaythroughSelect
-
-        select = super().render(name, value, attrs=attrs, renderer=renderer)
-        return render(
-            _PlaythroughSelect(
-                game_field=self.game_field,
-                api_url=self.api_url,
-                selected="" if value in (None, "") else str(value),
-                class_="block",
-            )[Safe(select)]
+    def __init__(self, *, game_field: str, attrs=None):
+        super().__init__(
+            search_url=PLAYTHROUGH_SEARCH_URL,
+            options_resolver=_run_options,
+            create_url=PLAYTHROUGH_CREATE_URL,
+            params={"game_id": {"field": game_field}},
+            #: Required field: a submit with no pick posts a run.
+            commit_sole_option=True,
+            prefetch=DEFAULT_PREFETCH,
+            attrs=attrs,
         )
 
 
@@ -813,7 +853,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
         )
         runs = cast(forms.ModelChoiceField, self.fields["playthrough"])
         runs.queryset = library_runs(library)
-        runs.choices = _run_choices(library, self._known_game())
+        runs.widget.options_resolver = partial(_run_options, library=library)
         cast(
             forms.ModelChoiceField, self.fields["device"]
         ).queryset = Device.objects.for_library(library).order_by("name")
@@ -857,15 +897,6 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
                 capture_default=captures_by_field[field_name],
             )
 
-    def _known_game(self) -> Game | None:
-        """The game the picker lists runs of: the bound one, else the initial."""
-        raw = self.data.get("game") if self.is_bound else self.initial.get("game")
-        if isinstance(raw, Game):
-            return raw
-        if raw in (None, ""):
-            return None
-        return Game.objects.for_library(self.library).filter(pk=raw).first()
-
     def _resolved_field_zone(self, zone_field_name: str) -> ZoneInfo:
         """The zone this instant's digits are meant in: the paired zone
         picker's current value when usable, else the account display zone."""
@@ -886,7 +917,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
     )
     playthrough = forms.ModelChoiceField(
         queryset=Playthrough.objects.none(),
-        widget=PlaythroughSelectWidget(game_field="game", api_url=PLAYTHROUGH_API_URL),
+        widget=PlaythroughSelectWidget(game_field="game"),
         label="Playthrough",
     )
     # started_at/ended_at get DateTimeFieldWidget in __init__ (needs the
@@ -910,7 +941,9 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
         queryset=Device.objects.order_by("name"),
         required=False,
         widget=SearchSelectWidget(
-            search_url="/api/devices/search", options_resolver=_device_options
+            search_url="/api/devices/search",
+            options_resolver=_device_options,
+            create_url=DEVICE_CREATE_URL,
         ),
     )
     note = forms.CharField(required=False, widget=forms.Textarea)
@@ -1159,7 +1192,9 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         queryset=Device.objects.none(),
         required=False,
         widget=SearchSelectWidget(
-            search_url="/api/devices/search", options_resolver=_device_options
+            search_url="/api/devices/search",
+            options_resolver=_device_options,
+            create_url=DEVICE_CREATE_URL,
         ),
     )
     emulated = forms.BooleanField(required=False)
@@ -1395,7 +1430,9 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         queryset=Platform.objects.order_by("name"),
         required=False,
         widget=SearchSelectWidget(
-            search_url="/api/platforms/search", options_resolver=_platform_options
+            search_url="/api/platforms/search",
+            options_resolver=_platform_options,
+            create_url=PLATFORM_CREATE_URL,
         ),
     )
     related_game = forms.ModelChoiceField(

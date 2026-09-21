@@ -216,16 +216,6 @@ register_element("browser-time-zone", "BrowserTimeZone", BrowserTimeZoneProps)
 _BrowserTimeZone = custom_element_builder("browser-time-zone")
 _DateTimeField = custom_element_builder("date-time-field")
 _TimeZoneRow = custom_element_builder("time-zone-row")
-_PlaythroughSelect = custom_element_builder("playthrough-select")
-
-
-class PlaythroughSelectProps(TypedDict):
-    game_field: str  # the form field whose search-select names the game
-    api_url: str  # the run list; `?game=` narrows it, `limit=0` unbounds it
-    selected: str  # the run the form holds, or "" for none
-
-
-register_element("playthrough-select", "PlaythroughSelect", PlaythroughSelectProps)
 
 
 class SelectionFieldsProps(TypedDict):
@@ -591,9 +581,23 @@ class SelectionActionsProps(TypedDict):
 register_element("selection-actions", "SelectionActions", SelectionActionsProps)
 
 
+#: A JSON object of request parameters, carried as text. Props are
+#: attributes and the codegen knows four scalars, so a mapping travels
+#: the way FilterJson does: a string the element parses.
+type SearchSelectParams = str  # {"game_id": {"field": "game"}}
+
+
 class SearchSelectProps(TypedDict):
     name: str
     search_url: str
+    #: Ride the search query and the create POST alike.
+    params: SearchSelectParams
+    #: The endpoint the create row posts to; blank offers no row.
+    create_url: str
+    #: For a create row outside a form; a hosted row reads the form's.
+    csrf: str
+    #: Commit the one option a search answers, where nothing is held.
+    commit_sole_option: bool
     multi: bool
     filter_mode: bool
     free_text: bool

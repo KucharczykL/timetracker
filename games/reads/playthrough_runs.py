@@ -12,6 +12,7 @@ from games.models import (
 )
 from games.reads.playthrough_activity import activity_clock
 from games.reads.playthrough_endpoints import stated_completion, stated_start
+from games.reads.playthrough_referrers import blocking_referrer
 
 
 def library_runs(library: UserLibrary) -> PlaythroughQuerySet:
@@ -83,6 +84,19 @@ def completed_run_count(library: UserLibrary, player_game: PlayerGame | None) ->
     )
 
 
+def sole_ordinary_run(library: UserLibrary, game: Game) -> Playthrough | None:
+    """The one live ordinary run a game holds, or none.
+
+    What a page seeds, so the seed and the picker state one
+    rule: a game holding several runs is a choice.
+    """
+    tracked = tracked_game(library, game)
+    if tracked is None:
+        return None
+    runs = list(live_ordinary_runs(library, tracked)[:2])
+    return runs[0] if len(runs) == 1 else None
+
+
 def run_to_adopt(library: UserLibrary, player_game: PlayerGame) -> Playthrough | None:
     """The run a first statement fills in.
 
@@ -97,3 +111,23 @@ def run_to_adopt(library: UserLibrary, player_game: PlayerGame) -> Playthrough |
     if stated_start(run) is not None or stated_completion(run) is not None:
         return None
     return run
+
+
+def placeholder_run(
+    library: UserLibrary, player_game: PlayerGame
+) -> Playthrough | None:
+    """The empty run tracking minted, and nothing else.
+
+    Narrower than `run_to_adopt`, which names any sole run
+    that states neither act. A person who types a name asks
+    for the run they named: a run that a registered referrer
+    names -- a live session, a live record -- would take the
+    new label and carry those rows under it.
+
+    A blank name as well, because a named run is one
+    somebody already called something.
+    """
+    run = run_to_adopt(library, player_game)
+    if run is None or run.name != "":
+        return None
+    return None if blocking_referrer(run) is not None else run

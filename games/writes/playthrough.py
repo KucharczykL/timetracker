@@ -18,6 +18,7 @@ from games.commands.playthrough import (
     CorrectPlaythroughStart,
     CreatePlaythrough,
     DescribePlaythrough,
+    RecordPlaythroughByName,
     RemovePlaythrough,
     RestorePlaythrough,
     StartPlaythrough,
@@ -28,16 +29,18 @@ from games.events.dispatch import (
     Command,
     CommandRejected,
     CommandResult,
+    RowUnreadable,
     dispatch,
 )
 from games.events.idempotency import IdempotencyKey
 from games.models import Game, PlayerGame, Playthrough, UserLibrary
+from games.reads.events import created_aggregate_id
 from games.reads.playthrough_endpoints import (
     StatedEndpoint,
     stated_completion,
     stated_start,
 )
-from games.reads.playthrough_runs import run_to_adopt
+from games.reads.playthrough_runs import live_ordinary_runs, run_to_adopt
 from games.writes.answers import answered
 from games.writes.playergame import track_game
 from timetracker.temporal import TemporalValue
@@ -292,10 +295,13 @@ def _restate(
 
 
 class RecordedRun(NamedTuple):
-    """What stating a run did besides state it."""
+    """The run a statement reached, and how."""
 
+    playthrough_id: uuid.UUID
     #: True where the game was tracked to hold the run.
     tracked_the_game: bool
+    #: False where the run already stated what was asked.
+    recorded: bool = True
 
 
 def record_run(
@@ -321,14 +327,14 @@ def record_run(
     """
     with answered("playthrough"):
         try:
-            _record_once(actor, game, draft, correlation_id=correlation_id)
+            recorded = _record_once(actor, game, draft, correlation_id=correlation_id)
         except PlayerGameNotTracked:
             #: One retry only. TrackGame states a run,
             #: so the branch runs again rather than re-dispatching.
             track_game(actor, game, correlation_id=correlation_id)
-            _record_once(actor, game, draft, correlation_id=correlation_id)
-            return RecordedRun(tracked_the_game=True)
-    return RecordedRun(tracked_the_game=False)
+            recorded = _record_once(actor, game, draft, correlation_id=correlation_id)
+            return RecordedRun(playthrough_id=recorded, tracked_the_game=True)
+    return RecordedRun(playthrough_id=recorded, tracked_the_game=False)
 
 
 def _record_once(
@@ -337,8 +343,8 @@ def _record_once(
     draft: RunDraft,
     *,
     correlation_id: uuid.UUID,
-) -> None:
-    """Adopt the game's run, or create one.
+) -> uuid.UUID:
+    """Adopt the game's run, or create one; answer its key.
 
     The absent row is refused here rather than left to the
     command: a game tracked between this read and the
@@ -357,8 +363,8 @@ def _record_once(
     adopted = run_to_adopt(actor.library, tracked)
     if adopted is not None:
         _restate(actor, adopted, draft, correlation_id=correlation_id)
-        return
-    _dispatch(
+        return adopted.pk
+    result = _dispatch(
         CreatePlaythrough(
             game_id=game.pk,
             #: The acts the draft states; recording states both.
@@ -370,6 +376,7 @@ def _record_once(
         library=actor.library,
         correlation_id=correlation_id,
     )
+    return created_aggregate_id(result)
 
 
 def remove_run(
@@ -410,3 +417,83 @@ def restore_run(
             idempotency_key=idempotency_key,
             source_metadata=source_metadata,
         )
+
+
+def record_named_run(
+    actor: User,
+    game: Game,
+    name: str,
+    *,
+    correlation_id: uuid.UUID,
+) -> RecordedRun:
+    """State the run a person typed a name for.
+
+    The command decides between naming the placeholder and
+    creating one more, under the stream head's lock.
+
+    A game nothing tracks is tracked first, as `record_run`
+    tracks it. Tracking states a run, and that run is a
+    placeholder, so the second statement names it and the
+    game ends with one named run.
+    """
+    command = RecordPlaythroughByName(game_id=game.pk, name=name)
+    with answered("playthrough"):
+        try:
+            result = _dispatch(
+                command,
+                actor=actor,
+                library=actor.library,
+                correlation_id=correlation_id,
+            )
+        except PlayerGameNotTracked:
+            #: One retry only, as `record_run` retries.
+            track_game(actor, game, correlation_id=correlation_id)
+            result = _dispatch(
+                command,
+                actor=actor,
+                library=actor.library,
+                correlation_id=correlation_id,
+            )
+            return _named_run(actor, game, command, result, tracked_the_game=True)
+        return _named_run(actor, game, command, result, tracked_the_game=False)
+
+
+def _named_run(
+    actor: User,
+    game: Game,
+    command: RecordPlaythroughByName,
+    result: CommandResult,
+    *,
+    tracked_the_game: bool,
+) -> RecordedRun:
+    """The run the dispatch reached.
+
+    An appended outcome names it in its first event. An
+    Unchanged one appended nothing, so the row is read
+    back by the name it already states -- the oldest,
+    where an earlier act left two of them.
+    """
+    if result.sequences is not None:
+        return RecordedRun(
+            playthrough_id=created_aggregate_id(result),
+            tracked_the_game=tracked_the_game,
+        )
+    tracked = PlayerGame.objects.filter(library=actor.library, game=game).first()
+    run = (
+        None
+        if tracked is None
+        else live_ordinary_runs(actor.library, tracked)
+        .filter(name__iexact=command.name)
+        .first()
+    )
+    if run is None:
+        #: Read outside the lock that answered Unchanged: a removal
+        #: between the two lands here.
+        raise RowUnreadable(
+            f"RecordPlaythroughByName answered Unchanged about name "
+            f"{command.name!r} at game {game.pk}, and library "
+            f"{actor.library.pk} holds no live ordinary run of that name."
+        )
+    return RecordedRun(
+        playthrough_id=run.pk, tracked_the_game=tracked_the_game, recorded=False
+    )

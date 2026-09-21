@@ -109,7 +109,7 @@ def test_game_bearing_endpoints_accept_the_new_identity(library_client):
         json.dumps({"game_id": str(game.pk), "note": "played"}),
         content_type="application/json",
     )
-    assert created.status_code == 204
+    assert created.status_code == 201
 
     session = session_row(game, started_at=timezone.now())
     detail = client.get(f"/api/session/{session.pk}").json()

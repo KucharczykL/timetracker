@@ -550,3 +550,12 @@ def test_a_record_and_a_session_together_are_refused(
             record=record,
             session=session,
         )
+
+
+def test_the_device_picker_offers_to_make_a_device(owned_library, game):
+    """The same field as the session form, and the same gap."""
+    form = HistoricalPlaytimeForm(
+        library=owned_library, game=game, presentation=PRESENTATION
+    )
+
+    assert 'create-url="/api/devices/"' in str(form["device"])

@@ -1,10 +1,13 @@
 """The session form derives one timing statement from what is filled."""
 
+import html
 from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from django.urls import reverse
 from session_rows import run_id, session_row
+from stated_runs import another_run
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -175,13 +178,63 @@ def test_the_picker_lists_the_known_games_runs_by_display_name(owned_library, ga
         initial={"game": game}, library=owned_library, presentation=PRESENTATION
     )
 
-    assert form.fields["playthrough"].choices == [
-        (run_id(owned_library, game), "Playthrough 1")
-    ]
-    assert "<playthrough-select" in str(form["playthrough"])
+    rendered = str(form["playthrough"])
+    assert 'search-url="/api/playthrough/search"' in rendered
+    assert 'create-url="/api/playthrough/"' in rendered
+    assert '"game_id": {"field": "game"}' in html.unescape(rendered)
+    assert str(run_id(owned_library, game)) not in rendered
 
 
-def test_the_picker_is_empty_before_a_game_is_known(owned_library):
+def test_the_picker_offers_the_run_the_form_holds(owned_library, game):
+    """A bound render labels the held run through the numbering."""
+    held = run_id(owned_library, game)
+    form = SessionForm(
+        initial={"game": game, "playthrough": held},
+        library=owned_library,
+        presentation=PRESENTATION,
+    )
+
+    rendered = str(form["playthrough"])
+    assert str(held) in rendered
+    assert "Playthrough 1" in rendered
+
+
+def test_only_the_run_picker_holds_a_sole_option(owned_library, game):
+    """A required field takes the one run; an optional one waits."""
+    form = SessionForm(
+        initial={"game": game}, library=owned_library, presentation=PRESENTATION
+    )
+
+    assert 'commit-sole-option="true"' in str(form["playthrough"])
+    assert 'commit-sole-option="false"' in str(form["device"])
+
+
+def test_the_device_picker_offers_to_make_a_device(owned_library):
+    """A device the library lacks is made from the picker."""
     form = SessionForm(library=owned_library, presentation=PRESENTATION)
 
-    assert form.fields["playthrough"].choices == []
+    assert 'create-url="/api/devices/"' in str(form["device"])
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_page_seeds_a_sole_run_and_nothing_else(client, owned_user):
+    """The seed states the rule the picker states.
+
+    The picker holds the one run an answer states, so a page
+    that seeds the field holds one run and no more: choosing
+    among several for somebody is a choice they must notice
+    to undo.
+    """
+    library = owned_user.library
+    game = Game.objects.create(library=library, name="Tunic")
+    born = run_id(library, game)
+    client.force_login(owned_user)
+    url = reverse("games:add_session_for_game", args=[game.pk])
+
+    assert born in client.get(url).content.decode()
+
+    later = another_run(owned_user, game)
+    rendered = client.get(url).content.decode()
+    assert born not in rendered
+    #: Nor the latest of them: the picker holds a sole run alone.
+    assert str(later.pk) not in rendered

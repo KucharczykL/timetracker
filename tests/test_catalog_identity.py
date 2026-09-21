@@ -135,3 +135,28 @@ def test_uuid_is_absent_from_the_generated_openapi_schema():
     platform_schema = next(name for name in schemas if name.startswith("PlatformOut"))
     assert "uuid" not in schemas[game_schema].get("properties", {})
     assert "uuid" not in schemas[platform_schema].get("properties", {})
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/games/search",
+        "/api/platforms/search",
+        "/api/devices/search",
+        "/api/playthrough/search",
+        "/api/presets/",
+    ],
+)
+def test_every_picker_search_answers_one_option_schema(path: str):
+    """One schema, and a value the whole cutover made a UUID.
+
+    A search over a row the cutover never converts states a
+    value of its own type, as `StringOption` does, rather than
+    a second copy of this one.
+    """
+    document = api.get_openapi_schema()
+    answer = document["paths"][path]["get"]["responses"][200]
+    schema = answer["content"]["application/json"]["schema"]
+    assert schema["items"] == {"$ref": "#/components/schemas/PickerOption"}
+    value = document["components"]["schemas"]["PickerOption"]["properties"]["value"]
+    assert (value["type"], value["format"]) == ("string", "uuid")

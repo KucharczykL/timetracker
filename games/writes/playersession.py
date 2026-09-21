@@ -31,8 +31,9 @@ from games.events.append import SourceMetadata
 from games.events.dispatch import Command, CommandRejected, CommandResult, dispatch
 from games.events.idempotency import IdempotencyKey
 from games.events.playersession import ZoneName
-from games.models import Game, LibraryEvent, PlayerSession, Playthrough, UserLibrary
+from games.models import Game, PlayerSession, Playthrough, UserLibrary
 from games.reads.calendar import calendar_day_zone
+from games.reads.events import created_aggregate_id
 from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
 from games.writes.answers import answered
 
@@ -71,17 +72,6 @@ def _dispatch(
         correlation_id=correlation_id,
         source_metadata=source_metadata,
     )
-
-
-def created_aggregate_id(result: CommandResult) -> uuid.UUID:
-    """The row a creation wrote: its first event's aggregate id.
-
-    Never `stream_id`, which is the library's one stream head.
-    """
-    assert result.sequences is not None
-    return LibraryEvent.objects.get(
-        stream_id=result.stream_id, sequence=result.sequences.first
-    ).aggregate_id
 
 
 def record_session(

@@ -54,8 +54,13 @@ def _select_first_game(page):
     games = page.locator('search-select[name="game"]')
     games.locator("[data-search-select-search]").click()
     games.locator("[data-search-select-option]").first.click()
-    #: The run picker fills from the API once the game is picked.
-    expect(page.locator('select[name="playthrough"] option')).to_have_count(1)
+    #: The run picker searches on the game and holds its one run.
+    expect(
+        page.locator(
+            'search-select[name="playthrough"] '
+            '[data-search-select-pills] input[type="hidden"]'
+        )
+    ).to_have_count(1)
 
 
 def _fill_segments(page, container: str, values: dict) -> None:

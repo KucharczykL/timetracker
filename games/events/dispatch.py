@@ -90,6 +90,7 @@ class CommandName(CommandVocabulary):
     PLAYERGAME_RESTORE = "library.playergame.restore"
     PLAYERGAME_RECORD_FACTS = "library.playergame.record_facts"
     PLAYTHROUGH_CREATE = "library.playthrough.create"
+    PLAYTHROUGH_RECORD_BY_NAME = "library.playthrough.record_by_name"
     PLAYTHROUGH_START = "library.playthrough.start"
     PLAYTHROUGH_COMPLETE = "library.playthrough.complete"
     PLAYTHROUGH_DESCRIBE = "library.playthrough.describe"

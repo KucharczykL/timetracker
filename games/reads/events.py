@@ -1,10 +1,11 @@
-"""One library's stream, read by batch.
+"""One library's stream, read by batch or by one dispatch.
 
-From the events: no projection answers this.
+From the events: no projection answers these.
 """
 
 import uuid
 
+from games.events.dispatch import CommandResult
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, AggregateType
 from games.models import LibraryEvent, LibraryEventQuerySet, UserLibrary
 
@@ -30,3 +31,18 @@ def batch_aggregate_ids(
     )
     #: dict, not set: append order matters.
     return list(dict.fromkeys(named.values_list("aggregate_id", flat=True)))
+
+
+def created_aggregate_id(result: CommandResult) -> uuid.UUID:
+    """The row a creation wrote: its first event's aggregate id.
+
+    Never `stream_id`, which is the library's one stream head.
+    The first event is the creation, which is the caller's to
+    know: an outcome that appended nothing states no sequence.
+    """
+    if result.sequences is None:
+        #: Not an assert: `-O` strips one.
+        raise ValueError("An outcome that appended no event names no created row.")
+    return LibraryEvent.objects.get(
+        stream_id=result.stream_id, sequence=result.sequences.first
+    ).aggregate_id

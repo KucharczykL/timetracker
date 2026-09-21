@@ -29,11 +29,18 @@ from django.utils.timezone import now as django_timezone_now
 from ninja import Field, Header, NinjaAPI, Query, Router, Schema, Status
 from ninja.errors import HttpError
 from ninja.security import django_auth
-from pydantic import BeforeValidator, ConfigDict, PlainSerializer, WithJsonSchema
+from pydantic import (
+    BeforeValidator,
+    ConfigDict,
+    PlainSerializer,
+    WithJsonSchema,
+    model_validator,
+)
 
 from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_api
+from games.api_creation import RowRefused, created_by_form
 from games.commands.playersession import (
     CorrectedTiming,
     DurationOnlyTiming,
@@ -42,7 +49,7 @@ from games.commands.playersession import (
     TimingStatement,
 )
 from games.commands.playthrough import ActStatement
-from games.events.dispatch import IDEMPOTENCY_KEY_MAX_LENGTH
+from games.events.dispatch import IDEMPOTENCY_KEY_MAX_LENGTH, RowUnreadable
 from games.events.idempotency import IdempotencyKey
 from games.filters import (
     MODE_PARSERS,
@@ -53,7 +60,7 @@ from games.filters import (
     parse_session_filter,
 )
 from games.formatting import zone_label
-from games.forms import game_option_data
+from games.forms import DeviceForm, PlatformForm, game_option_data
 from games.models import (
     Device,
     FilterPreset,
@@ -95,7 +102,13 @@ from games.writes.playersession import (
     move_session,
     record_session,
 )
-from games.writes.playthrough import RunDraft, record_run, remove_run, restate_run
+from games.writes.playthrough import (
+    RunDraft,
+    record_named_run,
+    record_run,
+    remove_run,
+    restate_run,
+)
 from timetracker.config import SettingSource
 from timetracker.settings_commands import (
     SettingLockedError,
@@ -187,6 +200,38 @@ class PlaythroughIn(Schema):
     started: StatedTemporal = None
     completed: StatedTemporal = None
     note: str = ""
+    name: str = ""
+
+    @model_validator(mode="after")
+    def one_statement(self) -> PlaythroughIn:
+        """A name states a run; an act states one too.
+
+        The two write paths this body chooses between state
+        different facts, and the name is read first. A body
+        stating both would record the name alone, so it is
+        refused rather than half read.
+        """
+        if self.name and (self.started or self.completed or self.note):
+            raise ValueError(
+                "A named run states no act. Send the name alone, or send "
+                "the acts and the note without a name."
+            )
+        return self
+
+
+class CreatedRow(Schema):
+    """The row a create route reached, as a picker reads it.
+
+    One answer for every create route, because one element
+    reads them all, and it spells its key the way a search
+    answer spells one: the element upserts both alike.
+
+    Reached, not made: a name the library already holds
+    answers that row.
+    """
+
+    value: str
+    label: str
 
 
 class UpdatePlaythroughIn(Schema):
@@ -238,25 +283,22 @@ class PlaythroughOut(Schema):
         return days_to_finish(run)
 
 
-# One schema per search endpoint rather than one shared by all three: each
-# entity's option value is whatever that entity's primary key is, and those
-# stop agreeing as the identity cutover promotes them one group at a time.
-class GameOption(Schema):  # mirrors SearchSelectOption
+class PickerOption(Schema):  # mirrors SearchSelectOption
+    """One picker row, keyed by the row's own primary key.
+
+    One schema for every search a `SearchSelect` reads. Each
+    endpoint stated its own while the identity cutover promoted
+    one group of keys at a time and the value types disagreed;
+    every converted model states a UUIDv7 now, and
+    `RESIDUAL_INTEGER_PRIMARY_KEYS` names what never will.
+    A picker over one of those states a value of its own type,
+    as `StringOption` does.
+    """
+
     value: UUIDv7
     label: str
-    data: dict
-
-
-class PlatformOption(Schema):  # mirrors SearchSelectOption
-    value: UUIDv7
-    label: str
-    data: dict
-
-
-class DeviceOption(Schema):  # mirrors SearchSelectOption
-    value: UUIDv7
-    label: str
-    data: dict
+    #: What the element reads: `SearchSelectOption.data` is text.
+    data: dict[str, str]
 
 
 class StringOption(Schema):  # SearchSelectOption with a string value (e.g. group names)
@@ -265,7 +307,7 @@ class StringOption(Schema):  # SearchSelectOption with a string value (e.g. grou
     data: dict
 
 
-@game_router.get("/search", response=list[GameOption])
+@game_router.get("/search", response=list[PickerOption])
 def search_games(request, q: str = "", limit: int = 10):
     library = cast(User, request.user).library
     qs = (
@@ -302,7 +344,10 @@ def partial_update_game(request, game_id: UUIDv7, payload: GameStatusUpdate):
 
 
 def _readable_runs(library: UserLibrary) -> QuerySet[Playthrough]:
-    """What the two GET routes answer about, each row numbered."""
+    """What every read answers about, each row numbered.
+
+    Three routes and the read-back a creation makes.
+    """
     return with_display_number(library_runs(library)).select_related(
         "player_game__game"
     )
@@ -346,26 +391,101 @@ def list_playthroughs(
     return runs if limit == 0 else runs[:limit]
 
 
-@playthrough_router.post("/", response={204: None})
+@playthrough_router.post("/", response={201: CreatedRow})
 def create_playthrough(request, payload: PlaythroughIn):
-    library = cast(User, request.user).library
+    """State one run at a game; answer the row it reached.
+
+    Two write paths meet here, and the body says which. A
+    name alone is the picker's create row, which states no
+    act and adopts the placeholder a tracked game holds. A
+    body that states an act is the add-run form, which
+    keeps `record_run`'s own rule.
+    """
+    actor = cast(User, request.user)
+    library = actor.library
     game = owned_or_404(Game.objects.for_library(library), library, id=payload.game_id)
-    recorded = record_run(
-        cast("User", request.user),
-        game,
-        RunDraft(
-            #: Recording states both acts, dated or not.
-            started=ActStatement(payload.started),
-            completed=ActStatement(payload.completed),
-            note=payload.note,
-        ),
-        correlation_id=new_correlation_id(),
-    )
-    messages.success(request, "Playthrough recorded")
+    correlation_id = new_correlation_id()
+    if payload.name:
+        recorded = record_named_run(
+            actor, game, payload.name, correlation_id=correlation_id
+        )
+    else:
+        recorded = record_run(
+            actor,
+            game,
+            RunDraft(
+                #: Recording states both acts, dated or not.
+                started=ActStatement(payload.started),
+                completed=ActStatement(payload.completed),
+                note=payload.note,
+            ),
+            correlation_id=correlation_id,
+        )
+    #: Read back before a word is said: a message rides the answer
+    #: whatever its status.
+    with answered("playthrough"):
+        row = _created_run(library, game, recorded.playthrough_id)
+    if recorded.recorded:
+        messages.success(request, "Playthrough recorded")
+    else:
+        #: The answer is the run that name already names.
+        messages.info(request, f"{row.label} is already at this game")
     if recorded.tracked_the_game:
         #: Tracking is an act of its own, so it is said.
         messages.info(request, f"{game} is now tracked in your library.")
-    return Status(204, None)
+    return Status(201, row)
+
+
+def _created_run(
+    library: UserLibrary, game: Game, playthrough_id: uuid.UUID
+) -> CreatedRow:
+    """The row a creation reached, as a picker reads it.
+
+    Narrowed on the partition the number counts over, then
+    picked in Python: a queryset narrowed to one key counts
+    the number over that one row.
+    """
+    numbered = _readable_runs(library).filter(player_game__game_id=game.pk)
+    for run in numbered:
+        if run.pk == playthrough_id:
+            return CreatedRow(value=str(run.pk), label=display_name(run))
+    #: This library's own row, stated one act ago: the row is
+    #: wrong, not the statement.
+    raise RowUnreadable(
+        f"Run {playthrough_id} at game {game.pk} was recorded in library "
+        f"{library.pk} and no read of that game's runs answers it."
+    )
+
+
+@playthrough_router.get("/search", response=list[PickerOption])
+def search_playthroughs(request, game_id: UUIDv7, q: str = "", limit: int = 10):
+    """One game's live ordinary runs, as picker options.
+
+    Declared ahead of the route that reads a key, which
+    would otherwise take `search` for one and answer 422.
+
+    The list route answers `PlaythroughOut`, which states a
+    `display_name` and no `value`, and reads no query. A
+    picker cannot read it, and widening it would make one
+    route answer two readers.
+
+    The game is required, where the list leaves it optional:
+    a picker offers the runs of the game a form names, never
+    every run. It is `game_id`, as the creation body names it,
+    because the picker reads one mapping for its query and its
+    POST alike.
+    """
+    library = cast(User, request.user).library
+    #: Narrowed on the partition the number counts over, so
+    #: the rows keep the numbers the game's page shows. The
+    #: query narrows further, and only ever to named rows: a
+    #: blank name holds no text for `icontains` to find, thus
+    #: a numbered run leaves the panel as soon as one is typed.
+    runs = _readable_runs(library).filter(player_game__game_id=game_id)
+    if q:
+        runs = runs.filter(name__icontains=q)
+    runs = runs.order_by("-created_at", "id")[:limit]
+    return [{"value": run.id, "label": display_name(run), "data": {}} for run in runs]
 
 
 @playthrough_router.get("/{playthrough_id}", response=PlaythroughOut)
@@ -411,7 +531,7 @@ def remove_playthrough(request, playthrough_id: UUIDv7):
     return Status(204, None)
 
 
-@device_router.get("/search", response=list[DeviceOption])
+@device_router.get("/search", response=list[PickerOption])
 def search_devices(request, q: str = "", limit: int = 10):
     library = cast(User, request.user).library
     qs = Device.objects.for_library(library)
@@ -428,7 +548,70 @@ def search_devices(request, q: str = "", limit: int = 10):
     return [{"value": d.id, "label": d.name, "data": {}} for d in qs[:limit]]
 
 
-@platform_router.get("/search", response=list[PlatformOption])
+class RowIn(Schema):
+    """The one fact a create row states."""
+
+    #: An unknown key is a mistake, not silence.
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+
+
+@api.exception_handler(RowRefused)
+def _row_refused(request, refusal: RowRefused):
+    #: The sentence rides the middleware's header, which is
+    #: what shows the toast. Nothing else queues one here.
+    messages.error(request, refusal.sentence)
+    return api.create_response(request, {"detail": refusal.sentence}, status=422)
+
+
+@device_router.post("/", response={201: CreatedRow})
+def create_device(request, payload: RowIn):
+    """One device, named and nothing else.
+
+    `type` is stated here because the form requires it and
+    the row's default names it. A person corrects it on the
+    device page.
+
+    A device the library already holds is answered rather
+    than made a second time. The column states no rule of
+    its own, and the create row is judged on the loaded
+    window: a library holding more devices than the window
+    shows would type a name it already holds.
+    """
+    library = cast(User, request.user).library
+    held = (
+        Device.objects.for_library(library)
+        .filter(name__iexact=payload.name.strip())
+        .first()
+    )
+    if held is not None:
+        messages.info(request, f"{held.name} is already in your library")
+        return Status(201, CreatedRow(value=str(held.pk), label=held.name))
+    device = created_by_form(
+        DeviceForm, library=library, name=payload.name, type=Device.UNKNOWN
+    )
+    messages.success(request, f"{device.name} added")
+    return Status(201, CreatedRow(value=str(device.pk), label=device.name))
+
+
+@platform_router.post("/", response={201: CreatedRow})
+def create_platform(request, payload: RowIn):
+    """One platform, private to the library that made it.
+
+    A shared platform is a fixture, not a thing a picker
+    makes. Two rules refuse a duplicate and they are not
+    one: `Platform.clean` refuses a private row shadowing a
+    shared one, and the private unique constraint refuses
+    the library's own.
+    """
+    library = cast(User, request.user).library
+    platform = created_by_form(PlatformForm, library=library, name=payload.name)
+    messages.success(request, f"{platform.name} added")
+    return Status(201, CreatedRow(value=str(platform.pk), label=platform.name))
+
+
+@platform_router.get("/search", response=list[PickerOption])
 def search_platforms(request, q: str = "", limit: int = 10):
     library = cast(User, request.user).library
     qs = Platform.objects.visible_to(library)
@@ -1064,14 +1247,6 @@ api.add_router("/filter", filter_router)
 preset_router = Router()
 
 
-class PresetOption(Schema):
-    """Preset picker option; empty string values mean inherit."""
-
-    value: UUIDv7
-    label: str
-    data: dict[str, str]
-
-
 class PresetIn(Schema):
     # ``filter: dict | None`` makes Ninja reject scalar/array payloads with a 422
     # before the handler runs — the schema subsumes the old hand-rolled
@@ -1109,9 +1284,12 @@ def _reject_unknown_preset_mode(request, mode: str) -> None:
         raise HttpError(400, f"Unknown preset mode '{mode}'.")
 
 
-@preset_router.get("/", response=list[PresetOption])
+@preset_router.get("/", response=list[PickerOption])
 def list_presets(request, mode: str = "games", q: str = "", limit: int = 100):
     """The current library's presets for one mode, shaped for the combobox picker.
+
+    An empty string in a row's ``data`` means the preset
+    inherits that value, which is the picker's own convention.
 
     ``limit=0`` means unbounded — the filter bar's overwrite-collision check
     fetches every name, so a >limit preset collection can't silently miss a

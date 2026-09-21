@@ -3,9 +3,8 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, ClassVar, NamedTuple, Protocol, cast
+from typing import ClassVar, NamedTuple, cast
 
-from django.db import models
 from django.db.models import QuerySet
 
 from games.commands.playergame import tracked_game
@@ -31,14 +30,14 @@ from games.events.playthrough import (
 )
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import (
-    HistoricalPlaytimeRun,
-    PlayerSession,
     Playthrough,
     PlaythroughKind,
-    ProjectionModel,
 )
-from games.projections import FieldName
 from games.reads.playthrough_endpoints import stated_completion, stated_start
+from games.reads.playthrough_referrers import (
+    blocking_referrer,
+    foreign_referrer,
+)
 from timetracker.temporal import TemporalQualifier, TemporalValue, stated_date
 
 #: Read off the column, so the refusal and the constraint cannot drift.
@@ -106,6 +105,24 @@ class ActStatement(NamedTuple):
     #: None is a day nobody wrote down.
     when: TemporalValue | None
     note: str = ""
+
+
+def refuse_name_the_column_cannot_hold(name: str) -> None:
+    """Refuse a name longer than the column holds.
+
+    In a build, not a __post_init__: a refusal carries a
+    sentence, and a value error carries none.
+    """
+    if len(name) <= PLAYTHROUGH_NAME_MAX_LENGTH:
+        return
+    raise CommandRejected(
+        f"The stated name is {len(name)} characters, and the "
+        f"column holds {PLAYTHROUGH_NAME_MAX_LENGTH}.",
+        sentence=(
+            "That name is too long. Keep it to "
+            f"{PLAYTHROUGH_NAME_MAX_LENGTH} characters or fewer."
+        ),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,6 +197,75 @@ class CreatePlaythrough(Command):
                 )
             )
         return events
+
+
+@dataclass(frozen=True, slots=True)
+class RecordPlaythroughByName(Command):
+    """State the run a person named at a game.
+
+    One command rather than a read and a dispatch: the
+    build runs under the stream head's lock, and a
+    session recorded between a read and an append would
+    be carried under a name nobody gave it.
+
+    The placeholder tracking minted is named rather than
+    left beside the new run. Creating one regardless
+    would leave a never-played game holding a blank run
+    forever, which is what `record_run` adopts to avoid;
+    adopting as widely as `record_run` does would rename
+    a run that already holds sessions.
+    """
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_RECORD_BY_NAME
+    #: A UUID, because Command fingerprints its fields.
+    game_id: uuid.UUID
+    name: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "name", self.name.strip())
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        #: Function-local: that module reads this one's registry.
+        from games.reads.playthrough_runs import (
+            live_ordinary_runs,
+            placeholder_run,
+        )
+
+        tracked = tracked_game(context, self.game_id)
+        #: Under dispatch's lock: the mark cannot move.
+        if tracked.removed_at is not None:
+            raise CommandRejected(
+                f"This library removed game {self.game_id}, so it records no "
+                "further runs at it. A removed game is restored first.",
+                sentence=(
+                    "That game was removed from your library. Restore it "
+                    "before adding a playthrough."
+                ),
+            )
+        if not self.name:
+            raise CommandRejected(
+                f"A run at game {self.game_id} was stated with no name, and "
+                "this command states nothing else about it.",
+                sentence="Type a name for the playthrough.",
+            )
+        refuse_name_the_column_cannot_hold(self.name)
+        #: Ahead of the placeholder read: a run already called this
+        #: is the run the person named. Case is ignored, as the
+        #: create row ignores it.
+        if (
+            live_ordinary_runs(context.library, tracked)
+            .filter(name__iexact=self.name)
+            .exists()
+        ):
+            return Unchanged("This game already holds a run of that name.")
+        adopted = placeholder_run(context.library, tracked)
+        if adopted is None:
+            run_id = uuid.uuid7()
+            return [
+                playthrough_created(tracked.pk, playthrough_id=run_id),
+                playthrough_name_changed(run_id, name=self.name),
+            ]
+        return [playthrough_name_changed(adopted.pk, name=self.name)]
 
 
 class PlaythroughNotHeld(RowNotHeld):
@@ -343,16 +429,8 @@ class DescribePlaythrough(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
-        #: In build, not __post_init__: a refusal carries a sentence.
-        if self.name is not None and len(self.name) > PLAYTHROUGH_NAME_MAX_LENGTH:
-            raise CommandRejected(
-                f"The stated name is {len(self.name)} characters, and the "
-                f"column holds {PLAYTHROUGH_NAME_MAX_LENGTH}.",
-                sentence=(
-                    "That name is too long. Keep it to "
-                    f"{PLAYTHROUGH_NAME_MAX_LENGTH} characters or fewer."
-                ),
-            )
+        if self.name is not None:
+            refuse_name_the_column_cannot_hold(self.name)
         #: Only a name being taken away. A row born blank is left as it
         #: is, so a save that repeats that blank still states its note.
         if self.name == "" and run.name != "" and run.kind != PlaythroughKind.ORDINARY:
@@ -468,124 +546,6 @@ def _refuse_under_a_removed_game(run: Playthrough) -> None:
                 "changing its playthroughs."
             ),
         )
-
-
-class RemovableReads(Protocol):
-    """A manager whose reads skip a removed row."""
-
-    def alive(self) -> QuerySet[Any]: ...
-
-
-def _skips_removed_rows(model: type[ProjectionModel]) -> bool:
-    """Whether the model's manager states `alive()`."""
-    return hasattr(model._default_manager, "alive")
-
-
-class BlockingReferrer(NamedTuple):
-    """One registered way to name a run."""
-
-    #: A projection: ProjectionModel gives it library.
-    model: type[ProjectionModel]
-    #: Field name alias from games/projections.py.
-    field_name: FieldName
-    #: What a person is shown.
-    sentence: str
-
-    @classmethod
-    def on(
-        cls, model: type[ProjectionModel], field_name: FieldName, *, sentence: str
-    ) -> BlockingReferrer:
-        """The one construction path; refuses an entry the query cannot run.
-
-        A malformed entry would raise a FieldError inside build(),
-        which answers every removal with a 500. Refusing it here
-        states it at import.
-        """
-        field = model._meta.get_field(field_name)
-        if not isinstance(field, models.ForeignKey):
-            raise TypeError(f"{model.__name__}.{field_name} is not a foreign key.")
-        if field.related_model is not Playthrough:
-            raise TypeError(
-                f"{model.__name__}.{field_name} names "
-                f"{field.related_model.__name__}, not a playthrough."
-            )
-        if not _skips_removed_rows(model):
-            raise TypeError(
-                f"{model.__name__} states no alive(), so a removed row of it "
-                "would keep a run in place forever."
-            )
-        return cls(model, field_name, sentence)
-
-
-HISTORICAL_PLAYTIME_RECORDED = (
-    "Historical playtime is recorded on this playthrough. Restate it onto "
-    "another playthrough, or remove it, before removing this one."
-)
-
-#: Every sentence names a remedy that exists.
-BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
-    BlockingReferrer.on(
-        PlayerSession,
-        "playthrough",
-        sentence=(
-            "Sessions are recorded on this playthrough. Move them to "
-            "another playthrough before removing it."
-        ),
-    ),
-    BlockingReferrer.on(
-        HistoricalPlaytimeRun,
-        "playthrough",
-        sentence=HISTORICAL_PLAYTIME_RECORDED,
-    ),
-)
-
-
-def _live_rows_naming(referrer: BlockingReferrer, run: Playthrough) -> QuerySet[Any]:
-    """Every live row of the referrer naming the run."""
-    #: `on()` refuses a manager without it. The annotation on
-    #: `_default_manager` names the base, which cannot say so.
-    reads = cast(RemovableReads, referrer.model._default_manager)
-    return reads.alive().filter(**{referrer.field_name: run})
-
-
-def blocking_referrer(run: Playthrough) -> BlockingReferrer | None:
-    """The first registered entry a live row of this library answers.
-
-    Scoped on the library, as `_other_live_ordinary_runs` is: a
-    person cannot act on advice about rows their library does not
-    hold, so a foreign row is `foreign_referrer`'s to refuse.
-    """
-    for referrer in BLOCKING_REFERRERS:
-        if _live_rows_naming(referrer, run).filter(library=run.library).exists():
-            return referrer
-    return None
-
-
-class ForeignReferrer(NamedTuple):
-    """Rows of other libraries naming a run."""
-
-    referrer: BlockingReferrer
-    library_ids: tuple[uuid.UUID, ...]
-
-
-def foreign_referrer(run: Playthrough) -> ForeignReferrer | None:
-    """The first registered entry a row of another library answers.
-
-    Such a row is the drift `audit_library_ownership` reports.
-    Removing the run would leave it live under a removed run,
-    where no read finds it and no restore reaches it.
-    """
-    for referrer in BLOCKING_REFERRERS:
-        library_ids = tuple(
-            _live_rows_naming(referrer, run)
-            .exclude(library=run.library)
-            .order_by("library_id")
-            .values_list("library_id", flat=True)
-            .distinct()
-        )
-        if library_ids:
-            return ForeignReferrer(referrer, library_ids)
-    return None
 
 
 def _refuse_a_foreign_referrer(run: Playthrough) -> None:

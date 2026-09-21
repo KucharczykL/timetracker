@@ -47,6 +47,7 @@ first open, ``0`` = none) seeds that window so the panel is populated before the
 user types.
 """
 
+import json
 from collections.abc import Callable, Iterable, Sequence
 from typing import Literal, NamedTuple, TypedDict
 
@@ -71,6 +72,23 @@ from common.components.primitives import (
     Template,
     filter_widget_attributes,
 )
+
+
+class LiteralParam(TypedDict):
+    """A value the server states at render time."""
+
+    value: str
+
+
+class FieldParam(TypedDict):
+    """The name of a sibling form field, read when used."""
+
+    field: str
+
+
+#: One mapping, read by the search query and by the create POST.
+#: A field source is a dependency: a change to it searches again.
+type ParamSources = dict[str, LiteralParam | FieldParam]
 
 
 class SearchSelectOption(TypedDict):
@@ -293,6 +311,24 @@ def _option_row(option: SearchSelectOption, *, selected: bool = False) -> Node:
     )[_label_slot(option["label"])]
 
 
+def _create_row() -> Node:
+    """The row that makes the thing a person typed.
+
+    Rendered hidden, and shown by the element once the
+    answer decides that no loaded label equals the query.
+    Its own attribute, not an option's: `renderRows`
+    empties every option row on each answer, and a create
+    row wearing that attribute would vanish mid-keystroke.
+    """
+    return Div(
+        data_search_select_create="",
+        role="option",
+        aria_selected="false",
+        hidden="",
+        class_=_OPTION_ROW_CLASS,
+    )[Span(data_label="")]
+
+
 def _group_header(label: str) -> Node:
     return Div(
         data_search_select_group_header="",
@@ -321,6 +357,7 @@ def _combobox_children(
     templates: list[Node] | None = None,
     options_class: str | None = None,
     no_results_text: str = "No results",
+    create_row: Node | None = None,
     menu_target: bool = False,
     marker: list[Node] | None = None,
 ) -> list[Node]:
@@ -372,6 +409,9 @@ def _combobox_children(
         options_class = panel_class
     else:
         options_class = panel_class + " hidden"
+    panel_children = [*options_children, no_results]
+    if create_row:
+        panel_children.append(create_row)
     options_panel = Div(
         # The [data-menu] hook + initial hidden state when hosted in a <drop-down>.
         [("data-menu", ""), ("hidden", "")] if menu_target else [],
@@ -384,7 +424,7 @@ def _combobox_children(
         tabindex="-1",
         style=f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem",
         class_=options_class,
-    )[*options_children, no_results]
+    )[*panel_children]
 
     return [pills, search, *(marker or []), options_panel, *(templates or [])]
 
@@ -396,6 +436,10 @@ def SearchSelect(
     options: list[SearchSelectOption] | None = None,
     option_groups: list[OptionGroup] | None = None,
     search_url: str = "",
+    params: ParamSources | None = None,
+    create_url: str = "",
+    csrf: str = "",
+    commit_sole_option: bool = False,
     multi_select: bool = False,
     always_visible: bool = False,
     items_visible: int = 5,
@@ -551,6 +595,7 @@ def SearchSelect(
         ]
 
     children = _combobox_children(
+        create_row=_create_row() if create_url else None,
         pills=pills,
         search_attributes=search_attrs,
         options_children=option_rows,
@@ -571,6 +616,10 @@ def SearchSelect(
         [("data-toggle", "")] if host_dropdown else [],
         name=name,
         search_url=search_url,
+        params=json.dumps(params) if params else "",
+        create_url=create_url,
+        csrf=csrf,
+        commit_sole_option="true" if commit_sole_option else "false",
         multi="true" if multi_select else "false",
         filter_mode="false",
         free_text="false",
