@@ -383,10 +383,17 @@ From it a person:
   out of the filter's grammar, so a `game_filter`, a search, or #717's
   facet that lands on one game shows it too; and a sort on it, keyed
   `playthrough` in `SESSION_SORTS` whether or not the column shows, so a
-  preset keeps it. The bucket sorts last under its own name in both
-  directions, as `apply_sort` already pins an absent value last in both:
+  preset keeps it. The sort leads with the game's `sort_name`, constant
+  on the organizer and a grouping on the unnarrowed list, where runs of
+  unrelated games would otherwise interleave by start day; then the
+  bucket's null, then `DISPLAY_ORDER`, then `sort_instant`. So the bucket
+  sorts last within its own game under its own name, in both directions,
+  as `apply_sort` already pins an absent value last in both:
   `DISPLAY_ORDER` numbers ordinary runs only and the bucket has no place
-  in it, which a null sort key states for free. While the column shows,
+  in it, which a null sort key states for free. `SortSpec` grows a `then`
+  tuple for the order behind one key, which also gives the Playthrough
+  list's own run column the sort key it lacked; #715 takes that column's
+  key, the user's widening. While the column shows,
   the name cell drops its run label, so the run is said in one place. The
   column reads `every_run_label` in `games/reads/session_run_labels.py`,
   #714's, which names a sole run too; `ambiguous_run_labels` beside it is
@@ -511,9 +518,12 @@ cost is judged.
    beside the move inverse over the `(library, aggregate_id)` index #713
    shipped, and the confirmation's five columns.
 5. **#715** ORG-02 — the organizer: the Playthrough column and sort on the
-   session list, Game detail's "Organize" link beside "View all", the same
-   page under `sort=playthrough`, the mobile cell verified on the list.
-   Absorbs #716. The other tables' summaries are #1241's.
+   session list, the same sort key on the Playthrough list, Game detail's
+   "Organize" link beside "View all", the same page under
+   `sort=playthrough`, the mobile cell verified on the list. Absorbs #716.
+   The other tables' summaries are #1241's. It edits `_SORT_KEYS` in
+   `games/views/playthrough_rows.py`, whose Actions column #718 retires:
+   a textual overlap, #718 rebasing over it.
 6. **#717** ORG-04 — `outside_playthrough_dates`, the Library page's two
    counts and their links.
 7. **#1212** TABLE-05 — the checkbox reserve while the mode is off,
