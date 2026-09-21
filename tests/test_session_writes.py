@@ -31,6 +31,7 @@ from games.writes.playersession import (
     SessionDraft,
     clone_session,
     end_session,
+    move_session,
     reclassify_session,
     record_session,
     remove_session,
@@ -518,5 +519,60 @@ def test_removing_a_removed_session_under_a_new_key_answers_unchanged(
     remove_session(owned_user, row, correlation_id=uuid.uuid7())
 
     repeat = remove_session(owned_user, row, correlation_id=uuid.uuid7())
+
+    assert repeat.outcome is CommandOutcome.UNCHANGED
+
+
+def test_an_idempotent_session_move_writes_one_event_and_names_its_source(
+    owned_user, owned_library, game
+):
+    """The runner's two facts, on the act that moves a session."""
+    row = session_row(game, started_at=STARTED_AT)
+    target = Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        player_game=row.playthrough.player_game,
+        kind=PlaythroughKind.ORDINARY,
+        name="Second run",
+        created_at=timezone.now(),
+    )
+    source = {"bulk": {"action": "session.move"}}
+
+    first = move_session(
+        owned_user,
+        row,
+        target.pk,
+        correlation_id=uuid.uuid7(),
+        idempotency_key="one-move",
+        source_metadata=source,
+    )
+    repeat = move_session(
+        owned_user,
+        row,
+        target.pk,
+        correlation_id=uuid.uuid7(),
+        idempotency_key="one-move",
+        source_metadata=source,
+    )
+
+    assert first.outcome is CommandOutcome.APPENDED
+    assert repeat.outcome is CommandOutcome.REPLAYED
+    moves = LibraryEvent.objects.filter(
+        aggregate_id=row.pk, event_type="library.playersession.moved"
+    )
+    assert [event.source_metadata for event in moves] == [source]
+    row.refresh_from_db()
+    assert row.playthrough_id == target.pk
+
+
+def test_moving_a_session_onto_the_run_it_sits_on_answers_unchanged(
+    owned_user, owned_library, game
+):
+    """What tells the runner a row was already so."""
+    row = session_row(game, started_at=STARTED_AT)
+
+    repeat = move_session(
+        owned_user, row, row.playthrough_id, correlation_id=uuid.uuid7()
+    )
 
     assert repeat.outcome is CommandOutcome.UNCHANGED
