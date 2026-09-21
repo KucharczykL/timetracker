@@ -2175,12 +2175,11 @@ def ConfirmPage(
     because it renders inside a ``<p>``. ``refusal`` is why the last POST was
     turned down; it draws through ``FieldErrors`` above the prompt, so a person
     reads the reason and then the question that still stands, and so no page
-    states a second way to draw a refusal. ``choice`` is what the page asks
-    for before the press: a labelled control, so it is left-aligned and
-    body-coloured rather than centred like the prompt. ``details`` is block
-    content after both (a list of the data a removal would take with it).
-
-    ``max_width`` widens the page for a table the form width would crush.
+    states a second way to draw a refusal. ``choice`` is a labelled control the
+    page asks for before the press, left-aligned rather than centred like the
+    prompt. ``details`` is block content after both (a list of the data a
+    removal would take with it). ``max_width`` widens the page for a table the
+    form width would crush.
     """
     refused = FieldErrors(refusal)
     return Div(

@@ -130,8 +130,7 @@ def ConfirmBatch(
 ) -> Node:
     """What the act will do, plus fields.
 
-    `refusal` is why the last press was turned down, on the page
-    that asks the same question again.
+    `refusal` is why the last press was turned down.
     """
     total = len(rows)
     return ConfirmPage(
@@ -153,7 +152,7 @@ def ConfirmBatch(
         post_url=post_url,
         csrf_token=csrf_token,
         cancel_url=cancel_url,
-        #: A control needs the room the sample already wants.
+        #: A control needs the sample's room.
         max_width=WIDE_CONFIRMATION if choice is not None else FORM_MAX_WIDTH_CLASS,
         #: Nothing to do admits no press.
         confirm_label=action.confirm_label if total else None,

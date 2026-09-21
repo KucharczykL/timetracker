@@ -1,11 +1,4 @@
-"""Many sessions moved to one playthrough.
-
-The act asks before it runs: which run the sessions go to. One
-question, answered once and settled on every request that acts.
-
-Its inverse is in the second half of this module: a session's
-earlier run is no column, so the batch's own events say it.
-"""
+"""Many sessions moved to one playthrough."""
 
 import logging
 import uuid
@@ -52,7 +45,7 @@ logger = logging.getLogger("games")
 
 SESSION_GONE = "One of the sessions is no longer available, so it was left as it is."
 
-#: The act asks about one game, because a run belongs to one.
+#: The act asks about one game.
 TWO_GAMES = (
     "Those sessions are at {count} different games, and a playthrough "
     "belongs to one. Narrow the list by game and try again."
@@ -78,7 +71,7 @@ TARGET_LABEL = "Playthrough"
 #: The column the resolve fills in.
 RUN_LABEL_ATTRIBUTE = "run_label"
 
-#: The two events that state which run a session sits on.
+#: The events that state a session's run.
 RUN_STATED = (PLAYERSESSION_CREATED.event_type, PLAYERSESSION_MOVED.event_type)
 
 #: What an Undo refuses.
@@ -109,12 +102,12 @@ def move_scope(
 def move_resolution(
     library: UserLibrary, keys: Sequence[uuid.UUID]
 ) -> Resolution[PlayerSession]:
-    """Keys to rows, each carrying the name of the run it sits on.
+    """Keys to rows, each naming its run.
 
-    The label is attached here because `display_name` raises for a
-    blank-named run carrying no number, and a session's own run never
-    carries one: the number is counted across a game's live ordinary
-    runs, which one read states for the whole page.
+    `display_name` raises for a blank-named run with no
+    display number, and a session's own run never has one:
+    the number is counted across a game's live ordinary runs.
+    A cell that called it would answer a 500 instead.
     """
     wanted = list(dict.fromkeys(keys))
     rows = tuple(
@@ -138,7 +131,7 @@ def move_resolution(
 
 
 def _run_label(row: PlayerSession, _presentations: Presentations) -> Cell:
-    """What the row's run is called, as the resolve read it."""
+    """What the row's run is called."""
     label = getattr(row, RUN_LABEL_ATTRIBUTE, None)
     if label is None:
         raise RowUnreadable(
@@ -172,17 +165,15 @@ MOVE_PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
 def offer_target(
     library: UserLibrary, rows: Sequence[PlayerSession], field_name: FieldName
 ) -> Node | str:
-    """The picker, over the one game the rows are at.
+    """The picker, over the one game.
 
-    Every resolved row is read, never the printed sample: a page that
-    asked about the first fifty would move the rest to a run at
-    another game.
-
-    The widget states no CSRF token of its own: the confirmation's
-    form renders one, which is where its create row reads it.
+    Every resolved row is read, never the printed sample.
+    A count taken from the sample would pass a selection
+    spanning two games, and move the unprinted rest to a
+    run at another game.
     """
     if not rows:
-        #: The confirmation says so itself, and offers no press.
+        #: The confirmation says so itself.
         return Fragment()
     games = {row.playthrough.player_game_id for row in rows}
     if len(games) > 1:
@@ -194,8 +185,7 @@ def offer_target(
             name=field_name,
             search_url=PLAYTHROUGH_SEARCH_URL,
             create_url=PLAYTHROUGH_CREATE_URL,
-            #: One mapping feeds the search and the create alike, and
-            #: the key is the one the creation body names.
+            #: One mapping feeds search and create.
             params={"game_id": {"value": str(game_id)}},
             prefetch=DEFAULT_PREFETCH,
             id=field_name,
@@ -204,12 +194,11 @@ def offer_target(
 
 
 def settle_target(library: UserLibrary, post: QueryDict) -> ChoiceValue:
-    """The posted key, if it is a run this library can be given.
+    """The posted key the library holds.
 
-    Says nothing about the game: a continuation whose rows span two
-    games has no one game to narrow to, and re-resolving every
-    remaining key on every chunk would cost the batch its budget. The
-    game is the row's own rule.
+    Says nothing about the game. The rows of a continuation
+    can span two games, and there is then no one game to
+    narrow to. The game is the row's own rule, below.
     """
     from games.views.bulk import CHOICE_FIELD
 
@@ -231,12 +220,7 @@ def settle_target(library: UserLibrary, post: QueryDict) -> ChoiceValue:
 
 
 def _target(library: UserLibrary, choice: ChoiceValue) -> Playthrough:
-    """The run this batch moves rows to.
-
-    Read again per row, because the game comparison needs its parent.
-    A run that left between the settle and this row is the settle's
-    own sentence, so the batch says the same thing either way.
-    """
+    """The run this batch moves rows to."""
     run = library_runs(library).filter(pk=choice).first()
     if run is None:
         raise CommandRejected(
@@ -253,7 +237,7 @@ def move_one(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """One session onto the batch's run, and the bucket it emptied."""
+    """One session moved, and the emptied bucket."""
     with answered("session"):
         target = _target(actor.library, choice)
         if session.playthrough.player_game_id != target.player_game_id:
@@ -283,18 +267,15 @@ def _remove_emptied_buckets(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> None:
-    """Take away every bucket of the game that nothing names now.
+    """Take away every bucket nothing names now.
 
-    Asked about the game, not about the run the row came from: a
-    chunk posted twice answers `Unchanged` for the move, and a
-    question about the earlier run would never be asked again.
+    Asked about the game, never about the run the row came
+    from. A chunk posted twice answers `Unchanged` for the
+    move, and a question about the earlier run would then
+    never be asked again.
 
-    Plural, because nothing holds a tracked game to one bucket. A
-    removed or foreign row naming one is a reason to leave it: the
-    first is restorable, the second is drift.
-
-    Its answer is swallowed. A refusal here would count a moved row
-    refused, and `RowUnreadable` would end the whole batch.
+    The answer is swallowed. A refusal would count a moved
+    row refused, and `RowUnreadable` would end the batch.
     """
     for bucket in buckets_of(actor.library, target.player_game):
         if any(
@@ -326,12 +307,7 @@ def _remove_emptied_buckets(
 def run_before(
     library: UserLibrary, session_id: uuid.UUID, batch_id: uuid.UUID
 ) -> uuid.UUID:
-    """The run the session sat on before this batch moved it.
-
-    No column keeps it: the projection holds where the row is now. The
-    row's own events do, and a sequence counts within one library's
-    stream, so the comparison over them is total.
-    """
+    """The run the session sat on before."""
     events = list(aggregate_events(library, session_id))
     moved = next(
         (
@@ -361,11 +337,7 @@ def run_before(
 
 
 def _session_of(actor: User, session_id: uuid.UUID) -> PlayerSession:
-    """The row an Undo states a fact about, by key.
-
-    A plain manager scoped on the library: the move left the row live,
-    and every command re-resolves it under the lock anyway.
-    """
+    """The row an Undo speaks about."""
     with answered("session"):
         row = PlayerSession.objects.filter(library=actor.library, pk=session_id).first()
         if row is None:
@@ -383,15 +355,15 @@ def _put_back_the_run(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> None:
-    """Restore the target, but only where this batch took it away.
+    """Restore the target this batch took away.
 
-    `RestorePlaythrough` puts back a run of any kind, so an inverse
-    restoring whatever it found removed would also put back an
-    ordinary run somebody removed by hand after the batch emptied it.
+    Only that one. `RestorePlaythrough` puts back a run of
+    any kind, so an inverse restoring whatever it found
+    removed would also resurrect an ordinary run somebody
+    removed by hand after the batch emptied it.
 
-    Restoring first, because a move onto a removed run is refused.
-    Once the run is live the restore answers `Unchanged`, so later
-    rows of the same batch cost one silent dispatch.
+    Before the move, because a move onto a removed run is
+    refused.
     """
     with answered("session"):
         run = Playthrough.objects.filter(library=actor.library, pk=run_id).first()
@@ -426,12 +398,7 @@ def move_back(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """One session back to the run the batch found it on.
-
-    The choice is the batch being undone. A run the batch created
-    ahead of the move is not the batch's to take away, so nothing
-    here reaches it.
-    """
+    """One session back to its earlier run."""
     batch_id = uuid.UUID(choice)
     with answered("session"):
         earlier = run_before(actor.library, session_id, batch_id)

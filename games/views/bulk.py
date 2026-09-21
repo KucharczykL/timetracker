@@ -59,9 +59,8 @@ TOKEN_FIELD = "submission"
 PROGRESS_FIELD = "progress"
 #: Pressed on the waypoint: end the batch.
 STOP_FIELD = "stop"
-#: What an act that asks for a fact is answered in.
-#: One spelling: the act's own control carries it, and
-#: every later chunk states it again.
+#: What an act that asks is answered in.
+#: One spelling: the act's own control carries it.
 CHOICE_FIELD = "choice"
 
 #: The rows one request acts on.
@@ -271,13 +270,13 @@ def _confirmation(
     refused: tuple[Refused, ...],
     keys: list[uuid.UUID],
 ) -> HttpResponse:
-    """What the act would do, and what it asks first."""
+    """What the act would do, and asks."""
     library = cast(User, request.user).library
     choice: Node | None = None
     if action.choice is not None:
         offered = action.choice.offer(library, rows, CHOICE_FIELD)
         if isinstance(offered, str):
-            #: A sentence refuses the whole act: nothing to press.
+            #: A sentence refuses the whole act.
             return _act_refused(request, action, offered)
         choice = offered
     #: The token is the batch's correlation id.
@@ -307,7 +306,7 @@ def _confirm_page(
     choice: Node | None,
     refusal: Sequence[str] = (),
 ) -> HttpResponse:
-    """The confirmation itself, on a token stated by the caller."""
+    """The confirmation, on the caller's token."""
     return render_page(
         request,
         ConfirmBatch(
@@ -339,11 +338,12 @@ def _reconfirmation(
     tally: Tally,
     sentence: str,
 ) -> HttpResponse:
-    """Ask again, about the rows that are left.
+    """Ask again, about the rows left.
 
-    The posted token and tally ride on verbatim. Minting fresh ones
-    would split one batch across two correlation ids, and the final
-    toast's Undo would reach the second half alone.
+    The posted token and tally ride on verbatim. Minting
+    fresh ones would split one batch across two correlation
+    ids, and the final toast's Undo would then reach the
+    second half alone.
     """
     library = cast(User, request.user).library
     resolution = action.resolve(library, list(tally.rows))
@@ -590,11 +590,7 @@ def _progress(
     tally: Tally,
     choice: ChoiceValue | None = None,
 ) -> HttpResponse:
-    """The waypoint, which states the choice again.
-
-    Every request that acts settles what it was posted, so a
-    continuation that dropped the field would be refused.
-    """
+    """The waypoint, which states the choice again."""
     hidden = [(TOKEN_FIELD, token), (PROGRESS_FIELD, tally.as_json())]
     if choice is not None:
         hidden.append((CHOICE_FIELD, choice))
@@ -701,9 +697,10 @@ def run_bulk_action(request: HttpRequest, action: BulkActionName) -> HttpRespons
             )
         choice = ""
         if declared.choice is not None:
-            #: Every chunk settles again: the field is person-editable,
-            #: and a value carried on trust would reach the command,
-            #: whose scope miss answers a page that blames the app.
+            #: Every chunk settles again. The field is
+            #: person-editable, and a value carried on trust
+            #: reaches the command, whose scope miss answers
+            #: a 500 page that blames the app.
             try:
                 choice = declared.choice.settle(user.library, request.POST)
             except CommandRejected as refusal:

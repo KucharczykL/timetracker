@@ -103,13 +103,12 @@ def _live_rows_naming(referrer: BlockingReferrer, run: Playthrough) -> QuerySet[
 
 
 def rows_naming(referrer: BlockingReferrer, run: Playthrough) -> QuerySet[Any]:
-    """Every row of the referrer naming the run, removed ones included.
+    """Every row naming the run, removed ones included.
 
-    Unscoped by the library as well. What this answers is
-    whether anything at all still points at the run, which
-    is what an act asks before it takes one away on its own:
-    a removed row is restorable and a foreign row is drift,
-    and either is a reason to leave the run alone.
+    Unscoped by the library as well. An act that takes a run
+    away on its own asks whether anything at all still names
+    it: a removed row is restorable and a foreign row is
+    drift, and either is a reason to leave the run alone.
     """
     return referrer.model._default_manager.filter(**{referrer.field_name: run})
 

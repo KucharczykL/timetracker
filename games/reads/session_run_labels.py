@@ -1,10 +1,4 @@
-"""The run name a session row shows beside its game.
-
-Two readers over one walk: the list column names a run only
-where its game holds more than one, and an act that moves
-sessions names every run it prints, however many its game
-holds.
-"""
+"""The run name a session row shows."""
 
 import uuid
 from collections.abc import Sequence
@@ -34,8 +28,7 @@ def _labelled_runs(
 ) -> _LabelledRuns:
     """One query for the page, none per row.
 
-    `numbered_for` states the display number a blank name is
-    shown as, and it counts across live ordinary runs alone,
+    `numbered_for` counts across live ordinary runs alone,
     so a bucket is stamped separately.
     """
     by_game: dict[PlayerGameId, list[PlaythroughId]] = {}
@@ -57,8 +50,7 @@ def every_run_label(
 ) -> RunLabels:
     """The name of every run these sessions sit on.
 
-    A game holding one run names it too: a person choosing
-    where to move a session reads which run it sits on now.
+    A game holding one run names it too.
     """
     return _labelled_runs(library, sessions).labels
 
@@ -66,11 +58,7 @@ def every_run_label(
 def ambiguous_run_labels(
     library: UserLibrary, sessions: Sequence[PlayerSession]
 ) -> RunLabels:
-    """Only the names that tell one run from another.
-
-    A game holding one run needs none: its name says
-    everything the row's game already said.
-    """
+    """Only the names that tell runs apart."""
     labels, by_game = _labelled_runs(library, sessions)
     return {
         run_id: label

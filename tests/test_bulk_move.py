@@ -85,10 +85,10 @@ def a_session(run, day=A_DAY, **columns):
 
 
 def a_bucket_session(owned_user, ordinary, bucket, day=A_DAY) -> PlayerSession:
-    """A row in the bucket, made the one way there is.
+    """A row in the bucket, made the one way.
 
-    A command refuses to record into a bucket; only a move reaches
-    one, which is how the legacy conversion filled them.
+    `CreateSession` refuses one outright; only a move
+    reaches a bucket, as the legacy conversion did.
     """
     session = a_recorded_session(owned_user, ordinary, day)
     move_session(owned_user, session, bucket.pk, correlation_id=uuid.uuid7())
@@ -99,8 +99,8 @@ def a_bucket_session(owned_user, ordinary, bucket, day=A_DAY) -> PlayerSession:
 def a_recorded_session(owned_user, run, day=A_DAY) -> PlayerSession:
     """A session with the events a real one has.
 
-    The Undo reads where a row sat from the row's own stream, so a
-    hand-written projection row states nothing it can read.
+    The Undo reads the row's own stream, which a
+    hand-written projection row does not have.
     """
     dispatch(
         CreateSession(
@@ -192,10 +192,10 @@ def test_one_game_answers_a_control(owned_library, game):
 def test_the_game_count_is_the_selection_not_the_sample(
     owned_library, game, other_game
 ):
-    """A page that asked about the printed rows would move the rest.
+    """The count is the selection's, not the sample's.
 
-    The rows sort newest first and the confirmation prints fifty, so
-    the one row at the second game is the fifty-first.
+    Newest first, fifty printed, so the row at the second
+    game is the fifty-first.
     """
     ours = tracked_run(owned_library, game)
     keys = [

@@ -1,8 +1,4 @@
-"""A person moves sessions out of the bucket, in a real browser.
-
-The act asks a question the others do not, so the pass is about the
-picker: what it offers, and that the press carries the answer.
-"""
+"""A person moves sessions out of the bucket."""
 
 import uuid
 from datetime import date, timedelta
@@ -31,11 +27,11 @@ def _login(page: Page, live_server) -> None:
 
 
 def _a_game_with_a_bucket(library, actor) -> tuple[Playthrough, Playthrough]:
-    """One ordinary run beside a bucket holding two sessions.
+    """One run beside a bucket holding two sessions.
 
-    Recorded and then moved, which is the one way into a bucket and
-    what the legacy conversion did: a command refuses to record there,
-    and the Undo reads the row's own stream for where it sat.
+    Recorded and then moved, the one way into a bucket:
+    `CreateSession` refuses one outright, and the Undo
+    reads the row's own stream for where it sat.
     """
     game = create_tracked_game(library, "Outer Wilds")
     run = tracked_run(library, game)
@@ -92,7 +88,7 @@ def test_two_sessions_leave_the_bucket_and_the_undo_puts_them_back(
     _select_rows(page, 0, 1)
     page.get_by_role("button", name=ACT).click()
 
-    #: The act's own preview, and the question the others do not ask.
+    #: The act's preview, and its own question.
     expect(
         page.get_by_role("heading", name="Move these sessions to a playthrough")
     ).to_be_visible()
@@ -112,7 +108,7 @@ def test_two_sessions_leave_the_bucket_and_the_undo_puts_them_back(
 
     page.get_by_role("button", name="Undo").click()
 
-    #: Server-rendered: the label is back only once the write landed.
+    #: Server-rendered: the write has landed.
     expect(page.get_by_text(IMPORTED_HISTORY_LABEL).first).to_be_visible()
     assert PlayerSession.objects.filter(playthrough=bucket).count() == 2
     bucket.refresh_from_db()

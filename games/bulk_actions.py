@@ -39,7 +39,7 @@ type RowKey = str
 #: A list's `?filter=` JSON.
 type FilterJson = str
 
-#: What an act asks for, as one posted string.
+#: What an act asks for, as one string.
 type ChoiceValue = str  # a target run's key, or a batch's id
 
 #: The form field a choice is posted under.
@@ -135,10 +135,10 @@ type UndoRow = Callable[
 class BulkChoice[RowT: Model]:
     """A fact the act asks for, before it runs.
 
-    `offer` draws the control the confirmation shows, or answers a
-    sentence refusing the whole act. `settle` reads what came back and
-    answers the one string every row is handed; it raises
-    `CommandRejected` for a post it cannot read.
+    `offer` draws the control, or answers a sentence
+    refusing the whole act. `settle` answers the one string
+    every row is handed, and raises `CommandRejected` for a
+    post it cannot read.
     """
 
     offer: Callable[[UserLibrary, Sequence[RowT], FieldName], Node | str]

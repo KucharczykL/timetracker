@@ -60,11 +60,9 @@ def live_ordinary_runs(
 
 
 def buckets_of(library: UserLibrary, player_game: PlayerGame) -> QuerySet[Playthrough]:
-    """This game's live imported-history runs, oldest first.
+    """This game's live buckets, oldest first.
 
-    Plural: nothing holds a tracked game to one. Its own
-    facts, as `live_ordinary_runs` states them, because
-    the caller names the parent already.
+    Plural: nothing holds a tracked game to one.
     """
     return Playthrough.objects.filter(
         library=library,

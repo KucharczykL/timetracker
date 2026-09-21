@@ -24,9 +24,7 @@ def aggregate_events(
 ) -> LibraryEventQuerySet:
     """One row's whole history, in append order.
 
-    What an inverse reads to learn the state a batch
-    found: no projection keeps what a column held
-    before the act that overwrote it.
+    No projection keeps what a column held before.
     """
     return LibraryEvent.objects.filter(
         library=library, aggregate_id=aggregate_id
