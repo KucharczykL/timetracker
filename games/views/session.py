@@ -1,4 +1,3 @@
-from collections.abc import Sequence
 from functools import partial
 from typing import Any, cast
 from uuid import UUID
@@ -43,6 +42,7 @@ from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl
 from common.utils import paginate
+from games.bulk_move import MOVE
 from games.bulk_reclassification import RECLASSIFY
 from games.bulk_removal import REMOVE_SESSION
 from games.bulk_tray import tray_actions
@@ -55,7 +55,6 @@ from games.models import (
     PlayerGameStatus,
     PlayerSession,
     PlayerSessionTimingMode,
-    PlaythroughKind,
     UserLibrary,
 )
 from games.ownership import owned_or_404
@@ -65,8 +64,8 @@ from games.reads.player_sessions import (
     library_sessions,
     readable_sessions,
 )
-from games.reads.playthrough_numbering import display_name, numbered_for
 from games.reads.playthrough_runs import sole_ordinary_run
+from games.reads.session_run_labels import ambiguous_run_labels
 from games.sorting import (
     SESSION_DEFAULT_SORT,
     SESSION_SORTS,
@@ -96,39 +95,6 @@ from games.writes.playersession import (
 from games.writes.playersession import (
     restore_session as restore_session_row,
 )
-
-#: What the name cell calls a session in the bucket.
-IMPORTED_HISTORY_LABEL = "Imported history"
-
-#: A run's key to the label the name cell shows beside the game.
-type RunLabels = dict[UUID, str]
-
-
-def run_labels_for(
-    library: UserLibrary, sessions: Sequence[PlayerSession]
-) -> RunLabels:
-    """The run label each session shows, keyed on the run.
-
-    Only a game holding more than one live run needs one: the ordinary
-    runs counted by `numbered_for`, plus the bucket when a page row sits
-    in it. One query for the page, none per row.
-    """
-    by_game: dict[UUID, list[UUID]] = {}
-    labels: RunLabels = {}
-    player_game_ids = {session.playthrough.player_game_id for session in sessions}
-    for run in numbered_for(library, player_game_ids):
-        by_game.setdefault(run.player_game_id, []).append(run.pk)
-        labels[run.pk] = display_name(run)
-    for session in sessions:
-        run = session.playthrough
-        if run.kind == PlaythroughKind.IMPORTED_HISTORY:
-            by_game.setdefault(run.player_game_id, []).append(run.pk)
-            labels[run.pk] = IMPORTED_HISTORY_LABEL
-    return {
-        run_id: label
-        for run_id, label in labels.items()
-        if any(len(runs) > 1 and run_id in runs for runs in by_game.values())
-    }
 
 
 def session_row_data(
@@ -192,7 +158,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     sessions, page_obj, elided_page_range = paginate(sessions, find)
     csrf_token = get_token(request)
     page_sessions = list(sessions)
-    run_labels = run_labels_for(library, page_sessions)
+    run_labels = ambiguous_run_labels(library, page_sessions)
 
     data: TableData = {
         "caption": "Sessions",
@@ -221,7 +187,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
             "filter": filter_json,
             "csrf_token": csrf_token,
             "actions": tray_actions(
-                REMOVE_SESSION.name, RECLASSIFY.name, origin=origin
+                MOVE.name, REMOVE_SESSION.name, RECLASSIFY.name, origin=origin
             ),
         },
     }

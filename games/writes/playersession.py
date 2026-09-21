@@ -206,16 +206,20 @@ def move_session(
     playthrough_id: uuid.UUID,
     *,
     correlation_id: uuid.UUID,
-) -> None:
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
     """State the session's run, at any game."""
     with answered("session"):
-        _dispatch(
+        return _dispatch(
             MoveSessionToPlaythrough(
                 session_id=session.pk, playthrough_id=playthrough_id
             ),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
 
 

@@ -19,6 +19,18 @@ def batch_events(
     ).order_by("sequence")
 
 
+def aggregate_events(
+    library: UserLibrary, aggregate_id: uuid.UUID
+) -> LibraryEventQuerySet:
+    """One row's whole history, in append order.
+
+    No projection keeps what a column held before.
+    """
+    return LibraryEvent.objects.filter(
+        library=library, aggregate_id=aggregate_id
+    ).order_by("sequence")
+
+
 def batch_aggregate_ids(
     library: UserLibrary, correlation_id: uuid.UUID, aggregate_type: AggregateType
 ) -> list[uuid.UUID]:

@@ -17,6 +17,7 @@ from common.components import (
 )
 from common.components.core import Node, Safe
 from common.components.primitives import (
+    FORM_MAX_WIDTH_CLASS,
     Column,
     Input,
     StyledTable,
@@ -24,6 +25,9 @@ from common.components.primitives import (
     make_row,
 )
 from games.bulk_actions import BulkAction, Presentations, Refused
+
+#: A page that asks for a fact beside its rows.
+WIDE_CONFIRMATION = "max-w-3xl"
 
 #: The confirmation's words, and the waypoint's.
 WILL_BE_LEFT_ALONE = "{count} of them will be left as {pronoun}:"
@@ -121,8 +125,13 @@ def ConfirmBatch(
     cancel_url: str,
     sample_cap: int,
     presentations: Presentations,
+    choice: Node | None = None,
+    refusal: Sequence[str] = (),
 ) -> Node:
-    """What the act will do, plus fields."""
+    """What the act will do, plus fields.
+
+    `refusal` is why the last press was turned down.
+    """
     total = len(rows)
     return ConfirmPage(
         title=action.title,
@@ -138,11 +147,17 @@ def ConfirmBatch(
             _refusals(len(refused), _reasons(refused), WILL_BE_LEFT_ALONE),
             _sample(action, rows, total, sample_cap, presentations),
         ),
+        choice=choice,
+        refusal=refusal,
         post_url=post_url,
         csrf_token=csrf_token,
         cancel_url=cancel_url,
+        #: A control needs the sample's room.
+        max_width=WIDE_CONFIRMATION if choice is not None else FORM_MAX_WIDTH_CLASS,
         #: Nothing to do admits no press.
         confirm_label=action.confirm_label if total else None,
+        #: The act declares one colour.
+        confirm_color=action.color,
     )
 
 

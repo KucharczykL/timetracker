@@ -267,7 +267,7 @@ def test_a_measured_row_is_refused(owned_user, owned_library, game, reclassify):
 
 def test_a_row_already_recorded_is_refused(owned_user, owned_library, run, reclassify):
     session = a_written_session(owned_library, owned_user, run)
-    reclassify.run(owned_user, session, "one-conversion", uuid.uuid7())
+    reclassify.run(owned_user, session, "", "one-conversion", uuid.uuid7())
 
     resolution = reclassify.resolve(owned_library, [session.pk])
 
@@ -284,7 +284,7 @@ def test_a_row_live_beside_its_record_is_refused(
     a defect ends the whole batch rather than one row.
     """
     session = a_written_session(owned_library, owned_user, run)
-    reclassify.run(owned_user, session, "one-conversion", uuid.uuid7())
+    reclassify.run(owned_user, session, "", "one-conversion", uuid.uuid7())
     #: No command writes this; an audit reports it.
     PlayerSession.objects.filter(pk=session.pk).update(removed_at=None)
 
@@ -318,8 +318,8 @@ def test_one_key_twice_converts_once(owned_user, owned_library, run, reclassify)
     session = a_written_session(owned_library, owned_user, run)
     correlation_id = uuid.uuid7()
 
-    reclassify.run(owned_user, session, "one-conversion", correlation_id)
-    reclassify.run(owned_user, session, "one-conversion", correlation_id)
+    reclassify.run(owned_user, session, "", "one-conversion", correlation_id)
+    reclassify.run(owned_user, session, "", "one-conversion", correlation_id)
 
     assert HistoricalPlaytime.objects.filter(library=owned_library).count() == 1
 
@@ -330,11 +330,11 @@ def test_the_run_converts_and_the_inverse_returns(
     session = a_written_session(owned_library, owned_user, run)
     correlation_id = uuid.uuid7()
 
-    reclassify.run(owned_user, session, "one-conversion", correlation_id)
+    reclassify.run(owned_user, session, "", "one-conversion", correlation_id)
     session.refresh_from_db()
     assert session.removed_at is not None
 
-    reclassify.inverse(owned_user, session.pk, "undo-one", uuid.uuid7())
+    reclassify.inverse(owned_user, session.pk, "", "undo-one", uuid.uuid7())
     session.refresh_from_db()
     assert session.removed_at is None
 

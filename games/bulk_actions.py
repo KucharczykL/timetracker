@@ -17,7 +17,9 @@ from typing import Any
 
 from django.contrib.auth.models import User
 from django.db.models import Model, QuerySet
+from django.http import QueryDict
 
+from common.components.core import Node
 from common.components.primitives import Align, ButtonColor, Cell
 from common.date_time_presentation import DateTimePresentation
 from common.duration_presentation import DurationPresentation
@@ -36,6 +38,12 @@ type RowKey = str
 
 #: A list's `?filter=` JSON.
 type FilterJson = str
+
+#: What an act asks for, as one string.
+type ChoiceValue = str  # a target run's key, or a batch's id
+
+#: The form field a choice is posted under.
+type FieldName = str
 
 
 class Cardinality(StrEnum):
@@ -114,9 +122,28 @@ type Resolve[RowT: Model] = Callable[
     [UserLibrary, Sequence[uuid.UUID]], Resolution[RowT]
 ]
 #: One row, through its `games/writes/` wrapper.
-type RunRow[RowT: Model] = Callable[[User, RowT, IdempotencyKey, uuid.UUID], RowOutcome]
+type RunRow[RowT: Model] = Callable[
+    [User, RowT, ChoiceValue, IdempotencyKey, uuid.UUID], RowOutcome
+]
 #: One row's opposite, by key.
-type UndoRow = Callable[[User, uuid.UUID, IdempotencyKey, uuid.UUID], RowOutcome]
+type UndoRow = Callable[
+    [User, uuid.UUID, ChoiceValue, IdempotencyKey, uuid.UUID], RowOutcome
+]
+
+
+@dataclass(frozen=True, slots=True)
+class BulkChoice[RowT: Model]:
+    """A fact the act asks for, before it runs.
+
+    `offer` draws the control, or answers a sentence
+    refusing the whole act. `settle` answers the one string
+    every row is handed, and raises `CommandRejected` for a
+    post it cannot read.
+    """
+
+    offer: Callable[[UserLibrary, Sequence[RowT], FieldName], Node | str]
+    settle: Callable[[UserLibrary, QueryDict], ChoiceValue]
+
 
 _TABLE: dict[BulkActionName, BulkAction[Any]] = {}
 
@@ -147,6 +174,8 @@ class BulkAction[RowT: Model]:
     inverse: UndoRow
     #: What the confirmation shows of each row.
     preview: tuple[PreviewColumn[RowT], ...]
+    #: What the act asks for first, or nothing.
+    choice: BulkChoice[RowT] | None = None
 
     def __post_init__(self) -> None:
         """Refuse a declaration that cannot run."""
@@ -173,4 +202,4 @@ BULK_ACTIONS: Mapping[BulkActionName, BulkAction[Any]] = MappingProxyType(_TABLE
 
 
 #: Imported last: each module declares its acts.
-from games import bulk_reclassification, bulk_removal  # noqa: F401
+from games import bulk_move, bulk_reclassification, bulk_removal  # noqa: F401

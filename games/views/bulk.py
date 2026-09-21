@@ -19,6 +19,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from common.components import SELECTION_STATEMENT_FIELD
+from common.components.core import Node
 from common.criteria import FilterError
 from common.date_time_presentation import date_time_presentation_for_request
 from common.duration_presentation import duration_presentation_for_request
@@ -28,12 +29,14 @@ from common.returns import UrlName
 from games.bulk_actions import (
     BulkAction,
     BulkActionName,
+    ChoiceValue,
     Presentations,
     Refused,
     Resolution,
     RowOutcome,
     bulk_action,
 )
+from games.events.dispatch import CommandRejected
 from games.events.idempotency import IdempotencyKey
 from games.models import UserLibrary
 from games.reads.events import batch_aggregate_ids, batch_events
@@ -56,6 +59,8 @@ TOKEN_FIELD = "submission"
 PROGRESS_FIELD = "progress"
 #: Pressed on the waypoint: end the batch.
 STOP_FIELD = "stop"
+#: Where an act's question is answered.
+CHOICE_FIELD = "choice"
 
 #: The rows one request acts on.
 #: No transaction: each row commits on its own.
@@ -66,6 +71,10 @@ CONFIRMATION_SAMPLE = 50
 
 UNREADABLE_STATEMENT = (
     "That selection could not be read, so nothing was changed. Choose the rows again."
+)
+UNREADABLE_CHOICE = (
+    "That request did not say what to do, so nothing was changed. Answer the "
+    "question below and press again."
 )
 UNREADABLE_FILTER = (
     "The filter behind that selection could not be read, so nothing was "
@@ -260,14 +269,43 @@ def _confirmation(
     refused: tuple[Refused, ...],
     keys: list[uuid.UUID],
 ) -> HttpResponse:
-    """What the act would do."""
+    """What the act would do, and asks."""
+    library = cast(User, request.user).library
+    choice: Node | None = None
+    if action.choice is not None:
+        offered = action.choice.offer(library, rows, CHOICE_FIELD)
+        if isinstance(offered, str):
+            #: A sentence refuses the whole act.
+            return _act_refused(request, action, offered)
+        choice = offered
     #: The token is the batch's correlation id.
     token = str(uuid.uuid7())
     #: Named once: the batch carries only its rows.
-    _log_left_alone(
-        action.name, refused, cast(User, request.user).library, uuid.UUID(token)
-    )
+    _log_left_alone(action.name, refused, library, uuid.UUID(token))
     progress = Tally(rows=tuple(keys), total=len(keys)).left_alone(refused).as_json()
+    return _confirm_page(
+        request,
+        action,
+        rows=rows,
+        refused=refused,
+        token=token,
+        progress=progress,
+        choice=choice,
+    )
+
+
+def _confirm_page(
+    request: HttpRequest,
+    action: BulkAction[Any],
+    *,
+    rows: Sequence[Any],
+    refused: Sequence[Refused],
+    token: str,
+    progress: str,
+    choice: Node | None,
+    refusal: Sequence[str] = (),
+) -> HttpResponse:
+    """The confirmation, on the caller's token."""
     return render_page(
         request,
         ConfirmBatch(
@@ -283,8 +321,59 @@ def _confirmation(
                 dates=date_time_presentation_for_request(request),
                 durations=duration_presentation_for_request(request),
             ),
+            choice=choice,
+            refusal=refusal,
         ),
         title=action.title,
+        status=400 if refusal else 200,
+    )
+
+
+def _reconfirmation(
+    request: HttpRequest,
+    action: BulkAction[Any],
+    *,
+    token: str,
+    tally: Tally,
+    sentence: str,
+    undo_url: str | None,
+) -> HttpResponse:
+    """Ask again, about the rows left.
+
+    The posted token and tally ride on verbatim. Minting
+    fresh ones would split one batch across two correlation
+    ids, and the final toast's Undo would then reach the
+    second half alone.
+    """
+    library = cast(User, request.user).library
+    correlation_id = uuid.UUID(token)
+    resolution = action.resolve(library, list(tally.rows))
+    _log_left_alone(action.name, resolution.refused, library, correlation_id)
+    tally = tally.left_alone(resolution.refused)
+    choice: Node | None = None
+    if action.choice is not None:
+        offered = action.choice.offer(library, resolution.rows, CHOICE_FIELD)
+        if isinstance(offered, str):
+            #: The act cannot ask again, so the batch ends here.
+            #: The rows done stay done and keep their Undo; a page
+            #: saying nothing happened would strand them.
+            _log_abandoned(action.name, tally.rows, library, correlation_id, offered)
+            return _answer(
+                request,
+                action,
+                replace(tally, rows=(), reasons=(*tally.reasons, offered)),
+                undo_url=undo_url,
+            )
+        choice = offered
+    return _confirm_page(
+        request,
+        action,
+        rows=list(resolution.rows),
+        refused=(),
+        token=token,
+        progress=tally.as_json(),
+        choice=choice,
+        refusal=[sentence],
     )
 
 
@@ -325,14 +414,17 @@ class Leg:
     #: The idempotency key's prefix, one per direction.
     name: str
     resolve: Callable[[UserLibrary, uuid.UUID], Resolution]
-    run: Callable[[User, Any, IdempotencyKey, uuid.UUID], RowOutcome]
+    run: Callable[[User, Any, ChoiceValue, IdempotencyKey, uuid.UUID], RowOutcome]
+    #: What the act asked for; empty where it asks nothing.
+    choice: ChoiceValue = ""
 
 
-def _forward(action: BulkAction[Any]) -> Leg:
+def _forward(action: BulkAction[Any], choice: ChoiceValue = "") -> Leg:
     return Leg(
         name=action.name,
         resolve=lambda library, key: action.resolve(library, [key]),
         run=action.run,
+        choice=choice,
     )
 
 
@@ -341,17 +433,26 @@ def _undo_name(action: BulkAction[Any]) -> str:
     return f"{action.name}.undo"
 
 
-def _backward(action: BulkAction[Any], written: frozenset[uuid.UUID]) -> Leg:
+def _backward(
+    action: BulkAction[Any],
+    written: frozenset[uuid.UUID],
+    correlation_id: uuid.UUID,
+) -> Leg:
     """The inverse, over this batch's keys.
 
     The row is removed by now, so the batch says whether a key is its
     own. A key that is not comes out lost, as a row gone since the
     confirmation does forward: one rule, both legs.
+
+    The choice is the batch being undone. `_run_a_chunk` derives its
+    correlation id from the undo's own fresh token, so this is the one
+    way the batch's id reaches the inverse.
     """
     return Leg(
         name=_undo_name(action),
         resolve=lambda library, key: _of_this_batch(key, written),
         run=action.inverse,
+        choice=str(correlation_id),
     )
 
 
@@ -369,6 +470,7 @@ def _run_a_chunk(
     tally: Tally,
     leg: Leg,
     undo_url: str | None,
+    carried_choice: ChoiceValue | None = None,
 ) -> HttpResponse:
     """Act on as many rows as allowed.
 
@@ -389,7 +491,11 @@ def _run_a_chunk(
         for row in resolution.rows:
             try:
                 outcome = leg.run(
-                    user, row, f"{leg.name}-{token}-{acted}", correlation_id
+                    user,
+                    row,
+                    leg.choice,
+                    f"{leg.name}-{token}-{acted}",
+                    correlation_id,
                 )
             except Http404 as absent:
                 #: The leg re-resolved this row moments ago.
@@ -441,7 +547,9 @@ def _run_a_chunk(
 
     tally = replace(tally, rows=tuple(left))
     if left:
-        return _progress(request, action, token=token, tally=tally)
+        return _progress(
+            request, action, token=token, tally=tally, choice=carried_choice
+        )
     return _answer(request, action, tally, undo_url=undo_url)
 
 
@@ -487,8 +595,17 @@ def _counted(tally: Tally, outcome: RowOutcome) -> Tally:
 
 
 def _progress(
-    request: HttpRequest, action: BulkAction[Any], *, token: str, tally: Tally
+    request: HttpRequest,
+    action: BulkAction[Any],
+    *,
+    token: str,
+    tally: Tally,
+    choice: ChoiceValue | None = None,
 ) -> HttpResponse:
+    """The waypoint, which states any choice again."""
+    hidden = [(TOKEN_FIELD, token), (PROGRESS_FIELD, tally.as_json())]
+    if choice is not None:
+        hidden.append((CHOICE_FIELD, choice))
     return render_page(
         request,
         ProgressBatch(
@@ -497,7 +614,7 @@ def _progress(
             total=tally.total,
             refused=tally.refused,
             reasons=tally.reasons,
-            hidden=[(TOKEN_FIELD, token), (PROGRESS_FIELD, tally.as_json())],
+            hidden=hidden,
             post_url=request.get_full_path(),
             csrf_token=get_token(request),
             stop_name=STOP_FIELD,
@@ -590,13 +707,37 @@ def run_bulk_action(request: HttpRequest, action: BulkActionName) -> HttpRespons
             return _answer(
                 request, declared, replace(tally, rows=()), undo_url=_undo_url(token)
             )
+        choice = ""
+        if declared.choice is not None:
+            #: Every chunk settles again. The field is
+            #: person-editable, and a value carried on trust
+            #: reaches the command, whose scope miss answers
+            #: a 500 page that blames the app.
+            try:
+                choice = declared.choice.settle(user.library, request.POST)
+            except CommandRejected as refusal:
+                logger.info(
+                    "[bulk]: %s refused a choice under %s: %s",
+                    action,
+                    token,
+                    refusal,
+                )
+                return _reconfirmation(
+                    request,
+                    declared,
+                    token=token,
+                    tally=tally,
+                    sentence=refusal.sentence or UNREADABLE_CHOICE,
+                    undo_url=_undo_url(token),
+                )
         return _run_a_chunk(
             request,
             declared,
             token=token,
             tally=tally,
-            leg=_forward(declared),
+            leg=_forward(declared, choice),
             undo_url=_undo_url(token),
+            carried_choice=choice if declared.choice is not None else None,
         )
 
     try:
@@ -694,6 +835,6 @@ def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpRes
         declared,
         token=token,
         tally=tally,
-        leg=_backward(declared, frozenset(rows)),
+        leg=_backward(declared, frozenset(rows), correlation_id),
         undo_url=None,
     )

@@ -5,6 +5,7 @@ import json
 import logging
 import uuid
 from datetime import date, timedelta
+from typing import NamedTuple
 
 import pytest
 from django.contrib.messages import get_messages
@@ -13,12 +14,19 @@ from django.urls import reverse
 from django.utils import timezone
 from session_rows import duration_only_row, tracked_run
 
+from common.components.primitives import Input
 from common.duration_presentation import (
     DEFAULT_DURATION_FORMAT_PROFILE,
     DurationPresentation,
 )
 from games import bulk_reclassification
-from games.bulk_actions import BULK_ACTIONS
+from games.bulk_actions import (
+    _TABLE,
+    BULK_ACTIONS,
+    BulkAction,
+    BulkChoice,
+    RowOutcome,
+)
 from games.bulk_reclassification import (
     IN_THE_BUCKET,
     NOT_AVAILABLE,
@@ -26,6 +34,7 @@ from games.bulk_reclassification import (
     UNDER_THRESHOLD,
 )
 from games.commands.session_reclassification import statement_from_session
+from games.events.dispatch import CommandRejected
 from games.models import (
     Game,
     HistoricalPlaytime,
@@ -36,6 +45,7 @@ from games.models import (
 )
 from games.reads.events import batch_aggregate_ids
 from games.views.bulk import (
+    CHOICE_FIELD,
     ENDED_BY_A_DEFECT,
     NOT_THIS_BATCH,
     PROGRESS_FIELD,
@@ -47,7 +57,11 @@ from games.views.bulk import (
 )
 from games.views.session_reclassification import review_filter
 from games.writes.historical_playtime import restate_historical_playtime
-from games.writes.playersession import reclassify_session, undo_reclassification
+from games.writes.playersession import (
+    reclassify_session,
+    remove_session,
+    undo_reclassification,
+)
 from timetracker.uuidv7 import parse_uuidv7
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
@@ -103,7 +117,7 @@ def posted(response) -> dict[str, str]:
     """The hidden fields the confirmation would submit."""
     html = response.content.decode()
     fields: dict[str, str] = {}
-    for name in (TOKEN_FIELD, PROGRESS_FIELD):
+    for name in (TOKEN_FIELD, PROGRESS_FIELD, CHOICE_FIELD):
         marker = f'name="{name}" value="'
         if marker in html:
             start = html.index(marker) + len(marker)
@@ -1066,3 +1080,276 @@ def test_the_batch_undo_needs_a_login(client, owned_library, game):
     response = client.post(undo_url(str(uuid.uuid7())), {})
 
     assert response.status_code == 302
+
+
+# ── The choice a leg carries ─────────────────────────────────────────────────
+
+
+class Asked(NamedTuple):
+    """What the act was handed, settled, and will refuse.
+
+    Appending to `refusing` makes the next offer turn the
+    whole act down, which a frozen declaration cannot be
+    patched into.
+    """
+
+    seen: list[str]
+    settled: list[str]
+    refusing: list[str]
+
+
+PICKED = "picked"
+PICK_ONE = "Pick a playthrough first."
+NO_GAME = "Those sessions are at more than one game."
+
+
+@pytest.fixture
+def reclassify_declaration():
+    return BULK_ACTIONS["session.reclassify"]
+
+
+def _removed(actor, row, idempotency_key, correlation_id, name) -> RowOutcome:
+    """A real append, so the batch its Undo reads exists."""
+    return RowOutcome.of(
+        remove_session(
+            actor,
+            row,
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
+            source_metadata={"bulk": {"action": name}},
+        )
+    )
+
+
+def _declare(name, reclassify_declaration, run, inverse, choice=None):
+    return BulkAction(
+        name=name,
+        label=reclassify_declaration.label,
+        title=reclassify_declaration.title,
+        confirm_label=reclassify_declaration.confirm_label,
+        subject=reclassify_declaration.subject,
+        cardinality=reclassify_declaration.cardinality,
+        color=reclassify_declaration.color,
+        inverse_aggregate=reclassify_declaration.inverse_aggregate,
+        fallback=reclassify_declaration.fallback,
+        scope=reclassify_declaration.scope,
+        resolve=reclassify_declaration.resolve,
+        run=run,
+        inverse=inverse,
+        preview=reclassify_declaration.preview,
+        choice=choice,
+    )
+
+
+@pytest.fixture
+def recorder(reclassify_declaration):
+    """An act with no choice, whose run remembers what it was handed."""
+    seen: list[str] = []
+
+    def run(actor, row, choice, idempotency_key, correlation_id):
+        seen.append(choice)
+        return _removed(actor, row, idempotency_key, correlation_id, "session.recorder")
+
+    def inverse(actor, row_id, choice, idempotency_key, correlation_id):
+        seen.append(choice)
+        return RowOutcome.MOVED
+
+    _declare("session.recorder", reclassify_declaration, run, inverse)
+    yield seen
+    _TABLE.pop("session.recorder")
+
+
+@pytest.fixture
+def asker(request, reclassify_declaration):
+    """An act that asks for a fact, and remembers what it settled."""
+    seen: list[str] = []
+    settled: list[str] = []
+    refusing: list[str] = [NO_GAME] if getattr(request, "param", False) else []
+
+    def offer(library, rows, field_name):
+        if refusing:
+            return refusing[0]
+        return Input(type="hidden", name=field_name, value=PICKED)
+
+    def settle(library, post):
+        stated = post.get(CHOICE_FIELD, "")
+        if stated != PICKED:
+            raise CommandRejected(f"{stated!r} is no target", sentence=PICK_ONE)
+        #: Recorded here, not in `run`: a runner that trusted the
+        #: carried value would still hand `run` the right string.
+        settled.append(stated)
+        return stated
+
+    def run(actor, row, choice, idempotency_key, correlation_id):
+        seen.append(choice)
+        return _removed(actor, row, idempotency_key, correlation_id, "session.asker")
+
+    def inverse(actor, row_id, choice, idempotency_key, correlation_id):
+        seen.append(choice)
+        return RowOutcome.MOVED
+
+    _declare(
+        "session.asker",
+        reclassify_declaration,
+        run,
+        inverse,
+        choice=BulkChoice(offer=offer, settle=settle),
+    )
+    yield Asked(seen, settled, refusing)
+    _TABLE.pop("session.asker")
+
+
+ASK = reverse("games:run_bulk_action", args=["session.asker"])
+RECORD = reverse("games:run_bulk_action", args=["session.recorder"])
+
+
+def test_an_act_that_asks_nothing_is_handed_no_choice(
+    client_in, owned_library, game, recorder
+):
+    session = a_written_session(owned_library, game)
+
+    act(client_in, confirm(client_in, some(session), url=RECORD), url=RECORD)
+
+    assert recorder == [""]
+
+
+def test_the_confirmation_hosts_the_acts_own_control(
+    client_in, owned_library, game, asker
+):
+    session = a_written_session(owned_library, game)
+
+    body = confirm(client_in, some(session), url=ASK).content.decode()
+
+    assert f'name="{CHOICE_FIELD}"' in body
+    assert f'value="{PICKED}"' in body
+
+
+@pytest.mark.parametrize("asker", [True], indirect=True)
+def test_an_offer_that_refuses_the_act_writes_nothing(
+    client_in, owned_library, game, asker
+):
+    session = a_written_session(owned_library, game)
+
+    response = confirm(client_in, some(session), url=ASK)
+
+    assert response.status_code == 400
+    assert NO_GAME in response.content.decode()
+    assert asker.seen == []
+
+
+def test_a_chunk_that_carries_no_choice_is_refused_and_writes_nothing(
+    client_in, owned_library, game, asker
+):
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session), url=ASK)
+    fields = posted(confirmation)
+    fields.pop(CHOICE_FIELD)
+
+    response = client_in.post(ASK, fields)
+
+    assert response.status_code == 400
+    assert PICK_ONE in response.content.decode()
+    assert asker.seen == []
+
+
+def test_a_refused_settle_keeps_the_token_and_the_rows(
+    client_in, owned_library, game, asker
+):
+    """The person answers the same question about the same rows."""
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session), url=ASK)
+    fields = posted(confirmation)
+
+    response = client_in.post(ASK, {**fields, CHOICE_FIELD: "nonsense"})
+
+    kept = posted(response)
+    assert kept[TOKEN_FIELD] == fields[TOKEN_FIELD]
+    assert json.loads(kept[PROGRESS_FIELD])["rows"] == [str(session.pk)]
+    assert str(session.pk) in response.content.decode()
+
+
+def test_every_chunk_of_a_batch_settles_the_choice_again(
+    client_in, owned_library, game, asker, monkeypatch
+):
+    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(3)
+    ]
+
+    response = act(client_in, confirm(client_in, some(*sessions), url=ASK), url=ASK)
+    while response.status_code == 200:
+        response = act(client_in, response, url=ASK)
+
+    assert response.status_code == 302
+    assert asker.settled == [PICKED, PICKED, PICKED]
+    assert asker.seen == [PICKED, PICKED, PICKED]
+
+
+def test_an_undo_is_handed_the_batch_it_undoes(client_in, owned_library, game, asker):
+    session = a_written_session(owned_library, game)
+    confirmation = confirm(client_in, some(session), url=ASK)
+    token = posted(confirmation)[TOKEN_FIELD]
+    act(client_in, confirmation, url=ASK)
+    asker.seen.clear()
+
+    client_in.post(reverse("games:undo_bulk_action", args=[token]))
+
+    assert asker.seen == [token]
+
+
+# ── The press wears the act's colour ─────────────────────────────────────────
+
+
+def _confirm_button(response, label: str) -> str:
+    """The confirmation's submit, found by its words."""
+    html = response.content.decode()
+    end = html.index(f">{label}</button>")
+    return html[html.rindex("<button", 0, end) : end]
+
+
+@pytest.mark.parametrize(
+    ("action_name", "label", "solid"),
+    [
+        ("session.reclassify", "Record as historical playtime", "solid-brand"),
+        ("session.remove", "Remove", "solid-danger"),
+    ],
+)
+def test_a_confirmations_press_wears_the_acts_colour(
+    client_in, owned_library, game, action_name, label, solid
+):
+    """The press wears the colour the act declares."""
+    session = a_written_session(owned_library, game)
+    url = reverse("games:run_bulk_action", args=[action_name])
+
+    response = confirm(client_in, some(session), url=url)
+
+    assert solid in _confirm_button(response, label)
+
+
+def test_an_offer_that_refuses_mid_batch_ends_the_batch_with_its_undo(
+    client_in, owned_library, game, asker, monkeypatch
+):
+    """The rows done stay done, and keep the press that takes them back.
+
+    A page saying nothing happened would strand every row the
+    batch had already written.
+    """
+    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    sessions = [
+        a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
+        for offset in range(3)
+    ]
+    acted = act(client_in, confirm(client_in, some(*sessions), url=ASK), url=ASK)
+    assert tally_of(acted)["done"] == 1
+
+    #: The settle refuses first, so the runner re-asks; the
+    #: offer then turns the whole act down.
+    asker.refusing.append(NO_GAME)
+    answer = client_in.post(ASK, {**posted(acted), CHOICE_FIELD: "nonsense"})
+
+    assert answer.status_code == 302
+    said = [str(message) for message in toasts(answer)]
+    assert any("1 of 3 done" in one for one in said)
+    assert any(NO_GAME in one for one in said)
+    assert actions_of(answer), "the rows already written keep their undo"

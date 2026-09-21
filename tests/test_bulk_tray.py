@@ -27,10 +27,13 @@ def test_the_url_carries_the_page_the_person_stands_on():
 
 
 def test_every_named_act_is_offered_in_the_order_it_was_named():
-    offered = tray_actions("session.reclassify", "session.remove", origin=ORIGIN)
+    offered = tray_actions(
+        "session.reclassify", "session.move", "session.remove", origin=ORIGIN
+    )
 
     assert [action["label"] for action in offered] == [
         "Record as historical playtime",
+        "Move to playthrough…",
         "Remove",
     ]
 
@@ -125,7 +128,7 @@ def _a_record(owned_user, owned_library, game):
 
 @pytest.mark.untracked_games
 @pytest.mark.django_db(transaction=True)
-def test_the_session_list_names_its_rows_and_offers_two_acts(
+def test_the_session_list_names_its_rows_and_offers_three_acts(
     client_in, owned_user, owned_library, game
 ):
     session = _a_session(owned_user, owned_library, game)
@@ -134,8 +137,27 @@ def test_the_session_list_names_its_rows_and_offers_two_acts(
 
     assert f'data-selection-key="{session.pk}"' in html
     assert "data-selection-actions-form" in html
-    assert "/bulk/session.remove/" in html
-    assert "/bulk/session.reclassify/" in html
+    for name in ("session.move", "session.remove", "session.reclassify"):
+        assert f"/bulk/{name}/" in html
+
+
+@pytest.mark.untracked_games
+@pytest.mark.django_db(transaction=True)
+def test_the_session_lists_acts_are_offered_in_one_order(
+    client_in, owned_user, owned_library, game
+):
+    """The move leads: it takes nothing off the list."""
+    _a_session(owned_user, owned_library, game)
+
+    html = client_in.get(reverse("games:list_sessions")).content.decode()
+
+    assert [
+        html.index(f"/bulk/{name}/")
+        for name in ("session.move", "session.remove", "session.reclassify")
+    ] == sorted(
+        html.index(f"/bulk/{name}/")
+        for name in ("session.move", "session.remove", "session.reclassify")
+    )
 
 
 @pytest.mark.untracked_games

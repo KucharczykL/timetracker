@@ -19,7 +19,7 @@ from games.models import (
     PlayerSession,
     Playthrough,
 )
-from games.reads.events import batch_aggregate_ids, batch_events
+from games.reads.events import aggregate_events, batch_aggregate_ids, batch_events
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
 
@@ -175,3 +175,39 @@ def test_an_aggregate_type_names_its_own_event_types():
 
 def test_an_unknown_aggregate_type_names_nothing():
     assert DEFAULT_EVENT_TYPES.event_types_for("nothing") == frozenset()
+
+
+def test_one_aggregate_answers_its_own_events_in_sequence_order(
+    owned_user, owned_library
+):
+    run = a_run(owned_library, owned_user, "Outer Wilds")
+    session = a_written_session(owned_library, owned_user, run)
+    convert(owned_library, owned_user, session, uuid.uuid7())
+
+    events = list(aggregate_events(owned_library, session.pk))
+
+    assert [event.sequence for event in events] == sorted(
+        event.sequence for event in events
+    )
+    assert {event.aggregate_id for event in events} == {session.pk}
+    assert len(events) > 1
+
+
+def test_one_aggregate_never_answers_another_row(owned_user, owned_library):
+    run = a_run(owned_library, owned_user, "Outer Wilds")
+    mine = a_written_session(owned_library, owned_user, run)
+    a_written_session(owned_library, owned_user, run, A_DAY + timedelta(days=1))
+
+    assert {
+        event.aggregate_id for event in aggregate_events(owned_library, mine.pk)
+    } == {mine.pk}
+
+
+def test_one_aggregate_never_reaches_another_library(
+    owned_user, owned_library, second_library
+):
+    session = a_written_session(
+        owned_library, owned_user, a_run(owned_library, owned_user, "Outer Wilds")
+    )
+
+    assert not aggregate_events(second_library, session.pk).exists()

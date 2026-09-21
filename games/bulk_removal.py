@@ -17,6 +17,7 @@ from common.temporal_presentation import TemporalText
 from games.bulk_actions import (
     BulkAction,
     Cardinality,
+    ChoiceValue,
     FilterJson,
     Presentations,
     PreviewColumn,
@@ -112,7 +113,7 @@ def session_resolution(
     rows = tuple(
         library_sessions(library)
         .filter(pk__in=wanted)
-        .select_related("playthrough__player_game__game")
+        .select_related("playthrough__player_game__game", "device")
         .order_by("-sort_instant", "id")
     )
     return Resolution(
@@ -123,6 +124,7 @@ def session_resolution(
 def remove_one_session(
     actor: User,
     session: PlayerSession,
+    choice: ChoiceValue,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
@@ -140,6 +142,7 @@ def remove_one_session(
 def restore_one_session(
     actor: User,
     session_id: uuid.UUID,
+    choice: ChoiceValue,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
@@ -216,6 +219,7 @@ def run_resolution(
 def remove_one_run(
     actor: User,
     run: Playthrough,
+    choice: ChoiceValue,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
@@ -233,6 +237,7 @@ def remove_one_run(
 def restore_one_run(
     actor: User,
     run_id: uuid.UUID,
+    choice: ChoiceValue,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
@@ -300,6 +305,7 @@ def record_resolution(
 def remove_one_record(
     actor: User,
     record: HistoricalPlaytime,
+    choice: ChoiceValue,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
@@ -317,6 +323,7 @@ def remove_one_record(
 def restore_one_record(
     actor: User,
     record_id: uuid.UUID,
+    choice: ChoiceValue,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
