@@ -30,8 +30,8 @@ first column that declares `shrinkable`. A summary under any other first column
 widens the table instead, and the phone scrolls sideways.
 
 So a table that states a summary declares a shrinkable first column, and
-`StyledTable` refuses one that does not, beside the cell-count guard it keeps
-already.
+`StyledTable` refuses one that does not, in DEBUG, beside the cell-count guard
+it keeps already.
 
 ## What each table states
 
@@ -71,10 +71,10 @@ One builder answers both record tables. `historical_playtime_tabledata` takes
 `exclude_columns`, `sortable` and a caption, as `playthrough_tabledata` takes
 the first two, and Game detail calls it rather than building rows beside it.
 One column list serves both pages, so Game detail takes the list's drop order,
-where a device outlives no duration. The list's cells win throughout — the
-toned provenance badge, the shared badge, the row keys — the `When` column
-becomes shrinkable, because it leads the table Game detail renders, and the
-column is headed `Playthroughs` on both pages.
+where `Device` drops before `Duration` and `Provenance` rather than after them.
+The list's cells win throughout — the toned provenance badge, the shared badge,
+the row keys — the `When` column is shrinkable, because it leads the table Game
+detail renders, and the column is headed `Playthroughs` on both pages.
 
 ## Proof
 
