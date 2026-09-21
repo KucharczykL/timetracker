@@ -379,12 +379,21 @@ That list already has every column, the filter, the sort, presets and, after
 From it a person:
 
 - sorts by playthrough: #715 adds a Playthrough column, shown while the
-  filter names one game, and a sort on it, the bucket sorting last under its
-  own name, because `DISPLAY_ORDER` numbers ordinary runs only and the
-  bucket has no number. The column reads `every_run_label` in
-  `games/reads/session_run_labels.py`, #714's, which names a sole run
-  too; `ambiguous_run_labels` beside it is the list's name cell, which
-  hides one. `StyledTable` has no group-header rows and the
+  list names one game, asked of the narrowed queryset rather than read
+  out of the filter's grammar, so a `game_filter`, a search, or #717's
+  facet that lands on one game shows it too; and a sort on it, keyed
+  `playthrough` in `SESSION_SORTS` whether or not the column shows, so a
+  preset keeps it. The bucket sorts last under its own name in both
+  directions, as `apply_sort` already pins an absent value last in both:
+  `DISPLAY_ORDER` numbers ordinary runs only and the bucket has no place
+  in it, which a null sort key states for free. While the column shows,
+  the name cell drops its run label, so the run is said in one place. The
+  column reads `every_run_label` in `games/reads/session_run_labels.py`,
+  #714's, which names a sole run too; `ambiguous_run_labels` beside it is
+  the list's name cell, which hides one. The stacked cell's summary
+  (#711's `make_row(summary=...)`) is fed on this list alone: time range,
+  duration, device, and the run label while the column shows; the other
+  selectable tables are #1241's, after #715. `StyledTable` has no group-header rows and the
   column-drop classes address cells by position, so grouping is the column
   and the sort, not header rows;
 - narrows by date and device, the session filter's own facets;
@@ -502,8 +511,9 @@ cost is judged.
    beside the move inverse over the `(library, aggregate_id)` index #713
    shipped, and the confirmation's five columns.
 5. **#715** ORG-02 — the organizer: the Playthrough column and sort on the
-   session list, Game detail's "Organize" link, the mobile cell verified on
-   the list. Absorbs #716.
+   session list, Game detail's "Organize" link beside "View all", the same
+   page under `sort=playthrough`, the mobile cell verified on the list.
+   Absorbs #716. The other tables' summaries are #1241's.
 6. **#717** ORG-04 — `outside_playthrough_dates`, the Library page's two
    counts and their links.
 7. **#1212** TABLE-05 — the checkbox reserve while the mode is off,
