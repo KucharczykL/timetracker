@@ -5,6 +5,7 @@ import json
 import urllib.request
 
 import pytest
+from django.conf import settings
 from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY
 from django.contrib.sessions.backends.db import SessionStore
 
@@ -17,7 +18,7 @@ def _authenticated_session_key(user) -> str:
     """Build a logged-in session row directly, skipping the login round-trip."""
     session = SessionStore()
     session[SESSION_KEY] = str(user.pk)
-    session[BACKEND_SESSION_KEY] = "django.contrib.auth.backends.ModelBackend"
+    session[BACKEND_SESSION_KEY] = settings.AUTHENTICATION_BACKENDS[0]
     session[HASH_SESSION_KEY] = user.get_session_auth_hash()
     session.create()
     session_key = session.session_key

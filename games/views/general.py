@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any, cast
 
 from django.apps import apps
@@ -30,7 +30,8 @@ from common.date_time_presentation import date_time_presentation_for_request
 from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
 from games.filters import model_field_registry
-from games.models import Game, Platform, Purchase
+from games.models import Game, Platform, Purchase, UserLibrary
+from games.reads.calendar import calendar_today
 from games.reads.days import DayInterval
 from games.reads.player_sessions import library_sessions
 from games.reads.playtime import playtime_between_each
@@ -41,23 +42,41 @@ from games.views.stats_content import stats_content
 from games.views.stats_data import compute_stats
 from timetracker.settings_resolver import resolve_for_user
 
+_CALENDAR_TODAY_CACHE_ATTRIBUTE = "_calendar_today"
+
+
+def request_calendar_today(request: HttpRequest, library: UserLibrary) -> date:
+    """The day the library is on, read once for one request.
+
+    Two context processors ask, and a second read costs a
+    second statement on every page. The answer is cached on
+    the request rather than on the library, because a change
+    of the display zone restates the calendar in the view,
+    which runs before anything here asks.
+    """
+    cached = getattr(request, _CALENDAR_TODAY_CACHE_ATTRIBUTE, None)
+    if isinstance(cached, date):
+        return cached
+    today = calendar_today(library)
+    setattr(request, _CALENDAR_TODAY_CACHE_ATTRIBUTE, today)
+    return today
+
 
 def model_counts(request: HttpRequest) -> dict[str, Any]:
     user = getattr(request, "user", None)
     library = (
         cast(User, user).library if user is not None and user.is_authenticated else None
     )
-    #: Still the viewer's clock, and so still a day out from the
-    #: calendar the sums below count in, for the hours the two
-    #: zones disagree. Reading the calendar here costs one query
-    #: on every page -- 23 becomes 24 -- which is a budget
-    #: decision, not a bug fix. Left to #1221.
-    today = localdate()
-    #: Seven calendar days, today included.
-    last_seven_days = DayInterval.ending(today, days=7)
     nothing = PlaytimeBreakdown(timedelta(0), timedelta(0))
     today_played = last_7_played = nothing
     if library is not None:
+        #: The sums below count days on the library's calendar,
+        #: so the window has to be cut on the same one. A
+        #: viewer without a library has no calendar to ask, and
+        #: needs no day either: both figures are zero.
+        today = request_calendar_today(request, library)
+        #: Seven calendar days, today included.
+        last_seven_days = DayInterval.ending(today, days=7)
         today_played, last_7_played = playtime_between_each(
             library, [DayInterval.single(today), last_seven_days]
         )
@@ -90,7 +109,12 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
 
 
 def global_current_year(request: HttpRequest) -> dict[str, int]:
-    return {"global_current_year": localdate().year}
+    user = getattr(request, "user", None)
+    if user is None or not user.is_authenticated:
+        #: No library, so no calendar to ask.
+        return {"global_current_year": localdate().year}
+    library = cast(User, user).library
+    return {"global_current_year": request_calendar_today(request, library).year}
 
 
 @login_required
@@ -223,7 +247,8 @@ def filter_builder(request: HttpRequest, model: str) -> HttpResponse:
 def index(request: HttpRequest) -> HttpResponse:
     landing_page = resolve_for_user(request.user, "DEFAULT_LANDING_PAGE")
     if landing_page == "games:stats_by_year":
-        return redirect(landing_page, year=localdate().year)
+        library = cast(User, request.user).library
+        return redirect(landing_page, year=calendar_today(library).year)
     if isinstance(landing_page, str):
         return redirect(landing_page)
     return redirect("games:list_sessions")

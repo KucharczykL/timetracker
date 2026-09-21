@@ -7,6 +7,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from games.models import UserPreferences
+from games.reads.calendar import calendar_today
 from games.views.general import index
 
 
@@ -42,9 +43,16 @@ def test_index_redirects_to_selected_landing_page(
 
 
 @override_settings(TIME_ZONE="Pacific/Kiritimati")
-def test_index_redirects_to_current_year_stats_in_configured_timezone(
+def test_index_redirects_to_current_year_stats_on_the_library_calendar(
     db, monkeypatch, django_capture_on_commit_callbacks
 ):
+    """The library's calendar names the year, not the process.
+
+    `Pacific/Kiritimati` reads the instant below as New
+    Year's Day, and the library, which states no calendar
+    of its own and so falls back to its owner's display
+    zone, reads it as the year before.
+    """
     user = get_user_model().objects.create_user(username="tester", password="pw")
     preferences = UserPreferences.objects.get(user=user)
     preferences.default_landing_page = "games:stats_by_year"
@@ -61,7 +69,10 @@ def test_index_redirects_to_current_year_stats_in_configured_timezone(
     response = index(request)
 
     assert response.status_code == 302
-    assert response.url == reverse("games:stats_by_year", args=[2031])
+    assert response.url == reverse(
+        "games:stats_by_year", args=[calendar_today(user.library).year]
+    )
+    assert calendar_today(user.library).year == 2030
 
 
 def test_index_falls_back_to_sessions_for_poisoned_landing_page(auth_client):

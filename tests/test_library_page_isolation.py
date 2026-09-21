@@ -104,7 +104,13 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
 def test_library_page_evaluates_each_summary_count_once(
     client, django_user_model, django_assert_num_queries
 ):
-    """Twenty-three queries; the Playtime count is one."""
+    """Twenty-three queries; the Playtime count is one.
+
+    The navbar reads the library's calendar to cut its day
+    window, and that read costs nothing here: the user and
+    its library arrive in one statement, so the number is
+    what it was before either.
+    """
     owner = django_user_model.objects.create_user(username="query-owner", password="p")
     client.force_login(owner)
 

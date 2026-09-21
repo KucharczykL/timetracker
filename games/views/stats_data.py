@@ -36,6 +36,7 @@ from games.models import (
     PurchaseQueryset,
     UserLibrary,
 )
+from games.reads.calendar import calendar_today
 from games.reads.days import YearScope
 from games.reads.historical_playtime_records import records_in_scope
 from games.reads.play_figures import (
@@ -408,7 +409,9 @@ def _compute_stats_from_scoped_querysets(
         "last_play_game": last.game if last else None,
         "last_play_date": last.day if last else None,
         "last_play_from_record": bool(last and last.source is PlaySource.RECORD),
-        "stats_dropdown_year_range": available_stats_year_range(),
+        "stats_dropdown_year_range": available_stats_year_range(
+            calendar_today(library)
+        ),
     }
 
     if year is not None:

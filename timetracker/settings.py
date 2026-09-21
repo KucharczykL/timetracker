@@ -112,6 +112,9 @@ if DEBUG:
     DEBUG_TOOLBAR_CONFIG = {"ROOT_TAG_EXTRA_ATTRS": "hx-preserve"}
 
 ROOT_URLCONF = "timetracker.urls"
+#: Django refuses a session naming a backend it does not list, so the
+#: deploy that lands this one ends every session made before it.
+AUTHENTICATION_BACKENDS = ["timetracker.auth_backends.LibraryModelBackend"]
 LOGIN_URL = "/login/"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/login/"
