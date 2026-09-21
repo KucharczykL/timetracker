@@ -31,13 +31,18 @@ from games.events.playersession import PLAYERSESSION_CREATED, PLAYERSESSION_MOVE
 from games.events.playthrough import PLAYTHROUGH_REMOVED
 from games.filters import parse_session_filter
 from games.forms import PLAYTHROUGH_CREATE_URL, PLAYTHROUGH_SEARCH_URL
-from games.models import PlayerSession, Playthrough, UserLibrary
+from games.models import (
+    PlayerSession,
+    Playthrough,
+    PlaythroughKind,
+    UserLibrary,
+)
 from games.reads.events import aggregate_events, batch_events
 from games.reads.player_sessions import library_sessions
 from games.reads.playthrough_referrers import BLOCKING_REFERRERS, rows_naming
-from games.reads.playthrough_runs import buckets_of, library_runs
+from games.reads.playthrough_runs import library_runs
 from games.reads.session_run_labels import every_run_label
-from games.writes.answers import CommandFailed, answered
+from games.writes.answers import CONFLICT_STATUS, CommandFailed, answered
 from games.writes.playersession import move_session
 from games.writes.playthrough import remove_run, restore_run
 
@@ -51,7 +56,7 @@ TWO_GAMES = (
     "belongs to one. Narrow the list by game and try again."
 )
 
-#: What a settle refuses.
+#: What a missing target refuses.
 NO_TARGET = "Choose the playthrough to move them to."
 TARGET_UNREADABLE = "That playthrough could not be read. Choose one again."
 TARGET_GONE = (
@@ -68,7 +73,7 @@ ANOTHER_GAME = (
 #: What the confirmation asks.
 TARGET_LABEL = "Playthrough"
 
-#: The column the resolve fills in.
+#: The attribute the resolve stamps on a row.
 RUN_LABEL_ATTRIBUTE = "run_label"
 
 #: The events that state a session's run.
@@ -81,7 +86,7 @@ NOT_MOVED_BY_THIS_BATCH = (
 NO_EARLIER_RUN = (
     "Where that session was before cannot be read, so it was left as it is."
 )
-TARGET_TAKEN_AWAY = (
+SOURCE_TAKEN_AWAY = (
     "The playthrough that session came from was removed after this batch, so "
     "it was left as it is. Put that playthrough back first."
 )
@@ -136,9 +141,10 @@ def _run_label(row: PlayerSession, _presentations: Presentations) -> Cell:
     if label is None:
         raise RowUnreadable(
             f"PlayerSession {row.pk} of library {row.library_id} reached the "
-            "preview with no run label. The label is counted across a game's "
-            "live ordinary runs, which move_resolution reads once for every "
-            "row; a row that arrives without one came from another resolve."
+            "preview with no run label. The label comes from every_run_label, "
+            "which names a game's live ordinary runs and its buckets in one "
+            "read for the whole set; a row that arrives without one came from "
+            "another resolve."
         )
     return label
 
@@ -200,6 +206,7 @@ def settle_target(library: UserLibrary, post: QueryDict) -> ChoiceValue:
     can span two games, and there is then no one game to
     narrow to. The game is the row's own rule, below.
     """
+    #: Local: the view imports this module through the act table.
     from games.views.bulk import CHOICE_FIELD
 
     stated = post.get(CHOICE_FIELD, "")
@@ -237,7 +244,7 @@ def move_one(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """One session moved, and the emptied bucket."""
+    """One session moved, and the bucket it left."""
     with answered("session"):
         target = _target(actor.library, choice)
         if session.playthrough.player_game_id != target.player_game_id:
@@ -257,48 +264,75 @@ def move_one(
             source_metadata=_source(),
         )
     )
-    _remove_emptied_buckets(actor, target, idempotency_key, correlation_id)
+    if outcome is RowOutcome.MOVED:
+        _remove_the_emptied_bucket(actor, session.pk, idempotency_key, correlation_id)
     return outcome
 
 
-def _remove_emptied_buckets(
+def _remove_the_emptied_bucket(
     actor: User,
-    target: Playthrough,
+    session_id: uuid.UUID,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> None:
-    """Take away every bucket nothing names now.
+    """Take away the bucket this row was last out of.
 
-    Asked about the game, never about the run the row came
-    from. A chunk posted twice answers `Unchanged` for the
-    move, and a question about the earlier run would then
-    never be asked again.
+    The run the row came from, never every bucket the game
+    holds: an act that removed a bucket it did not empty
+    would remove a row its own inverse never puts back.
+
+    Read from the batch's own events, because a chunk posted
+    twice answers `Unchanged` for the move and the row then
+    names the target already.
 
     The answer is swallowed. A refusal would count a moved
-    row refused, and `RowUnreadable` would end the batch.
+    row refused; a defect still ends the batch, as it does
+    everywhere else.
     """
-    for bucket in buckets_of(actor.library, target.player_game):
-        if any(
-            rows_naming(referrer, bucket).exists() for referrer in BLOCKING_REFERRERS
-        ):
-            continue
-        try:
-            remove_run(
-                actor,
-                bucket,
-                idempotency_key=f"{idempotency_key}-bucket-{bucket.pk}",
-                correlation_id=correlation_id,
-                source_metadata=_source(),
-            )
-        except (CommandFailed, Http404) as refusal:
-            logger.info(
-                "[bulk]: %s left bucket %s of library %s under %s: %s",
-                MOVE.name,
-                bucket.pk,
-                actor.library.pk,
-                correlation_id,
-                refusal,
-            )
+    try:
+        emptied = run_before(actor.library, session_id, correlation_id)
+    except CommandRejected:
+        #: This batch moved no such row, so it emptied nothing.
+        return
+    bucket = Playthrough.objects.filter(
+        library=actor.library,
+        pk=emptied,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        removed_at__isnull=True,
+    ).first()
+    if bucket is None:
+        return
+    if any(rows_naming(referrer, bucket).exists() for referrer in BLOCKING_REFERRERS):
+        return
+    try:
+        remove_run(
+            actor,
+            bucket,
+            idempotency_key=f"{idempotency_key}-bucket",
+            correlation_id=correlation_id,
+            source_metadata=_source(),
+        )
+    except CommandFailed as failure:
+        if failure.status_code != CONFLICT_STATUS:
+            #: Ours, not theirs: the batch ends as it would anywhere.
+            raise
+        logger.info(
+            "[bulk]: %s left bucket %s of library %s under %s: %s",
+            MOVE.name,
+            bucket.pk,
+            actor.library.pk,
+            correlation_id,
+            failure.message,
+        )
+    except Http404 as absent:
+        #: The bucket left the library between the read and the
+        #: dispatch. A race, not a defect.
+        logger.info(
+            "[bulk]: %s met a bucket library %s no longer holds: %s",
+            MOVE.name,
+            actor.library.pk,
+            absent,
+        )
 
 
 # ── Backward ─────────────────────────────────────────────────────────────────
@@ -355,7 +389,7 @@ def _put_back_the_run(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> None:
-    """Restore the target this batch took away.
+    """Restore the run this batch emptied.
 
     Only that one. `RestorePlaythrough` puts back a run of
     any kind, so an inverse restoring whatever it found
@@ -372,15 +406,17 @@ def _put_back_the_run(
                 f"playthrough {run_id} is not library {actor.library.pk}'s",
                 sentence=NO_EARLIER_RUN,
             )
-        ours = batch_events(actor.library, batch_id).filter(
-            aggregate_id=run_id, event_type=PLAYTHROUGH_REMOVED.event_type
+        ours = (
+            batch_events(actor.library, batch_id)
+            .filter(aggregate_id=run_id, event_type=PLAYTHROUGH_REMOVED.event_type)
+            .exists()
         )
-        if not ours.exists() and run.removed_at is not None:
+        if not ours and run.removed_at is not None:
             raise CommandRejected(
                 f"playthrough {run_id} was removed outside batch {batch_id}",
-                sentence=TARGET_TAKEN_AWAY,
+                sentence=SOURCE_TAKEN_AWAY,
             )
-    if not ours.exists():
+    if not ours:
         return
     restore_run(
         actor,

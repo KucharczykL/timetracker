@@ -59,8 +59,7 @@ TOKEN_FIELD = "submission"
 PROGRESS_FIELD = "progress"
 #: Pressed on the waypoint: end the batch.
 STOP_FIELD = "stop"
-#: What an act that asks is answered in.
-#: One spelling: the act's own control carries it.
+#: Where an act's question is answered.
 CHOICE_FIELD = "choice"
 
 #: The rows one request acts on.
@@ -337,6 +336,7 @@ def _reconfirmation(
     token: str,
     tally: Tally,
     sentence: str,
+    undo_url: str | None,
 ) -> HttpResponse:
     """Ask again, about the rows left.
 
@@ -346,12 +346,24 @@ def _reconfirmation(
     second half alone.
     """
     library = cast(User, request.user).library
+    correlation_id = uuid.UUID(token)
     resolution = action.resolve(library, list(tally.rows))
+    _log_left_alone(action.name, resolution.refused, library, correlation_id)
+    tally = tally.left_alone(resolution.refused)
     choice: Node | None = None
     if action.choice is not None:
         offered = action.choice.offer(library, resolution.rows, CHOICE_FIELD)
         if isinstance(offered, str):
-            return _act_refused(request, action, offered)
+            #: The act cannot ask again, so the batch ends here.
+            #: The rows done stay done and keep their Undo; a page
+            #: saying nothing happened would strand them.
+            _log_abandoned(action.name, tally.rows, library, correlation_id, offered)
+            return _answer(
+                request,
+                action,
+                replace(tally, rows=(), reasons=(*tally.reasons, offered)),
+                undo_url=undo_url,
+            )
         choice = offered
     return _confirm_page(
         request,
@@ -590,7 +602,7 @@ def _progress(
     tally: Tally,
     choice: ChoiceValue | None = None,
 ) -> HttpResponse:
-    """The waypoint, which states the choice again."""
+    """The waypoint, which states any choice again."""
     hidden = [(TOKEN_FIELD, token), (PROGRESS_FIELD, tally.as_json())]
     if choice is not None:
         hidden.append((CHOICE_FIELD, choice))
@@ -716,6 +728,7 @@ def run_bulk_action(request: HttpRequest, action: BulkActionName) -> HttpRespons
                     token=token,
                     tally=tally,
                     sentence=refusal.sentence or UNREADABLE_CHOICE,
+                    undo_url=_undo_url(token),
                 )
         return _run_a_chunk(
             request,

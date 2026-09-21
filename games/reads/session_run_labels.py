@@ -17,7 +17,7 @@ IMPORTED_HISTORY_LABEL = "Imported history"
 
 
 class _LabelledRuns(NamedTuple):
-    """Every run these sessions sit on, and whose game holds it."""
+    """Run names, and the runs each game holds."""
 
     labels: RunLabels
     by_game: dict[PlayerGameId, list[PlaythroughId]]
@@ -48,9 +48,11 @@ def _labelled_runs(
 def every_run_label(
     library: UserLibrary, sessions: Sequence[PlayerSession]
 ) -> RunLabels:
-    """The name of every run these sessions sit on.
+    """Names for the runs of these sessions' games.
 
-    A game holding one run names it too.
+    Wider than the runs the sessions sit on, and a game
+    holding one run names it too. A caller reads the names
+    it wants by key; it does not walk the mapping.
     """
     return _labelled_runs(library, sessions).labels
 

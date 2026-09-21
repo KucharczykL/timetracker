@@ -146,7 +146,7 @@ def test_the_session_list_names_its_rows_and_offers_three_acts(
 def test_the_session_lists_acts_are_offered_in_one_order(
     client_in, owned_user, owned_library, game
 ):
-    """The move leads: it is the one act that changes nothing away."""
+    """The move leads: it takes nothing off the list."""
     _a_session(owned_user, owned_library, game)
 
     html = client_in.get(reverse("games:list_sessions")).content.decode()

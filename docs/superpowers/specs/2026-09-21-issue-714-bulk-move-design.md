@@ -6,66 +6,66 @@ playthrough. The batch is one act with one Undo. The code is in
 
 ## The question an act asks
 
-`BulkChoice` is a fact that an act asks for before it runs. It has two
-functions.
-
-| Function | Result |
-|---|---|
-| `offer` | The control the confirmation shows, or a sentence that refuses the act |
-| `settle` | One string for every row, or a refusal |
-
-`BulkAction.choice` holds one `BulkChoice` or `None`. A `ChoiceValue` is text.
-One string holds any grammar that an act needs.
+`BulkChoice` is a fact that an act asks for before it runs. `offer` gives the
+control the confirmation shows, or a sentence that refuses the act. `settle`
+gives the one string each row receives, or a refusal.
 
 `games/views/bulk.py` states `CHOICE_FIELD`. The act's control carries that
-name. The confirmation posts the control. Each later request posts the same
-field again from the progress form.
+name, and each later request posts the same field from the progress form.
 
-`run_bulk_action` settles that field on each request that acts. It does not trust the
-carried value. A person can change the field, and a wrong value goes to the
-command. The command answers `PlaythroughNotHeld`, and
-the runner shows that as a defect.
+`run_bulk_action` settles that field on each request that acts. A person can
+change the field, and without a settle a wrong value reaches the command, which
+answers `PlaythroughNotHeld` -- a defect.
 
-`undo_bulk_action` does not settle. Its POST has no control. The inverse leg's
-choice is the correlation id of the batch that it undoes.
+`undo_bulk_action` does not settle, because its POST has no control. The
+inverse leg's choice is the correlation id of the batch that it undoes.
 
-A refused settle shows the confirmation again. The token and the tally stay the
-same. A new token would divide one batch into two correlation ids.
+A refused settle shows the confirmation again, on the same token and tally. A
+new token would divide one batch into two correlation ids. If the act then
+refuses the question, the batch ends and the rows that moved keep their Undo.
 
 ## The move
 
 `offer_target` reads each resolved row, not the printed sample. If the rows are
-at more than one game, it refuses the act. A playthrough is at one game.
+at more than one game it refuses the act, because a playthrough is at one game.
 
 `settle_target` accepts the key of a live ordinary run of this library. It does
-not read the game. The rows of a continuation can be at two games.
+not read the game, because the rows of a later chunk can be at two games.
 
 `move_one` compares the row's game with the target's game. A different game is a
-refusal with a sentence. That row stays as it is, and the batch continues.
+refusal with a sentence: that row stays as it is and the batch continues.
 
 ## The bucket
 
-After a move, `move_one` reads each imported-history run of the game. A game can
-have more than one. `move_one` removes each run that no registered referrer
-names. `rows_naming` also finds removed rows and rows of other libraries. Each
-of these keeps the run.
+After a move, `move_one` reads the run the row came from. If that run is an
+imported-history run that no registered referrer names, `move_one` removes it.
+`rows_naming` also finds removed rows and rows of other libraries, and each of
+these keeps the run.
 
-A refused removal goes to the log. The row stays moved.
+It removes only the run it emptied: a run it did not empty is one its inverse
+does not put back. `run_before` gives that run, because a chunk posted twice
+answers `Unchanged` and the row then names the target.
+
+A refused removal goes to the log and the row stays moved. A defect ends the
+batch.
 
 ## The inverse
 
 No column keeps the earlier run of a session. `run_before` reads the events of
-the row. It finds the move event of this batch. Then it reads the most recent
-earlier event that states a run.
+the row, finds the move event of this batch, then reads the most recent earlier
+event that states a run.
 
 `move_back` restores a run only if this batch removed it. `RestorePlaythrough`
-restores a run of any kind. A run a person removed after the batch stays
-removed, and that row gets a sentence.
+restores a run of any kind, so a run removed by hand after the batch stays
+removed and that row receives a sentence.
 
 The restore is before the move, because a move to a removed run is refused.
 
 ## The confirmation
 
 The columns are Playthrough, Day, Duration, Device and Note. The resolve
-attaches the playthrough name to each row. `display_name` refuses a run that has
-no name and no number, and the run of a session has no number.
+attaches the playthrough name: a session carries its run without a number, a
+bucket has no number, and `display_name` refuses both.
+
+The page is wider because it shows a control, and its button takes the act's
+colour.

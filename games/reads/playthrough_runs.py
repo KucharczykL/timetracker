@@ -59,19 +59,6 @@ def live_ordinary_runs(
     ).order_by("created_at", "id")
 
 
-def buckets_of(library: UserLibrary, player_game: PlayerGame) -> QuerySet[Playthrough]:
-    """This game's live buckets, oldest first.
-
-    Plural: nothing holds a tracked game to one.
-    """
-    return Playthrough.objects.filter(
-        library=library,
-        player_game=player_game,
-        removed_at__isnull=True,
-        kind=PlaythroughKind.IMPORTED_HISTORY,
-    ).order_by("created_at", "id")
-
-
 def tracked_game(library: UserLibrary, game: Game) -> PlayerGame | None:
     """The row this library tracks the game with.
 
