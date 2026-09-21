@@ -594,8 +594,7 @@ class SearchSelectProps(TypedDict):
     params: SearchSelectParams
     #: The endpoint the create row posts to; blank offers no row.
     create_url: str
-    #: A token for a create row outside a form; a hosted row reads
-    #: the form's own.
+    #: For a create row outside a form; a hosted row reads the form's.
     csrf: str
     #: Commit the one option a search answers, where nothing is held.
     commit_sole_option: bool

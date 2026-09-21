@@ -421,16 +421,14 @@ def create_playthrough(request, payload: PlaythroughIn):
             ),
             correlation_id=correlation_id,
         )
-    #: Read back before a word is said: a queued message rides the
-    #: answer whatever its status, so a success stated ahead of a
-    #: defect is a green toast over an empty field.
+    #: Read back before a word is said: a message rides the answer
+    #: whatever its status.
     with answered("playthrough"):
         row = _created_run(library, game, recorded.playthrough_id)
     if recorded.recorded:
         messages.success(request, "Playthrough recorded")
     else:
-        #: The name was already at this game, so the answer is that
-        #: run. Saying it was recorded would state a second one.
+        #: The answer is the run that name already names.
         messages.info(request, f"{row.label} is already at this game")
     if recorded.tracked_the_game:
         #: Tracking is an act of its own, so it is said.
@@ -451,9 +449,8 @@ def _created_run(
     for run in numbered:
         if run.pk == playthrough_id:
             return CreatedRow(value=str(run.pk), label=display_name(run))
-    #: The row is this library's own, stated one act ago: absent here
-    #: the row is wrong, not the statement, which is the defect the
-    #: boundary records.
+    #: This library's own row, stated one act ago: the row is
+    #: wrong, not the statement.
     raise RowUnreadable(
         f"Run {playthrough_id} at game {game.pk} was recorded in library "
         f"{library.pk} and no read of that game's runs answers it."

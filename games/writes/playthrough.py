@@ -487,9 +487,8 @@ def _named_run(
         .first()
     )
     if run is None:
-        #: The read is outside the lock that answered Unchanged, so a
-        #: removal between the two lands here. The row is wrong, not
-        #: the statement.
+        #: Read outside the lock that answered Unchanged: a removal
+        #: between the two lands here.
         raise RowUnreadable(
             f"RecordPlaythroughByName answered Unchanged about name "
             f"{command.name!r} at game {game.pk}, and library "

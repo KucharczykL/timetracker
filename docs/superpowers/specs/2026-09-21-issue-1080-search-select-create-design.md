@@ -11,14 +11,12 @@ the filter refuses every name a longer name holds. It appears after the answer
 decides, because the loaded window is partial; a name beyond it is refused by
 the route, which reads the whole table.
 
-The element upserts the answer on its id. A creation can answer a key the panel
-already lists, because a run creation adopts a placeholder, and an element that
-always inserts shows one run two times.
+The element upserts the answer on its key. A creation can answer a key the
+panel already lists, because a run creation adopts a placeholder.
 
-An answer that states no sentence of its own is reported, and so is a POST that
-never lands. A refusal queues its sentence and rides the header; a schema
-refusal, a lost connection and a defect queue nothing, and a row that un-dims
-with no word is the same to a person as a row that did nothing.
+A refusal queues its sentence, which rides the header. A schema refusal, a lost
+connection and a defect queue none, so the element reports those itself: a row
+that un-dims with no word is the same to a person as a row that did nothing.
 
 ## The parameters a request rides
 
@@ -41,14 +39,15 @@ A body states a name or an act, never both: the name is read first, so a body
 stating both would record the name alone. The schema refuses it.
 
 `RecordPlaythroughByName` reads the game's runs in its build, under the stream
-head's lock. The row it reached is read back before a word is said, because a
-queued message rides the answer whatever its status: a success stated ahead of
-a defect is a green toast over an empty field. A row this library wrote one act
-ago and cannot read is a defect, not a missing row, thus `RowUnreadable` and
-the record the boundary writes. A game that already holds a live ordinary run of that name answers
+head's lock. A game that already holds a live ordinary run of that name answers
 `Unchanged`, read ahead of every other rule: that run is the one the person
-named. The answer says whether anything was recorded, so no page states a
+named, and the answer says whether anything was recorded, so no page states a
 creation that did not happen.
+
+The row is read back before a word is said, because a message rides the answer
+whatever its status: a success stated ahead of a defect is a green toast over
+an empty field. A row this library wrote one act ago and cannot read is a
+defect, not a missing row, thus `RowUnreadable`, which the boundary records.
 
 A placeholder is the game's sole live ordinary run that states no start, no
 completion and a blank name, and that no live session and no live record names.
@@ -62,21 +61,25 @@ Python. A number counts over a partition, so a queryset narrowed to one key
 counts over one row, and every blank name reads as `Playthrough 1`.
 
 The search route is declared ahead of the keyed route. Ninja matches `search`
-as a key otherwise, and answers 422.
+as a key otherwise, and answers 422. Every picker search answers one schema,
+`PickerOption`: the endpoints stated one each while the identity cutover
+promoted keys group by group, and every converted model states a UUIDv7 now.
 
 ## One typed name, one set of rules
 
 `POST /api/devices/` and `POST /api/platforms/` run the forms the add pages
 run. A device takes the Unknown its default names. A platform states the
-library, so the row is private: a shared row is a fixture. A device the
-library already holds is answered rather than made twice, because the column
-states no rule of its own and the create row is judged on the loaded window:
-a library holding more devices than that window shows would type a name it
-holds. Every name is compared with case ignored, as the create row compares
-it: a picker that offers no row for `new game plus` must not make one. Each answers 422 and
-one sentence, flattened from `form.errors` with the `__all__` errors
-`Platform.clean` states; a command refusal keeps its 409. The element reads the
-CSRF token from the hosting form, so no form constructor takes a request.
+library, so the row is private: a shared row is a fixture.
+
+A device the library already holds is answered rather than made twice: the
+column states no rule of its own, and the create row is judged on the loaded
+window, which a library holding more devices than it shows types past. Every
+name is compared with case ignored, as the create row compares it.
+
+A refusal is 422 and one sentence, flattened from `form.errors` with the
+`__all__` errors `Platform.clean` states and named by its field; a command
+refusal keeps its 409. The element reads the CSRF token from the hosting form,
+so no form constructor takes a request.
 
 ## The run field is required
 

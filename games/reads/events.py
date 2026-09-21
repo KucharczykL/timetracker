@@ -41,8 +41,7 @@ def created_aggregate_id(result: CommandResult) -> uuid.UUID:
     know: an outcome that appended nothing states no sequence.
     """
     if result.sequences is None:
-        #: Not an assert: one stripped under `-O` answers the next
-        #: line an AttributeError naming nothing.
+        #: Not an assert: `-O` strips one.
         raise ValueError("An outcome that appended no event names no created row.")
     return LibraryEvent.objects.get(
         stream_id=result.stream_id, sequence=result.sequences.first

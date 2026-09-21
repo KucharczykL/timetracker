@@ -249,10 +249,9 @@ class RecordPlaythroughByName(Command):
                 sentence="Type a name for the playthrough.",
             )
         refuse_name_the_column_cannot_hold(self.name)
-        #: Ahead of the placeholder read: a run already called
-        #: this is the run the person named. Case is ignored, as
-        #: the create row ignores it: a picker that offers no row
-        #: for `new game plus` must not make one either.
+        #: Ahead of the placeholder read: a run already called this
+        #: is the run the person named. Case is ignored, as the
+        #: create row ignores it.
         if (
             live_ordinary_runs(context.library, tracked)
             .filter(name__iexact=self.name)

@@ -65,7 +65,7 @@ def created_by_form(
     if not form.is_valid():
         raise RowRefused(refusal_sentence(form))
     #: Every form this runs is a ModelForm, which the protocol
-    #: cannot state: a form that only validates states no save.
+    #: cannot state.
     saved: NamedRow = form.save()  # type: ignore[attr-defined]
     return saved
 
