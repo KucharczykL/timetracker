@@ -15,6 +15,7 @@ from common.components import (
     Badge,
     BadgeTone,
     ButtonGroup,
+    Cell,
     Column,
     ContentContainer,
     Duration,
@@ -29,6 +30,7 @@ from common.components import (
     make_row,
     paginated_table_content,
     parse_filter_dict,
+    row_summary,
 )
 from common.date_time_presentation import (
     DateTimePresentation,
@@ -41,8 +43,8 @@ from common.duration_presentation import (
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl, action_url
-from common.sorting import SortTerm
-from common.temporal_presentation import TemporalText
+from common.sorting import SortKey, SortTerm
+from common.temporal_presentation import TemporalText, present_temporal_value
 from common.utils import paginate
 from games.bulk_removal import REMOVE_RECORD
 from games.bulk_tray import tray_actions
@@ -113,54 +115,163 @@ def record_actions(record: HistoricalPlaytime, origin: OriginUrl | None) -> Node
     )
 
 
+#: The list page's sort keys, by label.
+_SORT_KEYS: Mapping[str, SortKey] = {
+    "Name": "name",
+    "When": "when",
+    "Duration": "duration",
+    "Provenance": "provenance",
+    "Device": "device",
+    "Created": "created",
+}
+
+
 def historical_playtime_tabledata(
     records: Sequence[HistoricalPlaytime],
     labels: RunLabels,
     presentation: DateTimePresentation,
     durations: DurationPresentation,
+    exclude_columns: Sequence[str] = (),
     *,
     origin: OriginUrl | None,
     sort_terms: Sequence[SortTerm] = (),
+    sortable: bool = False,
+    caption: str = "Historical playtime",
 ) -> TableData:
-    """Runs column is not sortable."""
+    """Rows for the records; caller states sorting.
+
+    Both pages read this builder, so one drop order
+    serves both. The Playthroughs column is not
+    sortable on either.
+    """
+
+    def column(label: str, **options: object) -> Column:
+        return Column(
+            label,
+            _SORT_KEYS.get(label) if sortable else None,
+            **options,  # type: ignore[arg-type]
+        )
+
+    column_list = [
+        column("Name", shrinkable=True),
+        #: Shrinkable as well: it leads the table Game
+        #: detail renders, and the summary under a cell
+        #: that cannot shrink widens the whole table.
+        column("When", shrinkable=True, priority=3),
+        column("Duration", priority=2),
+        column("Provenance", priority=2),
+        column("Playthroughs", priority=1),
+        column("Device"),
+        column("Created"),
+        column("Actions", align="right", priority=4),
+    ]
+    kept_columns = [
+        column for column in column_list if column.label not in exclude_columns
+    ]
+    dropped_indexes = [
+        index
+        for index, column in enumerate(column_list)
+        if column.label in exclude_columns
+    ]
+
+    row_list: list[list[Cell]] = [
+        [
+            NameWithIcon(game=record.player_game.game),
+            TemporalText(record.when, presentation),
+            Duration(
+                record.duration,
+                durations,
+                id_scope=f"record-{record.pk}",
+                manual=True,
+            ),
+            Badge(
+                record.get_provenance_display(),
+                size="sm",
+                tone=PROVENANCE_TONES[record.provenance],
+            ),
+            _runs_cell(record, labels),
+            record.device.name if record.device else "No device",
+            presentation.format(record.created_at, "date"),
+            record_actions(record, origin),
+        ]
+        for record in records
+    ]
+    kept_rows = [
+        [cell for index, cell in enumerate(row) if index not in dropped_indexes]
+        for row in row_list
+    ]
     return {
-        "caption": "Historical playtime",
-        "columns": [
-            Column("Name", "name", shrinkable=True),
-            Column("When", "when", priority=3),
-            Column("Duration", "duration", priority=2),
-            Column("Provenance", "provenance", priority=2),
-            Column("Runs", priority=1),
-            Column("Device", "device"),
-            Column("Created", "created"),
-            Column("Actions", align="right", priority=4),
-        ],
+        "caption": caption,
+        "columns": kept_columns,
         "sort_terms": sort_terms,
         "rows": [
             make_row(
-                NameWithIcon(game=record.player_game.game),
-                TemporalText(record.when, presentation),
-                Duration(
-                    record.duration,
-                    durations,
-                    id_scope=f"record-{record.pk}",
-                    manual=True,
-                ),
-                Badge(
-                    record.get_provenance_display(),
-                    size="sm",
-                    tone=PROVENANCE_TONES[record.provenance],
-                ),
-                _runs_cell(record, labels),
-                record.device.name if record.device else "No device",
-                presentation.format(record.created_at, "date"),
-                record_actions(record, origin),
+                *cells,
                 id=f"record-row-{record.pk}",
                 key=str(record.pk),
+                summary=_record_summary(
+                    record,
+                    labels,
+                    presentation,
+                    durations,
+                    with_when="Name" not in exclude_columns,
+                ),
             )
-            for record in records
+            for record, cells in zip(records, kept_rows, strict=True)
         ],
     }
+
+
+def _record_summary(
+    record: HistoricalPlaytime,
+    labels: RunLabels,
+    presentation: DateTimePresentation,
+    durations: DurationPresentation,
+    *,
+    with_when: bool,
+) -> str:
+    """The second line, below md, where the columns went.
+
+    The identity cell decides: the list leads with the
+    game and states the day below it, Game detail leads
+    with the day and spends the line on the rest.
+    """
+    device = record.device.name if record.device else None
+    if with_when:
+        return row_summary(
+            _when_part(record, presentation),
+            durations.format(record.duration),
+            device,
+        )
+    return row_summary(
+        durations.format(record.duration),
+        record.get_provenance_display(),
+        _runs_part(record, labels),
+        device,
+    )
+
+
+def _when_part(
+    record: HistoricalPlaytime, presentation: DateTimePresentation
+) -> str | None:
+    """A day nobody knows states no part."""
+    if record.when is None or record.when.is_unknown:
+        return None
+    return present_temporal_value(record.when, presentation)
+
+
+def _runs_part(record: HistoricalPlaytime, labels: RunLabels) -> str | None:
+    """The first run, and how many more.
+
+    A comma-joined list inside a comma-joined line reads
+    as one list of facts, so the rest are counted.
+    """
+    names = record_run_labels(record, labels)
+    if not names:
+        return None
+    if len(names) == 1:
+        return names[0]
+    return f"{names[0]} and {len(names) - 1} more"
 
 
 @login_required
@@ -197,6 +308,7 @@ def list_historical_playtime(request: HttpRequest) -> HttpResponse:
         durations,
         origin=request.get_full_path(),
         sort_terms=sort.terms,
+        sortable=True,
     )
     data["selection"] = {
         "filter": filter_json,

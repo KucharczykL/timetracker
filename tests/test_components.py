@@ -3318,6 +3318,53 @@ class SelectableRowTest(SimpleTestCase):
         self.assertNotIn("data-selection-key", html)
 
 
+class RowSummaryTest(SimpleTestCase):
+    """The one builder every summary calls, and the clip it needs."""
+
+    @staticmethod
+    def _table(*, shrinkable: bool, summary: str | None):
+        return str(
+            components.StyledTable(
+                columns=[
+                    components.Column("Name", shrinkable=shrinkable),
+                    components.Column("Year"),
+                ],
+                rows=[components.make_row("Game", "2025", summary=summary)],
+                data_table=True,
+                caption="Games",
+            )
+        )
+
+    def test_a_part_that_states_nothing_is_dropped(self):
+        self.assertEqual(
+            components.row_summary("Tunic", None, "", "2 hours"),
+            "Tunic, 2 hours",
+        )
+
+    def test_no_part_at_all_states_an_empty_line(self):
+        self.assertEqual(components.row_summary(None, ""), "")
+
+    def test_the_parts_join_with_a_comma_and_a_space(self):
+        self.assertEqual(components.row_summary("a", "b", "c"), "a, b, c")
+
+    @override_settings(DEBUG=True)
+    def test_a_summary_under_a_first_column_that_cannot_clip_is_refused(self):
+        with self.assertRaises(ValueError) as refusal:
+            self._table(shrinkable=False, summary="2 hours, PC")
+        self.assertIn("Name", str(refusal.exception))
+        self.assertIn("shrinkable", str(refusal.exception))
+
+    @override_settings(DEBUG=True)
+    def test_a_shrinkable_first_column_renders_the_summary(self):
+        self.assertIn(
+            "2 hours, PC", self._table(shrinkable=True, summary="2 hours, PC")
+        )
+
+    @override_settings(DEBUG=True)
+    def test_a_table_that_states_no_summary_needs_no_shrinkable_column(self):
+        self.assertIn("2025", self._table(shrinkable=False, summary=None))
+
+
 class SelectionLineTest(SimpleTestCase):
     """The footer's second region."""
 

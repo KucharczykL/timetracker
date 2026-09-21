@@ -399,8 +399,8 @@ From it a person:
   #714's, which names a sole run too; `ambiguous_run_labels` beside it is
   the list's name cell, which hides one. The stacked cell's summary
   (#711's `make_row(summary=...)`) is fed on this list alone: time range,
-  duration, device, and the run label while the column shows; the other
-  selectable tables are #1241's, after #715. `StyledTable` has no group-header rows and the
+  duration, device, and the run label while the column shows; #1241 feeds
+  the other four selectable tables. `StyledTable` has no group-header rows and the
   column-drop classes address cells by position, so grouping is the column
   and the sort, not header rows;
 - narrows by date and device, the session filter's own facets;

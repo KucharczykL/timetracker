@@ -16,11 +16,12 @@ from common.components import (
     TableData,
     TruncatedText,
     make_row,
+    row_summary,
 )
 from common.date_time_presentation import DateTimePresentation
 from common.returns import OriginUrl, action_url
 from common.sorting import SortKey, SortTerm
-from common.temporal_presentation import TemporalText
+from common.temporal_presentation import TemporalText, present_temporal_value
 from games.models import Playthrough
 from games.reads.playthrough_activity import (
     ActivityClock,
@@ -34,6 +35,7 @@ from games.reads.playthrough_endpoints import (
     stated_start,
 )
 from games.reads.playthrough_numbering import display_name
+from timetracker.temporal import TemporalEndpoint, TemporalValue
 
 #: One request's CSRF token, as the act forms post it.
 type CsrfToken = str
@@ -117,15 +119,129 @@ def playthrough_tabledata(
         [cell for index, cell in enumerate(row) if index not in dropped_indexes]
         for row in row_list
     ]
+    with_game = "Game" not in exclude_columns
     return {
         "caption": "Playthroughs",
         "columns": kept_columns,
         "sort_terms": sort_terms,
         "rows": [
-            make_row(*cells, key=str(run.pk))
+            make_row(
+                *cells,
+                key=str(run.pk),
+                summary=_summary(run, presentation, clock, with_game=with_game),
+            )
             for run, cells in zip(runs, kept_rows, strict=True)
         ],
     }
+
+
+def _summary(
+    run: Playthrough,
+    presentation: DateTimePresentation,
+    clock: ActivityClock,
+    *,
+    with_game: bool,
+) -> str:
+    """The second line, below md, where the columns went.
+
+    The game is named only where its column is declared:
+    the list drops it with the rest, and on Game detail
+    every row names the same game already.
+    """
+    return row_summary(
+        run.player_game.game.name if with_game else None,
+        *_endpoint_parts(run, presentation),
+        _activity_part(run, clock),
+    )
+
+
+def _endpoint_parts(
+    run: Playthrough, presentation: DateTimePresentation
+) -> list[str | None]:
+    """One span, or one labelled part per endpoint.
+
+    Two values joined as a range read as one range, which
+    is wrong where either is itself a range or unknown.
+    """
+    start, completion = _stated_values(run)
+    span = _span(start, completion, presentation)
+    if span is not None:
+        return [span]
+    return [
+        _labelled_endpoint("Started", start, presentation),
+        _labelled_endpoint("Completed", completion, presentation),
+    ]
+
+
+def _stated_values(
+    run: Playthrough,
+) -> tuple[TemporalValue | None, TemporalValue | None]:
+    """Each endpoint's value, or nothing.
+
+    An act stated on a day nobody knows states no value:
+    the summary drops such a part rather than spending
+    the line on the word `Unknown`.
+    """
+    return tuple(  # type: ignore[return-value]
+        None if stated is None else stated.when
+        for stated in (stated_start(run), stated_completion(run))
+    )
+
+
+def _span(
+    start: TemporalValue | None,
+    completion: TemporalValue | None,
+    presentation: DateTimePresentation,
+) -> str | None:
+    """Both endpoints as one range, in the grammar's words.
+
+    The open endpoint is what picks `since` and `until`,
+    so an endpoint the run states nothing about is open
+    rather than unknown, which would read `Unknown`.
+    """
+    if start is None and completion is None:
+        return None
+    if any(
+        value.is_range or value.is_unknown for value in (start, completion) if value
+    ):
+        return None
+    return present_temporal_value(
+        TemporalValue.range(
+            start=_endpoint(start),
+            end=_endpoint(completion),
+        ),
+        presentation,
+    )
+
+
+def _endpoint(value: TemporalValue | None) -> TemporalEndpoint:
+    return TemporalEndpoint.open() if value is None else TemporalEndpoint.known(value)
+
+
+def _labelled_endpoint(
+    label: str, value: TemporalValue | None, presentation: DateTimePresentation
+) -> str | None:
+    if value is None or value.is_unknown:
+        return None
+    return f"{label} {present_temporal_value(value, presentation)}"
+
+
+def _activity_part(run: Playthrough, clock: ActivityClock) -> str | None:
+    """The clock's word and how long ago, as one part.
+
+    A run that states a completion is counted no
+    condition, and states no part.
+    """
+    if not hasattr(run, "activity"):
+        raise ValueError(
+            f"playthrough {run.pk} carries no condition alias; "
+            "read the runs through runs_with_condition()"
+        )
+    if run.activity is None:
+        return None
+    word = RunActivity(run.activity).label
+    day = getattr(run, "activity_day", None)
+    return word if day is None else f"{word} {recency_phrase(day, clock.today)}"
 
 
 def _endpoint_cell(

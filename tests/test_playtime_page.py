@@ -375,3 +375,63 @@ def test_a_run_the_page_cannot_name_is_a_defect(client, owner):
 
     with pytest.raises(RowUnreadable, match=str(record.pk)):
         client.get(reverse(HISTORICAL))
+
+
+def summary_of(body: str) -> str:
+    """The first row's second line."""
+    [line] = re.findall(r'data-row-summary=""[^>]*>([^<]*)<', body)[:1]
+    return html.unescape(line)
+
+
+@pytest.mark.django_db
+@pytest.mark.untracked_games
+class TestHistoricalListSummary:
+    """The stacked cell's second line, below md."""
+
+    def test_the_list_states_the_eight_columns_and_sorts_them(self, client, owner):
+        library = owner.library
+        run = tracked_run(library, Game.objects.create(library=library, name="G"))
+        record_row([run])
+
+        body = client.get(reverse(HISTORICAL)).content.decode()
+
+        for label in (
+            "Name",
+            "When",
+            "Duration",
+            "Provenance",
+            "Playthroughs",
+            "Device",
+            "Created",
+            "Actions",
+        ):
+            assert f">{label}<" in body
+        assert "?sort=when" in html.unescape(body)
+
+    def test_a_row_states_the_day_the_duration_and_the_device(self, client, owner):
+        library = owner.library
+        deck = Device.objects.create(library=library, name="Steam Deck")
+        run = tracked_run(library, Game.objects.create(library=library, name="G"))
+        record_row([run], duration=timedelta(hours=2), when="2026-03-05", device=deck)
+
+        summary = summary_of(client.get(reverse(HISTORICAL)).content.decode())
+
+        assert summary == "2026-03-05, 2.0 h, Steam Deck"
+
+    def test_an_unknown_day_states_no_part(self, client, owner):
+        library = owner.library
+        run = tracked_run(library, Game.objects.create(library=library, name="G"))
+        record_row([run], when=None)
+
+        assert "Unknown" not in summary_of(
+            client.get(reverse(HISTORICAL)).content.decode()
+        )
+
+    def test_a_record_with_no_device_states_no_part(self, client, owner):
+        library = owner.library
+        run = tracked_run(library, Game.objects.create(library=library, name="G"))
+        record_row([run], when="2026-03-05")
+
+        assert "No device" not in summary_of(
+            client.get(reverse(HISTORICAL)).content.decode()
+        )

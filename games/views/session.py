@@ -30,6 +30,7 @@ from common.components import (
     TruncatedText,
     make_row,
     paginated_table_content,
+    row_summary,
 )
 from common.date_time_presentation import (
     DateTimePresentation,
@@ -159,17 +160,13 @@ def _row_summary(
     The run is named only while the column is declared:
     below md the column has dropped and the name cell
     states no label, so nothing else names the run.
-
-    Commas, not a middle dot: a screen reader speaks a
-    comma as a pause and a middle dot as a word.
     """
-    parts = [
+    return row_summary(
         run_name,
         session_time_range(session, presentation),
         durations.format(session.effective_duration),
         session.device.name if session.device is not None else None,
-    ]
-    return ", ".join(part for part in parts if part)
+    )
 
 
 @login_required

@@ -438,5 +438,5 @@ def test_a_shared_game_shows_each_library_its_own_records(
 
     mine = HistoricalPlaytime.objects.get(library=owned_user.library)
     theirs = HistoricalPlaytime.objects.get(library=other.library)
-    assert f"historical-row-{mine.pk}" in page
-    assert f"historical-row-{theirs.pk}" not in page
+    assert f"record-row-{mine.pk}" in page
+    assert f"record-row-{theirs.pk}" not in page
