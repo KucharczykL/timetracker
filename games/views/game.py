@@ -112,6 +112,7 @@ from games.reads.historical_playtime_page import (
 from games.reads.historical_playtime_records import RECORD_ORDER
 from games.reads.player_sessions import game_sessions
 from games.reads.playergame_history import StatusEntry, status_history
+from games.reads.playthrough_activity import ActivityClock, activity_clock
 from games.reads.playthrough_completions import GAME_RUNS, reported_completion_day
 from games.reads.playthrough_numbering import numbered_for
 from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
@@ -1136,6 +1137,7 @@ def _playthroughs_section(
     game: Game,
     runs: Sequence[Playthrough],
     presentation: DateTimePresentation,
+    clock: ActivityClock,
     origin: OriginUrl | None,
     csrf_token: str,
     request: HttpRequest,
@@ -1144,6 +1146,7 @@ def _playthroughs_section(
         runs,
         presentation,
         exclude_columns=["Game"],
+        clock=clock,
         origin=origin,
         csrf_token=csrf_token,
     )
@@ -1250,7 +1253,13 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             game, library, presentation, durations, origin, request
         ),
         _playthroughs_section(
-            game, runs, presentation, origin, get_token(request), request
+            game,
+            runs,
+            presentation,
+            activity_clock(library),
+            origin,
+            get_token(request),
+            request,
         ),
         _history_section(game, library, presentation),
     ]

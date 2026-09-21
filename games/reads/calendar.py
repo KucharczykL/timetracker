@@ -1,11 +1,13 @@
 """The zone a library counts days in, and what a change to it moves."""
 
 import logging
+from datetime import date
 from typing import NamedTuple
 from zoneinfo import ZoneInfo
 
 from django.db.models import Count, DateField, F, Func, Q, Value
 from django.db.models.functions import Cast, ExtractMonth, ExtractYear
+from django.utils import timezone as django_timezone
 
 from common.date_time_presentation import zone_or_none
 from games.events.playersession import ZoneName
@@ -40,6 +42,20 @@ def calendar_day_zone(library: UserLibrary) -> ZoneInfo:
             stated,
         )
     return ZoneInfo(resolve_str_for_user(library.user, "DISPLAY_TIME_ZONE"))
+
+
+def calendar_today(library: UserLibrary) -> date:
+    """The day this library is on.
+
+    Every day-grained reader and every act asks here. A day
+    derived from `timezone.localdate()` answers the viewer's
+    display zone, and one from a presentation zone answers
+    the viewer again; neither is the calendar the stored
+    days were counted in, and for the hours the two zones
+    name different dates the subtraction is a day out
+    (#1047's rule, #1217's four failures).
+    """
+    return django_timezone.now().astimezone(calendar_day_zone(library)).date()
 
 
 class CalendarDelta(NamedTuple):

@@ -50,6 +50,7 @@ from games.models import (
 from games.ownership import owned_or_404
 from games.reads.days import DayInterval
 from games.reads.player_sessions import game_session_days
+from games.reads.playthrough_activity import activity_clock
 from games.reads.playthrough_endpoints import (
     StatedEndpoint,
     restatable_days,
@@ -170,6 +171,7 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
     data = playthrough_tabledata(
         page_runs,
         presentation,
+        clock=activity_clock(library),
         sort_terms=sort.terms,
         sortable=True,
         origin=origin,

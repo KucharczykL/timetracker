@@ -7,11 +7,11 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
-from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from games.models import Game, PlayerGameStatus, Playthrough
+from games.models import Game, PlayerGameStatus, Playthrough, UserLibrary
 from games.ownership import owned_or_404
+from games.reads.calendar import calendar_today
 from games.reads.companion_status import played_is_offered
 from games.views.playergame_writes import record_facts_for_request
 from games.views.playthrough import editable_runs, record_completed
@@ -24,9 +24,15 @@ from games.writes.playergame import new_correlation_id
 from timetracker.temporal import TemporalValue
 
 
-def _today() -> TemporalValue:
-    """The act happened when it was pressed."""
-    return TemporalValue.from_day(timezone.localdate())
+def _today(library: UserLibrary) -> TemporalValue:
+    """The act happened when it was pressed, on the library's calendar.
+
+    Not `localdate()`: that is the viewer's display zone,
+    a per-user preference, and the day a run falls on is
+    the library's fact (#1047). Off a request it is not
+    even that, but `settings.TIME_ZONE` (#1217).
+    """
+    return TemporalValue.from_day(calendar_today(library))
 
 
 def _run_of(request: HttpRequest, playthrough_id: UUID) -> Playthrough:
@@ -55,7 +61,7 @@ def start_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpRespons
     #: Named, so the status read cannot read as a second
     #: predicate: the write above it has to commit first.
     stated = start_run_for_request(
-        request, run, _today(), correlation_id=correlation_id
+        request, run, _today(library), correlation_id=correlation_id
     )
     if stated and played_is_offered(library, game):
         #: Discarded: a refused status only toasts.
@@ -74,9 +80,10 @@ def complete_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResp
     """Record that this run was completed today."""
     run = _run_of(request, playthrough_id)
     game = run.player_game.game
+    library = cast("User", request.user).library
     correlation_id = new_correlation_id()
     stated = complete_run_for_request(
-        request, run, _today(), correlation_id=correlation_id
+        request, run, _today(library), correlation_id=correlation_id
     )
     if stated:
         record_completed(request, game, correlation_id)

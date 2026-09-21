@@ -3,8 +3,6 @@
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from django.utils import timezone as django_timezone
-
 from common.components import (
     ICON_BUTTON_SIZE_CLASS,
     ButtonGroup,
@@ -24,7 +22,11 @@ from common.returns import OriginUrl, action_url
 from common.sorting import SortKey, SortTerm
 from common.temporal_presentation import TemporalText
 from games.models import Playthrough
-from games.reads.playthrough_activity import RunActivity, recency_phrase
+from games.reads.playthrough_activity import (
+    ActivityClock,
+    RunActivity,
+    recency_phrase,
+)
 from games.reads.playthrough_endpoints import (
     StatedEndpoint,
     days_to_finish,
@@ -51,6 +53,7 @@ def playthrough_tabledata(
     presentation: DateTimePresentation,
     exclude_columns: Sequence[str] = (),
     *,
+    clock: ActivityClock,
     origin: OriginUrl | None,
     csrf_token: CsrfToken,
     sort_terms: Sequence[SortTerm] = (),
@@ -60,6 +63,11 @@ def playthrough_tabledata(
 
     The token has no default: an act button posts, and a
     form with no token renders a button that only 403s.
+
+    The clock has none either, and is the one that read
+    these runs: the condition on the row and the recency
+    beside it are the same count, so they cannot be taken
+    from two calendars.
     """
 
     def column(label: str, **options: Any) -> Column:
@@ -97,7 +105,7 @@ def playthrough_tabledata(
             ),
             _endpoint_cell(stated_start(run), presentation),
             _endpoint_cell(stated_completion(run), presentation),
-            _activity_cell(run, presentation),
+            _activity_cell(run, clock),
             _days_cell(run),
             run.note,
             presentation.format(run.created_at, "date"),
@@ -129,13 +137,20 @@ def _endpoint_cell(
     return TemporalText(stated.when, presentation)
 
 
-def _activity_cell(run: Playthrough, presentation: DateTimePresentation) -> Cell:
+def _activity_cell(run: Playthrough, clock: ActivityClock) -> Cell:
     """The clock's word, and how long ago.
 
     An absent alias is not a missing condition: it is a
     caller who read the runs off a queryset no clock
     reached, and a dash there prints every unfinished
     run as finished.
+
+    The word and the phrase beside it read one clock. The
+    day is the row's `effective_day`, counted in the
+    library's calendar, so today must come from that same
+    calendar; a today taken from the viewer's presentation
+    zone put the two a day apart for the two hours a night
+    the zones disagree (#1217).
     """
     if not hasattr(run, "activity"):
         raise ValueError(
@@ -148,10 +163,9 @@ def _activity_cell(run: Playthrough, presentation: DateTimePresentation) -> Cell
     day = getattr(run, "activity_day", None)
     if day is None:
         return badge
-    today = django_timezone.now().astimezone(presentation.timezone).date()
     return Fragment(
         badge,
-        Span(class_="ml-2 text-type-body")[recency_phrase(day, today)],
+        Span(class_="ml-2 text-type-body")[recency_phrase(day, clock.today)],
     )
 
 

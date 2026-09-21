@@ -5,8 +5,6 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar, cast
 
-from django.utils import timezone
-
 from games.commands.scope import Refusal, library_row
 from games.events.dispatch import (
     Command,
@@ -27,12 +25,19 @@ from games.events.playthrough import playthrough_created
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import Game, PlayerGame, PlayerGameStatus
+from games.reads.calendar import calendar_today
 from timetracker.temporal import TemporalValue
 
 
-def _stated_now() -> TemporalValue:
-    """A live change happens when recorded."""
-    return TemporalValue.from_day(timezone.localdate())
+def _stated_now(context: CommandContext) -> TemporalValue:
+    """A live change happens when recorded, on the library's calendar.
+
+    The context carries the library precisely so a command
+    states no day of its own: `localdate()` answers the
+    viewer's display zone, and two readers of one library
+    would then write two different days (#1047, #1217).
+    """
+    return TemporalValue.from_day(calendar_today(context.library))
 
 
 class PlayerGameNotTracked(CommandRejected):
@@ -144,7 +149,7 @@ class SetPlayerGameStatus(Command):
                 aggregate_id=tracked.pk,
                 #: A test pins Literal and choices equal.
                 payload={"status": cast("StatusValue", self.status.value)},
-                effective_time=_stated_now(),
+                effective_time=_stated_now(context),
             )
         ]
 
@@ -275,7 +280,7 @@ class RecordPlayerGameFacts(Command):
                     aggregate_id=tracked.pk,
                     #: A test pins Literal and choices equal.
                     payload={"status": cast("StatusValue", self.status.value)},
-                    effective_time=_stated_now(),
+                    effective_time=_stated_now(context),
                 )
             )
         if self.mastered is not None and tracked.mastered != self.mastered:
