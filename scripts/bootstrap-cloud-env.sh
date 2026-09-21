@@ -193,11 +193,16 @@ fi
 # ── 6. Git LFS payloads ──────────────────────────────────────────────────────
 # .gitattributes puts *.gz, *.png and *.woff2 through LFS, so a clone made
 # without the filter leaves pointer stubs where the files should be. Nothing
-# says so until a test opens one: `make loadsample` and the three suites that
-# read games/fixtures/sample.yaml.gz fail on a 131-byte "version
-# https://git-lfs.github.com/spec/v1", and the vendored woff2 faces never
-# arrive, which moves the text metrics the e2e layout assertions measure. CI
-# checks out with `lfs: true` and never sees any of it. Skip with SKIP_LFS=1.
+# says so until a test opens one: `make loadsample` and the six checks that
+# read games/fixtures/sample.yaml.gz fail on a 131-byte stub naming the LFS
+# spec, and the vendored woff2 faces never arrive, which moves the text metrics
+# the e2e layout assertions measure. CI checks out with `lfs: true` and never
+# sees any of it. Skip with SKIP_LFS=1.
+#
+# Spelling that stub's first two lines out here would be the clearer comment
+# and a broken build: the Dockerfile greps the whole build context for exactly
+# that text to catch a checkout made without LFS, and cannot tell a real stub
+# from a comment quoting one.
 if [ "${SKIP_LFS:-0}" != "1" ] && [ -f "$PROJECT_DIR/.gitattributes" ]; then
   if grep -q 'filter=lfs' "$PROJECT_DIR/.gitattributes" 2>/dev/null; then
     if command -v git-lfs >/dev/null; then
