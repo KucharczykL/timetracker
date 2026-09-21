@@ -6,7 +6,7 @@ form records a session on what came back.
 
 import pytest
 from django.urls import reverse
-from playwright.sync_api import Page
+from playwright.sync_api import Page, expect
 
 
 @pytest.fixture
@@ -162,6 +162,24 @@ def test_a_session_records_on_a_run_created_from_the_picker(
 
     session = PlayerSession.objects.get(library=e2e_library)
     assert session.playthrough_id == run.pk
+
+
+def test_picking_a_game_holding_one_run_holds_that_run(
+    authenticated_page: Page, live_server, e2e_library
+):
+    """The field is required, so the sole run is held with no pick."""
+    from tracked_games import create_tracked_game
+
+    create_tracked_game(e2e_library, "Outer Wilds")
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_session')}")
+
+    games = page.locator("search-select[name='game']")
+    games.locator("[data-search-select-search]").click()
+    games.locator("[data-search-select-option]").first.click()
+
+    held = _run_picker(page).locator('[data-search-select-pills] input[type="hidden"]')
+    expect(held).to_have_count(1)
 
 
 def test_the_run_picker_searches_again_when_the_game_changes(

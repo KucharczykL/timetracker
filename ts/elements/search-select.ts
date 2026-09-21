@@ -637,6 +637,10 @@ const initWidget = (containerElement: Element) => {
     if (rows.length !== 1) return;
     const option = optionFromRow(rows[0]);
     container._searchSelectSetSelected?.(option.value, option.label);
+    // The label landed in a box someone is already in, where a pick puts
+    // the caret at its end. Select it, as focus on a committed field does,
+    // so the next keystroke replaces the label instead of appending to it.
+    if (document.activeElement === search) search.select();
   };
 
   // ── A depended-on field changed: the loaded window is about another

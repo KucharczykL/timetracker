@@ -374,7 +374,8 @@ docs/           — Additional documentation
   `GET /api/playthrough/search`, whose `params` name the game field, so it
   searches again when the game changes and creates under the same key; always
   visible, holding the sole run an answer states while the box is untouched,
-  because the field is required, and its create row names the placeholder
+  because the field is required — which is what the page seeds as well,
+  through `sole_ordinary_run` — and its create row names the placeholder
   tracking minted rather than leaving a blank run beside a named one (#1080). Session on game nothing
   tracks refused on run. Bucket takes no new session; `MoveSessionToPlaythrough` is only way in
   or out. Resume keyed on game (`games:resume_session`). Read surfaces:

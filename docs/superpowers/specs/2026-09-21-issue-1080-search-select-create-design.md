@@ -184,7 +184,13 @@ the run field is required where every other picker is not. It holds the one
 option an answer states, only where nothing is held and the box is untouched:
 an answer that lands while a name is being typed would put a label where the
 name stands, and the create row that name was typed for could never be
-offered again.
+offered again. Landing in a box somebody stands in, it selects the label, as
+a focus on a committed field does, thus the next key replaces it.
+
+The page seeds the same rule. Opening the form on a game seeded its latest
+run, which a picker that holds a sole option and no other contradicts: one
+path chose among several runs and the other refused to. The page now seeds a
+sole run, and a game holding more is a choice.
 
 #714 renders `SearchSelect` directly, with a literal game key and no hide rule
 to undo.

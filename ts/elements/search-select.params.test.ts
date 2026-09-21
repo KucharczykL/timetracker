@@ -147,6 +147,42 @@ describe("<search-select> params (#1080)", () => {
     );
   });
 
+  it("selects the label it commits into a focused box", async () => {
+    document.body.replaceChildren();
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve([{ value: "r1", label: "Playthrough 1", data: {} }]),
+      } as Response)
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const picker = document.createElement("search-select") as SearchSelectLike;
+    picker.setAttribute("name", "playthrough");
+    picker.setAttribute("search-url", "/api/playthrough/search");
+    picker.setAttribute("prefetch", "20");
+    picker.setAttribute("commit-sole-option", "true");
+    picker.innerHTML = `
+      <div data-search-select-pills></div>
+      <input data-search-select-search />
+      <div data-search-select-options></div>
+      <template data-search-select-template="row"><div
+        data-search-select-option role="option" aria-selected="false"
+      ><span data-search-select-label></span></div></template>
+    `;
+    document.body.appendChild(picker);
+
+    const search = picker.querySelector<HTMLInputElement>(
+      "[data-search-select-search]"
+    )!;
+    search.focus();
+
+    await vi.waitFor(() => expect(search.value).toBe("Playthrough 1"));
+    //: A keystroke replaces the label, never appends to it.
+    expect(search.selectionStart).toBe(0);
+    expect(search.selectionEnd).toBe("Playthrough 1".length);
+  });
+
   it("leaves a name being typed alone", async () => {
     document.body.replaceChildren();
     let answer: (rows: unknown[]) => void = () => {};

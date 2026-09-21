@@ -83,6 +83,21 @@ def completed_run_count(library: UserLibrary, player_game: PlayerGame | None) ->
     )
 
 
+def sole_ordinary_run(library: UserLibrary, game: Game) -> Playthrough | None:
+    """The one live ordinary run a game holds, or none.
+
+    What a page seeds the run field with. The picker commits
+    a sole option and nothing else, so a seed states the same
+    rule: a game holding several runs is a choice, and one
+    made for the person is one they have to notice to undo.
+    """
+    tracked = tracked_game(library, game)
+    if tracked is None:
+        return None
+    runs = list(live_ordinary_runs(library, tracked)[:2])
+    return runs[0] if len(runs) == 1 else None
+
+
 def run_to_adopt(library: UserLibrary, player_game: PlayerGame) -> Playthrough | None:
     """The run a first statement fills in.
 
