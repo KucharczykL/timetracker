@@ -2161,7 +2161,9 @@ def ConfirmPage(
     confirm_label: str | None = "Confirm",
     confirm_color: ButtonColor = "red",
     details: Children = None,
+    choice: Children = None,
     refusal: Sequence[str] = (),
+    max_width: str = FORM_MAX_WIDTH_CLASS,
 ) -> Node:
     """Full-page confirmation: a prompt, a POST ``<form>`` (the confirm action)
     and a cancel link back to the origin. The no-JS replacement for the htmx
@@ -2169,16 +2171,20 @@ def ConfirmPage(
 
     ``confirm_label=None`` draws no submit; a defect admits none.
 
-    Three slots, and neither of the two beside ``message`` can live in it,
+    Four slots, and none of the three beside ``message`` can live in it,
     because it renders inside a ``<p>``. ``refusal`` is why the last POST was
     turned down; it draws through ``FieldErrors`` above the prompt, so a person
     reads the reason and then the question that still stands, and so no page
-    states a second way to draw a refusal. ``details`` is block content after
-    the prompt (a list of the data a removal would take with it).
+    states a second way to draw a refusal. ``choice`` is what the page asks
+    for before the press: a labelled control, so it is left-aligned and
+    body-coloured rather than centred like the prompt. ``details`` is block
+    content after both (a list of the data a removal would take with it).
+
+    ``max_width`` widens the page for a table the form width would crush.
     """
     refused = FieldErrors(refusal)
     return Div(
-        class_=f"mx-auto w-full {FORM_MAX_WIDTH_CLASS} p-5 @container",
+        class_=f"mx-auto w-full {max_width} p-5 @container",
     )[
         Form(method="post", action=post_url)[
             Safe(
@@ -2187,6 +2193,15 @@ def ConfirmPage(
             DialogTitle(title),
             *([refused] if refused is not None else []),
             P(class_="text-heading text-center mt-5")[*as_children(message)],
+            *(
+                [
+                    Div(class_="text-type-body text-body text-start mt-5")[
+                        *as_children(choice)
+                    ]
+                ]
+                if choice
+                else []
+            ),
             *(
                 [Div(class_="text-heading text-center mt-3")[*as_children(details)]]
                 if details
