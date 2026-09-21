@@ -323,7 +323,7 @@ git rm ts/elements/playthrough-select.ts ts/elements/playthrough-select.test.ts
 
 ---
 
-## Follow-up issues to file
+## Follow-up issues filed
 
-1. The release row's platform becomes a `SearchSelect` with a create row. The comment at `games/catalog_form.py:119` calls a composite widget impossible in a cloned row; it is stale — the element assigns its own ids at init, because the filter builder clones whole prototypes, and `catalog-editor.ts` inserts through `insertAdjacentHTML`, which upgrades the element.
-2. The create routes take an `Idempotency-Key`, as `POST /api/session/` does. The element disabling its row while a POST is in flight is a client-side guard; a retried request still creates a second row.
+1. #1222 — the release row's platform becomes a `SearchSelect` with a create row. The comment at `games/catalog_form.py:119` calls a composite widget impossible in a cloned row; it is stale, and the issue says why.
+2. #1223 — the create routes read an `Idempotency-Key`, as `POST /api/session/` does. The element disabling its row while a POST is in flight is a client-side guard; a retried request still creates a second row.
