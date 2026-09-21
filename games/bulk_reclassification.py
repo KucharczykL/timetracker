@@ -117,7 +117,8 @@ def review_resolution(
 def convert_one(
     actor: User,
     session: PlayerSession,
-    choice: ChoiceValue,
+    *,
+    choice: ChoiceValue | None,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
@@ -136,7 +137,8 @@ def convert_one(
 def return_one(
     actor: User,
     session_id: uuid.UUID,
-    choice: ChoiceValue,
+    *,
+    choice: ChoiceValue | None,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:

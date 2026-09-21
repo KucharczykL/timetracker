@@ -124,7 +124,8 @@ def session_resolution(
 def remove_one_session(
     actor: User,
     session: PlayerSession,
-    choice: ChoiceValue,
+    *,
+    choice: ChoiceValue | None,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
@@ -142,7 +143,8 @@ def remove_one_session(
 def restore_one_session(
     actor: User,
     session_id: uuid.UUID,
-    choice: ChoiceValue,
+    *,
+    choice: ChoiceValue | None,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
@@ -219,7 +221,8 @@ def run_resolution(
 def remove_one_run(
     actor: User,
     run: Playthrough,
-    choice: ChoiceValue,
+    *,
+    choice: ChoiceValue | None,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
@@ -237,7 +240,8 @@ def remove_one_run(
 def restore_one_run(
     actor: User,
     run_id: uuid.UUID,
-    choice: ChoiceValue,
+    *,
+    choice: ChoiceValue | None,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
@@ -305,7 +309,8 @@ def record_resolution(
 def remove_one_record(
     actor: User,
     record: HistoricalPlaytime,
-    choice: ChoiceValue,
+    *,
+    choice: ChoiceValue | None,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
@@ -323,7 +328,8 @@ def remove_one_record(
 def restore_one_record(
     actor: User,
     record_id: uuid.UUID,
-    choice: ChoiceValue,
+    *,
+    choice: ChoiceValue | None,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:

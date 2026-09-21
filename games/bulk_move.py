@@ -8,7 +8,7 @@ from django.contrib.auth.models import User
 from django.db.models import QuerySet
 from django.http import Http404, QueryDict
 
-from common.components.core import Fragment, Node
+from common.components.core import Fragment
 from common.components.primitives import Cell, Div, Label
 from common.components.search_select import DEFAULT_PREFETCH, SearchSelect
 from games.bulk_actions import (
@@ -16,11 +16,14 @@ from games.bulk_actions import (
     BulkChoice,
     Cardinality,
     ChoiceValue,
+    Control,
     FieldName,
     FilterJson,
+    Offered,
     Presentations,
     PreviewColumn,
     Refused,
+    RefusedAct,
     Resolution,
     RowOutcome,
 )
@@ -170,7 +173,7 @@ MOVE_PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
 
 def offer_target(
     library: UserLibrary, rows: Sequence[PlayerSession], field_name: FieldName
-) -> Node | str:
+) -> Offered:
     """The picker, over the one game.
 
     Every resolved row is read, never the printed sample.
@@ -179,24 +182,26 @@ def offer_target(
     run at another game.
     """
     if not rows:
-        #: The confirmation says so itself.
-        return Fragment()
+        #: The confirmation says so itself, and admits no press.
+        return Control(Fragment())
     games = {row.playthrough.player_game_id for row in rows}
     if len(games) > 1:
-        return TWO_GAMES.format(count=len(games))
+        return RefusedAct(TWO_GAMES.format(count=len(games)))
     game_id = rows[0].playthrough.player_game.game_id
-    return Div(class_="flex flex-col gap-2")[
-        Label(for_=field_name)[TARGET_LABEL],
-        SearchSelect(
-            name=field_name,
-            search_url=PLAYTHROUGH_SEARCH_URL,
-            create_url=PLAYTHROUGH_CREATE_URL,
-            #: One mapping feeds search and create.
-            params={"game_id": {"value": str(game_id)}},
-            prefetch=DEFAULT_PREFETCH,
-            id=field_name,
-        ),
-    ]
+    return Control(
+        Div(class_="flex flex-col gap-2")[
+            Label(for_=field_name)[TARGET_LABEL],
+            SearchSelect(
+                name=field_name,
+                search_url=PLAYTHROUGH_SEARCH_URL,
+                create_url=PLAYTHROUGH_CREATE_URL,
+                #: One mapping feeds search and create.
+                params={"game_id": {"value": str(game_id)}},
+                prefetch=DEFAULT_PREFETCH,
+                id=field_name,
+            ),
+        ]
+    )
 
 
 def settle_target(library: UserLibrary, post: QueryDict) -> ChoiceValue:
@@ -240,12 +245,18 @@ def _target(library: UserLibrary, choice: ChoiceValue) -> Playthrough:
 def move_one(
     actor: User,
     session: PlayerSession,
-    choice: ChoiceValue,
+    *,
+    choice: ChoiceValue | None,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
     """One session moved, and the bucket it left."""
     with answered("session"):
+        if choice is None:
+            raise RowUnreadable(
+                f"{MOVE.name} ran with no target. The act declares a choice, "
+                "so the runner settles one before it reaches a row."
+            )
         target = _target(actor.library, choice)
         if session.playthrough.player_game_id != target.player_game_id:
             raise CommandRejected(
@@ -430,13 +441,19 @@ def _put_back_the_run(
 def move_back(
     actor: User,
     session_id: uuid.UUID,
-    choice: ChoiceValue,
+    *,
+    choice: ChoiceValue | None,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
     """One session back to its earlier run."""
-    batch_id = uuid.UUID(choice)
     with answered("session"):
+        if choice is None:
+            raise RowUnreadable(
+                f"{MOVE.name}'s inverse ran with no batch. The undo leg states "
+                "the correlation id it undoes."
+            )
+        batch_id = uuid.UUID(choice)
         earlier = run_before(actor.library, session_id, batch_id)
     _put_back_the_run(actor, batch_id, earlier, idempotency_key, correlation_id)
     return RowOutcome.of(

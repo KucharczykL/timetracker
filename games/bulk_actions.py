@@ -13,7 +13,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Protocol
 
 from django.contrib.auth.models import User
 from django.db.models import Model, QuerySet
@@ -121,27 +121,73 @@ type Scope[RowT: Model] = Callable[[UserLibrary, FilterJson], QuerySet[RowT]]
 type Resolve[RowT: Model] = Callable[
     [UserLibrary, Sequence[uuid.UUID]], Resolution[RowT]
 ]
-#: One row, through its `games/writes/` wrapper.
-type RunRow[RowT: Model] = Callable[
-    [User, RowT, ChoiceValue, IdempotencyKey, uuid.UUID], RowOutcome
-]
-#: One row's opposite, by key.
-type UndoRow = Callable[
-    [User, uuid.UUID, ChoiceValue, IdempotencyKey, uuid.UUID], RowOutcome
-]
+
+
+class RunRow[RowT: Model](Protocol):
+    """One row, through its `games/writes/` wrapper.
+
+    A protocol, not a `Callable` alias, so the three text
+    arguments are keywords: `ChoiceValue` and
+    `IdempotencyKey` are both text, and no check refuses
+    them in each other's place.
+    """
+
+    def __call__(
+        self,
+        actor: User,
+        row: RowT,
+        /,
+        *,
+        choice: ChoiceValue | None,
+        idempotency_key: IdempotencyKey,
+        correlation_id: uuid.UUID,
+    ) -> RowOutcome: ...
+
+
+class UndoRow(Protocol):
+    """One row's opposite, by key."""
+
+    def __call__(
+        self,
+        actor: User,
+        row_id: uuid.UUID,
+        /,
+        *,
+        choice: ChoiceValue | None,
+        idempotency_key: IdempotencyKey,
+        correlation_id: uuid.UUID,
+    ) -> RowOutcome: ...
+
+
+@dataclass(frozen=True, slots=True)
+class Control:
+    """The control the confirmation hosts."""
+
+    node: Node
+
+
+@dataclass(frozen=True, slots=True)
+class RefusedAct:
+    """One sentence, and no press."""
+
+    sentence: str
+
+
+#: What `offer` answers. Named, because `Child` is
+#: `Node | str`: bare text is a control, not a refusal.
+type Offered = Control | RefusedAct
 
 
 @dataclass(frozen=True, slots=True)
 class BulkChoice[RowT: Model]:
     """A fact the act asks for, before it runs.
 
-    `offer` draws the control, or answers a sentence
-    refusing the whole act. `settle` answers the one string
-    every row is handed, and raises `CommandRejected` for a
-    post it cannot read.
+    `offer` draws the control, or refuses the whole act.
+    `settle` answers the one string every row is handed, and
+    raises `CommandRejected` for a post it cannot read.
     """
 
-    offer: Callable[[UserLibrary, Sequence[RowT], FieldName], Node | str]
+    offer: Callable[[UserLibrary, Sequence[RowT], FieldName], Offered]
     settle: Callable[[UserLibrary, QueryDict], ChoiceValue]
 
 
