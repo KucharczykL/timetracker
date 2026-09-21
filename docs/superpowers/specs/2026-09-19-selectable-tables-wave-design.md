@@ -258,9 +258,10 @@ the submission token.
    and may refuse the whole act there (a selection spanning games), its
    value settles once at the confirmation press, before the first chunk,
    into one runner-named hidden field beside the token, and `run` takes it
-   as one string; a write the settle makes (a new run) goes under the
-   batch's correlation id and is not the inverse's, which reads
-   `inverse_aggregate` alone. A command's rule (a
+   as one string. The settle validates and writes nothing: a run the
+   person needs is created ahead of the submit by #1080's create row, in
+   its own request under its own correlation id, outside the batch, so no
+   Undo can name it. A command's rule (a
    running session, a bucket, a last live run, a run a live session
    names) is read at the press, per row, under the lock, and the
    confirmation does not restate it; a forecast that imports the
@@ -378,18 +379,20 @@ From it a person:
   and the sort, not header rows;
 - narrows by date and device, the session filter's own facets;
 - selects rows and moves them: "Move to playthrough…" opens a confirmation
-  hosting a plain select over the game's live ordinary runs and a "new
-  playthrough" name field, no `<playthrough-select>`, whose refill listens
-  for a game change that never comes here and hides a one-run select;
-  naming a new one creates it first, then moves, under one correlation id.
-  The Undo moves each session back, restoring the bucket first, and leaves
-  the run the batch created, empty, saying so;
+  hosting one `SearchSelect` with `create_url` (#1080, a prerequisite)
+  over the game's live ordinary runs, no name field and no second
+  control; a name typed there is created through `POST /api/playthrough/`
+  ahead of the submit, so the choice is always an existing run key. The
+  Undo moves each session back, restoring the bucket first, and the run
+  created ahead stays, empty, which the answer says: the batch never wrote
+  it. An abandoned confirmation leaves such a run, the cost #1080 accepts
+  by name;
 - sees the session's day, duration, device and note in the row before
-  moving it, as the charter asks. The runner's confirmation lists rows to
-  `CONFIRMATION_SAMPLE`, fifty, in three columns, game, day and duration.
-  Whether the cap rises, the columns grow, or the organizer leans on the
-  list for that reading is #714's call, made on the row renderer #712
-  adds.
+  moving it, as the charter asks. #714's confirmation lists rows to
+  `CONFIRMATION_SAMPLE`, fifty, in five columns: Playthrough, through
+  `run_labels_for` in `games/views/session.py`, the bucket included, then
+  Day, Duration, Device and Note. No Game column, since the cross-game
+  refusal fixes the game.
 
 The action is declared on the session list whether or not the filter names
 a game. A selection spanning games is refused at the confirmation with a
@@ -474,11 +477,11 @@ cost is judged.
    the act's and `BulkAction` generic over its row type, because
    `_sample` in `games/views/bulk_pages.py` renders session columns only,
    so no act on runs, records or platforms ships before it.
-4. **#714** ORG-01 — bulk move: the confirmation with the run select and
-   the new-run field, the bucket removed when emptied, cross-game
-   selections refused, the aggregate reader beside the move inverse over
-   the `(library, aggregate_id)` index #713 shipped, and the confirmation's
-   cap and columns judged against the organizer's promise.
+4. **#714** ORG-01 — bulk move, after #1080: the confirmation with
+   #1080's creating `SearchSelect` over the game's runs, the bucket removed
+   when emptied, cross-game selections refused, the aggregate reader
+   beside the move inverse over the `(library, aggregate_id)` index #713
+   shipped, and the confirmation's five columns.
 5. **#715** ORG-02 — the organizer: the Playthrough column and sort on the
    session list, Game detail's "Organize" link, the mobile cell verified on
    the list. Absorbs #716.
@@ -492,7 +495,8 @@ cost is judged.
 9. **#1211** TABLE-04 — bulk Edit on the session tables, after #714.
 
 `#711 → #713 → #712 → #714 → #715 → #717 → #1212 → #718 → #1211`. #713 needs no table, so it
-runs beside #711. Every issue merges alone and leaves `main` incomplete
+runs beside #711. One prerequisite lies outside the wave: #1080, in the
+Session wave, lands before #714 and has a planning gate of its own. Every issue merges alone and leaves `main` incomplete
 rather than inconsistent: #711 a personality nothing uses, #713 a runner one
 page uses, #712 a tray beside Actions columns it will replace. No stack.
 
@@ -514,6 +518,9 @@ Remove, in #712.
   construction; it inherits the runner.
 - **Audit History** — the aggregate reader is the first per-aggregate read
   of the stream, which the Journal and the Trash both need.
+- **The creating combobox** — #1080, in the Session wave, is #714's
+  prerequisite: the move confirmation is its consumer beside the three
+  its body names, and #714's requirements were sent to its implementer.
 - **The rethink** — #1209, a confirmation that forecasts a command's
   refusal, waits for the interface work after #599's epics, which also
   judges whether bulk Remove on runs is kept at all.
