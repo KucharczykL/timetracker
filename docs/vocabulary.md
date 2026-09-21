@@ -14,10 +14,16 @@ fenced block and an inline `code` span are all skipped, so `folder` and
 `--no-count-replay` need no exception. That is also how this page can name the
 words it refuses — each one below is written as code.
 
-Two paths are held to the rules that predate them but not to the ones added
-after: `CHANGELOG.md` and `docs/superpowers/`. A changelog entry describes a
-release that shipped under the word it used, and a design record has to name
-the words a codebase gave up. Neither can be edited into the present tense.
+One path is held to the rules that predate it but not to the ones added after:
+`CHANGELOG.md`. An entry describes a release that shipped under the word it
+used, and cannot be edited into the present tense.
+
+A design record under `docs/superpowers/` is held to every rule. It was lifted
+once, when a rule reached every file at once and an old record could not answer
+for a word refused years after it was written. A run now reads the files a
+checkout changed, so a record answers when it is next amended. A record that
+names a word the codebase gave up writes it as code, which every rule skips —
+this page does the same.
 
 ## Two levels
 
@@ -109,6 +115,37 @@ message asks for it and names the commonest one:
 There is no second level. The literal senses — a sewn join, a surgical
 closure, a stratum of coal — describe nothing this repo has, so a use that the
 pattern catches is always a metaphor.
+
+### `leg` → clause, step
+
+A **clause** is one branch of a compound predicate: one side of an `OR`, one of
+the two sources a playtime figure sums, one criterion a filter states. A
+**step** is one part of a run that has several: one of a gate's comparisons,
+one of a batch's two directions, one target inside `make check`.
+
+The literal thing is a limb, a trouser's half, or a stage of a journey. This
+codebase walks nowhere, and the word covered two unrelated shapes: a piece of a
+`WHERE`, and a piece of a procedure. A reader who met one learned the wrong
+thing about the next.
+
+Error in every sense. The replacement depends on which shape it was, so the
+message names both:
+
+| Instead of | Write |
+|---|---|
+| `both legs a filter states` | both clauses a filter states |
+| `each leg an id__in subquery` | each clause an `id__in` subquery |
+| `a search rides beside the status leg` | a search rides beside the status clause |
+| `the three legs` (of a gate) | the three steps |
+| `the check-migrations leg` | the check-migrations step |
+| `the undo leg never settles` | the undo step never settles |
+| `one refused leg leaves both live` | one refused step leaves both live |
+
+There is no second level. Nothing here has limbs, and no journey has stages, so
+a use the pattern catches is always a metaphor.
+
+An identifier keeps its own name: `Leg` in `games/bulk_actions.py` is code, and
+code is out of scope.
 
 ### `tombstone` → remove
 

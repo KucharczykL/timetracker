@@ -1,0 +1,19 @@
+---
+# One file, not the usual error/warning pair, and an error in every sense: the
+# literal leg is a limb, a trouser's half or a stage of a journey, and none of
+# the three ever appeared here. Every use in the tree was a metaphor — one
+# branch of a compound predicate, or one part of a gate that runs several — and
+# each has a plainer word.
+#
+# No neighbouring domain word is needed to tell the senses apart, so there is
+# no second pattern and nothing for scripts/run-vale.mjs to drop.
+extends: existence
+message: "'%s' is a metaphor. Say 'clause' for one of a predicate's, 'step' for one of a run's."
+link: docs/vocabulary.md
+level: error
+ignorecase: true
+scope:
+  - ~code
+  - ~heading
+tokens:
+  - 'legs?'
