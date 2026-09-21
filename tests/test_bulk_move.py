@@ -12,6 +12,7 @@ from django.urls import reverse
 from django.utils import timezone
 from session_rows import duration_only_row, tracked_run
 
+from games.bulk_actions import AsksNothing, Control, RefusedAct
 from games.bulk_move import (
     ANOTHER_GAME,
     NOT_MOVED_BY_THIS_BATCH,
@@ -177,7 +178,9 @@ def test_two_games_refuse_the_whole_act(owned_library, game, other_game):
         ],
     ).rows
 
-    assert offer_target(owned_library, rows, CHOICE_FIELD) == TWO_GAMES.format(count=2)
+    assert offer_target(owned_library, rows, CHOICE_FIELD) == RefusedAct(
+        TWO_GAMES.format(count=2)
+    )
 
 
 def test_one_game_answers_a_control(owned_library, game):
@@ -185,8 +188,10 @@ def test_one_game_answers_a_control(owned_library, game):
         owned_library, [a_session(tracked_run(owned_library, game)).pk]
     ).rows
 
-    offered = str(offer_target(owned_library, rows, CHOICE_FIELD))
+    answered = offer_target(owned_library, rows, CHOICE_FIELD)
 
+    assert isinstance(answered, Control)
+    offered = str(answered.node)
     assert f'name="{CHOICE_FIELD}"' in offered
     assert str(game.pk) in offered
 
@@ -212,11 +217,14 @@ def test_the_game_count_is_the_selection_not_the_sample(
     rows = move_resolution(owned_library, keys).rows
 
     assert len(rows) == CONFIRMATION_SAMPLE + 1
-    assert offer_target(owned_library, rows, CHOICE_FIELD) == TWO_GAMES.format(count=2)
+    assert offer_target(owned_library, rows, CHOICE_FIELD) == RefusedAct(
+        TWO_GAMES.format(count=2)
+    )
 
 
 def test_no_rows_ask_nothing(owned_library):
-    assert str(offer_target(owned_library, (), CHOICE_FIELD)) == ""
+    """Not an empty control: there is no question to put."""
+    assert offer_target(owned_library, (), CHOICE_FIELD) == AsksNothing()
 
 
 # ── The settle ───────────────────────────────────────────────────────────────
@@ -287,7 +295,13 @@ def test_a_row_moves(owned_user, owned_library, game):
     bucket = a_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
     session = a_session(bucket)
 
-    outcome = move_one(owned_user, session, str(target.pk), "one-move", uuid.uuid7())
+    outcome = move_one(
+        owned_user,
+        session,
+        choice=str(target.pk),
+        idempotency_key="one-move",
+        correlation_id=uuid.uuid7(),
+    )
 
     assert outcome.value == "moved"
     session.refresh_from_db()
@@ -298,7 +312,13 @@ def test_a_row_already_on_the_target_is_unchanged(owned_user, owned_library, gam
     target = tracked_run(owned_library, game)
     session = a_session(target)
 
-    outcome = move_one(owned_user, session, str(target.pk), "one-move", uuid.uuid7())
+    outcome = move_one(
+        owned_user,
+        session,
+        choice=str(target.pk),
+        idempotency_key="one-move",
+        correlation_id=uuid.uuid7(),
+    )
 
     assert outcome.value == "unchanged"
 
@@ -308,7 +328,13 @@ def test_a_row_at_another_game_is_refused(owned_user, owned_library, game, other
     session = a_session(tracked_run(owned_library, other_game))
 
     with pytest.raises(CommandFailed) as refusal:
-        move_one(owned_user, session, str(target.pk), "one-move", uuid.uuid7())
+        move_one(
+            owned_user,
+            session,
+            choice=str(target.pk),
+            idempotency_key="one-move",
+            correlation_id=uuid.uuid7(),
+        )
 
     assert refusal.value.status_code == 409
     assert refusal.value.message == ANOTHER_GAME
@@ -324,20 +350,32 @@ def test_the_last_row_out_of_a_bucket_takes_the_bucket_away(
     session = a_bucket_session(owned_user, target, bucket)
     batch = uuid.uuid7()
 
-    move_one(owned_user, session, str(target.pk), "one-move", batch)
+    move_one(
+        owned_user,
+        session,
+        choice=str(target.pk),
+        idempotency_key="one-move",
+        correlation_id=batch,
+    )
 
     bucket.refresh_from_db()
     assert bucket.removed_at is not None
 
 
 def test_only_the_bucket_the_row_left_is_taken_away(owned_user, owned_library, game):
-    """An act removes no row its own inverse would not put back."""
+    """An act removes only what it emptied."""
     target = tracked_run(owned_library, game)
     emptied = a_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
     stranger = a_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
     session = a_bucket_session(owned_user, target, emptied)
 
-    move_one(owned_user, session, str(target.pk), "one-move", uuid.uuid7())
+    move_one(
+        owned_user,
+        session,
+        choice=str(target.pk),
+        idempotency_key="one-move",
+        correlation_id=uuid.uuid7(),
+    )
 
     emptied.refresh_from_db()
     stranger.refresh_from_db()
@@ -348,13 +386,19 @@ def test_only_the_bucket_the_row_left_is_taken_away(owned_user, owned_library, g
 def test_a_move_between_two_runs_leaves_the_games_bucket_alone(
     owned_user, owned_library, game
 ):
-    """The act touched no bucket, so it takes none away."""
+    """No bucket touched, so none taken away."""
     source = tracked_run(owned_library, game)
     target = a_run(owned_library, game, name="Target run")
     stranger = a_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
     session = a_recorded_session(owned_user, source)
 
-    move_one(owned_user, session, str(target.pk), "one-move", uuid.uuid7())
+    move_one(
+        owned_user,
+        session,
+        choice=str(target.pk),
+        idempotency_key="one-move",
+        correlation_id=uuid.uuid7(),
+    )
 
     stranger.refresh_from_db()
     assert stranger.removed_at is None
@@ -376,12 +420,24 @@ def test_a_replayed_chunk_still_asks_about_the_bucket(owned_user, owned_library,
     session = a_bucket_session(owned_user, target, bucket)
     batch = uuid.uuid7()
 
-    move_one(owned_user, session, str(target.pk), "one-move", batch)
+    move_one(
+        owned_user,
+        session,
+        choice=str(target.pk),
+        idempotency_key="one-move",
+        correlation_id=batch,
+    )
     bucket.refresh_from_db()
     assert bucket.removed_at is None
 
     PlayerSession.objects.filter(pk=sibling.pk).update(removed_at=timezone.now())
-    move_one(owned_user, session, str(target.pk), "one-move", batch)
+    move_one(
+        owned_user,
+        session,
+        choice=str(target.pk),
+        idempotency_key="one-move",
+        correlation_id=batch,
+    )
 
     bucket.refresh_from_db()
     assert bucket.removed_at is None, "a removed sibling still names it"
@@ -397,7 +453,13 @@ def test_a_bucket_a_removed_session_names_is_left_alone(
     PlayerSession.objects.filter(pk=gone.pk).update(removed_at=timezone.now())
     session = a_bucket_session(owned_user, target, bucket)
 
-    move_one(owned_user, session, str(target.pk), "one-move", uuid.uuid7())
+    move_one(
+        owned_user,
+        session,
+        choice=str(target.pk),
+        idempotency_key="one-move",
+        correlation_id=uuid.uuid7(),
+    )
 
     bucket.refresh_from_db()
     assert bucket.removed_at is None
@@ -415,7 +477,13 @@ def test_a_record_naming_a_bucket_keeps_it(owned_user, owned_library, game):
         playthrough=bucket,
     )
 
-    move_one(owned_user, session, str(target.pk), "one-move", uuid.uuid7())
+    move_one(
+        owned_user,
+        session,
+        choice=str(target.pk),
+        idempotency_key="one-move",
+        correlation_id=uuid.uuid7(),
+    )
 
     bucket.refresh_from_db()
     assert bucket.removed_at is None
@@ -433,7 +501,13 @@ def test_a_bucket_whose_removal_refuses_leaves_the_row_moved(
 
     monkeypatch.setattr("games.bulk_move.remove_run", refuses)
 
-    outcome = move_one(owned_user, session, str(target.pk), "one-move", uuid.uuid7())
+    outcome = move_one(
+        owned_user,
+        session,
+        choice=str(target.pk),
+        idempotency_key="one-move",
+        correlation_id=uuid.uuid7(),
+    )
 
     assert outcome.value == "moved"
     session.refresh_from_db()
@@ -454,7 +528,13 @@ def test_a_bucket_removal_that_is_a_defect_ends_the_batch(
     monkeypatch.setattr("games.bulk_move.remove_run", breaks)
 
     with pytest.raises(CommandFailed) as defect:
-        move_one(owned_user, session, str(target.pk), "one-move", uuid.uuid7())
+        move_one(
+            owned_user,
+            session,
+            choice=str(target.pk),
+            idempotency_key="one-move",
+            correlation_id=uuid.uuid7(),
+        )
 
     assert defect.value.status_code == 500
 
@@ -597,9 +677,21 @@ def test_run_before_reads_an_earlier_move(owned_user, owned_library, game):
     second = a_run(owned_library, game, name="Second run")
     third = a_run(owned_library, game, name="Third run")
     session = a_recorded_session(owned_user, first)
-    move_one(owned_user, session, str(second.pk), "first-move", uuid.uuid7())
+    move_one(
+        owned_user,
+        session,
+        choice=str(second.pk),
+        idempotency_key="first-move",
+        correlation_id=uuid.uuid7(),
+    )
     batch = uuid.uuid7()
-    move_one(owned_user, session, str(third.pk), "second-move", batch)
+    move_one(
+        owned_user,
+        session,
+        choice=str(third.pk),
+        idempotency_key="second-move",
+        correlation_id=batch,
+    )
 
     assert run_before(owned_library, session.pk, batch) == second.pk
 
@@ -609,7 +701,13 @@ def test_a_key_that_is_not_this_batchs_is_refused(owned_user, owned_library, gam
     session = a_recorded_session(
         owned_user, a_run(owned_library, game, name="Second run")
     )
-    move_one(owned_user, session, str(target.pk), "one-move", uuid.uuid7())
+    move_one(
+        owned_user,
+        session,
+        choice=str(target.pk),
+        idempotency_key="one-move",
+        correlation_id=uuid.uuid7(),
+    )
 
     with pytest.raises(CommandRejected) as refusal:
         run_before(owned_library, session.pk, uuid.uuid7())
@@ -708,3 +806,25 @@ def a_record(owned_user, owned_library, run):
         correlation_id=uuid.uuid7(),
     )
     return HistoricalPlaytime.objects.get(pk=record_id)
+
+
+def test_a_move_with_no_target_answers_a_defect(owned_user, owned_library, game):
+    """The runner settles before a row, so `None` is ours.
+
+    The guard sits inside `answered`, where a defect becomes
+    an answer the batch ends on. Carried out of that block by
+    a later edit it would escape as a bare 500, and the rows
+    left alone would go unnamed in the log.
+    """
+    session = a_session(tracked_run(owned_library, game))
+
+    with pytest.raises(CommandFailed) as defect:
+        move_one(
+            owned_user,
+            session,
+            choice=None,
+            idempotency_key="one-move",
+            correlation_id=uuid.uuid7(),
+        )
+
+    assert defect.value.status_code == 500

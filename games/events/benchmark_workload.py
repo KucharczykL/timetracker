@@ -429,9 +429,9 @@ def _convert(
     RECLASSIFY.run(
         actor,
         resolution.rows[0],
-        "",
-        f"{RECLASSIFY.name}-{correlation_id}-{key}",
-        correlation_id,
+        choice=None,
+        idempotency_key=f"{RECLASSIFY.name}-{correlation_id}-{key}",
+        correlation_id=correlation_id,
     )
     return resolved
 

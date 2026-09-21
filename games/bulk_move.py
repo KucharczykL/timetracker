@@ -8,19 +8,22 @@ from django.contrib.auth.models import User
 from django.db.models import QuerySet
 from django.http import Http404, QueryDict
 
-from common.components.core import Fragment, Node
 from common.components.primitives import Cell, Div, Label
 from common.components.search_select import DEFAULT_PREFETCH, SearchSelect
 from games.bulk_actions import (
+    AsksNothing,
     BulkAction,
     BulkChoice,
     Cardinality,
     ChoiceValue,
+    Control,
     FieldName,
     FilterJson,
+    Offered,
     Presentations,
     PreviewColumn,
     Refused,
+    RefusedAct,
     Resolution,
     RowOutcome,
 )
@@ -73,7 +76,7 @@ ANOTHER_GAME = (
 #: What the confirmation asks.
 TARGET_LABEL = "Playthrough"
 
-#: The attribute the resolve stamps on a row.
+#: The attribute the resolve stamps.
 RUN_LABEL_ATTRIBUTE = "run_label"
 
 #: The events that state a session's run.
@@ -170,7 +173,7 @@ MOVE_PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
 
 def offer_target(
     library: UserLibrary, rows: Sequence[PlayerSession], field_name: FieldName
-) -> Node | str:
+) -> Offered:
     """The picker, over the one game.
 
     Every resolved row is read, never the printed sample.
@@ -180,23 +183,25 @@ def offer_target(
     """
     if not rows:
         #: The confirmation says so itself.
-        return Fragment()
+        return AsksNothing()
     games = {row.playthrough.player_game_id for row in rows}
     if len(games) > 1:
-        return TWO_GAMES.format(count=len(games))
+        return RefusedAct(TWO_GAMES.format(count=len(games)))
     game_id = rows[0].playthrough.player_game.game_id
-    return Div(class_="flex flex-col gap-2")[
-        Label(for_=field_name)[TARGET_LABEL],
-        SearchSelect(
-            name=field_name,
-            search_url=PLAYTHROUGH_SEARCH_URL,
-            create_url=PLAYTHROUGH_CREATE_URL,
-            #: One mapping feeds search and create.
-            params={"game_id": {"value": str(game_id)}},
-            prefetch=DEFAULT_PREFETCH,
-            id=field_name,
-        ),
-    ]
+    return Control(
+        Div(class_="flex flex-col gap-2")[
+            Label(for_=field_name)[TARGET_LABEL],
+            SearchSelect(
+                name=field_name,
+                search_url=PLAYTHROUGH_SEARCH_URL,
+                create_url=PLAYTHROUGH_CREATE_URL,
+                #: One mapping feeds search and create.
+                params={"game_id": {"value": str(game_id)}},
+                prefetch=DEFAULT_PREFETCH,
+                id=field_name,
+            ),
+        ]
+    )
 
 
 def settle_target(library: UserLibrary, post: QueryDict) -> ChoiceValue:
@@ -206,7 +211,7 @@ def settle_target(library: UserLibrary, post: QueryDict) -> ChoiceValue:
     can span two games, and there is then no one game to
     narrow to. The game is the row's own rule, below.
     """
-    #: Local: the view imports this module through the act table.
+    #: Local: the act table imports this module.
     from games.views.bulk import CHOICE_FIELD
 
     stated = post.get(CHOICE_FIELD, "")
@@ -240,12 +245,19 @@ def _target(library: UserLibrary, choice: ChoiceValue) -> Playthrough:
 def move_one(
     actor: User,
     session: PlayerSession,
-    choice: ChoiceValue,
+    *,
+    choice: ChoiceValue | None,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """One session moved, and the bucket it left."""
+    """One session moved; the bucket it left."""
     with answered("session"):
+        if choice is None:
+            raise RowUnreadable(
+                f"{MOVE.name} ran with no target for PlayerSession "
+                f"{session.pk} of library {actor.library.pk}. The act "
+                "declares a choice, so the runner settles one before a row."
+            )
         target = _target(actor.library, choice)
         if session.playthrough.player_game_id != target.player_game_id:
             raise CommandRejected(
@@ -275,7 +287,7 @@ def _remove_the_emptied_bucket(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> None:
-    """Take away the bucket this row was last out of.
+    """Take away the bucket this row emptied.
 
     The run the row came from, never every bucket the game
     holds: an act that removed a bucket it did not empty
@@ -292,7 +304,7 @@ def _remove_the_emptied_bucket(
     try:
         emptied = run_before(actor.library, session_id, correlation_id)
     except CommandRejected:
-        #: This batch moved no such row, so it emptied nothing.
+        #: This batch moved no such row.
         return
     bucket = Playthrough.objects.filter(
         library=actor.library,
@@ -314,7 +326,7 @@ def _remove_the_emptied_bucket(
         )
     except CommandFailed as failure:
         if failure.status_code != CONFLICT_STATUS:
-            #: Ours, not theirs: the batch ends as it would anywhere.
+            #: Ours, not theirs: the batch ends.
             raise
         logger.info(
             "[bulk]: %s left bucket %s of library %s under %s: %s",
@@ -325,8 +337,7 @@ def _remove_the_emptied_bucket(
             failure.message,
         )
     except Http404 as absent:
-        #: The bucket left the library between the read and the
-        #: dispatch. A race, not a defect.
+        #: A race, not a defect.
         logger.info(
             "[bulk]: %s met a bucket library %s no longer holds: %s",
             MOVE.name,
@@ -430,15 +441,15 @@ def _put_back_the_run(
 def move_back(
     actor: User,
     session_id: uuid.UUID,
-    choice: ChoiceValue,
+    *,
+    undoes: uuid.UUID,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
     """One session back to its earlier run."""
-    batch_id = uuid.UUID(choice)
     with answered("session"):
-        earlier = run_before(actor.library, session_id, batch_id)
-    _put_back_the_run(actor, batch_id, earlier, idempotency_key, correlation_id)
+        earlier = run_before(actor.library, session_id, undoes)
+    _put_back_the_run(actor, undoes, earlier, idempotency_key, correlation_id)
     return RowOutcome.of(
         move_session(
             actor,

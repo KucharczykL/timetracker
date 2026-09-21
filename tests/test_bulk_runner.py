@@ -25,6 +25,8 @@ from games.bulk_actions import (
     BULK_ACTIONS,
     BulkAction,
     BulkChoice,
+    Control,
+    RefusedAct,
     RowOutcome,
 )
 from games.bulk_reclassification import (
@@ -1093,7 +1095,7 @@ class Asked(NamedTuple):
     patched into.
     """
 
-    seen: list[str]
+    seen: list[str | None]
     settled: list[str]
     refusing: list[str]
 
@@ -1144,14 +1146,14 @@ def _declare(name, reclassify_declaration, run, inverse, choice=None):
 @pytest.fixture
 def recorder(reclassify_declaration):
     """An act with no choice, whose run remembers what it was handed."""
-    seen: list[str] = []
+    seen: list[str | None] = []
 
-    def run(actor, row, choice, idempotency_key, correlation_id):
+    def run(actor, row, *, choice, idempotency_key, correlation_id):
         seen.append(choice)
         return _removed(actor, row, idempotency_key, correlation_id, "session.recorder")
 
-    def inverse(actor, row_id, choice, idempotency_key, correlation_id):
-        seen.append(choice)
+    def inverse(actor, row_id, *, undoes, idempotency_key, correlation_id):
+        seen.append(str(undoes))
         return RowOutcome.MOVED
 
     _declare("session.recorder", reclassify_declaration, run, inverse)
@@ -1162,14 +1164,14 @@ def recorder(reclassify_declaration):
 @pytest.fixture
 def asker(request, reclassify_declaration):
     """An act that asks for a fact, and remembers what it settled."""
-    seen: list[str] = []
+    seen: list[str | None] = []
     settled: list[str] = []
     refusing: list[str] = [NO_GAME] if getattr(request, "param", False) else []
 
     def offer(library, rows, field_name):
         if refusing:
-            return refusing[0]
-        return Input(type="hidden", name=field_name, value=PICKED)
+            return RefusedAct(refusing[0])
+        return Control(Input(type="hidden", name=field_name, value=PICKED))
 
     def settle(library, post):
         stated = post.get(CHOICE_FIELD, "")
@@ -1180,12 +1182,12 @@ def asker(request, reclassify_declaration):
         settled.append(stated)
         return stated
 
-    def run(actor, row, choice, idempotency_key, correlation_id):
+    def run(actor, row, *, choice, idempotency_key, correlation_id):
         seen.append(choice)
         return _removed(actor, row, idempotency_key, correlation_id, "session.asker")
 
-    def inverse(actor, row_id, choice, idempotency_key, correlation_id):
-        seen.append(choice)
+    def inverse(actor, row_id, *, undoes, idempotency_key, correlation_id):
+        seen.append(str(undoes))
         return RowOutcome.MOVED
 
     _declare(
@@ -1210,7 +1212,7 @@ def test_an_act_that_asks_nothing_is_handed_no_choice(
 
     act(client_in, confirm(client_in, some(session), url=RECORD), url=RECORD)
 
-    assert recorder == [""]
+    assert recorder == [None]
 
 
 def test_the_confirmation_hosts_the_acts_own_control(

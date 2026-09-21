@@ -14,6 +14,7 @@ from games.bulk_actions import (
     Cardinality,
     Presentations,
     PreviewColumn,
+    RowOutcome,
 )
 from games.bulk_reclassification import (
     ALREADY_RECORDED,
@@ -267,7 +268,13 @@ def test_a_measured_row_is_refused(owned_user, owned_library, game, reclassify):
 
 def test_a_row_already_recorded_is_refused(owned_user, owned_library, run, reclassify):
     session = a_written_session(owned_library, owned_user, run)
-    reclassify.run(owned_user, session, "", "one-conversion", uuid.uuid7())
+    reclassify.run(
+        owned_user,
+        session,
+        choice=None,
+        idempotency_key="one-conversion",
+        correlation_id=uuid.uuid7(),
+    )
 
     resolution = reclassify.resolve(owned_library, [session.pk])
 
@@ -284,7 +291,13 @@ def test_a_row_live_beside_its_record_is_refused(
     a defect ends the whole batch rather than one row.
     """
     session = a_written_session(owned_library, owned_user, run)
-    reclassify.run(owned_user, session, "", "one-conversion", uuid.uuid7())
+    reclassify.run(
+        owned_user,
+        session,
+        choice=None,
+        idempotency_key="one-conversion",
+        correlation_id=uuid.uuid7(),
+    )
     #: No command writes this; an audit reports it.
     PlayerSession.objects.filter(pk=session.pk).update(removed_at=None)
 
@@ -318,8 +331,20 @@ def test_one_key_twice_converts_once(owned_user, owned_library, run, reclassify)
     session = a_written_session(owned_library, owned_user, run)
     correlation_id = uuid.uuid7()
 
-    reclassify.run(owned_user, session, "", "one-conversion", correlation_id)
-    reclassify.run(owned_user, session, "", "one-conversion", correlation_id)
+    reclassify.run(
+        owned_user,
+        session,
+        choice=None,
+        idempotency_key="one-conversion",
+        correlation_id=correlation_id,
+    )
+    reclassify.run(
+        owned_user,
+        session,
+        choice=None,
+        idempotency_key="one-conversion",
+        correlation_id=correlation_id,
+    )
 
     assert HistoricalPlaytime.objects.filter(library=owned_library).count() == 1
 
@@ -330,11 +355,23 @@ def test_the_run_converts_and_the_inverse_returns(
     session = a_written_session(owned_library, owned_user, run)
     correlation_id = uuid.uuid7()
 
-    reclassify.run(owned_user, session, "", "one-conversion", correlation_id)
+    reclassify.run(
+        owned_user,
+        session,
+        choice=None,
+        idempotency_key="one-conversion",
+        correlation_id=correlation_id,
+    )
     session.refresh_from_db()
     assert session.removed_at is not None
 
-    reclassify.inverse(owned_user, session.pk, "", "undo-one", uuid.uuid7())
+    reclassify.inverse(
+        owned_user,
+        session.pk,
+        undoes=uuid.uuid7(),
+        idempotency_key="undo-one",
+        correlation_id=uuid.uuid7(),
+    )
     session.refresh_from_db()
     assert session.removed_at is None
 
@@ -448,3 +485,59 @@ def test_the_reclassification_states_its_three_columns(reclassify):
         "Duration",
     ]
     assert reclassify.preview[-1].align == "right"
+
+
+def test_an_act_whose_run_takes_a_fact_by_position_is_refused(reclassify):
+    """Two of the three facts are text.
+
+    Named, they cannot be given in each other's place;
+    positional, no check refuses it -- and a protocol does
+    not constrain an implementation's parameter kinds, so
+    the declaration is where this can be said.
+    """
+
+    def takes_it_by_position(actor, row, choice, idempotency_key, correlation_id):
+        return RowOutcome.MOVED
+
+    with pytest.raises(ValueError, match="by position"):
+        BulkAction(
+            name="session.positional",
+            label=reclassify.label,
+            title=reclassify.title,
+            confirm_label=reclassify.confirm_label,
+            subject=reclassify.subject,
+            cardinality=Cardinality.MANY,
+            color=reclassify.color,
+            inverse_aggregate=reclassify.inverse_aggregate,
+            fallback=reclassify.fallback,
+            scope=reclassify.scope,
+            resolve=reclassify.resolve,
+            run=takes_it_by_position,
+            inverse=reclassify.inverse,
+            preview=reclassify.preview,
+        )
+
+
+def test_an_inverse_that_takes_no_batch_is_refused(reclassify):
+    """The undo leg states the batch it undoes."""
+
+    def takes_no_batch(actor, row_id, *, idempotency_key, correlation_id):
+        return RowOutcome.MOVED
+
+    with pytest.raises(ValueError, match="takes no undoes"):
+        BulkAction(
+            name="session.batchless",
+            label=reclassify.label,
+            title=reclassify.title,
+            confirm_label=reclassify.confirm_label,
+            subject=reclassify.subject,
+            cardinality=Cardinality.MANY,
+            color=reclassify.color,
+            inverse_aggregate=reclassify.inverse_aggregate,
+            fallback=reclassify.fallback,
+            scope=reclassify.scope,
+            resolve=reclassify.resolve,
+            run=reclassify.run,
+            inverse=takes_no_batch,
+            preview=reclassify.preview,
+        )

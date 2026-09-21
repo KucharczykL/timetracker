@@ -287,7 +287,11 @@ def test_removing_a_session_marks_it_and_restoring_clears_the_mark(
     session = a_session(owned_library, game)
 
     moved = remove_session_action.run(
-        owned_user, session, "", "remove-one", uuid.uuid7()
+        owned_user,
+        session,
+        choice=None,
+        idempotency_key="remove-one",
+        correlation_id=uuid.uuid7(),
     )
 
     assert moved is RowOutcome.MOVED
@@ -295,7 +299,11 @@ def test_removing_a_session_marks_it_and_restoring_clears_the_mark(
     assert session.removed_at is not None
 
     back = remove_session_action.inverse(
-        owned_user, session.pk, "", "restore-one", uuid.uuid7()
+        owned_user,
+        session.pk,
+        undoes=uuid.uuid7(),
+        idempotency_key="restore-one",
+        correlation_id=uuid.uuid7(),
     )
 
     assert back is RowOutcome.MOVED
@@ -307,10 +315,20 @@ def test_a_row_already_removed_answers_unchanged(
     owned_user, owned_library, game, remove_session_action
 ):
     session = a_session(owned_library, game)
-    remove_session_action.run(owned_user, session, "", "remove-one", uuid.uuid7())
+    remove_session_action.run(
+        owned_user,
+        session,
+        choice=None,
+        idempotency_key="remove-one",
+        correlation_id=uuid.uuid7(),
+    )
 
     again = remove_session_action.run(
-        owned_user, session, "", "remove-again", uuid.uuid7()
+        owned_user,
+        session,
+        choice=None,
+        idempotency_key="remove-again",
+        correlation_id=uuid.uuid7(),
     )
 
     assert again is RowOutcome.UNCHANGED
@@ -323,12 +341,24 @@ def test_the_last_live_ordinary_run_is_refused_while_its_sibling_is_removed(
     first, second = two_runs(owned_user, game)
 
     assert (
-        remove_run_action.run(owned_user, second, "", "remove-second", uuid.uuid7())
+        remove_run_action.run(
+            owned_user,
+            second,
+            choice=None,
+            idempotency_key="remove-second",
+            correlation_id=uuid.uuid7(),
+        )
         is RowOutcome.MOVED
     )
 
     with pytest.raises(CommandFailed) as refusal:
-        remove_run_action.run(owned_user, first, "", "remove-first", uuid.uuid7())
+        remove_run_action.run(
+            owned_user,
+            first,
+            choice=None,
+            idempotency_key="remove-first",
+            correlation_id=uuid.uuid7(),
+        )
 
     assert refusal.value.status_code == 409
     assert "only playthrough" in refusal.value.message
@@ -353,7 +383,11 @@ def test_restoring_a_session_a_live_record_was_made_from_is_refused(
 
     with pytest.raises(CommandFailed) as refusal:
         remove_session_action.inverse(
-            owned_user, session.pk, "", "restore-one", uuid.uuid7()
+            owned_user,
+            session.pk,
+            undoes=uuid.uuid7(),
+            idempotency_key="restore-one",
+            correlation_id=uuid.uuid7(),
         )
 
     assert refusal.value.status_code == 409
@@ -364,11 +398,23 @@ def test_removing_a_record_and_putting_it_back(
 ):
     record = a_record(owned_user, owned_library, game)
 
-    remove_record_action.run(owned_user, record, "", "remove-one", uuid.uuid7())
+    remove_record_action.run(
+        owned_user,
+        record,
+        choice=None,
+        idempotency_key="remove-one",
+        correlation_id=uuid.uuid7(),
+    )
     record.refresh_from_db()
     assert record.removed_at is not None
 
-    remove_record_action.inverse(owned_user, record.pk, "", "restore-one", uuid.uuid7())
+    remove_record_action.inverse(
+        owned_user,
+        record.pk,
+        undoes=uuid.uuid7(),
+        idempotency_key="restore-one",
+        correlation_id=uuid.uuid7(),
+    )
     record.refresh_from_db()
     assert record.removed_at is None
 
@@ -394,7 +440,13 @@ def test_each_acts_undo_reads_the_rows_its_act_wrote(
     row = _a_row_for(name, owned_user, owned_library, game)
     correlation_id = uuid.uuid7()
 
-    action.run(owned_user, row, "", str(uuid.uuid7()), correlation_id)
+    action.run(
+        owned_user,
+        row,
+        choice=None,
+        idempotency_key=str(uuid.uuid7()),
+        correlation_id=correlation_id,
+    )
 
     assert batch_aggregate_ids(
         owned_library, correlation_id, action.inverse_aggregate
@@ -523,10 +575,20 @@ def test_a_removed_run_is_put_back_by_its_inverse(
 ):
     """The one inverse that reads a run through a plain manager."""
     _, second = two_runs(owned_user, game)
-    remove_run_action.run(owned_user, second, "", "remove-one", uuid.uuid7())
+    remove_run_action.run(
+        owned_user,
+        second,
+        choice=None,
+        idempotency_key="remove-one",
+        correlation_id=uuid.uuid7(),
+    )
 
     back = remove_run_action.inverse(
-        owned_user, second.pk, "", "restore-one", uuid.uuid7()
+        owned_user,
+        second.pk,
+        undoes=uuid.uuid7(),
+        idempotency_key="restore-one",
+        correlation_id=uuid.uuid7(),
     )
 
     assert back is RowOutcome.MOVED
@@ -545,7 +607,11 @@ def test_an_inverse_that_finds_no_row_is_not_found(
     """
     with pytest.raises(Http404):
         remove_run_action.inverse(
-            owned_user, uuid.uuid7(), "", "restore-one", uuid.uuid7()
+            owned_user,
+            uuid.uuid7(),
+            undoes=uuid.uuid7(),
+            idempotency_key="restore-one",
+            correlation_id=uuid.uuid7(),
         )
 
 

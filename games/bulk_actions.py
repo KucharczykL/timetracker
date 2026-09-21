@@ -8,12 +8,13 @@ Undo reading every aggregate of the batch would hand a record's key to
 a command that reads sessions, and refuse every row of its own batch.
 """
 
+import inspect
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
-from typing import Any
+from typing import Any, Protocol
 
 from django.contrib.auth.models import User
 from django.db.models import Model, QuerySet
@@ -121,27 +122,101 @@ type Scope[RowT: Model] = Callable[[UserLibrary, FilterJson], QuerySet[RowT]]
 type Resolve[RowT: Model] = Callable[
     [UserLibrary, Sequence[uuid.UUID]], Resolution[RowT]
 ]
-#: One row, through its `games/writes/` wrapper.
-type RunRow[RowT: Model] = Callable[
-    [User, RowT, ChoiceValue, IdempotencyKey, uuid.UUID], RowOutcome
-]
-#: One row's opposite, by key.
-type UndoRow = Callable[
-    [User, uuid.UUID, ChoiceValue, IdempotencyKey, uuid.UUID], RowOutcome
-]
+
+
+class RunRow[RowT: Model](Protocol):
+    """One row, through its `games/writes/` wrapper.
+
+    A protocol, not a `Callable` alias, so the three facts
+    are keywords: `ChoiceValue` and `IdempotencyKey` are
+    both text, and no check refuses them in each other's
+    place. The row is positional-only because every act
+    calls it something of its own.
+    """
+
+    def __call__(
+        self,
+        actor: User,
+        row: RowT,
+        /,
+        *,
+        choice: ChoiceValue | None,
+        idempotency_key: IdempotencyKey,
+        correlation_id: uuid.UUID,
+    ) -> RowOutcome: ...
+
+
+class UndoRow(Protocol):
+    """One row's opposite, by key.
+
+    Takes the batch it undoes, not a choice: the forward
+    slot answers a person's question, and this one never
+    does. Two facts in one slot would let a run's key and a
+    batch's id stand in for each other, and both are text.
+    """
+
+    def __call__(
+        self,
+        actor: User,
+        row_id: uuid.UUID,
+        /,
+        *,
+        undoes: uuid.UUID,
+        idempotency_key: IdempotencyKey,
+        correlation_id: uuid.UUID,
+    ) -> RowOutcome: ...
+
+
+class BoundRow(Protocol):
+    """One leg's row callable, its own fact bound."""
+
+    def __call__(
+        self,
+        actor: User,
+        row: Any,
+        /,
+        *,
+        idempotency_key: IdempotencyKey,
+        correlation_id: uuid.UUID,
+    ) -> RowOutcome: ...
+
+
+@dataclass(frozen=True, slots=True)
+class Control:
+    """The control the confirmation hosts."""
+
+    node: Node
+
+
+@dataclass(frozen=True, slots=True)
+class RefusedAct:
+    """One sentence, and no press."""
+
+    sentence: str
+
+
+@dataclass(frozen=True, slots=True)
+class AsksNothing:
+    """No rows, so no question to put."""
+
+
+#: What `offer` answers.
+#: Named, because `Child` is `Node | str`: bare
+#: text is a control as well as a refusal, and one
+#: return type cannot say which was meant.
+type Offered = Control | RefusedAct | AsksNothing
 
 
 @dataclass(frozen=True, slots=True)
 class BulkChoice[RowT: Model]:
     """A fact the act asks for, before it runs.
 
-    `offer` draws the control, or answers a sentence
-    refusing the whole act. `settle` answers the one string
-    every row is handed, and raises `CommandRejected` for a
-    post it cannot read.
+    `offer` draws the control, or refuses the whole act.
+    `settle` answers the one string every row is handed, and
+    raises `CommandRejected` for a post it cannot read.
     """
 
-    offer: Callable[[UserLibrary, Sequence[RowT], FieldName], Node | str]
+    offer: Callable[[UserLibrary, Sequence[RowT], FieldName], Offered]
     settle: Callable[[UserLibrary, QueryDict], ChoiceValue]
 
 
@@ -183,6 +258,23 @@ class BulkAction[RowT: Model]:
             raise ValueError(
                 f"{self.name!r} is already declared. An act names itself once."
             )
+        for role, callable_, facts in (
+            ("run", self.run, ("choice", "idempotency_key", "correlation_id")),
+            ("inverse", self.inverse, ("undoes", "idempotency_key", "correlation_id")),
+        ):
+            called = getattr(callable_, "__name__", repr(callable_))
+            stated = inspect.signature(callable_).parameters
+            for fact in facts:
+                if fact not in stated:
+                    raise ValueError(
+                        f"{self.name!r} states a {called} that takes no {fact}."
+                    )
+                if stated[fact].kind is not inspect.Parameter.KEYWORD_ONLY:
+                    raise ValueError(
+                        f"{self.name!r}'s {role} ({called}) takes {fact} "
+                        "by position. Two of the three facts are text, so "
+                        "position cannot tell them apart."
+                    )
         if not DEFAULT_EVENT_TYPES.event_types_for(self.inverse_aggregate):
             raise ValueError(
                 f"{self.name!r} names {self.inverse_aggregate!r} as the "
