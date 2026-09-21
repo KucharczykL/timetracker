@@ -15,6 +15,7 @@ from games.models import (
     PlaythroughKind,
     UserLibrary,
 )
+from games.reads.calendar import calendar_day_zone
 
 #: The zone both twins read days in.
 TWIN_ZONE = ZoneInfo("Europe/Prague")
@@ -68,9 +69,20 @@ def timed_row(
     started_at: datetime,
     ended_at: datetime | None,
     *,
-    day_zone: str = "Europe/Prague",
+    day_zone: str | None = None,
     **columns: object,
 ) -> PlayerSession:
+    """A Timed row, dated on its library's calendar by default.
+
+    The default used to name a zone outright, which wrote
+    rows into a calendar their own library does not count
+    in: every read then compared that day against a today
+    from somewhere else, and the pair went one apart for
+    the hours the two zones disagree (#1217). Name a zone
+    only to test what happens when one differs.
+    """
+    if day_zone is None:
+        day_zone = calendar_day_zone(run.library).key
     return projection_row(
         run,
         timing_mode=PlayerSessionTimingMode.TIMED,
@@ -99,9 +111,12 @@ def corrected_row(
     ended_at: datetime,
     stated_duration: timedelta,
     *,
-    day_zone: str = "Europe/Prague",
+    day_zone: str | None = None,
     **columns: object,
 ) -> PlayerSession:
+    """A Corrected row, dated on its library's calendar by default."""
+    if day_zone is None:
+        day_zone = calendar_day_zone(run.library).key
     return projection_row(
         run,
         timing_mode=PlayerSessionTimingMode.CORRECTED,

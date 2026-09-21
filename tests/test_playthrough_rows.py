@@ -1,5 +1,6 @@
 """#1012: one table row per run."""
 
+import re
 from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
@@ -13,6 +14,7 @@ from common.date_time_presentation import (
 )
 from games.commands.playthrough import ActStatement
 from games.models import Game, Playthrough
+from games.reads.playthrough_activity import activity_clock
 from games.reads.playthrough_numbering import numbered_for
 from games.reads.playthrough_runs import tracked_game
 from games.views.playthrough_rows import playthrough_tabledata
@@ -53,6 +55,7 @@ def tabledata_of(owned_library, run, presentation, **options):
     """The table this run renders, numbered."""
     runs = numbered_runs(owned_library, run)
     options.setdefault("csrf_token", "token")
+    options.setdefault("clock", activity_clock(owned_library))
     return playthrough_tabledata(runs, presentation, origin=None, **options)
 
 
@@ -148,7 +151,12 @@ def test_excluding_the_game_column_drops_its_cell(owned_library, run, presentati
     runs = numbered_runs(owned_library, run)
 
     data = playthrough_tabledata(
-        runs, presentation, exclude_columns=["Game"], origin=None, csrf_token="token"
+        runs,
+        presentation,
+        exclude_columns=["Game"],
+        clock=activity_clock(owned_library),
+        origin=None,
+        csrf_token="token",
     )
 
     labels = [column.label for column in data["columns"]]
@@ -277,7 +285,13 @@ def test_runs_read_without_the_clock_are_refused(owned_library, run, presentatio
     )
 
     with pytest.raises(ValueError, match="carries no condition alias"):
-        playthrough_tabledata(runs, presentation, origin=None, csrf_token="token")
+        playthrough_tabledata(
+            runs,
+            presentation,
+            clock=activity_clock(owned_library),
+            origin=None,
+            csrf_token="token",
+        )
 
 
 def test_a_completed_run_prints_a_dash_for_its_activity(
@@ -291,3 +305,27 @@ def test_a_completed_run_prints_a_dash_for_its_activity(
     [row] = data["rows"]
 
     assert str(row["cell_data"][labels.index("Activity")]) == "-"
+
+
+def test_the_recency_does_not_move_with_the_viewers_zone(owned_library, run):
+    """The word and the phrase beside it read one clock.
+
+    The day is `effective_day`, counted in the library's
+    calendar, so the viewer's presentation zone has no
+    say in how long ago it was. It used to: today came
+    from that zone, and the phrase went a day out from
+    the badge it sits next to (#1217).
+    """
+    started_at = timezone.now() - timedelta(days=4)
+    timed_row(run, started_at, started_at + timedelta(hours=1))
+
+    phrases = set()
+    for zone in ("Pacific/Kiritimati", "Pacific/Niue", "UTC"):
+        elsewhere = DateTimePresentation(
+            DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo(zone)
+        )
+        html = "".join(cells_of(owned_library, run, elsewhere))
+        assert "Playing" in html
+        phrases.update(re.findall(r"\d+ days ago", html))
+
+    assert phrases == {"4 days ago"}

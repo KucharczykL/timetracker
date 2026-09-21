@@ -1,13 +1,18 @@
 """#683: the status a lifecycle act offers."""
 
+import uuid
 from datetime import date
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.urls import reverse
-from django.utils import timezone
+from django.utils import timezone as django_timezone
 
+from games.commands.calendar import SetCalendarDayZone
+from games.events.dispatch import dispatch
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus, Playthrough
+from games.reads.calendar import calendar_today
 from games.reads.companion_status import played_is_offered
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 
@@ -228,7 +233,10 @@ def test_starting_a_run_states_today_and_played(logged_in, owned_library, tracke
 
     run.refresh_from_db()
     assert run.start_recorded_at is not None
-    assert run.started_lower == timezone.localdate()
+    #: The library's calendar, not `localdate()`: off a request that
+    #: is `settings.TIME_ZONE`, which names another day for the two
+    #: hours a night it disagrees with the calendar (#1217).
+    assert run.started_lower == calendar_today(owned_library)
     assert status_of(owned_library) == PlayerGameStatus.PLAYED
 
 
@@ -240,7 +248,7 @@ def test_completing_a_run_states_today_and_completed(logged_in, owned_library, t
 
     run.refresh_from_db()
     assert run.completion_recorded_at is not None
-    assert run.completed_upper == timezone.localdate()
+    assert run.completed_upper == calendar_today(owned_library)
     assert status_of(owned_library) == PlayerGameStatus.COMPLETED
 
 
@@ -359,3 +367,37 @@ def test_the_pair_replays_to_the_same_rows(logged_in, owned_library, game):
         Playthrough.objects.get(player_game__game=game).completed_upper,
     )
     assert after == before
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_start_states_the_librarys_day_not_the_processs(
+    logged_in, owned_user, owned_library, tracked
+):
+    """The calendar decides the day, whatever the process clock reads.
+
+    `Pacific/Kiritimati` and `Pacific/Niue` are 25 hours
+    apart, so whatever `settings.TIME_ZONE` says right now,
+    at least one of them is on another date. Setting the
+    library's calendar to that one makes a day taken from
+    `localdate()` provably wrong at any hour, rather than
+    only for the two a night the defaults disagree (#1217).
+    """
+    elsewhere = next(
+        zone
+        for zone in ("Pacific/Kiritimati", "Pacific/Niue")
+        if django_timezone.now().astimezone(ZoneInfo(zone)).date()
+        != django_timezone.localdate()
+    )
+    dispatch(
+        SetCalendarDayZone(day_zone=elsewhere),
+        actor=owned_user,
+        library=owned_library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+    run = Playthrough.objects.get(player_game__game=tracked)
+
+    logged_in.post(reverse("games:start_playthrough", args=[run.pk]))
+
+    run.refresh_from_db()
+    assert run.started_lower == calendar_today(owned_library)
+    assert run.started_lower != django_timezone.localdate()

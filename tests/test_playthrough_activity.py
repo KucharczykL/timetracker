@@ -412,6 +412,7 @@ def test_a_second_clock_is_refused(owned_user, owned_library, game):
     annotated = runs_with_condition(owned_library)
     another = ActivityClock(
         threshold_days=7,
+        today=date(2020, 1, 8),
         boundary_day=date(2020, 1, 1),
         zone=activity_clock(owned_library).zone,
     )

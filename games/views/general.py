@@ -47,6 +47,11 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
     library = (
         cast(User, user).library if user is not None and user.is_authenticated else None
     )
+    #: Still the viewer's clock, and so still a day out from the
+    #: calendar the sums below count in, for the hours the two
+    #: zones disagree. Reading the calendar here costs one query
+    #: on every page -- 23 becomes 24 -- which is a budget
+    #: decision, not a bug fix. Left to #1221.
     today = localdate()
     #: Seven calendar days, today included.
     last_seven_days = DayInterval.ending(today, days=7)
