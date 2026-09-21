@@ -36,7 +36,12 @@ def touch_page(live_server, browser, e2e_user):
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
-    page.click('button:has-text("Login")')
+    # Tap, never click: a click parks Playwright's virtual mouse on the button,
+    # the next page loads under that cursor, and Chromium opens whatever
+    # tooltip sits there before the test has touched anything. Whether it does
+    # turns on where the layout puts a row, so the failure comes and goes. A
+    # no-hover device has no cursor to park.
+    page.tap('button:has-text("Login")')
     page.wait_for_url(f"{live_server.url}/tracker**")
     yield page
     context.close()
