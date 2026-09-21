@@ -130,7 +130,7 @@ def test_uuid_is_absent_from_device_form_fields():
 def test_no_model_schema_generates_fields_from_device_or_filterpreset():
     """The "no API leak" argument rests on no `ModelSchema` covering `Device`
     or `FilterPreset` - every response involving them is a hand-enumerated
-    `Schema` (`DeviceOut`, `PresetOption`, `PresetIn`). Pin that premise so
+    `Schema` (`DeviceOut`, `PickerOption`, `PresetIn`). Pin that premise so
     adding a `ModelSchema` over either model fails here instead of silently
     publishing the new column.
     """
@@ -154,7 +154,7 @@ def test_uuid_is_absent_from_device_out_fields():
 
 
 def test_uuid_is_absent_from_preset_option_and_preset_in_fields():
-    assert "uuid" not in api_module.PresetOption.model_fields
+    assert "uuid" not in api_module.PickerOption.model_fields
     assert "uuid" not in api_module.PresetIn.model_fields
 
 

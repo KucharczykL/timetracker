@@ -283,31 +283,22 @@ class PlaythroughOut(Schema):
         return days_to_finish(run)
 
 
-# One schema per search endpoint rather than one shared by all three: each
-# entity's option value is whatever that entity's primary key is, and those
-# stop agreeing as the identity cutover promotes them one group at a time.
-class GameOption(Schema):  # mirrors SearchSelectOption
+class PickerOption(Schema):  # mirrors SearchSelectOption
+    """One picker row, keyed by the row's own primary key.
+
+    One schema for every search a `SearchSelect` reads. Each
+    endpoint stated its own while the identity cutover promoted
+    one group of keys at a time and the value types disagreed;
+    every converted model states a UUIDv7 now, and
+    `RESIDUAL_INTEGER_PRIMARY_KEYS` names what never will.
+    A picker over one of those states a value of its own type,
+    as `StringOption` does.
+    """
+
     value: UUIDv7
     label: str
-    data: dict
-
-
-class PlatformOption(Schema):  # mirrors SearchSelectOption
-    value: UUIDv7
-    label: str
-    data: dict
-
-
-class PlaythroughOption(Schema):  # mirrors SearchSelectOption
-    value: UUIDv7
-    label: str
-    data: dict
-
-
-class DeviceOption(Schema):  # mirrors SearchSelectOption
-    value: UUIDv7
-    label: str
-    data: dict
+    #: What the element reads: `SearchSelectOption.data` is text.
+    data: dict[str, str]
 
 
 class StringOption(Schema):  # SearchSelectOption with a string value (e.g. group names)
@@ -316,7 +307,7 @@ class StringOption(Schema):  # SearchSelectOption with a string value (e.g. grou
     data: dict
 
 
-@game_router.get("/search", response=list[GameOption])
+@game_router.get("/search", response=list[PickerOption])
 def search_games(request, q: str = "", limit: int = 10):
     library = cast(User, request.user).library
     qs = (
@@ -469,7 +460,7 @@ def _created_run(
     )
 
 
-@playthrough_router.get("/search", response=list[PlaythroughOption])
+@playthrough_router.get("/search", response=list[PickerOption])
 def search_playthroughs(request, game_id: UUIDv7, q: str = "", limit: int = 10):
     """One game's live ordinary runs, as picker options.
 
@@ -543,7 +534,7 @@ def remove_playthrough(request, playthrough_id: UUIDv7):
     return Status(204, None)
 
 
-@device_router.get("/search", response=list[DeviceOption])
+@device_router.get("/search", response=list[PickerOption])
 def search_devices(request, q: str = "", limit: int = 10):
     library = cast(User, request.user).library
     qs = Device.objects.for_library(library)
@@ -623,7 +614,7 @@ def create_platform(request, payload: RowIn):
     return Status(201, CreatedRow(value=str(platform.pk), label=platform.name))
 
 
-@platform_router.get("/search", response=list[PlatformOption])
+@platform_router.get("/search", response=list[PickerOption])
 def search_platforms(request, q: str = "", limit: int = 10):
     library = cast(User, request.user).library
     qs = Platform.objects.visible_to(library)
@@ -1259,14 +1250,6 @@ api.add_router("/filter", filter_router)
 preset_router = Router()
 
 
-class PresetOption(Schema):
-    """Preset picker option; empty string values mean inherit."""
-
-    value: UUIDv7
-    label: str
-    data: dict[str, str]
-
-
 class PresetIn(Schema):
     # ``filter: dict | None`` makes Ninja reject scalar/array payloads with a 422
     # before the handler runs — the schema subsumes the old hand-rolled
@@ -1304,9 +1287,12 @@ def _reject_unknown_preset_mode(request, mode: str) -> None:
         raise HttpError(400, f"Unknown preset mode '{mode}'.")
 
 
-@preset_router.get("/", response=list[PresetOption])
+@preset_router.get("/", response=list[PickerOption])
 def list_presets(request, mode: str = "games", q: str = "", limit: int = 100):
     """The current library's presets for one mode, shaped for the combobox picker.
+
+    An empty string in a row's ``data`` means the preset
+    inherits that value, which is the picker's own convention.
 
     ``limit=0`` means unbounded — the filter bar's overwrite-collision check
     fetches every name, so a >limit preset collection can't silently miss a
