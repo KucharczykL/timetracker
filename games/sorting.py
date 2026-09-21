@@ -29,7 +29,11 @@ from common.sorting import (
     SortTerm,
     parse_sort_terms,
 )
-from games.filters import FindFilter
+from games.filters import SESSION_GAME, FindFilter
+from games.reads.playthrough_numbering import (
+    display_order_through,
+    numbered_sort_key,
+)
 from timetracker.settings_resolver import resolve_for_user
 
 __all__ = [
@@ -77,6 +81,8 @@ type Annotations = dict[AnnotationName, Expression]
 class SortSpec:
     expression: OrderField  # unsigned; a real column path or an AnnotationName
     annotate: Annotations | None = None
+    #: What orders the rows the head leaves as peers.
+    then: tuple[OrderField, ...] = ()
 
 
 type SortMap = dict[SortKey, SortSpec]
@@ -109,6 +115,16 @@ SESSION_SORTS: SortMap = {
     "duration": SortSpec("effective_duration"),
     "device": SortSpec("device__name"),
     "created": SortSpec("created_at"),
+    #: The game first: a number means nothing outside it.
+    "playthrough": SortSpec(
+        f"{SESSION_GAME}__sort_name",
+        {"run_numbered": numbered_sort_key("playthrough__")},
+        then=(
+            "run_numbered",
+            *display_order_through("playthrough__"),
+            "sort_instant",
+        ),
+    ),
 }
 SESSION_DEFAULT_SORT: SortString = "-date,created"
 
@@ -138,13 +154,18 @@ _DAYS_SPAN = Case(
     output_field=DurationField(),
 )
 
-#: The Playthrough column carries no sort key.
 PLAYTHROUGH_SORTS: SortMap = {
     "name": SortSpec("player_game__game__sort_name"),
     "started": SortSpec("started_lower"),
     "completed": SortSpec("completed_lower"),
     "days": SortSpec("days_span", {"days_span": _DAYS_SPAN}),
     "created": SortSpec("created_at"),
+    #: The game leads, or `started` reads nearly the same.
+    "playthrough": SortSpec(
+        "player_game__game__sort_name",
+        {"run_numbered": numbered_sort_key()},
+        then=("run_numbered", *display_order_through()),
+    ),
 }
 PLAYTHROUGH_DEFAULT_SORT: SortString = "-created"
 
@@ -213,12 +234,13 @@ def apply_sort(
         spec = sort_map[term.key]
         if spec.annotate:
             annotations.update(spec.annotate)
-        expression = F(spec.expression)
-        order_by.append(
-            expression.desc(nulls_last=True)
-            if term.descending
-            else expression.asc(nulls_last=True)
-        )
+        for field in (spec.expression, *spec.then):
+            expression = F(field)
+            order_by.append(
+                expression.desc(nulls_last=True)
+                if term.descending
+                else expression.asc(nulls_last=True)
+            )
     order_by.append(F("pk").asc())
     if annotations:
         queryset = queryset.annotate(**annotations)

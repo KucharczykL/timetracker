@@ -407,8 +407,9 @@ anonymize-sample: ensure-postgres
 createsuperuser: ensure-postgres
 	uv run --frozen python manage.py createsuperuser
 
+# ARGS reaches manage.py, so `make shell ARGS='-c "..."'` runs one snippet.
 shell: ensure-postgres
-	uv run --frozen python manage.py shell
+	uv run --frozen python manage.py shell $(ARGS)
 
 # psql against the development database. Reads stdin, so a heredoc or a pipe
 # runs a one-off query without spelling the URL out again.

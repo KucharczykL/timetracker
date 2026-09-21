@@ -2,6 +2,7 @@
 
 import logging
 import re
+import uuid
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -11,8 +12,9 @@ from django.contrib.messages import get_messages
 from django.db.models import Case, DateField, Value, When
 from django.test import RequestFactory
 from django.urls import reverse
+from django.utils import timezone
 from historical_playtime_rows import record_row
-from session_rows import session_row, tracked_run
+from session_rows import session_row, timed_row, tracked_run
 
 from common.criteria import filter_to_json
 from games.filters import FindFilter, GameFilter, PlayerSessionFilter
@@ -22,9 +24,13 @@ from games.models import (
     Platform,
     PlayerGame,
     PlayerGameStatus,
+    Playthrough,
+    PlaythroughKind,
     Purchase,
     UserPreferences,
 )
+from games.reads.player_sessions import library_sessions
+from games.reads.playthrough_numbering import numbered_for
 from games.reads.playtime import games_by_playtime_queryset, playtime_sort_key
 from games.sorting import (
     DEVICE_DEFAULT_SORT,
@@ -46,6 +52,7 @@ from games.sorting import (
     parse_sort_terms,
 )
 from games.views.game import games_for_list
+from timetracker.temporal import TemporalValue
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 
@@ -333,6 +340,39 @@ class TestParseFindFilter:
         assert find.per_page_override == 50
 
 
+#: One key naming three fields.
+_GROUPED_MAP = {"grouped": SortSpec("name", then=("year_released", "created_at"))}
+
+
+class TestSortSpecThen:
+    """A key names an ordering, not one field."""
+
+    def _order_by(self, sort):
+        return apply_sort(
+            Game.objects.all(), _find(sort), _GROUPED_MAP, "grouped"
+        ).queryset.query.order_by
+
+    def test_every_field_is_emitted_head_first(self):
+        emitted = [str(term.expression.name) for term in self._order_by("grouped")]
+
+        assert emitted == ["name", "year_released", "created_at", "pk"]
+
+    def test_the_terms_direction_reaches_every_field(self):
+        ordered = self._order_by("-grouped")
+
+        assert [term.descending for term in ordered[:-1]] == [True, True, True]
+        assert all(term.nulls_last for term in ordered[:-1])
+
+    def test_a_spec_that_states_no_then_emits_one_field(self):
+        result = apply_sort(
+            Game.objects.all(), _find("name"), GAME_SORTS, GAME_DEFAULT_SORT
+        )
+
+        assert [
+            str(term.expression.name) for term in result.queryset.query.order_by
+        ] == ["name", "pk"]
+
+
 class TestSortMapShapes:
     def test_default_sort_keys_exist_in_maps(self):
         # every key referenced by a default sort string must be defined in its map
@@ -388,6 +428,7 @@ class TestPlaythroughSorts:
             "completed",
             "days",
             "created",
+            "playthrough",
         }
 
     @pytest.mark.django_db
@@ -411,6 +452,131 @@ class TestPlaythroughSorts:
 
             assert counted == ([30, 1] if descending else [1, 30])
             assert answers[: len(counted)] == counted
+
+
+@pytest.fixture
+def grouped_runs(owned_library):
+    """One game, three runs and a bucket, each played.
+
+    The third states no start, which tells a reversal
+    from a mirror: NULLS LAST holds it last both ways.
+    """
+    game = Game.objects.create(
+        library=owned_library, name="Outer Wilds", sort_name="Outer Wilds"
+    )
+    first = tracked_run(owned_library, game)
+    player_game = first.player_game
+    now = timezone.now()
+
+    def run(**columns):
+        return Playthrough.objects.create(
+            pk=uuid.uuid7(),
+            library=owned_library,
+            player_game=player_game,
+            created_at=now,
+            **columns,
+        )
+
+    Playthrough.objects.filter(pk=first.pk).update(
+        start_recorded_at=now, started=TemporalValue.parse("2025-01-01")
+    )
+    second = run(
+        kind=PlaythroughKind.ORDINARY,
+        start_recorded_at=now,
+        started=TemporalValue.parse("2025-02-01"),
+    )
+    undated = run(kind=PlaythroughKind.ORDINARY)
+    bucket = run(kind=PlaythroughKind.IMPORTED_HISTORY)
+
+    for index, each in enumerate([first, second, undated, bucket]):
+        for offset in range(2):
+            moment = datetime(2025, 6, 1, 8 + index, offset * 5, tzinfo=ZONEINFO)
+            timed_row(each, moment, moment + timedelta(minutes=30))
+
+    return {"game": game, "runs": [first.pk, second.pk, undated.pk, bucket.pk]}
+
+
+class TestSessionsGroupedByRun:
+    """`playthrough` groups a game's sessions by its runs."""
+
+    def _run_order(self, library, sort):
+        ordered = apply_sort(
+            library_sessions(library),
+            _find(sort),
+            SESSION_SORTS,
+            SESSION_DEFAULT_SORT,
+        ).queryset
+        seen = []
+        for session in ordered:
+            if session.playthrough_id not in seen:
+                seen.append(session.playthrough_id)
+        return seen
+
+    def test_ascending_reads_the_runs_as_the_screen_numbers_them(
+        self, owned_library, grouped_runs
+    ):
+        first, second, undated, bucket = grouped_runs["runs"]
+        numbered = numbered_for(
+            owned_library, {grouped_runs["game"].player_games.get().pk}
+        )
+
+        assert [row.pk for row in numbered] == [first, second, undated]
+        assert self._run_order(owned_library, "playthrough") == [
+            first,
+            second,
+            undated,
+            bucket,
+        ]
+
+    def test_descending_is_no_mirror_and_still_ends_on_the_bucket(
+        self, owned_library, grouped_runs
+    ):
+        """A run stating no start sorts last both ways."""
+        first, second, undated, bucket = grouped_runs["runs"]
+
+        assert self._run_order(owned_library, "-playthrough") == [
+            second,
+            first,
+            undated,
+            bucket,
+        ]
+
+    def test_a_runs_sessions_come_out_in_time_order(self, owned_library, grouped_runs):
+        first = grouped_runs["runs"][0]
+        ordered = apply_sort(
+            library_sessions(owned_library),
+            _find("playthrough"),
+            SESSION_SORTS,
+            SESSION_DEFAULT_SORT,
+        ).queryset
+        instants = [
+            session.sort_instant
+            for session in ordered
+            if session.playthrough_id == first
+        ]
+
+        assert instants == sorted(instants)
+
+    def test_the_api_takes_the_key_in_both_directions(
+        self, logged_client, grouped_runs
+    ):
+        for raw in ("playthrough", "-playthrough"):
+            response = logged_client.get("/api/session/", {"sort": raw})
+
+            assert response.status_code == 200, raw
+
+    def test_two_games_sort_as_two_blocks(self, owned_library, grouped_runs):
+        other = Game.objects.create(
+            library=owned_library, name="Anodyne", sort_name="Anodyne"
+        )
+        other_run = tracked_run(owned_library, other)
+        moment = datetime(2025, 6, 1, 7, 0, tzinfo=ZONEINFO)
+        timed_row(other_run, moment, moment + timedelta(minutes=30))
+
+        order = self._run_order(owned_library, "playthrough")
+
+        assert order[0] == other_run.pk
+        assert order[1:] == grouped_runs["runs"]
 
 
 @pytest.fixture
@@ -854,6 +1020,15 @@ def two_platforms(owned_library):
 
 
 class TestListPlaythroughsSort:
+    def test_the_run_column_offers_its_own_sort(self, logged_client, two_runs):
+        """The column the map had no key for."""
+        response = logged_client.get(
+            reverse("games:list_playthroughs"), {"sort": "playthrough"}
+        )
+
+        assert response.status_code == 200
+        assert "sort=playthrough" in response.content.decode()
+
     def test_sort_by_completed_ascending_overrides_default(
         self, logged_client, two_runs
     ):

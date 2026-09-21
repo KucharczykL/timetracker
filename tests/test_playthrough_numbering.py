@@ -14,9 +14,13 @@ from games.events.playthrough import playthrough_created
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.models import Game, PlayerGame, Playthrough, PlaythroughKind
 from games.reads.playthrough_numbering import (
+    DISPLAY_ORDER_FIELDS,
     UnnumberedPlaythrough,
     display_name,
+    display_order_through,
+    is_numbered,
     numbered_for,
+    numbered_sort_key,
     with_display_number,
 )
 from timetracker.temporal import TemporalValue
@@ -325,3 +329,49 @@ def test_numbered_for_renders_the_numbers_down_the_page_in_order(
 
     assert [run.pk for run in ordered] == [early.pk, late.pk]
     assert [run.display_number for run in ordered] == [1, 2]
+
+
+def test_display_order_through_names_the_fields_a_relation_reaches():
+    assert display_order_through() == DISPLAY_ORDER_FIELDS
+    assert display_order_through("playthrough__") == tuple(
+        f"playthrough__{name}" for name in DISPLAY_ORDER_FIELDS
+    )
+
+
+def _sort_keys(tracked):
+    """Every run of this game, beside the key the ORM answers."""
+    rows = Playthrough.objects.filter(player_game=tracked).annotate(
+        run_numbered=numbered_sort_key()
+    )
+    return {row.pk: row.run_numbered for row in rows}
+
+
+def test_numbered_sort_key_answers_for_a_live_ordinary_run(tracked):
+    run = make_run(tracked)
+
+    assert _sort_keys(tracked)[run.pk] is not None
+
+
+def test_numbered_sort_key_answers_null_for_a_bucket(tracked):
+    bucket = make_run(tracked, kind=PlaythroughKind.IMPORTED_HISTORY)
+
+    assert _sort_keys(tracked)[bucket.pk] is None
+
+
+def test_numbered_sort_key_answers_null_for_a_removed_run(tracked):
+    removed = make_run(tracked, removed_at=timezone.now())
+
+    assert _sort_keys(tracked)[removed.pk] is None
+
+
+def test_numbered_sort_key_states_what_is_numbered_states(tracked):
+    """The ORM twin answers what the Python one answers."""
+    rows = [
+        make_run(tracked),
+        make_run(tracked, kind=PlaythroughKind.IMPORTED_HISTORY),
+        make_run(tracked, removed_at=timezone.now()),
+    ]
+    keys = _sort_keys(tracked)
+
+    for row in rows:
+        assert (keys[row.pk] is not None) == is_numbered(row)

@@ -40,6 +40,7 @@ type CsrfToken = str
 
 #: The list page's sort keys, by label.
 _SORT_KEYS: Mapping[str, SortKey] = {
+    "Playthrough": "playthrough",
     "Game": "name",
     "Started": "started",
     "Completed": "completed",

@@ -123,7 +123,7 @@ path**, so verify against `make check` before pushing when possible.
 | Squash the migration history | `make squash-migrations ARGS="games 0006"` (Django's tool; old files stay until the deployment records the squash, see [Squashing](docs/migration-squash.md)) |
 | Make / apply migrations | `make makemigrations` (`ARGS="games --name edition_name"` names the file) / `make migrate` (`ARGS="games 0001_squashed_0006_remove_session"` targets one) |
 | CSS (Tailwind) | `make css` |
-| Django shell | `make shell` |
+| Django shell | `make shell` (`ARGS` reaches `manage.py`, so `make shell ARGS='-c "..."'` runs one snippet) |
 | Create superuser | `make createsuperuser` |
 | Dev login (superuser + prefill) | `make devlogin` (idempotent `admin`/`admin`; pairs with `DEV_LOGIN_PREFILL`) |
 | Format / lint Python | `make format` / `make lint` / `make lint-fix` |
@@ -386,6 +386,18 @@ docs/           — Additional documentation
   `(sort_instant, id)`; dormancy clock asks when *run* was last played, so run
   whose play sits in bucket reads Never played until moved. Contract is
   [Switch Session writes and every read surface](docs/superpowers/specs/2026-09-15-issue-702-session-cutover-design.md)
+
+  #715 groups that list by run. `sole_game` in
+  `games/reads/player_sessions.py` answers the one game the filtered rows
+  name; while it does, the list carries a Playthrough column after Name
+  (`every_run_label` over `ambiguous_run_labels`, the name cell's own label
+  dropped), each row states #711's summary naming the run, and Game detail
+  offers Organize beside View all. Both lists take a `playthrough` sort key:
+  game, then a null-or-not numbering key, then `DISPLAY_ORDER_FIELDS`. That
+  is several `ORDER BY` terms under one key, which is why `SortSpec` states
+  `then`. Both branches write NULLS LAST, so the bucket and a run stating no
+  start sort last in both directions. Contract is
+  [The desktop Session organizer](docs/superpowers/specs/2026-09-21-issue-715-session-organizer-design.md)
 
   #1047's calendar: one zone per library, stated by
   `library.calendar.day_zone_changed` and projected to `LibraryCalendar`, a
