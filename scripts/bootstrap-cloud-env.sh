@@ -223,8 +223,13 @@ fi
 # `chromium` makes conftest launch it directly, revision mismatch notwithstanding.
 if [ "${SKIP_E2E_BROWSER:-0}" != "1" ]; then
   have_browser=0
+  browser_bin=""
   for b in google-chrome-stable google-chrome chromium chrome; do
-    command -v "$b" >/dev/null && { have_browser=1; break; }
+    if command -v "$b" >/dev/null; then
+      have_browser=1
+      browser_bin="$(command -v "$b")"
+      break
+    fi
   done
   if [ "$have_browser" -eq 0 ]; then
     chrome_bin="$(find "${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers}" \
@@ -232,10 +237,35 @@ if [ "${SKIP_E2E_BROWSER:-0}" != "1" ]; then
     if [ -n "$chrome_bin" ]; then
       mkdir -p "$HOME/.local/bin"
       ln -sf "$chrome_bin" "$HOME/.local/bin/chromium"
+      browser_bin="$chrome_bin"
       log "Linked e2e browser: $HOME/.local/bin/chromium -> $chrome_bin"
     else
       echo "warning: no chromium found under PLAYWRIGHT_BROWSERS_PATH; e2e will fail" >&2
     fi
+  fi
+
+  # The browser half of the Node 26 rule: ts/date-time-presentation.ts reaches
+  # for Temporal, which lands in Chromium 143. An older build leaves it
+  # undefined, and the date/time formatters then answer null rather than
+  # throwing -- the calendar simply renders an empty month label, and
+  # test_alternate_presentation_localizes_calendar_but_serializes_iso fails
+  # with no hint as to why. ensure-node-runtime exists so the Node version of
+  # that never reaches a wall of null assertions; this says the same thing for
+  # the browser, as a warning, because a pre-installed browser is not ours to
+  # replace and every other e2e test passes on it.
+  CHROMIUM_TEMPORAL_MAJOR=143
+  browser_major="$(
+    [ -n "${browser_bin:-}" ] && "$browser_bin" --version 2>/dev/null \
+      | grep -oE '[0-9]+' | head -1
+  )" || true
+  if [ -n "$browser_major" ] \
+     && [ "$browser_major" -lt "$CHROMIUM_TEMPORAL_MAJOR" ] 2>/dev/null; then
+    echo "warning: the e2e browser is Chromium $browser_major, and Temporal needs" >&2
+    echo "         >= $CHROMIUM_TEMPORAL_MAJOR. Date and time formatters read undefined there, so" >&2
+    echo "         the date-range picker renders no month label and" >&2
+    echo "         test_alternate_presentation_localizes_calendar fails. CI installs" >&2
+    echo "         the build the lockfile pins and never sees this; the rest of the" >&2
+    echo "         suite does not depend on it." >&2
   fi
 fi
 
