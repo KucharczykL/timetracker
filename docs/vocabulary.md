@@ -9,10 +9,18 @@ It reads the files this checkout changed, which it works out from the merge
 base with `main`. `make vale ARGS=--all` reads every tracked file, and
 `make vale ARGS="--since <rev>"` states another base.
 
-A rule here governs prose. Code is out of scope: an identifier, a flag name, a
-fenced block and an inline `code` span are all skipped, so `folder` and
-`--no-count-replay` need no exception. That is also how this page can name the
-words it refuses — each one below is written as code.
+A rule here governs the words, wherever they are read. The linter sees prose
+alone: an identifier, a flag name, a fenced block and an inline `code` span are
+all skipped, which is how this page can name the words it refuses — each one
+below is written as code.
+
+So an identifier holding a refused word is nobody's exception. It is a rename
+nobody has made yet, and the reader of a change is the only one who can ask for
+it. A word that means one thing in a sentence and another in a type name
+teaches the same wrong thing twice. Two identifiers are held apart from this:
+a word the language or a dependency chose (`folder` in a browser API,
+`delete` in Django's own manager), and a flag whose spelling a person types
+(`--no-count-replay`). Both are somebody else's vocabulary.
 
 One path is held to the rules that predate it but not to the ones added after:
 `CHANGELOG.md`. An entry describes a release that shipped under the word it
@@ -85,7 +93,7 @@ joined, so the message asks for it rather than naming one:
 This word alone is refused at both levels. The second table was a warning until
 every use in the tree was read: each one was a metaphor standing in for a
 plainer word, and the literal sense the warning was protecting never appeared.
-`folder` and any other identifier are still out of scope, as code always is.
+`folder` keeps its name: a browser API chose that word, not this codebase.
 
 ### `seam` → plug point, boundary, divider
 
@@ -121,7 +129,7 @@ pattern catches is always a metaphor.
 A **clause** is one branch of a compound predicate: one side of an `OR`, one of
 the two sources a playtime figure sums, one criterion a filter states. A
 **step** is one part of a run that has several: one of a gate's comparisons,
-one of a batch's two directions, one target inside `make check`.
+one target inside `make check`, one part of a procedure a page walks.
 
 The literal thing is a limb, a trouser's half, or a stage of a journey. This
 codebase walks nowhere, and the word covered two unrelated shapes: a piece of a
@@ -144,8 +152,8 @@ message names both:
 There is no second level. Nothing here has limbs, and no journey has stages, so
 a use the pattern catches is always a metaphor.
 
-An identifier keeps its own name: `Leg` in `games/bulk_actions.py` is code, and
-code is out of scope.
+`Leg` in the bulk runner was renamed with the word: it is `BatchAct`, what one
+batch does to each of its rows.
 
 ### `tombstone` → remove
 

@@ -435,7 +435,7 @@ docs/           — Additional documentation
   within", offered where a handler reads two bound columns; `BETWEEN` on one
   is overlap; the date widget carries it in a hidden input). An empty
   relation serializes as `{}` and means "has one". The game list narrows its
-  Playtime column by both legs a filter states (`GameFilter.narrowing`).
+  Playtime column by both clauses a filter states (`GameFilter.narrowing`).
   `compute_stats` calls them all, `make bench` times them.
   `readable_sessions()` is the row path list and API share; `games_for_list()`
   in `games/views/game.py` builds the game list's queryset so the bench times
@@ -1030,7 +1030,9 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
 - **Some words are refused** — projector *replays* events; row it leaves is
   *projection*. `make vale` enforces list over docs and code comments, and
   [Vocabulary](docs/vocabulary.md) says why each word refused and how to add one.
-  Code out of scope, so identifier or flag name containing refused word is fine.
+  Linter reads prose only; rule governs words wherever read, so identifier
+  holding refused word is rename nobody made yet, not exception. Word language
+  or dependency chose, and flag person types, are somebody else's vocabulary.
   Check grades by meaning: domain sense — word next to event, projector, or row it
   writes — is **error** with one named replacement, every other sense is
   **warning** that prints without failing build, because there right word depends

@@ -168,7 +168,7 @@ class UndoRow(Protocol):
 
 
 class BoundRow(Protocol):
-    """One leg's row callable, its own fact bound."""
+    """One batch's row callable, its own fact bound."""
 
     def __call__(
         self,
