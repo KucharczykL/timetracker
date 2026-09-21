@@ -596,6 +596,8 @@ class SearchSelectProps(TypedDict):
     create_url: str
     #: The token that POST carries.
     csrf: str
+    #: Commit the one option a search answers, where nothing is held.
+    commit_sole_option: bool
     multi: bool
     filter_mode: bool
     free_text: bool

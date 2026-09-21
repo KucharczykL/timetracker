@@ -77,8 +77,13 @@ def test_submitting_the_form_persists_the_captured_zone(
     game_search = tokyo_page.locator("input[data-search-select-search]").first
     game_search.fill("Hades")
     tokyo_page.locator(f'[data-search-select-option][data-value="{game.pk}"]').click()
-    #: The run picker fills from the API once the game is picked.
-    expect(tokyo_page.locator('select[name="playthrough"] option')).to_have_count(1)
+    #: The run picker searches on the game and holds its one run.
+    expect(
+        tokyo_page.locator(
+            'search-select[name="playthrough"] '
+            '[data-search-select-pills] input[type="hidden"]'
+        )
+    ).to_have_count(1)
     # Text-scoped: the navbar's hidden logout control is also a
     # form button[type="submit"], so that alone is still ambiguous.
     tokyo_page.click('button[type="submit"]:has-text("Submit")')

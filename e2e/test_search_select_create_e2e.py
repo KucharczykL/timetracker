@@ -190,3 +190,44 @@ def test_the_run_picker_searches_again_when_the_game_changes(
     page.wait_for_timeout(400)
     labels = runs.locator("[data-search-select-option]").all_inner_texts()
     assert any("Hades run" in label for label in labels)
+
+
+def test_a_purchase_records_on_a_platform_created_from_the_picker(
+    authenticated_page: Page, live_server, e2e_library
+):
+    from tracked_games import create_tracked_game
+
+    from games.models import Platform, Purchase
+
+    game = create_tracked_game(e2e_library, "Outer Wilds")
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
+
+    games_picker = page.locator("search-select[name='games']")
+    games_search = games_picker.locator("[data-search-select-search]")
+    games_search.click()
+    games_search.fill("Outer")
+    games_picker.locator("[data-search-select-option]").first.click()
+
+    picker = page.locator("search-select[name='platform']")
+    search = picker.locator("[data-search-select-search]")
+    search.click()
+    search.fill("Arcade")
+
+    with page.expect_response(
+        lambda response: (
+            response.url.endswith("/api/platforms/")
+            and response.request.method == "POST"
+        )
+    ) as response_info:
+        picker.locator("[data-search-select-create]").click()
+    assert response_info.value.status == 201
+
+    platform = Platform.objects.get(library=e2e_library, name="Arcade")
+
+    with page.expect_navigation():
+        page.get_by_role("button", name="Submit", exact=True).click()
+
+    purchase = Purchase.objects.get(library=e2e_library)
+    assert purchase.platform_id == platform.pk
+    assert purchase.games.get() == game

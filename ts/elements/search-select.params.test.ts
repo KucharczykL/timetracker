@@ -111,6 +111,88 @@ describe("<search-select> params (#1080)", () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
+  it("holds the one option a search answers where nothing is held", async () => {
+    document.body.replaceChildren();
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve([{ value: "r1", label: "Playthrough 1", data: {} }]),
+      } as Response)
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const picker = document.createElement("search-select") as SearchSelectLike;
+    picker.setAttribute("name", "playthrough");
+    picker.setAttribute("search-url", "/api/playthrough/search");
+    picker.setAttribute("prefetch", "20");
+    picker.setAttribute("commit-sole-option", "true");
+    picker.innerHTML = `
+      <div data-search-select-pills></div>
+      <input data-search-select-search />
+      <div data-search-select-options></div>
+      <template data-search-select-template="row"><div
+        data-search-select-option role="option" aria-selected="false"
+      ><span data-search-select-label></span></div></template>
+    `;
+    document.body.appendChild(picker);
+
+    picker.querySelector<HTMLInputElement>("[data-search-select-search]")!.focus();
+
+    await vi.waitFor(() =>
+      expect(
+        picker.querySelector<HTMLInputElement>(
+          '[data-search-select-pills] input[type="hidden"]'
+        )?.value
+      ).toBe("r1")
+    );
+  });
+
+  it("leaves a name being typed alone", async () => {
+    document.body.replaceChildren();
+    let answer: (rows: unknown[]) => void = () => {};
+    const fetchMock = vi.fn(
+      () =>
+        new Promise<Response>(resolve => {
+          answer = rows =>
+            resolve({ ok: true, json: () => Promise.resolve(rows) } as Response);
+        })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const picker = document.createElement("search-select") as SearchSelectLike;
+    picker.setAttribute("name", "playthrough");
+    picker.setAttribute("search-url", "/api/playthrough/search");
+    picker.setAttribute("prefetch", "20");
+    picker.setAttribute("commit-sole-option", "true");
+    picker.innerHTML = `
+      <div data-search-select-pills></div>
+      <input data-search-select-search />
+      <div data-search-select-options></div>
+      <template data-search-select-template="row"><div
+        data-search-select-option role="option" aria-selected="false"
+      ><span data-search-select-label></span></div></template>
+    `;
+    document.body.appendChild(picker);
+
+    const search = picker.querySelector<HTMLInputElement>(
+      "[data-search-select-search]"
+    )!;
+    search.focus();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    //: The name is typed while the first answer is still on its way.
+    search.value = "New Game Plus";
+    search.dispatchEvent(new Event("input", { bubbles: true }));
+    answer([{ value: "r1", label: "Playthrough 1", data: {} }]);
+    await vi.waitFor(() =>
+      expect(picker.querySelectorAll("[data-search-select-option]")).toHaveLength(1)
+    );
+
+    expect(search.value).toBe("New Game Plus");
+    expect(
+      picker.querySelector('[data-search-select-pills] input[type="hidden"]')
+    ).toBeNull();
+  });
+
   it("searches without params when the attribute cannot be parsed", async () => {
     const { picker, fetchMock } = mountDependentPicker("{not json");
     picker.querySelector<HTMLInputElement>("[data-search-select-search]")!.focus();

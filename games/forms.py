@@ -310,6 +310,7 @@ class SearchSelectWidget(forms.Widget):
         options_resolver,
         create_url="",
         params=None,
+        commit_sole_option=False,
         multi_select=False,
         items_visible=5,
         items_scroll=10,
@@ -324,6 +325,7 @@ class SearchSelectWidget(forms.Widget):
         self.options_resolver = options_resolver
         self.create_url = create_url
         self.params = params
+        self.commit_sole_option = commit_sole_option
         self.multi_select = multi_select
         self.items_visible = items_visible
         self.items_scroll = items_scroll
@@ -351,6 +353,7 @@ class SearchSelectWidget(forms.Widget):
                 search_url=self.search_url,
                 create_url=self.create_url,
                 params=self.params,
+                commit_sole_option=self.commit_sole_option,
                 multi_select=self.multi_select,
                 items_visible=self.items_visible,
                 items_scroll=self.items_scroll,
@@ -794,6 +797,10 @@ class PlaythroughSelectWidget(SearchSelectWidget):
             options_resolver=_run_options,
             create_url=PLAYTHROUGH_CREATE_URL,
             params={"game_id": {"field": game_field}},
+            #: The field is required and a game usually holds one run.
+            #: The native select this replaced selected its first option;
+            #: without this nothing is posted and the form refuses.
+            commit_sole_option=True,
             prefetch=DEFAULT_PREFETCH,
             attrs=attrs,
         )

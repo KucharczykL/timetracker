@@ -171,6 +171,10 @@ const initWidget = (containerElement: Element) => {
     isFilter || freeText ? "" : (container.getAttribute("create-url") ?? "");
   //: The hosting form renders one, so a consumer states no prop. The
   //: prop is for a create row that stands outside a form.
+  //: A required field whose list usually holds one row: the native
+  //: select this replaced committed its first option, and without
+  //: this nothing is posted.
+  const commitSoleOption = container.getAttribute("commit-sole-option") === "true";
   const csrfToken = (): string =>
     container.getAttribute("csrf") ||
     container
@@ -621,6 +625,20 @@ const initWidget = (containerElement: Element) => {
       });
   };
 
+  /** Hold the one option a search answered, where nothing is held. */
+  const commitTheSoleOption = () => {
+    if (!commitSoleOption || multi) return;
+    // A box someone has typed into holds their name, not a label to
+    // overwrite: an answer that lands mid-word would take the query away
+    // and with it the create row the name was typed for.
+    if (container._searchSelectDirty) return;
+    if (pills.querySelector('input[type="hidden"]')) return;
+    const rows = options.querySelectorAll<HTMLElement>("[data-search-select-option]");
+    if (rows.length !== 1) return;
+    const option = optionFromRow(rows[0]);
+    container._searchSelectSetSelected?.(option.value, option.label);
+  };
+
   // ── A depended-on field changed: the loaded window is about another
   //    parent's rows, and so is any selection held from it. ──
   const onDependencyChange = () => {
@@ -654,6 +672,7 @@ const initWidget = (containerElement: Element) => {
         renderRows(items);
         // Re-apply the live query: the box may hold more text than was sent.
         const remaining = filterRows(currentQuery());
+        commitTheSoleOption();
         setCreateRow(currentQuery());
         setNoResults(remaining === 0);
         autoHighlight(currentQuery());
