@@ -300,6 +300,8 @@ class RecordedRun(NamedTuple):
     playthrough_id: uuid.UUID
     #: True where the game was tracked to hold the run.
     tracked_the_game: bool
+    #: False where the run already stated what was asked.
+    recorded: bool = True
 
 
 def record_run(
@@ -481,7 +483,7 @@ def _named_run(
         None
         if tracked is None
         else live_ordinary_runs(actor.library, tracked)
-        .filter(name=command.name)
+        .filter(name__iexact=command.name)
         .first()
     )
     if run is None:
@@ -493,4 +495,6 @@ def _named_run(
             f"{command.name!r} at game {game.pk}, and library "
             f"{actor.library.pk} holds no live ordinary run of that name."
         )
-    return RecordedRun(playthrough_id=run.pk, tracked_the_game=tracked_the_game)
+    return RecordedRun(
+        playthrough_id=run.pk, tracked_the_game=tracked_the_game, recorded=False
+    )

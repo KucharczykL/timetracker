@@ -231,6 +231,46 @@ describe("<search-select> params (#1080)", () => {
     ).toBeNull();
   });
 
+  it("holds nothing where a search answers more than one option", async () => {
+    document.body.replaceChildren();
+    const fetchMock = vi.fn(() =>
+      Promise.resolve({
+        ok: true,
+        json: () =>
+          Promise.resolve([
+            { value: "r1", label: "Playthrough 1", data: {} },
+            { value: "r2", label: "Playthrough 2", data: {} },
+          ]),
+      } as Response)
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const picker = document.createElement("search-select") as SearchSelectLike;
+    picker.setAttribute("name", "playthrough");
+    picker.setAttribute("search-url", "/api/playthrough/search");
+    picker.setAttribute("prefetch", "20");
+    picker.setAttribute("commit-sole-option", "true");
+    picker.innerHTML = `
+      <div data-search-select-pills></div>
+      <input data-search-select-search />
+      <div data-search-select-options></div>
+      <template data-search-select-template="row"><div
+        data-search-select-option role="option" aria-selected="false"
+      ><span data-search-select-label></span></div></template>
+    `;
+    document.body.appendChild(picker);
+
+    picker.querySelector<HTMLInputElement>("[data-search-select-search]")!.focus();
+    await vi.waitFor(() =>
+      expect(picker.querySelectorAll("[data-search-select-option]")).toHaveLength(2)
+    );
+
+    //: Two runs is a choice, and choosing for somebody records a
+    //: session against a run they never picked.
+    expect(
+      picker.querySelector('[data-search-select-pills] input[type="hidden"]')
+    ).toBeNull();
+  });
+
   it("names the field to fill in rather than searching without it", async () => {
     const { picker, fetchMock } = mountDependentPicker(
       JSON.stringify({ game_id: { field: "game" } })
@@ -257,6 +297,25 @@ describe("<search-select> params (#1080)", () => {
     const empty = picker.querySelector("[data-search-select-no-results]");
     expect(empty?.textContent).toBe("Pick a game first");
     expect(empty?.classList.contains("hidden")).toBe(false);
+  });
+
+  it("drops a param entry that states no one source", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    consoleError.mockClear();
+    //: The Python side's spelling, renamed: silent without this.
+    const { picker, fetchMock } = mountDependentPicker(
+      JSON.stringify({ game_id: { feild: "game" } })
+    );
+
+    picker.querySelector<HTMLInputElement>("[data-search-select-search]")!.focus();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    expect(urlsRequested(fetchMock)[0]).not.toContain("game_id=");
+    expect(
+      consoleError.mock.calls.some(call =>
+        String(call[0]).includes("search-select[params]")
+      )
+    ).toBe(true);
   });
 
   it("searches without params when the attribute cannot be parsed", async () => {

@@ -263,22 +263,26 @@ def _run_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     """Resolve run ids to options, each by its display name.
 
     A blank name is numbered rather than stored, so the rows are
-    read through the numbering, and the wanted keys are picked out
-    in Python: narrowing the queryset would leave the window
-    counting over the rows that survived, and every blank name
-    would read as Playthrough 1.
+    read through the numbering. The number counts over a tracked
+    game's runs, thus the games the wanted keys name are read
+    first and every run of those games is numbered: a queryset
+    narrowed inside one game numbers its row 1.
 
     The keys are compared as text. A posted value is a string and a
     column holds a UUID, and the other resolvers only avoid that
     because `pk__in` coerces for them.
     """
-    #: Function-local: this module is imported by the reads it names.
-    from games.reads.playthrough_numbering import display_name, with_display_number
-
     wanted = {str(getattr(value, "pk", value)) for value in values}
+    if not wanted:
+        return []
+    tracked_games = (
+        library_runs(library)
+        .filter(pk__in=[key for key in wanted])
+        .values_list("player_game_id", flat=True)
+    )
     return [
         {"value": run.id, "label": display_name(run), "data": {}}
-        for run in with_display_number(library_runs(library))
+        for run in numbered_for(library, list(tracked_games))
         if str(run.pk) in wanted
     ]
 

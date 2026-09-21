@@ -12,6 +12,7 @@ from games.models import (
 )
 from games.reads.playthrough_activity import activity_clock
 from games.reads.playthrough_endpoints import stated_completion, stated_start
+from games.reads.playthrough_referrers import blocking_referrer
 
 
 def library_runs(library: UserLibrary) -> PlaythroughQuerySet:
@@ -126,9 +127,6 @@ def placeholder_run(
     A blank name as well, because a named run is one
     somebody already called something.
     """
-    #: Function-local: the command module imports this one.
-    from games.commands.playthrough import blocking_referrer
-
     run = run_to_adopt(library, player_game)
     if run is None or run.name != "":
         return None

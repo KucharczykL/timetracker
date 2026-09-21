@@ -804,8 +804,9 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   states a `display_name` and no `value`, so a picker cannot read it
 - `POST /api/devices/`, `POST /api/platforms/` — one typed name, through
   `DeviceForm` / `PlatformForm`, so one set of rules refuses on both paths. A
-  device takes the Unknown its default names; a platform is private to the
-  library. 201 and `{id, label}`, else 422 and one sentence
+  device takes the Unknown its default names and a name the library holds is
+  answered rather than made twice, case ignored; a platform is private to the
+  library. 201 and `{id, label}`, else 422 and one sentence naming the field
 - `GET /api/session/`, `GET /{id}` — projection rows through
   `library_sessions`: `playthrough_id`, `game` through run, `timing_mode`,
   instants with zones, `stated_day`, `stated_duration_seconds`, `day`,

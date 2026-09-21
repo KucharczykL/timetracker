@@ -428,7 +428,12 @@ def create_playthrough(request, payload: PlaythroughIn):
     #: defect is a green toast over an empty field.
     with answered("playthrough"):
         row = _created_run(library, game, recorded.playthrough_id)
-    messages.success(request, "Playthrough recorded")
+    if recorded.recorded:
+        messages.success(request, "Playthrough recorded")
+    else:
+        #: The name was already at this game, so the answer is that
+        #: run. Saying it was recorded would state a second one.
+        messages.info(request, f"{row.label} is already at this game")
     if recorded.tracked_the_game:
         #: Tracking is an act of its own, so it is said.
         messages.info(request, f"{game} is now tracked in your library.")
@@ -569,8 +574,22 @@ def create_device(request, payload: RowIn):
     `type` is stated here because the form requires it and
     the row's default names it. A person corrects it on the
     device page.
+
+    A device the library already holds is answered rather
+    than made a second time. The column states no rule of
+    its own, and the create row is judged on the loaded
+    window: a library holding more devices than the window
+    shows would type a name it already holds.
     """
     library = cast(User, request.user).library
+    held = (
+        Device.objects.for_library(library)
+        .filter(name__iexact=payload.name.strip())
+        .first()
+    )
+    if held is not None:
+        messages.info(request, f"{held.name} is already in your library")
+        return Status(201, CreatedRow(id=str(held.pk), label=held.name))
     device = created_by_form(
         DeviceForm, library=library, name=payload.name, type=Device.UNKNOWN
     )

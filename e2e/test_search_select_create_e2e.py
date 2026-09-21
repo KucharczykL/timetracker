@@ -204,10 +204,15 @@ def test_the_run_picker_searches_again_when_the_game_changes(
     game_picker.locator("[data-search-select-option]").first.click()
 
     runs = _run_picker(page)
+    held = runs.locator('[data-search-select-pills] input[type="hidden"]')
+    #: The new game's own run, never the one the first game held.
+    hades_run = Playthrough.objects.get(player_game__game=second)
+    expect(held).to_have_value(str(hades_run.pk))
+
     runs.locator("[data-search-select-search]").click()
-    page.wait_for_timeout(400)
-    labels = runs.locator("[data-search-select-option]").all_inner_texts()
-    assert any("Hades run" in label for label in labels)
+    expect(runs.locator("[data-search-select-option]").first).to_contain_text(
+        "Hades run"
+    )
 
 
 def test_a_purchase_records_on_a_platform_created_from_the_picker(

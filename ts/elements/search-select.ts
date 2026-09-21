@@ -114,8 +114,32 @@ const parseParams = (raw: string | null): ParamSources => {
   if (!raw) return {};
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    return parsed as ParamSources;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      reportClientError("search-select[params]", `not an object: ${raw}`, {
+        toast: false,
+      });
+      return {};
+    }
+    //: One source each, checked rather than cast: the Python side
+    //: spells these keys, and a rename there is silent here — the
+    //: request would go out without the key the route requires.
+    const sources: ParamSources = {};
+    Object.entries(parsed as Record<string, unknown>).forEach(([key, source]) => {
+      const states = (name: string): boolean =>
+        typeof source === "object" &&
+        source !== null &&
+        typeof (source as Record<string, unknown>)[name] === "string";
+      if (states("field") !== states("value")) {
+        sources[key] = source as ParamSource;
+        return;
+      }
+      reportClientError(
+        "search-select[params]",
+        `${key} states no one source: ${JSON.stringify(source)}`,
+        { toast: false }
+      );
+    });
+    return sources;
   } catch (error) {
     // The widget searches without them rather than not at all.
     reportClientError(

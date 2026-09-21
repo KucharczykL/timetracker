@@ -8,7 +8,6 @@ from django.db import connection, models, transaction
 from django.test.utils import isolate_apps
 from django.utils import timezone
 
-from games.commands import playthrough as playthrough_commands
 from games.commands.playergame import PlayerGameNotTracked, TrackGame
 from games.commands.playersession import (
     CreateSession,
@@ -19,7 +18,6 @@ from games.commands.playersession import (
 from games.commands.playthrough import (
     PLAYTHROUGH_NAME_MAX_LENGTH,
     ActStatement,
-    BlockingReferrer,
     CompletePlaythrough,
     CorrectPlaythroughCompletion,
     CorrectPlaythroughStart,
@@ -52,7 +50,9 @@ from games.models import (
     ProjectionModel,
     RemovableLibraryQuerySet,
 )
+from games.reads import playthrough_referrers
 from games.reads.playthrough_numbering import display_name, with_display_number
+from games.reads.playthrough_referrers import BlockingReferrer
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
@@ -1959,7 +1959,7 @@ def referring_models():
 
 def _register(monkeypatch, *referrers):
     """The registry is patched whole."""
-    monkeypatch.setattr(playthrough_commands, "BLOCKING_REFERRERS", referrers)
+    monkeypatch.setattr(playthrough_referrers, "BLOCKING_REFERRERS", referrers)
 
 
 ASSIGNED_SENTENCE = (
@@ -2173,7 +2173,7 @@ SESSIONS_SENTENCE = (
 
 def test_the_delivered_registry_names_sessions_and_historical_playtime():
     """Two entries: sessions and records name runs."""
-    sessions, records = playthrough_commands.BLOCKING_REFERRERS
+    sessions, records = playthrough_referrers.BLOCKING_REFERRERS
 
     assert (sessions.model, sessions.field_name) == (PlayerSession, "playthrough")
     assert sessions.sentence == SESSIONS_SENTENCE
@@ -2181,7 +2181,7 @@ def test_the_delivered_registry_names_sessions_and_historical_playtime():
         HistoricalPlaytimeRun,
         "playthrough",
     )
-    assert records.sentence == playthrough_commands.HISTORICAL_PLAYTIME_RECORDED
+    assert records.sentence == playthrough_referrers.HISTORICAL_PLAYTIME_RECORDED
 
 
 def _record_session(owned_user, owned_library, run, key="session"):
@@ -2302,23 +2302,7 @@ def test_a_sole_run_with_a_session_is_refused_as_the_last_run(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_creation_states_the_name_it_carries(owned_user, owned_library, game):
-    _track(owned_user, owned_library, game)
-
-    dispatch(
-        CreatePlaythrough(game_id=game.pk, name="  New Game Plus  "),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key="named-run",
-    )
-
-    created = Playthrough.objects.order_by("created_at").last()
-    assert created is not None
-    assert created.name == "New Game Plus"
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_creation_with_no_name_appends_no_name_event(owned_user, owned_library, game):
+def test_a_creation_appends_the_creation_alone(owned_user, owned_library, game):
     _track(owned_user, owned_library, game)
     before = LibraryEvent.objects.count()
 
@@ -2331,22 +2315,3 @@ def test_a_creation_with_no_name_appends_no_name_event(owned_user, owned_library
 
     appended = LibraryEvent.objects.order_by("sequence")[before:]
     assert [event.event_type for event in appended] == ["library.playthrough.created"]
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_creation_refuses_a_name_the_column_cannot_hold(
-    owned_user, owned_library, game
-):
-    _track(owned_user, owned_library, game)
-
-    with pytest.raises(CommandRejected) as refusal:
-        dispatch(
-            CreatePlaythrough(
-                game_id=game.pk, name="x" * (PLAYTHROUGH_NAME_MAX_LENGTH + 1)
-            ),
-            actor=owned_user,
-            library=owned_library,
-            idempotency_key="over-long",
-        )
-
-    assert "too long" in refusal.value.sentence

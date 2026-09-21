@@ -3,9 +3,8 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, ClassVar, NamedTuple, Protocol, cast
+from typing import ClassVar, NamedTuple, cast
 
-from django.db import models
 from django.db.models import QuerySet
 
 from games.commands.playergame import tracked_game
@@ -31,14 +30,14 @@ from games.events.playthrough import (
 )
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import (
-    HistoricalPlaytimeRun,
-    PlayerSession,
     Playthrough,
     PlaythroughKind,
-    ProjectionModel,
 )
-from games.projections import FieldName
 from games.reads.playthrough_endpoints import stated_completion, stated_start
+from games.reads.playthrough_referrers import (
+    blocking_referrer,
+    foreign_referrer,
+)
 from timetracker.temporal import TemporalQualifier, TemporalValue, stated_date
 
 #: Read off the column, so the refusal and the constraint cannot drift.
@@ -143,8 +142,6 @@ class CreatePlaythrough(Command):
     started: ActStatement | None = None
     completed: ActStatement | None = None
     note: str = ""
-    #: Blank is a run the display number names.
-    name: str = ""
 
     def __post_init__(self) -> None:
         for field_name in ("started", "completed"):
@@ -158,7 +155,6 @@ class CreatePlaythrough(Command):
                     ActStatement(stated_date(act.when), act.note.strip()),
                 )
         object.__setattr__(self, "note", self.note.strip())
-        object.__setattr__(self, "name", self.name.strip())
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         tracked = tracked_game(context, self.game_id)
@@ -181,14 +177,11 @@ class CreatePlaythrough(Command):
                 "before it began, and no run ends before it begins.",
                 sentence="This run finished before it started. Check the days.",
             )
-        refuse_name_the_column_cannot_hold(self.name)
         #: Minted here, so every event names it.
         run_id = uuid.uuid7()
         events: list[NewEvent] = [
             playthrough_created(tracked.pk, playthrough_id=run_id)
         ]
-        if self.name:
-            events.append(playthrough_name_changed(run_id, name=self.name))
         if self.note:
             events.append(playthrough_note_changed(run_id, note=self.note))
         if self.started is not None:
@@ -257,8 +250,14 @@ class RecordPlaythroughByName(Command):
             )
         refuse_name_the_column_cannot_hold(self.name)
         #: Ahead of the placeholder read: a run already called
-        #: this is the run the person named.
-        if live_ordinary_runs(context.library, tracked).filter(name=self.name).exists():
+        #: this is the run the person named. Case is ignored, as
+        #: the create row ignores it: a picker that offers no row
+        #: for `new game plus` must not make one either.
+        if (
+            live_ordinary_runs(context.library, tracked)
+            .filter(name__iexact=self.name)
+            .exists()
+        ):
             return Unchanged("This game already holds a run of that name.")
         adopted = placeholder_run(context.library, tracked)
         if adopted is None:
@@ -548,124 +547,6 @@ def _refuse_under_a_removed_game(run: Playthrough) -> None:
                 "changing its playthroughs."
             ),
         )
-
-
-class RemovableReads(Protocol):
-    """A manager whose reads skip a removed row."""
-
-    def alive(self) -> QuerySet[Any]: ...
-
-
-def _skips_removed_rows(model: type[ProjectionModel]) -> bool:
-    """Whether the model's manager states `alive()`."""
-    return hasattr(model._default_manager, "alive")
-
-
-class BlockingReferrer(NamedTuple):
-    """One registered way to name a run."""
-
-    #: A projection: ProjectionModel gives it library.
-    model: type[ProjectionModel]
-    #: Field name alias from games/projections.py.
-    field_name: FieldName
-    #: What a person is shown.
-    sentence: str
-
-    @classmethod
-    def on(
-        cls, model: type[ProjectionModel], field_name: FieldName, *, sentence: str
-    ) -> BlockingReferrer:
-        """The one construction path; refuses an entry the query cannot run.
-
-        A malformed entry would raise a FieldError inside build(),
-        which answers every removal with a 500. Refusing it here
-        states it at import.
-        """
-        field = model._meta.get_field(field_name)
-        if not isinstance(field, models.ForeignKey):
-            raise TypeError(f"{model.__name__}.{field_name} is not a foreign key.")
-        if field.related_model is not Playthrough:
-            raise TypeError(
-                f"{model.__name__}.{field_name} names "
-                f"{field.related_model.__name__}, not a playthrough."
-            )
-        if not _skips_removed_rows(model):
-            raise TypeError(
-                f"{model.__name__} states no alive(), so a removed row of it "
-                "would keep a run in place forever."
-            )
-        return cls(model, field_name, sentence)
-
-
-HISTORICAL_PLAYTIME_RECORDED = (
-    "Historical playtime is recorded on this playthrough. Restate it onto "
-    "another playthrough, or remove it, before removing this one."
-)
-
-#: Every sentence names a remedy that exists.
-BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
-    BlockingReferrer.on(
-        PlayerSession,
-        "playthrough",
-        sentence=(
-            "Sessions are recorded on this playthrough. Move them to "
-            "another playthrough before removing it."
-        ),
-    ),
-    BlockingReferrer.on(
-        HistoricalPlaytimeRun,
-        "playthrough",
-        sentence=HISTORICAL_PLAYTIME_RECORDED,
-    ),
-)
-
-
-def _live_rows_naming(referrer: BlockingReferrer, run: Playthrough) -> QuerySet[Any]:
-    """Every live row of the referrer naming the run."""
-    #: `on()` refuses a manager without it. The annotation on
-    #: `_default_manager` names the base, which cannot say so.
-    reads = cast(RemovableReads, referrer.model._default_manager)
-    return reads.alive().filter(**{referrer.field_name: run})
-
-
-def blocking_referrer(run: Playthrough) -> BlockingReferrer | None:
-    """The first registered entry a live row of this library answers.
-
-    Scoped on the library, as `_other_live_ordinary_runs` is: a
-    person cannot act on advice about rows their library does not
-    hold, so a foreign row is `foreign_referrer`'s to refuse.
-    """
-    for referrer in BLOCKING_REFERRERS:
-        if _live_rows_naming(referrer, run).filter(library=run.library).exists():
-            return referrer
-    return None
-
-
-class ForeignReferrer(NamedTuple):
-    """Rows of other libraries naming a run."""
-
-    referrer: BlockingReferrer
-    library_ids: tuple[uuid.UUID, ...]
-
-
-def foreign_referrer(run: Playthrough) -> ForeignReferrer | None:
-    """The first registered entry a row of another library answers.
-
-    Such a row is the drift `audit_library_ownership` reports.
-    Removing the run would leave it live under a removed run,
-    where no read finds it and no restore reaches it.
-    """
-    for referrer in BLOCKING_REFERRERS:
-        library_ids = tuple(
-            _live_rows_naming(referrer, run)
-            .exclude(library=run.library)
-            .order_by("library_id")
-            .values_list("library_id", flat=True)
-            .distinct()
-        )
-        if library_ids:
-            return ForeignReferrer(referrer, library_ids)
-    return None
 
 
 def _refuse_a_foreign_referrer(run: Playthrough) -> None:

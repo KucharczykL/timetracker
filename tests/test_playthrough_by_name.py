@@ -267,3 +267,13 @@ def test_a_name_the_read_back_cannot_reach_is_a_defect(owned_user, game):
             result,
             tracked_the_game=False,
         )
+
+
+def test_a_name_in_another_case_states_the_run_it_names(owned_user, game):
+    """The picker offers no row for it, so nothing makes one."""
+    _name(owned_user, game, "New Game Plus")
+
+    result = _state(owned_user, game, "new game plus")
+
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert _ordinary_runs(owned_user, game).count() == 1

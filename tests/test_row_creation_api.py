@@ -101,3 +101,27 @@ def test_another_library_creates_its_own_platform_of_the_same_name(
 
     assert response.status_code == 201
     assert Platform.objects.filter(name="Arcade").count() == 2
+
+
+def test_a_device_the_library_holds_is_answered_once(client, user):
+    """The window a create row judges on shows ten rows."""
+    held = Device.objects.create(library=user.library, name="Steam Deck")
+    client.force_login(user)
+
+    response = _create(client, "/api/devices/", "steam deck")
+
+    assert response.status_code == 201
+    assert response.json() == {"id": str(held.pk), "label": "Steam Deck"}
+    assert Device.objects.filter(library=user.library).count() == 1
+
+
+def test_a_device_of_another_library_is_made_here(client, user, django_user_model):
+    """A name is private, so another library's row blocks none."""
+    other = django_user_model.objects.create_user(username="other", password="x")
+    Device.objects.create(library=other.library, name="Steam Deck")
+    client.force_login(user)
+
+    response = _create(client, "/api/devices/", "Steam Deck")
+
+    assert response.status_code == 201
+    assert Device.objects.filter(library=user.library, name="Steam Deck").count() == 1

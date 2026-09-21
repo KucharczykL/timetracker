@@ -23,7 +23,6 @@ from games.commands.historical_playtime import (
 )
 from games.commands.playergame import RemovePlayerGame, TrackGame
 from games.commands.playthrough import (
-    HISTORICAL_PLAYTIME_RECORDED,
     CreatePlaythrough,
     PlaythroughNotHeld,
     RemovePlaythrough,
@@ -46,6 +45,7 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
 )
+from games.reads.playthrough_referrers import HISTORICAL_PLAYTIME_RECORDED
 from timetracker.temporal import TemporalValueParseError
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]

@@ -47,7 +47,8 @@ a defect is a green toast over an empty field. A row this library wrote one act
 ago and cannot read is a defect, not a missing row, thus `RowUnreadable` and
 the record the boundary writes. A game that already holds a live ordinary run of that name answers
 `Unchanged`, read ahead of every other rule: that run is the one the person
-named.
+named. The answer says whether anything was recorded, so no page states a
+creation that did not happen.
 
 A placeholder is the game's sole live ordinary run that states no start, no
 completion and a blank name, and that no live session and no live record names.
@@ -67,7 +68,12 @@ as a key otherwise, and answers 422.
 
 `POST /api/devices/` and `POST /api/platforms/` run the forms the add pages
 run. A device takes the Unknown its default names. A platform states the
-library, so the row is private: a shared row is a fixture. Each answers 422 and
+library, so the row is private: a shared row is a fixture. A device the
+library already holds is answered rather than made twice, because the column
+states no rule of its own and the create row is judged on the loaded window:
+a library holding more devices than that window shows would type a name it
+holds. Every name is compared with case ignored, as the create row compares
+it: a picker that offers no row for `new game plus` must not make one. Each answers 422 and
 one sentence, flattened from `form.errors` with the `__all__` errors
 `Platform.clean` states; a command refusal keeps its 409. The element reads the
 CSRF token from the hosting form, so no form constructor takes a request.
