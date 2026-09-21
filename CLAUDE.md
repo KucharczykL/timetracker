@@ -370,10 +370,13 @@ docs/           — Additional documentation
   `SessionForm` is plain `Form` that derives mode from what is filled: start
   alone Timed, day and duration Duration-only, start, end and duration
   Corrected; start beside duration with no end, and day beside instant, refused
-  naming shapes that work. Run picked after game through
-  `<playthrough-select>`, which refills from `GET /api/playthrough/?game=` and
-  hides when game holds one run; session on game nothing tracks refused on
-  run. Bucket takes no new session; `MoveSessionToPlaythrough` is only way in
+  naming shapes that work. Run picked after game through a `SearchSelect` over
+  `GET /api/playthrough/search`, whose `params` name the game field, so it
+  searches again when the game changes and creates under the same key; always
+  visible, holding the sole run an answer states while the box is untouched,
+  because the field is required, and its create row names the placeholder
+  tracking minted rather than leaving a blank run beside a named one (#1080). Session on game nothing
+  tracks refused on run. Bucket takes no new session; `MoveSessionToPlaythrough` is only way in
   or out. Resume keyed on game (`games:resume_session`). Read surfaces:
   `library_sessions` and `game_sessions` in `games/reads/player_sessions.py`;
   `PlayerSessionFilter` (below); stats scope year on `effective_day`, order
@@ -637,7 +640,12 @@ Submodules re-exported via `common/components/__init__.py`:
   and wired by `ts/elements/search-select.ts`: `SearchSelect()` (form combobox;
   with `host_dropdown=True`, set by `SearchSelectWidget` form adapter, lives in
   `<drop-down behavior="inline-combobox">` so its panel shares the one attachMenu
-  open/close/position/dismiss engine, #348), `FilterSelect()` (include/exclude
+  open/close/position/dismiss engine, #348; `create_url` offers a `Create “…”`
+  row for a query no loaded label **equals**, which POSTs `{name, ...params}`
+  and upserts the answered `{id, label}` on its key, and `params` is one JSON
+  mapping — a literal or a sibling field — read by that POST and by the search
+  query alike, a field source being a dependency that re-searches, #1080),
+  `FilterSelect()` (include/exclude
   with pinned Any/None modifiers; `layout="panel"` is GitHub-label-picker
   personality for hosting inside dropdown dialog, #315), `ComboboxDropdown()`
   (generic "Label ▾" trigger + dialog), `PresetSelect()`/`LoadPresetDropdown()`
@@ -784,7 +792,19 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   bound columns and the marker naming the act. A key a body does not know is
   refused with 422 as well, so the old `ended` cannot pass unread. PATCH states
   the endpoints the request names and no others: a note-only PATCH records no
-  act, and a named key is the act, dated or not
+  act, and a named key is the act, dated or not. POST answers `201 {id, label}`,
+  and a body stating a `name` alone is the picker's create row: it runs
+  `RecordPlaythroughByName`, which under the lock names the placeholder a
+  tracked game holds — sole live ordinary run, no act, blank name, no live
+  session and no live record naming it — creates one otherwise, and answers
+  `Unchanged` where the game already holds a run of that name
+- `GET /api/playthrough/search` — one game's live ordinary runs as
+  `{value, label, data}` picker options, `game_id` and `q`. The list route
+  states a `display_name` and no `value`, so a picker cannot read it
+- `POST /api/devices/`, `POST /api/platforms/` — one typed name, through
+  `DeviceForm` / `PlatformForm`, so one set of rules refuses on both paths. A
+  device takes the Unknown its default names; a platform is private to the
+  library. 201 and `{id, label}`, else 422 and one sentence
 - `GET /api/session/`, `GET /{id}` — projection rows through
   `library_sessions`: `playthrough_id`, `game` through run, `timing_mode`,
   instants with zones, `stated_day`, `stated_duration_seconds`, `day`,

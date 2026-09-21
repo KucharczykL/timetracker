@@ -83,14 +83,20 @@ no request header, thus a plain POST from the element is enough. A route that
 queues nothing shows nothing, so each route queues one sentence, on the refusal
 as well as on the creation.
 
-The element POSTs the CSRF token the hosting page renders, as the select
-dropdown already threads one.
+The element reads the CSRF token out of the hosting form's own hidden input, so
+no form constructor takes a request. A prop overrides it, for a create row that
+stands outside a form.
 
 ## What a run creation states
 
 `RecordPlaythroughByName` is one command. Its build reads the game's runs and
 answers one of two event sequences: the name alone, against the placeholder it
 adopts, or a creation and the name, against a key it mints.
+
+A game already holding a live ordinary run of that name answers `Unchanged`,
+which is read before the placeholder. That run is the one the person named, and
+a second of that name would leave the picker showing one label twice. The rule
+also makes a repeated POST record one row, which no key absorbs.
 
 The read is in the build because the build runs under the stream head's lock.
 `record_run` reads `run_to_adopt` outside the lock and names the race in its
@@ -123,13 +129,21 @@ mints its own key, and no test pins the field set.
 ## Three routes
 
 `GET /api/playthrough/search` answers `{value, label, data}` rows for a game,
-narrowed by `q`. The list route answers `PlaythroughOut`, which states
+narrowed by `q`. It names the game `game_id`, as the creation body names it: the
+picker reads one mapping for its query and for its POST. The list route answers `PlaythroughOut`, which states
 `display_name` and no `value`, and reads no `q`; a picker cannot read it. The
 device and platform search routes are the shape, and this is the third.
 
 `POST /api/playthrough/` states a `name` and answers `201 {id, label}`. It
-answers `204` and no body today. No application code reads that, and two tests
-pin it.
+answers `204` and no body today. No application code reads that, and three
+tests pin it.
+
+The label is read from the game's numbered runs, and the row is picked out in
+Python. A number is counted over a partition, so narrowing that queryset to one
+key leaves the count running over one row and every blank name reads as
+`Playthrough 1`. The picker's options resolver reads the same way, and compares
+its wanted keys as text: a posted value is a string where the column holds a
+UUID, which the resolvers beside it only survive because `pk__in` coerces.
 
 `POST /api/devices/` and `POST /api/platforms/` take a name. Each runs the form
 the add page runs — `DeviceForm`, `PlatformForm` — thus one set of rules
@@ -164,6 +178,13 @@ The picker is always visible. It hides its row today while the list holds one
 option or none, and that is the very game this issue is about: nobody types
 into a hidden control. The sole run is committed as the selection, thus the
 field reads as a filled one and the form posts what it posted before.
+
+That commit is a prop on the element, stated by the run picker alone, because
+the run field is required where every other picker is not. It holds the one
+option an answer states, only where nothing is held and the box is untouched:
+an answer that lands while a name is being typed would put a label where the
+name stands, and the create row that name was typed for could never be
+offered again.
 
 #714 renders `SearchSelect` directly, with a literal game key and no hide rule
 to undo.
