@@ -591,9 +591,21 @@ class SelectionActionsProps(TypedDict):
 register_element("selection-actions", "SelectionActions", SelectionActionsProps)
 
 
+#: A JSON object of request parameters, carried as text. Props are
+#: attributes and the codegen knows four scalars, so a mapping travels
+#: the way FilterJson does: a string the element parses.
+type SearchSelectParams = str  # {"game": {"field": "game"}}
+
+
 class SearchSelectProps(TypedDict):
     name: str
     search_url: str
+    #: Ride the search query and the create POST alike.
+    params: SearchSelectParams
+    #: The endpoint the create row posts to; blank offers no row.
+    create_url: str
+    #: The token that POST carries.
+    csrf: str
     multi: bool
     filter_mode: bool
     free_text: bool

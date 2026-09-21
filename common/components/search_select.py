@@ -47,6 +47,7 @@ first open, ``0`` = none) seeds that window so the panel is populated before the
 user types.
 """
 
+import json
 from collections.abc import Callable, Iterable, Sequence
 from typing import Literal, NamedTuple, TypedDict
 
@@ -71,6 +72,25 @@ from common.components.primitives import (
     Template,
     filter_widget_attributes,
 )
+
+
+class LiteralParam(TypedDict):
+    """A value the server states at render time."""
+
+    value: str
+
+
+class FieldParam(TypedDict):
+    """The name of a sibling form field, read when used."""
+
+    field: str
+
+
+#: One mapping, read by the search query and by the create POST: a run
+#: picker narrows on the game it names and creates under the same key,
+#: and two mechanisms would let the two disagree. A field source is a
+#: dependency as well, so a change to it searches again.
+type ParamSources = dict[str, LiteralParam | FieldParam]
 
 
 class SearchSelectOption(TypedDict):
@@ -396,6 +416,9 @@ def SearchSelect(
     options: list[SearchSelectOption] | None = None,
     option_groups: list[OptionGroup] | None = None,
     search_url: str = "",
+    params: ParamSources | None = None,
+    create_url: str = "",
+    csrf: str = "",
     multi_select: bool = False,
     always_visible: bool = False,
     items_visible: int = 5,
@@ -571,6 +594,9 @@ def SearchSelect(
         [("data-toggle", "")] if host_dropdown else [],
         name=name,
         search_url=search_url,
+        params=json.dumps(params) if params else "",
+        create_url=create_url,
+        csrf=csrf,
         multi="true" if multi_select else "false",
         filter_mode="false",
         free_text="false",

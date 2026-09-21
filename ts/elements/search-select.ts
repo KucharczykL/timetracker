@@ -34,6 +34,7 @@
 
 import { isPresenceModifier } from "./filter-tokens.js";
 import { bindPopupDismiss } from "../utils.js";
+import { reportClientError } from "../client-errors.js";
 
 // The contract for the "search-select:change" CustomEvent this widget emits.
 // Consumers (e.g. add_purchase.ts) import these types — never redefine them.
@@ -95,6 +96,59 @@ let listboxIdCounter = 0;
 // (INCLUDES_ALL, INCLUDES_ONLY) coexist with value pills. The token set lives in
 // ./filter-tokens (contract-guarded against common.criteria.Modifier, #152).
 
+
+/** A request parameter's source: a value the server stated, or a form field. */
+interface LiteralParam {
+  value: string;
+}
+
+export interface FieldParam {
+  field: string;
+}
+
+type ParamSource = LiteralParam | FieldParam;
+type ParamSources = Record<string, ParamSource>;
+
+/** The params attribute, which is JSON text: props are attributes. */
+const parseParams = (raw: string | null): ParamSources => {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as ParamSources;
+  } catch (error) {
+    // The widget searches without them rather than not at all.
+    reportClientError(
+      "search-select[params]",
+      String((error as Error)?.message ?? error),
+      { toast: false }
+    );
+    return {};
+  }
+};
+
+/** One form field's current value, read at the moment it is used. */
+const fieldValue = (container: Element, field: string): string => {
+  const form = container.closest("form");
+  if (!form) return "";
+  const value = new FormData(form).get(field);
+  return typeof value === "string" ? value : "";
+};
+
+/** Every param, resolved now. A blank field value states no parameter. */
+const resolveParams = (container: Element, params: ParamSources): Record<string, string> => {
+  const resolved: Record<string, string> = {};
+  Object.entries(params).forEach(([key, source]) => {
+    const value = "field" in source ? fieldValue(container, source.field) : source.value;
+    if (value) resolved[key] = value;
+  });
+  return resolved;
+};
+
+/** What the dependencies hold, as one comparable string. */
+const dependencySignature = (container: Element, fields: string[]): string =>
+  fields.map(field => `${field}=${fieldValue(container, field)}`).join("&");
+
 const initWidget = (containerElement: Element) => {
   const container = containerElement as SearchSelectContainer;
   const search = container.querySelector<HTMLInputElement>("[data-search-select-search]");
@@ -110,6 +164,13 @@ const initWidget = (containerElement: Element) => {
   const alwaysVisible = container.getAttribute("always-visible") === "true";
   const prefetch = parseInt(container.getAttribute("prefetch") ?? "", 10) || 0;
   const syncUrl = container.getAttribute("sync-url") === "true";
+  const params = parseParams(container.getAttribute("params"));
+  //: Every field a param names: a change to one searches again.
+  const dependencyFields = Object.values(params)
+    .filter((source): source is FieldParam => "field" in source)
+    .map(source => source.field);
+  //: What each dependency held when the loaded window was fetched.
+  let dependencyValues = "";
 
   // Issue #348: form comboboxes and filter-builder field-layout rows are hosted in
   // <drop-down behavior="inline-combobox">, which owns the panel's open/close/
@@ -438,6 +499,18 @@ const initWidget = (containerElement: Element) => {
     });
   };
 
+  // ── A depended-on field changed: the loaded window is about another
+  //    parent's rows, and so is any selection held from it. ──
+  const onDependencyChange = () => {
+    if (!dependencyFields.length) return;
+    const signature = dependencySignature(container, dependencyFields);
+    if (signature === dependencyValues) return;
+    dependencyValues = signature;
+    container._searchSelectClear?.();
+    hasPrefetched = false;
+    if (searchUrl) fetchFromServer(currentQuery());
+  };
+
   // ── Fetch matching rows from the server. The previous in-flight request is
   //    aborted so a slower earlier response can never overwrite a newer one. ──
   const fetchFromServer = (query: string) => {
@@ -447,6 +520,10 @@ const initWidget = (containerElement: Element) => {
     // the preset picker's ?mode=games) composes instead of double-`?`ing.
     const url = new URL(searchUrl ?? "", window.location.origin);
     url.searchParams.set("q", query);
+    Object.entries(resolveParams(container, params)).forEach(([key, value]) => {
+      url.searchParams.set(key, value);
+    });
+    dependencyValues = dependencySignature(container, dependencyFields);
     if (prefetch && !query) url.searchParams.set("limit", String(prefetch));
     fetch(url.toString(), { credentials: "same-origin", signal: pendingRequest.signal })
       .then(response => response.json())
@@ -988,6 +1065,15 @@ const initWidget = (containerElement: Element) => {
   // prefetch never open. Re-run the focus flow once wired so an autofocused
   // combobox seeds and opens on load like a real focus does. rAF lets a delegated
   // <drop-down> host finish upgrading first.
+  // A field source is a dependency: the hosting form is where both a native
+  // control's `change` and another combobox's own event arrive.
+  if (dependencyFields.length) {
+    dependencyValues = dependencySignature(container, dependencyFields);
+    const form = container.closest("form");
+    form?.addEventListener("change", onDependencyChange);
+    form?.addEventListener("search-select:change", onDependencyChange);
+  }
+
   if (search.hasAttribute("autofocus")) {
     // Only a fresh, empty add form should steal focus and drive the panel open;
     // a pre-committed single-select keeps its label and whatever native focus it
