@@ -417,7 +417,7 @@ class Leg:
     name: str
     resolve: Callable[[UserLibrary, uuid.UUID], Resolution]
     run: RunRow[Any] | UndoRow
-    #: What the act asked for, or nothing where it asks none.
+    #: What the act asked for, or nothing.
     choice: ChoiceValue | None = None
 
 

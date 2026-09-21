@@ -365,7 +365,7 @@ def test_the_last_row_out_of_a_bucket_takes_the_bucket_away(
 
 
 def test_only_the_bucket_the_row_left_is_taken_away(owned_user, owned_library, game):
-    """An act removes no row its own inverse would not put back."""
+    """An act removes only what it emptied."""
     target = tracked_run(owned_library, game)
     emptied = a_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
     stranger = a_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
@@ -388,7 +388,7 @@ def test_only_the_bucket_the_row_left_is_taken_away(owned_user, owned_library, g
 def test_a_move_between_two_runs_leaves_the_games_bucket_alone(
     owned_user, owned_library, game
 ):
-    """The act touched no bucket, so it takes none away."""
+    """No bucket touched, so none taken away."""
     source = tracked_run(owned_library, game)
     target = a_run(owned_library, game, name="Target run")
     stranger = a_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)

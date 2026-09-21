@@ -76,7 +76,7 @@ ANOTHER_GAME = (
 #: What the confirmation asks.
 TARGET_LABEL = "Playthrough"
 
-#: The attribute the resolve stamps on a row.
+#: The attribute the resolve stamps.
 RUN_LABEL_ATTRIBUTE = "run_label"
 
 #: The events that state a session's run.
@@ -182,7 +182,7 @@ def offer_target(
     run at another game.
     """
     if not rows:
-        #: The confirmation says so itself, and admits no press.
+        #: The confirmation says so itself.
         return Control(Fragment())
     games = {row.playthrough.player_game_id for row in rows}
     if len(games) > 1:
@@ -211,7 +211,7 @@ def settle_target(library: UserLibrary, post: QueryDict) -> ChoiceValue:
     can span two games, and there is then no one game to
     narrow to. The game is the row's own rule, below.
     """
-    #: Local: the view imports this module through the act table.
+    #: Local: the view imports this module.
     from games.views.bulk import CHOICE_FIELD
 
     stated = post.get(CHOICE_FIELD, "")
@@ -250,7 +250,7 @@ def move_one(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """One session moved, and the bucket it left."""
+    """One session moved, and its bucket."""
     with answered("session"):
         if choice is None:
             raise RowUnreadable(
@@ -286,7 +286,7 @@ def _remove_the_emptied_bucket(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> None:
-    """Take away the bucket this row was last out of.
+    """Take away the bucket this row emptied.
 
     The run the row came from, never every bucket the game
     holds: an act that removed a bucket it did not empty
@@ -303,7 +303,7 @@ def _remove_the_emptied_bucket(
     try:
         emptied = run_before(actor.library, session_id, correlation_id)
     except CommandRejected:
-        #: This batch moved no such row, so it emptied nothing.
+        #: This batch moved no such row.
         return
     bucket = Playthrough.objects.filter(
         library=actor.library,
@@ -325,7 +325,7 @@ def _remove_the_emptied_bucket(
         )
     except CommandFailed as failure:
         if failure.status_code != CONFLICT_STATUS:
-            #: Ours, not theirs: the batch ends as it would anywhere.
+            #: Ours, not theirs: the batch ends.
             raise
         logger.info(
             "[bulk]: %s left bucket %s of library %s under %s: %s",
@@ -336,8 +336,7 @@ def _remove_the_emptied_bucket(
             failure.message,
         )
     except Http404 as absent:
-        #: The bucket left the library between the read and the
-        #: dispatch. A race, not a defect.
+        #: A race, not a defect.
         logger.info(
             "[bulk]: %s met a bucket library %s no longer holds: %s",
             MOVE.name,

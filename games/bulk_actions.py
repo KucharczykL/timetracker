@@ -173,8 +173,10 @@ class RefusedAct:
     sentence: str
 
 
-#: What `offer` answers. Named, because `Child` is
-#: `Node | str`: bare text is a control, not a refusal.
+#: What `offer` answers.
+#: Named, because `Child` is `Node | str`: bare
+#: text is a control as well as a refusal, and one
+#: return type cannot say which was meant.
 type Offered = Control | RefusedAct
 
 
