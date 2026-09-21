@@ -37,7 +37,7 @@ function mount(attributes: Record<string, string> = {}): SearchSelectLike {
   host.setAttribute("search-url", "/api/playthrough/search");
   host.setAttribute("prefetch", "20");
   host.setAttribute("create-url", "/api/playthrough/");
-  host.setAttribute("csrf", "token");
+
   Object.entries(attributes).forEach(([key, value]) => host.setAttribute(key, value));
   host.innerHTML = `
     <div data-search-select-pills></div>
@@ -52,7 +52,11 @@ function mount(attributes: Record<string, string> = {}): SearchSelectLike {
       data-search-select-option role="option" aria-selected="false"
     ><span data-label></span></div></template>
   `;
-  document.body.appendChild(host);
+  //: The token comes from the hosting form, as it does on a page.
+  const form = document.createElement("form");
+  form.innerHTML = '<input type="hidden" name="csrfmiddlewaretoken" value="token" />';
+  form.appendChild(host);
+  document.body.appendChild(form);
   return host;
 }
 
@@ -161,6 +165,7 @@ describe("<search-select> create row (#1080)", () => {
     const [url, options] = createMock.mock.calls[0];
     expect(String(url)).toBe("/api/playthrough/");
     expect(options?.method).toBe("POST");
+    expect((options?.headers as Record<string, string>)["X-CSRFToken"]).toBe("token");
     expect(JSON.parse(String(options?.body))).toEqual({ name: "New Game Plus" });
     await vi.waitFor(() =>
       expect(

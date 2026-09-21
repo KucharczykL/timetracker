@@ -169,7 +169,14 @@ const initWidget = (containerElement: Element) => {
   //: typed text itself; neither holds a row to create.
   const createUrl =
     isFilter || freeText ? "" : (container.getAttribute("create-url") ?? "");
-  const csrf = container.getAttribute("csrf") ?? "";
+  //: The hosting form renders one, so a consumer states no prop. The
+  //: prop is for a create row that stands outside a form.
+  const csrfToken = (): string =>
+    container.getAttribute("csrf") ||
+    container
+      .closest("form")
+      ?.querySelector<HTMLInputElement>('[name="csrfmiddlewaretoken"]')?.value ||
+    "";
   //: Every field a param names: a change to one searches again.
   const dependencyFields = Object.values(params)
     .filter((source): source is FieldParam => "field" in source)
@@ -584,7 +591,10 @@ const initWidget = (containerElement: Element) => {
     void window
       .fetchWithHtmxTriggers(createUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRFToken": csrf },
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": csrfToken(),
+        },
         body: JSON.stringify(body),
       })
       .then(response => {

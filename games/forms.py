@@ -266,6 +266,12 @@ def _platform_options(values, *, library: UserLibrary) -> list[SearchSelectOptio
     ]
 
 
+#: Where a picker makes the row a person typed.
+DEVICE_CREATE_URL = "/api/devices/"
+PLATFORM_CREATE_URL = "/api/platforms/"
+PLAYTHROUGH_CREATE_URL = "/api/playthrough/"
+
+
 class SearchSelectWidget(forms.Widget):
     """Thin Django adapter that renders a `SearchSelect()` component.
 
@@ -278,6 +284,8 @@ class SearchSelectWidget(forms.Widget):
         *,
         search_url,
         options_resolver,
+        create_url="",
+        params=None,
         multi_select=False,
         items_visible=5,
         items_scroll=10,
@@ -290,6 +298,8 @@ class SearchSelectWidget(forms.Widget):
         super().__init__(attrs)
         self.search_url = search_url
         self.options_resolver = options_resolver
+        self.create_url = create_url
+        self.params = params
         self.multi_select = multi_select
         self.items_visible = items_visible
         self.items_scroll = items_scroll
@@ -315,6 +325,8 @@ class SearchSelectWidget(forms.Widget):
                 selected=selected,
                 options=None,
                 search_url=self.search_url,
+                create_url=self.create_url,
+                params=self.params,
                 multi_select=self.multi_select,
                 items_visible=self.items_visible,
                 items_scroll=self.items_scroll,
@@ -910,7 +922,9 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
         queryset=Device.objects.order_by("name"),
         required=False,
         widget=SearchSelectWidget(
-            search_url="/api/devices/search", options_resolver=_device_options
+            search_url="/api/devices/search",
+            options_resolver=_device_options,
+            create_url=DEVICE_CREATE_URL,
         ),
     )
     note = forms.CharField(required=False, widget=forms.Textarea)
@@ -1159,7 +1173,9 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         queryset=Device.objects.none(),
         required=False,
         widget=SearchSelectWidget(
-            search_url="/api/devices/search", options_resolver=_device_options
+            search_url="/api/devices/search",
+            options_resolver=_device_options,
+            create_url=DEVICE_CREATE_URL,
         ),
     )
     emulated = forms.BooleanField(required=False)

@@ -185,3 +185,10 @@ def test_the_picker_is_empty_before_a_game_is_known(owned_library):
     form = SessionForm(library=owned_library, presentation=PRESENTATION)
 
     assert form.fields["playthrough"].choices == []
+
+
+def test_the_device_picker_offers_to_make_a_device(owned_library):
+    """A device the library lacks is made from the picker."""
+    form = SessionForm(library=owned_library, presentation=PRESENTATION)
+
+    assert 'create-url="/api/devices/"' in str(form["device"])
