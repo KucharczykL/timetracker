@@ -533,8 +533,7 @@ const initWidget = (containerElement: Element) => {
   };
 
   const createRow = options.querySelector<HTMLElement>("[data-search-select-create]");
-  //: One POST at a time: no route absorbs a repeat, so a second
-  //: Enter would make a second row.
+  //: One POST at a time: no route absorbs a repeat.
   let creating = false;
 
   /** Every label the panel holds, lowercased. */
@@ -553,9 +552,8 @@ const initWidget = (containerElement: Element) => {
     return !loadedLabels().includes(wanted);
   };
 
-  // Shown only once an answer has decided, which is the rule the
-  // no-results node already follows: a row judged on the loaded window
-  // alone flashes on every keystroke.
+  // Shown once an answer decides, as the no-results node is: a row
+  // judged on the loaded window alone flashes on every keystroke.
   const setCreateRow = (query: string) => {
     if (!createRow) return;
     const offered = createRowOffered(query);
@@ -628,18 +626,14 @@ const initWidget = (containerElement: Element) => {
   /** Hold the one option a search answered, where nothing is held. */
   const commitTheSoleOption = () => {
     if (!commitSoleOption || multi) return;
-    // A box someone has typed into holds their name, not a label to
-    // overwrite: an answer that lands mid-word would take the query away
-    // and with it the create row the name was typed for.
+    //: A typed box holds a name, not a label to overwrite.
     if (container._searchSelectDirty) return;
     if (pills.querySelector('input[type="hidden"]')) return;
     const rows = options.querySelectorAll<HTMLElement>("[data-search-select-option]");
     if (rows.length !== 1) return;
     const option = optionFromRow(rows[0]);
     container._searchSelectSetSelected?.(option.value, option.label);
-    // The label landed in a box someone is already in, where a pick puts
-    // the caret at its end. Select it, as focus on a committed field does,
-    // so the next keystroke replaces the label instead of appending to it.
+    //: Select it, as focus does, so the next key replaces it.
     if (document.activeElement === search) search.select();
   };
 

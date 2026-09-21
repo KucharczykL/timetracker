@@ -797,9 +797,7 @@ class PlaythroughSelectWidget(SearchSelectWidget):
             options_resolver=_run_options,
             create_url=PLAYTHROUGH_CREATE_URL,
             params={"game_id": {"field": game_field}},
-            #: The field is required and a game usually holds one run.
-            #: The native select this replaced selected its first option;
-            #: without this nothing is posted and the form refuses.
+            #: Required field; the select this replaced took its first option.
             commit_sole_option=True,
             prefetch=DEFAULT_PREFETCH,
             attrs=attrs,

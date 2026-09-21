@@ -256,10 +256,8 @@ class RecordPlaythroughByName(Command):
                 sentence="Type a name for the playthrough.",
             )
         refuse_name_the_column_cannot_hold(self.name)
-        #: Ahead of the placeholder read: a run already
-        #: called this is the run the person named, and a
-        #: second one of that name would leave the picker
-        #: showing one label twice.
+        #: Ahead of the placeholder read: a run already called
+        #: this is the run the person named.
         if live_ordinary_runs(context.library, tracked).filter(name=self.name).exists():
             return Unchanged("This game already holds a run of that name.")
         adopted = placeholder_run(context.library, tracked)

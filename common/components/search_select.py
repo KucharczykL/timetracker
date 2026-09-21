@@ -86,10 +86,8 @@ class FieldParam(TypedDict):
     field: str
 
 
-#: One mapping, read by the search query and by the create POST: a run
-#: picker narrows on the game it names and creates under the same key,
-#: and two mechanisms would let the two disagree. A field source is a
-#: dependency as well, so a change to it searches again.
+#: One mapping, read by the search query and by the create POST.
+#: A field source is a dependency: a change to it searches again.
 type ParamSources = dict[str, LiteralParam | FieldParam]
 
 

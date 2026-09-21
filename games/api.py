@@ -413,10 +413,8 @@ def _created_run(
 ) -> CreatedRow:
     """The row a creation reached, as a picker reads it.
 
-    The game's runs are read whole and the row is picked in
-    Python. Narrowing the queryset to one key would leave
-    RowNumber counting over that one row, so every blank
-    name would read as Playthrough 1.
+    Read whole and picked in Python: a queryset narrowed to
+    one key counts the number over one row.
     """
     numbered = _readable_runs(library).filter(player_game__game_id=game.pk)
     for run in numbered:
