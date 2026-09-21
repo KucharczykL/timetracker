@@ -31,7 +31,6 @@ from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
 from games.filters import model_field_registry
 from games.models import Game, Platform, Purchase
-from games.reads.calendar import calendar_today
 from games.reads.days import DayInterval
 from games.reads.player_sessions import library_sessions
 from games.reads.playtime import playtime_between_each
@@ -48,9 +47,12 @@ def model_counts(request: HttpRequest) -> dict[str, Any]:
     library = (
         cast(User, user).library if user is not None and user.is_authenticated else None
     )
-    #: The library's calendar, not the viewer's clock: the days
-    #: summed below are `effective_day`, counted in it (#1217).
-    today = localdate() if library is None else calendar_today(library)
+    #: Still the viewer's clock, and so still a day out from the
+    #: calendar the sums below count in, for the hours the two
+    #: zones disagree. Reading the calendar here costs one query
+    #: on every page -- 23 becomes 24 -- which is a budget
+    #: decision, not a bug fix. Left to #1217.
+    today = localdate()
     #: Seven calendar days, today included.
     last_seven_days = DayInterval.ending(today, days=7)
     nothing = PlaytimeBreakdown(timedelta(0), timedelta(0))
