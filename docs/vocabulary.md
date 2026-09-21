@@ -9,15 +9,29 @@ It reads the files this checkout changed, which it works out from the merge
 base with `main`. `make vale ARGS=--all` reads every tracked file, and
 `make vale ARGS="--since <rev>"` states another base.
 
-A rule here governs prose. Code is out of scope: an identifier, a flag name, a
-fenced block and an inline `code` span are all skipped, so `folder` and
-`--no-count-replay` need no exception. That is also how this page can name the
-words it refuses — each one below is written as code.
+A rule here governs the words, wherever they are read. The linter sees prose
+alone: an identifier, a flag name, a fenced block and an inline `code` span are
+all skipped, which is how this page can name the words it refuses — each one
+below is written as code.
 
-Two paths are held to the rules that predate them but not to the ones added
-after: `CHANGELOG.md` and `docs/superpowers/`. A changelog entry describes a
-release that shipped under the word it used, and a design record has to name
-the words a codebase gave up. Neither can be edited into the present tense.
+So an identifier holding a refused word is nobody's exception. It is a rename
+nobody has made yet, and the reader of a change is the only one who can ask for
+it. A word that means one thing in a sentence and another in a type name
+teaches the same wrong thing twice. Two identifiers are held apart from this:
+a word the language or a dependency chose (`folder` in a browser API,
+`delete` in Django's own manager), and a flag whose spelling a person types
+(`--no-count-replay`). Both are somebody else's vocabulary.
+
+One path is held to the rules that predate it but not to the ones added after:
+`CHANGELOG.md`. An entry describes a release that shipped under the word it
+used, and cannot be edited into the present tense.
+
+A design record under `docs/superpowers/` is held to every rule. It was lifted
+once, when a rule reached every file at once and an old record could not answer
+for a word refused years after it was written. A run now reads the files a
+checkout changed, so a record answers when it is next amended. A record that
+names a word the codebase gave up writes it as code, which every rule skips —
+this page does the same.
 
 ## Two levels
 
@@ -79,7 +93,7 @@ joined, so the message asks for it rather than naming one:
 This word alone is refused at both levels. The second table was a warning until
 every use in the tree was read: each one was a metaphor standing in for a
 plainer word, and the literal sense the warning was protecting never appeared.
-`folder` and any other identifier are still out of scope, as code always is.
+`folder` keeps its name: a browser API chose that word, not this codebase.
 
 ### `seam` → plug point, boundary, divider
 
@@ -109,6 +123,37 @@ message asks for it and names the commonest one:
 There is no second level. The literal senses — a sewn join, a surgical
 closure, a stratum of coal — describe nothing this repo has, so a use that the
 pattern catches is always a metaphor.
+
+### `leg` → clause, step
+
+A **clause** is one branch of a compound predicate: one side of an `OR`, one of
+the two sources a playtime figure sums, one criterion a filter states. A
+**step** is one part of a run that has several: one of a gate's comparisons,
+one target inside `make check`, one part of a procedure a page walks.
+
+The literal thing is a limb, a trouser's half, or a stage of a journey. This
+codebase walks nowhere, and the word covered two unrelated shapes: a piece of a
+`WHERE`, and a piece of a procedure. A reader who met one learned the wrong
+thing about the next.
+
+Error in every sense. The replacement depends on which shape it was, so the
+message names both:
+
+| Instead of | Write |
+|---|---|
+| `both legs a filter states` | both clauses a filter states |
+| `each leg an id__in subquery` | each clause an `id__in` subquery |
+| `a search rides beside the status leg` | a search rides beside the status clause |
+| `the three legs` (of a gate) | the three steps |
+| `the check-migrations leg` | the check-migrations step |
+| `the undo leg never settles` | the undo step never settles |
+| `one refused leg leaves both live` | one refused step leaves both live |
+
+There is no second level. Nothing here has limbs, and no journey has stages, so
+a use the pattern catches is always a metaphor.
+
+`Leg` in the bulk runner was renamed with the word: it is `BatchAct`, what one
+batch does to each of its rows.
 
 ### `tombstone` → remove
 

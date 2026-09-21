@@ -411,19 +411,20 @@ def _act_refused(
 
 
 @dataclass(frozen=True, slots=True)
-class Leg:
-    """One direction of an act."""
+class BatchAct:
+    """What one batch does to each of its rows."""
 
-    #: The idempotency key's prefix, one per direction.
+    #: The idempotency key's prefix, so an act and its undo
+    #: never share a key space.
     name: str
     resolve: Callable[[UserLibrary, uuid.UUID], Resolution]
     #: Its own fact is bound; the row and the keys remain.
     run: BoundRow
 
 
-def _forward(action: BulkAction[Any], choice: ChoiceValue | None = None) -> Leg:
+def _forward(action: BulkAction[Any], choice: ChoiceValue | None = None) -> BatchAct:
     """The act itself, over the settled answer."""
-    return Leg(
+    return BatchAct(
         name=action.name,
         resolve=lambda library, key: action.resolve(library, [key]),
         run=partial(action.run, choice=choice),
@@ -431,7 +432,7 @@ def _forward(action: BulkAction[Any], choice: ChoiceValue | None = None) -> Leg:
 
 
 def _undo_name(action: BulkAction[Any]) -> str:
-    """One spelling, for leg and log."""
+    """One spelling, for the key prefix and the log."""
     return f"{action.name}.undo"
 
 
@@ -439,18 +440,18 @@ def _backward(
     action: BulkAction[Any],
     written: frozenset[uuid.UUID],
     correlation_id: uuid.UUID,
-) -> Leg:
+) -> BatchAct:
     """The inverse, over this batch's keys.
 
     The row is removed by now, so the batch says whether a key is its
     own. A key that is not comes out lost, as a row gone since the
-    confirmation does forward: one rule, both legs.
+    confirmation does when the act runs: one rule, both batches.
 
     `_run_a_chunk` derives its correlation id from the undo's own
     fresh token, so this is the one way the batch's id reaches the
     inverse.
     """
-    return Leg(
+    return BatchAct(
         name=_undo_name(action),
         resolve=lambda library, key: _of_this_batch(key, written),
         run=partial(action.inverse, undoes=correlation_id),
@@ -469,7 +470,7 @@ def _run_a_chunk(
     *,
     token: str,
     tally: Tally,
-    leg: Leg,
+    act: BatchAct,
     undo_url: str | None,
     carried_choice: ChoiceValue | None = None,
 ) -> HttpResponse:
@@ -485,23 +486,23 @@ def _run_a_chunk(
 
     while left:
         #: Re-resolved: a row gone since is lost.
-        resolution = leg.resolve(user.library, left[0])
-        _log_left_alone(leg.name, resolution.refused, user.library, correlation_id)
+        resolution = act.resolve(user.library, left[0])
+        _log_left_alone(act.name, resolution.refused, user.library, correlation_id)
         tally = tally.left_alone(resolution.refused)
         acted = left.pop(0)
         for row in resolution.rows:
             try:
-                outcome = leg.run(
+                outcome = act.run(
                     user,
                     row,
-                    idempotency_key=f"{leg.name}-{token}-{acted}",
+                    idempotency_key=f"{act.name}-{token}-{acted}",
                     correlation_id=correlation_id,
                 )
             except Http404 as absent:
-                #: The leg re-resolved this row moments ago.
+                #: This batch re-resolved the row moments ago.
                 #: Said anyway, so no batch ends in silence.
                 _log_abandoned(
-                    leg.name,
+                    act.name,
                     [acted, *left],
                     user.library,
                     correlation_id,
@@ -509,7 +510,7 @@ def _run_a_chunk(
                 )
                 logger.error(
                     "[bulk]: %s met a row library %s does not hold: %s",
-                    leg.name,
+                    act.name,
                     user.library.pk,
                     absent,
                 )
@@ -525,7 +526,7 @@ def _run_a_chunk(
                     #: No dispatch answered for the row that met
                     #: it either, so it is named with the rest.
                     _log_abandoned(
-                        leg.name,
+                        act.name,
                         [acted, *left],
                         user.library,
                         correlation_id,
@@ -538,7 +539,7 @@ def _run_a_chunk(
                         undo_url=undo_url,
                     )
                 refusal = Refused(str(acted), failure.message)
-                _log_left_alone(leg.name, (refusal,), user.library, correlation_id)
+                _log_left_alone(act.name, (refusal,), user.library, correlation_id)
                 tally = tally.left_alone((refusal,))
             else:
                 tally = _counted(tally, outcome)
@@ -735,7 +736,7 @@ def run_bulk_action(request: HttpRequest, action: BulkActionName) -> HttpRespons
             declared,
             token=token,
             tally=tally,
-            leg=_forward(declared, choice),
+            act=_forward(declared, choice),
             undo_url=_undo_url(token),
             carried_choice=choice,
         )
@@ -835,6 +836,6 @@ def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpRes
         declared,
         token=token,
         tally=tally,
-        leg=_backward(declared, frozenset(rows), correlation_id),
+        act=_backward(declared, frozenset(rows), correlation_id),
         undo_url=None,
     )
