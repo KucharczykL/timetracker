@@ -36,7 +36,14 @@ def session(e2e_library) -> PlayerSession:
 
 
 def _duration_cell(page: Page, session: PlayerSession):
-    return page.locator(f"#session-row-{session.pk} td").nth(1)
+    """The cell holding the number, found by what it holds.
+
+    A fixed index moves whenever the list gains a column,
+    and #715 gives it one whenever the rows name one game.
+    """
+    return page.locator(
+        f'#session-row-{session.pk} td:has([id="duration-session-{session.pk}"])'
+    )
 
 
 def _center_x(locator: Locator) -> float:

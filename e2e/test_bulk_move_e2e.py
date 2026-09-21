@@ -69,6 +69,16 @@ def _select_rows(page: Page, *indexes: int) -> None:
         boxes.nth(index).click()
 
 
+def _bucket_label(page: Page):
+    """The bucket's name where this width shows it.
+
+    #715 names the run twice: the Playthrough column,
+    and the summary under the name, which is `md:hidden`
+    and so the hidden one at this width.
+    """
+    return page.get_by_text(IMPORTED_HISTORY_LABEL).locator("visible=true").first
+
+
 def test_two_sessions_leave_the_bucket_and_the_undo_puts_them_back(
     live_server, page: Page, e2e_user, e2e_library
 ):
@@ -84,7 +94,7 @@ def test_two_sessions_leave_the_bucket_and_the_undo_puts_them_back(
 
     listed = f"{live_server.url}{reverse('games:list_sessions')}"
     page.goto(listed)
-    expect(page.get_by_text(IMPORTED_HISTORY_LABEL).first).to_be_visible()
+    expect(_bucket_label(page)).to_be_visible()
     _select_rows(page, 0, 1)
     page.get_by_role("button", name=ACT).click()
 
@@ -109,7 +119,7 @@ def test_two_sessions_leave_the_bucket_and_the_undo_puts_them_back(
     page.get_by_role("button", name="Undo").click()
 
     #: Server-rendered: the write has landed.
-    expect(page.get_by_text(IMPORTED_HISTORY_LABEL).first).to_be_visible()
+    expect(_bucket_label(page)).to_be_visible()
     assert PlayerSession.objects.filter(playthrough=bucket).count() == 2
     bucket.refresh_from_db()
     assert bucket.removed_at is None

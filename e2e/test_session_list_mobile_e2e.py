@@ -10,13 +10,13 @@ import datetime as dt
 
 import pytest
 from django.urls import reverse
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Page, ViewportSize, expect
 from session_rows import timed_row, tracked_run
 
 from games.filters import PlayerSessionFilter, filter_url
 from games.models import Device, Game, Platform
 
-PHONE = {"width": 375, "height": 812}
+PHONE = ViewportSize(width=375, height=812)
 
 STARTED_AT = dt.datetime(2026, 3, 5, 10, tzinfo=dt.UTC)
 

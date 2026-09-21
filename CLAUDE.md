@@ -123,7 +123,7 @@ path**, so verify against `make check` before pushing when possible.
 | Squash the migration history | `make squash-migrations ARGS="games 0006"` (Django's tool; old files stay until the deployment records the squash, see [Squashing](docs/migration-squash.md)) |
 | Make / apply migrations | `make makemigrations` (`ARGS="games --name edition_name"` names the file) / `make migrate` (`ARGS="games 0001_squashed_0006_remove_session"` targets one) |
 | CSS (Tailwind) | `make css` |
-| Django shell | `make shell` |
+| Django shell | `make shell` (`ARGS` reaches `manage.py`, so `make shell ARGS='-c "..."'` runs one snippet) |
 | Create superuser | `make createsuperuser` |
 | Dev login (superuser + prefill) | `make devlogin` (idempotent `admin`/`admin`; pairs with `DEV_LOGIN_PREFILL`) |
 | Format / lint Python | `make format` / `make lint` / `make lint-fix` |
@@ -386,6 +386,21 @@ docs/           — Additional documentation
   `(sort_instant, id)`; dormancy clock asks when *run* was last played, so run
   whose play sits in bucket reads Never played until moved. Contract is
   [Switch Session writes and every read surface](docs/superpowers/specs/2026-09-15-issue-702-session-cutover-design.md)
+
+  #715 organizes that list. `sole_game` in
+  `games/reads/player_sessions.py` answers the one game the filtered rows
+  name, and while it does the list carries a Playthrough column after Name
+  -- every run named, `ambiguous_run_labels` yielding to `every_run_label`,
+  the name cell's own label dropped -- and Game detail's Sessions section
+  offers Organize beside View all. Both lists take a `playthrough` sort key,
+  which leads with the game, then a null-or-not numbering key, then the
+  fields `DISPLAY_ORDER_FIELDS` names, so a run reads where the screen
+  numbers it and the bucket lands last under its own game. Carrying that
+  needs several `ORDER BY` terms, which is why `SortSpec` states `then`. A
+  run stating no start sorts last in both directions: both branches write
+  NULLS LAST. Every row states a summary, the second line #711 built, which
+  names the run only while the column is declared. Contract is
+  [The desktop Session organizer](docs/superpowers/specs/2026-09-21-issue-715-session-organizer-design.md)
 
   #1047's calendar: one zone per library, stated by
   `library.calendar.day_zone_changed` and projected to `LibraryCalendar`, a
