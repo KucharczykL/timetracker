@@ -674,6 +674,7 @@ def _game_section(
     empty_message: str,
     view_all_url: str | None = None,
     add_url: str | None = None,
+    organize_url: str | None = None,
 ) -> Node:
     buttons: list[Node] = []
     if add_url:
@@ -699,13 +700,26 @@ def _game_section(
                 "View all",
             ]
         )
+    if organize_url and count:
+        buttons.append(
+            ControlButton(
+                href=organize_url,
+                color="gray",
+                title=f"Organize {title.lower()} by playthrough",
+            )[
+                Icon("list-tree", size=ICON_BUTTON_SIZE_CLASS),
+                "Organize",
+            ]
+        )
     heading = PageHeading(children=[title], badge=str(count) if count else "")
     if buttons:
         # No margin: the section wrapper's gap owns the distance to the table, so
         # a section with buttons spaces exactly like one without.
-        header = Div(class_="flex items-center justify-between")[
+        # Three buttons beside a heading and a badge outruns a
+        # phone, and the row wraps rather than clipping one.
+        header = Div(class_="flex flex-wrap items-center justify-between gap-2")[
             heading,
-            Div(class_="flex items-center gap-2")[*buttons],
+            Div(class_="flex flex-wrap items-center gap-2")[*buttons],
         ]
     else:
         header = heading
@@ -1064,6 +1078,9 @@ def _sessions_section(
         table,
         "No sessions yet.",
         view_all_url=filter_url(PlayerSessionFilter.where(game=[game.id])),
+        organize_url=filter_url(
+            PlayerSessionFilter.where(game=[game.id]), sort="playthrough"
+        ),
     )
 
 

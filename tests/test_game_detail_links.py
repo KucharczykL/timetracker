@@ -172,12 +172,14 @@ def test_section_heading_spacing_does_not_depend_on_the_view_all_button(game, re
     from common.components import Div, PageHeading
 
     header_row = str(
-        Div(class_="flex items-center justify-between")[PageHeading(["x"])]
+        Div(class_="flex flex-wrap items-center justify-between gap-2")[
+            PageHeading(["x"])
+        ]
     ).split(">")[0]
     assert header_row in rendered, "the game-detail header row changed shape"
 
     for margin in ("mb-1", "mb-2", "mb-3", "mb-4"):
-        assert f'class="flex items-center justify-between {margin}"' not in rendered, (
+        assert f"items-center justify-between {margin}" not in rendered, (
             f"header row bakes {margin}; the section wrapper's gap owns this spacing"
         )
 
@@ -194,3 +196,34 @@ def test_no_view_all_for_empty_section(owned_user, rf):
     html = view_game(request, empty_game.id, empty_game.url_slug).content.decode()
     assert 'title="View all sessions for this game"' not in html
     assert 'title="View all purchases for this game"' not in html
+
+
+def test_sessions_section_offers_the_organizer(game, rendered):
+    """The same list, grouped by the run."""
+    href = escape(
+        filter_url(PlayerSessionFilter.where(game=[game.id]), sort="playthrough")
+    )
+
+    assert href in rendered
+    assert "Organize" in rendered
+
+
+def test_an_empty_sessions_section_offers_no_organizer(owned_library, rf, owned_user):
+    """No rows, nothing to organize."""
+    unplayed = create_tracked_game(owned_library, "Unplayed")
+    request = rf.get(unplayed.get_absolute_url())
+    request.user = owned_user
+    request.session = {}
+
+    rendered = view_game(request, unplayed.id, unplayed.url_slug).content.decode()
+
+    assert "Organize" not in rendered
+
+
+def test_the_organizer_icon_is_its_own_glyph():
+    """`get_icon_node` answers `unspecified` for a typo, silently."""
+    from common.components.icons_generated import ICON_NODES
+    from common.components.primitives import get_icon_node
+
+    assert "list-tree" in ICON_NODES
+    assert get_icon_node("list-tree") is not ICON_NODES["unspecified"]

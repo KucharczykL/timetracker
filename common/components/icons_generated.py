@@ -157,6 +157,15 @@ ICON_NODES: dict[str, Element] = {
             ],
         ],
     ],
+    'list-tree': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'M5 4v13a2 2 0 0 0 2 2h2')]),
+        Path([('d', 'M5 11a2 2 0 0 0 2 2h2')]),
+        Path([('d', 'M12 5h8')]),
+        Path([('d', 'M12 12h8')]),
+        Path([('d', 'M12 19h8')]),
+    ],
     'lock': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
