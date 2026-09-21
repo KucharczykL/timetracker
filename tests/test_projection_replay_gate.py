@@ -77,7 +77,7 @@ from games.projectors.playergame import PlayerGames
 from games.projectors.playersession import PlayerSessions
 from games.projectors.playthrough import Playthroughs
 from games.reads.calendar import calendar_day_zone
-from games.reads.playthrough_numbering import DISPLAY_ORDER
+from games.reads.playthrough_numbering import DISPLAY_ORDER_FIELDS
 from timetracker.temporal import TemporalValue
 
 pytestmark = [
@@ -695,7 +695,7 @@ def test_the_display_number_is_ordered_by_a_total_key():
     a swap changes that -- so the fourth field, which is unique, is
     the whole reason a rebuild leaves the numbers alone.
     """
-    assert DISPLAY_ORDER[-1] == "id"
+    assert DISPLAY_ORDER_FIELDS[-1] == "id"
 
 
 def test_the_stream_leaves_a_removed_row_in_each_table(owned_user, owned_library):

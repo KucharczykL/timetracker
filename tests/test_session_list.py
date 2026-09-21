@@ -48,6 +48,32 @@ def _labels(body: str) -> list[str]:
     return re.findall(r'data-run-label=""[^>]*>([^<]*)<', body)
 
 
+def _cells(row: str) -> list[str]:
+    return re.findall(r"<td[^>]*>(.*?)</td>", row, re.DOTALL)
+
+
+def _run_column(body: str) -> list[str]:
+    """Each row's Playthrough cell.
+
+    The name cell is the row's `<th>`, so the column that
+    follows it is the first `<td>`.
+    """
+    names = []
+    for row in _rows(body):
+        clipped = re.findall(r'data-truncated-clip=""[^>]*>([^<]*)<', _cells(row)[0])
+        names.append(clipped[0] if clipped else "")
+    return names
+
+
+def _summaries(body: str) -> list[str]:
+    return [
+        re.sub(r"\s+", " ", found).strip()
+        for found in re.findall(
+            r'data-row-summary=""[^>]*>(.*?)</div>', body, re.DOTALL
+        )
+    ]
+
+
 def test_the_list_renders_every_mode_from_the_projection(
     logged_in, owned_library, game
 ):
@@ -64,15 +90,20 @@ def test_the_list_renders_every_mode_from_the_projection(
     assert "2026-03-04" in body or "04/03/2026" in body
 
 
-def test_a_game_with_one_run_shows_no_run_label(logged_in, owned_library, game):
+def test_a_list_naming_one_game_names_the_run_in_its_own_column(
+    logged_in, owned_library, game
+):
+    """The column replaces the name cell's label."""
     timed_row(tracked_run(owned_library, game), STARTED_AT, None)
 
     body = logged_in.get(reverse("games:list_sessions")).content.decode()
 
+    assert "Playthrough" in body
+    assert _run_column(body) == ["Playthrough 1"]
     assert _labels(body) == []
 
 
-def test_a_game_with_two_live_runs_labels_each_session(logged_in, owned_library, game):
+def test_a_game_with_two_live_runs_names_each_session(logged_in, owned_library, game):
     first = tracked_run(owned_library, game)
     second = _another_run(owned_library, game, name="Second run")
     timed_row(first, STARTED_AT, None)
@@ -80,10 +111,11 @@ def test_a_game_with_two_live_runs_labels_each_session(logged_in, owned_library,
 
     body = logged_in.get(reverse("games:list_sessions")).content.decode()
 
-    assert sorted(_labels(body)) == ["Playthrough 1", "Second run"]
+    assert sorted(_run_column(body)) == ["Playthrough 1", "Second run"]
+    assert _labels(body) == []
 
 
-def test_a_session_in_the_bucket_is_labelled_beside_a_live_run(
+def test_a_session_in_the_bucket_is_named_beside_a_live_run(
     logged_in, owned_library, game
 ):
     timed_row(tracked_run(owned_library, game), STARTED_AT, None)
@@ -92,7 +124,60 @@ def test_a_session_in_the_bucket_is_labelled_beside_a_live_run(
 
     body = logged_in.get(reverse("games:list_sessions")).content.decode()
 
-    assert sorted(_labels(body)) == ["Imported history", "Playthrough 1"]
+    assert sorted(_run_column(body)) == ["Imported history", "Playthrough 1"]
+
+
+def test_a_list_naming_two_games_keeps_the_name_cells_label(
+    logged_in, owned_library, game
+):
+    """No column, and the label is back where it was."""
+    first = tracked_run(owned_library, game)
+    second = _another_run(owned_library, game, name="Second run")
+    timed_row(first, STARTED_AT, None)
+    timed_row(second, STARTED_AT + timedelta(days=1), None)
+    other = Game.objects.create(library=owned_library, name="Anodyne")
+    timed_row(tracked_run(owned_library, other), STARTED_AT, None)
+
+    body = logged_in.get(reverse("games:list_sessions")).content.decode()
+
+    assert sorted(_labels(body)) == ["Playthrough 1", "Second run"]
+    assert "Anodyne" in body
+
+
+def test_the_summary_names_the_run_the_time_and_the_duration(
+    logged_in, owned_library, game
+):
+    timed_row(
+        tracked_run(owned_library, game), STARTED_AT, STARTED_AT + timedelta(hours=1)
+    )
+
+    body = logged_in.get(reverse("games:list_sessions")).content.decode()
+    summary = _summaries(body)[0]
+
+    assert summary.startswith("Playthrough 1, ")
+    assert summary.count(",") >= 2
+
+
+def test_the_summary_omits_a_device_the_session_does_not_name(
+    logged_in, owned_library, game
+):
+    """A scarce line does not spend itself saying No device."""
+    timed_row(tracked_run(owned_library, game), STARTED_AT, None)
+
+    body = logged_in.get(reverse("games:list_sessions")).content.decode()
+
+    assert "No device" not in _summaries(body)[0]
+
+
+def test_the_summary_names_a_device_the_session_states(logged_in, owned_library, game):
+    from games.models import Device
+
+    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    timed_row(tracked_run(owned_library, game), STARTED_AT, None, device=device)
+
+    body = logged_in.get(reverse("games:list_sessions")).content.decode()
+
+    assert "Steam Deck" in _summaries(body)[0]
 
 
 def test_the_list_costs_no_query_per_row(logged_in, owned_library):

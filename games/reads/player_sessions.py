@@ -4,7 +4,7 @@ import uuid
 from datetime import date
 from typing import NamedTuple
 
-from django.db.models import Max, Min
+from django.db.models import Max, Min, QuerySet
 
 from games.models import Game, PlayerSession, PlayerSessionQuerySet, UserLibrary
 from games.reads.unscoped import require_library
@@ -49,7 +49,7 @@ def readable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
     return library_sessions(library).select_related(f"{GAME}__platform", "device")
 
 
-def sole_game(sessions: PlayerSessionQuerySet) -> GameId | None:
+def sole_game(sessions: QuerySet[PlayerSession]) -> GameId | None:
     """The one game these sessions name, or None.
 
     Take the filtered rows, before a sort annotates them.

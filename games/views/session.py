@@ -16,6 +16,7 @@ from django.views.decorators.http import require_POST
 from common.components import (
     AddForm,
     BrowserTimeZoneInput,
+    Cell,
     Column,
     Duration,
     FormFields,
@@ -26,6 +27,7 @@ from common.components import (
     SessionDeviceSelector,
     TableData,
     TableRowData,
+    TruncatedText,
     make_row,
     paginated_table_content,
 )
@@ -63,9 +65,10 @@ from games.reads.player_sessions import (
     game_sessions,
     library_sessions,
     readable_sessions,
+    sole_game,
 )
 from games.reads.playthrough_runs import sole_ordinary_run
-from games.reads.session_run_labels import ambiguous_run_labels
+from games.reads.session_run_labels import ambiguous_run_labels, every_run_label
 from games.sorting import (
     SESSION_DEFAULT_SORT,
     SESSION_SORTS,
@@ -106,11 +109,21 @@ def session_row_data(
     *,
     origin: OriginUrl | None,
     run_label: str | None = None,
+    run_name: str | None = None,
 ) -> TableRowData:
     """Canonical session-list row, the single source of truth for the list
-    table."""
-    return make_row(
-        NameWithIcon(session=session, run_label=run_label),
+    table.
+
+    At most one of the two run arguments is stated. `run_label`
+    is the name cell's, which names a run only where the page
+    cannot tell them apart; `run_name` is the Playthrough
+    column's, which names every run and is what the summary
+    repeats below md.
+    """
+    cells: list[Cell] = [NameWithIcon(session=session, run_label=run_label)]
+    if run_name is not None:
+        cells.append(TruncatedText(run_name))
+    cells += [
         session_time_range(session, presentation),
         Duration(
             session.effective_duration,
@@ -121,9 +134,46 @@ def session_row_data(
         SessionDeviceSelector(session, device_list, csrf_token),
         presentation.format(session.created_at, "date"),
         SessionActions(session, csrf_token, origin),
+    ]
+    return make_row(
+        *cells,
         id=f"session-row-{session.pk}",
         key=str(session.pk),
+        summary=_row_summary(
+            session,
+            presentation,
+            durations,
+            run_name=run_name,
+        ),
     )
+
+
+def _row_summary(
+    session: PlayerSession,
+    presentation: DateTimePresentation,
+    durations: DurationPresentation,
+    *,
+    run_name: str | None,
+) -> str:
+    """The second line, below md, where the columns went.
+
+    The run is named only while the list names one game,
+    which is the state that declares the column: below md
+    the column has dropped and the name cell states no
+    label, so nothing else would name the run.
+
+    Commas, not a middle dot: the line is plain text with
+    no aria-hidden to hide a separator behind, and a
+    screen reader reads a comma as a pause and a middle
+    dot as a word.
+    """
+    parts = [
+        run_name,
+        session_time_range(session, presentation),
+        durations.format(session.effective_duration),
+        session.device.name if session.device is not None else None,
+    ]
+    return ", ".join(part for part in parts if part)
 
 
 @login_required
@@ -151,6 +201,9 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
                 sessions,
                 filter_query_context_for_library(library),
             )
+    #: Read before the sort: its CASE would join the same
+    #: SELECT DISTINCT list and answer a row per session.
+    one_game = sole_game(sessions)
     find = parse_find_filter(request)
     sort = apply_sort(sessions, find, SESSION_SORTS, SESSION_DEFAULT_SORT)
     sessions = sort.queryset
@@ -158,18 +211,35 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     sessions, page_obj, elided_page_range = paginate(sessions, find)
     csrf_token = get_token(request)
     page_sessions = list(sessions)
-    run_labels = ambiguous_run_labels(library, page_sessions)
+    #: One game on the list makes the run the thing that
+    #: tells its rows apart, so it gets a column of its own
+    #: and the name cell stops repeating it.
+    organized = one_game is not None
+    run_labels = (
+        every_run_label(library, page_sessions)
+        if organized
+        else ambiguous_run_labels(library, page_sessions)
+    )
+
+    columns = [
+        Column("Name", "name", shrinkable=True),
+        Column("Date", "date", priority=3),
+        Column("Duration", "duration", priority=2),
+        Column("Device", "device"),
+        Column("Created", "created"),
+        Column("Actions", align="right", priority=4),
+    ]
+    if organized:
+        #: Ties with Date, and the rightmost of equals drops
+        #: first, so the grouping key outlives every column
+        #: the width can take.
+        columns.insert(
+            1, Column("Playthrough", "playthrough", shrinkable=True, priority=3)
+        )
 
     data: TableData = {
         "caption": "Sessions",
-        "columns": [
-            Column("Name", "name", shrinkable=True),
-            Column("Date", "date", priority=3),
-            Column("Duration", "duration", priority=2),
-            Column("Device", "device"),
-            Column("Created", "created"),
-            Column("Actions", align="right", priority=4),
-        ],
+        "columns": columns,
         "sort_terms": sort.terms,
         "rows": [
             session_row_data(
@@ -179,7 +249,12 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
                 presentation,
                 durations,
                 origin=origin,
-                run_label=run_labels.get(session.playthrough_id),
+                run_label=(
+                    None if organized else run_labels.get(session.playthrough_id)
+                ),
+                run_name=(
+                    run_labels.get(session.playthrough_id) if organized else None
+                ),
             )
             for session in page_sessions
         ],
