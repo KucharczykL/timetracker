@@ -254,11 +254,18 @@ the submission token.
    the resolve owns (a key outside the act's scope, a row the act already
    covered) with its reason in full, and carries a fresh token beside the
    resolved keys. An act that asks for a fact (#714's target run, #1211's
-   value) declares a choice: its controls are built from the offered rows
-   and may refuse the whole act there (a selection spanning games), its
-   value settles once at the confirmation press, before the first chunk,
-   into one runner-named hidden field beside the token, and `run` takes it
-   as one string. The settle validates and writes nothing: a run the
+   value) declares a `BulkChoice(offer, settle)`: `offer` draws the
+   control from every resolved row, not the printed sample, and may
+   refuse the whole act there (a selection spanning games); the value
+   rides one runner-named hidden field beside the token, and `run` and
+   `inverse` take it as one string, third, after the row. `settle` runs on
+   every request that acts, not once: the field rides the progress form
+   and is person-editable, and a value carried on trust would reach the
+   command, whose scope miss the runner answers as a defect. A refused
+   settle re-renders the confirmation on the posted token and tally,
+   never fresh ones, so one batch stays one correlation id. The undo leg
+   never settles: its choice is the batch's own id, which reaches the
+   inverse no other way. The settle validates and writes nothing: a run the
    person needs is created ahead of the submit by #1080's create row, in
    its own request under its own correlation id, outside the batch, so no
    Undo can name it. A command's rule (a
@@ -374,7 +381,10 @@ From it a person:
 - sorts by playthrough: #715 adds a Playthrough column, shown while the
   filter names one game, and a sort on it, the bucket sorting last under its
   own name, because `DISPLAY_ORDER` numbers ordinary runs only and the
-  bucket has no number. `StyledTable` has no group-header rows and the
+  bucket has no number. The column reads `every_run_label` in
+  `games/reads/session_run_labels.py`, #714's, which names a sole run
+  too; `ambiguous_run_labels` beside it is the list's name cell, which
+  hides one. `StyledTable` has no group-header rows and the
   column-drop classes address cells by position, so grouping is the column
   and the sort, not header rows;
 - narrows by date and device, the session filter's own facets;
@@ -442,7 +452,10 @@ loses the button.
 #718 retires the Actions column on every table on the two pages this wave
 touches that has one: Game detail's playthroughs and historical playtime,
 and the Playtime page's sessions and historical playtime, four columns.
-Game detail's session preview has none. Every act that is coherent over
+Game detail's session preview has none. A reader a tray act needs moves
+to `games/reads/` first: an act module importing a view closes an import
+cycle through the foot imports of `games/bulk_actions.py`, which is why
+#714 moved the run labels out of `games/views/session.py`. Every act that is coherent over
 many rows is a tray action: Remove and Was-an-estimate (shipped), Finish
 (#718 declares it, `EndSession` at now per running row, no form), and
 Edit as set-one-value (#1211, after #714, whose move confirmation is the
