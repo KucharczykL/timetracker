@@ -144,26 +144,41 @@ already answer `{value, label, data}`. Not the list route: `GET
 route reads `_readable_runs`, so it answers this library's live ordinary runs
 and no bucket.
 
-The game rides in `params`, #1080's one prop for both the search query and the
-create POST. Its keys take a literal or the name of a sibling field; this
-screen states a literal, so it renders no hidden input. Props are attributes
-and the codegen maps only the four scalar kinds, so `params` travels as JSON
-text, the way `FilterJson` already does.
+The game rides in `params`, #1080's one mapping for the search query and the
+create POST alike. This screen knows the game when it renders, so it states a
+literal and depends on no field: `params={"game_id": LiteralParam(value=...)}`.
+The key is `game_id`, as the search route and the creation body both spell it;
+`game` searches nothing and leaves the create row hidden for good.
 
 A run the person types and no option matches is created ahead of the submit, so
-the posted value is always the key of a run that exists. It is not always a
-*new* run: #1080 lets a creation adopt the game's placeholder — its sole live
-ordinary run, stating no start, no completion and a blank name, named by no
-live session and no live record — and a game whose history sits in the bucket
-is exactly that shape. So the key may name a run the panel already listed.
-Nothing here reads it as new: `settle` validates a key, and adopting the
-placeholder is the right answer for this game anyway.
+the posted value is always the key of a run that exists. It is twice not always
+a *new* run, and neither matters here, because `settle` validates a key rather
+than reading one as new:
 
-**The control is always shown**, and #1080 needs no exception to make it so:
-the hide rule is gone from the picker entirely, because it hid the row at one
-option or none, and nobody types into a hidden control. `<playthrough-select>`
-goes with it, so this screen renders `SearchSelect` directly with no element to
-undo.
+- A creation adopts the game's `placeholder_run` — the sole live ordinary run
+  stating no act, holding a blank name, and named by no registered referrer.
+  A game whose history sits in the bucket is exactly that shape, and adopting
+  is the right answer for it.
+- `RecordPlaythroughByName` answers the run a name already names, compared
+  without case, so a repeated create states no second run.
+
+**The control is always shown.** The hide rule is gone from the picker
+entirely, and `ts/elements/playthrough-select.ts` with it, so this screen
+renders `SearchSelect` directly with no element to undo.
+
+**It does not commit a sole option.** `commit_sole_option` serves a required
+field whose list usually holds one row. Here the sole option is most often the
+run the selected sessions already sit on, and committing it would propose a
+move that moves nothing.
+
+It states a `prefetch`, so opening the panel shows the game's runs. This
+matters more than it looks: the search route narrows on the `name` column, and
+a run nobody named holds no text for `icontains`, so every `Playthrough N`
+leaves the panel the moment a character is typed and the create row offers to
+make what was typed. The wave's data says no game holds more than three runs,
+so the panel shows them all unfiltered and there is nothing to type to find
+one. The person who types is the person naming a new run, which is what the
+create row is for.
 
 `settle` resolves the posted key against `library_runs(library)` **narrowed to
 the game the rows name**. Library-wide is not enough: `library_runs` spans
@@ -208,13 +223,17 @@ stay, live and empty, with nothing left to empty it.
 is always removable, and no `HistoricalPlaytime` can name one, because both the
 record's command and the reclassification refuse a bucket.
 
-**Any session, not only a live one.** `blocking_referrer` reads `alive()`, so a
+**Any row, not only a live one.** `blocking_referrer` reads `alive()`, so a
 session someone removed on its own does not block the removal — and once the
 bucket is removed, `RestoreSession` refuses that session for ever, because it
-refuses a session under a removed run. So the act asks the plain manager: a
-bucket named by any session, removed or not, is left alone. This is stricter
-than the command's own rule on purpose, and it costs nothing, since a bucket is
-in no list to clutter.
+refuses a session under a removed run. So the act walks `BLOCKING_REFERRERS` in
+`games/reads/playthrough_referrers.py` with the plain manager: a bucket any
+registered row names, removed or not, is left alone. Reading the registry
+rather than naming `PlayerSession` is what keeps this rule true when a third
+referrer is registered; that `HistoricalPlaytimeRun` cannot name a bucket today
+is the command's business, not a fact this act should restate. Stricter than
+the command's own rule on purpose, and it costs nothing, since a bucket is in
+no list to clutter.
 
 **Its refusals are the bucket's, never the row's.** The removal is a second
 dispatch inside one `run`, and the runner counts per row: a refusal raised
@@ -305,9 +324,10 @@ that declares none still runs, and never settles.
 **The control.** `offer` refuses two games with the count, over every resolved
 row rather than the printed fifty. `settle` refuses a key that is no uuid, one
 of another library, a removed run, a bucket, and a live ordinary run **at
-another game**. The control renders for a game holding one run. A key naming
-the game's adopted placeholder settles like any other. A refused settle
-re-renders the confirmation with its rows and its token.
+another game**. The control renders for a game holding one run, and commits no
+sole option. A key naming the game's adopted placeholder settles like any
+other, and so does one a repeated create answered. A refused settle re-renders
+the confirmation with its rows and its token.
 
 **The label.** Every row of the confirmation reads a label, including a session
 whose game holds one ordinary run and the bucket. The session list's own column
