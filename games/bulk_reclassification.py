@@ -10,6 +10,7 @@ from django.db.models import QuerySet
 from games.bulk_actions import (
     BulkAction,
     Cardinality,
+    ChoiceValue,
     PreviewColumn,
     Refused,
     Resolution,
@@ -116,6 +117,7 @@ def review_resolution(
 def convert_one(
     actor: User,
     session: PlayerSession,
+    choice: ChoiceValue,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
@@ -134,6 +136,7 @@ def convert_one(
 def return_one(
     actor: User,
     session_id: uuid.UUID,
+    choice: ChoiceValue,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:

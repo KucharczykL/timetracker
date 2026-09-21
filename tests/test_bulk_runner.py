@@ -18,7 +18,7 @@ from common.duration_presentation import (
     DurationPresentation,
 )
 from games import bulk_reclassification
-from games.bulk_actions import BULK_ACTIONS
+from games.bulk_actions import _TABLE, BULK_ACTIONS, BulkAction, RowOutcome
 from games.bulk_reclassification import (
     IN_THE_BUCKET,
     NOT_AVAILABLE,
@@ -1066,3 +1066,56 @@ def test_the_batch_undo_needs_a_login(client, owned_library, game):
     response = client.post(undo_url(str(uuid.uuid7())), {})
 
     assert response.status_code == 302
+
+
+# ── The choice a leg carries ─────────────────────────────────────────────────
+
+
+@pytest.fixture
+def recorded_choices(reclassify_declaration):
+    """An act whose run remembers what it was handed."""
+    seen: list[str] = []
+
+    def run(actor, row, choice, idempotency_key, correlation_id):
+        seen.append(choice)
+        return RowOutcome.MOVED
+
+    def inverse(actor, row_id, choice, idempotency_key, correlation_id):
+        seen.append(choice)
+        return RowOutcome.MOVED
+
+    BulkAction(
+        name="session.recorder",
+        label=reclassify_declaration.label,
+        title=reclassify_declaration.title,
+        confirm_label=reclassify_declaration.confirm_label,
+        subject=reclassify_declaration.subject,
+        cardinality=reclassify_declaration.cardinality,
+        color=reclassify_declaration.color,
+        inverse_aggregate=reclassify_declaration.inverse_aggregate,
+        fallback=reclassify_declaration.fallback,
+        scope=reclassify_declaration.scope,
+        resolve=reclassify_declaration.resolve,
+        run=run,
+        inverse=inverse,
+        preview=reclassify_declaration.preview,
+    )
+    yield seen
+    _TABLE.pop("session.recorder")
+
+
+@pytest.fixture
+def reclassify_declaration():
+    return BULK_ACTIONS["session.reclassify"]
+
+
+def test_the_runner_hands_an_act_the_legs_choice(
+    client_in, owned_library, game, recorded_choices
+):
+    url = reverse("games:run_bulk_action", args=["session.recorder"])
+    session = a_written_session(owned_library, game)
+
+    fields = posted(confirm(client_in, some(session), url=url))
+    client_in.post(url, fields)
+
+    assert recorded_choices == [""]

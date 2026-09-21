@@ -28,6 +28,7 @@ from common.returns import UrlName
 from games.bulk_actions import (
     BulkAction,
     BulkActionName,
+    ChoiceValue,
     Presentations,
     Refused,
     Resolution,
@@ -325,14 +326,17 @@ class Leg:
     #: The idempotency key's prefix, one per direction.
     name: str
     resolve: Callable[[UserLibrary, uuid.UUID], Resolution]
-    run: Callable[[User, Any, IdempotencyKey, uuid.UUID], RowOutcome]
+    run: Callable[[User, Any, ChoiceValue, IdempotencyKey, uuid.UUID], RowOutcome]
+    #: What the act asked for; empty where it asks nothing.
+    choice: ChoiceValue = ""
 
 
-def _forward(action: BulkAction[Any]) -> Leg:
+def _forward(action: BulkAction[Any], choice: ChoiceValue = "") -> Leg:
     return Leg(
         name=action.name,
         resolve=lambda library, key: action.resolve(library, [key]),
         run=action.run,
+        choice=choice,
     )
 
 
@@ -352,6 +356,7 @@ def _backward(action: BulkAction[Any], written: frozenset[uuid.UUID]) -> Leg:
         name=_undo_name(action),
         resolve=lambda library, key: _of_this_batch(key, written),
         run=action.inverse,
+        choice="",
     )
 
 
@@ -389,7 +394,11 @@ def _run_a_chunk(
         for row in resolution.rows:
             try:
                 outcome = leg.run(
-                    user, row, f"{leg.name}-{token}-{acted}", correlation_id
+                    user,
+                    row,
+                    leg.choice,
+                    f"{leg.name}-{token}-{acted}",
+                    correlation_id,
                 )
             except Http404 as absent:
                 #: The leg re-resolved this row moments ago.
