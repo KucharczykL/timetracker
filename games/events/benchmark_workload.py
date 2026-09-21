@@ -58,7 +58,7 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.calendar import calendar_day_zone
-from games.writes.playersession import created_aggregate_id
+from games.reads.events import created_aggregate_id
 
 #: The seeded rows, and the untracked spares.
 SEEDED_NAME_PREFIX = "Benchmark game "

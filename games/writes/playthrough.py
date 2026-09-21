@@ -18,6 +18,7 @@ from games.commands.playthrough import (
     CorrectPlaythroughStart,
     CreatePlaythrough,
     DescribePlaythrough,
+    RecordPlaythroughByName,
     RemovePlaythrough,
     RestorePlaythrough,
     StartPlaythrough,
@@ -32,12 +33,14 @@ from games.events.dispatch import (
 )
 from games.events.idempotency import IdempotencyKey
 from games.models import Game, PlayerGame, Playthrough, UserLibrary
+from games.reads.events import created_aggregate_id
 from games.reads.playthrough_endpoints import (
     StatedEndpoint,
     stated_completion,
     stated_start,
 )
-from games.reads.playthrough_runs import run_to_adopt
+from games.reads.playthrough_numbering import display_name
+from games.reads.playthrough_runs import live_ordinary_runs, run_to_adopt
 from games.writes.answers import answered
 from games.writes.playergame import track_game
 from timetracker.temporal import TemporalValue
@@ -410,3 +413,84 @@ def restore_run(
             idempotency_key=idempotency_key,
             source_metadata=source_metadata,
         )
+
+
+class NamedRun(NamedTuple):
+    """The run a typed name reached, and how."""
+
+    playthrough_id: uuid.UUID
+    #: What a picker shows: the name, always stated here.
+    label: str
+    #: True where the game was tracked to hold the run.
+    tracked_the_game: bool
+
+
+def record_named_run(
+    actor: User,
+    game: Game,
+    name: str,
+    *,
+    correlation_id: uuid.UUID,
+) -> NamedRun:
+    """State the run a person typed a name for.
+
+    The command decides between naming the placeholder and
+    creating one more, under the stream head's lock.
+
+    A game nothing tracks is tracked first, as `record_run`
+    tracks it. Tracking states a run, and that run is a
+    placeholder, so the second statement names it and the
+    game ends with one named run.
+    """
+    command = RecordPlaythroughByName(game_id=game.pk, name=name)
+    with answered("playthrough"):
+        try:
+            result = _dispatch(
+                command,
+                actor=actor,
+                library=actor.library,
+                correlation_id=correlation_id,
+            )
+        except PlayerGameNotTracked:
+            #: One retry only, as `record_run` retries.
+            track_game(actor, game, correlation_id=correlation_id)
+            result = _dispatch(
+                command,
+                actor=actor,
+                library=actor.library,
+                correlation_id=correlation_id,
+            )
+            return _named_run(actor, game, command, result, tracked_the_game=True)
+    return _named_run(actor, game, command, result, tracked_the_game=False)
+
+
+def _named_run(
+    actor: User,
+    game: Game,
+    command: RecordPlaythroughByName,
+    result: CommandResult,
+    *,
+    tracked_the_game: bool,
+) -> NamedRun:
+    """The run the dispatch reached.
+
+    An appended outcome names it in its first event. An
+    Unchanged one appended nothing, so the row is read
+    back by the name it already states -- the oldest,
+    where an earlier act left two of them.
+    """
+    if result.sequences is not None:
+        return NamedRun(
+            playthrough_id=created_aggregate_id(result),
+            label=command.name,
+            tracked_the_game=tracked_the_game,
+        )
+    tracked = PlayerGame.objects.filter(library=actor.library, game=game).first()
+    assert tracked is not None, "Unchanged answers about a run this game holds."
+    run = live_ordinary_runs(actor.library, tracked).filter(name=command.name).first()
+    assert run is not None, "Unchanged answers about a run that states the name."
+    return NamedRun(
+        playthrough_id=run.pk,
+        label=display_name(run),
+        tracked_the_game=tracked_the_game,
+    )

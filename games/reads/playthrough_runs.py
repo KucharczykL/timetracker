@@ -97,3 +97,26 @@ def run_to_adopt(library: UserLibrary, player_game: PlayerGame) -> Playthrough |
     if stated_start(run) is not None or stated_completion(run) is not None:
         return None
     return run
+
+
+def placeholder_run(
+    library: UserLibrary, player_game: PlayerGame
+) -> Playthrough | None:
+    """The empty run tracking minted, and nothing else.
+
+    Narrower than `run_to_adopt`, which names any sole run
+    that states neither act. A person who types a name asks
+    for the run they named: a run that already holds
+    sessions would take the new label and carry those
+    sessions under it.
+
+    A blank name as well, because a named run is one
+    somebody already called something.
+    """
+    #: Function-local: the command module imports this one.
+    from games.commands.playthrough import blocking_referrer
+
+    run = run_to_adopt(library, player_game)
+    if run is None or run.name != "":
+        return None
+    return None if blocking_referrer(run) is not None else run

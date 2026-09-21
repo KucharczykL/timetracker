@@ -5,6 +5,7 @@ From the events: no projection answers this.
 
 import uuid
 
+from games.events.dispatch import CommandResult
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, AggregateType
 from games.models import LibraryEvent, LibraryEventQuerySet, UserLibrary
 
@@ -30,3 +31,14 @@ def batch_aggregate_ids(
     )
     #: dict, not set: append order matters.
     return list(dict.fromkeys(named.values_list("aggregate_id", flat=True)))
+
+
+def created_aggregate_id(result: CommandResult) -> uuid.UUID:
+    """The row a creation wrote: its first event's aggregate id.
+
+    Never `stream_id`, which is the library's one stream head.
+    """
+    assert result.sequences is not None
+    return LibraryEvent.objects.get(
+        stream_id=result.stream_id, sequence=result.sequences.first
+    ).aggregate_id

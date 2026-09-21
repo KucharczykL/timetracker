@@ -206,6 +206,72 @@ class CreatePlaythrough(Command):
         return events
 
 
+@dataclass(frozen=True, slots=True)
+class RecordPlaythroughByName(Command):
+    """State the run a person named at a game.
+
+    One command rather than a read and a dispatch: the
+    build runs under the stream head's lock, and a
+    session recorded between a read and an append would
+    be carried under a name nobody gave it.
+
+    The placeholder tracking minted is named rather than
+    left beside the new run. Creating one regardless
+    would leave a never-played game holding a blank run
+    forever, which is what `record_run` adopts to avoid;
+    adopting as widely as `record_run` does would rename
+    a run that already holds sessions.
+    """
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_RECORD_BY_NAME
+    #: A UUID, because Command fingerprints its fields.
+    game_id: uuid.UUID
+    name: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "name", self.name.strip())
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        #: Function-local: that module reads this one's registry.
+        from games.reads.playthrough_runs import (
+            live_ordinary_runs,
+            placeholder_run,
+        )
+
+        tracked = tracked_game(context, self.game_id)
+        #: Under dispatch's lock: the mark cannot move.
+        if tracked.removed_at is not None:
+            raise CommandRejected(
+                f"This library removed game {self.game_id}, so it records no "
+                "further runs at it. A removed game is restored first.",
+                sentence=(
+                    "That game was removed from your library. Restore it "
+                    "before adding a playthrough."
+                ),
+            )
+        if not self.name:
+            raise CommandRejected(
+                f"A run at game {self.game_id} was stated with no name, and "
+                "this command states nothing else about it.",
+                sentence="Type a name for the playthrough.",
+            )
+        refuse_name_the_column_cannot_hold(self.name)
+        #: Ahead of the placeholder read: a run already
+        #: called this is the run the person named, and a
+        #: second one of that name would leave the picker
+        #: showing one label twice.
+        if live_ordinary_runs(context.library, tracked).filter(name=self.name).exists():
+            return Unchanged("This game already holds a run of that name.")
+        adopted = placeholder_run(context.library, tracked)
+        if adopted is None:
+            run_id = uuid.uuid7()
+            return [
+                playthrough_created(tracked.pk, playthrough_id=run_id),
+                playthrough_name_changed(run_id, name=self.name),
+            ]
+        return [playthrough_name_changed(adopted.pk, name=self.name)]
+
+
 class PlaythroughNotHeld(RowNotHeld):
     """The library holds no such run; caught by name."""
 
