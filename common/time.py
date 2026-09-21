@@ -1,7 +1,5 @@
 from datetime import date, timedelta
 
-from django.utils import timezone
-
 
 def daterange(start: date, end: date, end_inclusive: bool = False) -> list[date]:
     time_between: timedelta = end - start
@@ -15,5 +13,11 @@ def daterange(start: date, end: date, end_inclusive: bool = False) -> list[date]
     return [start + timedelta(x) for x in range(days_between)]
 
 
-def available_stats_year_range():
-    return range(timezone.localdate().year, 1999, -1)
+def available_stats_year_range(today: date) -> range:
+    """The years the stats picker offers, newest first.
+
+    The day is stated rather than read: which year a
+    library is in is its calendar's answer, and this module
+    knows nothing about libraries.
+    """
+    return range(today.year, 1999, -1)

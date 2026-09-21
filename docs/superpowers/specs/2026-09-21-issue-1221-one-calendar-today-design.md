@@ -33,6 +33,12 @@ Measured: user and library in a single statement, against two today. Every
 authenticated request pays one query fewer, whether or not it renders a
 navbar, so the calendar read the navbar adds is already paid for.
 
+A session stores the path of the backend that made it, and Django refuses a
+session naming a backend it no longer lists. The deploy that lands this one
+therefore ends every session made before it, and each person signs in again
+once. Listing the former backend beside it would avoid that, at the price of
+carrying a second way to load a user for as long as the oldest session lives.
+
 ## What each reader asks
 
 | Reader | Asks |
@@ -63,14 +69,21 @@ means for a library, and `global_current_year`'s anonymous branch.
 Tests are out of scope for the walk. A test states a day to compare against,
 and pinning them would turn the guard into a rewrite of the suite.
 
-## Why no cached zone
+## One read for one request
 
-`calendar_day_zone` reads its row on every call, so a page that asks twice
-pays twice. The stats page does: its context processor and `compute_stats`
-each ask. Caching the zone on the library instance would remove the second
-read and make the first one stale, because a change of `DISPLAY_TIME_ZONE`
-restates the calendar inside the request that changes it. One extra query on
-one page is the cheaper mistake to avoid.
+`calendar_day_zone` reads its row on every call, and two context processors
+ask: the navbar for its window, the year publisher for its year. The answer
+is cached on the request, by `request_calendar_today`, so a page reads the
+calendar once.
+
+The cache sits on the request rather than on the library instance because a
+change of `DISPLAY_TIME_ZONE` restates the calendar, and it does so in the
+view, which runs before a context processor asks. A library instance outlives
+that write inside the same request; the request does not outlive it.
+
+`compute_stats` keeps its own read. It takes a library, not a request, and a
+reader that states its own scope is worth one statement on the one page that
+calls it.
 
 ## Acceptance
 
