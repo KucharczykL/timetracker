@@ -34,6 +34,7 @@ from pydantic import BeforeValidator, ConfigDict, PlainSerializer, WithJsonSchem
 from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_api
+from games.api_creation import RowRefused, created_by_form
 from games.commands.playersession import (
     CorrectedTiming,
     DurationOnlyTiming,
@@ -53,7 +54,7 @@ from games.filters import (
     parse_session_filter,
 )
 from games.formatting import zone_label
-from games.forms import game_option_data
+from games.forms import DeviceForm, PlatformForm, game_option_data
 from games.models import (
     Device,
     FilterPreset,
@@ -509,6 +510,55 @@ def search_devices(request, q: str = "", limit: int = 10):
             )
         ).order_by(F("last_used").desc(nulls_last=True), "-created_at", "name")
     return [{"value": d.id, "label": d.name, "data": {}} for d in qs[:limit]]
+
+
+class RowIn(Schema):
+    """The one fact a create row states."""
+
+    #: An unknown key is a mistake, not silence.
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+
+
+@api.exception_handler(RowRefused)
+def _row_refused(request, refusal: RowRefused):
+    #: The sentence rides the middleware's header, which is
+    #: what shows the toast. Nothing else queues one here.
+    messages.error(request, refusal.sentence)
+    return api.create_response(request, {"detail": refusal.sentence}, status=422)
+
+
+@device_router.post("/", response={201: CreatedRow})
+def create_device(request, payload: RowIn):
+    """One device, named and nothing else.
+
+    `type` is stated here because the form requires it and
+    the row's default names it. A person corrects it on the
+    device page.
+    """
+    library = cast(User, request.user).library
+    device = created_by_form(
+        DeviceForm, library=library, name=payload.name, type=Device.UNKNOWN
+    )
+    messages.success(request, f"{device.name} added")
+    return Status(201, CreatedRow(id=str(device.pk), label=device.name))
+
+
+@platform_router.post("/", response={201: CreatedRow})
+def create_platform(request, payload: RowIn):
+    """One platform, private to the library that made it.
+
+    A shared platform is a fixture, not a thing a picker
+    makes. Two rules refuse a duplicate and they are not
+    one: `Platform.clean` refuses a private row shadowing a
+    shared one, and the private unique constraint refuses
+    the library's own.
+    """
+    library = cast(User, request.user).library
+    platform = created_by_form(PlatformForm, library=library, name=payload.name)
+    messages.success(request, f"{platform.name} added")
+    return Status(201, CreatedRow(id=str(platform.pk), label=platform.name))
 
 
 @platform_router.get("/search", response=list[PlatformOption])
