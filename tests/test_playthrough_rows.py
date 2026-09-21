@@ -20,7 +20,7 @@ from games.reads.playthrough_runs import tracked_game
 from games.views.playthrough_rows import playthrough_tabledata
 from games.writes.playergame import new_correlation_id, track_game
 from games.writes.playthrough import RunDraft, restate_run
-from timetracker.temporal import TemporalValue
+from timetracker.temporal import TemporalEndpoint, TemporalValue
 
 #: The real TrackGame states the run, not the fixture.
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
@@ -327,3 +327,107 @@ def test_the_recency_does_not_move_with_the_viewers_zone(owned_library, run):
         phrases.update(re.findall(r"\d+ days ago", html))
 
     assert phrases == {"4 days ago"}
+
+
+def summary_of(owned_library, run, presentation, **options) -> str:
+    """The one row's second line."""
+    data = tabledata_of(owned_library, run, presentation, **options)
+    [row] = data["rows"]
+    return row["summary"]
+
+
+def _state_days(run, started, completed) -> None:
+    """Both endpoints, as values the grammar may refuse to state."""
+    Playthrough.objects.filter(pk=run.pk).update(
+        start_recorded_at=None if started is None else timezone.now(),
+        started=started,
+        completion_recorded_at=None if completed is None else timezone.now(),
+        completed=completed,
+    )
+
+
+def test_the_list_summary_names_the_game(owned_library, run, presentation):
+    assert summary_of(owned_library, run, presentation).startswith("Outer Wilds")
+
+
+def test_game_detail_states_no_game_part(owned_library, run, presentation):
+    """Every row there names the same game already."""
+    summary = summary_of(owned_library, run, presentation, exclude_columns=["Game"])
+
+    assert "Outer Wilds" not in summary
+
+
+def test_two_known_days_read_as_one_range(owned_library, run, presentation):
+    _state_days(
+        run,
+        TemporalValue.from_day(date(2026, 3, 5)),
+        TemporalValue.from_day(date(2026, 4, 2)),
+    )
+
+    assert "2026-03-05 – 2026-04-02" in summary_of(owned_library, run, presentation)
+
+
+def test_a_start_alone_reads_since(owned_library, run, presentation):
+    _state_days(run, TemporalValue.from_day(date(2026, 3, 5)), None)
+
+    assert "since 2026-03-05" in summary_of(owned_library, run, presentation)
+
+
+def test_a_completion_alone_reads_until(owned_library, run, presentation):
+    _state_days(run, None, TemporalValue.from_day(date(2026, 4, 2)))
+
+    assert "until 2026-04-02" in summary_of(owned_library, run, presentation)
+
+
+def test_neither_endpoint_states_no_span(owned_library, run, presentation):
+    """The activity is the whole line."""
+    assert summary_of(owned_library, run, presentation) == "Outer Wilds, Never played"
+
+
+def test_a_range_endpoint_states_each_act_apart(owned_library, run, presentation):
+    """Two ranges joined would read as one wrong range."""
+    _state_days(
+        run,
+        TemporalValue.range(
+            start=TemporalEndpoint.known(TemporalValue.from_day(date(2026, 3, 1))),
+            end=TemporalEndpoint.known(TemporalValue.from_day(date(2026, 3, 5))),
+        ),
+        TemporalValue.from_day(date(2026, 4, 2)),
+    )
+
+    summary = summary_of(owned_library, run, presentation)
+
+    assert "Started 2026-03-01 – 2026-03-05" in summary
+    assert "Completed 2026-04-02" in summary
+
+
+def test_an_unknown_day_states_no_part(owned_library, run, presentation):
+    """A slot reading `Unknown` is a slot the clip takes."""
+    _state_days(run, None, None)
+    Playthrough.objects.filter(pk=run.pk).update(
+        start_recorded_at=timezone.now(), started=None
+    )
+
+    assert "Unknown" not in summary_of(owned_library, run, presentation)
+
+
+def test_a_completed_run_states_no_activity_part(
+    owned_user, owned_library, run, presentation
+):
+    _state_start(owned_user, run)
+    _state_completion(owned_user, run)
+
+    summary = summary_of(owned_library, run, presentation)
+
+    assert "Playing" not in summary
+    assert "Dormant" not in summary
+    assert "Never played" not in summary
+
+
+def test_the_activity_part_states_the_word_and_the_recency(
+    owned_library, run, presentation
+):
+    started_at = timezone.now() - timedelta(days=4)
+    timed_row(run, started_at, started_at + timedelta(hours=1))
+
+    assert "Playing 4 days ago" in summary_of(owned_library, run, presentation)

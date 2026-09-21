@@ -60,7 +60,7 @@ def test_rows_read_newest_first_with_an_unknown_when_last(logged_in, game, run):
     unknown = record_row([run], when=None)
     newer = record_row([run], when="2010")
     html = section(logged_in, game)
-    assert re.findall(r'id="historical-row-([0-9a-f-]+)"', html) == [
+    assert re.findall(r'id="record-row-([0-9a-f-]+)"', html) == [
         str(newer.pk),
         str(older.pk),
         str(unknown.pk),
@@ -120,3 +120,72 @@ def test_a_removed_record_is_not_listed(logged_in, game, run):
     record = record_row([run], note="gone")
     type(record).objects.filter(pk=record.pk).update(removed_at=record.created_at)
     assert "No historical playtime." in section(logged_in, game)
+
+
+def test_the_section_states_the_list_columns_less_name_and_created(
+    logged_in, game, run
+):
+    """One builder answers both record tables."""
+    record_row([run])
+    assert [label for label, _ in header_policies(section(logged_in, game))[0]] == [
+        "When",
+        "Duration",
+        "Provenance",
+        "Playthroughs",
+        "Device",
+        "Actions",
+    ]
+
+
+def test_a_record_naming_two_runs_states_the_shared_badge(
+    logged_in, owned_user, game, run
+):
+    """The list's cells win on both pages."""
+    second = another_run(owned_user, game)
+    record_row([run, second])
+    assert "shared" in section(logged_in, game)
+
+
+def test_the_headers_state_no_sort(logged_in, game, run):
+    """Game detail reads no `?sort=` at all."""
+    record_row([run])
+    assert "?sort=" not in section(logged_in, game)
+
+
+def summary_of(body: str) -> str:
+    """The first row's second line."""
+    [line] = re.findall(r'data-row-summary=""[^>]*>([^<]*)<', body)[:1]
+    return html.unescape(line)
+
+
+def test_the_summary_states_the_columns_the_day_does_not(
+    logged_in, owned_library, game, run
+):
+    """The day leads the row, so the line spends itself on the rest."""
+    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    record_row(
+        [run],
+        duration=timedelta(hours=2),
+        when="2026-03-05",
+        provenance=HistoricalPlaytimeProvenance.MANUALLY_ENTERED,
+        device=device,
+    )
+
+    summary = summary_of(section(logged_in, game))
+
+    assert summary == "2.0 h, Manually entered, Playthrough 1, Steam Deck"
+
+
+def test_a_record_naming_three_runs_counts_the_rest(logged_in, owned_user, game, run):
+    """A list inside a comma-joined line reads as one list."""
+    second = another_run(owned_user, game)
+    third = another_run(owned_user, game)
+    record_row([run, second, third])
+
+    assert "and 2 more" in summary_of(section(logged_in, game))
+
+
+def test_a_record_with_no_device_states_no_part(logged_in, game, run):
+    record_row([run], when="2026-03-05")
+
+    assert "No device" not in summary_of(section(logged_in, game))

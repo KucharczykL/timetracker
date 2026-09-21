@@ -38,7 +38,6 @@ from common.components import (
     Node,
     P,
     PageHeading,
-    Pill,
     PlaytimeHalves,
     Popover,
     PurchasePrice,
@@ -92,7 +91,6 @@ from games.forms import GameForm
 from games.models import (
     ExternalReference,
     Game,
-    HistoricalPlaytimeProvenance,
     PlayerGameStatus,
     PlayerSessionQuerySet,
     PlayerSessionTimingMode,
@@ -106,7 +104,6 @@ from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.historical_playtime_page import (
     listed_records,
-    record_run_labels,
     run_labels_for,
 )
 from games.reads.historical_playtime_records import RECORD_ORDER
@@ -136,7 +133,9 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
-from games.views.historical_playtime import record_actions
+from games.views.historical_playtime import (
+    historical_playtime_tabledata,
+)
 from games.views.playergame_writes import (
     record_facts_for_request,
     remove_game_for_request,
@@ -1094,35 +1093,18 @@ def _historical_playtime_section(
     records = list(
         listed_records(library).filter(player_game__game=game).order_by(*RECORD_ORDER)
     )
-    labels = run_labels_for(library, records)
-    rows = [
-        make_row(
-            TemporalText(record.when, presentation),
-            Duration(
-                record.duration,
-                durations,
-                id_scope=f"game-historical-{record.pk}",
-                manual=True,
-            ),
-            Pill(label=HistoricalPlaytimeProvenance(record.provenance).label),
-            ", ".join(record_run_labels(record, labels)),
-            record.device.name if record.device else "No device",
-            record_actions(record, origin),
-            id=f"historical-row-{record.pk}",
-            key=str(record.pk),
-        )
-        for record in records
-    ]
+    data = historical_playtime_tabledata(
+        records,
+        run_labels_for(library, records),
+        presentation,
+        durations,
+        exclude_columns=["Name", "Created"],
+        origin=origin,
+        caption="Historical playtime of this game",
+    )
     table = StyledTable(
-        columns=[
-            Column("When"),
-            Column("Duration", priority=2),
-            Column("Provenance", priority=2),
-            Column("Playthroughs", shrinkable=True),
-            Column("Device", priority=3),
-            Column("Actions", align="right", priority=4),
-        ],
-        rows=rows,
+        columns=data["columns"],
+        rows=data["rows"],
         data_table=True,
         caption="Historical playtime of this game",
         #: The request scopes the kept selection to this library.

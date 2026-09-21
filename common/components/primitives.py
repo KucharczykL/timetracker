@@ -2367,6 +2367,17 @@ def make_row(
     return data
 
 
+def row_summary(*parts: str | None) -> str:
+    """Join a row's summary parts into the stacked cell's second line.
+
+    A part that states nothing is dropped, so a caller hands over what it has
+    and needs no conditional of its own. The separator is a comma and a space
+    because a screen reader speaks it as a pause; a middle dot it speaks as a
+    word.
+    """
+    return ", ".join(part for part in parts if part)
+
+
 # The row's second line, below md alone.
 # The checkbox and the name share a line, centred on each other.
 _ROW_IDENTITY_CLASS = "flex items-center min-w-0"
@@ -3128,6 +3139,22 @@ def StyledTable(
                     f"StyledTable row has {cell_count} cells but {len(columns)} "
                     f"columns were given: {row['cell_data']!r}"
                 )
+        # The summary's `overflow-hidden text-ellipsis` clips nothing on its
+        # own: the width that makes it clip is SHRINKABLE_COLUMN_CLASS, which
+        # TableRow states on a shrinkable first column alone. Under any other
+        # first column the line widens the table and the phone scrolls
+        # sideways instead of clipping.
+        if (
+            columns
+            and not columns[0].shrinkable
+            and any(row.get("summary") for row in rows)
+        ):
+            raise ValueError(
+                f"StyledTable rows state a summary under the first column "
+                f"{columns[0].label!r}, which is not shrinkable: the "
+                "summary would widen the table instead of clipping. "
+                "Declare shrinkable=True on the first column."
+            )
 
     table_children: list[Node] = []
     # A <caption> is only valid as the table's first child, and it doubles as

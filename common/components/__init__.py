@@ -213,6 +213,7 @@ from common.components.primitives import (
     custom_element_builder,
     make_row,
     paginated_table_content,
+    row_summary,
     selection_scope,
     shaped,
 )
@@ -502,6 +503,7 @@ __all__ = [
     "randomid",
     "register_element",
     "render",
+    "row_summary",
     "searchselect_selected",
     "selection_scope",
     "shaped",
