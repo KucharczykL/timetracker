@@ -32,6 +32,7 @@ from common.duration_presentation import (
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.utils import paginate
+from games.bulk_playthrough_acts import COMPLETE_RUNS, START_RUNS
 from games.bulk_removal import REMOVE_RUN
 from games.bulk_tray import tray_actions
 from games.commands.playthrough import ActStatement
@@ -180,7 +181,12 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
     data["selection"] = {
         "filter": filter_json,
         "csrf_token": get_token(request),
-        "actions": tray_actions(REMOVE_RUN.name, origin=origin),
+        "actions": tray_actions(
+            START_RUNS.name,
+            COMPLETE_RUNS.name,
+            REMOVE_RUN.name,
+            origin=origin,
+        ),
     }
     content = paginated_table_content(
         data,
