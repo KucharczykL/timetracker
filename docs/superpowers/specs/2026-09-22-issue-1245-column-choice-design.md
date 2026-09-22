@@ -217,3 +217,9 @@ apply anything at all, which makes the bar that issue's real subject.
 
 Reordering columns, per-column width and print styles stay outside, as
 [#521](https://github.com/KucharczykL/timetracker/issues/521) holds them.
+
+The quick filter bar keeps every control it has, and keeps them in the order it
+has them. Moving this control off the bar revealed that Load preset acts on the
+filter as a whole yet sits among the facets rather than beside the three buttons
+that do the same;
+[#1267](https://github.com/KucharczykL/timetracker/issues/1267) holds that.
