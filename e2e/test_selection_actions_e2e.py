@@ -107,3 +107,56 @@ def test_a_refused_row_states_its_sentence_while_the_rest_are_removed(
     live = Playthrough.objects.filter(removed_at__isnull=True)
     assert live.filter(player_game__game=alone).count() == 1
     assert live.filter(player_game__game=shared).count() == 1
+
+
+def test_the_acts_that_do_not_fit_move_behind_one_trigger(
+    live_server, page: Page, e2e_user, e2e_library
+):
+    """A narrow window collapses the tray rather than wrapping it.
+
+    Four acts and a phone's width: the trigger appears, and the act behind
+    it posts the same statement, because the panel sits inside the one form
+    the line submits.
+    """
+    game = create_tracked_game(e2e_library, "Outer Wilds")
+    run = tracked_run(e2e_library, game)
+    for day in (5, 6):
+        duration_only_row(run, date(2026, 3, day), timedelta(hours=2))
+    _login(page, live_server)
+    page.set_viewport_size({"width": 400, "height": 900})
+
+    listed = f"{live_server.url}{reverse('games:list_sessions')}"
+    page.goto(listed)
+    _select_rows(page, 0)
+
+    overflow = page.locator("[data-selection-overflow]")
+    expect(overflow).to_be_visible()
+    #: Remove is stated last, so it is the first act to go behind the trigger.
+    removal = page.locator('[data-selection-act][formaction*="session.remove"]')
+    expect(page.locator("[data-selection-overflow-items]")).to_contain_text("Remove")
+
+    overflow.locator("[data-toggle]").click()
+    removal.click()
+
+    expect(page.get_by_role("heading", name="Remove this session")).to_be_visible()
+    page.get_by_role("button", name="Remove", exact=True).click()
+
+    page.wait_for_url(f"{listed}**")
+    assert PlayerSession.objects.alive().count() == 1
+
+
+def test_every_act_stands_in_the_line_where_they_fit(
+    live_server, page: Page, e2e_user, e2e_library
+):
+    """The width a person reads the list at states no overflow."""
+    game = create_tracked_game(e2e_library, "Outer Wilds")
+    duration_only_row(
+        tracked_run(e2e_library, game), date(2026, 3, 5), timedelta(hours=2)
+    )
+    _login(page, live_server)
+
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    _select_rows(page, 0)
+
+    expect(page.locator("[data-selection-overflow]")).to_be_hidden()
+    expect(page.get_by_role("button", name="Remove", exact=True)).to_be_visible()

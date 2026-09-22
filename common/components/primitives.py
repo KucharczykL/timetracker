@@ -3005,7 +3005,7 @@ def selection_scope(request, caption_key: str, caption: str) -> SelectionScope:
 
 
 def _selection_actions_slot(
-    actions: Sequence[SelectionAction], csrf_token: str
+    actions: Sequence[SelectionAction], csrf_token: str, *, id_seed: str
 ) -> Node:
     """The acts the view stated, in one form.
 
@@ -3016,7 +3016,17 @@ def _selection_actions_slot(
 
     Every submit is rendered disabled, because nothing is selected
     yet; `<selection-actions>` clears that with the first count.
+
+    Declaration order is priority order. The acts that do not fit are
+    moved into the trailing overflow, rightmost first, so the act a view
+    states last is the first to go behind the trigger.
     """
+    # Deferred: `custom_elements` reads this module at import.
+    from common.components.custom_elements import (
+        Dropdown,
+        dropdown_combobox_panel_class,
+    )
+
     offered = list(actions)
     slot = Div([("data-selection-actions", "")], class_="flex gap-2")
     if not offered:
@@ -3027,10 +3037,34 @@ def _selection_actions_slot(
             "A selection line offering acts states a csrf_token; without one "
             "every press is refused as a forgery, and the page looks right."
         )
+    overflow_id = f"selection-overflow-{randomid(content=id_seed)}"
+    #: A panel of moved submits, not a menu of items: the nodes that travel
+    #: are the row's own buttons, as the quick bar's facets are.
+    panel = Div(
+        [("data-selection-overflow-items", "")],
+        role="dialog",
+        aria_label="More actions",
+        class_=(
+            f"{dropdown_combobox_panel_class('w-auto')} "
+            "flex flex-col items-stretch gap-1"
+        ),
+    )
+    overflow = Div([("data-selection-overflow", "")], class_="hidden")[
+        Dropdown(
+            trigger_element=EllipsisTrigger(
+                label="More actions",
+                orientation="horizontal",
+                haspopup="dialog",
+            ).as_element(),
+            target_element=panel,
+            id=overflow_id,
+            placement="bottom-end",
+        )
+    ]
     return slot[
         _SelectionActionsElement(class_="flex gap-2")[
             Form(
-                [("data-selection-actions-form", "")],
+                [("data-selection-actions-form", ""), ("data-selection-acts-row", "")],
                 method="post",
                 class_="flex gap-2",
             )[
@@ -3046,13 +3080,18 @@ def _selection_actions_slot(
                 Fragment(
                     *(
                         ControlButton(
-                            [("formaction", action["url"]), ("disabled", "")],
+                            [
+                                ("formaction", action["url"]),
+                                ("disabled", ""),
+                                ("data-selection-act", ""),
+                            ],
                             type="submit",
                             color=action["color"],
                         )[action["label"]]
                         for action in offered
                     )
                 ),
+                overflow,
             ]
         ]
     ]
@@ -3063,6 +3102,7 @@ def SelectionLine(
     *,
     actions: Sequence[SelectionAction] = (),
     csrf_token: str = "",
+    id_seed: str = "",
 ) -> Node:
     """The selection region, above the pagination row."""
     controls: list[Node] = [
@@ -3099,7 +3139,7 @@ def SelectionLine(
     controls.append(
         ControlButton([("data-selection-clear", "")], variant="ghost")["Clear"]
     )
-    controls.append(_selection_actions_slot(actions, csrf_token))
+    controls.append(_selection_actions_slot(actions, csrf_token, id_seed=id_seed))
 
     # Cloned per row; a template renders nothing.
     checkbox_template = Template([("data-selection-checkbox-template", "")])[
@@ -3390,6 +3430,10 @@ def StyledTable(
                 page_obj=page_obj if paginated else None,
                 actions=selection.get("actions", ()),
                 csrf_token=selection.get("csrf_token", ""),
+                #: One page may hold two selectable tables, and each names
+                #: its overflow panel: a repeated id would point both
+                #: triggers at whichever the browser resolved first.
+                id_seed=caption_key or caption,
             )
         )
     if footer_node is not None:

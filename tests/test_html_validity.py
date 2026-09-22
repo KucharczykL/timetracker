@@ -210,9 +210,18 @@ class HtmlValidityTest(TestCase):
         )
 
     def test_ids_are_unique_and_describedby_targets_resolve_once(self) -> None:
-        """Informative purchase and sort-name tooltips keep valid IDREFs."""
+        """Informative purchase and sort-name tooltips keep valid IDREFs.
+
+        Game detail stands here for the pages holding two selectable tables at
+        once: each line names its own overflow panel, and one seed for both
+        would point either trigger at whichever the browser resolved first.
+        """
         failures: list[str] = []
-        for url in (reverse("games:list_games"), reverse("games:list_purchases")):
+        for url in (
+            reverse("games:list_games"),
+            reverse("games:list_purchases"),
+            self.long_game.get_absolute_url(),
+        ):
             response = self.client.get(url, follow=True)
             self.assertEqual(response.status_code, 200)
             parser = _InteractiveNestingParser()

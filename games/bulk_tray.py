@@ -13,7 +13,8 @@ def tray_actions(
     Declaration order is priority order: the line lays the acts out in the
     order stated here and moves the rightmost into its overflow first, so a
     view states the act reached for most often first and the destructive act
-    last.
+    last. The order is the one a person reads and the one the narrowest
+    window keeps, which is why no view sorts these by anything else.
 
     A name no act declares is a defect, not a quiet omission: the view
     stated it.
