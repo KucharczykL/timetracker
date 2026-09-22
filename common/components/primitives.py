@@ -2310,6 +2310,14 @@ def drop_columns(
     set use this one parameter. `Column.hideable` is not read here: the view
     reads it first, because a page can exclude a column that a person cannot.
     """
+    for row in rows:
+        if len(row) != len(columns):
+            raise ValueError(
+                f"drop_columns has a row of {len(row)} cells against "
+                f"{len(columns)} columns: one index set cannot narrow both, "
+                f"and each cell would render under the wrong header. "
+                f"Row {row!r}."
+            )
     dropped = {index for index, column in enumerate(columns) if column.key in hidden}
     kept_columns = [
         column for index, column in enumerate(columns) if index not in dropped
@@ -2368,6 +2376,8 @@ class TableData(TypedDict):
     selection: NotRequired[SelectionDeclaration]
     # The column control, in the header row's last cell.
     column_picker: NotRequired[Node]
+    # Whether the rows carry a row menu. A table rendering no row states it.
+    menu_slot: NotRequired[bool]
 
 
 def make_row(
@@ -3266,6 +3276,7 @@ def StyledTable(
     caption_key: str = "",
     selection: SelectionDeclaration | None = None,
     column_picker: Node | None = None,
+    menu_slot: bool | None = None,
 ) -> Node:
     """Styled, paginated table — the opinionated wrapper over the generic
     ``Table`` primitive (shadow, rounded, zebra rows, responsive column-hiding,
@@ -3298,6 +3309,14 @@ def StyledTable(
 
     ``selection`` makes the table selectable: every row must then carry a
     ``key``, and the footer gains the selection line.
+
+    ``column_picker`` is the control that chooses the columns. It lands in the
+    header row's last cell: the trailing menu slot, else the last column's own
+    header.
+
+    ``menu_slot`` states whether the rows carry a row menu. A table that
+    renders no row cannot be read for one, and the picker would then fall into
+    a column that drops.
     """
     if data_table and not caption:
         raise ValueError(
@@ -3305,8 +3324,10 @@ def StyledTable(
             "region, and an empty name leaves the region unlabelled."
         )
     #: The slot is the table's, never a row's: a short row would shift every
-    #: column after it out from under its header.
-    menu_slot = any("menu" in row for row in (rows or []))
+    #: column after it out from under its header. A table that renders no row
+    #: has none to read, so a table whose rows carry a menu states the slot.
+    if menu_slot is None:
+        menu_slot = any("menu" in row for row in (rows or []))
     #: Counted with the columns: the slot takes a rendered position too, and
     #: a thirteenth is past the safelisted family that hides one.
     rendered = len(columns or []) + (1 if menu_slot else 0)
@@ -3598,4 +3619,5 @@ def paginated_table_content(
         caption=data["caption"],
         selection=data.get("selection"),
         column_picker=data.get("column_picker"),
+        menu_slot=data.get("menu_slot"),
     )

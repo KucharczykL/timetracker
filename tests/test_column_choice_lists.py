@@ -141,6 +141,16 @@ def test_the_choice_is_one_persons(logged_in, owned_user, django_user_model, mod
 
 
 @pytest.mark.parametrize("mode", MODES)
+def test_an_empty_list_keeps_the_picker_out_of_a_column_that_drops(logged_in, mode):
+    """A list rendering no row cannot be read for a menu slot, and the picker
+    would fall into the last column, which the element drops for width."""
+    cells = _headers(_body(logged_in, mode))
+    last = cells[-1]
+
+    assert "data-row-menu" in last or "Actions" in last
+
+
+@pytest.mark.parametrize("mode", MODES)
 def test_the_picker_posts_to_this_mode_and_carries_its_origin(logged_in, mode):
     body = _body(logged_in, mode)
     route = reverse("games:state_list_columns", args=[mode])

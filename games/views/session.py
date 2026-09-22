@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from functools import partial
 from typing import Any, cast
 from uuid import UUID
@@ -19,6 +19,7 @@ from common.components import (
     BrowserTimeZoneInput,
     Cell,
     Column,
+    ColumnKey,
     Duration,
     FormFields,
     Fragment,
@@ -138,6 +139,7 @@ def session_row_data(
     *,
     origin: OriginUrl | None,
     run_name: str | None,
+    hidden: Collection[ColumnKey],
 ) -> TableRowData:
     """The one row builder of the session list.
 
@@ -155,6 +157,7 @@ def session_row_data(
             presentation,
             durations,
             run_name=run_name,
+            hidden=hidden,
         ),
     )
 
@@ -165,18 +168,20 @@ def _row_summary(
     durations: DurationPresentation,
     *,
     run_name: str | None,
+    hidden: Collection[ColumnKey],
 ) -> str:
     """The second line, below md, where the columns went.
 
-    The run is named only while the column is declared:
-    below md the column has dropped and the name cell
-    states no label, so nothing else names the run.
+    It states a fact only while the person shows its column. Below md every
+    column but the first has dropped, so this line is the one place a hidden
+    column could come back.
     """
+    device = session.device.name if session.device is not None else None
     return row_summary(
         run_name,
-        session_time_range(session, presentation),
-        durations.format(session.effective_duration),
-        session.device.name if session.device is not None else None,
+        None if "date" in hidden else session_time_range(session, presentation),
+        None if "duration" in hidden else durations.format(session.effective_duration),
+        None if "device" in hidden else device,
     )
 
 
@@ -251,6 +256,8 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     data: TableData = {
         "caption": "Sessions",
         "columns": columns,
+        #: Every row carries its acts in the slot, rendered or not.
+        "menu_slot": True,
         "sort_terms": sort.terms,
         "rows": [
             session_row_data(
@@ -261,6 +268,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
                 durations,
                 origin=origin,
                 run_name=run_names[session.pk] if named else None,
+                hidden=hidden,
             )
             for session, cells in zip(page_sessions, row_cells, strict=True)
         ],

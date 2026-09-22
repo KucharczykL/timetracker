@@ -123,13 +123,17 @@ def playthrough_tabledata(
     return {
         "caption": "Playthroughs",
         "columns": kept_columns,
+        #: Every row carries its acts in the slot, rendered or not.
+        "menu_slot": True,
         "sort_terms": sort_terms,
         "rows": [
             make_row(
                 *cells,
                 key=str(run.pk),
                 menu=_row_menu(run, origin, csrf_token),
-                summary=_summary(run, presentation, clock, with_game=with_game),
+                summary=_summary(
+                    run, presentation, clock, with_game=with_game, hidden=hidden
+                ),
             )
             for run, cells in zip(runs, kept_rows, strict=True)
         ],
@@ -142,35 +146,46 @@ def _summary(
     clock: ActivityClock,
     *,
     with_game: bool,
+    hidden: Collection[ColumnKey],
 ) -> str:
     """The second line, below md, where the columns went.
 
-    The game is named only where its column is declared:
-    the list drops it with the rest, and on Game detail
+    It states a fact only while the person shows its column. On Game detail
     every row names the same game already.
     """
     return row_summary(
         run.player_game.game.name if with_game else None,
-        *_endpoint_parts(run, presentation),
-        _activity_part(run, clock),
+        *_endpoint_parts(run, presentation, hidden),
+        None if "activity" in hidden else _activity_part(run, clock),
     )
 
 
 def _endpoint_parts(
-    run: Playthrough, presentation: DateTimePresentation
+    run: Playthrough,
+    presentation: DateTimePresentation,
+    hidden: Collection[ColumnKey],
 ) -> list[str | None]:
     """One span, or one labelled part per endpoint.
 
     Two values joined as a range read as one range, which
     is wrong where either is itself a range or unknown.
+    A span states both endpoints, so one hidden endpoint
+    leaves the other to state itself.
     """
     start, completion = _stated_values(run)
-    span = _span(start, completion, presentation)
-    if span is not None:
-        return [span]
+    with_start = "started" not in hidden
+    with_completion = "completed" not in hidden
+    if with_start and with_completion:
+        span = _span(start, completion, presentation)
+        if span is not None:
+            return [span]
     return [
-        _labelled_endpoint("Started", start, presentation),
-        _labelled_endpoint("Completed", completion, presentation),
+        _labelled_endpoint("Started", start, presentation) if with_start else None,
+        (
+            _labelled_endpoint("Completed", completion, presentation)
+            if with_completion
+            else None
+        ),
     ]
 
 

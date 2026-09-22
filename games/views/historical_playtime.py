@@ -208,6 +208,8 @@ def historical_playtime_tabledata(
     return {
         "caption": caption,
         "columns": kept_columns,
+        #: Every row carries its acts in the slot, rendered or not.
+        "menu_slot": True,
         "sort_terms": sort_terms,
         "rows": [
             make_row(
@@ -221,6 +223,7 @@ def historical_playtime_tabledata(
                     presentation,
                     durations,
                     with_when="name" not in hidden,
+                    hidden=hidden,
                 ),
             )
             for record, cells in zip(records, kept_rows, strict=True)
@@ -235,24 +238,27 @@ def _record_summary(
     durations: DurationPresentation,
     *,
     with_when: bool,
+    hidden: Collection[ColumnKey],
 ) -> str:
     """The second line, below md, where the columns went.
 
-    The identity cell decides: the list leads with the
-    game and states the day below it, Game detail leads
-    with the day and spends the line on the rest.
+    The identity cell decides what it leads with: the list leads with the game
+    and states the day below it, Game detail leads with the day and spends the
+    line on the rest. Either way it states a fact only while the person shows
+    its column.
     """
-    device = record.device.name if record.device else None
+    device = None if "device" in hidden or not record.device else record.device.name
+    duration = None if "duration" in hidden else durations.format(record.duration)
     if with_when:
         return row_summary(
-            _when_part(record, presentation),
-            durations.format(record.duration),
+            None if "when" in hidden else _when_part(record, presentation),
+            duration,
             device,
         )
     return row_summary(
-        durations.format(record.duration),
-        record.get_provenance_display(),
-        _runs_part(record, labels),
+        duration,
+        None if "provenance" in hidden else record.get_provenance_display(),
+        None if "playthroughs" in hidden else _runs_part(record, labels),
         device,
     )
 

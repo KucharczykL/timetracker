@@ -186,6 +186,31 @@ def test_the_summary_names_the_run_the_time_and_the_duration(
     assert summary.count(",") >= 2
 
 
+def test_the_summary_states_no_column_the_person_hid(
+    logged_in, owned_user, owned_library, game
+):
+    """Below md every column but the first has dropped, so this line is the
+    one place a hidden column could come back."""
+    from games.models import Device
+
+    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    timed_row(
+        tracked_run(owned_library, game),
+        STARTED_AT,
+        STARTED_AT + timedelta(hours=1),
+        device=device,
+    )
+    state_shown_columns(
+        owned_user, "sessions", ["name", "playthrough"], SESSION_COLUMNS
+    )
+
+    summary = _summaries(
+        logged_in.get(reverse("games:list_sessions")).content.decode()
+    )[0]
+
+    assert summary == "Playthrough 1"
+
+
 def test_the_summary_omits_a_device_the_session_does_not_name(
     logged_in, owned_library, game
 ):

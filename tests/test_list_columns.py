@@ -111,3 +111,36 @@ def test_two_people_state_their_own(owned_user, other_user):
         {"device", "note", "created"}
     )
     assert hidden_columns(other_user, "sessions", COLUMNS) == frozenset()
+
+
+@pytest.mark.parametrize(
+    "foreign", [["name"], "name", 3, {"device": "false"}, {"device": 1}]
+)
+def test_a_foreign_row_reads_the_declared_defaults(
+    owned_user, foreign, capture_games_logger
+):
+    """The control that repairs the row is on the page that would not render."""
+    ListColumnChoice.objects.create(user=owned_user, mode="sessions", shown=foreign)
+
+    with capture_games_logger() as caplog:
+        hidden = hidden_columns(owned_user, "sessions", COLUMNS)
+
+    assert hidden == frozenset({"created"})
+    assert "states no map" in caplog.text
+
+
+def test_a_true_value_shows_a_column_that_starts_hidden(owned_user):
+    ListColumnChoice.objects.create(
+        user=owned_user, mode="sessions", shown={"created": True}
+    )
+
+    assert hidden_columns(owned_user, "sessions", COLUMNS) == frozenset()
+
+
+def test_a_key_no_column_claims_hides_nothing(owned_user):
+    """JSON keys are text, so a number reads back as a key nothing claims."""
+    ListColumnChoice.objects.create(
+        user=owned_user, mode="sessions", shown={"3": True, "gone": False}
+    )
+
+    assert hidden_columns(owned_user, "sessions", COLUMNS) == frozenset({"created"})

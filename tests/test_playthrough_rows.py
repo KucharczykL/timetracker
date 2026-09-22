@@ -381,6 +381,32 @@ def test_game_detail_states_no_game_part(owned_library, run, presentation):
     assert "Outer Wilds" not in summary
 
 
+def test_the_summary_states_no_endpoint_the_person_hid(
+    owned_library, run, presentation
+):
+    """A span states both endpoints, so one hidden endpoint leaves the other
+    to state itself."""
+    _state_days(
+        run,
+        TemporalValue.from_day(date(2026, 1, 1)),
+        TemporalValue.from_day(date(2026, 1, 3)),
+    )
+
+    summary = summary_of(owned_library, run, presentation, hidden=("completed",))
+
+    assert "2026-01-03" not in summary
+    assert "2026-01-01" in summary
+
+
+def test_the_summary_states_no_condition_the_person_hid(
+    owned_library, run, presentation
+):
+    summary = summary_of(owned_library, run, presentation, hidden=("activity",))
+
+    assert "Never played" not in summary
+    assert "Playing" not in summary
+
+
 def test_two_known_days_read_as_one_range(owned_library, run, presentation):
     _state_days(
         run,

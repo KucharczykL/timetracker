@@ -1,5 +1,6 @@
 """Read and write the column choice of a person."""
 
+import logging
 from collections.abc import Collection, Sequence
 from typing import NamedTuple, cast
 
@@ -9,6 +10,8 @@ from django.http import HttpRequest
 from common.components import Column, ColumnKey, ColumnPicker, CsrfInput, Node
 from common.returns import action_url
 from games.models import FilterPreset, ListColumnChoice
+
+logger = logging.getLogger(__name__)
 
 LIST_MODES = frozenset(mode for mode, _ in FilterPreset.MODE_CHOICES)
 
@@ -20,13 +23,32 @@ def _known(mode: str) -> str:
 
 
 def _stated(user: User, mode: str) -> dict[ColumnKey, bool]:
-    """The statement of this person, by key."""
+    """The statement of this person, by key.
+
+    A foreign value is logged and read as no statement. To raise here would
+    take the list down over a display attribute, and the control that repairs
+    the row is on the page that would not render.
+    """
     stored = (
         ListColumnChoice.objects.filter(user=user, mode=_known(mode))
         .values_list("shown", flat=True)
         .first()
     )
-    return stored or {}
+    if not stored:
+        return {}
+    if not isinstance(stored, dict) or not all(
+        isinstance(key, str) and isinstance(value, bool)
+        for key, value in stored.items()
+    ):
+        logger.error(
+            "[list_columns]: the column choice of user %s for %r is %r, "
+            "which states no map of key to shown; the defaults apply.",
+            user.pk,
+            mode,
+            stored,
+        )
+        return {}
+    return stored
 
 
 def hidden_columns(

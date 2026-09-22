@@ -1,5 +1,7 @@
 """The helper that takes a hidden column and its cells out together."""
 
+import pytest
+
 from common.components import Column, drop_columns
 
 COLUMNS = [
@@ -65,3 +67,11 @@ def test_the_columns_it_answers_are_not_the_ones_it_was_given():
     columns.append(Column("Note", key="note"))
 
     assert len(COLUMNS) == 4
+
+
+def test_a_row_that_states_the_wrong_number_of_cells_is_refused():
+    """A ragged row renders each cell under the wrong header, silently."""
+    short = [["Katamari", "2004", "Playing"]]
+
+    with pytest.raises(ValueError, match="cells against"):
+        drop_columns(COLUMNS, short, {"year"})
