@@ -48,6 +48,8 @@ from games.commands.playthrough import (
     RemovePlaythrough,
     RestorePlaythrough,
     StartPlaythrough,
+    VoidPlaythroughCompletion,
+    VoidPlaythroughStart,
 )
 from games.commands.session_reclassification import (
     ReclassifySessionAsHistoricalPlaytime,
@@ -217,6 +219,28 @@ def build_stream(user, library) -> list[DispatchedCommand]:
             playthrough_id=second_run.pk, when=None, note="Some time later"
         ),
         "complete-second-run-undated",
+    )
+    #: Both endpoints taken back, then stated again: a void
+    #: leaves the run where a first statement is allowed.
+    run(
+        VoidPlaythroughStart(playthrough_id=second_run.pk),
+        "void-start-second-run",
+    )
+    run(
+        VoidPlaythroughCompletion(playthrough_id=second_run.pk),
+        "void-completion-second-run",
+    )
+    run(
+        StartPlaythrough(
+            playthrough_id=second_run.pk, when=None, note="Before I kept dates"
+        ),
+        "restate-start-second-run",
+    )
+    run(
+        CompletePlaythrough(
+            playthrough_id=second_run.pk, when=None, note="Some time later"
+        ),
+        "restate-completion-second-run",
     )
     #: A name alone, then a note alone: one fact each.
     run(
@@ -456,7 +480,7 @@ def test_the_stream_carries_every_registered_event_type(owned_user, owned_librar
 
 
 def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_library):
-    """A real stream, short of twenty-seven types."""
+    """A real stream, short of twenty-nine types."""
     game = Game.objects.create(library=owned_library, name="Celeste")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -472,11 +496,11 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
         "library.playergame.created",
         "library.playthrough.created",
     }
-    assert len(missing) == 27
+    assert len(missing) == 29
 
 
 def build_neighbour(user, library) -> None:
-    """A shorter stream every leg leaves alone.
+    """A shorter stream every step leaves alone.
 
     Each dispatch is asserted, because a build that quietly wrote
     nothing would turn every neighbour comparison into two empty lists
@@ -551,7 +575,7 @@ def rows_of(library) -> ProjectionSnapshot:
     `.values()` rather than a column list, so a column added later is
     in the comparison the day it lands. Refuses an empty table, because
     every caller compares two snapshots and two empty ones agree
-    whatever the leg between them did.
+    whatever the step between them did.
     """
     tracked: ProjectionRows = list(
         PlayerGame.objects.filter(library=library).order_by("pk").values()
@@ -717,7 +741,7 @@ def test_the_stream_leaves_a_removed_row_in_each_table(owned_user, owned_library
 
 
 def test_the_gate_replays_every_reachable_playthrough_kind(owned_user, owned_library):
-    """A new kind fails here until a leg states it."""
+    """A new kind fails here until a step states it."""
     build_stream(owned_user, owned_library)
 
     stated = set(

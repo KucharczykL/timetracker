@@ -1,6 +1,15 @@
 """The acts a selection line offers, built for one page."""
 
-from common.components import ButtonColor, SelectionAction
+import json
+import uuid
+
+from common.components import (
+    SELECTION_STATEMENT_FIELD,
+    ButtonColor,
+    Input,
+    SelectionAction,
+)
+from common.components.core import Node
 from common.returns import OriginUrl, action_url
 from games.bulk_actions import BULK_ACTIONS, BulkActionName
 
@@ -38,3 +47,16 @@ def tray_actions(
             )
         )
     return offered
+
+
+def one_row_statement(row_id: uuid.UUID) -> Node:
+    """The runner's statement, naming one row.
+
+    A menu item hands its row to a tray act through this, so the act
+    grows no per-row route.
+    """
+    return Input(
+        type="hidden",
+        name=SELECTION_STATEMENT_FIELD,
+        value=json.dumps({"mode": "some", "keys": [str(row_id)]}),
+    )

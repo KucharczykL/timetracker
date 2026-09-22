@@ -16,13 +16,10 @@ from games.models import Game, Playthrough
 from games.writes.answers import CommandFailed, WriteAnswer
 from games.writes.playthrough import (
     RunDraft,
-    complete_run,
     record_run,
     remove_run,
     restate_run,
-    start_run,
 )
-from timetracker.temporal import TemporalValue
 
 
 def record_run_for_request(
@@ -57,40 +54,6 @@ def restate_run_for_request(
     try:
         restate_run(
             cast("User", request.user), run, draft, correlation_id=correlation_id
-        )
-    except CommandFailed as failure:
-        messages.error(request, failure.message)
-        return WriteAnswer(failure)
-    return WriteAnswer(None)
-
-
-def start_run_for_request(
-    request: HttpRequest,
-    run: Playthrough,
-    when: TemporalValue | None,
-    *,
-    correlation_id: uuid.UUID,
-) -> WriteAnswer:
-    """State the run's start; refusal on failure."""
-    try:
-        start_run(cast("User", request.user), run, when, correlation_id=correlation_id)
-    except CommandFailed as failure:
-        messages.error(request, failure.message)
-        return WriteAnswer(failure)
-    return WriteAnswer(None)
-
-
-def complete_run_for_request(
-    request: HttpRequest,
-    run: Playthrough,
-    when: TemporalValue | None,
-    *,
-    correlation_id: uuid.UUID,
-) -> WriteAnswer:
-    """State the run's completion; refusal on failure."""
-    try:
-        complete_run(
-            cast("User", request.user), run, when, correlation_id=correlation_id
         )
     except CommandFailed as failure:
         messages.error(request, failure.message)

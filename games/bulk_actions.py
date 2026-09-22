@@ -316,6 +316,7 @@ BULK_ACTIONS: Mapping[BulkActionName, BulkAction[Any]] = MappingProxyType(_TABLE
 from games import (  # noqa: F401
     bulk_finish,
     bulk_move,
+    bulk_playthrough_acts,
     bulk_reclassification,
     bulk_removal,
 )

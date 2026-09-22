@@ -208,7 +208,21 @@ docs/           — Additional documentation
   correction states — and neither moves marker, so replay keeps instant act was
   recorded; `DescribePlaythrough` states `name`, `note`, or both, `None` for fact
   it does not state, and every stated value stripped in `__post_init__`, ahead of
-  fingerprint. Its `removed_at` is projector's, so absent from
+  fingerprint. #1256 adds two more, the only commands that unstate an
+  endpoint: `VoidPlaythroughStart`/`VoidPlaythroughCompletion` retract the
+  record, writing day, note and marker back to what a run holds before any
+  act, `Unchanged` where endpoint is unstated, ahead of both marks. No screen
+  states one; batch Undo of `playthrough.start`/`playthrough.complete`
+  (`games/bulk_playthrough_acts.py`) is only caller, and it voids only where
+  batch's own event is still latest of that endpoint's family — statement,
+  correction and void are one family — then puts back status batch changed,
+  read from its own `playergame.status_changed`. Endpoint and status it
+  implies are one writer, `games/writes/playthrough_endpoints.py`: Played
+  where nothing stronger stands, Completed every time, stated on appended and
+  on replayed outcome alike, keyed from row's key. Row's ⋯ items post one-row
+  statement to those acts (`one_row_statement` in `games/bulk_tray.py`); no
+  per-row route, because act with side effect is never one press. Its
+  `removed_at` is projector's, so absent from
   `REMOVABLE_MODELS`: #1011 states it with `RemovePlaythrough`, clears it with
   `RestorePlaythrough`. Both refuse lifecycle act under removed `PlayerGame`, and
   both answer `Unchanged` for state row already holds, ahead of that refusal.

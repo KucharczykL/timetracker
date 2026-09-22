@@ -11,7 +11,6 @@ from games.views import (
     library,
     platform,
     playthrough,
-    playthrough_acts,
     preset,
     purchase,
     session,
@@ -104,16 +103,6 @@ urlpatterns = [
         "playthrough/<uuidv7:playthrough_id>/restore",
         playthrough.restore_playthrough,
         name="restore_playthrough",
-    ),
-    path(
-        "playthrough/<uuidv7:playthrough_id>/start",
-        playthrough_acts.start_playthrough,
-        name="start_playthrough",
-    ),
-    path(
-        "playthrough/<uuidv7:playthrough_id>/complete",
-        playthrough_acts.complete_playthrough,
-        name="complete_playthrough",
     ),
     path(
         "preset/<uuidv7:preset_id>/restore",

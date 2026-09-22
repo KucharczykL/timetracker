@@ -69,6 +69,7 @@ from common.temporal_presentation import (
     present_temporal_value,
 )
 from common.utils import paginate, safe_division
+from games.bulk_playthrough_acts import COMPLETE_RUNS, START_RUNS
 from games.bulk_removal import REMOVE_RECORD, REMOVE_RUN
 from games.bulk_tray import tray_actions
 from games.catalog_form import CatalogGraphForm
@@ -1165,7 +1166,12 @@ def _playthroughs_section(
             #: posts is always the keys a person marked.
             filter="",
             csrf_token=csrf_token,
-            actions=tray_actions(REMOVE_RUN.name, origin=origin),
+            actions=tray_actions(
+                START_RUNS.name,
+                COMPLETE_RUNS.name,
+                REMOVE_RUN.name,
+                origin=origin,
+            ),
         ),
     )
     section = _game_section(

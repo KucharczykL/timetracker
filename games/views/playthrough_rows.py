@@ -22,6 +22,9 @@ from common.date_time_presentation import DateTimePresentation
 from common.returns import OriginUrl, action_url
 from common.sorting import SortKey, SortTerm
 from common.temporal_presentation import TemporalText, present_temporal_value
+from games.bulk_actions import BulkAction
+from games.bulk_playthrough_acts import COMPLETE_RUNS, START_RUNS
+from games.bulk_tray import one_row_statement
 from games.models import Playthrough
 from games.reads.playthrough_activity import (
     ActivityClock,
@@ -318,34 +321,34 @@ def _act_items(
     """The one act this run can still accept, if any.
 
     A run stating a completion is offered no start, even where it states
-    none: starting today would end the run before it began, and the
-    command refuses that. Zero or one, so the caller spreads it.
+    none. The gate is narrower than the command, which takes a start at
+    today on a run completed today, on a day nobody wrote down, or on a
+    day a qualifier widens: a finished run is not one a person is
+    starting now. Zero or one, so the caller spreads it.
     """
     if stated_completion(run) is not None:
         return []
     if stated_start(run) is None:
-        return [_act(run, "start", origin, csrf_token)]
-    return [_act(run, "complete", origin, csrf_token)]
-
-
-#: How each act's item reads, and its glyph, by route.
-#:
-#: Only the completion names its status: it states one every time. A
-#: start states Played only where nothing stronger stands already.
-_ACT_WORDS: Mapping[str, tuple[str, str]] = {
-    "start": ("play", "Started today"),
-    "complete": ("finish", "Completed today, also marks the game Completed"),
-}
+        return [_act(run, START_RUNS, "play", origin, csrf_token)]
+    return [_act(run, COMPLETE_RUNS, "finish", origin, csrf_token)]
 
 
 def _act(
-    run: Playthrough, act: str, origin: OriginUrl | None, csrf_token: CsrfToken
+    run: Playthrough,
+    action: BulkAction[Playthrough],
+    icon: str,
+    origin: OriginUrl | None,
+    csrf_token: CsrfToken,
 ) -> Node:
-    """One press, posting to that act's route."""
-    icon, words = _ACT_WORDS[act]
+    """One row, handed to a tray act.
+
+    The act's own label, so it reads the same in both places; its
+    confirmation states the status the act also records.
+    """
     return DropdownPostItem(
-        action_url(f"games:{act}_playthrough", run.pk, origin=origin),
-        words,
+        action_url("games:run_bulk_action", action.name, origin=origin),
+        action.label,
         csrf_token=csrf_token,
+        hidden_fields=one_row_statement(run.pk),
         icon=icon,
     )

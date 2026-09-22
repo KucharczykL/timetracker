@@ -12,25 +12,23 @@ from collections.abc import Sequence
 from django.contrib.auth.models import User
 from django.db.models import Model, QuerySet
 
-from common.components.primitives import Cell
 from common.temporal_presentation import TemporalText
 from games.bulk_actions import (
     ActTitle,
     BulkAction,
     ChoiceValue,
     FilterJson,
-    Presentations,
     PreviewColumn,
     Resolution,
     RowOutcome,
 )
 from games.bulk_narrowing import narrowed
+from games.bulk_runs import RUN_PREVIEW, run_resolution, run_scope
 from games.bulk_sessions import lost, session_resolution, session_scope
 from games.events.dispatch import RowNotHeld
 from games.events.idempotency import IdempotencyKey
 from games.filters import (
     parse_historical_playtime_filter,
-    parse_playthrough_filter,
 )
 from games.models import (
     HistoricalPlaytime,
@@ -39,13 +37,6 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.historical_playtime_records import library_records
-from games.reads.playthrough_endpoints import (
-    StatedEndpoint,
-    stated_completion,
-    stated_start,
-)
-from games.reads.playthrough_numbering import display_name, numbered_for
-from games.reads.playthrough_runs import library_runs, runs_with_condition
 from games.writes.answers import SubjectNoun, answered
 from games.writes.historical_playtime import (
     remove_historical_playtime,
@@ -57,7 +48,6 @@ from games.writes.playthrough import remove_run, restore_run
 #: What `answered` calls a record; the confirmation says "record".
 RECORD_SUBJECT: SubjectNoun = "historical playtime"
 
-RUN_GONE = "One of the playthroughs is no longer available, so it was left as it is."
 RECORD_GONE = "One of the records is no longer available, so it was left as it is."
 
 
@@ -142,49 +132,6 @@ SESSION_PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
 # ── Runs ─────────────────────────────────────────────────────────────────────
 
 
-def run_scope(library: UserLibrary, filter_json: FilterJson) -> QuerySet[Playthrough]:
-    """The list's own read, which carries the condition aliases.
-
-    `runs_with_condition`, not `library_runs`: `activity` is a quick
-    facet of this mode, and a statement carrying it would not compile
-    over a queryset no clock reached.
-    """
-    return narrowed(
-        runs_with_condition(library), library, filter_json, parse_playthrough_filter
-    )
-
-
-def run_resolution(
-    library: UserLibrary, keys: Sequence[uuid.UUID]
-) -> Resolution[Playthrough]:
-    """Keys to rows, each carrying the number a screen calls it.
-
-    The number is counted across every live ordinary run of the games
-    the keys name, never across the selection: a partition narrowed to
-    what a person ticked would call each of them the first. So the
-    rows the act offers are read off the numbered queryset, and the
-    list's own scope says which of them are offered.
-    """
-    wanted = list(dict.fromkeys(keys))
-    offered = library_runs(library).filter(pk__in=wanted)
-    live = set(offered.values_list("pk", flat=True))
-    games = set(offered.values_list("player_game_id", flat=True))
-    rows = tuple(
-        sorted(
-            (
-                run
-                for run in numbered_for(library, games).select_related(
-                    "player_game__game"
-                )
-                if run.pk in live
-            ),
-            #: A stable sort keeps the numbering order inside a game.
-            key=lambda run: run.player_game.game.name,
-        )
-    )
-    return Resolution(rows, tuple(lost(wanted, live, RUN_GONE)))
-
-
 def remove_one_run(
     actor: User,
     run: Playthrough,
@@ -221,29 +168,6 @@ def restore_one_run(
             source_metadata=_source(REMOVE_RUN.name),
         )
     )
-
-
-def _start_cell(row: Playthrough, presentations: Presentations) -> Cell:
-    return _endpoint_cell(stated_start(row), presentations)
-
-
-def _completion_cell(row: Playthrough, presentations: Presentations) -> Cell:
-    return _endpoint_cell(stated_completion(row), presentations)
-
-
-def _endpoint_cell(stated: StatedEndpoint | None, presentations: Presentations) -> Cell:
-    """No act reads a dash, as the list writes it."""
-    if stated is None:
-        return "-"
-    return TemporalText(stated.when, presentations.dates)
-
-
-RUN_PREVIEW: tuple[PreviewColumn[Playthrough], ...] = (
-    PreviewColumn("Playthrough", lambda row, _: display_name(row)),
-    PreviewColumn("Game", lambda row, _: row.player_game.game.name),
-    PreviewColumn("Started", _start_cell),
-    PreviewColumn("Completed", _completion_cell),
-)
 
 
 # ── Records ──────────────────────────────────────────────────────────────────

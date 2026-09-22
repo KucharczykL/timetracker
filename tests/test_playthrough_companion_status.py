@@ -5,9 +5,11 @@ from datetime import date
 from zoneinfo import ZoneInfo
 
 import pytest
+from bulk_posts import act_url, press
 from django.urls import reverse
 from django.utils import timezone as django_timezone
 
+from games.bulk_playthrough_acts import COMPLETE_RUNS, START_RUNS
 from games.commands.calendar import SetCalendarDayZone
 from games.events.dispatch import dispatch
 from games.events.rebuild import RebuildMode, rebuild_projections
@@ -229,7 +231,7 @@ def test_adding_a_run_with_no_end_day_finishes_nothing(logged_in, owned_library,
 def test_starting_a_run_states_today_and_played(logged_in, owned_library, tracked):
     run = Playthrough.objects.get(player_game__game=tracked)
 
-    logged_in.post(reverse("games:start_playthrough", args=[run.pk]))
+    press(logged_in, START_RUNS, run)
 
     run.refresh_from_db()
     assert run.start_recorded_at is not None
@@ -240,9 +242,9 @@ def test_starting_a_run_states_today_and_played(logged_in, owned_library, tracke
 
 def test_completing_a_run_states_today_and_completed(logged_in, owned_library, tracked):
     run = Playthrough.objects.get(player_game__game=tracked)
-    logged_in.post(reverse("games:start_playthrough", args=[run.pk]))
+    press(logged_in, START_RUNS, run)
 
-    logged_in.post(reverse("games:complete_playthrough", args=[run.pk]))
+    press(logged_in, COMPLETE_RUNS, run)
 
     run.refresh_from_db()
     assert run.completion_recorded_at is not None
@@ -256,7 +258,7 @@ def test_a_start_on_a_completed_game_leaves_the_status(
     state(owned_user, tracked, PlayerGameStatus.COMPLETED)
     run = Playthrough.objects.get(player_game__game=tracked)
 
-    logged_in.post(reverse("games:start_playthrough", args=[run.pk]))
+    press(logged_in, START_RUNS, run)
 
     run.refresh_from_db()
     assert run.start_recorded_at is not None
@@ -276,7 +278,7 @@ def test_a_stale_start_press_leaves_the_stated_day(logged_in, owned_library, tra
         {"game": str(tracked.pk), "started": "2024-01-05", "ended": "", "note": ""},
     )
 
-    logged_in.post(reverse("games:start_playthrough", args=[run.pk]))
+    press(logged_in, START_RUNS, run)
 
     run.refresh_from_db()
     assert run.started_lower == date(2024, 1, 5)
@@ -298,7 +300,7 @@ def test_a_stale_completion_press_leaves_the_stated_day(
         },
     )
 
-    logged_in.post(reverse("games:complete_playthrough", args=[run.pk]))
+    press(logged_in, COMPLETE_RUNS, run)
 
     run.refresh_from_db()
     assert run.completed_upper == date(2024, 2, 6)
@@ -314,18 +316,15 @@ def test_a_refused_press_tells_the_person_why(logged_in, tracked):
         {"game": str(tracked.pk), "started": "2024-01-05", "ended": "", "note": ""},
     )
 
-    response = logged_in.post(
-        reverse("games:start_playthrough", args=[run.pk]), follow=True
-    )
+    response = press(logged_in, START_RUNS, run, follow=True)
 
     assert "This run already has a start." in response.content.decode()
 
 
 def test_neither_act_answers_a_get(logged_in, tracked):
-    run = Playthrough.objects.get(player_game__game=tracked)
-
-    for name in ("games:start_playthrough", "games:complete_playthrough"):
-        assert logged_in.get(reverse(name, args=[run.pk])).status_code == 405
+    """One route, and it acts on a POST alone."""
+    for action in (START_RUNS, COMPLETE_RUNS):
+        assert logged_in.get(act_url(action)).status_code == 405
 
 
 def test_an_act_keeps_the_run_note(logged_in, owned_user, owned_library, tracked):
@@ -336,7 +335,7 @@ def test_an_act_keeps_the_run_note(logged_in, owned_user, owned_library, tracked
         {"game": str(tracked.pk), "started": "", "ended": "", "note": "12h"},
     )
 
-    logged_in.post(reverse("games:start_playthrough", args=[run.pk]))
+    press(logged_in, START_RUNS, run)
 
     run.refresh_from_db()
     assert run.note == "12h"
@@ -391,7 +390,7 @@ def test_a_start_states_the_librarys_day_not_the_processs(
     )
     run = Playthrough.objects.get(player_game__game=tracked)
 
-    logged_in.post(reverse("games:start_playthrough", args=[run.pk]))
+    press(logged_in, START_RUNS, run)
 
     run.refresh_from_db()
     assert run.started_lower == calendar_today(owned_library)
