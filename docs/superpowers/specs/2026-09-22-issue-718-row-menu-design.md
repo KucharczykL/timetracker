@@ -134,6 +134,23 @@ wrapper of its own, as every shipped act has: the protocol states `choice`,
 `idempotency_key` and `correlation_id` as keywords and answers a
 `RowOutcome`.
 
+## The confirmation speaks the count it has
+
+The runner's confirmation already states its count everywhere but the heading:
+the message pluralises, the tally counts, and the refusal picks its pronoun.
+The title alone is a fixed string, so a batch of one is headed "Remove these
+sessions".
+
+`BulkAction.title` is therefore an `ActTitle`, a pair of clauses the act states
+and the page picks between by the count it resolved. A title is a whole clause,
+not a noun with a suffix, so it is a pair rather than a call to `pluralize`; and
+an empty half is refused where the act is declared, which is what keeps the next
+act from stating one again.
+
+The row's menu is what makes this worth stating. A single-row act was the odd
+case while a selection was the only way to reach the tray; it is the common case
+once every row offers the same acts.
+
 ## One cardinality is none
 
 Every act the tray offers is an act on many rows, and no declaration says

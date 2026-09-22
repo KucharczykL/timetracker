@@ -75,7 +75,7 @@ pytest + pytest-xdist, vitest, Playwright.
 - The quick bar today renders the literal `"⋯"` character. Swapping it changes
   the overflow host's measured width, which `quick-filter-bar.ts` measures once
   at connect — no logic change, but it is a visible change to a shipped page
-  and belongs in the `render_pages` attribution of Task 10.
+  and belongs in the `render_pages` attribution of Task 11.
 
 - [ ] **Step 1: Write the failing tests.** In `tests/test_components.py`, three
   cases: the rendered trigger contains the vertical icon's path data and not the
@@ -216,7 +216,7 @@ pytest + pytest-xdist, vitest, Playwright.
   `tests/test_column_priority_contract.py`, build a table through `StyledTable`
   with rows stating a menu and assert its `data-row-menu` header's priority
   outranks every other `data-priority` in that table. Build it; do not render a
-  page — no page has a menu until Task 7, `header_policies` would read the
+  page — no page has a menu until Task 8, `header_policies` would read the
   sr-only text as the label, and `assert_actions_dominates` exempts the table,
   so a page-level case at this task asserts nothing. Leave
   `assert_actions_dominates` alone: six tables still declare a labelled
@@ -261,7 +261,74 @@ pytest + pytest-xdist, vitest, Playwright.
 
 ---
 
-### Task 5: `end_session` and `correct_session` grow the runner's shape
+### Task 5: The confirmation speaks the count it has
+
+**Files:**
+- Modify: `games/bulk_actions.py` (the `title` field and a named pair beside
+  it), `games/bulk_removal.py` (three declarations), `games/bulk_move.py`,
+  `games/bulk_reclassification.py`, `games/views/bulk.py:329`, `:409`, `:623`,
+  `:648`, `:654`, `games/views/bulk_pages.py:137`, `:182`
+- Test: `tests/test_bulk_pages.py`, `tests/test_bulk_runner.py`,
+  `tests/test_bulk_actions.py`
+
+**Interfaces:**
+- Produces: `ActTitle` — a frozen slotted dataclass of `one: str` and
+  `many: str`, with `for_count(self, count: int) -> str` answering `one` at
+  exactly 1 and `many` otherwise, and a `__post_init__` refusing either half
+  empty.
+- Produces: `BulkAction.title: ActTitle`, replacing the bare `str`.
+
+**Why this task exists:** the runner's confirmation already speaks its count
+everywhere but the heading. The message pluralises
+(`games/views/bulk_pages.py:139`), the tally counts, and `_as_it_is`
+(`games/views/bulk.py:199`) picks its pronoun. Only `title` is a fixed string,
+so a batch of one is headed "Remove these sessions" — which the shipped tray
+has said since a person could select a single row, and which the row menu is
+about to make the common case rather than the odd one.
+
+**Gotchas:**
+- Seven readers, five of which hold a count: `_confirm_page`
+  (`games/views/bulk.py:329`), `_defect` (`:623`), `_answer` (`:648`, `:654`),
+  `ConfirmBatch` (`games/views/bulk_pages.py:137`) and `ProgressBatch`
+  (`:182`). `_act_refused` (`games/views/bulk.py:409`) holds a sentence and no
+  count: it answers `many`, because an act refused before it resolved states
+  nothing about how many rows it would have touched.
+- `for_count` is a method on the pair, not a `pluralize` call at each site.
+  Django's `pluralize` suffixes a noun; a title is a whole clause, and "Move
+  this session to a playthrough" is not "Move these sessions to a playthrough"
+  plus an `s`.
+- `__post_init__` refusing an empty half is what stops this rotting: the next
+  act states both or fails at import, the way `BulkAction` already refuses a
+  name twice declared.
+- The four existing titles become pairs. `Remove`: "Remove this session" /
+  "Remove these sessions", and likewise for runs and records with the subject
+  each declaration already names. `Move`: "Move this session to a playthrough"
+  / "Move these sessions to a playthrough". `Reclassify`: "Record this session
+  as historical playtime" / "Record these sessions as historical playtime".
+- The confirmation's `message` stays as it is. It states the count in figures
+  where the title states it in words, and the two together read as a heading
+  and a question, not as a repetition.
+- Do **not** touch the preview table for a single row. A one-line table is
+  plain, and replacing it with a definition list at count 1 is a second layout
+  to keep in step for no stated gain.
+
+- [ ] **Step 1: Write the failing tests.** Four: `ActTitle.for_count(1)`
+  answers `one` and `for_count(0)` and `for_count(2)` answer `many`;
+  constructing one with either half empty raises; a confirmation resolved to
+  one row renders the singular heading and one resolved to three renders the
+  plural; `_act_refused`'s page renders the plural with no count in hand.
+- [ ] **Step 2: Run them and watch them fail.**
+  `make test-fast ARGS="tests/test_bulk_pages.py -k title -x"`
+- [ ] **Step 3: Add `ActTitle`, change the field, restate the four
+  declarations, and pass a count at each of the six readers that has one.**
+- [ ] **Step 4: Run them; they pass.**
+- [ ] **Step 5: `make check-fast`.** `mypy` names any declaration still handing
+  a bare string.
+- [ ] **Step 6:** format, lint-fix, commit.
+
+---
+
+### Task 6: `end_session` and `correct_session` grow the runner's shape
 
 **Files:**
 - Modify: `games/writes/playersession.py:166` (`correct_session`), `:227`
@@ -279,7 +346,7 @@ pytest + pytest-xdist, vitest, Playwright.
   the answer.
 - This is **not** enough to satisfy `RunRow`. That protocol names `choice`,
   `idempotency_key` and `correlation_id` as keywords and answers `RowOutcome`,
-  and knows nothing of `source_metadata`. Task 6 writes the wrapper, as every
+  and knows nothing of `source_metadata`. Task 7 writes the wrapper, as every
   shipped act has one (`games/bulk_removal.py:125`).
 
 - [ ] **Step 1: Write the failing test** — each function answers a
@@ -295,7 +362,7 @@ pytest + pytest-xdist, vitest, Playwright.
 
 ---
 
-### Task 6: `FINISH_SESSION`
+### Task 7: `FINISH_SESSION`
 
 **Files:**
 - Create: `games/bulk_finish.py`
@@ -303,7 +370,8 @@ pytest + pytest-xdist, vitest, Playwright.
 - Test: `tests/test_bulk_finish.py`, `tests/test_bulk_runner.py`
 
 **Interfaces:**
-- Consumes: Task 5's `end_session` / `correct_session`.
+- Consumes: Task 6's `end_session` / `correct_session`, and Task 5's
+  `ActTitle`, which `FINISH_SESSION` states rather than a bare string.
 - Produces: `FINISH_SESSION: BulkAction[PlayerSession]`, name
   `"session.finish"`, label `"Finish"`, colour `"green"`,
   `inverse_aggregate="playersession"`, fallback `"games:list_sessions"`.
@@ -428,7 +496,7 @@ pytest + pytest-xdist, vitest, Playwright.
 
 ---
 
-### Task 7: The session table
+### Task 8: The session table
 
 **Files:**
 - Modify: `games/views/session.py:104-148` (`session_row_data`), `:215-258`
@@ -441,7 +509,7 @@ pytest + pytest-xdist, vitest, Playwright.
 
 **Interfaces:**
 - Consumes: `RowActionMenu` (Task 2), the menu slot (Task 3),
-  `FINISH_SESSION` (Task 6).
+  `FINISH_SESSION` (Task 7).
 - Produces: `session_row_menu(session: PlayerSession, csrf_token: str, origin:
   OriginUrl | None) -> Node`.
 
@@ -463,7 +531,7 @@ pytest + pytest-xdist, vitest, Playwright.
   gated act is **absent**, never disabled.
 - Finish posts, so it is `DropdownPostItem` and needs `hidden_fields` for
   `BrowserTimeZoneInput()` — add that keyword to `DropdownPostItem` in
-  `common/components/custom_elements.py:949`. The two playthrough acts in Task 8
+  `common/components/custom_elements.py:949`. The two playthrough acts in Task 9
   post without one.
 - **Move has no per-session route, and must not grow one.** `games/urls.py`
   states none, today's `SessionActions` offers none, and the only move is
@@ -480,7 +548,7 @@ pytest + pytest-xdist, vitest, Playwright.
 - Each row's menu states its own id and its own label:
   `id=f"session-menu-{session.pk}"`, and a label naming the row rather than the
   table, so a reader does not hear "Session actions" once per row. Use the same
-  text the row's identity cell states. The run and record menus in Task 8
+  text the row's identity cell states. The run and record menus in Task 9
   follow the same two rules with their own prefixes.
 - Tray order is priority order, destructive last:
   `tray_actions(MOVE.name, FINISH_SESSION.name, RECLASSIFY.name,
@@ -525,7 +593,7 @@ pytest + pytest-xdist, vitest, Playwright.
 
 ---
 
-### Task 8: The record and run tables
+### Task 9: The record and run tables
 
 **Files:**
 - Modify: `games/views/historical_playtime.py:94-115` (`record_actions` becomes
@@ -582,7 +650,7 @@ pytest + pytest-xdist, vitest, Playwright.
 
 ---
 
-### Task 9: The tray's priority-plus overflow
+### Task 10: The tray's priority-plus overflow
 
 **Files:**
 - Modify: `common/components/primitives.py:2917-2967`
@@ -605,7 +673,7 @@ pytest + pytest-xdist, vitest, Playwright.
   this differs from `quick-filter-bar.ts`, which is always visible.
 - Declaration order is priority order. Document it on `tray_actions` and on
   `SelectionDeclaration["actions"]`; the views already state Remove last after
-  Task 7.
+  Task 8.
 - The acts are rendered disabled until the first count. Disabled is opacity
   only, so widths measured while disabled are the widths used.
 - The overflow trigger is horizontal, and its panel is a menu of submits, not a
@@ -645,7 +713,7 @@ pytest + pytest-xdist, vitest, Playwright.
   real act. Two cases: at a narrow viewport the overflow trigger appears and an
   act inside it still posts the statement; and the existing
   `get_by_role("button", name="Remove", exact=True)` at `:51` still resolves —
-  Remove is declared last after Task 7, so it is the **first** act to overflow,
+  Remove is declared last after Task 8, so it is the **first** act to overflow,
   and at Playwright's default 1280×720 (nothing in `e2e/conftest.py` or
   `e2e/helpers.py` overrides it) four acts probably fit. Check, do not assume:
   an overflowed submit sits in a `hidden` panel, so the press **times out**
@@ -656,7 +724,7 @@ pytest + pytest-xdist, vitest, Playwright.
 
 ---
 
-### Task 10: The gates
+### Task 11: The gates
 
 **Files:**
 - Modify: `docs/superpowers/specs/2026-09-22-issue-718-row-menu-design.md`
