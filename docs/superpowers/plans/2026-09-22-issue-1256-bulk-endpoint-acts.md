@@ -295,7 +295,7 @@ One file, on the Playthrough list: select two runs, press Completed today, read 
 
 ---
 
-## Follow-up issues to file
+## Follow-up issues, filed
 
-- **An Undo for the row's own press.** The row's two acts now go through the runner, so they already have one; what has none is every other single-row act reached by its own route (Reset, the game's status dropdown). File it as "which single-row acts still cannot be undone".
-- **The gate and the command disagree.** `endpoints_certainly_reversed` accepts a start at today on a run completed today, so the menu's gate is narrower than the rule. Decide which is right — the gate, or a command that refuses a start not before its completion.
+- #1263 — the menu gate and `endpoints_certainly_reversed` disagree about a start on a completed run. Task 6 rewrites the comment; the disagreement itself is that issue's.
+- #1264 — which single-row acts still cannot be undone, now that these two reach the runner.

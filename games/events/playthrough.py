@@ -165,6 +165,46 @@ def playthrough_completion_corrected(
 
 
 @with_config(STRICT_SCHEMA)
+class PlaythroughStartVoidedPayload(TypedDict):
+    """The library takes back the record of a start."""
+
+
+@with_config(STRICT_SCHEMA)
+class PlaythroughCompletionVoidedPayload(TypedDict):
+    """The library takes back the record of a completion."""
+
+
+PLAYTHROUGH_START_VOIDED = EventSpec(
+    "library.playthrough.start_voided",
+    aggregate_type="playthrough",
+    payload=PlaythroughStartVoidedPayload,
+)
+
+PLAYTHROUGH_COMPLETION_VOIDED = EventSpec(
+    "library.playthrough.completion_voided",
+    aggregate_type="playthrough",
+    payload=PlaythroughCompletionVoidedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_START_VOIDED)
+DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_COMPLETION_VOIDED)
+
+
+def playthrough_start_voided(playthrough_id: uuid.UUID) -> NewEvent:
+    """The run states no start again.
+
+    No effective_time: the act retracts a record and
+    describes no day of its own.
+    """
+    return PLAYTHROUGH_START_VOIDED.new(aggregate_id=playthrough_id, payload={})
+
+
+def playthrough_completion_voided(playthrough_id: uuid.UUID) -> NewEvent:
+    """The run states no completion again."""
+    return PLAYTHROUGH_COMPLETION_VOIDED.new(aggregate_id=playthrough_id, payload={})
+
+
+@with_config(STRICT_SCHEMA)
 class PlaythroughNamePayload(TypedDict):
     """What the library calls this run. Blank reads as its number."""
 

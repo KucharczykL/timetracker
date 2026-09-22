@@ -7,12 +7,14 @@ from games.events.envelope import RecordedEvent
 from games.events.playthrough import (
     PLAYTHROUGH_COMPLETED,
     PLAYTHROUGH_COMPLETION_CORRECTED,
+    PLAYTHROUGH_COMPLETION_VOIDED,
     PLAYTHROUGH_CREATED,
     PLAYTHROUGH_NAME_CHANGED,
     PLAYTHROUGH_NOTE_CHANGED,
     PLAYTHROUGH_REMOVED,
     PLAYTHROUGH_RESTORED,
     PLAYTHROUGH_START_CORRECTED,
+    PLAYTHROUGH_START_VOIDED,
     PLAYTHROUGH_STARTED,
 )
 from games.events.projection import HandlerMap, Projector, ProjectorFamily
@@ -75,6 +77,26 @@ class Playthroughs(Projector):
             completion_note=event.payload["note"],
         )
 
+    def _start_voided(self, event: RecordedEvent) -> None:
+        #: Every column of the endpoint, marker included:
+        #: a null marker is the act that did not occur.
+        self.amend(
+            Playthrough,
+            event,
+            started=None,
+            start_recorded_at=None,
+            start_note="",
+        )
+
+    def _completion_voided(self, event: RecordedEvent) -> None:
+        self.amend(
+            Playthrough,
+            event,
+            completed=None,
+            completion_recorded_at=None,
+            completion_note="",
+        )
+
     def _removed(self, event: RecordedEvent) -> None:
         #: The event's instant, so a replay agrees.
         self.amend(Playthrough, event, removed_at=event.recorded_at)
@@ -97,6 +119,8 @@ class Playthroughs(Projector):
         PLAYTHROUGH_NOTE_CHANGED: _note_changed,
         PLAYTHROUGH_START_CORRECTED: _start_corrected,
         PLAYTHROUGH_COMPLETION_CORRECTED: _completion_corrected,
+        PLAYTHROUGH_START_VOIDED: _start_voided,
+        PLAYTHROUGH_COMPLETION_VOIDED: _completion_voided,
         PLAYTHROUGH_REMOVED: _removed,
         PLAYTHROUGH_RESTORED: _restored,
     }

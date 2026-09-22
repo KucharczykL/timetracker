@@ -48,6 +48,8 @@ from games.commands.playthrough import (
     RemovePlaythrough,
     RestorePlaythrough,
     StartPlaythrough,
+    VoidPlaythroughCompletion,
+    VoidPlaythroughStart,
 )
 from games.commands.session_reclassification import (
     ReclassifySessionAsHistoricalPlaytime,
@@ -217,6 +219,28 @@ def build_stream(user, library) -> list[DispatchedCommand]:
             playthrough_id=second_run.pk, when=None, note="Some time later"
         ),
         "complete-second-run-undated",
+    )
+    #: Both endpoints taken back, then stated again: a void
+    #: leaves the run where a first statement is allowed.
+    run(
+        VoidPlaythroughStart(playthrough_id=second_run.pk),
+        "void-start-second-run",
+    )
+    run(
+        VoidPlaythroughCompletion(playthrough_id=second_run.pk),
+        "void-completion-second-run",
+    )
+    run(
+        StartPlaythrough(
+            playthrough_id=second_run.pk, when=None, note="Before I kept dates"
+        ),
+        "restate-start-second-run",
+    )
+    run(
+        CompletePlaythrough(
+            playthrough_id=second_run.pk, when=None, note="Some time later"
+        ),
+        "restate-completion-second-run",
     )
     #: A name alone, then a note alone: one fact each.
     run(
@@ -456,7 +480,7 @@ def test_the_stream_carries_every_registered_event_type(owned_user, owned_librar
 
 
 def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_library):
-    """A real stream, short of twenty-seven types."""
+    """A real stream, short of twenty-nine types."""
     game = Game.objects.create(library=owned_library, name="Celeste")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -472,7 +496,7 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
         "library.playergame.created",
         "library.playthrough.created",
     }
-    assert len(missing) == 27
+    assert len(missing) == 29
 
 
 def build_neighbour(user, library) -> None:

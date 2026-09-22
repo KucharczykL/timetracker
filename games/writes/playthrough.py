@@ -22,6 +22,8 @@ from games.commands.playthrough import (
     RemovePlaythrough,
     RestorePlaythrough,
     StartPlaythrough,
+    VoidPlaythroughCompletion,
+    VoidPlaythroughStart,
     endpoints_certainly_reversed,
 )
 from games.events.append import SourceMetadata
@@ -377,6 +379,46 @@ def _record_once(
         correlation_id=correlation_id,
     )
     return created_aggregate_id(result)
+
+
+def void_start(
+    actor: User,
+    run: Playthrough,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
+    """Take back the record that the run began."""
+    with answered("playthrough"):
+        return _dispatch(
+            VoidPlaythroughStart(playthrough_id=run.pk),
+            actor=actor,
+            library=actor.library,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
+        )
+
+
+def void_completion(
+    actor: User,
+    run: Playthrough,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
+    """Take back the record that the run finished."""
+    with answered("playthrough"):
+        return _dispatch(
+            VoidPlaythroughCompletion(playthrough_id=run.pk),
+            actor=actor,
+            library=actor.library,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
+        )
 
 
 def remove_run(

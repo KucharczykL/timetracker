@@ -96,6 +96,8 @@ class CommandName(CommandVocabulary):
     PLAYTHROUGH_DESCRIBE = "library.playthrough.describe"
     PLAYTHROUGH_CORRECT_START = "library.playthrough.correct_start"
     PLAYTHROUGH_CORRECT_COMPLETION = "library.playthrough.correct_completion"
+    PLAYTHROUGH_VOID_START = "library.playthrough.void_start"
+    PLAYTHROUGH_VOID_COMPLETION = "library.playthrough.void_completion"
     PLAYTHROUGH_REMOVE = "library.playthrough.remove"
     PLAYTHROUGH_RESTORE = "library.playthrough.restore"
     PLAYERSESSION_CREATE = "library.playersession.create"

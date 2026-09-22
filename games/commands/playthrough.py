@@ -20,12 +20,14 @@ from games.events.dispatch import (
 from games.events.playthrough import (
     playthrough_completed,
     playthrough_completion_corrected,
+    playthrough_completion_voided,
     playthrough_created,
     playthrough_name_changed,
     playthrough_note_changed,
     playthrough_removed,
     playthrough_restored,
     playthrough_start_corrected,
+    playthrough_start_voided,
     playthrough_started,
 )
 from games.events.vocabulary import NewEvent, Unchanged
@@ -532,6 +534,66 @@ class CorrectPlaythroughCompletion(Command):
         return [
             playthrough_completion_corrected(run.pk, when=self.when, note=self.note)
         ]
+
+
+@dataclass(frozen=True, slots=True)
+class VoidPlaythroughStart(Command):
+    """Take back the record that a run began.
+
+    A retraction, not a correction: the day and the note go
+    with the record of the act, and the run states no start
+    again. `CorrectPlaythroughStart` refuses a run stating
+    none, so nothing else writes the endpoint back.
+    """
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_VOID_START
+    #: A UUID, because Command fingerprints its fields.
+    playthrough_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        run = library_playthrough(context, self.playthrough_id)
+        #: The no-op before either mark, as in RemovePlaythrough:
+        #: a repeat still succeeds once the game is gone.
+        if stated_start(run) is None:
+            return Unchanged(
+                f"Playthrough {self.playthrough_id} states no start to take back."
+            )
+        _refuse_under_a_removed_game(run)
+        _refuse_a_removed_run(run)
+        return [playthrough_start_voided(run.pk)]
+
+
+@dataclass(frozen=True, slots=True)
+class VoidPlaythroughCompletion(Command):
+    """Take back the record that a run finished."""
+
+    command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_VOID_COMPLETION
+    #: A UUID, because Command fingerprints its fields.
+    playthrough_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        run = library_playthrough(context, self.playthrough_id)
+        if stated_completion(run) is None:
+            return Unchanged(
+                f"Playthrough {self.playthrough_id} states no completion to take back."
+            )
+        _refuse_under_a_removed_game(run)
+        _refuse_a_removed_run(run)
+        return [playthrough_completion_voided(run.pk)]
+
+
+def _refuse_a_removed_run(run: Playthrough) -> None:
+    """Refuse an act on a run out of the lists."""
+    #: Under dispatch's lock the mark cannot move.
+    if run.removed_at is not None:
+        raise CommandRejected(
+            f"This library removed playthrough {run.pk}, so it states no "
+            "further facts about it.",
+            sentence=(
+                "That playthrough was removed. Put it back before changing "
+                "what it records."
+            ),
+        )
 
 
 def _refuse_under_a_removed_game(run: Playthrough) -> None:
