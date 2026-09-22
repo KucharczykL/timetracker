@@ -47,13 +47,6 @@ type ChoiceValue = str  # a target run's key, or a batch's id
 type FieldName = str
 
 
-class Cardinality(StrEnum):
-    """How many rows an act offers."""
-
-    ONE = "one"
-    MANY = "many"
-
-
 class RowOutcome(StrEnum):
     """What a dispatch did to one row."""
 
@@ -236,7 +229,6 @@ class BulkAction[RowT: Model]:
     confirm_label: str
     #: The noun `answered()` speaks of.
     subject: SubjectNoun
-    cardinality: Cardinality
     #: What the act does to a row, in the button's colours.
     color: ButtonColor
     #: Which half a mixed batch's Undo reads.

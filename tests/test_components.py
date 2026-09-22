@@ -3564,13 +3564,11 @@ class SelectionLineTest(SimpleTestCase):
                     {
                         "label": "Remove",
                         "url": "/bulk/session.remove/?origin=%2Fsession%2Flist",
-                        "cardinality": "many",
                         "color": "red",
                     },
                     {
                         "label": "Record as historical playtime",
                         "url": "/bulk/session.reclassify/?origin=%2Fsession%2Flist",
-                        "cardinality": "many",
                         "color": "red",
                     },
                 ],
@@ -3596,7 +3594,6 @@ class SelectionLineTest(SimpleTestCase):
                     {
                         "label": "Remove",
                         "url": "/bulk/session.remove/",
-                        "cardinality": "many",
                         "color": "red",
                     }
                 ],
@@ -3618,13 +3615,11 @@ class SelectionLineTest(SimpleTestCase):
                     {
                         "label": "Remove",
                         "url": "/bulk/session.remove/",
-                        "cardinality": "many",
                         "color": "red",
                     },
                     {
                         "label": "Record as historical playtime",
                         "url": "/bulk/session.reclassify/",
-                        "cardinality": "many",
                         "color": "red",
                     },
                 ],
@@ -3643,14 +3638,16 @@ class SelectionLineTest(SimpleTestCase):
                         {
                             "label": "Remove",
                             "url": "/bulk/session.remove/",
-                            "cardinality": "many",
                             "color": "red",
                         }
                     ],
                 }
             )
 
-    def test_a_one_row_act_is_not_offered_yet(self):
+    def test_every_act_a_view_states_is_offered(self):
+        """The line filtered a one-row act out while the row had no menu of its
+        own. Every act is now an act on many rows, so the line offers whatever
+        the view stated and nothing decides otherwise."""
         html = self._paginated(
             selection={
                 "filter": "",
@@ -3659,13 +3656,18 @@ class SelectionLineTest(SimpleTestCase):
                     {
                         "label": "Edit",
                         "url": "/bulk/session.edit/",
-                        "cardinality": "one",
+                        "color": "gray",
+                    },
+                    {
+                        "label": "Remove",
+                        "url": "/bulk/session.remove/",
                         "color": "red",
-                    }
+                    },
                 ],
             }
         )
-        self.assertNotIn("data-selection-actions-form", html)
+        self.assertIn("data-selection-actions-form", html)
+        self.assertLess(html.index(">Edit<"), html.index(">Remove<"))
 
     def test_selection_line_announces_in_its_own_region(self):
         html = self._paginated(selection={"filter": ""})

@@ -11,7 +11,6 @@ from games.bulk_actions import (
     _TABLE,
     BULK_ACTIONS,
     BulkAction,
-    Cardinality,
     Presentations,
     PreviewColumn,
     RowOutcome,
@@ -99,7 +98,6 @@ def a_bucket_session(library, actor, game):
 
 
 def test_the_table_holds_the_reclassification(reclassify):
-    assert reclassify.cardinality is Cardinality.MANY
     assert reclassify.inverse_aggregate == "playersession"
 
 
@@ -111,7 +109,6 @@ def test_an_aggregate_no_event_declares_is_refused(reclassify):
             title=reclassify.title,
             confirm_label=reclassify.confirm_label,
             subject=reclassify.subject,
-            cardinality=Cardinality.MANY,
             color=reclassify.color,
             inverse_aggregate="playersesion",
             fallback=reclassify.fallback,
@@ -131,7 +128,6 @@ def test_a_name_the_table_already_holds_is_refused(reclassify):
             title=reclassify.title,
             confirm_label=reclassify.confirm_label,
             subject=reclassify.subject,
-            cardinality=Cardinality.MANY,
             color=reclassify.color,
             inverse_aggregate="playersession",
             fallback=reclassify.fallback,
@@ -157,7 +153,6 @@ def test_making_the_value_declares_it(reclassify):
             title=reclassify.title,
             confirm_label=reclassify.confirm_label,
             subject=reclassify.subject,
-            cardinality=Cardinality.ONE,
             color=reclassify.color,
             inverse_aggregate="playersession",
             fallback=reclassify.fallback,
@@ -412,7 +407,6 @@ def _spare(reclassify: BulkAction, name: str, preview) -> BulkAction:
         title=reclassify.title,
         confirm_label=reclassify.confirm_label,
         subject="record",
-        cardinality=Cardinality.MANY,
         color=reclassify.color,
         inverse_aggregate="playersession",
         fallback=reclassify.fallback,
@@ -506,7 +500,6 @@ def test_an_act_whose_run_takes_a_fact_by_position_is_refused(reclassify):
             title=reclassify.title,
             confirm_label=reclassify.confirm_label,
             subject=reclassify.subject,
-            cardinality=Cardinality.MANY,
             color=reclassify.color,
             inverse_aggregate=reclassify.inverse_aggregate,
             fallback=reclassify.fallback,
@@ -519,7 +512,7 @@ def test_an_act_whose_run_takes_a_fact_by_position_is_refused(reclassify):
 
 
 def test_an_inverse_that_takes_no_batch_is_refused(reclassify):
-    """The undo leg states the batch it undoes."""
+    """The inverse states the batch it undoes."""
 
     def takes_no_batch(actor, row_id, *, idempotency_key, correlation_id):
         return RowOutcome.MOVED
@@ -531,7 +524,6 @@ def test_an_inverse_that_takes_no_batch_is_refused(reclassify):
             title=reclassify.title,
             confirm_label=reclassify.confirm_label,
             subject=reclassify.subject,
-            cardinality=Cardinality.MANY,
             color=reclassify.color,
             inverse_aggregate=reclassify.inverse_aggregate,
             fallback=reclassify.fallback,

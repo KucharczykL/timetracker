@@ -16,7 +16,6 @@ def test_an_act_is_offered_with_its_label_and_its_route():
 
     assert len(offered) == 1
     assert offered[0]["label"] == "Remove"
-    assert offered[0]["cardinality"] == "many"
     assert "/bulk/session.remove/" in offered[0]["url"]
 
 

@@ -550,7 +550,7 @@ def test_a_defect_ends_the_batch_and_leaves_the_done_rows_done(
 def test_a_row_the_library_does_not_hold_ends_the_batch(
     client_in, owned_library, game, monkeypatch
 ):
-    """The leg re-resolved these rows, so nothing inside can miss."""
+    """The chunk re-resolved these rows, so nothing inside can miss."""
     from django.http import Http404
 
     from games.writes.answers import DEFECT_STATUS
@@ -1084,7 +1084,7 @@ def test_the_batch_undo_needs_a_login(client, owned_library, game):
     assert response.status_code == 302
 
 
-# ── The choice a leg carries ─────────────────────────────────────────────────
+# ── The choice a chunk carries ───────────────────────────────────────────────
 
 
 class Asked(NamedTuple):
@@ -1130,7 +1130,6 @@ def _declare(name, reclassify_declaration, run, inverse, choice=None):
         title=reclassify_declaration.title,
         confirm_label=reclassify_declaration.confirm_label,
         subject=reclassify_declaration.subject,
-        cardinality=reclassify_declaration.cardinality,
         color=reclassify_declaration.color,
         inverse_aggregate=reclassify_declaration.inverse_aggregate,
         fallback=reclassify_declaration.fallback,

@@ -16,7 +16,6 @@ from common.components.primitives import Cell
 from common.temporal_presentation import TemporalText
 from games.bulk_actions import (
     BulkAction,
-    Cardinality,
     ChoiceValue,
     FilterJson,
     Presentations,
@@ -372,7 +371,6 @@ REMOVE_SESSION = BulkAction(
     title="Remove these sessions",
     confirm_label="Remove",
     subject="session",
-    cardinality=Cardinality.MANY,
     color="red",
     inverse_aggregate="playersession",
     fallback="games:list_sessions",
@@ -389,7 +387,6 @@ REMOVE_RUN = BulkAction(
     title="Remove these playthroughs",
     confirm_label="Remove",
     subject="playthrough",
-    cardinality=Cardinality.MANY,
     color="red",
     inverse_aggregate="playthrough",
     fallback="games:list_playthroughs",
@@ -408,7 +405,6 @@ REMOVE_RECORD = BulkAction(
     #: The word the lists use, and the one that counts: three
     #: "historical playtimes" is nobody's sentence.
     subject="record",
-    cardinality=Cardinality.MANY,
     color="red",
     inverse_aggregate="historicalplaytime",
     fallback="games:list_historical_playtime",

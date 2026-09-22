@@ -2294,10 +2294,6 @@ type SelectionScope = str  # the library and the table, e.g. "lib-1:Games"
 SELECTION_STATEMENT_FIELD = "selection"
 
 
-#: How many rows an act offers, in this layer's own words.
-type SelectionCardinality = Literal["one", "many"]
-
-
 class SelectionAction(TypedDict):
     """One act the line offers, as a view states it.
 
@@ -2307,7 +2303,6 @@ class SelectionAction(TypedDict):
 
     label: str
     url: str
-    cardinality: SelectionCardinality
     #: What the act does to a row, in the button's colours.
     color: ButtonColor
 
@@ -2316,7 +2311,8 @@ class SelectionDeclaration(TypedDict):
     """The declaration that makes a table selectable."""
 
     filter: FilterJson
-    #: The acts the line offers; none renders an empty slot.
+    #: The acts the line offers, in priority order — the rightmost overflows
+    #: first, so the destructive act is stated last. None renders an empty slot.
     actions: NotRequired[Sequence[SelectionAction]]
     #: One form posts every act, so one token serves them all.
     csrf_token: NotRequired[str]
@@ -3021,7 +3017,7 @@ def _selection_actions_slot(
     Every submit is rendered disabled, because nothing is selected
     yet; `<selection-actions>` clears that with the first count.
     """
-    offered = [action for action in actions if action["cardinality"] == "many"]
+    offered = list(actions)
     slot = Div([("data-selection-actions", "")], class_="flex gap-2")
     if not offered:
         return slot
