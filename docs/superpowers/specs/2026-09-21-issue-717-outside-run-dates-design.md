@@ -149,9 +149,24 @@ On the Library page: three cards with their links, a zero card absent, the
 empty state where the review counts zero, and the review link naming the same
 rows the review card counts.
 
-On a restored production dump: the count this rule answers and the count the
-wave review's narrower rule answers, both recorded here, and the review's
-figure corrected where it moved.
+Measured on the 2026-09-22 production dump, over 2,821 live sessions:
+
+| rule | sessions |
+|---|---|
+| this one, any endpoint the run states | 113 |
+| the wave review's, both endpoints stated | 113 |
+| of those, on a game's sole live ordinary run | 113 |
+| the imported-history bucket | 1 |
+
+The flagged rows name 29 runs, not the 39 the wave record wrote.
+
+The two rules answer one number here because of how the runs are dated. Of
+870 live ordinary runs, 207 state both endpoints, 540 state a start alone,
+none states a completion alone, and 123 state neither. Not one session falls
+outside a start-alone run, because #1038 dated such a run from the earliest
+day the library already held, so no session can precede it. The wider rule
+therefore costs nothing today and answers the runs a later completion-alone
+statement would create.
 
 Full `make check`.
 
