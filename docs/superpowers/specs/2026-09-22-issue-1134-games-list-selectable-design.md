@@ -52,10 +52,14 @@ so the batch's Undo also restores it.
 The restore helper does the per-row order: the stamp, then the dispatch.
 
 1. If the library owns the game, the helper first looks for a live game
-   that holds the same name, platform and year, in each shape of the
-   partial unique constraint. If it finds one, it refuses with 409 and a
-   sentence that names the newer game, and changes nothing. A database
-   refusal answers 500 and would end the whole Undo as a defect.
+   of the library that the two partial unique constraints would refuse:
+   the same name, platform and year, or, for a game with no platform, the
+   same name and year with no platform. One `Q` states both. If it finds
+   one, it refuses with 409 and a sentence that names the newer game, and
+   changes nothing. A database refusal answers 500 and would end the whole
+   Undo as a defect. The check is a forecast, not the rule: a game created
+   between the check and the update still meets the constraint, and the
+   `db.Error` backstop of `answered` answers that defect.
 2. It clears the stamp under `answered("game")`.
 3. It dispatches `RestorePlayerGame`. If that is refused after the stamp
    is clear, the sentence says that the game is back in the catalog but
