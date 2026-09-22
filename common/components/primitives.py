@@ -171,6 +171,9 @@ type ButtonVariant = Literal[
 type ButtonAlign = Literal["center", "start"]
 # Which way a trigger's three dots run.
 type EllipsisOrientation = Literal["vertical", "horizontal"]
+
+# What a trigger opens: a menu of items, or a dialog of moved controls.
+type PopupKind = Literal["menu", "dialog"]
 # A place in a joined row, never a radius: one tier rounds every control.
 # "full" is the button standing on its own, "start"/"end" the two outer ends
 # of a row, and "square" the absence of an end — a member with a neighbour on
@@ -2629,7 +2632,7 @@ def EllipsisTrigger(
     *,
     label: str,
     orientation: EllipsisOrientation = "vertical",
-    haspopup: str = "menu",
+    haspopup: PopupKind = "menu",
 ) -> ControlButton:
     """The bare three-dot trigger, shared by three surfaces.
 

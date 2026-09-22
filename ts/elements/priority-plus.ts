@@ -5,6 +5,17 @@
  * here prevents the ResizeObserver implementations from drifting on the
  * boundary where an item exactly fits.
  */
+/** One collapsible item, and the natural width it takes in its row.
+ *
+ * The width is read once, while every item still stands in the row: a width
+ * read under a `display:none` ancestor is 0, and a cached 0 spills every item
+ * for the life of the page.
+ */
+export interface OverflowItem {
+  element: HTMLElement;
+  width: number;
+}
+
 export function priorityPlusTotalWidth(widths: number[], gap: number): number {
   return widths.reduce((sum, width) => sum + width + gap, 0);
 }

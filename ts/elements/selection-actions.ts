@@ -7,6 +7,7 @@
 
 import { SelectionStatement } from "./selection-statement.js";
 import {
+  OverflowItem,
   priorityPlusFitCount,
   priorityPlusTotalWidth,
 } from "./priority-plus.js";
@@ -21,12 +22,6 @@ const ACTS_ROW = "[data-selection-acts-row]";
 const ACT = "[data-selection-act]";
 const OVERFLOW = "[data-selection-overflow]";
 const OVERFLOW_ITEMS = "[data-selection-overflow-items]";
-
-/** One act, and the width it takes in the line. */
-interface OverflowAct {
-  element: HTMLElement;
-  width: number;
-}
 
 interface StatementHost extends HTMLElement {
   statement(): SelectionStatement;
@@ -69,7 +64,7 @@ class SelectionActionsElement extends HTMLElement {
   private actsRow: HTMLElement | null = null;
   private overflowHost: HTMLElement | null = null;
   private overflowItems: HTMLElement | null = null;
-  private acts: OverflowAct[] = [];
+  private acts: OverflowItem[] = [];
   // Taken the first time the line is shown.
   //
   // Every width reads 0 under the `hidden` the table clears at the first
