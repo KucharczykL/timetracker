@@ -242,6 +242,16 @@ ICON_NODES: dict[str, Element] = {
             ],
         ],
     ],
+    'move': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'M5 9 2 12l3 3')]),
+        Path([('d', 'M9 5l3-3 3 3')]),
+        Path([('d', 'M15 19l-3 3-3-3')]),
+        Path([('d', 'M19 9l3 3-3 3')]),
+        Path([('d', 'M2 12h20')]),
+        Path([('d', 'M12 2v20')]),
+    ],
     'nintendo': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 24 24'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[

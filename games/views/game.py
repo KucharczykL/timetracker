@@ -557,7 +557,7 @@ def _played_row(game: Game, origin: OriginUrl | None, played: int) -> Node:
         items=[
             DropdownLinkItem(
                 action_url("games:add_playthrough_for_game", game.id, origin=origin),
-                "Add playthrough...",
+                "Add playthrough\u2026",
             ),
         ],
     )

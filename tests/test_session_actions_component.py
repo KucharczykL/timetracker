@@ -100,13 +100,15 @@ def test_a_corrected_row_offers_neither_finish_nor_reset(corrected_session):
 def test_a_written_row_offers_the_record_act_and_a_measured_one_does_not(
     written_session, open_session
 ):
+    #: Three dots: the form asks when the hours were played and where they
+    #: came from, where Remove and Reset only have you confirm.
     assert _items(_render(written_session)) == [
         "Edit",
         MOVE.label,
-        "Record as historical playtime",
+        "Record as historical playtime\u2026",
         "Remove",
     ]
-    assert "Record as historical playtime" not in _items(_render(open_session))
+    assert "Record as historical playtime\u2026" not in _items(_render(open_session))
 
 
 def test_finish_posts_to_its_own_route_carrying_the_browser_zone(open_session):
@@ -152,3 +154,19 @@ def test_the_menu_references_no_session_api(open_session):
     rendered = _render(open_session)
 
     assert "/api/session/" not in rendered
+
+
+def _icons(rendered: str) -> list[str]:
+    """Each item's glyph, by the path that draws it, in item order."""
+    return re.findall(
+        r'<(?:a|button)[^>]*role="menuitem".*?</(?:a|button)>', rendered, re.DOTALL
+    )
+
+
+def test_every_item_leads_with_the_glyph_its_button_had(open_session):
+    """The acts were icon buttons; the icon is how a reader finds them."""
+    items = _icons(_render(open_session))
+
+    assert len(items) == 5
+    for item in items:
+        assert "<svg" in item, item[:120]

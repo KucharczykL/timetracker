@@ -54,7 +54,7 @@ def test_a_written_down_session_becomes_a_record_and_comes_back(
 
     _open_row_menu(page, session.pk)
     page.get_by_role(
-        "menuitem", name="Record as historical playtime", exact=True
+        "menuitem", name="Record as historical playtime\u2026", exact=True
     ).click()
     page.get_by_role("button", name="Submit", exact=True).click()
 

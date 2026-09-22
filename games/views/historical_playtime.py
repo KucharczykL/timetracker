@@ -97,21 +97,22 @@ def record_row_menu(
 ) -> Node:
     """Edit and Remove, back to the origin.
 
-    The label names the row rather than the table: both surfaces state the
-    game, and Game detail states one game for every row, so the day it names
-    is what tells one trigger from the next.
+    The label names the day: Game detail repeats one game.
     """
     return RowActionMenu(
         [
             DropdownLinkItem(
                 action_url("games:edit_historical_playtime", record.pk, origin=origin),
                 "Edit",
+                icon="edit",
             ),
             DropdownLinkItem(
                 action_url(
                     "games:remove_historical_playtime", record.pk, origin=origin
                 ),
                 REMOVE_RECORD.label,
+                icon="delete",
+                danger=True,
             ),
         ],
         label=(

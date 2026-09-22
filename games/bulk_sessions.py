@@ -1,10 +1,8 @@
-"""The session rows every session act reads, and the sentence for a key gone.
+"""The rows every session act reads, and one sentence.
 
-Here rather than beside one act: two acts read the same scope, and an act
-importing another act's module closes a cycle. The act table imports each act
-at its foot, so an act reached first — a view importing `games.bulk_removal`,
-say — runs the table's foot before its own body, and the sibling that reads a
-name off it finds nothing defined.
+Here rather than beside one act: an act importing a sibling closes a
+cycle. The table imports each act at its foot, so an act reached first
+runs that foot before its own body, and the sibling finds nothing.
 """
 
 import uuid

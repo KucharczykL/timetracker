@@ -49,14 +49,9 @@ type FieldName = str
 
 @dataclass(frozen=True, slots=True)
 class ActTitle:
-    """The confirmation's heading, as the act states it for either count.
+    """The confirmation's heading, in either count.
 
-    A title is a whole clause, not a noun with a suffix: "Move this session to
-    a playthrough" is not the plural plus an `s`, so the act states both halves
-    rather than the page calling `pluralize` on one.
-
-    Either half empty is refused where the act is declared, which is what keeps
-    the next act from stating one and heading a single row in the plural again.
+    A whole clause, not a noun with a suffix.
     """
 
     one: str
@@ -70,8 +65,7 @@ class ActTitle:
             )
 
     def for_count(self, count: int) -> str:
-        """The half this many rows reads in. Every count but one is plural,
-        including none: "Remove these sessions" over an empty resolution."""
+        """The half this many rows reads in; none is plural."""
         return self.one if count == 1 else self.many
 
 
@@ -251,7 +245,7 @@ class BulkAction[RowT: Model]:
     name: BulkActionName
     #: The act in a person's words.
     label: str
-    #: The confirmation's heading, in both counts.
+    #: Its heading, in both counts.
     title: ActTitle
     #: Its submit.
     confirm_label: str

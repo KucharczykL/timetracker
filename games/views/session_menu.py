@@ -1,8 +1,7 @@
-"""What one session row offers, behind its own ellipsis trigger.
+"""What one session row offers, behind its trigger.
 
-Here rather than in `common/components/`: the items read the acts' own words
-out of `games.bulk_actions`, and a module under `common.components` importing
-that table closes a cycle through its foot imports.
+Not in `common/components/`: reading `games.bulk_actions` there
+closes a cycle through that table's foot imports.
 """
 
 import json
@@ -24,11 +23,9 @@ from games.models import PlayerSession, PlayerSessionTimingMode
 
 
 def _one_row(session: PlayerSession) -> Node:
-    """The runner's own statement, naming this row alone.
+    """The runner's statement, naming this row alone.
 
-    The act has no per-session route and grows none: the item hands one row to
-    the act the tray offers, so the words and the rules are the same in both
-    places.
+    Move has no route of its own and grows none.
     """
     return Input(
         type="hidden",
@@ -37,15 +34,16 @@ def _one_row(session: PlayerSession) -> Node:
     )
 
 
+#: Three dots: the act asks first, not opens a page.
+#: See docs/visual-conventions.md, "Row acts".
+_ASKS_FIRST = "\u2026"
+
+
 def session_row_menu(
     session: PlayerSession, csrf_token: str, origin: OriginUrl | None
 ) -> Node:
-    """Every act this session admits, gated as the buttons were gated.
-
-    A gated act is absent, never disabled: a disabled item promises an act the
-    row cannot accept.
-    """
-    #: Only a Timed row runs; Corrected states its end already.
+    """Every act this session admits, gated as before."""
+    #: Only a Timed row runs; Corrected states its end.
     running = (
         session.timing_mode == PlayerSessionTimingMode.TIMED
         and session.ended_at is None
@@ -58,34 +56,42 @@ def session_row_menu(
                 "Finish",
                 csrf_token=csrf_token,
                 hidden_fields=BrowserTimeZoneInput(),
+                icon="end",
             ),
             DropdownLinkItem(
                 action_url("games:reset_session", session.pk, origin=origin),
                 "Reset start to now",
+                icon="reset",
             ),
         ]
     items += [
         DropdownLinkItem(
-            action_url("games:edit_session", session.pk, origin=origin), "Edit"
+            action_url("games:edit_session", session.pk, origin=origin),
+            "Edit",
+            icon="edit",
         ),
         DropdownPostItem(
             action_url("games:run_bulk_action", MOVE.name, origin=origin),
             MOVE.label,
             csrf_token=csrf_token,
             hidden_fields=_one_row(session),
+            icon="move",
         ),
     ]
     if session.timing_mode == PlayerSessionTimingMode.DURATION_ONLY:
         items.append(
             DropdownLinkItem(
                 action_url("games:reclassify_session", session.pk, origin=origin),
-                RECLASSIFY.label,
+                f"{RECLASSIFY.label}{_ASKS_FIRST}",
+                icon="history",
             )
         )
     items.append(
         DropdownLinkItem(
             action_url("games:remove_session", session.pk, origin=origin),
             REMOVE_SESSION.label,
+            icon="delete",
+            danger=True,
         )
     )
     return RowActionMenu(

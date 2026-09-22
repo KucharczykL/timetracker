@@ -407,8 +407,7 @@ def _act_refused(
 ) -> HttpResponse:
     """An act turned down before it resolved anything.
 
-    The plural, because there is no count to speak: a refusal reached ahead of
-    the resolve states nothing about how many rows the act would have touched.
+    The plural: a refusal ahead of the resolve counts no rows.
     """
     return _refused_page(
         request, sentence, title=action.title.many, fallback=action.fallback

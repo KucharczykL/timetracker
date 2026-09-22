@@ -213,10 +213,11 @@ def test_the_builder_declares_no_actions_column(owned_library, run, presentation
 
 
 def test_every_run_offers_edit_and_remove(owned_library, run, presentation):
+    """The words sit in a span of their own: each item leads with a glyph."""
     actions = actions_of(owned_library, run, presentation)
 
-    assert ">Edit</a>" in actions
-    assert ">Remove</a>" in actions
+    assert ">Edit</span>" in actions
+    assert ">Remove</span>" in actions
 
 
 def test_a_run_with_no_start_offers_start(owned_library, run, presentation):

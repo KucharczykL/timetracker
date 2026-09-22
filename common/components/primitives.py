@@ -169,8 +169,7 @@ type ButtonVariant = Literal[
 # order, not class-attribute order, so `class_="justify-start"` on a button
 # whose baked class already says `justify-center` wins only by luck.
 type ButtonAlign = Literal["center", "start"]
-# Which way a trigger's three dots run. Vertical marks a row's own acts,
-# horizontal an overflow among controls standing in a line.
+# Which way a trigger's three dots run.
 type EllipsisOrientation = Literal["vertical", "horizontal"]
 # A place in a joined row, never a radius: one tier rounds every control.
 # "full" is the button standing on its own, "start"/"end" the two outer ends
@@ -2253,7 +2252,7 @@ class TableRowData(TypedDict):
     key: NotRequired[SelectionKey]
     # One line under the name, below md.
     summary: NotRequired[str]
-    # The row's own acts, in the trailing slot. Not a column: see `TableRow`.
+    # The row's acts, in the trailing slot. Not a column.
     menu: NotRequired[Node]
 
 
@@ -2311,8 +2310,7 @@ class SelectionDeclaration(TypedDict):
     """The declaration that makes a table selectable."""
 
     filter: FilterJson
-    #: The acts the line offers, in priority order — the rightmost overflows
-    #: first, so the destructive act is stated last. None renders an empty slot.
+    #: The acts offered, in priority order: the rightmost overflows first.
     actions: NotRequired[Sequence[SelectionAction]]
     #: One form posts every act, so one token serves them all.
     csrf_token: NotRequired[str]
@@ -2507,25 +2505,22 @@ def TableRow(
     return Tr(tr_attrs)[*cell_elements]
 
 
-#: What a reader hears on the trailing header, which shows nothing.
+#: What a reader hears on the trailing header.
 ROW_MENU_HEADER_LABEL = "Row actions"
 
-# The slot takes only what its trigger needs and never grows with the table,
-# so it states its own padding rather than a column cell's.
+# The slot never grows, so it states its own padding.
 _ROW_MENU_CELL_CLASS = "w-px px-2 py-2 whitespace-nowrap text-right"
 
 
 def _row_menu_header_cell(columns: Sequence[Column], *, data_table: bool) -> Node:
     """The trailing ``<th>`` over the row menus.
 
-    It carries no visible label and a name of its own, and a ``data-priority``
-    one above every declared column, so ``<responsive-table>`` drops it last
-    and a phone keeps the acts.
+    No visible label, a name of its own, and a ``data-priority`` one above
+    every declared column, so the element drops it last.
 
-    The name lives on a child span and never on the ``<th>``. The element
-    measures each header's rect to budget the table's widths; an absolutely
-    positioned 1px header would under-budget this cell by the whole trigger and
-    the wrapper would scroll at every viewport.
+    The name lives on a child span, never on the ``<th>``: the element
+    measures each header's rect to budget the widths, and a 1px header
+    would under-budget this cell by the whole trigger.
     """
     policy_attrs: list[HTMLAttribute] = [("data-row-menu", "")]
     if data_table:
@@ -2631,8 +2626,7 @@ def EllipsisTrigger(
     orientation: EllipsisOrientation = "vertical",
     haspopup: str = "menu",
 ) -> ControlButton:
-    """The bare three-dot trigger, shared by the quick bar's overflow, the
-    library's summary rows and a table row's menu.
+    """The bare three-dot trigger, shared by three surfaces.
 
     The glyph is decoration and says ``aria-hidden``: the button carries the
     name. ``haspopup`` is the caller's because the three surfaces open two
@@ -3017,9 +3011,7 @@ def _selection_actions_slot(
     Every submit is rendered disabled, because nothing is selected
     yet; `<selection-actions>` clears that with the first count.
 
-    Declaration order is priority order. The acts that do not fit are
-    moved into the trailing overflow, rightmost first, so the act a view
-    states last is the first to go behind the trigger.
+    Declaration order is priority order: the rightmost overflows first.
     """
     # Deferred: `custom_elements` reads this module at import.
     from common.components.custom_elements import (
@@ -3038,8 +3030,7 @@ def _selection_actions_slot(
             "every press is refused as a forgery, and the page looks right."
         )
     overflow_id = f"selection-overflow-{randomid(content=id_seed)}"
-    #: A panel of moved submits, not a menu of items: the nodes that travel
-    #: are the row's own buttons, as the quick bar's facets are.
+    #: Moved submits, not items: the row's own buttons travel.
     panel = Div(
         [("data-selection-overflow-items", "")],
         role="dialog",
@@ -3240,8 +3231,7 @@ def StyledTable(
     columns = columns or []
     rows = rows or []
     sort_terms = sort_terms or []
-    # The slot is the table's, never a row's: a short row would shift every
-    # column after it out from under its header.
+    # The table's, never a row's: a short row would shift the rest.
     menu_slot = any("menu" in row for row in rows)
 
     # Always, unlike the DEBUG cell-count guard.
@@ -3430,9 +3420,7 @@ def StyledTable(
                 page_obj=page_obj if paginated else None,
                 actions=selection.get("actions", ()),
                 csrf_token=selection.get("csrf_token", ""),
-                #: One page may hold two selectable tables, and each names
-                #: its overflow panel: a repeated id would point both
-                #: triggers at whichever the browser resolved first.
+                #: One page may hold two lines, each naming its panel.
                 id_seed=caption_key or caption,
             )
         )

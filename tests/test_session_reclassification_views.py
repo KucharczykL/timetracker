@@ -183,7 +183,7 @@ def test_the_row_action_appears_on_a_duration_only_row_alone(run):
     written = duration_only_row(run, A_DAY, timedelta(hours=9))
     measured = timed_row(run, START, START + timedelta(hours=1))
 
-    item = "Record as historical playtime"
+    item = "Record as historical playtime\u2026"
     assert item in str(session_row_menu(written, "token", None))
     assert item not in str(session_row_menu(measured, "token", None))
 

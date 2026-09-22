@@ -59,18 +59,21 @@ class SelectionActionsElement extends HTMLElement {
   private host: Element | null = null;
   private field: HTMLInputElement | null = null;
   // ── Priority-plus overflow ──────────────────────────────────────
-  // The line, not the controls: the controls row is a flex item, so its
-  // own width is what its content takes. Measuring room in it would shrink
-  // as acts left it, and every act would end up behind the trigger.
+  // The line, not the controls row.
+  //
+  // The controls row is a flex item, so its width is its content's.
+  // Room measured there shrinks as each act leaves, and every act ends
+  // up behind the trigger.
   private line: HTMLElement | null = null;
   private controls: HTMLElement | null = null;
   private actsRow: HTMLElement | null = null;
   private overflowHost: HTMLElement | null = null;
   private overflowItems: HTMLElement | null = null;
   private acts: OverflowAct[] = [];
-  // Taken the first time the line is shown, and never again: every width
-  // reads 0 under the `hidden` the table clears at the first press, and
-  // widths taken from inside the panel are the panel's, not the row's.
+  // Taken the first time the line is shown.
+  //
+  // Every width reads 0 under the `hidden` the table clears at the first
+  // press, and a width read inside the panel is the panel's.
   private measured = false;
   private rowGap = 0;
   private actGap = 0;
@@ -85,9 +88,7 @@ class SelectionActionsElement extends HTMLElement {
     this.posted = false;
     this.addEventListener("submit", this.onSubmit);
     window.addEventListener("pageshow", this.onPageShow);
-    // Ahead of the table: the row the acts lay out in is the line's, and a
-    // slot standing outside a table would otherwise render a line that
-    // wraps rather than one that collapses.
+    // Ahead of the table: the acts lay out in the line.
     this.setupOverflow();
     this.host = this.closest(HOST);
     if (!this.host) return;
@@ -110,10 +111,10 @@ class SelectionActionsElement extends HTMLElement {
   }
 
   // ── Priority-plus overflow ────────────────────────────────────────
-  // The acts that no longer fit are MOVED into the trailing overflow
-  // dropdown, rightmost first, and moved back as the line widens. The same
-  // nodes travel, and the panel sits inside the one form, so a moved submit
-  // still posts the one statement its `formaction` names.
+  // The acts that no longer fit are MOVED into the trailing overflow,
+  // rightmost first, and back as the line widens. The same nodes travel,
+  // and the panel sits inside the one form, so a moved submit still posts
+  // the statement its `formaction` names.
 
   private setupOverflow(): void {
     this.line = this.closest<HTMLElement>(LINE);
@@ -147,11 +148,11 @@ class SelectionActionsElement extends HTMLElement {
     });
   }
 
-  /** Take every width, while every act still stands in the row.
+  /** Take every width, while every act stands in the row.
    *
-   * Answers false while the line is hidden, which is its state until the
-   * first press: `offsetWidth` inside a `display:none` ancestor is 0, and
-   * zeros cached here would spill every act for the life of the page.
+   * Answers false while the line is hidden: `offsetWidth` under a
+   * `display:none` ancestor is 0, and zeros cached here would spill
+   * every act for the life of the page.
    */
   private measure(): boolean {
     if (this.measured) return true;
@@ -170,12 +171,10 @@ class SelectionActionsElement extends HTMLElement {
     overflowHost.classList.remove("hidden");
     this.overflowWidth = overflowHost.offsetWidth;
     overflowHost.classList.add("hidden");
-    // Everything the line holds beside the acts: the controls standing
-    // before this slot, and the line's own furniture around them.
+    // Everything the line holds beside the acts.
     //
-    // The child to skip is the one holding this element, never this element:
-    // the slot sits in a wrapper of its own, so comparing identity counted
-    // every act as furniture as well and left the line no room at all.
+    // Skip the child holding this element, never this element: the slot
+    // sits in a wrapper, so identity counts every act as furniture too.
     this.furnitureWidth = 0;
     for (const child of Array.from(controls.children)) {
       if (child.contains(this)) continue;
@@ -189,8 +188,7 @@ class SelectionActionsElement extends HTMLElement {
     return true;
   }
 
-  /** Public for tests: jsdom has no layout, so widths are stubbed and this
-   *  is called rather than waited on. */
+  /** Public for tests: jsdom has no layout engine. */
   layoutActs(): void {
     if (!this.measure()) return;
     const actsRow = this.actsRow;
@@ -202,8 +200,7 @@ class SelectionActionsElement extends HTMLElement {
     }
 
     const widths = this.acts.map((act) => act.width);
-    // First without the trigger's own reserve: where every act fits beside
-    // the furniture, nothing spills and the trigger stays away.
+    // First without the trigger's reserve: all may fit.
     let fitCount: number;
     if (
       priorityPlusTotalWidth(widths, this.actGap) + this.furnitureWidth <=
@@ -224,8 +221,7 @@ class SelectionActionsElement extends HTMLElement {
         overflowItems.appendChild(act.element);
       }
     });
-    // Declaration order, in the row and in the panel alike: an act that
-    // travelled and came back would otherwise trail the ones that stayed.
+    // Declaration order: one that came back would otherwise trail.
     for (let index = fitCount - 1; index >= 0; index--) {
       const element = this.acts[index].element;
       const successor =

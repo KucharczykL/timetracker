@@ -128,8 +128,8 @@ def _a_record(owned_user, owned_library, game):
 
 #: The session list's acts, in the order the tray lays them out.
 SESSION_ACTS = (
-    "session.move",
     "session.finish",
+    "session.move",
     "session.reclassify",
     "session.remove",
 )
@@ -161,8 +161,7 @@ def test_the_session_list_names_its_rows_and_offers_four_acts(
 def test_the_session_lists_acts_are_offered_in_one_order(
     client_in, owned_user, owned_library, game
 ):
-    """The move leads and the removal trails: one takes nothing off the
-    list, the other takes every row off it.
+    """The line reads in the row menu's order, and the removal trails.
 
     Read out of the tray alone. A row's own menu hands one row to the same
     act, so the page states the move's route once a row besides.
@@ -247,3 +246,32 @@ def test_game_detail_can_state_no_wider_selection(
 
     assert "data-selection-all-matching" not in html
     assert 'count="0"' in html
+
+
+#: The two colours the line keeps, and the one every other act takes.
+def test_the_line_keeps_green_and_red_and_greys_the_rest():
+    """Blue is the page's primary colour, and a line of four primaries
+    names none of them. Only the act that adds and the act that takes
+    away keep a colour; the rest read as ordinary."""
+    from games.bulk_finish import FINISH_SESSION
+    from games.bulk_move import MOVE
+    from games.bulk_reclassification import RECLASSIFY
+    from games.bulk_removal import REMOVE_SESSION
+    from games.bulk_tray import tray_actions
+
+    offered = tray_actions(
+        FINISH_SESSION.name,
+        MOVE.name,
+        RECLASSIFY.name,
+        REMOVE_SESSION.name,
+        origin=None,
+    )
+
+    assert [act["color"] for act in offered] == ["green", "gray", "gray", "red"]
+
+
+def test_an_act_keeps_its_own_colour_on_its_confirmation():
+    """One page, one primary press: the act's blue belongs there."""
+    from games.bulk_move import MOVE
+
+    assert MOVE.color == "blue"

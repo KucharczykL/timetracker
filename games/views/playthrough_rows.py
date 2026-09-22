@@ -289,22 +289,22 @@ def _row_menu(
 ) -> Node:
     """The act this run allows, then edit and remove.
 
-    One press states today; another day belongs
-    in the edit form. Remove renders on the last
-    run too: the command owns that refusal, and
-    a second gate can disagree with it.
-
-    The label names the run and its game: the list states many games and
-    Game detail states one, so neither half alone tells the triggers apart.
+    One press states today; another day belongs in the edit form. Remove
+    renders on the last run too: the command owns that refusal.
     """
     return RowActionMenu(
         [
             *_act_items(run, origin, csrf_token),
             DropdownLinkItem(
-                action_url("games:edit_playthrough", run.pk, origin=origin), "Edit"
+                action_url("games:edit_playthrough", run.pk, origin=origin),
+                "Edit",
+                icon="edit",
             ),
             DropdownLinkItem(
-                action_url("games:remove_playthrough", run.pk, origin=origin), "Remove"
+                action_url("games:remove_playthrough", run.pk, origin=origin),
+                "Remove",
+                icon="delete",
+                danger=True,
             ),
         ],
         label=f"{display_name(run)}, {run.player_game.game.name} actions",
@@ -317,14 +317,9 @@ def _act_items(
 ) -> list[Node]:
     """The one act this run can still accept, if any.
 
-    A run that states a completion is offered no start,
-    even where it states none: starting today would end
-    the run before it began, and the command refuses
-    that. An item whose whole class of row is refused
-    is a promise the row cannot keep, which is not the
-    race the other gates leave to the command.
-
-    Zero or one, so the caller spreads it.
+    A run stating a completion is offered no start, even where it states
+    none: starting today would end the run before it began, and the
+    command refuses that. Zero or one, so the caller spreads it.
     """
     if stated_completion(run) is not None:
         return []
@@ -333,15 +328,13 @@ def _act_items(
     return [_act(run, "complete", origin, csrf_token)]
 
 
-#: How each act's item reads, by route.
+#: How each act's item reads, and its glyph, by route.
 #:
-#: Only the completion names its status. It states one every
-#: time, so the words can promise it; a start states Played
-#: only where nothing stronger is stated already, and words
-#: naming a status the press may skip read as a lie.
-_ACT_WORDS: Mapping[str, str] = {
-    "start": "Started today",
-    "complete": "Completed today, also marks the game Completed",
+#: Only the completion names its status: it states one every time. A
+#: start states Played only where nothing stronger stands already.
+_ACT_WORDS: Mapping[str, tuple[str, str]] = {
+    "start": ("play", "Started today"),
+    "complete": ("finish", "Completed today, also marks the game Completed"),
 }
 
 
@@ -349,8 +342,10 @@ def _act(
     run: Playthrough, act: str, origin: OriginUrl | None, csrf_token: CsrfToken
 ) -> Node:
     """One press, posting to that act's route."""
+    icon, words = _ACT_WORDS[act]
     return DropdownPostItem(
         action_url(f"games:{act}_playthrough", run.pk, origin=origin),
-        _ACT_WORDS[act],
+        words,
         csrf_token=csrf_token,
+        icon=icon,
     )

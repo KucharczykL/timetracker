@@ -1,11 +1,10 @@
 """Finishing running sessions, in bulk.
 
-One act, and one instant. The runner keys each row from the batch's token
-and fingerprints the command's input, so a payload that differs between two
-posts of one chunk raises `IdempotencyKeyMismatch` and every already-finished
-row is counted refused. `timezone.now()` inside `run` is such a payload, which
-is why the instant is stamped once, into the confirmation's own HTML, and
-carried in the choice from there.
+One act, one instant. The runner fingerprints each command's input, so a
+payload that differs between two posts of one chunk raises
+`IdempotencyKeyMismatch` and counts every finished row refused.
+`timezone.now()` inside `run` is such a payload, which is why the instant
+is stamped into the confirmation's HTML and carried in the choice.
 """
 
 import uuid
@@ -49,18 +48,19 @@ INSTANT_UNREADABLE = (
 )
 NO_INSTANT = "This batch states no moment to finish at. Start the act again."
 
-#: What the encoding joins the two halves with. Neither half can hold it: an
-#: ISO instant has none, and no IANA zone key does either.
+#: What joins the two halves: neither half can hold it.
+#:
+#: An ISO instant has no `|`, and no IANA zone key has one either. A
+#: separator either half can hold splits the wrong string.
 _SEPARATOR = "|"
 
 
 @dataclass(frozen=True, slots=True)
 class FinishStatement:
-    """The one instant a batch ends at, and the zone it was read in.
+    """The instant a batch ends at, and its zone.
 
-    A named type rather than a bare pair, because it crosses three boundaries
-    as one string: the confirmation's hidden field, `settle`'s answer, and the
-    waypoint that round-trips that answer to every later chunk.
+    Named rather than a bare pair: it crosses three boundaries as one
+    string — the hidden field, `settle`'s answer, and the waypoint.
     """
 
     ended_at: datetime
@@ -73,8 +73,7 @@ class FinishStatement:
     def decode(cls, raw: ChoiceValue) -> FinishStatement:
         """The pair a form or a waypoint stated.
 
-        Refuses what it cannot read: the field is a person's to edit, and an
-        instant guessed here would be a second instant for the batch.
+        Refuses what it cannot read: a guess is a second instant.
         """
         if not raw:
             raise CommandRejected("no instant was posted", sentence=NO_INSTANT)
@@ -91,7 +90,7 @@ class FinishStatement:
                 f"{instant!r} states no offset, so it names no moment",
                 sentence=INSTANT_UNREADABLE,
             )
-        #: An unusable zone settles to no zone, as the row's own Finish does.
+        #: An unusable zone settles to none, as Finish does.
         readable = zone_or_none(zone)
         return cls(ended_at, readable.key if readable else None)
 
@@ -99,15 +98,13 @@ class FinishStatement:
 def offer_finish(
     library: UserLibrary, rows: Sequence[PlayerSession], field_name: FieldName
 ) -> Offered:
-    """The instant, stamped into the form, and the browser's zone beside it.
+    """The instant stamped into the form, and the zone.
 
-    The instant is a function of *the form*, not of the moment a POST arrives.
-    The same confirmation can be posted twice — a double submit, or Back onto a
-    bfcached page — and `ConfirmPage` has no submit-once guard. A second post
-    carries the same token and the same tally, so every row the first post
-    ended is dispatched again under the same key. Baked into the HTML the
-    payload is identical and those rows replay cleanly; minted per POST, every
-    one of them would raise `IdempotencyKeyMismatch` and be reported refused.
+    The instant is the form's, not the POST's. One confirmation can be
+    posted twice, and `ConfirmPage` has no submit-once guard: each row the
+    first post ended is dispatched again under the same key. Stamped, the
+    payload matches and those rows replay; minted per POST, every one of
+    them is reported refused.
     """
     if not rows:
         #: The confirmation says so itself.
@@ -126,13 +123,12 @@ def offer_finish(
 
 
 def settle_finish(library: UserLibrary, post: QueryDict) -> ChoiceValue:
-    """The stamped instant, merged with whatever zone is at hand.
+    """The stamped instant, and whatever zone is at hand.
 
-    Re-run on every chunk, over its own last answer: the waypoint renders
-    hidden pairs alone, so from chunk two there is no `<browser-time-zone>`
-    and no zone field — only the choice holding both halves already. Composing
-    the zone only where the value states none is what makes
-    `settle(settle(x)) == settle(x)`.
+    Re-run on every chunk over its own last answer: from chunk two the
+    waypoint renders hidden pairs alone, so there is no zone field, only
+    the choice holding both halves. Taking the zone only where the value
+    states none is what makes `settle(settle(x)) == settle(x)`.
     """
     #: Local: the act table imports this module.
     from games.views.bulk import CHOICE_FIELD
@@ -144,11 +140,7 @@ def settle_finish(library: UserLibrary, post: QueryDict) -> ChoiceValue:
     return FinishStatement(stated.ended_at, browser.key if browser else None).encode()
 
 
-#: A reconfirmation calls `offer` again and stamps a second instant for the
-#: rows that remain. Reachable only by hand-editing the hidden field into
-#: something `settle` refuses, and the rows already done have left the tally by
-#: then, so nothing mismatches. Widening `offer` to see the POST for it would
-#: change the runner's own interface for a path nobody reaches.
+#: A reconfirmation stamps a second instant for the rows left.
 FINISH: BulkChoice[PlayerSession] = BulkChoice(offer=offer_finish, settle=settle_finish)
 
 
@@ -204,16 +196,13 @@ def unfinish_one(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """The row running again: its own start restated, with no end.
+    """The row running again: its start restated, no end.
 
-    It reads the start the row holds when the Undo runs, which is the hazard
-    every batch Undo accepts. A library whose calendar zone changed between the
-    Finish and the Undo has every row refused, because the correction checks
-    the calendar before it compares.
+    It reads the start the row holds now, the hazard every batch Undo
+    accepts. A calendar zone changed since the Finish refuses every row.
     """
     session = _row(actor, session_id)
-    #: Both non-null on a Timed row by CHECK alone, and this act finished one,
-    #: so it is one. Asserted as `reset_session` states its own.
+    #: Non-null on a Timed row by CHECK, and this finished one.
     assert session.started_at is not None
     assert session.day_zone is not None
     return RowOutcome.of(
@@ -235,8 +224,8 @@ def unfinish_one(
 def _row(actor: User, session_id: uuid.UUID) -> PlayerSession:
     """The row an Undo puts back to running.
 
-    `library_sessions` reads the catalog mark as well, and this act must not:
-    a session whose catalog game was removed is still this library's to unwind.
+    The plain manager: `library_sessions` reads the catalog mark, and a
+    session whose catalog game went is still this library's to unwind.
     """
     with answered("session"):
         row = (

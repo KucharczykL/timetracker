@@ -252,8 +252,8 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
             "filter": filter_json,
             "csrf_token": csrf_token,
             "actions": tray_actions(
-                MOVE.name,
                 FINISH_SESSION.name,
+                MOVE.name,
                 RECLASSIFY.name,
                 REMOVE_SESSION.name,
                 origin=origin,

@@ -1,8 +1,15 @@
 """The acts a selection line offers, built for one page."""
 
-from common.components import SelectionAction
+from common.components import ButtonColor, SelectionAction
 from common.returns import OriginUrl, action_url
 from games.bulk_actions import BULK_ACTIONS, BulkActionName
+
+#: The colours a line of acts keeps: one adds, one takes away.
+#:
+#: Blue is the page's primary colour, and four primaries beside each other
+#: name none of them. An act's own colour still leads its confirmation,
+#: where one press is the primary one.
+_LINE_COLOURS: frozenset[ButtonColor] = frozenset({"green", "red"})
 
 
 def tray_actions(
@@ -10,14 +17,11 @@ def tray_actions(
 ) -> list[SelectionAction]:
     """Each named act, as the line renders it.
 
-    Declaration order is priority order: the line lays the acts out in the
-    order stated here and moves the rightmost into its overflow first, so a
-    view states the act reached for most often first and the destructive act
-    last. The order is the one a person reads and the one the narrowest
-    window keeps, which is why no view sorts these by anything else.
+    Declaration order is priority order: the line lays the acts out in
+    the order stated here and overflows the rightmost first. State them
+    in the order the row's menu states them, so one act keeps one place.
 
-    A name no act declares is a defect, not a quiet omission: the view
-    stated it.
+    A name no act declares is a defect, not a quiet omission.
     """
     offered: list[SelectionAction] = []
     for name in names:
@@ -30,7 +34,7 @@ def tray_actions(
             SelectionAction(
                 label=action.label,
                 url=action_url("games:run_bulk_action", action.name, origin=origin),
-                color=action.color,
+                color=action.color if action.color in _LINE_COLOURS else "gray",
             )
         )
     return offered
