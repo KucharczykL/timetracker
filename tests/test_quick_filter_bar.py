@@ -467,6 +467,41 @@ class QuickFilterBarRenderingTest(TestCase):
         self.assertIn(f'href="{list_url_for("devices")}"', html)
 
 
+class RunFacetsTest(TestCase):
+    """The two facets that ask about a session's run."""
+
+    def test_the_sessions_row_carries_both_triggers(self):
+        html = str(QuickFilterBar(mode="sessions", builder_url="/x"))
+        self.assertIn(">Playthrough<", html)
+        self.assertIn(">Outside dates<", html)
+
+    def test_the_runs_kind_alone_stays_editable(self):
+        filter_json = json.dumps(
+            {
+                "playthrough_kind": {
+                    "value": [{"id": "imported_history", "label": "Imported history"}],
+                    "excludes": [],
+                    "modifier": "INCLUDES",
+                }
+            }
+        )
+        html = str(
+            QuickFilterBar(mode="sessions", filter_json=filter_json, builder_url="/x")
+        )
+        self.assertIn("<quick-filter-bar", html)
+        self.assertNotIn("Advanced filter active", html)
+
+    def test_the_dates_question_alone_stays_editable(self):
+        filter_json = json.dumps(
+            {"outside_playthrough_dates": {"value": True, "modifier": "EQUALS"}}
+        )
+        html = str(
+            QuickFilterBar(mode="sessions", filter_json=filter_json, builder_url="/x")
+        )
+        self.assertIn("<quick-filter-bar", html)
+        self.assertNotIn("Advanced filter active", html)
+
+
 class QuickFacetsContractTest(TestCase):
     """QUICK_FACETS stays consistent with the filter layer as it evolves."""
 

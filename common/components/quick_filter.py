@@ -119,6 +119,9 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
             placeholder="e.g. 1",
             placeholder2="e.g. 10",
         ),
+        #: The run's own facts, after the session's.
+        QuickFacet("playthrough_kind", "Playthrough"),
+        QuickFacet("outside_playthrough_dates", "Outside dates"),
     ],
     "purchases": [
         QuickFacet("type"),
