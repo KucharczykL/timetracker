@@ -7380,3 +7380,44 @@ class TestTheRunsKind:
         #: INCLUDES is the default, which `to_json` leaves out.
         payload = {"playthrough_kind": {"value": ["ordinary"], "modifier": "EXCLUDES"}}
         assert PlayerSessionFilter.from_json(payload).to_json() == payload
+
+
+@pytest.mark.django_db
+class TestTheDatesQuestionStatedTheLongWay:
+    """The shorthand states no power the builder lacks."""
+
+    def test_both_operands_are_offered(self):
+        from games.models import PlayerSession
+
+        offered = {column["value"] for column in comparable_columns(PlayerSession)}
+        assert {
+            "effective_day",
+            "playthrough__started_lower",
+            "playthrough__completed_upper",
+        } <= offered
+
+    def test_two_comparisons_answer_what_the_shorthand_answers(
+        self, owned_library, dated_population
+    ):
+        from games.filters import filter_query_context_for_library
+        from games.reads.player_sessions import library_sessions
+
+        def branch(right, modifier):
+            return PlayerSessionFilter(
+                field_comparisons=[
+                    FieldComparisonCriterion(
+                        left="effective_day", right=right, modifier=modifier
+                    )
+                ]
+            )
+
+        stated = PlayerSessionFilter(
+            OR=[
+                branch("playthrough__started_lower", Modifier.LESS_THAN),
+                branch("playthrough__completed_upper", Modifier.GREATER_THAN),
+            ]
+        )
+        context = filter_query_context_for_library(owned_library)
+        assert set(library_sessions(owned_library).filter(stated.to_q(context))) == {
+            dated_population[case] for case in OUTSIDE_CASES
+        }
