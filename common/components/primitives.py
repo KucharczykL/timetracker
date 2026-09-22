@@ -169,6 +169,9 @@ type ButtonVariant = Literal[
 # order, not class-attribute order, so `class_="justify-start"` on a button
 # whose baked class already says `justify-center` wins only by luck.
 type ButtonAlign = Literal["center", "start"]
+# Which way a trigger's three dots run. Vertical marks a row's own acts,
+# horizontal an overflow among controls standing in a line.
+type EllipsisOrientation = Literal["vertical", "horizontal"]
 # A place in a joined row, never a radius: one tier rounds every control.
 # "full" is the button standing on its own, "start"/"end" the two outer ends
 # of a row, and "square" the absence of an end — a member with a neighbour on
@@ -2566,6 +2569,41 @@ def Icon(
         [("class", class_value), *preserved, *extra_attributes],
         children,
     )
+
+
+_ELLIPSIS_GLYPHS: Mapping[EllipsisOrientation, str] = {
+    "vertical": "ellipsis-vertical",
+    "horizontal": "ellipsis-horizontal",
+}
+
+
+def EllipsisTrigger(
+    attrs: AttrsArg | None = None,
+    /,
+    *,
+    label: str,
+    orientation: EllipsisOrientation = "vertical",
+    haspopup: str = "menu",
+) -> ControlButton:
+    """The bare three-dot trigger, shared by the quick bar's overflow, the
+    library's summary rows and a table row's menu.
+
+    The glyph is decoration and says ``aria-hidden``: the button carries the
+    name. ``haspopup`` is the caller's because the three surfaces open two
+    different things — a menu of items, or a dialog of moved controls.
+
+    The ringed ``ellipsis`` glyph is deliberately not one of these two. It is
+    ``TruncatedText``'s reveal, and a row would then show two ellipses a cell
+    apart if this borrowed it.
+    """
+    return ControlButton(
+        attrs,
+        color="gray",
+        variant="ghost",
+        class_="p-2",
+        aria_label=label,
+        aria_haspopup=haspopup,
+    )[Icon(_ELLIPSIS_GLYPHS[orientation], [("aria-hidden", "true")])]
 
 
 def _replace_query(

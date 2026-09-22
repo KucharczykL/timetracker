@@ -96,6 +96,16 @@ ICON_NODES: dict[str, Element] = {
     )[
         Path([('fill', 'currentColor'), ('fill-rule', 'evenodd'), ('d', 'M24 3a21 21 0 1 0 0.001 0zM24 6a18 18 0 1 0 0.001 0zM15 24a2.4 2.4 0 1 0 0.001 0zM24 24a2.4 2.4 0 1 0 0.001 0zM33 24a2.4 2.4 0 1 0 0.001 0z')]),
     ],
+    'ellipsis-horizontal': Svg(
+        [('x', '0px'), ('y', '0px'), ('width', '50'), ('height', '50'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('fill', 'currentColor'), ('fill-rule', 'evenodd'), ('d', 'M15 24a2.4 2.4 0 1 0 0.001 0zM24 24a2.4 2.4 0 1 0 0.001 0zM33 24a2.4 2.4 0 1 0 0.001 0z')]),
+    ],
+    'ellipsis-vertical': Svg(
+        [('x', '0px'), ('y', '0px'), ('width', '50'), ('height', '50'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('fill', 'currentColor'), ('fill-rule', 'evenodd'), ('d', 'M24 15a2.4 2.4 0 1 0 0.001 0zM24 24a2.4 2.4 0 1 0 0.001 0zM24 33a2.4 2.4 0 1 0 0.001 0z')]),
+    ],
     'emulated': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[

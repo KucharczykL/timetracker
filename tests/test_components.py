@@ -812,6 +812,47 @@ class IconCodegenFaithfulnessTest(unittest.TestCase):
                 self.assertEqual(self._normalize(source), self._normalize(rendered))
 
 
+class EllipsisTriggerTest(SimpleTestCase):
+    """The one ghost trigger the quick bar, the summary rows and a row menu
+    share. Both glyphs are bare dots; the ringed `ellipsis` stays TruncatedText's
+    reveal. The assertions read path data rather than an icon name, because
+    `Icon` answers the `unspecified` glyph for a name no snippet states."""
+
+    VERTICAL_PATH = 'd="M24 15a2.4 2.4 0 1 0 0.001 0z'
+    HORIZONTAL_PATH = 'd="M15 24a2.4 2.4 0 1 0 0.001 0z'
+
+    def test_vertical_is_the_default_glyph(self):
+        html = str(components.EllipsisTrigger(label="Session actions"))
+        self.assertIn(self.VERTICAL_PATH, html)
+        self.assertNotIn("Unspecified platform", html)
+
+    def test_horizontal_states_the_other_glyph(self):
+        html = str(
+            components.EllipsisTrigger(label="More filters", orientation="horizontal")
+        )
+        self.assertIn(self.HORIZONTAL_PATH, html)
+        self.assertNotIn(self.VERTICAL_PATH, html)
+
+    def test_the_label_and_the_popup_kind_reach_the_button(self):
+        html = str(
+            components.EllipsisTrigger(
+                label="More filters", orientation="horizontal", haspopup="dialog"
+            )
+        )
+        self.assertIn('aria-label="More filters"', html)
+        self.assertIn('aria-haspopup="dialog"', html)
+        # The glyph is decoration; the button already carries the name.
+        self.assertIn('aria-hidden="true"', html)
+
+    def test_dynamic_attributes_ride_the_positional_slot(self):
+        html = str(
+            components.EllipsisTrigger(
+                [("data-row-menu-trigger", "")], label="Session actions"
+            )
+        )
+        self.assertIn("data-row-menu-trigger", html)
+
+
 class InputTest(unittest.TestCase):
     """Test the Input() component."""
 
