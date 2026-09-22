@@ -55,15 +55,3 @@ def every_run_label(
     it wants by key; it does not walk the mapping.
     """
     return _labelled_runs(library, sessions).labels
-
-
-def ambiguous_run_labels(
-    library: UserLibrary, sessions: Sequence[PlayerSession]
-) -> RunLabels:
-    """Only the names that tell runs apart."""
-    labels, by_game = _labelled_runs(library, sessions)
-    return {
-        run_id: label
-        for run_id, label in labels.items()
-        if any(len(runs) > 1 and run_id in runs for runs in by_game.values())
-    }

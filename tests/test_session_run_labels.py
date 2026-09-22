@@ -14,11 +14,7 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
 )
-from games.reads.session_run_labels import (
-    IMPORTED_HISTORY_LABEL,
-    ambiguous_run_labels,
-    every_run_label,
-)
+from games.reads.session_run_labels import IMPORTED_HISTORY_LABEL, every_run_label
 
 pytestmark = pytest.mark.django_db
 
@@ -57,12 +53,6 @@ def test_every_run_label_names_the_run_a_sole_session_sits_on(owned_library, gam
     }
 
 
-def test_the_narrow_reader_leaves_a_sole_run_unnamed(owned_library, game):
-    timed_row(tracked_run(owned_library, game), STARTED_AT, None)
-
-    assert ambiguous_run_labels(owned_library, page_sessions(owned_library)) == {}
-
-
 def test_every_run_label_names_a_bucket(owned_library, game):
     tracked_run(owned_library, game)
     bucket = another_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
@@ -73,7 +63,7 @@ def test_every_run_label_names_a_bucket(owned_library, game):
     assert labels[bucket.pk] == IMPORTED_HISTORY_LABEL
 
 
-def test_both_readers_name_every_run_of_a_game_holding_two(owned_library, game):
+def test_every_run_of_a_game_holding_two_is_named(owned_library, game):
     first = tracked_run(owned_library, game)
     second = another_run(owned_library, game, name="Second run")
     timed_row(first, STARTED_AT, None)
@@ -81,12 +71,13 @@ def test_both_readers_name_every_run_of_a_game_holding_two(owned_library, game):
 
     sessions = page_sessions(owned_library)
 
-    expected = {first.pk: "Playthrough 1", second.pk: "Second run"}
-    assert every_run_label(owned_library, sessions) == expected
-    assert ambiguous_run_labels(owned_library, sessions) == expected
+    assert every_run_label(owned_library, sessions) == {
+        first.pk: "Playthrough 1",
+        second.pk: "Second run",
+    }
 
 
-def test_a_bucket_beside_a_live_run_is_named_by_both_readers(owned_library, game):
+def test_a_bucket_beside_a_live_run_is_named(owned_library, game):
     run = tracked_run(owned_library, game)
     bucket = another_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
     timed_row(run, STARTED_AT, None)
@@ -94,6 +85,7 @@ def test_a_bucket_beside_a_live_run_is_named_by_both_readers(owned_library, game
 
     sessions = page_sessions(owned_library)
 
-    expected = {run.pk: "Playthrough 1", bucket.pk: IMPORTED_HISTORY_LABEL}
-    assert every_run_label(owned_library, sessions) == expected
-    assert ambiguous_run_labels(owned_library, sessions) == expected
+    assert every_run_label(owned_library, sessions) == {
+        run.pk: "Playthrough 1",
+        bucket.pk: IMPORTED_HISTORY_LABEL,
+    }

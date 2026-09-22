@@ -11,6 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 from session_rows import duration_only_row, timed_row, tracked_run
 
+from games.list_columns import state_hidden_columns
 from games.models import Game, PlayerGame, Playthrough, PlaythroughKind
 
 pytestmark = pytest.mark.django_db
@@ -59,6 +60,12 @@ def _run_column(body: str) -> list[str]:
         clipped = re.findall(r'data-truncated-clip=""[^>]*>([^<]*)<', _cells(row)[0])
         names.append(clipped[0] if clipped else "")
     return names
+
+
+def _headers(body: str) -> list[str]:
+    """The table's own column headers."""
+    header_rows = re.findall(r"<thead.*?</thead>", body, re.DOTALL)
+    return re.findall(r"<th[^>]*>(?:.*?>)??([A-Za-z ]+)<", "".join(header_rows))
 
 
 def _summaries(body: str) -> list[str]:
@@ -123,10 +130,8 @@ def test_a_session_in_the_bucket_is_named_beside_a_live_run(
     assert sorted(_run_column(body)) == ["Imported history", "Playthrough 1"]
 
 
-def test_a_list_naming_two_games_keeps_the_name_cells_label(
-    logged_in, owned_library, game
-):
-    """No column, and the label is back where it was."""
+def _mixed_list(owned_library, game) -> None:
+    """Two games, and two runs at one of them."""
     first = tracked_run(owned_library, game)
     second = _another_run(owned_library, game, name="Second run")
     timed_row(first, STARTED_AT, None)
@@ -134,10 +139,34 @@ def test_a_list_naming_two_games_keeps_the_name_cells_label(
     other = Game.objects.create(library=owned_library, name="Anodyne")
     timed_row(tracked_run(owned_library, other), STARTED_AT, None)
 
+
+def test_a_list_naming_two_games_states_the_column_too(logged_in, owned_library, game):
+    """The column is declared always; no page decides."""
+    _mixed_list(owned_library, game)
+
     body = logged_in.get(reverse("games:list_sessions")).content.decode()
 
-    assert sorted(_labels(body)) == ["Playthrough 1", "Second run"]
-    assert "Anodyne" in body
+    assert sorted(_run_column(body)) == [
+        "Playthrough 1",
+        "Playthrough 1",
+        "Second run",
+    ]
+    assert _labels(body) == []
+
+
+def test_a_person_hiding_the_column_is_named_no_run_anywhere(
+    logged_in, owned_user, owned_library, game
+):
+    """Not beside the name, and not in the line below md."""
+    _mixed_list(owned_library, game)
+    state_hidden_columns(owned_user, "sessions", ["playthrough"])
+
+    body = logged_in.get(reverse("games:list_sessions")).content.decode()
+
+    assert "Playthrough" not in _headers(body)
+    assert "Second run" not in body
+    assert _labels(body) == []
+    assert all("Second run" not in summary for summary in _summaries(body))
 
 
 def test_the_summary_names_the_run_the_time_and_the_duration(
