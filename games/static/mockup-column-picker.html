@@ -3,6 +3,10 @@
   THROWAWAY mockup for issue #1245, not part of the application.
   Remove this file before the pull request.
   Served by the dev server at /static/mockup-column-picker.html
+
+  Every class here is one the application itself uses, checked against the
+  compiled games/static/base.css. Tailwind emits only what it finds in the
+  scanned sources, so a class invented for this page renders as nothing.
 -->
 <html lang="en" class="dark">
 <head>
@@ -11,62 +15,34 @@
 <title>Column picker mockup</title>
 <link rel="stylesheet" href="/static/base.css">
 </head>
-<body class="bg-surface-base text-type-body">
+<body class="bg-neutral-primary text-body">
 <div class="w-full max-w-7xl self-center mx-auto p-6 flex flex-col gap-4">
 
   <p class="text-type-micro text-body-subtle">
     Mockup for #1245. Real stylesheet, real component classes. Press
-    <strong>Columns</strong>. Apply and Reset act on this page only.
+    <strong class="text-heading">Columns</strong>. Apply and Reset act on this
+    page only.
   </p>
 
-  <!-- The quick filter bar's row, trimmed to the furniture that matters here. -->
+  <!-- The quick filter bar's row, trimmed to the furniture that matters. -->
   <quick-filter-bar class="block">
     <form>
       <div class="flex flex-wrap items-center gap-2">
         <span class="inline-flex items-center min-h-control px-3 rounded-base border border-default-medium bg-neutral-secondary-medium text-body">Search game, platform, device…</span>
-        <button type="button" class="font-medium text-type-body inline-flex items-center justify-center min-h-control px-3 gap-2 bg-transparent border border-transparent text-heading hover:bg-neutral-tertiary-medium hover:border-default-strong rounded-base whitespace-nowrap">Game <span aria-hidden="true">▾</span></button>
-        <button type="button" class="font-medium text-type-body inline-flex items-center justify-center min-h-control px-3 gap-2 bg-transparent border border-transparent text-heading hover:bg-neutral-tertiary-medium hover:border-default-strong rounded-base whitespace-nowrap">Device <span aria-hidden="true">▾</span></button>
-        <button type="button" class="font-medium text-type-body inline-flex items-center justify-center min-h-control px-3 gap-2 bg-transparent border border-transparent text-heading hover:bg-neutral-tertiary-medium hover:border-default-strong rounded-base whitespace-nowrap">Load preset <span aria-hidden="true">▾</span></button>
+        <button type="button" class="font-medium text-type-body hover:cursor-pointer inline-flex items-center justify-center min-h-control px-3 gap-2 bg-transparent border border-transparent text-heading hover:bg-neutral-tertiary-medium hover:border-default-strong rounded-base whitespace-nowrap">Game <span aria-hidden="true">▾</span></button>
+        <button type="button" class="font-medium text-type-body hover:cursor-pointer inline-flex items-center justify-center min-h-control px-3 gap-2 bg-transparent border border-transparent text-heading hover:bg-neutral-tertiary-medium hover:border-default-strong rounded-base whitespace-nowrap">Device <span aria-hidden="true">▾</span></button>
+        <button type="button" class="font-medium text-type-body hover:cursor-pointer inline-flex items-center justify-center min-h-control px-3 gap-2 bg-transparent border border-transparent text-heading hover:bg-neutral-tertiary-medium hover:border-default-strong rounded-base whitespace-nowrap">Load preset <span aria-hidden="true">▾</span></button>
 
-        <!-- The picker's trigger and panel. -->
+        <!-- The picker's trigger and its panel. -->
         <span class="relative inline-flex">
           <button id="columns-trigger" type="button" aria-haspopup="dialog" aria-expanded="false"
             class="font-medium text-type-body hover:cursor-pointer inline-flex items-center justify-center min-h-control px-3 gap-2 bg-transparent border border-transparent text-heading hover:bg-neutral-tertiary-medium hover:border-default-strong focus:outline-hidden focus:ring-2 focus:ring-fg-brand rounded-base whitespace-nowrap">
             Columns <span aria-hidden="true">▾</span>
           </button>
           <div id="columns-panel" role="dialog" aria-label="Columns" hidden
-            class="absolute z-20 top-full left-0 mt-1 overflow-x-hidden overflow-y-auto rounded-base p-2 bg-surface-overlay text-type-body border border-default-medium w-64">
+            class="absolute z-20 top-full left-0 mt-1 overflow-x-hidden overflow-y-auto rounded-base p-2 bg-surface-overlay text-type-body before:content-[''] before:absolute before:inset-0 before:-z-10 before:rounded-[inherit] dark:before:backdrop-blur-xl border border-default-medium w-64">
             <div class="px-3 pt-1 pb-2 text-type-micro text-body-subtle">Columns shown</div>
-            <label class="flex items-center gap-2 px-3 py-2 rounded-base text-type-body text-heading cursor-not-allowed has-[:disabled]:opacity-50">
-              <input type="checkbox" form="column-picker" name="shown" value="name" checked disabled
-                class="shrink-0 rounded border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand w-4 h-4 disabled:opacity-50 disabled:cursor-not-allowed">
-              <span>Name</span>
-            </label>
-            <label class="flex items-center gap-2 px-3 py-2 rounded-base text-type-body text-heading cursor-pointer hover:bg-neutral-tertiary-medium">
-              <input type="checkbox" form="column-picker" name="shown" value="playthrough" checked
-                class="shrink-0 rounded border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand w-4 h-4">
-              <span>Playthrough</span>
-            </label>
-            <label class="flex items-center gap-2 px-3 py-2 rounded-base text-type-body text-heading cursor-pointer hover:bg-neutral-tertiary-medium">
-              <input type="checkbox" form="column-picker" name="shown" value="date" checked
-                class="shrink-0 rounded border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand w-4 h-4">
-              <span>Date</span>
-            </label>
-            <label class="flex items-center gap-2 px-3 py-2 rounded-base text-type-body text-heading cursor-pointer hover:bg-neutral-tertiary-medium">
-              <input type="checkbox" form="column-picker" name="shown" value="duration" checked
-                class="shrink-0 rounded border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand w-4 h-4">
-              <span>Duration</span>
-            </label>
-            <label class="flex items-center gap-2 px-3 py-2 rounded-base text-type-body text-heading cursor-pointer hover:bg-neutral-tertiary-medium">
-              <input type="checkbox" form="column-picker" name="shown" value="device" checked
-                class="shrink-0 rounded border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand w-4 h-4">
-              <span>Device</span>
-            </label>
-            <label class="flex items-center gap-2 px-3 py-2 rounded-base text-type-body text-heading cursor-pointer hover:bg-neutral-tertiary-medium">
-              <input type="checkbox" form="column-picker" name="shown" value="created" checked
-                class="shrink-0 rounded border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand w-4 h-4">
-              <span>Created</span>
-            </label>
+            <div id="column-rows"></div>
             <div class="mt-2 pt-2 border-t border-default-medium flex gap-2 px-1">
               <button type="submit" form="column-picker"
                 class="font-medium text-type-body hover:cursor-pointer inline-flex items-center justify-center min-h-control px-3 gap-2 rounded-base solid-brand grow">Apply</button>
@@ -76,7 +52,7 @@
           </div>
         </span>
 
-        <span class="inline-flex rounded-base overflow-hidden border border-default-medium">
+        <span class="inline-flex rounded-base overflow-clip border border-default-medium">
           <span class="inline-flex items-center min-h-control px-3 text-heading bg-neutral-secondary-medium">Apply</span>
           <span class="inline-flex items-center min-h-control px-3 text-heading bg-neutral-secondary-medium border-s border-default-medium">Clear</span>
           <span class="inline-flex items-center min-h-control px-3 text-heading bg-neutral-secondary-medium border-s border-default-medium">Advanced filter…</span>
@@ -88,17 +64,10 @@
     <form id="column-picker" method="post" action="#"></form>
   </quick-filter-bar>
 
-  <div class="rounded-base border border-default-medium overflow-clip bg-surface-raised">
-    <table class="w-full text-type-body">
+  <div class="rounded-base border border-default-medium overflow-clip">
+    <table class="w-full text-type-body text-left text-body-subtle border-separate border-spacing-0">
       <thead class="text-type-micro text-body-subtle uppercase">
-        <tr class="border-b border-default-medium">
-          <th data-col="name" class="text-left px-6 py-3">Name</th>
-          <th data-col="playthrough" class="text-left px-6 py-3">Playthrough</th>
-          <th data-col="date" class="text-left px-6 py-3">Date</th>
-          <th data-col="duration" class="text-left px-6 py-3">Duration</th>
-          <th data-col="device" class="text-left px-6 py-3">Device</th>
-          <th data-col="created" class="text-left px-6 py-3">Created</th>
-        </tr>
+        <tr class="bg-neutral-tertiary" id="head-row"></tr>
       </thead>
       <tbody id="rows"></tbody>
     </table>
@@ -106,6 +75,15 @@
 </div>
 
 <script type="module">
+const COLUMNS = [
+  { key: "name", label: "Name", hideable: false },
+  { key: "playthrough", label: "Playthrough", hideable: true },
+  { key: "date", label: "Date", hideable: true },
+  { key: "duration", label: "Duration", hideable: true },
+  { key: "device", label: "Device", hideable: true },
+  { key: "created", label: "Created", hideable: true },
+];
+
 const DATA = [
   ["The Walking Dead: Season Two", "Playthrough 1", "2027-07-21 18:47 — 22:18", "1.5 h", "DEVILFISH-X2", "2027-07-21"],
   ["The Walking Dead: Season Two", "Playthrough 1", "2027-07-21 14:06 — 20:04", "6.0 h", "DEVILFISH-X2", "2027-07-21"],
@@ -113,21 +91,60 @@ const DATA = [
   ["Fields of Mistria", "Playthrough 1", "2027-06-11 06:42 — 10:10", "1.5 h", "DEVILFISH-X2", "2027-06-11"],
   ["1666: Amsterdam", "Playthrough 1", "2027-06-05 19:10 — 19:25", "0.3 h", "DEVILFISH-X2", "2027-06-05"],
 ];
-const KEYS = ["name", "playthrough", "date", "duration", "device", "created"];
+
+const HEAD_CELL = "px-2 sm:px-3 lg:px-6 py-3 whitespace-nowrap";
+const ROW_HEADER = "px-2 sm:px-3 lg:px-6 py-4 font-medium text-heading whitespace-nowrap text-left";
+const BODY_CELL = "px-2 sm:px-3 lg:px-4 py-2 whitespace-nowrap";
+const ROW = "odd:bg-neutral-primary-soft even:bg-neutral-secondary-medium hover:bg-neutral-tertiary-medium hover:text-heading";
+const BOX = "shrink-0 rounded border-default-medium bg-neutral-secondary-medium text-brand focus:ring-brand w-4 h-4 disabled:opacity-50 disabled:cursor-not-allowed";
+
+const headRow = document.getElementById("head-row");
+for (const column of COLUMNS) {
+  const cell = document.createElement("th");
+  cell.dataset.col = column.key;
+  cell.className = HEAD_CELL;
+  cell.textContent = column.label;
+  headRow.append(cell);
+}
 
 const body = document.getElementById("rows");
 for (const cells of DATA) {
   const tr = document.createElement("tr");
-  tr.className = "border-b border-default-medium last:border-0";
+  tr.className = ROW;
   cells.forEach((value, index) => {
-    const cell = document.createElement(index === 0 ? "th" : "td");
-    if (index === 0) cell.scope = "row";
-    cell.dataset.col = KEYS[index];
-    cell.className = "text-left px-6 py-3 " + (index === 0 ? "text-heading" : "");
+    const first = index === 0;
+    const cell = document.createElement(first ? "th" : "td");
+    if (first) cell.scope = "row";
+    cell.dataset.col = COLUMNS[index].key;
+    cell.className = first ? ROW_HEADER : BODY_CELL;
     cell.textContent = value;
     tr.append(cell);
   });
   body.append(tr);
+}
+
+// A column that refuses to hide states a checked, disabled box, so the panel
+// reads as the whole table rather than one a person wonders about.
+const rows = document.getElementById("column-rows");
+for (const column of COLUMNS) {
+  const label = document.createElement("label");
+  label.className =
+    "flex items-center gap-2 px-3 py-2 rounded-base text-type-body text-heading " +
+    (column.hideable
+      ? "cursor-pointer hover:bg-neutral-tertiary-medium"
+      : "cursor-not-allowed has-[:disabled]:opacity-50");
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.setAttribute("form", "column-picker");
+  box.name = "shown";
+  box.value = column.key;
+  box.checked = true;
+  box.disabled = !column.hideable;
+  box.className = BOX;
+  const text = document.createElement("span");
+  text.textContent = column.label;
+  label.append(box, text);
+  rows.append(label);
 }
 
 const panel = document.getElementById("columns-panel");
@@ -146,15 +163,19 @@ function applyHidden(hidden) {
   }
 }
 
+// A disabled box posts nothing, so a column that refuses to hide is kept shown
+// whatever the request carries. The real view owes the same rule.
 document.getElementById("column-picker").addEventListener("submit", (event) => {
   event.preventDefault();
   const boxes = [...document.querySelectorAll('input[form="column-picker"]')];
-  const reset = event.submitter && event.submitter.name === "reset";
-  if (reset) {
+  if (event.submitter && event.submitter.name === "reset") {
     for (const box of boxes) box.checked = true;
     applyHidden(new Set());
   } else {
-    applyHidden(new Set(boxes.filter((box) => !box.checked).map((box) => box.value)));
+    const hidden = new Set(
+      boxes.filter((box) => !box.checked && !box.disabled).map((box) => box.value),
+    );
+    applyHidden(hidden);
   }
   panel.hidden = true;
   trigger.setAttribute("aria-expanded", "false");
