@@ -1,13 +1,16 @@
 """The icon in the header row, and the panel of boxes it opens."""
 
 import re
+from html import unescape
 
 from common.components import (
     COLUMN_PICKER_LABEL,
     Column,
     ColumnPicker,
+    EllipsisTrigger,
     Safe,
     StyledTable,
+    dropdown_combobox_panel_class,
     make_row,
 )
 
@@ -33,6 +36,12 @@ def picker(columns=COLUMNS, hidden=()) -> str:
             mode="games",
         )
     )
+
+
+def _classes(tag: str) -> set[str]:
+    """One tag's classes, as the attribute escaped them."""
+    [found] = re.findall(r'class="([^"]*)"', tag)
+    return set(unescape(found).split())
 
 
 def _boxes(html: str) -> list[str]:
@@ -69,6 +78,22 @@ def test_a_pinned_column_that_a_row_names_is_shown_all_the_same():
     [name, *_rest] = _boxes(picker(hidden={"name"}))
 
     assert "checked" in name
+
+
+def test_the_trigger_wears_the_one_bare_icon_shape():
+    """The row menu sits under it in the same column; two shapes would read
+    as two controls."""
+    [trigger, *_panel_buttons] = re.findall(r"<button[^>]*>", picker())
+    [ellipsis] = re.findall(r"<button[^>]*>", str(EllipsisTrigger(label="Acts")))
+
+    assert _classes(trigger) == _classes(ellipsis)
+
+
+def test_the_panel_sits_on_the_stratum_every_dropdown_shares():
+    """A hand-written surface opens under the row's own selectors."""
+    [panel] = re.findall(r'<div role="dialog"[^>]*>', picker())
+
+    assert _classes(panel) >= set(dropdown_combobox_panel_class("w-64").split())
 
 
 def test_the_trigger_is_named_and_states_no_visible_word():

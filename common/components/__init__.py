@@ -48,6 +48,7 @@ from common.components.custom_elements import (
     SelectDropdown,
     SelectionFields,
     SplitButtonDropdown,
+    dropdown_combobox_panel_class,
     register_element,
 )
 from common.components.date_picker import (
@@ -167,6 +168,7 @@ from common.components.primitives import (
     FormFields,
     Icon,
     IconLink,
+    IconTrigger,
     Input,
     Label,
     Li,
@@ -392,6 +394,7 @@ __all__ = [
     "HTMLTag",
     "Icon",
     "IconLink",
+    "IconTrigger",
     "Input",
     "Label",
     "LabeledOption",
@@ -503,6 +506,7 @@ __all__ = [
     "collect_media",
     "custom_element_builder",
     "drop_columns",
+    "dropdown_combobox_panel_class",
     "field_widget",
     "field_widget_templates",
     "is_quick_editable",

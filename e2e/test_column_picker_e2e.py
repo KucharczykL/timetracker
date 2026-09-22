@@ -128,6 +128,39 @@ def test_the_panel_opens_clear_of_the_table_that_clips_it(
     assert inside is not False
 
 
+OCCLUSION = """
+(panel) => {
+    const box = panel.getBoundingClientRect();
+    let covered = 0;
+    let total = 0;
+    for (let x = box.left + 6; x < box.right - 6; x += 20) {
+        for (let y = box.top + 6; y < box.bottom - 6; y += 20) {
+            total += 1;
+            if (!panel.contains(document.elementFromPoint(x, y))) covered += 1;
+        }
+    }
+    return [covered, total];
+}
+"""
+
+
+def test_the_open_panel_covers_the_rows_own_dropdowns(
+    authenticated_page: Page, live_server, one_session
+):
+    """Every row carries a device selector on its own stratum; a panel that
+    states no stratum of its own opens underneath them."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    panel = _open_the_panel(page)
+
+    selectors = page.locator("tbody [data-menu]").count()
+    covered, total = panel.evaluate(OCCLUSION)
+
+    assert selectors > 0, "no row dropdown to open over; nothing is measured"
+    assert total > 0, "the panel sampled no points"
+    assert covered == 0, f"{covered}/{total} points of the panel are covered"
+
+
 def test_a_column_that_refuses_to_hide_offers_no_choice(
     authenticated_page: Page, live_server, one_session
 ):

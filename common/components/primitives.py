@@ -2665,6 +2665,32 @@ _ELLIPSIS_GLYPHS: Mapping[EllipsisOrientation, str] = {
 }
 
 
+def IconTrigger(
+    attrs: AttrsArg | None = None,
+    /,
+    *,
+    icon: str,
+    label: str,
+    haspopup: PopupKind = "menu",
+) -> ControlButton:
+    """A bare glyph that opens a popup, with no visible word.
+
+    One shape for every such trigger, so two of them in one table read as one
+    control at two places. The glyph is decoration and says ``aria-hidden``:
+    the button carries the name, and ``title`` says it again where a pointer
+    hovers.
+    """
+    return ControlButton(
+        attrs,
+        color="gray",
+        variant="ghost",
+        class_="p-2",
+        aria_label=label,
+        title=label,
+        aria_haspopup=haspopup,
+    )[Icon(icon, [("aria-hidden", "true")])]
+
+
 def EllipsisTrigger(
     attrs: AttrsArg | None = None,
     /,
@@ -2675,22 +2701,19 @@ def EllipsisTrigger(
 ) -> ControlButton:
     """The bare three-dot trigger, shared by three surfaces.
 
-    The glyph is decoration and says ``aria-hidden``: the button carries the
-    name. ``haspopup`` is the caller's because the three surfaces open two
-    different things — a menu of items, or a dialog of moved controls.
+    ``haspopup`` is the caller's because the three surfaces open two different
+    things — a menu of items, or a dialog of moved controls.
 
     The ringed ``ellipsis`` glyph is deliberately not one of these two. It is
     ``TruncatedText``'s reveal, and a row would then show two ellipses a cell
     apart if this borrowed it.
     """
-    return ControlButton(
+    return IconTrigger(
         attrs,
-        color="gray",
-        variant="ghost",
-        class_="p-2",
-        aria_label=label,
-        aria_haspopup=haspopup,
-    )[Icon(_ELLIPSIS_GLYPHS[orientation], [("aria-hidden", "true")])]
+        icon=_ELLIPSIS_GLYPHS[orientation],
+        label=label,
+        haspopup=haspopup,
+    )
 
 
 def _replace_query(

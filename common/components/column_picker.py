@@ -3,7 +3,11 @@
 from collections.abc import Collection, Sequence
 
 from common.components.core import Node
-from common.components.custom_elements import Dropdown
+from common.components.custom_elements import (
+    DROPDOWN_ITEM_WITH_ICON_CLASS,
+    Dropdown,
+    dropdown_combobox_panel_class,
+)
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
     Checkbox,
@@ -12,9 +16,8 @@ from common.components.primitives import (
     ControlButton,
     Div,
     Form,
-    Icon,
+    IconTrigger,
     Label,
-    Popover,
     Span,
 )
 
@@ -24,21 +27,17 @@ COLUMN_PICKER_LABEL = "Choose columns"
 #: What the panel posts the columns it leaves shown as.
 SHOWN_FIELD = "shown"
 
-_PANEL_CLASS = (
-    "overflow-x-hidden overflow-y-auto rounded-base p-2 bg-surface-overlay "
-    "text-type-body before:content-[''] before:absolute before:inset-0 "
-    "before:-z-10 before:rounded-[inherit] dark:before:backdrop-blur-xl "
-    "border border-default-medium w-64 normal-case text-left"
-)
+#: The shared dialog surface, which states the stratum every other dropdown
+#: panel sits on: a hand-written surface opens under the row's own selectors.
+#: The header row is uppercase and centred on its own; the panel is prose.
+_PANEL_CLASS = f"{dropdown_combobox_panel_class('w-64')} normal-case text-left"
 
-#: A square ghost button: the row menu's look, with no room for text.
-_TRIGGER_CLASS = "w-control px-0"
-
-_ROW_CLASS = (
-    "flex items-center gap-2 px-3 py-2 rounded-base text-type-body text-heading"
+#: One row of the panel is a dropdown item that leads with its box.
+_SHOWS_CLASS = DROPDOWN_ITEM_WITH_ICON_CLASS
+#: A row whose box refuses states the one disabled look, off the box itself.
+_PINNED_CLASS = (
+    f"{DROPDOWN_ITEM_WITH_ICON_CLASS} cursor-not-allowed {DISABLED_WITHIN_CLASS}"
 )
-_SHOWS_CLASS = f"{_ROW_CLASS} cursor-pointer hover:bg-neutral-tertiary-medium"
-_PINNED_CLASS = f"{_ROW_CLASS} cursor-not-allowed {DISABLED_WITHIN_CLASS}"
 
 
 def _box(column: Column, *, shown: bool) -> Node:
@@ -76,30 +75,18 @@ def ColumnPicker(
     route stores the declared keys less the posted ones rather than reading
     what the request carries as the whole truth.
     """
-    trigger = ControlButton(
-        variant="ghost",
-        aria_haspopup="dialog",
-        aria_label=COLUMN_PICKER_LABEL,
-        class_=_TRIGGER_CLASS,
-    )[
-        #: tap=False: this sits inside the trigger button already, and a
-        #: popover's own button may not nest in one.
-        Popover(
-            popover_content=COLUMN_PICKER_LABEL,
-            children=[Icon("columns")],
-            id=f"column-picker-tip-{mode}",
-            tap=False,
-        )
-    ].as_element()
+    trigger = IconTrigger(
+        icon="columns", label=COLUMN_PICKER_LABEL, haspopup="dialog"
+    ).as_element()
 
     panel = Div(role="dialog", aria_label=COLUMN_PICKER_LABEL, class_=_PANEL_CLASS)[
         Form(method="post", action=post_url)[
             csrf_input,
-            Div(class_="px-3 pt-1 pb-2 text-type-micro text-body-subtle")[
+            Div(class_="px-4 pt-1 pb-2 text-type-micro text-body-subtle")[
                 "Columns shown"
             ],
             *[_box(column, shown=column.key not in hidden) for column in columns],
-            Div(class_="mt-2 pt-2 border-t border-default-medium flex gap-2 px-1")[
+            Div(class_="mt-2 pt-2 border-t border-default-medium flex gap-2")[
                 ControlButton(type="submit", color="blue", class_="grow")["Apply"],
                 #: A named submit, so a reset posts as itself: the boxes it
                 #: carries are whatever the panel stood at, which is the

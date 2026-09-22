@@ -77,7 +77,10 @@ summary is the judgement this design removes.
 ## The control
 
 A square icon button sits in the table's **last** header cell: the trailing
-row-menu cell where the rows carry a menu, else the Actions header. Stated that
+row-menu cell where the rows carry a menu, else the Actions header. It is an
+`IconTrigger`, the one bare-glyph shape, which the row menu's own ellipsis
+trigger is built from as well: two shapes in one column would read as two
+controls. Stated that
 way, the icon follows the slot by itself as
 [#1134](https://github.com/KucharczykL/timetracker/issues/1134),
 [#1135](https://github.com/KucharczykL/timetracker/issues/1135),
@@ -85,9 +88,12 @@ way, the icon follows the slot by itself as
 [#1266](https://github.com/KucharczykL/timetracker/issues/1266) retire the four
 Actions columns.
 
-The panel is a `<drop-down behavior="column-picker">`, which opens
-`position: fixed`. It must: the table's shell clips, so a panel anchored inside
-the header is sliced at the shell's edge. The behavior states a match-nothing
+The panel is a `<drop-down behavior="column-picker">` on the shared dropdown
+dialog surface, which opens `position: fixed`. It must: the table's shell clips,
+so a panel anchored inside the header is sliced at the shell's edge. The surface
+is shared rather than written out, because it also states the stratum every
+dropdown sits on, and a panel stating none of its own opens underneath the
+device selector in each row. The behavior states a match-nothing
 item selector, so the boxes keep Space and the arrow keys, and `keepOpenOnTab`,
 so Tab reaches Apply.
 
