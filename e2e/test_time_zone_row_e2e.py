@@ -118,6 +118,10 @@ def test_finish_stamps_the_end_zone(tokyo_page, live_server, e2e_library):
     )
     tokyo_page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     row = tokyo_page.locator(f"#session-row-{session.pk}")
+    #: The acts sit behind the row's own trigger, in a panel that starts
+    #: hidden; the element's registration is what makes the press land.
+    tokyo_page.wait_for_function("() => !!customElements.get('drop-down')")
+    tokyo_page.locator(f"#session-menu-{session.pk}Link").click()
     row.locator('form[action*="/finish"] button[type="submit"]').click()
     # The list re-renders after the write commits, so waiting for the finish
     # control to vanish is a server-state assertion.

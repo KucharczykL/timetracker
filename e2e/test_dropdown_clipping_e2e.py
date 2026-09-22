@@ -45,7 +45,10 @@ def test_device_dropdown_not_clipped_on_short_table(
     session = session_row(game, device=devices[0], started_at=timezone.now())
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
-    page.locator(f"#session-row-{session.pk} [data-toggle]").click()
+    #: The device selector by name: a row states a menu trigger as well.
+    page.locator(
+        f'#session-row-{session.pk} drop-down[behavior="select"] [data-toggle]'
+    ).click()
 
     menu = page.locator("[data-menu]:not([hidden])")
     menu.wait_for(state="visible")
@@ -107,7 +110,9 @@ def test_device_dropdown_flips_up_near_viewport_bottom(
     page.wait_for_timeout(200)
 
     bottom_row = sessions[-3]
-    page.locator(f"#session-row-{bottom_row.pk} [data-toggle]").click()
+    page.locator(
+        f'#session-row-{bottom_row.pk} drop-down[behavior="select"] [data-toggle]'
+    ).click()
     menu = page.locator("[data-menu]:not([hidden])")
     menu.wait_for(state="visible")
 
