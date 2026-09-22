@@ -73,9 +73,12 @@ states items and knows no act; each table's items are built under
 `games/views/`, and the session row's builder leaves
 `common/components/domain.py`.
 
-Finish and the two playthrough acts post. The rest are links to their own
-confirmation pages, which carry `?origin=` as they do today.
-`DropdownPostItem` states `hidden_fields`, because Finish posts the zone.
+Finish, Move and the two playthrough acts post; the rest are links to their
+own confirmation pages, which carry `?origin=` as they do today.
+`DropdownPostItem` states `hidden_fields`, because two items need one: Finish
+posts the zone, and Move posts the runner's own one-row statement. Move has no
+route of its own and grows none — the item hands one row to the tray's act, so
+the words and the rules are the same in both places.
 
 ## The tray, as its acts grow
 

@@ -49,9 +49,11 @@ pytest + pytest-xdist, vitest, Playwright.
 
 **Interfaces:**
 - Produces: `type EllipsisOrientation = Literal["vertical", "horizontal"]` and
-  `EllipsisTrigger(attributes: list[HTMLAttribute] | None = None, /, *, label:
-  str, orientation: EllipsisOrientation = "vertical", haspopup: str = "menu")
-  -> ControlButton`. Dynamic attributes take the **single positional slot**, as
+  `EllipsisTrigger(attrs: AttrsArg | None = None, /, *, label: str,
+  orientation: EllipsisOrientation = "vertical", haspopup: str = "menu")
+  -> ControlButton` — `AttrsArg` is the repo's own name for that slot, as
+  `ControlButton.__init__` states it (`common/components/primitives.py:1033`).
+  Dynamic attributes take the **single positional slot**, as
   every styled builder does; an `attributes=` keyword is rejected by the node
   layer and by CLAUDE.md alike. It answers the component, not an `Element`:
   both `Dropdown` callers need `.as_element()`.
@@ -151,9 +153,14 @@ pytest + pytest-xdist, vitest, Playwright.
 **Interfaces:**
 - Produces: `make_row(*cells, key=None, summary=None, menu: Node | None = None,
   **attributes)`; `TableRowData` gains `menu: NotRequired[Node]`.
-- Produces: the trailing header `<th>` carries `data-row-menu`, no visible
-  label, an sr-only accessible name, and
+- Produces: the trailing header `<th>` carries `data-row-menu`, an sr-only
+  accessible name **inside a child span**, and
   `data-priority = max(column.priority for column in columns) + 1`.
+- Produces: `TableRow(data, columns, *, data_table, selectable, menu_slot:
+  bool = False)`. A row cannot see whether its table has a slot, so
+  `StyledTable` derives `menu_slot = any("menu" in row for row in rows)` once
+  and passes it down, exactly as it already passes `selectable`. A row in a
+  slotted table that states no menu renders an **empty** trailing cell.
 
 **Gotchas:**
 - `<responsive-table>` hides columns with positional
@@ -175,7 +182,24 @@ pytest + pytest-xdist, vitest, Playwright.
   regex reads a table that drops nothing.
 - Where some rows state a menu and some do not, the rows without one still get
   an empty trailing cell: the grid stays rectangular, or `nth-child`
-  misaddresses every column after it.
+  misaddresses every column after it. This is why the flag is the table's and
+  not the row's.
+- **The sr-only name goes on a child span, never on the `<th>`.**
+  `measureNaturalWidths` reads each `thead th`'s rect
+  (`ts/elements/responsive-table.ts:210-227`); an absolutely positioned 1px
+  header under-budgets the menu column by the whole trigger's width, and
+  `e2e/test_responsive_table_e2e.py:162-176`
+  (`test_no_wrapper_scroll_at_any_viewport`) then fails on three list pages.
+- `_header_cell` takes a `Column` (`primitives.py:2746`). The trailing header
+  gets its own small builder rather than a synthetic `Column` — a `Column` is
+  what the slot is defined as not being.
+- `TableRow` has one caller outside `StyledTable`:
+  `games/views/purchase.py:626` renders a row for an htmx fragment and passes
+  no slot, which is correct — that fragment's table keeps its own columns.
+- Rendering the trailing cell on a table whose rows state no menu would give
+  the six unconverted tables a new header and break
+  `e2e/test_responsive_table_e2e.py:243-246`, which asserts the last `thead th`
+  reads "actions". The `any(...)` derivation is what prevents it.
 - Do not add a `menu` field to `Column`. An earlier draft did; the slot is a
   row's, not a column's.
 
@@ -188,9 +212,13 @@ pytest + pytest-xdist, vitest, Playwright.
   `make test-fast ARGS="tests/test_components.py -k menu_slot -x"`
 - [ ] **Step 3: Implement** across the five functions above.
 - [ ] **Step 4: Run them; they pass.**
-- [ ] **Step 5: Add the contract test's counterpart.** In
-  `tests/test_column_priority_contract.py`, a case asserting that a rendered
-  `data-row-menu` header outranks every `data-priority` in its own table. Leave
+- [ ] **Step 5: Add the contract test's counterpart, as a unit case.** In
+  `tests/test_column_priority_contract.py`, build a table through `StyledTable`
+  with rows stating a menu and assert its `data-row-menu` header's priority
+  outranks every other `data-priority` in that table. Build it; do not render a
+  page — no page has a menu until Task 7, `header_policies` would read the
+  sr-only text as the label, and `assert_actions_dominates` exempts the table,
+  so a page-level case at this task asserts nothing. Leave
   `assert_actions_dominates` alone: six tables still declare a labelled
   `Actions` column (`games/views/game.py:251`, `:868`, `:1027`,
   `games/views/purchase.py:141`, `games/views/device.py:90`,
@@ -303,28 +331,42 @@ pytest + pytest-xdist, vitest, Playwright.
   renders hidden pairs only (`games/views/bulk_pages.py:200-235`), so on chunk
   two there is no `<browser-time-zone>` element and no separate zone field —
   only `CHOICE_FIELD` holding what `settle` last returned. Therefore:
-  - **`settle` stamps, `offer` does not.** `offer` gets no request
-    (`BulkChoice.offer` takes library, rows and field name), and `settle` gets
-    the POST, so the decision belongs to `settle`. `offer` renders two inputs
-    and decides nothing: an **empty** hidden input named `field_name` — the
-    `CHOICE_FIELD` the runner hands it — and `BrowserTimeZoneInput()` under its
-    own `browser_time_zone` name, which `ts/elements/browser-time-zone.ts`
-    fills.
-  - `settle` reads `CHOICE_FIELD`. Empty: stamp `timezone.now()`, take the zone
-    from `browser_time_zone`, answer the encoded pair. Already filled: decode
-    and answer it unchanged. So chunk one decides and every later chunk agrees,
-    and **`settle(settle(x)) == settle(x)` falls out.** Write that test by name.
+  - **`offer` stamps the instant into the form; `settle` merges the zone.**
+    `offer` renders two inputs: a hidden input named `field_name` — the
+    `CHOICE_FIELD` the runner hands it — whose value is a `FinishStatement`
+    already encoded with `timezone.now()` and an empty zone, and
+    `BrowserTimeZoneInput()` under its own `browser_time_zone` name, which
+    `ts/elements/browser-time-zone.ts` fills.
+  - `settle` decodes `CHOICE_FIELD`. It takes the zone from the decoded value
+    if it holds one and from `browser_time_zone` otherwise, and answers the
+    encoded pair. Chunk one composes instant-from-form with zone-from-browser;
+    every later chunk decodes a value already holding both. So
+    **`settle(settle(x)) == settle(x)`.** Write that test by name.
+  - **Why the instant lives in the form and not in `settle`.** The instant must
+    be a function of *the form*, not of the moment a POST arrives, because the
+    same confirmation form can be posted twice — a double submit, or Back onto
+    a bfcached page; `ConfirmPage` has no submit-once guard
+    (`common/components/primitives.py:2188-2215`). A second post carries the
+    same token and the same initial tally, so every row the first post ended is
+    dispatched again under the same key. With the instant baked into the form's
+    HTML the payload is identical and the rows replay cleanly. With `settle`
+    stamping `now()`, the second post mints a new instant, every finished row
+    raises `IdempotencyKeyMismatch` and the batch reports them all refused —
+    precisely the storm this design exists to prevent.
   - `run` decodes the `choice` it is handed into a `FinishStatement` and passes
-    its two fields to `end_session`. A `choice` of `None` is a defect, not a
-    state: raise rather than stamping a fresh instant.
-- **Accepted:** `_reconfirmation` (`games/views/bulk.py:356`) re-draws an empty
-  control, so a batch interrupted there stamps a second instant for the rows
-  that remain. No fingerprint mismatches — the rows already done leave
-  `tally.rows` and are never dispatched again — and the path is reachable only
-  by hand-editing the hidden field. Do **not** widen `BulkChoice.offer` to see
-  the POST for it: that is #713's interface, and the cost is a cosmetic
-  inconsistency in a path nobody reaches. State it in a comment on
-  `finish_choice`.
+    its two fields to `end_session`. A `choice` of `None` is a defect. Raise
+    `CommandFailed` at `DEFECT_STATUS` rather than a bare exception:
+    `_run_a_chunk` catches `Http404` and `CommandFailed` only
+    (`games/views/bulk.py:501-543`), and anything else skips `_log_abandoned`,
+    so the batch log would never name the rows it did not reach — which the
+    runner's contract requires.
+- **Accepted:** `_reconfirmation` (`games/views/bulk.py:356`) calls `offer`
+  again and stamps a second instant for the rows that remain. Reachable only by
+  hand-editing the hidden field into something `settle` refuses; the rows
+  already done have left `tally.rows` (`:492`, `:549`) and are never dispatched
+  again, so nothing mismatches. Do **not** widen `BulkChoice.offer` to see the
+  POST for it: that is #713's interface, and the cost is one batch recording two
+  instants on a path nobody reaches. State it in a comment on `finish_choice`.
 - `settle` validates both halves, because the field is a person's to edit: an
   instant it cannot parse raises `CommandRejected` with a `sentence=`; the zone
   goes through `zone_or_none` (`common/date_time_presentation.py:423`) and an
@@ -361,10 +403,12 @@ pytest + pytest-xdist, vitest, Playwright.
 - [ ] **Step 1: Write the failing tests.** Eight:
   1. a running row is ended at the stamped instant with the settled zone;
   2. a row that is not running is refused and named in the report;
-  3. two posts of one chunk under one token count the same and **not** as
-     refusals — the regression test for the fingerprint, driven through
-     `games:run_bulk_action` rather than by calling `run` twice, because the
-     key is the runner's;
+  3. **the confirmation form posted twice** — same token, same initial tally,
+     same encoded choice — ends every row once and counts none refused. Post
+     the confirmation form, not the progress form: re-posting the progress form
+     passes under either stamping design and proves nothing. This is the
+     regression test for the fingerprint, and it must go through
+     `games:run_bulk_action`, because the key is the runner's;
   4. `settle` is idempotent: feeding its own answer back under `CHOICE_FIELD`,
      with no `browser_time_zone` present, answers the same string;
   5. a batch spanning two chunks ends every row at one instant;
@@ -421,16 +465,42 @@ pytest + pytest-xdist, vitest, Playwright.
   `BrowserTimeZoneInput()` — add that keyword to `DropdownPostItem` in
   `common/components/custom_elements.py:949`. The two playthrough acts in Task 8
   post without one.
+- **Move has no per-session route, and must not grow one.** `games/urls.py`
+  states none, today's `SessionActions` offers none, and the only move is
+  `MOVE` through `games:run_bulk_action` (`games/bulk_move.py:469`). The item is
+  therefore a `DropdownPostItem` to `action_url("games:run_bulk_action",
+  MOVE.name, origin=origin)` whose `hidden_fields` carry the runner's own
+  one-row statement: an input named `SELECTION_STATEMENT_FIELD` holding
+  `{"mode": "some", "keys": ["<pk>"]}`, which `parse_statement`
+  (`games/views/bulk.py:225-232`) reads. No token, so the runner answers its
+  confirmation, with the run picker, over that one row. This is what "in the
+  tray's words" means literally: the menu hands one row to the same act.
 - Everything else is a `DropdownLinkItem` to its confirmation page, carrying
   `?origin=` through `action_url` exactly as today.
+- Each row's menu states its own id and its own label:
+  `id=f"session-menu-{session.pk}"`, and a label naming the row rather than the
+  table, so a reader does not hear "Session actions" once per row. Use the same
+  text the row's identity cell states. The run and record menus in Task 8
+  follow the same two rules with their own prefixes.
 - Tray order is priority order, destructive last:
   `tray_actions(MOVE.name, FINISH_SESSION.name, RECLASSIFY.name,
   REMOVE_SESSION.name, origin=origin)`.
-- `e2e/test_session_finish_e2e.py:38` clicks
-  `form[action*="/finish"] button[type="submit"]` inside the row, and
-  `e2e/test_session_reset_e2e.py:57` clicks a link by role inside the row. Both
-  controls are now inside a panel that starts hidden: each test opens the row's
-  menu first.
+- **Five e2e files press a session-row control, not two.** Every one of these
+  moves into a panel that starts `hidden`, so the press *times out* rather than
+  failing an assertion — read a timeout here as this change, not as flake. Each
+  opens the row's menu first:
+  - `e2e/test_session_finish_e2e.py:38` — `form[action*="/finish"]
+    button[type="submit"]`.
+  - `e2e/test_session_reset_e2e.py:57` — the Reset link by role.
+  - `e2e/test_control_sizing_e2e.py:57-59` — `row.locator('a[href*="/reset"]')`
+    with `to_be_visible()`. It compares the device selector's height against an
+    icon action's, and that comparison no longer exists: the case is rewritten
+    against the menu trigger or removed with a note saying why.
+  - `e2e/test_session_reclassification_e2e.py:42` —
+    `get_by_title(re.compile("Was an estimate"))`. The title becomes the item
+    text "Record as historical playtime".
+  - `e2e/test_undo_removal_e2e.py:28` —
+    `a[href*="/session/"][href*="/remove"]`.
 - `e2e/test_responsive_table_e2e.py:246` asserts the last `thead th` reads
   "actions". It runs on Purchases, which keeps its column, but `LIST_PAGES`
   (`:151`) includes sessions — check both paths.
@@ -444,11 +514,13 @@ pytest + pytest-xdist, vitest, Playwright.
 - [ ] **Step 3: Write `session_menu.py`, delete `SessionActions`, drop the
   column, extend `DropdownPostItem`, restate the tray.**
 - [ ] **Step 4: Run them; they pass.**
-- [ ] **Step 5: Update the two e2e tests to open the menu first.**
-- [ ] **Step 6: `make test-e2e ARGS="-k session_finish or session_reset"`.**
-  That target already depends on `css ts` (`Makefile:488`), so no separate
-  build step. Never run it while `make dev` is up — its watchers rewrite the
-  served assets underneath it.
+- [ ] **Step 5: Update all five e2e tests to open the menu first**, rewriting
+  the control-sizing comparison rather than deleting its assertion silently.
+- [ ] **Step 6: `make test-e2e ARGS="-k session_finish or session_reset or
+  control_sizing or reclassification_e2e or undo_removal"`.** That target
+  already depends on `css ts` (`Makefile:488`), so no separate build step.
+  Never run it while `make dev` is up — its watchers rewrite the served assets
+  underneath it.
 - [ ] **Step 7: `make check-fast`**, format, lint-fix, commit.
 
 ---
@@ -549,9 +621,13 @@ pytest + pytest-xdist, vitest, Playwright.
   handed no caption, and Game detail renders two selectable tables at once
   (`games/views/game.py:1120`, `:1168`). Thread the table's `caption_key` — the
   same fact the selection scope already keys on — into the slot and seed the
-  `Dropdown` id from it, or
-  `tests/test_html_validity.py::test_ids_are_unique_and_describedby_targets_resolve_once`
-  fails on that page.
+  `Dropdown` id from it. Nothing currently guards this:
+  `test_ids_are_unique_and_describedby_targets_resolve_once`
+  (`tests/test_html_validity.py:214`) renders only `list_games` and
+  `list_purchases`, so a duplicate id on Game detail would ship unseen. Add
+  Game detail's URL to that test's tuple in this task — `Dropdown` emits both
+  `{id}` and `{id}Link` (`common/components/custom_elements.py:892-916`), so a
+  collision is two failures, not one.
 - `make ts` after every `.ts` edit, or the e2e run serves stale output. Never
   run e2e while `make dev` is up.
 
@@ -568,10 +644,14 @@ pytest + pytest-xdist, vitest, Playwright.
   `ROOT_URLCONF` with two stub routes and no bulk route, so it cannot press a
   real act. Two cases: at a narrow viewport the overflow trigger appears and an
   act inside it still posts the statement; and the existing
-  `get_by_role("button", name="Remove", exact=True)` still resolves — Remove is
-  declared last after Task 7, so it is the **first** act to overflow, and at
-  Playwright's default viewport with four acts it may already be inside the
-  menu. If it is, that assertion opens the menu first; check, do not assume.
+  `get_by_role("button", name="Remove", exact=True)` at `:51` still resolves —
+  Remove is declared last after Task 7, so it is the **first** act to overflow,
+  and at Playwright's default 1280×720 (nothing in `e2e/conftest.py` or
+  `e2e/helpers.py` overrides it) four acts probably fit. Check, do not assume:
+  an overflowed submit sits in a `hidden` panel, so the press **times out**
+  rather than failing an assertion, and a timeout here is this change, not
+  flake. `:59` is the confirmation's own Remove and is unaffected; `:99-100` is
+  the playthrough list, which offers one act.
 - [ ] **Step 6: `make ts`, `make check-fast`**, format, lint-fix, commit.
 
 ---
