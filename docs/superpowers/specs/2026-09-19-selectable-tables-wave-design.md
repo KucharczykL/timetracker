@@ -164,9 +164,9 @@ dropping. The charter's rules hold, and this wave settles the shape:
   statement the POST carries and nothing else, so what the element keeps
   changes nothing in the runner; a count that no longer matches is the
   confirmation's to say, not the tray's to refuse.
-  The cost of the mode: after #718 a single-row bulk act is three
-  presses, Select, the checkbox, the action, one more than the charter
-  counted; the row's own Edit and Reset stay two, the ⋯ menu and the item.
+  The cost of the mode: after #718 a multi-row act is Select, the
+  checkboxes, the action; a single row's act is two presses, the ⋯ menu
+  and the item, because the menu carries every act valid for one row.
 - Below `md` the identity cell is today a shrinkable, single-line name cell,
   and nothing stacks. #711 builds the stacked cell: the checkbox beside the
   row's essential summary on two lines, while lower-priority columns keep
@@ -240,9 +240,9 @@ for Edit, Reset and Was-an-estimate. The user overturned it on the
 shipped tray: no act in the Actions column must be single, because bulk
 Edit is a different act from the row's Edit (it sets one value on every
 selected row, #1211) and Finish is coherent over many running sessions.
-What stays single, the row's own Edit form and Reset, lives in a ⋯ menu
-on the row, not in the tray, so the tray renders no `one` path and
-`Cardinality.ONE` leaves with #718.
+The ⋯ menu on the row carries every act valid for one row, the tray
+every act, two complete lists (below), so the tray renders no `one` path
+and `Cardinality` leaves whole with #718.
 
 The selection line is the same on every table, and the actions differ by
 view. Nothing about it knows sessions.
@@ -373,8 +373,7 @@ done". Sessions and records refuse far less. The act stays as the
 runner's proof and the one act on the run tables; whether it earns a
 place in the product is judged in the rethink #1209 is parked against,
 not here. Without it a tray on runs or records
-would hold single-row acts only, and selecting ten runs would enable
-nothing.
+would hold nothing, and selecting ten runs would enable nothing.
 
 ## The organizer
 
@@ -494,33 +493,43 @@ that role: the checkbox is content the selectable personality owns
 inside the name cell, while a menu holds what each table says, and a
 table that keeps its Actions column today (#1134–#1136, Purchases)
 inherits the same column when its turn comes. The playthrough tables'
-one-press "Started today" and "Completed today" go into that menu as
-items; as `many` acts with inverses of their own they are #1256's, after
-#718. Finish's inverse is `CorrectSessionTiming` to the row's own start
+one-press "Started today" and "Completed today" are items in that menu;
+as tray acts with inverses of their own they are #1256's, after #718,
+and the items stay when the tray acts arrive. Finish's inverse is `CorrectSessionTiming` to the row's own start
 and zones with no end, which puts the row back to running, so `inverse`
 stays required on every act; `end_session` grows the runner's shape, a
 key, a correlation id and `source_metadata`, and answers the
 `CommandResult`. A reader a tray act needs moves
 to `games/reads/` first: an act module importing a view closes an import
 cycle through the foot imports of `games/bulk_actions.py`, which is why
-#714 moved the run labels out of `games/views/session.py`. Every act that is coherent over
-many rows is a tray action: Remove and Was-an-estimate (shipped), Finish
-(#718 declares it, `EndSession` at now per running row, no form), and
-Edit as set-one-value (#1211, after #714, whose move confirmation is the
-form-over-a-selection precedent; its device control is the session
-form's creating `SearchSelect` over `POST /api/devices/`, #1080's, so a
-device the library does not hold yet is made at the confirmation). The
-residue, the row's own Edit form
-and Reset, moves into a ⋯ menu on the row, the user's preference over a
-row of icons; a single running session is finished from the tray, from
-the navbar, or from its own page. Games, Purchases,
-Devices and Platforms keep their columns, each filed as a follow-up;
-Purchases' is the Purchases wave's, which rebuilds that table.
+#714 moved the run labels out of `games/views/session.py`.
 
-The cost the charter accepted holds: a single-row bulk act is select,
-then act, one press more than an icon, and the residue menu costs the
-same two presses an icon row did. The Orca pass in #718 is where that
-cost is judged.
+Two complete lists, no residue, the user's rule of 2026-09-22 over the
+whole inventory of the five tables: the tray offers every act, and the
+row's ⋯ menu offers every act valid for a single row, in the tray act's
+words where one exists ("Record as historical playtime", "Remove"), so
+one act reads the same both ways. The tray's acts are Remove and
+Was-an-estimate (shipped), Finish (#718 declares it, `EndSession` at
+now per running row; its `ended_at_zone` is the browser's, carried in
+the act's `BulkChoice` slot as `BrowserTimeZoneInput()`, the same fact
+the row's Finish records) and Edit as set-one-value (#1211, after #714,
+whose move confirmation is the form-over-a-selection precedent; its
+device control is the session form's creating `SearchSelect` over
+`POST /api/devices/`, #1080's, so a device the library does not hold
+yet is made at the confirmation). The menu is today's Actions column
+collapsed into one control: Edit, Reset, Finish, Remove and
+Was-an-estimate stay on the row, and a tray act shipping takes nothing
+off it. Games, Purchases, Devices and Platforms keep their columns,
+each filed as a follow-up, and inherit the rule with the column: their
+Actions column becomes the row's full act list in a menu. Purchases' is
+the Purchases wave's, which rebuilds that table.
+
+The cost: a single row's act is two presses, the menu and the item, as
+an icon row cost; a multi-row act is Select, the checkboxes and the
+action. The charter's "a single-row bulk act is three presses" describes
+a path nobody has to take. The Orca pass in #718 is one transcript on
+the Playtime session list, selection, the live count, a tray act, then a
+row's ⋯ and its items; the other four tables are Playwright only.
 
 ## Delivery order
 
@@ -561,9 +570,9 @@ cost is judged.
 7. **#1212** TABLE-05 — the checkbox reserve while the mode is off,
    decided before the pages are judged.
 8. **#718** ORG-05 — the five Actions columns retired into the tray's
-   `many` acts (Finish declared here, with its inverse) and the row's ⋯
-   menu, a column marked by role, `Cardinality.ONE` removed, the Orca
-   pass, with the checkbox reserve as it stands.
+   acts (Finish declared here, with its inverse) and the row's ⋯ menu
+   holding every single-row act, a column marked by role, `Cardinality`
+   removed whole, the Orca pass, with the checkbox reserve as it stands.
 9. **#1211** TABLE-04 — bulk Edit on the session tables, after #714.
 
 `#711 → #713 → #712 → #714 → #715 → #717 → #718 → #1211`. #1212 and #1254
@@ -684,11 +693,14 @@ at connect. Measured after #712 shipped: the confirmation lists only the
 refusals the resolve owns, a command's rule is read at the press, and the
 forecast of it is #1209, parked with the numbers. Overturned by the user
 on the shipped tray: no `one` cardinality; bulk Edit (#1211) and Finish
-are `many` acts, the residue is a ⋯ menu on the row, and the empty
-checkbox reserve is #1212's to decide before #718.
+are tray acts, and the empty checkbox reserve was #1212's, since parked.
+Overturned again by the user on 2026-09-22, over the five tables'
+inventory: no residue; the tray offers every act and the row's ⋯ menu
+every act valid for one row, two complete lists.
 
 Deviations recorded: the empty bucket is removed, not archived; Finish is
-a tray act rather than the charter's inline control, beside the navbar's;
+a tray act and a menu item, the charter's inline control moved into the
+row's menu, beside the navbar's;
 a cross-game move is refused rather than
 picked; the organizer is reached from Game detail's Sessions section rather
 than its Playthrough section, and a date range is selected through the date
