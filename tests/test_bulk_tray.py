@@ -126,9 +126,24 @@ def _a_record(owned_user, owned_library, game):
     return HistoricalPlaytime.objects.get(pk=record_id)
 
 
+#: The session list's acts, in the order the tray lays them out.
+SESSION_ACTS = (
+    "session.move",
+    "session.finish",
+    "session.reclassify",
+    "session.remove",
+)
+
+
+def _tray(html: str) -> str:
+    """The selection line's own acts, without the rows' menus."""
+    start = html.index('data-selection-actions=""')
+    return html[start : html.index("</selection-actions>", start)]
+
+
 @pytest.mark.untracked_games
 @pytest.mark.django_db(transaction=True)
-def test_the_session_list_names_its_rows_and_offers_three_acts(
+def test_the_session_list_names_its_rows_and_offers_four_acts(
     client_in, owned_user, owned_library, game
 ):
     session = _a_session(owned_user, owned_library, game)
@@ -137,8 +152,8 @@ def test_the_session_list_names_its_rows_and_offers_three_acts(
 
     assert f'data-selection-key="{session.pk}"' in html
     assert "data-selection-actions-form" in html
-    for name in ("session.move", "session.remove", "session.reclassify"):
-        assert f"/bulk/{name}/" in html
+    for name in SESSION_ACTS:
+        assert f"/bulk/{name}/" in _tray(html)
 
 
 @pytest.mark.untracked_games
@@ -146,17 +161,18 @@ def test_the_session_list_names_its_rows_and_offers_three_acts(
 def test_the_session_lists_acts_are_offered_in_one_order(
     client_in, owned_user, owned_library, game
 ):
-    """The move leads: it takes nothing off the list."""
+    """The move leads and the removal trails: one takes nothing off the
+    list, the other takes every row off it.
+
+    Read out of the tray alone. A row's own menu hands one row to the same
+    act, so the page states the move's route once a row besides.
+    """
     _a_session(owned_user, owned_library, game)
 
-    html = client_in.get(reverse("games:list_sessions")).content.decode()
+    tray = _tray(client_in.get(reverse("games:list_sessions")).content.decode())
 
-    assert [
-        html.index(f"/bulk/{name}/")
-        for name in ("session.move", "session.remove", "session.reclassify")
-    ] == sorted(
-        html.index(f"/bulk/{name}/")
-        for name in ("session.move", "session.remove", "session.reclassify")
+    assert [tray.index(f"/bulk/{name}/") for name in SESSION_ACTS] == sorted(
+        tray.index(f"/bulk/{name}/") for name in SESSION_ACTS
     )
 
 

@@ -451,55 +451,6 @@ class ComponentReturnTypeTest(unittest.TestCase):
         self.assertNotIsInstance(result, tuple)
 
 
-class SessionActionsTest(unittest.TestCase):
-    """Session row actions: finish posts and reset links to its confirmation,
-    both only while the session is open. Edit/Delete always present."""
-
-    SESSION_ID = UUID("018f5e66-e800-7000-8000-000000000001")
-
-    def _session(
-        self, *, pk=SESSION_ID, ended_at=None, timing_mode="timed", game_name="Hades"
-    ):
-        from types import SimpleNamespace
-
-        return SimpleNamespace(
-            pk=pk,
-            ended_at=ended_at,
-            timing_mode=timing_mode,
-            playthrough=SimpleNamespace(
-                player_game=SimpleNamespace(game=SimpleNamespace(name=game_name))
-            ),
-        )
-
-    def test_open_session_posts_to_finish_and_links_to_reset(self):
-        from common.components.domain import SessionActions
-
-        html = str(SessionActions(self._session(), "tok123", None))
-        self.assertIn('method="post"', html)
-        self.assertIn(f"/session/{self.SESSION_ID}/finish", html)
-        self.assertIn('value="tok123"', html)
-        self.assertIn(f"/session/{self.SESSION_ID}/reset", html)
-        # The zone the browser is in is submitted with the finish, so a
-        # travelling user's end timestamp is not labelled with their account
-        # zone.
-        self.assertIn('name="browser_time_zone"', html)
-
-    def test_closed_session_hides_finish_and_reset(self):
-        import datetime
-
-        from common.components.domain import SessionActions
-
-        ended = self._session(
-            ended_at=datetime.datetime(2026, 6, 24, 19, 0, tzinfo=datetime.UTC)
-        )
-        html = str(SessionActions(ended, "tok123", None))
-        self.assertNotIn(f"/session/{self.SESSION_ID}/finish", html)
-        self.assertNotIn(f"/session/{self.SESSION_ID}/reset", html)
-        self.assertIn(
-            f"/session/{self.SESSION_ID}/edit", html
-        )  # edit link still present
-
-
 class ComponentOutputIsNotEscapedTest(unittest.TestCase):
     """Smoke test: every component that generates HTML must not double-escape."""
 

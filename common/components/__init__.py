@@ -85,7 +85,6 @@ from common.components.domain import (
     PriceConverted,
     PurchasePrice,
     ResolvedNameWithIcon,
-    SessionActions,
     SessionDeviceSelector,
     _resolve_name_with_icon,
 )
@@ -451,7 +450,6 @@ __all__ = [
     "SelectionFields",
     "SelectionLine",
     "SelectionToggle",
-    "SessionActions",
     "SessionDeviceSelector",
     "SettingFieldState",
     "SettingSourceBadge",

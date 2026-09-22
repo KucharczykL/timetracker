@@ -16,6 +16,19 @@ def _login(page: Page, live_server) -> None:
     page.wait_for_url(f"{live_server.url}/tracker**")
 
 
+def _open_row_menu(page, session_id) -> None:
+    """A row states its acts behind one trigger, so open it before pressing.
+
+    Every item starts inside a panel that is `hidden`, which is why a press
+    that skips this times out rather than failing an assertion. The wait is
+    the element's own registration: a press landing on a `<drop-down>` the
+    module has not upgraded yet is swallowed, and the timeout that follows
+    names the item rather than the cause.
+    """
+    page.wait_for_function("() => !!customElements.get('drop-down')")
+    page.locator(f"#session-menu-{session_id}Link").click()
+
+
 def test_undo_puts_a_removed_session_back(live_server, page: Page, e2e_library):
     game = create_tracked_game(e2e_library, "Undoable")
     row = session_row(game, started_at=datetime(2024, 6, 1, 12, tzinfo=UTC))
@@ -25,7 +38,8 @@ def test_undo_puts_a_removed_session_back(live_server, page: Page, e2e_library):
     rows = page.locator("tbody tr")
     expect(rows).to_have_count(1)
 
-    page.locator('a[href*="/session/"][href*="/remove"]').first.click()
+    _open_row_menu(page, row.pk)
+    page.get_by_role("menuitem", name="Remove", exact=True).click()
     page.click('button:has-text("Remove")')
 
     expect(page.get_by_text("Session removed.")).to_be_visible()

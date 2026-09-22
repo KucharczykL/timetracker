@@ -44,6 +44,19 @@ def _make_running_session(library) -> PlayerSession:
     return _row(game, started_at=STARTED_AT)
 
 
+def _open_row_menu(page, session_id) -> None:
+    """A row states its acts behind one trigger, so open it before pressing.
+
+    Every item starts inside a panel that is `hidden`, which is why a press
+    that skips this times out rather than failing an assertion. The wait is
+    the element's own registration: a press landing on a `<drop-down>` the
+    module has not upgraded yet is swallowed, and the timeout that follows
+    names the item rather than the cause.
+    """
+    page.wait_for_function("() => !!customElements.get('drop-down')")
+    page.locator(f"#session-menu-{session_id}Link").click()
+
+
 def test_reset_confirms_on_its_own_page_then_returns_to_the_list(
     authenticated_page: Page, live_server, e2e_library
 ):
@@ -54,7 +67,8 @@ def test_reset_confirms_on_its_own_page_then_returns_to_the_list(
     row = page.locator(f"#session-row-{session.id}")
     expect(row).to_contain_text("2020")
 
-    row.get_by_role("link", name="Reset start to now", exact=True).click()
+    _open_row_menu(page, session.id)
+    row.get_by_role("menuitem", name="Reset start to now", exact=True).click()
 
     expect(page.locator("body")).to_contain_text("Reset Game")
     page.locator('button:has-text("Reset to now")').click()
@@ -74,8 +88,9 @@ def test_reset_cancel_leaves_start_unchanged(
     session = _make_running_session(e2e_library)
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    _open_row_menu(page, session.id)
     page.locator(f"#session-row-{session.id}").get_by_role(
-        "link", name="Reset start to now", exact=True
+        "menuitem", name="Reset start to now", exact=True
     ).click()
 
     page.locator('a:has-text("Cancel")').click()

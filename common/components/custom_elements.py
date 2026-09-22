@@ -947,8 +947,19 @@ def DropdownLinkItem(url: str, label: Child, *, current: bool = False) -> Node:
     return Li(role="presentation")[ControlLink(attributes)[label]]
 
 
-def DropdownPostItem(url: str, label: Child, *, csrf_token: str) -> Node:
-    """A CSRF-protected POST action presented as a menu item."""
+def DropdownPostItem(
+    url: str,
+    label: Child,
+    *,
+    csrf_token: str,
+    hidden_fields: Node | None = None,
+) -> Node:
+    """A CSRF-protected POST action presented as a menu item.
+
+    ``hidden_fields`` rides inside the form, for an act that states a fact
+    the press cannot carry: the zone the browser stands in, or the one row a
+    bulk act is being handed.
+    """
     return Li(role="presentation")[
         Form(method="post", action=url, role="presentation")[
             Input(
@@ -956,6 +967,7 @@ def DropdownPostItem(url: str, label: Child, *, csrf_token: str) -> Node:
                 name="csrfmiddlewaretoken",
                 value=csrf_token,
             ),
+            hidden_fields if hidden_fields is not None else "",
             Button(
                 type="submit",
                 role="menuitem",

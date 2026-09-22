@@ -19,6 +19,19 @@ def _login(page: Page, live_server) -> None:
     page.wait_for_url(f"{live_server.url}/tracker**")
 
 
+def _open_row_menu(page, session_id) -> None:
+    """A row states its acts behind one trigger, so open it before pressing.
+
+    Every item starts inside a panel that is `hidden`, which is why a press
+    that skips this times out rather than failing an assertion. The wait is
+    the element's own registration: a press landing on a `<drop-down>` the
+    module has not upgraded yet is swallowed, and the timeout that follows
+    names the item rather than the cause.
+    """
+    page.wait_for_function("() => !!customElements.get('drop-down')")
+    page.locator(f"#session-menu-{session_id}Link").click()
+
+
 def test_a_written_down_session_becomes_a_record_and_comes_back(
     live_server, page: Page, e2e_user, e2e_library
 ):
@@ -39,7 +52,10 @@ def test_a_written_down_session_becomes_a_record_and_comes_back(
     page.get_by_role("link", name=re.compile(r"\d+ To review")).click()
     expect(page.get_by_role("row")).to_have_count(2)
 
-    page.get_by_title(re.compile("Was an estimate")).first.click()
+    _open_row_menu(page, session.pk)
+    page.get_by_role(
+        "menuitem", name="Record as historical playtime", exact=True
+    ).click()
     page.get_by_role("button", name="Submit", exact=True).click()
 
     expect(page.get_by_text("Session recorded as historical playtime.")).to_be_visible()

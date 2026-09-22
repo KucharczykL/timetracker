@@ -1,15 +1,20 @@
-"""Session row actions: finish posts, reset confirms on its own page."""
+"""The session row's menu: what each row offers, and in what order."""
 
+import re
 from datetime import UTC, datetime, timedelta
 
 import pytest
 from django.urls import reverse
-from session_rows import corrected_row, session_row, tracked_run
+from session_rows import corrected_row, duration_only_row, session_row, tracked_run
 
-from common.components import SessionActions
+from games.bulk_move import MOVE
 from games.models import Game, Platform
+from games.views.session_menu import session_row_menu
 
 STARTED_AT = datetime(2024, 6, 1, 12, tzinfo=UTC)
+A_DAY = datetime(2024, 6, 1, tzinfo=UTC).date()
+
+pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
@@ -46,58 +51,104 @@ def corrected_session(owned_library):
     )
 
 
+@pytest.fixture
+def written_session(owned_library):
+    """Duration-only: hours a person wrote down, not a sitting."""
+    game = Game.objects.create(library=owned_library, name="Written Game")
+    return duration_only_row(
+        tracked_run(owned_library, game), A_DAY, timedelta(hours=9)
+    )
+
+
 def _render(session, origin=None) -> str:
-    return str(SessionActions(session, "token", origin))
+    return str(session_row_menu(session, "token", origin))
 
 
-def test_open_session_renders_a_finish_post_form(open_session):
+def _items(rendered: str) -> list[str]:
+    """Each item's own words, in the order the panel states them."""
+    return [
+        re.sub(r"<[^>]+>", "", found).strip()
+        for found in re.findall(
+            r'<(?:a|button)[^>]*role="menuitem"[^>]*>(.*?)</(?:a|button)>',
+            rendered,
+            re.DOTALL,
+        )
+    ]
+
+
+def test_a_running_row_offers_five_acts_in_order(open_session):
+    assert _items(_render(open_session)) == [
+        "Finish",
+        "Reset start to now",
+        "Edit",
+        MOVE.label,
+        "Remove",
+    ]
+
+
+def test_a_finished_row_offers_neither_finish_nor_reset(finished_session):
+    assert _items(_render(finished_session)) == ["Edit", MOVE.label, "Remove"]
+    rendered = _render(finished_session)
+    assert reverse("games:finish_session", args=[finished_session.pk]) not in rendered
+    assert reverse("games:reset_session", args=[finished_session.pk]) not in rendered
+
+
+def test_a_corrected_row_offers_neither_finish_nor_reset(corrected_session):
+    assert _items(_render(corrected_session)) == ["Edit", MOVE.label, "Remove"]
+
+
+def test_a_written_row_offers_the_record_act_and_a_measured_one_does_not(
+    written_session, open_session
+):
+    assert _items(_render(written_session)) == [
+        "Edit",
+        MOVE.label,
+        "Record as historical playtime",
+        "Remove",
+    ]
+    assert "Record as historical playtime" not in _items(_render(open_session))
+
+
+def test_finish_posts_to_its_own_route_carrying_the_browser_zone(open_session):
     origin = reverse("games:list_sessions")
     rendered = _render(open_session, origin)
 
     assert 'method="post"' in rendered
     assert reverse("games:finish_session", args=[open_session.pk]) in rendered
     assert "origin=" in rendered
-
-
-def test_reset_is_a_link_to_the_confirmation_page(open_session):
-    rendered = _render(open_session)
-
-    assert reverse("games:reset_session", args=[open_session.pk]) in rendered
-
-
-def test_finished_session_renders_neither_finish_nor_reset(finished_session):
-    rendered = _render(finished_session)
-
-    assert reverse("games:finish_session", args=[finished_session.pk]) not in rendered
-    assert reverse("games:reset_session", args=[finished_session.pk]) not in rendered
-    assert reverse("games:edit_session", args=[finished_session.pk]) in rendered
-
-
-def test_a_corrected_row_renders_neither_finish_nor_reset(corrected_session):
-    rendered = _render(corrected_session)
-
-    assert reverse("games:finish_session", args=[corrected_session.pk]) not in rendered
-    assert reverse("games:reset_session", args=[corrected_session.pk]) not in rendered
-    assert reverse("games:edit_session", args=[corrected_session.pk]) in rendered
-
-
-def test_no_reset_modal_markup_is_emitted(open_session):
-    rendered = _render(open_session)
-
-    assert "data-reset-modal" not in rendered
-    assert "data-reset-confirm" not in rendered
-    assert "data-finish" not in rendered
-
-
-def test_browser_time_zone_input_rides_on_the_finish_form(open_session):
-    rendered = _render(open_session)
-
     assert "<browser-time-zone" in rendered
     assert 'name="browser_time_zone"' in rendered
 
 
-def test_actions_no_longer_reference_the_session_api(open_session):
+def test_move_hands_one_row_to_the_runner(open_session):
+    rendered = _render(open_session)
+
+    assert reverse("games:run_bulk_action", args=[MOVE.name]) in rendered
+    assert (
+        f"{{&quot;mode&quot;: &quot;some&quot;, &quot;keys&quot;: [&quot;{open_session.pk}&quot;]}}"
+        in rendered
+    )
+
+
+def test_every_other_act_is_a_link_to_its_confirmation(written_session):
+    rendered = _render(written_session, reverse("games:list_sessions"))
+
+    for route in (
+        "games:edit_session",
+        "games:reclassify_session",
+        "games:remove_session",
+    ):
+        assert reverse(route, args=[written_session.pk]) in rendered
+
+
+def test_the_menu_names_its_row_rather_than_the_table(open_session):
+    rendered = _render(open_session)
+
+    assert f'id="session-menu-{open_session.pk}"' in rendered
+    assert "Test Game actions" in rendered
+
+
+def test_the_menu_references_no_session_api(open_session):
     rendered = _render(open_session)
 
     assert "/api/session/" not in rendered
-    assert "session-actions" not in rendered
