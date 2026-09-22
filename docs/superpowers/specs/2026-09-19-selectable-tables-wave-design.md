@@ -486,13 +486,30 @@ and with them the Playthrough list's, which `playthrough_tabledata` draws
 from the same declaration and which carries the tray since #712: one
 builder is one personality, and a flag keeping the column on one page
 would reopen what the wave closed. Game detail's session preview has
-none. The ⋯ menu is a `Column` the view declares with the row's items,
-marked as the row's menu by role rather than by label, which the table
-never drops and `tests/test_column_priority_contract.py` protects by
-that role: the checkbox is content the selectable personality owns
-inside the name cell, while a menu holds what each table says, and a
-table that keeps its Actions column today (#1134–#1136, Purchases)
-inherits the same column when its turn comes. The playthrough tables'
+none. The ⋯ menu is not a column: `make_row` states it beside the
+`key` and `summary` a row already states, and `StyledTable` draws one
+trailing cell a row and one trailing header cell, headed by an
+accessible name and no visible label, because `<responsive-table>`
+hides by position and the grid stays rectangular for the declared
+columns to keep their indices. That header's `data-priority` is
+computed one above the table's highest, since the element reads a
+missing one as 1 and would drop the slot first, so its rank cannot be
+stated wrong and the five tables leave
+`tests/test_column_priority_contract.py`, which keeps guarding the six
+that still declare a labelled Actions column. The slot never enters a
+view's `Column` list and never counts against `MAX_DATA_TABLE_COLUMNS`;
+the checkbox, likewise, is content the selectable personality owns
+inside the name cell. The trigger is `EllipsisTrigger(label,
+orientation)`, one ghost `ControlButton` with a vertical glyph for a
+row's acts and a horizontal one for an overflow, which the quick bar's
+literal "⋯" and the Library page's summary rows adopt as well; the
+row's panel is a `DropdownMenuPanel` of items. `ellipsis.html` stays
+what `TruncatedText`'s reveal names. A table that keeps its Actions
+column today (#1134–#1136, Purchases) deletes it when its turn comes and
+takes the slot, whose rank it cannot get wrong. With scripting off the
+trigger is inert and the five tables offer no row act, a regression the
+user accepted; #1258, a page of its own for a session, a run and a
+record, is the answer. The playthrough tables'
 one-press "Started today" and "Completed today" are items in that menu;
 as tray acts with inverses of their own they are #1256's, after #718,
 and the items stay when the tray acts arrive. Finish's inverse is `CorrectSessionTiming` to the row's own start
@@ -571,8 +588,10 @@ row's ⋯ and its items; the other four tables are Playwright only.
    decided before the pages are judged.
 8. **#718** ORG-05 — the five Actions columns retired into the tray's
    acts (Finish declared here, with its inverse) and the row's ⋯ menu
-   holding every single-row act, a column marked by role, `Cardinality`
-   removed whole, the Orca pass, with the checkbox reserve as it stands.
+   holding every single-row act, a trailing slot no view declares,
+   `EllipsisTrigger` shared with the quick bar and the summary rows,
+   `Cardinality` removed whole, the Orca pass, with the checkbox reserve
+   as it stands.
 9. **#1211** TABLE-04 — bulk Edit on the session tables, after #714.
 
 `#711 → #713 → #712 → #714 → #715 → #717 → #718 → #1211`. #1212 and #1254
