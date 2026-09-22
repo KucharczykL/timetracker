@@ -96,6 +96,11 @@ def session_row_menu(
     )
     return RowActionMenu(
         items,
-        label=f"{session.playthrough.player_game.game.name} actions",
+        #: The day as well as the game: the organized list states one game
+        #: for every row, so the game alone names each trigger the same.
+        label=(
+            f"{session.playthrough.player_game.game.name}, "
+            f"{session.effective_day} actions"
+        ),
         id=f"session-menu-{session.pk}",
     )

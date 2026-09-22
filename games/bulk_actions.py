@@ -41,7 +41,7 @@ type RowKey = str
 type FilterJson = str
 
 #: What an act asks for, as one string.
-type ChoiceValue = str  # a target run's key, or a batch's id
+type ChoiceValue = str  # a run's key, a batch's id, an instant and its zone
 
 #: The form field a choice is posted under.
 type FieldName = str
@@ -62,6 +62,11 @@ class ActTitle:
             raise ValueError(
                 "An act states both halves of its title: "
                 f"{self.one!r} for one row and {self.many!r} for several."
+            )
+        if self.one == self.many:
+            raise ValueError(
+                f"{self.one!r} is both halves of a title. An act reading the "
+                "same over one row and over several states no count."
             )
 
     def for_count(self, count: int) -> str:

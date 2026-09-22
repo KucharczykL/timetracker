@@ -2433,6 +2433,11 @@ def TableRow(
             "cannot be selected. Pass make_row(..., key=...) for "
             f"{data['cell_data']!r}."
         )
+    if data.get("menu") is not None and not menu_slot:
+        raise ValueError(
+            "A row stating a menu needs menu_slot=True: without it the acts "
+            f"render nowhere and nothing is said. Row {data['cell_data']!r}."
+        )
 
     # Hover lightens the text along with the surface: body-subtle text fails AA
     # on the tertiary hover surface in both themes.
@@ -2788,11 +2793,9 @@ _SelectionActionsElement = custom_element_builder("selection-actions")
 # input.css (like the align rules), so it has a hard ceiling: a column past it
 # could never be hidden.
 #
-# The row menu slot is outside `columns` and so outside this count, but it does
-# occupy one of those twelve rendered positions. A table declaring twelve
-# columns AND a menu would put the slot at nth-child(13), where no safelisted
-# class reaches it — it would simply never drop. Widen the safelist before
-# declaring such a table; the widest today has eight.
+# The row menu slot is no column, but it takes one of those positions, so
+# `StyledTable` counts it with them and refuses a thirteenth. Widen the
+# safelist before declaring a table that wide; the widest today has nine.
 MAX_DATA_TABLE_COLUMNS = 12
 
 # No-JS fallback for the data-table column drop: while <responsive-table> is
@@ -3057,7 +3060,10 @@ def _selection_actions_slot(
             Form(
                 [("data-selection-actions-form", ""), ("data-selection-acts-row", "")],
                 method="post",
-                class_="flex gap-2",
+                #: Wrapping is the fallback, never the plan: the shell clips
+                #: on this axis, so an act the overflow never moved would go
+                #: without a scrollbar to reach it.
+                class_="flex flex-wrap gap-2",
             )[
                 Safe(
                     '<input type="hidden" name="csrfmiddlewaretoken" '
@@ -3221,18 +3227,22 @@ def StyledTable(
             "StyledTable(data_table=True) needs a caption: it names the scroll "
             "region, and an empty name leaves the region unlabelled."
         )
-    if data_table and columns and len(columns) > MAX_DATA_TABLE_COLUMNS:
+    #: The slot is the table's, never a row's: a short row would shift every
+    #: column after it out from under its header.
+    menu_slot = any("menu" in row for row in (rows or []))
+    #: Counted with the columns: the slot takes a rendered position too, and
+    #: a thirteenth is past the safelisted family that hides one.
+    rendered = len(columns or []) + (1 if menu_slot else 0)
+    if data_table and rendered > MAX_DATA_TABLE_COLUMNS:
         raise ValueError(
-            f"StyledTable(data_table=True) supports at most "
-            f"{MAX_DATA_TABLE_COLUMNS} columns: the column-drop classes are a "
-            f"safelisted nth-child family, so column "
-            f"{MAX_DATA_TABLE_COLUMNS + 1}+ could never be hidden."
+            f"StyledTable(data_table=True) renders at most "
+            f"{MAX_DATA_TABLE_COLUMNS} positions and this table asks for "
+            f"{rendered}, the row menu included: the column-drop classes are "
+            f"a safelisted nth-child family, so the last could never hide."
         )
     columns = columns or []
     rows = rows or []
     sort_terms = sort_terms or []
-    # The table's, never a row's: a short row would shift the rest.
-    menu_slot = any("menu" in row for row in rows)
 
     # Always, unlike the DEBUG cell-count guard.
     #

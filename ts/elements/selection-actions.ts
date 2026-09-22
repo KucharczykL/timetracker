@@ -73,10 +73,14 @@ class SelectionActionsElement extends HTMLElement {
   // Taken the first time the line is shown.
   //
   // Every width reads 0 under the `hidden` the table clears at the first
-  // press, and a width read inside the panel is the panel's.
+  // press, and a width read inside the panel is the panel's. Only the acts
+  // latch: the furniture is re-read every layout, because the count beside
+  // them grows from "1 selected" to "1,284 selected" without the line
+  // changing size, so nothing would fire a fresh measurement.
   private measured = false;
   private rowGap = 0;
   private actGap = 0;
+  private lineGap = 0;
   private furnitureWidth = 0;
   private overflowWidth = 0;
   private resizeObserver: ResizeObserver | null = null;
@@ -135,6 +139,8 @@ class SelectionActionsElement extends HTMLElement {
     if (typeof ResizeObserver !== "undefined") {
       this.resizeObserver = new ResizeObserver(() => this.queueLayout());
       this.resizeObserver.observe(this.line);
+      //: The line never changes size when the count's text does.
+      this.resizeObserver.observe(this.controls);
     }
     this.layoutActs();
   }
@@ -155,26 +161,34 @@ class SelectionActionsElement extends HTMLElement {
    * every act for the life of the page.
    */
   private measure(): boolean {
-    if (this.measured) return true;
     const line = this.line;
     const controls = this.controls;
     const actsRow = this.actsRow;
     const overflowHost = this.overflowHost;
     if (!line || !controls || !actsRow || !overflowHost) return false;
     if (!line.clientWidth) return false;
-    const lineGap = parseFloat(getComputedStyle(line).columnGap) || 0;
-    this.rowGap = parseFloat(getComputedStyle(controls).columnGap) || 0;
-    this.actGap = parseFloat(getComputedStyle(actsRow).columnGap) || 0;
-    this.acts = Array.from(actsRow.querySelectorAll<HTMLElement>(ACT)).map(
-      (element) => ({ element, width: element.offsetWidth }),
-    );
-    overflowHost.classList.remove("hidden");
-    this.overflowWidth = overflowHost.offsetWidth;
-    overflowHost.classList.add("hidden");
-    // Everything the line holds beside the acts.
-    //
-    // Skip the child holding this element, never this element: the slot
-    // sits in a wrapper, so identity counts every act as furniture too.
+    if (!this.measured) {
+      this.lineGap = parseFloat(getComputedStyle(line).columnGap) || 0;
+      this.rowGap = parseFloat(getComputedStyle(controls).columnGap) || 0;
+      this.actGap = parseFloat(getComputedStyle(actsRow).columnGap) || 0;
+      this.acts = Array.from(actsRow.querySelectorAll<HTMLElement>(ACT)).map(
+        (element) => ({ element, width: element.offsetWidth }),
+      );
+      overflowHost.classList.remove("hidden");
+      this.overflowWidth = overflowHost.offsetWidth;
+      overflowHost.classList.add("hidden");
+      this.measured = true;
+    }
+    this.takeFurniture(line, controls);
+    return true;
+  }
+
+  /** Everything the line holds beside the acts, read afresh.
+   *
+   * Skip the child holding this element, never this element: the slot sits
+   * in a wrapper, so identity counts every act as furniture too.
+   */
+  private takeFurniture(line: HTMLElement, controls: HTMLElement): void {
     this.furnitureWidth = 0;
     for (const child of Array.from(controls.children)) {
       if (child.contains(this)) continue;
@@ -182,10 +196,8 @@ class SelectionActionsElement extends HTMLElement {
     }
     for (const child of Array.from(line.children)) {
       if (child.contains(this)) continue;
-      this.furnitureWidth += (child as HTMLElement).offsetWidth + lineGap;
+      this.furnitureWidth += (child as HTMLElement).offsetWidth + this.lineGap;
     }
-    this.measured = true;
-    return true;
   }
 
   /** Public for tests: jsdom has no layout engine. */

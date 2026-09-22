@@ -26,6 +26,7 @@ from games.views.bulk import (
     STATEMENT_FIELD,
     TOKEN_FIELD,
 )
+from games.writes.answers import CommandFailed
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
 
@@ -47,6 +48,9 @@ def client_in(client, owned_user):
 @pytest.fixture
 def game(owned_library):
     return Game.objects.create(library=owned_library, name="Outer Wilds")
+
+
+A_DAY = datetime(2026, 3, 5, tzinfo=UTC).date()
 
 
 def a_running_session(library, game, offset=0):
@@ -87,6 +91,21 @@ def _post(**fields: str) -> QueryDict:
 
 
 # ── The statement the batch carries ──────────────────────────────────────────
+
+
+def test_a_statement_states_an_aware_instant_and_a_known_zone():
+    """Both rules where every caller meets them, not in `decode` alone.
+
+    A naive instant encodes to an offsetless string the next chunk refuses,
+    and a zone tzdata lost reaches the database as a defect.
+    """
+    from games.bulk_finish import FinishStatement
+
+    with pytest.raises(ValueError, match="no offset"):
+        #: Naive on purpose: the refusal under test.
+        FinishStatement(datetime(2026, 3, 5, 12), None)  # noqa: DTZ001
+    with pytest.raises(ValueError, match="tzdata"):
+        FinishStatement(datetime(2026, 3, 5, 12, tzinfo=UTC), "Europe/Nowhere")
 
 
 def test_a_statement_survives_its_own_encoding():
@@ -265,3 +284,40 @@ def test_the_inverse_puts_a_finished_row_back_to_running(
 def test_the_act_is_declared(owned_library):
     assert BULK_ACTIONS["session.finish"] is FINISH_SESSION
     assert FINISH_SESSION.choice is not None
+
+
+def test_an_undo_of_a_row_corrected_since_is_refused_and_named(
+    client_in, owned_library, game, owned_user
+):
+    """A row can stop being Timed between the Finish and the Undo.
+
+    The correction form and the API both restate a whole timing, so the
+    start and the day zone this inverse restates can both be gone. That is
+    a sentence and a refused row, never a defect: an `AssertionError` is
+    neither of the two the runner catches, so the batch would end with
+    every row it never reached unnamed in the log.
+    """
+    from games.commands.playersession import DurationOnlyTiming
+    from games.writes.playersession import correct_session
+
+    session = a_running_session(owned_library, game)
+    _run(client_in, session)
+    end = LibraryEvent.objects.get(event_type="library.playersession.ended")
+    session.refresh_from_db()
+    correct_session(
+        owned_user,
+        session,
+        DurationOnlyTiming(day=A_DAY, duration=timedelta(hours=2)),
+        correlation_id=uuid.uuid7(),
+    )
+
+    with pytest.raises(CommandFailed) as refused:
+        FINISH_SESSION.inverse(
+            owned_user,
+            session.pk,
+            undoes=end.correlation_id,
+            idempotency_key="an-undo",
+            correlation_id=uuid.uuid7(),
+        )
+
+    assert "no longer records a start" in refused.value.message

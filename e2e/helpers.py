@@ -25,3 +25,14 @@ def settle_layout(page: Page) -> None:
     """
     page.evaluate("() => document.fonts.ready")
     page.wait_for_function(TABLES_SETTLED)
+
+
+def open_row_menu(page: Page, menu_id: str) -> None:
+    """Open a row's menu, once its element can answer.
+
+    Every item starts in a panel that is `hidden`, and a press landing on a
+    `<drop-down>` the module has not upgraded is swallowed: the timeout that
+    follows names the item rather than the cause.
+    """
+    page.wait_for_function("() => !!customElements.get('drop-down')")
+    page.locator(f"#{menu_id}Link").click()

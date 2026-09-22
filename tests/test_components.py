@@ -2700,6 +2700,54 @@ class DataTableWidthPolicyTest(SimpleTestCase):
         self.assertNotIn("container-type", result)
 
 
+class RowMenuSlotRefusalTest(SimpleTestCase):
+    """The two ways the slot can be asked for and not arrive."""
+
+    def test_the_slot_counts_against_the_column_ceiling(self):
+        """Twelve columns and a menu puts the slot in a thirteenth position,
+        past the safelisted nth-child family that hides one."""
+        columns = [components.Column(f"C{index}") for index in range(12)]
+        cells = [f"c{index}" for index in range(12)]
+
+        with self.assertRaises(ValueError) as refusal:
+            str(
+                components.StyledTable(
+                    columns=columns,
+                    rows=[components.make_row(*cells, menu=components.Span()["acts"])],
+                    data_table=True,
+                    caption="Wide",
+                )
+            )
+
+        self.assertIn("13", str(refusal.exception))
+
+    def test_twelve_columns_alone_still_render(self):
+        columns = [components.Column(f"C{index}") for index in range(12)]
+        cells = [f"c{index}" for index in range(12)]
+
+        markup = str(
+            components.StyledTable(
+                columns=columns,
+                rows=[components.make_row(*cells)],
+                data_table=True,
+                caption="Wide",
+            )
+        )
+
+        self.assertIn("c11", markup)
+
+    def test_a_row_stating_a_menu_without_the_slot_is_refused(self):
+        """The acts would render nowhere, as an unnamed selectable row
+        arrives unactionable: both are refused rather than swallowed."""
+        with self.assertRaises(ValueError) as refusal:
+            components.TableRow(
+                components.make_row("Hades", menu=components.Span()["acts"]),
+                [components.Column("Name")],
+            )
+
+        self.assertIn("menu_slot", str(refusal.exception))
+
+
 class RowMenuSlotTest(SimpleTestCase):
     """The row's trailing menu cell is a slot, not a column. It never enters a
     view's `Column` list, so its drop priority is computed above every declared

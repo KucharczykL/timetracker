@@ -10,6 +10,7 @@ import "./selection-actions.js";
 interface TrayFixture {
   tray: HTMLElement & { layoutActs: () => void };
   line: HTMLElement;
+  row: HTMLElement;
   host: HTMLElement;
   items: HTMLElement;
   acts: HTMLButtonElement[];
@@ -69,6 +70,7 @@ function mountTray(): TrayFixture {
   return {
     tray,
     line,
+    row: controls,
     host,
     items,
     acts,
@@ -160,6 +162,24 @@ describe("selection-actions priority-plus overflow", () => {
 
     expect(fixture.items.children.length).toBe(0);
     fixture.acts.forEach((act) => expect(fixture.items.contains(act)).toBe(false));
+  });
+
+  it("re-reads the furniture when the count's text grows", () => {
+    // "1 selected" becomes "1,284 selected" on Select all matching. The line
+    // never changes size, so a latched furniture width would leave the last
+    // act in a row that has no room for it — and the shell clips.
+    const fixture = mountTray();
+    //: 600 of acts and 140 of furniture fit in 800.
+    reveal(fixture, 800);
+    expect(fixture.acts[3].parentElement).not.toBe(fixture.items);
+
+    stubWidth(
+      fixture.row.querySelector<HTMLElement>("[data-selection-count]")!,
+      230,
+    );
+    fixture.tray.layoutActs();
+
+    expect(fixture.acts[3].parentElement).toBe(fixture.items);
   });
 
   it("measures the natural widths once the line is shown", () => {

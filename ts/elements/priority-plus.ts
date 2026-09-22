@@ -2,7 +2,7 @@
  *
  * The owning element still controls measurement and DOM movement because its
  * semantics differ (filter facets vs navigation items). Keeping the fit math
- * here prevents the two ResizeObserver implementations from drifting on the
+ * here prevents the ResizeObserver implementations from drifting on the
  * boundary where an item exactly fits.
  */
 export function priorityPlusTotalWidth(widths: number[], gap: number): number {

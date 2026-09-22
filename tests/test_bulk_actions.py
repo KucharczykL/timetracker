@@ -495,6 +495,14 @@ def test_the_confirmation_heads_three_rows_in_the_plural(reclassify, presentatio
     assert reclassify.title.many in page
 
 
+def test_a_title_reading_the_same_in_both_counts_is_refused():
+    """One clause for two counts states no count at all."""
+    from games.bulk_actions import ActTitle
+
+    with pytest.raises(ValueError, match="both halves"):
+        ActTitle(one="Remove these sessions", many="Remove these sessions")
+
+
 def test_every_declared_act_states_both_halves():
     for action in BULK_ACTIONS.values():
         assert action.title.one

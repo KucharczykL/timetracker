@@ -47,6 +47,10 @@ INSTANT_UNREADABLE = (
     "The moment this batch finishes at could not be read. Start the act again."
 )
 NO_INSTANT = "This batch states no moment to finish at. Start the act again."
+NOT_TIMED_NOW = (
+    "That session no longer records a start, so it cannot be put back to "
+    "running. It was left as it is."
+)
 
 #: What joins the two halves: neither half can hold it.
 #:
@@ -65,6 +69,20 @@ class FinishStatement:
 
     ended_at: datetime
     ended_at_zone: ZoneName | None
+
+    def __post_init__(self) -> None:
+        """The two rules `decode` reads, where every caller meets them.
+
+        A naive instant encodes to an offsetless string the next chunk
+        refuses, and a zone tzdata lost reaches the database as a defect
+        with no sentence. Both are a round trip away from their cause.
+        """
+        if self.ended_at.tzinfo is None:
+            raise ValueError(
+                f"{self.ended_at!r} states no offset, so it names no moment."
+            )
+        if self.ended_at_zone is not None and zone_or_none(self.ended_at_zone) is None:
+            raise ValueError(f"{self.ended_at_zone!r} is no zone tzdata knows.")
 
     def encode(self) -> ChoiceValue:
         return f"{self.ended_at.isoformat()}{_SEPARATOR}{self.ended_at_zone or ''}"
@@ -199,12 +217,23 @@ def unfinish_one(
     """The row running again: its start restated, no end.
 
     It reads the start the row holds now, the hazard every batch Undo
-    accepts. A calendar zone changed since the Finish refuses every row.
+    accepts: a correction between the Finish and the Undo is what the
+    row states, and this restates whatever it finds.
     """
     session = _row(actor, session_id)
-    #: Non-null on a Timed row by CHECK, and this finished one.
-    assert session.started_at is not None
-    assert session.day_zone is not None
+    #: A correction since the Finish can have taken both away.
+    #:
+    #: `CorrectSessionTiming` states a whole timing, and a Duration-only row
+    #: holds neither instant nor day zone. A refusal names the row and lets
+    #: the batch go on; an assert is neither answer the runner catches, so
+    #: every row it never reached would go unnamed in the log.
+    if session.started_at is None or session.day_zone is None:
+        with answered("session"):
+            raise CommandRejected(
+                f"PlayerSession {session.pk} is {session.timing_mode} now, so "
+                "the batch's inverse has no start to restate.",
+                sentence=NOT_TIMED_NOW,
+            )
     return RowOutcome.of(
         correct_session(
             actor,

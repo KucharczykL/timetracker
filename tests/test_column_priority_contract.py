@@ -135,7 +135,8 @@ class ActionsColumnPriorityTest(TestCase):
         self.assertTrue(tables, f"{url} rendered no data table")
         for policies in tables:
             actions = [priority for label, priority in policies if label == "Actions"]
-            # A table with no actions to protect (status changes) is exempt.
+            # Exempt: a table whose acts are in the row menu slot, whose rank
+            # `RowMenuSlotPriorityTest` holds, or one with no acts at all.
             if not actions:
                 continue
             others = [priority for label, priority in policies if label != "Actions"]

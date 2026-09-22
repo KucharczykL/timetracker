@@ -50,8 +50,8 @@ the first show.
 
 ## Finish
 
-`FINISH_SESSION` is a `BulkAction` over sessions, on the removal act's scope and
-resolve. One batch ends each row at one instant: the confirmation stamps it into
+`FINISH_SESSION` is a `BulkAction` over sessions, on the shared scope and
+resolve in `games/bulk_sessions.py`. One batch ends each row at one instant: the confirmation stamps it into
 the choice, and each chunk carries it. A new instant in each chunk gives a
 different fingerprint, and the runner then counts every finished row as refused.
 The inverse states the timing again with no end, which is the row running.

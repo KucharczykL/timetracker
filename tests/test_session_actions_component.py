@@ -144,10 +144,11 @@ def test_every_other_act_is_a_link_to_its_confirmation(written_session):
 
 
 def test_the_menu_names_its_row_rather_than_the_table(open_session):
+    """The day as well as the game: one game can hold every row."""
     rendered = _render(open_session)
 
     assert f'id="session-menu-{open_session.pk}"' in rendered
-    assert "Test Game actions" in rendered
+    assert f"Test Game, {open_session.effective_day} actions" in rendered
 
 
 def test_the_menu_references_no_session_api(open_session):
@@ -156,16 +157,16 @@ def test_the_menu_references_no_session_api(open_session):
     assert "/api/session/" not in rendered
 
 
-def _icons(rendered: str) -> list[str]:
-    """Each item's glyph, by the path that draws it, in item order."""
+def _items_markup(rendered: str) -> list[str]:
+    """Each item's whole markup, in panel order."""
     return re.findall(
         r'<(?:a|button)[^>]*role="menuitem".*?</(?:a|button)>', rendered, re.DOTALL
     )
 
 
 def test_every_item_leads_with_the_glyph_its_button_had(open_session):
-    """The acts were icon buttons; the icon is how a reader finds them."""
-    items = _icons(_render(open_session))
+    """The glyph is how a reader who knows the row finds the act."""
+    items = _items_markup(_render(open_session))
 
     assert len(items) == 5
     for item in items:

@@ -7,6 +7,8 @@ from playwright.sync_api import Page, expect
 from session_rows import session_row
 from tracked_games import create_tracked_game
 
+from e2e.helpers import open_row_menu
+
 
 def _login(page: Page, live_server) -> None:
     page.goto(f"{live_server.url}{reverse('login')}")
@@ -14,19 +16,6 @@ def _login(page: Page, live_server) -> None:
     page.fill('input[name="password"]', "secret123")
     page.click('button:has-text("Login")')
     page.wait_for_url(f"{live_server.url}/tracker**")
-
-
-def _open_row_menu(page, session_id) -> None:
-    """A row states its acts behind one trigger, so open it before pressing.
-
-    Every item starts inside a panel that is `hidden`, which is why a press
-    that skips this times out rather than failing an assertion. The wait is
-    the element's own registration: a press landing on a `<drop-down>` the
-    module has not upgraded yet is swallowed, and the timeout that follows
-    names the item rather than the cause.
-    """
-    page.wait_for_function("() => !!customElements.get('drop-down')")
-    page.locator(f"#session-menu-{session_id}Link").click()
 
 
 def test_undo_puts_a_removed_session_back(live_server, page: Page, e2e_library):
@@ -38,7 +27,7 @@ def test_undo_puts_a_removed_session_back(live_server, page: Page, e2e_library):
     rows = page.locator("tbody tr")
     expect(rows).to_have_count(1)
 
-    _open_row_menu(page, row.pk)
+    open_row_menu(page, f"session-menu-{row.pk}")
     page.get_by_role("menuitem", name="Remove", exact=True).click()
     page.click('button:has-text("Remove")')
 
