@@ -21,10 +21,8 @@ from common.duration_presentation import (
     DurationPresentation,
 )
 from games.bulk_actions import BULK_ACTIONS, Presentations, RowOutcome
-from games.bulk_removal import (
-    RECORD_GONE,
-    RUN_GONE,
-)
+from games.bulk_removal import RECORD_GONE
+from games.bulk_runs import RUN_GONE
 from games.bulk_sessions import SESSION_GONE
 from games.commands.historical_playtime import HistoricalPlaytimeStatement
 from games.commands.playthrough import ActStatement
