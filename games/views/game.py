@@ -78,7 +78,7 @@ from games.filters import (
     FindFilter,
     GameFilter,
     HistoricalPlaytimeFilter,
-    NarrowingLegs,
+    NarrowingClauses,
     PlayerSessionFilter,
     PlaythroughFilter,
     PurchaseFilter,
@@ -188,13 +188,13 @@ def games_for_list(
     """
     games = Game.objects.tracked_by(library).select_related("platform")
     #: Narrows the Playtime column; none counts all.
-    legs = NarrowingLegs(None, None)
+    clauses = NarrowingClauses(None, None)
     if game_filter is not None:
         context = filter_query_context_for_library(library)
         games = execute_filter(game_filter, games, context)
-        legs = game_filter.narrowing()
+        clauses = game_filter.narrowing()
     playtime_label = "Playtime"
-    if legs.sessions is None and legs.records is None:
+    if clauses.sessions is None and clauses.records is None:
         #: The sort reuses the column's subqueries.
         games = games.annotate(filtered_playtime=playtime_sort_key(library)).alias(
             total_playtime=F("filtered_playtime")
@@ -202,13 +202,13 @@ def games_for_list(
     else:
         playtime_label = (
             "Playtime (matching sessions)"
-            if legs.records is None
+            if clauses.records is None
             else "Playtime (matching)"
         )
         #: An alias: only `?sort=playtime` reads it.
         games = games.alias(total_playtime=playtime_sort_key(library)).annotate(
             filtered_playtime=playtime_matching_both(
-                library, legs.sessions, legs.records
+                library, clauses.sessions, clauses.records
             )
         )
     #: No column renders it; `?sort=finished` reads it.

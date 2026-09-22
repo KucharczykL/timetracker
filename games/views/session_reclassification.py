@@ -17,7 +17,6 @@ from django.views.decorators.http import require_POST
 
 from common.components import (
     AddForm,
-    ControlButton,
     Div,
     FormFields,
     Fragment,
@@ -25,7 +24,7 @@ from common.components import (
     P,
 )
 from common.components.core import Node
-from common.components.library_kit import EmptyState
+from common.components.library_kit import EmptyState, StatisticCard, StatisticGrid
 from common.criteria import ChoiceCriterion, IntCriterion, Modifier
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
@@ -34,9 +33,20 @@ from games.bulk_reclassification import (
     REVIEW_THRESHOLD_HOURS,
     reviewable_sessions,
 )
+from games.filters import filter_url
 from games.forms import HistoricalPlaytimeForm
-from games.models import PlayerSession, PlayerSessionTimingMode, UserLibrary
+from games.models import (
+    PlayerSession,
+    PlayerSessionTimingMode,
+    PlaythroughKind,
+    UserLibrary,
+)
 from games.ownership import owned_or_404
+from games.reads.session_organization import (
+    bucket_sessions_filter,
+    organization_counts,
+    outside_dates_filter,
+)
 from games.views.historical_playtime_entry import FORM_SCRIPTS
 from games.views.removal import restore_and_return
 from games.views.returns import return_url
@@ -144,6 +154,10 @@ def review_filter() -> str:
                 value=REVIEW_THRESHOLD_HOURS,
                 modifier=Modifier.GREATER_THAN_OR_EQUAL,
             ),
+            playthrough_kind=ChoiceCriterion(
+                value=[PlaythroughKind.ORDINARY.value],
+                modifier=Modifier.INCLUDES,
+            ),
         ).to_json()
     )
 
@@ -161,18 +175,46 @@ TEMPORARY_NOTE = (
 
 
 def PlaytimeReviewPanel(library: UserLibrary) -> Node:
-    """The review, in a person's words."""
+    """The three populations worth organizing, in a person's words."""
     waiting = reviewable_sessions(library).count()
-    if not waiting:
-        return EmptyState(
-            title="Nothing to review",
-            description=(
-                "None of your play sessions look like a total rather than a "
-                "single sitting. If you type a long time into a session later, "
-                "it shows up here."
+    counts = organization_counts(library)
+    cards = [
+        StatisticCard(label, value, href=href)
+        for label, value, href in (
+            ("To review", waiting, review_url()),
+            (
+                "Imported history",
+                counts.bucket,
+                filter_url(bucket_sessions_filter()),
             ),
+            ("Outside dates", counts.outside, filter_url(outside_dates_filter())),
         )
+        if value
+    ]
+    if not cards:
+        return _nothing_to_review()
     return Fragment(
+        Div(class_="mb-4")[StatisticGrid(*cards)],
+        *_review_prose(waiting),
+    )
+
+
+def _nothing_to_review() -> Node:
+    return EmptyState(
+        title="Nothing to review",
+        description=(
+            "None of your play sessions look like a total rather than a "
+            "single sitting. If you type a long time into a session later, "
+            "it shows up here."
+        ),
+    )
+
+
+def _review_prose(waiting: int) -> tuple[Node, ...]:
+    """What the review is, or why there is none."""
+    if not waiting:
+        return (_nothing_to_review(),)
+    return (
         P(class_="text-type-body text-body mb-3")[
             f"{waiting} of your play sessions are {REVIEW_THRESHOLD_HOURS} hours "
             "or longer and have a length you typed in yourself, rather than one "
@@ -186,8 +228,5 @@ def PlaytimeReviewPanel(library: UserLibrary) -> Node:
             "Your total playtime does not change. What changes is that the "
             "hours stop pretending to be one enormous session, so figures like "
             "your longest session and your busiest day tell the truth again."
-        ],
-        Div(class_="flex flex-wrap items-center gap-2")[
-            ControlButton(href=review_url(), color="gray")["See these sessions"],
         ],
     )

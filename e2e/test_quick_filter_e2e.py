@@ -107,12 +107,11 @@ def test_quick_scalar_facet_filters_sessions(
     )
 
     page = authenticated_page
-    # Wide enough that no facet is in the ⋯ menu: collapsing is
-    # test_priority_plus_overflow_collapses_and_restores's subject.
-    page.set_viewport_size({"width": 1600, "height": 900})
+    page.set_viewport_size({"width": 2000, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
-    # The Duration facet is a dropdown: open its panel first.
+    # The capped body fits four facets; Duration spills.
+    page.locator("#quick-sessions-overflowLink").click()
     page.locator("#quick-duration_hours-dropdownLink").click()
     duration = page.locator('quick-filter-bar [data-filter-widget][data-kind="number"]')
     duration.locator("select[data-number-modifier-select]").select_option(
@@ -306,7 +305,9 @@ def test_priority_plus_overflow_collapses_and_restores(
 ):
     """Priority-plus: narrowing the viewport moves rightmost facets into
     the "⋯" overflow menu (ResizeObserver, no breakpoints); facets keep
-    working from inside it; widening moves them back and hides the menu."""
+    working from inside it; widening moves them back.
+
+    The capped body fits four facets at every viewport."""
     from datetime import datetime, timedelta
 
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
@@ -320,7 +321,7 @@ def test_priority_plus_overflow_collapses_and_restores(
     )
 
     page = authenticated_page
-    page.set_viewport_size({"width": 1400, "height": 900})
+    page.set_viewport_size({"width": 2000, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
     overflow = page.locator("[data-quick-overflow]")
@@ -329,13 +330,17 @@ def test_priority_plus_overflow_collapses_and_restores(
         "drop-down[data-quick-facet]:has(#quick-duration_hours-dropdown)"
     )
 
-    # Wide: everything inline, no ⋯.
-    expect(overflow).to_be_hidden()
-    expect(overflow_items.locator("[data-quick-facet]")).to_have_count(0)
+    # Wide: the three rightmost facets spill.
+    expect(overflow).to_be_visible()
+    expect(overflow_items.locator("[data-quick-facet]")).to_have_count(3)
+    expect(
+        overflow_items.locator(":scope > drop-down:has(#quick-timing_mode-dropdown)")
+    ).to_have_count(0)
 
-    # Narrow: rightmost facets (Duration is last) spill into the ⋯ menu.
+    # Narrow: every facet spills.
     page.set_viewport_size({"width": 520, "height": 900})
     expect(overflow).to_be_visible()
+    expect(overflow_items.locator("[data-quick-facet]")).to_have_count(7)
     expect(
         overflow_items.locator(":scope > drop-down:has(#quick-duration_hours-dropdown)")
     ).to_have_count(1)
@@ -357,11 +362,15 @@ def test_priority_plus_overflow_collapses_and_restores(
     expect(page.locator(f"#session-row-{long_session.pk}")).to_be_visible()
     expect(page.locator(f"#session-row-{short_session.pk}")).to_have_count(0)
 
-    # Widen: facets return to the row in order, ⋯ hides again.
-    page.set_viewport_size({"width": 1400, "height": 900})
-    expect(page.locator("[data-quick-overflow]")).to_be_hidden()
+    # Widen: the facets return in order.
+    page.set_viewport_size({"width": 2000, "height": 900})
     expect(
         page.locator("[data-quick-overflow-items] [data-quick-facet]")
+    ).to_have_count(3)
+    expect(
+        page.locator(
+            "[data-quick-overflow-items] > drop-down:has(#quick-timing_mode-dropdown)"
+        )
     ).to_have_count(0)
 
 

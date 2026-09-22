@@ -58,6 +58,7 @@ from common.criteria import (
     field_metadata,
     filter_from_json,
     filter_to_json,
+    outside_interval_handler,
     relation_to_q,
     search_q,
     temporal_interval_handler,
@@ -92,7 +93,7 @@ class FindFilter:
 # ── GameFilter ─────────────────────────────────────────────────────────────
 
 
-class NarrowingLegs(NamedTuple):
+class NarrowingClauses(NamedTuple):
     """What the Playtime column narrows by; None counts all."""
 
     sessions: PlayerSessionFilter | None
@@ -185,26 +186,26 @@ class GameFilter(OperatorFilter):
 
         return Game
 
-    def narrowing(self) -> NarrowingLegs:
-        """The legs the Playtime column narrows by.
+    def narrowing(self) -> NarrowingClauses:
+        """The clauses the Playtime column narrows by.
 
         The top level's own, or -- for a filter that is one `OR` of
         members each stating one relation and nothing else, the shape
         the stats links state -- the members'. Anything else narrows
         nothing.
         """
-        own = NarrowingLegs(self.session_filter, self.historical_playtime_filter)
+        own = NarrowingClauses(self.session_filter, self.historical_playtime_filter)
         if own.sessions is not None or own.records is not None:
             return own
         if not self.OR or self.AND or self.NOT or self._states_a_leaf():
-            return NarrowingLegs(None, None)
+            return NarrowingClauses(None, None)
         sessions = records = None
         for member in self.OR:
             if member._states_a_leaf() or member.AND or member.OR or member.NOT:
-                return NarrowingLegs(None, None)
+                return NarrowingClauses(None, None)
             sessions = member.session_filter or sessions
             records = member.historical_playtime_filter or records
-        return NarrowingLegs(sessions, records)
+        return NarrowingClauses(sessions, records)
 
     def _states_a_leaf(self) -> bool:
         """Any criterion or comparison at this level."""
@@ -300,6 +301,9 @@ class PlayerSessionFilter(OperatorFilter):
     note: StringCriterion | None = None
     timing_mode: ChoiceCriterion | None = None
     is_running: BoolCriterion | None = None  # Timed, and no end yet
+    playthrough_kind: ChoiceCriterion | None = None  # the run's kind
+    #: The day the run's own dates do not cover.
+    outside_playthrough_dates: BoolCriterion | None = None
     day: DateCriterion | None = None  # effective_day, the library's calendar
     started: DateCriterion | None = None  # started_at's date; null Duration-only
     ended: DateCriterion | None = None  # ended_at's date; null while running
@@ -324,6 +328,15 @@ class PlayerSessionFilter(OperatorFilter):
         "is_running": FilterField(
             handler=bool_running_handler(PlayerSessionTimingMode.TIMED),
             label="Running",
+        ),
+        "playthrough_kind": FilterField("playthrough__kind", label="Playthrough"),
+        "outside_playthrough_dates": FilterField(
+            handler=outside_interval_handler(
+                "effective_day",
+                "playthrough__started_lower",
+                "playthrough__completed_upper",
+            ),
+            label="Outside dates",
         ),
         "day": FilterField("effective_day", label="Day"),
         # Compare the date portion so a date matches the datetime column.

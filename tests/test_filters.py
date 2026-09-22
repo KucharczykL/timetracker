@@ -4,16 +4,18 @@ import dataclasses
 import json
 import logging
 import operator
+import uuid
 from dataclasses import dataclass
 from dataclasses import field as dc_field
-from datetime import UTC
+from datetime import UTC, date, timedelta
 from functools import reduce
 from typing import ClassVar
 from uuid import UUID
 
 import pytest
 from django.db.models import F, Q
-from session_rows import session_row
+from django.utils import timezone
+from session_rows import duration_only_row, session_row, tracked_run
 
 from common.criteria import (
     MAX_FIELD_COMPARISONS,
@@ -77,6 +79,7 @@ from games.filters import (
     parse_session_filter,
 )
 from games.models import PlayerSession
+from timetracker.temporal import TemporalValue
 
 UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
     lambda model: with_filter_aliases(model._default_manager.all())
@@ -7180,3 +7183,236 @@ class TestMultivaluedComparison:
                     "quantifier": "SOME",
                 }
             )
+
+
+# ── Sessions outside their run's dates ──────────────────────────────────────
+
+AN_HOUR = timedelta(hours=1)
+A_STATED_START = date(2022, 2, 1)
+A_STATED_COMPLETION = date(2022, 4, 1)
+
+
+def _dated_run(library, name, *, started=None, completed=None):
+    """One game's run, its endpoints stated by hand."""
+    from games.models import Game
+
+    game = Game.objects.create(library=library, name=name)
+    run = tracked_run(library, game)
+    run.started = started
+    run.start_recorded_at = timezone.now() if started is not None else None
+    run.completed = completed
+    run.completion_recorded_at = timezone.now() if completed is not None else None
+    run.save()
+    run.refresh_from_db()
+    return run
+
+
+def _bucket_run(library, name):
+    """One game's bucket, which states no date."""
+    from games.models import Game, PlayerGame, Playthrough, PlaythroughKind
+
+    game = Game.objects.create(library=library, name=name)
+    return Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=library,
+        player_game=PlayerGame.objects.get(library=library, game=game),
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+
+
+@pytest.fixture
+def dated_population(owned_library):
+    """One session per case, each on its run."""
+    both = _dated_run(
+        owned_library,
+        "Both endpoints",
+        started=TemporalValue.from_day(A_STATED_START),
+        completed=TemporalValue.from_day(A_STATED_COMPLETION),
+    )
+    start_alone = _dated_run(
+        owned_library, "Start alone", started=TemporalValue.from_day(date(2022, 3, 1))
+    )
+    completion_alone = _dated_run(
+        owned_library,
+        "Completion alone",
+        completed=TemporalValue.from_day(A_STATED_COMPLETION),
+    )
+    undated = _dated_run(owned_library, "No date at all")
+    imprecise = _dated_run(
+        owned_library, "A year", started=TemporalValue.from_year(2022)
+    )
+    bucket = _bucket_run(owned_library, "Imported")
+    return {
+        "before_a_stated_start": duration_only_row(both, date(2021, 12, 30), AN_HOUR),
+        "after_a_stated_completion": duration_only_row(both, date(2024, 7, 1), AN_HOUR),
+        "inside_the_interval": duration_only_row(both, date(2022, 3, 2), AN_HOUR),
+        "before_a_lone_start": duration_only_row(
+            start_alone, date(2021, 1, 5), AN_HOUR
+        ),
+        "after_a_lone_start": duration_only_row(start_alone, date(2026, 1, 5), AN_HOUR),
+        "after_a_lone_completion": duration_only_row(
+            completion_alone, date(2022, 6, 1), AN_HOUR
+        ),
+        "on_a_run_stating_neither": duration_only_row(
+            undated, date(2023, 5, 5), AN_HOUR
+        ),
+        "in_the_bucket": duration_only_row(bucket, date(2023, 5, 5), AN_HOUR),
+        "inside_an_imprecise_start": duration_only_row(
+            imprecise, date(2022, 6, 1), AN_HOUR
+        ),
+        "before_an_imprecise_start": duration_only_row(
+            imprecise, date(2021, 6, 1), AN_HOUR
+        ),
+    }
+
+
+def _answered(library, value):
+    from games.filters import filter_query_context_for_library
+    from games.reads.player_sessions import library_sessions
+
+    criteria = PlayerSessionFilter(outside_playthrough_dates=BoolCriterion(value=value))
+    return set(
+        library_sessions(library).filter(
+            criteria.to_q(filter_query_context_for_library(library))
+        )
+    )
+
+
+#: The cases the day falls outside; every other row is inside.
+OUTSIDE_CASES = frozenset(
+    {
+        "before_a_stated_start",
+        "after_a_stated_completion",
+        "before_a_lone_start",
+        "after_a_lone_completion",
+        "before_an_imprecise_start",
+    }
+)
+
+
+@pytest.mark.django_db
+class TestSessionsOutsideTheirRunsDates:
+    def test_true_answers_the_days_no_endpoint_covers(
+        self, owned_library, dated_population
+    ):
+        assert _answered(owned_library, True) == {
+            dated_population[case] for case in OUTSIDE_CASES
+        }
+
+    def test_false_answers_every_other_day(self, owned_library, dated_population):
+        inside = set(dated_population) - OUTSIDE_CASES
+        assert _answered(owned_library, False) == {
+            dated_population[case] for case in inside
+        }
+
+    def test_a_run_stating_no_date_answers_no_rather_than_nothing(
+        self, owned_library, dated_population
+    ):
+        """A negated column comparison keeps its null rows."""
+        undated = {
+            dated_population["on_a_run_stating_neither"],
+            dated_population["in_the_bucket"],
+        }
+        assert undated <= _answered(owned_library, False)
+        assert not (undated & _answered(owned_library, True))
+
+
+@pytest.mark.django_db
+class TestTheRunsKind:
+    """The session filter's word for a bucket row."""
+
+    @pytest.fixture
+    def kinds(self, owned_library):
+        from games.models import Game
+
+        game = Game.objects.create(library=owned_library, name="Two runs")
+        ordinary = tracked_run(owned_library, game)
+        bucket = _bucket_run(owned_library, "Imported only")
+        return {
+            "ordinary": duration_only_row(ordinary, date(2022, 3, 2), AN_HOUR),
+            "bucket": duration_only_row(bucket, date(2022, 3, 2), AN_HOUR),
+        }
+
+    def _answered(self, library, modifier):
+        from games.filters import filter_query_context_for_library
+        from games.models import PlaythroughKind
+        from games.reads.player_sessions import library_sessions
+
+        criteria = PlayerSessionFilter(
+            playthrough_kind=ChoiceCriterion(
+                value=[PlaythroughKind.IMPORTED_HISTORY.value], modifier=modifier
+            )
+        )
+        return set(
+            library_sessions(library).filter(
+                criteria.to_q(filter_query_context_for_library(library))
+            )
+        )
+
+    def test_includes_answers_the_bucket_alone(self, owned_library, kinds):
+        assert self._answered(owned_library, Modifier.INCLUDES) == {kinds["bucket"]}
+
+    def test_excludes_answers_the_ordinary_rows(self, owned_library, kinds):
+        assert self._answered(owned_library, Modifier.EXCLUDES) == {kinds["ordinary"]}
+
+    def test_the_widget_reads_the_models_own_choices(self):
+        from games.models import PlaythroughKind
+
+        entry = next(
+            meta
+            for meta in field_metadata(PlayerSessionFilter)
+            if meta["name"] == "playthrough_kind"
+        )
+        assert entry["kind"] == "set"
+        assert entry["nullable"] is False
+        assert entry["search_url"] == ""
+        assert {choice["value"] for choice in entry["choices"]} == {
+            kind.value for kind in PlaythroughKind
+        }
+
+    def test_json_round_trip(self):
+        #: INCLUDES is the default, which `to_json` leaves out.
+        payload = {"playthrough_kind": {"value": ["ordinary"], "modifier": "EXCLUDES"}}
+        assert PlayerSessionFilter.from_json(payload).to_json() == payload
+
+
+@pytest.mark.django_db
+class TestTheDatesQuestionStatedTheLongWay:
+    """The shorthand states no power the builder lacks."""
+
+    def test_both_operands_are_offered(self):
+        from games.models import PlayerSession
+
+        offered = {column["value"] for column in comparable_columns(PlayerSession)}
+        assert {
+            "effective_day",
+            "playthrough__started_lower",
+            "playthrough__completed_upper",
+        } <= offered
+
+    def test_two_comparisons_answer_what_the_shorthand_answers(
+        self, owned_library, dated_population
+    ):
+        from games.filters import filter_query_context_for_library
+        from games.reads.player_sessions import library_sessions
+
+        def branch(right, modifier):
+            return PlayerSessionFilter(
+                field_comparisons=[
+                    FieldComparisonCriterion(
+                        left="effective_day", right=right, modifier=modifier
+                    )
+                ]
+            )
+
+        stated = PlayerSessionFilter(
+            OR=[
+                branch("playthrough__started_lower", Modifier.LESS_THAN),
+                branch("playthrough__completed_upper", Modifier.GREATER_THAN),
+            ]
+        )
+        context = filter_query_context_for_library(owned_library)
+        assert set(library_sessions(owned_library).filter(stated.to_q(context))) == {
+            dated_population[case] for case in OUTSIDE_CASES
+        }
