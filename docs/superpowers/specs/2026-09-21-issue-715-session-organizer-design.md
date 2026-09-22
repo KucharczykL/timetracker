@@ -44,29 +44,23 @@ no start. Descending is not a mirror of ascending.
 
 ## The column
 
-`sole_game` in `games/reads/player_sessions.py` answers the one game that the
-filtered rows name, or null. It clears the ordering first. Django adds each
-ordering expression to the `SELECT DISTINCT` list. An ordered queryset distincts
-over the instant and the key beside the game, and one game with two sessions
-answers two rows.
+A `Playthrough` column comes after Name, at priority 3. Each cell names the run,
+through `every_run_label`: a sole run is named, and the bucket reads
+`Imported history`. The name cell states no run label of its own. The run is
+named in one place.
 
-While `sole_game` answers a game:
-
-- a `Playthrough` column comes after Name, at priority 3;
-- each cell names the run, through `every_run_label`. A sole run is named. The
-  bucket reads `Imported history`;
-- the name cell drops its own run label. The run is named in one place.
-
-A library that holds one game always sees the column. The same rows get the
-same table, whatever narrowed them.
+The column is declared on every session list.
+[#1245](https://github.com/KucharczykL/timetracker/issues/1245) gave the choice
+to the person and took the page's judgement away: a person who turns the column
+off is named no run anywhere.
 
 ## The stacked cell
 
 Each row states a summary, the second line that
 [#711](https://github.com/KucharczykL/timetracker/issues/711) built. It joins the
 run label, the time range, the duration and the device with commas. The run label
-is there only while the column is declared. Below `md` the column drops with the
-others, and nothing else names the run.
+is there only while the person shows the column. Below `md` the column drops with
+the others, and nothing else names the run.
 
 Commas, not a middle dot. A screen reader speaks a comma as a pause and a middle
 dot as a word.

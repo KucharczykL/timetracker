@@ -457,7 +457,11 @@ def test_an_open_row_menu_is_not_covered_by_a_pinned_cell(
         "fixture/viewport; this test owns both, so a missing toggle means the "
         "staged premise broke, not that the environment lacks one"
     )
-    toggle.click()
+    # Pressed, not clicked: the staged width parks the trailing slot under the
+    # pinned cell, which is the geometry this test wants and also what a mouse
+    # press cannot reach. The panel is what is measured, not the path to it.
+    toggle.focus()
+    toggle.press("Enter")
     menu = page.locator("tbody tr [data-menu]:not([hidden])").first
     menu.wait_for(state="visible")
     page.evaluate(

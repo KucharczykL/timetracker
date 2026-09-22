@@ -401,12 +401,12 @@ docs/           — Additional documentation
   whose play sits in bucket reads Never played until moved. Contract is
   [Switch Session writes and every read surface](docs/superpowers/specs/2026-09-15-issue-702-session-cutover-design.md)
 
-  #715 groups that list by run. `sole_game` in
-  `games/reads/player_sessions.py` answers the one game the filtered rows
-  name; while it does, the list carries a Playthrough column after Name
-  (`every_run_label` over `ambiguous_run_labels`, the name cell's own label
-  dropped), each row states #711's summary naming the run, and Game detail
-  offers Organize beside View all. Both lists take a `playthrough` sort key:
+  #715 groups that list by run. The list carries a Playthrough column after
+  Name, declared always and named by `every_run_label`; each row states
+  #711's summary naming the run, and Game detail offers Organize beside View
+  all. #1245 took the judgement out: no page decides whether the run is worth
+  naming, and a person who hides the column is named no run anywhere, the
+  summary included. Both lists take a `playthrough` sort key:
   game, then a null-or-not numbering key, then `DISPLAY_ORDER_FIELDS`. That
   is several `ORDER BY` terms under one key, which is why `SortSpec` states
   `then`. Both branches write NULLS LAST, so the bucket and a run stating no

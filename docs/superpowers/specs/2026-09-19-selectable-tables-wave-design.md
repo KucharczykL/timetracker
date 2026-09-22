@@ -422,8 +422,7 @@ From it a person:
   key, the user's widening. While the column shows,
   the name cell drops its run label, so the run is said in one place. The
   column reads `every_run_label` in `games/reads/session_run_labels.py`,
-  #714's, which names a sole run too; `ambiguous_run_labels` beside it is
-  the list's name cell, which hides one. The stacked cell's summary
+  #714's, which names a sole run too. The stacked cell's summary
   (#711's `make_row(summary=...)`) is fed on this list alone: time range,
   duration, device, and the run label while the column shows; #1241 feeds
   the other four selectable tables. `StyledTable` has no group-header rows and the

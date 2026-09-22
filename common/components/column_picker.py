@@ -28,7 +28,7 @@ _PANEL_CLASS = (
     "overflow-x-hidden overflow-y-auto rounded-base p-2 bg-surface-overlay "
     "text-type-body before:content-[''] before:absolute before:inset-0 "
     "before:-z-10 before:rounded-[inherit] dark:before:backdrop-blur-xl "
-    "border border-default-medium w-64 normal-case"
+    "border border-default-medium w-64 normal-case text-left"
 )
 
 #: A square ghost button: the row menu's look, with no room for text.
