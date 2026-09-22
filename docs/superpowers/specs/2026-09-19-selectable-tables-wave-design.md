@@ -482,8 +482,25 @@ loses the button.
 
 #718 retires the Actions column on every table on the two pages this wave
 touches that has one: Game detail's playthroughs and historical playtime,
-and the Playtime page's sessions and historical playtime, four columns.
-Game detail's session preview has none. A reader a tray act needs moves
+and the Playtime page's sessions and historical playtime, four columns,
+and with them the Playthrough list's, which `playthrough_tabledata` draws
+from the same declaration and which carries the tray since #712: one
+builder is one personality, and a flag keeping the column on one page
+would reopen what the wave closed. Game detail's session preview has
+none. The ⋯ menu is a `Column` the view declares with the row's items,
+marked as the row's menu by role rather than by label, which the table
+never drops and `tests/test_column_priority_contract.py` protects by
+that role: the checkbox is content the selectable personality owns
+inside the name cell, while a menu holds what each table says, and a
+table that keeps its Actions column today (#1134–#1136, Purchases)
+inherits the same column when its turn comes. The playthrough tables'
+one-press "Started today" and "Completed today" go into that menu as
+items; as `many` acts with inverses of their own they are #1256's, after
+#718. Finish's inverse is `CorrectSessionTiming` to the row's own start
+and zones with no end, which puts the row back to running, so `inverse`
+stays required on every act; `end_session` grows the runner's shape, a
+key, a correlation id and `source_metadata`, and answers the
+`CommandResult`. A reader a tray act needs moves
 to `games/reads/` first: an act module importing a view closes an import
 cycle through the foot imports of `games/bulk_actions.py`, which is why
 #714 moved the run labels out of `games/views/session.py`. Every act that is coherent over
@@ -543,12 +560,15 @@ cost is judged.
    the Library page's three cards and their links.
 7. **#1212** TABLE-05 — the checkbox reserve while the mode is off,
    decided before the pages are judged.
-8. **#718** ORG-05 — the four Actions columns retired into the tray's
-   `many` acts (Finish declared here) and the row's ⋯ menu,
-   `Cardinality.ONE` removed, the Orca pass.
+8. **#718** ORG-05 — the five Actions columns retired into the tray's
+   `many` acts (Finish declared here, with its inverse) and the row's ⋯
+   menu, a column marked by role, `Cardinality.ONE` removed, the Orca
+   pass, with the checkbox reserve as it stands.
 9. **#1211** TABLE-04 — bulk Edit on the session tables, after #714.
 
-`#711 → #713 → #712 → #714 → #715 → #717 → #1212 → #718 → #1211`. #713 needs no table, so it
+`#711 → #713 → #712 → #714 → #715 → #717 → #718 → #1211`. #1212 and #1254
+are parked by the user's decision on 2026-09-22, so #718 lands with the
+checkbox reserve as it stands; #1256 follows #718. #713 needs no table, so it
 runs beside #711. One prerequisite lies outside the wave: #1080, in the
 Session wave, landed before #714 as stack #1226–#1228 (`main` at
 63b5940f). Every issue merges alone and leaves `main` incomplete
