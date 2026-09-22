@@ -22,9 +22,9 @@ def _login(page: Page, live_server) -> None:
 
 
 def _two_tracked_runs(library) -> tuple[Playthrough, Playthrough]:
-    return tuple(
-        tracked_run(library, create_tracked_game(library, name))
-        for name in ("Outer Wilds", "Tunic")
+    return (
+        tracked_run(library, create_tracked_game(library, "Outer Wilds")),
+        tracked_run(library, create_tracked_game(library, "Tunic")),
     )
 
 
