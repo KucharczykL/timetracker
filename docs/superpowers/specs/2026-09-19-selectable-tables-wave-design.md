@@ -419,12 +419,13 @@ That list already has every column, the filter, the sort, presets and, after
 #712, the tray. No new route, no second list, no rebuild of the preview.
 From it a person:
 
-- sorts by playthrough: #715 adds a Playthrough column, shown while the
-  list names one game, asked of the narrowed queryset rather than read
-  out of the filter's grammar, so a `game_filter`, a search, or #717's
-  facet that lands on one game shows it too; and a sort on it, keyed
-  `playthrough` in `SESSION_SORTS` whether or not the column shows, so a
-  preset keeps it. The sort leads with the game's `sort_name`, constant
+- sorts by playthrough: #715 adds a Playthrough column and a sort on it,
+  keyed `playthrough` in `SESSION_SORTS` whether or not the column shows,
+  so a preset keeps it. #715 showed the column only while the list named
+  one game, asked of the narrowed queryset; #1245 took that judgement
+  away from the page: the column is declared always, and the person
+  turns it off through the list's column picker, so `sole_game` is gone
+  and no page decides whether a run is worth naming. The sort leads with the game's `sort_name`, constant
   on the organizer and a grouping on the unnarrowed list, where runs of
   unrelated games would otherwise interleave by start day; then the
   bucket's null, then `DISPLAY_ORDER`, then `sort_instant`. So the bucket
@@ -434,13 +435,14 @@ From it a person:
   in it, which a null sort key states for free. `SortSpec` grows a `then`
   tuple for the order behind one key, which also gives the Playthrough
   list's own run column the sort key it lacked; #715 takes that column's
-  key, the user's widening. While the column shows,
-  the name cell drops its run label, so the run is said in one place. The
-  column reads `every_run_label` in `games/reads/session_run_labels.py`,
-  #714's, which names a sole run too. The stacked cell's summary
-  (#711's `make_row(summary=...)`) is fed on this list alone: time range,
-  duration, device, and the run label while the column shows; #1241 feeds
-  the other four selectable tables. `StyledTable` has no group-header rows and the
+  key, the user's widening. The name cell states no run label of its own,
+  so the run is said in one place, the column, which reads
+  `every_run_label` in `games/reads/session_run_labels.py`, #714's, a
+  sole run named too; a person who hides the column is named no run
+  anywhere, the stacked summary included, since the row builders read
+  the hidden set for the summary as well. The stacked cell's summary
+  (#711's `make_row(summary=...)`) is fed here with time range, duration,
+  device and the run label; #1241 fed the other four selectable tables. `StyledTable` has no group-header rows and the
   column-drop classes address cells by position, so grouping is the column
   and the sort, not header rows;
 - narrows by date and device, the session filter's own facets;
@@ -599,12 +601,26 @@ Was-an-estimate stay on the row, and a tray act shipping takes nothing
 off it. A gated act is absent, never disabled: a playthrough row offers
 Started today where it states neither endpoint and Completed today
 where it states a start and no completion, the gate #1256's tray acts
-inherit. Games, Purchases, Devices and Platforms keep their columns,
-each filed as a follow-up, and inherit the rule with the column: their
+inherit. Games, Devices and Platforms keep their columns, each filed as
+a follow-up (#1134–#1136), and inherit the rule with the column: their
 Actions column becomes the row's full act list in a menu, built under
-`games/views/`. Purchases' is the Purchases wave's, which rebuilds that
-table. `make_row` now states `key`, `summary` and `menu` beside the
-cells, which is the row #1241 feeds.
+`games/views/`. Purchases' is #1266's, after the Purchases wave, which
+rebuilds that table. `make_row` now states `key`, `summary` and `menu`
+beside the cells, which is the row #1241 fed. Since #1245 the columns a
+list shows are the person's: a list column states a `key`, its identity
+(a label is not one; the playtime header reads three), `hideable=False`
+where nobody may turn it off (the first column, which names every row,
+and the Actions column, which carries every act), and
+`hidden_by_default` where it starts off; `ListColumnChoice` holds the
+choice per person and mode, `games/list_columns.py` alone reads and
+writes it, and `drop_columns` narrows a table by one `hidden` set the
+row builders read for the stacked summary too. The picker is an
+`IconTrigger` in the table's last header cell, the row-menu slot where
+the rows carry a menu and the Actions header otherwise, so it follows
+the slot by itself as #1134–#1136 and #1266 retire their columns; the
+checkbox reserve is no column and stays out of it. A preset carrying
+its columns is #1261's, the choice without scripting #1262's, and the
+quick bar's own grouping #1267's.
 
 The cost: a single row's act is two presses, the menu and the item, as
 an icon row cost; a multi-row act is Select, the checkboxes and the
@@ -658,10 +674,15 @@ row's ⋯ and its items; the other four tables are Playwright only.
    `Cardinality` removed whole, the Orca pass, with the checkbox reserve
    as it stands.
 9. **#1211** TABLE-04 — bulk Edit on the session tables, after #714.
+10. **#1256** — bulk Started today and Completed today, after #718,
+    delivered as PR #1265.
+11. **#1245** — the columns a list shows, after #718, delivered as PR
+    #1268; #1261, #1262 and #1267 follow it, #1266 the Purchases wave.
 
-`#711 → #713 → #712 → #714 → #715 → #717 → #718 → #1211`. #1212 and #1254
-are parked by the user's decision on 2026-09-22, so #718 lands with the
-checkbox reserve as it stands; #1256 follows #718. #713 needs no table, so it
+`#711 → #713 → #712 → #714 → #715 → #717 → #718 → #1256 → #1245 → #1211`.
+#1212 and #1254 are parked by the user's decision on 2026-09-22, so #718
+landed with the checkbox reserve as it stands. Delivered through #1245
+as of 2026-09-22; #1211 and the four lists remain. #713 needs no table, so it
 runs beside #711. One prerequisite lies outside the wave: #1080, in the
 Session wave, landed before #714 as stack #1226–#1228 (`main` at
 63b5940f). Every issue merges alone and leaves `main` incomplete
@@ -675,13 +696,15 @@ Remove, in #712.
 
 - **The lists that stay** — Games (#1134), Devices (#1135) and Platforms
   (#1136) each inherit the personality and the retirement of their column
-  after #718; Purchases' table is #725–#736's.
+  after #718, and #1245's picker moves into their row-menu slot by
+  itself; Purchases' table is #725–#736's, then #1266's.
 - **The Trash** — #795 inherits "recent batches": the batch's correlation id
   and the Undo route are what a Trash lists, and the correlation index is
   what it reads.
 - **The union list** — #1100 inherits the selection statement and the tray;
   a row on the union declares its kind, and the action's per-row command
-  reads it.
+  reads it. `ListColumnChoice` is keyed on a `FilterPreset` mode, so a
+  union list states a mode of its own before it offers the picker.
 - **Import** — #798's inbox is a selectable table with bulk actions by
   construction; it inherits the runner.
 - **Audit History** — the aggregate reader is the first per-aggregate read
