@@ -3,35 +3,53 @@
 The Games list is a selectable table. The tray offers one act, Remove. The
 row's ⋯ menu offers Edit and Remove. The Actions column is gone. The status
 selector stays in its cell as an immediate control. The act is
-`REMOVE_GAME` in `games/bulk_removal.py`.
+`REMOVE_GAME` in `games/bulk_removal.py`: name `playergame.remove`, subject
+"game", title "Remove this game" and "Remove these games", colour red,
+fallback `games:list_games`.
 
 ## The rows
 
-The list reads `Game.objects.tracked_by(library)`, so each row is a catalog
-Game and the library tracks it. The selection names the Game key, as the
-row's links do. `game_scope` narrows that read by the statement's filter
-through `narrowed` and `parse_game_filter`. `game_resolution` reads the
-same base. It refuses no key that it finds. A key it does not find is lost,
-with a sentence of its own.
+The list reads `Game.objects.tracked_by(library)`. That read also holds
+shared catalog games, which no library owns (`library` is null). The
+selection names the Game key, as the row's links do. `game_scope` narrows
+that read by the statement's filter through `narrowed` and
+`parse_game_filter`. `game_resolution` reads the same base. It refuses no
+key that it finds. A key it does not find is lost, with a sentence of its
+own.
 
-## Two writes for one row
+## Remove from my library
 
-A game leaves the library in two writes. `untrack_game` dispatches
-`RemovePlayerGame`, which appends `library.playergame.removed`. Then
-`remove(game)` stamps the catalog row. The stamp writes no event. The
-event is the record of the batch.
+The act states the library's own fact. It does not state a rule about
+sharing. One helper in `games/writes/playergame.py` does the act for one
+game, and the act's `run` and `remove_game_for_request` both call it:
 
-`run` does the two writes in the order of the per-row route. The runner
-makes the key from the token and the row. If a defect stops a chunk
-between the two writes, the game is untracked but has no stamp. When the
-person posts the chunk again, the dispatch replays under the same key and
-the stamp follows. The per-row route has the same halfway.
+1. `untrack_game` dispatches `RemovePlayerGame`, which appends
+   `library.playergame.removed`.
+2. If the library owns the game, `remove(game)` stamps the catalog row.
+   A shared catalog row gets no stamp.
+
+The stamp writes no event. The event is the record of the batch. The
+stamp runs under `answered("game")`, so a database error is a defect of
+the batch and not a raw error.
 
 `untrack_game` and `retrack_game` take `idempotency_key` and
 `source_metadata`, and answer `CommandResult`, as `end_session` does. The
 tally can then tell moved from already so. `untrack_game` still accepts
-`PlayerGameNotTracked`, for the per-row route. The fallback `TrackGame` in
-`retrack_game` states a key of its own, which comes from the row's key.
+`PlayerGameNotTracked` for the per-row route. The `TrackGame` fallback in
+`retrack_game` is for the per-row restore only.
+
+If a defect stops the act between the two writes, the owned game is
+untracked but has no stamp. It is not on the list. Only the per-row URL
+finds it, and a second removal there completes it.
+
+## The per-row routes
+
+`remove_game` finds a live game that the library owns, or a shared game
+that the library tracks. The first half keeps the halfway row reachable.
+`restore_game` finds a game that the library owns, or a shared game that
+the library holds a PlayerGame for. The per-row restore uses the same rule
+as the inverse. Before this issue,
+Remove on a shared row answered 404.
 
 ## The Undo
 
@@ -41,33 +59,39 @@ the batch removed has an event. A PlayerGame key is not a Game key. The
 inverse finds the removed PlayerGame through the plain manager, scoped on
 the library, and reads its `game`.
 
-The inverse does the per-row restore in its order: it clears the stamp,
-then it retracks. If the retrack is refused, the stamp is already clear.
-The row gets the sentence that the per-row restore states.
+The inverse does the per-row restore in its order. If the library owns
+the game, it clears the stamp under `answered("game")`. Then it dispatches
+`RestorePlayerGame`. A catalog row that collides with a newer game on its
+unique name gives a refusal with a sentence, and the row stays removed.
+The per-row restore keeps its `retry=True`.
 
 ## The confirmation
 
 The confirmation states what leaves with each game, as the per-row
 ConfirmPage does. The preview columns are Game, Sessions, Purchases and
-Playthroughs. The counts come from annotations over the resolved keys,
-with the scopes of `_removed_with_game`: `library_sessions`, live
-purchases, live ordinary runs. Three queries per row are not permitted.
+Playthroughs, in `sort_name` order. Each count is a correlated subquery
+from `games/reads/`, with the scope of `_removed_with_game`:
+`library_sessions`, live purchases, live ordinary runs. A join count is
+not permitted, because it multiplies. `bulk_removal` does not import the
+view.
 
 ## The row menu
 
 `game_row_menu` in `games/views/game_menu.py` builds the items:
 
-1. Edit, a link to `edit_game`.
+1. Edit, a link to `edit_game`. It is absent on a shared game, the rule
+   that Game detail applies to catalog controls.
 2. Remove, a link to the per-row ConfirmPage, with `REMOVE_GAME.label`
-   and `danger=True`.
+   and `danger=True`, on each row.
 
 Remove keeps two entries, as on the session list (#1209 weighs this). The
-label of the trigger is "`<game name>` actions".
+label of the trigger is "`<name>` (`<platform>`) actions". A game with no
+platform has no parenthesis.
 
 The view states `menu_slot: True` and deletes the Actions column. The
-table leaves `tests/test_column_priority_contract.py`. The column picker
-goes into the slot by itself. Status is an ordinary column that a person
-can hide. Only Name is `hideable=False`.
+column-priority contract test then exempts the table, because it has no
+Actions header. The column picker goes into the slot by itself. Status is
+an ordinary column that a person can hide. Only Name is `hideable=False`.
 
 ## Not in this issue
 
@@ -80,4 +104,6 @@ can hide. Only Name is `hideable=False`.
 
 `make render-pages` before and after. Each differing file is a Games list
 page, and each difference is the selection markup, the menu slot or the
-removed Actions column.
+removed Actions column. `e2e/test_return_to_origin_e2e.py` opens the menu
+before it follows Edit. `e2e/test_pinned_column_e2e.py` still gets a
+Games list that overflows.
