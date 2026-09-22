@@ -1104,7 +1104,7 @@ def _historical_playtime_section(
         run_labels_for(library, records),
         presentation,
         durations,
-        exclude_columns=["Name", "Created"],
+        hidden=("name", "created"),
         origin=origin,
         caption="Historical playtime of this game",
     )
@@ -1149,7 +1149,7 @@ def _playthroughs_section(
     data = playthrough_tabledata(
         runs,
         presentation,
-        exclude_columns=["Game"],
+        hidden=("game",),
         clock=clock,
         origin=origin,
         csrf_token=csrf_token,

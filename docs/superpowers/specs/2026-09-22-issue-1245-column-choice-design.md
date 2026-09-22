@@ -112,11 +112,18 @@ new one: it is generalised, re-keyed from labels to `ColumnKey`, and states both
 what a page excludes and what a person hid. Game detail passes its own
 exclusions, the seven lists pass the person's, and one vocabulary serves both.
 
-Two rules bind the helper: column and cell drop in lockstep, and column 0 is
-never dropped, because it must stay `shrinkable` while any row carries a summary.
-`StyledTable` raises on either under `DEBUG` and renders a ragged table in
-production, so a test holds them rather than the guard alone. The menu slot sits
-outside `columns` and is counted on neither side.
+One rule binds the helper: column and cell drop in lockstep. It reads no
+`hideable`, because a page states exclusions no person may state — Game detail
+leads its record table with the day, so it hides the very Name column the list
+pins. The view is what reads `hideable`, narrowing the person's set before it
+calls, which is the same flag the panel reads to disable a box.
+
+A list therefore never loses the column that names its rows, and the first column
+stays `shrinkable` while any row carries a summary. `StyledTable` raises under
+`DEBUG` on a ragged table and on a summary under a first column that cannot
+shrink, and renders both in production, so tests hold the rule rather than the
+guard alone. The menu slot sits outside `columns` and is counted on neither
+side.
 
 ## The control
 

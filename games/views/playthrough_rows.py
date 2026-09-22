@@ -1,6 +1,6 @@
 """One table row per run."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 from common.components import (
@@ -16,6 +16,7 @@ from common.components import (
     Span,
     TableData,
     TruncatedText,
+    drop_columns,
     make_row,
     row_summary,
 )
@@ -80,7 +81,7 @@ def playthrough_columns(*, sortable: bool) -> list[Column]:
 def playthrough_tabledata(
     runs: Sequence[Playthrough],
     presentation: DateTimePresentation,
-    exclude_columns: Sequence[str] = (),
+    hidden: Collection[ColumnKey] = (),
     *,
     clock: ActivityClock,
     origin: OriginUrl | None,
@@ -99,14 +100,6 @@ def playthrough_tabledata(
     """
 
     column_list = playthrough_columns(sortable=sortable)
-    kept_columns = [
-        column for column in column_list if column.label not in exclude_columns
-    ]
-    dropped_indexes = [
-        index
-        for index, column in enumerate(column_list)
-        if column.label in exclude_columns
-    ]
 
     row_list: list[list[Cell]] = [
         [
@@ -125,11 +118,8 @@ def playthrough_tabledata(
         ]
         for run in runs
     ]
-    kept_rows = [
-        [cell for index, cell in enumerate(row) if index not in dropped_indexes]
-        for row in row_list
-    ]
-    with_game = "Game" not in exclude_columns
+    kept_columns, kept_rows = drop_columns(column_list, row_list, hidden)
+    with_game = "game" not in hidden
     return {
         "caption": "Playthroughs",
         "columns": kept_columns,

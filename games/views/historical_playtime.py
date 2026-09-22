@@ -1,6 +1,6 @@
 """The Historical tab of the Playtime page."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import cast
 
 from django.contrib.auth.decorators import login_required
@@ -27,6 +27,7 @@ from common.components import (
     RowActionMenu,
     Span,
     TableData,
+    drop_columns,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -165,7 +166,7 @@ def historical_playtime_tabledata(
     labels: RunLabels,
     presentation: DateTimePresentation,
     durations: DurationPresentation,
-    exclude_columns: Sequence[str] = (),
+    hidden: Collection[ColumnKey] = (),
     *,
     origin: OriginUrl | None,
     sort_terms: Sequence[SortTerm] = (),
@@ -180,14 +181,6 @@ def historical_playtime_tabledata(
     """
 
     column_list = historical_playtime_columns(sortable=sortable)
-    kept_columns = [
-        column for column in column_list if column.label not in exclude_columns
-    ]
-    dropped_indexes = [
-        index
-        for index, column in enumerate(column_list)
-        if column.label in exclude_columns
-    ]
 
     row_list: list[list[Cell]] = [
         [
@@ -210,10 +203,7 @@ def historical_playtime_tabledata(
         ]
         for record in records
     ]
-    kept_rows = [
-        [cell for index, cell in enumerate(row) if index not in dropped_indexes]
-        for row in row_list
-    ]
+    kept_columns, kept_rows = drop_columns(column_list, row_list, hidden)
     return {
         "caption": caption,
         "columns": kept_columns,
@@ -229,7 +219,7 @@ def historical_playtime_tabledata(
                     labels,
                     presentation,
                     durations,
-                    with_when="Name" not in exclude_columns,
+                    with_when="name" not in hidden,
                 ),
             )
             for record, cells in zip(records, kept_rows, strict=True)

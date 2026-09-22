@@ -10,7 +10,7 @@ widgets return :class:`Safe`.
 """
 
 import json
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Literal, NamedTuple, NotRequired, TypedDict
 
@@ -2293,6 +2293,29 @@ class Column(NamedTuple):
     priority: int = 1
     key: ColumnKey = ""
     hideable: bool = True
+
+
+def drop_columns(
+    columns: Sequence[Column],
+    rows: Sequence[list[Cell]],
+    hidden: Collection[ColumnKey],
+) -> tuple[list[Column], list[list[Cell]]]:
+    """Take each named column out, with its cell in every row.
+
+    Mechanics alone: a caller states which keys go, and both a page's own
+    exclusions and a person's hidden set travel through this one parameter.
+    Whether a person may name a key is `Column.hideable`, which the view reads
+    before it calls here - a page states exclusions of its own that no person
+    may state, Game detail's leading Name among them.
+    """
+    dropped = {index for index, column in enumerate(columns) if column.key in hidden}
+    kept_columns = [
+        column for index, column in enumerate(columns) if index not in dropped
+    ]
+    kept_rows = [
+        [cell for index, cell in enumerate(row) if index not in dropped] for row in rows
+    ]
+    return kept_columns, kept_rows
 
 
 type SelectionKey = str  # a row's own name, e.g. "0193f0c2-…"
