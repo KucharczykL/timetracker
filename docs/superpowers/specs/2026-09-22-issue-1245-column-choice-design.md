@@ -143,10 +143,13 @@ what a person asks of the rows are two questions.
 
 `FilterPreset.ui_options` is a field that no application code reads or writes;
 one test writes one. A preset carries no columns, and loading a preset changes
-which rows show and nothing else. A preset that optionally carries its columns is
-its own issue.
+which rows show and nothing else.
+[#1261](https://github.com/KucharczykL/timetracker/issues/1261) holds the preset
+that carries its own.
 
-Changing the choice with no scripting is its own issue.
+[#1262](https://github.com/KucharczykL/timetracker/issues/1262) holds the choice
+a person states with no scripting. The bar this picker joins reads a script to
+apply anything at all, which makes the bar that issue's real subject.
 
 Reordering columns, per-column width and print styles stay outside, as
 [#521](https://github.com/KucharczykL/timetracker/issues/521) holds them.
