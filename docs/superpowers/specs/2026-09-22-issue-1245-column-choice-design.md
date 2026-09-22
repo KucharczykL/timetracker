@@ -5,10 +5,14 @@ Three mechanisms decide what a list shows today, and none of them is the person:
 it judges meaningless, and the rest is fixed in the view's source. This issue
 adds the person, and removes the second mechanism.
 
-The control is one more piece of furniture on the quick filter bar's row, beside
-Load preset and the Apply group, on the seven list views that state a `*_SORTS`
-map and a filter mode: games, sessions, purchases, playthroughs, historical
-playtime, devices and platforms.
+The control is an icon in the table's own header row, on the seven list views
+that state a `*_SORTS` map and a filter mode: games, sessions, purchases,
+playthroughs, historical playtime, devices and platforms.
+
+It is not on the quick filter bar. The bar asks which rows; the columns are what
+the table shows of them, and they travel in no `?filter=`, are saved by no preset
+and change no result set. A control that answers a different question does not
+belong in a row of filter facets, wearing a facet's clothes.
 
 ## Where the choice lives
 
@@ -116,30 +120,39 @@ outside `columns` and is counted on neither side.
 
 ## The control
 
-A `<drop-down>` beside Load preset holds one checkbox for each hideable column,
-checked where the column shows, and Apply beside Reset to defaults.
+The trigger is a square icon button at the end of the header row, carrying a
+tooltip through `Popover` and no visible text. The glyph is a rectangle divided
+into three columns.
 
-The form is **not** inside the panel. The quick bar wraps every row child in one
-`<form>`, and a nested `<form>` start tag is dropped by the HTML parser, so a
-form written there would not exist and its controls would be owned by the bar,
-whose submit is turned into a navigation by `ts/elements/quick-filter-bar.ts`.
-Instead the real `<form id="column-picker" method="post">` renders as a sibling
-of the bar's form, and each checkbox and the submit button state
-`form="column-picker"`. The controls are then owned by the picker, and the submit
-is ordinary HTML that reads no script.
+It needs no structural change to any table, because every list table already ends
+its header with a cell that can hold it: the three whose rows carry a menu end
+with `_row_menu_header_cell`, a trailing `<th>` that states a screen-reader name,
+no visible content, and a `data-priority` above every declared column so it never
+drops; the four that still declare an Actions column end with that column's
+header. The rule is the table's last header cell, so the icon follows the slot on
+its own when [#1134](https://github.com/KucharczykL/timetracker/issues/1134),
+[#1135](https://github.com/KucharczykL/timetracker/issues/1135) and
+[#1136](https://github.com/KucharczykL/timetracker/issues/1136) retire three of
+those Actions columns, and again when
+[#1266](https://github.com/KucharczykL/timetracker/issues/1266) retires the
+fourth after the Purchase wave.
 
+The panel is a `<drop-down>`, which opens `position: fixed`. It must: the table's
+shell clips, so a panel anchored inside the header is cut off at the shell's edge
+part-way down the list. It holds one checkbox for each column, checked where the
+column shows, and Apply beside Reset to defaults.
+
+The panel carries a plain `<form method="post">`. Nothing wraps the table in a
+form, so the submit is ordinary HTML that reads no script once the panel is open.
 The route is POST only, carries `?origin=`, and is `ORIGIN_AWARE` in
 `games/views/returns.py`.
-
-The picker renders in both of the bar's branches. `QuickFilterBar` answers
-`_degraded()` for any filter its facets cannot state — an operator key, a
-relation, a field comparison — and a picker written into the editable branch
-alone would disappear under exactly the filters a person builds deliberately.
 
 An unchecked box posts nothing, so the saved value is the declared keys less the
 posted keys, computed from the live column list at each save. A hidden column's
 box renders unchecked and stays hidden; a key a rename orphaned is gone after the
-next save.
+next save. A box that refuses to hide is disabled and so posts nothing either,
+which is why the view keeps such a column shown whatever the request carries,
+rather than reading the posted keys as the whole truth.
 
 With no scripting the panel does not open. The server still renders the person's
 stored columns, because it reads them before it renders.

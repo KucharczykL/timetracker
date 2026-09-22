@@ -8,8 +8,9 @@ page, and every list keeps dropping what does not fit among the columns left.
 **Architecture:** A `ListColumnChoice` row per person per mode holds the keys the
 person hid. `Column` gains a stable `key` and a `hideable` flag. The hidden set
 is a parameter each table builder takes — not a pass over a finished `TableData`
-— because the same set decides the stacked summary's content. A `<drop-down>` on
-the quick filter bar posts it to one origin-aware route.
+— because the same set decides the stacked summary's content. An icon button in
+the table's last header cell opens a `<drop-down>` that posts it to one
+origin-aware route. Nothing on the quick filter bar changes.
 
 **Tech Stack:** Django 6, PostgreSQL 18, Python 3.14, pytest + pytest-xdist,
 Playwright for e2e, TypeScript custom elements, Tailwind.
@@ -294,75 +295,70 @@ the stacked line.
 
 ---
 
-### Task 6: The picker on the bar
+### Task 6: The picker in the header row
 
 **Files:**
 - Create: `common/components/column_picker.py`
 - Modify: `common/components/__init__.py` (export)
-- Modify: `common/components/quick_filter.py:306-350` (`_editable`), `:458-465`
-  (`_degraded`), `:263-285` (constructor)
+- Modify: `common/components/primitives.py` (the header row's last cell)
+- Create: `games/templates/icons/columns.html`, then run `make gen-icons`
 - Test: `tests/test_column_picker.py`
 
 **Interfaces — Consumes:** `ColumnKey`, `Column.hideable` (Task 2),
 `games:state_list_columns` (Task 5).
-**Produces:** `ColumnPicker(columns, hidden, post_url, csrf_token, mode)` → a
-`Fragment` of the `<drop-down>` trigger and the sibling `<form>`.
+**Produces:** `ColumnPicker(columns, hidden, post_url, csrf_token, mode)` → the
+`<drop-down>` trigger and its panel, placed by `StyledTable` in the header row's
+last cell.
 
-**The one thing that makes or breaks this task:** the quick bar wraps every row
-child in one `<form>` (`quick_filter.py:349`), and a nested `<form>` start tag is
-**dropped by the HTML parser** — its controls would be owned by the bar's form,
-whose submit `ts/elements/quick-filter-bar.ts:60` turns into a navigation. So:
+**Placement.** No table needs a structural change: every list table already ends
+its header with a cell that can hold the icon.
 
 ```text
-<quick-filter-bar>
-  <form>                      ← the bar's own, unchanged
-    <div data-quick-row>
-      … facets … <drop-down id="quick-<mode>-columns">
-                   panel: <input type="checkbox" form="column-picker" …> ×N
-                          <button type="submit" form="column-picker">Apply</button>
-                          <button type="submit" form="column-picker"
-                                  name="reset" value="1">Reset to defaults</button>
-                 </drop-down>
-      … preset picker … action group …
-    </div>
-  </form>
-  <form id="column-picker" method="post" action="…">  ← sibling, not nested
-    csrf
-  </form>
-</quick-filter-bar>
+sessions / playthroughs / historical playtime
+  … <th data-row-menu>  ← _row_menu_header_cell, today only an sr-only name
+
+games / purchases / devices / platforms
+  … <th>Actions</th>    ← the icon joins the label, right-aligned
 ```
 
-Verified in jsdom: two forms parse, and both the checkbox and the button report
-`column-picker` as their form owner.
+State the rule as "the table's last header cell", so the icon follows the slot
+by itself when #1134, #1135 and #1136 retire three of those Actions columns.
+#1266 retires the fourth after the Purchase wave.
 
 **Gotchas:**
-- The picker renders in **both** branches. `_degraded()` returns a bare pill Div
-  for any filter the facets cannot state, and a picker written into `_editable`
-  alone disappears under exactly the filters a person builds deliberately.
-- Place the trigger in `row_children` after the preset picker, before the action
-  group. The TS reserve walks every row child but the host and the facets, so it
-  needs no second registration — but confirm it does not enter the overflow.
-- Use `ComboboxDropdown(label="Columns", content=…, id=…, ghost=True)`.
+- **The panel must open `position: fixed`.** The table's shell clips, so a panel
+  anchored inside the header is sliced off at the shell's edge part-way down the
+  list — verified in the mockup. `<drop-down>` already opens fixed; a hand-rolled
+  absolute panel does not. Do not hand-roll one.
+- The panel carries a plain `<form method="post">`. Nothing wraps the table in a
+  form, so no `form=` indirection is needed. Confirmed on the rendered page:
+  neither the trailing `<th>` nor the `<table>` has a form ancestor.
+- The trigger is an icon button with no visible text: a tooltip through
+  `Popover` (as `common/components/theme.py` does) plus an `aria-label`. Not a
+  `ComboboxDropdown`, whose trigger is a "Label ▾" button.
+- `games/templates/icons/columns.html` is the icon's source and
+  `common/components/icons_generated.py` is committed codegen, drift-guarded in
+  `make check`. Add the snippet, run `make gen-icons`, never edit the generated
+  file. The glyph is a rectangle divided into three columns.
 - A `hideable=False` column renders its box **checked and disabled**, not absent.
-  The panel is then the whole table's inventory. Use `DISABLED_CONTROL_CLASS` on
-  the box and the `has-[:disabled]:` wrapper variant on the label, per the
-  repo's one disabled look.
-- A disabled checkbox posts nothing, so the view must never read the posted keys
-  as the whole truth: a `hideable=False` key is kept shown whatever arrives.
-  Task 5's "a posted `hideable=False` key changes nothing" test covers the other
-  direction; add one for the absent key too.
+  Use `DISABLED_CONTROL_CLASS` on the box and the `has-[:disabled]:` wrapper
+  variant on the label, per the repo's one disabled look.
+- Nothing about the quick filter bar changes in this task. The bar keeps every
+  control it has today.
 
 - [ ] **Step 1: Write the failing tests:** the panel renders one checkbox per
-  hideable column and none for the rest; a hidden column's box is unchecked;
-  every checkbox and both buttons state `form="column-picker"`; the rendered page
-  parses to two forms and the picker's form is not a descendant of the bar's;
-  the picker renders under a degraded filter.
+  column, disabled for a `hideable=False` one; a hidden column's box is
+  unchecked; the trigger states an accessible name and no visible text; the
+  trigger renders inside the header row's last cell on a table with a row-menu
+  slot and inside the Actions header on one without; the panel's form is a
+  `<form method="post">` carrying the CSRF token.
 - [ ] **Step 2: Run them and confirm they fail.**
   `make test-fast ARGS="tests/test_column_picker.py -x"`
-- [ ] **Step 3: Write `ColumnPicker` and place it in both branches.**
-- [ ] **Step 4: Run them plus the bar's suite.**
-  `make test-fast ARGS="tests/test_column_picker.py tests/test_quick_filter_bar.py"`
-- [ ] **Step 5: `make format && make lint-fix`, then commit.**
+- [ ] **Step 3: Add the icon snippet and run `make gen-icons`.**
+- [ ] **Step 4: Write `ColumnPicker` and place it from `StyledTable`.**
+- [ ] **Step 5: Run them plus the table's own suites.**
+  `make test-fast ARGS="tests/test_column_picker.py tests/test_rendered_pages.py tests/test_column_priority_contract.py"`
+- [ ] **Step 6: `make format && make lint-fix`, then commit.**
 
 ---
 
