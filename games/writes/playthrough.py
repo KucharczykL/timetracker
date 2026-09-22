@@ -172,7 +172,9 @@ def _state_first_act(
     when: TemporalValue | None,
     *,
     correlation_id: uuid.UUID,
-) -> None:
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
     """State one endpoint, never correcting it.
 
     A caller that means "this happened today" states a new
@@ -185,11 +187,13 @@ def _state_first_act(
     endpoint's note is the endpoint's to keep.
     """
     with answered("playthrough"):
-        _dispatch(
+        return _dispatch(
             command(playthrough_id=run.pk, when=when, note=""),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
 
 
@@ -199,9 +203,19 @@ def start_run(
     when: TemporalValue | None,
     *,
     correlation_id: uuid.UUID,
-) -> None:
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
     """State that a run began, first time only."""
-    _state_first_act(actor, run, StartPlaythrough, when, correlation_id=correlation_id)
+    return _state_first_act(
+        actor,
+        run,
+        StartPlaythrough,
+        when,
+        correlation_id=correlation_id,
+        idempotency_key=idempotency_key,
+        source_metadata=source_metadata,
+    )
 
 
 def complete_run(
@@ -210,10 +224,18 @@ def complete_run(
     when: TemporalValue | None,
     *,
     correlation_id: uuid.UUID,
-) -> None:
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
     """State that a run finished, first time only."""
-    _state_first_act(
-        actor, run, CompletePlaythrough, when, correlation_id=correlation_id
+    return _state_first_act(
+        actor,
+        run,
+        CompletePlaythrough,
+        when,
+        correlation_id=correlation_id,
+        idempotency_key=idempotency_key,
+        source_metadata=source_metadata,
     )
 
 
