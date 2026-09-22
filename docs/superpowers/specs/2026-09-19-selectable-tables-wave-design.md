@@ -270,8 +270,8 @@ the submission token.
    and is person-editable, and a value carried on trust would reach the
    command, whose scope miss the runner answers as a defect. A refused
    settle re-renders the confirmation on the posted token and tally,
-   never fresh ones, so one batch stays one correlation id. The undo leg
-   never settles: its choice is the batch's own id, which reaches the
+   never fresh ones, so one batch stays one correlation id. The batch's
+   undo never settles: its choice is the batch's own id, which reaches the
    inverse no other way. The settle validates and writes nothing: a run the
    person needs is created ahead of the submit by #1080's create row, in
    its own request under its own correlation id, outside the batch, so no
