@@ -1,6 +1,7 @@
 """The reclassification acts through the routes."""
 
 import json
+import re
 import uuid
 from datetime import UTC, date, datetime, timedelta
 
@@ -20,8 +21,10 @@ from games.models import (
     Game,
     HistoricalPlaytime,
     LibraryEvent,
+    PlayerGame,
     PlayerSession,
     Playthrough,
+    PlaythroughKind,
 )
 from games.views.bulk import STATEMENT_FIELD
 from games.views.session_reclassification import (
@@ -29,6 +32,7 @@ from games.views.session_reclassification import (
     review_url,
 )
 from games.writes.answers import CONFLICT_STATUS
+from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -192,11 +196,11 @@ def _long_row(run, day=A_DAY, hours=9) -> PlayerSession:
 
 
 def test_the_library_offers_the_review(logged_in, session):
-    """The panel explains and points; the act is not pressed here."""
+    """The panel counts, explains and points; the act is not pressed here."""
     response = logged_in.get(reverse("games:library"))
 
     html = response.content.decode()
-    assert "See these sessions" in html
+    assert 'aria-label="1 To review"' in html
     assert "1 of your play sessions" in html
     assert "Playtime" in html
 
@@ -218,7 +222,7 @@ def test_the_panel_presses_nothing(logged_in, session):
     """
     panel = _playtime_panel(logged_in.get(reverse("games:library")).content.decode())
 
-    assert "See these sessions" in panel
+    assert "To review" in panel
     assert "Move all" not in panel
     assert (
         action_url(
@@ -256,6 +260,75 @@ def test_the_link_lands_on_the_rows_the_act_offers(logged_in, owned_library, run
     assert "/bulk/session.reclassify/" in html
 
 
+def _cards(html: str) -> dict[str, str]:
+    """Each card's label, and the number its link speaks."""
+    panel = _playtime_panel(html)
+    return {
+        label: count
+        for count, label in re.findall(r'aria-label="(\d+) ([^"]+)"', panel)
+    }
+
+
+@pytest.fixture
+def three_populations(owned_library, game, run):
+    """One row per card, and one the cards leave out."""
+    _long_row(run)
+    dated = Game.objects.create(library=owned_library, name="Dated")
+    dated_run = tracked_run(owned_library, dated)
+    dated_run.started = TemporalValue.from_day(date(2022, 2, 1))
+    dated_run.start_recorded_at = timezone.now()
+    dated_run.completed = TemporalValue.from_day(date(2022, 4, 1))
+    dated_run.completion_recorded_at = timezone.now()
+    dated_run.save()
+    duration_only_row(dated_run, date(2021, 12, 30), timedelta(hours=1))
+    duration_only_row(dated_run, date(2022, 3, 2), timedelta(hours=1))
+    bucket = Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        player_game=PlayerGame.objects.get(library=owned_library, game=game),
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+    duration_only_row(bucket, A_DAY, timedelta(hours=1))
+
+
+def test_the_panel_counts_three_populations(logged_in, three_populations):
+    html = logged_in.get(reverse("games:library")).content.decode()
+
+    assert _cards(html) == {
+        "To review": "1",
+        "Imported history": "1",
+        "Outside dates": "1",
+    }
+    assert "hours or longer" in html
+
+
+def test_an_empty_population_states_no_card(logged_in, session):
+    """Only the review has rows, so only its card is drawn."""
+    cards = _cards(logged_in.get(reverse("games:library")).content.decode())
+
+    assert set(cards) == {"To review"}
+
+
+def test_the_paragraphs_give_way_when_nothing_waits_for_review(
+    logged_in, owned_library, game
+):
+    bucket = Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        player_game=PlayerGame.objects.get(library=owned_library, game=game),
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+    duration_only_row(bucket, A_DAY, timedelta(hours=1))
+
+    html = logged_in.get(reverse("games:library")).content.decode()
+
+    assert set(_cards(html)) == {"Imported history"}
+    assert "Nothing to review" in html
+    assert "hours or longer" not in html
+
+
 def test_the_review_has_no_route_of_its_own(logged_in):
     """One runner, so the act's own route is gone."""
     with pytest.raises(NoReverseMatch):
@@ -267,14 +340,16 @@ def test_the_library_says_so_when_nothing_waits(logged_in, run):
 
     response = logged_in.get(reverse("games:library"))
 
-    assert "Nothing to review" in response.content.decode()
+    html = response.content.decode()
+    assert "Nothing to review" in html
+    assert "data-statistic-grid" not in _playtime_panel(html)
 
 
 def test_the_session_list_carries_no_review_row(logged_in, session):
     """One act, one home."""
     response = logged_in.get(reverse("games:list_sessions"))
 
-    assert "See these sessions" not in response.content.decode()
+    assert "To review" not in response.content.decode()
 
 
 def test_the_review_filter_parses_and_stays_quick_editable(logged_in):
