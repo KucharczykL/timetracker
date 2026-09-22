@@ -2253,6 +2253,8 @@ class TableRowData(TypedDict):
     key: NotRequired[SelectionKey]
     # One line under the name, below md.
     summary: NotRequired[str]
+    # The row's own acts, in the trailing slot. Not a column: see `TableRow`.
+    menu: NotRequired[Node]
 
 
 type Align = Literal["left", "right"]  # column text alignment, e.g. "right"
@@ -2341,6 +2343,7 @@ def make_row(
     *cells: Cell,
     key: SelectionKey | None = None,
     summary: str | None = None,
+    menu: Node | None = None,
     **attributes: object,
 ) -> TableRowData:
     """Build a :class:`TableRowData` from positional cells and htpy-style
@@ -2351,8 +2354,14 @@ def make_row(
     :func:`TableRow` owns the styled row class; drop to the generic ``Tr`` builder
     for a custom-classed row.
 
-    ``key`` and ``summary`` are keyword-only and declared before
+    ``key``, ``summary`` and ``menu`` are keyword-only and declared before
     ``**attributes``, or they would render as ``<tr>`` attributes instead.
+
+    ``menu`` is the row's own acts, rendered in a trailing slot rather than a
+    column. It is stated here and not in the view's ``Column`` list on purpose:
+    the slot's drop priority is then computed above every declared column
+    instead of declared beside them, where a table would eventually get it
+    wrong and lose its acts on a phone.
     """
     if "class_" in attributes or "class" in attributes:
         raise ValueError(
@@ -2364,6 +2373,8 @@ def make_row(
         data["key"] = key
     if summary is not None:
         data["summary"] = summary
+    if menu is not None:
+        data["menu"] = menu
     attrs = _attrs_from_kwargs(attributes)
     if attrs:
         data["attributes"] = attrs
@@ -2397,6 +2408,7 @@ def TableRow(
     *,
     data_table: bool = False,
     selectable: bool = False,
+    menu_slot: bool = False,
 ) -> Element:
     """Render a styled ``<tr>`` from a :class:`TableRowData`.
 
@@ -2409,6 +2421,11 @@ def TableRow(
     row fragment swapped into such a table must pass both this flag and the
     table's ``columns``, or it renders under a different width policy than the
     rows around it.
+
+    ``menu_slot`` mirrors the table's trailing menu cell, which is the whole
+    table's or no row's: a row that states no ``menu`` under it still renders
+    an empty trailing cell, because ``<responsive-table>`` addresses columns by
+    position and a short row would shift every column after it.
 
     ``selectable`` mirrors the table's selection declaration, and a row with
     no ``key`` under it is refused — always, and not in debug alone. A row
@@ -2487,7 +2504,40 @@ def TableRow(
             nowrap = data_table and not (column and column.wrap)
             cell_elements.append(TableTd(nowrap=nowrap)[cell])
 
+    if menu_slot:
+        menu = data.get("menu")
+        cell_elements.append(Td(class_=_ROW_MENU_CELL_CLASS)[menu if menu else ""])
+
     return Tr(tr_attrs)[*cell_elements]
+
+
+#: What a reader hears on the trailing header, which shows nothing.
+ROW_MENU_HEADER_LABEL = "Row actions"
+
+# The slot takes only what its trigger needs and never grows with the table,
+# so it states its own padding rather than a column cell's.
+_ROW_MENU_CELL_CLASS = "w-px px-2 py-2 whitespace-nowrap text-right"
+
+
+def _row_menu_header_cell(columns: Sequence[Column], *, data_table: bool) -> Node:
+    """The trailing ``<th>`` over the row menus.
+
+    It carries no visible label and a name of its own, and a ``data-priority``
+    one above every declared column, so ``<responsive-table>`` drops it last
+    and a phone keeps the acts.
+
+    The name lives on a child span and never on the ``<th>``. The element
+    measures each header's rect to budget the table's widths; an absolutely
+    positioned 1px header would under-budget this cell by the whole trigger and
+    the wrapper would scroll at every viewport.
+    """
+    policy_attrs: list[HTMLAttribute] = [("data-row-menu", "")]
+    if data_table:
+        highest = max((column.priority for column in columns), default=0)
+        policy_attrs.append(("data-priority", str(highest + 1)))
+    return Th(policy_attrs, scope="col", class_="px-2 sm:px-3 lg:px-6 py-3")[
+        Span(class_="sr-only")[ROW_MENU_HEADER_LABEL]
+    ]
 
 
 def get_icon_node(name: str) -> Element:
@@ -2747,6 +2797,12 @@ _SelectionActionsElement = custom_element_builder("selection-actions")
 # The runtime column-drop state is a safelisted nth-child class family in
 # input.css (like the align rules), so it has a hard ceiling: a column past it
 # could never be hidden.
+#
+# The row menu slot is outside `columns` and so outside this count, but it does
+# occupy one of those twelve rendered positions. A table declaring twelve
+# columns AND a menu would put the slot at nth-child(13), where no safelisted
+# class reaches it — it would simply never drop. Widen the safelist before
+# declaring such a table; the widest today has eight.
 MAX_DATA_TABLE_COLUMNS = 12
 
 # No-JS fallback for the data-table column drop: while <responsive-table> is
@@ -3148,6 +3204,9 @@ def StyledTable(
     columns = columns or []
     rows = rows or []
     sort_terms = sort_terms or []
+    # The slot is the table's, never a row's: a short row would shift every
+    # column after it out from under its header.
+    menu_slot = any("menu" in row for row in rows)
 
     # Always, unlike the DEBUG cell-count guard.
     #
@@ -3171,6 +3230,8 @@ def StyledTable(
     # mismatch loudly in DEBUG; prod degrades to a ragged table over a 500.
     if settings.DEBUG:
         for row in rows:
+            # The menu slot is outside `columns`, so it is counted on neither
+            # side: `cell_data` never holds it.
             cell_count = len(row["cell_data"])
             if cell_count != len(columns):
                 raise ValueError(
@@ -3212,19 +3273,20 @@ def StyledTable(
         # takes its background from its parent row, and a <thead>-level surface
         # would leave it transparent.
         header_row_class = "bg-neutral-tertiary"
-        header_row = Tr(class_=header_row_class)[
-            [
-                _header_cell(
-                    column,
-                    sort_terms,
-                    request,
-                    data_table=data_table,
-                    pinned=data_table and index == 0,
-                    selectable=selection is not None and index == 0,
-                )
-                for index, column in enumerate(columns)
-            ]
+        header_cells: list[Node] = [
+            _header_cell(
+                column,
+                sort_terms,
+                request,
+                data_table=data_table,
+                pinned=data_table and index == 0,
+                selectable=selection is not None and index == 0,
+            )
+            for index, column in enumerate(columns)
         ]
+        if menu_slot:
+            header_cells.append(_row_menu_header_cell(columns, data_table=data_table))
+        header_row = Tr(class_=header_row_class)[*header_cells]
         thead_class = "text-type-micro text-body uppercase"
         if data_table:
             thead_class = f"{thead_class} {_FALLBACK_HIDE_HEADER_CLASS}"
@@ -3262,6 +3324,7 @@ def StyledTable(
                     columns=columns,
                     data_table=data_table,
                     selectable=selection is not None,
+                    menu_slot=menu_slot,
                 )
                 for row in rows
             ]

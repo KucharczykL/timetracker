@@ -1,7 +1,7 @@
 import datetime
 import re
 import unittest
-from typing import get_args
+from typing import ClassVar, get_args
 from unittest.mock import MagicMock
 from uuid import UUID
 
@@ -2747,6 +2747,89 @@ class DataTableWidthPolicyTest(SimpleTestCase):
             [components.make_row("Total", "5")],
         )
         self.assertNotIn("container-type", result)
+
+
+class RowMenuSlotTest(SimpleTestCase):
+    """The row's trailing menu cell is a slot, not a column. It never enters a
+    view's `Column` list, so its drop priority is computed above every declared
+    column rather than declared beside them and got wrong."""
+
+    COLUMNS: ClassVar[list[components.Column]] = [
+        components.Column("Name", shrinkable=True),
+        components.Column("Day", priority=3),
+        components.Column("Duration", priority=2),
+    ]
+
+    @staticmethod
+    def _cells(markup: str, section: str) -> list[str]:
+        body = markup.split(f"<{section}")[1].split(f"</{section}>")[0]
+        return re.split(r"<t[hd]\b", body)[1:]
+
+    def _table(self, rows, **kwargs):
+        return str(
+            components.StyledTable(
+                columns=self.COLUMNS,
+                rows=rows,
+                data_table=True,
+                caption="Sessions",
+                **kwargs,
+            )
+        )
+
+    def _menu_row(self, *cells, menu="the menu"):
+        return components.make_row(*cells, menu=components.Span()[menu])
+
+    def test_a_slotted_table_grows_one_header_and_one_cell_a_row(self):
+        markup = self._table([self._menu_row("Hades", "Monday", "2 h")])
+        self.assertEqual(len(self._cells(markup, "thead")), 4)
+        self.assertEqual(len(self._cells(markup, "tbody")), 4)
+        self.assertIn("the menu", markup)
+
+    def test_the_trailing_header_outranks_every_declared_column(self):
+        markup = self._table([self._menu_row("Hades", "Monday", "2 h")])
+        header = self._cells(markup, "thead")[-1]
+        self.assertIn("data-row-menu", header)
+        priorities = [
+            int(found) for found in re.findall(r'data-priority="(\d+)"', markup)
+        ]
+        self.assertEqual(priorities[-1], max(priorities))
+        self.assertGreater(priorities[-1], max(priorities[:-1]))
+
+    def test_the_trailing_header_is_named_but_reads_empty(self):
+        markup = self._table([self._menu_row("Hades", "Monday", "2 h")])
+        header = self._cells(markup, "thead")[-1]
+        self.assertIn("sr-only", header)
+        self.assertNotIn("sr-only", header.split(">")[0])
+        self.assertIn("Row actions", header)
+
+    def test_a_table_stating_no_menu_grows_neither(self):
+        markup = self._table([components.make_row("Hades", "Monday", "2 h")])
+        self.assertEqual(len(self._cells(markup, "thead")), 3)
+        self.assertEqual(len(self._cells(markup, "tbody")), 3)
+        self.assertNotIn("data-row-menu", markup)
+
+    def test_a_row_without_a_menu_still_takes_the_trailing_cell(self):
+        """Or `nth-child` misaddresses every column after it for that row."""
+        markup = self._table(
+            [
+                self._menu_row("Hades", "Monday", "2 h"),
+                components.make_row("Celeste", "Tuesday", "1 h"),
+            ]
+        )
+        rows = markup.split("<tbody")[1].split("</tbody>")[0].split("<tr")[1:]
+        self.assertEqual(len(rows), 2)
+        for row in rows:
+            self.assertEqual(len(re.split(r"<t[hd]\b", row)) - 1, 4)
+
+    def test_a_non_data_table_slot_carries_no_drop_policy(self):
+        markup = str(
+            components.StyledTable(
+                columns=self.COLUMNS,
+                rows=[self._menu_row("Hades", "Monday", "2 h")],
+            )
+        )
+        self.assertIn("data-row-menu", markup)
+        self.assertNotIn("data-priority", markup)
 
 
 class ResponsiveTableGateTest(SimpleTestCase):

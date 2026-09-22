@@ -18,11 +18,12 @@ from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from historical_playtime_rows import record_row
 from session_rows import session_row
 
+from common.components import Column, Span, StyledTable, make_row
 from games.models import Device, Game, Platform, Playthrough, Purchase
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
@@ -69,6 +70,36 @@ def header_policies(markup: str) -> list[list[HeaderPolicy]]:
         if policies:
             tables.append(policies)
     return tables
+
+
+class RowMenuSlotPriorityTest(SimpleTestCase):
+    """The slot's counterpart to the contract above.
+
+    A table whose acts live in the row's menu declares no ``Actions`` column,
+    so ``assert_actions_dominates`` exempts it — by design. The rank is
+    computed instead of declared, and this is what holds the computation to
+    the same promise: the slot outranks every column, so the element drops it
+    last and a phone keeps the acts.
+    """
+
+    def test_the_slot_outranks_every_declared_column(self) -> None:
+        markup = str(
+            StyledTable(
+                columns=[
+                    Column("Name", shrinkable=True),
+                    Column("Day", priority=5),
+                    Column("Duration", priority=3),
+                ],
+                rows=[make_row("Hades", "Monday", "2 h", menu=Span()["acts"])],
+                data_table=True,
+                caption="Sessions",
+            )
+        )
+        tables = header_policies(markup)
+        self.assertEqual(len(tables), 1)
+        priorities = [priority for _, priority in tables[0]]
+        self.assertEqual(priorities[-1], max(priorities))
+        self.assertGreater(priorities[-1], max(priorities[:-1]))
 
 
 class ActionsColumnPriorityTest(TestCase):
