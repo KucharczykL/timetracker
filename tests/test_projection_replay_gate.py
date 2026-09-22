@@ -500,7 +500,7 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
 
 
 def build_neighbour(user, library) -> None:
-    """A shorter stream every leg leaves alone.
+    """A shorter stream every step leaves alone.
 
     Each dispatch is asserted, because a build that quietly wrote
     nothing would turn every neighbour comparison into two empty lists
@@ -575,7 +575,7 @@ def rows_of(library) -> ProjectionSnapshot:
     `.values()` rather than a column list, so a column added later is
     in the comparison the day it lands. Refuses an empty table, because
     every caller compares two snapshots and two empty ones agree
-    whatever the leg between them did.
+    whatever the step between them did.
     """
     tracked: ProjectionRows = list(
         PlayerGame.objects.filter(library=library).order_by("pk").values()
@@ -741,7 +741,7 @@ def test_the_stream_leaves_a_removed_row_in_each_table(owned_user, owned_library
 
 
 def test_the_gate_replays_every_reachable_playthrough_kind(owned_user, owned_library):
-    """A new kind fails here until a leg states it."""
+    """A new kind fails here until a step states it."""
     build_stream(owned_user, owned_library)
 
     stated = set(
