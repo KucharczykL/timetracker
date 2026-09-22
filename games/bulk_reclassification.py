@@ -54,14 +54,15 @@ ALREADY_RECORDED = "Some of the sessions were already recorded as historical pla
 def reviewable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
     """Live written-down rows at the threshold.
 
-    One of the three rules no filter field can state: the bucket is
-    told apart by its run's kind, which `PlayerSessionFilter` does not
-    carry. A rule moved into the filter would widen the act.
+    The act's scope is its own base, narrowed by a statement's
+    filter. `PlayerSessionFilter` states the run's kind as well
+    now, so the base and a link can name one population, and the
+    field still widens nothing the act does.
     """
     return library_sessions(library).filter(
         timing_mode=PlayerSessionTimingMode.DURATION_ONLY,
         effective_duration__gte=timedelta(hours=REVIEW_THRESHOLD_HOURS),
-        #: No filter field states a run.
+        #: The bucket takes no review: its hours name no run.
         playthrough__kind=PlaythroughKind.ORDINARY,
     )
 

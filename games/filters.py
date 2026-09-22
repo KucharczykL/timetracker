@@ -93,7 +93,7 @@ class FindFilter:
 # ── GameFilter ─────────────────────────────────────────────────────────────
 
 
-class NarrowingLegs(NamedTuple):
+class NarrowingClauses(NamedTuple):
     """What the Playtime column narrows by; None counts all."""
 
     sessions: PlayerSessionFilter | None
@@ -186,26 +186,26 @@ class GameFilter(OperatorFilter):
 
         return Game
 
-    def narrowing(self) -> NarrowingLegs:
-        """The legs the Playtime column narrows by.
+    def narrowing(self) -> NarrowingClauses:
+        """The clauses the Playtime column narrows by.
 
         The top level's own, or -- for a filter that is one `OR` of
         members each stating one relation and nothing else, the shape
         the stats links state -- the members'. Anything else narrows
         nothing.
         """
-        own = NarrowingLegs(self.session_filter, self.historical_playtime_filter)
+        own = NarrowingClauses(self.session_filter, self.historical_playtime_filter)
         if own.sessions is not None or own.records is not None:
             return own
         if not self.OR or self.AND or self.NOT or self._states_a_leaf():
-            return NarrowingLegs(None, None)
+            return NarrowingClauses(None, None)
         sessions = records = None
         for member in self.OR:
             if member._states_a_leaf() or member.AND or member.OR or member.NOT:
-                return NarrowingLegs(None, None)
+                return NarrowingClauses(None, None)
             sessions = member.session_filter or sessions
             records = member.historical_playtime_filter or records
-        return NarrowingLegs(sessions, records)
+        return NarrowingClauses(sessions, records)
 
     def _states_a_leaf(self) -> bool:
         """Any criterion or comparison at this level."""

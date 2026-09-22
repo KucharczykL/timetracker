@@ -710,7 +710,11 @@ structured filtering.
   (Timed with no end, through `bool_running_handler`), `day` (`effective_day`),
   `started`/`ended` (instants' dates, null on Duration-only row),
   `duration_hours` (`effective_duration`), `created_at`, `game` (through run),
-  `device`, `emulated`, `note`, `search`, `game_filter`, `device_filter`. Mode
+  `device`, `emulated`, `note`, `search`, `game_filter`, `device_filter`, plus
+  two the run states: `playthrough_kind` (`playthrough__kind`, the bucket's
+  word) and `outside_playthrough_dates` (the day below `started_lower` or
+  above `completed_upper`, through `outside_interval_handler`; a run stating
+  no endpoint answers no). Both are quick facets. Mode
   key stays `sessions`; model key is `playersession` wherever one is spelled
   (`FILTER_MODE_MODELS`, builder URL, fixtures' `"model"`). `GameFilter`'s
   session aggregates cross `player_games__playthroughs__sessions`;
