@@ -238,6 +238,134 @@ class BottomSheetTest(unittest.TestCase):
         self.assertIn("dist/elements/drop-down.js", collect_media(node).js)
 
 
+class DropdownItemIconTest(unittest.TestCase):
+    """An item may lead with the glyph its act was pressed by.
+
+    The acts these items replaced were icon buttons, and the icon is how a
+    reader who knows the row finds the act without reading the words.
+    """
+
+    def test_a_link_item_leads_with_its_glyph(self):
+        from common.components import DropdownLinkItem, render
+
+        html = render(DropdownLinkItem("/edit/", "Edit", icon="edit"))
+        self.assertIn("<svg", html)
+        self.assertLess(html.index("<svg"), html.index("Edit<"))
+        #: The words name the act; the glyph repeats them.
+        self.assertIn('aria-hidden="true"', html)
+
+    def test_a_post_item_leads_with_its_glyph(self):
+        from common.components import DropdownPostItem, render
+
+        html = render(
+            DropdownPostItem("/finish/", "Finish", csrf_token="t", icon="end")
+        )
+        self.assertIn("<svg", html)
+        self.assertLess(html.index("<svg"), html.index("Finish<"))
+
+    def test_an_item_stating_no_glyph_renders_none(self):
+        from common.components import DropdownLinkItem, render
+
+        html = render(DropdownLinkItem("/edit/", "Edit"))
+        self.assertNotIn("<svg", html)
+
+
+class DropdownItemDangerTest(unittest.TestCase):
+    """A destructive item is marked by its glyph, not by its whole row.
+
+    The same signal a destructive button carries in a toolbar, in the shape a
+    menu can wear: one red glyph, and words that read like every other item's.
+    """
+
+    def test_the_glyph_alone_takes_the_danger_colour(self):
+        from common.components import DropdownLinkItem, render
+
+        html = render(
+            DropdownLinkItem("/remove/", "Remove", icon="delete", danger=True)
+        )
+        self.assertIn("text-fg-danger", html)
+        #: On the glyph, never on the item: a red row reads as an error.
+        glyph = html[html.index("<svg") : html.index("</svg>")]
+        self.assertIn("text-fg-danger", glyph)
+        self.assertNotIn("text-fg-danger", html[: html.index("<svg")])
+
+    def test_an_ordinary_item_takes_none_of_it(self):
+        from common.components import DropdownLinkItem, render
+
+        html = render(DropdownLinkItem("/edit/", "Edit", icon="edit"))
+        self.assertNotIn("text-fg-danger", html)
+
+    def test_a_post_item_marks_its_glyph_too(self):
+        from common.components import DropdownPostItem, render
+
+        html = render(
+            DropdownPostItem(
+                "/remove/", "Remove", csrf_token="t", icon="delete", danger=True
+            )
+        )
+        self.assertIn("text-fg-danger", html)
+
+
+class RowActionMenuTest(unittest.TestCase):
+    """The row's half of the menu: a bare ellipsis trigger over a menu panel of
+    items the caller built. The builder knows no act — importing
+    ``games.bulk_actions`` from ``common/components/`` closes a cycle through
+    that module's foot imports and ``games/forms.py``."""
+
+    def _menu(self):
+        from common.components import DropdownLinkItem, RowActionMenu
+
+        return RowActionMenu(
+            [
+                DropdownLinkItem("/edit/", "Edit"),
+                DropdownLinkItem("/remove/", "Remove"),
+            ],
+            label="Hades, 2 hours",
+            id="session-menu-1",
+        )
+
+    def test_the_trigger_and_the_panel_take_the_same_name(self):
+        from common.components import render
+
+        html = render(self._menu())
+        self.assertEqual(html.count('aria-label="Hades, 2 hours"'), 2)
+        self.assertIn('aria-haspopup="menu"', html)
+        self.assertIn('role="menu"', html)
+
+    def test_the_items_keep_the_order_they_were_stated_in(self):
+        from common.components import render
+
+        html = render(self._menu())
+        self.assertEqual(html.count('role="menuitem"'), 2)
+        self.assertLess(html.index(">Edit<"), html.index(">Remove<"))
+
+    def test_the_panel_fits_its_longest_act_and_stops_at_the_screen(self):
+        """A row's acts are whole clauses, not one word.
+
+        The default menu is a fixed `w-44` with its overflow hidden, which
+        clips "Record as historical playtime" on a desktop. The panel grows to
+        its content instead, and the cap is what keeps it on a phone.
+        """
+        from common.components import render
+
+        html = render(self._menu())
+        self.assertIn("w-max", html)
+        self.assertIn("max-w-[calc(100vw-2rem)]", html)
+        self.assertNotIn(" w-44", html)
+
+    def test_the_glyph_is_the_bare_vertical_one(self):
+        from common.components import render
+
+        html = render(self._menu())
+        self.assertIn('d="M24 15a2.4 2.4 0 1 0 0.001 0z', html)
+
+    def test_the_id_reaches_the_element(self):
+        from common.components import render
+
+        html = render(self._menu())
+        self.assertIn('id="session-menu-1Link"', html)
+
+
 class DropdownWrapperTest(unittest.TestCase):
     def test_button_dropdown_uses_control_button_trigger(self):
         from common.components import ButtonDropdown, DropdownLinkItem, render

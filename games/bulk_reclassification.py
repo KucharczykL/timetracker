@@ -8,8 +8,8 @@ from django.contrib.auth.models import User
 from django.db.models import QuerySet
 
 from games.bulk_actions import (
+    ActTitle,
     BulkAction,
-    Cardinality,
     ChoiceValue,
     PreviewColumn,
     Refused,
@@ -176,10 +176,12 @@ PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
 RECLASSIFY = BulkAction(
     name="session.reclassify",
     label="Record as historical playtime",
-    title="Record these sessions as historical playtime",
+    title=ActTitle(
+        one="Record this session as historical playtime",
+        many="Record these sessions as historical playtime",
+    ),
     confirm_label="Record as historical playtime",
     subject="session",
-    cardinality=Cardinality.MANY,
     #: A move, not a removal: the hours stay.
     color="blue",
     inverse_aggregate="playersession",

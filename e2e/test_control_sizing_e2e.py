@@ -40,9 +40,15 @@ def _make_session(library) -> PlayerSession:
     )
 
 
-def test_selector_trigger_and_icon_actions_share_height(
+def test_selector_trigger_and_the_row_menu_share_height(
     authenticated_page: Page, live_server, e2e_library
 ):
+    """The row's two controls stand the same height.
+
+    The icon action group this compared against is gone: a row states its
+    acts behind one trigger now, and that trigger is the control the device
+    selector stands beside.
+    """
     page = authenticated_page
     session = _make_session(e2e_library)
 
@@ -51,14 +57,14 @@ def test_selector_trigger_and_icon_actions_share_height(
     expect(row).to_be_visible()
 
     selector_trigger = row.locator("drop-down [data-toggle]").first
-    reset_button = row.locator('a[href*="/reset"]')
+    menu_trigger = row.locator(f"#session-menu-{session.id}Link")
     expect(selector_trigger).to_be_visible()
-    expect(reset_button).to_be_visible()
+    expect(menu_trigger).to_be_visible()
 
     trigger_box = selector_trigger.bounding_box()
-    action_box = reset_button.bounding_box()
-    assert trigger_box is not None and action_box is not None
-    assert abs(trigger_box["height"] - action_box["height"]) <= 1, (
+    menu_box = menu_trigger.bounding_box()
+    assert trigger_box is not None and menu_box is not None
+    assert abs(trigger_box["height"] - menu_box["height"]) <= 1, (
         f"device selector trigger is {trigger_box['height']}px tall but the "
-        f"icon action button is {action_box['height']}px"
+        f"row menu trigger is {menu_box['height']}px"
     )

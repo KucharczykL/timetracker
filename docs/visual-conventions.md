@@ -434,6 +434,28 @@ guard). The **color guard is `ts/`-only**: `common/` still carries raw palette m
 - `font-mono` for tabular figures (stats values, date-picker field) is a style choice, not a
   column-alignment mechanism — Plex sans/condensed digits are already tabular.
 
+## 8. Row acts — one act, two controls, one signal
+
+A table states its acts twice: as buttons in the selection line, and as items in
+each row's menu. They are different controls on purpose, and PatternFly draws the
+same line — `ActionsColumn` (a kebab in the row's last cell) for one row, a
+`Toolbar` of buttons for many. What must agree is the signal, not the shape.
+
+- **The words are the act's.** An item that a selection-line act also states reads
+  in that act's words, so a person meets one name for one act.
+- **Three dots mean a question, not a page.** `Move to playthrough…` asks which
+  playthrough; `Record as historical playtime…` asks when the hours were played.
+  `Remove` and `Reset start to now` open a page too, but only to confirm what is
+  already chosen, so they take none. An item naming a screen rather than an act —
+  `Edit` — takes none either. The character is `…`, never three periods.
+- **Destructive reads red in both, in the shape each control can wear.** A button
+  fills: `ControlButton(color="red")`. An item colours its glyph alone
+  (`DANGER_ITEM_ICON_CLASS`, `danger=True`), because a red row in a menu reads as
+  an error rather than as an act.
+- **The colour repeats the words; it never carries them alone.** Every item states
+  its act in text, and the glyph is `aria-hidden`. Nothing is marked by colour that
+  is not already said.
+
 ## Kit vocabulary summary (for #384)
 
 Surfaces `neutral-primary` (page) / `neutral-primary-medium` (card) /

@@ -447,9 +447,13 @@ def test_an_open_row_menu_is_not_covered_by_a_pinned_cell(
     # first column reserves a checkbox and the columns after it start further
     # right, and a width that staged the overlap without one no longer does.
     page.add_style_tag(content="table { min-width: 2600px !important; }")
-    toggle = page.locator("tbody tr [data-toggle]:visible").first
+    # The row's own menu, in the trailing slot — not whichever toggle leads the
+    # row. The acts left their column, so the elastic Name column took that
+    # width and the pin grew with it: the device selector now scrolls under the
+    # pin and the press lands on the pin instead.
+    toggle = page.locator("tbody tr td:last-child [data-toggle]").first
     assert toggle.count() > 0, (
-        "expected a visible row-menu toggle in tbody tr [data-toggle] at this "
+        "expected a row-menu toggle in the trailing slot at this "
         "fixture/viewport; this test owns both, so a missing toggle means the "
         "staged premise broke, not that the environment lacks one"
     )

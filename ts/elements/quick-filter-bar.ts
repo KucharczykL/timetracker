@@ -20,6 +20,7 @@ import {
 } from "./filter-widgets.js";
 import { readJSONProp, reportClientError } from "../client-errors.js";
 import {
+  OverflowItem,
   priorityPlusFitCount,
   priorityPlusTotalWidth,
 } from "./priority-plus.js";
@@ -33,18 +34,10 @@ interface PresetChangeDetail {
   last: { value: string; label: string; data: Record<string, string> } | null;
 }
 
-// One collapsible facet: the <drop-down data-quick-facet> node and its
-// natural width in the row (measured once — ghost triggers have stable,
-// label-driven widths).
-interface OverflowFacet {
-  element: HTMLElement;
-  width: number;
-}
-
 class QuickFilterBarElement extends HTMLElement {
   private applyTarget = "";
   private perPage = "";
-  private facets: OverflowFacet[] = [];
+  private facets: OverflowItem[] = [];
   private row: HTMLElement | null = null;
   private overflowHost: HTMLElement | null = null;
   private overflowItems: HTMLElement | null = null;

@@ -169,6 +169,11 @@ type ButtonVariant = Literal[
 # order, not class-attribute order, so `class_="justify-start"` on a button
 # whose baked class already says `justify-center` wins only by luck.
 type ButtonAlign = Literal["center", "start"]
+# Which way a trigger's three dots run.
+type EllipsisOrientation = Literal["vertical", "horizontal"]
+
+# What a trigger opens: a menu of items, or a dialog of moved controls.
+type PopupKind = Literal["menu", "dialog"]
 # A place in a joined row, never a radius: one tier rounds every control.
 # "full" is the button standing on its own, "start"/"end" the two outer ends
 # of a row, and "square" the absence of an end — a member with a neighbour on
@@ -2250,6 +2255,8 @@ class TableRowData(TypedDict):
     key: NotRequired[SelectionKey]
     # One line under the name, below md.
     summary: NotRequired[str]
+    # The row's acts, in the trailing slot. Not a column.
+    menu: NotRequired[Node]
 
 
 type Align = Literal["left", "right"]  # column text alignment, e.g. "right"
@@ -2289,10 +2296,6 @@ type SelectionScope = str  # the library and the table, e.g. "lib-1:Games"
 SELECTION_STATEMENT_FIELD = "selection"
 
 
-#: How many rows an act offers, in this layer's own words.
-type SelectionCardinality = Literal["one", "many"]
-
-
 class SelectionAction(TypedDict):
     """One act the line offers, as a view states it.
 
@@ -2302,7 +2305,6 @@ class SelectionAction(TypedDict):
 
     label: str
     url: str
-    cardinality: SelectionCardinality
     #: What the act does to a row, in the button's colours.
     color: ButtonColor
 
@@ -2311,7 +2313,7 @@ class SelectionDeclaration(TypedDict):
     """The declaration that makes a table selectable."""
 
     filter: FilterJson
-    #: The acts the line offers; none renders an empty slot.
+    #: The acts offered, in priority order: the rightmost overflows first.
     actions: NotRequired[Sequence[SelectionAction]]
     #: One form posts every act, so one token serves them all.
     csrf_token: NotRequired[str]
@@ -2338,6 +2340,7 @@ def make_row(
     *cells: Cell,
     key: SelectionKey | None = None,
     summary: str | None = None,
+    menu: Node | None = None,
     **attributes: object,
 ) -> TableRowData:
     """Build a :class:`TableRowData` from positional cells and htpy-style
@@ -2348,8 +2351,14 @@ def make_row(
     :func:`TableRow` owns the styled row class; drop to the generic ``Tr`` builder
     for a custom-classed row.
 
-    ``key`` and ``summary`` are keyword-only and declared before
+    ``key``, ``summary`` and ``menu`` are keyword-only and declared before
     ``**attributes``, or they would render as ``<tr>`` attributes instead.
+
+    ``menu`` is the row's own acts, rendered in a trailing slot rather than a
+    column. It is stated here and not in the view's ``Column`` list on purpose:
+    the slot's drop priority is then computed above every declared column
+    instead of declared beside them, where a table would eventually get it
+    wrong and lose its acts on a phone.
     """
     if "class_" in attributes or "class" in attributes:
         raise ValueError(
@@ -2361,6 +2370,8 @@ def make_row(
         data["key"] = key
     if summary is not None:
         data["summary"] = summary
+    if menu is not None:
+        data["menu"] = menu
     attrs = _attrs_from_kwargs(attributes)
     if attrs:
         data["attributes"] = attrs
@@ -2394,6 +2405,7 @@ def TableRow(
     *,
     data_table: bool = False,
     selectable: bool = False,
+    menu_slot: bool = False,
 ) -> Element:
     """Render a styled ``<tr>`` from a :class:`TableRowData`.
 
@@ -2407,6 +2419,11 @@ def TableRow(
     table's ``columns``, or it renders under a different width policy than the
     rows around it.
 
+    ``menu_slot`` mirrors the table's trailing menu cell, which is the whole
+    table's or no row's: a row that states no ``menu`` under it still renders
+    an empty trailing cell, because ``<responsive-table>`` addresses columns by
+    position and a short row would shift every column after it.
+
     ``selectable`` mirrors the table's selection declaration, and a row with
     no ``key`` under it is refused — always, and not in debug alone. A row
     swapped into a selectable table must pass it, or it arrives unnamed: no
@@ -2418,6 +2435,11 @@ def TableRow(
             "A selectable table needs a key on every row: an unnamed row "
             "cannot be selected. Pass make_row(..., key=...) for "
             f"{data['cell_data']!r}."
+        )
+    if data.get("menu") is not None and not menu_slot:
+        raise ValueError(
+            "A row stating a menu needs menu_slot=True: without it the acts "
+            f"render nowhere and nothing is said. Row {data['cell_data']!r}."
         )
 
     # Hover lightens the text along with the surface: body-subtle text fails AA
@@ -2484,7 +2506,37 @@ def TableRow(
             nowrap = data_table and not (column and column.wrap)
             cell_elements.append(TableTd(nowrap=nowrap)[cell])
 
+    if menu_slot:
+        menu = data.get("menu")
+        cell_elements.append(Td(class_=_ROW_MENU_CELL_CLASS)[menu if menu else ""])
+
     return Tr(tr_attrs)[*cell_elements]
+
+
+#: What a reader hears on the trailing header.
+ROW_MENU_HEADER_LABEL = "Row actions"
+
+# The slot never grows, so it states its own padding.
+_ROW_MENU_CELL_CLASS = "w-px px-2 py-2 whitespace-nowrap text-right"
+
+
+def _row_menu_header_cell(columns: Sequence[Column], *, data_table: bool) -> Node:
+    """The trailing ``<th>`` over the row menus.
+
+    No visible label, a name of its own, and a ``data-priority`` one above
+    every declared column, so the element drops it last.
+
+    The name lives on a child span, never on the ``<th>``: the element
+    measures each header's rect to budget the widths, and a 1px header
+    would under-budget this cell by the whole trigger.
+    """
+    policy_attrs: list[HTMLAttribute] = [("data-row-menu", "")]
+    if data_table:
+        highest = max((column.priority for column in columns), default=0)
+        policy_attrs.append(("data-priority", str(highest + 1)))
+    return Th(policy_attrs, scope="col", class_="px-2 sm:px-3 lg:px-6 py-3")[
+        Span(class_="sr-only")[ROW_MENU_HEADER_LABEL]
+    ]
 
 
 def get_icon_node(name: str) -> Element:
@@ -2566,6 +2618,40 @@ def Icon(
         [("class", class_value), *preserved, *extra_attributes],
         children,
     )
+
+
+_ELLIPSIS_GLYPHS: Mapping[EllipsisOrientation, str] = {
+    "vertical": "ellipsis-vertical",
+    "horizontal": "ellipsis-horizontal",
+}
+
+
+def EllipsisTrigger(
+    attrs: AttrsArg | None = None,
+    /,
+    *,
+    label: str,
+    orientation: EllipsisOrientation = "vertical",
+    haspopup: PopupKind = "menu",
+) -> ControlButton:
+    """The bare three-dot trigger, shared by three surfaces.
+
+    The glyph is decoration and says ``aria-hidden``: the button carries the
+    name. ``haspopup`` is the caller's because the three surfaces open two
+    different things — a menu of items, or a dialog of moved controls.
+
+    The ringed ``ellipsis`` glyph is deliberately not one of these two. It is
+    ``TruncatedText``'s reveal, and a row would then show two ellipses a cell
+    apart if this borrowed it.
+    """
+    return ControlButton(
+        attrs,
+        color="gray",
+        variant="ghost",
+        class_="p-2",
+        aria_label=label,
+        aria_haspopup=haspopup,
+    )[Icon(_ELLIPSIS_GLYPHS[orientation], [("aria-hidden", "true")])]
 
 
 def _replace_query(
@@ -2709,6 +2795,10 @@ _SelectionActionsElement = custom_element_builder("selection-actions")
 # The runtime column-drop state is a safelisted nth-child class family in
 # input.css (like the align rules), so it has a hard ceiling: a column past it
 # could never be hidden.
+#
+# The row menu slot is no column, but it takes one of those positions, so
+# `StyledTable` counts it with them and refuses a thirteenth. Widen the
+# safelist before declaring a table that wide; the widest today has nine.
 MAX_DATA_TABLE_COLUMNS = 12
 
 # No-JS fallback for the data-table column drop: while <responsive-table> is
@@ -2915,7 +3005,7 @@ def selection_scope(request, caption_key: str, caption: str) -> SelectionScope:
 
 
 def _selection_actions_slot(
-    actions: Sequence[SelectionAction], csrf_token: str
+    actions: Sequence[SelectionAction], csrf_token: str, *, id_seed: str
 ) -> Node:
     """The acts the view stated, in one form.
 
@@ -2926,8 +3016,16 @@ def _selection_actions_slot(
 
     Every submit is rendered disabled, because nothing is selected
     yet; `<selection-actions>` clears that with the first count.
+
+    Declaration order is priority order: the rightmost overflows first.
     """
-    offered = [action for action in actions if action["cardinality"] == "many"]
+    # Deferred: `custom_elements` reads this module at import.
+    from common.components.custom_elements import (
+        Dropdown,
+        dropdown_combobox_panel_class,
+    )
+
+    offered = list(actions)
     slot = Div([("data-selection-actions", "")], class_="flex gap-2")
     if not offered:
         return slot
@@ -2937,12 +3035,38 @@ def _selection_actions_slot(
             "A selection line offering acts states a csrf_token; without one "
             "every press is refused as a forgery, and the page looks right."
         )
+    overflow_id = f"selection-overflow-{randomid(content=id_seed)}"
+    #: Moved submits, not items: the row's own buttons travel.
+    panel = Div(
+        [("data-selection-overflow-items", "")],
+        role="dialog",
+        aria_label="More actions",
+        class_=(
+            f"{dropdown_combobox_panel_class('w-auto')} "
+            "flex flex-col items-stretch gap-1"
+        ),
+    )
+    overflow = Div([("data-selection-overflow", "")], class_="hidden")[
+        Dropdown(
+            trigger_element=EllipsisTrigger(
+                label="More actions",
+                orientation="horizontal",
+                haspopup="dialog",
+            ).as_element(),
+            target_element=panel,
+            id=overflow_id,
+            placement="bottom-end",
+        )
+    ]
     return slot[
         _SelectionActionsElement(class_="flex gap-2")[
             Form(
-                [("data-selection-actions-form", "")],
+                [("data-selection-actions-form", ""), ("data-selection-acts-row", "")],
                 method="post",
-                class_="flex gap-2",
+                #: Wrapping is the fallback, never the plan: the shell clips
+                #: on this axis, so an act the overflow never moved would go
+                #: without a scrollbar to reach it.
+                class_="flex flex-wrap gap-2",
             )[
                 Safe(
                     '<input type="hidden" name="csrfmiddlewaretoken" '
@@ -2956,13 +3080,18 @@ def _selection_actions_slot(
                 Fragment(
                     *(
                         ControlButton(
-                            [("formaction", action["url"]), ("disabled", "")],
+                            [
+                                ("formaction", action["url"]),
+                                ("disabled", ""),
+                                ("data-selection-act", ""),
+                            ],
                             type="submit",
                             color=action["color"],
                         )[action["label"]]
                         for action in offered
                     )
                 ),
+                overflow,
             ]
         ]
     ]
@@ -2973,6 +3102,7 @@ def SelectionLine(
     *,
     actions: Sequence[SelectionAction] = (),
     csrf_token: str = "",
+    id_seed: str = "",
 ) -> Node:
     """The selection region, above the pagination row."""
     controls: list[Node] = [
@@ -3009,7 +3139,7 @@ def SelectionLine(
     controls.append(
         ControlButton([("data-selection-clear", "")], variant="ghost")["Clear"]
     )
-    controls.append(_selection_actions_slot(actions, csrf_token))
+    controls.append(_selection_actions_slot(actions, csrf_token, id_seed=id_seed))
 
     # Cloned per row; a template renders nothing.
     checkbox_template = Template([("data-selection-checkbox-template", "")])[
@@ -3100,12 +3230,18 @@ def StyledTable(
             "StyledTable(data_table=True) needs a caption: it names the scroll "
             "region, and an empty name leaves the region unlabelled."
         )
-    if data_table and columns and len(columns) > MAX_DATA_TABLE_COLUMNS:
+    #: The slot is the table's, never a row's: a short row would shift every
+    #: column after it out from under its header.
+    menu_slot = any("menu" in row for row in (rows or []))
+    #: Counted with the columns: the slot takes a rendered position too, and
+    #: a thirteenth is past the safelisted family that hides one.
+    rendered = len(columns or []) + (1 if menu_slot else 0)
+    if data_table and rendered > MAX_DATA_TABLE_COLUMNS:
         raise ValueError(
-            f"StyledTable(data_table=True) supports at most "
-            f"{MAX_DATA_TABLE_COLUMNS} columns: the column-drop classes are a "
-            f"safelisted nth-child family, so column "
-            f"{MAX_DATA_TABLE_COLUMNS + 1}+ could never be hidden."
+            f"StyledTable(data_table=True) renders at most "
+            f"{MAX_DATA_TABLE_COLUMNS} positions and this table asks for "
+            f"{rendered}, the row menu included: the column-drop classes are "
+            f"a safelisted nth-child family, so the last could never hide."
         )
     columns = columns or []
     rows = rows or []
@@ -3133,6 +3269,8 @@ def StyledTable(
     # mismatch loudly in DEBUG; prod degrades to a ragged table over a 500.
     if settings.DEBUG:
         for row in rows:
+            # The menu slot is outside `columns`, so it is counted on neither
+            # side: `cell_data` never holds it.
             cell_count = len(row["cell_data"])
             if cell_count != len(columns):
                 raise ValueError(
@@ -3174,19 +3312,20 @@ def StyledTable(
         # takes its background from its parent row, and a <thead>-level surface
         # would leave it transparent.
         header_row_class = "bg-neutral-tertiary"
-        header_row = Tr(class_=header_row_class)[
-            [
-                _header_cell(
-                    column,
-                    sort_terms,
-                    request,
-                    data_table=data_table,
-                    pinned=data_table and index == 0,
-                    selectable=selection is not None and index == 0,
-                )
-                for index, column in enumerate(columns)
-            ]
+        header_cells: list[Node] = [
+            _header_cell(
+                column,
+                sort_terms,
+                request,
+                data_table=data_table,
+                pinned=data_table and index == 0,
+                selectable=selection is not None and index == 0,
+            )
+            for index, column in enumerate(columns)
         ]
+        if menu_slot:
+            header_cells.append(_row_menu_header_cell(columns, data_table=data_table))
+        header_row = Tr(class_=header_row_class)[*header_cells]
         thead_class = "text-type-micro text-body uppercase"
         if data_table:
             thead_class = f"{thead_class} {_FALLBACK_HIDE_HEADER_CLASS}"
@@ -3224,6 +3363,7 @@ def StyledTable(
                     columns=columns,
                     data_table=data_table,
                     selectable=selection is not None,
+                    menu_slot=menu_slot,
                 )
                 for row in rows
             ]
@@ -3293,6 +3433,8 @@ def StyledTable(
                 page_obj=page_obj if paginated else None,
                 actions=selection.get("actions", ()),
                 csrf_token=selection.get("csrf_token", ""),
+                #: One page may hold two lines, each naming its panel.
+                id_seed=caption_key or caption,
             )
         )
     if footer_node is not None:

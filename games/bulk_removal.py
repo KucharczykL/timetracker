@@ -15,23 +15,22 @@ from django.db.models import Model, QuerySet
 from common.components.primitives import Cell
 from common.temporal_presentation import TemporalText
 from games.bulk_actions import (
+    ActTitle,
     BulkAction,
-    Cardinality,
     ChoiceValue,
     FilterJson,
     Presentations,
     PreviewColumn,
-    Refused,
     Resolution,
     RowOutcome,
 )
 from games.bulk_narrowing import narrowed
+from games.bulk_sessions import lost, session_resolution, session_scope
 from games.events.dispatch import RowNotHeld
 from games.events.idempotency import IdempotencyKey
 from games.filters import (
     parse_historical_playtime_filter,
     parse_playthrough_filter,
-    parse_session_filter,
 )
 from games.models import (
     HistoricalPlaytime,
@@ -40,7 +39,6 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.historical_playtime_records import library_records
-from games.reads.player_sessions import library_sessions
 from games.reads.playthrough_endpoints import (
     StatedEndpoint,
     stated_completion,
@@ -59,16 +57,8 @@ from games.writes.playthrough import remove_run, restore_run
 #: What `answered` calls a record; the confirmation says "record".
 RECORD_SUBJECT: SubjectNoun = "historical playtime"
 
-SESSION_GONE = "One of the sessions is no longer available, so it was left as it is."
 RUN_GONE = "One of the playthroughs is no longer available, so it was left as it is."
 RECORD_GONE = "One of the records is no longer available, so it was left as it is."
-
-
-def _lost(
-    keys: Sequence[uuid.UUID], found: set[uuid.UUID], sentence: str
-) -> list[Refused]:
-    """Gone since the confirmation, or never this library's."""
-    return [Refused(str(key), sentence, lost=True) for key in keys if key not in found]
 
 
 def _removed_row[RowT: Model](
@@ -96,29 +86,6 @@ def _removed_row[RowT: Model](
 
 
 # ── Sessions ─────────────────────────────────────────────────────────────────
-
-
-def session_scope(
-    library: UserLibrary, filter_json: FilterJson
-) -> QuerySet[PlayerSession]:
-    return narrowed(
-        library_sessions(library), library, filter_json, parse_session_filter
-    )
-
-
-def session_resolution(
-    library: UserLibrary, keys: Sequence[uuid.UUID]
-) -> Resolution[PlayerSession]:
-    wanted = list(dict.fromkeys(keys))
-    rows = tuple(
-        library_sessions(library)
-        .filter(pk__in=wanted)
-        .select_related("playthrough__player_game__game", "device")
-        .order_by("-sort_instant", "id")
-    )
-    return Resolution(
-        rows, tuple(_lost(wanted, {row.pk for row in rows}, SESSION_GONE))
-    )
 
 
 def remove_one_session(
@@ -215,7 +182,7 @@ def run_resolution(
             key=lambda run: run.player_game.game.name,
         )
     )
-    return Resolution(rows, tuple(_lost(wanted, live, RUN_GONE)))
+    return Resolution(rows, tuple(lost(wanted, live, RUN_GONE)))
 
 
 def remove_one_run(
@@ -303,7 +270,7 @@ def record_resolution(
         .select_related("player_game__game")
         .order_by("-when_lower", "id")
     )
-    return Resolution(rows, tuple(_lost(wanted, {row.pk for row in rows}, RECORD_GONE)))
+    return Resolution(rows, tuple(lost(wanted, {row.pk for row in rows}, RECORD_GONE)))
 
 
 def remove_one_record(
@@ -369,10 +336,9 @@ def _source(name: str) -> dict[str, object]:
 REMOVE_SESSION = BulkAction(
     name="session.remove",
     label="Remove",
-    title="Remove these sessions",
+    title=ActTitle(one="Remove this session", many="Remove these sessions"),
     confirm_label="Remove",
     subject="session",
-    cardinality=Cardinality.MANY,
     color="red",
     inverse_aggregate="playersession",
     fallback="games:list_sessions",
@@ -386,10 +352,9 @@ REMOVE_SESSION = BulkAction(
 REMOVE_RUN = BulkAction(
     name="playthrough.remove",
     label="Remove",
-    title="Remove these playthroughs",
+    title=ActTitle(one="Remove this playthrough", many="Remove these playthroughs"),
     confirm_label="Remove",
     subject="playthrough",
-    cardinality=Cardinality.MANY,
     color="red",
     inverse_aggregate="playthrough",
     fallback="games:list_playthroughs",
@@ -403,12 +368,11 @@ REMOVE_RUN = BulkAction(
 REMOVE_RECORD = BulkAction(
     name="historicalplaytime.remove",
     label="Remove",
-    title="Remove these records",
+    title=ActTitle(one="Remove this record", many="Remove these records"),
     confirm_label="Remove",
     #: The word the lists use, and the one that counts: three
     #: "historical playtimes" is nobody's sentence.
     subject="record",
-    cardinality=Cardinality.MANY,
     color="red",
     inverse_aggregate="historicalplaytime",
     fallback="games:list_historical_playtime",

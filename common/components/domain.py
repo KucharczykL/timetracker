@@ -9,7 +9,6 @@ from django.urls import reverse
 
 from common.components.core import Children, Fragment, Node, as_children
 from common.components.primitives import (
-    ICON_BUTTON_SIZE_CLASS,
     NAME_MAX_WIDTH_CLASS,
     Icon,
     Input,
@@ -35,7 +34,6 @@ from games.reads.sums import PlaytimeBreakdown
 
 if TYPE_CHECKING:
     from common.duration_presentation import DurationPresentation
-    from common.returns import OriginUrl
 
 logger = logging.getLogger("games")
 
@@ -601,70 +599,3 @@ def BrowserTimeZoneInput(field_name: str = BROWSER_TIME_ZONE_FIELD) -> Node:
     return _BrowserTimeZone(field_name=field_name)[
         Input(type="hidden", name=field_name, value="")
     ]
-
-
-def SessionActions(session, csrf_token: str, origin: OriginUrl | None) -> Node:
-    """Row actions for a session: Finish + Reset (only while the session is open),
-    Edit, Delete. Finish posts and the page reloads; both finish and reset
-    confirm on their own page first when accessed via GET. Edit and Delete
-    stay plain navigation links, so the whole group works without JavaScript
-    beyond the browser-zone stamp the finish form carries."""
-    from common.components.primitives import ButtonGroup
-    from common.returns import action_url
-    from games.models import PlayerSessionTimingMode
-
-    #: Only a Timed row runs; Corrected states its end already.
-    is_open = (
-        session.timing_mode == PlayerSessionTimingMode.TIMED
-        and session.ended_at is None
-    )
-
-    actions = ButtonGroup(
-        [
-            {
-                "slot": Icon("end", size=ICON_BUTTON_SIZE_CLASS),
-                "title": "Finish session now",
-                "color": "green",
-                "method": "post",
-                "action": action_url("games:finish_session", session.pk, origin=origin),
-                "csrf_token": csrf_token,
-                "hidden_fields": BrowserTimeZoneInput(),
-            }
-            if is_open
-            else {},
-            {
-                "href": action_url("games:reset_session", session.pk, origin=origin),
-                "slot": Icon("reset", size=ICON_BUTTON_SIZE_CLASS),
-                "title": "Reset start to now",
-                "color": "gray",
-            }
-            if is_open
-            else {},
-            {
-                "href": action_url("games:edit_session", session.pk, origin=origin),
-                "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
-                "title": "Edit",
-            },
-            {
-                "href": action_url(
-                    "games:reclassify_session", session.pk, origin=origin
-                ),
-                "slot": Icon("history", size=ICON_BUTTON_SIZE_CLASS),
-                "title": (
-                    "Was an estimate, not one sitting - move these hours to "
-                    "historical playtime"
-                ),
-                "color": "gray",
-            }
-            if session.timing_mode == PlayerSessionTimingMode.DURATION_ONLY
-            else {},
-            {
-                "href": action_url("games:remove_session", session.pk, origin=origin),
-                "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
-                "title": "Remove",
-                "color": "red",
-            },
-        ]
-    )
-
-    return actions

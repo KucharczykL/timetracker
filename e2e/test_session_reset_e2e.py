@@ -13,6 +13,7 @@ from django.urls import reverse
 from playwright.sync_api import Browser, Page, expect
 from session_rows import session_row
 
+from e2e.helpers import open_row_menu
 from games.models import Game, Platform, PlayerSession
 from games.reads.calendar import calendar_day_zone
 
@@ -54,7 +55,8 @@ def test_reset_confirms_on_its_own_page_then_returns_to_the_list(
     row = page.locator(f"#session-row-{session.id}")
     expect(row).to_contain_text("2020")
 
-    row.get_by_role("link", name="Reset start to now", exact=True).click()
+    open_row_menu(page, f"session-menu-{session.id}")
+    row.get_by_role("menuitem", name="Reset start to now", exact=True).click()
 
     expect(page.locator("body")).to_contain_text("Reset Game")
     page.locator('button:has-text("Reset to now")').click()
@@ -74,8 +76,9 @@ def test_reset_cancel_leaves_start_unchanged(
     session = _make_running_session(e2e_library)
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    open_row_menu(page, f"session-menu-{session.id}")
     page.locator(f"#session-row-{session.id}").get_by_role(
-        "link", name="Reset start to now", exact=True
+        "menuitem", name="Reset start to now", exact=True
     ).click()
 
     page.locator('a:has-text("Cancel")').click()

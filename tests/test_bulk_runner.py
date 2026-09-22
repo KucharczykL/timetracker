@@ -35,6 +35,7 @@ from games.bulk_reclassification import (
     REVIEW_THRESHOLD_HOURS,
     UNDER_THRESHOLD,
 )
+from games.bulk_removal import REMOVE_SESSION
 from games.commands.session_reclassification import statement_from_session
 from games.events.dispatch import CommandRejected
 from games.models import (
@@ -547,10 +548,27 @@ def test_a_defect_ends_the_batch_and_leaves_the_done_rows_done(
     )
 
 
+def test_a_refusal_before_the_resolve_heads_in_the_plural(client_in, owned_library):
+    """`_act_refused` holds a sentence and no rows.
+
+    An act turned down before it resolved anything states nothing about how
+    many rows it would have touched, so the heading stays plural.
+    """
+    response = client_in.post(
+        reverse("games:run_bulk_action", args=["session.remove"]),
+        {STATEMENT_FIELD: "not a statement"},
+    )
+
+    page = response.content.decode()
+    assert response.status_code == 400
+    assert REMOVE_SESSION.title.many in page
+    assert REMOVE_SESSION.title.one not in page
+
+
 def test_a_row_the_library_does_not_hold_ends_the_batch(
     client_in, owned_library, game, monkeypatch
 ):
-    """The leg re-resolved these rows, so nothing inside can miss."""
+    """The chunk re-resolved these rows, so nothing inside can miss."""
     from django.http import Http404
 
     from games.writes.answers import DEFECT_STATUS
@@ -1084,7 +1102,7 @@ def test_the_batch_undo_needs_a_login(client, owned_library, game):
     assert response.status_code == 302
 
 
-# ── The choice a leg carries ─────────────────────────────────────────────────
+# ── The choice a chunk carries ───────────────────────────────────────────────
 
 
 class Asked(NamedTuple):
@@ -1130,7 +1148,6 @@ def _declare(name, reclassify_declaration, run, inverse, choice=None):
         title=reclassify_declaration.title,
         confirm_label=reclassify_declaration.confirm_label,
         subject=reclassify_declaration.subject,
-        cardinality=reclassify_declaration.cardinality,
         color=reclassify_declaration.color,
         inverse_aggregate=reclassify_declaration.inverse_aggregate,
         fallback=reclassify_declaration.fallback,

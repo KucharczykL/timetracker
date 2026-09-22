@@ -11,20 +11,19 @@ from django.middleware.csrf import get_token
 from django.urls import reverse
 
 from common.components import (
-    ICON_BUTTON_SIZE_CLASS,
     Badge,
     BadgeTone,
-    ButtonGroup,
     Cell,
     Column,
     ContentContainer,
+    DropdownLinkItem,
     Duration,
     Fragment,
-    Icon,
     NameWithIcon,
     Node,
     PlaytimeTabs,
     QuickFilterBar,
+    RowActionMenu,
     Span,
     TableData,
     make_row,
@@ -91,27 +90,36 @@ def _runs_cell(record: HistoricalPlaytime, labels: RunLabels) -> Node:
     )
 
 
-def record_actions(record: HistoricalPlaytime, origin: OriginUrl | None) -> Node:
-    """Edit and Remove, back to the origin."""
-    return ButtonGroup(
+def record_row_menu(
+    record: HistoricalPlaytime,
+    presentation: DateTimePresentation,
+    origin: OriginUrl | None,
+) -> Node:
+    """Edit and Remove, back to the origin.
+
+    The label names the day: Game detail repeats one game.
+    """
+    return RowActionMenu(
         [
-            {
-                "href": action_url(
-                    "games:edit_historical_playtime", record.pk, origin=origin
-                ),
-                "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
-                "color": "gray",
-                "title": "Edit historical playtime",
-            },
-            {
-                "href": action_url(
+            DropdownLinkItem(
+                action_url("games:edit_historical_playtime", record.pk, origin=origin),
+                "Edit",
+                icon="edit",
+            ),
+            DropdownLinkItem(
+                action_url(
                     "games:remove_historical_playtime", record.pk, origin=origin
                 ),
-                "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
-                "color": "red",
-                "title": "Remove historical playtime",
-            },
-        ]
+                REMOVE_RECORD.label,
+                icon="delete",
+                danger=True,
+            ),
+        ],
+        label=(
+            f"{record.player_game.game.name}, "
+            f"{present_temporal_value(record.when, presentation)} actions"
+        ),
+        id=f"record-menu-{record.pk}",
     )
 
 
@@ -163,7 +171,6 @@ def historical_playtime_tabledata(
         column("Playthroughs", priority=1),
         column("Device"),
         column("Created"),
-        column("Actions", align="right", priority=4),
     ]
     kept_columns = [
         column for column in column_list if column.label not in exclude_columns
@@ -192,7 +199,6 @@ def historical_playtime_tabledata(
             _runs_cell(record, labels),
             record.device.name if record.device else "No device",
             presentation.format(record.created_at, "date"),
-            record_actions(record, origin),
         ]
         for record in records
     ]
@@ -209,6 +215,7 @@ def historical_playtime_tabledata(
                 *cells,
                 id=f"record-row-{record.pk}",
                 key=str(record.pk),
+                menu=record_row_menu(record, presentation, origin),
                 summary=_record_summary(
                     record,
                     labels,

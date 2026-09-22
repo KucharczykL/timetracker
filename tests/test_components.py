@@ -1,7 +1,7 @@
 import datetime
 import re
 import unittest
-from typing import get_args
+from typing import ClassVar, get_args
 from unittest.mock import MagicMock
 from uuid import UUID
 
@@ -451,55 +451,6 @@ class ComponentReturnTypeTest(unittest.TestCase):
         self.assertNotIsInstance(result, tuple)
 
 
-class SessionActionsTest(unittest.TestCase):
-    """Session row actions: finish posts and reset links to its confirmation,
-    both only while the session is open. Edit/Delete always present."""
-
-    SESSION_ID = UUID("018f5e66-e800-7000-8000-000000000001")
-
-    def _session(
-        self, *, pk=SESSION_ID, ended_at=None, timing_mode="timed", game_name="Hades"
-    ):
-        from types import SimpleNamespace
-
-        return SimpleNamespace(
-            pk=pk,
-            ended_at=ended_at,
-            timing_mode=timing_mode,
-            playthrough=SimpleNamespace(
-                player_game=SimpleNamespace(game=SimpleNamespace(name=game_name))
-            ),
-        )
-
-    def test_open_session_posts_to_finish_and_links_to_reset(self):
-        from common.components.domain import SessionActions
-
-        html = str(SessionActions(self._session(), "tok123", None))
-        self.assertIn('method="post"', html)
-        self.assertIn(f"/session/{self.SESSION_ID}/finish", html)
-        self.assertIn('value="tok123"', html)
-        self.assertIn(f"/session/{self.SESSION_ID}/reset", html)
-        # The zone the browser is in is submitted with the finish, so a
-        # travelling user's end timestamp is not labelled with their account
-        # zone.
-        self.assertIn('name="browser_time_zone"', html)
-
-    def test_closed_session_hides_finish_and_reset(self):
-        import datetime
-
-        from common.components.domain import SessionActions
-
-        ended = self._session(
-            ended_at=datetime.datetime(2026, 6, 24, 19, 0, tzinfo=datetime.UTC)
-        )
-        html = str(SessionActions(ended, "tok123", None))
-        self.assertNotIn(f"/session/{self.SESSION_ID}/finish", html)
-        self.assertNotIn(f"/session/{self.SESSION_ID}/reset", html)
-        self.assertIn(
-            f"/session/{self.SESSION_ID}/edit", html
-        )  # edit link still present
-
-
 class ComponentOutputIsNotEscapedTest(unittest.TestCase):
     """Smoke test: every component that generates HTML must not double-escape."""
 
@@ -810,6 +761,47 @@ class IconCodegenFaithfulnessTest(unittest.TestCase):
                 source = ElementTree.fromstring(raw_html)
                 rendered = ElementTree.fromstring(str(get_icon_node(name)))
                 self.assertEqual(self._normalize(source), self._normalize(rendered))
+
+
+class EllipsisTriggerTest(SimpleTestCase):
+    """The one ghost trigger the quick bar, the summary rows and a row menu
+    share. Both glyphs are bare dots; the ringed `ellipsis` stays TruncatedText's
+    reveal. The assertions read path data rather than an icon name, because
+    `Icon` answers the `unspecified` glyph for a name no snippet states."""
+
+    VERTICAL_PATH = 'd="M24 15a2.4 2.4 0 1 0 0.001 0z'
+    HORIZONTAL_PATH = 'd="M15 24a2.4 2.4 0 1 0 0.001 0z'
+
+    def test_vertical_is_the_default_glyph(self):
+        html = str(components.EllipsisTrigger(label="Session actions"))
+        self.assertIn(self.VERTICAL_PATH, html)
+        self.assertNotIn("Unspecified platform", html)
+
+    def test_horizontal_states_the_other_glyph(self):
+        html = str(
+            components.EllipsisTrigger(label="More filters", orientation="horizontal")
+        )
+        self.assertIn(self.HORIZONTAL_PATH, html)
+        self.assertNotIn(self.VERTICAL_PATH, html)
+
+    def test_the_label_and_the_popup_kind_reach_the_button(self):
+        html = str(
+            components.EllipsisTrigger(
+                label="More filters", orientation="horizontal", haspopup="dialog"
+            )
+        )
+        self.assertIn('aria-label="More filters"', html)
+        self.assertIn('aria-haspopup="dialog"', html)
+        # The glyph is decoration; the button already carries the name.
+        self.assertIn('aria-hidden="true"', html)
+
+    def test_dynamic_attributes_ride_the_positional_slot(self):
+        html = str(
+            components.EllipsisTrigger(
+                [("data-row-menu-trigger", "")], label="Session actions"
+            )
+        )
+        self.assertIn("data-row-menu-trigger", html)
 
 
 class InputTest(unittest.TestCase):
@@ -2708,6 +2700,137 @@ class DataTableWidthPolicyTest(SimpleTestCase):
         self.assertNotIn("container-type", result)
 
 
+class RowMenuSlotRefusalTest(SimpleTestCase):
+    """The two ways the slot can be asked for and not arrive."""
+
+    def test_the_slot_counts_against_the_column_ceiling(self):
+        """Twelve columns and a menu puts the slot in a thirteenth position,
+        past the safelisted nth-child family that hides one."""
+        columns = [components.Column(f"C{index}") for index in range(12)]
+        cells = [f"c{index}" for index in range(12)]
+
+        with self.assertRaises(ValueError) as refusal:
+            str(
+                components.StyledTable(
+                    columns=columns,
+                    rows=[components.make_row(*cells, menu=components.Span()["acts"])],
+                    data_table=True,
+                    caption="Wide",
+                )
+            )
+
+        self.assertIn("13", str(refusal.exception))
+
+    def test_twelve_columns_alone_still_render(self):
+        columns = [components.Column(f"C{index}") for index in range(12)]
+        cells = [f"c{index}" for index in range(12)]
+
+        markup = str(
+            components.StyledTable(
+                columns=columns,
+                rows=[components.make_row(*cells)],
+                data_table=True,
+                caption="Wide",
+            )
+        )
+
+        self.assertIn("c11", markup)
+
+    def test_a_row_stating_a_menu_without_the_slot_is_refused(self):
+        """The acts would render nowhere, as an unnamed selectable row
+        arrives unactionable: both are refused rather than swallowed."""
+        with self.assertRaises(ValueError) as refusal:
+            components.TableRow(
+                components.make_row("Hades", menu=components.Span()["acts"]),
+                [components.Column("Name")],
+            )
+
+        self.assertIn("menu_slot", str(refusal.exception))
+
+
+class RowMenuSlotTest(SimpleTestCase):
+    """The row's trailing menu cell is a slot, not a column. It never enters a
+    view's `Column` list, so its drop priority is computed above every declared
+    column rather than declared beside them and got wrong."""
+
+    COLUMNS: ClassVar[list[components.Column]] = [
+        components.Column("Name", shrinkable=True),
+        components.Column("Day", priority=3),
+        components.Column("Duration", priority=2),
+    ]
+
+    @staticmethod
+    def _cells(markup: str, section: str) -> list[str]:
+        body = markup.split(f"<{section}")[1].split(f"</{section}>")[0]
+        return re.split(r"<t[hd]\b", body)[1:]
+
+    def _table(self, rows, **kwargs):
+        return str(
+            components.StyledTable(
+                columns=self.COLUMNS,
+                rows=rows,
+                data_table=True,
+                caption="Sessions",
+                **kwargs,
+            )
+        )
+
+    def _menu_row(self, *cells, menu="the menu"):
+        return components.make_row(*cells, menu=components.Span()[menu])
+
+    def test_a_slotted_table_grows_one_header_and_one_cell_a_row(self):
+        markup = self._table([self._menu_row("Hades", "Monday", "2 h")])
+        self.assertEqual(len(self._cells(markup, "thead")), 4)
+        self.assertEqual(len(self._cells(markup, "tbody")), 4)
+        self.assertIn("the menu", markup)
+
+    def test_the_trailing_header_outranks_every_declared_column(self):
+        markup = self._table([self._menu_row("Hades", "Monday", "2 h")])
+        header = self._cells(markup, "thead")[-1]
+        self.assertIn("data-row-menu", header)
+        priorities = [
+            int(found) for found in re.findall(r'data-priority="(\d+)"', markup)
+        ]
+        self.assertEqual(priorities[-1], max(priorities))
+        self.assertGreater(priorities[-1], max(priorities[:-1]))
+
+    def test_the_trailing_header_is_named_but_reads_empty(self):
+        markup = self._table([self._menu_row("Hades", "Monday", "2 h")])
+        header = self._cells(markup, "thead")[-1]
+        self.assertIn("sr-only", header)
+        self.assertNotIn("sr-only", header.split(">")[0])
+        self.assertIn("Row actions", header)
+
+    def test_a_table_stating_no_menu_grows_neither(self):
+        markup = self._table([components.make_row("Hades", "Monday", "2 h")])
+        self.assertEqual(len(self._cells(markup, "thead")), 3)
+        self.assertEqual(len(self._cells(markup, "tbody")), 3)
+        self.assertNotIn("data-row-menu", markup)
+
+    def test_a_row_without_a_menu_still_takes_the_trailing_cell(self):
+        """Or `nth-child` misaddresses every column after it for that row."""
+        markup = self._table(
+            [
+                self._menu_row("Hades", "Monday", "2 h"),
+                components.make_row("Celeste", "Tuesday", "1 h"),
+            ]
+        )
+        rows = markup.split("<tbody")[1].split("</tbody>")[0].split("<tr")[1:]
+        self.assertEqual(len(rows), 2)
+        for row in rows:
+            self.assertEqual(len(re.split(r"<t[hd]\b", row)) - 1, 4)
+
+    def test_a_non_data_table_slot_carries_no_drop_policy(self):
+        markup = str(
+            components.StyledTable(
+                columns=self.COLUMNS,
+                rows=[self._menu_row("Hades", "Monday", "2 h")],
+            )
+        )
+        self.assertIn("data-row-menu", markup)
+        self.assertNotIn("data-priority", markup)
+
+
 class ResponsiveTableGateTest(SimpleTestCase):
     """Phase 3 of the width policy: a data table mounts <responsive-table>,
     its header cells carry the per-column drop policy, and the positional
@@ -3440,13 +3563,11 @@ class SelectionLineTest(SimpleTestCase):
                     {
                         "label": "Remove",
                         "url": "/bulk/session.remove/?origin=%2Fsession%2Flist",
-                        "cardinality": "many",
                         "color": "red",
                     },
                     {
                         "label": "Record as historical playtime",
                         "url": "/bulk/session.reclassify/?origin=%2Fsession%2Flist",
-                        "cardinality": "many",
                         "color": "red",
                     },
                 ],
@@ -3472,7 +3593,6 @@ class SelectionLineTest(SimpleTestCase):
                     {
                         "label": "Remove",
                         "url": "/bulk/session.remove/",
-                        "cardinality": "many",
                         "color": "red",
                     }
                 ],
@@ -3494,13 +3614,11 @@ class SelectionLineTest(SimpleTestCase):
                     {
                         "label": "Remove",
                         "url": "/bulk/session.remove/",
-                        "cardinality": "many",
                         "color": "red",
                     },
                     {
                         "label": "Record as historical playtime",
                         "url": "/bulk/session.reclassify/",
-                        "cardinality": "many",
                         "color": "red",
                     },
                 ],
@@ -3519,14 +3637,16 @@ class SelectionLineTest(SimpleTestCase):
                         {
                             "label": "Remove",
                             "url": "/bulk/session.remove/",
-                            "cardinality": "many",
                             "color": "red",
                         }
                     ],
                 }
             )
 
-    def test_a_one_row_act_is_not_offered_yet(self):
+    def test_every_act_a_view_states_is_offered(self):
+        """The line filtered a one-row act out while the row had no menu of its
+        own. Every act is now an act on many rows, so the line offers whatever
+        the view stated and nothing decides otherwise."""
         html = self._paginated(
             selection={
                 "filter": "",
@@ -3535,13 +3655,18 @@ class SelectionLineTest(SimpleTestCase):
                     {
                         "label": "Edit",
                         "url": "/bulk/session.edit/",
-                        "cardinality": "one",
+                        "color": "gray",
+                    },
+                    {
+                        "label": "Remove",
+                        "url": "/bulk/session.remove/",
                         "color": "red",
-                    }
+                    },
                 ],
             }
         )
-        self.assertNotIn("data-selection-actions-form", html)
+        self.assertIn("data-selection-actions-form", html)
+        self.assertLess(html.index(">Edit<"), html.index(">Remove<"))
 
     def test_selection_line_announces_in_its_own_region(self):
         html = self._paginated(selection={"filter": ""})

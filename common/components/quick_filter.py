@@ -41,8 +41,8 @@ from common.components.filters import (
 from common.components.primitives import (
     ButtonGroup,
     ButtonGroupMember,
-    ControlButton,
     Div,
+    EllipsisTrigger,
     Form,
     Link,
     Span,
@@ -423,19 +423,18 @@ class QuickFilterBar(BaseComponent):
         return members
 
     def _overflow_dropdown(self) -> Node:
-        """The "⋯" priority-plus overflow menu: a ghost trigger whose panel
+        """The priority-plus overflow menu: a bare-dots trigger whose panel
         receives the facet dropdowns that don't fit the row
         (``ts/elements/quick-filter-bar.ts``). Server-rendered hidden; the
         bar's ResizeObserver layout unhides it while any facet is spilled.
         Facets keep working inside it — the moved nodes are the same
         elements, and the single-open coordination keeps this menu open when
         a facet dropdown inside it opens (ancestor check)."""
-        trigger = ControlButton(
-            color="gray",
-            variant="ghost",
-            aria_label="More filters",
-            aria_haspopup="true",
-        )["⋯"].as_element()
+        trigger = EllipsisTrigger(
+            label="More filters",
+            orientation="horizontal",
+            haspopup="dialog",
+        ).as_element()
         panel = Div(
             role="dialog",
             aria_label="More filters",

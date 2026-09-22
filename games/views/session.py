@@ -23,7 +23,6 @@ from common.components import (
     Fragment,
     ModuleScript,
     NameWithIcon,
-    SessionActions,
     SessionDeviceSelector,
     TableData,
     TableRowData,
@@ -45,6 +44,7 @@ from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl
 from common.utils import paginate
+from games.bulk_finish import FINISH_SESSION
 from games.bulk_move import MOVE
 from games.bulk_reclassification import RECLASSIFY
 from games.bulk_removal import REMOVE_SESSION
@@ -80,6 +80,7 @@ from games.views.filtering import warn_unknown_sort
 from games.views.playergame_writes import record_facts_for_request
 from games.views.removal import UndoOffer, confirm_and_apply, restore_and_return
 from games.views.returns import return_url
+from games.views.session_menu import session_row_menu
 from games.writes.answers import CommandFailed
 from games.writes.playergame import new_correlation_id
 from games.writes.playersession import (
@@ -133,12 +134,12 @@ def session_row_data(
         ),
         SessionDeviceSelector(session, device_list, csrf_token),
         presentation.format(session.created_at, "date"),
-        SessionActions(session, csrf_token, origin),
     ]
     return make_row(
         *cells,
         id=f"session-row-{session.pk}",
         key=str(session.pk),
+        menu=session_row_menu(session, csrf_token, origin),
         summary=_row_summary(
             session,
             presentation,
@@ -218,7 +219,6 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         Column("Duration", "duration", priority=2),
         Column("Device", "device"),
         Column("Created", "created"),
-        Column("Actions", align="right", priority=4),
     ]
     if organized:
         #: Ties with Date; the rightmost of equals drops
@@ -252,7 +252,11 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
             "filter": filter_json,
             "csrf_token": csrf_token,
             "actions": tray_actions(
-                MOVE.name, REMOVE_SESSION.name, RECLASSIFY.name, origin=origin
+                FINISH_SESSION.name,
+                MOVE.name,
+                RECLASSIFY.name,
+                REMOVE_SESSION.name,
+                origin=origin,
             ),
         },
     }

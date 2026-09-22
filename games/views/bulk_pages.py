@@ -134,7 +134,7 @@ def ConfirmBatch(
     """
     total = len(rows)
     return ConfirmPage(
-        title=action.title,
+        title=action.title.for_count(total),
         message=(
             f"{action.label}: {total} {action.subject}{pluralize(total)}?"
             if total
@@ -179,7 +179,9 @@ def ProgressBatch(
     """
     return _ContinuingBatch()[
         Div(class_="mx-auto w-full max-w-xl p-5 @container")[
-            P(class_="text-type-heading text-heading mb-2")[action.title],
+            P(class_="text-type-heading text-heading mb-2")[
+                action.title.for_count(total)
+            ],
             P(class_="text-type-body text-body mb-4")[
                 f"{done} of {total} done. Continuing with the rest."
             ],

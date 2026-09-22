@@ -4,14 +4,14 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from common.components import (
-    ICON_BUTTON_SIZE_CLASS,
-    ButtonGroup,
-    ButtonGroupMember,
     Cell,
     Column,
+    DropdownLinkItem,
+    DropdownPostItem,
     Fragment,
-    Icon,
+    Node,
     Pill,
+    RowActionMenu,
     Span,
     TableData,
     TruncatedText,
@@ -86,7 +86,6 @@ def playthrough_tabledata(
         # One long note on one line widens everything.
         column("Note", wrap=True, priority=2),
         column("Created"),
-        column("Actions", align="right", priority=4),
     ]
     kept_columns = [
         column for column in column_list if column.label not in exclude_columns
@@ -111,7 +110,6 @@ def playthrough_tabledata(
             _days_cell(run),
             run.note,
             presentation.format(run.created_at, "date"),
-            _actions(run, origin, csrf_token),
         ]
         for run in runs
     ]
@@ -128,6 +126,7 @@ def playthrough_tabledata(
             make_row(
                 *cells,
                 key=str(run.pk),
+                menu=_row_menu(run, origin, csrf_token),
                 summary=_summary(run, presentation, clock, with_game=with_game),
             )
             for run, cells in zip(runs, kept_rows, strict=True)
@@ -285,44 +284,42 @@ def _days_cell(run: Playthrough) -> Cell:
     return "-" if days is None else str(days)
 
 
-def _actions(run: Playthrough, origin: OriginUrl | None, csrf_token: CsrfToken) -> Cell:
+def _row_menu(
+    run: Playthrough, origin: OriginUrl | None, csrf_token: CsrfToken
+) -> Node:
     """The act this run allows, then edit and remove.
 
-    One press states today; another day belongs
-    in the edit form. Remove renders on the last
-    run too: the command owns that refusal, and
-    a second gate can disagree with it.
+    One press states today; another day belongs in the edit form. Remove
+    renders on the last run too: the command owns that refusal.
     """
-    return ButtonGroup(
+    return RowActionMenu(
         [
-            *_act_members(run, origin, csrf_token),
-            {
-                "href": action_url("games:edit_playthrough", run.pk, origin=origin),
-                "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
-                "color": "gray",
-            },
-            {
-                "href": action_url("games:remove_playthrough", run.pk, origin=origin),
-                "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
-                "color": "red",
-            },
-        ]
+            *_act_items(run, origin, csrf_token),
+            DropdownLinkItem(
+                action_url("games:edit_playthrough", run.pk, origin=origin),
+                "Edit",
+                icon="edit",
+            ),
+            DropdownLinkItem(
+                action_url("games:remove_playthrough", run.pk, origin=origin),
+                "Remove",
+                icon="delete",
+                danger=True,
+            ),
+        ],
+        label=f"{display_name(run)}, {run.player_game.game.name} actions",
+        id=f"run-menu-{run.pk}",
     )
 
 
-def _act_members(
+def _act_items(
     run: Playthrough, origin: OriginUrl | None, csrf_token: CsrfToken
-) -> list[ButtonGroupMember]:
+) -> list[Node]:
     """The one act this run can still accept, if any.
 
-    A run that states a completion is offered no start,
-    even where it states none: starting today would end
-    the run before it began, and the command refuses
-    that. A button whose whole class of row is refused
-    is a promise the row cannot keep, which is not the
-    race the other gates leave to the command.
-
-    Zero or one, so the caller spreads it.
+    A run stating a completion is offered no start, even where it states
+    none: starting today would end the run before it began, and the
+    command refuses that. Zero or one, so the caller spreads it.
     """
     if stated_completion(run) is not None:
         return []
@@ -331,13 +328,11 @@ def _act_members(
     return [_act(run, "complete", origin, csrf_token)]
 
 
-#: How each act's button reads, by route.
+#: How each act's item reads, and its glyph, by route.
 #:
-#: Only the completion names its status. It states one every
-#: time, so the title can promise it; a start states Played
-#: only where nothing stronger is stated already, and a title
-#: naming a status the press may skip reads as a lie.
-_ACT_BUTTONS: Mapping[str, tuple[str, str]] = {
+#: Only the completion names its status: it states one every time. A
+#: start states Played only where nothing stronger stands already.
+_ACT_WORDS: Mapping[str, tuple[str, str]] = {
     "start": ("play", "Started today"),
     "complete": ("finish", "Completed today, also marks the game Completed"),
 }
@@ -345,14 +340,12 @@ _ACT_BUTTONS: Mapping[str, tuple[str, str]] = {
 
 def _act(
     run: Playthrough, act: str, origin: OriginUrl | None, csrf_token: CsrfToken
-) -> ButtonGroupMember:
+) -> Node:
     """One press, posting to that act's route."""
-    icon, title = _ACT_BUTTONS[act]
-    return {
-        "slot": Icon(icon, size=ICON_BUTTON_SIZE_CLASS),
-        "title": title,
-        "color": "green",
-        "method": "post",
-        "action": action_url(f"games:{act}_playthrough", run.pk, origin=origin),
-        "csrf_token": csrf_token,
-    }
+    icon, words = _ACT_WORDS[act]
+    return DropdownPostItem(
+        action_url(f"games:{act}_playthrough", run.pk, origin=origin),
+        words,
+        csrf_token=csrf_token,
+        icon=icon,
+    )

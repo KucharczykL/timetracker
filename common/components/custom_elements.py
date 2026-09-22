@@ -9,6 +9,7 @@ reader so drift fails ``tsc``.
 """
 
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -31,12 +32,14 @@ from common.components.core import (
     as_children,
 )
 from common.components.primitives import (
+    ICON_BUTTON_SIZE_CLASS,
     Button,
     ButtonColor,
     ControlButton,
     ControlLink,
     Dialog,
     Div,
+    EllipsisTrigger,
     FilterJson,
     Form,
     Icon,
@@ -843,6 +846,35 @@ DROPDOWN_ITEM_CLASS = (
 )
 
 
+# An item with a glyph lays out in a row.
+DROPDOWN_ITEM_WITH_ICON_CLASS = f"{DROPDOWN_ITEM_CLASS} flex items-center gap-2"
+
+
+#: What marks a destructive item: its glyph alone.
+DANGER_ITEM_ICON_CLASS = "text-fg-danger"
+
+
+def _item_children(label: Child, icon: str, danger: bool = False) -> list[Child]:
+    """The item's words, behind its act's glyph."""
+    if not icon:
+        return [label]
+    glyph_class = "shrink-0"
+    if danger:
+        glyph_class = f"{glyph_class} {DANGER_ITEM_ICON_CLASS}"
+    return [
+        Icon(
+            icon,
+            [("aria-hidden", "true"), ("class", glyph_class)],
+            size=ICON_BUTTON_SIZE_CLASS,
+        ),
+        Span()[label],
+    ]
+
+
+def _item_class(icon: str) -> str:
+    return DROPDOWN_ITEM_WITH_ICON_CLASS if icon else DROPDOWN_ITEM_CLASS
+
+
 # The single panel look for menu-style dropdowns (shadow + border). The old
 # OUTLINE/PLAIN split collapsed into one; DROPDOWN_PANEL_OUTLINE_CLASS is now the
 # borderless-shadow variant used by ListboxPanel/SelectDropdown (this file).
@@ -932,21 +964,41 @@ def _as_dialog_trigger(trigger: Element) -> Element:
     return _stamp(trigger, [("aria-haspopup", "dialog")], "dialog")
 
 
-def DropdownLinkItem(url: str, label: Child, *, current: bool = False) -> Node:
-    """A navigation menu item (an ``<a>`` link)."""
+def DropdownLinkItem(
+    url: str,
+    label: Child,
+    *,
+    current: bool = False,
+    icon: str = "",
+    danger: bool = False,
+) -> Node:
+    """A navigation menu item; ``danger`` colours the glyph."""
     attributes: list[tuple[str, str]] = [
         ("href", url),
         ("role", "menuitem"),
         ("tabindex", "-1"),
-        ("class", DROPDOWN_ITEM_CLASS),
+        ("class", _item_class(icon)),
     ]
     if current:
         attributes.append(("aria-current", "page"))
-    return Li(role="presentation")[ControlLink(attributes)[label]]
+    return Li(role="presentation")[
+        ControlLink(attributes)[*_item_children(label, icon, danger)]
+    ]
 
 
-def DropdownPostItem(url: str, label: Child, *, csrf_token: str) -> Node:
-    """A CSRF-protected POST action presented as a menu item."""
+def DropdownPostItem(
+    url: str,
+    label: Child,
+    *,
+    csrf_token: str,
+    hidden_fields: Node | None = None,
+    icon: str = "",
+    danger: bool = False,
+) -> Node:
+    """A CSRF-protected POST action, as a menu item.
+
+    ``hidden_fields`` carries a fact the press cannot.
+    """
     return Li(role="presentation")[
         Form(method="post", action=url, role="presentation")[
             Input(
@@ -954,12 +1006,13 @@ def DropdownPostItem(url: str, label: Child, *, csrf_token: str) -> Node:
                 name="csrfmiddlewaretoken",
                 value=csrf_token,
             ),
+            hidden_fields if hidden_fields is not None else "",
             Button(
                 type="submit",
                 role="menuitem",
                 tabindex="-1",
-                class_=DROPDOWN_ITEM_CLASS,
-            )[label],
+                class_=_item_class(icon),
+            )[*_item_children(label, icon, danger)],
         ]
     ]
 
@@ -1186,6 +1239,39 @@ def DropdownMenuPanel(
     # role="presentation" on the list wrappers so the implicit list/listitem roles
     # don't break the menu→menuitem ownership the role="menu" panel declares.
     return Div(attributes)[Ul(role="presentation")[*items]]
+
+
+#: A row menu fits its longest act, capped by the screen.
+ROW_MENU_WIDTH = "w-max max-w-[calc(100vw-2rem)]"
+
+
+def RowActionMenu(
+    items: Sequence[Node],
+    *,
+    label: str,
+    id: str,
+    placement: str = "bottom-end",
+) -> Node:
+    """A table row's acts behind one bare ellipsis trigger.
+
+    It knows no act: its ``items`` are built by the caller, because
+    reading ``games.bulk_actions`` here closes a cycle.
+
+    ``label`` names both halves, and names the row, not the table.
+
+    The menu default is a fixed ``w-44`` with its overflow hidden, which
+    clips a whole clause; the panel fits its content instead.
+    """
+    return Dropdown(
+        trigger_element=EllipsisTrigger(label=label).as_element(),
+        target_element=DropdownMenuPanel(
+            items=list(items),
+            aria_label=label,
+            menu_width=ROW_MENU_WIDTH,
+        ),
+        id=id,
+        placement=placement,
+    )
 
 
 def ButtonDropdown(

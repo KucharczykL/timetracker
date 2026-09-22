@@ -41,17 +41,37 @@ type RowKey = str
 type FilterJson = str
 
 #: What an act asks for, as one string.
-type ChoiceValue = str  # a target run's key, or a batch's id
+type ChoiceValue = str  # a run's key, a batch's id, an instant and its zone
 
 #: The form field a choice is posted under.
 type FieldName = str
 
 
-class Cardinality(StrEnum):
-    """How many rows an act offers."""
+@dataclass(frozen=True, slots=True)
+class ActTitle:
+    """The confirmation's heading, in either count.
 
-    ONE = "one"
-    MANY = "many"
+    A whole clause, not a noun with a suffix.
+    """
+
+    one: str
+    many: str
+
+    def __post_init__(self) -> None:
+        if not self.one or not self.many:
+            raise ValueError(
+                "An act states both halves of its title: "
+                f"{self.one!r} for one row and {self.many!r} for several."
+            )
+        if self.one == self.many:
+            raise ValueError(
+                f"{self.one!r} is both halves of a title. An act reading the "
+                "same over one row and over several states no count."
+            )
+
+    def for_count(self, count: int) -> str:
+        """The half this many rows reads in; none is plural."""
+        return self.one if count == 1 else self.many
 
 
 class RowOutcome(StrEnum):
@@ -230,13 +250,12 @@ class BulkAction[RowT: Model]:
     name: BulkActionName
     #: The act in a person's words.
     label: str
-    #: The confirmation's heading.
-    title: str
+    #: Its heading, in both counts.
+    title: ActTitle
     #: Its submit.
     confirm_label: str
     #: The noun `answered()` speaks of.
     subject: SubjectNoun
-    cardinality: Cardinality
     #: What the act does to a row, in the button's colours.
     color: ButtonColor
     #: Which half a mixed batch's Undo reads.
@@ -294,4 +313,9 @@ BULK_ACTIONS: Mapping[BulkActionName, BulkAction[Any]] = MappingProxyType(_TABLE
 
 
 #: Imported last: each module declares its acts.
-from games import bulk_move, bulk_reclassification, bulk_removal  # noqa: F401
+from games import (  # noqa: F401
+    bulk_finish,
+    bulk_move,
+    bulk_reclassification,
+    bulk_removal,
+)

@@ -302,6 +302,9 @@ def test_the_page_names_the_run_in_its_actions(client, user, game):
 
     assert reverse("games:edit_playthrough", args=[run.pk]) in body
     assert reverse("games:remove_playthrough", args=[run.pk]) in body
+    #: Behind the row's own trigger, not in a column of their own.
+    assert f'id="run-menu-{run.pk}"' in body
+    assert ">Actions<" not in body
 
 
 @pytest.mark.django_db(transaction=True)

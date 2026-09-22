@@ -6,11 +6,22 @@
  */
 
 import { SelectionStatement } from "./selection-statement.js";
+import {
+  OverflowItem,
+  priorityPlusFitCount,
+  priorityPlusTotalWidth,
+} from "./priority-plus.js";
 
 const STATEMENT = "[data-selection-statement]";
 const SUBMITS = 'button[type="submit"]';
 const CHANGE = "selectable-table:change";
 const HOST = "selectable-table";
+const LINE = "[data-selection-line]";
+const CONTROLS = "[data-selection-controls]";
+const ACTS_ROW = "[data-selection-acts-row]";
+const ACT = "[data-selection-act]";
+const OVERFLOW = "[data-selection-overflow]";
+const OVERFLOW_ITEMS = "[data-selection-overflow-items]";
 
 interface StatementHost extends HTMLElement {
   statement(): SelectionStatement;
@@ -42,6 +53,33 @@ class SelectionActionsElement extends HTMLElement {
   private posted = false;
   private host: Element | null = null;
   private field: HTMLInputElement | null = null;
+  // ── Priority-plus overflow ──────────────────────────────────────
+  // The line, not the controls row.
+  //
+  // The controls row is a flex item, so its width is its content's.
+  // Room measured there shrinks as each act leaves, and every act ends
+  // up behind the trigger.
+  private line: HTMLElement | null = null;
+  private controls: HTMLElement | null = null;
+  private actsRow: HTMLElement | null = null;
+  private overflowHost: HTMLElement | null = null;
+  private overflowItems: HTMLElement | null = null;
+  private acts: OverflowItem[] = [];
+  // Taken the first time the line is shown.
+  //
+  // Every width reads 0 under the `hidden` the table clears at the first
+  // press, and a width read inside the panel is the panel's. Only the acts
+  // latch: the furniture is re-read every layout, because the count beside
+  // them grows from "1 selected" to "1,284 selected" without the line
+  // changing size, so nothing would fire a fresh measurement.
+  private measured = false;
+  private rowGap = 0;
+  private actGap = 0;
+  private lineGap = 0;
+  private furnitureWidth = 0;
+  private overflowWidth = 0;
+  private resizeObserver: ResizeObserver | null = null;
+  private layoutQueued = false;
 
   connectedCallback(): void {
     this.field = this.querySelector<HTMLInputElement>(STATEMENT);
@@ -49,6 +87,8 @@ class SelectionActionsElement extends HTMLElement {
     this.posted = false;
     this.addEventListener("submit", this.onSubmit);
     window.addEventListener("pageshow", this.onPageShow);
+    // Ahead of the table: the acts lay out in the line.
+    this.setupOverflow();
     this.host = this.closest(HOST);
     if (!this.host) return;
     // Subscribed whether or not the table can answer yet.
@@ -65,6 +105,145 @@ class SelectionActionsElement extends HTMLElement {
     window.removeEventListener("pageshow", this.onPageShow);
     this.host?.removeEventListener(CHANGE, this.onChange);
     this.host = null;
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+  }
+
+  // ── Priority-plus overflow ────────────────────────────────────────
+  // The acts that no longer fit are MOVED into the trailing overflow,
+  // rightmost first, and back as the line widens. The same nodes travel,
+  // and the panel sits inside the one form, so a moved submit still posts
+  // the statement its `formaction` names.
+
+  private setupOverflow(): void {
+    this.line = this.closest<HTMLElement>(LINE);
+    this.controls = this.closest<HTMLElement>(CONTROLS);
+    this.actsRow = this.querySelector<HTMLElement>(ACTS_ROW);
+    this.overflowHost = this.querySelector<HTMLElement>(OVERFLOW);
+    this.overflowItems = this.querySelector<HTMLElement>(OVERFLOW_ITEMS);
+    if (
+      !this.line ||
+      !this.controls ||
+      !this.actsRow ||
+      !this.overflowHost ||
+      !this.overflowItems
+    ) {
+      return;
+    }
+    if (!this.actsRow.querySelector(ACT)) return;
+    if (typeof ResizeObserver !== "undefined") {
+      this.resizeObserver = new ResizeObserver(() => this.queueLayout());
+      this.resizeObserver.observe(this.line);
+      //: The line never changes size when the count's text does.
+      this.resizeObserver.observe(this.controls);
+    }
+    this.layoutActs();
+  }
+
+  private queueLayout(): void {
+    if (this.layoutQueued) return;
+    this.layoutQueued = true;
+    requestAnimationFrame(() => {
+      this.layoutQueued = false;
+      this.layoutActs();
+    });
+  }
+
+  /** Take every width, while every act stands in the row.
+   *
+   * Answers false while the line is hidden: `offsetWidth` under a
+   * `display:none` ancestor is 0, and zeros cached here would spill
+   * every act for the life of the page.
+   */
+  private measure(): boolean {
+    const line = this.line;
+    const controls = this.controls;
+    const actsRow = this.actsRow;
+    const overflowHost = this.overflowHost;
+    if (!line || !controls || !actsRow || !overflowHost) return false;
+    if (!line.clientWidth) return false;
+    if (!this.measured) {
+      this.lineGap = parseFloat(getComputedStyle(line).columnGap) || 0;
+      this.rowGap = parseFloat(getComputedStyle(controls).columnGap) || 0;
+      this.actGap = parseFloat(getComputedStyle(actsRow).columnGap) || 0;
+      this.acts = Array.from(actsRow.querySelectorAll<HTMLElement>(ACT)).map(
+        (element) => ({ element, width: element.offsetWidth }),
+      );
+      overflowHost.classList.remove("hidden");
+      this.overflowWidth = overflowHost.offsetWidth;
+      overflowHost.classList.add("hidden");
+      this.measured = true;
+    }
+    this.takeFurniture(line, controls);
+    return true;
+  }
+
+  /** Everything the line holds beside the acts, read afresh.
+   *
+   * Skip the child holding this element, never this element: the slot sits
+   * in a wrapper, so identity counts every act as furniture too.
+   */
+  private takeFurniture(line: HTMLElement, controls: HTMLElement): void {
+    this.furnitureWidth = 0;
+    for (const child of Array.from(controls.children)) {
+      if (child.contains(this)) continue;
+      this.furnitureWidth += (child as HTMLElement).offsetWidth + this.rowGap;
+    }
+    for (const child of Array.from(line.children)) {
+      if (child.contains(this)) continue;
+      this.furnitureWidth += (child as HTMLElement).offsetWidth + this.lineGap;
+    }
+  }
+
+  /** Public for tests: jsdom has no layout engine. */
+  layoutActs(): void {
+    if (!this.measure()) return;
+    const actsRow = this.actsRow;
+    const overflowHost = this.overflowHost;
+    const overflowItems = this.overflowItems;
+    const line = this.line;
+    if (!line || !actsRow || !overflowHost || !overflowItems || !this.acts.length) {
+      return;
+    }
+
+    const widths = this.acts.map((act) => act.width);
+    // First without the trigger's reserve: all may fit.
+    let fitCount: number;
+    if (
+      priorityPlusTotalWidth(widths, this.actGap) + this.furnitureWidth <=
+      line.clientWidth
+    ) {
+      fitCount = this.acts.length;
+    } else {
+      const available =
+        line.clientWidth -
+        this.furnitureWidth -
+        this.overflowWidth -
+        this.actGap;
+      fitCount = priorityPlusFitCount(widths, available, this.actGap);
+    }
+
+    this.acts.forEach((act, index) => {
+      if (index >= fitCount && act.element.parentElement !== overflowItems) {
+        overflowItems.appendChild(act.element);
+      }
+    });
+    // Declaration order: one that came back would otherwise trail.
+    for (let index = fitCount - 1; index >= 0; index--) {
+      const element = this.acts[index].element;
+      const successor =
+        index + 1 < fitCount ? this.acts[index + 1].element : overflowHost;
+      if (element.parentElement !== actsRow || element.nextElementSibling !== successor) {
+        actsRow.insertBefore(element, successor);
+      }
+    }
+    for (let index = fitCount; index < this.acts.length; index++) {
+      const element = this.acts[index].element;
+      if (element.nextElementSibling !== null || element.parentElement !== overflowItems) {
+        overflowItems.appendChild(element);
+      }
+    }
+    overflowHost.classList.toggle("hidden", fitCount === this.acts.length);
   }
 
   private readonly onSubmit = (): void => {

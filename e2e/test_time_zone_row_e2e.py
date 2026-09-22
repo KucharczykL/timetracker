@@ -9,6 +9,7 @@ from django.urls import reverse
 from playwright.sync_api import Page, expect
 from session_rows import session_row
 
+from e2e.helpers import open_row_menu
 from games.models import Game, PlayerSession
 from games.reads.calendar import calendar_day_zone
 
@@ -118,6 +119,7 @@ def test_finish_stamps_the_end_zone(tokyo_page, live_server, e2e_library):
     )
     tokyo_page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     row = tokyo_page.locator(f"#session-row-{session.pk}")
+    open_row_menu(tokyo_page, f"session-menu-{session.pk}")
     row.locator('form[action*="/finish"] button[type="submit"]').click()
     # The list re-renders after the write commits, so waiting for the finish
     # control to vanish is a server-state assertion.

@@ -178,14 +178,14 @@ def test_a_session_of_another_library_is_not_found(client, django_user_model, se
 
 
 def test_the_row_action_appears_on_a_duration_only_row_alone(run):
-    from common.components.domain import SessionActions
+    from games.views.session_menu import session_row_menu
 
     written = duration_only_row(run, A_DAY, timedelta(hours=9))
     measured = timed_row(run, START, START + timedelta(hours=1))
 
-    tooltip = "Was an estimate, not one sitting"
-    assert tooltip in str(SessionActions(written, "token", None))
-    assert tooltip not in str(SessionActions(measured, "token", None))
+    item = "Record as historical playtime\u2026"
+    assert item in str(session_row_menu(written, "token", None))
+    assert item not in str(session_row_menu(measured, "token", None))
 
 
 # --- The review and the bulk conversion ---------------------------------------

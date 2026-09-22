@@ -7,6 +7,8 @@ from playwright.sync_api import Page, expect
 from session_rows import session_row
 from tracked_games import create_tracked_game
 
+from e2e.helpers import open_row_menu
+
 
 def _login(page: Page, live_server) -> None:
     page.goto(f"{live_server.url}{reverse('login')}")
@@ -25,7 +27,8 @@ def test_undo_puts_a_removed_session_back(live_server, page: Page, e2e_library):
     rows = page.locator("tbody tr")
     expect(rows).to_have_count(1)
 
-    page.locator('a[href*="/session/"][href*="/remove"]').first.click()
+    open_row_menu(page, f"session-menu-{row.pk}")
+    page.get_by_role("menuitem", name="Remove", exact=True).click()
     page.click('button:has-text("Remove")')
 
     expect(page.get_by_text("Session removed.")).to_be_visible()

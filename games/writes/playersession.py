@@ -168,14 +168,18 @@ def correct_session(
     timing: TimingStatement,
     *,
     correlation_id: uuid.UUID,
-) -> None:
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
     """State a session's whole timing again."""
     with answered("session"):
-        _dispatch(
+        return _dispatch(
             CorrectSessionTiming(session_id=session.pk, timing=timing),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
 
 
@@ -230,16 +234,20 @@ def end_session(
     ended_at: datetime,
     ended_at_zone: ZoneName | None,
     correlation_id: uuid.UUID,
-) -> None:
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
     """Finish a running Timed session at `ended_at`."""
     with answered("session"):
-        _dispatch(
+        return _dispatch(
             EndSession(
                 session_id=session.pk, ended_at=ended_at, ended_at_zone=ended_at_zone
             ),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
 
 

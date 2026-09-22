@@ -190,3 +190,56 @@ def test_the_list_costs_no_query_per_row(logged_in, owned_library):
         logged_in.get(reverse("games:list_sessions"))
 
     assert len(many) == len(few)
+
+
+# --- The row menu and the tray ------------------------------------------------
+
+
+def _tray_labels(body: str) -> list[str]:
+    """Each act the selection line offers, in the order it lays them out."""
+    slot = re.search(
+        r'data-selection-actions=""(.*?)</selection-actions>', body, re.DOTALL
+    )
+    assert slot is not None
+    return [
+        re.sub(r"<[^>]+>", "", found).strip()
+        for found in re.findall(
+            r"<button[^>]*formaction=[^>]*>(.*?)</button>", slot.group(1), re.DOTALL
+        )
+    ]
+
+
+def test_the_table_states_no_actions_column(logged_in, game, owned_library):
+    timed_row(
+        tracked_run(owned_library, game), STARTED_AT, STARTED_AT + timedelta(hours=1)
+    )
+
+    body = logged_in.get(reverse("games:list_sessions")).content.decode()
+
+    headers = re.findall(r"<th[^>]*>(.*?)</th>", body, re.DOTALL)
+    assert not any("Actions" in header for header in headers)
+
+
+def test_each_row_states_its_own_menu(logged_in, game, owned_library):
+    session = timed_row(
+        tracked_run(owned_library, game), STARTED_AT, STARTED_AT + timedelta(hours=1)
+    )
+
+    body = logged_in.get(reverse("games:list_sessions")).content.decode()
+
+    assert f'id="session-menu-{session.pk}"' in body
+
+
+def test_the_tray_offers_four_acts_with_remove_last(logged_in, game, owned_library):
+    timed_row(
+        tracked_run(owned_library, game), STARTED_AT, STARTED_AT + timedelta(hours=1)
+    )
+
+    body = logged_in.get(reverse("games:list_sessions")).content.decode()
+
+    assert _tray_labels(body) == [
+        "Finish",
+        "Move to playthrough…",
+        "Record as historical playtime",
+        "Remove",
+    ]

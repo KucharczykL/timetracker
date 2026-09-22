@@ -10,8 +10,8 @@ from session_rows import duration_only_row, timed_row, tracked_run
 from games.bulk_actions import (
     _TABLE,
     BULK_ACTIONS,
+    ActTitle,
     BulkAction,
-    Cardinality,
     Presentations,
     PreviewColumn,
     RowOutcome,
@@ -99,7 +99,6 @@ def a_bucket_session(library, actor, game):
 
 
 def test_the_table_holds_the_reclassification(reclassify):
-    assert reclassify.cardinality is Cardinality.MANY
     assert reclassify.inverse_aggregate == "playersession"
 
 
@@ -111,7 +110,6 @@ def test_an_aggregate_no_event_declares_is_refused(reclassify):
             title=reclassify.title,
             confirm_label=reclassify.confirm_label,
             subject=reclassify.subject,
-            cardinality=Cardinality.MANY,
             color=reclassify.color,
             inverse_aggregate="playersesion",
             fallback=reclassify.fallback,
@@ -131,7 +129,6 @@ def test_a_name_the_table_already_holds_is_refused(reclassify):
             title=reclassify.title,
             confirm_label=reclassify.confirm_label,
             subject=reclassify.subject,
-            cardinality=Cardinality.MANY,
             color=reclassify.color,
             inverse_aggregate="playersession",
             fallback=reclassify.fallback,
@@ -157,7 +154,6 @@ def test_making_the_value_declares_it(reclassify):
             title=reclassify.title,
             confirm_label=reclassify.confirm_label,
             subject=reclassify.subject,
-            cardinality=Cardinality.ONE,
             color=reclassify.color,
             inverse_aggregate="playersession",
             fallback=reclassify.fallback,
@@ -412,7 +408,6 @@ def _spare(reclassify: BulkAction, name: str, preview) -> BulkAction:
         title=reclassify.title,
         confirm_label=reclassify.confirm_label,
         subject="record",
-        cardinality=Cardinality.MANY,
         color=reclassify.color,
         inverse_aggregate="playersession",
         fallback=reclassify.fallback,
@@ -422,6 +417,97 @@ def _spare(reclassify: BulkAction, name: str, preview) -> BulkAction:
         inverse=reclassify.inverse,
         preview=preview,
     )
+
+
+# ── The title the count picks ────────────────────────────────────────────────
+
+
+def test_a_title_answers_its_singular_at_exactly_one():
+    title = ActTitle(one="Remove this session", many="Remove these sessions")
+
+    assert title.for_count(1) == "Remove this session"
+    assert title.for_count(0) == "Remove these sessions"
+    assert title.for_count(2) == "Remove these sessions"
+
+
+@pytest.mark.parametrize(
+    "one,many",
+    [("", "Remove these sessions"), ("Remove this session", "")],
+)
+def test_a_title_stating_half_of_itself_is_refused(one, many):
+    """At the declaration, so the next act states both or fails at import."""
+    with pytest.raises(ValueError, match="states both"):
+        ActTitle(one=one, many=many)
+
+
+#: A preview that reads nothing off a row, so a heading case needs no rows.
+_NAMELESS: tuple[PreviewColumn[PlayerSession], ...] = (
+    PreviewColumn("Row", lambda row, _: "a row"),
+)
+
+
+def test_the_confirmation_heads_one_row_in_the_singular(reclassify, presentations):
+    from games.views.bulk_pages import ConfirmBatch
+
+    name = "session.one_row_title"
+    try:
+        page = str(
+            ConfirmBatch(
+                _spare(reclassify, name, _NAMELESS),
+                rows=[object()],
+                refused=(),
+                hidden=[],
+                post_url="/bulk/x/",
+                csrf_token="token",
+                cancel_url="/",
+                sample_cap=50,
+                presentations=presentations,
+            )
+        )
+    finally:
+        _TABLE.pop(name, None)
+
+    assert reclassify.title.one in page
+    assert reclassify.title.many not in page
+
+
+def test_the_confirmation_heads_three_rows_in_the_plural(reclassify, presentations):
+    from games.views.bulk_pages import ConfirmBatch
+
+    name = "session.three_row_title"
+    try:
+        page = str(
+            ConfirmBatch(
+                _spare(reclassify, name, _NAMELESS),
+                rows=[object(), object(), object()],
+                refused=(),
+                hidden=[],
+                post_url="/bulk/x/",
+                csrf_token="token",
+                cancel_url="/",
+                sample_cap=50,
+                presentations=presentations,
+            )
+        )
+    finally:
+        _TABLE.pop(name, None)
+
+    assert reclassify.title.many in page
+
+
+def test_a_title_reading_the_same_in_both_counts_is_refused():
+    """One clause for two counts states no count at all."""
+    from games.bulk_actions import ActTitle
+
+    with pytest.raises(ValueError, match="both halves"):
+        ActTitle(one="Remove these sessions", many="Remove these sessions")
+
+
+def test_every_declared_act_states_both_halves():
+    for action in BULK_ACTIONS.values():
+        assert action.title.one
+        assert action.title.many
+        assert action.title.one != action.title.many
 
 
 def test_the_confirmation_renders_the_columns_the_act_states(reclassify, presentations):
@@ -506,7 +592,6 @@ def test_an_act_whose_run_takes_a_fact_by_position_is_refused(reclassify):
             title=reclassify.title,
             confirm_label=reclassify.confirm_label,
             subject=reclassify.subject,
-            cardinality=Cardinality.MANY,
             color=reclassify.color,
             inverse_aggregate=reclassify.inverse_aggregate,
             fallback=reclassify.fallback,
@@ -519,7 +604,7 @@ def test_an_act_whose_run_takes_a_fact_by_position_is_refused(reclassify):
 
 
 def test_an_inverse_that_takes_no_batch_is_refused(reclassify):
-    """The undo leg states the batch it undoes."""
+    """The inverse states the batch it undoes."""
 
     def takes_no_batch(actor, row_id, *, idempotency_key, correlation_id):
         return RowOutcome.MOVED
@@ -531,7 +616,6 @@ def test_an_inverse_that_takes_no_batch_is_refused(reclassify):
             title=reclassify.title,
             confirm_label=reclassify.confirm_label,
             subject=reclassify.subject,
-            cardinality=Cardinality.MANY,
             color=reclassify.color,
             inverse_aggregate=reclassify.inverse_aggregate,
             fallback=reclassify.fallback,

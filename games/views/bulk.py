@@ -326,7 +326,7 @@ def _confirm_page(
             choice=choice,
             refusal=refusal,
         ),
-        title=action.title,
+        title=action.title.for_count(len(rows)),
         status=400 if refusal else 200,
     )
 
@@ -405,8 +405,12 @@ def _refused_page(
 def _act_refused(
     request: HttpRequest, action: BulkAction[Any], sentence: str
 ) -> HttpResponse:
+    """An act turned down before it resolved anything.
+
+    The plural: a refusal ahead of the resolve counts no rows.
+    """
     return _refused_page(
-        request, sentence, title=action.title, fallback=action.fallback
+        request, sentence, title=action.title.many, fallback=action.fallback
     )
 
 
@@ -620,7 +624,7 @@ def _progress(
             csrf_token=get_token(request),
             stop_name=STOP_FIELD,
         ),
-        title=action.title,
+        title=action.title.for_count(tally.total),
     )
 
 
@@ -642,16 +646,17 @@ def _defect(
         level=messages.ERROR,
         action=Undo(undo_url) if undo_url and tally.done else None,
     )
+    heading = action.title.for_count(tally.total)
     return render_page(
         request,
         RefusedBatch(
-            title=action.title,
+            title=heading,
             sentence=DEFECT_SENTENCE,
             post_url=request.get_full_path(),
             csrf_token=get_token(request),
             cancel_url=return_url(request, fallback=action.fallback),
         ),
-        title=action.title,
+        title=heading,
         status=DEFECT_STATUS,
     )
 
