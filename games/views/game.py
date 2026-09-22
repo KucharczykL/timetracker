@@ -222,7 +222,7 @@ def games_for_list(
 
 
 def game_list_columns(playtime_label: str) -> list[Column]:
-    """The list's columns. The playtime header reads what the filter narrowed."""
+    """The columns of the list. The filter selects the playtime label."""
     return [
         Column("Name", "name", shrinkable=True, key="name", hideable=False),
         Column("Year", "year", priority=2, key="year"),

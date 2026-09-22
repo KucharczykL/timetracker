@@ -2304,13 +2304,11 @@ def drop_columns(
     rows: Sequence[list[Cell]],
     hidden: Collection[ColumnKey],
 ) -> tuple[list[Column], list[list[Cell]]]:
-    """Take each named column out, with its cell in every row.
+    """Remove each named column, with its cell in each row.
 
-    Mechanics alone: a caller states which keys go, and both a page's own
-    exclusions and a person's hidden set travel through this one parameter.
-    Whether a person may name a key is `Column.hideable`, which the view reads
-    before it calls here - a page states exclusions of its own that no person
-    may state, Game detail's leading Name among them.
+    The caller states the keys. A page's own exclusions and a person's hidden
+    set use this one parameter. `Column.hideable` is not read here: the view
+    reads it first, because a page can exclude a column that a person cannot.
     """
     dropped = {index for index, column in enumerate(columns) if column.key in hidden}
     kept_columns = [
@@ -2368,8 +2366,7 @@ class TableData(TypedDict):
     sort_terms: NotRequired[Sequence[SortTerm]]
     # Present where a list selects rows.
     selection: NotRequired[SelectionDeclaration]
-    # The control a person chooses this list's columns with, in the header
-    # row's last cell. Present on the seven list pages.
+    # The column control, in the header row's last cell.
     column_picker: NotRequired[Node]
 
 
@@ -2556,6 +2553,14 @@ ROW_MENU_HEADER_LABEL = "Row actions"
 # The slot never grows, so it states its own padding.
 _ROW_MENU_CELL_CLASS = "w-px px-2 py-2 whitespace-nowrap text-right"
 
+#: The padding of a header cell over a label.
+_HEADER_CELL_CLASS = "px-2 sm:px-3 lg:px-6 py-3"
+#: A header cell over a control is padded like the row cells over one.
+
+#: The control states the 42px of ``min-h-control`` itself. The deeper padding
+#: of a header makes the header row taller than each row below it.
+_HEADER_CONTROL_CELL_CLASS = "px-2 sm:px-3 lg:px-6 py-2"
+
 
 def _row_menu_header_cell(
     columns: Sequence[Column], *, data_table: bool, trailing: Node | str = ""
@@ -2573,7 +2578,8 @@ def _row_menu_header_cell(
     if data_table:
         highest = max((column.priority for column in columns), default=0)
         policy_attrs.append(("data-priority", str(highest + 1)))
-    return Th(policy_attrs, scope="col", class_="px-2 sm:px-3 lg:px-6 py-3 text-right")[
+    cell_class = _HEADER_CONTROL_CELL_CLASS if trailing else _HEADER_CELL_CLASS
+    return Th(policy_attrs, scope="col", class_=f"{cell_class} text-right")[
         Span(class_="sr-only")[ROW_MENU_HEADER_LABEL], trailing
     ]
 
@@ -2673,12 +2679,11 @@ def IconTrigger(
     label: str,
     haspopup: PopupKind = "menu",
 ) -> ControlButton:
-    """A bare glyph that opens a popup, with no visible word.
+    """A bare glyph that opens a popup.
 
-    One shape for every such trigger, so two of them in one table read as one
-    control at two places. The glyph is decoration and says ``aria-hidden``:
-    the button carries the name, and ``title`` says it again where a pointer
-    hovers.
+    One shape for each such trigger: two of them in one table are then one
+    control at two places. The glyph is decoration and says ``aria-hidden``.
+    The button carries the name, and ``title`` repeats it for a pointer.
     """
     return ControlButton(
         attrs,
@@ -2910,9 +2915,8 @@ def _header_cell(
 
     ``selectable`` insets the label by the checkbox its column reserves, so the
     label still stands over the names under it."""
-    base_class = "px-2 sm:px-3 lg:px-6 py-3" + (
-        " text-right" if column.align == "right" else ""
-    )
+    padding = _HEADER_CONTROL_CELL_CLASS if trailing else _HEADER_CELL_CLASS
+    base_class = padding + (" text-right" if column.align == "right" else "")
     if column.class_:
         base_class = f"{base_class} {column.class_}"
     if column.shrinkable:
@@ -3382,10 +3386,8 @@ def StyledTable(
         # takes its background from its parent row, and a <thead>-level surface
         # would leave it transparent.
         header_row_class = "bg-neutral-tertiary"
-        # The picker rides the header row's LAST cell, whichever that is: the
-        # trailing menu slot where the rows carry one, else the last declared
-        # column. Stated this way it follows the slot by itself as the four
-        # Actions columns retire.
+        # The picker is in the last header cell: the menu slot, or the last
+        # column. It thus follows the slot as the Actions columns retire.
         last_column = len(columns) - 1
         header_cells: list[Node] = [
             _header_cell(

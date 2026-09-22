@@ -125,8 +125,7 @@ def _login(page: Page, live_server, django_user_model) -> Page:
     user = django_user_model.objects.get(username="tester")
     user.set_password("secret123")
     user.save()
-    #: These measurements want the widest table a list can render, which is
-    #: every column it declares, not the ones a person starts with.
+    #: These measurements want each column, not the default set.
     show_every_column(user)
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")

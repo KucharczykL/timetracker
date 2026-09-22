@@ -138,7 +138,7 @@ _SORT_KEYS: Mapping[str, SortKey] = {
 
 
 def historical_playtime_columns(*, sortable: bool) -> list[Column]:
-    """The record table's columns, in declaration order."""
+    """The columns of the record table, in order."""
 
     def column(label: str, key: ColumnKey, **options: object) -> Column:
         return Column(

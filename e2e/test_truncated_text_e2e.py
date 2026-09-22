@@ -20,8 +20,7 @@ LONG_NAME = (
 
 @pytest.fixture
 def authenticated_page(live_server, page: Page, e2e_user) -> Page:
-    #: The width measurements want every declared column, not the ones a
-    #: person starts with.
+    #: The width measurements want each declared column.
     show_every_column(e2e_user)
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")

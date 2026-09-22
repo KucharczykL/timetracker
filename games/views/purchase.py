@@ -168,7 +168,7 @@ def _purchases_with_completions(library: UserLibrary) -> QuerySet[Purchase]:
 def _purchase_cells(
     purchase: Purchase, presentation: DateTimePresentation, *, origin: OriginUrl | None
 ) -> list[Cell]:
-    """One row's cells, one per declared column."""
+    """One row's cells, one for each column."""
     #: Read the act, not the value.
     #: A null value is a completion nobody dated, which
     #: TemporalText prints as Unknown. No completion is a dash.
@@ -206,10 +206,10 @@ def _render_purchase_row(
     origin: OriginUrl | None,
     hidden: Collection[ColumnKey] = (),
 ) -> tuple[list[Column], TableRowData]:
-    """One row and the columns it answers, narrowed alike.
+    """One row and its columns, reduced together.
 
-    The refund endpoint re-renders a row outside the list, so it reads the
-    same choice: a row of the declared width would land in a narrowed table.
+    The refund route sends a row from outside the list and reads the same
+    choice. A row of the full width is not correct in a reduced table.
     """
     columns, [cells] = drop_columns(
         PURCHASE_COLUMNS,

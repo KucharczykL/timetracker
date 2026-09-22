@@ -57,7 +57,7 @@ def world(owned_library):
         ).id,
         #: A declared act; the guard only needs the route to reverse.
         "action": "session.reclassify",
-        #: One list's mode, same reason.
+        #: The mode of one list, for the same reason.
         "mode": "sessions",
         "correlation_id": uuid.uuid7(),
         "preset_id": FilterPreset.objects.create(

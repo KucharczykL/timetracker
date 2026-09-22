@@ -81,8 +81,7 @@ def test_a_pinned_column_that_a_row_names_is_shown_all_the_same():
 
 
 def test_the_trigger_wears_the_one_bare_icon_shape():
-    """The row menu sits under it in the same column; two shapes would read
-    as two controls."""
+    """The row menu is below it in the same column."""
     [trigger, *_panel_buttons] = re.findall(r"<button[^>]*>", picker())
     [ellipsis] = re.findall(r"<button[^>]*>", str(EllipsisTrigger(label="Acts")))
 

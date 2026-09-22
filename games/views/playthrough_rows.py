@@ -57,7 +57,7 @@ _SORT_KEYS: Mapping[str, SortKey] = {
 
 
 def playthrough_columns(*, sortable: bool) -> list[Column]:
-    """The run table's columns, in declaration order."""
+    """The columns of the run table, in order."""
 
     def column(label: str, key: ColumnKey, **options: Any) -> Column:
         return Column(

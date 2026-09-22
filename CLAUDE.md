@@ -404,9 +404,9 @@ docs/           — Additional documentation
   #715 groups that list by run. The list carries a Playthrough column after
   Name, declared always and named by `every_run_label`; each row states
   #711's summary naming the run, and Game detail offers Organize beside View
-  all. #1245 took the judgement out: no page decides whether the run is worth
-  naming, and a person who hides the column is named no run anywhere, the
-  summary included. Both lists take a `playthrough` sort key:
+  all. No page judges whether a run is worth naming: a person who hides the
+  column is named no run anywhere, the summary included. Both lists take a
+  `playthrough` sort key:
   game, then a null-or-not numbering key, then `DISPLAY_ORDER_FIELDS`. That
   is several `ORDER BY` terms under one key, which is why `SortSpec` states
   `then`. Both branches write NULLS LAST, so the bucket and a run stating no
@@ -1116,6 +1116,13 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   state is POST-only.
 - **Signals handle side-effects** — do not manually recalculate
   `Purchase.num_purchases`.
+- **A list's columns are the person's** — a list column states a `key` and,
+  where a person may not turn it off, `hideable=False`; `hidden_by_default`
+  starts one off. `ListColumnChoice` holds the choice and
+  `games/list_columns.py` alone reads and writes it. Narrow with
+  `drop_columns`, which a builder takes as one `hidden` parameter beside the
+  rows, because the same set decides the stacked summary. Contract is
+  [The columns a list shows](docs/superpowers/specs/2026-09-22-issue-1245-column-choice-design.md)
 - **Playtime is read, never stored** — read playtime through
   `games.reads.playtime`, never `Sum("effective_duration")` or
   `Sum("duration")` at a new call site; a new figure is a function in that

@@ -46,6 +46,13 @@ def _open_the_panel(page: Page):
     return panel
 
 
+def _height(locator) -> float:
+    """The rendered height of one element."""
+    box = locator.bounding_box()
+    assert box is not None, "the element does not render"
+    return box["height"]
+
+
 def _header(page: Page, label: str):
     """The header cell naming that column, never the panel that lists them all."""
     return (
@@ -94,7 +101,7 @@ def test_a_column_turned_off_stays_off(
 
     expect(_header(page, "Device")).to_have_count(0)
 
-    #: A fresh load reads the row, not the last response.
+    #: A new load reads the row, not the answer.
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     expect(_header(page, "Device")).to_have_count(0)
 
@@ -147,8 +154,7 @@ OCCLUSION = """
 def test_the_open_panel_covers_the_rows_own_dropdowns(
     authenticated_page: Page, live_server, one_session
 ):
-    """Every row carries a device selector on its own stratum; a panel that
-    states no stratum of its own opens underneath them."""
+    """Each row has a device selector on its own layer."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
     panel = _open_the_panel(page)
@@ -159,6 +165,19 @@ def test_the_open_panel_covers_the_rows_own_dropdowns(
     assert selectors > 0, "no row dropdown to open over; nothing is measured"
     assert total > 0, "the panel sampled no points"
     assert covered == 0, f"{covered}/{total} points of the panel are covered"
+
+
+def test_the_header_row_is_no_taller_than_a_row_that_holds_a_control(
+    authenticated_page: Page, live_server, one_session
+):
+    """The trigger states `min-h-control`, as every row control does."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+
+    header = _height(page.locator("thead tr").first)
+    row = _height(page.locator("tbody tr").first)
+
+    assert header <= row, f"the header is {header}px over a {row}px row"
 
 
 def test_a_column_that_refuses_to_hide_offers_no_choice(

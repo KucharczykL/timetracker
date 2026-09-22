@@ -1,4 +1,4 @@
-"""Read and state which columns a person turned off on a list."""
+"""Read and write the column choice of a person."""
 
 from collections.abc import Collection, Sequence
 from typing import NamedTuple, cast
@@ -20,7 +20,7 @@ def _known(mode: str) -> str:
 
 
 def _stated(user: User, mode: str) -> dict[ColumnKey, bool]:
-    """What this person states about this list, by key. Empty where nothing."""
+    """The statement of this person, by key."""
     stored = (
         ListColumnChoice.objects.filter(user=user, mode=_known(mode))
         .values_list("shown", flat=True)
@@ -32,10 +32,10 @@ def _stated(user: User, mode: str) -> dict[ColumnKey, bool]:
 def hidden_columns(
     user: User, mode: str, columns: Sequence[Column]
 ) -> frozenset[ColumnKey]:
-    """The keys this person does not show on this list.
+    """The keys this person does not show.
 
-    A column the person states nothing about reads its own default, so a column
-    added later starts where it says rather than where an older row left it.
+    A column that the map does not name reads its own default. A column added
+    later thus starts where it declares, not where an older row left it.
     """
     stated = _stated(user, mode)
     return frozenset(
@@ -48,10 +48,10 @@ def hidden_columns(
 def state_shown_columns(
     user: User, mode: str, shown: Collection[ColumnKey], columns: Sequence[Column]
 ) -> None:
-    """Replace the person's choice with the keys they leave shown.
+    """Replace the choice with the keys that stay shown.
 
-    Only a column standing away from its default is written down. A choice that
-    states the defaults back removes the row, because that is what the row said.
+    Only a column that differs from its default is written. A choice equal to
+    the defaults removes the row.
     """
     known = _known(mode)
     stated = {
@@ -68,12 +68,12 @@ def state_shown_columns(
 
 
 def reset_columns(user: User, mode: str) -> None:
-    """Take the person's choice away. The list reads its defaults again."""
+    """Remove the choice. The defaults apply again."""
     ListColumnChoice.objects.filter(user=user, mode=_known(mode)).delete()
 
 
 class ColumnChoice(NamedTuple):
-    """What one request shows, and the control that states it."""
+    """What one request shows, and its control."""
 
     hidden: frozenset[ColumnKey]
     picker: Node
@@ -82,11 +82,11 @@ class ColumnChoice(NamedTuple):
 def column_choice(
     request: HttpRequest, mode: str, columns: Sequence[Column]
 ) -> ColumnChoice:
-    """This person's choice for this list, and the picker that restates it.
+    """The choice of this person, and its picker.
 
-    A key naming a column that refuses to hide is read out of the set here:
-    the store may hold one a rename orphaned, and the list owes its row header
-    and its acts whatever the row says.
+    A key for a column that refuses to hide is removed here. The store can hold
+    one from an earlier name, and the list keeps its row header and its
+    operations.
     """
     pinned = {column.key for column in columns if not column.hideable}
     hidden = hidden_columns(cast(User, request.user), mode, columns) - pinned

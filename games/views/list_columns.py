@@ -1,4 +1,4 @@
-"""The one route a person states a list's columns through."""
+"""The route that writes a column choice."""
 
 from typing import NamedTuple, cast
 
@@ -20,20 +20,20 @@ from games.views.purchase import PURCHASE_COLUMNS
 from games.views.returns import return_url
 from games.views.session import SESSION_COLUMNS
 
-#: What the panel posts the columns it leaves shown as.
+#: The field the panel posts shown keys as.
 SHOWN_FIELD = "shown"
-#: The submit button a reset presses, which no other submit posts.
+#: The field that only the reset button posts.
 RESET_FIELD = "reset"
 
 
 class DeclaredList(NamedTuple):
-    """Where a mode's list lives, and the columns it declares."""
+    """The route of a list, and its columns."""
 
     route: UrlName
     columns: list[Column]
 
 
-#: The label is the request's; this route reads keys alone.
+#: The label is of the request; this route reads keys.
 LIST_COLUMNS: dict[str, DeclaredList] = {
     "games": DeclaredList("games:list_games", game_list_columns("Playtime")),
     "sessions": DeclaredList("games:list_sessions", SESSION_COLUMNS),
@@ -53,11 +53,11 @@ LIST_COLUMNS: dict[str, DeclaredList] = {
 @login_required
 @require_POST
 def state_list_columns(request: HttpRequest, mode: str) -> HttpResponse:
-    """Store what the panel left shown.
+    """Store the columns that the panel left shown.
 
-    An unchecked box posts nothing, so the posted keys are the whole of what a
-    person shows, read against the live column list. A column that refuses to
-    hide posts nothing either, and is shown whatever the request carries.
+    A box that is not checked sends nothing. The sent keys are thus the full
+    set of shown columns. A column that refuses to hide also sends nothing and
+    stays shown.
     """
     if mode not in LIST_COLUMNS:
         raise Http404(f"no list states the mode {mode!r}")

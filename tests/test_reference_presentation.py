@@ -76,7 +76,7 @@ def test_game_detail_shows_the_reference(client, owned_user):
 
 def test_the_platform_list_shows_the_reference(client, owned_user):
     client.force_login(owned_user)
-    #: The column starts hidden; this test is about what it prints.
+    #: The column starts hidden. This test reads what it shows.
     show_every_column(owned_user, "platforms")
     platform = Platform.objects.create(name="Amiga", library=owned_user.library)
     state_external_references(

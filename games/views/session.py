@@ -113,7 +113,7 @@ def session_cells(
     *,
     run_name: str | None,
 ) -> list[Cell]:
-    """One row's cells, one per declared column."""
+    """One row's cells, one for each column."""
     return [
         NameWithIcon(session=session),
         TruncatedText(run_name or ""),
@@ -139,12 +139,11 @@ def session_row_data(
     origin: OriginUrl | None,
     run_name: str | None,
 ) -> TableRowData:
-    """Canonical session-list row, the single source of truth for the list
-    table.
+    """The one row builder of the session list.
 
-    The run is named in the line below md only while the
-    column states it: a person who turned the column off
-    is named no run anywhere.
+    The line below md names the run only while the column
+    shows it. A person who hides the column sees no run
+    name.
     """
     return make_row(
         *cells,

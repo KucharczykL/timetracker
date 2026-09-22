@@ -16,7 +16,7 @@ from timetracker.temporal import TemporalValue
 pytestmark = pytest.mark.untracked_games
 
 #: Measured, not guessed. Constant across row counts.
-#: One of them reads the person's column choice, for the whole page.
+#: One of them reads the column choice, once.
 PURCHASE_LIST_QUERIES = 17
 
 
@@ -36,11 +36,10 @@ def cell_text(html, index):
 
 
 def finished_cell(client, purchase):
-    """The Finished cell's text for one row.
+    """The text of the Finished cell of one row.
 
-    Read by header, not by a counted position: which columns the list renders
-    is the reader's own choice, so a literal index names another column the
-    moment one of the earlier ones is off.
+    Read by header, not by a counted position. The columns are the choice of
+    the reader, thus a literal index can name a different column.
     """
     response = client.get(reverse("games:list_purchases"))
     assert response.status_code == 200
@@ -60,7 +59,7 @@ def _row_index(user, key: str = "finished") -> int:
 def _column_index(body: str, label: str) -> int:
     """Where that column renders, counted over the header row the page wrote."""
     [head] = re.findall(r"<thead.*?</thead>", body, re.DOTALL)
-    #: The picker's panel lives in the last header cell and names every column.
+    #: The panel is in the last header cell and names each column.
     head = re.sub(r"<form .*?</form>", "", head, flags=re.DOTALL)
     labels = [
         re.sub(r"<[^>]+>", "", cell).strip()
@@ -145,8 +144,7 @@ def test_the_refunded_row_keeps_its_cell(logged_client, owned_user, owned_librar
     response = logged_client.post(reverse("games:refund_purchase", args=[purchase.pk]))
 
     assert response.status_code == 200
-    #: The swapped row carries the columns this person shows, not every
-    #: declared one, so the cell is counted the same way the row was built.
+    #: The row has the columns of this person, thus count the same way.
     assert cell_text(response.content.decode(), _row_index(owned_user)) == "2024-07-01"
 
 

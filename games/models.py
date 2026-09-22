@@ -1288,10 +1288,10 @@ class FilterPreset(models.Model):
 
 
 class ListColumnChoice(models.Model):
-    """What one person states about one list's columns.
+    """The statement of one person about one list.
 
-    Keyed on the person rather than the library: a saved filter describes which
-    rows to read, and which columns a person reads them with is their own.
+    Keyed on the person, not the library. A saved filter selects rows; the
+    columns that show them are the property of the person.
     """
 
     class Meta:
@@ -1310,9 +1310,7 @@ class ListColumnChoice(models.Model):
         related_name="list_column_choices",
     )
     mode = models.CharField(max_length=50, choices=FilterPreset.MODE_CHOICES)
-    #: Column key to whether this person shows it, holding only the keys whose
-    #: state differs from the column's own default. A key the map does not name
-    #: reads as that default, so a column added later starts where it says.
+    #: Column key to shown, for the keys that differ from the default.
     shown = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 

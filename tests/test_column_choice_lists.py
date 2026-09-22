@@ -12,7 +12,7 @@ pytestmark = pytest.mark.django_db
 
 MODES = sorted(LIST_COLUMNS)
 
-#: A key every mode declares, lets a person hide, and hides by default.
+#: A key each mode declares, hides by default, and lets a person show.
 HIDEABLE = "created"
 
 

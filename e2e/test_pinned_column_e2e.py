@@ -93,8 +93,7 @@ def _login(page: Page, live_server, django_user_model) -> Page:
     user = django_user_model.objects.get(username="tester")
     user.set_password("secret123")
     user.save()
-    #: These measurements want the widest table a list can render, which is
-    #: every column it declares, not the ones a person starts with.
+    #: These measurements want each column, not the default set.
     show_every_column(user)
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
@@ -461,9 +460,9 @@ def test_an_open_row_menu_is_not_covered_by_a_pinned_cell(
         "fixture/viewport; this test owns both, so a missing toggle means the "
         "staged premise broke, not that the environment lacks one"
     )
-    # Pressed, not clicked: the staged width parks the trailing slot under the
-    # pinned cell, which is the geometry this test wants and also what a mouse
-    # press cannot reach. The panel is what is measured, not the path to it.
+    # Pressed, not clicked: the staged width puts the trailing slot below the
+    # pinned cell, where a mouse cannot reach it. The panel is measured here,
+    # not the path to it.
     toggle.focus()
     toggle.press("Enter")
     menu = page.locator("tbody tr [data-menu]:not([hidden])").first
