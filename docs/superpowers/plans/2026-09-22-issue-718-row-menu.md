@@ -67,8 +67,9 @@ pytest + pytest-xdist, vitest, Playwright.
 - `Icon(name)` falls back to the `unspecified` glyph for an unknown name with
   no error, so a typo ships silently. The test below is what catches it.
 - Match the existing snippet's shape: `viewBox="0 0 48 48"`,
-  `fill="currentColor"`, `class="w-4 h-4"`, three `2.4` radius dots. Vertical is the same dots at
-  x=24, y=15/24/33; horizontal at y=24, x=15/24/33. No ring on either.
+  `fill="currentColor"`, `class="w-4 h-4"`, three `2.4` radius dots. Vertical
+  puts them at x=24, y=15/24/33; horizontal at y=24, x=15/24/33. No ring on
+  either.
 - The quick bar today renders the literal `"⋯"` character. Swapping it changes
   the overflow host's measured width, which `quick-filter-bar.ts` measures once
   at connect — no logic change, but it is a visible change to a shipped page
