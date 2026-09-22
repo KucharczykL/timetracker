@@ -81,6 +81,10 @@ holds the keys of one list distinct.
 Two kinds refuse, so a person who unchecks every box is left a table that still
 names its rows and still acts on them. The floor needs no rule of its own.
 
+The panel lists a refusing column with its box checked and disabled, rather than
+leaving it out. The list is then the whole table, and a person reads that Name is
+pinned instead of wondering whether the panel forgot it.
+
 The selection checkbox is not a column and the row menu is not a column. Neither
 reaches the picker.
 

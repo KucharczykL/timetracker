@@ -343,7 +343,14 @@ Verified in jsdom: two forms parse, and both the checkbox and the button report
   group. The TS reserve walks every row child but the host and the facets, so it
   needs no second registration — but confirm it does not enter the overflow.
 - Use `ComboboxDropdown(label="Columns", content=…, id=…, ghost=True)`.
-- A `hideable=False` column renders no checkbox at all, not a disabled one.
+- A `hideable=False` column renders its box **checked and disabled**, not absent.
+  The panel is then the whole table's inventory. Use `DISABLED_CONTROL_CLASS` on
+  the box and the `has-[:disabled]:` wrapper variant on the label, per the
+  repo's one disabled look.
+- A disabled checkbox posts nothing, so the view must never read the posted keys
+  as the whole truth: a `hideable=False` key is kept shown whatever arrives.
+  Task 5's "a posted `hideable=False` key changes nothing" test covers the other
+  direction; add one for the absent key too.
 
 - [ ] **Step 1: Write the failing tests:** the panel renders one checkbox per
   hideable column and none for the rest; a hidden column's box is unchecked;
@@ -395,7 +402,8 @@ table builder, and passes the full column list plus the hidden set to
 - Modify: `CLAUDE.md` (the `sole_game` sentence in the PlayerSession section)
 - Modify: `docs/superpowers/specs/2026-09-21-issue-715-session-organizer-design.md`
   (its "## The column" section describes a read this issue removes)
-- Delete: `docs/superpowers/plans/2026-09-22-issue-1245-column-choice.md` (this file)
+- Remove: `games/static/mockup-column-picker.html` (the throwaway mockup)
+- Remove: `docs/superpowers/plans/2026-09-22-issue-1245-column-choice.md` (this file)
 
 **Gotchas:**
 - Never run e2e while `make dev` is up: its watchers rewrite the served assets
