@@ -67,7 +67,8 @@ def test_the_field_the_line_renders_is_the_field_the_route_reads(
     )
 
     assert rendered == STATEMENT_FIELD
-    assert "Remove these sessions" in confirmation.content.decode()
+    #: One row, so the heading says so. The tray could always select one.
+    assert "Remove this session" in confirmation.content.decode()
 
 
 # ── The pages that offer them ────────────────────────────────────────────────

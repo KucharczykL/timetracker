@@ -35,6 +35,7 @@ from games.bulk_reclassification import (
     REVIEW_THRESHOLD_HOURS,
     UNDER_THRESHOLD,
 )
+from games.bulk_removal import REMOVE_SESSION
 from games.commands.session_reclassification import statement_from_session
 from games.events.dispatch import CommandRejected
 from games.models import (
@@ -545,6 +546,23 @@ def test_a_defect_ends_the_batch_and_leaves_the_done_rows_done(
         BULK_ACTIONS["session.reclassify"].confirm_label.encode()
         not in response.content
     )
+
+
+def test_a_refusal_before_the_resolve_heads_in_the_plural(client_in, owned_library):
+    """`_act_refused` holds a sentence and no rows.
+
+    An act turned down before it resolved anything states nothing about how
+    many rows it would have touched, so the heading stays plural.
+    """
+    response = client_in.post(
+        reverse("games:run_bulk_action", args=["session.remove"]),
+        {STATEMENT_FIELD: "not a statement"},
+    )
+
+    page = response.content.decode()
+    assert response.status_code == 400
+    assert REMOVE_SESSION.title.many in page
+    assert REMOVE_SESSION.title.one not in page
 
 
 def test_a_row_the_library_does_not_hold_ends_the_batch(

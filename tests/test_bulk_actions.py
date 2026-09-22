@@ -10,6 +10,7 @@ from session_rows import duration_only_row, timed_row, tracked_run
 from games.bulk_actions import (
     _TABLE,
     BULK_ACTIONS,
+    ActTitle,
     BulkAction,
     Presentations,
     PreviewColumn,
@@ -416,6 +417,89 @@ def _spare(reclassify: BulkAction, name: str, preview) -> BulkAction:
         inverse=reclassify.inverse,
         preview=preview,
     )
+
+
+# ── The title the count picks ────────────────────────────────────────────────
+
+
+def test_a_title_answers_its_singular_at_exactly_one():
+    title = ActTitle(one="Remove this session", many="Remove these sessions")
+
+    assert title.for_count(1) == "Remove this session"
+    assert title.for_count(0) == "Remove these sessions"
+    assert title.for_count(2) == "Remove these sessions"
+
+
+@pytest.mark.parametrize(
+    "one,many",
+    [("", "Remove these sessions"), ("Remove this session", "")],
+)
+def test_a_title_stating_half_of_itself_is_refused(one, many):
+    """At the declaration, so the next act states both or fails at import."""
+    with pytest.raises(ValueError, match="states both"):
+        ActTitle(one=one, many=many)
+
+
+#: A preview that reads nothing off a row, so a heading case needs no rows.
+_NAMELESS: tuple[PreviewColumn[PlayerSession], ...] = (
+    PreviewColumn("Row", lambda row, _: "a row"),
+)
+
+
+def test_the_confirmation_heads_one_row_in_the_singular(reclassify, presentations):
+    from games.views.bulk_pages import ConfirmBatch
+
+    name = "session.one_row_title"
+    try:
+        page = str(
+            ConfirmBatch(
+                _spare(reclassify, name, _NAMELESS),
+                rows=[object()],
+                refused=(),
+                hidden=[],
+                post_url="/bulk/x/",
+                csrf_token="token",
+                cancel_url="/",
+                sample_cap=50,
+                presentations=presentations,
+            )
+        )
+    finally:
+        _TABLE.pop(name, None)
+
+    assert reclassify.title.one in page
+    assert reclassify.title.many not in page
+
+
+def test_the_confirmation_heads_three_rows_in_the_plural(reclassify, presentations):
+    from games.views.bulk_pages import ConfirmBatch
+
+    name = "session.three_row_title"
+    try:
+        page = str(
+            ConfirmBatch(
+                _spare(reclassify, name, _NAMELESS),
+                rows=[object(), object(), object()],
+                refused=(),
+                hidden=[],
+                post_url="/bulk/x/",
+                csrf_token="token",
+                cancel_url="/",
+                sample_cap=50,
+                presentations=presentations,
+            )
+        )
+    finally:
+        _TABLE.pop(name, None)
+
+    assert reclassify.title.many in page
+
+
+def test_every_declared_act_states_both_halves():
+    for action in BULK_ACTIONS.values():
+        assert action.title.one
+        assert action.title.many
+        assert action.title.one != action.title.many
 
 
 def test_the_confirmation_renders_the_columns_the_act_states(reclassify, presentations):

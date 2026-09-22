@@ -11,6 +11,7 @@ from django.http import Http404, QueryDict
 from common.components.primitives import Cell, Div, Label
 from common.components.search_select import DEFAULT_PREFETCH, SearchSelect
 from games.bulk_actions import (
+    ActTitle,
     AsksNothing,
     BulkAction,
     BulkChoice,
@@ -466,7 +467,10 @@ TARGET: BulkChoice[PlayerSession] = BulkChoice(offer=offer_target, settle=settle
 MOVE = BulkAction(
     name="session.move",
     label="Move to playthrough…",
-    title="Move these sessions to a playthrough",
+    title=ActTitle(
+        one="Move this session to a playthrough",
+        many="Move these sessions to a playthrough",
+    ),
     confirm_label="Move",
     subject="session",
     color="blue",
