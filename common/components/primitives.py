@@ -2260,6 +2260,7 @@ class TableRowData(TypedDict):
 
 
 type Align = Literal["left", "right"]  # column text alignment, e.g. "right"
+type ColumnKey = str  # the picker's identity for a column, e.g. "playthrough"
 
 
 class Column(NamedTuple):

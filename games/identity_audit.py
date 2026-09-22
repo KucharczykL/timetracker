@@ -42,6 +42,7 @@ RESIDUAL_INTEGER_RELATIONS: dict[TableColumn, OwnerLabel] = {
     ("games_userlibrary", "user_id"): NEVER_CONVERTS,
     ("games_userpreferences", "user_id"): NEVER_CONVERTS,
     ("games_libraryevent", "actor_id"): NEVER_CONVERTS,
+    ("games_listcolumnchoice", "user_id"): NEVER_CONVERTS,
 }
 
 RESIDUAL_INTEGER_PRIMARY_KEYS: dict[TableName, OwnerLabel] = {

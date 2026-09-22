@@ -1287,6 +1287,37 @@ class FilterPreset(models.Model):
         return f"{self.name} ({self.get_mode_display()})"
 
 
+class ListColumnChoice(models.Model):
+    """The columns one person turned off on one list.
+
+    Keyed on the person rather than the library: a saved filter describes which
+    rows to read, and which columns a person reads them with is their own.
+    """
+
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                fields=("user", "mode"),
+                name="unique_list_column_choice_per_mode",
+            ),
+        )
+
+    id = UUIDv7Field(primary_key=True, editable=False)
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="list_column_choices",
+    )
+    mode = models.CharField(max_length=50, choices=FilterPreset.MODE_CHOICES)
+    #: The column keys this person hid. A key no column claims hides nothing.
+    hidden = models.JSONField(default=list, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user} ({self.get_mode_display()})"
+
+
 class SiteSetting(models.Model):
     """DB layer of the settings resolver: a global runtime override for a
     site-scoped setting. Deliberately no user FK — per-user prefs live on
