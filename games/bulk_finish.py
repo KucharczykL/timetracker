@@ -34,7 +34,7 @@ from games.bulk_actions import (
     PreviewColumn,
     RowOutcome,
 )
-from games.bulk_removal import session_resolution, session_scope
+from games.bulk_sessions import session_resolution, session_scope
 from games.commands.playersession import TimedTiming
 from games.events.dispatch import CommandRejected, RowNotHeld
 from games.events.idempotency import IdempotencyKey

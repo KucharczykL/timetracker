@@ -24,8 +24,8 @@ from games.bulk_actions import BULK_ACTIONS, Presentations, RowOutcome
 from games.bulk_removal import (
     RECORD_GONE,
     RUN_GONE,
-    SESSION_GONE,
 )
+from games.bulk_sessions import SESSION_GONE
 from games.commands.historical_playtime import HistoricalPlaytimeStatement
 from games.commands.playthrough import ActStatement
 from games.commands.session_reclassification import statement_from_session
@@ -618,9 +618,9 @@ def test_an_inverse_that_finds_no_row_is_not_found(
 def test_a_statement_naming_a_related_entity_narrows_the_act(
     owned_library, game, other_game, remove_session_action
 ):
-    """What the query context buys: a relation leg compiles.
+    """What the query context buys: a relation clause compiles.
 
-    Without it the leg refuses outright, so the act would answer a
+    Without it the clause refuses outright, so the act would answer a
     defect where the list the person read answered rows.
     """
     wanted = a_session(owned_library, game)

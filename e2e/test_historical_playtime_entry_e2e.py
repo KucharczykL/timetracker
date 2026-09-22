@@ -16,6 +16,19 @@ def _login(page: Page, live_server) -> None:
     page.wait_for_url(f"{live_server.url}/tracker**")
 
 
+def _open_row_menu(page, row) -> None:
+    """A row states its acts behind one trigger, so open it before pressing.
+
+    Every item starts inside a panel that is `hidden`, which is why a press
+    that skips this times out rather than failing an assertion. The wait is
+    the element's own registration: a press landing on a `<drop-down>` the
+    module has not upgraded yet is swallowed, and the timeout that follows
+    names the item rather than the cause.
+    """
+    page.wait_for_function("() => !!customElements.get('drop-down')")
+    row.locator("[data-toggle]").last.click()
+
+
 def test_a_record_goes_through_every_act_from_game_detail(
     live_server, page: Page, e2e_user, e2e_library
 ):
@@ -43,7 +56,8 @@ def test_a_record_goes_through_every_act_from_game_detail(
     expect(rows.first).to_contain_text("Playthrough 1, Playthrough 2")
     expect(rows.first).to_contain_text("2005")
 
-    rows.first.get_by_title("Edit historical playtime").click()
+    _open_row_menu(page, rows.first)
+    page.get_by_role("menuitem", name="Edit", exact=True).click()
     page.get_by_label("Playthrough 2").uncheck()
     page.get_by_role("button", name="Submit", exact=True).click()
 
@@ -54,7 +68,8 @@ def test_a_record_goes_through_every_act_from_game_detail(
     expect(rows.first).to_contain_text("100.0 h")
     assert HistoricalPlaytime.objects.get().runs.count() == 1
 
-    rows.first.get_by_title("Remove historical playtime").click()
+    _open_row_menu(page, rows.first)
+    page.get_by_role("menuitem", name="Remove", exact=True).click()
     page.click('button:has-text("Remove")')
 
     expect(page.get_by_text("Historical playtime removed.")).to_be_visible()

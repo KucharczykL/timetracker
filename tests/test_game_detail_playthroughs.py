@@ -155,6 +155,16 @@ def test_the_section_links_its_actions_at_the_run(logged_in, game):
     assert reverse("games:remove_playthrough", args=[run.pk]) in body
 
 
+def test_the_section_states_each_run_menu_and_no_actions_column(logged_in, game):
+    """One trigger a row, and no column behind it."""
+    run = Playthrough.objects.get(player_game__game=game)
+
+    body = detail(logged_in, game)
+
+    assert f'id="run-menu-{run.pk}"' in body
+    assert ">Actions<" not in body
+
+
 def test_the_section_offers_the_act_the_run_allows(logged_in, game):
     """A tracked game's run states nothing."""
     run = Playthrough.objects.get(player_game__game=game)

@@ -352,7 +352,9 @@ def test_each_row_offers_edit_and_remove_back_to_the_list(client, owner):
 
     for route in ("games:edit_historical_playtime", "games:remove_historical_playtime"):
         assert action_url(route, record.pk, origin=page) in html.unescape(body)
-    assert ">Actions<" in body
+    #: Behind the row's own trigger, not in a column of their own.
+    assert f'id="record-menu-{record.pk}"' in body
+    assert ">Actions<" not in body
 
 
 @pytest.mark.django_db
@@ -388,7 +390,7 @@ def summary_of(body: str) -> str:
 class TestHistoricalListSummary:
     """The stacked cell's second line, below md."""
 
-    def test_the_list_states_the_eight_columns_and_sorts_them(self, client, owner):
+    def test_the_list_states_the_seven_columns_and_sorts_them(self, client, owner):
         library = owner.library
         run = tracked_run(library, Game.objects.create(library=library, name="G"))
         record_row([run])
@@ -403,9 +405,9 @@ class TestHistoricalListSummary:
             "Playthroughs",
             "Device",
             "Created",
-            "Actions",
         ):
             assert f">{label}<" in body
+        assert ">Actions<" not in body
         assert "?sort=when" in html.unescape(body)
 
     def test_a_row_states_the_day_the_duration_and_the_device(self, client, owner):

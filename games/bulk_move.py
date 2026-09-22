@@ -22,12 +22,12 @@ from games.bulk_actions import (
     Offered,
     Presentations,
     PreviewColumn,
-    Refused,
     RefusedAct,
     Resolution,
     RowOutcome,
 )
 from games.bulk_narrowing import narrowed
+from games.bulk_sessions import SESSION_GONE, lost
 from games.events.dispatch import CommandRejected, RowNotHeld, RowUnreadable
 from games.events.idempotency import IdempotencyKey
 from games.events.playersession import PLAYERSESSION_CREATED, PLAYERSESSION_MOVED
@@ -50,8 +50,6 @@ from games.writes.playersession import move_session
 from games.writes.playthrough import remove_run, restore_run
 
 logger = logging.getLogger("games")
-
-SESSION_GONE = "One of the sessions is no longer available, so it was left as it is."
 
 #: The act asks about one game.
 TWO_GAMES = (
@@ -127,15 +125,7 @@ def move_resolution(
     labels = every_run_label(library, rows)
     for row in rows:
         setattr(row, RUN_LABEL_ATTRIBUTE, labels.get(row.playthrough_id))
-    found = {row.pk for row in rows}
-    return Resolution(
-        rows,
-        tuple(
-            Refused(str(key), SESSION_GONE, lost=True)
-            for key in wanted
-            if key not in found
-        ),
-    )
+    return Resolution(rows, tuple(lost(wanted, {row.pk for row in rows}, SESSION_GONE)))
 
 
 def _run_label(row: PlayerSession, _presentations: Presentations) -> Cell:

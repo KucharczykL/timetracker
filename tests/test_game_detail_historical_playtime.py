@@ -109,11 +109,18 @@ def test_view_all_opens_the_list_narrowed_to_the_game(logged_in, game, run):
     assert html.escape(view_all) in section(logged_in, game)
 
 
-def test_actions_outrank_every_other_column(logged_in, game, run):
+def test_the_row_menu_slot_outranks_every_other_column(logged_in, game, run):
+    """The acts left the columns; the slot keeps their rank.
+
+    The label is the slot's own sr-only name, which is what a header with no
+    words of its own states.
+    """
     record_row([run])
     [policies] = header_policies(section(logged_in, game))
-    actions = dict(policies)["Actions"]
-    assert all(actions > priority for label, priority in policies if label != "Actions")
+    slot = dict(policies)["Row actions"]
+    assert all(
+        slot > priority for label, priority in policies if label != "Row actions"
+    )
 
 
 def test_a_removed_record_is_not_listed(logged_in, game, run):
@@ -133,7 +140,7 @@ def test_the_section_states_the_list_columns_less_name_and_created(
         "Provenance",
         "Playthroughs",
         "Device",
-        "Actions",
+        "Row actions",
     ]
 
 

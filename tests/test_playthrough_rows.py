@@ -128,10 +128,9 @@ def test_the_columns_sort_only_where_the_caller_says_so(
     }
 
 
-def test_the_actions_name_the_run(owned_library, run, presentation):
-    cells = cells_of(owned_library, run, presentation)
-
-    assert str(run.pk) in cells[-1]
+def test_the_acts_name_the_run(owned_library, run, presentation):
+    """Read off the menu: the acts are no cell of their own."""
+    assert str(run.pk) in actions_of(owned_library, run, presentation)
 
 
 def test_the_days_cell_reads_the_span(owned_library, run, presentation):
@@ -195,10 +194,29 @@ def _state_completion(owned_user, run) -> None:
 
 
 def actions_of(owned_library, run, presentation, **options) -> str:
-    """The one row's last cell, stringified."""
+    """The one row's menu, stringified.
+
+    The acts are no column, so this reads the slot rather than the last cell:
+    that index is the Created date now.
+    """
     data = tabledata_of(owned_library, run, presentation, **options)
     [row] = data["rows"]
-    return str(row["cell_data"][-1])
+    return str(row["menu"])
+
+
+def test_the_builder_declares_no_actions_column(owned_library, run, presentation):
+    data = tabledata_of(owned_library, run, presentation)
+
+    assert "Actions" not in [column.label for column in data["columns"]]
+    [row] = data["rows"]
+    assert len(row["cell_data"]) == len(data["columns"])
+
+
+def test_every_run_offers_edit_and_remove(owned_library, run, presentation):
+    actions = actions_of(owned_library, run, presentation)
+
+    assert ">Edit</a>" in actions
+    assert ">Remove</a>" in actions
 
 
 def test_a_run_with_no_start_offers_start(owned_library, run, presentation):
