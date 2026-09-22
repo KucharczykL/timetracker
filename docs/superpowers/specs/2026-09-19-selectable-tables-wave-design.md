@@ -49,10 +49,17 @@ left one bucket.
 | live ordinary runs | 869 |
 | sessions in the imported-history bucket | 1 |
 | games with two or more live runs | 8, none with more than 3 |
-| sessions dated outside their sole run's stated interval | 113, on 39 runs |
+| sessions dated outside their sole run's stated interval | 113, on 29 runs |
 | busiest run | 47 sessions |
 | runs holding no session | 145 |
 | run pairs at one game whose session days overlap | 0 |
+
+The run count was 39 in the review's first measurement and 29 on the
+2026-09-22 dump, as distinct run keys over the flagged rows; the first
+method is not on record, so 29 stands. Of 870 live ordinary runs, 207
+state both endpoints, 540 a start alone, none a completion alone, and 123
+neither; no session falls outside a start-alone run, because #1038 dated
+such a run from the earliest day the library held.
 
 The charter's organizer reconciles "ambiguous" sessions, which it defines as
 the bucket's. That population is one row: a Timed session at Our Red String
@@ -445,12 +452,20 @@ remove, as [Vocabulary](../../vocabulary.md) settles it.
 
 `PlayerSessionFilter` gains `outside_playthrough_dates`, a boolean over
 `effective_day` against the run's `started_lower` and `completed_upper`:
-true where the day lies before the start or after the completion of a run
-that states both. It is a handler-backed field with no column of its own,
-the `is_running` pattern, and a quick facet of kind `bool`. The Library
-page's count names it beside the bucket: "113 sessions fall outside their
-playthrough's dates". No stored state: the facet is the suggestion, and a
-row the person leaves is right where it is.
+true where the day lies before a start the run states or after a
+completion it states, each endpoint judged on its own, so a run stating a
+start alone answers on that start and a run stating neither answers no.
+It is a handler-backed field with no column of its own, the `is_running`
+pattern, and a quick facet of kind `bool`. Beside it, `playthrough_kind`,
+a lookup over the run's `kind`, also a quick facet: the Imported history
+count needed a link that names the bucket and nothing wider. The Library
+page's Playtime section draws three linked cards, To review, Imported
+history and Outside dates, a card with no rows not drawn; each link lands
+on an editable quick bar, which is why both fields are facets. No stored
+state: the facet is the suggestion, and a row the person leaves is right
+where it is. The session bar now holds seven facets and `max-w-7xl` fits
+four inline, so Duration, Playthrough and Outside dates ride the overflow
+at every width; which facets ride inline is #1254's.
 
 ## Reclassification, rebuilt
 
@@ -524,8 +539,8 @@ cost is judged.
    The other tables' summaries are #1241's. It edits `_SORT_KEYS` in
    `games/views/playthrough_rows.py`, whose Actions column #718 retires:
    a textual overlap, #718 rebasing over it.
-6. **#717** ORG-04 — `outside_playthrough_dates`, the Library page's two
-   counts and their links.
+6. **#717** ORG-04 — `outside_playthrough_dates` and `playthrough_kind`,
+   the Library page's three cards and their links.
 7. **#1212** TABLE-05 — the checkbox reserve while the mode is off,
    decided before the pages are judged.
 8. **#718** ORG-05 — the four Actions columns retired into the tray's
