@@ -30,6 +30,7 @@ from games.writes.answers import CommandFailed
 from games.writes.playersession import (
     SessionDraft,
     clone_session,
+    correct_session,
     end_session,
     move_session,
     reclassify_session,
@@ -563,6 +564,77 @@ def test_an_idempotent_session_move_writes_one_event_and_names_its_source(
     assert [event.source_metadata for event in moves] == [source]
     row.refresh_from_db()
     assert row.playthrough_id == target.pk
+
+
+def test_an_idempotent_finish_writes_one_event_and_names_its_source(
+    owned_user, owned_library, game
+):
+    """The runner's two facts, on the act that finishes a session."""
+    row = session_row(game, started_at=STARTED_AT)
+    source = {"bulk": {"action": "session.finish"}}
+
+    first = end_session(
+        owned_user,
+        row,
+        ended_at=ENDED_AT,
+        ended_at_zone="Asia/Tokyo",
+        correlation_id=uuid.uuid7(),
+        idempotency_key="one-finish",
+        source_metadata=source,
+    )
+    repeat = end_session(
+        owned_user,
+        row,
+        ended_at=ENDED_AT,
+        ended_at_zone="Asia/Tokyo",
+        correlation_id=uuid.uuid7(),
+        idempotency_key="one-finish",
+        source_metadata=source,
+    )
+
+    #: A same-key repeat is a replay, never `UNCHANGED`: the key was this
+    #: batch's own, so `RowOutcome.of` counts the row as moved.
+    assert first.outcome is CommandOutcome.APPENDED
+    assert repeat.outcome is CommandOutcome.REPLAYED
+    ends = LibraryEvent.objects.filter(
+        aggregate_id=row.pk, event_type="library.playersession.ended"
+    )
+    assert [event.source_metadata for event in ends] == [source]
+
+
+def test_an_idempotent_correction_writes_one_event_and_names_its_source(
+    owned_user, owned_library, game
+):
+    """The same two facts on the act a Finish's Undo runs."""
+    row = session_row(game, started_at=STARTED_AT, ended_at=ENDED_AT)
+    source = {"bulk": {"action": "session.finish"}}
+    running_again = TimedTiming(started_at=STARTED_AT, day_zone="Europe/Prague")
+
+    first = correct_session(
+        owned_user,
+        row,
+        running_again,
+        correlation_id=uuid.uuid7(),
+        idempotency_key="one-correction",
+        source_metadata=source,
+    )
+    repeat = correct_session(
+        owned_user,
+        row,
+        running_again,
+        correlation_id=uuid.uuid7(),
+        idempotency_key="one-correction",
+        source_metadata=source,
+    )
+
+    assert first.outcome is CommandOutcome.APPENDED
+    assert repeat.outcome is CommandOutcome.REPLAYED
+    row.refresh_from_db()
+    assert row.ended_at is None
+    corrections = LibraryEvent.objects.filter(
+        aggregate_id=row.pk, event_type="library.playersession.timing_corrected"
+    )
+    assert [event.source_metadata for event in corrections] == [source]
 
 
 def test_moving_a_session_onto_the_run_it_sits_on_answers_unchanged(
