@@ -47,6 +47,7 @@ from common.components import (
     StyledTable,
     TableData,
     Ul,
+    drop_columns,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -89,6 +90,7 @@ from games.filters import (
 )
 from games.formatting import session_time_range
 from games.forms import GameForm
+from games.list_columns import column_choice
 from games.models import (
     ExternalReference,
     Game,
@@ -219,6 +221,19 @@ def games_for_list(
     )
 
 
+def game_list_columns(playtime_label: str) -> list[Column]:
+    """The columns of the list. The filter selects the playtime label."""
+    return [
+        Column("Name", "name", shrinkable=True, key="name", hideable=False),
+        Column("Year", "year", priority=2, key="year"),
+        Column(playtime_label, "filtered_playtime", priority=2, key="playtime"),
+        Column("Status", "status", priority=3, key="status"),
+        Column("Wikidata", "wikidata", key="wikidata", hidden_by_default=True),
+        Column("Created", "created", key="created", hidden_by_default=True),
+        Column("Actions", align="right", priority=4, key="actions", hideable=False),
+    ]
+
+
 @login_required
 @regex_timeout_view
 def list_games(request: HttpRequest) -> HttpResponse:
@@ -240,20 +255,12 @@ def list_games(request: HttpRequest) -> HttpResponse:
 
     games, page_obj, elided_page_range = paginate(sort.queryset, find)
 
-    data: TableData = {
-        "caption": "Games",
-        "columns": [
-            Column("Name", "name", shrinkable=True),
-            Column("Year", "year", priority=2),
-            Column(listed.playtime_label, "filtered_playtime", priority=2),
-            Column("Status", "status", priority=3),
-            Column("Wikidata", "wikidata"),
-            Column("Created", "created"),
-            Column("Actions", align="right", priority=4),
-        ],
-        "sort_terms": sort.terms,
-        "rows": [
-            make_row(
+    columns = game_list_columns(listed.playtime_label)
+    hidden, picker = column_choice(request, "games", columns)
+    kept_columns, kept_cells = drop_columns(
+        columns,
+        [
+            [
                 NameWithIcon(game=game, include_sort_name=True),
                 str(game.year_released),
                 Duration(
@@ -287,9 +294,17 @@ def list_games(request: HttpRequest) -> HttpResponse:
                         },
                     ]
                 ),
-            )
+            ]
             for game in games
         ],
+        hidden,
+    )
+    data: TableData = {
+        "caption": "Games",
+        "columns": kept_columns,
+        "sort_terms": sort.terms,
+        "rows": [make_row(*cells) for cells in kept_cells],
+        "column_picker": picker,
     }
     content = paginated_table_content(
         data,
@@ -1099,7 +1114,7 @@ def _historical_playtime_section(
         run_labels_for(library, records),
         presentation,
         durations,
-        exclude_columns=["Name", "Created"],
+        hidden=("name", "created"),
         origin=origin,
         caption="Historical playtime of this game",
     )
@@ -1144,7 +1159,9 @@ def _playthroughs_section(
     data = playthrough_tabledata(
         runs,
         presentation,
-        exclude_columns=["Game"],
+        #: Every row names this game, and Created earns its width as seldom
+        #: here as it does on the list, which starts it off.
+        hidden=("game", "created"),
         clock=clock,
         origin=origin,
         csrf_token=csrf_token,

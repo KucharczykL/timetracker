@@ -9,6 +9,7 @@ from common.components.choice_card import (
     ChoiceCard,
     ChoiceCardGroup,
 )
+from common.components.column_picker import COLUMN_PICKER_LABEL, ColumnPicker
 from common.components.core import (
     AttrsArg,
     BaseComponent,
@@ -47,6 +48,7 @@ from common.components.custom_elements import (
     SelectDropdown,
     SelectionFields,
     SplitButtonDropdown,
+    dropdown_combobox_panel_class,
     register_element,
 )
 from common.components.date_picker import (
@@ -147,6 +149,7 @@ from common.components.primitives import (
     Cell,
     Checkbox,
     Column,
+    ColumnKey,
     ConfirmPage,
     ContentContainer,
     ControlButton,
@@ -165,6 +168,7 @@ from common.components.primitives import (
     FormFields,
     Icon,
     IconLink,
+    IconTrigger,
     Input,
     Label,
     Li,
@@ -213,6 +217,7 @@ from common.components.primitives import (
     Ul,
     YearPicker,
     custom_element_builder,
+    drop_columns,
     make_row,
     paginated_table_content,
     row_summary,
@@ -273,6 +278,7 @@ from common.utils import Truncation, truncate, truncate_info
 
 __all__ = [
     "CHOICE_CARD_MARK_ATTRIBUTE",
+    "COLUMN_PICKER_LABEL",
     "CONTENT_MAX_WIDTH_CLASS",
     "CONTROL_SIZE_CLASS",
     "DEFAULT_MATCH_MODE",
@@ -324,6 +330,8 @@ __all__ = [
     "ChoiceCard",
     "ChoiceCardGroup",
     "Column",
+    "ColumnKey",
+    "ColumnPicker",
     "ComboboxDropdown",
     "ConfirmPage",
     "ContentContainer",
@@ -386,6 +394,7 @@ __all__ = [
     "HTMLTag",
     "Icon",
     "IconLink",
+    "IconTrigger",
     "Input",
     "Label",
     "LabeledOption",
@@ -496,6 +505,8 @@ __all__ = [
     "assert_unique_element_ids",
     "collect_media",
     "custom_element_builder",
+    "drop_columns",
+    "dropdown_combobox_panel_class",
     "field_widget",
     "field_widget_templates",
     "is_quick_editable",

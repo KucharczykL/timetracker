@@ -1,3 +1,4 @@
+from collections.abc import Collection
 from functools import partial
 from typing import cast
 from uuid import UUID
@@ -21,8 +22,10 @@ from common.components import (
     ICON_BUTTON_SIZE_CLASS,
     AddForm,
     ButtonGroup,
+    Cell,
     Checkbox,
     Column,
+    ColumnKey,
     ContentContainer,
     ControlButton,
     CsrfInput,
@@ -45,6 +48,7 @@ from common.components import (
     TableData,
     TableRow,
     TableRowData,
+    drop_columns,
     make_row,
     paginated_table_content,
 )
@@ -59,6 +63,7 @@ from common.returns import OriginUrl, action_url
 from common.temporal_presentation import TemporalText
 from common.utils import label_with_details, paginate
 from games.forms import PurchaseForm
+from games.list_columns import column_choice
 from games.models import Game, PlayerGameStatus, Purchase, UserLibrary
 from games.ownership import owned_or_404
 from games.reads.playthrough_completions import (
@@ -130,15 +135,15 @@ def _render_purchase_buttons(
 # list view and has to hand TableRow the same column policy the surrounding
 # rows were built with.
 PURCHASE_COLUMNS: list[Column] = [
-    Column("Name", "name", shrinkable=True),
-    Column("Type", "type", priority=2),
-    Column("Price", "price", priority=3),
-    Column("Infinite", "infinite"),
-    Column("Purchased", "purchased", priority=2),
-    Column("Finished", "finished"),
-    Column("Refunded", "refunded"),
-    Column("Created", "created"),
-    Column("Actions", align="right", priority=4),
+    Column("Name", "name", shrinkable=True, key="name", hideable=False),
+    Column("Type", "type", priority=2, key="type"),
+    Column("Price", "price", priority=3, key="price"),
+    Column("Infinite", "infinite", key="infinite", hidden_by_default=True),
+    Column("Purchased", "purchased", priority=2, key="purchased"),
+    Column("Finished", "finished", key="finished"),
+    Column("Refunded", "refunded", key="refunded", hidden_by_default=True),
+    Column("Created", "created", key="created", hidden_by_default=True),
+    Column("Actions", align="right", priority=4, key="actions", hideable=False),
 ]
 
 
@@ -160,10 +165,10 @@ def _purchases_with_completions(library: UserLibrary) -> QuerySet[Purchase]:
     )
 
 
-def _render_purchase_row(
+def _purchase_cells(
     purchase: Purchase, presentation: DateTimePresentation, *, origin: OriginUrl | None
-) -> TableRowData:
-    """Return a row for simple-table rendering."""
+) -> list[Cell]:
+    """One row's cells, one for each column."""
     #: Read the act, not the value.
     #: A null value is a completion nobody dated, which
     #: TemporalText prints as Unknown. No completion is a dash.
@@ -172,7 +177,7 @@ def _render_purchase_row(
         if purchase.has_completion
         else "-"
     )
-    return make_row(
+    return [
         LinkedPurchase(purchase),
         purchase.get_type_display(),
         PurchasePrice(purchase),
@@ -191,8 +196,27 @@ def _render_purchase_row(
             can_split=purchase.num_purchases > 1,
             origin=origin,
         ),
-        id=f"purchase-row-{purchase.id}",
+    ]
+
+
+def _render_purchase_row(
+    purchase: Purchase,
+    presentation: DateTimePresentation,
+    *,
+    origin: OriginUrl | None,
+    hidden: Collection[ColumnKey] = (),
+) -> tuple[list[Column], TableRowData]:
+    """One row and its columns, reduced together.
+
+    The refund route sends a row from outside the list and reads the same
+    choice. A row of the full width is not correct in a reduced table.
+    """
+    columns, [cells] = drop_columns(
+        PURCHASE_COLUMNS,
+        [_purchase_cells(purchase, presentation, origin=origin)],
+        hidden,
     )
+    return columns, make_row(*cells, id=f"purchase-row-{purchase.id}")
 
 
 @login_required
@@ -230,14 +254,24 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
 
     purchases, page_obj, elided_page_range = paginate(purchases, find)
 
-    data: TableData = {
-        "caption": "Purchases",
-        "columns": list(PURCHASE_COLUMNS),
-        "sort_terms": sort.terms,
-        "rows": [
-            _render_purchase_row(purchase, presentation, origin=origin)
+    hidden, picker = column_choice(request, "purchases", PURCHASE_COLUMNS)
+    kept_columns, kept_cells = drop_columns(
+        PURCHASE_COLUMNS,
+        [
+            _purchase_cells(purchase, presentation, origin=origin)
             for purchase in purchases
         ],
+        hidden,
+    )
+    data: TableData = {
+        "caption": "Purchases",
+        "columns": kept_columns,
+        "sort_terms": sort.terms,
+        "rows": [
+            make_row(*cells, id=f"purchase-row-{purchase.id}")
+            for purchase, cells in zip(purchases, kept_cells, strict=True)
+        ],
+        "column_picker": picker,
     }
     content = paginated_table_content(
         data,
@@ -618,12 +652,13 @@ def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     purchase.refund()
 
     messages.success(request, "Purchase refunded")
-    row_data = _render_purchase_row(
+    columns, row_data = _render_purchase_row(
         purchase,
         date_time_presentation_for_request(request),
         origin=origin_from(request),
+        hidden=column_choice(request, "purchases", PURCHASE_COLUMNS).hidden,
     )
-    row_html = str(TableRow(data=row_data, columns=PURCHASE_COLUMNS, data_table=True))
+    row_html = str(TableRow(data=row_data, columns=columns, data_table=True))
     modal_close = (
         '<template id="refund-confirmation-modal" hx-swap-oob="outerHTML"></template>'
     )

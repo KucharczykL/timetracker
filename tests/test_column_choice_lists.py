@@ -1,0 +1,166 @@
+"""Every list reads the person's choice, and offers the control that states it."""
+
+import re
+
+import pytest
+from django.urls import reverse
+
+from games.list_columns import state_shown_columns
+from games.views.list_columns import LIST_COLUMNS
+
+pytestmark = pytest.mark.django_db
+
+MODES = sorted(LIST_COLUMNS)
+
+#: A key each mode declares, hides by default, and lets a person show.
+HIDEABLE = "created"
+
+
+def _shows_everything(owned_user, mode: str) -> None:
+    state_shown_columns(
+        owned_user,
+        mode,
+        [column.key for column in LIST_COLUMNS[mode].columns],
+        LIST_COLUMNS[mode].columns,
+    )
+
+
+def _hides(owned_user, mode: str, key: str) -> None:
+    state_shown_columns(
+        owned_user,
+        mode,
+        [column.key for column in LIST_COLUMNS[mode].columns if column.key != key],
+        LIST_COLUMNS[mode].columns,
+    )
+
+
+@pytest.fixture
+def logged_in(client, owned_user):
+    client.force_login(owned_user)
+    return client
+
+
+def _body(logged_in, mode: str) -> str:
+    return logged_in.get(reverse(LIST_COLUMNS[mode].route)).content.decode()
+
+
+def _headers(body: str) -> list[str]:
+    """The header cells, less the picker's panel, which names every column."""
+    without_panel = re.sub(
+        r'<form method="post" action="[^"]*/columns/.*?</form>',
+        "",
+        body,
+        flags=re.DOTALL,
+    )
+    heads = re.findall(r"<thead.*?</thead>", without_panel, re.DOTALL)
+    return re.findall(r"<th.*?</th>", "".join(heads), re.DOTALL)
+
+
+def _panel_boxes(body: str) -> dict[str, str]:
+    boxes = re.findall(r'<input[^>]*name="shown"[^>]*>', body)
+    return {key: box for box in boxes for key in re.findall(r'value="([^"]+)"', box)}
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_person_with_no_row_sees_every_column_but_the_ones_that_start_off(
+    logged_in, mode
+):
+    headers = "".join(_headers(_body(logged_in, mode)))
+
+    assert [
+        column.label
+        for column in LIST_COLUMNS[mode].columns
+        if column.label not in headers and not column.hidden_by_default
+    ] == []
+    assert [
+        column.label
+        for column in LIST_COLUMNS[mode].columns
+        if column.label in headers and column.hidden_by_default
+    ] == []
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_person_may_show_a_column_that_starts_hidden(logged_in, owned_user, mode):
+    _shows_everything(owned_user, mode)
+    headers = "".join(_headers(_body(logged_in, mode)))
+
+    assert [
+        column.label
+        for column in LIST_COLUMNS[mode].columns
+        if column.label not in headers
+    ] == []
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_hidden_column_leaves_the_table(logged_in, owned_user, mode):
+    _shows_everything(owned_user, mode)
+    _hides(owned_user, mode, HIDEABLE)
+    body = _body(logged_in, mode)
+
+    assert "Created" not in "".join(_headers(body))
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_the_panel_states_a_box_for_every_column(logged_in, mode):
+    boxes = _panel_boxes(_body(logged_in, mode))
+
+    assert set(boxes) == {column.key for column in LIST_COLUMNS[mode].columns}
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_hidden_columns_box_reads_unchecked(logged_in, owned_user, mode):
+    assert "checked" not in _panel_boxes(_body(logged_in, mode))[HIDEABLE]
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_shown_columns_box_reads_checked(logged_in, owned_user, mode):
+    _shows_everything(owned_user, mode)
+
+    assert "checked" in _panel_boxes(_body(logged_in, mode))[HIDEABLE]
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_key_that_refuses_to_hide_changes_nothing(logged_in, owned_user, mode):
+    """A rename may leave one behind; the list owes the column anyway."""
+    pinned = LIST_COLUMNS[mode].columns[0]
+    _hides(owned_user, mode, pinned.key)
+    body = _body(logged_in, mode)
+
+    assert pinned.label in "".join(_headers(body))
+    assert "checked" in _panel_boxes(body)[pinned.key]
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_the_choice_is_one_persons(logged_in, owned_user, django_user_model, mode):
+    other = django_user_model.objects.create_user(
+        username=f"other-{mode}", password="p"
+    )
+    _shows_everything(other, mode)
+
+    assert "Created" not in "".join(_headers(_body(logged_in, mode)))
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_an_empty_list_keeps_the_picker_out_of_a_column_that_drops(logged_in, mode):
+    """A list rendering no row cannot be read for a menu slot, and the picker
+    would fall into the last column, which the element drops for width."""
+    cells = _headers(_body(logged_in, mode))
+    last = cells[-1]
+
+    assert "data-row-menu" in last or "Actions" in last
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_the_picker_posts_to_this_mode_and_carries_its_origin(logged_in, mode):
+    body = _body(logged_in, mode)
+    route = reverse("games:state_list_columns", args=[mode])
+
+    assert f'action="{route}?origin=' in body
+
+
+def test_a_sort_naming_a_hidden_column_still_orders_the_rows(logged_in, owned_user):
+    """Created starts hidden, and the URL may still name it."""
+    answer = logged_in.get(reverse("games:list_games"), {"sort": "created"})
+
+    assert answer.status_code == 200
+    assert "Unknown sort" not in answer.content.decode()

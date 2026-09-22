@@ -1,3 +1,4 @@
+from collections.abc import Collection, Sequence
 from functools import partial
 from typing import Any, cast
 from uuid import UUID
@@ -18,6 +19,7 @@ from common.components import (
     BrowserTimeZoneInput,
     Cell,
     Column,
+    ColumnKey,
     Duration,
     FormFields,
     Fragment,
@@ -27,6 +29,7 @@ from common.components import (
     TableData,
     TableRowData,
     TruncatedText,
+    drop_columns,
     make_row,
     paginated_table_content,
     row_summary,
@@ -51,6 +54,7 @@ from games.bulk_removal import REMOVE_SESSION
 from games.bulk_tray import tray_actions
 from games.formatting import session_time_range
 from games.forms import SESSION_TIMEZONE_EMBEDS, SessionForm
+from games.list_columns import column_choice
 from games.models import (
     Device,
     Game,
@@ -66,10 +70,9 @@ from games.reads.player_sessions import (
     game_sessions,
     library_sessions,
     readable_sessions,
-    sole_game,
 )
 from games.reads.playthrough_runs import sole_ordinary_run
-from games.reads.session_run_labels import ambiguous_run_labels, every_run_label
+from games.reads.session_run_labels import every_run_label
 from games.sorting import (
     SESSION_DEFAULT_SORT,
     SESSION_SORTS,
@@ -102,29 +105,19 @@ from games.writes.playersession import (
 )
 
 
-def session_row_data(
+def session_cells(
     session: PlayerSession,
     device_list,
     csrf_token: str,
     presentation: DateTimePresentation,
     durations: DurationPresentation,
     *,
-    origin: OriginUrl | None,
-    run_label: str | None = None,
-    run_name: str | None = None,
-) -> TableRowData:
-    """Canonical session-list row, the single source of truth for the list
-    table.
-
-    At most one run argument is stated. `run_label` is the
-    name cell's, which names a run only where the page
-    cannot tell them apart; `run_name` is the column's,
-    which names every run.
-    """
-    cells: list[Cell] = [NameWithIcon(session=session, run_label=run_label)]
-    if run_name is not None:
-        cells.append(TruncatedText(run_name))
-    cells += [
+    run_name: str | None,
+) -> list[Cell]:
+    """One row's cells, one for each column."""
+    return [
+        NameWithIcon(session=session),
+        TruncatedText(run_name or ""),
         session_time_range(session, presentation),
         Duration(
             session.effective_duration,
@@ -135,6 +128,25 @@ def session_row_data(
         SessionDeviceSelector(session, device_list, csrf_token),
         presentation.format(session.created_at, "date"),
     ]
+
+
+def session_row_data(
+    session: PlayerSession,
+    cells: Sequence[Cell],
+    csrf_token: str,
+    presentation: DateTimePresentation,
+    durations: DurationPresentation,
+    *,
+    origin: OriginUrl | None,
+    run_name: str | None,
+    hidden: Collection[ColumnKey],
+) -> TableRowData:
+    """The one row builder of the session list.
+
+    The line below md names the run only while the column
+    shows it. A person who hides the column sees no run
+    name.
+    """
     return make_row(
         *cells,
         id=f"session-row-{session.pk}",
@@ -145,6 +157,7 @@ def session_row_data(
             presentation,
             durations,
             run_name=run_name,
+            hidden=hidden,
         ),
     )
 
@@ -155,19 +168,35 @@ def _row_summary(
     durations: DurationPresentation,
     *,
     run_name: str | None,
+    hidden: Collection[ColumnKey],
 ) -> str:
     """The second line, below md, where the columns went.
 
-    The run is named only while the column is declared:
-    below md the column has dropped and the name cell
-    states no label, so nothing else names the run.
+    It states a fact only while the person shows its column. Below md every
+    column but the first has dropped, so this line is the one place a hidden
+    column could come back.
     """
+    device = session.device.name if session.device is not None else None
     return row_summary(
         run_name,
-        session_time_range(session, presentation),
-        durations.format(session.effective_duration),
-        session.device.name if session.device is not None else None,
+        None if "date" in hidden else session_time_range(session, presentation),
+        None if "duration" in hidden else durations.format(session.effective_duration),
+        None if "device" in hidden else device,
     )
+
+
+SESSION_COLUMNS: list[Column] = [
+    Column("Name", "name", shrinkable=True, key="name", hideable=False),
+    #: Ties with Date; the rightmost of equals drops
+    #: first, so the grouping key outlives the others.
+    Column(
+        "Playthrough", "playthrough", shrinkable=True, priority=3, key="playthrough"
+    ),
+    Column("Date", "date", priority=3, key="date"),
+    Column("Duration", "duration", priority=2, key="duration"),
+    Column("Device", "device", key="device"),
+    Column("Created", "created", key="created", hidden_by_default=True),
+]
 
 
 @login_required
@@ -195,9 +224,6 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
                 sessions,
                 filter_query_context_for_library(library),
             )
-    #: Read before the sort: its CASE would join the same
-    #: SELECT DISTINCT list and answer a row per session.
-    one_game = sole_game(sessions)
     find = parse_find_filter(request)
     sort = apply_sort(sessions, find, SESSION_SORTS, SESSION_DEFAULT_SORT)
     sessions = sort.queryset
@@ -205,49 +231,48 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     sessions, page_obj, elided_page_range = paginate(sessions, find)
     csrf_token = get_token(request)
     page_sessions = list(sessions)
-    #: One game makes the run what tells the rows apart.
-    organized = one_game is not None
-    run_labels = (
-        every_run_label(library, page_sessions)
-        if organized
-        else ambiguous_run_labels(library, page_sessions)
-    )
-
-    columns = [
-        Column("Name", "name", shrinkable=True),
-        Column("Date", "date", priority=3),
-        Column("Duration", "duration", priority=2),
-        Column("Device", "device"),
-        Column("Created", "created"),
-    ]
-    if organized:
-        #: Ties with Date; the rightmost of equals drops
-        #: first, so the grouping key outlives the others.
-        columns.insert(
-            1, Column("Playthrough", "playthrough", shrinkable=True, priority=3)
-        )
-
-    data: TableData = {
-        "caption": "Sessions",
-        "columns": columns,
-        "sort_terms": sort.terms,
-        "rows": [
-            session_row_data(
+    hidden, picker = column_choice(request, "sessions", SESSION_COLUMNS)
+    run_labels = every_run_label(library, page_sessions)
+    run_names = {
+        session.pk: run_labels.get(session.playthrough_id) for session in page_sessions
+    }
+    columns, row_cells = drop_columns(
+        SESSION_COLUMNS,
+        [
+            session_cells(
                 session,
                 device_list,
                 csrf_token,
                 presentation,
                 durations,
-                origin=origin,
-                run_label=(
-                    None if organized else run_labels.get(session.playthrough_id)
-                ),
-                run_name=(
-                    run_labels.get(session.playthrough_id) if organized else None
-                ),
+                run_name=run_names[session.pk],
             )
             for session in page_sessions
         ],
+        hidden,
+    )
+    named = "playthrough" not in hidden
+
+    data: TableData = {
+        "caption": "Sessions",
+        "columns": columns,
+        #: Every row carries its acts in the slot, rendered or not.
+        "menu_slot": True,
+        "sort_terms": sort.terms,
+        "rows": [
+            session_row_data(
+                session,
+                cells,
+                csrf_token,
+                presentation,
+                durations,
+                origin=origin,
+                run_name=run_names[session.pk] if named else None,
+                hidden=hidden,
+            )
+            for session, cells in zip(page_sessions, row_cells, strict=True)
+        ],
+        "column_picker": picker,
         "selection": {
             "filter": filter_json,
             "csrf_token": csrf_token,

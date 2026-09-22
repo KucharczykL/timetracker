@@ -16,6 +16,7 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from column_choice import show_every_column
 from django.conf import settings
 from django.urls import reverse
 from playwright.sync_api import Browser, Page, ViewportSize
@@ -92,6 +93,8 @@ def _login(page: Page, live_server, django_user_model) -> Page:
     user = django_user_model.objects.get(username="tester")
     user.set_password("secret123")
     user.save()
+    #: These measurements want each column, not the default set.
+    show_every_column(user)
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")
@@ -457,7 +460,11 @@ def test_an_open_row_menu_is_not_covered_by_a_pinned_cell(
         "fixture/viewport; this test owns both, so a missing toggle means the "
         "staged premise broke, not that the environment lacks one"
     )
-    toggle.click()
+    # Pressed, not clicked: the staged width puts the trailing slot below the
+    # pinned cell, where a mouse cannot reach it. The panel is measured here,
+    # not the path to it.
+    toggle.focus()
+    toggle.press("Enter")
     menu = page.locator("tbody tr [data-menu]:not([hidden])").first
     menu.wait_for(state="visible")
     page.evaluate(

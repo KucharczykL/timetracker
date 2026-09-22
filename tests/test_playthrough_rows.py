@@ -149,13 +149,13 @@ def test_the_days_cell_reads_the_span(owned_library, run, presentation):
     assert "3" in cells
 
 
-def test_excluding_the_game_column_drops_its_cell(owned_library, run, presentation):
+def test_hiding_the_game_column_takes_its_cell(owned_library, run, presentation):
     runs = numbered_runs(owned_library, run)
 
     data = playthrough_tabledata(
         runs,
         presentation,
-        exclude_columns=["Game"],
+        hidden=("game",),
         clock=activity_clock(owned_library),
         origin=None,
         csrf_token="token",
@@ -376,9 +376,35 @@ def test_the_list_summary_names_the_game(owned_library, run, presentation):
 
 def test_game_detail_states_no_game_part(owned_library, run, presentation):
     """Every row there names the same game already."""
-    summary = summary_of(owned_library, run, presentation, exclude_columns=["Game"])
+    summary = summary_of(owned_library, run, presentation, hidden=("game",))
 
     assert "Outer Wilds" not in summary
+
+
+def test_the_summary_states_no_endpoint_the_person_hid(
+    owned_library, run, presentation
+):
+    """A span states both endpoints, so one hidden endpoint leaves the other
+    to state itself."""
+    _state_days(
+        run,
+        TemporalValue.from_day(date(2026, 1, 1)),
+        TemporalValue.from_day(date(2026, 1, 3)),
+    )
+
+    summary = summary_of(owned_library, run, presentation, hidden=("completed",))
+
+    assert "2026-01-03" not in summary
+    assert "2026-01-01" in summary
+
+
+def test_the_summary_states_no_condition_the_person_hid(
+    owned_library, run, presentation
+):
+    summary = summary_of(owned_library, run, presentation, hidden=("activity",))
+
+    assert "Never played" not in summary
+    assert "Playing" not in summary
 
 
 def test_two_known_days_read_as_one_range(owned_library, run, presentation):

@@ -1,16 +1,12 @@
 """The sessions a library counts."""
 
-import uuid
 from datetime import date
 from typing import NamedTuple
 
-from django.db.models import Max, Min, QuerySet
+from django.db.models import Max, Min
 
 from games.models import Game, PlayerSession, PlayerSessionQuerySet, UserLibrary
 from games.reads.unscoped import require_library
-
-#: A catalog game's key, as a caller holds it.
-type GameId = uuid.UUID
 
 #: Sessions reach their game through the run.
 GAME = "playthrough__player_game__game"
@@ -47,18 +43,6 @@ def library_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
 def readable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
     """The row path the list and the API share: run, game, platform, device."""
     return library_sessions(library).select_related(f"{GAME}__platform", "device")
-
-
-def sole_game(sessions: QuerySet[PlayerSession]) -> GameId | None:
-    """The one game these sessions name, or None.
-
-    Django puts every ordering expression in the SELECT
-    DISTINCT list, so an ordered queryset distincts over
-    the instant and the key beside the game and answers a
-    row per session. Nothing raises; the answer is wrong.
-    """
-    keys = list(sessions.order_by().values_list(GAME, flat=True).distinct()[:2])
-    return keys[0] if len(keys) == 1 else None
 
 
 def game_sessions(library: UserLibrary, game: Game) -> PlayerSessionQuerySet:

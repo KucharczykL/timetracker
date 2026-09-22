@@ -23,6 +23,7 @@ from common.components import (
     TableData,
     TruncatedText,
     Ul,
+    drop_columns,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -38,6 +39,7 @@ from games.filters import (
     parse_platform_filter,
 )
 from games.forms import PlatformForm
+from games.list_columns import column_choice
 from games.models import Platform, UserLibrary
 from games.ownership import owned_or_404
 from games.reads.external_references import held_by, references_for
@@ -57,6 +59,15 @@ from games.views.filtering import (
 from games.views.reference_section import references_area
 from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
+
+PLATFORM_COLUMNS: list[Column] = [
+    Column("Name", "name", key="name", hideable=False),
+    Column("Icon", priority=2, key="icon"),
+    Column("Group", "group", priority=2, key="group"),
+    Column("References", priority=2, key="references", hidden_by_default=True),
+    Column("Created", "created", key="created", hidden_by_default=True),
+    Column("Actions", align="right", priority=3, key="actions", hideable=False),
+]
 
 
 @login_required
@@ -86,19 +97,11 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
     platforms, page_obj, elided_page_range = paginate(platforms, find)
     references = references_for(list(platforms))
 
-    data: TableData = {
-        "caption": "Platforms",
-        "columns": [
-            Column("Name", "name"),
-            Column("Icon", priority=2),
-            Column("Group", "group", priority=2),
-            Column("References", priority=2),
-            Column("Created", "created"),
-            Column("Actions", align="right", priority=3),
-        ],
-        "sort_terms": sort.terms,
-        "rows": [
-            make_row(
+    hidden, picker = column_choice(request, "platforms", PLATFORM_COLUMNS)
+    kept_columns, kept_cells = drop_columns(
+        PLATFORM_COLUMNS,
+        [
+            [
                 TruncatedText(platform.name),
                 Icon(platform.icon),
                 platform.group,
@@ -122,9 +125,17 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
                         },
                     ]
                 ),
-            )
+            ]
             for platform in platforms
         ],
+        hidden,
+    )
+    data: TableData = {
+        "caption": "Platforms",
+        "columns": kept_columns,
+        "sort_terms": sort.terms,
+        "rows": [make_row(*cells) for cells in kept_cells],
+        "column_picker": picker,
     }
     content = paginated_table_content(
         data,

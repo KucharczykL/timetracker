@@ -10,7 +10,7 @@ widgets return :class:`Safe`.
 """
 
 import json
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Literal, NamedTuple, NotRequired, TypedDict
 
@@ -2260,6 +2260,7 @@ class TableRowData(TypedDict):
 
 
 type Align = Literal["left", "right"]  # column text alignment, e.g. "right"
+type ColumnKey = str  # the picker's identity for a column, e.g. "playthrough"
 
 
 class Column(NamedTuple):
@@ -2277,7 +2278,16 @@ class Column(NamedTuple):
     ``priority`` orders column dropping when a data table does not fit: lower
     drops first, rightmost first among equals. The first column never drops —
     it is the row header that names every row — and neither does the highest-
-    priority column beside it, so a table never collapses to names alone."""
+    priority column beside it, so a table never collapses to names alone.
+    ``key`` names the column for the picker, which a label cannot: the game
+    list's playtime header reads one of three labels for one column. ``hideable``
+    is false where a person may not turn the column off - the row header that
+    names every row, and the Actions column that carries every act on it.
+    ``hidden_by_default`` starts the column off for a person who has stated
+    nothing, for a column that earns its width seldom; a column that refuses to
+    hide may not state it. It is read by the list views, through
+    ``games.list_columns.hidden_columns``; a page that hosts no picker states
+    its own exclusions and reads no default."""
 
     label: str
     sort_key: str | None = None
@@ -2286,6 +2296,38 @@ class Column(NamedTuple):
     shrinkable: bool = False
     wrap: bool = False
     priority: int = 1
+    key: ColumnKey = ""
+    hideable: bool = True
+    hidden_by_default: bool = False
+
+
+def drop_columns(
+    columns: Sequence[Column],
+    rows: Sequence[list[Cell]],
+    hidden: Collection[ColumnKey],
+) -> tuple[list[Column], list[list[Cell]]]:
+    """Remove each named column, with its cell in each row.
+
+    The caller states the keys. A page's own exclusions and a person's hidden
+    set use this one parameter. `Column.hideable` is not read here: the view
+    reads it first, because a page can exclude a column that a person cannot.
+    """
+    for row in rows:
+        if len(row) != len(columns):
+            raise ValueError(
+                f"drop_columns has a row of {len(row)} cells against "
+                f"{len(columns)} columns: one index set cannot narrow both, "
+                f"and each cell would render under the wrong header. "
+                f"Row {row!r}."
+            )
+    dropped = {index for index, column in enumerate(columns) if column.key in hidden}
+    kept_columns = [
+        column for index, column in enumerate(columns) if index not in dropped
+    ]
+    kept_rows = [
+        [cell for index, cell in enumerate(row) if index not in dropped] for row in rows
+    ]
+    return kept_columns, kept_rows
 
 
 type SelectionKey = str  # a row's own name, e.g. "0193f0c2-…"
@@ -2334,6 +2376,10 @@ class TableData(TypedDict):
     sort_terms: NotRequired[Sequence[SortTerm]]
     # Present where a list selects rows.
     selection: NotRequired[SelectionDeclaration]
+    # The column control, in the header row's last cell.
+    column_picker: NotRequired[Node]
+    # Whether the rows carry a row menu. A table rendering no row states it.
+    menu_slot: NotRequired[bool]
 
 
 def make_row(
@@ -2519,8 +2565,18 @@ ROW_MENU_HEADER_LABEL = "Row actions"
 # The slot never grows, so it states its own padding.
 _ROW_MENU_CELL_CLASS = "w-px px-2 py-2 whitespace-nowrap text-right"
 
+#: The padding of a header cell over a label.
+_HEADER_CELL_CLASS = "px-2 sm:px-3 lg:px-6 py-3"
+#: A header cell over a control is padded like the row cells over one.
 
-def _row_menu_header_cell(columns: Sequence[Column], *, data_table: bool) -> Node:
+#: The control states the 42px of ``min-h-control`` itself. The deeper padding
+#: of a header makes the header row taller than each row below it.
+_HEADER_CONTROL_CELL_CLASS = "px-2 sm:px-3 lg:px-6 py-2"
+
+
+def _row_menu_header_cell(
+    columns: Sequence[Column], *, data_table: bool, trailing: Node | str = ""
+) -> Node:
     """The trailing ``<th>`` over the row menus.
 
     No visible label, a name of its own, and a ``data-priority`` one above
@@ -2534,8 +2590,9 @@ def _row_menu_header_cell(columns: Sequence[Column], *, data_table: bool) -> Nod
     if data_table:
         highest = max((column.priority for column in columns), default=0)
         policy_attrs.append(("data-priority", str(highest + 1)))
-    return Th(policy_attrs, scope="col", class_="px-2 sm:px-3 lg:px-6 py-3")[
-        Span(class_="sr-only")[ROW_MENU_HEADER_LABEL]
+    cell_class = _HEADER_CONTROL_CELL_CLASS if trailing else _HEADER_CELL_CLASS
+    return Th(policy_attrs, scope="col", class_=f"{cell_class} text-right")[
+        Span(class_="sr-only")[ROW_MENU_HEADER_LABEL], trailing
     ]
 
 
@@ -2626,6 +2683,32 @@ _ELLIPSIS_GLYPHS: Mapping[EllipsisOrientation, str] = {
 }
 
 
+def IconTrigger(
+    attrs: AttrsArg | None = None,
+    /,
+    *,
+    icon: str,
+    label: str,
+    haspopup: PopupKind = "menu",
+) -> ControlButton:
+    """A bare glyph that opens a popup.
+
+    One shape for each such trigger: two of them in one table are then one
+    control at two places. The glyph is decoration and says ``aria-hidden``,
+    and the button carries the name. A caller that wants a pointer hint states
+    its own ``title``: beside an ``aria-label`` it reads as a description, so
+    a trigger stating both is named twice.
+    """
+    return ControlButton(
+        attrs,
+        color="gray",
+        variant="ghost",
+        class_="p-2",
+        aria_label=label,
+        aria_haspopup=haspopup,
+    )[Icon(icon, [("aria-hidden", "true")])]
+
+
 def EllipsisTrigger(
     attrs: AttrsArg | None = None,
     /,
@@ -2636,22 +2719,19 @@ def EllipsisTrigger(
 ) -> ControlButton:
     """The bare three-dot trigger, shared by three surfaces.
 
-    The glyph is decoration and says ``aria-hidden``: the button carries the
-    name. ``haspopup`` is the caller's because the three surfaces open two
-    different things — a menu of items, or a dialog of moved controls.
+    ``haspopup`` is the caller's because the three surfaces open two different
+    things — a menu of items, or a dialog of moved controls.
 
     The ringed ``ellipsis`` glyph is deliberately not one of these two. It is
     ``TruncatedText``'s reveal, and a row would then show two ellipses a cell
     apart if this borrowed it.
     """
-    return ControlButton(
+    return IconTrigger(
         attrs,
-        color="gray",
-        variant="ghost",
-        class_="p-2",
-        aria_label=label,
-        aria_haspopup=haspopup,
-    )[Icon(_ELLIPSIS_GLYPHS[orientation], [("aria-hidden", "true")])]
+        icon=_ELLIPSIS_GLYPHS[orientation],
+        label=label,
+        haspopup=haspopup,
+    )
 
 
 def _replace_query(
@@ -2841,15 +2921,15 @@ def _header_cell(
     data_table: bool = False,
     pinned: bool = False,
     selectable: bool = False,
+    trailing: Node | str = "",
 ) -> Node:
     """One ``<th>``: a static header for a non-sortable column, else a clickable
     sort link wrapped in ``<sort-header>`` with both navigation targets baked in.
 
     ``selectable`` insets the label by the checkbox its column reserves, so the
     label still stands over the names under it."""
-    base_class = "px-2 sm:px-3 lg:px-6 py-3" + (
-        " text-right" if column.align == "right" else ""
-    )
+    padding = _HEADER_CONTROL_CELL_CLASS if trailing else _HEADER_CELL_CLASS
+    base_class = padding + (" text-right" if column.align == "right" else "")
     if column.class_:
         base_class = f"{base_class} {column.class_}"
     if column.shrinkable:
@@ -2870,9 +2950,10 @@ def _header_cell(
             policy_attrs.append(("data-shrinkable", ""))
     inset = _SELECTION_LABEL_INSET_CLASS if selectable else ""
     if column.sort_key is None:
-        return Th(policy_attrs, scope="col", class_=base_class)[
-            Div(class_=inset)[column.label] if inset else column.label
-        ]
+        label: Child = Div(class_=inset)[column.label] if inset else column.label
+        if trailing:
+            label = Span(class_="inline-flex items-center gap-2")[label, trailing]
+        return Th(policy_attrs, scope="col", class_=base_class)[label]
 
     active = next(
         (
@@ -2895,8 +2976,13 @@ def _header_cell(
         class_=_SORT_HEADER_LINK_CLASS,
     )[column.label, indicator]
     header = _SortHeader()[link]
+    sorted_label: Child = Div(class_=inset)[header] if inset else header
+    if trailing:
+        sorted_label = Span(class_="inline-flex items-center gap-2")[
+            sorted_label, trailing
+        ]
     return Th(policy_attrs, scope="col", class_=base_class, aria_sort=aria_sort)[
-        Div(class_=inset)[header] if inset else header
+        sorted_label
     ]
 
 
@@ -3192,6 +3278,8 @@ def StyledTable(
     caption: str = "",
     caption_key: str = "",
     selection: SelectionDeclaration | None = None,
+    column_picker: Node | None = None,
+    menu_slot: bool | None = None,
 ) -> Node:
     """Styled, paginated table — the opinionated wrapper over the generic
     ``Table`` primitive (shadow, rounded, zebra rows, responsive column-hiding,
@@ -3224,6 +3312,14 @@ def StyledTable(
 
     ``selection`` makes the table selectable: every row must then carry a
     ``key``, and the footer gains the selection line.
+
+    ``column_picker`` is the control that chooses the columns. It lands in the
+    header row's last cell: the trailing menu slot, else the last column's own
+    header.
+
+    ``menu_slot`` states whether the rows carry a row menu. A table that
+    renders no row cannot be read for one, and the picker would then fall into
+    a column that drops.
     """
     if data_table and not caption:
         raise ValueError(
@@ -3231,8 +3327,10 @@ def StyledTable(
             "region, and an empty name leaves the region unlabelled."
         )
     #: The slot is the table's, never a row's: a short row would shift every
-    #: column after it out from under its header.
-    menu_slot = any("menu" in row for row in (rows or []))
+    #: column after it out from under its header. A table that renders no row
+    #: has none to read, so a table whose rows carry a menu states the slot.
+    if menu_slot is None:
+        menu_slot = any("menu" in row for row in (rows or []))
     #: Counted with the columns: the slot takes a rendered position too, and
     #: a thirteenth is past the safelisted family that hides one.
     rendered = len(columns or []) + (1 if menu_slot else 0)
@@ -3312,6 +3410,9 @@ def StyledTable(
         # takes its background from its parent row, and a <thead>-level surface
         # would leave it transparent.
         header_row_class = "bg-neutral-tertiary"
+        # The picker is in the last header cell: the menu slot, or the last
+        # column. It thus follows the slot as the Actions columns retire.
+        last_column = len(columns) - 1
         header_cells: list[Node] = [
             _header_cell(
                 column,
@@ -3320,11 +3421,24 @@ def StyledTable(
                 data_table=data_table,
                 pinned=data_table and index == 0,
                 selectable=selection is not None and index == 0,
+                trailing=(
+                    column_picker
+                    if column_picker is not None
+                    and not menu_slot
+                    and index == last_column
+                    else ""
+                ),
             )
             for index, column in enumerate(columns)
         ]
         if menu_slot:
-            header_cells.append(_row_menu_header_cell(columns, data_table=data_table))
+            header_cells.append(
+                _row_menu_header_cell(
+                    columns,
+                    data_table=data_table,
+                    trailing=column_picker or "",
+                )
+            )
         header_row = Tr(class_=header_row_class)[*header_cells]
         thead_class = "text-type-micro text-body uppercase"
         if data_table:
@@ -3507,4 +3621,6 @@ def paginated_table_content(
         data_table=True,
         caption=data["caption"],
         selection=data.get("selection"),
+        column_picker=data.get("column_picker"),
+        menu_slot=data.get("menu_slot"),
     )

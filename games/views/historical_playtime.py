@@ -1,6 +1,6 @@
 """The Historical tab of the Playtime page."""
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import cast
 
 from django.contrib.auth.decorators import login_required
@@ -15,6 +15,7 @@ from common.components import (
     BadgeTone,
     Cell,
     Column,
+    ColumnKey,
     ContentContainer,
     DropdownLinkItem,
     Duration,
@@ -26,6 +27,7 @@ from common.components import (
     RowActionMenu,
     Span,
     TableData,
+    drop_columns,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -52,6 +54,7 @@ from games.filters import (
     filter_query_context_for_library,
     parse_historical_playtime_filter,
 )
+from games.list_columns import column_choice
 from games.models import HistoricalPlaytime, HistoricalPlaytimeProvenance
 from games.reads.historical_playtime_page import (
     RunLabels,
@@ -134,12 +137,37 @@ _SORT_KEYS: Mapping[str, SortKey] = {
 }
 
 
+def historical_playtime_columns(*, sortable: bool) -> list[Column]:
+    """The columns of the record table, in order."""
+
+    def column(label: str, key: ColumnKey, **options: object) -> Column:
+        return Column(
+            label,
+            _SORT_KEYS.get(label) if sortable else None,
+            key=key,
+            **options,  # type: ignore[arg-type]
+        )
+
+    return [
+        column("Name", "name", shrinkable=True, hideable=False),
+        #: Shrinkable as well: it leads the table Game
+        #: detail renders, and the summary under a cell
+        #: that cannot shrink widens the whole table.
+        column("When", "when", shrinkable=True, priority=3),
+        column("Duration", "duration", priority=2),
+        column("Provenance", "provenance", priority=2),
+        column("Playthroughs", "playthroughs", priority=1),
+        column("Device", "device"),
+        column("Created", "created", hidden_by_default=True),
+    ]
+
+
 def historical_playtime_tabledata(
     records: Sequence[HistoricalPlaytime],
     labels: RunLabels,
     presentation: DateTimePresentation,
     durations: DurationPresentation,
-    exclude_columns: Sequence[str] = (),
+    hidden: Collection[ColumnKey] = (),
     *,
     origin: OriginUrl | None,
     sort_terms: Sequence[SortTerm] = (),
@@ -153,33 +181,7 @@ def historical_playtime_tabledata(
     sortable on either.
     """
 
-    def column(label: str, **options: object) -> Column:
-        return Column(
-            label,
-            _SORT_KEYS.get(label) if sortable else None,
-            **options,  # type: ignore[arg-type]
-        )
-
-    column_list = [
-        column("Name", shrinkable=True),
-        #: Shrinkable as well: it leads the table Game
-        #: detail renders, and the summary under a cell
-        #: that cannot shrink widens the whole table.
-        column("When", shrinkable=True, priority=3),
-        column("Duration", priority=2),
-        column("Provenance", priority=2),
-        column("Playthroughs", priority=1),
-        column("Device"),
-        column("Created"),
-    ]
-    kept_columns = [
-        column for column in column_list if column.label not in exclude_columns
-    ]
-    dropped_indexes = [
-        index
-        for index, column in enumerate(column_list)
-        if column.label in exclude_columns
-    ]
+    column_list = historical_playtime_columns(sortable=sortable)
 
     row_list: list[list[Cell]] = [
         [
@@ -202,13 +204,12 @@ def historical_playtime_tabledata(
         ]
         for record in records
     ]
-    kept_rows = [
-        [cell for index, cell in enumerate(row) if index not in dropped_indexes]
-        for row in row_list
-    ]
+    kept_columns, kept_rows = drop_columns(column_list, row_list, hidden)
     return {
         "caption": caption,
         "columns": kept_columns,
+        #: Every row carries its acts in the slot, rendered or not.
+        "menu_slot": True,
         "sort_terms": sort_terms,
         "rows": [
             make_row(
@@ -221,7 +222,8 @@ def historical_playtime_tabledata(
                     labels,
                     presentation,
                     durations,
-                    with_when="Name" not in exclude_columns,
+                    with_when="name" not in hidden,
+                    hidden=hidden,
                 ),
             )
             for record, cells in zip(records, kept_rows, strict=True)
@@ -236,24 +238,27 @@ def _record_summary(
     durations: DurationPresentation,
     *,
     with_when: bool,
+    hidden: Collection[ColumnKey],
 ) -> str:
     """The second line, below md, where the columns went.
 
-    The identity cell decides: the list leads with the
-    game and states the day below it, Game detail leads
-    with the day and spends the line on the rest.
+    The identity cell decides what it leads with: the list leads with the game
+    and states the day below it, Game detail leads with the day and spends the
+    line on the rest. Either way it states a fact only while the person shows
+    its column.
     """
-    device = record.device.name if record.device else None
+    device = None if "device" in hidden or not record.device else record.device.name
+    duration = None if "duration" in hidden else durations.format(record.duration)
     if with_when:
         return row_summary(
-            _when_part(record, presentation),
-            durations.format(record.duration),
+            None if "when" in hidden else _when_part(record, presentation),
+            duration,
             device,
         )
     return row_summary(
-        durations.format(record.duration),
-        record.get_provenance_display(),
-        _runs_part(record, labels),
+        duration,
+        None if "provenance" in hidden else record.get_provenance_display(),
+        None if "playthroughs" in hidden else _runs_part(record, labels),
         device,
     )
 
@@ -308,15 +313,20 @@ def list_historical_playtime(request: HttpRequest) -> HttpResponse:
     warn_unknown_sort(request, sort.unknown, entity="historical playtime")
     page_rows, page_obj, elided_page_range = paginate(sort.queryset, find)
     page_records = list(page_rows)
+    hidden, picker = column_choice(
+        request, "historical_playtime", historical_playtime_columns(sortable=True)
+    )
     data = historical_playtime_tabledata(
         page_records,
         run_labels_for(library, page_records),
         presentation,
         durations,
+        hidden,
         origin=request.get_full_path(),
         sort_terms=sort.terms,
         sortable=True,
     )
+    data["column_picker"] = picker
     data["selection"] = {
         "filter": filter_json,
         "csrf_token": get_token(request),

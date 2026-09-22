@@ -9,6 +9,7 @@ from games.views import (
     historical_playtime,
     historical_playtime_entry,
     library,
+    list_columns,
     platform,
     playthrough,
     preset,
@@ -159,6 +160,11 @@ urlpatterns = [
         "purchase/<uuidv7:purchase_id>/split",
         purchase.split_purchase,
         name="split_purchase",
+    ),
+    path(
+        "lists/<str:mode>/columns/",
+        list_columns.state_list_columns,
+        name="state_list_columns",
     ),
     path(
         "bulk/undo/<uuidv7:correlation_id>/",

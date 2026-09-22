@@ -42,6 +42,7 @@ from games.filters import (
     parse_playthrough_filter,
 )
 from games.forms import PlaythroughForm
+from games.list_columns import column_choice
 from games.models import (
     Game,
     PlayerGameStatus,
@@ -77,7 +78,7 @@ from games.views.filtering import (
     warn_unknown_sort,
 )
 from games.views.playergame_writes import record_facts_for_request
-from games.views.playthrough_rows import playthrough_tabledata
+from games.views.playthrough_rows import playthrough_columns, playthrough_tabledata
 from games.views.playthrough_writes import (
     record_run_for_request,
     remove_run_for_request,
@@ -169,15 +170,20 @@ def list_playthroughs(request: HttpRequest) -> HttpResponse:
     }
     for run in page_runs:
         run.display_number = numbers.get(run.pk)
+    hidden, picker = column_choice(
+        request, "playthroughs", playthrough_columns(sortable=True)
+    )
     data = playthrough_tabledata(
         page_runs,
         presentation,
+        hidden,
         clock=activity_clock(library),
         sort_terms=sort.terms,
         sortable=True,
         origin=origin,
         csrf_token=get_token(request),
     )
+    data["column_picker"] = picker
     data["selection"] = {
         "filter": filter_json,
         "csrf_token": get_token(request),

@@ -21,6 +21,7 @@ from common.components import (
     TableData,
     TruncatedText,
     Ul,
+    drop_columns,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -36,6 +37,7 @@ from games.filters import (
     parse_device_filter,
 )
 from games.forms import DeviceForm
+from games.list_columns import column_choice
 from games.models import Device
 from games.ownership import owned_or_404
 from games.reads.player_sessions import library_sessions
@@ -53,6 +55,13 @@ from games.views.filtering import (
 )
 from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
+
+DEVICE_COLUMNS: list[Column] = [
+    Column("Name", "name", key="name", hideable=False),
+    Column("Type", "type", priority=2, key="type"),
+    Column("Created", "created", key="created", hidden_by_default=True),
+    Column("Actions", align="right", priority=3, key="actions", hideable=False),
+]
 
 
 @login_required
@@ -81,17 +90,11 @@ def list_devices(request: HttpRequest) -> HttpResponse:
     warn_unknown_sort(request, sort.unknown, entity="device")
     devices, page_obj, elided_page_range = paginate(devices, find)
 
-    data: TableData = {
-        "caption": "Devices",
-        "columns": [
-            Column("Name", "name"),
-            Column("Type", "type", priority=2),
-            Column("Created", "created"),
-            Column("Actions", align="right", priority=3),
-        ],
-        "sort_terms": sort.terms,
-        "rows": [
-            make_row(
+    hidden, picker = column_choice(request, "devices", DEVICE_COLUMNS)
+    kept_columns, kept_cells = drop_columns(
+        DEVICE_COLUMNS,
+        [
+            [
                 TruncatedText(device.name),
                 device.get_type_display(),
                 presentation.format(device.created_at, "date"),
@@ -113,9 +116,17 @@ def list_devices(request: HttpRequest) -> HttpResponse:
                         },
                     ]
                 ),
-            )
+            ]
             for device in devices
         ],
+        hidden,
+    )
+    data: TableData = {
+        "caption": "Devices",
+        "columns": kept_columns,
+        "sort_terms": sort.terms,
+        "rows": [make_row(*cells) for cells in kept_cells],
+        "column_picker": picker,
     }
     content = paginated_table_content(
         data,
