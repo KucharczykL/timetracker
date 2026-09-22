@@ -7321,3 +7321,62 @@ class TestSessionsOutsideTheirRunsDates:
         }
         assert undated <= _answered(owned_library, False)
         assert not (undated & _answered(owned_library, True))
+
+
+@pytest.mark.django_db
+class TestTheRunsKind:
+    """The session filter's word for a bucket row."""
+
+    @pytest.fixture
+    def kinds(self, owned_library):
+        from games.models import Game
+
+        game = Game.objects.create(library=owned_library, name="Two runs")
+        ordinary = tracked_run(owned_library, game)
+        bucket = _bucket_run(owned_library, "Imported only")
+        return {
+            "ordinary": duration_only_row(ordinary, date(2022, 3, 2), AN_HOUR),
+            "bucket": duration_only_row(bucket, date(2022, 3, 2), AN_HOUR),
+        }
+
+    def _answered(self, library, modifier):
+        from games.filters import filter_query_context_for_library
+        from games.models import PlaythroughKind
+        from games.reads.player_sessions import library_sessions
+
+        criteria = PlayerSessionFilter(
+            playthrough_kind=ChoiceCriterion(
+                value=[PlaythroughKind.IMPORTED_HISTORY.value], modifier=modifier
+            )
+        )
+        return set(
+            library_sessions(library).filter(
+                criteria.to_q(filter_query_context_for_library(library))
+            )
+        )
+
+    def test_includes_answers_the_bucket_alone(self, owned_library, kinds):
+        assert self._answered(owned_library, Modifier.INCLUDES) == {kinds["bucket"]}
+
+    def test_excludes_answers_the_ordinary_rows(self, owned_library, kinds):
+        assert self._answered(owned_library, Modifier.EXCLUDES) == {kinds["ordinary"]}
+
+    def test_the_widget_reads_the_models_own_choices(self):
+        from games.models import PlaythroughKind
+
+        entry = next(
+            meta
+            for meta in field_metadata(PlayerSessionFilter)
+            if meta["name"] == "playthrough_kind"
+        )
+        assert entry["kind"] == "set"
+        assert entry["nullable"] is False
+        assert entry["search_url"] == ""
+        assert {choice["value"] for choice in entry["choices"]} == {
+            kind.value for kind in PlaythroughKind
+        }
+
+    def test_json_round_trip(self):
+        #: INCLUDES is the default, which `to_json` leaves out.
+        payload = {"playthrough_kind": {"value": ["ordinary"], "modifier": "EXCLUDES"}}
+        assert PlayerSessionFilter.from_json(payload).to_json() == payload
