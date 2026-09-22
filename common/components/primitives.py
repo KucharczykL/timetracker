@@ -2285,7 +2285,9 @@ class Column(NamedTuple):
     names every row, and the Actions column that carries every act on it.
     ``hidden_by_default`` starts the column off for a person who has stated
     nothing, for a column that earns its width seldom; a column that refuses to
-    hide may not state it."""
+    hide may not state it. It is read by the list views, through
+    ``games.list_columns.hidden_columns``; a page that hosts no picker states
+    its own exclusions and reads no default."""
 
     label: str
     sort_key: str | None = None
@@ -2692,8 +2694,10 @@ def IconTrigger(
     """A bare glyph that opens a popup.
 
     One shape for each such trigger: two of them in one table are then one
-    control at two places. The glyph is decoration and says ``aria-hidden``.
-    The button carries the name, and ``title`` repeats it for a pointer.
+    control at two places. The glyph is decoration and says ``aria-hidden``,
+    and the button carries the name. A caller that wants a pointer hint states
+    its own ``title``: beside an ``aria-label`` it reads as a description, so
+    a trigger stating both is named twice.
     """
     return ControlButton(
         attrs,
@@ -2701,7 +2705,6 @@ def IconTrigger(
         variant="ghost",
         class_="p-2",
         aria_label=label,
-        title=label,
         aria_haspopup=haspopup,
     )[Icon(icon, [("aria-hidden", "true")])]
 

@@ -9,6 +9,7 @@ from django.shortcuts import redirect
 from django.views.decorators.http import require_POST
 
 from common.components import Column
+from common.components.column_picker import RESET_FIELD, SHOWN_FIELD
 from common.returns import UrlName
 from games.list_columns import reset_columns, state_shown_columns
 from games.views.device import DEVICE_COLUMNS
@@ -19,11 +20,6 @@ from games.views.playthrough_rows import playthrough_columns
 from games.views.purchase import PURCHASE_COLUMNS
 from games.views.returns import return_url
 from games.views.session import SESSION_COLUMNS
-
-#: The field the panel posts shown keys as.
-SHOWN_FIELD = "shown"
-#: The field that only the reset button posts.
-RESET_FIELD = "reset"
 
 
 class DeclaredList(NamedTuple):

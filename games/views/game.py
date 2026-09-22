@@ -1159,7 +1159,9 @@ def _playthroughs_section(
     data = playthrough_tabledata(
         runs,
         presentation,
-        hidden=("game",),
+        #: Every row names this game, and Created earns its width as seldom
+        #: here as it does on the list, which starts it off.
+        hidden=("game", "created"),
         clock=clock,
         origin=origin,
         csrf_token=csrf_token,

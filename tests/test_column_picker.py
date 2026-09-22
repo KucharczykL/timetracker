@@ -88,6 +88,24 @@ def test_the_trigger_wears_the_one_bare_icon_shape():
     assert _classes(trigger) == _classes(ellipsis)
 
 
+def test_only_the_column_trigger_states_a_title():
+    """Beside an aria-label a title reads as a description, so a row menu
+    stating both is named twice."""
+    [trigger, *_panel_buttons] = re.findall(r"<button[^>]*>", picker())
+    [ellipsis] = re.findall(r"<button[^>]*>", str(EllipsisTrigger(label="Acts")))
+
+    assert f'title="{COLUMN_PICKER_LABEL}"' in trigger
+    assert "title=" not in ellipsis
+
+
+def test_the_glyph_takes_the_colour_of_the_button_it_sits_in():
+    """The row menu's own glyph does, and the two sit one above the other."""
+    [glyph] = re.findall(r"<svg[^>]*>", picker())
+
+    assert "text-black" not in glyph
+    assert "dark:text-white" not in glyph
+
+
 def test_the_panel_sits_on_the_stratum_every_dropdown_shares():
     """A hand-written surface opens under the row's own selectors."""
     [panel] = re.findall(r'<div role="dialog"[^>]*>', picker())

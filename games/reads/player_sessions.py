@@ -1,6 +1,5 @@
 """The sessions a library counts."""
 
-import uuid
 from datetime import date
 from typing import NamedTuple
 
@@ -8,9 +7,6 @@ from django.db.models import Max, Min
 
 from games.models import Game, PlayerSession, PlayerSessionQuerySet, UserLibrary
 from games.reads.unscoped import require_library
-
-#: A catalog game's key, as a caller holds it.
-type GameId = uuid.UUID
 
 #: Sessions reach their game through the run.
 GAME = "playthrough__player_game__game"

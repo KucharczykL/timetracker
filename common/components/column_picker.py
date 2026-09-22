@@ -27,6 +27,9 @@ COLUMN_PICKER_LABEL = "Choose columns"
 #: The field the panel posts shown keys as.
 SHOWN_FIELD = "shown"
 
+#: The field that only the reset button posts.
+RESET_FIELD = "reset"
+
 #: The shared surface. It states the layer, which a hand-written one omits
 #: and then opens below the device selector of each row. The header row is
 #: uppercase and right-aligned; the panel is prose.
@@ -72,7 +75,12 @@ def ColumnPicker(
     the panel is open the statement needs no script.
     """
     trigger = IconTrigger(
-        icon="columns", label=COLUMN_PICKER_LABEL, haspopup="dialog"
+        #: A glyph says nothing to a pointer. The row menu beside it states
+        #: no title, because its name is its row rather than one word.
+        [("title", COLUMN_PICKER_LABEL)],
+        icon="columns",
+        label=COLUMN_PICKER_LABEL,
+        haspopup="dialog",
     ).as_element()
 
     panel = Div(role="dialog", aria_label=COLUMN_PICKER_LABEL, class_=_PANEL_CLASS)[
@@ -85,9 +93,9 @@ def ColumnPicker(
             Div(class_="mt-2 pt-2 border-t border-default-medium flex gap-2")[
                 ControlButton(type="submit", color="blue", class_="grow")["Apply"],
                 #: Named, so a reset posts as itself.
-                ControlButton(type="submit", variant="ghost", name="reset", value="1")[
-                    "Reset"
-                ],
+                ControlButton(
+                    type="submit", variant="ghost", name=RESET_FIELD, value="1"
+                )["Reset"],
             ],
         ]
     ]

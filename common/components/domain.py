@@ -264,10 +264,8 @@ def NameWithIcon(
     tap: bool = True,
     include_sort_name: bool = False,
     max_width: str = NAME_MAX_WIDTH_CLASS,
-    run_label: str | None = None,
 ) -> Node:
-    """A name with its platform badge; ``run_label`` names the session's run
-    beside the game where the game holds more than one."""
+    """A name with its platform badge."""
     resolved = _resolve_name_with_icon(name, game, session, linkify)
     if session is not None and game is None:
         game = session.playthrough.player_game.game
@@ -331,15 +329,7 @@ def NameWithIcon(
             else "Show full name"
         ),
     )
-    if run_label is None:
-        return truncated
-    return Fragment(
-        truncated,
-        Span(
-            class_="ml-2 text-type-micro text-body whitespace-nowrap",
-            data_run_label="",
-        )[run_label],
-    )
+    return truncated
 
 
 def _platform_badge(game: Game) -> PlatformBadge:
