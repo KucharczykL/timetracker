@@ -238,6 +238,52 @@ class BottomSheetTest(unittest.TestCase):
         self.assertIn("dist/elements/drop-down.js", collect_media(node).js)
 
 
+class RowActionMenuTest(unittest.TestCase):
+    """The row's half of the menu: a bare ellipsis trigger over a menu panel of
+    items the caller built. The builder knows no act — importing
+    ``games.bulk_actions`` from ``common/components/`` closes a cycle through
+    that module's foot imports and ``games/forms.py``."""
+
+    def _menu(self):
+        from common.components import DropdownLinkItem, RowActionMenu
+
+        return RowActionMenu(
+            [
+                DropdownLinkItem("/edit/", "Edit"),
+                DropdownLinkItem("/remove/", "Remove"),
+            ],
+            label="Hades, 2 hours",
+            id="session-menu-1",
+        )
+
+    def test_the_trigger_and_the_panel_take_the_same_name(self):
+        from common.components import render
+
+        html = render(self._menu())
+        self.assertEqual(html.count('aria-label="Hades, 2 hours"'), 2)
+        self.assertIn('aria-haspopup="menu"', html)
+        self.assertIn('role="menu"', html)
+
+    def test_the_items_keep_the_order_they_were_stated_in(self):
+        from common.components import render
+
+        html = render(self._menu())
+        self.assertEqual(html.count('role="menuitem"'), 2)
+        self.assertLess(html.index(">Edit<"), html.index(">Remove<"))
+
+    def test_the_glyph_is_the_bare_vertical_one(self):
+        from common.components import render
+
+        html = render(self._menu())
+        self.assertIn('d="M24 15a2.4 2.4 0 1 0 0.001 0z', html)
+
+    def test_the_id_reaches_the_element(self):
+        from common.components import render
+
+        html = render(self._menu())
+        self.assertIn('id="session-menu-1Link"', html)
+
+
 class DropdownWrapperTest(unittest.TestCase):
     def test_button_dropdown_uses_control_button_trigger(self):
         from common.components import ButtonDropdown, DropdownLinkItem, render

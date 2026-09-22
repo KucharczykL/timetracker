@@ -5,9 +5,8 @@ from dataclasses import dataclass
 
 from common.components.core import Child, Fragment, Node, randomid
 from common.components.custom_elements import (
-    Dropdown,
     DropdownLinkItem,
-    DropdownMenuPanel,
+    RowActionMenu,
 )
 from common.components.primitives import (
     ControlButton,
@@ -15,7 +14,6 @@ from common.components.primitives import (
     Div,
     Dl,
     Dt,
-    Icon,
     Link,
     P,
     Path,
@@ -213,22 +211,10 @@ def _summary_action_menu(
         content=f"{label}:" + ":".join(action.href for action in actions),
         length=24,
     )
-    trigger = ControlButton(
-        [
-            ("aria-label", f"{label} actions"),
-            ("aria-haspopup", "menu"),
-            ("class", "p-2"),
-        ],
-        variant="ghost",
-    )[Icon("ellipsis", [("aria-hidden", "true")])].as_element()
-    return Dropdown(
-        trigger_element=trigger,
-        target_element=DropdownMenuPanel(
-            items=[DropdownLinkItem(action.href, action.label) for action in actions],
-            aria_label=f"{label} actions",
-        ),
+    return RowActionMenu(
+        [DropdownLinkItem(action.href, action.label) for action in actions],
+        label=f"{label} actions",
         id=menu_id,
-        placement="bottom-end",
     )
 
 

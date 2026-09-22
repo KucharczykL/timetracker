@@ -9,6 +9,7 @@ reader so drift fails ``tsc``.
 """
 
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
@@ -37,6 +38,7 @@ from common.components.primitives import (
     ControlLink,
     Dialog,
     Div,
+    EllipsisTrigger,
     FilterJson,
     Form,
     Icon,
@@ -1186,6 +1188,34 @@ def DropdownMenuPanel(
     # role="presentation" on the list wrappers so the implicit list/listitem roles
     # don't break the menu→menuitem ownership the role="menu" panel declares.
     return Div(attributes)[Ul(role="presentation")[*items]]
+
+
+def RowActionMenu(
+    items: Sequence[Node],
+    *,
+    label: str,
+    id: str,
+    placement: str = "bottom-end",
+) -> Node:
+    """A table row's acts behind one bare ellipsis trigger.
+
+    This builder knows no act. Its ``items`` are already-built
+    ``DropdownLinkItem`` / ``DropdownPostItem`` / ``DropdownActionItem`` nodes,
+    because reading an act's words here would mean importing
+    ``games.bulk_actions``, whose foot imports reach back into this package
+    while it is still initialising.
+
+    ``label`` names both halves: the trigger has no text of its own, so the
+    panel cannot be auto-labelled from it. Name the row, not the table — a
+    reader hearing "Session actions" once a row learns nothing about which row
+    they are on.
+    """
+    return Dropdown(
+        trigger_element=EllipsisTrigger(label=label).as_element(),
+        target_element=DropdownMenuPanel(items=list(items), aria_label=label),
+        id=id,
+        placement=placement,
+    )
 
 
 def ButtonDropdown(
