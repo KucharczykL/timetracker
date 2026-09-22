@@ -51,6 +51,11 @@ the library holds a PlayerGame for. The per-row restore uses the same rule
 as the inverse. Before this issue,
 Remove on a shared row answered 404.
 
+Each rule is stated once, on `GameQuerySet` beside `tracked_by`:
+`removable_by(library)` and `restorable_by(library)`. The two routes, the
+act's `run` and the Undo read these two methods. No caller writes the
+`Q` again.
+
 ## The Undo
 
 `inverse_aggregate` is `playergame`. The Undo reads PlayerGame keys from
