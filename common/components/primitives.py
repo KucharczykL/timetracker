@@ -2278,7 +2278,11 @@ class Column(NamedTuple):
     ``priority`` orders column dropping when a data table does not fit: lower
     drops first, rightmost first among equals. The first column never drops —
     it is the row header that names every row — and neither does the highest-
-    priority column beside it, so a table never collapses to names alone."""
+    priority column beside it, so a table never collapses to names alone.
+    ``key`` names the column for the picker, which a label cannot: the game
+    list's playtime header reads one of three labels for one column. ``hideable``
+    is false where a person may not turn the column off - the row header that
+    names every row, and the Actions column that carries every act on it."""
 
     label: str
     sort_key: str | None = None
@@ -2287,6 +2291,8 @@ class Column(NamedTuple):
     shrinkable: bool = False
     wrap: bool = False
     priority: int = 1
+    key: ColumnKey = ""
+    hideable: bool = True
 
 
 type SelectionKey = str  # a row's own name, e.g. "0193f0c2-…"

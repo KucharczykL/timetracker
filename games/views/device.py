@@ -54,6 +54,13 @@ from games.views.filtering import (
 from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
 
+DEVICE_COLUMNS: list[Column] = [
+    Column("Name", "name", key="name", hideable=False),
+    Column("Type", "type", priority=2, key="type"),
+    Column("Created", "created", key="created"),
+    Column("Actions", align="right", priority=3, key="actions", hideable=False),
+]
+
 
 @login_required
 @regex_timeout_view
@@ -83,12 +90,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
 
     data: TableData = {
         "caption": "Devices",
-        "columns": [
-            Column("Name", "name"),
-            Column("Type", "type", priority=2),
-            Column("Created", "created"),
-            Column("Actions", align="right", priority=3),
-        ],
+        "columns": DEVICE_COLUMNS,
         "sort_terms": sort.terms,
         "rows": [
             make_row(

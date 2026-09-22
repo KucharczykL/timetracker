@@ -15,6 +15,7 @@ from common.components import (
     BadgeTone,
     Cell,
     Column,
+    ColumnKey,
     ContentContainer,
     DropdownLinkItem,
     Duration,
@@ -134,6 +135,31 @@ _SORT_KEYS: Mapping[str, SortKey] = {
 }
 
 
+def historical_playtime_columns(*, sortable: bool) -> list[Column]:
+    """The record table's columns, in declaration order."""
+
+    def column(label: str, key: ColumnKey, **options: object) -> Column:
+        return Column(
+            label,
+            _SORT_KEYS.get(label) if sortable else None,
+            key=key,
+            **options,  # type: ignore[arg-type]
+        )
+
+    return [
+        column("Name", "name", shrinkable=True, hideable=False),
+        #: Shrinkable as well: it leads the table Game
+        #: detail renders, and the summary under a cell
+        #: that cannot shrink widens the whole table.
+        column("When", "when", shrinkable=True, priority=3),
+        column("Duration", "duration", priority=2),
+        column("Provenance", "provenance", priority=2),
+        column("Playthroughs", "playthroughs", priority=1),
+        column("Device", "device"),
+        column("Created", "created"),
+    ]
+
+
 def historical_playtime_tabledata(
     records: Sequence[HistoricalPlaytime],
     labels: RunLabels,
@@ -153,25 +179,7 @@ def historical_playtime_tabledata(
     sortable on either.
     """
 
-    def column(label: str, **options: object) -> Column:
-        return Column(
-            label,
-            _SORT_KEYS.get(label) if sortable else None,
-            **options,  # type: ignore[arg-type]
-        )
-
-    column_list = [
-        column("Name", shrinkable=True),
-        #: Shrinkable as well: it leads the table Game
-        #: detail renders, and the summary under a cell
-        #: that cannot shrink widens the whole table.
-        column("When", shrinkable=True, priority=3),
-        column("Duration", priority=2),
-        column("Provenance", priority=2),
-        column("Playthroughs", priority=1),
-        column("Device"),
-        column("Created"),
-    ]
+    column_list = historical_playtime_columns(sortable=sortable)
     kept_columns = [
         column for column in column_list if column.label not in exclude_columns
     ]

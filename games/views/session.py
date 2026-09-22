@@ -170,6 +170,19 @@ def _row_summary(
     )
 
 
+SESSION_COLUMNS: list[Column] = [
+    Column("Name", "name", shrinkable=True, key="name", hideable=False),
+    Column("Date", "date", priority=3, key="date"),
+    Column("Duration", "duration", priority=2, key="duration"),
+    Column("Device", "device", key="device"),
+    Column("Created", "created", key="created"),
+]
+
+SESSION_RUN_COLUMN = Column(
+    "Playthrough", "playthrough", shrinkable=True, priority=3, key="playthrough"
+)
+
+
 @login_required
 @regex_timeout_view
 def list_sessions(request: HttpRequest) -> HttpResponse:
@@ -213,19 +226,11 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
         else ambiguous_run_labels(library, page_sessions)
     )
 
-    columns = [
-        Column("Name", "name", shrinkable=True),
-        Column("Date", "date", priority=3),
-        Column("Duration", "duration", priority=2),
-        Column("Device", "device"),
-        Column("Created", "created"),
-    ]
+    columns = list(SESSION_COLUMNS)
     if organized:
         #: Ties with Date; the rightmost of equals drops
         #: first, so the grouping key outlives the others.
-        columns.insert(
-            1, Column("Playthrough", "playthrough", shrinkable=True, priority=3)
-        )
+        columns.insert(1, SESSION_RUN_COLUMN)
 
     data: TableData = {
         "caption": "Sessions",

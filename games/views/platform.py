@@ -58,6 +58,15 @@ from games.views.reference_section import references_area
 from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
 
+PLATFORM_COLUMNS: list[Column] = [
+    Column("Name", "name", key="name", hideable=False),
+    Column("Icon", priority=2, key="icon"),
+    Column("Group", "group", priority=2, key="group"),
+    Column("References", priority=2, key="references"),
+    Column("Created", "created", key="created"),
+    Column("Actions", align="right", priority=3, key="actions", hideable=False),
+]
+
 
 @login_required
 @regex_timeout_view
@@ -88,14 +97,7 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
 
     data: TableData = {
         "caption": "Platforms",
-        "columns": [
-            Column("Name", "name"),
-            Column("Icon", priority=2),
-            Column("Group", "group", priority=2),
-            Column("References", priority=2),
-            Column("Created", "created"),
-            Column("Actions", align="right", priority=3),
-        ],
+        "columns": PLATFORM_COLUMNS,
         "sort_terms": sort.terms,
         "rows": [
             make_row(

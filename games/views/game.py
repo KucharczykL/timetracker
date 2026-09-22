@@ -219,6 +219,19 @@ def games_for_list(
     )
 
 
+def game_list_columns(playtime_label: str) -> list[Column]:
+    """The list's columns. The playtime header reads what the filter narrowed."""
+    return [
+        Column("Name", "name", shrinkable=True, key="name", hideable=False),
+        Column("Year", "year", priority=2, key="year"),
+        Column(playtime_label, "filtered_playtime", priority=2, key="playtime"),
+        Column("Status", "status", priority=3, key="status"),
+        Column("Wikidata", "wikidata", key="wikidata"),
+        Column("Created", "created", key="created"),
+        Column("Actions", align="right", priority=4, key="actions", hideable=False),
+    ]
+
+
 @login_required
 @regex_timeout_view
 def list_games(request: HttpRequest) -> HttpResponse:
@@ -242,15 +255,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
 
     data: TableData = {
         "caption": "Games",
-        "columns": [
-            Column("Name", "name", shrinkable=True),
-            Column("Year", "year", priority=2),
-            Column(listed.playtime_label, "filtered_playtime", priority=2),
-            Column("Status", "status", priority=3),
-            Column("Wikidata", "wikidata"),
-            Column("Created", "created"),
-            Column("Actions", align="right", priority=4),
-        ],
+        "columns": game_list_columns(listed.playtime_label),
         "sort_terms": sort.terms,
         "rows": [
             make_row(

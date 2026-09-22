@@ -130,15 +130,15 @@ def _render_purchase_buttons(
 # list view and has to hand TableRow the same column policy the surrounding
 # rows were built with.
 PURCHASE_COLUMNS: list[Column] = [
-    Column("Name", "name", shrinkable=True),
-    Column("Type", "type", priority=2),
-    Column("Price", "price", priority=3),
-    Column("Infinite", "infinite"),
-    Column("Purchased", "purchased", priority=2),
-    Column("Finished", "finished"),
-    Column("Refunded", "refunded"),
-    Column("Created", "created"),
-    Column("Actions", align="right", priority=4),
+    Column("Name", "name", shrinkable=True, key="name", hideable=False),
+    Column("Type", "type", priority=2, key="type"),
+    Column("Price", "price", priority=3, key="price"),
+    Column("Infinite", "infinite", key="infinite"),
+    Column("Purchased", "purchased", priority=2, key="purchased"),
+    Column("Finished", "finished", key="finished"),
+    Column("Refunded", "refunded", key="refunded"),
+    Column("Created", "created", key="created"),
+    Column("Actions", align="right", priority=4, key="actions", hideable=False),
 ]
 
 

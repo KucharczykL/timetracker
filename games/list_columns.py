@@ -2,6 +2,8 @@
 
 from collections.abc import Collection
 
+from django.contrib.auth.models import User
+
 from common.components.primitives import ColumnKey
 from games.models import FilterPreset, ListColumnChoice
 
@@ -14,7 +16,7 @@ def _known(mode: str) -> str:
     return mode
 
 
-def hidden_columns(user: object, mode: str) -> frozenset[ColumnKey]:
+def hidden_columns(user: User, mode: str) -> frozenset[ColumnKey]:
     """The keys this person turned off on this list. Empty where none."""
     stored = (
         ListColumnChoice.objects.filter(user=user, mode=_known(mode))
@@ -24,9 +26,7 @@ def hidden_columns(user: object, mode: str) -> frozenset[ColumnKey]:
     return frozenset(stored or ())
 
 
-def state_hidden_columns(
-    user: object, mode: str, hidden: Collection[ColumnKey]
-) -> None:
+def state_hidden_columns(user: User, mode: str, hidden: Collection[ColumnKey]) -> None:
     """Replace the person's choice. An empty set removes the row."""
     known = _known(mode)
     if not hidden:

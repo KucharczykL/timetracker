@@ -6,6 +6,7 @@ from typing import Any
 from common.components import (
     Cell,
     Column,
+    ColumnKey,
     DropdownLinkItem,
     DropdownPostItem,
     Fragment,
@@ -54,6 +55,28 @@ _SORT_KEYS: Mapping[str, SortKey] = {
 }
 
 
+def playthrough_columns(*, sortable: bool) -> list[Column]:
+    """The run table's columns, in declaration order."""
+
+    def column(label: str, key: ColumnKey, **options: Any) -> Column:
+        return Column(
+            label, _SORT_KEYS.get(label) if sortable else None, key=key, **options
+        )
+
+    return [
+        column("Playthrough", "playthrough", shrinkable=True, hideable=False),
+        column("Game", "game", shrinkable=True),
+        column("Started", "started", priority=3),
+        column("Completed", "completed", priority=2),
+        #: Below Note: counted word yields to note.
+        column("Activity", "activity", priority=1),
+        column("Days to finish", "days", priority=2),
+        # One long note on one line widens everything.
+        column("Note", "note", wrap=True, priority=2),
+        column("Created", "created"),
+    ]
+
+
 def playthrough_tabledata(
     runs: Sequence[Playthrough],
     presentation: DateTimePresentation,
@@ -75,21 +98,7 @@ def playthrough_tabledata(
     it cannot come from two calendars.
     """
 
-    def column(label: str, **options: Any) -> Column:
-        return Column(label, _SORT_KEYS.get(label) if sortable else None, **options)
-
-    column_list = [
-        column("Playthrough", shrinkable=True),
-        column("Game", shrinkable=True),
-        column("Started", priority=3),
-        column("Completed", priority=2),
-        #: Below Note: counted word yields to note.
-        column("Activity", priority=1),
-        column("Days to finish", priority=2),
-        # One long note on one line widens everything.
-        column("Note", wrap=True, priority=2),
-        column("Created"),
-    ]
+    column_list = playthrough_columns(sortable=sortable)
     kept_columns = [
         column for column in column_list if column.label not in exclude_columns
     ]
