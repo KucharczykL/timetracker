@@ -138,11 +138,11 @@ PURCHASE_COLUMNS: list[Column] = [
     Column("Name", "name", shrinkable=True, key="name", hideable=False),
     Column("Type", "type", priority=2, key="type"),
     Column("Price", "price", priority=3, key="price"),
-    Column("Infinite", "infinite", key="infinite"),
+    Column("Infinite", "infinite", key="infinite", hidden_by_default=True),
     Column("Purchased", "purchased", priority=2, key="purchased"),
     Column("Finished", "finished", key="finished"),
-    Column("Refunded", "refunded", key="refunded"),
-    Column("Created", "created", key="created"),
+    Column("Refunded", "refunded", key="refunded", hidden_by_default=True),
+    Column("Created", "created", key="created", hidden_by_default=True),
     Column("Actions", align="right", priority=4, key="actions", hideable=False),
 ]
 

@@ -5,15 +5,33 @@ import re
 import pytest
 from django.urls import reverse
 
-from games.list_columns import state_hidden_columns
+from games.list_columns import state_shown_columns
 from games.views.list_columns import LIST_COLUMNS
 
 pytestmark = pytest.mark.django_db
 
 MODES = sorted(LIST_COLUMNS)
 
-#: A key every mode declares and every mode lets a person hide.
+#: A key every mode declares, lets a person hide, and hides by default.
 HIDEABLE = "created"
+
+
+def _shows_everything(owned_user, mode: str) -> None:
+    state_shown_columns(
+        owned_user,
+        mode,
+        [column.key for column in LIST_COLUMNS[mode].columns],
+        LIST_COLUMNS[mode].columns,
+    )
+
+
+def _hides(owned_user, mode: str, key: str) -> None:
+    state_shown_columns(
+        owned_user,
+        mode,
+        [column.key for column in LIST_COLUMNS[mode].columns if column.key != key],
+        LIST_COLUMNS[mode].columns,
+    )
 
 
 @pytest.fixture
@@ -44,7 +62,26 @@ def _panel_boxes(body: str) -> dict[str, str]:
 
 
 @pytest.mark.parametrize("mode", MODES)
-def test_a_person_with_no_row_sees_every_declared_column(logged_in, mode):
+def test_a_person_with_no_row_sees_every_column_but_the_ones_that_start_off(
+    logged_in, mode
+):
+    headers = "".join(_headers(_body(logged_in, mode)))
+
+    assert [
+        column.label
+        for column in LIST_COLUMNS[mode].columns
+        if column.label not in headers and not column.hidden_by_default
+    ] == []
+    assert [
+        column.label
+        for column in LIST_COLUMNS[mode].columns
+        if column.label in headers and column.hidden_by_default
+    ] == []
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_person_may_show_a_column_that_starts_hidden(logged_in, owned_user, mode):
+    _shows_everything(owned_user, mode)
     headers = "".join(_headers(_body(logged_in, mode)))
 
     assert [
@@ -56,7 +93,8 @@ def test_a_person_with_no_row_sees_every_declared_column(logged_in, mode):
 
 @pytest.mark.parametrize("mode", MODES)
 def test_a_hidden_column_leaves_the_table(logged_in, owned_user, mode):
-    state_hidden_columns(owned_user, mode, [HIDEABLE])
+    _shows_everything(owned_user, mode)
+    _hides(owned_user, mode, HIDEABLE)
     body = _body(logged_in, mode)
 
     assert "Created" not in "".join(_headers(body))
@@ -71,16 +109,21 @@ def test_the_panel_states_a_box_for_every_column(logged_in, mode):
 
 @pytest.mark.parametrize("mode", MODES)
 def test_a_hidden_columns_box_reads_unchecked(logged_in, owned_user, mode):
-    state_hidden_columns(owned_user, mode, [HIDEABLE])
-
     assert "checked" not in _panel_boxes(_body(logged_in, mode))[HIDEABLE]
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_shown_columns_box_reads_checked(logged_in, owned_user, mode):
+    _shows_everything(owned_user, mode)
+
+    assert "checked" in _panel_boxes(_body(logged_in, mode))[HIDEABLE]
 
 
 @pytest.mark.parametrize("mode", MODES)
 def test_a_key_that_refuses_to_hide_changes_nothing(logged_in, owned_user, mode):
     """A rename may leave one behind; the list owes the column anyway."""
     pinned = LIST_COLUMNS[mode].columns[0]
-    state_hidden_columns(owned_user, mode, [pinned.key])
+    _hides(owned_user, mode, pinned.key)
     body = _body(logged_in, mode)
 
     assert pinned.label in "".join(_headers(body))
@@ -92,9 +135,9 @@ def test_the_choice_is_one_persons(logged_in, owned_user, django_user_model, mod
     other = django_user_model.objects.create_user(
         username=f"other-{mode}", password="p"
     )
-    state_hidden_columns(other, mode, [HIDEABLE])
+    _shows_everything(other, mode)
 
-    assert "Created" in "".join(_headers(_body(logged_in, mode)))
+    assert "Created" not in "".join(_headers(_body(logged_in, mode)))
 
 
 @pytest.mark.parametrize("mode", MODES)
@@ -106,8 +149,7 @@ def test_the_picker_posts_to_this_mode_and_carries_its_origin(logged_in, mode):
 
 
 def test_a_sort_naming_a_hidden_column_still_orders_the_rows(logged_in, owned_user):
-    state_hidden_columns(owned_user, "games", ["created"])
-
+    """Created starts hidden, and the URL may still name it."""
     answer = logged_in.get(reverse("games:list_games"), {"sort": "created"})
 
     assert answer.status_code == 200

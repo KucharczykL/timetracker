@@ -64,8 +64,8 @@ PLATFORM_COLUMNS: list[Column] = [
     Column("Name", "name", key="name", hideable=False),
     Column("Icon", priority=2, key="icon"),
     Column("Group", "group", priority=2, key="group"),
-    Column("References", priority=2, key="references"),
-    Column("Created", "created", key="created"),
+    Column("References", priority=2, key="references", hidden_by_default=True),
+    Column("Created", "created", key="created", hidden_by_default=True),
     Column("Actions", align="right", priority=3, key="actions", hideable=False),
 ]
 

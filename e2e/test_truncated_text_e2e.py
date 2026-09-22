@@ -3,6 +3,7 @@
 from datetime import date
 
 import pytest
+from column_choice import show_every_column
 from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Locator, Page, Route, expect
@@ -19,6 +20,9 @@ LONG_NAME = (
 
 @pytest.fixture
 def authenticated_page(live_server, page: Page, e2e_user) -> Page:
+    #: The width measurements want every declared column, not the ones a
+    #: person starts with.
+    show_every_column(e2e_user)
     page.goto(f"{live_server.url}{reverse('login')}")
     page.fill('input[name="username"]', "tester")
     page.fill('input[name="password"]', "secret123")

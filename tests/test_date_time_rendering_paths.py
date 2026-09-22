@@ -4,6 +4,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
+from column_choice import show_every_column
 from django.urls import reverse
 from django.utils import timezone
 from historical_playtime_rows import record_row
@@ -90,6 +91,9 @@ def test_non_default_presentation_reaches_every_server_display_path(
         change_user_setting(user, "DISPLAY_TIME_ZONE", "UTC")
         change_user_setting(user, "DATE_FORMAT_LOCALE", "cs")
     client.force_login(user)
+    #: The subject is the format, not which columns a person starts with: the
+    #: created day is the only one several of these lists print.
+    show_every_column(user)
 
     platform = Platform.objects.create(library=user.library, name="PC")
     device = Device.objects.create(library=user.library, name="Desktop")

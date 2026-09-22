@@ -10,7 +10,7 @@ from django.views.decorators.http import require_POST
 
 from common.components import Column
 from common.returns import UrlName
-from games.list_columns import state_hidden_columns
+from games.list_columns import reset_columns, state_shown_columns
 from games.views.device import DEVICE_COLUMNS
 from games.views.game import game_list_columns
 from games.views.historical_playtime import historical_playtime_columns
@@ -53,12 +53,11 @@ LIST_COLUMNS: dict[str, DeclaredList] = {
 @login_required
 @require_POST
 def state_list_columns(request: HttpRequest, mode: str) -> HttpResponse:
-    """Store what the panel left shown, as the keys it left out.
+    """Store what the panel left shown.
 
-    An unchecked box posts nothing, so the hidden set is the declared keys less
-    the posted ones, read from the live column list. A column that refuses to
-    hide posts nothing either, which is why it is taken out of the difference
-    rather than read out of the request.
+    An unchecked box posts nothing, so the posted keys are the whole of what a
+    person shows, read against the live column list. A column that refuses to
+    hide posts nothing either, and is shown whatever the request carries.
     """
     if mode not in LIST_COLUMNS:
         raise Http404(f"no list states the mode {mode!r}")
@@ -66,16 +65,13 @@ def state_list_columns(request: HttpRequest, mode: str) -> HttpResponse:
     person = cast(User, request.user)
 
     if request.POST.get(RESET_FIELD):
-        state_hidden_columns(person, mode, ())
+        reset_columns(person, mode)
     else:
-        shown = set(request.POST.getlist(SHOWN_FIELD))
-        state_hidden_columns(
-            person,
-            mode,
-            [
-                column.key
-                for column in declared.columns
-                if column.hideable and column.key not in shown
-            ],
-        )
+        posted = set(request.POST.getlist(SHOWN_FIELD))
+        shown = {
+            column.key
+            for column in declared.columns
+            if column.key in posted or not column.hideable
+        }
+        state_shown_columns(person, mode, shown, declared.columns)
     return redirect(return_url(request, fallback=declared.route))

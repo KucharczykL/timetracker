@@ -44,7 +44,7 @@ class Migration(migrations.Migration):
                         max_length=50,
                     ),
                 ),
-                ("hidden", models.JSONField(blank=True, default=list)),
+                ("shown", models.JSONField(blank=True, default=dict)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
                 (
                     "user",

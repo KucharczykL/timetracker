@@ -55,6 +55,31 @@ def _header(page: Page, label: str):
     )
 
 
+def test_a_column_that_starts_hidden_shows_when_a_person_says_so(
+    authenticated_page: Page, live_server, one_session
+):
+    """Created starts off, so showing it is the statement, not hiding it."""
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    expect(_header(page, "Created")).to_have_count(0)
+
+    panel = _open_the_panel(page)
+    panel.locator('input[name="shown"][value="created"]').check()
+    panel.get_by_role("button", name="Apply").click()
+    page.wait_for_url("**/session/list**")
+
+    expect(_header(page, "Created")).to_have_count(1)
+
+    page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
+    expect(_header(page, "Created")).to_have_count(1)
+
+    panel = _open_the_panel(page)
+    panel.get_by_role("button", name="Reset").click()
+    page.wait_for_url("**/session/list**")
+
+    expect(_header(page, "Created")).to_have_count(0)
+
+
 def test_a_column_turned_off_stays_off(
     authenticated_page: Page, live_server, one_session
 ):

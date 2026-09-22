@@ -1288,7 +1288,7 @@ class FilterPreset(models.Model):
 
 
 class ListColumnChoice(models.Model):
-    """The columns one person turned off on one list.
+    """What one person states about one list's columns.
 
     Keyed on the person rather than the library: a saved filter describes which
     rows to read, and which columns a person reads them with is their own.
@@ -1310,8 +1310,10 @@ class ListColumnChoice(models.Model):
         related_name="list_column_choices",
     )
     mode = models.CharField(max_length=50, choices=FilterPreset.MODE_CHOICES)
-    #: The column keys this person hid. A key no column claims hides nothing.
-    hidden = models.JSONField(default=list, blank=True)
+    #: Column key to whether this person shows it, holding only the keys whose
+    #: state differs from the column's own default. A key the map does not name
+    #: reads as that default, so a column added later starts where it says.
+    shown = models.JSONField(default=dict, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

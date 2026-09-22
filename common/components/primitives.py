@@ -2282,7 +2282,10 @@ class Column(NamedTuple):
     ``key`` names the column for the picker, which a label cannot: the game
     list's playtime header reads one of three labels for one column. ``hideable``
     is false where a person may not turn the column off - the row header that
-    names every row, and the Actions column that carries every act on it."""
+    names every row, and the Actions column that carries every act on it.
+    ``hidden_by_default`` starts the column off for a person who has stated
+    nothing, for a column that earns its width seldom; a column that refuses to
+    hide may not state it."""
 
     label: str
     sort_key: str | None = None
@@ -2293,6 +2296,7 @@ class Column(NamedTuple):
     priority: int = 1
     key: ColumnKey = ""
     hideable: bool = True
+    hidden_by_default: bool = False
 
 
 def drop_columns(

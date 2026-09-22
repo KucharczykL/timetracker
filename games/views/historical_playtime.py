@@ -158,7 +158,7 @@ def historical_playtime_columns(*, sortable: bool) -> list[Column]:
         column("Provenance", "provenance", priority=2),
         column("Playthroughs", "playthroughs", priority=1),
         column("Device", "device"),
-        column("Created", "created"),
+        column("Created", "created", hidden_by_default=True),
     ]
 
 

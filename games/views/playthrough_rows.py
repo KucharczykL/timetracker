@@ -74,7 +74,7 @@ def playthrough_columns(*, sortable: bool) -> list[Column]:
         column("Days to finish", "days", priority=2),
         # One long note on one line widens everything.
         column("Note", "note", wrap=True, priority=2),
-        column("Created", "created"),
+        column("Created", "created", hidden_by_default=True),
     ]
 
 

@@ -11,8 +11,9 @@ from django.urls import reverse
 from django.utils import timezone
 from session_rows import duration_only_row, timed_row, tracked_run
 
-from games.list_columns import state_hidden_columns
+from games.list_columns import state_shown_columns
 from games.models import Game, PlayerGame, Playthrough, PlaythroughKind
+from games.views.session import SESSION_COLUMNS
 
 pytestmark = pytest.mark.django_db
 
@@ -159,7 +160,9 @@ def test_a_person_hiding_the_column_is_named_no_run_anywhere(
 ):
     """Not beside the name, and not in the line below md."""
     _mixed_list(owned_library, game)
-    state_hidden_columns(owned_user, "sessions", ["playthrough"])
+    state_shown_columns(
+        owned_user, "sessions", ["name", "date", "duration", "device"], SESSION_COLUMNS
+    )
 
     body = logged_in.get(reverse("games:list_sessions")).content.decode()
 

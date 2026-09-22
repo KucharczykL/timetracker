@@ -9,9 +9,10 @@ no `?filter=`, is saved by no preset, and changes no result set.
 ## Where the choice lives
 
 `ListColumnChoice` holds one row for each person and mode, unique on
-`(user, mode)`, with a `UUIDv7Field` key. `hidden` is a JSON list of column keys.
-`games/list_columns.py` is the one reader and the one writer, and it refuses a
-mode no list states.
+`(user, mode)`, with a `UUIDv7Field` key. `shown` is a JSON map of column key to
+whether that person shows it, holding only the keys standing away from the
+column's own default. `games/list_columns.py` is the one reader and the one
+writer, and it refuses a mode no list states.
 
 The choice belongs to the person. A saved filter describes the rows and is keyed
 on the library; which columns a person reads those rows with stays theirs. The
@@ -20,12 +21,33 @@ identity audit asks of one.
 
 Nothing here is a command and nothing appends an event.
 
-## The default is the declared list
+## The default is the declaration
 
-A list shows every column it declares. The store holds only what the person
-turned off, so a column added later shows for everybody, and a key no column
-claims hides nothing. Reset removes the row: an absent row and an empty list read
-alike.
+Each column states where it starts, and `Column.hidden_by_default` turns one off
+for a person who has stated nothing. The created timestamp starts off on all
+seven lists, and so do Wikidata on games, Infinite and Refunded on purchases, and
+References on platforms: each earns its width seldom. A column that refuses to
+hide may not start hidden, because nothing could then show it again.
+
+Nothing is written until a person chooses, and a row records only what differs
+from the declaration. Three things follow, and a stored list of hidden keys gives
+none of them:
+
+- a column added later starts where **it** says, rather than where an older row
+  left it;
+- showing a column that starts hidden is storable, where an empty hidden list
+  would read as "no choice" and hand back the default;
+- a default this project changes later does not invert what a person already
+  stated, because the row states `false`, not "away from whatever the default is".
+
+A key no column claims any more hides nothing; the reader ignores it. A choice
+that states the defaults back removes the row, because the row would say what the
+declaration says. Reset removes it too.
+
+No row is seeded when a person is created. A seeded row is a copy of the
+declaration that goes stale: a column added after the seeding could carry no
+default, and every person who already exists would need a data migration to
+receive one.
 
 ## A column's identity
 
@@ -36,7 +58,8 @@ playtime header reads `Playtime`, `Playtime (matching)` or
 `Column.hideable` is false on two kinds: the first column, which is the
 `<th scope="row">` that names every row, and the Actions column, which carries
 every act on it. A person who unchecks every box is left a table that still names
-its rows and still acts on them.
+its rows and still acts on them, and a list always starts with more than those
+two.
 
 ## Narrowing
 
@@ -73,8 +96,8 @@ a form — with one checkbox for each column, Apply, and Reset. A column that
 refuses to hide states a checked, disabled box rather than none, so the panel
 reads as the whole table.
 
-An unchecked box posts nothing, so the route stores the declared keys less the
-posted ones, read from the live column list. A disabled box posts nothing either,
+An unchecked box posts nothing, so the posted keys are the whole of what a person
+shows, read against the live column list. A disabled box posts nothing either,
 which is why a pinned column is shown whatever the request carries. Reset is a
 named submit, read before the boxes: a `formaction` would post whatever the panel
 stood at.

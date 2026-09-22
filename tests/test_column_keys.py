@@ -61,3 +61,26 @@ def test_the_game_lists_playtime_key_outlives_its_label():
         column.key for column in DECLARED["games"]
     ]
     assert any(column.key == "playtime" for column in narrowed)
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_column_that_refuses_to_hide_never_starts_hidden(mode):
+    """The two rules would contradict: nothing could ever show it again."""
+    pinned = [column for column in DECLARED[mode] if not column.hideable]
+
+    assert all(not column.hidden_by_default for column in pinned)
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_a_list_starts_with_more_than_the_columns_it_pins(mode):
+    """A default that hid everything hideable would read as a broken page."""
+    shown = [column for column in DECLARED[mode] if not column.hidden_by_default]
+
+    assert len(shown) > len([c for c in DECLARED[mode] if not c.hideable])
+
+
+@pytest.mark.parametrize("mode", MODES)
+def test_the_created_timestamp_starts_hidden(mode):
+    [created] = [column for column in DECLARED[mode] if column.key == "created"]
+
+    assert created.hidden_by_default

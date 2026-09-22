@@ -191,7 +191,7 @@ SESSION_COLUMNS: list[Column] = [
     Column("Date", "date", priority=3, key="date"),
     Column("Duration", "duration", priority=2, key="duration"),
     Column("Device", "device", key="device"),
-    Column("Created", "created", key="created"),
+    Column("Created", "created", key="created", hidden_by_default=True),
 ]
 
 

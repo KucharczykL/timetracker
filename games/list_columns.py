@@ -19,25 +19,57 @@ def _known(mode: str) -> str:
     return mode
 
 
-def hidden_columns(user: User, mode: str) -> frozenset[ColumnKey]:
-    """The keys this person turned off on this list. Empty where none."""
+def _stated(user: User, mode: str) -> dict[ColumnKey, bool]:
+    """What this person states about this list, by key. Empty where nothing."""
     stored = (
         ListColumnChoice.objects.filter(user=user, mode=_known(mode))
-        .values_list("hidden", flat=True)
+        .values_list("shown", flat=True)
         .first()
     )
-    return frozenset(stored or ())
+    return stored or {}
 
 
-def state_hidden_columns(user: User, mode: str, hidden: Collection[ColumnKey]) -> None:
-    """Replace the person's choice. An empty set removes the row."""
+def hidden_columns(
+    user: User, mode: str, columns: Sequence[Column]
+) -> frozenset[ColumnKey]:
+    """The keys this person does not show on this list.
+
+    A column the person states nothing about reads its own default, so a column
+    added later starts where it says rather than where an older row left it.
+    """
+    stated = _stated(user, mode)
+    return frozenset(
+        column.key
+        for column in columns
+        if not stated.get(column.key, not column.hidden_by_default)
+    )
+
+
+def state_shown_columns(
+    user: User, mode: str, shown: Collection[ColumnKey], columns: Sequence[Column]
+) -> None:
+    """Replace the person's choice with the keys they leave shown.
+
+    Only a column standing away from its default is written down. A choice that
+    states the defaults back removes the row, because that is what the row said.
+    """
     known = _known(mode)
-    if not hidden:
-        ListColumnChoice.objects.filter(user=user, mode=known).delete()
+    stated = {
+        column.key: (column.key in shown)
+        for column in columns
+        if (column.key in shown) is column.hidden_by_default
+    }
+    if not stated:
+        reset_columns(user, known)
         return
     ListColumnChoice.objects.update_or_create(
-        user=user, mode=known, defaults={"hidden": sorted(hidden)}
+        user=user, mode=known, defaults={"shown": stated}
     )
+
+
+def reset_columns(user: User, mode: str) -> None:
+    """Take the person's choice away. The list reads its defaults again."""
+    ListColumnChoice.objects.filter(user=user, mode=_known(mode)).delete()
 
 
 class ColumnChoice(NamedTuple):
@@ -57,7 +89,7 @@ def column_choice(
     and its acts whatever the row says.
     """
     pinned = {column.key for column in columns if not column.hideable}
-    hidden = frozenset(hidden_columns(cast(User, request.user), mode) - pinned)
+    hidden = hidden_columns(cast(User, request.user), mode, columns) - pinned
     return ColumnChoice(
         hidden,
         ColumnPicker(

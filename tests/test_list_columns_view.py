@@ -3,8 +3,11 @@
 import pytest
 from django.urls import reverse
 
-from games.list_columns import hidden_columns, state_hidden_columns
+from games.list_columns import hidden_columns, state_shown_columns
 from games.models import ListColumnChoice
+from games.views.list_columns import LIST_COLUMNS
+
+SESSION_COLUMNS = LIST_COLUMNS["sessions"].columns
 
 pytestmark = pytest.mark.django_db
 
@@ -22,31 +25,39 @@ def _url(mode: str = "sessions") -> str:
 def test_the_keys_a_person_did_not_post_are_the_ones_they_hid(logged_in, owned_user):
     logged_in.post(_url(), {"shown": ["date", "duration"]})
 
-    assert hidden_columns(owned_user, "sessions") == frozenset(
+    assert hidden_columns(owned_user, "sessions", SESSION_COLUMNS) == frozenset(
         {"playthrough", "device", "created"}
     )
 
 
-def test_posting_every_key_takes_the_row_away(logged_in, owned_user):
-    state_hidden_columns(owned_user, "sessions", ["device"])
+def test_posting_the_defaults_back_takes_the_row_away(logged_in, owned_user):
+    state_shown_columns(owned_user, "sessions", ["name"], SESSION_COLUMNS)
 
+    logged_in.post(_url(), {"shown": ["playthrough", "date", "duration", "device"]})
+
+    assert ListColumnChoice.objects.count() == 0
+
+
+def test_posting_a_column_its_default_hides_writes_it_down(logged_in, owned_user):
+    """Created starts off, so showing it is the statement."""
     logged_in.post(
         _url(),
         {"shown": ["playthrough", "date", "duration", "device", "created"]},
     )
 
-    assert ListColumnChoice.objects.count() == 0
+    assert ListColumnChoice.objects.get().shown == {"created": True}
+    assert hidden_columns(owned_user, "sessions", SESSION_COLUMNS) == frozenset()
 
 
 def test_a_column_that_refuses_to_hide_is_never_stored(logged_in, owned_user):
     """Its box is disabled, so it posts nothing; nothing hides it either."""
     logged_in.post(_url(), {"shown": ["date"]})
 
-    assert "name" not in hidden_columns(owned_user, "sessions")
+    assert "name" not in hidden_columns(owned_user, "sessions", SESSION_COLUMNS)
 
 
 def test_a_reset_takes_the_row_away_whatever_it_carries(logged_in, owned_user):
-    state_hidden_columns(owned_user, "sessions", ["device"])
+    state_shown_columns(owned_user, "sessions", ["name", "created"], SESSION_COLUMNS)
 
     logged_in.post(_url(), {"reset": "1", "shown": ["date"]})
 

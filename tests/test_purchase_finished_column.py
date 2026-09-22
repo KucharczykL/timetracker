@@ -9,6 +9,8 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
+from games.list_columns import hidden_columns
+from games.views.purchase import PURCHASE_COLUMNS
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
@@ -34,14 +36,38 @@ def cell_text(html, index):
 
 
 def finished_cell(client, purchase):
-    """The Finished cell's text for one row."""
+    """The Finished cell's text for one row.
+
+    Read by header, not by a counted position: which columns the list renders
+    is the reader's own choice, so a literal index names another column the
+    moment one of the earlier ones is off.
+    """
     response = client.get(reverse("games:list_purchases"))
     assert response.status_code == 200
     body = response.content.decode()
     row = re.search(rf'id="purchase-row-{purchase.pk}".*?</tr>', body, re.DOTALL)
     assert row, "row not rendered"
-    #: Name, Type, Price, Infinite, Purchased, Finished, ...
-    return cell_text(row.group(0), 5)
+    return cell_text(row.group(0), _column_index(body, "Finished"))
+
+
+def _row_index(user, key: str = "finished") -> int:
+    """Where that column sits in a row the list renders for this person."""
+    hidden = hidden_columns(user, "purchases", PURCHASE_COLUMNS)
+    shown = [column.key for column in PURCHASE_COLUMNS if column.key not in hidden]
+    return shown.index(key)
+
+
+def _column_index(body: str, label: str) -> int:
+    """Where that column renders, counted over the header row the page wrote."""
+    [head] = re.findall(r"<thead.*?</thead>", body, re.DOTALL)
+    #: The picker's panel lives in the last header cell and names every column.
+    head = re.sub(r"<form .*?</form>", "", head, flags=re.DOTALL)
+    labels = [
+        re.sub(r"<[^>]+>", "", cell).strip()
+        for cell in re.findall(r"<th.*?</th>", head, re.DOTALL)
+    ]
+    assert label in labels, f"the list renders no {label} column: {labels}"
+    return labels.index(label)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -119,7 +145,9 @@ def test_the_refunded_row_keeps_its_cell(logged_client, owned_user, owned_librar
     response = logged_client.post(reverse("games:refund_purchase", args=[purchase.pk]))
 
     assert response.status_code == 200
-    assert cell_text(response.content.decode(), 5) == "2024-07-01"
+    #: The swapped row carries the columns this person shows, not every
+    #: declared one, so the cell is counted the same way the row was built.
+    assert cell_text(response.content.decode(), _row_index(owned_user)) == "2024-07-01"
 
 
 def seed_rows(user, library, count):

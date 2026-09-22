@@ -59,7 +59,7 @@ from games.views.returns import return_url
 DEVICE_COLUMNS: list[Column] = [
     Column("Name", "name", key="name", hideable=False),
     Column("Type", "type", priority=2, key="type"),
-    Column("Created", "created", key="created"),
+    Column("Created", "created", key="created", hidden_by_default=True),
     Column("Actions", align="right", priority=3, key="actions", hideable=False),
 ]
 
