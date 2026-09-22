@@ -7,6 +7,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from django.contrib.messages import get_messages
 from django.urls import NoReverseMatch, reverse
+from django.utils import timezone
 from historical_playtime_posts import posted_record
 from session_rows import duration_only_row, timed_row, tracked_run
 
@@ -284,7 +285,7 @@ def test_the_review_filter_parses_and_stays_quick_editable(logged_in):
 
     parsed = parse_filter_dict(review_filter(), PlayerSessionFilter)
 
-    assert set(parsed) == {"timing_mode", "duration_hours"}
+    assert set(parsed) == {"timing_mode", "duration_hours", "playthrough_kind"}
     assert is_quick_editable(
         parsed,
         {facet.field for facet in QUICK_FACETS["sessions"]},
@@ -293,6 +294,41 @@ def test_the_review_filter_parses_and_stays_quick_editable(logged_in):
     rendered = logged_in.get(review_url()).content.decode()
     assert "Advanced filter active" not in rendered
     assert 'value="GREATER_THAN_OR_EQUAL" selected' in rendered
+
+
+def test_the_review_filter_answers_the_rows_the_review_offers(owned_library, game, run):
+    """The link and the act read one population.
+
+    A bucket row is long enough and typed in, and the review
+    leaves it alone, so the filter must too.
+    """
+    from common.filter_execution import execute_filter
+    from games.bulk_reclassification import reviewable_sessions
+    from games.filters import PlayerSessionFilter, filter_query_context_for_library
+    from games.models import PlayerGame, PlaythroughKind
+    from games.reads.player_sessions import library_sessions
+    from games.views.session_reclassification import review_filter
+
+    ordinary = _long_row(run)
+    bucket = Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=owned_library,
+        player_game=PlayerGame.objects.get(library=owned_library, game=game),
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+    _long_row(bucket)
+
+    matched = set(
+        execute_filter(
+            PlayerSessionFilter.from_json(json.loads(review_filter())),
+            library_sessions(owned_library),
+            filter_query_context_for_library(owned_library),
+        )
+    )
+
+    assert matched == {ordinary}
+    assert matched == set(reviewable_sessions(owned_library))
 
 
 def test_the_review_filter_answers_the_rows_it_names(owned_library, run):

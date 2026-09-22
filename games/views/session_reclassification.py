@@ -35,7 +35,12 @@ from games.bulk_reclassification import (
     reviewable_sessions,
 )
 from games.forms import HistoricalPlaytimeForm
-from games.models import PlayerSession, PlayerSessionTimingMode, UserLibrary
+from games.models import (
+    PlayerSession,
+    PlayerSessionTimingMode,
+    PlaythroughKind,
+    UserLibrary,
+)
 from games.ownership import owned_or_404
 from games.views.historical_playtime_entry import FORM_SCRIPTS
 from games.views.removal import restore_and_return
@@ -143,6 +148,10 @@ def review_filter() -> str:
             duration_hours=IntCriterion(
                 value=REVIEW_THRESHOLD_HOURS,
                 modifier=Modifier.GREATER_THAN_OR_EQUAL,
+            ),
+            playthrough_kind=ChoiceCriterion(
+                value=[PlaythroughKind.ORDINARY.value],
+                modifier=Modifier.INCLUDES,
             ),
         ).to_json()
     )
