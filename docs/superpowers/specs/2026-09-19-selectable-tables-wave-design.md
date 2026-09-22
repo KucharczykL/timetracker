@@ -358,7 +358,22 @@ leave 92 rows stuck, which is #1123's own complaint.
 
 The inverses: reclassify → `UndoSessionReclassification`; remove → the
 row's restore command; move → `MoveSessionToPlaythrough` back to the run
-the session named before the batch. The move event carries its target only,
+the session named before the batch; finish → `CorrectSessionTiming` back
+to running; start and complete (#1256) → `VoidPlaythroughStart` and
+`VoidPlaythroughCompletion`, two commands and two event specs the issue
+declares, a void being a retraction in the retention doc's own word,
+which put the endpoint back to never stated. What an inverse does with a
+row changed since the batch depends on what it would do to the change:
+an inverse that restates what the batch overwrote (finish, move) reads
+the row as it stands and accepts the hazard; an inverse that would
+destroy a value the batch never wrote (a void over a day corrected since,
+read off the aggregate stream) refuses the row with a sentence, tallied
+refused, the batch going on. A side effect the batch stated on another
+aggregate is put back by the inverse as well, read from the batch's own
+events by correlation id while `inverse_aggregate` names the rows: a
+completion's Completed and a start's Played go back to the status that
+stood before, and a status changed since the batch is left and said. An
+Undo that leaves the game Completed is half an Undo. The move event carries its target only,
 and the run before is the target of the session's latest earlier `moved`
 event, or of its `created` payload. Reading that is new: nothing today reads
 events by aggregate, and `aggregate_id` is unindexed. #713 adds one
@@ -552,8 +567,17 @@ session row's) and read `games.bulk_actions`; `RowActionMenu` in
 closes a cycle through the table's foot imports. A menu item may hand
 one row to a tray act through the runner's own statement, as Move does
 through `DropdownPostItem(hidden_fields=...)`, so the act grows no
-per-row route and the words and rules are one; #1256 may reach its two
-tray acts the same way. The tray's acts are Remove and Was-an-estimate
+per-row route and the words and rules are one. #1256 keeps the row's
+own routes, `start_playthrough` and `complete_playthrough`, one press
+with no confirmation, because the runner always confirms and the row's
+act is the commonest on that table; one request-free half in
+`games/writes/` states the endpoint and the status for the route and
+for the act's `run` alike, so the rule lives once with two entries, the
+cost the rethink (#1209) already weighs for Remove. Its run helpers
+(`run_scope`, `run_resolution`, `RUN_GONE`, the endpoint preview cells)
+leave `games/bulk_removal.py` for `games/bulk_runs.py`, beside
+`bulk_sessions.py`; its tray order on both playthrough tables is Started
+today, Completed today, Remove. The tray's acts are Remove and Was-an-estimate
 (shipped), Finish (#718 declares it, `EndSession` on every running row
 at one instant, stamped by `offer` into the confirmation's own HTML so
 a form posted twice replays rather than mismatching each row's key;
