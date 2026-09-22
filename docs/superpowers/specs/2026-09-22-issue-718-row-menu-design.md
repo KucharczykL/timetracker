@@ -4,32 +4,52 @@ A table states two act lists. The tray states what a selection can do; the
 row's menu states what one row can do. Neither list is the other's residue,
 so an act reaching the tray takes nothing off the row.
 
-## The menu column
+## The row's menu slot
 
-`Column` states `menu`. A menu column declares no sort key, aligns right and
-carries the row's own acts as one `Dropdown`. The trigger is a ghost
-`ControlButton` holding the `ellipsis` icon, stamped by `_as_menu_trigger`,
-with an `aria-label` naming its row and an id of its own.
-`common/components/library_kit.py` already builds this trigger; the shape
-moves to a builder both callers read. `ButtonDropdown` is not that builder:
-it states no variant and appends a caret of its own.
+The menu is not a column. `make_row` states it, beside the `key` and the
+`summary` a row already states, and `StyledTable` renders it: one trailing
+cell a row, and one trailing header cell so the grid stays rectangular and
+`<responsive-table>`'s positional `nth-child` selectors keep addressing the
+declared columns.
 
-Five tables declare a menu column: the session list, the historical playtime
-list, the playthrough list, and Game detail's playthroughs and historical
-playtime. Two builders serve four of them, so a builder's column serves both
-its pages.
+That header cell carries no visible label, an accessible name of its own, and
+a `data-priority` of one above the table's highest, computed from the
+columns the view declared. The element hides the lowest priorities until the
+table fits, so a computed maximum is what keeps the acts on a phone.
 
-The column replaces each table's `Actions` column. Its priority is that
-column's, which is the strict maximum of the table: `<responsive-table>`
-keeps the highest-priority column beside the row header at every width, and
-the acts are what keeps a row actionable on a phone.
+The slot therefore never enters a view's `Column` list, never counts against
+`MAX_DATA_TABLE_COLUMNS`, and states no per-table priority for anyone to get
+wrong. `tests/test_column_priority_contract.py` turns a coincidence into a
+guarantee by asserting that every declared `Actions` column outranks its
+table; the five tables here stop needing it, because the rank is computed
+rather than declared. The test keeps guarding the six tables that still
+declare a labelled `Actions` column.
 
-`_header_cell` states the label to a reader and hides it from a viewer, and
-marks the header `data-row-menu` beside the drop policy.
-`tests/test_column_priority_contract.py` reads that marker **or** the label
-`Actions`. Six tables keep a labelled Actions column, and the test exempts a
-table it finds neither on, so reading the marker alone would unprotect all
-six in silence.
+Five tables state a menu: the session list, the historical playtime list,
+the playthrough list, and Game detail's playthroughs and historical
+playtime. Two row builders serve four of them, so a builder's menu serves
+both its pages.
+
+## The trigger, and the menu around it
+
+Three surfaces draw the same idea three ways: the quick filter bar's
+overflow is the literal character, the library's summary rows are
+`Icon("ellipsis")`, and a table row has nothing. `EllipsisTrigger` is the one
+ghost `ControlButton` all three read, stated with a label and an
+orientation.
+
+The menu around it is not shared with the quick bar. A row's panel is a
+`DropdownMenuPanel` of items; the bar's is a dialog holding the facet
+triggers its layout moved there. Only the trigger is common.
+`RowActionMenu` is the row's half, and the library's summary menu becomes a
+caller of it.
+
+Vertical marks a row's own acts, horizontal an overflow among controls.
+`ellipsis.html` is three dots in a ring and stays as it is: it is
+`TruncatedText`'s reveal as well as the summary rows', and its name is the
+value of `data-truncated-reveal`. Two bare icons arrive beside it.
+
+A row's trigger names its row and states an id of its own.
 
 ## What each row offers
 
@@ -61,9 +81,10 @@ confirmation pages, which carry `?origin=` as they do today.
 
 The selection line renders its acts as a priority-plus row, the engine
 `ts/elements/priority-plus.ts` already serves two callers: the acts that no
-longer fit move into one `ellipsis` menu at the end, rightmost first, and
-move back when the width returns. The line wraps today, which puts a sticky
-bar of several rows over the table once a table states five acts.
+longer fit move into one horizontal `EllipsisTrigger` at the end, rightmost
+first, and move back when the width returns. The line wraps today, which
+puts a sticky bar of several rows over the table once a table states five
+acts.
 
 Declaration order is priority order. A table states its acts in the order a
 person reaches for them and states the destructive act last, so that act is
