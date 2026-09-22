@@ -58,6 +58,7 @@ from common.criteria import (
     field_metadata,
     filter_from_json,
     filter_to_json,
+    outside_interval_handler,
     relation_to_q,
     search_q,
     temporal_interval_handler,
@@ -300,6 +301,8 @@ class PlayerSessionFilter(OperatorFilter):
     note: StringCriterion | None = None
     timing_mode: ChoiceCriterion | None = None
     is_running: BoolCriterion | None = None  # Timed, and no end yet
+    #: The day falls outside the dates the session's run states.
+    outside_playthrough_dates: BoolCriterion | None = None
     day: DateCriterion | None = None  # effective_day, the library's calendar
     started: DateCriterion | None = None  # started_at's date; null Duration-only
     ended: DateCriterion | None = None  # ended_at's date; null while running
@@ -324,6 +327,14 @@ class PlayerSessionFilter(OperatorFilter):
         "is_running": FilterField(
             handler=bool_running_handler(PlayerSessionTimingMode.TIMED),
             label="Running",
+        ),
+        "outside_playthrough_dates": FilterField(
+            handler=outside_interval_handler(
+                "effective_day",
+                "playthrough__started_lower",
+                "playthrough__completed_upper",
+            ),
+            label="Outside dates",
         ),
         "day": FilterField("effective_day", label="Day"),
         # Compare the date portion so a date matches the datetime column.
