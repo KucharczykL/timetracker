@@ -303,28 +303,28 @@ pytest + pytest-xdist, vitest, Playwright.
   renders hidden pairs only (`games/views/bulk_pages.py:200-235`), so on chunk
   two there is no `<browser-time-zone>` element and no separate zone field —
   only `CHOICE_FIELD` holding what `settle` last returned. Therefore:
-  - `offer` renders **two** inputs: one hidden input named `field_name` (the
-    `CHOICE_FIELD` the runner hands it) carrying a `FinishStatement` already
-    encoded with the server-stamped instant and an empty zone, and
-    `BrowserTimeZoneInput()` under its own `browser_time_zone` name, which
-    `ts/elements/browser-time-zone.ts` fills.
-  - `settle` decodes `CHOICE_FIELD`, and takes the zone from the decoded value
-    if it holds one, otherwise from `browser_time_zone`. So chunk one composes
-    instant-from-choice with zone-from-browser, and every later chunk decodes a
-    value that already holds both. **`settle(settle(x)) == settle(x)` is the
-    rule; write a test for it by name.**
+  - **`settle` stamps, `offer` does not.** `offer` gets no request
+    (`BulkChoice.offer` takes library, rows and field name), and `settle` gets
+    the POST, so the decision belongs to `settle`. `offer` renders two inputs
+    and decides nothing: an **empty** hidden input named `field_name` — the
+    `CHOICE_FIELD` the runner hands it — and `BrowserTimeZoneInput()` under its
+    own `browser_time_zone` name, which `ts/elements/browser-time-zone.ts`
+    fills.
+  - `settle` reads `CHOICE_FIELD`. Empty: stamp `timezone.now()`, take the zone
+    from `browser_time_zone`, answer the encoded pair. Already filled: decode
+    and answer it unchanged. So chunk one decides and every later chunk agrees,
+    and **`settle(settle(x)) == settle(x)` falls out.** Write that test by name.
   - `run` decodes the `choice` it is handed into a `FinishStatement` and passes
     its two fields to `end_session`. A `choice` of `None` is a defect, not a
     state: raise rather than stamping a fresh instant.
-- `offer` is called again by `_reconfirmation` (`games/views/bulk.py:356`) when
-  a settle refusal interrupts a batch. It must **reuse the instant already in
-  `request.POST`** and stamp a fresh one only when there is none, or the rows
-  after the interruption end later than the rows before it and the spec's "one
-  batch ends at one instant" is false. `offer` takes no request, so read it off
-  the rows' own batch instead: pass the encoded value through by giving
-  `offer` the posted `CHOICE_FIELD` — if that means widening `BulkChoice.offer`
-  to see the POST, widen it, and say so in the commit; the alternative is an
-  act that quietly records two instants.
+- **Accepted:** `_reconfirmation` (`games/views/bulk.py:356`) re-draws an empty
+  control, so a batch interrupted there stamps a second instant for the rows
+  that remain. No fingerprint mismatches — the rows already done leave
+  `tally.rows` and are never dispatched again — and the path is reachable only
+  by hand-editing the hidden field. Do **not** widen `BulkChoice.offer` to see
+  the POST for it: that is #713's interface, and the cost is a cosmetic
+  inconsistency in a path nobody reaches. State it in a comment on
+  `finish_choice`.
 - `settle` validates both halves, because the field is a person's to edit: an
   instant it cannot parse raises `CommandRejected` with a `sentence=`; the zone
   goes through `zone_or_none` (`common/date_time_presentation.py:423`) and an
