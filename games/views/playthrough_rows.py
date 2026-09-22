@@ -342,8 +342,8 @@ def _act(
 ) -> Node:
     """One row, handed to a tray act.
 
-    The act's own label, so it reads the same here and in the tray, and
-    the act's own confirmation states the status it also records.
+    The act's own label, so it reads the same in both places; its
+    confirmation states the status the act also records.
     """
     return DropdownPostItem(
         action_url("games:run_bulk_action", action.name, origin=origin),

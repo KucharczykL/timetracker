@@ -53,7 +53,7 @@ def one_row_statement(row_id: uuid.UUID) -> Node:
     """The runner's statement, naming one row.
 
     A menu item hands its row to a tray act through this, so the act
-    grows no per-row route and one act keeps one set of rules.
+    grows no per-row route.
     """
     return Input(
         type="hidden",

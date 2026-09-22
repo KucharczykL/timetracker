@@ -191,11 +191,7 @@ DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_COMPLETION_VOIDED)
 
 
 def playthrough_start_voided(playthrough_id: uuid.UUID) -> NewEvent:
-    """The run states no start again.
-
-    No effective_time: the act retracts a record and
-    describes no day of its own.
-    """
+    """The run states no start again; no day."""
     return PLAYTHROUGH_START_VOIDED.new(aggregate_id=playthrough_id, payload={})
 
 

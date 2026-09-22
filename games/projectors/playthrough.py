@@ -78,8 +78,7 @@ class Playthroughs(Projector):
         )
 
     def _start_voided(self, event: RecordedEvent) -> None:
-        #: Every column of the endpoint, marker included:
-        #: a null marker is the act that did not occur.
+        #: Marker included: null is the act that did not occur.
         self.amend(
             Playthrough,
             event,

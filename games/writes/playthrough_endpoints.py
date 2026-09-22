@@ -1,8 +1,7 @@
-"""State one endpoint of a run, and the status it implies.
+"""State one endpoint, and the status it implies.
 
-An actor goes in here, not a request. The status is the act's own rule,
-not the caller's: whichever surface states the endpoint states the same
-second fact about the game.
+An actor goes in here, not a request. The status is the act's rule, so
+every surface that states an endpoint states the same second fact.
 """
 
 import uuid
@@ -20,16 +19,16 @@ from games.writes.playergame import record_facts
 from games.writes.playthrough import complete_run, start_run
 from timetracker.temporal import TemporalValue
 
-#: What the status statement is keyed on, beside the endpoint's own key.
+#: What the status is keyed on, beside the endpoint.
 _STATUS_KEY_SUFFIX = "-status"
 
 
 class StatedAct(NamedTuple):
     """What the endpoint did, and what the status refused.
 
-    The refusal is carried rather than raised: the endpoint is stated by
-    then, and a caller that turned this row down for the fact it implies
-    would report a stated endpoint as refused.
+    Carried rather than raised: the endpoint is stated by then, and a
+    caller that turned the row down for the fact it implies would report
+    a stated endpoint as refused.
     """
 
     result: CommandResult
@@ -45,11 +44,7 @@ def state_start(
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
 ) -> StatedAct:
-    """State that the run began, and that the game was played.
-
-    Played only where nothing stronger stands: a game a library
-    completed is not turned back by a run beginning.
-    """
+    """State the start, and Played where nothing stronger stands."""
     result = start_run(
         actor,
         run,
@@ -83,7 +78,7 @@ def state_completion(
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
 ) -> StatedAct:
-    """State that the run finished, and that the game is completed."""
+    """State the completion, and Completed on the game."""
     result = complete_run(
         actor,
         run,
@@ -111,10 +106,8 @@ def _stated_now(result: CommandResult) -> bool:
     """Whether this act recorded the endpoint.
 
     A replay counts: the post that appended the endpoint may never have
-    reached the status, and the command states nothing twice.
-
-    An unchanged outcome does not: the run held that endpoint before the
-    act, so the act implies nothing about the game.
+    reached the status, and the command states nothing twice. An
+    unchanged outcome does not: the run held the endpoint before the act.
     """
     return result.outcome in (CommandOutcome.APPENDED, CommandOutcome.REPLAYED)
 
@@ -130,9 +123,9 @@ def _state_the_status(
 ) -> CommandFailed | None:
     """State the word the act implies; answer a conflict.
 
-    The key is derived from the endpoint's, so two posts of one act
-    state the status once. A defect rises: nothing was recorded, and a
-    caller that swallowed it would report the row done.
+    The key comes from the endpoint's, so two posts state it once. A
+    defect rises: nothing was recorded, and a caller that swallowed it
+    would report the row done.
     """
     try:
         record_facts(

@@ -375,7 +375,7 @@ def test_a_corrected_endpoint_refuses_the_undo(
 def test_a_restated_endpoint_refuses_the_undo(
     client_in, owned_user, owned_library, game
 ):
-    """A void and a second statement are one case: whoever wrote it last."""
+    """A void and a second statement are one case."""
     run = tracked_run(owned_library, game)
     token, _ = _run(client_in, START_URL, run)
     _undo(client_in, token)

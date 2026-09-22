@@ -1,11 +1,4 @@
-"""Stating one endpoint at today, on many runs.
-
-One act, one day. The runner fingerprints each command's input, so a
-payload that differs between two posts of one chunk raises
-`IdempotencyKeyMismatch` and counts every stated row refused. A day read
-again inside `run` is such a payload across midnight, which is why the
-day is stamped into the confirmation's HTML and carried in the choice.
-"""
+"""One endpoint stated at today, on many runs."""
 
 import logging
 import uuid
@@ -57,7 +50,7 @@ logger = logging.getLogger("games")
 NO_DAY = "This batch states no day to record. Start the act again."
 DAY_UNREADABLE = "The day this batch records could not be read. Start the act again."
 
-#: What the confirmation says of the day and of the game.
+#: What the confirmation says of the act.
 STARTED_SENTENCE = (
     "Every playthrough in this batch is started on {day}, the day this page "
     "was drawn. Each game that is not yet played is marked Played."
@@ -70,11 +63,7 @@ COMPLETED_SENTENCE = (
 
 @dataclass(frozen=True, slots=True)
 class DayStatement:
-    """The day a batch records its act on.
-
-    Named rather than a bare date: it crosses three boundaries as one
-    string -- the hidden field, `settle`'s answer, and the waypoint.
-    """
+    """The day a batch records its act on."""
 
     day: date
 
@@ -83,10 +72,7 @@ class DayStatement:
 
     @classmethod
     def decode(cls, raw: ChoiceValue) -> DayStatement:
-        """The day a form or a waypoint stated.
-
-        Refuses what it cannot read: a guess is a second day.
-        """
+        """The day stated; a guess is a second day."""
         if not raw:
             raise CommandRejected("no day was posted", sentence=NO_DAY)
         try:
@@ -102,13 +88,10 @@ def _offer_the_day(
 ) -> Offered:
     """The library's day, stamped into the form.
 
-    The day is the form's, not the POST's. One confirmation can be
-    posted twice, and `ConfirmPage` has no submit-once guard: each row
-    the first post stated is dispatched again under the same key.
-    Stamped, the payload matches and those rows replay; read again per
-    POST, a batch that crosses midnight reports them refused.
-
-    The library's calendar states the day, so no zone is asked for.
+    One confirmation can be posted twice, and each row of the first post
+    is dispatched again under one key. Stamped, the payload matches and
+    those rows replay; read again per POST, a batch that crosses
+    midnight reports every one of them refused.
     """
     if not rows:
         #: The confirmation says so itself.
@@ -137,12 +120,8 @@ def offer_completion_day(
 def settle_day(library: UserLibrary, post: QueryDict) -> ChoiceValue:
     """The stamped day, read back.
 
-    Re-run on every chunk over its own last answer, so decoding and
-    encoding again is what makes `settle(settle(x)) == settle(x)`.
-
-    Every day the grammar reads is accepted. A person who writes another
-    day in the field states that day, as a person who writes another
-    instant in the Finish field states that moment.
+    Every chunk settles its own last answer, so decoding and encoding
+    again is what makes `settle(settle(x)) == settle(x)`.
     """
     #: Local: the act table imports this module.
     from games.views.bulk import CHOICE_FIELD
@@ -165,11 +144,10 @@ def _source(name: str) -> dict[str, object]:
 def _stated_day(choice: ChoiceValue | None, run: Playthrough, name: str) -> date:
     """The day every row of this batch records.
 
-    A `None` choice is a defect: the runner settles before it runs, so
-    the act cannot reach a row without one. Raised under `answered` --
-    `_run_a_chunk` catches only `Http404` and `CommandFailed`, and
-    anything else skips the log that names every row the batch never
-    reached.
+    A `None` choice is a defect: the runner settles before it runs.
+    Raised under `answered`, because the runner catches `Http404` and
+    `CommandFailed` alone, and anything else skips the log that names
+    every row it never reached.
     """
     with answered("playthrough"):
         if choice is None:
@@ -184,8 +162,8 @@ def _stated_day(choice: ChoiceValue | None, run: Playthrough, name: str) -> date
 def _report_a_refused_status(stated: StatedAct, run: Playthrough, name: str) -> None:
     """The endpoint stands; the word it implies did not.
 
-    Logged rather than counted: the row states what the act is named
-    for, and a refusal here would report a stated endpoint as refused.
+    Logged, not counted: a refusal here would report a stated endpoint
+    as refused.
     """
     if stated.status_refusal is None:
         return
@@ -252,8 +230,7 @@ CHANGED_SINCE = (
     "left as it is. Correct it by hand instead."
 )
 
-#: The events that state one endpoint: the statement, the correction and
-#: the void. Whoever wrote the latest of them owns the value.
+#: One endpoint's events; the latest of them owns the value.
 _START_FAMILY = (
     PLAYTHROUGH_STARTED.event_type,
     PLAYTHROUGH_START_CORRECTED.event_type,
@@ -269,8 +246,8 @@ _COMPLETION_FAMILY = (
 def _row(actor: User, run_id: uuid.UUID) -> Playthrough:
     """The row an Undo speaks about.
 
-    The plain manager: a scoped read states the game's mark, and a run
-    whose catalog game went is still this library's to unwind.
+    The plain manager: a run whose catalog game went is still this
+    library's to unwind.
     """
     with answered("playthrough"):
         row = (
@@ -292,12 +269,12 @@ def _refuse_unless_this_batch_wrote_it(
     family: tuple[str, ...],
     stated: str,
 ) -> None:
-    """Refuse a value this batch is not the last to have written.
+    """Refuse a value another act wrote after this batch.
 
     The batch's own event must still be the latest of the family. A
-    correction states a day a person typed, and a second statement
-    states one another act recorded; voiding either destroys a value
-    this batch never wrote, and no command puts it back.
+    correction states a day a person typed, and a second statement one
+    another act recorded; voiding either destroys a value this batch
+    never wrote, and no command puts it back.
     """
     about = [
         event
@@ -323,13 +300,10 @@ def _refuse_unless_this_batch_wrote_it(
 
 
 def _status_before(run: Playthrough, batch_id: uuid.UUID) -> PlayerGameStatus | None:
-    """The word the game held before the batch changed it.
+    """The word the game held before the batch.
 
-    None where the batch changed none: the act states a status only
-    where it stated the endpoint, and only where the game admitted it.
-
-    Unplayed where the stream states no earlier word, which is what a
-    tracked row holds while nothing has said otherwise.
+    None where the batch changed none. Unplayed where the stream states
+    no earlier word, which is what a tracked row holds.
     """
     events = [
         event
@@ -346,11 +320,11 @@ def _status_before(run: Playthrough, batch_id: uuid.UUID) -> PlayerGameStatus | 
 
 
 def _stated_since(run: Playthrough, batch_id: uuid.UUID, undoing: uuid.UUID) -> bool:
-    """Whether anybody but this Undo stated the status after the batch.
+    """Whether anybody but this Undo stated it since.
 
-    This Undo's own statements are its own: two rows at one game share
-    one forward event, and the second row would otherwise read the
-    restoration of the first as somebody's change.
+    Two rows at one game share one forward event, so the second row
+    would otherwise read the restoration of the first as a change
+    somebody made.
     """
     events = [
         event
@@ -375,12 +349,7 @@ def _put_the_status_back(
     correlation_id: uuid.UUID,
     name: str,
 ) -> None:
-    """State the word that stood before the batch.
-
-    A word a person stated since stays as that person stated it: the
-    endpoint is the fact of the row, and the status is the fact it
-    implies.
-    """
+    """State the word that stood before the batch."""
     before = _status_before(run, undoes)
     if before is None:
         return
@@ -413,7 +382,7 @@ def void_start_one(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """The run stating no start again, and the game as it stood."""
+    """The run states no start; the game as it stood."""
     run = _row(actor, run_id)
     if stated_start(run) is not None:
         with answered("playthrough"):
@@ -448,7 +417,7 @@ def void_completion_one(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """The run stating no completion again, and the game as it stood."""
+    """The run states no completion; the game as it stood."""
     run = _row(actor, run_id)
     if stated_completion(run) is not None:
         with answered("playthrough"):

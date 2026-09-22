@@ -38,7 +38,7 @@ def act_url(action: BulkAction) -> str:
 
 
 def press(client, action: BulkAction, *rows, follow: bool = False):
-    """Confirm the act on these rows, then post the confirmation.
+    """Confirm the act, then post the confirmation.
 
     The two POSTs one press makes: the runner tells them apart by the
     token the confirmation carries.

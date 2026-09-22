@@ -85,7 +85,7 @@ def test_a_completion_states_completed(owned_user, run, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_an_unchanged_endpoint_states_no_status(owned_user, run, game):
-    """A run that already states that day implies nothing."""
+    """A run already stating that day implies nothing."""
     state_start(owned_user, run, DAY, correlation_id=new_correlation_id())
     record_facts(
         owned_user,
@@ -104,7 +104,7 @@ def test_an_unchanged_endpoint_states_no_status(owned_user, run, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_replayed_endpoint_states_the_status(owned_user, run, game):
-    """The second post finishes what the first never reached."""
+    """The second post finishes what the first missed."""
     for _ in range(2):
         stated = state_start(
             owned_user,
@@ -142,7 +142,7 @@ def test_a_refused_endpoint_rises(owned_user, run, game):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_refused_status_is_carried_back(owned_user, run, game, monkeypatch):
-    """The endpoint stands; the row is not refused for the status."""
+    """The endpoint stands; the status alone refused."""
     refusal = CommandFailed("That game was removed from your library.", 409)
 
     def refuse(*arguments, **facts):
@@ -163,7 +163,7 @@ def test_a_refused_status_is_carried_back(owned_user, run, game, monkeypatch):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_status_defect_ends_the_act(owned_user, run, game, monkeypatch):
-    """Anything but a conflict is the batch's to end on."""
+    """Anything but a conflict ends the batch."""
 
     def fail(*arguments, **facts):
         raise CommandFailed("The database refused the statement.", 500)

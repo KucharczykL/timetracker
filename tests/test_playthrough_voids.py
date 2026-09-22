@@ -146,7 +146,7 @@ def test_a_removed_game_refuses_the_void(owned_user, owned_library, run):
 def test_an_unstated_start_under_a_removed_game_is_unchanged(
     owned_user, owned_library, run
 ):
-    """The no-op answers before the refusal, as a removal answers."""
+    """The no-op answers before the refusal."""
     tracked = PlayerGame.objects.get()
     PlayerGame.objects.filter(pk=tracked.pk).update(removed_at=tracked.tracked_at)
 

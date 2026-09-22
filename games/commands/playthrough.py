@@ -541,9 +541,7 @@ class VoidPlaythroughStart(Command):
     """Take back the record that a run began.
 
     A retraction, not a correction: the day and the note go
-    with the record of the act, and the run states no start
-    again. `CorrectPlaythroughStart` refuses a run stating
-    none, so nothing else writes the endpoint back.
+    with the record, and the run states no start again.
     """
 
     command_name: ClassVar[CommandName] = CommandName.PLAYTHROUGH_VOID_START
@@ -552,8 +550,8 @@ class VoidPlaythroughStart(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = library_playthrough(context, self.playthrough_id)
-        #: The no-op before either mark, as in RemovePlaythrough:
-        #: a repeat still succeeds once the game is gone.
+        #: The no-op before either mark: a repeat still
+        #: succeeds once the game is gone.
         if stated_start(run) is None:
             return Unchanged(
                 f"Playthrough {self.playthrough_id} states no start to take back."
@@ -583,7 +581,7 @@ class VoidPlaythroughCompletion(Command):
 
 
 def _refuse_a_removed_run(run: Playthrough) -> None:
-    """Refuse an act on a run out of the lists."""
+    """Refuse an act on a removed run."""
     #: Under dispatch's lock the mark cannot move.
     if run.removed_at is not None:
         raise CommandRejected(

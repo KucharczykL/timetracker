@@ -57,7 +57,7 @@ def test_two_runs_are_completed_today_and_the_undo_takes_it_back(
     _select_rows(page, 0, 1)
     page.get_by_role("button", name=COMPLETE).click()
 
-    #: The act's preview, its day and the status it also records.
+    #: The preview, the day and the status.
     expect(
         page.get_by_role(
             "heading", name="Record that these playthroughs were completed today"
@@ -93,14 +93,13 @@ def test_two_runs_are_completed_today_and_the_undo_takes_it_back(
 def test_a_row_menu_reaches_the_same_act(
     live_server, page: Page, e2e_user, e2e_library
 ):
-    """One row, one act: the item posts the runner's own statement."""
+    """One row, through the item, to the same act."""
     run, _ = _two_tracked_runs(e2e_library)
     _login(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:list_playthroughs')}")
     open_row_menu(page, f"run-menu-{run.pk}")
-    #: The item is a form of its own, so the act it posts to names it;
-    #: every other row holds one too, and only this menu's is shown.
+    #: Every row holds one; only this menu's is shown.
     page.locator(f'form[action*="{START_RUNS.name}"] button[type="submit"]').locator(
         "visible=true"
     ).first.click()
