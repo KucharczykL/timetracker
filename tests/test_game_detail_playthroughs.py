@@ -5,11 +5,13 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from bulk_posts import act_url
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import escape
 from session_rows import timed_row, tracked_run
 
+from games.bulk_playthrough_acts import START_RUNS
 from games.filters import PlaythroughFilter, filter_url
 from games.models import Game, Playthrough, PlaythroughKind
 
@@ -166,12 +168,17 @@ def test_the_section_states_each_run_menu_and_no_actions_column(logged_in, game)
 
 
 def test_the_section_offers_the_act_the_run_allows(logged_in, game):
-    """A tracked game's run states nothing."""
+    """A tracked game's run states nothing, so it is offered a start.
+
+    The item hands its one row to the tray act, which is where the
+    rules and the words live.
+    """
     run = Playthrough.objects.get(player_game__game=game)
 
     body = section(logged_in, game)
 
-    assert f"/playthrough/{run.pk}/start" in body
+    assert act_url(START_RUNS) in body
+    assert str(run.pk) in body
     assert "csrfmiddlewaretoken" in body
 
 

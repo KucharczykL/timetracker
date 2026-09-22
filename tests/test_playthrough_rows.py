@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from bulk_posts import act_url
 from django.utils import timezone
 from session_rows import timed_row
 
@@ -12,6 +13,7 @@ from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
 )
+from games.bulk_playthrough_acts import COMPLETE_RUNS, START_RUNS
 from games.commands.playthrough import ActStatement
 from games.models import Game, Playthrough
 from games.reads.playthrough_activity import activity_clock
@@ -223,8 +225,9 @@ def test_every_run_offers_edit_and_remove(owned_library, run, presentation):
 def test_a_run_with_no_start_offers_start(owned_library, run, presentation):
     actions = actions_of(owned_library, run, presentation, csrf_token="token")
 
-    assert f"/playthrough/{run.pk}/start" in actions
-    assert f"/playthrough/{run.pk}/complete" not in actions
+    assert act_url(START_RUNS) in actions
+    assert act_url(COMPLETE_RUNS) not in actions
+    assert str(run.pk) in actions
     assert 'method="post"' in actions
     assert "token" in actions
 
@@ -234,19 +237,21 @@ def test_a_started_run_offers_complete(owned_user, owned_library, run, presentat
 
     actions = actions_of(owned_library, run, presentation, csrf_token="token")
 
-    assert f"/playthrough/{run.pk}/complete" in actions
-    assert f"/playthrough/{run.pk}/start" not in actions
+    assert act_url(COMPLETE_RUNS) in actions
+    assert act_url(START_RUNS) not in actions
 
 
-def test_the_complete_button_names_the_status_it_states(
+def test_an_item_reads_the_act_it_posts_to(
     owned_user, owned_library, run, presentation
 ):
-    """The press always states Completed, so its title says so."""
+    """One act reads the same in the tray and in the menu."""
     _state_start(owned_user, run)
 
     actions = actions_of(owned_library, run, presentation, csrf_token="token")
 
-    assert "also marks the game Completed" in actions
+    assert COMPLETE_RUNS.label in actions
+    #: The confirmation states the status the act also records.
+    assert "also marks the game Completed" not in actions
 
 
 def test_a_finished_run_offers_neither(owned_user, owned_library, run, presentation):
@@ -255,8 +260,8 @@ def test_a_finished_run_offers_neither(owned_user, owned_library, run, presentat
 
     actions = actions_of(owned_library, run, presentation, csrf_token="token")
 
-    assert f"/playthrough/{run.pk}/start" not in actions
-    assert f"/playthrough/{run.pk}/complete" not in actions
+    assert act_url(START_RUNS) not in actions
+    assert act_url(COMPLETE_RUNS) not in actions
 
 
 def test_a_run_completed_before_today_offers_no_start(
@@ -264,16 +269,16 @@ def test_a_run_completed_before_today_offers_no_start(
 ):
     """The completion alone rules a start out.
 
-    Starting today would finish the run before it
-    began, which the command refuses, so offering
-    the button promises an act it cannot deliver.
+    The gate is narrower than the command, which takes a
+    start at today on a run completed today: a finished
+    run is not one a person is starting now.
     """
     _state_completion(owned_user, run)
 
     actions = actions_of(owned_library, run, presentation, csrf_token="token")
 
-    assert f"/playthrough/{run.pk}/start" not in actions
-    assert f"/playthrough/{run.pk}/complete" not in actions
+    assert act_url(START_RUNS) not in actions
+    assert act_url(COMPLETE_RUNS) not in actions
     assert f"/playthrough/edit/{run.pk}" in actions
 
 

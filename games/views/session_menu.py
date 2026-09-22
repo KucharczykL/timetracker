@@ -4,14 +4,10 @@ Not in `common/components/`: reading `games.bulk_actions` there
 closes a cycle through that table's foot imports.
 """
 
-import json
-
 from common.components import (
-    SELECTION_STATEMENT_FIELD,
     BrowserTimeZoneInput,
     DropdownLinkItem,
     DropdownPostItem,
-    Input,
     RowActionMenu,
 )
 from common.components.core import Node
@@ -19,20 +15,8 @@ from common.returns import OriginUrl, action_url
 from games.bulk_move import MOVE
 from games.bulk_reclassification import RECLASSIFY
 from games.bulk_removal import REMOVE_SESSION
+from games.bulk_tray import one_row_statement
 from games.models import PlayerSession, PlayerSessionTimingMode
-
-
-def _one_row(session: PlayerSession) -> Node:
-    """The runner's statement, naming this row alone.
-
-    Move has no route of its own and grows none.
-    """
-    return Input(
-        type="hidden",
-        name=SELECTION_STATEMENT_FIELD,
-        value=json.dumps({"mode": "some", "keys": [str(session.pk)]}),
-    )
-
 
 #: Three dots: the act asks first, not opens a page.
 #: See docs/visual-conventions.md, "Row acts".
@@ -74,7 +58,7 @@ def session_row_menu(
             action_url("games:run_bulk_action", MOVE.name, origin=origin),
             MOVE.label,
             csrf_token=csrf_token,
-            hidden_fields=_one_row(session),
+            hidden_fields=one_row_statement(session.pk),
             icon="move",
         ),
     ]
