@@ -164,9 +164,9 @@ dropping. The charter's rules hold, and this wave settles the shape:
   statement the POST carries and nothing else, so what the element keeps
   changes nothing in the runner; a count that no longer matches is the
   confirmation's to say, not the tray's to refuse.
-  The cost of the mode: after #718 a single-row bulk act is three
-  presses, Select, the checkbox, the action, one more than the charter
-  counted; the row's own Edit and Reset stay two, the ⋯ menu and the item.
+  The cost of the mode: after #718 a multi-row act is Select, the
+  checkboxes, the action; a single row's act is two presses, the ⋯ menu
+  and the item, because the menu carries every act valid for one row.
 - Below `md` the identity cell is today a shrinkable, single-line name cell,
   and nothing stacks. #711 builds the stacked cell: the checkbox beside the
   row's essential summary on two lines, while lower-priority columns keep
@@ -240,12 +240,20 @@ for Edit, Reset and Was-an-estimate. The user overturned it on the
 shipped tray: no act in the Actions column must be single, because bulk
 Edit is a different act from the row's Edit (it sets one value on every
 selected row, #1211) and Finish is coherent over many running sessions.
-What stays single, the row's own Edit form and Reset, lives in a ⋯ menu
-on the row, not in the tray, so the tray renders no `one` path and
-`Cardinality.ONE` leaves with #718.
+The ⋯ menu on the row carries every act valid for one row, the tray
+every act, two complete lists (below), so the tray renders no `one` path
+and `Cardinality` leaves whole with #718.
 
 The selection line is the same on every table, and the actions differ by
-view. Nothing about it knows sessions.
+view. Nothing about it knows sessions. Since #718 the line lays its acts
+out as a priority-plus row on `ts/elements/priority-plus.ts`, the engine
+the quick bar reads: the acts that no longer fit move into one
+horizontal `EllipsisTrigger` at the end, rightmost first, measured off
+the line itself when the mode first turns on. Declaration order is
+priority order, so a view states the act reached for most often first
+and the destructive act last, which is the one to overflow first and
+never sits between two benign ones; #1211 and #1256 place their acts by
+that rule.
 
 ## The runner
 
@@ -289,7 +297,19 @@ the submission token.
    the list unfiltered: harmless on a list page, and on a bulk act the
    scope widened to every row.
 2. **Act.** A POST with a token dispatches the action's per-row command
-   through the row's `games/writes/` wrapper, under `answered()`, one
+   through the row's `games/writes/` wrapper, under `answered()`, which
+   takes `idempotency_key` and `source_metadata` and answers the
+   `CommandResult` (`end_session`, `correct_session` and `move_session`
+   do since #718; `describe_session` does not yet, and #1211 grows it),
+   behind a callable of the act's own that takes `choice`,
+   `idempotency_key` and `correlation_id` as keywords and answers a
+   `RowOutcome`. An act's title is an `ActTitle(one, many)`, both halves
+   stated and neither empty, because a single row is the common case
+   once every row's menu reaches the runner. No act module reads a name
+   off another: the table imports every act at its foot, so the sibling
+   reached first finds nothing defined; a shared half lives in a module
+   of its own (`games/bulk_sessions.py`), and
+   `tests/test_bulk_act_imports.py` holds the rule. Each dispatch is one
    transaction per row as every dispatch is, each row's idempotency key
    derived from the token and the row key, every row under **one
    `correlation_id`**, which is the batch's identity. The token is that
@@ -373,8 +393,7 @@ done". Sessions and records refuse far less. The act stays as the
 runner's proof and the one act on the run tables; whether it earns a
 place in the product is judged in the rethink #1209 is parked against,
 not here. Without it a tray on runs or records
-would hold single-row acts only, and selecting ten runs would enable
-nothing.
+would hold nothing, and selecting ten runs would enable nothing.
 
 ## The organizer
 
@@ -482,28 +501,88 @@ loses the button.
 
 #718 retires the Actions column on every table on the two pages this wave
 touches that has one: Game detail's playthroughs and historical playtime,
-and the Playtime page's sessions and historical playtime, four columns.
-Game detail's session preview has none. A reader a tray act needs moves
+and the Playtime page's sessions and historical playtime, four columns,
+and with them the Playthrough list's, which `playthrough_tabledata` draws
+from the same declaration and which carries the tray since #712: one
+builder is one personality, and a flag keeping the column on one page
+would reopen what the wave closed. Game detail's session preview has
+none. The ⋯ menu is not a column: `make_row` states it beside the
+`key` and `summary` a row already states, and `StyledTable` draws one
+trailing cell a row and one trailing header cell, headed by an
+accessible name and no visible label, because `<responsive-table>`
+hides by position and the grid stays rectangular for the declared
+columns to keep their indices. That header's `data-priority` is
+computed one above the table's highest, since the element reads a
+missing one as 1 and would drop the slot first, so its rank cannot be
+stated wrong and the five tables leave
+`tests/test_column_priority_contract.py`, which keeps guarding the six
+that still declare a labelled Actions column. The slot never enters a
+view's `Column` list and never counts against `MAX_DATA_TABLE_COLUMNS`;
+the checkbox, likewise, is content the selectable personality owns
+inside the name cell. The trigger is `EllipsisTrigger(label,
+orientation)`, one ghost `ControlButton` with a vertical glyph for a
+row's acts and a horizontal one for an overflow, which the quick bar's
+literal "⋯" and the Library page's summary rows adopt as well; the
+row's panel is a `DropdownMenuPanel` of items. `ellipsis.html` stays
+what `TruncatedText`'s reveal names. A table that keeps its Actions
+column today (#1134–#1136, Purchases) deletes it when its turn comes and
+takes the slot, whose rank it cannot get wrong. With scripting off the
+trigger is inert and the five tables offer no row act, a regression the
+user accepted; #1258, a page of its own for a session, a run and a
+record, is the answer. The playthrough tables'
+one-press "Started today" and "Completed today" are items in that menu;
+as tray acts with inverses of their own they are #1256's, after #718,
+and the items stay when the tray acts arrive. Finish's inverse is `CorrectSessionTiming` to the row's own start
+and zones with no end, which puts the row back to running, so `inverse`
+stays required on every act; `end_session` grows the runner's shape, a
+key, a correlation id and `source_metadata`, and answers the
+`CommandResult`. A reader a tray act needs moves
 to `games/reads/` first: an act module importing a view closes an import
 cycle through the foot imports of `games/bulk_actions.py`, which is why
-#714 moved the run labels out of `games/views/session.py`. Every act that is coherent over
-many rows is a tray action: Remove and Was-an-estimate (shipped), Finish
-(#718 declares it, `EndSession` at now per running row, no form), and
-Edit as set-one-value (#1211, after #714, whose move confirmation is the
-form-over-a-selection precedent; its device control is the session
-form's creating `SearchSelect` over `POST /api/devices/`, #1080's, so a
-device the library does not hold yet is made at the confirmation). The
-residue, the row's own Edit form
-and Reset, moves into a ⋯ menu on the row, the user's preference over a
-row of icons; a single running session is finished from the tray, from
-the navbar, or from its own page. Games, Purchases,
-Devices and Platforms keep their columns, each filed as a follow-up;
-Purchases' is the Purchases wave's, which rebuilds that table.
+#714 moved the run labels out of `games/views/session.py`.
 
-The cost the charter accepted holds: a single-row bulk act is select,
-then act, one press more than an icon, and the residue menu costs the
-same two presses an icon row did. The Orca pass in #718 is where that
-cost is judged.
+Two complete lists, no residue, the user's rule of 2026-09-22 over the
+whole inventory of the five tables: the tray offers every act, and the
+row's ⋯ menu offers every act valid for a single row, in the tray act's
+words where one exists ("Record as historical playtime", "Remove"), so
+one act reads the same both ways. The words are the act's, so each
+table's items are built under `games/views/` (`session_menu.py` is the
+session row's) and read `games.bulk_actions`; `RowActionMenu` in
+`common/components/` states items and knows no act, since that import
+closes a cycle through the table's foot imports. A menu item may hand
+one row to a tray act through the runner's own statement, as Move does
+through `DropdownPostItem(hidden_fields=...)`, so the act grows no
+per-row route and the words and rules are one; #1256 may reach its two
+tray acts the same way. The tray's acts are Remove and Was-an-estimate
+(shipped), Finish (#718 declares it, `EndSession` on every running row
+at one instant, stamped by `offer` into the confirmation's own HTML so
+a form posted twice replays rather than mismatching each row's key;
+the zone is the browser's, `BrowserTimeZoneInput()` beside it, and
+`settle` composes the pair once and answers it unchanged on every
+later chunk; a reconfirmation stamps again for the rows that remain)
+and Edit as set-one-value (#1211, after #714,
+whose move confirmation is the form-over-a-selection precedent; its
+device control is the session form's creating `SearchSelect` over
+`POST /api/devices/`, #1080's, so a device the library does not hold
+yet is made at the confirmation). The menu is today's Actions column
+collapsed into one control: Edit, Reset, Finish, Remove and
+Was-an-estimate stay on the row, and a tray act shipping takes nothing
+off it. A gated act is absent, never disabled: a playthrough row offers
+Started today where it states neither endpoint and Completed today
+where it states a start and no completion, the gate #1256's tray acts
+inherit. Games, Purchases, Devices and Platforms keep their columns,
+each filed as a follow-up, and inherit the rule with the column: their
+Actions column becomes the row's full act list in a menu, built under
+`games/views/`. Purchases' is the Purchases wave's, which rebuilds that
+table. `make_row` now states `key`, `summary` and `menu` beside the
+cells, which is the row #1241 feeds.
+
+The cost: a single row's act is two presses, the menu and the item, as
+an icon row cost; a multi-row act is Select, the checkboxes and the
+action. The charter's "a single-row bulk act is three presses" describes
+a path nobody has to take. The Orca pass in #718 is one transcript on
+the Playtime session list, selection, the live count, a tray act, then a
+row's ⋯ and its items; the other four tables are Playwright only.
 
 ## Delivery order
 
@@ -543,12 +622,17 @@ cost is judged.
    the Library page's three cards and their links.
 7. **#1212** TABLE-05 — the checkbox reserve while the mode is off,
    decided before the pages are judged.
-8. **#718** ORG-05 — the four Actions columns retired into the tray's
-   `many` acts (Finish declared here) and the row's ⋯ menu,
-   `Cardinality.ONE` removed, the Orca pass.
+8. **#718** ORG-05 — the five Actions columns retired into the tray's
+   acts (Finish declared here, with its inverse) and the row's ⋯ menu
+   holding every single-row act, a trailing slot no view declares,
+   `EllipsisTrigger` shared with the quick bar and the summary rows,
+   `Cardinality` removed whole, the Orca pass, with the checkbox reserve
+   as it stands.
 9. **#1211** TABLE-04 — bulk Edit on the session tables, after #714.
 
-`#711 → #713 → #712 → #714 → #715 → #717 → #1212 → #718 → #1211`. #713 needs no table, so it
+`#711 → #713 → #712 → #714 → #715 → #717 → #718 → #1211`. #1212 and #1254
+are parked by the user's decision on 2026-09-22, so #718 lands with the
+checkbox reserve as it stands; #1256 follows #718. #713 needs no table, so it
 runs beside #711. One prerequisite lies outside the wave: #1080, in the
 Session wave, landed before #714 as stack #1226–#1228 (`main` at
 63b5940f). Every issue merges alone and leaves `main` incomplete
@@ -580,7 +664,10 @@ Remove, in #712.
   Undo sentence and #715's Playthrough column both inherit.
 - **The rethink** — #1209, a confirmation that forecasts a command's
   refusal, waits for the interface work after #599's epics, which also
-  judges whether bulk Remove on runs is kept at all.
+  judges whether bulk Remove on runs is kept at all, and now whether an
+  act declared twice, as a route with its own confirmation and as a
+  `BulkAction`, keeps two confirmations that say different things about
+  one act: Remove and the reclassification pay this since #718.
 
 ## Verification contract
 
@@ -664,11 +751,14 @@ at connect. Measured after #712 shipped: the confirmation lists only the
 refusals the resolve owns, a command's rule is read at the press, and the
 forecast of it is #1209, parked with the numbers. Overturned by the user
 on the shipped tray: no `one` cardinality; bulk Edit (#1211) and Finish
-are `many` acts, the residue is a ⋯ menu on the row, and the empty
-checkbox reserve is #1212's to decide before #718.
+are tray acts, and the empty checkbox reserve was #1212's, since parked.
+Overturned again by the user on 2026-09-22, over the five tables'
+inventory: no residue; the tray offers every act and the row's ⋯ menu
+every act valid for one row, two complete lists.
 
 Deviations recorded: the empty bucket is removed, not archived; Finish is
-a tray act rather than the charter's inline control, beside the navbar's;
+a tray act and a menu item, the charter's inline control moved into the
+row's menu, beside the navbar's;
 a cross-game move is refused rather than
 picked; the organizer is reached from Game detail's Sessions section rather
 than its Playthrough section, and a date range is selected through the date
