@@ -245,7 +245,15 @@ every act, two complete lists (below), so the tray renders no `one` path
 and `Cardinality` leaves whole with #718.
 
 The selection line is the same on every table, and the actions differ by
-view. Nothing about it knows sessions.
+view. Nothing about it knows sessions. Since #718 the line lays its acts
+out as a priority-plus row on `ts/elements/priority-plus.ts`, the engine
+the quick bar reads: the acts that no longer fit move into one
+horizontal `EllipsisTrigger` at the end, rightmost first, measured off
+the line itself when the mode first turns on. Declaration order is
+priority order, so a view states the act reached for most often first
+and the destructive act last, which is the one to overflow first and
+never sits between two benign ones; #1211 and #1256 place their acts by
+that rule.
 
 ## The runner
 
@@ -289,7 +297,19 @@ the submission token.
    the list unfiltered: harmless on a list page, and on a bulk act the
    scope widened to every row.
 2. **Act.** A POST with a token dispatches the action's per-row command
-   through the row's `games/writes/` wrapper, under `answered()`, one
+   through the row's `games/writes/` wrapper, under `answered()`, which
+   takes `idempotency_key` and `source_metadata` and answers the
+   `CommandResult` (`end_session`, `correct_session` and `move_session`
+   do since #718; `describe_session` does not yet, and #1211 grows it),
+   behind a callable of the act's own that takes `choice`,
+   `idempotency_key` and `correlation_id` as keywords and answers a
+   `RowOutcome`. An act's title is an `ActTitle(one, many)`, both halves
+   stated and neither empty, because a single row is the common case
+   once every row's menu reaches the runner. No act module reads a name
+   off another: the table imports every act at its foot, so the sibling
+   reached first finds nothing defined; a shared half lives in a module
+   of its own (`games/bulk_sessions.py`), and
+   `tests/test_bulk_act_imports.py` holds the rule. Each dispatch is one
    transaction per row as every dispatch is, each row's idempotency key
    derived from the token and the row key, every row under **one
    `correlation_id`**, which is the batch's identity. The token is that
@@ -525,21 +545,37 @@ Two complete lists, no residue, the user's rule of 2026-09-22 over the
 whole inventory of the five tables: the tray offers every act, and the
 row's ⋯ menu offers every act valid for a single row, in the tray act's
 words where one exists ("Record as historical playtime", "Remove"), so
-one act reads the same both ways. The tray's acts are Remove and
-Was-an-estimate (shipped), Finish (#718 declares it, `EndSession` at
-now per running row; its `ended_at_zone` is the browser's, carried in
-the act's `BulkChoice` slot as `BrowserTimeZoneInput()`, the same fact
-the row's Finish records) and Edit as set-one-value (#1211, after #714,
+one act reads the same both ways. The words are the act's, so each
+table's items are built under `games/views/` (`session_menu.py` is the
+session row's) and read `games.bulk_actions`; `RowActionMenu` in
+`common/components/` states items and knows no act, since that import
+closes a cycle through the table's foot imports. A menu item may hand
+one row to a tray act through the runner's own statement, as Move does
+through `DropdownPostItem(hidden_fields=...)`, so the act grows no
+per-row route and the words and rules are one; #1256 may reach its two
+tray acts the same way. The tray's acts are Remove and Was-an-estimate
+(shipped), Finish (#718 declares it, `EndSession` on every running row
+at one instant, stamped by `offer` into the confirmation's own HTML so
+a form posted twice replays rather than mismatching each row's key;
+the zone is the browser's, `BrowserTimeZoneInput()` beside it, and
+`settle` composes the pair once and answers it unchanged on every
+later chunk; a reconfirmation stamps again for the rows that remain)
+and Edit as set-one-value (#1211, after #714,
 whose move confirmation is the form-over-a-selection precedent; its
 device control is the session form's creating `SearchSelect` over
 `POST /api/devices/`, #1080's, so a device the library does not hold
 yet is made at the confirmation). The menu is today's Actions column
 collapsed into one control: Edit, Reset, Finish, Remove and
 Was-an-estimate stay on the row, and a tray act shipping takes nothing
-off it. Games, Purchases, Devices and Platforms keep their columns,
+off it. A gated act is absent, never disabled: a playthrough row offers
+Started today where it states neither endpoint and Completed today
+where it states a start and no completion, the gate #1256's tray acts
+inherit. Games, Purchases, Devices and Platforms keep their columns,
 each filed as a follow-up, and inherit the rule with the column: their
-Actions column becomes the row's full act list in a menu. Purchases' is
-the Purchases wave's, which rebuilds that table.
+Actions column becomes the row's full act list in a menu, built under
+`games/views/`. Purchases' is the Purchases wave's, which rebuilds that
+table. `make_row` now states `key`, `summary` and `menu` beside the
+cells, which is the row #1241 feeds.
 
 The cost: a single row's act is two presses, the menu and the item, as
 an icon row cost; a multi-row act is Select, the checkboxes and the
@@ -628,7 +664,10 @@ Remove, in #712.
   Undo sentence and #715's Playthrough column both inherit.
 - **The rethink** — #1209, a confirmation that forecasts a command's
   refusal, waits for the interface work after #599's epics, which also
-  judges whether bulk Remove on runs is kept at all.
+  judges whether bulk Remove on runs is kept at all, and now whether an
+  act declared twice, as a route with its own confirmation and as a
+  `BulkAction`, keeps two confirmations that say different things about
+  one act: Remove and the reclassification pay this since #718.
 
 ## Verification contract
 
