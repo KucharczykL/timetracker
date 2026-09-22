@@ -7193,7 +7193,7 @@ A_STATED_COMPLETION = date(2022, 4, 1)
 
 
 def _dated_run(library, name, *, started=None, completed=None):
-    """One game's own run, its endpoints stated by hand."""
+    """One game's run, its endpoints stated by hand."""
     from games.models import Game
 
     game = Game.objects.create(library=library, name=name)
@@ -7208,7 +7208,7 @@ def _dated_run(library, name, *, started=None, completed=None):
 
 
 def _bucket_run(library, name):
-    """The imported-history bucket of one game, which states no date."""
+    """One game's bucket, which states no date."""
     from games.models import Game, PlayerGame, Playthrough, PlaythroughKind
 
     game = Game.objects.create(library=library, name=name)
@@ -7223,7 +7223,7 @@ def _bucket_run(library, name):
 
 @pytest.fixture
 def dated_population(owned_library):
-    """One session per case, each on a run stating its own dates."""
+    """One session per case, each on its run."""
     both = _dated_run(
         owned_library,
         "Both endpoints",
@@ -7309,12 +7309,7 @@ class TestSessionsOutsideTheirRunsDates:
     def test_a_run_stating_no_date_answers_no_rather_than_nothing(
         self, owned_library, dated_population
     ):
-        """A negated comparison against a null column keeps its row.
-
-        Django guards the negation with `IS NOT NULL`, so a run
-        that states no endpoint answers the question with no
-        rather than dropping out of both answers.
-        """
+        """A negated column comparison keeps its null rows."""
         undated = {
             dated_population["on_a_run_stating_neither"],
             dated_population["in_the_bucket"],

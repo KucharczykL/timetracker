@@ -110,9 +110,7 @@ def test_quick_scalar_facet_filters_sessions(
     page.set_viewport_size({"width": 2000, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
-    # The body's width is capped, so the sessions row holds four facets and
-    # Duration rides the ⋯ menu. Which facets spill where is
-    # test_priority_plus_overflow_collapses_and_restores's subject.
+    # The capped body fits four facets; Duration spills.
     page.locator("#quick-sessions-overflowLink").click()
     page.locator("#quick-duration_hours-dropdownLink").click()
     duration = page.locator('quick-filter-bar [data-filter-widget][data-kind="number"]')
@@ -309,9 +307,7 @@ def test_priority_plus_overflow_collapses_and_restores(
     the "⋯" overflow menu (ResizeObserver, no breakpoints); facets keep
     working from inside it; widening moves them back.
 
-    The body's width is capped, so the sessions row holds four facets
-    and spills the other three at every viewport. Timing is the one this
-    test follows in and out."""
+    The capped body fits four facets at every viewport."""
     from datetime import datetime, timedelta
 
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
@@ -334,14 +330,14 @@ def test_priority_plus_overflow_collapses_and_restores(
         "drop-down[data-quick-facet]:has(#quick-duration_hours-dropdown)"
     )
 
-    # Wide: four facets in the row, the three rightmost in the ⋯ menu.
+    # Wide: the three rightmost facets spill.
     expect(overflow).to_be_visible()
     expect(overflow_items.locator("[data-quick-facet]")).to_have_count(3)
     expect(
         overflow_items.locator(":scope > drop-down:has(#quick-timing_mode-dropdown)")
     ).to_have_count(0)
 
-    # Narrow: every facet spills, Duration among them.
+    # Narrow: every facet spills.
     page.set_viewport_size({"width": 520, "height": 900})
     expect(overflow).to_be_visible()
     expect(overflow_items.locator("[data-quick-facet]")).to_have_count(7)
@@ -366,7 +362,7 @@ def test_priority_plus_overflow_collapses_and_restores(
     expect(page.locator(f"#session-row-{long_session.pk}")).to_be_visible()
     expect(page.locator(f"#session-row-{short_session.pk}")).to_have_count(0)
 
-    # Widen: the facets return to the row in order, three left behind.
+    # Widen: the facets return in order.
     page.set_viewport_size({"width": 2000, "height": 900})
     expect(
         page.locator("[data-quick-overflow-items] [data-quick-facet]")

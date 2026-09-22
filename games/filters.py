@@ -301,8 +301,8 @@ class PlayerSessionFilter(OperatorFilter):
     note: StringCriterion | None = None
     timing_mode: ChoiceCriterion | None = None
     is_running: BoolCriterion | None = None  # Timed, and no end yet
-    playthrough_kind: ChoiceCriterion | None = None  # the run's, not the session's
-    #: The day falls outside the dates the session's run states.
+    playthrough_kind: ChoiceCriterion | None = None  # the run's kind
+    #: The day the run's own dates do not cover.
     outside_playthrough_dates: BoolCriterion | None = None
     day: DateCriterion | None = None  # effective_day, the library's calendar
     started: DateCriterion | None = None  # started_at's date; null Duration-only

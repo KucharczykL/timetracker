@@ -1,8 +1,8 @@
 """The populations the session organizer starts from.
 
-Each builder states its filter once, and the Library page passes
-that same object to `filter_url`, so the number a card prints and
-the list its link opens compile one predicate.
+A builder is public because the Library page gives the same
+object to `filter_url`: the count and its link compile one
+predicate. Counting through a private filter would let them drift.
 """
 
 from typing import NamedTuple
@@ -36,7 +36,7 @@ def outside_dates_filter() -> PlayerSessionFilter:
 
 
 def organization_counts(library: UserLibrary) -> OrganizationCounts:
-    """Count both populations, each through its own builder."""
+    """Count both populations, each through its builder."""
     context = filter_query_context_for_library(library)
     sessions = library_sessions(library)
     return OrganizationCounts(

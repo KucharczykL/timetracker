@@ -3126,17 +3126,12 @@ def bool_running_handler(timed_mode: str) -> FieldHandler:
 def outside_interval_handler(
     day_field: ORMLookup, lower_field: ORMLookup, upper_field: ORMLookup
 ) -> FieldHandler:
-    """Map a ``BoolCriterion`` onto "the interval does not cover the day".
+    """The interval does not cover the day.
 
-    The two bound columns hold the earliest and the latest day an
-    endpoint can name, and an endpoint nobody stated leaves both
-    null. True is the day below the lower bound or above the upper
-    one, so a run stating one endpoint answers on that one alone.
-
-    False is the plain negation, which keeps the rows a null bound
-    would otherwise drop: Django guards a negated lookup whose right
-    side is a column with ``IS NOT NULL``, so a run stating no date
-    answers no rather than falling out of both answers.
+    False is the plain negation, and safe: Django guards a negated
+    lookup whose right side is a column with ``IS NOT NULL``, so a
+    row whose bounds are null answers no rather than falling out of
+    both answers. Hand-writing that branch breaks it.
     """
     outside = Q(**{f"{day_field}__lt": F(lower_field)}) | Q(
         **{f"{day_field}__gt": F(upper_field)}

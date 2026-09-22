@@ -35,7 +35,7 @@ def test_a_written_down_session_becomes_a_record_and_comes_back(
     _login(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:library')}")
-    #: The card's link speaks its count and label, and shows the number alone.
+    #: The link speaks its count and label.
     page.get_by_role("link", name=re.compile(r"\d+ To review")).click()
     expect(page.get_by_role("row")).to_have_count(2)
 

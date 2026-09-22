@@ -1,4 +1,4 @@
-"""The two counts the organizer starts from, and their links."""
+"""The two counts the organizer starts from."""
 
 import uuid
 from datetime import date, timedelta
@@ -49,7 +49,7 @@ def _bucket_run(library, name):
 
 @pytest.fixture
 def population(owned_library):
-    """Two days outside a run's dates, one inside, one in a bucket."""
+    """Two days outside, one inside, one bucketed."""
     run = _dated_run(owned_library, "Dated")
     duration_only_row(run, date(2021, 12, 30), AN_HOUR)
     duration_only_row(run, date(2024, 7, 1), AN_HOUR)

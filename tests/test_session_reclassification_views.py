@@ -196,7 +196,7 @@ def _long_row(run, day=A_DAY, hours=9) -> PlayerSession:
 
 
 def test_the_library_offers_the_review(logged_in, session):
-    """The panel counts, explains and points; the act is not pressed here."""
+    """The panel counts and points; it presses nothing."""
     response = logged_in.get(reverse("games:library"))
 
     html = response.content.decode()
@@ -261,7 +261,7 @@ def test_the_link_lands_on_the_rows_the_act_offers(logged_in, owned_library, run
 
 
 def _cards(html: str) -> dict[str, str]:
-    """Each card's label, and the number its link speaks."""
+    """Each card's label, and its spoken count."""
     panel = _playtime_panel(html)
     return {
         label: count
@@ -372,11 +372,7 @@ def test_the_review_filter_parses_and_stays_quick_editable(logged_in):
 
 
 def test_the_review_filter_answers_the_rows_the_review_offers(owned_library, game, run):
-    """The link and the act read one population.
-
-    A bucket row is long enough and typed in, and the review
-    leaves it alone, so the filter must too.
-    """
+    """The link and the act read one population."""
     from common.filter_execution import execute_filter
     from games.bulk_reclassification import reviewable_sessions
     from games.filters import PlayerSessionFilter, filter_query_context_for_library
