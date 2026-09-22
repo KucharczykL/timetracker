@@ -54,6 +54,7 @@ from games.filters import (
     filter_query_context_for_library,
     parse_historical_playtime_filter,
 )
+from games.list_columns import column_choice
 from games.models import HistoricalPlaytime, HistoricalPlaytimeProvenance
 from games.reads.historical_playtime_page import (
     RunLabels,
@@ -306,15 +307,20 @@ def list_historical_playtime(request: HttpRequest) -> HttpResponse:
     warn_unknown_sort(request, sort.unknown, entity="historical playtime")
     page_rows, page_obj, elided_page_range = paginate(sort.queryset, find)
     page_records = list(page_rows)
+    hidden, picker = column_choice(
+        request, "historical_playtime", historical_playtime_columns(sortable=True)
+    )
     data = historical_playtime_tabledata(
         page_records,
         run_labels_for(library, page_records),
         presentation,
         durations,
+        hidden,
         origin=request.get_full_path(),
         sort_terms=sort.terms,
         sortable=True,
     )
+    data["column_picker"] = picker
     data["selection"] = {
         "filter": filter_json,
         "csrf_token": get_token(request),

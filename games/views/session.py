@@ -53,7 +53,7 @@ from games.bulk_removal import REMOVE_SESSION
 from games.bulk_tray import tray_actions
 from games.formatting import session_time_range
 from games.forms import SESSION_TIMEZONE_EMBEDS, SessionForm
-from games.list_columns import hidden_columns
+from games.list_columns import column_choice
 from games.models import (
     Device,
     Game,
@@ -227,7 +227,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
     sessions, page_obj, elided_page_range = paginate(sessions, find)
     csrf_token = get_token(request)
     page_sessions = list(sessions)
-    hidden = hidden_columns(cast(User, request.user), "sessions")
+    hidden, picker = column_choice(request, "sessions", SESSION_COLUMNS)
     run_labels = every_run_label(library, page_sessions)
     run_names = {
         session.pk: run_labels.get(session.playthrough_id) for session in page_sessions
@@ -265,6 +265,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
             )
             for session, cells in zip(page_sessions, row_cells, strict=True)
         ],
+        "column_picker": picker,
         "selection": {
             "filter": filter_json,
             "csrf_token": csrf_token,

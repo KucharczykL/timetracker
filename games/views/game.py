@@ -47,6 +47,7 @@ from common.components import (
     StyledTable,
     TableData,
     Ul,
+    drop_columns,
     make_row,
     paginated_table_content,
     parse_filter_dict,
@@ -89,6 +90,7 @@ from games.filters import (
 )
 from games.formatting import session_time_range
 from games.forms import GameForm
+from games.list_columns import column_choice
 from games.models import (
     ExternalReference,
     Game,
@@ -253,12 +255,12 @@ def list_games(request: HttpRequest) -> HttpResponse:
 
     games, page_obj, elided_page_range = paginate(sort.queryset, find)
 
-    data: TableData = {
-        "caption": "Games",
-        "columns": game_list_columns(listed.playtime_label),
-        "sort_terms": sort.terms,
-        "rows": [
-            make_row(
+    columns = game_list_columns(listed.playtime_label)
+    hidden, picker = column_choice(request, "games", columns)
+    kept_columns, kept_cells = drop_columns(
+        columns,
+        [
+            [
                 NameWithIcon(game=game, include_sort_name=True),
                 str(game.year_released),
                 Duration(
@@ -292,9 +294,17 @@ def list_games(request: HttpRequest) -> HttpResponse:
                         },
                     ]
                 ),
-            )
+            ]
             for game in games
         ],
+        hidden,
+    )
+    data: TableData = {
+        "caption": "Games",
+        "columns": kept_columns,
+        "sort_terms": sort.terms,
+        "rows": [make_row(*cells) for cells in kept_cells],
+        "column_picker": picker,
     }
     content = paginated_table_content(
         data,

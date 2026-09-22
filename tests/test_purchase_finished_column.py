@@ -14,7 +14,8 @@ from timetracker.temporal import TemporalValue
 pytestmark = pytest.mark.untracked_games
 
 #: Measured, not guessed. Constant across row counts.
-PURCHASE_LIST_QUERIES = 16
+#: One of them reads the person's column choice, for the whole page.
+PURCHASE_LIST_QUERIES = 17
 
 
 @pytest.fixture

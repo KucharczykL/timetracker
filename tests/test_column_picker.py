@@ -44,7 +44,7 @@ def test_the_panel_states_one_box_a_column():
 
 
 def test_a_column_a_person_shows_states_a_checked_box():
-    [name, year, created] = _boxes(picker())
+    [_name, year, created] = _boxes(picker())
 
     assert "checked" in year
     assert 'value="year"' in year
