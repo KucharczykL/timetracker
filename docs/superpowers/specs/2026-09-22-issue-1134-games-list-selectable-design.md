@@ -135,7 +135,7 @@ an ordinary column that a person can hide. Only Name is `hideable=False`.
 
 ## Not in this issue
 
-- A bulk status act. It is the set-one-value shape of #1211, and it is a
+- A bulk status act, #1270. It is the set-one-value shape of #1211, and it is a
   follow-up after #1211.
 - A per-row summary below `md`. That is #1241's.
 - Game detail's Edit and Remove buttons. They are not a table.
