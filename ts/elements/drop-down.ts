@@ -6,6 +6,7 @@ import "./behaviors/menu.js";
 import "./behaviors/select.js";
 import "./behaviors/combobox.js";
 import "./behaviors/inline-combobox.js";
+import "./behaviors/column-picker.js";
 import "./behaviors/date-calendar.js";
 import "./behaviors/sheet.js";
 

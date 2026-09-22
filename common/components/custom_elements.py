@@ -1085,7 +1085,13 @@ def DropdownDivider() -> Node:
 # as a plain `str` on DropdownProps (codegen only handles scalars), but narrowed on
 # the caller-facing params so a typo'd literal is caught at check time.
 type DropdownBehaviorName = Literal[
-    "menu", "select", "combobox", "inline-combobox", "date-calendar", "sheet"
+    "menu",
+    "select",
+    "combobox",
+    "inline-combobox",
+    "date-calendar",
+    "sheet",
+    "column-picker",
 ]
 
 

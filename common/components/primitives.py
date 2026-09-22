@@ -2364,6 +2364,9 @@ class TableData(TypedDict):
     sort_terms: NotRequired[Sequence[SortTerm]]
     # Present where a list selects rows.
     selection: NotRequired[SelectionDeclaration]
+    # The control a person chooses this list's columns with, in the header
+    # row's last cell. Present on the seven list pages.
+    column_picker: NotRequired[Node]
 
 
 def make_row(
@@ -2550,7 +2553,9 @@ ROW_MENU_HEADER_LABEL = "Row actions"
 _ROW_MENU_CELL_CLASS = "w-px px-2 py-2 whitespace-nowrap text-right"
 
 
-def _row_menu_header_cell(columns: Sequence[Column], *, data_table: bool) -> Node:
+def _row_menu_header_cell(
+    columns: Sequence[Column], *, data_table: bool, trailing: Node | str = ""
+) -> Node:
     """The trailing ``<th>`` over the row menus.
 
     No visible label, a name of its own, and a ``data-priority`` one above
@@ -2564,8 +2569,8 @@ def _row_menu_header_cell(columns: Sequence[Column], *, data_table: bool) -> Nod
     if data_table:
         highest = max((column.priority for column in columns), default=0)
         policy_attrs.append(("data-priority", str(highest + 1)))
-    return Th(policy_attrs, scope="col", class_="px-2 sm:px-3 lg:px-6 py-3")[
-        Span(class_="sr-only")[ROW_MENU_HEADER_LABEL]
+    return Th(policy_attrs, scope="col", class_="px-2 sm:px-3 lg:px-6 py-3 text-right")[
+        Span(class_="sr-only")[ROW_MENU_HEADER_LABEL], trailing
     ]
 
 
@@ -2871,6 +2876,7 @@ def _header_cell(
     data_table: bool = False,
     pinned: bool = False,
     selectable: bool = False,
+    trailing: Node | str = "",
 ) -> Node:
     """One ``<th>``: a static header for a non-sortable column, else a clickable
     sort link wrapped in ``<sort-header>`` with both navigation targets baked in.
@@ -2900,9 +2906,10 @@ def _header_cell(
             policy_attrs.append(("data-shrinkable", ""))
     inset = _SELECTION_LABEL_INSET_CLASS if selectable else ""
     if column.sort_key is None:
-        return Th(policy_attrs, scope="col", class_=base_class)[
-            Div(class_=inset)[column.label] if inset else column.label
-        ]
+        label: Child = Div(class_=inset)[column.label] if inset else column.label
+        if trailing:
+            label = Span(class_="inline-flex items-center gap-2")[label, trailing]
+        return Th(policy_attrs, scope="col", class_=base_class)[label]
 
     active = next(
         (
@@ -2925,8 +2932,13 @@ def _header_cell(
         class_=_SORT_HEADER_LINK_CLASS,
     )[column.label, indicator]
     header = _SortHeader()[link]
+    sorted_label: Child = Div(class_=inset)[header] if inset else header
+    if trailing:
+        sorted_label = Span(class_="inline-flex items-center gap-2")[
+            sorted_label, trailing
+        ]
     return Th(policy_attrs, scope="col", class_=base_class, aria_sort=aria_sort)[
-        Div(class_=inset)[header] if inset else header
+        sorted_label
     ]
 
 
@@ -3222,6 +3234,7 @@ def StyledTable(
     caption: str = "",
     caption_key: str = "",
     selection: SelectionDeclaration | None = None,
+    column_picker: Node | None = None,
 ) -> Node:
     """Styled, paginated table — the opinionated wrapper over the generic
     ``Table`` primitive (shadow, rounded, zebra rows, responsive column-hiding,
@@ -3342,6 +3355,11 @@ def StyledTable(
         # takes its background from its parent row, and a <thead>-level surface
         # would leave it transparent.
         header_row_class = "bg-neutral-tertiary"
+        # The picker rides the header row's LAST cell, whichever that is: the
+        # trailing menu slot where the rows carry one, else the last declared
+        # column. Stated this way it follows the slot by itself as the four
+        # Actions columns retire.
+        last_column = len(columns) - 1
         header_cells: list[Node] = [
             _header_cell(
                 column,
@@ -3350,11 +3368,24 @@ def StyledTable(
                 data_table=data_table,
                 pinned=data_table and index == 0,
                 selectable=selection is not None and index == 0,
+                trailing=(
+                    column_picker
+                    if column_picker is not None
+                    and not menu_slot
+                    and index == last_column
+                    else ""
+                ),
             )
             for index, column in enumerate(columns)
         ]
         if menu_slot:
-            header_cells.append(_row_menu_header_cell(columns, data_table=data_table))
+            header_cells.append(
+                _row_menu_header_cell(
+                    columns,
+                    data_table=data_table,
+                    trailing=column_picker or "",
+                )
+            )
         header_row = Tr(class_=header_row_class)[*header_cells]
         thead_class = "text-type-micro text-body uppercase"
         if data_table:
@@ -3537,4 +3568,5 @@ def paginated_table_content(
         data_table=True,
         caption=data["caption"],
         selection=data.get("selection"),
+        column_picker=data.get("column_picker"),
     )
