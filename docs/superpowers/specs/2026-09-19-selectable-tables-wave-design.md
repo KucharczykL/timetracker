@@ -567,13 +567,19 @@ session row's) and read `games.bulk_actions`; `RowActionMenu` in
 closes a cycle through the table's foot imports. A menu item may hand
 one row to a tray act through the runner's own statement, as Move does
 through `DropdownPostItem(hidden_fields=...)`, so the act grows no
-per-row route and the words and rules are one. #1256 keeps the row's
-own routes, `start_playthrough` and `complete_playthrough`, one press
-with no confirmation, because the runner always confirms and the row's
-act is the commonest on that table; one request-free half in
-`games/writes/` states the endpoint and the status for the route and
-for the act's `run` alike, so the rule lives once with two entries, the
-cost the rethink (#1209) already weighs for Remove. Its run helpers
+per-row route and the words and rules are one. An act with a side
+effect is never one press, the user's rule of 2026-09-22 on #1256:
+Completed today states Completed on the game and Started today states
+Played where nothing stronger stands, so both confirm first, and once
+the row's item confirms, a per-row route buys nothing over the runner's
+own confirmation. #1256 retires `games/views/playthrough_acts.py` and
+the routes `start_playthrough` and `complete_playthrough` with their
+`ORIGIN_AWARE` names, and its ⋯ items post a one-row statement to
+`run_bulk_action` as Move does, so one row gains the confirmation, the
+tally and the Undo it never had, and the confirmation's own sentence
+states the side effect beside the stamped day. Remove and the
+reclassification still pay two entries, weighed in #1209; these two do
+not. Its run helpers
 (`run_scope`, `run_resolution`, `RUN_GONE`, the endpoint preview cells)
 leave `games/bulk_removal.py` for `games/bulk_runs.py`, beside
 `bulk_sessions.py`; its tray order on both playthrough tables is Started
