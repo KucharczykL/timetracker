@@ -197,6 +197,16 @@ fi
 # from a comment quoting one.
 if [ "${SKIP_LFS:-0}" != "1" ] && [ -f "$PROJECT_DIR/.gitattributes" ]; then
   if grep -q 'filter=lfs' "$PROJECT_DIR/.gitattributes" 2>/dev/null; then
+    # The cloud image ships without it, and apt's mirror is reachable there.
+    # The cached package lists usually suffice; refreshed only when they don't.
+    if ! command -v git-lfs >/dev/null && command -v apt-get >/dev/null \
+       && [ "$(id -u)" -eq 0 ]; then
+      log "Installing git-lfs"
+      apt-get install -y -qq git-lfs >/dev/null 2>&1 \
+        || { apt-get update -qq >/dev/null 2>&1 \
+             && apt-get install -y -qq git-lfs >/dev/null 2>&1; } \
+        || echo "warning: apt-get could not install git-lfs" >&2
+    fi
     if command -v git-lfs >/dev/null; then
       log "Fetching Git LFS payloads"
       git -C "$PROJECT_DIR" lfs install --local >/dev/null
@@ -251,10 +261,60 @@ if [ "${SKIP_E2E_BROWSER:-0}" != "1" ]; then
   # the browser, as a warning, because a pre-installed browser is not ours to
   # replace and every other e2e test passes on it.
   CHROMIUM_TEMPORAL_MAJOR=143
+  browser_major_of() {
+    "$1" --version 2>/dev/null | grep -oE '[0-9]+' | head -1
+  }
   browser_major="$(
-    [ -n "${browser_bin:-}" ] && "$browser_bin" --version 2>/dev/null \
-      | grep -oE '[0-9]+' | head -1
+    [ -n "${browser_bin:-}" ] && browser_major_of "$browser_bin"
   )" || true
+
+  # Too old, and the one on PATH is our own link (or there is none): fetch
+  # the Chrome for Testing build the locked playwright pins, and point the
+  # link at it. `playwright install` would fetch the same build, but its CDN
+  # (cdn.playwright.dev) is refused by the cloud proxy, while Google's bucket
+  # that publishes Chrome for Testing is not. A browser someone else put on
+  # PATH is left alone, and only warned about below. Skip with
+  # SKIP_CHROME_FOR_TESTING=1.
+  own_link="$HOME/.local/bin/chromium"
+  if [ "${SKIP_CHROME_FOR_TESTING:-0}" != "1" ] \
+     && { [ -z "${browser_bin:-}" ] || [ "$browser_bin" = "$own_link" ] \
+          || [ "$(readlink -f "$own_link" 2>/dev/null)" = "$(readlink -f "$browser_bin")" ]; } \
+     && { [ -z "$browser_major" ] \
+          || [ "$browser_major" -lt "$CHROMIUM_TEMPORAL_MAJOR" ] 2>/dev/null; }; then
+    pinned_version="$(
+      "$PROJECT_DIR/.venv/bin/python" - 2>/dev/null <<'PY'
+import json, pathlib, playwright
+browsers = pathlib.Path(playwright.__file__).parent / "driver/package/browsers.json"
+for browser in json.loads(browsers.read_text())["browsers"]:
+    if browser["name"] == "chromium":
+        print(browser["browserVersion"])
+PY
+    )" || true
+    if [ -n "$pinned_version" ]; then
+      cft_dir="$HOME/.cache/chrome-for-testing/$pinned_version"
+      cft_bin="$cft_dir/chrome-linux64/chrome"
+      if [ ! -x "$cft_bin" ]; then
+        log "Fetching Chrome for Testing $pinned_version (the build playwright pins)"
+        mkdir -p "$cft_dir"
+        if curl -sSf -o "$cft_dir/chrome.zip" \
+             "https://storage.googleapis.com/chrome-for-testing-public/$pinned_version/linux64/chrome-linux64.zip" \
+           && unzip -q -o "$cft_dir/chrome.zip" -d "$cft_dir"; then
+          rm -f "$cft_dir/chrome.zip"
+        else
+          rm -rf "$cft_dir"
+          echo "warning: could not fetch Chrome for Testing $pinned_version" >&2
+        fi
+      fi
+      if [ -x "$cft_bin" ]; then
+        mkdir -p "$HOME/.local/bin"
+        ln -sf "$cft_bin" "$own_link"
+        browser_bin="$cft_bin"
+        browser_major="$(browser_major_of "$cft_bin")" || true
+        log "Linked e2e browser: $own_link -> $cft_bin"
+      fi
+    fi
+  fi
+
   if [ -n "$browser_major" ] \
      && [ "$browser_major" -lt "$CHROMIUM_TEMPORAL_MAJOR" ] 2>/dev/null; then
     echo "warning: the e2e browser is Chromium $browser_major, and Temporal needs" >&2
