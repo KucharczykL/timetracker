@@ -8,6 +8,7 @@ import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
+from e2e.helpers import open_row_menu
 from games.models import Game, Platform, PlayerGameStatus
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 
@@ -71,6 +72,8 @@ def test_editing_from_a_filtered_list_returns_to_it(
     expect(authenticated_page.locator("table")).to_contain_text("Alpha")
     expect(authenticated_page.locator("table")).not_to_contain_text("Zeta Unplayed")
 
+    #: Edit sits in the row's menu, behind its trigger.
+    open_row_menu(authenticated_page, f"game-menu-{world.pk}")
     authenticated_page.click('a[href*="/edit?origin="]')
     expect(authenticated_page).to_have_url(re.compile(re.escape("/edit?origin=")))
     authenticated_page.fill('input[name="name"]', "Alpha Renamed")

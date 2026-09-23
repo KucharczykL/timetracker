@@ -1,4 +1,4 @@
-"""The three Remove acts: what they offer, and what the command refuses."""
+"""The four Remove acts: what they offer, and what the command refuses."""
 
 import html as html_module
 import json
@@ -31,6 +31,7 @@ from games.models import (
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
+    PlayerGame,
     PlayerSession,
     Playthrough,
     PlaythroughKind,
@@ -210,7 +211,13 @@ def test_the_record_scope_narrows_by_the_statements_filter(
 
 
 @pytest.mark.parametrize(
-    "name", ["session.remove", "playthrough.remove", "historicalplaytime.remove"]
+    "name",
+    [
+        "session.remove",
+        "playthrough.remove",
+        "historicalplaytime.remove",
+        "playergame.remove",
+    ],
 )
 def test_a_filter_no_act_can_read_is_refused_rather_than_dropped(name, owned_library):
     """Widening the act to the whole base is the one thing a drop does."""
@@ -421,7 +428,13 @@ def test_removing_a_record_and_putting_it_back(
 
 
 @pytest.mark.parametrize(
-    "name", ["session.remove", "playthrough.remove", "historicalplaytime.remove"]
+    "name",
+    [
+        "session.remove",
+        "playthrough.remove",
+        "historicalplaytime.remove",
+        "playergame.remove",
+    ],
 )
 def test_each_acts_undo_reads_the_rows_its_act_wrote(
     owned_user, owned_library, game, name
@@ -448,7 +461,7 @@ def test_each_acts_undo_reads_the_rows_its_act_wrote(
 
     assert batch_aggregate_ids(
         owned_library, correlation_id, action.inverse_aggregate
-    ) == [row.pk]
+    ) == [_aggregate_key(name, owned_library, row)]
 
 
 # ── Through the route ────────────────────────────────────────────────────────
@@ -485,6 +498,7 @@ def _hidden(html: str) -> dict[str, str]:
         ("session.remove", ("Game", "Day", "Duration")),
         ("playthrough.remove", ("Playthrough", "Game", "Started", "Completed")),
         ("historicalplaytime.remove", ("Game", "When", "Duration")),
+        ("playergame.remove", ("Game", "Sessions", "Purchases", "Playthroughs")),
     ],
 )
 def test_each_acts_confirmation_states_its_own_columns(
@@ -508,7 +522,13 @@ def test_each_acts_confirmation_states_its_own_columns(
 
 
 @pytest.mark.parametrize(
-    "name", ["session.remove", "playthrough.remove", "historicalplaytime.remove"]
+    "name",
+    [
+        "session.remove",
+        "playthrough.remove",
+        "historicalplaytime.remove",
+        "playergame.remove",
+    ],
 )
 def test_each_act_removes_the_row_it_confirmed(
     client_in, owned_user, owned_library, game, name
@@ -534,8 +554,18 @@ def _a_row_for(name: str, owned_user, owned_library, game):
         return a_session(owned_library, game)
     if name == "historicalplaytime.remove":
         return a_record(owned_user, owned_library, game)
+    if name == "playergame.remove":
+        track_game(owned_user, game, correlation_id=new_correlation_id())
+        return game
     #: A second run, so its game keeps one and the act is not refused.
     return two_runs(owned_user, game)[1]
+
+
+def _aggregate_key(name: str, library, row) -> uuid.UUID:
+    """The key the act appends under: a game's is its PlayerGame's."""
+    if name == "playergame.remove":
+        return PlayerGame.objects.get(library=library, game=row).pk
+    return row.pk
 
 
 def test_an_endpoint_no_act_stated_reads_as_a_dash(

@@ -292,7 +292,7 @@ class TestRestoreGame:
         self, logged_in, game, monkeypatch
     ):
         """A defect offers no second press."""
-        import games.views.playergame_writes as writes
+        import games.writes.playergame as writes
 
         self._removed(logged_in, game)
 
@@ -318,7 +318,7 @@ class TestRestoreGame:
     ):
         """The stamp clears first; a refused command leaves the removal's
         own halfway, and pressing Undo again finishes it."""
-        import games.views.playergame_writes as writes
+        import games.writes.playergame as writes
 
         self._removed(logged_in, game)
         real = writes.retrack_game

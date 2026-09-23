@@ -264,7 +264,7 @@ def test_a_refused_removal_re_renders_the_confirmation(
     def refuse(*_args, **_kwargs):
         raise CommandFailed("The library cannot stop tracking it.", 409)
 
-    monkeypatch.setattr("games.views.playergame_writes.untrack_game", refuse)
+    monkeypatch.setattr("games.writes.playergame.untrack_game", refuse)
 
     response = logged_in.post(reverse("games:remove_game", args=[game.pk]))
 
