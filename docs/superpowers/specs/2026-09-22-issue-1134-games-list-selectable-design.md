@@ -40,7 +40,7 @@ The stamp writes no event. The event is the record of the batch.
 In a batch, `PlayerGameNotTracked` is a refusal with a sentence, and the
 helper stamps nothing: a stamp with no event is a row that the Undo
 cannot see. Only the per-row route accepts that exception and stamps,
-through an explicit argument.
+through an explicit argument, `stamp_untracked`.
 
 If a defect stops the act between the two writes, the owned game is
 untracked but has no stamp. It is not on the list. The per-row URL finds
@@ -51,16 +51,19 @@ so the batch's Undo also restores it.
 
 The restore helper does the per-row order: the stamp, then the dispatch.
 
-1. If the library owns the game, the helper first looks for a live game
-   of the library that the two partial unique constraints would refuse:
-   the same name, platform and year, or, for a game with no platform, the
-   same name and year with no platform. One `Q` states both. If it finds
+1. If the library owns the game and its row is stamped, the helper first
+   looks for a live game of the library that the two partial unique
+   constraints would refuse: the same name, platform and year, or, for a
+   game with no platform, the same name and year with no platform. One
+   `Q` states both. A game with no year meets neither constraint, because
+   a NULL is distinct from every value, so it skips the check. If it finds
    one, it refuses with 409 and a sentence that names the newer game, and
    changes nothing. A database refusal answers 500 and would end the whole
    Undo as a defect. The check is a forecast, not the rule: a game created
    between the check and the update still meets the constraint, and the
    `db.Error` backstop of `answered` answers that defect.
-2. It clears the stamp under `answered("game")`.
+2. It clears the stamp under `answered("game")`. A row whose stamp is
+   already clear, such as the halfway row above, skips both steps.
 3. It dispatches `RestorePlayerGame`. If that is refused after the stamp
    is clear, the sentence says that the game is back in the catalog but
    not tracked yet. The per-row route states that sentence today. It moves
@@ -101,13 +104,15 @@ a person restored between the batch and the Undo answers `Unchanged`.
 The confirmation states what leaves with each game, as the per-row
 ConfirmPage does. The preview columns are Game, Sessions, Purchases and
 Playthroughs, in `sort_name` order. Each count is a correlated subquery
-from `games/reads/`, scoped on the library:
+from `games/reads/game_departures.py`, scoped on the library:
 
 - sessions through `library_sessions`;
 - purchases through `Purchase.objects.for_library(library)`, as Game
-  detail counts them. `game.purchases.alive()` also counts the purchases
-  of other libraries on a shared game, so `_removed_with_game` changes to
-  this read as well;
+  detail counts them. `_removed_with_game` changes to this read as well.
+  A shared game holds no purchases today, because
+  `validate_purchase_game_ownership` refuses a purchase naming a game of
+  another library, but the read states its scope instead of leaning on
+  that signal;
 - runs correlated on `player_game__game` and `player_game__library`,
   live and ordinary.
 
@@ -149,7 +154,11 @@ before it follows Edit. `e2e/test_pinned_column_e2e.py` still gets a
 Games list that overflows.
 
 The parametrised cases of `tests/test_bulk_removal.py` take the fourth
-act. The tests that read the Games list's Actions cells or the `actions`
-key change with it: `test_column_keys`, `test_column_picker`,
-`test_rendered_pages`, `test_html_validity`,
-`test_library_page_isolation` and `test_playergame_game_views`.
+act, and `tests/test_bulk_game_removal.py` covers the rest of this spec.
+`test_restore_routes` and `test_playergame_game_views` patch the two
+dispatch functions where the helpers now call them, in
+`games.writes.playergame`. `test_column_keys`, `test_column_picker`,
+`test_rendered_pages`, `test_html_validity` and
+`test_library_page_isolation` pass unchanged: none of them read the Games
+list's Actions cells, and the column-priority contract already skips a
+table with no Actions header.
