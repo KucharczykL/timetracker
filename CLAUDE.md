@@ -520,7 +520,8 @@ stamp clears before its command. `<toast-stack>` appends the page as `?origin=`
 when it takes the toast, so the restore lands back where Undo was pressed. A
 foreign `extra_tags` value is logged and the toast shows without its action. A game's restore clears the
 catalog stamp first and states `RestorePlayerGame` second, the removal's order
-reversed. The preset picker gets its restore URL from the API's DELETE answer.
+reversed; a shared catalog game has no stamp to clear, since only a game the
+library owns is stamped ([Catalog](docs/catalog.md)). The preset picker gets its restore URL from the API's DELETE answer.
 Contract is [Undo a removal](docs/superpowers/specs/2026-09-16-issue-695-undo-removal-design.md).
 
 **One act on many rows is declared, not routed** (#713). An act is a value in
