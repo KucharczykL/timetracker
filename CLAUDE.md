@@ -520,7 +520,8 @@ stamp clears before its command. `<toast-stack>` appends the page as `?origin=`
 when it takes the toast, so the restore lands back where Undo was pressed. A
 foreign `extra_tags` value is logged and the toast shows without its action. A game's restore clears the
 catalog stamp first and states `RestorePlayerGame` second, the removal's order
-reversed. The preset picker gets its restore URL from the API's DELETE answer.
+reversed; a shared catalog game has no stamp to clear, since only a game the
+library owns is stamped ([Catalog](docs/catalog.md)). The preset picker gets its restore URL from the API's DELETE answer.
 Contract is [Undo a removal](docs/superpowers/specs/2026-09-16-issue-695-undo-removal-design.md).
 
 **One act on many rows is declared, not routed** (#713). An act is a value in
@@ -548,7 +549,13 @@ base narrowed by the statement's filter, never the filter alone, and an
 unreadable filter refuses rather than widening the act --
 `apply_structured_filter` fails open, which a list may do and an act may not.
 Contract is
-[The bulk runner](docs/superpowers/specs/2026-09-20-issue-713-bulk-runner-design.md).
+[The bulk runner](docs/superpowers/specs/2026-09-20-issue-713-bulk-runner-design.md). #1134's
+`playergame.remove` takes games off the Games list through
+`remove_from_library`/`restore_to_library` in `games/writes/playergame.py`,
+which stamp or clear the catalog row only where the library owns it, refuse a
+restore a recreated game would collide with at 409, and serve the per-row
+routes too (`GameQuerySet.removable_by`/`restorable_by`). Contract is
+[Select games and remove them in bulk](docs/superpowers/specs/2026-09-22-issue-1134-games-list-selectable-design.md).
 
 **Multi-game Purchase is *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. Humble Bundle). Independently-refundable multi-item orders (e.g.

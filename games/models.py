@@ -191,6 +191,37 @@ class GameQuerySet(RemovableLibraryQuerySet):
             )
         )
 
+    def removable_by(self, library):
+        """What the library's per-row Remove finds.
+
+        A live game it owns, tracked or not, so a removal a defect
+        stopped halfway is still reachable; or a shared game it tracks.
+        """
+        return self.alive().filter(
+            Q(library=library)
+            | Q(
+                Exists(
+                    PlayerGame.objects.filter(
+                        game=OuterRef("pk"), library=library, removed_at__isnull=True
+                    )
+                ),
+                library__isnull=True,
+            )
+        )
+
+    def restorable_by(self, library):
+        """What the library's per-row restore finds, removed or not.
+
+        A game it owns, or a shared game it holds a PlayerGame for.
+        """
+        return self.filter(
+            Q(library=library)
+            | Q(
+                Exists(PlayerGame.objects.filter(game=OuterRef("pk"), library=library)),
+                library__isnull=True,
+            )
+        )
+
 
 def _validate_related_library(
     owner_library_id, related, field_name: str, *, allow_shared: bool = False

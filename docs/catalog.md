@@ -133,6 +133,24 @@ nothing about who may change it, because the page offers nothing either way.
 What sharing means is unsettled until the IGDB wave (#783, #784, #785) lands,
 and a mark written now would state a rule that does not exist yet.
 
+## Removing a Game from a library
+
+Remove states the library's own fact: it stops tracking the Game. The catalog
+row is stamped only where the library owns it. A shared Game is never stamped
+or cleared, because it is not one library's to take out, and `_stamp` runs
+`_AFTER_STAMP`'s callbacks across every library that holds the Game: it marks
+every external reference naming the row, recounts every purchase of it, and on
+the way back in writes its wikidata mirror. `remove_from_library` and
+`restore_to_library` in
+`games/writes/playergame.py` hold that rule once, and the per-row routes, the
+Games list's bulk Remove and its Undo all call them.
+
+Restoring an owned Game first looks for a live Game of the library that the
+two partial unique constraints would refuse: the same name, platform and year,
+or, with no platform, the same name and year. A recreated Game refuses the
+restore with a sentence naming it, and nothing changes. The check is a
+forecast; a Game created after it still meets the constraint.
+
 ## What a form refuses that the service does not
 
 A second Edition must state a name. Two unnamed siblings both present as the

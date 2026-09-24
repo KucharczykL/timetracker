@@ -260,6 +260,12 @@ class BulkAction[RowT: Model]:
     color: ButtonColor
     #: Which half a mixed batch's Undo reads.
     inverse_aggregate: AggregateType
+    #: The model whose keys the inverse is handed. Usually the act's
+    #: own rows, and for `playergame.remove` not: it lists Games and
+    #: undoes PlayerGames, because the event is appended under the
+    #: PlayerGame's key. Stated, so the pair can be checked rather
+    #: than left to hold by coincidence of naming.
+    inverse_model: type[Model]
     #: Where the act returns without an origin.
     fallback: UrlName
     scope: Scope[RowT]
@@ -299,6 +305,16 @@ class BulkAction[RowT: Model]:
                 f"{self.name!r} names {self.inverse_aggregate!r} as the "
                 "aggregate its inverse takes, and no event type speaks about "
                 "it. Its Undo would read an empty batch."
+            )
+        stated_model = self.inverse_model._meta.model_name
+        if stated_model != self.inverse_aggregate:
+            raise ValueError(
+                f"{self.name!r} names {self.inverse_aggregate!r} as the "
+                "aggregate its inverse takes, and "
+                f"{self.inverse_model.__name__} as the model it reads those "
+                f"keys off ({stated_model!r}). An Undo would hand one "
+                "model's key to a read of another, and answer 404 on every "
+                "row of its own batch."
             )
         _TABLE[self.name] = self
 

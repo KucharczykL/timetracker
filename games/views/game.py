@@ -71,7 +71,7 @@ from common.temporal_presentation import (
 )
 from common.utils import paginate, safe_division
 from games.bulk_playthrough_acts import COMPLETE_RUNS, START_RUNS
-from games.bulk_removal import REMOVE_RECORD, REMOVE_RUN
+from games.bulk_removal import REMOVE_GAME, REMOVE_RECORD, REMOVE_RUN
 from games.bulk_tray import tray_actions
 from games.catalog_form import CatalogGraphForm
 from games.catalog_submit import submitted_game_or_form_error
@@ -105,6 +105,7 @@ from games.models import (
 from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
 from games.reads.external_references import ReferenceMap, held_by, references_for
+from games.reads.game_departures import game_departures
 from games.reads.historical_playtime_page import (
     listed_records,
     run_labels_for,
@@ -115,7 +116,7 @@ from games.reads.playergame_history import StatusEntry, status_history
 from games.reads.playthrough_activity import ActivityClock, activity_clock
 from games.reads.playthrough_completions import GAME_RUNS, reported_completion_day
 from games.reads.playthrough_numbering import numbered_for
-from games.reads.playthrough_runs import live_ordinary_runs, tracked_game
+from games.reads.playthrough_runs import tracked_game
 from games.reads.playtime import (
     game_playtime,
     playtime_matching_both,
@@ -136,6 +137,7 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
+from games.views.game_menu import game_row_menu
 from games.views.historical_playtime import (
     historical_playtime_tabledata,
 )
@@ -230,7 +232,6 @@ def game_list_columns(playtime_label: str) -> list[Column]:
         Column("Status", "status", priority=3, key="status"),
         Column("Wikidata", "wikidata", key="wikidata", hidden_by_default=True),
         Column("Created", "created", key="created", hidden_by_default=True),
-        Column("Actions", align="right", priority=4, key="actions", hideable=False),
     ]
 
 
@@ -257,6 +258,8 @@ def list_games(request: HttpRequest) -> HttpResponse:
 
     columns = game_list_columns(listed.playtime_label)
     hidden, picker = column_choice(request, "games", columns)
+    csrf_token = get_token(request)
+    page_games = list(games)
     kept_columns, kept_cells = drop_columns(
         columns,
         [
@@ -271,40 +274,32 @@ def list_games(request: HttpRequest) -> HttpResponse:
                 GameStatusSelector(
                     game,
                     PlayerGameStatus.choices,
-                    get_token(request),
+                    csrf_token,
                     current=game.tracked_status,
                 ),
                 _wikidata_cell(game.wikidata),
                 presentation.format(game.created_at, "date"),
-                ButtonGroup(
-                    [
-                        {
-                            "href": action_url(
-                                "games:edit_game", game.pk, origin=origin
-                            ),
-                            "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
-                            "color": "gray",
-                        },
-                        {
-                            "href": action_url(
-                                "games:remove_game", game.pk, origin=origin
-                            ),
-                            "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
-                            "color": "red",
-                        },
-                    ]
-                ),
             ]
-            for game in games
+            for game in page_games
         ],
         hidden,
     )
     data: TableData = {
         "caption": "Games",
         "columns": kept_columns,
+        #: Every row carries its acts in the slot, rendered or not.
+        "menu_slot": True,
         "sort_terms": sort.terms,
-        "rows": [make_row(*cells) for cells in kept_cells],
+        "rows": [
+            make_row(*cells, key=str(game.pk), menu=game_row_menu(game, origin))
+            for game, cells in zip(page_games, kept_cells, strict=True)
+        ],
         "column_picker": picker,
+        "selection": {
+            "filter": filter_json,
+            "csrf_token": csrf_token,
+            "actions": tray_actions(REMOVE_GAME.name, origin=origin),
+        },
     }
     content = paginated_table_content(
         data,
@@ -424,7 +419,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
 def restore_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     """Undo; the plain manager, since the row is removed."""
     library = cast(User, request.user).library
-    game = owned_or_404(Game.objects.filter(library=library), library, id=game_id)
+    game = owned_or_404(Game.objects.restorable_by(library), library, id=game_id)
     return restore_and_return(
         request,
         action=partial(restore_game_for_request, request, game),
@@ -437,7 +432,7 @@ def restore_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
 @login_required
 def remove_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
-    game = owned_or_404(Game.objects.for_library(library), library, id=game_id)
+    game = owned_or_404(Game.objects.removable_by(library), library, id=game_id)
     return confirm_and_remove(
         request,
         game,
@@ -453,13 +448,12 @@ def remove_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
 
 
 def _removed_with_game(game: Game, library: UserLibrary) -> Node:
-    tracked = tracked_game(library, game)
-    runs = live_ordinary_runs(library, tracked).count() if tracked else 0
+    departing = game_departures(library, game)
     counts = [
-        (game_sessions(library, game).count(), "session"),
-        (game.purchases.alive().count(), "purchase"),
+        (departing.sessions, "session"),
+        (departing.purchases, "purchase"),
         #: Removal stamps the PlayerGame; runs leave too.
-        (runs, "playthrough"),
+        (departing.runs, "playthrough"),
     ]
     present = [Li()[f"{count} {label}(s)"] for count, label in counts if count]
     return Ul()[*(present or [Li()["No associated data"]])]

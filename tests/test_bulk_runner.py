@@ -1150,6 +1150,7 @@ def _declare(name, reclassify_declaration, run, inverse, choice=None):
         subject=reclassify_declaration.subject,
         color=reclassify_declaration.color,
         inverse_aggregate=reclassify_declaration.inverse_aggregate,
+        inverse_model=reclassify_declaration.inverse_model,
         fallback=reclassify_declaration.fallback,
         scope=reclassify_declaration.scope,
         resolve=reclassify_declaration.resolve,

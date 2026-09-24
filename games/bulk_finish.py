@@ -297,6 +297,7 @@ FINISH_SESSION = BulkAction(
     subject="session",
     color="green",
     inverse_aggregate="playersession",
+    inverse_model=PlayerSession,
     fallback="games:list_sessions",
     scope=session_scope,
     resolve=session_resolution,
