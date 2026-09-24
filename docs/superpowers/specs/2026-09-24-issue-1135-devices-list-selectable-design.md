@@ -38,6 +38,9 @@ correlated subquery over `library_sessions` in
 `games/reads/device_departures.py`, annotated by `device_resolution`. A
 join count would multiply, so it is not one. A removed device keeps its
 sessions naming it; the count says how many will name a removed device.
+Historical playtime records naming the device are not counted, as the
+per-row confirmation counts none: the two confirmations of one act say
+the same thing.
 
 ## The row menu
 

@@ -57,8 +57,8 @@ the fingerprint, so a restatement with other whitespace is one statement.
   dispatches (`POST /api/devices/`, below). It mints the aggregate id as a
   UUIDv7 in the event constructor, as `historicalplaytime_created` does.
 - `DescribeDevice` states `name`, `type`, or both; `None` is a fact it does
-  not state. It resolves a live device through `library_row`, so a removed
-  device refuses with a sentence naming Restore. It applies the same
+  not state. It resolves a live device through `library_device`, whose
+  sentence for a removed device already names Restore. It applies the same
   refusals as the creation, then answers one event per differing fact, and
   `Unchanged` when nothing differs.
 - `RemoveDevice` and `RestoreDevice` resolve through `library_device_row`
@@ -89,8 +89,10 @@ library holds is `RowNotHeld`, through `Refusal`'s default.
 
 Device leaves `REMOVABLE_MODELS` (and `tests/test_removable_models.py`'s
 builders), as Playthrough and PlayerSession did: a command states its
-mark. Device stops being a `ReferencedRow`, and its `pre_delete` receiver
-goes: see the reference kind below.
+mark. It stays a `ReferencedRow`, and its `pre_delete` receiver stays: a
+shell or script that destroys a device an event names is refused, as
+today. The projector never deletes, and the swap and purge do not reach
+the guard.
 
 `AUDITED_PROJECTION_REFERENCES` already lists `PlayerSession.device` and
 `HistoricalPlaytime.device`, so the audit walk needs nothing new.
@@ -107,26 +109,32 @@ column. `removed` and `restored` amend `removed_at`.
 
 The `device` reference kind stays registered: recorded session and record
 payloads carry `{"kind": "device", ...}` and nothing upcasts them. Its
-resolution moves from `REQUIRED` to `EVIDENCE_ONLY`.
+resolution moves from `REQUIRED` to a third value, `PROJECTED`.
 
 `REQUIRED` promises that a replay finds the row in a table the replay does
 not write, and `require_resolvable_references` checks that promise against
-the live table before the first event. A projection makes the promise
-backwards: the replay writes the row, so a library whose device rows were
-lost could not be rebuilt, the one situation a rebuild exists for. That
-is why a session's run and a run's tracked game are bare ids, not kinds
-(`games/events/playersession.py`).
+the live table before the first event. For a projection the promise runs
+the other way: the replay writes the row, so checking the live table would
+refuse to rebuild a library whose device rows were lost, the one situation
+a rebuild exists for. `EVIDENCE_ONLY` would be false as well: the session
+and record projectors write `payload["device"]["id"]` into a RESTRICT
+foreign key, so the row must exist when the swap commits.
 
-What `REQUIRED` protected stays protected, by the projection's own
-guarantees:
+`PROJECTED` states the truth: the stream that names the row also creates
+it. A `ReferenceKind` that is `PROJECTED` names its creation event type
+(`created_by`, here `library.device.created`), and `__post_init__` refuses
+a `PROJECTED` kind without one and any other kind with one.
 
-- No path destroys a device row. The projector never deletes; the swap
-  deletes and reinserts the same keys in one transaction; purge takes the
-  events with the rows.
-- A session or record naming a device the replay does not produce is
-  refused at the swap's commit by the deferred foreign key
-  (`SwapRefusedByReference`), which is how a session naming a run the
-  replay lost is refused today.
+- `reconcile_references` checks a `PROJECTED` kind against the stream: an
+  anti-join of the reference index to the library's events of the
+  creation type under the referenced id. A stream naming a device it never
+  created is refused before the first row, with the reconciliation's
+  sentence, rather than at the swap's commit as a bare foreign-key
+  violation the swap's sentence would send to a cross-library audit.
+- `must_be_retained` answers as for `REQUIRED`: a row an event names is
+  kept. Nothing in the application deletes one either way.
+- `load_sample_data`'s validator accepts a `PROJECTED` reference where the
+  fixture holds the creation event under that id, instead of a row.
 
 The snapshot in each payload remains the evidence the durable-reference
 rule asks for.
@@ -149,6 +157,11 @@ these reasons:
   own would put a preference inside the boundary to satisfy a rule meant
   for projection tables.
 
+`games.E009` and `games.E010` walk references out of projections, so they
+do not see this one; `audit_library_ownership` already reports a default
+device of another library. The reference kind's stream check keeps a
+lost device from reaching the swap at all.
+
 ## Write paths
 
 `games/writes/device.py` is the request-free half: `create_device`,
@@ -158,71 +171,139 @@ and `source_metadata` and answering `CommandResult`, as
 `games/writes/playersession.py` does. `create_device` also answers the
 created row, read back through `created_aggregate_id`.
 
-- `DeviceForm` becomes a plain `Form` with `name` and `type`, the shape
-  `PlaythroughForm` took. Add and Edit validate it, call the write, and
-  put a `CommandFailed` sentence on the form rather than a 500.
+- `DeviceForm` becomes a plain `Form` with `name`, `type` and a hidden
+  `submission` UUID, the shape `HistoricalPlaytimeForm` took. Its
+  `submission_key(act)` keys the dispatch, so a submit posted twice
+  creates one device. Add and Edit validate it, call the write, and put a
+  `CommandFailed` sentence on the form rather than a 500.
 - The remove route becomes `confirm_and_apply` with the removal as its
   action and `UndoOffer` pointing at `restore_device`; the restore route's
   action is the restoration. Both keep their URLs.
 - `POST /api/devices/` keeps answering a held name without a write. It
-  validates `DeviceForm` and dispatches `create_device`; `created_by_form`
-  stays for platforms, which remain conventional.
+  validates `DeviceForm` and dispatches `create_device`, answering a
+  refusal through `RowRefused` at 422 as before; `created_by_form` and its
+  docstring become the platform's alone, since platforms remain
+  conventional.
 - The default-device setting is untouched.
 
 ## Conversion
 
-Migration `0014` alters the schema above and runs one data pass,
-`elidable=True` per [Squashing](../../migration-squash.md), with a
-`noop` reverse. The pass lives in `games/backfill/device.py`, so
-`load_sample_data` runs the same code.
+Two migrations, as the session conversion took (schema, then data):
 
-For each device row holding no `library.device.created` event, oldest
-`created_at` first, it appends through `idempotent_append`:
+- `0014` alters the schema above: the key loses its database default,
+  `created_at` loses `auto_now_add`, the identity constraint is added, the
+  library relation's name moves to `+`.
+- `0015` runs one data pass, `elidable=True` per
+  [Squashing](../../migration-squash.md), with a `noop` reverse. Nothing
+  follows it in that migration: a schema change after rows written under
+  deferred foreign keys meets PostgreSQL's pending trigger events.
+
+The pass lives in `games/backfill/device.py`, so `load_sample_data` runs
+the same code. It first reads every device's `type`, and refuses the
+migration with a sentence naming each row whose type is not one of the
+six, since the payload's `Literal` would otherwise refuse mid-transaction
+without naming a row. Then, for each device row holding no
+`library.device.created` event, oldest `created_at` first, it appends
+through `idempotent_append`, one call per event, because each takes its
+own `recorded_at`:
 
 - `library.device.created` under the row's own id, `name` and `type` as
   stored, `recorded_at` the row's `created_at`;
 - `library.device.removed` where `removed_at` is set, `recorded_at` the
   row's `removed_at`.
 
-The actor is the library's owner, each device takes a correlation id of
-its own, and `source_metadata` is `{"origin": "backfill", "issue": 1274}`.
-Keys are `backfill:1274:device:{created,removed}:<device>`. Commands are
-not used: a command refuses a blank name the table may hold, and the
-conversion states what the table holds.
+The actor is the library's owner (every library has one), each device
+takes a correlation id of its own, and `source_metadata` is
+`{"origin": "backfill", "issue": 1274}`. Keys are
+`backfill:1274:device:{created,removed}:<device>`. Commands are not used:
+a command refuses a blank name the table may hold, and the conversion
+states what the table holds.
 
 The row keeps its key, so every session, record, preference and recorded
-reference keeps naming it. The pass then asks `rebuild_projections` in
-check mode, over the projection models this migration's schema holds,
-for each library it touched, and refuses the migration on any difference.
-A second pass appends nothing.
+reference keeps naming it. The events are appended after the session and
+record events that already name those devices; the stream orders them by
+sequence, and a replay's swap checks foreign keys at commit, so nothing
+reads the order. It does rule out a future check that a reference follows
+its creation in the stream; the stream check above compares sets, not
+positions.
+
+For each library it converted at least one row of, the pass then asks
+`rebuild_projections` in check mode and refuses the migration on any
+difference. It passes the live projection classes explicitly: the
+migration's historical models do not subclass `ProjectionModel`, so
+`projection_models()` over them is empty. A library it converted nothing
+of is not replayed, so a fresh test database never runs the replay under
+later code. A second pass appends nothing.
 
 ## Sample data
 
 The committed fixture holds device rows and no device events.
-`load_sample_data` loads it, runs the conversion pass, and rebuilds, so
-the sample converts exactly as a deployment does. `anonymize_sample`
-stops dumping `games.Device`: the table is a projection, and a
-regenerated fixture carries its events instead. The event pass maps a
-device event's aggregate id through the device replacements, and writes
-the anonymised device name into `created` and `name_changed` payloads
-rather than blanking it, so a replay reproduces the scrubbed rows.
+`load_sample_data` loads it, runs the conversion pass, and only then
+rebuilds: a rebuild before the conversion would swap the loaded rows out
+for none. A fixture that already carries device events converts nothing,
+so the call is a no-op for a regenerated fixture.
+
+`anonymize_sample` stops dumping `games.Device`: the table is a projection,
+and a regenerated fixture carries its events instead. Its event pass
+treats a device event by its aggregate type:
+
+- no day offset, since a device event carries no day, and `recorded_at`
+  the fixed epoch the device rows already take, so the row's key, the
+  event's instant and the identity audit's order agree;
+- the aggregate id mapped through the Device replacements, the map the
+  row and every recorded reference already use, and kept out of the
+  fresh mint the other aggregates take;
+- the anonymised device name written into `created` and `name_changed`
+  payloads rather than blanked, so a replay reproduces the scrubbed rows.
+
+The committed fixture cannot be regenerated here, since that reads the
+deployment's database after it migrates. Until it is, the conversion in
+`load_sample_data` stays, and `games/backfill/device.py` with it.
+[Squashing](../../migration-squash.md) says so: the next squash that
+elides `0015` removes both, after `make anonymize-sample` has written a
+fixture carrying device events.
 
 ## Tests
 
 `tests/devices.py` holds `create_device(library, name=..., type=...)`,
 which dispatches `CreateDevice` as the library's owner; `e2e/` gets its
 twin. Every `Device.objects.create` in `tests/` and `e2e/` goes through
-it, and every direct `removed_at` write goes through `remove_device`, so
-no test states a projection row the stream does not hold.
+it, and every direct `removed_at` write or `remove(device)` goes through
+`remove_device`, so no test states a projection row the stream does not
+hold.
+
+New:
 
 - `tests/test_device_command.py`: every refusal, `Unchanged`, one event
   per differing fact, a removed device refusing a description.
 - `tests/test_device_projection.py`: each handler, and replay equality.
 - `tests/test_device_conversion.py`: a converted library replays equal,
-  removed devices convert removed, a second pass appends nothing, a
-  session naming a converted device keeps naming it.
+  removed devices convert removed, a type outside the six refuses by row,
+  a second pass appends nothing, a session naming a converted device keeps
+  naming it, a stream naming a device it never created is refused by the
+  reconciliation.
+
+Changed by design:
+
+- `tests/test_event_references.py`: a shipped kind resolves at replay when
+  it is `REQUIRED` or `PROJECTED`; the kind registry refuses a
+  `PROJECTED` kind without `created_by`.
+- `tests/test_retention.py`: `must_be_retained(device)` holds for a
+  `PROJECTED` kind; the registered-kinds and cascade-guard cases keep
+  Device, which stays a `ReferencedRow`.
+- `tests/test_library_form_isolation.py`: `DeviceForm` is no ModelForm.
+- `tests/test_anonymize_sample.py`: device names are read from `created`
+  events, not from dumped rows.
 - `tests/test_projection_replay_gate.py` emits every device event.
 - `tests/test_projection_rebuild.py` pins seven projection models.
+- `tests/test_removable_models.py` drops Device's builder.
+
+## Docs
+
+`docs/event-references.md` (the kind table and the third resolution),
+`docs/event-retention.md`, `docs/library.md` (the default device),
+`docs/migration-squash.md` (the transitional pass), the `ProjectionModel`
+docstring, and `CLAUDE.md`'s models section.
 
 ## Proof
 
@@ -236,3 +317,6 @@ no test states a projection row the stream does not hold.
 - Sold and lost (#1275).
 - The selectable Devices list (#1135).
 - A uniqueness rule on device names.
+- A default device that names a removed device. Removing one leaves the
+  preference as it is, as today, and the session form's live queryset
+  drops the initial.
