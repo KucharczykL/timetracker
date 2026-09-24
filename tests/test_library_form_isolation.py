@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 import pytest
+from devices import create_device
 from django import forms
 from django.urls import reverse
 from session_rows import run_id
@@ -62,10 +63,8 @@ def world(client, django_user_model):
     foreign_game = Game.objects.create(
         library=foreign_library, name="Foreign form game", platform=foreign_platform
     )
-    own_device = Device.objects.create(library=owner_library, name="Owner form device")
-    foreign_device = Device.objects.create(
-        library=foreign_library, name="Foreign form device"
-    )
+    own_device = create_device(owner_library, "Owner form device")
+    foreign_device = create_device(foreign_library, "Foreign form device")
     return SimpleNamespace(**locals())
 
 
@@ -114,7 +113,6 @@ def test_library_preferences_default_device_is_a_scoped_model_choice(world):
             {"name": "New private platform", "icon": "", "group": ""},
             Platform,
         ),
-        (DeviceForm, {"name": "New private device", "type": Device.UNKNOWN}, Device),
         (
             partial(GameForm, presentation=PRESENTATION),
             {
@@ -137,6 +135,17 @@ def test_directly_owned_forms_save_new_rows_in_the_explicit_library(
         model.objects.for_library(world.foreign_library).filter(pk=saved.pk).count()
         == 0
     )
+
+
+def test_the_device_form_states_facts_and_saves_no_row(world):
+    """A device is a projection: its form states a command, never a row."""
+    form = DeviceForm(
+        data={"name": "New private device", "type": Device.UNKNOWN, "submission": ""},
+        library=world.owner_library,
+    )
+
+    assert not isinstance(form, forms.ModelForm)
+    assert not hasattr(form, "save")
 
 
 def test_shared_platform_is_selectable_but_foreign_private_platform_is_rejected(world):

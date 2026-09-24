@@ -57,6 +57,7 @@ from games.events.rebuild import (
 )
 from games.events.targets import SHADOW_SUFFIX
 from games.models import (
+    Device,
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeRun,
@@ -515,6 +516,9 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
     record_shadow = f"{record_live}{SHADOW_SUFFIX}"
     join_live = HistoricalPlaytimeRun._meta.db_table
     join_shadow = f"{join_live}{SHADOW_SUFFIX}"
+    #: Nor a device.
+    device_live = Device._meta.db_table
+    device_shadow = f"{device_live}{SHADOW_SUFFIX}"
     assert replay.statements_per_table[shadow] == 10
     assert replay.statements_per_table[run_shadow] == 10
     #: Every shadow, and every swap beside it.
@@ -531,6 +535,8 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
         + replay.statements_per_table[record_live]
         + replay.statements_per_table.get(join_shadow, 0)
         + replay.statements_per_table[join_live]
+        + replay.statements_per_table.get(device_shadow, 0)
+        + replay.statements_per_table[device_live]
     )
 
 
@@ -976,6 +982,7 @@ def test_a_seeded_library_rebuilds_both_tables_with_no_row_differing(owned_libra
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in report.tables
     ] == [
+        ("games_device", 0, 0, 0),
         ("games_historicalplaytime", 0, 0, 0),
         ("games_historicalplaytimerun", 0, 0, 0),
         ("games_librarycalendar", 0, 0, 0),

@@ -118,6 +118,11 @@ def _record(owner, run, timing, *, device=None, note=""):
     )
 
 
+def fields_of_device(event) -> bool:
+    """Whether a dumped event speaks about a device."""
+    return event["fields"]["event_type"].startswith("library.device.")
+
+
 def _device_names(by_model):
     """Each dumped device's key and name, read from its creation.
 
@@ -409,7 +414,9 @@ class AnonymizeSampleTest(TransactionTestCase):
             payload = event["fields"]["payload"]
             if "note" in payload:
                 self.assertEqual(payload["note"], "")
-            if "name" in payload:
+            #: A device keeps the name its row would have carried, so a
+            #: replay rebuilds the rows the dump no longer holds.
+            if "name" in payload and not fields_of_device(event):
                 self.assertEqual(payload["name"], "")
             self.assertEqual(event["fields"]["source_metadata"], {})
             self.assertIsNone(event["fields"]["actor"])
@@ -519,8 +526,8 @@ class AnonymizeSampleTest(TransactionTestCase):
             3,
         )
         events = LibraryEvent.objects.filter(library=target.library)
-        #: Nine, one calendar, three created, one removed.
-        self.assertEqual(events.count(), 14)
+        #: Nine, one calendar, one device, three created, one removed.
+        self.assertEqual(events.count(), 15)
         self.assertTrue(all(event.pk.version == 7 for event in events))
         sessions = PlayerSession.objects.filter(library=target.library)
         self.assertEqual(sessions.count(), 3)
