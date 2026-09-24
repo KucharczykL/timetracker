@@ -1,6 +1,6 @@
 """Rows taken out of the lists, in bulk.
 
-Four acts, one for each row a selectable table holds. Each states the
+Five acts, one for each row a selectable table holds. Each states the
 list's own read as its base, and refuses nothing of its own: every rule
 is the command's, so one row's refusal is a sentence and the batch goes
 on.
@@ -29,10 +29,12 @@ from games.bulk_sessions import lost, session_resolution, session_scope
 from games.events.dispatch import RowNotHeld
 from games.events.idempotency import IdempotencyKey
 from games.filters import (
+    parse_device_filter,
     parse_game_filter,
     parse_historical_playtime_filter,
 )
 from games.models import (
+    Device,
     Game,
     HistoricalPlaytime,
     PlayerGame,
@@ -40,9 +42,11 @@ from games.models import (
     Playthrough,
     UserLibrary,
 )
+from games.reads.device_departures import naming_sessions_of, with_naming_sessions
 from games.reads.game_departures import departures_of, with_departures
 from games.reads.historical_playtime_records import library_records
 from games.writes.answers import SubjectNoun, answered
+from games.writes.device import remove_device, restore_device
 from games.writes.historical_playtime import (
     remove_historical_playtime,
     restore_historical_playtime,
@@ -56,6 +60,7 @@ RECORD_SUBJECT: SubjectNoun = "historical playtime"
 
 RECORD_GONE = "One of the records is no longer available, so it was left as it is."
 GAME_GONE = "One of the games is no longer available, so it was left as it is."
+DEVICE_GONE = "One of the devices is no longer available, so it was left as it is."
 
 
 def _removed_row[RowT: Model](
@@ -395,6 +400,76 @@ GAME_PREVIEW: tuple[PreviewColumn[Game], ...] = (
 )
 
 
+# ── Devices ──────────────────────────────────────────────────────────────────
+
+
+def device_scope(library: UserLibrary, filter_json: FilterJson) -> QuerySet[Device]:
+    """The list's own read."""
+    return narrowed(
+        Device.objects.for_library(library), library, filter_json, parse_device_filter
+    )
+
+
+def device_resolution(
+    library: UserLibrary, keys: Sequence[uuid.UUID]
+) -> Resolution[Device]:
+    """Keys to devices, each carrying the sessions still naming it."""
+    wanted = list(dict.fromkeys(keys))
+    rows = tuple(
+        with_naming_sessions(
+            Device.objects.for_library(library).filter(pk__in=wanted), library
+        ).order_by("name", "id")
+    )
+    return Resolution(rows, tuple(lost(wanted, {row.pk for row in rows}, DEVICE_GONE)))
+
+
+def remove_one_device(
+    actor: User,
+    device: Device,
+    *,
+    choice: ChoiceValue | None,
+    idempotency_key: IdempotencyKey,
+    correlation_id: uuid.UUID,
+) -> RowOutcome:
+    return RowOutcome.of(
+        remove_device(
+            actor,
+            device,
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
+            source_metadata=_source(REMOVE_DEVICE.name),
+        )
+    )
+
+
+def restore_one_device(
+    actor: User,
+    device_id: uuid.UUID,
+    *,
+    undoes: uuid.UUID,
+    idempotency_key: IdempotencyKey,
+    correlation_id: uuid.UUID,
+) -> RowOutcome:
+    return RowOutcome.of(
+        restore_device(
+            actor,
+            _removed_row(Device.objects.all(), actor, device_id, "device"),
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
+            source_metadata=_source(REMOVE_DEVICE.name),
+        )
+    )
+
+
+DEVICE_PREVIEW: tuple[PreviewColumn[Device], ...] = (
+    PreviewColumn("Device", lambda row, _: row.name),
+    PreviewColumn("Type", lambda row, _: row.get_type_display()),
+    PreviewColumn(
+        "Sessions", lambda row, _: str(naming_sessions_of(row)), align="right"
+    ),
+)
+
+
 def _source(name: str) -> dict[str, object]:
     return {"bulk": {"action": name}}
 
@@ -467,4 +542,21 @@ REMOVE_GAME = BulkAction(
     run=remove_one_game,
     inverse=restore_one_game,
     preview=GAME_PREVIEW,
+)
+
+REMOVE_DEVICE = BulkAction(
+    name="device.remove",
+    label="Remove",
+    title=ActTitle(one="Remove this device", many="Remove these devices"),
+    confirm_label="Remove",
+    subject="device",
+    color="red",
+    inverse_aggregate="device",
+    inverse_model=Device,
+    fallback="games:list_devices",
+    scope=device_scope,
+    resolve=device_resolution,
+    run=remove_one_device,
+    inverse=restore_one_device,
+    preview=DEVICE_PREVIEW,
 )

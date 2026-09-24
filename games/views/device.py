@@ -5,17 +5,15 @@ from uuid import UUID
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.http import HttpRequest, HttpResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from common.components import (
-    ICON_BUTTON_SIZE_CLASS,
     AddForm,
-    ButtonGroup,
     Column,
     ContentContainer,
-    Icon,
     Li,
     QuickFilterBar,
     TableData,
@@ -29,8 +27,9 @@ from common.components import (
 from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
-from common.returns import action_url
 from common.utils import paginate
+from games.bulk_removal import REMOVE_DEVICE
+from games.bulk_tray import tray_actions
 from games.filters import (
     DeviceFilter,
     filter_query_context_for_library,
@@ -40,13 +39,14 @@ from games.forms import DeviceForm
 from games.list_columns import column_choice
 from games.models import Device
 from games.ownership import owned_or_404
-from games.reads.player_sessions import library_sessions
+from games.reads.device_departures import sessions_naming
 from games.sorting import (
     DEVICE_DEFAULT_SORT,
     DEVICE_SORTS,
     apply_sort,
     parse_find_filter,
 )
+from games.views.device_menu import device_row_menu
 from games.views.filtering import (
     apply_structured_filter,
     builder_url_for,
@@ -64,7 +64,6 @@ DEVICE_COLUMNS: list[Column] = [
     Column("Name", "name", key="name", hideable=False),
     Column("Type", "type", priority=2, key="type"),
     Column("Created", "created", key="created", hidden_by_default=True),
-    Column("Actions", align="right", priority=3, key="actions", hideable=False),
 ]
 
 
@@ -93,6 +92,8 @@ def list_devices(request: HttpRequest) -> HttpResponse:
     devices = sort.queryset
     warn_unknown_sort(request, sort.unknown, entity="device")
     devices, page_obj, elided_page_range = paginate(devices, find)
+    #: Read once: the cells and the rows walk the same page.
+    page_devices = list(devices)
 
     hidden, picker = column_choice(request, "devices", DEVICE_COLUMNS)
     kept_columns, kept_cells = drop_columns(
@@ -102,35 +103,27 @@ def list_devices(request: HttpRequest) -> HttpResponse:
                 TruncatedText(device.name),
                 device.get_type_display(),
                 presentation.format(device.created_at, "date"),
-                ButtonGroup(
-                    [
-                        {
-                            "href": action_url(
-                                "games:edit_device", device.pk, origin=origin
-                            ),
-                            "slot": Icon("edit", size=ICON_BUTTON_SIZE_CLASS),
-                            "color": "gray",
-                        },
-                        {
-                            "href": action_url(
-                                "games:remove_device", device.pk, origin=origin
-                            ),
-                            "slot": Icon("delete", size=ICON_BUTTON_SIZE_CLASS),
-                            "color": "red",
-                        },
-                    ]
-                ),
             ]
-            for device in devices
+            for device in page_devices
         ],
         hidden,
     )
     data: TableData = {
         "caption": "Devices",
         "columns": kept_columns,
+        #: Every row carries its acts in the slot, rendered or not.
+        "menu_slot": True,
         "sort_terms": sort.terms,
-        "rows": [make_row(*cells) for cells in kept_cells],
+        "rows": [
+            make_row(*cells, key=str(device.pk), menu=device_row_menu(device, origin))
+            for device, cells in zip(page_devices, kept_cells, strict=True)
+        ],
         "column_picker": picker,
+        "selection": {
+            "filter": filter_json,
+            "csrf_token": get_token(request),
+            "actions": tray_actions(REMOVE_DEVICE.name, origin=origin),
+        },
     }
     content = paginated_table_content(
         data,
@@ -219,10 +212,7 @@ def remove_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
         title="Remove device",
         message=f"Remove {device.name} from your library?",
         details=Ul()[
-            Li()[
-                f"{library_sessions(library).filter(device=device).count()} "
-                "session(s) still name it"
-            ]
+            Li()[f"{sessions_naming(library, device).count()} session(s) still name it"]
         ],
         action=partial(
             remove_device_row, user, device, correlation_id=new_correlation_id()

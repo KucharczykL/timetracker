@@ -37,7 +37,7 @@ class Departures(NamedTuple):
     runs: int
 
 
-def _counted(rows: QuerySet) -> Coalesce:
+def counted(rows: QuerySet) -> Coalesce:
     """COUNT without GROUP BY: `Func` is no aggregate to Django."""
     return Coalesce(
         Subquery(
@@ -58,15 +58,15 @@ def with_departures(games: QuerySet[Game], library: UserLibrary) -> QuerySet[Gam
     """
     return games.annotate(
         **{
-            SESSIONS: _counted(
+            SESSIONS: counted(
                 library_sessions(library).filter(
                     playthrough__player_game__game=OuterRef("pk")
                 )
             ),
-            PURCHASES: _counted(
+            PURCHASES: counted(
                 Purchase.objects.for_library(library).filter(games=OuterRef("pk"))
             ),
-            RUNS: _counted(
+            RUNS: counted(
                 library_runs(library).filter(player_game__game=OuterRef("pk"))
             ),
         }

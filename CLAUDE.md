@@ -573,7 +573,11 @@ which stamp or clear the catalog row only where the library owns it, refuse a
 restore a recreated game would collide with at 409, and serve the per-row
 routes too (`GameQuerySet.removable_by`/`restorable_by`). Contract is
 [Select games and remove them in bulk](docs/superpowers/specs/2026-09-22-issue-1134-games-list-selectable-design.md).
-
+#1135's `device.remove` does the same on the Devices list over the device
+aggregate, its row menu `device_row_menu` (Edit, Remove), its preview's
+Sessions count `games/reads/device_departures.py`, which the per-row
+confirmation reads too. Contract is
+[Select devices and remove them in bulk](docs/superpowers/specs/2026-09-24-issue-1135-devices-list-selectable-design.md).
 
 **Multi-game Purchase is *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. Humble Bundle). Independently-refundable multi-item orders (e.g.
