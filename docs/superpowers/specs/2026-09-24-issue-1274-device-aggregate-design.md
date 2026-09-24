@@ -199,7 +199,9 @@ Two migrations, as the session conversion took (schema, then data):
   deferred foreign keys meets PostgreSQL's pending trigger events.
 
 The pass lives in `games/backfill/device.py`, so `load_sample_data` runs
-the same code. It first reads every device's `type`, and refuses the
+the same code: `convert_devices()` over every library, or
+`convert_devices(library)` over one, in one transaction of its own that
+nests where a caller holds one, then `require_replay_parity(libraries)`. It first reads every device's `type`, and refuses the
 migration with a sentence naming each row whose type is not one of the
 six, since the payload's `Literal` would otherwise refuse mid-transaction
 without naming a row. Then, for each device row holding no
@@ -308,8 +310,15 @@ docstring, and `CLAUDE.md`'s models section.
 ## Proof
 
 - `make verify-replay-parity` on a restored dump after migrating.
-- `make render-pages` before and after on one database: no differing
-  file. This issue changes no page's markup.
+- `make render-pages` before and after on one database, migrated between
+  the two. The seven filter-builder pages differ, in their field-comparison
+  operands alone: an operand reaching from Game, Platform or Purchase through
+  `library` to the library's devices (`library__devices__*`) is gone, and so is
+  every `library__*` operand on Device. A projection's `library` is a scoping
+  relation the operand walk never follows, and `library.devices` is no
+  accessor any more; both kinds of operand compared a row with every device,
+  or every row, of the library, which no filter asks. The Devices list
+  differs by #1135.
 - The full `make check`.
 
 ## Not in this issue
