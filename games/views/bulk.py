@@ -104,6 +104,14 @@ NOT_THIS_BATCH = "One of those rows is not part of this batch, so it was left as
 STOPPED_BY_HAND = "The batch was stopped before this row was reached."
 ENDED_BY_A_DEFECT = "A problem on our side ended the batch before this row was reached."
 
+#: The log's words for the row the defect was met on, which is not
+#: unreached: an act whose run states two writes may have made the
+#: first one. `playergame.remove` appends its event, then stamps.
+MET_THE_DEFECT = (
+    "A problem on our side was met on this row. An act that states two writes "
+    "may have made the first, so read this row before acting on it again."
+)
+
 
 @dataclass(frozen=True, slots=True)
 class SelectionStatement:
@@ -505,13 +513,7 @@ def _run_a_chunk(
             except Http404 as absent:
                 #: This batch re-resolved the row moments ago.
                 #: Said anyway, so no batch ends in silence.
-                _log_abandoned(
-                    act.name,
-                    [acted, *left],
-                    user.library,
-                    correlation_id,
-                    ENDED_BY_A_DEFECT,
-                )
+                _log_the_end(act.name, acted, left, user.library, correlation_id)
                 logger.error(
                     "[bulk]: %s met a row library %s does not hold: %s",
                     act.name,
@@ -527,14 +529,14 @@ def _run_a_chunk(
             except CommandFailed as failure:
                 if failure.status_code != CONFLICT_STATUS:
                     #: Ours, not theirs: the batch ends here.
-                    #: No dispatch answered for the row that met
-                    #: it either, so it is named with the rest.
-                    _log_abandoned(
+                    _log_the_end(act.name, acted, left, user.library, correlation_id)
+                    logger.error(
+                        "[bulk]: %s ended on row %s of library %s under %s: %s",
                         act.name,
-                        [acted, *left],
-                        user.library,
+                        acted,
+                        user.library.pk,
                         correlation_id,
-                        ENDED_BY_A_DEFECT,
+                        failure.message,
                     )
                     return _defect(
                         request,
@@ -545,6 +547,28 @@ def _run_a_chunk(
                 refusal = Refused(str(acted), failure.message)
                 _log_left_alone(act.name, (refusal,), user.library, correlation_id)
                 tally = tally.left_alone((refusal,))
+            except Exception:
+                #: Not every defect arrives as an answer. `answered`
+                #: measures the dispatch; an act whose run writes
+                #: beside it can raise what no clause maps -- a
+                #: `ValidationError` out of a stamp's recount, say.
+                #: Letting that leave here would end the batch with
+                #: no row named and no Undo offered, which is the one
+                #: thing the runner promises never to do.
+                _log_the_end(act.name, acted, left, user.library, correlation_id)
+                logger.exception(
+                    "[bulk]: %s met a defect on row %s of library %s under %s",
+                    act.name,
+                    acted,
+                    user.library.pk,
+                    correlation_id,
+                )
+                return _defect(
+                    request,
+                    action,
+                    replace(tally, rows=tuple(left)),
+                    undo_url=undo_url,
+                )
             else:
                 tally = _counted(tally, outcome)
         if monotonic() - started >= CHUNK_BUDGET.total_seconds():
@@ -590,6 +614,24 @@ def _log_abandoned(
         library,
         correlation_id,
     )
+
+
+def _log_the_end(
+    name: str,
+    acted: uuid.UUID,
+    left: Sequence[uuid.UUID],
+    library: UserLibrary,
+    correlation_id: uuid.UUID,
+) -> None:
+    """Name the row the defect was met on apart from the rest.
+
+    The two say different things to whoever reads the log after an
+    incident: the rest were never reached, and this one may be half
+    done. Naming it with them reads as "nothing to repair here",
+    which for a two-write act is the wrong half of the truth.
+    """
+    _log_abandoned(name, [acted], library, correlation_id, MET_THE_DEFECT)
+    _log_abandoned(name, left, library, correlation_id, ENDED_BY_A_DEFECT)
 
 
 def _counted(tally: Tally, outcome: RowOutcome) -> Tally:
