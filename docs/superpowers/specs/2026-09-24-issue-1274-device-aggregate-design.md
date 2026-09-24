@@ -198,6 +198,13 @@ Two migrations, as the session conversion took (schema, then data):
   follows it in that migration: a schema change after rows written under
   deferred foreign keys meets PostgreSQL's pending trigger events.
 
+The pass reads named columns (`DeviceRow`), never a model instance, and a
+database holding no unconverted device reads nothing more, so a fresh
+database migrates under any later schema. Where a deployment with devices
+meets code declaring a column its tables do not hold yet, the pass refuses
+by name before it appends, and the remedy is to deploy the release carrying
+`0015` first.
+
 The pass lives in `games/backfill/device.py`, so `load_sample_data` runs
 the same code: `convert_devices()` over every library, or
 `convert_devices(library)` over one, in one transaction of its own that
@@ -279,6 +286,9 @@ New:
 - `tests/test_device_command.py`: every refusal, `Unchanged`, one event
   per differing fact, a removed device refusing a description.
 - `tests/test_device_projection.py`: each handler, and replay equality.
+- `tests/test_device_views.py`: Add and Edit post their commands, a submit
+  posted twice creates one device, a refused edit is a sentence on the form,
+  remove and restore state their events.
 - `tests/test_device_conversion.py`: a converted library replays equal,
   removed devices convert removed, a type outside the six refuses by row,
   a second pass appends nothing, a session naming a converted device keeps

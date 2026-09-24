@@ -141,12 +141,21 @@ def test_a_description_that_changes_nothing_is_unchanged(owned_library):
     assert _event_types(device) == ["library.device.created"]
 
 
-def test_a_description_refuses_a_blank_name(owned_library):
+@pytest.mark.parametrize(
+    ("changes", "sentence"),
+    (
+        ({"name": ""}, NAME_REQUIRED),
+        ({"name": "x" * 256}, NAME_TOO_LONG),
+        ({"type": "Toaster"}, UNKNOWN_TYPE),
+    ),
+)
+def test_a_description_is_refused(owned_library, changes, sentence):
     device = create_device(owned_library, "Deck")
 
-    refused = _refused(owned_library, DescribeDevice(device_id=device.pk, name=""))
+    refused = _refused(owned_library, DescribeDevice(device_id=device.pk, **changes))
 
-    assert refused.sentence == NAME_REQUIRED
+    assert refused.sentence == sentence
+    assert _event_types(device) == ["library.device.created"]
 
 
 def test_a_removed_device_refuses_a_description(owned_library):

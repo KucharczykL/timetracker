@@ -52,7 +52,8 @@ and for its reason (reading `games.bulk_actions` from
 2. Remove, a link to the per-row confirmation, labelled
    `REMOVE_DEVICE.label`, `danger=True`.
 
-The trigger's label is "`<name>` actions" and its id `device-menu-<key>`.
+The trigger's label is "`<name>` (`<type>`) actions", since nothing refuses two
+devices of one name, and its id `device-menu-<key>`.
 Remove keeps two entries, the menu's and the tray's, as on every list
 before it (#1209 weighs this).
 

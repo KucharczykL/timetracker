@@ -4,8 +4,10 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from django.db import connection
 
 from games.backfill.device import (
+    DeviceConversion,
     DeviceConversionRefused,
     convert_devices,
     require_replay_parity,
@@ -143,3 +145,29 @@ def test_a_session_naming_a_converted_device_keeps_naming_it(owned_library):
     assert reconcile_references(owned_library).resolves
     assert PlayerSession.objects.get().device_id == device.pk
     require_replay_parity([owned_library])
+
+
+def test_a_database_holding_no_device_reads_nothing_more(owned_library):
+    """So a fresh one migrates under any later schema."""
+    assert convert_devices() == DeviceConversion((), 0)
+
+
+def test_a_schema_behind_the_code_is_refused_by_name(owned_library, monkeypatch):
+    _row(owned_library, "Deck")
+    described = connection.introspection.get_table_description
+
+    def without_a_column(cursor, table):
+        columns = described(cursor, table)
+        if table == "games_device":
+            return [column for column in columns if column.name != "removed_at"]
+        return columns
+
+    monkeypatch.setattr(
+        connection.introspection, "get_table_description", without_a_column
+    )
+
+    with pytest.raises(DeviceConversionRefused, match="games_device.removed_at"):
+        convert_devices()
+    assert not LibraryEvent.objects.filter(
+        event_type__startswith="library.device"
+    ).exists()

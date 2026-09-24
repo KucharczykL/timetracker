@@ -27,6 +27,7 @@ def device_row_menu(device: Device, origin: OriginUrl | None) -> Node:
                 danger=True,
             ),
         ],
-        label=f"{device.name} actions",
+        #: The type too: nothing refuses two devices of one name.
+        label=f"{device.name} ({device.get_type_display()}) actions",
         id=f"device-menu-{device.pk}",
     )

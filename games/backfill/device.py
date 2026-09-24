@@ -14,13 +14,16 @@ naming it.
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import cast, get_args
+from datetime import datetime
+from typing import NamedTuple, cast, get_args
 
-from django.db import transaction
-from django.db.models import QuerySet
+from django.contrib.auth.models import User
+from django.db import connection, transaction
+from django.db.models import Model, QuerySet
 
 from games.events.append import LockedStream
 from games.events.device import (
+    DEVICE_CREATED,
     DeviceTypeValue,
     device_created,
     device_removed,
@@ -28,11 +31,17 @@ from games.events.device import (
 from games.events.idempotency import IdempotencyKey, idempotent_append
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.events.vocabulary import NewEvent
-from games.models import Device, LibraryEvent, UserLibrary
+from games.models import (
+    Device,
+    LibraryEvent,
+    LibraryEventReference,
+    LibraryEventStreamHead,
+    LibraryIdempotencyRecord,
+    UserLibrary,
+)
 from games.projections import projection_models
 
 ISSUE = 1274
-CREATED_EVENT = "library.device.created"
 
 
 class DeviceConversionRefused(Exception):
@@ -48,8 +57,8 @@ class DeviceConversion:
     converted: int
 
 
-def _key(act: str, device: Device) -> IdempotencyKey:
-    return f"backfill:{ISSUE}:device:{act}:{device.pk}"
+def _key(act: str, device_id: uuid.UUID) -> IdempotencyKey:
+    return f"backfill:{ISSUE}:device:{act}:{device_id}"
 
 
 def _refuse_unknown_types(devices: QuerySet[Device]) -> None:
@@ -71,23 +80,41 @@ def _refuse_unknown_types(devices: QuerySet[Device]) -> None:
         )
 
 
+class DeviceRow(NamedTuple):
+    """The columns the pass reads, and no others.
+
+    Named, not a model instance: a model reads every column the code
+    declares, and a later migration adding one would break this one.
+    """
+
+    pk: uuid.UUID
+    library_id: uuid.UUID
+    owner_id: int
+    name: str
+    type: str
+    created_at: datetime
+    removed_at: datetime | None
+
+
 def _state(
-    device: Device,
+    device: DeviceRow,
     *,
     act: str,
     event: NewEvent,
     correlation_id: uuid.UUID,
+    library: UserLibrary,
+    actor: User,
 ) -> None:
     def build(stream: LockedStream) -> Sequence[NewEvent]:
         return [event]
 
     recorded_at = device.created_at if act == "created" else device.removed_at
     idempotent_append(
-        device.library,
-        idempotency_key=_key(act, device),
+        library,
+        idempotency_key=_key(act, device.pk),
         command_input={"device": str(device.pk), "act": act},
         build=build,
-        actor=device.library.user,
+        actor=actor,
         correlation_id=correlation_id,
         source_metadata={"origin": "backfill", "issue": ISSUE},
         recorded_at=recorded_at,
@@ -97,31 +124,48 @@ def _state(
 def convert_devices(library: UserLibrary | None = None) -> DeviceConversion:
     """State each device holding no creation event; answer what moved.
 
-    Every library, or the one named.
+    Every library, or the one named. A database holding no device to
+    state reads nothing more, so a fresh one migrates under any later
+    schema.
     """
     devices = Device.objects.all()
     if library is not None:
         devices = devices.filter(library=library)
-    _refuse_unknown_types(devices)
-    created = LibraryEvent.objects.filter(event_type=CREATED_EVENT).values(
+    created = LibraryEvent.objects.filter(event_type=DEVICE_CREATED.event_type).values(
         "aggregate_id"
     )
-    unconverted = list(
-        devices.exclude(pk__in=created)
-        .select_related("library__user")
-        .order_by("created_at", "pk")
+    unconverted = devices.exclude(pk__in=created)
+    if not unconverted.exists():
+        return DeviceConversion((), 0)
+    _require_the_schema_this_pass_was_written_for()
+    _refuse_unknown_types(unconverted)
+    rows = [
+        DeviceRow(*values)
+        for values in unconverted.order_by("created_at", "pk").values_list(
+            "pk",
+            "library_id",
+            "library__user_id",
+            "name",
+            "type",
+            "created_at",
+            "removed_at",
+        )
+    ]
+    #: Read by key alone: only the columns every version holds.
+    libraries = UserLibrary.objects.only("pk", "user_id").in_bulk(
+        {row.library_id for row in rows}
     )
-    libraries: dict[uuid.UUID, UserLibrary] = {}
+    owners = User.objects.only("pk").in_bulk({row.owner_id for row in rows})
     #: One transaction, nested where a caller holds one: the pass
     #: states every device or none.
     with transaction.atomic():
-        for device in unconverted:
-            _convert(device)
-            libraries.setdefault(device.library_id, device.library)
-    return DeviceConversion(tuple(libraries.values()), len(unconverted))
+        for row in rows:
+            _convert(row, library=libraries[row.library_id], actor=owners[row.owner_id])
+    touched = dict.fromkeys(row.library_id for row in rows)
+    return DeviceConversion(tuple(libraries[key] for key in touched), len(rows))
 
 
-def _convert(device: Device) -> None:
+def _convert(device: DeviceRow, *, library: UserLibrary, actor: User) -> None:
     """The row's creation, and its removal where it is removed."""
     correlation_id = uuid.uuid7()
     _state(
@@ -132,6 +176,8 @@ def _convert(device: Device) -> None:
             device.name, cast(DeviceTypeValue, device.type), device_id=device.pk
         ),
         correlation_id=correlation_id,
+        library=library,
+        actor=actor,
     )
     if device.removed_at is not None:
         _state(
@@ -139,6 +185,47 @@ def _convert(device: Device) -> None:
             act="removed",
             event=device_removed(device.pk),
             correlation_id=correlation_id,
+            library=library,
+            actor=actor,
+        )
+
+
+def _require_the_schema_this_pass_was_written_for() -> None:
+    """Refuse, naming the remedy, where later code meets this schema.
+
+    The pass appends and replays through live classes. Where a later
+    release declares a column this database does not hold yet, it
+    would fail on a bare SQL error; the remedy is to deploy the release
+    carrying this migration first, and migrate onward from there.
+    """
+    models: tuple[type[Model], ...] = (
+        LibraryEvent,
+        LibraryEventReference,
+        LibraryEventStreamHead,
+        LibraryIdempotencyRecord,
+        *projection_models(),
+    )
+    missing: list[str] = []
+    with connection.cursor() as cursor:
+        for model in models:
+            table = model._meta.db_table
+            held = {
+                column.name
+                for column in connection.introspection.get_table_description(
+                    cursor, table
+                )
+            }
+            missing += [
+                f"{table}.{field.column}"
+                for field in model._meta.concrete_fields
+                if field.column not in held
+            ]
+    if missing:
+        raise DeviceConversionRefused(
+            "The device conversion runs today's code, which declares columns "
+            f"this database does not hold yet: {', '.join(missing)}. Deploy the "
+            "release that carries this migration, migrate, and move on from "
+            "there."
         )
 
 

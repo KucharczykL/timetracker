@@ -56,7 +56,7 @@ def test_the_row_menu_opens_edit(live_server, page: Page, e2e_library):
     _login(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:list_devices')}")
-    page.get_by_role("button", name="Steam Deck actions").click()
+    page.get_by_role("button", name="Steam Deck (Handheld) actions").click()
     page.get_by_role("menuitem", name="Edit").click()
 
     page.wait_for_url(f"**{reverse('games:edit_device', args=[device.pk])}**")

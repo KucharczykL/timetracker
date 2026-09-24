@@ -64,8 +64,7 @@ modify `games/events/dispatch.py` (`CommandName`), `games/projectors/__init__.py
    `device_name_changed`, `device_type_changed`, `device_removed`,
    `device_restored`.
 2. `CommandName.DEVICE_CREATE/DESCRIBE/REMOVE/RESTORE`.
-3. Commands per the spec. `DeviceType` normalisation: strip `name` in
-   `__post_init__`; `_check_name` (blank, over 255) and `_check_type` raise
+3. Commands per the spec. Normalisation: strip `name` in `__post_init__`; `_check_name` (blank, over 255) and `_check_type` raise
    `CommandRejected` with sentences. `DescribeDevice` resolves with
    `library_device`; `RemoveDevice`/`RestoreDevice` with `library_device_row`.
 4. Projector `Devices` (CURRENT_STATE): `created` → `project(Device, event,
@@ -106,8 +105,8 @@ Files: create `games/writes/device.py`; modify `games/forms.py`
 `games/api_creation.py`, `tests/test_library_form_isolation.py`, view and
 API tests.
 
-1. Writes per the spec, subject `"device"`; `create_device` answers
-   `(CommandResult, Device)` through `created_aggregate_id`.
+1. Writes per the spec, subject `"device"`; `create_device` answers the
+   created `Device`, read back through `created_aggregate_id`.
 2. `DeviceForm(forms.Form)`: `name` (CharField, max 255, autofocus),
    `type` (ChoiceField over `Device.DEVICE_TYPES`, initial Unknown),
    `submission` (hidden UUID, initial `uuid.uuid7()`), `submission_key(act)`;
@@ -128,7 +127,7 @@ Files: create `games/backfill/__init__.py`, `games/backfill/device.py`,
 `tests/test_device_conversion.py`; modify `load_sample_data.py`,
 `docs/migration-squash.md`.
 
-1. `convert_devices(libraries=None) -> ConversionReport`: refuse bad types by
+1. `convert_devices(library=None) -> DeviceConversion`: refuse bad types by
    row (`DeviceConversionRefused`); for each unconverted row, oldest first,
    `idempotent_append` created (+ removed) with the spec's keys, actor,
    correlation id, metadata and `recorded_at`; answer the libraries touched.

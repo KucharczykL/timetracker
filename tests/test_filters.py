@@ -3660,13 +3660,14 @@ class TestComparableColumnsCrossModel:
         )
         assert any(v.startswith("related_game__purchases__") for v in purchase_values)
 
-    def test_platform_and_device_columns_classify_library_owner_relation(self):
-        # Platform/Device now declare the ownership FK. Its columns are a Library
+    def test_platform_columns_classify_library_owner_relation(self):
+        # Platform declares the ownership FK. Its columns are a Library
         # source; other single-valued columns remain model-sourced. Reverse
         # relations are multi-valued blocks (#282) and may have another source.
-        from games.models import Device, Platform
+        # A device is a projection, so its library is scoping, not data.
+        from games.models import Platform
 
-        for model in (Platform, Device):
+        for model in (Platform,):
             model_source = str(model._meta.verbose_name).title()
             for column in comparable_columns(model):
                 if column["multivalued"]:
@@ -3676,11 +3677,15 @@ class TestComparableColumnsCrossModel:
                 else:
                     assert column["source"] == model_source
 
-    def test_a_projection_offers_no_column_through_its_library(self):
+    @pytest.mark.parametrize("model_name", ["Playthrough", "Device"])
+    def test_a_projection_offers_no_column_through_its_library(self, model_name):
         """`library` is scoping, not data."""
-        from games.models import Playthrough
+        from games import models
 
-        values = {column["value"] for column in comparable_columns(Playthrough)}
+        values = {
+            column["value"]
+            for column in comparable_columns(getattr(models, model_name))
+        }
 
         assert not any(value.startswith("library__") for value in values)
 

@@ -88,9 +88,14 @@ def test_filterpreset_created_through_the_orm_gets_a_distinct_version_7_uuid(
 
 
 def test_raw_device_insert_omitting_uuid_is_refused(owned_library):
-    """A device is a projection: its key is the event's, never minted."""
-    with pytest.raises(IntegrityError), transaction.atomic():
-        raw_insert_without_identity(Device, library=owned_library, name="Raw Device")
+    """A device is a projection: its key is the event's, never minted.
+
+    Every other column is stated, so the id alone is what is refused.
+    """
+    with pytest.raises(IntegrityError, match='"id"'), transaction.atomic():
+        raw_insert_without_identity(
+            Device, library=owned_library, name="Raw Device", created_at=timezone.now()
+        )
 
 
 def test_raw_filterpreset_insert_omitting_uuid_gets_the_database_default(owned_library):

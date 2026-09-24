@@ -182,7 +182,7 @@ def test_a_row_offers_edit_and_remove(deck):
 
     assert reverse("games:edit_device", args=[deck.pk]) in html
     assert reverse("games:remove_device", args=[deck.pk]) in html
-    assert "Steam Deck actions" in html
+    assert "Steam Deck (Handheld) actions" in html
 
 
 def test_the_list_carries_the_selection_and_no_actions_column(logged_in, deck):

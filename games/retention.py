@@ -18,7 +18,7 @@ from games.events.references import (
     Resolution,
     UnmappedReferenceModel,
 )
-from games.models import LibraryEvent, LibraryEventReference
+from games.models import LibraryEvent, LibraryEventReference, ProjectionModel
 
 
 class ReferencedRowDeletion(Exception):
@@ -124,9 +124,15 @@ def refuse_to_delete_a_referenced_row(instance: Model) -> None:
         return
     if not retained:
         return
+    remedy = (
+        "Take it out of the library with its remove command, which the "
+        "projector records and keeps the row."
+        if isinstance(instance, ProjectionModel)
+        else "Take it out of the library with games.removal.remove, which "
+        "keeps the row."
+    )
     raise ReferencedRowDeletion(
         f"{instance} cannot be deleted: "
         f"{reference_count(instance)} recorded event(s) reference it, and a "
-        "replay must still be able to resolve them. Take it out of the "
-        "library with games.removal.remove, which keeps the row."
+        f"replay must still be able to resolve them. {remedy}"
     )

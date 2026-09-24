@@ -32,7 +32,8 @@ REMEDY = (
     "outside the retention policy. Restore each one under the same id, or purge "
     "the library, which takes the events with it and leaves nothing to resolve. "
     "A PROJECTED reference names a row its own stream creates, so a gap there "
-    "is a creation event the stream lost, not a row."
+    "is a creation event the stream lost, or a row naming another library's, "
+    "which audit_library_ownership reports."
 )
 
 

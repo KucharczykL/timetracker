@@ -46,6 +46,12 @@ anonymize-sample` against a deployment that has run `0015`, and the pass
 converts nothing on load; then the next squash drops `0015`, and the module
 and its call in `load_sample_data` leave the tree with it.
 
+Until then, `0015` runs today's code. A fresh database holds no device and
+reads nothing, so it migrates under any later schema. A deployment still
+holding unconverted devices checks that its event and projection tables hold
+every column the code declares, and refuses by name otherwise: deploy the
+release carrying `0015`, migrate, and move on from there.
+
 ## Do it a different way next time
 
 Use `manage.py squashmigrations`, and let it write `replaces = [...]`.
