@@ -9,6 +9,7 @@ from typing import Any, NotRequired, TypedDict
 
 import pytest
 from django.db import transaction
+from django.utils import timezone
 from pydantic import ConfigDict, with_config
 
 from games.events.append import lock_stream
@@ -60,11 +61,24 @@ for registered_spec in (DEVICE_RECORDED, EVERYTHING_RECORDED, PROBE_RECORDED):
 WIRING = EventWiring(event_types=EVENT_TYPES)
 
 
+def bare_device(library, name: str, type: str = Device.UNKNOWN) -> Device:
+    """A row no event made.
+
+    This module's streams hold probe events alone, and its wiring
+    reads no other type, so the row is written past the command.
+    """
+    return Device.objects.create(
+        pk=uuid.uuid7(),
+        library=library,
+        name=name,
+        type=type,
+        created_at=timezone.now(),
+    )
+
+
 @pytest.fixture
 def device(owned_library):
-    return Device.objects.create(
-        library=owned_library, name="Steam Deck", type=Device.HANDHELD
-    )
+    return bare_device(library=owned_library, name="Steam Deck", type=Device.HANDHELD)
 
 
 @pytest.fixture
@@ -244,9 +258,7 @@ def test_one_library_index_says_nothing_about_another(
     other_library = django_user_model.objects.create_user(
         username="second-owner", password="p"
     ).library
-    other_device = Device.objects.create(
-        library=other_library, name="Deck", type=Device.HANDHELD
-    )
+    other_device = bare_device(library=other_library, name="Deck", type=Device.HANDHELD)
     append(owned_library, [device_event(device)])
     append(other_library, [device_event(other_device)], key="other-key")
 

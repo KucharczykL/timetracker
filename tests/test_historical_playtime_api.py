@@ -6,13 +6,13 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from devices import create_device
 from django.test import Client
 from django.utils import timezone
 from historical_playtime_rows import record_row
 from session_rows import tracked_run
 
 from games.models import (
-    Device,
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
@@ -50,7 +50,7 @@ def test_anonymous_is_refused():
 
 def test_the_list_states_every_field(client_for, owner):
     library = owner.library
-    deck = Device.objects.create(library=library, name="Steam Deck")
+    deck = create_device(library=library, name="Steam Deck")
     run = a_run(library)
     other = Playthrough.objects.create(
         pk=uuid.uuid7(),

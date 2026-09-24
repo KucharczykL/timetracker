@@ -36,6 +36,16 @@ WHERE app = 'games'
   );
 ```
 
+## What the next squash takes with it
+
+`0015_device_conversion` is `elidable=True`, like the two data migrations
+before it, and imports `games/backfill/device.py`. The committed sample
+fixture still holds device rows and no device events, so `load_sample_data`
+runs the same pass before it rebuilds. Regenerate the fixture with `make
+anonymize-sample` against a deployment that has run `0015`, and the pass
+converts nothing on load; then the next squash drops `0015`, and the module
+and its call in `load_sample_data` leave the tree with it.
+
 ## Do it a different way next time
 
 Use `manage.py squashmigrations`, and let it write `replaces = [...]`.

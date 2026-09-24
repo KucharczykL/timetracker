@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from devices import create_device
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -31,8 +32,8 @@ def libraries():
 
 def test_direct_and_derived_records_filter_by_library(libraries):
     library_a, library_b = libraries
-    device_a = Device.objects.create(library=library_a, name="A device")
-    Device.objects.create(library=library_b, name="B device")
+    device_a = create_device(library=library_a, name="A device")
+    create_device(library=library_b, name="B device")
     platform_a = Platform.objects.create(library=library_a, name="A platform")
     game_a = Game.objects.create(library=library_a, name="A game", platform=platform_a)
     game_b = Game.objects.create(library=library_b, name="B game")
@@ -165,7 +166,7 @@ def test_purchase_games_reject_cross_library_add_in_both_directions(libraries):
 
 def test_library_preferences_reject_another_library_default_device(libraries):
     library_a, library_b = libraries
-    device_b = Device.objects.create(library=library_b, name="B device")
+    device_b = create_device(library=library_b, name="B device")
 
     preferences = library_a.preferences
     preferences.default_device = device_b
@@ -181,7 +182,7 @@ def test_library_preferences_reject_another_library_default_device(libraries):
 
 def test_library_preference_device_changes_only_update_timestamp_on_change(libraries):
     library_a, _ = libraries
-    device = Device.objects.create(library=library_a, name="Default")
+    device = create_device(library=library_a, name="Default")
     unchanged_at = timezone.now() - timedelta(days=1)
     preferences = library_a.preferences
     UserLibraryPreferences.objects.filter(pk=preferences.pk).update(

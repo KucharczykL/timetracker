@@ -3,6 +3,7 @@
 from zoneinfo import ZoneInfo
 
 import pytest
+from devices import create_device
 from historical_playtime_rows import record_row
 from session_rows import tracked_run
 
@@ -11,7 +12,7 @@ from common.date_time_presentation import (
     DateTimePresentation,
 )
 from common.duration_presentation import DurationPresentation, duration_format_profile
-from games.models import Device, Game, HistoricalPlaytime
+from games.models import Game, HistoricalPlaytime
 from games.reads.historical_playtime_page import run_labels_for
 from games.views.historical_playtime import historical_playtime_tabledata
 
@@ -21,7 +22,7 @@ pytestmark = pytest.mark.django_db
 @pytest.fixture
 def record(owned_library):
     game = Game.objects.create(library=owned_library, name="Tunic")
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    device = create_device(library=owned_library, name="Steam Deck")
     written = record_row(
         [tracked_run(owned_library, game)], when="2026-01-02", device=device
     )

@@ -7,6 +7,7 @@ from datetime import timezone as dt_timezone
 from functools import lru_cache
 
 import pytest
+from devices import create_device, remove_device
 from django.utils import timezone
 
 from games.commands import playersession as playersession_commands
@@ -190,7 +191,7 @@ def test_a_corrected_session_states_the_duration_that_replaces_elapsed_time(
 
 
 def test_a_session_names_a_device(owned_user, owned_library, run):
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    device = create_device(library=owned_library, name="Steam Deck")
 
     session = record(owned_library, owned_user, run, a_timed(), device_id=device.pk)
 
@@ -239,14 +240,14 @@ def test_it_refuses_a_run_under_a_removed_game(owned_user, owned_library, run):
 def test_it_refuses_a_device_another_library_holds(
     owned_user, owned_library, run, second_library
 ):
-    device = Device.objects.create(library=second_library, name="Elsewhere")
+    device = create_device(library=second_library, name="Elsewhere")
 
     not_held(owned_library, owned_user, run, a_timed(), device_id=device.pk)
 
 
 def test_it_refuses_a_removed_device(owned_user, owned_library, run):
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
-    Device.objects.filter(pk=device.pk).update(removed_at=timezone.now())
+    device = create_device(library=owned_library, name="Steam Deck")
+    remove_device(device)
 
     refused(owned_library, owned_user, run, a_timed(), device_id=device.pk)
 
@@ -1284,7 +1285,7 @@ def description_events() -> list[str]:
 
 @pytest.fixture
 def steam_deck(owned_library) -> Device:
-    return Device.objects.create(library=owned_library, name="Steam Deck")
+    return create_device(library=owned_library, name="Steam Deck")
 
 
 def test_a_note_alone_is_described(owned_user, owned_library, run):
@@ -1436,7 +1437,7 @@ def test_another_librarys_device_is_refused(
     owned_user, owned_library, run, second_library
 ):
     session = record(owned_library, owned_user, run, a_timed())
-    elsewhere = Device.objects.create(library=second_library, name="Elsewhere")
+    elsewhere = create_device(library=second_library, name="Elsewhere")
 
     refused_description(
         owned_library,
@@ -1450,7 +1451,7 @@ def test_another_librarys_device_is_refused(
 
 def test_a_removed_device_is_refused(owned_user, owned_library, run, steam_deck):
     session = record(owned_library, owned_user, run, a_timed())
-    Device.objects.filter(pk=steam_deck.pk).update(removed_at=timezone.now())
+    remove_device(steam_deck)
 
     refused_description(
         owned_library,
@@ -1468,7 +1469,7 @@ def test_restating_a_removed_device_the_row_names_changes_nothing(
 ):
     """Compared before resolved; removal is irrelevant."""
     session = record(owned_library, owned_user, run, a_timed(), device_id=steam_deck.pk)
-    Device.objects.filter(pk=steam_deck.pk).update(removed_at=timezone.now())
+    remove_device(steam_deck)
 
     result = describes(
         owned_library, owned_user, session.pk, device=StatedDevice(steam_deck.pk)

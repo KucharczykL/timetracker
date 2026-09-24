@@ -7,12 +7,13 @@ This proves the list view writes one.
 import datetime as dt
 
 import pytest
+from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page, ViewportSize, expect
 from session_rows import timed_row, tracked_run
 
 from games.filters import PlayerSessionFilter, filter_url
-from games.models import Device, Game, Platform
+from games.models import Game, Platform
 
 PHONE = ViewportSize(width=375, height=812)
 
@@ -46,7 +47,7 @@ def one_game_played(e2e_library):
         library=e2e_library, name="PC", icon="pc", group="PC"
     )
     game = Game.objects.create(library=e2e_library, name="Tunic", platform=platform)
-    device = Device.objects.create(library=e2e_library, name="Steam Deck")
+    device = create_device(library=e2e_library, name="Steam Deck")
     run = tracked_run(e2e_library, game)
     timed_row(run, STARTED_AT, STARTED_AT + dt.timedelta(hours=1), device=device)
     timed_row(

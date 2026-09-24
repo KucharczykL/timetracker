@@ -1,4 +1,5 @@
 import pytest
+from devices import create_device
 from django.core.exceptions import ValidationError
 
 from games.models import Device, UserLibraryPreferences
@@ -17,7 +18,7 @@ def user2(db, django_user_model):
 
 def test_library_default_device_mutation_persists_and_reports_noop(user, db):
     library = user.library
-    device = Device.objects.create(
+    device = create_device(
         library=library,
         name="Deck",
         type=Device.HANDHELD,
@@ -34,7 +35,7 @@ def test_library_default_device_mutation_persists_and_reports_noop(user, db):
 
 def test_library_default_device_mutation_rejects_foreign_device(user, user2, db):
     library = user.library
-    foreign = Device.objects.create(
+    foreign = create_device(
         library=user2.library,
         name="Foreign deck",
         type=Device.HANDHELD,
@@ -48,7 +49,7 @@ def test_library_default_device_mutation_rejects_foreign_device(user, user2, db)
 
 def test_library_default_device_mutation_can_clear(user, db):
     library = user.library
-    device = Device.objects.create(
+    device = create_device(
         library=library,
         name="Deck",
         type=Device.HANDHELD,
@@ -60,8 +61,8 @@ def test_library_default_device_mutation_can_clear(user, db):
 
 
 def test_library_default_device_api_rejects_foreign_and_clears(client, user, user2):
-    own = Device.objects.create(library=user.library, name="Own device")
-    foreign = Device.objects.create(library=user2.library, name="Foreign device")
+    own = create_device(library=user.library, name="Own device")
+    foreign = create_device(library=user2.library, name="Foreign device")
     client.force_login(user)
 
     selected = client.patch(

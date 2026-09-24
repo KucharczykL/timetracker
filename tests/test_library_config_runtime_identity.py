@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
+from devices import create_device
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import NoReverseMatch, Resolver404, resolve, reverse
@@ -11,7 +12,7 @@ from session_rows import session_row
 from common.criteria import FilterError, Modifier, UUIDMultiCriterion
 from games.api import api
 from games.filters import PlayerSessionFilter, parse_session_filter
-from games.models import Device, FilterPreset, Game, PlayerSession
+from games.models import FilterPreset, Game, PlayerSession
 
 pytestmark = pytest.mark.django_db
 
@@ -24,10 +25,8 @@ def runtime_world():
     foreign_user = get_user_model().objects.create_user(username="config-runtime-other")
     client = Client()
     client.force_login(owner)
-    own_device = Device.objects.create(library=owner.library, name="Own deck")
-    foreign_device = Device.objects.create(
-        library=foreign_user.library, name="Foreign deck"
-    )
+    own_device = create_device(library=owner.library, name="Own deck")
+    foreign_device = create_device(library=foreign_user.library, name="Foreign deck")
     game = Game.objects.create(library=owner.library, name="Runtime game")
     row = session_row(
         game, device=own_device, started_at=datetime(2026, 8, 20, 8, tzinfo=UTC)
@@ -70,9 +69,7 @@ def test_device_api_values_are_uuid_strings(runtime_world):
 @pytest.mark.django_db(transaction=True)
 def test_session_device_patch_is_strict_nullable_and_library_scoped(runtime_world):
     world = runtime_world
-    replacement = Device.objects.create(
-        library=world["owner"].library, name="Replacement"
-    )
+    replacement = create_device(library=world["owner"].library, name="Replacement")
     url = f"/api/session/{world['row'].pk}/device"
 
     assert (

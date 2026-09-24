@@ -13,7 +13,6 @@ from django.db.models import Exists, Model, OuterRef
 from django.utils.timezone import now
 
 from games.models import (
-    Device,
     Edition,
     FilterPreset,
     Game,
@@ -29,7 +28,6 @@ REMOVABLE_MODELS: tuple[type[Model], ...] = (
     Edition,
     Release,
     Platform,
-    Device,
     Purchase,
     FilterPreset,
 )

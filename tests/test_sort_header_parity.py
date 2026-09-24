@@ -12,12 +12,13 @@ from datetime import datetime
 from urllib.parse import unquote
 from zoneinfo import ZoneInfo
 
+from devices import create_device
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 
-from games.models import Device, Game, Platform, Purchase
+from games.models import Game, Platform, Purchase
 from games.sorting import (
     DEVICE_SORTS,
     GAME_SORTS,
@@ -88,7 +89,7 @@ class SortHeaderParityTest(TestCase):
         self._assert_parity("games:list_historical_playtime", HISTORICAL_PLAYTIME_SORTS)
 
     def test_devices_headers_match_map(self):
-        Device.objects.create(library=self.user.library, name="Test Device")
+        create_device(library=self.user.library, name="Test Device")
         self._assert_parity("games:list_devices", DEVICE_SORTS)
 
     def test_platforms_headers_match_map(self):

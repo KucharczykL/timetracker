@@ -18,7 +18,7 @@ from games.events.references import (
     Resolution,
     UnmappedReferenceModel,
 )
-from games.models import LibraryEventReference
+from games.models import LibraryEvent, LibraryEventReference
 
 
 class ReferencedRowDeletion(Exception):
@@ -54,8 +54,8 @@ def must_be_retained(
 ) -> bool:
     """Whether a delete would strand a reference."""
     kind = kinds.kind_of(instance)
-    if kind.resolution is not Resolution.REQUIRED:
-        #: EVIDENCE_ONLY: the snapshot promised everything.
+    if kind.resolution is Resolution.EVIDENCE_ONLY:
+        #: The snapshot promised everything.
         return False
     return LibraryEventReference.objects.to_row(kind.name, instance.pk).exists()
 
@@ -75,8 +75,23 @@ def resolve_reference(
 def unresolved_among(
     kind: ReferenceKind[Any], references: QuerySet[LibraryEventReference]
 ) -> QuerySet[LibraryEventReference]:
-    """The references of `kind` naming no row."""
-    #: `~Exists` plans as an anti-join.
+    """The references of `kind` naming no row.
+
+    A PROJECTED row is looked for where the replay finds it: among
+    its own library's events, as the creation under the same id.
+    The table is what the replay writes, so it proves nothing.
+    """
+    if kind.resolution is Resolution.PROJECTED:
+        #: `~Exists` plans as an anti-join.
+        return references.filter(
+            ~Exists(
+                LibraryEvent.objects.filter(
+                    library_id=OuterRef("library_id"),
+                    event_type=kind.created_by,
+                    aggregate_id=OuterRef("referenced_id"),
+                )
+            )
+        )
     return references.filter(
         ~Exists(kind.model._default_manager.filter(pk=OuterRef("referenced_id")))
     )

@@ -9,6 +9,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import connection, transaction
 from django.test.utils import CaptureQueriesContext, isolate_apps
+from django.utils import timezone
 from pydantic import ConfigDict, with_config
 from test_projection_rebuild import (
     create_tables,
@@ -170,11 +171,24 @@ def forget_replayed_events():
     REPLAYED.clear()
 
 
+def bare_device(library, name: str, type: str = Device.UNKNOWN) -> Device:
+    """A row no event made.
+
+    This module's streams hold probe events alone, and its wiring
+    reads no other type, so the row is written past the command.
+    """
+    return Device.objects.create(
+        pk=uuid.uuid7(),
+        library=library,
+        name=name,
+        type=type,
+        created_at=timezone.now(),
+    )
+
+
 @pytest.fixture
 def device(owned_library):
-    return Device.objects.create(
-        library=owned_library, name="Steam Deck", type=Device.HANDHELD
-    )
+    return bare_device(library=owned_library, name="Steam Deck", type=Device.HANDHELD)
 
 
 @pytest.fixture
@@ -256,7 +270,7 @@ def test_a_removed_row_resolves(owned_library, device):
     """The retention policy's whole point, read back."""
     append(owned_library, [device_event(device)])
 
-    remove(device)
+    Device.objects.filter(pk=device.pk).update(removed_at=timezone.now())
 
     #: Gone from the library, still stored.
     assert not Device.objects.for_library(owned_library).filter(pk=device.pk).exists()
@@ -268,7 +282,7 @@ def test_another_library_row_resolves(owned_library, django_user_model, device):
     other_library = django_user_model.objects.create_user(
         username="other-owner", password="p"
     ).library
-    other_device = Device.objects.create(
+    other_device = bare_device(
         library=other_library, name="Their Deck", type=Device.HANDHELD
     )
     append(owned_library, [device_event(other_device)])
@@ -282,7 +296,7 @@ def test_a_strand_in_one_library_says_nothing_about_another(
     other_library = django_user_model.objects.create_user(
         username="other-owner", password="p"
     ).library
-    other_device = Device.objects.create(
+    other_device = bare_device(
         library=other_library, name="Their Deck", type=Device.HANDHELD
     )
     append(owned_library, [device_event(device)])
@@ -486,7 +500,7 @@ def test_the_set_rule_agrees_with_the_single_row_rule(
 def stranded_many(library, count: int) -> None:
     """Name `count` devices, then strand them."""
     devices = [
-        Device.objects.create(library=library, name=f"Deck {number}", type=Device.PC)
+        bare_device(library=library, name=f"Deck {number}", type=Device.PC)
         for number in range(count)
     ]
     append(library, [device_event(one) for one in devices])
@@ -626,7 +640,7 @@ def test_another_library_strand_does_not_refuse_this_replay(
     other_library = django_user_model.objects.create_user(
         username="other-owner", password="p"
     ).library
-    other_device = Device.objects.create(
+    other_device = bare_device(
         library=other_library, name="Their Deck", type=Device.HANDHELD
     )
     append(owned_library, [device_event(device)])
@@ -675,7 +689,7 @@ def test_a_broken_library_does_not_stop_another_rebuild(
     other_library = django_user_model.objects.create_user(
         username="other-owner", password="p"
     ).library
-    other_device = Device.objects.create(
+    other_device = bare_device(
         library=other_library, name="Their Deck", type=Device.HANDHELD
     )
     append(owned_library, [device_event(device)])

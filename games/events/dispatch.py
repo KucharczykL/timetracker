@@ -114,6 +114,10 @@ class CommandName(CommandVocabulary):
     HISTORICALPLAYTIME_RESTATE = "library.historicalplaytime.restate"
     HISTORICALPLAYTIME_REMOVE = "library.historicalplaytime.remove"
     HISTORICALPLAYTIME_RESTORE = "library.historicalplaytime.restore"
+    DEVICE_CREATE = "library.device.create"
+    DEVICE_DESCRIBE = "library.device.describe"
+    DEVICE_REMOVE = "library.device.remove"
+    DEVICE_RESTORE = "library.device.restore"
 
 
 @dataclass(frozen=True, slots=True)

@@ -12,6 +12,7 @@ from uuid import uuid7
 from zoneinfo import ZoneInfo
 
 import pytest
+from devices import create_device
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -21,7 +22,6 @@ from historical_playtime_rows import record_row
 from session_rows import session_row
 
 from games.models import (
-    Device,
     Game,
     Platform,
     PlayerGame,
@@ -75,7 +75,7 @@ class DataTableGateTest(TestCase):
         platform = Platform.objects.create(
             library=library, name="PC", icon="pc", group="PC"
         )
-        device = Device.objects.create(library=library, name="Desktop", type="p")
+        device = create_device(library=library, name="Desktop", type="PC")
         game = Game.objects.create(library=library, name="A Game", platform=platform)
         # setUpTestData runs at class scope, before the autouse fixture that
         # tracks a created game, so the games list would find nothing to clip.

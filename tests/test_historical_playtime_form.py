@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from devices import create_device, remove_device
 from django.utils import timezone
 from historical_playtime_posts import posted_record
 from stated_runs import another_run
@@ -23,14 +24,12 @@ from games.commands.playthrough import RemovePlaythrough
 from games.events.dispatch import dispatch
 from games.forms import HistoricalPlaytimeForm
 from games.models import (
-    Device,
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
     Playthrough,
     PlaythroughKind,
 )
-from games.removal import remove
 from games.writes.answers import CommandFailed
 from games.writes.historical_playtime import record_historical_playtime
 from timetracker.temporal import temporal_input_name
@@ -259,9 +258,9 @@ def test_a_posted_removed_run_is_left_to_the_command(
 
 
 def test_a_held_removed_device_stays_selectable(owned_user, owned_library, game, run):
-    device = Device.objects.create(library=owned_library, name="Old PC")
+    device = create_device(library=owned_library, name="Old PC")
     record = recorded(owned_user, [run.pk], device_id=device.pk)
-    remove(device)
+    remove_device(device)
     edited = form(owned_library, game, record=record)
     assert "Old PC" in str(edited["device"])
     bound = form(
@@ -275,8 +274,8 @@ def test_a_held_removed_device_stays_selectable(owned_user, owned_library, game,
 
 
 def test_another_removed_device_is_refused(owned_library, game, run):
-    device = Device.objects.create(library=owned_library, name="Old PC")
-    remove(device)
+    device = create_device(library=owned_library, name="Old PC")
+    remove_device(device)
     bound = form(owned_library, game, posted_record([run.pk], device=str(device.pk)))
     assert not bound.is_valid()
     assert "device" in bound.errors
@@ -366,7 +365,7 @@ def test_another_librarys_device_is_refused(
     owned_library, game, run, django_user_model
 ):
     other = django_user_model.objects.create_user(username="someone-else")
-    device = Device.objects.create(library=other.library, name="Theirs")
+    device = create_device(library=other.library, name="Theirs")
     bound = form(owned_library, game, posted_record([run.pk], device=str(device.pk)))
     assert not bound.is_valid()
     assert "device" in bound.errors
@@ -375,11 +374,11 @@ def test_another_librarys_device_is_refused(
 def test_edit_refuses_a_removed_device_it_does_not_hold(
     owned_user, owned_library, game, run
 ):
-    held = Device.objects.create(library=owned_library, name="Held")
-    other = Device.objects.create(library=owned_library, name="Other")
+    held = create_device(library=owned_library, name="Held")
+    other = create_device(library=owned_library, name="Other")
     record = recorded(owned_user, [run.pk], device_id=held.pk)
-    remove(held)
-    remove(other)
+    remove_device(held)
+    remove_device(other)
     bound = form(
         owned_library, game, posted_record([run.pk], device=str(other.pk)), record
     )
@@ -438,7 +437,7 @@ def test_a_session_seeds_its_own_run_and_not_the_latest(
 
 
 def test_a_session_seeds_every_fact_it_states(owned_library, game, run):
-    device = Device.objects.create(library=owned_library, name="Vita")
+    device = create_device(library=owned_library, name="Vita")
     session = a_session(owned_library, run, device=device, note="off a screenshot")
 
     bound = HistoricalPlaytimeForm(
@@ -513,9 +512,9 @@ def test_a_session_takes_the_provenance_the_caller_states(owned_library, game, r
 
 
 def test_a_session_keeps_its_removed_device_among_the_choices(owned_library, game, run):
-    device = Device.objects.create(library=owned_library, name="Vita")
+    device = create_device(library=owned_library, name="Vita")
     session = a_session(owned_library, run, device=device)
-    remove(device)
+    remove_device(device)
 
     bound = HistoricalPlaytimeForm(
         library=owned_library, game=game, presentation=PRESENTATION, session=session

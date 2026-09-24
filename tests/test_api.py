@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from devices import create_device, remove_device
 from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test import Client
@@ -51,7 +52,7 @@ def _test_library():
 
 
 def _owned_device(**values):
-    return Device.objects.create(library=_test_library(), **values)
+    return create_device(_test_library(), **values)
 
 
 def _owned_game(**values):
@@ -171,7 +172,7 @@ def _row(**overrides):
         platform, _ = Platform.objects.get_or_create(name="PC")
         overrides["game"] = _owned_game(name="Hades", platform=platform)
     if "device" not in overrides:
-        overrides["device"] = _owned_device(name="Deck", type="h")
+        overrides["device"] = _owned_device(name="Deck", type="Handheld")
     game = overrides.pop("game")
     overrides.setdefault("started_at", datetime(2026, 6, 24, 18, 0, tzinfo=UTC))
     return session_row(game, **overrides)
@@ -196,7 +197,7 @@ def test_session_detail_shape(auth_client):
     assert data["device"] == {
         "id": str(session.device.id),
         "name": "Deck",
-        "type": "h",
+        "type": "Handheld",
     }
     assert data["timing_mode"] == "corrected"
     assert data["started_at"] == "2026-06-24T18:00:00Z"
@@ -522,7 +523,7 @@ def test_session_patch_grows_the_games_playtime(auth_client, user):
 def test_session_patch_describes_one_fact_per_key(auth_client, user):
     _prague_calendar(user)
     session = _row()
-    other = _owned_device(name="Desktop", type="p")
+    other = _owned_device(name="Desktop", type="PC")
     response = _patch_session(
         auth_client,
         session.id,
@@ -566,7 +567,7 @@ def test_session_patch_refuses_a_device_another_library_holds(auth_client, user)
     _prague_calendar(user)
     session = _row()
     stranger = get_user_model().objects.create_user(username="stranger", password="p")
-    theirs = Device.objects.create(library=stranger.library, name="Theirs")
+    theirs = create_device(library=stranger.library, name="Theirs")
     response = _patch_session(auth_client, session.id, {"device_id": str(theirs.id)})
     assert response.status_code == 404
     session.refresh_from_db()
@@ -667,7 +668,7 @@ def test_post_session_records_each_timing_shape(
 def test_post_session_records_the_described_facts(auth_client, user):
     _prague_calendar(user)
     run = _tracked_run()
-    device = _owned_device(name="Deck", type="h")
+    device = _owned_device(name="Deck", type="Handheld")
 
     response = _post_session(
         auth_client,
@@ -766,7 +767,7 @@ def test_post_session_404s_a_device_another_library_holds(auth_client, user):
     _prague_calendar(user)
     run = _tracked_run()
     stranger = get_user_model().objects.create_user(username="stranger", password="p")
-    theirs = Device.objects.create(library=stranger.library, name="Theirs")
+    theirs = create_device(library=stranger.library, name="Theirs")
 
     response = _post_session(
         auth_client,
@@ -1002,8 +1003,8 @@ def test_post_session_refuses_a_removed_device(auth_client, user):
     """The library holds it, so the answer names the remedy."""
     _prague_calendar(user)
     run = _tracked_run()
-    device = _owned_device(name="Deck", type="h")
-    Device.objects.filter(pk=device.pk).update(removed_at=datetime.now(UTC))
+    device = _owned_device(name="Deck", type="Handheld")
+    remove_device(device)
 
     response = _post_session(
         auth_client,
@@ -1024,7 +1025,7 @@ def test_post_session_absorbs_a_repeat_naming_a_device_since_removed(auth_client
     """The key answers before `build` resolves anything."""
     _prague_calendar(user)
     run = _tracked_run()
-    device = _owned_device(name="Deck", type="h")
+    device = _owned_device(name="Deck", type="Handheld")
     body = {
         "playthrough_id": str(run.pk),
         "timing": {"started_at": "2026-06-24T18:00:00Z"},
@@ -1033,7 +1034,7 @@ def test_post_session_absorbs_a_repeat_naming_a_device_since_removed(auth_client
     headers = {"idempotency-key": "k-2"}
     first = _post_session(auth_client, body, headers=headers)
     assert first.status_code == 201, first.content
-    Device.objects.filter(pk=device.pk).update(removed_at=datetime.now(UTC))
+    remove_device(device)
 
     second = _post_session(auth_client, body, headers=headers)
 
@@ -1301,8 +1302,8 @@ def test_filter_count_counts_only_tracked_games(auth_client):
 def test_filter_count_non_game_model(auth_client):
     # The endpoint's whole point is genericity — prove a non-game model key
     # resolves its own filter class + queryset, not just "game".
-    _owned_device(name="Deck", type="h")
-    _owned_device(name="Desktop", type="d")
+    _owned_device(name="Deck", type="Handheld")
+    _owned_device(name="Desktop", type="PC")
     response = auth_client.get(COUNT_URL, {"model": "device"})
     assert response.status_code == 200
     assert response.json() == {"count": Device.objects.count()}

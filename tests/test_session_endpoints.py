@@ -1,9 +1,10 @@
 import pytest
+from devices import create_device
 from django.urls import reverse
 from django.utils import timezone
 from session_rows import session_row
 
-from games.models import Device, Game, Platform, PlayerSession
+from games.models import Game, Platform, PlayerSession
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -24,7 +25,7 @@ def auth_client(client, owned_user):
 def running_session(owned_library):
     platform = Platform.objects.create(name="PC")
     game = Game.objects.create(library=owned_library, name="Hades", platform=platform)
-    device = Device.objects.create(library=owned_library, name="Deck")
+    device = create_device(library=owned_library, name="Deck")
     return session_row(game, device=device, started_at=timezone.now())
 
 

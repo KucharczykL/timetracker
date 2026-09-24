@@ -169,6 +169,12 @@ A receiver on `Platform` and on `Device` prevents the Django fast delete for
 those models. Only a purge of a full library takes them in quantity, thus the
 cost applies only there.
 
+`Device` is a projection since #1274, and its `device` kind is `PROJECTED`: a
+replay reads the device's creation from the stream, not the row. It keeps the
+guard all the same. The projector never deletes, the swap and a purge never
+reach the guard, and a shell that destroys a device an event names is refused
+as before.
+
 ### The order
 
 The three models are subclasses of `ReferencedRow`. Its `delete()` asks the

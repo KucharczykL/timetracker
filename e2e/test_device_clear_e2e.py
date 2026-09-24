@@ -9,6 +9,7 @@ import json
 from datetime import UTC, datetime
 
 import pytest
+from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page
 
@@ -28,10 +29,10 @@ def test_no_device_option_clears_device(
 ):
     from session_rows import session_row as seed_session
 
-    from games.models import Device, Game
+    from games.models import Game
 
     game = Game.objects.create(library=e2e_library, name="Test Game")
-    desktop = Device.objects.create(library=e2e_library, name="Desktop")
+    desktop = create_device(library=e2e_library, name="Desktop")
     session = seed_session(
         game, device=desktop, started_at=datetime(2025, 1, 1, tzinfo=UTC)
     )

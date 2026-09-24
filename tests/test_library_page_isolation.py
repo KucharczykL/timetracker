@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from devices import create_device
 from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory
 from django.urls import reverse
@@ -42,8 +43,8 @@ def test_library_page_shows_only_current_library_records(client, django_user_mod
     other = django_user_model.objects.create_user(username="other-owner", password="p")
     owned_game = Game.objects.create(library=owner.library, name="Owned game")
     foreign_game = Game.objects.create(library=other.library, name="Foreign game")
-    Device.objects.create(library=owner.library, name="Owned device")
-    Device.objects.create(library=other.library, name="Foreign device")
+    create_device(library=owner.library, name="Owned device")
+    create_device(library=other.library, name="Foreign device")
     started_at = timezone.now() - timedelta(hours=12)
     #: Three distinct durations, so the figure states which rows it read.
     timed_row(
@@ -144,10 +145,8 @@ def world(client, django_user_model):
     foreign_game = Game.objects.create(
         library=foreign_library, name="Foreign game", platform=foreign_platform
     )
-    own_device = Device.objects.create(library=owner_library, name="Owner device")
-    foreign_device = Device.objects.create(
-        library=foreign_library, name="Foreign device"
-    )
+    own_device = create_device(library=owner_library, name="Owner device")
+    foreign_device = create_device(library=foreign_library, name="Foreign device")
 
     now = timezone.now()
     #: The navbar sums the local day (#949).

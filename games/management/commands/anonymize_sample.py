@@ -60,7 +60,6 @@ PORTABLE_LIBRARY_MODELS = frozenset(
 # Omitted: FilterPreset (sample data does not ship personal saved searches).
 DUMP_LABELS = [
     "games.Platform",
-    "games.Device",
     "games.Game",
     "games.Purchase",
     "games.LibraryEventStreamHead",
@@ -481,13 +480,22 @@ class Command(BaseCommand):
         kinds = event_types.reference_kinds
         #: Aggregate order: undated follows dated.
         events = list(LibraryEvent.objects.order_by("aggregate_id", "sequence"))
+        #: A device is keyed like its row, and named like it: its events
+        #: rebuild the table the dump no longer carries.
+        device_replacements = replacements_by_model.get(Device, {})
+        device_names = dict(Device.objects.values_list("pk", "name"))
+
+        def device_keyed(event):
+            return event_types.spec_for(event.event_type).aggregate_type == "device"
+
         last_dated_day: dict[UUID, date] = {}
         sessions_recorded = 0
         for event in events:
             library_keyed = event.aggregate_id == library_id
+            #: A device's facts carry no day, so nothing shifts.
             offset = (
                 timedelta(0)
-                if library_keyed
+                if library_keyed or device_keyed(event)
                 else game_offsets[game_id_by_aggregate[event.aggregate_id]]
             )
             event.effective_time = _shift_effective_time(event.effective_time, offset)
@@ -504,7 +512,13 @@ class Command(BaseCommand):
             if "note" in payload:
                 payload["note"] = ""
             if "name" in payload:
-                payload["name"] = ""
+                payload["name"] = (
+                    device_names[
+                        device_replacements.get(event.aggregate_id, event.aggregate_id)
+                    ]
+                    if device_keyed(event)
+                    else ""
+                )
             for found in event_types.references_in(event.event_type, payload):
                 kind = kinds.kind_for(found.value["kind"])
                 replacements = replacements_by_model.get(kind.model, {})
@@ -568,10 +582,24 @@ class Command(BaseCommand):
                 for group, moment in sorted(earliest.items(), key=lambda pair: pair[1])
             }
 
-        aggregate_replacements = _group_replacements(
-            [event for event in events if event.aggregate_id != library_id],
-            lambda event: event.aggregate_id,
-        )
+        aggregate_replacements = {
+            **_group_replacements(
+                [
+                    event
+                    for event in events
+                    if event.aggregate_id != library_id and not device_keyed(event)
+                ],
+                lambda event: event.aggregate_id,
+            ),
+            #: The row's own replacement, which every reference already names.
+            **{
+                event.aggregate_id: device_replacements.get(
+                    event.aggregate_id, event.aggregate_id
+                )
+                for event in events
+                if device_keyed(event)
+            },
+        }
         correlation_replacements = _group_replacements(
             events, lambda event: event.correlation_id
         )

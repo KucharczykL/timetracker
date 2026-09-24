@@ -11,6 +11,7 @@ from io import StringIO
 from typing import TypedDict
 
 import pytest
+from devices import create_device, remove_device
 from django.apps import apps
 from django.core.management import call_command
 from django.db import transaction
@@ -117,9 +118,7 @@ def platform(owned_library):
 
 @pytest.fixture
 def device(owned_library):
-    return Device.objects.create(
-        library=owned_library, name="Steam Deck", type=Device.HANDHELD
-    )
+    return create_device(library=owned_library, name="Steam Deck", type=Device.HANDHELD)
 
 
 @pytest.fixture
@@ -220,7 +219,7 @@ def test_a_referenced_platform_is_kept(owned_library, platform):
 def test_a_referenced_device_is_kept(owned_library, device):
     name_in_an_event(owned_library, device)
 
-    remove(device)
+    remove_device(device)
 
     assert Device.objects.get(pk=device.pk).removed_at is not None
     assert not Device.objects.for_library(owned_library).exists()
@@ -385,7 +384,7 @@ def test_removing_a_device_keeps_what_names_it(owned_library, game, device):
     preferences.set_default_device(device)
     name_in_an_event(owned_library, device)
 
-    remove(device)
+    remove_device(device)
 
     assert PlayerSession.objects.get(pk=session.pk).device_id == device.pk
     preferences.refresh_from_db()
@@ -602,7 +601,7 @@ def test_the_exemption_does_not_outlive_the_purge(owned_library, game):
 def test_an_evidence_only_kind_is_free_to_go(owned_library, device):
     """An EVIDENCE_ONLY row is free to go.
 
-    Every registered kind is REQUIRED today. Use a local registry.
+    No registered kind is EVIDENCE_ONLY today. Use a local registry.
     """
     name_in_an_event(owned_library, device)
     evidence_only = ReferenceKindRegistry()
@@ -610,6 +609,7 @@ def test_an_evidence_only_kind_is_free_to_go(owned_library, device):
         replace(
             DEFAULT_REFERENCE_KINDS.kind_of(device),
             resolution=Resolution.EVIDENCE_ONLY,
+            created_by=None,
         )
     )
 

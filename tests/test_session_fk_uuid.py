@@ -3,6 +3,7 @@ import uuid
 from zoneinfo import ZoneInfo
 
 import pytest
+from devices import create_device
 from django.db import IntegrityError, transaction
 from django.test import Client
 from django.urls import reverse
@@ -45,9 +46,7 @@ def game(owned_library):
 
 @pytest.fixture
 def device(owned_library):
-    return Device.objects.create(
-        library=owned_library, name="Handheld", type=Device.HANDHELD
-    )
+    return create_device(library=owned_library, name="Handheld", type=Device.HANDHELD)
 
 
 @pytest.fixture
@@ -87,7 +86,7 @@ def test_set_default_device_still_short_circuits_an_unchanged_value(
 
 def test_session_filters_by_related_instance_and_by_id(game, device, owned_library):
     other_game = Game.objects.create(library=owned_library, name="Other")
-    other_device = Device.objects.create(library=owned_library, name="Desk")
+    other_device = create_device(library=owned_library, name="Desk")
     matching = _row(game, device=device)
     _row(other_game, device=other_device)
 
@@ -129,7 +128,7 @@ def test_sessionfilter_game_and_device_criteria_select_the_right_rows(
     game, device, owned_library
 ):
     other_game = Game.objects.create(library=owned_library, name="Other")
-    other_device = Device.objects.create(library=owned_library, name="Desk")
+    other_device = create_device(library=owned_library, name="Desk")
     matching = _row(game, device=device)
     _row(other_game, device=other_device)
 
@@ -173,7 +172,7 @@ def test_sessionfilter_game_and_device_sub_filters_select_sessions(
     game, device, owned_library
 ):
     other_game = Game.objects.create(library=owned_library, name="Other")
-    other_device = Device.objects.create(library=owned_library, name="Desk")
+    other_device = create_device(library=owned_library, name="Desk")
     matching = _row(game, device=device)
     _row(other_game, device=other_device)
 
@@ -192,7 +191,7 @@ def test_sessionfilter_game_and_device_sub_filters_select_sessions(
 
 
 def test_devicefilter_session_filter_selects_devices(game, device, owned_library):
-    other_device = Device.objects.create(library=owned_library, name="Desk")
+    other_device = create_device(library=owned_library, name="Desk")
     _row(game, device=device, note="Marathon session")
     _row(game, device=other_device, note="Something else")
 

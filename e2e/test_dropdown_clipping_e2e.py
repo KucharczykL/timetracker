@@ -7,12 +7,13 @@ so it escapes the clipping ancestor and stays within the viewport.
 """
 
 import pytest
+from devices import create_device
 from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Page
 from session_rows import session_row
 
-from games.models import Device, Game, Platform
+from games.models import Game, Platform
 
 
 @pytest.fixture
@@ -39,8 +40,7 @@ def test_device_dropdown_not_clipped_on_short_table(
     # Many devices → a tall menu; a single row → a short table that would clip
     # an absolutely-positioned menu.
     devices = [
-        Device.objects.create(library=e2e_library, name=f"Device {i:02d}")
-        for i in range(15)
+        create_device(library=e2e_library, name=f"Device {i:02d}") for i in range(15)
     ]
     session = session_row(game, device=devices[0], started_at=timezone.now())
 
@@ -95,8 +95,7 @@ def test_device_dropdown_flips_up_near_viewport_bottom(
     game.platform = platform
     game.save()
     devices = [
-        Device.objects.create(library=e2e_library, name=f"Device {i:02d}")
-        for i in range(15)
+        create_device(library=e2e_library, name=f"Device {i:02d}") for i in range(15)
     ]
     sessions = [
         session_row(game, device=devices[0], started_at=timezone.now())

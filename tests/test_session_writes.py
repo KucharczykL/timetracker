@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from devices import create_device
 from django.utils import timezone
 from session_rows import session_row, tracked_run
 
@@ -18,7 +19,6 @@ from games.commands.session_reclassification import (
 )
 from games.events.dispatch import CommandOutcome
 from games.models import (
-    Device,
     Game,
     HistoricalPlaytime,
     LibraryEvent,
@@ -333,7 +333,7 @@ def test_cloning_lands_on_the_ordinary_run_past_the_bucket(
         kind=PlaythroughKind.IMPORTED_HISTORY,
         created_at=timezone.now(),
     )
-    device = Device.objects.create(library=owned_library, name="Deck")
+    device = create_device(library=owned_library, name="Deck")
     session_row(game, started_at=STARTED_AT, device=device, emulated=True)
     PlayerSession.objects.filter(playthrough=ordinary).update(playthrough=bucket)
 

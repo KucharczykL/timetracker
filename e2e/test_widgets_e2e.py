@@ -12,6 +12,7 @@ Browser binaries must be installed once: ``uv run playwright install chromium``.
 import re
 
 import pytest
+from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
@@ -201,9 +202,7 @@ def test_uncommitted_single_select_shows_draft_cue(
     the sr-only status announcement. Re-typing a committed label without
     picking is exactly the trap: the text looks committed but saves NULL."""
     page = authenticated_page
-    Device.objects.create(
-        name="Nintendo Switch", type=Device.HANDHELD, library=e2e_library
-    )
+    create_device(name="Nintendo Switch", type=Device.HANDHELD, library=e2e_library)
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
 
     wrapper = page.locator("search-select[name='device']")

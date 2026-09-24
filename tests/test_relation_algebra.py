@@ -12,6 +12,7 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from devices import create_device
 from django.contrib.auth import get_user_model
 from session_rows import session_row
 
@@ -46,9 +47,10 @@ def _single_library_relation_world(db, monkeypatch):
 
         return create
 
-    for model in (Game, Device, Purchase):
+    for model in (Game, Purchase):
         manager = model.objects
         monkeypatch.setattr(manager, "create", owned_create(manager.create))
+    return user.library
 
 
 def _dt(year=2024, month=6, day=1):
@@ -391,14 +393,18 @@ def test_two_level_match_round_trip():
 
 
 @pytest.fixture
-def boolean_world(db):
+def boolean_world(_single_library_relation_world):
     """Games spanning combinations of an emulated session and a refunded purchase,
     plus a game (``split``) whose two qualifying sessions are *distinct* rows — the
     case only n-ary AND over one relation can express (the flat single-session
     conjunction misses it)."""
     pc = Platform.objects.create(name="PC")
-    deck = Device.objects.create(name="SteamDeck", type=Device.HANDHELD)
-    desktop = Device.objects.create(name="Desktop", type=Device.PC)
+    deck = create_device(
+        _single_library_relation_world, name="SteamDeck", type=Device.HANDHELD
+    )
+    desktop = create_device(
+        _single_library_relation_world, name="Desktop", type=Device.PC
+    )
 
     both = Game.objects.create(name="Both", platform=pc)
     emu_only = Game.objects.create(name="EmuOnly", platform=pc)

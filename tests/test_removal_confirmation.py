@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 import pytest
+from devices import create_device
 from django.urls import reverse
 from session_rows import session_row
 from stated_runs import another_run
@@ -66,7 +67,7 @@ def test_the_confirmation_form_keeps_the_origin(logged_in, game):
 def removables(owned_library):
     from datetime import date
 
-    from games.models import Device, Purchase
+    from games.models import Purchase
 
     platform = Platform.objects.create(name="Console")
     owned = Game.objects.create(
@@ -84,7 +85,7 @@ def removables(owned_library):
         "session": session_row(owned, started_at=datetime(2024, 6, 1, 12, tzinfo=UTC)),
         "purchase": purchase,
         "platform": Platform.objects.create(library=owned_library, name="Doomed"),
-        "device": Device.objects.create(library=owned_library, name="Doomed"),
+        "device": create_device(library=owned_library, name="Doomed"),
     }
 
 

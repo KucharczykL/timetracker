@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from devices import create_device, remove_device
 from django.db import IntegrityError
 from django.utils import timezone
 from session_rows import duration_only_row
@@ -46,7 +47,6 @@ from games.events.dispatch import (
     dispatch,
 )
 from games.models import (
-    Device,
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
@@ -154,7 +154,7 @@ def refused(library, actor, command) -> CommandRejected:
 
 
 def test_the_statement_reads_the_session(owned_user, owned_library, run):
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    device = create_device(library=owned_library, name="Steam Deck")
     session = a_duration_only(
         owned_library, owned_user, run, device_id=device.pk, note="from a screenshot"
     )
@@ -338,9 +338,9 @@ def test_a_session_holding_a_removed_device_still_converts(
     owned_user, owned_library, run
 ):
     """A device the library stopped using."""
-    device = Device.objects.create(library=owned_library, name="Vita")
+    device = create_device(library=owned_library, name="Vita")
     session = a_duration_only(owned_library, owned_user, run, device_id=device.pk)
-    Device.objects.filter(pk=device.pk).update(removed_at=timezone.now())
+    remove_device(device)
 
     record = convert(owned_library, owned_user, session)
 
@@ -348,10 +348,10 @@ def test_a_session_holding_a_removed_device_still_converts(
 
 
 def test_a_removed_device_named_anew_is_refused(owned_user, owned_library, run):
-    device = Device.objects.create(library=owned_library, name="Vita")
-    other = Device.objects.create(library=owned_library, name="PSP")
+    device = create_device(library=owned_library, name="Vita")
+    other = create_device(library=owned_library, name="PSP")
     session = a_duration_only(owned_library, owned_user, run, device_id=device.pk)
-    Device.objects.filter(pk=other.pk).update(removed_at=timezone.now())
+    remove_device(other)
     swapped = statement_from_session(session)._replace(device_id=other.pk)
 
     refusal = refused(
@@ -653,7 +653,7 @@ def test_a_session_that_became_no_record_is_refused(owned_user, owned_library, r
 def test_the_undo_returns_a_session_whose_record_was_already_removed(
     owned_user, owned_library, run
 ):
-    """Only the leg still to happen."""
+    """Only the step still to happen."""
     session = a_duration_only(owned_library, owned_user, run)
     record = convert(owned_library, owned_user, session)
     dispatch(
@@ -681,7 +681,7 @@ def restate(library, actor, record, statement) -> None:
 
 
 def test_an_undo_after_a_restatement_is_refused_whole(owned_user, owned_library, run):
-    """Neither leg runs; both live double counts."""
+    """Neither step runs; both live double counts."""
     session = a_duration_only(owned_library, owned_user, run)
     record = convert(owned_library, owned_user, session)
     restate(

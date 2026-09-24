@@ -5,6 +5,7 @@ form records a session on what came back.
 """
 
 import pytest
+from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 
@@ -87,7 +88,7 @@ def test_a_refused_creation_makes_nothing(
     from games.models import Device
 
     create_tracked_game(e2e_library, "Outer Wilds")
-    Device.objects.create(library=e2e_library, name="Steam Deck")
+    create_device(library=e2e_library, name="Steam Deck")
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
 

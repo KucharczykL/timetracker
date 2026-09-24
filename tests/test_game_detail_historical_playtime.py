@@ -6,13 +6,14 @@ from datetime import timedelta
 from urllib.parse import quote
 
 import pytest
+from devices import create_device
 from django.urls import reverse
 from historical_playtime_rows import record_row
 from stated_runs import another_run
 from test_column_priority_contract import header_policies
 
 from games.filters import HistoricalPlaytimeFilter, filter_url
-from games.models import Device, Game, HistoricalPlaytimeProvenance, Playthrough
+from games.models import Game, HistoricalPlaytimeProvenance, Playthrough
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -72,7 +73,7 @@ def test_a_row_states_duration_provenance_runs_and_device(
     logged_in, owned_user, owned_library, game, run
 ):
     second = another_run(owned_user, game)
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    device = create_device(library=owned_library, name="Steam Deck")
     record_row(
         [run, second],
         duration=timedelta(hours=100),
@@ -169,7 +170,7 @@ def test_the_summary_states_the_columns_the_day_does_not(
     logged_in, owned_library, game, run
 ):
     """The day leads the row, so the line spends itself on the rest."""
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    device = create_device(library=owned_library, name="Steam Deck")
     record_row(
         [run],
         duration=timedelta(hours=2),

@@ -530,7 +530,12 @@ class TargetedWriter(Projector, registry=target_registry):
     def _recorded(self, event: RecordedEvent) -> None:
         #: Device stands in for a projection table.
         projected = self.target.model(Device)  # type: ignore[type-var]
-        projected.objects.create(library_id=event.library_id, name="projected")
+        projected.objects.create(
+            pk=uuid.uuid7(),
+            library_id=event.library_id,
+            name="projected",
+            created_at=event.recorded_at,
+        )
 
     handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 
@@ -897,7 +902,12 @@ class RollbackWriter(Projector, registry=rollback_registry):
     family_name = ProjectorFamily.CURRENT_STATE
 
     def _recorded(self, event: RecordedEvent) -> None:
-        Device.objects.create(library_id=event.library_id, name="projected")
+        Device.objects.create(
+            pk=uuid.uuid7(),
+            library_id=event.library_id,
+            name="projected",
+            created_at=event.recorded_at,
+        )
 
     handles: ClassVar[HandlerMap] = {PROBE_RECORDED: _recorded}
 

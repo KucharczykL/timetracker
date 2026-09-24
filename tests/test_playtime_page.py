@@ -7,6 +7,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from devices import create_device
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -19,7 +20,6 @@ from common.components import PageTab, PageTabs, StatisticCard
 from common.returns import action_url
 from games.events.dispatch import RowUnreadable
 from games.models import (
-    Device,
     FilterPreset,
     Game,
     HistoricalPlaytime,
@@ -134,7 +134,7 @@ class TestHistoricalList:
 
     def test_a_row_states_every_fact(self, client, owner):
         library = owner.library
-        deck = Device.objects.create(library=library, name="Steam Deck")
+        deck = create_device(library=library, name="Steam Deck")
         run = tracked_run(library, Game.objects.create(library=library, name="Zelda"))
         other = second_run(run, name="Hard mode")
         record_row(
@@ -180,8 +180,8 @@ class TestHistoricalList:
     @pytest.mark.parametrize("key", sorted(HISTORICAL_PLAYTIME_SORTS))
     def test_every_sort_key_orders(self, client, owner, key):
         library = owner.library
-        low_device = Device.objects.create(library=library, name="A device")
-        high_device = Device.objects.create(library=library, name="Z device")
+        low_device = create_device(library=library, name="A device")
+        high_device = create_device(library=library, name="Z device")
         low_game = Game.objects.create(library=library, name="Alpha", sort_name="alpha")
         high_game = Game.objects.create(
             library=library, name="Omega", sort_name="omega"
@@ -412,7 +412,7 @@ class TestHistoricalListSummary:
 
     def test_a_row_states_the_day_the_duration_and_the_device(self, client, owner):
         library = owner.library
-        deck = Device.objects.create(library=library, name="Steam Deck")
+        deck = create_device(library=library, name="Steam Deck")
         run = tracked_run(library, Game.objects.create(library=library, name="G"))
         record_row([run], duration=timedelta(hours=2), when="2026-03-05", device=deck)
 

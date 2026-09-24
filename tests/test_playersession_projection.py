@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from devices import create_device
 from django.apps import apps as global_apps
 from django.db import DataError, IntegrityError, models, transaction
 from django.utils import timezone
@@ -33,7 +34,6 @@ from games.events.rebuild import RebuildMode, rebuild_projections
 from games.events.references import capture_reference
 from games.events.replay import replay
 from games.models import (
-    Device,
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
@@ -468,7 +468,7 @@ def test_a_removed_catalog_game_leaves_its_sessions_in_place(run, game):
 
 @pytest.mark.django_db
 def test_a_session_may_name_a_device(owned_library, run):
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    device = create_device(library=owned_library, name="Steam Deck")
 
     session = a_timed(run, device=device)
 
@@ -588,7 +588,7 @@ def test_the_mapper_reads_both_instants_of_a_corrected_statement():
 
 @pytest.mark.django_db(transaction=True)
 def test_the_creation_handler_writes_the_whole_row(owned_user, owned_library, run):
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    device = create_device(library=owned_library, name="Steam Deck")
 
     append_session(
         owned_library,
@@ -761,7 +761,7 @@ def test_the_end_event_has_a_current_state_handler():
 def test_the_end_handler_writes_two_columns_and_leaves_the_rest(
     owned_user, owned_library, run
 ):
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    device = create_device(library=owned_library, name="Steam Deck")
     append_session(
         owned_library,
         owned_user,
@@ -1001,7 +1001,7 @@ def test_every_transition_projects(owned_user, owned_library, run, before, after
 def test_a_timing_correction_leaves_the_description_and_the_run(
     owned_user, owned_library, run
 ):
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    device = create_device(library=owned_library, name="Steam Deck")
     append_session(
         owned_library,
         owned_user,
@@ -1029,8 +1029,8 @@ def test_a_timing_correction_leaves_the_description_and_the_run(
 
 @pytest.mark.django_db(transaction=True)
 def test_each_description_event_writes_its_own_column(owned_user, owned_library, run):
-    old_device = Device.objects.create(library=owned_library, name="Steam Deck")
-    new_device = Device.objects.create(library=owned_library, name="Switch")
+    old_device = create_device(library=owned_library, name="Steam Deck")
+    new_device = create_device(library=owned_library, name="Switch")
     append_session(
         owned_library,
         owned_user,
@@ -1140,7 +1140,7 @@ def test_a_corrected_session_replays(owned_user, owned_library, run, game):
         idempotency_key="track-other",
     )
     target = Playthrough.objects.get(player_game__game=other_game)
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    device = create_device(library=owned_library, name="Steam Deck")
     append_session(
         owned_library, owned_user, run, timing=a_timed_statement(), key="create"
     )
@@ -1168,7 +1168,7 @@ def test_a_rebuild_reproduces_a_corrected_session(owned_user, owned_library, gam
         )
     source = Playthrough.objects.get(player_game__game=game)
     target = Playthrough.objects.get(player_game__game=other_game)
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    device = create_device(library=owned_library, name="Steam Deck")
     append_session(
         owned_library, owned_user, source, timing=a_timed_statement(), key="create"
     )

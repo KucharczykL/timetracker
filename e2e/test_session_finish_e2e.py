@@ -8,13 +8,14 @@ row loses its finish control and gains an end time.
 import datetime as dt
 
 import pytest
+from devices import create_device
 from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Browser, Page, expect
 from session_rows import session_row
 
 from e2e.helpers import open_row_menu
-from games.models import Device, Game, Platform, UserPreferences
+from games.models import Game, Platform, UserPreferences
 from games.reads.calendar import calendar_day_zone
 from timetracker.settings_resolver import resolve_for_user
 
@@ -47,7 +48,7 @@ def test_finish_session_reloads_the_list_with_the_session_closed(
         library=e2e_library, name="PC", icon="pc", group="PC"
     )
     game = Game.objects.create(library=e2e_library, name="Tunic", platform=platform)
-    device = Device.objects.create(library=e2e_library, name="Desktop")
+    device = create_device(library=e2e_library, name="Desktop")
     session = _row(game, device=device, started_at=timezone.now())
 
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")

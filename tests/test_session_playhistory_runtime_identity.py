@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from uuid import UUID
 
 import pytest
+from devices import create_device
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import NoReverseMatch, Resolver404, resolve, reverse
@@ -11,7 +12,7 @@ from session_rows import session_row
 from stated_runs import another_run, state_run
 
 from games.commands.playthrough import ActStatement
-from games.models import Device, Game, Playthrough
+from games.models import Game, Playthrough
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db
@@ -65,10 +66,8 @@ def runtime_world(transactional_db):
     foreign_game = Game.objects.create(
         library=foreign_user.library, name="Foreign runtime game"
     )
-    own_device = Device.objects.create(library=owner.library, name="Owned device")
-    foreign_device = Device.objects.create(
-        library=foreign_user.library, name="Foreign device"
-    )
+    own_device = create_device(library=owner.library, name="Owned device")
+    foreign_device = create_device(library=foreign_user.library, name="Foreign device")
     own_session = session_row(
         own_game,
         device=own_device,
@@ -167,7 +166,7 @@ def test_session_device_patch_uses_uuidv7_session_and_device_ids(
     runtime_world,
 ):
     session = runtime_world.own_session
-    replacement = Device.objects.create(
+    replacement = create_device(
         library=runtime_world.owner.library, name="Replacement device"
     )
 

@@ -41,7 +41,6 @@ from games.list_columns import column_choice
 from games.models import Device
 from games.ownership import owned_or_404
 from games.reads.player_sessions import library_sessions
-from games.removal import restore
 from games.sorting import (
     DEVICE_DEFAULT_SORT,
     DEVICE_SORTS,
@@ -55,6 +54,11 @@ from games.views.filtering import (
 )
 from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
+from games.writes.answers import CommandFailed
+from games.writes.device import create_device, describe_device
+from games.writes.device import remove_device as remove_device_row
+from games.writes.device import restore_device as restore_device_row
+from games.writes.playergame import new_correlation_id
 
 DEVICE_COLUMNS: list[Column] = [
     Column("Name", "name", key="name", hideable=False),
@@ -155,27 +159,50 @@ def list_devices(request: HttpRequest) -> HttpResponse:
     )
 
 
+def _render_form(
+    request: HttpRequest, form: DeviceForm, title: str, *, status: int = 200
+) -> HttpResponse:
+    response = render_page(request, AddForm(form, request=request), title=title)
+    response.status_code = status
+    return response
+
+
 @login_required
 def edit_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
-    library = cast(User, request.user).library
+    user = cast(User, request.user)
+    library = user.library
     device = owned_or_404(Device.objects.for_library(library), library, id=device_id)
-    form = DeviceForm(request.POST or None, instance=device, library=library)
+    form = DeviceForm(request.POST or None, library=library, device=device)
+    title = "Edit device"
     if form.is_valid():
-        form.save()
+        try:
+            describe_device(
+                user,
+                device,
+                name=form.cleaned_data["name"],
+                device_type=form.cleaned_data["type"],
+                correlation_id=new_correlation_id(),
+            )
+        except CommandFailed as failure:
+            form.add_error(None, failure.message)
+            return _render_form(request, form, title, status=failure.status_code)
         return redirect(return_url(request, fallback="games:list_devices"))
 
-    return render_page(request, AddForm(form, request=request), title="Edit device")
+    return _render_form(request, form, title)
 
 
 @login_required
 @require_POST
 def restore_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
     """Undo; the plain manager, since the row is removed."""
-    library = cast(User, request.user).library
+    user = cast(User, request.user)
+    library = user.library
     device = owned_or_404(Device.objects.filter(library=library), library, id=device_id)
     return restore_and_return(
         request,
-        action=partial(restore, device),
+        action=partial(
+            restore_device_row, user, device, correlation_id=new_correlation_id()
+        ),
         restored=f"{device.name} restored to your library.",
         fallback="games:list_devices",
     )
@@ -183,7 +210,8 @@ def restore_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
 
 @login_required
 def remove_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
-    library = cast(User, request.user).library
+    user = cast(User, request.user)
+    library = user.library
     device = owned_or_404(Device.objects.for_library(library), library, id=device_id)
     return confirm_and_remove(
         request,
@@ -196,6 +224,9 @@ def remove_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
                 "session(s) still name it"
             ]
         ],
+        action=partial(
+            remove_device_row, user, device, correlation_id=new_correlation_id()
+        ),
         fallback="games:list_devices",
         removed=f"{device.name} removed from your library.",
         undo="games:restore_device",
@@ -204,10 +235,21 @@ def remove_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
 
 @login_required
 def add_device(request: HttpRequest) -> HttpResponse:
-    library = cast(User, request.user).library
-    form = DeviceForm(request.POST or None, library=library)
+    user = cast(User, request.user)
+    form = DeviceForm(request.POST or None, library=user.library)
+    title = "Add New Device"
     if form.is_valid():
-        form.save()
+        try:
+            create_device(
+                user,
+                name=form.cleaned_data["name"],
+                device_type=form.cleaned_data["type"],
+                idempotency_key=form.submission_key(),
+                correlation_id=new_correlation_id(),
+            )
+        except CommandFailed as failure:
+            form.add_error(None, failure.message)
+            return _render_form(request, form, title, status=failure.status_code)
         return redirect(return_url(request, fallback="games:list_devices"))
 
-    return render_page(request, AddForm(form, request=request), title="Add New Device")
+    return _render_form(request, form, title)

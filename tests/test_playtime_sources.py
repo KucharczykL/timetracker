@@ -5,6 +5,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
+from devices import create_device
 from django.utils import timezone
 from historical_playtime_rows import record_row
 from session_rows import (
@@ -21,7 +22,7 @@ from games.filters import (
     PlayerSessionFilter,
     filter_query_context_for_library,
 )
-from games.models import Device, Game, Platform, UserLibrary
+from games.models import Game, Platform, UserLibrary
 from games.reads.days import DayInterval
 from games.reads.historical_playtime import PlatformHistorical
 from games.reads.playtime import (
@@ -322,8 +323,8 @@ def test_summed_by_game_never_counts_another_library(owned_library, stranger_lib
 
 @pytest.mark.django_db
 def test_a_session_filter_narrows_the_sum(owned_library, game):
-    handheld = Device.objects.create(library=owned_library, name="Deck")
-    desktop = Device.objects.create(library=owned_library, name="Tower")
+    handheld = create_device(library=owned_library, name="Deck")
+    desktop = create_device(library=owned_library, name="Tower")
     started_at = datetime(2026, 3, 5, 10, tzinfo=UTC)
     for device, hours in ((handheld, 1), (desktop, 2)):
         timed_row(
@@ -414,7 +415,7 @@ def test_platforms_order_by_playtime_then_name(owned_library):
 
 @pytest.mark.django_db
 def test_the_sum_is_null_when_no_session_matches(owned_library, game):
-    handheld = Device.objects.create(library=owned_library, name="Deck")
+    handheld = create_device(library=owned_library, name="Deck")
     started_at = datetime(2026, 3, 5, 10, tzinfo=UTC)
     timed(owned_library, game, started_at, started_at + timedelta(hours=1))
 
@@ -598,7 +599,7 @@ def test_the_playtime_filter_reads_the_composed_total(owned_library, game):
 
 @pytest.mark.django_db
 def test_a_session_filter_never_reaches_records(owned_library, game):
-    handheld = Device.objects.create(library=owned_library, name="Deck")
+    handheld = create_device(library=owned_library, name="Deck")
     run = tracked_run(owned_library, game)
     timed_row(
         run,

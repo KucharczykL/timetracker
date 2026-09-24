@@ -17,6 +17,7 @@ from datetime import UTC, date, datetime
 from uuid import UUID
 
 import pytest
+from devices import create_device
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from session_rows import session_row
@@ -47,9 +48,10 @@ def _single_library_filter_world(db, monkeypatch):
 
         return create
 
-    for model in (Game, Device, Purchase):
+    for model in (Game, Purchase):
         manager = model.objects
         monkeypatch.setattr(manager, "create", owned_create(manager.create))
+    return user.library
 
 
 def _session_ids(filter_json: str) -> set[UUID]:
@@ -88,10 +90,14 @@ def _set_criterion(value: str, label: str) -> dict:
 
 
 @pytest.fixture
-def device_world(db):
+def device_world(_single_library_filter_world):
     pc = Platform.objects.create(name="PC")
-    deck = Device.objects.create(name="SteamDeck", type=Device.HANDHELD)
-    desktop = Device.objects.create(name="Desktop", type=Device.PC)
+    deck = create_device(
+        _single_library_filter_world, name="SteamDeck", type=Device.HANDHELD
+    )
+    desktop = create_device(
+        _single_library_filter_world, name="Desktop", type=Device.PC
+    )
     on_deck = Game.objects.create(name="OnDeck", platform=pc)
     on_desktop = Game.objects.create(name="OnDesktop", platform=pc)
     Game.objects.create(name="NoSessions", platform=pc)

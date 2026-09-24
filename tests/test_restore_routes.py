@@ -3,6 +3,7 @@
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from devices import create_device, remove_device
 from django.contrib.messages import get_messages
 from django.urls import reverse
 from historical_playtime_rows import record_row
@@ -12,7 +13,6 @@ from stated_runs import another_run
 from common.returns import action_url
 from games.commands.session_reclassification import statement_from_session
 from games.models import (
-    Device,
     FilterPreset,
     Game,
     HistoricalPlaytime,
@@ -107,8 +107,8 @@ def _removed_platform(user, game):
 
 
 def _removed_device(user, game):
-    device = Device.objects.create(library=user.library, name="Doomed")
-    remove(device)
+    device = create_device(library=user.library, name="Doomed")
+    remove_device(device)
     return device
 
 

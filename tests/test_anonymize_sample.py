@@ -9,6 +9,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 import yaml
+from devices import create_device
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -117,16 +118,24 @@ def _record(owner, run, timing, *, device=None, note=""):
     )
 
 
+def _device_names(by_model):
+    """Each dumped device's key and name, read from its creation.
+
+    The table is a projection, so the dump carries its events, not its rows.
+    """
+    return {
+        event["fields"]["aggregate_id"]: event["fields"]["payload"]["name"]
+        for event in _events_of(by_model, "library.device.created")
+    }
+
+
 def _build_dataset():
     """A small dataset exercising every branch the anonymizer must handle."""
     owner = get_user_model().objects.create_user(username="sample-source")
     #: One calendar event; every session's zone.
     change_user_setting(owner, CALENDAR_SETTING_KEY, SOURCE_ZONE)
     platform = Platform.objects.create(name="Steam", group="PC")
-    device = Device.objects.create(
-        library=owner.library,
-        name="Anna's laptop",
-    )
+    device = create_device(owner.library, "Anna's laptop")
     games = [
         Game.objects.create(library=owner.library, name=f"Game {index}")
         for index in range(5)
@@ -446,10 +455,8 @@ class AnonymizeSampleTest(TransactionTestCase):
             _day_of(by_mode["corrected"]), date(2021, 7, 1) + offset, "same run"
         )
 
-        #: Device reference re-captured at dumped row.
-        devices = {
-            item["pk"]: item["fields"]["name"] for item in by_model["games.device"]
-        }
+        #: Device reference re-captured at the device's own key.
+        devices = _device_names(by_model)
         device = timed["payload"]["device"]
         self.assertIn(device["id"], devices)
         self.assertEqual(device["label"], devices[device["id"]])
@@ -525,16 +532,8 @@ class AnonymizeSampleTest(TransactionTestCase):
 
     def test_scrub_devices_uses_stable_primary_key_ordinals(self):
         game_purchase, _ = _build_dataset()
-        Device.objects.create(
-            pk="00000000-0000-7000-8000-000000000101",
-            library=game_purchase.library,
-            name="Second source name",
-        )
-        Device.objects.create(
-            pk="00000000-0000-7000-8000-000000000100",
-            library=game_purchase.library,
-            name="First source name",
-        )
+        create_device(game_purchase.library, "Second source name")
+        create_device(game_purchase.library, "First source name")
         with TemporaryDirectory() as tempdir:
             output = Path(tempdir) / "out.yaml.gz"
             call_command(
@@ -546,13 +545,12 @@ class AnonymizeSampleTest(TransactionTestCase):
             )
             by_model = _by_model(_load_output(output))
 
-        devices = sorted(by_model["games.device"], key=lambda item: UUID(item["pk"]))
+        names = _device_names(by_model)
         self.assertEqual(
-            [device["fields"]["name"] for device in devices],
+            [names[key] for key in sorted(names, key=UUID)],
             ["Device 1", "Device 2", "Device 3"],
         )
         #: Payload reference carries the scrubbed name.
-        names = {device["pk"]: device["fields"]["name"] for device in devices}
         referenced = [
             event["fields"]["payload"]["device"]
             for event in _events_of(by_model, "library.playersession.created")
@@ -747,7 +745,7 @@ class ReassignedIdentityTest(TransactionTestCase):
 
         rows_by_kind = {
             "catalog.game": {str(identity(item)) for item in by_model["games.game"]},
-            "device": {str(identity(item)) for item in by_model["games.device"]},
+            "device": set(_device_names(by_model)),
         }
         for event in by_model["games.libraryevent"]:
             fields = event["fields"]

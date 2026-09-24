@@ -40,7 +40,7 @@ from pydantic import (
 from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_api
-from games.api_creation import RowRefused, created_by_form
+from games.api_creation import RowRefused, created_by_form, refusal_sentence
 from games.commands.playersession import (
     CorrectedTiming,
     DurationOnlyTiming,
@@ -94,6 +94,7 @@ from games.sorting import (
     parse_per_page_override,
 )
 from games.writes.answers import CommandFailed, answered
+from games.writes.device import create_device as create_device_row
 from games.writes.playergame import new_correlation_id, record_facts
 from games.writes.playersession import (
     SessionDraft,
@@ -579,7 +580,8 @@ def create_device(request, payload: RowIn):
     window: a library holding more devices than the window
     shows would type a name it already holds.
     """
-    library = cast(User, request.user).library
+    user = cast(User, request.user)
+    library = user.library
     held = (
         Device.objects.for_library(library)
         .filter(name__iexact=payload.name.strip())
@@ -588,8 +590,23 @@ def create_device(request, payload: RowIn):
     if held is not None:
         messages.info(request, f"{held.name} is already in your library")
         return Status(201, CreatedRow(value=str(held.pk), label=held.name))
-    device = created_by_form(
-        DeviceForm, library=library, name=payload.name, type=Device.UNKNOWN
+    #: The add page's form, so one set of rules refuses on both paths.
+    form = DeviceForm(
+        data={
+            "name": payload.name.strip(),
+            "type": Device.UNKNOWN,
+            "submission": str(uuid.uuid7()),
+        },
+        library=library,
+    )
+    if not form.is_valid():
+        raise RowRefused(refusal_sentence(form))
+    device = create_device_row(
+        user,
+        name=form.cleaned_data["name"],
+        device_type=form.cleaned_data["type"],
+        idempotency_key=form.submission_key(),
+        correlation_id=new_correlation_id(),
     )
     messages.success(request, f"{device.name} added")
     return Status(201, CreatedRow(value=str(device.pk), label=device.name))

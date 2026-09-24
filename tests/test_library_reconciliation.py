@@ -8,6 +8,7 @@ from io import StringIO
 from types import SimpleNamespace
 
 import pytest
+from devices import create_device
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import Client
@@ -103,8 +104,8 @@ def parity_world(monkeypatch):
         platform=shared_platform,
         year_released=YEAR,
     )
-    device_a = Device.objects.create(library=library_a, name="Reconcile A Device")
-    device_b = Device.objects.create(library=library_b, name="Reconcile B Device")
+    device_a = create_device(library=library_a, name="Reconcile A Device")
+    device_b = create_device(library=library_b, name="Reconcile B Device")
     sessions_a = [
         _session(game_a, device_a, 1, 2),
         _session(shared_game_a, device_a, 2, 1),

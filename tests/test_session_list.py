@@ -5,6 +5,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from devices import create_device
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -191,9 +192,8 @@ def test_the_summary_states_no_column_the_person_hid(
 ):
     """Below md every column but the first has dropped, so this line is the
     one place a hidden column could come back."""
-    from games.models import Device
 
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    device = create_device(library=owned_library, name="Steam Deck")
     timed_row(
         tracked_run(owned_library, game),
         STARTED_AT,
@@ -223,9 +223,8 @@ def test_the_summary_omits_a_device_the_session_does_not_name(
 
 
 def test_the_summary_names_a_device_the_session_states(logged_in, owned_library, game):
-    from games.models import Device
 
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    device = create_device(library=owned_library, name="Steam Deck")
     timed_row(tracked_run(owned_library, game), STARTED_AT, None, device=device)
 
     body = logged_in.get(reverse("games:list_sessions")).content.decode()

@@ -43,9 +43,15 @@ absent. Each reference in the record has the same four fields.
 A `ReferenceKind` is the full declaration for one model that events refer to. It
 has a name, a model, a capture function, and a resolution.
 
-The resolution has two values:
+The resolution has three values:
 
-- `REQUIRED` — a replay must find the row. The retention policy keeps the row.
+- `REQUIRED` — a replay must find the row in a table the replay does not
+  write. The retention policy keeps the row.
+- `PROJECTED` — the row is a projection, and the stream that names it also
+  creates it. The kind names that creation event (`created_by`), and a replay
+  looks for the event, not the row: the rebuild writes the row, so a lost row
+  is what a rebuild repairs, not a reason to refuse one. The retention policy
+  keeps the row as well.
 - `EVIDENCE_ONLY` — the snapshot is sufficient. A replay does not look for the
   row.
 
@@ -59,7 +65,10 @@ holds the name. A command holds the model instance. The registry refuses a
 second kind with the same name, a second kind for the same model, and an empty
 name.
 
-The default registry has four kinds. All four are `REQUIRED`.
+The default registry has four kinds. The three catalog kinds are `REQUIRED`;
+`device` is `PROJECTED`, created by `library.device.created`, since Devices
+became an aggregate of their own (#1274). The kind a `ReferenceKind` states
+refuses `created_by` unless it is `PROJECTED`, and requires it there.
 
 | Name | Model | `label` | `detail` |
 |---|---|---|---|

@@ -1180,41 +1180,6 @@ class Purchase(models.Model):
                 )
 
 
-class Device(ReferencedRow):
-    #: Removable: `device` is a REQUIRED reference kind.
-    objects = RemovableLibraryQuerySet.as_manager()
-
-    id = UUIDv7Field(primary_key=True, editable=False)
-    library = models.ForeignKey(
-        "UserLibrary", on_delete=models.CASCADE, related_name="devices"
-    )
-
-    PC = "PC"
-    CONSOLE = "Console"
-    HANDHELD = "Handheld"
-    MOBILE = "Mobile"
-    SBC = "Single-board computer"
-    UNKNOWN = "Unknown"
-    DEVICE_TYPES = (
-        (PC, "PC"),
-        (CONSOLE, "Console"),
-        (HANDHELD, "Handheld"),
-        (MOBILE, "Mobile"),
-        (SBC, "Single-board computer"),
-        (UNKNOWN, "Unknown"),
-    )
-    name = models.CharField(max_length=255)
-    type = models.CharField(max_length=255, choices=DEVICE_TYPES, default=UNKNOWN)
-    created_at = models.DateTimeField(auto_now_add=True)
-    #: Set instead of destroying the row.
-    removed_at = models.DateTimeField(
-        null=True, blank=True, default=None, editable=False
-    )
-
-    def __str__(self):
-        return f"{self.name} ({self.type})"
-
-
 class ExchangeRate(models.Model):
     currency_from = models.CharField(max_length=255)
     currency_to = models.CharField(max_length=255)
@@ -1399,7 +1364,12 @@ class ProjectionModel(models.Model):
     the shadow copy starts a new identity sequence; `games.checks` refuses an
     auto-increment key. No model outside the projections may point to a
     projection row, because the swap deletes and inserts each row. No check
-    enforces that last rule.
+    enforces that last rule. One reference is admitted:
+    `UserLibraryPreferences.default_device`, a library preference naming a
+    device. The swap reinserts the same key inside one transaction, and every
+    foreign key is deferred, so the preference survives a rebuild; a replay
+    that loses the device is refused at commit, and the device kind's stream
+    check refuses that replay before it starts.
 
     A projection row and every projection row it names belong to one
     library. A row across the boundary is restricted at purge, so the
@@ -1441,6 +1411,53 @@ def library_identity_constraint() -> models.UniqueConstraint:
         fields=("id", "library"),
         name="unique_%(app_label)s_%(class)s_library_identity",
     )
+
+
+class Device(ProjectionModel, ReferencedRow):
+    """A device the library owns: a projection, written by `Devices`.
+
+    Still a `ReferencedRow`: events name devices, and a shell that
+    destroys one is refused. The projector never destroys a row.
+    """
+
+    objects = RemovableLibraryQuerySet.as_manager()
+
+    #: The creation event's aggregate id.
+    id = UUIDv7Field(
+        primary_key=True,
+        editable=False,
+        default=models.NOT_PROVIDED,
+        db_default=models.NOT_PROVIDED,
+    )
+
+    PC = "PC"
+    CONSOLE = "Console"
+    HANDHELD = "Handheld"
+    MOBILE = "Mobile"
+    SBC = "Single-board computer"
+    UNKNOWN = "Unknown"
+    DEVICE_TYPES = (
+        (PC, "PC"),
+        (CONSOLE, "Console"),
+        (HANDHELD, "Handheld"),
+        (MOBILE, "Mobile"),
+        (SBC, "Single-board computer"),
+        (UNKNOWN, "Unknown"),
+    )
+    name = models.CharField(max_length=255)
+    type = models.CharField(max_length=255, choices=DEVICE_TYPES, default=UNKNOWN)
+    #: The creation event's recorded_at.
+    created_at = models.DateTimeField(editable=False)
+    #: The remove event's recorded_at; null live.
+    removed_at = models.DateTimeField(
+        null=True, blank=True, default=None, editable=False
+    )
+
+    class Meta:
+        constraints = (library_identity_constraint(),)
+
+    def __str__(self):
+        return f"{self.name} ({self.type})"
 
 
 class PlayerGameStatus(models.TextChoices):

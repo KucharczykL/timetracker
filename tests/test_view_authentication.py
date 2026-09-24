@@ -8,6 +8,7 @@ import uuid
 from datetime import UTC, date, datetime
 
 import pytest
+from devices import create_device
 from django.conf import settings
 from django.urls import reverse
 from historical_playtime_rows import record_row
@@ -15,7 +16,6 @@ from session_rows import session_row
 
 from games import urls as games_urls
 from games.models import (
-    Device,
     Edition,
     FilterPreset,
     Game,
@@ -51,7 +51,7 @@ def world(owned_library):
         ).id,
         "playthrough_id": Playthrough.objects.get(player_game__game=game).id,
         "record_id": record_row([Playthrough.objects.get(player_game__game=game)]).id,
-        "device_id": Device.objects.create(library=owned_library, name="Desk").id,
+        "device_id": create_device(library=owned_library, name="Desk").id,
         "platform_id": Platform.objects.create(
             library=owned_library, name="Private"
         ).id,

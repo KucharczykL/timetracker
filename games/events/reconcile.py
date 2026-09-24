@@ -30,7 +30,9 @@ MESSAGE_GAP_LIMIT = 3
 REMEDY = (
     "A REQUIRED reference is retained rather than deleted, so these rows left "
     "outside the retention policy. Restore each one under the same id, or purge "
-    "the library, which takes the events with it and leaves nothing to resolve."
+    "the library, which takes the events with it and leaves nothing to resolve. "
+    "A PROJECTED reference names a row its own stream creates, so a gap there "
+    "is a creation event the stream lost, not a row."
 )
 
 
@@ -127,8 +129,8 @@ def reconcile_references(
     missing: list[GapKey] = []
     for name in recorded:
         kind = kinds.kind_for(name)
-        if kind.resolution is not Resolution.REQUIRED:
-            #: EVIDENCE_ONLY: the snapshot promised everything.
+        if kind.resolution is Resolution.EVIDENCE_ONLY:
+            #: The snapshot promised everything.
             continue
         checked.append(name)
         missing.extend(
