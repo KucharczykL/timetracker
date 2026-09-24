@@ -233,13 +233,18 @@ remain ordinary relational state.
 
 The committed event-sourced boundary includes PlayerGame status/mastered/
 completion preference, Playthrough lifecycle, Sessions and notes, Historical
-Playtime, LibraryEntry access lifecycle, Purchases/refunds, and future
-reviews/ratings/checkpoints. Account presentation preferences, library
-preferences, FilterPresets, custom catalog records, Devices, ImportBatch
-staging, IGDB caches, and currency conversion rates remain conventional
-relational data under their appropriate User, PlayerLibrary, or site boundary.
-Derived conversion values may refresh without pretending the player made
-another purchase.
+Playtime, LibraryEntry access lifecycle, Purchases/refunds, Devices, and
+future reviews/ratings/checkpoints. Account presentation preferences, library
+preferences, FilterPresets, custom catalog records, ImportBatch staging, IGDB
+caches, and currency conversion rates remain conventional relational data under
+their appropriate User, PlayerLibrary, or site boundary. Derived conversion
+values may refresh without pretending the player made another purchase.
+
+Devices crossed the boundary on 2026-09-24 (#1274). A device is not reference
+data a session merely points at: a player buys one, renames it, sells it, loses
+it and retires it, an ownership lifecycle of the kind a Purchase carries. Its
+row is a projection like any other, and an event naming it still records the
+snapshot the durable-reference rule below asks for.
 
 ### Write and read paths
 
