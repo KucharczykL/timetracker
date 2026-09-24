@@ -7,10 +7,11 @@ where the library owns it, and a shared one is never touched.
 import html as html_module
 import json
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 import pytest
 from django.urls import reverse
+from session_rows import duration_only_row
 
 from games.bulk_actions import BULK_ACTIONS, RowOutcome
 from games.bulk_removal import GAME_GONE
@@ -438,3 +439,125 @@ def test_the_list_carries_the_selection_and_no_actions_column(logged_in, owned):
     assert "selectable-table" in html
     assert f"game-menu-{owned.pk}" in html
     assert reverse("games:run_bulk_action", args=["playergame.remove"]) in html
+
+
+# ── Two libraries, one shared row ────────────────────────────────────────────
+
+
+@pytest.fixture
+def neighbour(django_user_model, shared):
+    """A second library tracking the same shared catalog row."""
+    user = django_user_model.objects.create_user("neighbour", password="p")
+    track_game(user, shared, correlation_id=new_correlation_id())
+    return user
+
+
+def test_a_removal_leaves_the_other_librarys_row_alone(
+    action, owned_user, owned_library, neighbour, shared
+):
+    """The act states one library's fact and no other's."""
+    _run(action, owned_user, shared)
+
+    shared.refresh_from_db()
+    assert shared.removed_at is None
+    assert _tracked(owned_library, shared).removed_at is not None
+    assert _tracked(neighbour.library, shared).removed_at is None
+    assert shared.pk in set(
+        Game.objects.tracked_by(neighbour.library).values_list("pk", flat=True)
+    )
+
+
+def test_an_undo_puts_back_one_library_and_not_the_other(
+    action, owned_user, owned_library, neighbour, shared
+):
+    _run(action, owned_user, shared)
+    _run(action, neighbour, shared)
+
+    _undo(action, owned_user, _tracked(owned_library, shared).pk)
+
+    assert _tracked(owned_library, shared).removed_at is None
+    assert _tracked(neighbour.library, shared).removed_at is not None
+
+
+def test_what_leaves_counts_only_the_acting_librarys_rows(
+    owned_library, neighbour, shared
+):
+    """A shared row's reverse accessors reach every library that holds it.
+
+    Its purchases cannot: `validate_purchase_game_ownership` refuses a
+    purchase naming a game another library owns, and a shared game is
+    owned by nobody. The runs and their sessions are per library, so
+    they are what a count could leak across one.
+    """
+    theirs = _tracked(neighbour.library, shared).playthroughs.get()
+    duration_only_row(theirs, date(2026, 3, 1), timedelta(hours=2))
+
+    ours = game_departures(owned_library, shared)
+    assert (ours.sessions, ours.runs) == (0, 1)
+    assert game_departures(neighbour.library, shared).sessions == 1
+
+
+def test_the_counts_do_not_multiply_one_source_by_another(
+    owned_library, owned_user, owned, platform
+):
+    """A join over sessions and purchases would report six of each."""
+    for index in range(2):
+        Purchase.objects.create(
+            library=owned_library,
+            name=f"Order {index}",
+            date_purchased=date(2026, 1, index + 1),
+            price=10,
+            price_currency="USD",
+        ).games.add(owned)
+    run = _tracked(owned_library, owned).playthroughs.get()
+    for index in range(3):
+        duration_only_row(run, date(2026, 2, index + 1), timedelta(hours=1))
+
+    departing = game_departures(owned_library, owned)
+
+    assert (departing.sessions, departing.purchases) == (3, 2)
+
+
+def test_a_shared_row_another_library_alone_tracks_is_not_found(
+    logged_in, neighbour, owned_library
+):
+    """`removable_by` and `restorable_by` both scope their Exists."""
+    theirs = Game.objects.create(
+        library=None, name="Hollow Knight", sort_name="Hollow Knight"
+    )
+    track_game(neighbour, theirs, correlation_id=new_correlation_id())
+
+    assert (
+        logged_in.get(reverse("games:remove_game", args=[theirs.pk])).status_code == 404
+    )
+    assert (
+        logged_in.post(reverse("games:restore_game", args=[theirs.pk])).status_code
+        == 404
+    )
+    assert not PlayerGame.objects.filter(library=owned_library, game=theirs).exists()
+
+
+# ── A removal a defect stopped ───────────────────────────────────────────────
+
+
+def test_a_partly_removed_game_is_not_called_gone(
+    action, owned_user, owned_library, owned, monkeypatch
+):
+    """It is sitting there; the tally names the remedy that reaches it."""
+    import games.writes.playergame as writes
+
+    def broken(instance):
+        raise RuntimeError("the stamp met a defect")
+
+    monkeypatch.setattr(writes, "remove", broken)
+    with pytest.raises(RuntimeError):
+        remove_from_library(owned_user, owned, correlation_id=new_correlation_id())
+    monkeypatch.undo()
+
+    resolution = action.resolve(owned_library, [owned.pk])
+
+    assert resolution.rows == ()
+    sentence = resolution.refused[0].sentence
+    assert sentence != GAME_GONE
+    assert owned.name in sentence
+    assert "remove it again" in sentence

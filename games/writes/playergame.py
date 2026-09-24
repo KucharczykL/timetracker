@@ -180,8 +180,11 @@ def remove_from_library(
 
     This order, and no transaction around it: dispatch opens its own
     and refuses to nest. A defect between the two leaves an owned game
-    untracked and unstamped, on no list; removing it again completes
-    it, and the event is the batch's, so its Undo restores it too.
+    untracked and unstamped, on no list; the per-row route completes
+    it, and the event is the batch's, so its Undo restores it too. The
+    act itself cannot: such a game is off `tracked_by`, so it is off
+    the act's scope, and the tally names that remedy instead
+    (`_partly_removed` in `games/bulk_removal.py`).
 
     The stamp writes no event. A game the library does not track is
     refused and stamped nowhere, since a stamp with no event is a row
@@ -263,8 +266,12 @@ def restore_to_library(
     collision is refused first, with 409 and a sentence naming the
     newer game, and nothing changes.
     """
-    owned = _owned(actor, game)
-    if owned and game.removed_at is not None:
+    #: What the stamp did, not what the library owns: a row already
+    #: clear -- the removal's own halfway, or the restore route, whose
+    #: read states no mark -- had nothing cleared, and a sentence
+    #: saying it did would name a change nobody made.
+    cleared = _owned(actor, game) and game.removed_at is not None
+    if cleared:
         newer = _collision(actor.library, game)
         if newer is not None:
             raise CommandFailed(_collision_sentence(game, newer), CONFLICT_STATUS)
@@ -279,23 +286,24 @@ def restore_to_library(
             source_metadata=source_metadata,
         )
     except CommandFailed as failure:
-        if not owned:
+        if not cleared:
             raise
         #: The stamp is cleared; the sentence must not say nothing was.
-        logger.error(
+        #: A 409 is contention a second press settles, so it is a
+        #: warning; a traceback for one would read as a defect and
+        #: report itself as one. Anything else is ours, with its own.
+        settles = failure.status_code == CONFLICT_STATUS
+        logger.log(
+            logging.WARNING if settles else logging.ERROR,
             "[restore]: game %s of library %s is back in the catalog but not "
             "tracked: %s",
             game.pk,
             game.library_id,
             failure.message,
-            exc_info=failure,
+            exc_info=None if settles else failure,
         )
         #: A defect admits no second press.
-        tail = (
-            "Try again."
-            if failure.status_code == CONFLICT_STATUS
-            else "The problem has been reported."
-        )
+        tail = "Try again." if settles else "The problem has been reported."
         raise CommandFailed(
             f"{game.name} is back in the catalog but not tracked yet. {tail}",
             failure.status_code,

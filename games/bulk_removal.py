@@ -10,7 +10,7 @@ import uuid
 from collections.abc import Sequence
 
 from django.contrib.auth.models import User
-from django.db.models import Model, QuerySet
+from django.db.models import Exists, Model, OuterRef, QuerySet
 
 from common.temporal_presentation import TemporalText
 from games.bulk_actions import (
@@ -19,6 +19,7 @@ from games.bulk_actions import (
     ChoiceValue,
     FilterJson,
     PreviewColumn,
+    Refused,
     Resolution,
     RowOutcome,
 )
@@ -269,13 +270,55 @@ def game_scope(library: UserLibrary, filter_json: FilterJson) -> QuerySet[Game]:
     )
 
 
+def _partly_removed(
+    library: UserLibrary, keys: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, str]:
+    """The keys of games a removal stopped between its two writes.
+
+    Such a game is untracked and unstamped: off `tracked_by`, so the
+    act cannot reach it, and off the list, so nobody can select it
+    again. It is not gone, and saying it is would send whoever reads
+    the tally looking for a row that is sitting there.
+
+    The act still cannot finish it. A stamp with no event of its own
+    is a row this batch's Undo cannot see, which is the whole reason
+    the helper refuses an untracked game. So the tally names the
+    remedy that does work, the per-row Remove.
+    """
+    if not keys:
+        return {}
+    stranded = (
+        Game.objects.alive()
+        .filter(
+            Exists(
+                PlayerGame.objects.filter(
+                    game=OuterRef("pk"),
+                    library=library,
+                    removed_at__isnull=False,
+                )
+            ),
+            library=library,
+            pk__in=keys,
+        )
+        .values_list("pk", "name")
+    )
+    return {
+        key: (
+            f"{name} was only partly removed by an earlier act. Open it and "
+            "remove it again to finish."
+        )
+        for key, name in stranded
+    }
+
+
 def game_resolution(
     library: UserLibrary, keys: Sequence[uuid.UUID]
 ) -> Resolution[Game]:
     """Keys to games, each carrying what leaves beside it.
 
     Refuses no key it finds: every rule is the helper's and the
-    command's.
+    command's. A key it does not find is lost, under the sentence
+    that names which of the two states it is in.
     """
     wanted = list(dict.fromkeys(keys))
     rows = tuple(
@@ -283,7 +326,13 @@ def game_resolution(
         .select_related("platform")
         .order_by("sort_name", "id")
     )
-    return Resolution(rows, tuple(lost(wanted, {row.pk for row in rows}, GAME_GONE)))
+    found = {row.pk for row in rows}
+    missing = [key for key in wanted if key not in found]
+    stranded = _partly_removed(library, missing)
+    refused = tuple(
+        Refused(str(key), stranded.get(key, GAME_GONE), lost=True) for key in missing
+    )
+    return Resolution(rows, refused)
 
 
 def remove_one_game(
@@ -358,6 +407,7 @@ REMOVE_SESSION = BulkAction(
     subject="session",
     color="red",
     inverse_aggregate="playersession",
+    inverse_model=PlayerSession,
     fallback="games:list_sessions",
     scope=session_scope,
     resolve=session_resolution,
@@ -374,6 +424,7 @@ REMOVE_RUN = BulkAction(
     subject="playthrough",
     color="red",
     inverse_aggregate="playthrough",
+    inverse_model=Playthrough,
     fallback="games:list_playthroughs",
     scope=run_scope,
     resolve=run_resolution,
@@ -392,6 +443,7 @@ REMOVE_RECORD = BulkAction(
     subject="record",
     color="red",
     inverse_aggregate="historicalplaytime",
+    inverse_model=HistoricalPlaytime,
     fallback="games:list_historical_playtime",
     scope=record_scope,
     resolve=record_resolution,
@@ -408,6 +460,7 @@ REMOVE_GAME = BulkAction(
     subject="game",
     color="red",
     inverse_aggregate="playergame",
+    inverse_model=PlayerGame,
     fallback="games:list_games",
     scope=game_scope,
     resolve=game_resolution,

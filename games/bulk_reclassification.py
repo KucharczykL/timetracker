@@ -185,6 +185,7 @@ RECLASSIFY = BulkAction(
     #: A move, not a removal: the hours stay.
     color="blue",
     inverse_aggregate="playersession",
+    inverse_model=PlayerSession,
     fallback="games:list_sessions",
     scope=review_scope,
     resolve=review_resolution,

@@ -465,6 +465,7 @@ MOVE = BulkAction(
     subject="session",
     color="blue",
     inverse_aggregate="playersession",
+    inverse_model=PlayerSession,
     fallback="games:list_sessions",
     scope=move_scope,
     resolve=move_resolution,
