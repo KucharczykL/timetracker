@@ -1,6 +1,9 @@
 import pytest
+from devices import create_device
 from django.core.exceptions import ValidationError
+from django.db import connection
 
+from games.events.rebuild import RebuildMode, rebuild_projections
 from games.models import Device, UserLibraryPreferences
 from timetracker import settings_commands
 
@@ -17,7 +20,7 @@ def user2(db, django_user_model):
 
 def test_library_default_device_mutation_persists_and_reports_noop(user, db):
     library = user.library
-    device = Device.objects.create(
+    device = create_device(
         library=library,
         name="Deck",
         type=Device.HANDHELD,
@@ -34,7 +37,7 @@ def test_library_default_device_mutation_persists_and_reports_noop(user, db):
 
 def test_library_default_device_mutation_rejects_foreign_device(user, user2, db):
     library = user.library
-    foreign = Device.objects.create(
+    foreign = create_device(
         library=user2.library,
         name="Foreign deck",
         type=Device.HANDHELD,
@@ -48,7 +51,7 @@ def test_library_default_device_mutation_rejects_foreign_device(user, user2, db)
 
 def test_library_default_device_mutation_can_clear(user, db):
     library = user.library
-    device = Device.objects.create(
+    device = create_device(
         library=library,
         name="Deck",
         type=Device.HANDHELD,
@@ -60,8 +63,8 @@ def test_library_default_device_mutation_can_clear(user, db):
 
 
 def test_library_default_device_api_rejects_foreign_and_clears(client, user, user2):
-    own = Device.objects.create(library=user.library, name="Own device")
-    foreign = Device.objects.create(library=user2.library, name="Foreign device")
+    own = create_device(library=user.library, name="Own device")
+    foreign = create_device(library=user2.library, name="Foreign device")
     client.force_login(user)
 
     selected = client.patch(
@@ -89,3 +92,28 @@ def test_library_default_device_api_rejects_foreign_and_clears(client, user, use
         UserLibraryPreferences.objects.get(library=user.library).default_device_id
         is None
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_default_device_key_survives_a_rebuild(owned_library):
+    """No foreign key blocks the swap."""
+    device = create_device(owned_library, "Deck")
+    owned_library.preferences.set_default_device(device)
+
+    rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    preferences = UserLibraryPreferences.objects.get(library=owned_library)
+    assert preferences.default_device == device
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_default_device_row_lost_reads_as_none(owned_library):
+    """A lost device reads as no default."""
+    device = create_device(owned_library, "Deck")
+    owned_library.preferences.set_default_device(device)
+    with connection.cursor() as cursor:
+        cursor.execute("DELETE FROM games_device WHERE id = %s", [device.pk])
+
+    preferences = UserLibraryPreferences.objects.get(library=owned_library)
+    assert preferences.default_device_id == device.pk
+    assert preferences.default_device is None

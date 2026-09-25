@@ -117,9 +117,16 @@ the stream head and before it reads the first event. The code is in
 
 The check reads the index and not the payloads. It takes the kind names that the
 index holds. For each `REQUIRED` kind it makes one anti-join against the model of
-that kind, through the plain manager. Thus a removed row resolves. The check
-does not query an `EVIDENCE_ONLY` kind, because for that kind the snapshot is
-sufficient.
+that kind, through the plain manager. Thus a removed row resolves. For each
+`PROJECTED` kind the anti-join is against the library's own events of the
+kind's creation type, under the referenced id: the replay writes that row, so
+the table proves nothing, and a lost row is what the rebuild puts back. The
+check does not query an `EVIDENCE_ONLY` kind, because for that kind the
+snapshot is sufficient.
+
+A `PROJECTED` gap has two causes. The stream lost the creation, or a row of
+this library names a device another library holds, the drift
+`audit_library_ownership` reports.
 
 If each reference names a row, the replay continues. If one reference does not,
 the check raises `UnresolvedReferences`. The exception holds a
@@ -168,6 +175,12 @@ remove is an `UPDATE`.
 A receiver on `Platform` and on `Device` prevents the Django fast delete for
 those models. Only a purge of a full library takes them in quantity, thus the
 cost applies only there.
+
+`Device` is a projection since #1274, and its `device` kind is `PROJECTED`: a
+replay reads the device's creation from the stream, not the row. It keeps the
+guard all the same. The projector never deletes, the swap and a purge never
+reach the guard, and a shell that destroys a device an event names is refused
+as before.
 
 ### The order
 

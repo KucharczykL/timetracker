@@ -2,6 +2,7 @@ import re
 from datetime import date
 
 import pytest
+from devices import create_device
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.urls import reverse
@@ -155,7 +156,7 @@ def test_separate_purchase_save_falls_back_to_user_currency(auth_client, user, g
     "url_name", ["games:add_session", "games:add_session_for_game"]
 )
 def test_session_add_forms_use_user_device(auth_client, user, game, url_name):
-    preferred = Device.objects.create(
+    preferred = create_device(
         library=user.library, name="Steam Deck", type=Device.HANDHELD
     )
     user.library.preferences.set_default_device(preferred)
@@ -169,10 +170,10 @@ def test_session_add_forms_use_user_device(auth_client, user, game, url_name):
 def test_session_edit_uses_user_device_only_when_existing_value_is_empty(
     auth_client, user, game
 ):
-    preferred = Device.objects.create(
+    preferred = create_device(
         library=user.library, name="Steam Deck", type=Device.HANDHELD
     )
-    existing_device = Device.objects.create(
+    existing_device = create_device(
         library=user.library, name="Desktop", type=Device.PC
     )
     user.library.preferences.set_default_device(preferred)

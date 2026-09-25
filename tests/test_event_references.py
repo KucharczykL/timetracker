@@ -3,6 +3,7 @@ from typing import Any, NotRequired, TypedDict
 
 import pytest
 from django.db import transaction
+from django.utils import timezone
 from pydantic import ConfigDict, with_config
 
 from games.events.append import canonical_json, lock_stream
@@ -96,8 +97,13 @@ WIRING = EventWiring(event_types=EVENT_TYPES)
 
 @pytest.fixture
 def device(owned_library):
+    """A bare row; probe events only."""
     return Device.objects.create(
-        library=owned_library, name="Steam Deck", type=Device.HANDHELD
+        id=uuid.uuid7(),
+        library=owned_library,
+        name="Steam Deck",
+        type=Device.HANDHELD,
+        created_at=timezone.now(),
     )
 
 
@@ -358,8 +364,36 @@ def test_an_unknown_kind_name_is_refused():
 
 
 def test_every_shipped_kind_must_resolve_at_replay():
-    for name in ("device", "catalog.game", "catalog.platform", "catalog.release"):
+    for name in ("catalog.game", "catalog.platform", "catalog.release"):
         assert DEFAULT_REFERENCE_KINDS.kind_for(name).resolution is Resolution.REQUIRED
+
+
+def test_a_device_resolves_in_its_own_stream():
+    """Devices resolve in their own stream."""
+    device = DEFAULT_REFERENCE_KINDS.kind_for("device")
+    assert device.resolution is Resolution.PROJECTED
+    assert device.created_by == "library.device.created"
+
+
+def test_a_projected_kind_names_its_creation():
+    with pytest.raises(ValueError, match="names no creation event"):
+        ReferenceKind(
+            name="device",
+            model=Device,
+            capture=lambda instance: _reference(),
+            resolution=Resolution.PROJECTED,
+        )
+
+
+def test_only_a_projected_kind_names_a_creation():
+    with pytest.raises(ValueError, match="names a creation event"):
+        ReferenceKind(
+            name="device",
+            model=Device,
+            capture=lambda instance: _reference(),
+            resolution=Resolution.REQUIRED,
+            created_by="library.device.created",
+        )
 
 
 def test_a_vocabulary_validates_against_the_kinds_it_was_given():

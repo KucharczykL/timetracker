@@ -1,4 +1,4 @@
-"""The four Remove acts: what they offer, and what the command refuses."""
+"""The five Remove acts."""
 
 import html as html_module
 import json
@@ -217,6 +217,7 @@ def test_the_record_scope_narrows_by_the_statements_filter(
         "playthrough.remove",
         "historicalplaytime.remove",
         "playergame.remove",
+        "device.remove",
     ],
 )
 def test_a_filter_no_act_can_read_is_refused_rather_than_dropped(name, owned_library):

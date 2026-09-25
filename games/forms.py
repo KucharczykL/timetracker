@@ -1619,16 +1619,36 @@ class PlatformForm(
         widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
 
 
-class DeviceForm(PrimitiveWidgetsMixin, forms.ModelForm):
-    def __init__(self, *args, library: UserLibrary, **kwargs):
+class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
+    """One device, stated as commands."""
+
+    name = forms.CharField(
+        max_length=Device._meta.get_field("name").max_length,
+        widget=autofocus_input_widget,
+    )
+    type = forms.ChoiceField(choices=Device.DEVICE_TYPES, initial=Device.UNKNOWN)
+    #: One key per page; resubmits replay.
+    submission = forms.UUIDField(widget=forms.HiddenInput, initial=uuid.uuid7)
+
+    def __init__(
+        self,
+        *args,
+        library: UserLibrary,
+        device: Device | None = None,
+        **kwargs,
+    ):
+        if device is not None:
+            kwargs.setdefault("initial", {"name": device.name, "type": device.type})
         super().__init__(*args, **kwargs)
         self.library = library
-        self.instance.library = library
+        self.device = device
+        if device is not None:
+            #: A description repeats harmlessly.
+            del self.fields["submission"]
 
-    class Meta:
-        model = Device
-        fields = ("name", "type")
-        widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
+    def submission_key(self) -> IdempotencyKey:
+        """The creation's key."""
+        return f"device-create-{self.cleaned_data['submission']}"
 
 
 class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):

@@ -11,6 +11,12 @@ from typing import Any, NamedTuple
 import pytest
 from django.db import connection
 
+from games.commands.device import (
+    CreateDevice,
+    DescribeDevice,
+    RemoveDevice,
+    RestoreDevice,
+)
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
     RecordHistoricalPlaytime,
@@ -265,7 +271,22 @@ def build_stream(user, library) -> list[DispatchedCommand]:
 
     #: Sessions: one per mode, then every act on one.
     zone = calendar_day_zone(library).key
-    device = Device.objects.create(library=library, name="Deck")
+    device = Device.objects.get(
+        pk=_created_id(
+            run(CreateDevice(name="Deck", type=Device.UNKNOWN), "create-device")
+        )
+    )
+    run(
+        DescribeDevice(device_id=device.pk, name="Steam Deck", type=Device.HANDHELD),
+        "describe-device",
+    )
+    #: Left removed so removed_at reaches snapshot.
+    retired = Device.objects.get(
+        pk=_created_id(run(CreateDevice(name="Tower", type=Device.PC), "create-tower"))
+    )
+    run(RemoveDevice(device_id=retired.pk), "remove-tower")
+    run(RestoreDevice(device_id=retired.pk), "restore-tower")
+    run(RemoveDevice(device_id=retired.pk), "remove-tower-again")
     noon = datetime(2024, 1, 5, 12, tzinfo=UTC)
     timed = _created_id(
         run(
@@ -668,6 +689,7 @@ def test_a_rebuild_swaps_every_table_with_an_empty_diff(
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in report.tables
     ] == [
+        ("games_device", 0, 0, 0),
         ("games_historicalplaytime", 0, 0, 0),
         ("games_historicalplaytimerun", 0, 0, 0),
         ("games_librarycalendar", 0, 0, 0),

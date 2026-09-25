@@ -8,6 +8,7 @@ import urllib.parse
 from datetime import UTC
 
 import pytest
+from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import ConsoleMessage, Page, expect
 from session_rows import session_row
@@ -380,10 +381,10 @@ def test_preset_pick_on_builderless_mode(
     """The quick bar's Load-preset picker works on a builderless mode
     (devices): picking navigates with the preset's ?filter=; Enter inside the
     picker's search box never applies the facet form."""
-    from games.models import Device, FilterPreset
+    from games.models import FilterPreset
 
-    Device.objects.create(library=e2e_library, name="Steam Deck")
-    Device.objects.create(library=e2e_library, name="Desktop")
+    create_device(library=e2e_library, name="Steam Deck")
+    create_device(library=e2e_library, name="Desktop")
     user = django_user_model.objects.get(username="tester")
     stored_filter = {"name": {"modifier": "INCLUDES", "value": "deck"}}
     FilterPreset.objects.create(

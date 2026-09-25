@@ -10,6 +10,7 @@ from uuid import UUID, uuid7
 
 import pytest
 import yaml
+from devices import create_device
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -49,7 +50,7 @@ def _owned_graph(owner):
         name="Steam",
         group="PC",
     )
-    device = Device.objects.create(library=owner.library, name="Owner device")
+    device = create_device(library=owner.library, name="Owner device")
     game = Game.objects.create(
         library=owner.library,
         name="Owner game",
@@ -120,7 +121,7 @@ def test_audit_reports_direct_derived_cross_link_and_preference_sections(owner):
 @pytest.mark.django_db
 def test_audit_exits_nonzero_and_names_an_injected_cross_library_link(owner, outsider):
     _, _, game, _ = _owned_graph(owner)
-    foreign_device = Device.objects.create(
+    foreign_device = create_device(
         library=outsider.library,
         name="Foreign device",
     )
@@ -530,6 +531,7 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
             pk=colliding_device_id,
             library=owner.library,
             name="Concurrent device",
+            created_at=timezone.now(),
         )
 
     monkeypatch.setattr(
@@ -575,7 +577,7 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
     )
     PlayerSession.objects.filter(pk=outsider_session.pk).update(device=owner_device)
     UserLibraryPreferences.objects.filter(library=outsider.library).update(
-        default_device=owner_device
+        default_device_id=owner_device.pk
     )
     Playthrough.objects.create(
         id=uuid7(),

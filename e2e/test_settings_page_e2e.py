@@ -5,6 +5,7 @@ import re
 import uuid
 
 import pytest
+from devices import create_device
 from django.urls import reverse
 from django.utils import timezone
 from playwright.sync_api import Page, expect
@@ -84,7 +85,7 @@ def authenticated_page(
     user = django_user_model.objects.create_user(
         username="tester", password="secret123"
     )
-    preferred = Device.objects.create(
+    preferred = create_device(
         library=user.library, name="Steam Deck", type=Device.HANDHELD
     )
     user.library.preferences.set_default_device(preferred)

@@ -4,6 +4,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from devices import create_device
 from django.utils import timezone
 from historical_playtime_rows import record_row
 from session_rows import tracked_run
@@ -32,7 +33,6 @@ from games.filters import (
     parse_historical_playtime_filter,
 )
 from games.models import (
-    Device,
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
@@ -107,7 +107,7 @@ def test_the_filter_scopes_answer_the_record_scope(owned_library):
 def varied(owned_library):
     """Records that differ in one fact each."""
     platform = Platform.objects.create(library=owned_library, name="Amiga")
-    deck = Device.objects.create(library=owned_library, name="Steam Deck")
+    deck = create_device(library=owned_library, name="Steam Deck")
     zelda = game_run(owned_library, "Zelda", platform=platform)
     doom = game_run(owned_library, "Doom")
     record_row(

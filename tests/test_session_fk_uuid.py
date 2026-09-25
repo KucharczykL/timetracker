@@ -3,6 +3,7 @@ import uuid
 from zoneinfo import ZoneInfo
 
 import pytest
+from devices import create_device
 from django.db import IntegrityError, transaction
 from django.test import Client
 from django.urls import reverse
@@ -45,9 +46,7 @@ def game(owned_library):
 
 @pytest.fixture
 def device(owned_library):
-    return Device.objects.create(
-        library=owned_library, name="Handheld", type=Device.HANDHELD
-    )
+    return create_device(library=owned_library, name="Handheld", type=Device.HANDHELD)
 
 
 @pytest.fixture
@@ -87,7 +86,7 @@ def test_set_default_device_still_short_circuits_an_unchanged_value(
 
 def test_session_filters_by_related_instance_and_by_id(game, device, owned_library):
     other_game = Game.objects.create(library=owned_library, name="Other")
-    other_device = Device.objects.create(library=owned_library, name="Desk")
+    other_device = create_device(library=owned_library, name="Desk")
     matching = _row(game, device=device)
     _row(other_game, device=other_device)
 
@@ -110,16 +109,14 @@ def test_database_rejects_a_session_naming_a_device_uuid_no_device_owns(game):
         PlayerSession.objects.filter(pk=row.pk).update(device_id=uuid.uuid7())
 
 
-def test_database_rejects_preferences_naming_a_device_uuid_no_device_owns(
-    owned_library,
-):
+def test_a_preference_naming_no_device_reads_none(owned_library):
+    """A dangling key reads none."""
+    UserLibraryPreferences.objects.filter(library=owned_library).update(
+        default_device_id=uuid.uuid7()
+    )
+
     preferences = UserLibraryPreferences.objects.get(library=owned_library)
-    # Same reason as above: save() calls clean(), which dereferences
-    # self.default_device.
-    with pytest.raises(IntegrityError), transaction.atomic():
-        UserLibraryPreferences.objects.filter(pk=preferences.pk).update(
-            default_device_id=uuid.uuid7()
-        )
+    assert preferences.default_device is None
 
 
 # --- Filters (integer criterion values, one join deeper) --------------------
@@ -129,7 +126,7 @@ def test_sessionfilter_game_and_device_criteria_select_the_right_rows(
     game, device, owned_library
 ):
     other_game = Game.objects.create(library=owned_library, name="Other")
-    other_device = Device.objects.create(library=owned_library, name="Desk")
+    other_device = create_device(library=owned_library, name="Desk")
     matching = _row(game, device=device)
     _row(other_game, device=other_device)
 
@@ -173,7 +170,7 @@ def test_sessionfilter_game_and_device_sub_filters_select_sessions(
     game, device, owned_library
 ):
     other_game = Game.objects.create(library=owned_library, name="Other")
-    other_device = Device.objects.create(library=owned_library, name="Desk")
+    other_device = create_device(library=owned_library, name="Desk")
     matching = _row(game, device=device)
     _row(other_game, device=other_device)
 
@@ -192,7 +189,7 @@ def test_sessionfilter_game_and_device_sub_filters_select_sessions(
 
 
 def test_devicefilter_session_filter_selects_devices(game, device, owned_library):
-    other_device = Device.objects.create(library=owned_library, name="Desk")
+    other_device = create_device(library=owned_library, name="Desk")
     _row(game, device=device, note="Marathon session")
     _row(game, device=other_device, note="Something else")
 

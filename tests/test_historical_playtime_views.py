@@ -5,6 +5,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from devices import create_device, remove_device
 from django.contrib.messages import get_messages
 from django.urls import reverse
 from historical_playtime_posts import MultiValuePost, posted_record
@@ -23,7 +24,6 @@ from games.commands.playergame import RemovePlayerGame, TrackGame
 from games.commands.playthrough import RemovePlaythrough
 from games.events.dispatch import dispatch
 from games.models import (
-    Device,
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
@@ -32,7 +32,6 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
 )
-from games.removal import remove
 from games.writes.answers import CONFLICT_STATUS
 from games.writes.historical_playtime import remove_historical_playtime
 from games.writes.playergame import new_correlation_id
@@ -170,9 +169,9 @@ def test_an_unchanged_edit_says_saved_and_states_nothing(
 
 
 def test_an_edit_keeps_a_held_removed_device(logged_in, owned_user, game, run):
-    device = Device.objects.create(library=owned_user.library, name="Old PC")
+    device = create_device(library=owned_user.library, name="Old PC")
     record = recorded(owned_user, [run.pk], device_id=device.pk)
-    remove(device)
+    remove_device(device)
     events = LibraryEvent.objects.count()
 
     page = logged_in.get(reverse("games:edit_historical_playtime", args=[record.pk]))
@@ -333,7 +332,7 @@ def test_a_reused_key_with_another_statement_is_refused(logged_in, game, run):
 def test_the_edit_page_states_the_record_and_saving_it_changes_nothing(
     logged_in, owned_user, game, run
 ):
-    device = Device.objects.create(library=owned_user.library, name="Steam Deck")
+    device = create_device(library=owned_user.library, name="Steam Deck")
     record = recorded(
         owned_user,
         [run.pk],

@@ -27,6 +27,7 @@ import urllib.parse
 from datetime import UTC, date, datetime
 
 import pytest
+from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 from session_rows import session_row
@@ -240,11 +241,11 @@ def test_prefill_apply_roundtrip_carries_filter(
         e2e_library, "PlayGame", status=PlayerGameStatus.PLAYED, platform=platform
     )
 
-    # A search rides beside the status leg.
+    # A search rides beside the status clause.
     #
     # The client registry keeps only the fields its metadata names, so a filter
     # that carried a search lost it on Apply. "one" is in "DoneGame" and not in
-    # "PlayGame", so both legs narrow to the same row and the visibility
+    # "PlayGame", so both clauses narrow to the same row and the visibility
     # assertions below hold either way: the URL assertion catches the loss.
     filter_json = {
         "status": {"modifier": "INCLUDES", "value": ["completed"]},
@@ -622,15 +623,11 @@ def test_scoped_aggregate_prefill_hydrates_scope_and_counts(
     add/remove wiring works against real server templates."""
     from datetime import timedelta
 
-    from games.models import Device
-
     page = authenticated_page
 
     platform = Platform.objects.create(library=e2e_library, name="PC")
-    deck = Device.objects.create(
-        library=e2e_library, name="Steam Deck", type="Handheld"
-    )
-    desktop = Device.objects.create(library=e2e_library, name="Desktop", type="PC")
+    deck = create_device(library=e2e_library, name="Steam Deck", type="Handheld")
+    desktop = create_device(library=e2e_library, name="Desktop", type="PC")
     deck_game = Game.objects.create(
         library=e2e_library, name="DeckGame", platform=platform
     )
@@ -700,15 +697,11 @@ def test_scoped_aggregate_narrows_game_list(
     (scope resolved via the aggregates spec) → filtered aggregate queryset."""
     from datetime import timedelta
 
-    from games.models import Device
-
     page = authenticated_page
 
     platform = Platform.objects.create(library=e2e_library, name="PC")
-    deck = Device.objects.create(
-        library=e2e_library, name="Steam Deck", type="Handheld"
-    )
-    desktop = Device.objects.create(library=e2e_library, name="Desktop", type="PC")
+    deck = create_device(library=e2e_library, name="Steam Deck", type="Handheld")
+    desktop = create_device(library=e2e_library, name="Desktop", type="PC")
     deck_game = Game.objects.create(
         library=e2e_library, name="DeckGame", platform=platform
     )

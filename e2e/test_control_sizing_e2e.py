@@ -10,6 +10,7 @@ a text one sitting on the same row.
 import datetime as dt
 
 import pytest
+from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 from session_rows import session_row
@@ -32,7 +33,7 @@ def _make_session(library) -> PlayerSession:
         library=library, name="PC", icon="pc", group="PC"
     )
     game = Game.objects.create(library=library, name="Sized Game", platform=platform)
-    Device.objects.create(library=library, name="Handheld", type=Device.HANDHELD)
+    create_device(library=library, name="Handheld", type=Device.HANDHELD)
     # running (no end) so the row shows the finish/reset icon actions
     return session_row(
         game,

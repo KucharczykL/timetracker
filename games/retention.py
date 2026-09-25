@@ -18,7 +18,7 @@ from games.events.references import (
     Resolution,
     UnmappedReferenceModel,
 )
-from games.models import LibraryEventReference
+from games.models import LibraryEvent, LibraryEventReference, ProjectionModel
 
 
 class ReferencedRowDeletion(Exception):
@@ -54,8 +54,8 @@ def must_be_retained(
 ) -> bool:
     """Whether a delete would strand a reference."""
     kind = kinds.kind_of(instance)
-    if kind.resolution is not Resolution.REQUIRED:
-        #: EVIDENCE_ONLY: the snapshot promised everything.
+    if kind.resolution is Resolution.EVIDENCE_ONLY:
+        #: The snapshot promised everything.
         return False
     return LibraryEventReference.objects.to_row(kind.name, instance.pk).exists()
 
@@ -75,8 +75,18 @@ def resolve_reference(
 def unresolved_among(
     kind: ReferenceKind[Any], references: QuerySet[LibraryEventReference]
 ) -> QuerySet[LibraryEventReference]:
-    """The references of `kind` naming no row."""
-    #: `~Exists` plans as an anti-join.
+    """References naming no row; PROJECTED checks events."""
+    if kind.resolution is Resolution.PROJECTED:
+        #: `~Exists` plans as an anti-join.
+        return references.filter(
+            ~Exists(
+                LibraryEvent.objects.filter(
+                    library_id=OuterRef("library_id"),
+                    event_type=kind.created_by,
+                    aggregate_id=OuterRef("referenced_id"),
+                )
+            )
+        )
     return references.filter(
         ~Exists(kind.model._default_manager.filter(pk=OuterRef("referenced_id")))
     )
@@ -109,9 +119,15 @@ def refuse_to_delete_a_referenced_row(instance: Model) -> None:
         return
     if not retained:
         return
+    remedy = (
+        "Take it out of the library with its remove command, which the "
+        "projector records and keeps the row."
+        if isinstance(instance, ProjectionModel)
+        else "Take it out of the library with games.removal.remove, which "
+        "keeps the row."
+    )
     raise ReferencedRowDeletion(
         f"{instance} cannot be deleted: "
         f"{reference_count(instance)} recorded event(s) reference it, and a "
-        "replay must still be able to resolve them. Take it out of the "
-        "library with games.removal.remove, which keeps the row."
+        f"replay must still be able to resolve them. {remedy}"
     )

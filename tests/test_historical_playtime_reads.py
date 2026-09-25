@@ -4,12 +4,12 @@ import uuid
 from datetime import date, timedelta
 
 import pytest
+from devices import create_device
 from django.utils import timezone
 from historical_playtime_rows import record_row
 from session_rows import tracked_run
 
 from games.models import (
-    Device,
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
@@ -121,7 +121,7 @@ def test_game_records_narrow_to_one_catalog_game(owned_library, game, run):
 def test_readable_records_read_platform_and_device_at_once(
     owned_library, run, django_assert_num_queries
 ):
-    device = Device.objects.create(library=owned_library, name="Deck")
+    device = create_device(library=owned_library, name="Deck")
     record_row([run], duration=HOUR, when="2022", device=device)
     with django_assert_num_queries(1):
         (record,) = readable_records(owned_library)

@@ -13,6 +13,7 @@ from typing import ClassVar
 from uuid import UUID
 
 import pytest
+from devices import create_device
 from django.db.models import F, Q
 from django.utils import timezone
 from session_rows import duration_only_row, session_row, tracked_run
@@ -1160,7 +1161,7 @@ class TestExpandedFiltersAgainstDB:
         game2, _ = Game.objects.get_or_create(name="Zelda", defaults={"platform": plat})
 
         # 2. Device & Session
-        dev, _ = Device.objects.get_or_create(name="Super Famicom", type="Console")
+        dev = create_device(game.library, "Super Famicom", Device.CONSOLE)
 
         # Session 1: a Corrected row stating 4 hours over 3 elapsed
         s1 = session_row(
@@ -3659,13 +3660,13 @@ class TestComparableColumnsCrossModel:
         )
         assert any(v.startswith("related_game__purchases__") for v in purchase_values)
 
-    def test_platform_and_device_columns_classify_library_owner_relation(self):
-        # Platform/Device now declare the ownership FK. Its columns are a Library
+    def test_platform_columns_classify_library_owner_relation(self):
+        # Platform declares the ownership FK. Its columns are a Library
         # source; other single-valued columns remain model-sourced. Reverse
         # relations are multi-valued blocks (#282) and may have another source.
-        from games.models import Device, Platform
+        from games.models import Platform
 
-        for model in (Platform, Device):
+        for model in (Platform,):
             model_source = str(model._meta.verbose_name).title()
             for column in comparable_columns(model):
                 if column["multivalued"]:
@@ -3675,11 +3676,15 @@ class TestComparableColumnsCrossModel:
                 else:
                     assert column["source"] == model_source
 
-    def test_a_projection_offers_no_column_through_its_library(self):
+    @pytest.mark.parametrize("model_name", ["Playthrough", "Device"])
+    def test_a_projection_offers_no_column_through_its_library(self, model_name):
         """`library` is scoping, not data."""
-        from games.models import Playthrough
+        from games import models
 
-        values = {column["value"] for column in comparable_columns(Playthrough)}
+        values = {
+            column["value"]
+            for column in comparable_columns(getattr(models, model_name))
+        }
 
         assert not any(value.startswith("library__") for value in values)
 
@@ -4834,7 +4839,10 @@ class TestFieldComparisonEndToEnd:
             name="CrossModelIncludesTest", icon="crossmodelincludestest"
         )
         game = Game.objects.create(name="WikilessGame", platform=platform)
-        device_with_empty_name = Device.objects.create(name="", type=Device.UNKNOWN)
+        #: Commands refuse empty names; write directly.
+        device_with_empty_name = create_device(game.library, "Unnamed", Device.UNKNOWN)
+        Device.objects.filter(pk=device_with_empty_name.pk).update(name="")
+        device_with_empty_name.refresh_from_db()
 
         # HIT: note is non-empty; device.name is "" → "" is substring of note
         session_hit = session_row(
@@ -4929,9 +4937,9 @@ class TestStrictNullSemantics:
     def test_not_equals_is_side_symmetric(self, db, game, session_without_device):
         from django.utils import timezone
 
-        from games.models import Device, PlayerSession
+        from games.models import PlayerSession
 
-        device = Device.objects.create(library=game.library, name="Owned Device")
+        device = create_device(library=game.library, name="Owned Device")
         expected = session_row(
             game,
             started_at=timezone.now(),
@@ -6076,7 +6084,7 @@ class TestStringCriterionIsNullAgainstDB:
         game, _ = Game.objects.get_or_create(
             name="Test Game", defaults={"platform": platform}
         )
-        device, _ = Device.objects.get_or_create(name="Test Device", type="PC")
+        device = create_device(game.library, "Test Device", Device.PC)
         start = datetime.datetime(2025, 1, 1, 10, 0, 0, tzinfo=datetime.UTC)
         end = datetime.datetime(2025, 1, 1, 11, 0, 0, tzinfo=datetime.UTC)
 
@@ -6259,11 +6267,11 @@ class TestScopedAggregatesAgainstDB:
         from games.models import Device, Game, Platform
 
         platform = Platform.objects.create(name="PC")
-        deck = Device.objects.create(name="Steam Deck", type="Handheld")
-        desktop = Device.objects.create(name="Desktop", type="PC")
         deck_heavy = Game.objects.create(name="Deck Heavy", platform=platform)
         desktop_only = Game.objects.create(name="Desktop Only", platform=platform)
         unplayed = Game.objects.create(name="Unplayed", platform=platform)
+        deck = create_device(deck_heavy.library, "Steam Deck", Device.HANDHELD)
+        desktop = create_device(deck_heavy.library, "Desktop", Device.PC)
 
         first_start = datetime.datetime(2026, 6, 1, 12, 0, tzinfo=datetime.UTC)
 
@@ -6612,10 +6620,10 @@ class TestScopedAggregateReducers:
         from games.models import Device, Game, Platform
 
         platform = Platform.objects.create(name="PC")
-        deck = Device.objects.create(name="Steam Deck", type="Handheld")
-        desktop = Device.objects.create(name="Desktop", type="PC")
         mixed = Game.objects.create(name="Mixed", platform=platform)
         desktop_only = Game.objects.create(name="Desktop Only", platform=platform)
+        deck = create_device(mixed.library, "Steam Deck", Device.HANDHELD)
+        desktop = create_device(mixed.library, "Desktop", Device.PC)
         first_start = datetime.datetime(2026, 6, 1, 12, 0, tzinfo=datetime.UTC)
 
         def make_session(game, device, index, hours):

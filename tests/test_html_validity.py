@@ -13,6 +13,7 @@ from datetime import datetime
 from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
 
+from devices import create_device
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
@@ -21,7 +22,6 @@ from historical_playtime_rows import record_row
 from session_rows import session_row
 
 from games.models import (
-    Device,
     Game,
     Platform,
     Playthrough,
@@ -112,9 +112,7 @@ class HtmlValidityTest(TestCase):
         self.platform = Platform.objects.create(
             library=library, name="Test Platform", icon="test"
         )
-        self.device = Device.objects.create(
-            library=library, name="Test Device", type="c"
-        )
+        self.device = create_device(library=library, name="Test Device", type="Console")
 
         # A long display name with a different sort name exercises both the
         # width-based reveal and the game-list tooltip's informative IDREF.

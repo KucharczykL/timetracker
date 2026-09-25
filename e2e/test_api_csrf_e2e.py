@@ -8,6 +8,7 @@ typically because csrf=True on the API auth broke the cookie/header flow.
 from datetime import UTC, datetime
 
 import pytest
+from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page
 
@@ -33,14 +34,14 @@ def test_device_patch_passes_csrf(authenticated_page: Page, live_server, e2e_lib
     """
     from session_rows import session_row as seed_session
 
-    from games.models import Device, Game, Platform
+    from games.models import Game, Platform
 
     platform = Platform.objects.create(
         library=e2e_library, name="TestPlatform", icon="pc"
     )
     game = Game.objects.create(library=e2e_library, name="Test Game", platform=platform)
-    desktop = Device.objects.create(library=e2e_library, name="Desktop")
-    deck = Device.objects.create(library=e2e_library, name="Deck")
+    desktop = create_device(library=e2e_library, name="Desktop")
+    deck = create_device(library=e2e_library, name="Deck")
     session = seed_session(
         game, device=desktop, started_at=datetime(2025, 1, 1, tzinfo=UTC)
     )

@@ -7,6 +7,7 @@ callers that resolve it. The column is set by hand here.
 from typing import NamedTuple
 
 import pytest
+from devices import create_device, remove_device
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
@@ -89,10 +90,8 @@ def test_a_removed_shared_platform_leaves_every_library(owned_library, other_lib
 
 
 def test_a_removed_device_leaves_its_library(owned_library):
-    device = remove_row(
-        Device.objects.create(
-            library=owned_library, name="Steam Deck", type=Device.HANDHELD
-        )
+    device = remove_device(
+        create_device(library=owned_library, name="Steam Deck", type=Device.HANDHELD)
     )
 
     assert not Device.objects.for_library(owned_library).exists()
@@ -102,7 +101,7 @@ def test_a_removed_device_leaves_its_library(owned_library):
 def test_a_live_row_stays(owned_library):
     game = make_game(owned_library)
     platform = Platform.objects.create(library=owned_library, name="Steam", group="PC")
-    device = Device.objects.create(
+    device = create_device(
         library=owned_library, name="Steam Deck", type=Device.HANDHELD
     )
 

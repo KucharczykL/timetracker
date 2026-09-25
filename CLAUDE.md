@@ -175,7 +175,24 @@ docs/           — Additional documentation
 - **Game** — catalog row: `name`, `platform` (FK), `year_released`, `sort_name`, `wikidata`. Holds no status and no mastered flag: both live on `PlayerGame`
 - **Platform** — `name`, `group`, `icon` (slug, auto-generated from name)
 - **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor `game.addon_purchases`)
-- **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown)
+- **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown). A
+  projection since #1274: a device is owned — bought, renamed, sold, lost,
+  retired — so the charter moved it inside the boundary. Written only by the
+  `Devices` projector from `library.device.created`/`.name_changed`/
+  `.type_changed`/`.removed`/`.restored`; commands `CreateDevice`,
+  `DescribeDevice` (`None` states nothing, one event per differing fact),
+  `RemoveDevice`, `RestoreDevice` in `games/commands/device.py`, request-free
+  half `games/writes/device.py`. `DeviceForm` is a plain `Form` with a
+  `submission` key; `POST /api/devices/` runs it too. Still a `ReferencedRow`,
+  out of `REMOVABLE_MODELS`. Its reference kind is `PROJECTED`: replay checks a
+  device reference against the stream's creation event, never the table the
+  replay writes. `UserLibraryPreferences.default_device_id` names a device by
+  key, no foreign key, since nothing outside the projections points at a
+  projection row; `default_device` reads the live one or none. Migration 0015
+  converted every existing row under its own key through
+  `games/backfill/device.py`, which `load_sample_data` also runs until the
+  fixture is regenerated. Contract is
+  [The Device aggregate](docs/superpowers/specs/2026-09-24-issue-1274-device-aggregate-design.md)
 - **ExchangeRate** — cached FX rates per currency pair per year
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs/historical_playtime/devices/platforms), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
 - **PlayerGame** — first projection: one row per catalog game a library tracks, written only by `PlayerGames` projector. Its `removed_at` is projector's, stated by `RemovePlayerGame` command, separate from catalog row's. States library's `status` (six `PlayerGameStatus` words) and `mastered`, and since #678 D2 only place either stated or read. Both `UUIDv7Field` defaults opted out (pk is event's `aggregate_id`); `game` is `RESTRICT`, so projection row never collateral; #1017 registers it, so `audit_library_ownership` reports a `PlayerGame` naming another library's Game
@@ -495,10 +512,11 @@ docs/           — Additional documentation
   wave is
   [Historical Playtime](docs/superpowers/specs/2026-09-17-historical-playtime-wave-design.md)
 
-**Nothing user removes is destroyed** (#944). Eight removable models — Game,
-Edition, Release, Platform, Device, Session, Purchase, FilterPreset —
+**Nothing user removes is destroyed** (#944). Six removable models — Game,
+Edition, Release, Platform, Purchase, FilterPreset —
 each carry nullable `removed_at`, listed in `REMOVABLE_MODELS` in
-`games/removal.py`. `remove(instance)` stamps it, `restore(instance)` clears it,
+`games/removal.py`; a projection's mark (session, run, record, device) is
+its projector's. `remove(instance)` stamps it, `restore(instance)` clears it,
 both use `UPDATE` rather than `save()`, so stamp revalidates nothing and fires no
 `post_save`. What signal would have done, `_AFTER_STAMP` does by hand: removed
 Game recounts its purchases. Playtime is no stored total, so a removed Session
@@ -556,6 +574,11 @@ which stamp or clear the catalog row only where the library owns it, refuse a
 restore a recreated game would collide with at 409, and serve the per-row
 routes too (`GameQuerySet.removable_by`/`restorable_by`). Contract is
 [Select games and remove them in bulk](docs/superpowers/specs/2026-09-22-issue-1134-games-list-selectable-design.md).
+#1135's `device.remove` does the same on the Devices list over the device
+aggregate, its row menu `device_row_menu` (Edit, Remove), its preview's
+Sessions count `games/reads/device_departures.py`, which the per-row
+confirmation reads too. Contract is
+[Select devices and remove them in bulk](docs/superpowers/specs/2026-09-24-issue-1135-devices-list-selectable-design.md).
 
 **Multi-game Purchase is *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. Humble Bundle). Independently-refundable multi-item orders (e.g.

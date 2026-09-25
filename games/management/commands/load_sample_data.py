@@ -14,6 +14,7 @@ from django.core.serializers.base import DeserializationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 
+from games.backfill.device import DeviceConversionRefused, convert_devices
 from games.conversion import _request_conversion_for_locked_state
 from games.events.rebuild import (
     RebuildMode,
@@ -21,7 +22,7 @@ from games.events.rebuild import (
     rebuild_projections,
 )
 from games.events.reconcile import UnresolvedReferences
-from games.events.references import UnknownReferenceKind
+from games.events.references import Resolution, UnknownReferenceKind
 from games.events.replay import PayloadVersionUnsupported, StreamNotContiguous
 from games.events.wiring import DEFAULT_WIRING
 from games.external_references import backfill_wikidata_references
@@ -152,6 +153,14 @@ class Command(BaseCommand):
                     state,
                     state.requested_currency,
                 )
+
+            #: Convert device rows before rebuilding them.
+            try:
+                convert_devices(user.library)
+            except DeviceConversionRefused as error:
+                raise CommandError(
+                    f"Sample fixture's devices could not be converted: {error}"
+                ) from error
 
             #: The fixture now carries the events themselves; replay them
             #: into projections the same way make verify-replay-parity does.
@@ -340,6 +349,21 @@ class Command(BaseCommand):
             except UnknownReferenceKind as error:
                 raise CommandError(f"Sample {subject}: {error}") from error
 
+        #: Fixture events create PROJECTED rows.
+        created = {
+            (record["fields"]["event_type"], str(record["fields"]["aggregate_id"]))
+            for record in records
+            if record.get("model") == "games.libraryevent"
+        }
+
+        def held(kind_name, referenced_id, model):
+            kind = kinds.kind_for(kind_name)
+            if kind.resolution is Resolution.PROJECTED and (
+                (kind.created_by, str(referenced_id)) in created
+            ):
+                return True
+            return (model._meta.label_lower, str(referenced_id)) in record_keys
+
         for record in records:
             if record.get("model") != "games.libraryevent":
                 continue
@@ -350,7 +374,7 @@ class Command(BaseCommand):
                 model = referenced_model(
                     found.value["kind"], subject=f"event {record['pk']}"
                 )
-                if (model._meta.label_lower, str(found.value["id"])) not in record_keys:
+                if not held(found.value["kind"], found.value["id"], model):
                     raise CommandError(
                         f"Sample event {record['pk']} references {model.__name__} "
                         f"{found.value['id']!r}, which is not included in the "
@@ -363,10 +387,7 @@ class Command(BaseCommand):
             model = referenced_model(
                 fields["kind"], subject=f"reference {record['pk']}"
             )
-            if (
-                model._meta.label_lower,
-                str(fields["referenced_id"]),
-            ) not in record_keys:
+            if not held(fields["kind"], fields["referenced_id"], model):
                 raise CommandError(
                     f"Sample reference {record['pk']} names {model.__name__} "
                     f"{fields['referenced_id']!r}, which is not included in "

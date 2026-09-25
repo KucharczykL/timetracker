@@ -1180,41 +1180,6 @@ class Purchase(models.Model):
                 )
 
 
-class Device(ReferencedRow):
-    #: Removable: `device` is a REQUIRED reference kind.
-    objects = RemovableLibraryQuerySet.as_manager()
-
-    id = UUIDv7Field(primary_key=True, editable=False)
-    library = models.ForeignKey(
-        "UserLibrary", on_delete=models.CASCADE, related_name="devices"
-    )
-
-    PC = "PC"
-    CONSOLE = "Console"
-    HANDHELD = "Handheld"
-    MOBILE = "Mobile"
-    SBC = "Single-board computer"
-    UNKNOWN = "Unknown"
-    DEVICE_TYPES = (
-        (PC, "PC"),
-        (CONSOLE, "Console"),
-        (HANDHELD, "Handheld"),
-        (MOBILE, "Mobile"),
-        (SBC, "Single-board computer"),
-        (UNKNOWN, "Unknown"),
-    )
-    name = models.CharField(max_length=255)
-    type = models.CharField(max_length=255, choices=DEVICE_TYPES, default=UNKNOWN)
-    created_at = models.DateTimeField(auto_now_add=True)
-    #: Set instead of destroying the row.
-    removed_at = models.DateTimeField(
-        null=True, blank=True, default=None, editable=False
-    )
-
-    def __str__(self):
-        return f"{self.name} ({self.type})"
-
-
 class ExchangeRate(models.Model):
     currency_from = models.CharField(max_length=255)
     currency_to = models.CharField(max_length=255)
@@ -1399,7 +1364,8 @@ class ProjectionModel(models.Model):
     the shadow copy starts a new identity sequence; `games.checks` refuses an
     auto-increment key. No model outside the projections may point to a
     projection row, because the swap deletes and inserts each row. No check
-    enforces that last rule.
+    enforces that last rule. A conventional row naming a projection row
+    stores its key alone, as `UserLibraryPreferences.default_device_id` does.
 
     A projection row and every projection row it names belong to one
     library. A row across the boundary is restricted at purge, so the
@@ -1441,6 +1407,49 @@ def library_identity_constraint() -> models.UniqueConstraint:
         fields=("id", "library"),
         name="unique_%(app_label)s_%(class)s_library_identity",
     )
+
+
+class Device(ProjectionModel, ReferencedRow):
+    """Owned device; only the Devices projector writes."""
+
+    objects = RemovableLibraryQuerySet.as_manager()
+
+    #: The creation event's aggregate id.
+    id = UUIDv7Field(
+        primary_key=True,
+        editable=False,
+        default=models.NOT_PROVIDED,
+        db_default=models.NOT_PROVIDED,
+    )
+
+    PC = "PC"
+    CONSOLE = "Console"
+    HANDHELD = "Handheld"
+    MOBILE = "Mobile"
+    SBC = "Single-board computer"
+    UNKNOWN = "Unknown"
+    DEVICE_TYPES = (
+        (PC, "PC"),
+        (CONSOLE, "Console"),
+        (HANDHELD, "Handheld"),
+        (MOBILE, "Mobile"),
+        (SBC, "Single-board computer"),
+        (UNKNOWN, "Unknown"),
+    )
+    name = models.CharField(max_length=255)
+    type = models.CharField(max_length=255, choices=DEVICE_TYPES, default=UNKNOWN)
+    #: The creation event's recorded_at.
+    created_at = models.DateTimeField(editable=False)
+    #: The remove event's recorded_at; null live.
+    removed_at = models.DateTimeField(
+        null=True, blank=True, default=None, editable=False
+    )
+
+    class Meta:
+        constraints = (library_identity_constraint(),)
+
+    def __str__(self):
+        return f"{self.name} ({self.type})"
 
 
 class PlayerGameStatus(models.TextChoices):
@@ -2096,34 +2105,44 @@ class UserLibraryPreferences(models.Model):
         on_delete=models.CASCADE,
         related_name="preferences",
     )
-    default_device = models.ForeignKey(
-        Device,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="+",
-    )
+    #: A device key, never a foreign key.
+    default_device_id = models.UUIDField(null=True, blank=True, default=None)
     updated_at = models.DateTimeField(default=timezone.now)
+
+    @property
+    def default_device(self) -> Device | None:
+        """The live default device, or none."""
+        if self.default_device_id is None:
+            return None
+        return (
+            Device.objects.for_library(self.library)
+            .filter(pk=self.default_device_id)
+            .first()
+        )
 
     def clean(self):
         super().clean()
-        if self.default_device_id is not None:
-            _validate_related_library(
-                self.library_id,
-                self.default_device,
-                "default_device",
+        if (
+            self.default_device_id is not None
+            and not Device.objects.filter(
+                library_id=self.library_id, pk=self.default_device_id
+            ).exists()
+        ):
+            raise ValidationError(
+                {"default_device": "Default device must belong to the same library."}
             )
 
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
 
-    def set_default_device(self, device):
-        if self.default_device_id == getattr(device, "pk", None):
+    def set_default_device(self, device: Device | None) -> bool:
+        device_id = None if device is None else device.pk
+        if self.default_device_id == device_id:
             return False
-        self.default_device = device
+        self.default_device_id = device_id
         self.updated_at = timezone.now()
-        self.save(update_fields=["default_device", "updated_at"])
+        self.save(update_fields=["default_device_id", "updated_at"])
         return True
 
 

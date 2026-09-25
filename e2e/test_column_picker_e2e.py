@@ -3,11 +3,12 @@
 import datetime as dt
 
 import pytest
+from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 from session_rows import timed_row, tracked_run
 
-from games.models import Device, Game, Platform
+from games.models import Game, Platform
 
 STARTED_AT = dt.datetime(2026, 3, 5, 10, tzinfo=dt.UTC)
 
@@ -18,7 +19,7 @@ def one_session(e2e_library):
         library=e2e_library, name="PC", icon="pc", group="PC"
     )
     game = Game.objects.create(library=e2e_library, name="Tunic", platform=platform)
-    device = Device.objects.create(library=e2e_library, name="Steam Deck")
+    device = create_device(library=e2e_library, name="Steam Deck")
     timed_row(
         tracked_run(e2e_library, game),
         STARTED_AT,

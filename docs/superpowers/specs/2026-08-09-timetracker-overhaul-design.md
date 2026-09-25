@@ -233,13 +233,18 @@ remain ordinary relational state.
 
 The committed event-sourced boundary includes PlayerGame status/mastered/
 completion preference, Playthrough lifecycle, Sessions and notes, Historical
-Playtime, LibraryEntry access lifecycle, Purchases/refunds, and future
-reviews/ratings/checkpoints. Account presentation preferences, library
-preferences, FilterPresets, custom catalog records, Devices, ImportBatch
-staging, IGDB caches, and currency conversion rates remain conventional
-relational data under their appropriate User, PlayerLibrary, or site boundary.
-Derived conversion values may refresh without pretending the player made
-another purchase.
+Playtime, LibraryEntry access lifecycle, Purchases/refunds, Devices, and
+future reviews/ratings/checkpoints. Account presentation preferences, library
+preferences, FilterPresets, custom catalog records, ImportBatch staging, IGDB
+caches, and currency conversion rates remain conventional relational data under
+their appropriate User, PlayerLibrary, or site boundary. Derived conversion
+values may refresh without pretending the player made another purchase.
+
+Devices crossed the boundary on 2026-09-24 (#1274). A device is not reference
+data a session merely points at: a player buys one, renames it, sells it, loses
+it and retires it, an ownership lifecycle of the kind a Purchase carries. Its
+row is a projection like any other, and an event naming it still records the
+snapshot the durable-reference rule below asks for.
 
 ### Write and read paths
 
@@ -334,8 +339,8 @@ Devices and catalog records plus the small display snapshot needed to explain
 the historical choice in Audit History. The snapshot is evidence, not a second
 identity and not the source for current catalog presentation.
 
-A Device or private catalog record referenced by an event is archived or
-retained as a tombstone rather than physically deleted. Shared imported catalog
+A private catalog record referenced by an event is removed rather than
+physically deleted; a Device is a projection, which no path destroys. Shared imported catalog
 records use the same stale/tombstone rule while referenced. Hard deletion is
 allowed only for unreferenced replaceable data or as part of whole-library
 purge. Replay validates that every non-snapshotted reference can be resolved
@@ -1029,7 +1034,7 @@ Deletion is domain-specific rather than one generic switch:
 - A player's tracked Game is hidden through `PlayerGameArchived` and restored
   through `PlayerGameRestored`; one library never archives a shared Game for
   another library.
-- A referenced private catalog Game is retained as an archived record or merge
+- A referenced private catalog Game is retained as a removed record or merge
   tombstone. An unreferenced private Game may be physically deleted; shared
   imported Games use site-level stale/tombstone handling.
 - A removed Purchase is voided/removed while preserving financial history.

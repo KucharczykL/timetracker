@@ -17,13 +17,14 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from column_choice import show_every_column
+from devices import create_device
 from django.conf import settings
 from django.urls import reverse
 from playwright.sync_api import Browser, Page, ViewportSize
 from session_rows import session_row
 
 from e2e.helpers import settle_layout
-from games.models import Device, Game, Platform, Purchase
+from games.models import Game, Platform, Purchase
 
 ZONEINFO = ZoneInfo(settings.TIME_ZONE)
 BASE = datetime(2025, 3, 1, 10, 0, tzinfo=ZONEINFO)
@@ -56,8 +57,8 @@ def populated(e2e_library) -> None:
     platform = Platform.objects.create(
         library=e2e_library, name="PC", icon="pc", group="PC"
     )
-    device = Device.objects.create(
-        library=e2e_library, name="A Desktop Computer Of Some Kind", type="p"
+    device = create_device(
+        library=e2e_library, name="A Desktop Computer Of Some Kind", type="PC"
     )
     game = Game.objects.create(
         library=e2e_library,

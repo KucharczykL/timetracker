@@ -7,6 +7,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
+from devices import create_device
 from django.conf import settings
 from django.contrib.messages import get_messages
 from django.db.models import Case, DateField, Value, When
@@ -639,8 +640,8 @@ class TestListGamesSort:
         self, logged_client, owned_library, two_games
     ):
         alpha, beta = two_games
-        handheld = Device.objects.create(library=owned_library, name="Deck")
-        desktop = Device.objects.create(library=owned_library, name="Tower")
+        handheld = create_device(library=owned_library, name="Deck")
+        desktop = create_device(library=owned_library, name="Tower")
         start = datetime(2022, 1, 1, 10, tzinfo=ZONEINFO)
         for game, device, hours in (
             (alpha, handheld, 1),
@@ -707,7 +708,7 @@ class TestListGamesSort:
     def test_the_narrowed_column_says_it_counts_sessions(
         self, logged_client, owned_library, two_games
     ):
-        handheld = Device.objects.create(library=owned_library, name="Deck")
+        handheld = create_device(library=owned_library, name="Deck")
         narrowed = GameFilter(
             session_filter=PlayerSessionFilter.where(device=[handheld.pk])
         )
@@ -732,7 +733,7 @@ class TestListGamesSort:
         self, logged_client, owned_library, two_games
     ):
         alpha, beta = two_games
-        handheld = Device.objects.create(library=owned_library, name="Deck")
+        handheld = create_device(library=owned_library, name="Deck")
         start = datetime(2022, 1, 1, 10, tzinfo=ZONEINFO)
         session_row(
             alpha, started_at=start, ended_at=start.replace(hour=12), device=handheld
@@ -999,12 +1000,8 @@ def two_runs(db, two_games):
 def two_devices(owned_library):
     # Names deliberately avoid the device-type labels ("Console", "Handheld", …)
     # so a body substring search can't collide with the type facet's options.
-    first = Device.objects.create(
-        library=owned_library, name="Aaa", type=Device.CONSOLE
-    )
-    last = Device.objects.create(
-        library=owned_library, name="Zzz", type=Device.HANDHELD
-    )
+    first = create_device(library=owned_library, name="Aaa", type=Device.CONSOLE)
+    last = create_device(library=owned_library, name="Zzz", type=Device.HANDHELD)
     return first, last
 
 

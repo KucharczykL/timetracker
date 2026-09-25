@@ -72,7 +72,6 @@ EXPECTED_RELATION_COLUMNS = {
     ("games_release", "edition_id"),
     ("games_release", "platform_id"),
     ("games_userlibrary", "user_id"),
-    ("games_userlibrarypreferences", "default_device_id"),
     ("games_userlibrarypreferences", "library_id"),
     ("games_userpreferences", "user_id"),
 }

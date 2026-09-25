@@ -1,7 +1,9 @@
 import uuid
 
 import pytest
+from devices import create_device
 from django.db import IntegrityError, connection, transaction
+from django.utils import timezone
 from model_schema_scan import models_covered
 from ninja import ModelSchema
 
@@ -46,7 +48,12 @@ def raw_insert_without_identity(model, **field_values):
 
 
 def make_device(library, **overrides):
-    field_values = {"library": library, "name": "Living Room PC"} | overrides
+    """A raw row, for constraint tests only."""
+    field_values = {
+        "library": library,
+        "name": "Living Room PC",
+        "created_at": timezone.now(),
+    } | overrides
     return Device.objects.create(**field_values)
 
 
@@ -62,9 +69,9 @@ def make_preset(library, **overrides):
 # --- Field contract ---------------------------------------------------------
 
 
-def test_device_created_through_the_orm_gets_a_distinct_version_7_uuid(owned_library):
-    first = make_device(owned_library, name="First")
-    second = make_device(owned_library, name="Second")
+def test_device_created_by_its_command_gets_a_distinct_version_7_uuid(owned_library):
+    first = create_device(owned_library, name="First")
+    second = create_device(owned_library, name="Second")
     assert first.pk.version == 7
     assert second.pk.version == 7
     assert first.pk != second.pk
@@ -80,12 +87,12 @@ def test_filterpreset_created_through_the_orm_gets_a_distinct_version_7_uuid(
     assert first.pk != second.pk
 
 
-def test_raw_device_insert_omitting_uuid_gets_the_database_default(owned_library):
-    device_uuid = raw_insert_without_identity(
-        Device, library=owned_library, name="Raw Device"
-    )
-    assert device_uuid.version == 7
-    assert Device.objects.get(pk=device_uuid).name == "Raw Device"
+def test_raw_device_insert_omitting_uuid_is_refused(owned_library):
+    """No id default: projection keys are events'."""
+    with pytest.raises(IntegrityError, match='"id"'), transaction.atomic():
+        raw_insert_without_identity(
+            Device, library=owned_library, name="Raw Device", created_at=timezone.now()
+        )
 
 
 def test_raw_filterpreset_insert_omitting_uuid_gets_the_database_default(owned_library):
@@ -168,14 +175,12 @@ def test_both_models_declare_one_uuidv7_primary_key_every_relation_names():
         assert "uuid" not in {field.name for field in model._meta.local_fields}
 
     assert PlayerSession._meta.get_field("device").remote_field.field_name == "id"
-    assert (
-        UserLibraryPreferences._meta.get_field("default_device").remote_field.field_name
-        == "id"
-    )
+    #: A projection key, never a relation.
+    assert not UserLibraryPreferences._meta.get_field("default_device_id").is_relation
 
 
 def test_setting_the_same_default_device_twice_writes_once(owned_library):
-    device = Device.objects.create(library=owned_library, name="Default device")
+    device = create_device(library=owned_library, name="Default device")
     preferences = owned_library.preferences
 
     assert preferences.set_default_device(device) is True

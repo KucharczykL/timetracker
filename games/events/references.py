@@ -26,6 +26,8 @@ from timetracker.uuidv7 import UUIDv7ParseError, parse_uuidv7
 
 type ReferenceKindName = str  # "catalog.game"
 type PayloadKey = str  # "device"
+#: Spelled here; the vocabulary imports this module.
+type CreationEventType = str  # "library.device.created"
 
 #: Spelled here; importing the vocabulary would cycle.
 STRICT_SCHEMA = ConfigDict(extra="forbid", strict=True)
@@ -79,10 +81,14 @@ class Reference(TypedDict):
 
 
 class Resolution(StrEnum):
-    """Whether a replay must find the row."""
+    """Where a replay finds the row."""
 
+    #: In a table replay never writes.
     REQUIRED = "required"
+    #: Nowhere: the snapshot is everything.
     EVIDENCE_ONLY = "evidence_only"
+    #: Created by the stream naming it.
+    PROJECTED = "projected"
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +99,23 @@ class ReferenceKind[M: models.Model]:
     model: type[M]
     capture: Callable[[M], Reference]
     resolution: Resolution
+    #: Creation event type; PROJECTED kinds only.
+    created_by: CreationEventType | None = None
+
+    def __post_init__(self) -> None:
+        projected = self.resolution is Resolution.PROJECTED
+        if projected and self.created_by is None:
+            raise ValueError(
+                f"{self.name!r} is PROJECTED and names no creation event. A "
+                "replay checks such a reference against the stream, so it "
+                "must know which event makes the row."
+            )
+        if not projected and self.created_by is not None:
+            raise ValueError(
+                f"{self.name!r} is {self.resolution.name} and names a "
+                "creation event. Only a PROJECTED row is made by the stream "
+                "that names it."
+            )
 
 
 class ReferenceKindRegistry:
@@ -204,7 +227,9 @@ DEFAULT_REFERENCE_KINDS.register(
         name="device",
         model=Device,
         capture=_capture_device,
-        resolution=Resolution.REQUIRED,
+        #: Its own stream creates the device.
+        resolution=Resolution.PROJECTED,
+        created_by="library.device.created",
     )
 )
 DEFAULT_REFERENCE_KINDS.register(

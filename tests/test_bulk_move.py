@@ -6,6 +6,7 @@ import uuid
 from datetime import date, timedelta
 
 import pytest
+from devices import create_device
 from django.contrib.messages import get_messages
 from django.http import QueryDict
 from django.urls import reverse
@@ -29,7 +30,6 @@ from games.bulk_move import (
 from games.commands.playersession import CreateSession, DurationOnlyTiming
 from games.events.dispatch import CommandRejected, dispatch
 from games.models import (
-    Device,
     Game,
     HistoricalPlaytimeRun,
     LibraryEvent,
@@ -540,7 +540,7 @@ def test_a_bucket_removal_that_is_a_defect_ends_the_batch(
 
 
 def test_a_row_with_a_device_and_a_note_previews_both(owned_library, game):
-    device = Device.objects.create(library=owned_library, name="Deck")
+    device = create_device(library=owned_library, name="Deck")
     session = a_session(tracked_run(owned_library, game), device=device, note="hi")
 
     rows = move_resolution(owned_library, [session.pk]).rows

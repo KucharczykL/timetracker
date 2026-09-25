@@ -3,11 +3,12 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest
+from devices import create_device
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from session_rows import session_row
 
-from games.models import Device, Game, Platform, Purchase
+from games.models import Game, Platform, Purchase
 
 
 class MiddlewareIntegrationTest(TestCase):
@@ -100,7 +101,7 @@ def test_session_device_api_endpoint_sends_hx_trigger(client, owned_user):
     """The session device API endpoint produces HX-Trigger too."""
     library = owned_user.library
     game = Game.objects.create(library=library, name="Test Game")
-    device = Device.objects.create(library=library, name="Test Device")
+    device = create_device(library=library, name="Test Device")
     session = session_row(
         game, started_at=datetime(2022, 9, 26, 14, 58, tzinfo=ZoneInfo("UTC"))
     )

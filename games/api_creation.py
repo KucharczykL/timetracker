@@ -1,9 +1,10 @@
 """One row, made from the name a person typed.
 
-The device and platform create rows state a name and
-nothing else. Every other rule belongs to the form the add
-page runs, so both routes run that form rather than a rule
-of their own. A run states a command instead.
+The platform create row states a name and nothing else.
+Every other rule belongs to the form the add page runs, so
+the route runs that form rather than a rule of its own. A
+device and a run state a command instead, and read only
+`refusal_sentence` and `RowRefused` from here.
 """
 
 from typing import Any, Protocol

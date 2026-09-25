@@ -5,6 +5,7 @@ form's, which is the form the add page runs.
 """
 
 import pytest
+from devices import create_device
 
 from games.models import Device, Platform
 
@@ -105,7 +106,7 @@ def test_another_library_creates_its_own_platform_of_the_same_name(
 
 def test_a_device_the_library_holds_is_answered_once(client, user):
     """The window a create row judges on shows ten rows."""
-    held = Device.objects.create(library=user.library, name="Steam Deck")
+    held = create_device(library=user.library, name="Steam Deck")
     client.force_login(user)
 
     response = _create(client, "/api/devices/", "steam deck")
@@ -118,7 +119,7 @@ def test_a_device_the_library_holds_is_answered_once(client, user):
 def test_a_device_of_another_library_is_made_here(client, user, django_user_model):
     """A name is private, so another library's row blocks none."""
     other = django_user_model.objects.create_user(username="other", password="x")
-    Device.objects.create(library=other.library, name="Steam Deck")
+    create_device(library=other.library, name="Steam Deck")
     client.force_login(user)
 
     response = _create(client, "/api/devices/", "Steam Deck")

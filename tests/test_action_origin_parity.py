@@ -12,11 +12,12 @@ from datetime import UTC, date, datetime
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from devices import create_device
 from django.urls import Resolver404, resolve, reverse
 from historical_playtime_rows import record_row
 from session_rows import session_row
 
-from games.models import Device, Game, Platform, Playthrough, Purchase
+from games.models import Game, Platform, Playthrough, Purchase
 from games.views.returns import CONFIRMATION, ORIGIN_AWARE
 
 LINK_ATTRIBUTE = re.compile(r'\b(?:href|hx-get|hx-post|action)="([^"]*)"')
@@ -39,7 +40,7 @@ def world(owned_library):
     session_row(
         game,
         started_at=datetime(2024, 6, 1, 12, tzinfo=UTC),
-        device=Device.objects.create(library=owned_library, name="Desk"),
+        device=create_device(library=owned_library, name="Desk"),
     )
     #: Tracking states a run of its own, so the playthrough
     #: sweep has a row whose actions carry an origin.

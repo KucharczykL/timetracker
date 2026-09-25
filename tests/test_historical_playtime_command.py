@@ -4,6 +4,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from devices import create_device, remove_device
 from django.utils import timezone
 
 from games.commands.historical_playtime import (
@@ -35,7 +36,6 @@ from games.events.dispatch import (
     dispatch,
 )
 from games.models import (
-    Device,
     Game,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
@@ -155,7 +155,7 @@ def test_an_unknown_when_is_admitted(owned_user, owned_library, run):
 
 
 def test_a_device_is_captured(owned_user, owned_library, run):
-    device = Device.objects.create(library=owned_library, name="Steam Deck")
+    device = create_device(library=owned_library, name="Steam Deck")
     stored = record(owned_library, owned_user, stated(run, device_id=device.pk))
     assert stored.device_id == device.pk
     event = LibraryEvent.objects.get(event_type="library.historicalplaytime.created")
@@ -273,9 +273,7 @@ def test_it_refuses_a_run_under_a_removed_game(owned_user, owned_library, run):
 
 
 def test_it_refuses_a_removed_device(owned_user, owned_library, run):
-    device = Device.objects.create(
-        library=owned_library, name="Deck", removed_at=timezone.now()
-    )
+    device = remove_device(create_device(library=owned_library, name="Deck"))
     refused = _refused(
         owned_library,
         owned_user,
@@ -289,7 +287,7 @@ def test_it_refuses_a_removed_device(owned_user, owned_library, run):
 def test_it_refuses_a_device_another_library_holds(
     owned_user, owned_library, run, second_library
 ):
-    device = Device.objects.create(library=second_library, name="Deck")
+    device = create_device(library=second_library, name="Deck")
     _not_held(
         owned_library,
         owned_user,
@@ -542,7 +540,7 @@ def test_a_restatement_that_adds_a_run_mints_one_fresh_id(
 
 
 def test_a_restatement_clears_and_restores_the_device(owned_user, owned_library, run):
-    device = Device.objects.create(library=owned_library, name="Deck")
+    device = create_device(library=owned_library, name="Deck")
     stored = record(owned_library, owned_user, stated(run, device_id=device.pk))
     cleared = _restate(owned_library, owned_user, stored.pk, stated(run), key="clear")
     assert cleared.outcome is CommandOutcome.APPENDED
@@ -610,9 +608,9 @@ def test_a_restatement_differing_in_its_runs_appends(
 
 
 def test_a_restatement_keeps_a_removed_device_it_names(owned_user, owned_library, run):
-    device = Device.objects.create(library=owned_library, name="Deck")
+    device = create_device(library=owned_library, name="Deck")
     stored = record(owned_library, owned_user, stated(run, device_id=device.pk))
-    Device.objects.filter(pk=device.pk).update(removed_at=timezone.now())
+    remove_device(device)
     result = _restate(
         owned_library,
         owned_user,
@@ -628,9 +626,7 @@ def test_a_restatement_keeps_a_removed_device_it_names(owned_user, owned_library
 
 def test_a_restatement_onto_a_removed_device_is_refused(owned_user, owned_library, run):
     stored = record(owned_library, owned_user, stated(run))
-    device = Device.objects.create(
-        library=owned_library, name="Deck", removed_at=timezone.now()
-    )
+    device = remove_device(create_device(library=owned_library, name="Deck"))
     _refused(
         owned_library,
         owned_user,

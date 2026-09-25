@@ -10,7 +10,6 @@ import pytest
 from django.db.models import Model
 
 from games.models import (
-    Device,
     Edition,
     FilterPreset,
     Game,
@@ -40,10 +39,6 @@ def _platform(library: UserLibrary) -> Platform:
     return Platform.objects.create(library=library, name="Playdate")
 
 
-def _device(library: UserLibrary) -> Device:
-    return Device.objects.create(library=library, name="Deck", type=Device.HANDHELD)
-
-
 def _purchase(library: UserLibrary) -> Purchase:
     purchase = Purchase.objects.create(
         library=library,
@@ -66,7 +61,6 @@ BUILDERS: dict[type[Model], Builder] = {
     Edition: _edition,
     Release: _release,
     Platform: _platform,
-    Device: _device,
     Purchase: _purchase,
     FilterPreset: _filter_preset,
 }

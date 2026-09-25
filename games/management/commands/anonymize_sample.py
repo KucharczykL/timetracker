@@ -36,6 +36,7 @@ from games.models import (
     PlayerSession,
     Playthrough,
     Purchase,
+    UserLibraryPreferences,
 )
 from timetracker.temporal import TemporalPrecision, TemporalValue
 from timetracker.uuidv7 import UUIDv7Field, uuid7_at
@@ -60,7 +61,6 @@ PORTABLE_LIBRARY_MODELS = frozenset(
 # Omitted: FilterPreset (sample data does not ship personal saved searches).
 DUMP_LABELS = [
     "games.Platform",
-    "games.Device",
     "games.Game",
     "games.Purchase",
     "games.LibraryEventStreamHead",
@@ -465,6 +465,11 @@ class Command(BaseCommand):
             replacements = self._resequence_identity(model)
             self._remap_referrers(model, replacements)
             replacements_by_model[model] = replacements
+        #: A key, not a relation.
+        for old_id, new_id in replacements_by_model[Device].items():
+            UserLibraryPreferences.objects.filter(default_device_id=old_id).update(
+                default_device_id=new_id
+            )
         return replacements_by_model
 
     @staticmethod
@@ -481,13 +486,21 @@ class Command(BaseCommand):
         kinds = event_types.reference_kinds
         #: Aggregate order: undated follows dated.
         events = list(LibraryEvent.objects.order_by("aggregate_id", "sequence"))
+        #: Keyed and named like its row.
+        device_replacements = replacements_by_model.get(Device, {})
+        device_names = dict(Device.objects.values_list("pk", "name"))
+
+        def device_keyed(event):
+            return event_types.spec_for(event.event_type).aggregate_type == "device"
+
         last_dated_day: dict[UUID, date] = {}
         sessions_recorded = 0
         for event in events:
             library_keyed = event.aggregate_id == library_id
+            #: Device facts carry no day.
             offset = (
                 timedelta(0)
-                if library_keyed
+                if library_keyed or device_keyed(event)
                 else game_offsets[game_id_by_aggregate[event.aggregate_id]]
             )
             event.effective_time = _shift_effective_time(event.effective_time, offset)
@@ -504,7 +517,13 @@ class Command(BaseCommand):
             if "note" in payload:
                 payload["note"] = ""
             if "name" in payload:
-                payload["name"] = ""
+                payload["name"] = (
+                    device_names[
+                        device_replacements.get(event.aggregate_id, event.aggregate_id)
+                    ]
+                    if device_keyed(event)
+                    else ""
+                )
             for found in event_types.references_in(event.event_type, payload):
                 kind = kinds.kind_for(found.value["kind"])
                 replacements = replacements_by_model.get(kind.model, {})
@@ -568,10 +587,24 @@ class Command(BaseCommand):
                 for group, moment in sorted(earliest.items(), key=lambda pair: pair[1])
             }
 
-        aggregate_replacements = _group_replacements(
-            [event for event in events if event.aggregate_id != library_id],
-            lambda event: event.aggregate_id,
-        )
+        aggregate_replacements = {
+            **_group_replacements(
+                [
+                    event
+                    for event in events
+                    if event.aggregate_id != library_id and not device_keyed(event)
+                ],
+                lambda event: event.aggregate_id,
+            ),
+            #: The row's replacement; references already name it.
+            **{
+                event.aggregate_id: device_replacements.get(
+                    event.aggregate_id, event.aggregate_id
+                )
+                for event in events
+                if device_keyed(event)
+            },
+        }
         correlation_replacements = _group_replacements(
             events, lambda event: event.correlation_id
         )
@@ -694,8 +727,7 @@ class Command(BaseCommand):
         """Point every foreign key naming this model's identity at the new value.
 
         `get_fields(include_hidden=True)`, not `related_objects`: the latter
-        drops relations whose `related_name` ends in "+", which would silently
-        strand `UserLibraryPreferences.default_device`.
+        drops relations whose `related_name` ends in "+".
 
         Many-to-many relations are walked too, via their through model's own
         foreign key. Whether a relation needs remapping is decided by what it

@@ -8,13 +8,14 @@ identity, a page that builds a filter link, a stale integer arriving in one.
 import json
 
 import pytest
+from devices import create_device
 from django.db import IntegrityError, transaction
 from django.test import Client
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from session_rows import session_row
 
-from games.models import Device, Game, Platform, PlayerGameStatus
+from games.models import Game, Platform, PlayerGameStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -76,7 +77,7 @@ def test_search_endpoints_report_each_entitys_own_identity_type(library_client):
     client, library = library_client
     platform = Platform.objects.create(name="Search Platform")
     game = Game.objects.create(library=library, name="Searchable", platform=platform)
-    device = Device.objects.create(library=library, name="Searchable Device")
+    device = create_device(library=library, name="Searchable Device")
 
     games = client.get("/api/games/search", {"q": "Search"}).json()
     assert [row["value"] for row in games] == [str(game.pk)]

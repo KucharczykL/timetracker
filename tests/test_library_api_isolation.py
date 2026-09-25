@@ -2,6 +2,7 @@ import json
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
+from devices import create_device
 from django.contrib.auth import get_user_model
 from django.test import Client
 from django.utils import timezone
@@ -26,7 +27,6 @@ from games.filters import (
     filter_query_context_for_library,
 )
 from games.models import (
-    Device,
     FilterPreset,
     Game,
     Platform,
@@ -101,8 +101,8 @@ def two_libraries(db):
         platform=shared_platform,
         year_released=YEAR - 1,
     )
-    device_a = Device.objects.create(library=library_a, name="Library A Device")
-    device_b = Device.objects.create(library=library_b, name="Library B Device")
+    device_a = create_device(library=library_a, name="Library A Device")
+    device_b = create_device(library=library_b, name="Library B Device")
 
     row_a = session_row(
         game_a,

@@ -483,6 +483,7 @@ def test_a_rebuild_swaps_both_tables_with_an_empty_diff(
         (table.table, table.only_live, table.only_rebuilt, table.differing)
         for table in report.tables
     ] == [
+        ("games_device", 0, 0, 0),
         ("games_historicalplaytime", 0, 0, 0),
         ("games_historicalplaytimerun", 0, 0, 0),
         ("games_librarycalendar", 0, 0, 0),
