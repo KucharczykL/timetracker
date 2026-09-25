@@ -11,7 +11,8 @@ from collections.abc import Sequence
 from django.contrib.auth.models import User
 from django.db.models import QuerySet
 
-from games.bulk_actions import FilterJson, Refused, Resolution
+from common.components.primitives import Cell
+from games.bulk_actions import FilterJson, Presentations, Refused, Resolution
 from games.bulk_narrowing import narrowed
 from games.events.dispatch import RowNotHeld
 from games.filters import parse_session_filter
@@ -68,3 +69,7 @@ def session_of(actor: User, session_id: uuid.UUID) -> PlayerSession:
                 "so the batch's inverse has no row to state a fact about."
             )
         return row
+
+
+def device_cell(row: PlayerSession, _presentations: Presentations) -> Cell:
+    return row.device.name if row.device is not None else "No device"

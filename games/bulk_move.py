@@ -27,7 +27,7 @@ from games.bulk_actions import (
     RowOutcome,
 )
 from games.bulk_narrowing import narrowed
-from games.bulk_sessions import SESSION_GONE, lost, session_of
+from games.bulk_sessions import SESSION_GONE, device_cell, lost, session_of
 from games.events.dispatch import CommandRejected, RowUnreadable
 from games.events.idempotency import IdempotencyKey
 from games.events.playersession import PLAYERSESSION_CREATED, PLAYERSESSION_MOVED
@@ -142,10 +142,6 @@ def _run_label(row: PlayerSession, _presentations: Presentations) -> Cell:
     return label
 
 
-def _device(row: PlayerSession, _presentations: Presentations) -> Cell:
-    return row.device.name if row.device is not None else "No device"
-
-
 MOVE_PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
     PreviewColumn(TARGET_LABEL, _run_label),
     PreviewColumn("Day", lambda row, _: str(row.effective_day)),
@@ -156,7 +152,7 @@ MOVE_PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
         ),
         align="right",
     ),
-    PreviewColumn("Device", _device),
+    PreviewColumn("Device", device_cell),
     PreviewColumn("Note", lambda row, _: row.note),
 )
 

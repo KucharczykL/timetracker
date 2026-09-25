@@ -79,10 +79,11 @@ def test_two_sessions_take_one_device_and_the_undo_takes_it_back(
         session.refresh_from_db()
         assert session.device_id == deck.pk
 
-    page.get_by_role("button", name="Undo").click()
+    with page.expect_navigation():
+        page.get_by_role("button", name="Undo").click()
 
-    #: No Undo button: the Undo landed.
-    expect(page.get_by_role("button", name="Undo")).to_have_count(0)
+    #: The redirect follows the Undo's commit.
+    page.wait_for_url(listed)
     for session in sessions:
         session.refresh_from_db()
         assert session.device_id is None

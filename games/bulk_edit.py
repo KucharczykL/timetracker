@@ -2,14 +2,15 @@
 
 import json
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
+from typing import NamedTuple, TypedDict
 
 from django.contrib.auth.models import User
 from django.http import QueryDict
 
 from common.components.primitives import (
-    Cell,
     Checkbox,
     Div,
     Fieldset,
@@ -27,11 +28,15 @@ from games.bulk_actions import (
     Control,
     FieldName,
     Offered,
-    Presentations,
     PreviewColumn,
     RowOutcome,
 )
-from games.bulk_sessions import session_of, session_resolution, session_scope
+from games.bulk_sessions import (
+    device_cell,
+    session_of,
+    session_resolution,
+    session_scope,
+)
 from games.commands.playersession import StatedDevice
 from games.events.dispatch import CommandRejected, RowUnreadable
 from games.events.idempotency import IdempotencyKey
@@ -40,15 +45,23 @@ from games.events.playersession import (
     PLAYERSESSION_DEVICE_CHANGED,
     PLAYERSESSION_EMULATED_CHANGED,
 )
+from games.events.vocabulary import EventType
 from games.forms import DEVICE_CREATE_URL, DEVICE_SEARCH_URL
 from games.models import Device, LibraryEvent, PlayerSession, UserLibrary
 from games.reads.events import aggregate_events
 from games.writes.answers import answered
 from games.writes.playersession import describe_session
 
+
+class EditJson(TypedDict, total=False):
+    """A statement on the wire; absent is unstated."""
+
+    device: str | None
+    emulated: bool
+
+
 #: What a statement's JSON may name.
-_DEVICE_KEY = "device"
-_EMULATED_KEY = "emulated"
+_KEYS = frozenset(EditJson.__annotations__)
 
 #: What settling refuses.
 NOTHING_STATED = "Choose a device, or whether the sessions were emulated."
@@ -63,22 +76,19 @@ STATEMENT_UNREADABLE = "What to change could not be read. Choose it again."
 NOT_EDITED_BY_THIS_BATCH = (
     "That session was not changed by this batch, so it was left as it is."
 )
-NO_EARLIER_VALUE = (
-    "What that session stated before cannot be read, so it was left as it is."
-)
 
-#: One look for both groups' names.
+#: Heading style for both groups.
 _HEADING = "text-type-body text-body"
 
-#: The emulated group's three answers.
-LEAVE = ""
-EMULATED = "yes"
-NOT_EMULATED = "no"
-_EMULATED_ANSWERS: dict[str, bool | None] = {
-    LEAVE: None,
-    EMULATED: True,
-    NOT_EMULATED: False,
-}
+#: A radio value of the emulated group.
+type EmulatedAnswer = str  # "", "yes", "no"
+
+LEAVE: EmulatedAnswer = ""
+EMULATED: EmulatedAnswer = "yes"
+NOT_EMULATED: EmulatedAnswer = "no"
+_EMULATED_ANSWERS: Mapping[EmulatedAnswer, bool | None] = MappingProxyType(
+    {LEAVE: None, EMULATED: True, NOT_EMULATED: False}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,12 +103,12 @@ class EditStatement:
             raise ValueError("An edit states a device, emulated, or both.")
 
     def encode(self) -> ChoiceValue:
-        stated: dict[str, object] = {}
+        stated: EditJson = {}
         if self.device is not None:
             device_id = self.device.device_id
-            stated[_DEVICE_KEY] = None if device_id is None else str(device_id)
+            stated["device"] = None if device_id is None else str(device_id)
         if self.emulated is not None:
-            stated[_EMULATED_KEY] = self.emulated
+            stated["emulated"] = self.emulated
         return json.dumps(stated, sort_keys=True)
 
     @classmethod
@@ -110,17 +120,18 @@ class EditStatement:
             raise _unreadable(f"{raw!r} is no JSON: {unreadable}") from unreadable
         if not isinstance(stated, dict):
             raise _unreadable(f"{raw!r} is no object")
-        unknown = set(stated) - {_DEVICE_KEY, _EMULATED_KEY}
+        unknown = set(stated) - _KEYS
         if unknown:
             raise _unreadable(f"{raw!r} names {sorted(unknown)}")
         device: StatedDevice | None = None
-        if _DEVICE_KEY in stated:
-            key = stated[_DEVICE_KEY]
+        if "device" in stated:
+            key = stated["device"]
             if key is not None and not isinstance(key, str):
                 raise _unreadable(f"{raw!r} states a device that is no key")
             device = StatedDevice(None if key is None else _device_key(key))
-        emulated = stated.get(_EMULATED_KEY)
-        if emulated is not None and not isinstance(emulated, bool):
+        emulated = stated.get("emulated")
+        #: Present means stated: null is no bool.
+        if "emulated" in stated and not isinstance(emulated, bool):
             raise _unreadable(f"{raw!r} states an emulated that is no bool")
         if device is None and emulated is None:
             raise _unreadable(f"{raw!r} states nothing")
@@ -143,46 +154,54 @@ def _device_key(stated: str) -> uuid.UUID:
 # ── The question ─────────────────────────────────────────────────────────────
 
 
-def device_field(field_name: FieldName) -> FieldName:
-    return f"{field_name}-device"
+class EditFields(NamedTuple):
+    """The control's names, suffixed onto the runner's."""
+
+    device: FieldName
+    no_device: FieldName
+    emulated: FieldName
 
 
-def no_device_field(field_name: FieldName) -> FieldName:
-    return f"{field_name}-no-device"
-
-
-def emulated_field(field_name: FieldName) -> FieldName:
-    return f"{field_name}-emulated"
+def edit_fields(field_name: FieldName) -> EditFields:
+    return EditFields(
+        device=f"{field_name}-device",
+        no_device=f"{field_name}-no-device",
+        emulated=f"{field_name}-emulated",
+    )
 
 
 def offer_edit(
     library: UserLibrary, rows: Sequence[PlayerSession], field_name: FieldName
 ) -> Offered:
-    """Device picker and emulated radios, never `field_name`."""
+    """Controls suffix `field_name`; none uses it bare."""
     if not rows:
         #: The confirmation says so itself.
         return AsksNothing()
-    picker = device_field(field_name)
-    emulated = emulated_field(field_name)
+    fields = edit_fields(field_name)
     return Control(
         Div(class_="flex flex-col gap-4")[
             Div(class_="flex flex-col gap-2")[
-                Label(for_=picker, class_=_HEADING)["Device"],
+                Label(for_=fields.device, class_=_HEADING)["Device"],
                 SearchSelect(
-                    name=picker,
+                    name=fields.device,
                     search_url=DEVICE_SEARCH_URL,
                     create_url=DEVICE_CREATE_URL,
                     prefetch=DEFAULT_PREFETCH,
                     placeholder="Leave as it is",
-                    id=picker,
+                    id=fields.device,
                 ),
-                Checkbox(name=no_device_field(field_name), label="No device"),
+                Checkbox(name=fields.no_device, label="No device"),
             ],
             Fieldset(class_="flex flex-col gap-2")[
                 Legend(class_=f"{_HEADING} mb-2")["Emulated"],
-                Radio(name=emulated, value=LEAVE, label="Leave as it is", checked=True),
-                Radio(name=emulated, value=EMULATED, label="Emulated"),
-                Radio(name=emulated, value=NOT_EMULATED, label="Not emulated"),
+                Radio(
+                    name=fields.emulated,
+                    value=LEAVE,
+                    label="Leave as it is",
+                    checked=True,
+                ),
+                Radio(name=fields.emulated, value=EMULATED, label="Emulated"),
+                Radio(name=fields.emulated, value=NOT_EMULATED, label="Not emulated"),
             ],
         ]
     )
@@ -209,8 +228,9 @@ def settle_edit(library: UserLibrary, post: QueryDict) -> ChoiceValue:
 
 
 def _composed(post: QueryDict, field_name: FieldName) -> EditStatement:
-    picked = post.get(device_field(field_name), "")
-    none = bool(post.get(no_device_field(field_name)))
+    fields = edit_fields(field_name)
+    picked = post.get(fields.device, "")
+    none = bool(post.get(fields.no_device))
     if picked and none:
         raise CommandRejected(
             "a device was picked and No device checked", sentence=DEVICE_AND_NONE
@@ -220,7 +240,7 @@ def _composed(post: QueryDict, field_name: FieldName) -> EditStatement:
         device = StatedDevice(_device_key(picked))
     elif none:
         device = StatedDevice(None)
-    answer = post.get(emulated_field(field_name), LEAVE)
+    answer = post.get(fields.emulated, LEAVE)
     if answer not in _EMULATED_ANSWERS:
         raise _unreadable(f"{answer!r} is no emulated answer")
     emulated = _EMULATED_ANSWERS[answer]
@@ -256,7 +276,13 @@ def edit_one(
                 f"{session.pk} of library {actor.library.pk}. The act "
                 "declares a choice, so the runner settles one before a row."
             )
-        statement = EditStatement.decode(choice)
+        try:
+            statement = EditStatement.decode(choice)
+        except CommandRejected as drift:
+            #: Settled this request: ours, not theirs.
+            raise RowUnreadable(
+                f"{EDIT.name} settled {choice!r} and cannot read it back: {drift}"
+            ) from drift
     return RowOutcome.of(
         describe_session(
             actor,
@@ -273,10 +299,10 @@ def edit_one(
 # ── Backward ─────────────────────────────────────────────────────────────────
 
 
-def _before(
-    events: Sequence[LibraryEvent], batch_id: uuid.UUID, changed: str, key: str
-) -> tuple[bool, object]:
-    """Whether the batch changed it; the value before."""
+def _earlier(
+    events: Sequence[LibraryEvent], batch_id: uuid.UUID, changed: EventType
+) -> LibraryEvent | None:
+    """The fact's event before the batch's; none unchanged."""
     ours = next(
         (
             event
@@ -286,7 +312,7 @@ def _before(
         None,
     )
     if ours is None:
-        return False, None
+        return None
     family = (PLAYERSESSION_CREATED.event_type, changed)
     earlier = [
         event
@@ -294,12 +320,32 @@ def _before(
         if event.sequence < ours.sequence and event.event_type in family
     ]
     if not earlier:
-        raise CommandRejected(
-            f"session {ours.aggregate_id} states no {key} before sequence "
-            f"{ours.sequence}",
-            sentence=NO_EARLIER_VALUE,
+        raise RowUnreadable(
+            f"session {ours.aggregate_id} of library {ours.library_id} states "
+            f"{changed} at sequence {ours.sequence} and no creation before it"
         )
-    return True, earlier[-1].payload[key]
+    return earlier[-1]
+
+
+def _device_of(event: LibraryEvent) -> StatedDevice:
+    """The device a created or device_changed payload states."""
+    #: Both payloads name it `device`.
+    if "device" not in event.payload:
+        raise RowUnreadable(f"event {event.pk} states no device")
+    device = event.payload["device"]
+    if device is None:
+        return StatedDevice(None)
+    if not isinstance(device, dict) or "id" not in device:
+        raise RowUnreadable(f"event {event.pk} states device {device!r}")
+    return StatedDevice(uuid.UUID(device["id"]))
+
+
+def _emulated_of(event: LibraryEvent) -> bool:
+    """The flag a created or emulated_changed payload states."""
+    emulated = event.payload.get("emulated")
+    if not isinstance(emulated, bool):
+        raise RowUnreadable(f"event {event.pk} states emulated {emulated!r}")
+    return emulated
 
 
 def values_before(
@@ -307,25 +353,17 @@ def values_before(
 ) -> EditStatement:
     """The changed facts' values before the batch."""
     events = list(aggregate_events(library, session_id))
-    device_changed, device = _before(
-        events, batch_id, PLAYERSESSION_DEVICE_CHANGED.event_type, _DEVICE_KEY
-    )
-    emulated_changed, emulated = _before(
-        events, batch_id, PLAYERSESSION_EMULATED_CHANGED.event_type, _EMULATED_KEY
-    )
-    if not device_changed and not emulated_changed:
+    device = _earlier(events, batch_id, PLAYERSESSION_DEVICE_CHANGED.event_type)
+    emulated = _earlier(events, batch_id, PLAYERSESSION_EMULATED_CHANGED.event_type)
+    if device is None and emulated is None:
         raise CommandRejected(
             f"batch {batch_id} changed no fact of session {session_id}",
             sentence=NOT_EDITED_BY_THIS_BATCH,
         )
-    stated_device: StatedDevice | None = None
-    if device_changed:
-        #: A Reference, or none.
-        reference = device if isinstance(device, dict) else None
-        stated_device = StatedDevice(
-            None if reference is None else uuid.UUID(reference["id"])
-        )
-    return EditStatement(stated_device, bool(emulated) if emulated_changed else None)
+    return EditStatement(
+        None if device is None else _device_of(device),
+        None if emulated is None else _emulated_of(emulated),
+    )
 
 
 def edit_back(
@@ -355,10 +393,6 @@ def edit_back(
 # ── The confirmation ─────────────────────────────────────────────────────────
 
 
-def _device(row: PlayerSession, _presentations: Presentations) -> Cell:
-    return row.device.name if row.device is not None else "No device"
-
-
 EDIT_PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
     PreviewColumn("Game", lambda row, _: row.playthrough.player_game.game.name),
     PreviewColumn("Day", lambda row, _: str(row.effective_day)),
@@ -369,7 +403,7 @@ EDIT_PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
         ),
         align="right",
     ),
-    PreviewColumn("Device", _device),
+    PreviewColumn("Device", device_cell),
     PreviewColumn("Emulated", lambda row, _: "Yes" if row.emulated else "No"),
 )
 

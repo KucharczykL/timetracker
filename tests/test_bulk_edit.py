@@ -1,14 +1,16 @@
 """Device or emulated on many sessions, undone."""
 
+import json
 import uuid
 from datetime import date, timedelta
 
 import pytest
 from bulk_posts import act_url, posted, selection
 from devices import create_device, remove_device
+from django.contrib.messages import get_messages
 from django.http import QueryDict
 from django.urls import reverse
-from session_rows import tracked_run
+from session_rows import duration_only_row, tracked_run
 
 from games.bulk_actions import AsksNothing, Control
 from games.bulk_edit import (
@@ -21,10 +23,8 @@ from games.bulk_edit import (
     NOTHING_STATED,
     STATEMENT_UNREADABLE,
     EditStatement,
-    device_field,
+    edit_fields,
     edit_one,
-    emulated_field,
-    no_device_field,
     offer_edit,
     settle_edit,
     values_before,
@@ -34,10 +34,11 @@ from games.commands.playersession import (
     DurationOnlyTiming,
     StatedDevice,
 )
-from games.events.dispatch import CommandRejected, dispatch
+from games.events.dispatch import CommandRejected, RowUnreadable, dispatch
 from games.models import Game, LibraryEvent, PlayerSession
-from games.views.bulk import CHOICE_FIELD, STATEMENT_FIELD, TOKEN_FIELD
-from games.writes.answers import CommandFailed
+from games.removal import remove
+from games.views.bulk import CHOICE_FIELD, PROGRESS_FIELD, STATEMENT_FIELD, TOKEN_FIELD
+from games.writes.answers import DEFECT_STATUS, CommandFailed
 from games.writes.playersession import describe_session, remove_session
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -91,11 +92,7 @@ def post(**fields) -> QueryDict:
 
 def control(**answers) -> QueryDict:
     """The fields the first press posts."""
-    names = {
-        "device": device_field(CHOICE_FIELD),
-        "no_device": no_device_field(CHOICE_FIELD),
-        "emulated": emulated_field(CHOICE_FIELD),
-    }
+    names = edit_fields(CHOICE_FIELD)._asdict()
     return post(**{names[key]: value for key, value in answers.items()})
 
 
@@ -122,7 +119,17 @@ def test_a_statement_stating_nothing_is_no_statement():
 
 @pytest.mark.parametrize(
     "raw",
-    ["", "not json", "[]", "{}", '{"note": "x"}', '{"device": 3}', '{"emulated": 1}'],
+    [
+        "",
+        "not json",
+        "[]",
+        "{}",
+        '{"note": "x"}',
+        '{"device": 3}',
+        '{"emulated": 1}',
+        '{"emulated": null}',
+        '{"device": null, "emulated": null}',
+    ],
 )
 def test_an_unreadable_statement_refuses(raw):
     with pytest.raises(CommandRejected) as refused:
@@ -147,11 +154,7 @@ def test_the_control_never_posts_under_the_choice_field(
     assert isinstance(offered, Control)
     markup = str(offered.node)
     assert f'name="{CHOICE_FIELD}"' not in markup
-    for name in (
-        device_field(CHOICE_FIELD),
-        no_device_field(CHOICE_FIELD),
-        emulated_field(CHOICE_FIELD),
-    ):
+    for name in edit_fields(CHOICE_FIELD):
         assert f'name="{name}"' in markup
 
 
@@ -187,7 +190,8 @@ def test_a_carried_statement_outranks_the_control(owned_library, deck):
     carried = EditStatement(None, True).encode()
 
     settled = settle_edit(
-        owned_library, post(**{CHOICE_FIELD: carried, device_field(CHOICE_FIELD): ""})
+        owned_library,
+        post(**{CHOICE_FIELD: carried, edit_fields(CHOICE_FIELD).device: ""}),
     )
 
     assert settled == carried
@@ -403,10 +407,12 @@ def test_an_undo_to_a_device_removed_since_leaves_the_row(
     client_in.post(act_url(EDIT), {**fields, **control(device=str(deck.pk)).dict()})
     remove_device(desktop)
 
-    _undo(client_in, fields[TOKEN_FIELD])
+    answer = _undo(client_in, fields[TOKEN_FIELD])
 
     session.refresh_from_db()
     assert session.device_id == deck.pk
+    said = [str(message) for message in get_messages(answer.wsgi_request)]
+    assert any("Restore it before choosing it" in sentence for sentence in said), said
 
 
 def test_a_refused_settle_asks_again_on_the_same_token(
@@ -434,3 +440,172 @@ def test_the_question_drops_the_labels_three_dots(
 
     assert "Edit: 1 session?" in body
     assert "Edit…:" not in body
+
+
+def test_a_carried_statement_that_is_garbled_asks_again(
+    client_in, owned_user, owned_library, game
+):
+    session = a_session(owned_user, tracked_run(owned_library, game))
+    fields = _token(client_in, session)
+
+    again = client_in.post(act_url(EDIT), {**fields, CHOICE_FIELD: "not json"})
+
+    assert again.status_code == 400
+    assert STATEMENT_UNREADABLE in again.content.decode()
+    assert posted(again)[TOKEN_FIELD] == fields[TOKEN_FIELD]
+
+
+def _run_every_chunk(client, answer, between=None):
+    """Post each waypoint until no row is left."""
+    while posted(answer).get(TOKEN_FIELD):
+        fields = posted(answer)
+        if not json.loads(fields[PROGRESS_FIELD])["rows"]:
+            break
+        if between is not None:
+            between()
+        answer = client.post(act_url(EDIT), fields)
+    return answer
+
+
+def test_a_batch_spanning_chunks_carries_one_statement(
+    client_in, owned_user, owned_library, game, deck, monkeypatch
+):
+    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    run = tracked_run(owned_library, game)
+    sessions = [a_session(owned_user, run, A_DAY + timedelta(days=d)) for d in range(3)]
+    fields = _token(client_in, *sessions)
+
+    first = client_in.post(
+        act_url(EDIT),
+        {**fields, **control(device=str(deck.pk), emulated=EMULATED).dict()},
+    )
+    assert CHOICE_FIELD in posted(first)
+    _run_every_chunk(client_in, first)
+
+    for session in sessions:
+        session.refresh_from_db()
+        assert session.device_id == deck.pk
+        assert session.emulated is True
+
+
+def test_a_device_removed_between_chunks_asks_again_for_the_rest(
+    client_in, owned_user, owned_library, game, deck, monkeypatch
+):
+    monkeypatch.setattr("games.views.bulk.CHUNK_BUDGET", timedelta(0))
+    run = tracked_run(owned_library, game)
+    sessions = [a_session(owned_user, run, A_DAY + timedelta(days=d)) for d in range(3)]
+    fields = _token(client_in, *sessions)
+    first = client_in.post(
+        act_url(EDIT), {**fields, **control(device=str(deck.pk)).dict()}
+    )
+    remove_device(deck)
+
+    again = client_in.post(act_url(EDIT), posted(first))
+
+    assert again.status_code == 400
+    assert DEVICE_GONE in again.content.decode()
+    assert posted(again)[TOKEN_FIELD] == fields[TOKEN_FIELD]
+    devices = []
+    for session in sessions:
+        session.refresh_from_db()
+        devices.append(session.device_id)
+    assert devices.count(deck.pk) == 1
+    assert devices.count(None) == 2
+
+
+def test_a_chunk_posted_twice_edits_each_row_once(
+    client_in, owned_user, owned_library, game, deck
+):
+    session = a_session(owned_user, tracked_run(owned_library, game))
+    fields = {**_token(client_in, session), **control(device=str(deck.pk)).dict()}
+
+    client_in.post(act_url(EDIT), fields)
+    appended = LibraryEvent.objects.filter(aggregate_id=session.pk).count()
+    again = client_in.post(act_url(EDIT), fields)
+
+    assert LibraryEvent.objects.filter(aggregate_id=session.pk).count() == appended
+    said = [str(message) for message in get_messages(again.wsgi_request)]
+    assert not any("refused" in sentence for sentence in said), said
+
+
+def test_an_undo_puts_back_both_facts(client_in, owned_user, owned_library, game, deck):
+    session = a_session(owned_user, tracked_run(owned_library, game))
+    fields = _token(client_in, session)
+    client_in.post(
+        act_url(EDIT),
+        {**fields, **control(device=str(deck.pk), emulated=EMULATED).dict()},
+    )
+
+    _undo(client_in, fields[TOKEN_FIELD])
+
+    session.refresh_from_db()
+    assert session.device_id is None
+    assert session.emulated is False
+
+
+def test_an_undo_reaches_a_row_whose_catalog_game_was_removed(
+    client_in, owned_user, owned_library, game, deck
+):
+    """`library_sessions` hides the row; the Undo still reaches it."""
+    session = a_session(owned_user, tracked_run(owned_library, game))
+    fields = _token(client_in, session)
+    client_in.post(act_url(EDIT), {**fields, **control(device=str(deck.pk)).dict()})
+    remove(game)
+
+    _undo(client_in, fields[TOKEN_FIELD])
+
+    session.refresh_from_db()
+    assert session.device_id is None
+
+
+def test_values_before_read_an_earlier_emulated_change(owned_user, owned_library, game):
+    session = a_session(owned_user, tracked_run(owned_library, game))
+    describe_session(owned_user, session, emulated=True, correlation_id=uuid.uuid7())
+    session.refresh_from_db()
+    batch = uuid.uuid7()
+    _edit(owned_user, session, EditStatement(None, False), batch)
+
+    assert values_before(owned_library, session.pk, batch) == EditStatement(None, True)
+
+
+def test_a_change_with_no_creation_before_it_is_a_defect(
+    owned_user, owned_library, game, deck
+):
+    """A stream that states no creation: the row is wrong."""
+    session = duration_only_row(tracked_run(owned_library, game), A_DAY, AN_HOUR)
+    batch = uuid.uuid7()
+    _edit(owned_user, session, EditStatement(StatedDevice(deck.pk), None), batch)
+
+    with pytest.raises(RowUnreadable):
+        values_before(owned_library, session.pk, batch)
+
+
+def test_a_run_handed_no_statement_is_a_defect(owned_user, owned_library, game):
+    session = a_session(owned_user, tracked_run(owned_library, game))
+
+    with pytest.raises(CommandFailed) as failed:
+        edit_one(
+            owned_user,
+            session,
+            choice=None,
+            idempotency_key=str(uuid.uuid7()),
+            correlation_id=uuid.uuid7(),
+        )
+    assert failed.value.status_code == DEFECT_STATUS
+
+
+def test_a_statement_that_cannot_be_read_back_is_a_defect(
+    owned_user, owned_library, game
+):
+    """Settle answered it this request, so a failed read is ours."""
+    session = a_session(owned_user, tracked_run(owned_library, game))
+
+    with pytest.raises(CommandFailed) as failed:
+        edit_one(
+            owned_user,
+            session,
+            choice="not json",
+            idempotency_key=str(uuid.uuid7()),
+            correlation_id=uuid.uuid7(),
+        )
+    assert failed.value.status_code == DEFECT_STATUS
