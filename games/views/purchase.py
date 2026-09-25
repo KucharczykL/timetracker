@@ -78,7 +78,7 @@ from games.views.removal import (
     restore_and_return,
 )
 from games.views.returns import origin_from, return_url
-from games.writes.answers import CommandFailed
+from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from games.writes.playergame import new_correlation_id, record_facts
 
 
@@ -534,6 +534,8 @@ def view_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
 
 def _refund(user: User, purchase: Purchase) -> None:
     """Abandon every game of the purchase, then mark it refunded."""
+    if purchase.date_refunded is not None:
+        raise CommandFailed("This purchase is already refunded.", CONFLICT_STATUS)
     correlation_id = new_correlation_id()
     games = list(purchase.games.all())
     for abandoned, game in enumerate(games):
@@ -548,9 +550,14 @@ def _refund(user: User, purchase: Purchase) -> None:
             if not abandoned:
                 raise
             #: Earlier games stay abandoned; retry is safe.
+            retry = (
+                " Refunding again is safe."
+                if failure.status_code == CONFLICT_STATUS
+                else ""
+            )
             raise CommandFailed(
                 f"{failure.message} {abandoned} of {len(games)} games were "
-                "abandoned before this one. Refunding again is safe.",
+                f"abandoned before this one.{retry}",
                 failure.status_code,
             ) from failure
     purchase.refund()
@@ -585,7 +592,9 @@ def _split(purchase: Purchase) -> int:
     games = list(purchase.games.all())
     count = len(games)
     if count < 2:
-        return count
+        raise CommandFailed(
+            "Only a purchase of two or more games can be split.", CONFLICT_STATUS
+        )
     #: No dispatch here: run_in_transaction refuses to nest.
     with transaction.atomic():
         share = purchase.price / count
@@ -617,12 +626,12 @@ def split_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     purchase = owned_or_404(
         Purchase.objects.for_library(library), library, id=purchase_id
     )
-    count = purchase.num_purchases
+    #: What _split counts, removed games included.
+    count = purchase.games.count()
 
     def split() -> None:
         parts = _split(purchase)
-        if parts > 1:
-            messages.success(request, f"Split into {parts} purchases")
+        messages.success(request, f"Split into {parts} purchases")
 
     return confirm_and_apply(
         request,
@@ -637,7 +646,5 @@ def split_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
         confirm_label="Split",
         fallback="games:list_purchases",
         #: The bundle's own page is gone once it splits.
-        reject=reverse("games:view_purchase", args=[purchase_id])
-        if count > 1
-        else None,
+        reject=reverse("games:view_purchase", args=[purchase_id]),
     )

@@ -131,11 +131,12 @@ class SplitPurchaseTest(TestCase):
             self.assertEqual(purchase.price, 15.0)  # 30 / 2, split evenly
             self.assertTrue(purchase.needs_price_update)
 
-    def test_split_is_noop_for_single_game_purchase(self):
+    def test_split_refuses_a_single_game_purchase(self):
         single = self._bundle([self.game_a], price=10.0)
 
         response = self.client.post(reverse("games:split_purchase", args=[single.id]))
 
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.status_code, 409)
+        self.assertIn("two or more games", response.content.decode())
         self.assertTrue(Purchase.objects.filter(id=single.id).exists())
         self.assertEqual(Purchase.objects.for_library(self.library).count(), 1)

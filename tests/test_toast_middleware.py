@@ -5,7 +5,7 @@ from django.contrib.messages.storage.fallback import FallbackStorage
 from django.http import HttpRequest, HttpResponse, HttpResponseRedirect
 from django.test import TestCase, override_settings
 
-from games.toast_middleware import ToastMessagesMiddleware
+from games.toast_middleware import RELOAD_HEADER, ToastMessagesMiddleware
 
 
 def get_response_ok(request):
@@ -139,6 +139,20 @@ class ToastMessagesMiddlewareTest(TestCase):
         self.assertNotIn("X-Events", response)
         #: Reading them is what loses them:
         #: MessageMiddleware stores an empty queue after.
+        self.assertFalse(request._messages.used)
+
+    def test_a_reloading_answer_keeps_its_messages_for_the_reload(self):
+        request = self._build_request()
+        request._messages.add(message_constants.SUCCESS, "Saved")
+
+        def reloading(request):
+            response = HttpResponse(status=200)
+            response[RELOAD_HEADER] = "true"
+            return response
+
+        response = ToastMessagesMiddleware(reloading)(request)
+
+        self.assertNotIn("X-Events", response)
         self.assertFalse(request._messages.used)
 
     @override_settings(DEBUG=True)

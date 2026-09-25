@@ -11,6 +11,8 @@ export function sectionFrom(html: string, id: string): Node[] | null {
 
 class RefreshingSectionElement extends HTMLElement {
   private event = "";
+  //: Next refresh aborts it; answers never cross.
+  private abortController: AbortController | null = null;
 
   connectedCallback(): void {
     this.event = readRefreshingSectionProps(this).event;
@@ -19,6 +21,8 @@ class RefreshingSectionElement extends HTMLElement {
 
   disconnectedCallback(): void {
     if (this.event) document.body.removeEventListener(this.event, this.onEvent);
+    this.abortController?.abort();
+    this.abortController = null;
   }
 
   private readonly onEvent = (): void => {
@@ -26,20 +30,29 @@ class RefreshingSectionElement extends HTMLElement {
   };
 
   private async refresh(): Promise<void> {
+    this.abortController?.abort();
+    const controller = new AbortController();
+    this.abortController = controller;
+    const url = window.location.href;
     try {
-      const response = await fetch(window.location.href, {
+      const response = await fetch(url, {
         headers: { Accept: "text/html" },
+        signal: controller.signal,
       });
-      if (!response.ok) throw new Error(`GET → ${response.status}`);
+      if (!response.ok) throw new Error(`GET ${url} → ${response.status}`);
+      if (response.redirected) throw new Error(`GET ${url} → ${response.url}`);
       const children = sectionFrom(await response.text(), this.id);
-      if (children === null) throw new Error(`no #${this.id} in the answer`);
+      if (children === null) throw new Error(`no #${this.id} in ${url}`);
+      if (controller.signal.aborted) return;
       this.replaceChildren(...children);
     } catch (error) {
-      reportClientError(
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      const id = reportClientError(
         "refreshing-section",
         String((error as Error)?.message ?? error),
         { toast: false },
       );
+      window.toast(`This section didn't refresh (error ${id}) — reload the page`, "error");
     }
   }
 }

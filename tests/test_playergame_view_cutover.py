@@ -401,7 +401,10 @@ def test_a_failed_refund_answers_the_refusal_on_the_confirmation(
 
     #: The confirmation comes back, the sentence above its question.
     assert response.status_code == status
-    assert "Nothing was recorded; try again." in response.content.decode()
+    body = response.content.decode()
+    assert "Nothing was recorded; try again." in body
+    #: A defect admits no second press.
+    assert (">Refund</button>" in body) is (status == CONFLICT_STATUS)
     purchase.refresh_from_db()
     assert purchase.date_refunded is None
 
@@ -482,5 +485,8 @@ def test_a_partly_applied_refund_says_how_far_it_went(
     assert response.status_code == status
     #: The first game is abandoned and stays that way, so the
     #: refusal has to say so rather than claim nothing landed.
-    assert "1 of 2 games were abandoned" in response.content.decode()
+    body = response.content.decode()
+    assert "1 of 2 games were abandoned" in body
+    #: Only a refusal invites the retry; a defect offers no button.
+    assert ("Refunding again is safe." in body) is (status == CONFLICT_STATUS)
     assert PlayerGame.objects.filter(status=PlayerGameStatus.ABANDONED).count() == 1
