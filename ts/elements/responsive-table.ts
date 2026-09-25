@@ -153,9 +153,8 @@ export class ResponsiveTableElement extends HTMLElement {
     }
     const body = this.table.querySelector("tbody");
     if (body && typeof MutationObserver !== "undefined") {
-      // Content changes alter widths; attributes are not observed:
-      // measurement itself toggles classes and inline styles, and must not
-      // re-trigger itself.
+      // Content changes alter widths; attributes do not.
+      // Measuring toggles classes and inline styles, which would re-trigger it.
       this.mutationObserver = new MutationObserver(() => this.queueRelayout());
       this.mutationObserver.observe(body, {
         childList: true,

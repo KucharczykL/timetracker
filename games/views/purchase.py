@@ -5,6 +5,7 @@ from uuid import UUID
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import QuerySet
 from django.http import (
@@ -589,14 +590,18 @@ def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
 
 def _split(purchase: Purchase) -> int:
     """One purchase per game; answers how many."""
-    games = list(purchase.games.all())
-    count = len(games)
-    if count < 2:
-        raise CommandFailed(
-            "Only a purchase of two or more games can be split.", CONFLICT_STATUS
-        )
     #: No dispatch here: run_in_transaction refuses to nest.
     with transaction.atomic():
+        #: Locked: a second split waits, then refuses.
+        purchase = Purchase.objects.select_for_update().get(pk=purchase.pk)
+        if purchase.removed_at is not None:
+            raise CommandFailed("This purchase is already split.", CONFLICT_STATUS)
+        games = list(purchase.games.all())
+        count = len(games)
+        if count < 2:
+            raise CommandFailed(
+                "Only a purchase of two or more games can be split.", CONFLICT_STATUS
+            )
         share = purchase.price / count
         for game in games:
             new_purchase = Purchase(
@@ -613,7 +618,12 @@ def _split(purchase: Purchase) -> int:
                 platform=purchase.platform,
                 needs_price_update=True,
             )
-            new_purchase.save()
+            try:
+                new_purchase.save()
+            except ValidationError as error:
+                raise CommandFailed(
+                    " ".join(error.messages), CONFLICT_STATUS
+                ) from error
             new_purchase.games.set([game])
         #: The parts carry the facts now.
         remove(purchase)

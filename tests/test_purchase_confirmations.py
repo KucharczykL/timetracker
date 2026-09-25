@@ -8,6 +8,8 @@ from django.urls import reverse
 from common.returns import action_url
 from games.models import Game, Purchase
 from games.removal import remove
+from games.views.purchase import _split
+from games.writes.answers import CommandFailed
 
 #: Transactional: a refund dispatches.
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -90,3 +92,29 @@ def test_the_split_counts_what_it_splits(logged_in, owned_library):
     assert response["Location"] == reverse("games:list_purchases")
     parts = Purchase.objects.filter(library=owned_library, removed_at__isnull=True)
     assert parts.count() == 3
+
+
+def test_a_second_split_of_one_bundle_refuses(logged_in, owned_library):
+    purchase = bundle(owned_library, "Tunic", "Outer Wilds")
+    #: Read before the first split removed it.
+    stale = Purchase.objects.get(pk=purchase.pk)
+    logged_in.post(reverse("games:split_purchase", args=[purchase.id]))
+
+    with pytest.raises(CommandFailed, match="already split"):
+        _split(stale)
+
+    live = Purchase.objects.filter(library=owned_library, removed_at__isnull=True)
+    assert live.count() == 2
+
+
+def test_a_split_the_model_refuses_answers_its_sentence(logged_in, owned_library):
+    purchase = bundle(owned_library, "Tunic", "Outer Wilds")
+    #: Older than the rule save() enforces.
+    Purchase.objects.filter(pk=purchase.pk).update(type=Purchase.DLC)
+
+    response = logged_in.post(reverse("games:split_purchase", args=[purchase.id]))
+
+    assert response.status_code == 409
+    assert "must have a related game" in response.content.decode()
+    live = Purchase.objects.filter(library=owned_library, removed_at__isnull=True)
+    assert list(live) == [purchase]

@@ -487,6 +487,6 @@ def test_a_partly_applied_refund_says_how_far_it_went(
     #: refusal has to say so rather than claim nothing landed.
     body = response.content.decode()
     assert "1 of 2 games were abandoned" in body
-    #: Only a refusal invites the retry; a defect offers no button.
+    #: Only a refusal invites the retry.
     assert ("Refunding again is safe." in body) is (status == CONFLICT_STATUS)
     assert PlayerGame.objects.filter(status=PlayerGameStatus.ABANDONED).count() == 1
