@@ -1,7 +1,9 @@
 import pytest
 from devices import create_device
 from django.core.exceptions import ValidationError
+from django.db import connection
 
+from games.events.rebuild import RebuildMode, rebuild_projections
 from games.models import Device, UserLibraryPreferences
 from timetracker import settings_commands
 
@@ -90,3 +92,28 @@ def test_library_default_device_api_rejects_foreign_and_clears(client, user, use
         UserLibraryPreferences.objects.get(library=user.library).default_device_id
         is None
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_default_device_key_survives_a_rebuild(owned_library):
+    """No foreign key blocks the swap."""
+    device = create_device(owned_library, "Deck")
+    owned_library.preferences.set_default_device(device)
+
+    rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
+
+    preferences = UserLibraryPreferences.objects.get(library=owned_library)
+    assert preferences.default_device == device
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_default_device_row_lost_reads_as_none(owned_library):
+    """A lost device reads as no default."""
+    device = create_device(owned_library, "Deck")
+    owned_library.preferences.set_default_device(device)
+    with connection.cursor() as cursor:
+        cursor.execute("DELETE FROM games_device WHERE id = %s", [device.pk])
+
+    preferences = UserLibraryPreferences.objects.get(library=owned_library)
+    assert preferences.default_device_id == device.pk
+    assert preferences.default_device is None

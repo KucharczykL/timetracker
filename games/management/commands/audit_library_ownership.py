@@ -3,7 +3,7 @@ from __future__ import annotations
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
-from django.db.models import F, Q
+from django.db.models import Exists, F, OuterRef, Q
 
 from games.models import (
     Device,
@@ -204,15 +204,19 @@ class Command(BaseCommand):
             .values_list("purchase_id", "game_id")
         ):
             violations.append(f"Purchase.games: purchase {purchase_id}, game {game_id}")
-        for library_id, device_id in (
-            UserLibraryPreferences.objects.filter(
-                Q(library_id__in=library_ids)
-                | Q(default_device__library_id__in=library_ids),
-                default_device__isnull=False,
-            )
-            .exclude(default_device__library_id=F("library_id"))
-            .values_list("library_id", "default_device_id")
-        ):
+        #: A key, not a relation.
+        foreign_device = Device.objects.filter(
+            pk=OuterRef("default_device_id")
+        ).exclude(library_id=OuterRef("library_id"))
+        for library_id, device_id in UserLibraryPreferences.objects.filter(
+            Q(library_id__in=library_ids)
+            | Q(
+                default_device_id__in=Device.objects.filter(
+                    library_id__in=library_ids
+                ).values("pk")
+            ),
+            Exists(foreign_device),
+        ).values_list("library_id", "default_device_id"):
             violations.append(
                 "UserLibraryPreferences.default_device: "
                 f"library {library_id}, device {device_id}"

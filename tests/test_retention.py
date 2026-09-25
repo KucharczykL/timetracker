@@ -389,6 +389,8 @@ def test_removing_a_device_keeps_what_names_it(owned_library, game, device):
     assert PlayerSession.objects.get(pk=session.pk).device_id == device.pk
     preferences.refresh_from_db()
     assert preferences.default_device_id == device.pk
+    #: Removed: the key stays, reads none.
+    assert preferences.default_device is None
 
 
 # --- the reference still resolves --------------------------------------------

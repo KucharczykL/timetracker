@@ -1364,12 +1364,8 @@ class ProjectionModel(models.Model):
     the shadow copy starts a new identity sequence; `games.checks` refuses an
     auto-increment key. No model outside the projections may point to a
     projection row, because the swap deletes and inserts each row. No check
-    enforces that last rule. One reference is admitted:
-    `UserLibraryPreferences.default_device`, a library preference naming a
-    device. The swap reinserts the same key inside one transaction, and every
-    foreign key is deferred, so the preference survives a rebuild; a replay
-    that loses the device is refused at commit, and the device kind's stream
-    check refuses that replay before it starts.
+    enforces that last rule. A conventional row naming a projection row
+    stores its key alone, as `UserLibraryPreferences.default_device_id` does.
 
     A projection row and every projection row it names belong to one
     library. A row across the boundary is restricted at purge, so the
@@ -2109,34 +2105,44 @@ class UserLibraryPreferences(models.Model):
         on_delete=models.CASCADE,
         related_name="preferences",
     )
-    default_device = models.ForeignKey(
-        Device,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="+",
-    )
+    #: A device key, never a foreign key.
+    default_device_id = models.UUIDField(null=True, blank=True, default=None)
     updated_at = models.DateTimeField(default=timezone.now)
+
+    @property
+    def default_device(self) -> Device | None:
+        """The live default device, or none."""
+        if self.default_device_id is None:
+            return None
+        return (
+            Device.objects.for_library(self.library)
+            .filter(pk=self.default_device_id)
+            .first()
+        )
 
     def clean(self):
         super().clean()
-        if self.default_device_id is not None:
-            _validate_related_library(
-                self.library_id,
-                self.default_device,
-                "default_device",
+        if (
+            self.default_device_id is not None
+            and not Device.objects.filter(
+                library_id=self.library_id, pk=self.default_device_id
+            ).exists()
+        ):
+            raise ValidationError(
+                {"default_device": "Default device must belong to the same library."}
             )
 
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
 
-    def set_default_device(self, device):
-        if self.default_device_id == getattr(device, "pk", None):
+    def set_default_device(self, device: Device | None) -> bool:
+        device_id = None if device is None else device.pk
+        if self.default_device_id == device_id:
             return False
-        self.default_device = device
+        self.default_device_id = device_id
         self.updated_at = timezone.now()
-        self.save(update_fields=["default_device", "updated_at"])
+        self.save(update_fields=["default_device_id", "updated_at"])
         return True
 
 

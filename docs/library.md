@@ -38,10 +38,9 @@ username for its accessible menu label.
 
 The default Device is a Library preference. The Library page presents it as a
 scoped model choice and saves it through the fixed
-`/api/library/default-device` endpoint. The preference is conventional data
-naming a projection row, the one such reference `ProjectionModel` admits: a
-rebuild reinserts the device under the same key inside one transaction, and
-the deferred foreign key survives it. Its effective source is retained as
+`/api/library/default-device` endpoint. The preference stores the device's key
+and no foreign key, because a device is a projection row, which a rebuild
+removes and inserts again. It reads as the live device of that key, or none. Its effective source is retained as
 machine-readable field metadata. A source badge is shown only when the
 effective source differs from that setting's normal source.
 

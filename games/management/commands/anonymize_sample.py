@@ -36,6 +36,7 @@ from games.models import (
     PlayerSession,
     Playthrough,
     Purchase,
+    UserLibraryPreferences,
 )
 from timetracker.temporal import TemporalPrecision, TemporalValue
 from timetracker.uuidv7 import UUIDv7Field, uuid7_at
@@ -464,6 +465,11 @@ class Command(BaseCommand):
             replacements = self._resequence_identity(model)
             self._remap_referrers(model, replacements)
             replacements_by_model[model] = replacements
+        #: A key, not a relation.
+        for old_id, new_id in replacements_by_model[Device].items():
+            UserLibraryPreferences.objects.filter(default_device_id=old_id).update(
+                default_device_id=new_id
+            )
         return replacements_by_model
 
     @staticmethod
@@ -721,8 +727,7 @@ class Command(BaseCommand):
         """Point every foreign key naming this model's identity at the new value.
 
         `get_fields(include_hidden=True)`, not `related_objects`: the latter
-        drops relations whose `related_name` ends in "+", which would silently
-        strand `UserLibraryPreferences.default_device`.
+        drops relations whose `related_name` ends in "+".
 
         Many-to-many relations are walked too, via their through model's own
         foreign key. Whether a relation needs remapping is decided by what it

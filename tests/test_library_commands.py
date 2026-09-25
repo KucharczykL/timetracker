@@ -577,7 +577,7 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
     )
     PlayerSession.objects.filter(pk=outsider_session.pk).update(device=owner_device)
     UserLibraryPreferences.objects.filter(library=outsider.library).update(
-        default_device=owner_device
+        default_device_id=owner_device.pk
     )
     Playthrough.objects.create(
         id=uuid7(),

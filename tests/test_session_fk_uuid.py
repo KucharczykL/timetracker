@@ -109,16 +109,14 @@ def test_database_rejects_a_session_naming_a_device_uuid_no_device_owns(game):
         PlayerSession.objects.filter(pk=row.pk).update(device_id=uuid.uuid7())
 
 
-def test_database_rejects_preferences_naming_a_device_uuid_no_device_owns(
-    owned_library,
-):
+def test_a_preference_naming_no_device_reads_none(owned_library):
+    """A dangling key reads none."""
+    UserLibraryPreferences.objects.filter(library=owned_library).update(
+        default_device_id=uuid.uuid7()
+    )
+
     preferences = UserLibraryPreferences.objects.get(library=owned_library)
-    # Same reason as above: save() calls clean(), which dereferences
-    # self.default_device.
-    with pytest.raises(IntegrityError), transaction.atomic():
-        UserLibraryPreferences.objects.filter(pk=preferences.pk).update(
-            default_device_id=uuid.uuid7()
-        )
+    assert preferences.default_device is None
 
 
 # --- Filters (integer criterion values, one join deeper) --------------------

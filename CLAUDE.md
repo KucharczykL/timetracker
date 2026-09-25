@@ -186,8 +186,9 @@ docs/           — Additional documentation
   `submission` key; `POST /api/devices/` runs it too. Still a `ReferencedRow`,
   out of `REMOVABLE_MODELS`. Its reference kind is `PROJECTED`: replay checks a
   device reference against the stream's creation event, never the table the
-  replay writes. `UserLibraryPreferences.default_device` is the one
-  conventional key into a projection `ProjectionModel` admits. Migration 0015
+  replay writes. `UserLibraryPreferences.default_device_id` names a device by
+  key, no foreign key, since nothing outside the projections points at a
+  projection row; `default_device` reads the live one or none. Migration 0015
   converted every existing row under its own key through
   `games/backfill/device.py`, which `load_sample_data` also runs until the
   fixture is regenerated. Contract is

@@ -169,7 +169,7 @@ def test_library_preferences_reject_another_library_default_device(libraries):
     device_b = create_device(library=library_b, name="B device")
 
     preferences = library_a.preferences
-    preferences.default_device = device_b
+    preferences.default_device_id = device_b.pk
     with pytest.raises(ValidationError):
         preferences.save()
 
@@ -186,7 +186,7 @@ def test_library_preference_device_changes_only_update_timestamp_on_change(libra
     unchanged_at = timezone.now() - timedelta(days=1)
     preferences = library_a.preferences
     UserLibraryPreferences.objects.filter(pk=preferences.pk).update(
-        default_device=device,
+        default_device_id=device.pk,
         updated_at=unchanged_at,
     )
     preferences.refresh_from_db()

@@ -55,10 +55,11 @@ event stops before the replay starts.
 
 ## Default device
 
-`UserLibraryPreferences.default_device` points to a projection row. This
-is the only such exception. The swap writes the same keys again in one
-transaction, and the foreign key is deferred. Thus the preference
-continues to point to the device after a rebuild.
+A conventional row must not have a foreign key to a projection row. A
+rebuild removes and inserts all projection rows, thus such a key can stop
+the rebuild. `UserLibraryPreferences` keeps the device key in
+`default_device_id`, without a foreign key. Migration `0016` removes the
+old foreign key. The preference gives the live device, or none.
 
 ## Write paths
 
@@ -86,6 +87,5 @@ Migration `0014` changes the schema. Migration `0015` runs
 
 - `make verify-replay-parity` is clean after the migration.
 - `make render-pages` shows differences only on the Devices list and on
-  the seven filter-builder pages. The builder pages lose the comparison
-  operands that went through `library` to all devices.
+  the seven filter-builder pages.
 - `make check` is green.

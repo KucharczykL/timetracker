@@ -781,20 +781,12 @@ class ReassignedIdentityTest(TransactionTestCase):
                 )
             self.assertEqual(_day_of(event), stated)
 
-    def test_hidden_device_referrer_follows_the_new_uuid(self):
-        """UserLibraryPreferences.default_device is related_name="+".
-
-        Django's `_meta.related_objects` filters hidden relations out, so a
-        referrer walk built on it strands this one on a uuid no Device carries.
-        The row is never dumped, so only the database shows it - and only from
-        inside the command's transaction, since `_write_fixture` runs after the
-        rollback.
-        """
+    def test_the_default_device_key_follows_the_new_uuid(self):
+        """A key, not a relation: remapped."""
         _build_dataset()
         library = get_user_model().objects.get(username="sample-source").library
         preferences = library.preferences
-        preferences.default_device = Device.objects.get(library=library)
-        preferences.save()
+        preferences.set_default_device(Device.objects.get(library=library))
 
         with transaction.atomic():
             AnonymizeCommand()._reassign_uuids()
