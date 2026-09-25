@@ -16,8 +16,7 @@ class Migration(migrations.Migration):
             name="created_at",
             field=models.DateTimeField(editable=False),
         ),
-        #: Django cannot compile an altered db_default of NOT_PROVIDED,
-        #: so the state and the column move apart.
+        #: Django cannot drop db_default; raw SQL does.
         migrations.SeparateDatabaseAndState(
             state_operations=[
                 migrations.AlterField(

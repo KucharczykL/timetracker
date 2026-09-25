@@ -75,12 +75,7 @@ def resolve_reference(
 def unresolved_among(
     kind: ReferenceKind[Any], references: QuerySet[LibraryEventReference]
 ) -> QuerySet[LibraryEventReference]:
-    """The references of `kind` naming no row.
-
-    A PROJECTED row is looked for where the replay finds it: among
-    its own library's events, as the creation under the same id.
-    The table is what the replay writes, so it proves nothing.
-    """
+    """References naming no row; PROJECTED checks events."""
     if kind.resolution is Resolution.PROJECTED:
         #: `~Exists` plans as an anti-join.
         return references.filter(

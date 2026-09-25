@@ -16,11 +16,7 @@ type DeviceTypeValue = Literal[
 
 @with_config(STRICT_SCHEMA)
 class DeviceCreatedPayload(TypedDict):
-    """The device, as the library first states it.
-
-    `name` admits any text, blank included: the table admits it, and
-    the command, not the payload, refuses what a person may not state.
-    """
+    """The device as first stated."""
 
     name: str
     type: DeviceTypeValue
@@ -83,7 +79,7 @@ for _spec in (
 def device_created(
     name: str, device_type: DeviceTypeValue, *, device_id: uuid.UUID | None = None
 ) -> NewEvent:
-    """A new device; its key minted here unless one is kept."""
+    """A new device; key minted unless given."""
     return DEVICE_CREATED.new(
         aggregate_id=uuid.uuid7() if device_id is None else device_id,
         payload={"name": name, "type": device_type},

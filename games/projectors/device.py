@@ -1,4 +1,4 @@
-"""Current-state rows for the devices a library owns."""
+"""Current-state rows for owned devices."""
 
 from typing import ClassVar
 

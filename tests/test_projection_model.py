@@ -350,7 +350,7 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
     "games.Device": {
         #: The projector's mark.
         "removed_at": None,
-        #: Stated by every creation; the choice the form offers first.
+        #: Every creation states it; form's first choice.
         "type": "Unknown",
     },
     "games.HistoricalPlaytime": {

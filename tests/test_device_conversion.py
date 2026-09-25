@@ -1,4 +1,4 @@
-"""Every device a deployment holds, stated as the events that make it."""
+"""Existing devices, stated as their events."""
 
 import uuid
 from datetime import UTC, date, datetime, timedelta
@@ -25,7 +25,7 @@ REMOVED = datetime(2025, 6, 7, 8, 9, 10, tzinfo=UTC)
 
 
 def _row(library, name, *, device_type=Device.PC, removed_at=None) -> Device:
-    """A row as a deployment holds it: written, with no event."""
+    """A deployment row with no event."""
     return Device.objects.create(
         id=uuid.uuid7(),
         library=library,
@@ -74,7 +74,7 @@ def test_a_removed_device_converts_removed(owned_library):
 
 
 def test_a_blank_name_converts_as_stored(owned_library):
-    """The command would refuse it; the conversion states what the table holds."""
+    """Converted as stored, though commands refuse."""
     device = _row(owned_library, "")
 
     convert_devices()
@@ -137,7 +137,7 @@ def test_a_session_naming_a_converted_device_keeps_naming_it(owned_library):
         idempotency_key="session",
     )
 
-    #: Before the conversion, the stream names a device it never created.
+    #: Unconverted: the stream never created it.
     assert not reconcile_references(owned_library).resolves
 
     convert_devices()
@@ -148,7 +148,7 @@ def test_a_session_naming_a_converted_device_keeps_naming_it(owned_library):
 
 
 def test_a_database_holding_no_device_reads_nothing_more(owned_library):
-    """So a fresh one migrates under any later schema."""
+    """Fresh databases migrate under later schemas."""
     assert convert_devices() == DeviceConversion((), 0)
 
 

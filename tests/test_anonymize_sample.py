@@ -119,15 +119,12 @@ def _record(owner, run, timing, *, device=None, note=""):
 
 
 def fields_of_device(event) -> bool:
-    """Whether a dumped event speaks about a device."""
+    """Whether the event concerns a device."""
     return event["fields"]["event_type"].startswith("library.device.")
 
 
 def _device_names(by_model):
-    """Each dumped device's key and name, read from its creation.
-
-    The table is a projection, so the dump carries its events, not its rows.
-    """
+    """Device keys and names from creations."""
     return {
         event["fields"]["aggregate_id"]: event["fields"]["payload"]["name"]
         for event in _events_of(by_model, "library.device.created")
@@ -414,8 +411,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             payload = event["fields"]["payload"]
             if "note" in payload:
                 self.assertEqual(payload["note"], "")
-            #: A device keeps the name its row would have carried, so a
-            #: replay rebuilds the rows the dump no longer holds.
+            #: Device events keep names for replay.
             if "name" in payload and not fields_of_device(event):
                 self.assertEqual(payload["name"], "")
             self.assertEqual(event["fields"]["source_metadata"], {})
@@ -462,7 +458,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             _day_of(by_mode["corrected"]), date(2021, 7, 1) + offset, "same run"
         )
 
-        #: Device reference re-captured at the device's own key.
+        #: Reference re-captured at the device's key.
         devices = _device_names(by_model)
         device = timed["payload"]["device"]
         self.assertIn(device["id"], devices)
@@ -526,7 +522,7 @@ class AnonymizeSampleTest(TransactionTestCase):
             3,
         )
         events = LibraryEvent.objects.filter(library=target.library)
-        #: Nine, one calendar, one device, three created, one removed.
+        #: Nine, calendar, device, three created, one removed.
         self.assertEqual(events.count(), 15)
         self.assertTrue(all(event.pk.version == 7 for event in events))
         sessions = PlayerSession.objects.filter(library=target.library)

@@ -1,4 +1,4 @@
-"""The five Remove acts: what they offer, and what the command refuses."""
+"""The five Remove acts."""
 
 import html as html_module
 import json

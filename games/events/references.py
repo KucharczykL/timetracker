@@ -83,11 +83,11 @@ class Reference(TypedDict):
 class Resolution(StrEnum):
     """Where a replay finds the row."""
 
-    #: In a table the replay does not write.
+    #: In a table replay never writes.
     REQUIRED = "required"
     #: Nowhere: the snapshot is everything.
     EVIDENCE_ONLY = "evidence_only"
-    #: In the same stream, which creates the row it names.
+    #: Created by the stream naming it.
     PROJECTED = "projected"
 
 
@@ -99,7 +99,7 @@ class ReferenceKind[M: models.Model]:
     model: type[M]
     capture: Callable[[M], Reference]
     resolution: Resolution
-    #: The event that creates a PROJECTED kind's row; none otherwise.
+    #: Creation event type; PROJECTED kinds only.
     created_by: CreationEventType | None = None
 
     def __post_init__(self) -> None:
@@ -227,7 +227,7 @@ DEFAULT_REFERENCE_KINDS.register(
         name="device",
         model=Device,
         capture=_capture_device,
-        #: A projection: the stream that names a device creates it.
+        #: Its own stream creates the device.
         resolution=Resolution.PROJECTED,
         created_by="library.device.created",
     )

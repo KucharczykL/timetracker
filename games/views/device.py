@@ -92,7 +92,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
     devices = sort.queryset
     warn_unknown_sort(request, sort.unknown, entity="device")
     devices, page_obj, elided_page_range = paginate(devices, find)
-    #: Read once: the cells and the rows walk the same page.
+    #: One read serves cells and rows.
     page_devices = list(devices)
 
     hidden, picker = column_choice(request, "devices", DEVICE_COLUMNS)
@@ -111,7 +111,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
     data: TableData = {
         "caption": "Devices",
         "columns": kept_columns,
-        #: Every row carries its acts in the slot, rendered or not.
+        #: Every row carries its menu.
         "menu_slot": True,
         "sort_terms": sort.terms,
         "rows": [

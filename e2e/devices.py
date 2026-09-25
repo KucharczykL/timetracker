@@ -1,9 +1,4 @@
-"""States a device the way the application does: as events.
-
-`append_command`, not `dispatch`: a test under `django_db` holds a
-transaction, and dispatch refuses to nest one. The atomic block nests
-as a savepoint there and opens the transaction elsewhere.
-"""
+"""Test devices via append_command; dispatch cannot nest."""
 
 import uuid
 
@@ -29,20 +24,20 @@ def _state(library: UserLibrary, command: Command) -> CommandResult:
 def create_device(
     library: UserLibrary, name: str = "Steam Deck", type: str = Device.UNKNOWN
 ) -> Device:
-    """A live device of `library`, created by its event."""
+    """A live device, created by event."""
     result = _state(library, CreateDevice(name=name, type=type))
     return Device.objects.get(pk=created_aggregate_id(result))
 
 
 def remove_device(device: Device) -> Device:
-    """The device removed by its event, read back."""
+    """Remove a device by event."""
     _state(device.library, RemoveDevice(device_id=device.pk))
     device.refresh_from_db()
     return device
 
 
 def restore_device(device: Device) -> Device:
-    """The device restored by its event, read back."""
+    """Restore a device by event."""
     _state(device.library, RestoreDevice(device_id=device.pk))
     device.refresh_from_db()
     return device

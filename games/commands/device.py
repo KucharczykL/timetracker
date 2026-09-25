@@ -23,7 +23,7 @@ from games.events.dispatch import (
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import Device
 
-#: The column's width; a longer name cannot be stored.
+#: Longer names do not fit the column.
 NAME_MAX_LENGTH = cast(int, Device._meta.get_field("name").max_length)
 
 NAME_REQUIRED = "Give the device a name."
@@ -44,7 +44,7 @@ def check_name(name: str) -> None:
 
 
 def check_type(device_type: str) -> DeviceTypeValue:
-    """The type as the payload spells it, or a refusal."""
+    """The payload's type, or a refusal."""
     if device_type not in get_args(DeviceTypeValue.__value__):
         raise CommandRejected(
             f"{device_type!r} is not a device type.", sentence=UNKNOWN_TYPE
@@ -71,7 +71,7 @@ class CreateDevice(Command):
 
 @dataclass(frozen=True, slots=True)
 class DescribeDevice(Command):
-    """State a device's name, its type, or both; `None` states nothing."""
+    """State name, type, or both."""
 
     command_name: ClassVar[CommandName] = CommandName.DEVICE_DESCRIBE
     device_id: uuid.UUID
@@ -99,7 +99,7 @@ class DescribeDevice(Command):
 
 @dataclass(frozen=True, slots=True)
 class RemoveDevice(Command):
-    """Take a device out of the library; what names it keeps naming it."""
+    """Remove a device; references stay."""
 
     command_name: ClassVar[CommandName] = CommandName.DEVICE_REMOVE
     device_id: uuid.UUID

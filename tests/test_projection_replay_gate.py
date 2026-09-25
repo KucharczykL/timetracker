@@ -280,7 +280,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         DescribeDevice(device_id=device.pk, name="Steam Deck", type=Device.HANDHELD),
         "describe-device",
     )
-    #: Left removed, so a stamped removed_at reaches the snapshot.
+    #: Left removed so removed_at reaches snapshot.
     retired = Device.objects.get(
         pk=_created_id(run(CreateDevice(name="Tower", type=Device.PC), "create-tower"))
     )

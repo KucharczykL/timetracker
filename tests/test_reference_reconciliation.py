@@ -172,11 +172,7 @@ def forget_replayed_events():
 
 
 def bare_device(library, name: str, type: str = Device.UNKNOWN) -> Device:
-    """A row no event made.
-
-    This module's streams hold probe events alone, and its wiring
-    reads no other type, so the row is written past the command.
-    """
+    """A bare row; probe events only here."""
     return Device.objects.create(
         pk=uuid.uuid7(),
         library=library,

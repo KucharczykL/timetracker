@@ -1,4 +1,4 @@
-"""A person removes two devices from the Devices list and takes it back."""
+"""Remove two devices, then undo."""
 
 from devices import create_device
 from django.urls import reverse

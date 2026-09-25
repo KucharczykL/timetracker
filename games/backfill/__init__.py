@@ -1,1 +1,1 @@
-"""One-time passes that state rows a deployment already holds as events."""
+"""One-time passes stating existing rows as events."""

@@ -3664,7 +3664,6 @@ class TestComparableColumnsCrossModel:
         # Platform declares the ownership FK. Its columns are a Library
         # source; other single-valued columns remain model-sourced. Reverse
         # relations are multi-valued blocks (#282) and may have another source.
-        # A device is a projection, so its library is scoping, not data.
         from games.models import Platform
 
         for model in (Platform,):
@@ -4840,7 +4839,7 @@ class TestFieldComparisonEndToEnd:
             name="CrossModelIncludesTest", icon="crossmodelincludestest"
         )
         game = Game.objects.create(name="WikilessGame", platform=platform)
-        #: No command states an empty name; the row is written past it.
+        #: Commands refuse empty names; write directly.
         device_with_empty_name = create_device(game.library, "Unnamed", Device.UNKNOWN)
         Device.objects.filter(pk=device_with_empty_name.pk).update(name="")
         device_with_empty_name.refresh_from_db()

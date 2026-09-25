@@ -1414,11 +1414,7 @@ def library_identity_constraint() -> models.UniqueConstraint:
 
 
 class Device(ProjectionModel, ReferencedRow):
-    """A device the library owns: a projection, written by `Devices`.
-
-    Still a `ReferencedRow`: events name devices, and a shell that
-    destroys one is refused. The projector never destroys a row.
-    """
+    """Owned device; only the Devices projector writes."""
 
     objects = RemovableLibraryQuerySet.as_manager()
 

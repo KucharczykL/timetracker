@@ -138,7 +138,7 @@ def test_directly_owned_forms_save_new_rows_in_the_explicit_library(
 
 
 def test_the_device_form_states_facts_and_saves_no_row(world):
-    """A device is a projection: its form states a command, never a row."""
+    """The device form states commands, saves nothing."""
     form = DeviceForm(
         data={"name": "New private device", "type": Device.UNKNOWN, "submission": ""},
         library=world.owner_library,

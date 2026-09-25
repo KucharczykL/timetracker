@@ -48,7 +48,7 @@ def raw_insert_without_identity(model, **field_values):
 
 
 def make_device(library, **overrides):
-    """A row written past the command: only a constraint test names its id."""
+    """A raw row, for constraint tests only."""
     field_values = {
         "library": library,
         "name": "Living Room PC",
@@ -88,10 +88,7 @@ def test_filterpreset_created_through_the_orm_gets_a_distinct_version_7_uuid(
 
 
 def test_raw_device_insert_omitting_uuid_is_refused(owned_library):
-    """A device is a projection: its key is the event's, never minted.
-
-    Every other column is stated, so the id alone is what is refused.
-    """
+    """No id default: projection keys are events'."""
     with pytest.raises(IntegrityError, match='"id"'), transaction.atomic():
         raw_insert_without_identity(
             Device, library=owned_library, name="Raw Device", created_at=timezone.now()

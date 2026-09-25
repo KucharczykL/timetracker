@@ -480,8 +480,7 @@ class Command(BaseCommand):
         kinds = event_types.reference_kinds
         #: Aggregate order: undated follows dated.
         events = list(LibraryEvent.objects.order_by("aggregate_id", "sequence"))
-        #: A device is keyed like its row, and named like it: its events
-        #: rebuild the table the dump no longer carries.
+        #: Keyed and named like its row.
         device_replacements = replacements_by_model.get(Device, {})
         device_names = dict(Device.objects.values_list("pk", "name"))
 
@@ -492,7 +491,7 @@ class Command(BaseCommand):
         sessions_recorded = 0
         for event in events:
             library_keyed = event.aggregate_id == library_id
-            #: A device's facts carry no day, so nothing shifts.
+            #: Device facts carry no day.
             offset = (
                 timedelta(0)
                 if library_keyed or device_keyed(event)
@@ -591,7 +590,7 @@ class Command(BaseCommand):
                 ],
                 lambda event: event.aggregate_id,
             ),
-            #: The row's own replacement, which every reference already names.
+            #: The row's replacement; references already name it.
             **{
                 event.aggregate_id: device_replacements.get(
                     event.aggregate_id, event.aggregate_id

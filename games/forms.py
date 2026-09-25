@@ -1620,19 +1620,14 @@ class PlatformForm(
 
 
 class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
-    """One device, as a person states it.
-
-    A plain Form: the submit states commands and writes no row. The
-    command states every rule; the fields refuse only what a browser
-    would, so both paths name one set of rules.
-    """
+    """One device, stated as commands."""
 
     name = forms.CharField(
         max_length=Device._meta.get_field("name").max_length,
         widget=autofocus_input_widget,
     )
     type = forms.ChoiceField(choices=Device.DEVICE_TYPES, initial=Device.UNKNOWN)
-    #: Rendered once per page; a repeated submit replays.
+    #: One key per page; resubmits replay.
     submission = forms.UUIDField(widget=forms.HiddenInput, initial=uuid.uuid7)
 
     def __init__(

@@ -1,4 +1,4 @@
-"""One row per device, rebuilt from its events."""
+"""Device rows rebuilt from events."""
 
 import uuid
 from datetime import date, timedelta
@@ -46,7 +46,7 @@ def test_every_event_replays_to_the_same_rows(owned_library):
 
 
 def test_a_rebuild_puts_back_a_lost_row(owned_library):
-    """The replay writes the row, so a lost one is recovered, not refused."""
+    """A drifted row is rebuilt."""
     device = create_device(owned_library, "Deck", Device.HANDHELD)
     before = Device.objects.filter(pk=device.pk).values().get()
     Device.objects.filter(pk=device.pk).update(name="Drifted")
@@ -57,15 +57,11 @@ def test_a_rebuild_puts_back_a_lost_row(owned_library):
 
 
 def test_a_lost_row_is_rebuilt_rather_than_refused(owned_library):
-    """Why the kind is PROJECTED: the stream, not the table, holds the device.
-
-    A REQUIRED kind would check the live table before the first event
-    and refuse the one rebuild that repairs the loss.
-    """
+    """PROJECTED: a lost row is rebuilt."""
     device = create_device(owned_library, "Deck", Device.HANDHELD)
     before = Device.objects.filter(pk=device.pk).values().get()
     with connection.cursor() as cursor:
-        #: Past the ORM guard: the loss a rebuild exists for.
+        #: Bypass the ORM guard: a lost row.
         cursor.execute("DELETE FROM games_device WHERE id = %s", [device.pk])
 
     assert reconcile_references(owned_library).resolves
@@ -75,7 +71,7 @@ def test_a_lost_row_is_rebuilt_rather_than_refused(owned_library):
 
 
 def test_a_stream_naming_a_device_it_never_created_is_refused(owned_library):
-    """The stream check, where the table would have answered yes."""
+    """The stream check catches uncreated devices."""
     stray = Device.objects.create(
         id=uuid.uuid7(),
         library=owned_library,

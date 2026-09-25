@@ -1,8 +1,4 @@
-"""What one device row offers, behind its trigger.
-
-Not in `common/components/`: reading `games.bulk_actions` there
-closes a cycle through that table's foot imports.
-"""
+"""What one device row offers."""
 
 from common.components import DropdownLinkItem, RowActionMenu
 from common.components.core import Node
@@ -12,7 +8,7 @@ from games.models import Device
 
 
 def device_row_menu(device: Device, origin: OriginUrl | None) -> Node:
-    """Edit and Remove, the two acts one device row has."""
+    """Edit and Remove."""
     return RowActionMenu(
         [
             DropdownLinkItem(
@@ -27,7 +23,7 @@ def device_row_menu(device: Device, origin: OriginUrl | None) -> Node:
                 danger=True,
             ),
         ],
-        #: The type too: nothing refuses two devices of one name.
+        #: Names may repeat; the type disambiguates.
         label=f"{device.name} ({device.get_type_display()}) actions",
         id=f"device-menu-{device.pk}",
     )

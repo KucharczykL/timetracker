@@ -1,15 +1,4 @@
-"""State every device a deployment holds as the events that make it.
-
-The migration that converts devices runs this, and so does
-`load_sample_data`, whose committed fixture holds device rows and no
-device events. Both go when a squash elides that migration and the
-fixture has been regenerated with the events.
-
-Commands are not used: a command refuses a blank name the table may
-hold, and this states what the table holds. Every row keeps its key,
-so every session, record, preference and recorded reference keeps
-naming it.
-"""
+"""Convert existing devices into their events."""
 
 import uuid
 from collections.abc import Sequence
@@ -45,7 +34,7 @@ ISSUE = 1274
 
 
 class DeviceConversionRefused(Exception):
-    """A row the pass cannot state, or a replay that disagrees."""
+    """An unconvertible row or a differing replay."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,7 +51,7 @@ def _key(act: str, device_id: uuid.UUID) -> IdempotencyKey:
 
 
 def _refuse_unknown_types(devices: QuerySet[Device]) -> None:
-    """Every row the payload cannot spell, named before anything appends."""
+    """Name rows whose type no payload spells."""
     known = get_args(DeviceTypeValue.__value__)
     unknown = list(
         devices.exclude(type__in=known)
@@ -81,11 +70,7 @@ def _refuse_unknown_types(devices: QuerySet[Device]) -> None:
 
 
 class DeviceRow(NamedTuple):
-    """The columns the pass reads, and no others.
-
-    Named, not a model instance: a model reads every column the code
-    declares, and a later migration adding one would break this one.
-    """
+    """Named columns only; later columns cannot break."""
 
     pk: uuid.UUID
     library_id: uuid.UUID
@@ -122,12 +107,7 @@ def _state(
 
 
 def convert_devices(library: UserLibrary | None = None) -> DeviceConversion:
-    """State each device holding no creation event; answer what moved.
-
-    Every library, or the one named. A database holding no device to
-    state reads nothing more, so a fresh one migrates under any later
-    schema.
-    """
+    """State unconverted devices; report what moved."""
     devices = Device.objects.all()
     if library is not None:
         devices = devices.filter(library=library)
@@ -151,13 +131,12 @@ def convert_devices(library: UserLibrary | None = None) -> DeviceConversion:
             "removed_at",
         )
     ]
-    #: Read by key alone: only the columns every version holds.
+    #: Key columns only; stable across versions.
     libraries = UserLibrary.objects.only("pk", "user_id").in_bulk(
         {row.library_id for row in rows}
     )
     owners = User.objects.only("pk").in_bulk({row.owner_id for row in rows})
-    #: One transaction, nested where a caller holds one: the pass
-    #: states every device or none.
+    #: All devices or none; nests safely.
     with transaction.atomic():
         for row in rows:
             _convert(row, library=libraries[row.library_id], actor=owners[row.owner_id])
@@ -166,12 +145,12 @@ def convert_devices(library: UserLibrary | None = None) -> DeviceConversion:
 
 
 def _convert(device: DeviceRow, *, library: UserLibrary, actor: User) -> None:
-    """The row's creation, and its removal where it is removed."""
+    """Creation, and removal where removed."""
     correlation_id = uuid.uuid7()
     _state(
         device,
         act="created",
-        #: Checked first: every stored type is one the payload spells.
+        #: Types checked first; payload spells each.
         event=device_created(
             device.name, cast(DeviceTypeValue, device.type), device_id=device.pk
         ),
@@ -191,13 +170,7 @@ def _convert(device: DeviceRow, *, library: UserLibrary, actor: User) -> None:
 
 
 def _require_the_schema_this_pass_was_written_for() -> None:
-    """Refuse, naming the remedy, where later code meets this schema.
-
-    The pass appends and replays through live classes. Where a later
-    release declares a column this database does not hold yet, it
-    would fail on a bare SQL error; the remedy is to deploy the release
-    carrying this migration first, and migrate onward from there.
-    """
+    """Refuse when code outruns the schema."""
     models: tuple[type[Model], ...] = (
         LibraryEvent,
         LibraryEventReference,
@@ -230,11 +203,7 @@ def _require_the_schema_this_pass_was_written_for() -> None:
 
 
 def require_replay_parity(libraries: Sequence[UserLibrary]) -> None:
-    """Refuse unless each library's replay reproduces its tables.
-
-    The live classes, named: a migration's historical models do not
-    subclass `ProjectionModel`, so the registry over them is empty.
-    """
+    """Refuse unless replay reproduces the tables."""
     models = projection_models()
     for library in libraries:
         report = rebuild_projections(library, mode=RebuildMode.CHECK, models=models)

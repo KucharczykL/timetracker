@@ -1,4 +1,4 @@
-"""Remove devices, in bulk and per row, and undo the batch."""
+"""Remove devices in bulk; undo the batch."""
 
 import json
 import uuid

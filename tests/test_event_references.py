@@ -97,7 +97,7 @@ WIRING = EventWiring(event_types=EVENT_TYPES)
 
 @pytest.fixture
 def device(owned_library):
-    """A bare row: this module appends its own stand-in events only."""
+    """A bare row; probe events only."""
     return Device.objects.create(
         id=uuid.uuid7(),
         library=owned_library,
@@ -369,7 +369,7 @@ def test_every_shipped_kind_must_resolve_at_replay():
 
 
 def test_a_device_resolves_in_its_own_stream():
-    """A device is a projection: the stream naming it creates it."""
+    """Devices resolve in their own stream."""
     device = DEFAULT_REFERENCE_KINDS.kind_for("device")
     assert device.resolution is Resolution.PROJECTED
     assert device.created_by == "library.device.created"

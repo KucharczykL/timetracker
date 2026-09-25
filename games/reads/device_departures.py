@@ -1,10 +1,4 @@
-"""How many sessions still name a device a person removes.
-
-Both confirmations of one act read it: the per-row page and the
-batch's. A removed device keeps its sessions naming it; the count
-says how many will name a removed device. Records are not counted,
-so the two confirmations say the same thing.
-"""
+"""Sessions still naming a removed device."""
 
 from django.db.models import OuterRef, QuerySet
 
@@ -19,7 +13,7 @@ NAMING_SESSIONS = "naming_sessions"
 def with_naming_sessions(
     devices: QuerySet[Device], library: UserLibrary
 ) -> QuerySet[Device]:
-    """Each device with the live sessions naming it, as a subquery."""
+    """Annotate each device's naming sessions."""
     return devices.annotate(
         **{
             NAMING_SESSIONS: counted(

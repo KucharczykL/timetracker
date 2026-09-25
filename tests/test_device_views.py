@@ -1,4 +1,4 @@
-"""Add, edit, remove and restore a device through its pages."""
+"""Device pages: add, edit, remove, restore."""
 
 import pytest
 from devices import create_device, remove_device

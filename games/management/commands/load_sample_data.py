@@ -154,9 +154,7 @@ class Command(BaseCommand):
                     state.requested_currency,
                 )
 
-            #: A fixture holding device rows and no device events states
-            #: them first, as the migration did: the rebuild below would
-            #: otherwise swap the loaded rows out for none.
+            #: Convert device rows before rebuilding them.
             try:
                 convert_devices(user.library)
             except DeviceConversionRefused as error:
@@ -351,7 +349,7 @@ class Command(BaseCommand):
             except UnknownReferenceKind as error:
                 raise CommandError(f"Sample {subject}: {error}") from error
 
-        #: A PROJECTED row is made by an event the fixture carries.
+        #: Fixture events create PROJECTED rows.
         created = {
             (record["fields"]["event_type"], str(record["fields"]["aggregate_id"]))
             for record in records

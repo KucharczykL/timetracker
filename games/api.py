@@ -590,7 +590,7 @@ def create_device(request, payload: RowIn):
     if held is not None:
         messages.info(request, f"{held.name} is already in your library")
         return Status(201, CreatedRow(value=str(held.pk), label=held.name))
-    #: The add page's form, so one set of rules refuses on both paths.
+    #: Same rules as the add page.
     form = DeviceForm(
         data={
             "name": payload.name.strip(),

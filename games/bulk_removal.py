@@ -413,7 +413,7 @@ def device_scope(library: UserLibrary, filter_json: FilterJson) -> QuerySet[Devi
 def device_resolution(
     library: UserLibrary, keys: Sequence[uuid.UUID]
 ) -> Resolution[Device]:
-    """Keys to devices, each carrying the sessions still naming it."""
+    """Keys to devices, with naming sessions."""
     wanted = list(dict.fromkeys(keys))
     rows = tuple(
         with_naming_sessions(

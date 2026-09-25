@@ -1,7 +1,4 @@
-"""State a fact about a device; answer a refusal.
-
-An actor goes in here, not a request.
-"""
+"""Device writes; refusals become answers."""
 
 import uuid
 
@@ -35,8 +32,7 @@ def _dispatch(
         command,
         actor=actor,
         library=actor.library,
-        #: Caller's key, else one per request. Not `or`: a blank key
-        #: would be minted over rather than refused.
+        #: Caller's key else fresh; blank refused.
         idempotency_key=(
             str(uuid.uuid7()) if idempotency_key is None else idempotency_key
         ),
@@ -54,11 +50,7 @@ def create_device(
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
 ) -> Device:
-    """State a new device; answer its row.
-
-    Creation has no Unchanged, so the key is what makes a repeated
-    submit replay rather than create twice.
-    """
+    """State a new device; answer its row."""
     with answered(SUBJECT):
         result = _dispatch(
             CreateDevice(name=name, type=device_type),
@@ -80,7 +72,7 @@ def describe_device(
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
 ) -> CommandResult:
-    """State the device's name, its type, or both."""
+    """State name, type, or both."""
     with answered(SUBJECT):
         return _dispatch(
             DescribeDevice(device_id=device.pk, name=name, type=device_type),

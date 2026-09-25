@@ -56,7 +56,7 @@ def _event_types(device: Device) -> list[str]:
 
 
 def test_the_payload_spells_every_stored_type():
-    """The recorded vocabulary and the column's choices are one list."""
+    """Payload types match the column's choices."""
     from typing import get_args
 
     assert set(get_args(DeviceTypeValue.__value__)) == {
@@ -95,7 +95,7 @@ def test_a_creation_is_refused(owned_library, name, device_type, sentence):
 
 
 def test_a_held_name_is_not_refused(owned_library):
-    """The column states no rule; the picker answers a held name itself."""
+    """Names may repeat; the picker dedupes."""
     create_device(owned_library, "Deck")
     create_device(owned_library, "Deck")
 
