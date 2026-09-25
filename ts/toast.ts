@@ -1,4 +1,4 @@
-/** The toast API and the HX-Trigger bridge; <toast-stack> renders. */
+/** The toast API and the X-Events bridge; <toast-stack> renders. */
 import { reportClientError } from "./client-errors.js";
 import type { ToastId, ToastOptions } from "./elements/toast-stack.js";
 
@@ -15,18 +15,18 @@ window.removeToast = (id: ToastId): void => {
   window.dispatchEvent(new CustomEvent("remove-toast", { detail: { id } }));
 };
 
-/** Dispatch the Django/HTMX events carried by one fetch response. */
-function dispatchHtmxTriggers(response: Response): void {
-  const htmxTrigger = response.headers.get("HX-Trigger");
-  if (!htmxTrigger) return;
+/** Dispatches a response's X-Events header events. */
+function dispatchResponseEvents(response: Response): void {
+  const eventsHeader = response.headers.get("X-Events");
+  if (!eventsHeader) return;
 
   let triggers;
   try {
-    triggers = JSON.parse(htmxTrigger);
+    triggers = JSON.parse(eventsHeader);
   } catch (error) {
     // Circular through the toast: report without it.
     reportClientError(
-      "fetchWithHtmxTriggers[HX-Trigger]",
+      "fetchWithEvents[X-Events]",
       String((error as Error)?.message ?? error),
       { toast: false },
     );
@@ -49,16 +49,16 @@ function dispatchHtmxTriggers(response: Response): void {
     });
   });
 }
-window.dispatchHtmxTriggers = dispatchHtmxTriggers;
+window.dispatchResponseEvents = dispatchResponseEvents;
 
-/** fetch() that dispatches HX-Trigger events; "deferred" lets the caller validate first. */
-window.fetchWithHtmxTriggers = function fetchWithHtmxTriggers(
+/** fetch() dispatching X-Events; "deferred" lets callers validate. */
+window.fetchWithEvents = function fetchWithEvents(
   url: RequestInfo | URL,
   options: RequestInit = {},
   triggerDispatch: "immediate" | "deferred" = "immediate",
 ): Promise<Response> {
   return fetch(url, options).then((response) => {
-    if (triggerDispatch === "immediate") dispatchHtmxTriggers(response);
+    if (triggerDispatch === "immediate") dispatchResponseEvents(response);
     return response;
   });
 };

@@ -8,9 +8,7 @@ export function selectPayloadValue(
   return emptyIsNull && rawValue === "" ? null : rawValue;
 }
 
-// Value-selector behavior: pick an option → swap the toggle label, reflect the
-// selection (aria-selected), close, PATCH the server, and fire the body event
-// that drives cross-widget htmx refresh. Config comes from data-* on the host.
+// Picks an option, PATCHes, fires its body event.
 registerBehavior("select", {
   menuOptions: (): Partial<MenuOptions> => ({
     itemSelector: "[data-option]",
@@ -42,8 +40,20 @@ registerBehavior("select", {
           other.setAttribute("aria-selected", other === option ? "true" : "false");
         }
         controller.close();
+        const revert = (): void => {
+          if (label && previousLabelHtml !== undefined) {
+            label.innerHTML = previousLabelHtml;
+          }
+          options.forEach((other, index) => {
+            const previous = previousSelected[index];
+            if (previous === null) other.removeAttribute("aria-selected");
+            else other.setAttribute("aria-selected", previous);
+          });
+        };
+        const saidNothing = (): void =>
+          window.toast("Couldn't save your change — please try again.", "error");
         window
-          .fetchWithHtmxTriggers(patchUrl, {
+          .fetchWithEvents(patchUrl, {
             method: "PATCH",
             headers: { "Content-Type": "application/json", "X-CSRFToken": csrf },
             body: JSON.stringify({
@@ -51,22 +61,19 @@ registerBehavior("select", {
             }),
           })
           .then((response) => {
-            // fetch resolves on 4xx/5xx, so an unchecked response would make a
-            // rejected change look successful — check the status explicitly.
-            if (!response.ok) throw new Error(`PATCH ${patchUrl} → ${response.status}`);
-            document.body.dispatchEvent(new CustomEvent(event));
+            if (response.ok) {
+              document.body.dispatchEvent(new CustomEvent(event));
+              return;
+            }
+            console.error("Failed to update", patchUrl, response.status);
+            revert();
+            //: A refusal's own sentence already toasted.
+            if (!response.headers.get("X-Events")) saidNothing();
           })
           .catch((error) => {
             console.error("Failed to update", patchUrl, error);
-            if (label && previousLabelHtml !== undefined) {
-              label.innerHTML = previousLabelHtml;
-            }
-            options.forEach((other, index) => {
-              const previous = previousSelected[index];
-              if (previous === null) other.removeAttribute("aria-selected");
-              else other.setAttribute("aria-selected", previous);
-            });
-            window.toast("Couldn't save your change — please try again.", "error");
+            revert();
+            saidNothing();
           });
       };
       option.addEventListener("click", handler);

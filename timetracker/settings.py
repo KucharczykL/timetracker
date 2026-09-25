@@ -75,7 +75,6 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "template_partials",
-    "django_htmx",
     "django_q",
 ]
 
@@ -102,14 +101,12 @@ MIDDLEWARE = [
     "common.middleware.TimezoneActivationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "django_htmx.middleware.HtmxMiddleware",
-    "games.htmx_middleware.HTMXMessagesMiddleware",
+    "games.toast_middleware.ToastMessagesMiddleware",
 ]
 
 if DEBUG:
     MIDDLEWARE.append("debug_toolbar.middleware.DebugToolbarMiddleware")
     INTERNAL_IPS = ["127.0.0.1"]
-    DEBUG_TOOLBAR_CONFIG = {"ROOT_TAG_EXTRA_ATTRS": "hx-preserve"}
 
 ROOT_URLCONF = "timetracker.urls"
 #: Django refuses a session naming a backend it does not list, so the

@@ -2,7 +2,7 @@
 
 The mark is the first thing in a card and the first thing in the DOM, so a
 card reads as the option it is rather than as a row with a control at the
-end. Content goes through the htpy ``[]`` slot, as ``Modal`` does.
+end. Content goes through the htpy ``[]`` slot.
 """
 
 from __future__ import annotations

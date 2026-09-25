@@ -121,10 +121,10 @@ def test_game_header_has_log_this_game_link(game, rendered):
 
 
 def test_sessions_section_is_read_only(game, rendered):
-    """Game-detail sessions table is plain data: no interactive row swap, no
+    """Game-detail sessions table is plain data: no
     per-row action buttons, no section-header add/resume buttons (#55)."""
     session = PlayerSession.objects.get(playthrough__player_game__game=game)
-    # No canonical interactive list row (id + htmx device-changed swap)
+    # No canonical interactive list row (id + device-changed wiring)
     assert "session-row-" not in rendered
     assert "device-changed" not in rendered
     # No per-row edit/remove session actions

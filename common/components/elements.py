@@ -22,8 +22,8 @@ _RESERVED_ATTR_KWARGS = frozenset({"attributes", "children"})
 def _attrs_from_kwargs(attrs: dict[str, object]) -> list[HTMLAttribute]:
     """Translate htpy-style attribute kwargs to (name, value) pairs.
 
-    ``class_`` -> ``class`` (trailing underscore stripped); ``hx_get`` ->
-    ``hx-get`` (inner underscores to hyphens); ``True`` -> ``name="name"``
+    ``class_`` -> ``class`` (trailing underscore stripped); ``data_row`` ->
+    ``data-row`` (inner underscores to hyphens); ``True`` -> ``name="name"``
     (boolean-attribute form); ``False`` / ``None`` -> omitted."""
     for reserved in _RESERVED_ATTR_KWARGS:
         if reserved in attrs:

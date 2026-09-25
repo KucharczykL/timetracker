@@ -158,7 +158,7 @@ def test_user_patch_and_get_round_trip(
 
 def test_user_patch_emits_saved_success_toast(auth_client, no_currency_env):
     response = _patch(auth_client, _user_patch_url("DEFAULT_PURCHASE_CURRENCY"), "EUR")
-    trigger = json.loads(response.headers["HX-Trigger"])
+    trigger = json.loads(response.headers["X-Events"])
     assert trigger["show-toast"][-1] == {
         "message": "Default purchase currency saved",
         "type": "success",
@@ -629,8 +629,8 @@ def test_a_zone_patch_answers_the_calendar_delta(auth_client, user):
         "year_moved": 0,
     }
     #: The control reloads the page, which reads the toast.
-    assert "HX-Trigger" not in response.headers
-    assert response.headers["HX-Refresh"] == "true"
+    assert "X-Events" not in response.headers
+    assert response.headers["X-Reload"] == "true"
     page = auth_client.get(reverse("games:settings")).content.decode()
     assert (
         "Days now counted in Asia/Tokyo: 0 sessions, 0 moved to another day, "

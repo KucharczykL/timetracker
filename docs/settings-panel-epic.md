@@ -63,13 +63,13 @@ targets and the corrections from adversarial review:
 - **Live-save behavior:** the **custom element** `SelectDropdown` behavior
   ([ts/elements/behaviors/select.ts:63](ts/elements/behaviors/select.ts)) behind
   `SessionDeviceSelector`/`GameStatusSelector` ([common/components/domain.py:241](common/components/domain.py)) —
-  optimistic `fetchWithHtmxTriggers` PATCH with revert-on-error. It is a **custom element, not
+  optimistic `fetchWithEvents` PATCH with revert-on-error. It is a **custom element, not
   Alpine** (Alpine only backs three `x-mask` inputs). It currently toasts on *error* only — success is
   silent — so Stage 3's "saved" feedback is a small **addition**, not pure reuse. New behavior
   follows the `register_element`/`gen_element_types` recipe
   ([common/components/custom_elements.py](common/components/custom_elements.py)).
-- **Save feedback:** toast middleware (`HX-Trigger`→`show-toast`,
-  [games/htmx_middleware.py:60](games/htmx_middleware.py)); confirmed it fires for Ninja PATCH
+- **Save feedback:** toast middleware (`X-Events`→`show-toast`,
+  [games/toast_middleware.py](games/toast_middleware.py)); confirmed it fires for Ninja PATCH
   (API already uses `django.contrib.messages`, [games/api.py:112](games/api.py)).
 - **Page shell / width:** `render_page()` + `ContentContainer` ([common/layout.py](common/layout.py)).
 - **Per-user store + API shape:** copy `FilterPreset` + its preset router

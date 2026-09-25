@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 from uuid import uuid7
 from zoneinfo import ZoneInfo
 
-import pytest
 from devices import create_device
 from django.conf import settings
 from django.contrib.auth.models import User
@@ -160,33 +159,3 @@ class DataTableGateTest(TestCase):
         header_cells = html.split("<thead", 1)[1].split("</thead>", 1)[0].split("<th")
         note_header = next(cell for cell in header_cells if ">Note<" in cell)
         self.assertNotIn("whitespace-nowrap", note_header)
-
-
-@pytest.mark.django_db(transaction=True)
-def test_refunded_row_fragment_keeps_the_tables_policy(client, owned_user) -> None:
-    """The refund re-renders one row alone.
-
-    A fragment built without the column list renders under a different width
-    policy than the rows it lands between.
-    """
-    #: Out of the TestCase, because the refund dispatches.
-    client.force_login(owned_user)
-    library = owned_user.library
-    platform = Platform.objects.create(
-        library=library, name="PC", icon="pc", group="PC"
-    )
-    game = Game.objects.create(library=library, name="A Game", platform=platform)
-    purchase = Purchase.objects.create(
-        platform=platform,
-        date_purchased=BASE,
-        price=10,
-        price_currency="USD",
-        library=library,
-    )
-    purchase.games.add(game)
-
-    response = client.post(reverse("games:refund_purchase", args=[purchase.pk]))
-
-    row = response.content.decode()
-    assert "max-md:max-w-0" in row
-    assert "whitespace-nowrap" in row.split("<td", 1)[1]

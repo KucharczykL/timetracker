@@ -26,7 +26,7 @@ function stubEndpoints(rows: Row[]) {
       json: () => Promise.resolve({ value: "new-key", label: "New Game Plus" }),
     } as Response);
   });
-  window.fetchWithHtmxTriggers = createMock as unknown as typeof window.fetchWithHtmxTriggers;
+  window.fetchWithEvents = createMock as unknown as typeof window.fetchWithEvents;
   return { searchMock, createMock };
 }
 
@@ -197,8 +197,8 @@ describe("<search-select> create row (#1080)", () => {
     vi.stubGlobal("fetch", vi.fn(() =>
       Promise.resolve({ ok: true, json: () => Promise.resolve([]) } as Response)
     ));
-    window.fetchWithHtmxTriggers =
-      createMock as unknown as typeof window.fetchWithHtmxTriggers;
+    window.fetchWithEvents =
+      createMock as unknown as typeof window.fetchWithEvents;
     const host = mount();
     await type(host, "New Game Plus");
 
@@ -237,8 +237,8 @@ describe("<search-select> create row (#1080)", () => {
     const refused = vi.fn(() =>
       Promise.resolve({ ok: false, status: 422, json: () => Promise.resolve({}) } as Response)
     );
-    window.fetchWithHtmxTriggers =
-      refused as unknown as typeof window.fetchWithHtmxTriggers;
+    window.fetchWithEvents =
+      refused as unknown as typeof window.fetchWithEvents;
     const host = mount();
     await type(host, "New Game Plus");
 
@@ -253,8 +253,8 @@ describe("<search-select> create row (#1080)", () => {
 
   it("reports a POST that never lands", async () => {
     stubEndpoints([]);
-    window.fetchWithHtmxTriggers = (() =>
-      Promise.reject(new Error("offline"))) as unknown as typeof window.fetchWithHtmxTriggers;
+    window.fetchWithEvents = (() =>
+      Promise.reject(new Error("offline"))) as unknown as typeof window.fetchWithEvents;
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const host = mount();
 
@@ -274,13 +274,13 @@ describe("<search-select> create row (#1080)", () => {
   it("reports an answer that queues no sentence of its own", async () => {
     stubEndpoints([]);
     //: A schema refusal, which no middleware turns into a toast.
-    window.fetchWithHtmxTriggers = (() =>
+    window.fetchWithEvents = (() =>
       Promise.resolve({
         ok: false,
         status: 422,
         headers: new Headers(),
         json: () => Promise.resolve({ detail: "Field required" }),
-      } as Response)) as unknown as typeof window.fetchWithHtmxTriggers;
+      } as Response)) as unknown as typeof window.fetchWithEvents;
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     const host = mount();
 
@@ -297,13 +297,13 @@ describe("<search-select> create row (#1080)", () => {
 
   it("reports nothing when the refusal queued its own sentence", async () => {
     stubEndpoints([]);
-    window.fetchWithHtmxTriggers = (() =>
+    window.fetchWithEvents = (() =>
       Promise.resolve({
         ok: false,
         status: 422,
-        headers: new Headers({ "HX-Trigger": "{}" }),
+        headers: new Headers({ "X-Events": "{}" }),
         json: () => Promise.resolve({ detail: "That name is taken." }),
-      } as Response)) as unknown as typeof window.fetchWithHtmxTriggers;
+      } as Response)) as unknown as typeof window.fetchWithEvents;
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
     consoleError.mockClear();
     const host = mount();

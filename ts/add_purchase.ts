@@ -1,4 +1,4 @@
-import { disableElementsWhenTrue, onSwap } from "./utils.js";
+import { disableElementsWhenTrue, onReady } from "./utils.js";
 import type {
   SearchSelectChangeDetail,
   SearchSelectElement,
@@ -142,7 +142,7 @@ document.addEventListener("search-select:change", (event) => {
   syncRelatedGameFromSelection();
 });
 
-onSwap("#id_separate_prices", (checkbox) => {
+onReady("#id_separate_prices", (checkbox) => {
   checkbox.addEventListener("change", () =>
     applyPricingMode((checkbox as HTMLInputElement).checked)
   );
@@ -152,7 +152,7 @@ function setupElementHandlers(): void {
   disableElementsWhenTrue("#id_type", "game", ["#id_name", "#id_related_game"]);
 }
 
-onSwap("#id_type", (typeSelect) => {
+onReady("#id_type", (typeSelect) => {
   setupElementHandlers();
   typeSelect.addEventListener("change", () => {
     setupElementHandlers();

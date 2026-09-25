@@ -154,10 +154,12 @@ path**, so verify against `make check` before pushing when possible.
 ## Architecture
 
 Django 6+ monolith (v1.7.0), single app (`games/`), tracks video game purchases,
-play sessions, stats. HTMX for interactivity over pure-Python server-side
-component system, plus Django Ninja REST API. **pydantic** declared runtime dep,
-not just Ninja's transitive one: event vocabulary (`games/events/vocabulary.py`)
-validates every event payload with `TypeAdapter`.
+play sessions, stats. Full-page requests and custom elements over pure-Python
+server-side component system, plus Django Ninja REST API. No htmx: every
+mutation is form POST that redirects, or custom element's `fetch`.
+**pydantic** declared runtime dep, not just Ninja's transitive one: event
+vocabulary (`games/events/vocabulary.py`) validates every event payload with
+`TypeAdapter`.
 
 ```
 games/          — Django app: models, views, templates, forms, signals, tasks, API,
@@ -670,8 +672,8 @@ Submodules re-exported via `common/components/__init__.py`:
   `method="post"` renders `<form>`+submit, default `<button>`), `ButtonGroup()`,
   `Input()`, `Checkbox()`, `Radio()`, `Pill()`, `Icon()`, `Popover()`,
   `TruncatedText()`, `SegmentedField()`, `PageHeading()` (badge heading; plain `<h1>`
-  is generated `H1`), `Modal()`, `ConfirmPage()` (full-page POST confirmation —
-  canonical removal affordance; `details` is block slot beside `message`, which
+  is generated `H1`), `ConfirmPage()` (full-page POST confirmation — the only
+  confirmation; `details` is block slot beside `message`, which
   renders inside `<p>`), `StyledTable()`, `TableRow()`, `TableTd()`,
   `TableHeader()`, `ContentContainer()` (page-body width container,
   `w-full max-w-7xl self-center` — every list/detail/stats body sits in one),
@@ -809,7 +811,7 @@ organized by domain entity:
 - `general.py` — `stats()`, `stats_alltime()`, `index()`, `model_counts` and
   `global_current_year` context processors
 - `returns.py` — route classification (`READ_ONLY` / `ORIGIN_AWARE` /
-  `CONFIRMATION` / `IN_PLACE`, guarded for completeness against route table) plus
+  `IN_PLACE`, guarded for completeness against route table) plus
   `origin_from()` and `return_url()`, app-bound half of `common/returns.py`
 - `removal.py` — `confirm_and_remove()`: GET renders `ConfirmPage`, POST stamps
   `removed_at`, queues the Undo notice and returns to origin. Every `remove_*`
@@ -835,11 +837,12 @@ broker) runs `games.tasks.convert_prices()` on schedule, fetching rates from
 `cdn.jsdelivr.net/npm/@fawazahmed0/currency-api` and converting purchase prices to
 resolved site `DEFAULT_CURRENCY`.
 
-**HTMX toast middleware** (`games/htmx_middleware.py`): converts Django messages
-into one `HX-Trigger` header carrying every queued message as a `show-toast`
-list; skipped if `HX-Redirect` present. `<toast-stack>` (`ts/elements/toast-stack.ts`, placed by `Page()`,
+**Toast middleware** (`games/toast_middleware.py`): converts Django messages
+into one `X-Events` header carrying every queued message as a `show-toast`
+list; skipped on a redirect and on a response carrying `X-Reload`, whose page
+reads its messages itself. `<toast-stack>` (`ts/elements/toast-stack.ts`, placed by `Page()`,
 built by `ToastStack()` in `common/components/toast.py`) listens and renders;
-`ts/toast.ts` keeps `window.toast` and `fetchWithHtmxTriggers`.
+`ts/toast.ts` keeps `window.toast` and `fetchWithEvents`.
 
 **REST API** (`games/api.py`): Django Ninja routers mounted at `/api/`:
 - `GET /api/games/search` — search games for autocomplete
@@ -899,16 +902,14 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
 
 ### Templates
 
-Few HTML templates remain; bulk of UI is Python components.
+No template renders at runtime; UI is Python components.
 
 - `games/templates/icons/<slug>.html` — SVG icon snippets; **source** for icon
   codegen (`manage.py gen_icons` → committed
   `common/components/icons_generated.py`), not loaded at runtime
-- `games/templates/` — minimal partials for HTMX responses where needed
 
 ### Frontend stack
 
-- **HTMX** — partial page updates
 - **Alpine.js** (vendored) — three `x-mask` inputs in the session, purchase and
   settings forms, nothing else; the toasts and both domain selectors are custom elements
 - **Flowbite** — its CSS theme and semantic tokens still in use; legacy
@@ -918,15 +919,18 @@ Few HTML templates remain; bulk of UI is Python components.
   and browser tests work offline
 - **Custom JS** authored in TypeScript under `ts/`, compiled to
   `games/static/js/dist/` (gitignored, build-only): `ts/toast.ts`
-  (`window.toast` and `window.fetchWithHtmxTriggers`),
+  (`window.toast` and `window.fetchWithEvents`),
   `ts/elements/toast-stack.ts` (the toasts' store and DOM),
-  `ts/elements/search-select.ts`, `ts/utils.ts` (shared helpers — `onSwap`,
+  `ts/elements/search-select.ts`, `ts/utils.ts` (shared helpers — `onReady`,
   `toISOUTCString`, …)
-- **Widget initialization**: widget JS registers with `onSwap(selector,
-  initializeElement)` from `ts/utils.ts` — port of FastHTML's `proc_htmx` built on
-  `htmx.onLoad`, running initializer once per matching element on page load and
-  inside every htmx-swapped fragment. Never hand-roll
-  `DOMContentLoaded`/`htmx:afterSwap` listeners with per-element guard flags.
+- **Widget initialization**: page glue that is not custom element registers
+  with `onReady(selector, initializeElement)` from `ts/utils.ts`, run once per
+  match after parse. Element that must wire itself on insertion is custom
+  element.
+- **Section that reads itself again** is `<refreshing-section event="…">`
+  (`ts/elements/refreshing-section.ts`): on that body event it GETs the page and
+  takes its own id's children from the answer. Game detail's History listens
+  for `status-changed`.
 
 ### Interactive components: custom elements + TypeScript
 
@@ -934,8 +938,8 @@ New interactive components are **custom elements**, not inline JS in Python.
 Component that needs behavior emits semantic tag via `custom_element("tag",
 Props(...))` (light DOM, server-rendered inner markup built with htpy-style node
 builders). Behavior lives in `ts/elements/<tag>.ts` (vanilla DOM,
-`customElements.define`); native `connectedCallback` replaces `onSwap` (fires on
-parse *and* htmx swap). Server↔client contract is one Python `TypedDict` per
+`customElements.define`); native `connectedCallback` fires on parse *and* on any
+later insertion. Server↔client contract is one Python `TypedDict` per
 element registered with `register_element(...)` in
 `common/components/custom_elements.py`; `manage.py gen_element_types` codegens
 `ts/generated/props.ts` so renaming a prop fails `tsc`.
@@ -948,8 +952,8 @@ element registered with `register_element(...)` in
   `tsconfig.check.json` re-includes them and adds `@types/node` (scoped there, so
   browser emit stays node-free).
 - **htpy-style markup:** builders take kwargs attributes and `[]` children —
-  `Div(class_="x", hx_get="/y")[child1, child2]` (`class_`→`class`, `hx_get`→
-  `hx-get`, `True`→`name="name"`, `False`/`None`→omitted). Runtime-built attribute
+  `Div(class_="x", data_row="/y")[child1, child2]` (`class_`→`class`, `data_row`→
+  `data-row`, `True`→`name="name"`, `False`/`None`→omitted). Runtime-built attribute
   collection goes in single positional slot: `Div(attrs_list, class_="x")`. Still
   walkable `Element` tree, so `Media` bubbles. `attributes=`/`children=` kwargs
   rejected (`TypeError`).
@@ -1043,9 +1047,10 @@ untouched. Output **byte-deterministic** per `--seed`. Fixture keeps prod pks, s
 load it into empty dev DB.
 
 **UI assertion is not database assertion.** A custom element may update its own
-DOM before the PATCH it sent through `fetchWithHtmxTriggers` lands, so the
+DOM before the PATCH it sent through `fetchWithEvents` lands, so the
 rendered number can be ahead of the row. Before reading ORM in e2e test, wait on
-something *server-rendered* — the htmx section that swaps in after write commits.
+something *server-rendered* — the `<refreshing-section>` content that arrives
+after write commits, or the page a POST redirects to.
 
 **TypeScript unit tests** (vitest) live beside their modules as `ts/**/*.test.ts`,
 run with `make test-ts` and automatically by `make test`/`make check`. pnpm script
@@ -1065,7 +1070,7 @@ artifact absent; `make check`/`make test` order `test-ts` first.
 Chrome/Chromium (see env section); otherwise `uv run playwright install
 chromium` once. All JS vendored, so tests run fully offline. Bare `make test`
 collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.py`
-(onSwap lifecycle, FilterSelect/RangeSlider/add-purchase),
+(onReady lifecycle, FilterSelect/RangeSlider/add-purchase),
 `test_search_select_e2e.py` (single-select edge cases on synthetic page).
 
 ## Conventions for AI assistants
@@ -1108,7 +1113,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   flattens tree and drops media); wrap trusted pre-rendered HTML in `Safe(html)`.
   Plain strings — `SafeText` included — auto-escaped as children.
 - **Builders take htpy form only** — static attributes as kwargs, children via `[]`:
-  `Builder(class_="x", hx_get="/y")[child1, child2]`. Dynamic attributes (runtime
+  `Builder(class_="x", data_row="/y")[child1, child2]`. Dynamic attributes (runtime
   `list[(name, value)]` or `Mapping`) go through single positional slot. Generic
   and six styled builders (`Input`, `Checkbox`, `Radio`, `Pill`, `ControlButton`,
   `SegmentedField`) **do not accept `attributes=`/`children=`** — passing either
@@ -1118,8 +1123,8 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `__init__.py`. Low-level `Element(tag,
   attributes, children)` keeps positional args — node machinery and codegen target,
   not call-site builder.
-  Single-content-slot components support `[]` too (`Modal(id)[content]`,
-  `DropdownActionItem(data_x="")[label]`); multi-slot or sibling-composing ones
+  Single-content-slot components support `[]` too
+  (`DropdownActionItem(data_x="")[label]`); multi-slot or sibling-composing ones
   (`Popover`, `GameStatus`, `PageHeading`, `Icon`) keep own
   `children=`/`attributes=` params. Badge page heading is `PageHeading`, not `H1`.
   Node layer owns attribute merging (`normalize_attributes`): `class`/`style`

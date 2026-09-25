@@ -142,19 +142,9 @@ urlpatterns = [
         name="list_purchases",
     ),
     path(
-        "purchase/<uuidv7:purchase_id>/refund/confirm",
-        purchase.refund_purchase_confirmation,
-        name="refund_purchase_confirmation",
-    ),
-    path(
         "purchase/<uuidv7:purchase_id>/refund",
         purchase.refund_purchase,
         name="refund_purchase",
-    ),
-    path(
-        "purchase/<uuidv7:purchase_id>/split/confirm",
-        purchase.split_purchase_confirmation,
-        name="split_purchase_confirmation",
     ),
     path(
         "purchase/<uuidv7:purchase_id>/split",

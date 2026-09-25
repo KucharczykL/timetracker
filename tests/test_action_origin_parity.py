@@ -18,10 +18,10 @@ from historical_playtime_rows import record_row
 from session_rows import session_row
 
 from games.models import Game, Platform, Playthrough, Purchase
-from games.views.returns import CONFIRMATION, ORIGIN_AWARE
+from games.views.returns import ORIGIN_AWARE
 
-LINK_ATTRIBUTE = re.compile(r'\b(?:href|hx-get|hx-post|action)="([^"]*)"')
-MUST_CARRY_ORIGIN = ORIGIN_AWARE | CONFIRMATION
+LINK_ATTRIBUTE = re.compile(r'\b(?:href|action)="([^"]*)"')
+MUST_CARRY_ORIGIN = ORIGIN_AWARE
 
 
 @pytest.fixture

@@ -58,7 +58,7 @@ def test_a_refused_new_session_renders_the_form_at_the_refusals_status(
 
     #: A redirect would read as a save.
     assert response.status_code == status
-    assert "show-toast" in response.headers["HX-Trigger"]
+    assert "show-toast" in response.headers["X-Events"]
     assert not PlayerSession.objects.exists()
 
 
@@ -76,7 +76,7 @@ def test_a_refused_session_edit_renders_the_form_at_the_refusals_status(
     )
 
     assert response.status_code == status
-    assert "show-toast" in response.headers["HX-Trigger"]
+    assert "show-toast" in response.headers["X-Events"]
     session.refresh_from_db()
     assert session.note == ""
 
@@ -98,7 +98,7 @@ def test_a_refused_new_run_renders_the_form_at_the_refusals_status(
     )
 
     assert response.status_code == status
-    assert "show-toast" in response.headers["HX-Trigger"]
+    assert "show-toast" in response.headers["X-Events"]
     assert Playthrough.objects.count() == 1
 
 
@@ -120,6 +120,6 @@ def test_a_refused_run_edit_renders_the_form_at_the_refusals_status(
     )
 
     assert response.status_code == status
-    assert "show-toast" in response.headers["HX-Trigger"]
+    assert "show-toast" in response.headers["X-Events"]
     run.refresh_from_db()
     assert run.started_lower is None

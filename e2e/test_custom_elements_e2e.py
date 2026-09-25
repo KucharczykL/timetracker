@@ -29,23 +29,21 @@ def test_game_status_selector_opens_and_patches(
     game_url = game.get_absolute_url()
     page.goto(f"{live_server.url}{game_url}")
 
-    # The History section starts empty — the status change we make below must
-    # appear in it after the htmx refresh.
+    # History starts empty; the change must appear.
     expect(page.locator("#history-container li")).to_have_count(0)
 
     host = page.locator('drop-down[behavior="select"]').first
     expect(host).to_be_attached()
     host.locator("[data-toggle]").click()
     expect(host.locator("[data-menu]")).to_be_visible()
-    # Arm the wait for the htmx refresh GET (fired by the status-changed event
-    # #history-container listens for) BEFORE the click, alongside the PATCH wait,
-    # so a fast refresh can't slip through between the two.
+    # Arm both waits before the click.
+    # A fast refresh would otherwise slip between them.
     with (
         page.expect_response(
             lambda r: (
                 game_url in r.url
                 and r.request.method == "GET"
-                and r.request.headers.get("hx-request") == "true"
+                and r.request.headers.get("accept") == "text/html"
             )
         ),
         page.expect_response(
@@ -106,10 +104,7 @@ def test_session_device_selector_patches(
     page.wait_for_function("() => window.__refreshed === true")
     session.refresh_from_db()
     assert session.device_id == deck.pk
-    # No htmx container listens for device-changed (unlike status-changed /
-    # play-added on the game page), so there is no refresh GET to await here.
-    # Instead verify the server-rendered state: a fresh page load shows the new
-    # device as the selector's current value.
+    # Nothing refreshes on device-changed; reload and check.
     page.reload()
     host = page.locator('drop-down[behavior="select"]').first
     expect(host.locator("[data-label]")).to_contain_text("Deck")

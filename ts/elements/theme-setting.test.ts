@@ -50,8 +50,8 @@ beforeEach(() => {
     dispatchEvent: vi.fn(),
   });
   window.toast = vi.fn();
-  window.fetchWithHtmxTriggers = vi.fn();
-  window.dispatchHtmxTriggers = vi.fn();
+  window.fetchWithEvents = vi.fn();
+  window.dispatchResponseEvents = vi.fn();
 });
 
 afterEach(() => {
@@ -63,7 +63,7 @@ describe("<theme-setting>", () => {
   it("maps the inherited blank choice to null and stops generic live save", async () => {
     configureInheritedDark();
     let resolve!: (value: Response) => void;
-    vi.mocked(window.fetchWithHtmxTriggers).mockReturnValue(new Promise((done) => {
+    vi.mocked(window.fetchWithEvents).mockReturnValue(new Promise((done) => {
       resolve = done;
     }));
     const { host, select } = mount();
@@ -79,7 +79,7 @@ describe("<theme-setting>", () => {
     expect(select.getAttribute("aria-busy")).toBe("true");
     expect(document.documentElement.dataset.themePreference).toBe("light");
     expect(JSON.parse(String(
-      (vi.mocked(window.fetchWithHtmxTriggers).mock.calls[0][1] as RequestInit).body,
+      (vi.mocked(window.fetchWithEvents).mock.calls[0][1] as RequestInit).body,
     ))).toEqual({ value: "light" });
 
     resolve({
@@ -97,7 +97,7 @@ describe("<theme-setting>", () => {
     "synchronizes presenters connected in %s order",
     async (order) => {
       configureInheritedDark();
-      vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValue({
+      vi.mocked(window.fetchWithEvents).mockResolvedValue({
         ok: true,
         status: 200,
         json: async () => ({
@@ -130,7 +130,7 @@ describe("<theme-setting>", () => {
 
   it("keeps multiple instances of both presenters synchronized", async () => {
     configureInheritedDark();
-    vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValue({
+    vi.mocked(window.fetchWithEvents).mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
@@ -158,7 +158,7 @@ describe("<theme-setting>", () => {
 
   it("restores the blank personal selection and inherited Dark after failure", async () => {
     configureInheritedDark();
-    vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValue({
+    vi.mocked(window.fetchWithEvents).mockResolvedValue({
       ok: false,
       status: 500,
     } as Response);
@@ -176,7 +176,7 @@ describe("<theme-setting>", () => {
 
   it("receives changes made by another coordinator presenter", async () => {
     configureInheritedDark();
-    vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValue({
+    vi.mocked(window.fetchWithEvents).mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({

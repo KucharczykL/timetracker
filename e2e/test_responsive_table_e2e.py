@@ -253,11 +253,10 @@ def test_actions_survive_a_multi_game_purchase(
     assert name_width >= 150, f"name column squeezed to {name_width}px"
 
 
-def test_a_swapped_in_row_inherits_the_current_decision(
+def test_an_added_row_inherits_the_current_decision(
     authenticated_page: Page, live_server, populated
 ):
-    """The drop state is a table-level rule precisely so a row fragment (the
-    refund swap, a cloned session row) needs no knowledge of it."""
+    """An added row inherits the drop state."""
     page = authenticated_page
     page.set_viewport_size({"width": 1024, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_purchases')}")

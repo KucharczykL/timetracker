@@ -93,6 +93,7 @@ from games.sorting import (
     parse_find_filter,
     parse_per_page_override,
 )
+from games.toast_middleware import RELOAD_HEADER
 from games.writes.answers import CommandFailed, answered
 from games.writes.device import create_device as create_device_row
 from games.writes.playergame import new_correlation_id, record_facts
@@ -1565,12 +1566,11 @@ def _report_saved(
 ) -> None:
     """One toast: the calendar's sentence when its zone moved, else "saved".
 
-    A setting that reloads the page after a save reads the toast on
-    the page it lands on, so the header rides no response the browser
-    discards.
+    A setting whose page reloads marks the answer ``X-Reload``, so its
+    toast waits for the reloaded page.
     """
     if get_definition(key).reload_after_save:
-        response["HX-Refresh"] = "true"
+        response[RELOAD_HEADER] = "true"
     if mutation.calendar is not None:
         messages.success(request, calendar_sentence(mutation.calendar))
         return

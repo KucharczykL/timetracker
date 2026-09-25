@@ -53,7 +53,7 @@ function isGoing(mark: HTMLElement): boolean {
 }
 
 class CatalogEditorElement extends HTMLElement {
-  // htmx can move this node, and a second connect must not bind twice.
+  // A DOM move reconnects this node, and a second connect must not bind twice.
   private wired = false;
 
   connectedCallback(): void {

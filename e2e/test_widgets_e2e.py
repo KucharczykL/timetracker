@@ -1,9 +1,9 @@
 """Browser tests for widget JavaScript (search_select.js, quick-filter-bar.js,
-add_purchase.js) and their onSwap() initialization lifecycle.
+add_purchase.js) and their onReady() initialization lifecycle.
 
 These run a real Chromium via pytest-playwright against pytest-django's
 ``live_server``. All JavaScript under test is served locally from
-``games/static/js/`` (htmx, Alpine, Flowbite and the widget files are
+``games/static/js/`` (Alpine, Flowbite and the widget files are
 vendored), so no network access is needed beyond the live server itself.
 
 Browser binaries must be installed once: ``uv run playwright install chromium``.
@@ -55,8 +55,7 @@ def status_filter_widget(page: Page):
 
 
 def test_search_select_initializes_on_page_load(authenticated_page: Page, live_server):
-    """Clicking into a FilterSelect search box opens its options panel —
-    proof that onSwap ran the widget initializer on the initial page load."""
+    """A FilterSelect opens after the first load."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     open_status_facet(page)
@@ -102,22 +101,23 @@ def test_number_filter_between_reveals_second_input(
     expect(value2).to_be_visible()
 
 
-def test_widgets_initialize_inside_htmx_swapped_content(
+def test_widgets_initialize_inside_inserted_content(
     authenticated_page: Page, live_server
 ):
-    """Widgets arriving via an htmx swap initialize without a page load.
-
-    The filter bar is re-fetched and swapped in with htmx.ajax — fresh,
-    uninitialized DOM. The swapped-in FilterSelect must open its panel and the
-    swapped-in NumberFilter must reveal its second input on BETWEEN, proving the
-    htmx:load half of onSwap and the once-per-element guard."""
+    """Custom elements inserted after load wire themselves."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 
     page.evaluate(
-        "htmx.ajax('GET', window.location.pathname, "
-        "{target: 'quick-filter-bar', select: 'quick-filter-bar', "
-        "swap: 'outerHTML'})"
+        """async () => {
+            const response = await fetch(window.location.pathname);
+            const fetched = new DOMParser().parseFromString(
+                await response.text(), "text/html"
+            );
+            document.querySelector("quick-filter-bar").replaceWith(
+                document.importNode(fetched.querySelector("quick-filter-bar"), true)
+            );
+        }"""
     )
     # Opening a facet dropdown proves the swap happened and the fresh DOM
     # (re-upgraded custom elements) is in place.
@@ -358,7 +358,7 @@ def test_add_game_submit_and_create_session_redirects(
 # The <sort-header> custom element augments header links: plain click navigates
 # the link (single-column sort, server-computed); shift-click navigates to the
 # pre-baked multi-column target. connectedCallback wires this on parse and on
-# any htmx-swapped fragment.
+# any inserted fragment.
 
 
 def _open_games_list(page: Page, live_server) -> None:

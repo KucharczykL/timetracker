@@ -37,7 +37,7 @@ READ_ONLY: frozenset[UrlName] = frozenset(
     }
 )
 
-# Mutates, then redirects (or sends HX-Redirect); consumes an origin.
+# Mutates, then redirects; consumes an origin.
 ORIGIN_AWARE: frozenset[UrlName] = frozenset(
     {
         "games:add_device",
@@ -69,6 +69,7 @@ ORIGIN_AWARE: frozenset[UrlName] = frozenset(
         "games:run_bulk_action",
         "games:undo_bulk_action",
         "games:reclassify_session",
+        "games:refund_purchase",
         "games:reset_session",
         "games:restore_device",
         "games:restore_game",
@@ -84,18 +85,9 @@ ORIGIN_AWARE: frozenset[UrlName] = frozenset(
     }
 )
 
-# GET only: renders a confirmation and forwards the origin to the form it draws.
-CONFIRMATION: frozenset[UrlName] = frozenset(
-    {
-        "games:refund_purchase_confirmation",
-        "games:split_purchase_confirmation",
-    }
-)
-
-# Mutates and answers with a partial swap, leaving the user where they are.
+# Mutates; the page stays where it is.
 IN_PLACE: frozenset[UrlName] = frozenset(
     {
-        "games:refund_purchase",
         "games:settings_kit_preview_patch",
     }
 )

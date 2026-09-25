@@ -52,7 +52,7 @@ from common.components import (
     paginated_table_content,
     parse_filter_dict,
 )
-from common.components.primitives import Li, Span
+from common.components.primitives import Li, Span, custom_element_builder
 from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
@@ -163,6 +163,8 @@ EDITIONS_UNDER_CONSTRUCTION = (
     "an edition yet, so no playtime is shown here and this layout will change. "
     "A platform beyond the first one does not reach the games list yet."
 )
+
+_RefreshingSection = custom_element_builder("refreshing-section")
 
 
 def _wikidata_cell(provider_key: str) -> Cell:
@@ -1203,13 +1205,11 @@ def _history_section(
     #: A stream belongs to one library.
     entries = status_history(library, game)
     count = len(entries)
-    return Div(
+    return _RefreshingSection(
         class_="mb-6 flex flex-col gap-4",
         id="history-container",
-        hx_get="",
-        hx_trigger="status-changed from:body",
-        hx_select="#history-container",
-        hx_swap="outerHTML",
+        #: The status selector's event.
+        event="status-changed",
     )[
         PageHeading(children=["History"], badge=str(count) if count else ""),
         _game_history(entries, presentation),

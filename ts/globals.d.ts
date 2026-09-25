@@ -4,8 +4,8 @@ export {};
 
 declare global {
   interface Window {
-    dispatchHtmxTriggers(response: Response): void;
-    fetchWithHtmxTriggers(
+    dispatchResponseEvents(response: Response): void;
+    fetchWithEvents(
       input: RequestInfo | URL,
       init?: RequestInit,
       triggerDispatch?: "immediate" | "deferred",

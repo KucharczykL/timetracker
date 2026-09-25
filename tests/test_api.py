@@ -1137,7 +1137,7 @@ def test_post_session_404s_a_repeat_of_a_session_since_removed(auth_client, user
     second = _post_session(auth_client, body, headers=headers)
 
     assert second.status_code == 404
-    assert "HX-Trigger" not in second.headers
+    assert "X-Events" not in second.headers
     assert PlayerSession.objects.filter(playthrough=run).count() == 1
 
 
@@ -1156,7 +1156,7 @@ def test_post_session_carries_its_message(auth_client, user):
     )
 
     assert response.status_code == 201, response.content
-    assert "Session recorded." in response.headers["HX-Trigger"]
+    assert "Session recorded." in response.headers["X-Events"]
 
 
 @pytest.mark.django_db(transaction=True)
@@ -1190,7 +1190,7 @@ def test_session_patch_404s_a_move_onto_an_untracked_game(auth_client, user):
     )
 
     assert response.status_code == 404
-    assert "HX-Trigger" not in response.headers
+    assert "X-Events" not in response.headers
     session.refresh_from_db()
     assert session.playthrough_id == elsewhere.pk
 

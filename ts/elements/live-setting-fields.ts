@@ -181,7 +181,7 @@ class LiveSettingFieldsElement extends HTMLElement {
     const url = this.patchUrlTemplate.replace("__key__", encodeURIComponent(key));
 
     try {
-      const response = await window.fetchWithHtmxTriggers(url, {
+      const response = await window.fetchWithEvents(url, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

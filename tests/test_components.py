@@ -1369,40 +1369,6 @@ class ControlButtonTest(SimpleTestCase):
             components.ControlButton([("class", Spelled())])["x"]
 
 
-class ModalContractTest(SimpleTestCase):
-    """Modal injects [] children into the inner panel, not the outer backdrop."""
-
-    def test_id_on_backdrop_content_in_panel(self):
-        html = str(components.Modal("m1")[components.Div(class_="body-marker")["BODY"]])
-        # id sits on the outer backdrop (before the panel's max-w-xl class)
-        self.assertIn('id="m1"', html)
-        self.assertLess(html.index('id="m1"'), html.index("max-w-xl"))
-        # children land after the panel class, i.e. inside the panel
-        self.assertLess(html.index("max-w-xl"), html.index("body-marker"))
-        self.assertIn("BODY", html)
-
-    def test_getitem_is_immutable_and_bubbles_media(self):
-        base = components.Modal("m2")
-        filled = base[components.Div().with_media(components.Media(js=("modal-c.js",)))]
-        self.assertIsNot(base, filled)
-        self.assertIn("modal-c.js", components.collect_media(filled).js)
-        # the original, unsubscripted modal has no child media
-        self.assertNotIn("modal-c.js", components.collect_media(base).js)
-
-    def test_renders_modal_dialog_element_with_dismiss_contract(self):
-        # The overlay is the <modal-dialog> custom element carrying the dialog
-        # role/aria + the panel hook the shared dismiss anchors on.
-        html = str(components.Modal("m3")[components.Div()["x"]])
-        self.assertTrue(html.startswith("<modal-dialog"))
-        self.assertIn('role="dialog"', html)
-        self.assertIn('aria-modal="true"', html)
-        self.assertIn("data-modal-panel", html)
-        self.assertIn(
-            "dist/elements/modal-dialog.js",
-            components.collect_media(components.Modal("m3")).js,
-        )
-
-
 class DropdownActionItemContractTest(SimpleTestCase):
     """DropdownActionItem: label is the [] slot; htpy kwargs are button hooks."""
 
@@ -2182,7 +2148,7 @@ class StyledTableRenderingTest(unittest.TestCase):
         self.assertNotIn("max-md:w-full", result)
 
     def test_simple_table_rows_with_attributes(self):
-        """Verify make_row attributes (id, hx-*) land on the <tr>."""
+        """Verify make_row attributes (id, data-*) land on the <tr>."""
         result = str(
             str(
                 components.StyledTable(
@@ -2192,7 +2158,7 @@ class StyledTableRenderingTest(unittest.TestCase):
                             "Game1",
                             "2025-01-01",
                             id="session-row-1",
-                            hx_trigger="device-changed",
+                            data_event="device-changed",
                         )
                     ],
                 )
@@ -2926,7 +2892,7 @@ class ResponsiveTableGateTest(SimpleTestCase):
 class ColumnAlignmentTest(SimpleTestCase):
     """Column alignment is driven by ``Column.align``: the header per-``<th>``
     (``_header_cell``), the body via a table-level ``td:nth-child`` rule on the
-    ``<tbody>`` so htmx-swapped rows align without per-row knowledge. ``ButtonGroup``
+    ``<tbody>`` so added rows align without per-row knowledge. ``ButtonGroup``
     is alignment-agnostic."""
 
     @staticmethod
@@ -3373,7 +3339,7 @@ class SelectableRowTest(SimpleTestCase):
 
     @override_settings(DEBUG=False)
     def test_a_row_fragment_under_a_selection_refuses_the_same(self):
-        """The rule lives on the row, so an htmx swap obeys it too."""
+        """The rule lives on the row, so a row rendered alone obeys it too."""
         with self.assertRaises(ValueError):
             str(
                 components.TableRow(

@@ -118,7 +118,7 @@ describe("<live-setting-fields>", () => {
       status: 200,
       json: async () => resolved,
     } as Response);
-    window.fetchWithHtmxTriggers = fetchStub;
+    window.fetchWithEvents = fetchStub;
     const host = mountFields();
     const input = host.querySelector<HTMLInputElement>('[name="name"]')!;
     const saved = vi.fn();
@@ -142,7 +142,7 @@ describe("<live-setting-fields>", () => {
 
   it("ignores setting identity without the positive live-save marker", async () => {
     const fetchStub = vi.fn();
-    window.fetchWithHtmxTriggers = fetchStub;
+    window.fetchWithEvents = fetchStub;
     const host = mountFields();
 
     change(host.querySelector<HTMLInputElement>('[name="identity-only"]')!);
@@ -152,7 +152,7 @@ describe("<live-setting-fields>", () => {
   });
 
   it("rejects a malformed successful response and restores the committed value", async () => {
-    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+    window.fetchWithEvents = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({ key: "NAME", value: "After" }),
@@ -172,7 +172,7 @@ describe("<live-setting-fields>", () => {
   });
 
   it("throws when the response namespace does not match its own", async () => {
-    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+    window.fetchWithEvents = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
@@ -233,7 +233,7 @@ describe("<live-setting-fields>", () => {
           namespace: "user",
         }),
       } as Response);
-    window.fetchWithHtmxTriggers = fetchStub;
+    window.fetchWithEvents = fetchStub;
     const host = mountFields();
     const select = host.querySelector<HTMLSelectElement>('[name="destination"]')!;
     const badge = host.querySelector<HTMLElement>("[data-setting-origin]")!;
@@ -281,7 +281,7 @@ describe("<live-setting-fields>", () => {
   });
 
   it("reconciles normalized text values from the resolved PATCH response", async () => {
-    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+    window.fetchWithEvents = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
@@ -303,7 +303,7 @@ describe("<live-setting-fields>", () => {
   });
 
   it("shows the effective fallback after clearing a text override", async () => {
-    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+    window.fetchWithEvents = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
@@ -325,7 +325,7 @@ describe("<live-setting-fields>", () => {
   });
 
   it("keeps a cleared select on its use-default sentinel", async () => {
-    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+    window.fetchWithEvents = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
@@ -347,7 +347,7 @@ describe("<live-setting-fields>", () => {
   });
 
   it("reloads after a successful presentation setting save", async () => {
-    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+    window.fetchWithEvents = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
@@ -370,7 +370,7 @@ describe("<live-setting-fields>", () => {
   });
 
   it("reloads after a successful date/time format save", async () => {
-    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+    window.fetchWithEvents = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
@@ -394,7 +394,7 @@ describe("<live-setting-fields>", () => {
 
   it("does not reload after a malformed date/time format response", async () => {
     vi.mocked(reloadAfterSettingSave).mockClear();
-    window.fetchWithHtmxTriggers = vi.fn().mockResolvedValue({
+    window.fetchWithEvents = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
@@ -422,7 +422,7 @@ describe("<live-setting-fields>", () => {
 
   it("preserves newer typing when an older successful response resolves", async () => {
     const response = deferredResponse();
-    window.fetchWithHtmxTriggers = vi.fn(() => response.promise);
+    window.fetchWithEvents = vi.fn(() => response.promise);
     const host = mountFields();
     const input = host.querySelector<HTMLInputElement>('[name="name"]')!;
 
@@ -446,7 +446,7 @@ describe("<live-setting-fields>", () => {
   });
 
   it("reverts to the last committed value and toasts on a rejected PATCH", async () => {
-    window.fetchWithHtmxTriggers = vi
+    window.fetchWithEvents = vi
       .fn()
       .mockResolvedValue({ ok: false, status: 422 } as Response);
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -470,7 +470,7 @@ describe("<live-setting-fields>", () => {
       .fn()
       .mockImplementationOnce(() => first.promise)
       .mockImplementationOnce(() => second.promise);
-    window.fetchWithHtmxTriggers = fetchStub;
+    window.fetchWithEvents = fetchStub;
     const host = mountFields();
     const input = host.querySelector<HTMLInputElement>('[name="name"]')!;
 
@@ -524,7 +524,7 @@ describe("<live-setting-fields>", () => {
       .fn()
       .mockImplementationOnce(() => first.promise)
       .mockImplementationOnce(() => second.promise);
-    window.fetchWithHtmxTriggers = fetchStub;
+    window.fetchWithEvents = fetchStub;
     vi.spyOn(console, "error").mockImplementation(() => {});
     const host = mountFields();
     const input = host.querySelector<HTMLInputElement>('[name="name"]')!;
@@ -557,7 +557,7 @@ describe("<live-setting-fields>", () => {
 
   it("preserves newer typing when an in-flight edit fails", async () => {
     const response = deferredResponse();
-    window.fetchWithHtmxTriggers = vi.fn(() => response.promise);
+    window.fetchWithEvents = vi.fn(() => response.promise);
     vi.spyOn(console, "error").mockImplementation(() => {});
     const host = mountFields();
     const input = host.querySelector<HTMLInputElement>('[name="name"]')!;
@@ -573,7 +573,7 @@ describe("<live-setting-fields>", () => {
 
   it("does not PATCH a disabled locked field", async () => {
     const fetchStub = vi.fn().mockResolvedValue({ ok: true } as Response);
-    window.fetchWithHtmxTriggers = fetchStub;
+    window.fetchWithEvents = fetchStub;
     const host = mountFields();
     change(host.querySelector<HTMLInputElement>('[name="locked"]')!);
     await Promise.resolve();
@@ -590,7 +590,7 @@ describe("<live-setting-fields>", () => {
         json: async () => ({ key, value, source: "user", locked: false, namespace: "user" }),
       } as Response);
     });
-    window.fetchWithHtmxTriggers = fetchStub;
+    window.fetchWithEvents = fetchStub;
     const host = mountFields();
     const checkbox = host.querySelector<HTMLInputElement>('[name="enabled"]')!;
     const select = host.querySelector<HTMLSelectElement>('[name="destination"]')!;

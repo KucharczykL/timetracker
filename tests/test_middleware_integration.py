@@ -8,14 +8,14 @@ from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from session_rows import session_row
 
-from games.models import Game, Platform, Purchase
+from games.models import Game, Platform
 
 
 class MiddlewareIntegrationTest(TestCase):
-    """Integration tests for HTMXMessagesMiddleware.
+    """Integration tests for ToastMessagesMiddleware.
 
     These tests hit real endpoints that use messages.success() to verify
-    the full chain: API endpoint → messages → middleware → HX-Trigger header.
+    the full chain: API endpoint → messages → middleware → X-Events header.
     """
 
     @staticmethod
@@ -35,10 +35,10 @@ class MiddlewareIntegrationTest(TestCase):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_non_htmx_request_with_message_gets_hx_trigger(client, owned_user):
-    """A plain fetch() still gets HX-Trigger.
+def test_a_fetch_with_a_message_gets_the_events_header(client, owned_user):
+    """A plain fetch() gets X-Events.
 
-    fetchWithHtmxTriggers reads the header, so the toast depends on it.
+    fetchWithEvents reads the header, so the toast depends on it.
     """
     #: Out of the TestCase, because the PATCH dispatches.
     #: A transactional class truncates for all to serve one.
@@ -52,53 +52,15 @@ def test_non_htmx_request_with_message_gets_hx_trigger(client, owned_user):
     )
 
     assert response.status_code == 204
-    trigger = json.loads(response["HX-Trigger"])
+    trigger = json.loads(response["X-Events"])
     assert trigger["show-toast"][-1]["type"] == "success"
-
-
-@pytest.mark.django_db(transaction=True)
-def test_refund_purchase_returns_updated_row_with_hx_trigger(client, owned_user):
-    """The refund answers a row, never a page.
-
-    A navigation would lose the URL and its query parameters.
-    """
-    #: Out of the TestCase, because the refund dispatches.
-    client.force_login(owned_user)
-    platform = Platform.objects.create(library=owned_user.library, name="Test Platform")
-    game = Game.objects.create(
-        library=owned_user.library, name="Test Game", platform=platform
-    )
-    purchase = Purchase.objects.create(
-        price_currency="CZK",
-        library=owned_user.library,
-        date_purchased=datetime(2023, 1, 1),
-        platform=platform,
-    )
-    purchase.games.set([game])
-
-    response = client.post(
-        f"/tracker/purchase/{purchase.id}/refund",
-        data={"set_abandoned": ""},
-    )
-
-    assert response.status_code == 200
-    assert "HX-Redirect" not in response
-    trigger = json.loads(response["HX-Trigger"])
-    assert trigger["show-toast"][-1]["message"] == "Purchase refunded"
-    body = response.content.decode()
-    assert f"purchase-row-{purchase.id}" in body
-    #: The out-of-band template that closes the modal.
-    assert "hx-swap-oob" in body
-    assert "refund-confirmation-modal" in body
-    purchase.refresh_from_db()
-    assert purchase.date_refunded is not None
 
 
 #: Out of the TestCase: the device PATCH dispatches, and a dispatch
 #: opens the transaction it retries.
 @pytest.mark.django_db(transaction=True)
-def test_session_device_api_endpoint_sends_hx_trigger(client, owned_user):
-    """The session device API endpoint produces HX-Trigger too."""
+def test_session_device_api_endpoint_sends_the_events_header(client, owned_user):
+    """The session device API endpoint produces X-Events too."""
     library = owned_user.library
     game = Game.objects.create(library=library, name="Test Game")
     device = create_device(library=library, name="Test Device")
@@ -114,6 +76,6 @@ def test_session_device_api_endpoint_sends_hx_trigger(client, owned_user):
     )
 
     assert response.status_code == 204
-    assert "HX-Trigger" in response
-    data = json.loads(response["HX-Trigger"])
+    assert "X-Events" in response
+    data = json.loads(response["X-Events"])
     assert data["show-toast"][-1]["message"] == "Device updated"

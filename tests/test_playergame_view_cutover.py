@@ -167,7 +167,7 @@ def test_a_failed_status_write_answers_409_with_a_toast(
 
     assert response.status_code == 409
     #: The dropdown reverts on non-ok and shows the header.
-    assert "show-toast" in response.headers["HX-Trigger"]
+    assert "show-toast" in response.headers["X-Events"]
 
 
 def _session_payload(game, **overrides):
@@ -364,7 +364,7 @@ def test_refunding_abandons_every_game_under_one_correlation_id(
 
     response = logged_in.post(reverse("games:refund_purchase", args=[purchase.id]))
 
-    assert response.status_code == 200
+    assert response.status_code == 302
     assert set(PlayerGame.objects.values_list("status", flat=True)) == {
         PlayerGameStatus.ABANDONED
     }
@@ -379,7 +379,7 @@ def test_refunding_abandons_every_game_under_one_correlation_id(
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("status", [CONFLICT_STATUS, DEFECT_STATUS])
-def test_a_failed_refund_answers_the_refusals_status_and_swaps_nothing(
+def test_a_failed_refund_answers_the_refusal_on_the_confirmation(
     logged_in, owned_user, owned_library, monkeypatch, status
 ):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
@@ -396,13 +396,15 @@ def test_a_failed_refund_answers_the_refusals_status_and_swaps_nothing(
         raise CommandFailed("Nothing was recorded; try again.", status)
 
     #: Patched where the call is made, not where it is named.
-    monkeypatch.setattr("games.views.playergame_writes.record_facts", refuse)
+    monkeypatch.setattr("games.views.purchase.record_facts", refuse)
     response = logged_in.post(reverse("games:refund_purchase", args=[purchase.id]))
 
-    #: htmx swaps nothing outside 2xx, so the row stands.
+    #: The confirmation comes back, the sentence above its question.
     assert response.status_code == status
-    assert response.content == b""
-    assert "show-toast" in response.headers["HX-Trigger"]
+    body = response.content.decode()
+    assert "Nothing was recorded; try again." in body
+    #: A defect admits no second press.
+    assert (">Refund</button>" in body) is (status == CONFLICT_STATUS)
     purchase.refresh_from_db()
     assert purchase.date_refunded is None
 
@@ -443,7 +445,7 @@ def test_a_failed_edit_re_renders_the_form(
 
     #: A redirect would read as a save that landed.
     assert response.status_code == status
-    assert "show-toast" in response.headers["HX-Trigger"]
+    assert "show-toast" in response.headers["X-Events"]
     row = PlayerGame.objects.get(game=tracked_game)
     assert row.status == PlayerGameStatus.UNPLAYED
 
@@ -453,7 +455,7 @@ def test_a_failed_edit_re_renders_the_form(
 def test_a_partly_applied_refund_says_how_far_it_went(
     logged_in, owned_user, owned_library, monkeypatch, status
 ):
-    from games.views import playergame_writes
+    from games.views import purchase as purchase_views
 
     games = []
     for name in ("Outer Wilds", "Tunic"):
@@ -468,7 +470,7 @@ def test_a_partly_applied_refund_says_how_far_it_went(
     )
     purchase.games.set(games)
 
-    record_facts = playergame_writes.record_facts
+    record_facts = purchase_views.record_facts
     calls = []
 
     def refuse_the_second(*args, **kwargs):
@@ -477,11 +479,14 @@ def test_a_partly_applied_refund_says_how_far_it_went(
             raise CommandFailed("Nothing was recorded; try again.", status)
         return record_facts(*args, **kwargs)
 
-    monkeypatch.setattr(playergame_writes, "record_facts", refuse_the_second)
+    monkeypatch.setattr(purchase_views, "record_facts", refuse_the_second)
     response = logged_in.post(reverse("games:refund_purchase", args=[purchase.id]))
 
     assert response.status_code == status
     #: The first game is abandoned and stays that way, so the
-    #: toast has to say so rather than claim nothing landed.
-    assert "1 of 2 games were abandoned" in response.headers["HX-Trigger"]
+    #: refusal has to say so rather than claim nothing landed.
+    body = response.content.decode()
+    assert "1 of 2 games were abandoned" in body
+    #: Only a refusal invites the retry.
+    assert ("Refunding again is safe." in body) is (status == CONFLICT_STATUS)
     assert PlayerGame.objects.filter(status=PlayerGameStatus.ABANDONED).count() == 1

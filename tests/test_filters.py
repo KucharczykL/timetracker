@@ -1033,10 +1033,6 @@ class TestFilterBarRendering:
         assert 'data-value="completed"' in html
         assert "Completed" in html
 
-    def test_no_hx_get(self):
-        html = _games_bar()
-        assert "hx-get" not in html
-
     def test_platform_uses_search_url(self):
         """Platform is model-backed: rows are fetched, not pre-rendered."""
         html = _games_bar()

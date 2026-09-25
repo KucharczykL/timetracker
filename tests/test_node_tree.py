@@ -215,7 +215,7 @@ class HtpyStyleSugarTest(unittest.TestCase):
     def test_kwargs_inner_underscore_becomes_hyphen(self):
         from common.components import Div
 
-        self.assertIn('hx-get="/y"', render(Div(hx_get="/y")))
+        self.assertIn('data-row-key="/y"', render(Div(data_row_key="/y")))
 
     def test_kwargs_true_renders_bare_attr(self):
         from common.components import Div

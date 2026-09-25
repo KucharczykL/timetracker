@@ -169,7 +169,7 @@ The one sub-dimension that is already what an audit hopes to find: two constants
 universally adopted, test-pinned —
 
 - `CONTENT_MAX_WIDTH_CLASS = "max-w-7xl"` — every page body (`ContentContainer`), navbar row.
-- `FORM_MAX_WIDTH_CLASS = "max-w-xl"` — every form-shaped surface (FormContainer, Modal,
+- `FORM_MAX_WIDTH_CLASS = "max-w-xl"` — every form-shaped surface (FormContainer,
   ConfirmPage, login).
 
 Popover widths are a coherent 3-step scale: `w-44` menus / `w-72` list-dialogs (an explicit
@@ -188,7 +188,7 @@ scrollspy (#401). Calls recorded so #384 and later consumers do not relitigate i
 
 - **Page frame:** a settings page is a normal `ContentContainer` child. The rail sits below
   the overlay z-scale (z-10 popovers + the standalone combobox panel → z-20 hosted dropdown
-  panels → z-40 modal → z-50 toasts): no z class. Since the navbar scrolls away, the sticky
+  panels → z-50 toasts): no z class. Since the navbar scrolls away, the sticky
   rail needs no navbar-height coupling. Put `sticky top-* self-start` on the direct grid-item
   host whose containing block spans the full settings content; a sticky child inside a
   content-height host has no travel. The nested `<nav>` owns the viewport `max-height` and

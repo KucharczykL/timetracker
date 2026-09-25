@@ -7,7 +7,7 @@ type MediaListener = (event: MediaQueryListEvent) => void;
 
 let systemDark = false;
 let mediaListener: MediaListener | null = null;
-let dispatchHtmxTriggers: ReturnType<typeof vi.fn>;
+let dispatchResponseEvents: ReturnType<typeof vi.fn>;
 
 function configureBrowser(preference = "system"): void {
   const root = document.documentElement;
@@ -65,9 +65,9 @@ beforeEach(() => {
     dispatchEvent: vi.fn(),
   }));
   window.toast = vi.fn();
-  window.fetchWithHtmxTriggers = vi.fn();
-  dispatchHtmxTriggers = vi.fn();
-  Object.assign(window, { dispatchHtmxTriggers });
+  window.fetchWithEvents = vi.fn();
+  dispatchResponseEvents = vi.fn();
+  Object.assign(window, { dispatchResponseEvents });
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -92,7 +92,7 @@ describe("ThemeCoordinator browser state", () => {
     expect(await coordinator.requestPreferenceChange("light")).toBe("committed");
     expect(localStorage.getItem("color-theme")).toBe("light");
     expect(document.documentElement.dataset.themePreference).toBe("light");
-    expect(window.fetchWithHtmxTriggers).not.toHaveBeenCalled();
+    expect(window.fetchWithEvents).not.toHaveBeenCalled();
     unsubscribe();
     coordinator.destroy();
   });
@@ -127,7 +127,7 @@ describe("ThemeCoordinator account state", () => {
   it("notifies all subscribers optimistically and commits a validated response", async () => {
     configureAccount();
     let resolve!: (value: Response) => void;
-    vi.mocked(window.fetchWithHtmxTriggers).mockReturnValue(new Promise((done) => {
+    vi.mocked(window.fetchWithEvents).mockReturnValue(new Promise((done) => {
       resolve = done;
     }));
     const committed = vi.fn();
@@ -161,14 +161,14 @@ describe("ThemeCoordinator account state", () => {
       saving: false,
     });
     expect(committed).toHaveBeenCalledTimes(1);
-    expect(window.fetchWithHtmxTriggers).toHaveBeenCalledWith(
+    expect(window.fetchWithEvents).toHaveBeenCalledWith(
       "/api/settings/user/THEME",
       expect.any(Object),
       "deferred",
     );
-    expect(dispatchHtmxTriggers).toHaveBeenCalledWith(savedResponse);
+    expect(dispatchResponseEvents).toHaveBeenCalledWith(savedResponse);
     expect(JSON.parse(String(
-      (vi.mocked(window.fetchWithHtmxTriggers).mock.calls[0][1] as RequestInit).body,
+      (vi.mocked(window.fetchWithEvents).mock.calls[0][1] as RequestInit).body,
     ))).toEqual({ value: "light" });
     expect(localStorage.getItem("color-theme")).toBeNull();
     coordinator.destroy();
@@ -176,7 +176,7 @@ describe("ThemeCoordinator account state", () => {
 
   it("commits null as inherited while retaining a null personal selection", async () => {
     configureAccount({ preference: "light", personal: "light", inherited: "dark" });
-    vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValue(response({
+    vi.mocked(window.fetchWithEvents).mockResolvedValue(response({
       key: "THEME",
       value: "dark",
       source: "database",
@@ -205,7 +205,7 @@ describe("ThemeCoordinator account state", () => {
     }))],
   ])("rolls back committed state after %s and allows retry", async (_name, fetchResult) => {
     configureAccount();
-    vi.mocked(window.fetchWithHtmxTriggers).mockImplementationOnce(fetchResult);
+    vi.mocked(window.fetchWithEvents).mockImplementationOnce(fetchResult);
     vi.spyOn(console, "error").mockImplementation(() => {});
     const coordinator = new ThemeCoordinator();
 
@@ -219,19 +219,19 @@ describe("ThemeCoordinator account state", () => {
       "Couldn't save your theme — please try again.",
       "error",
     );
-    expect(dispatchHtmxTriggers).not.toHaveBeenCalled();
+    expect(dispatchResponseEvents).not.toHaveBeenCalled();
 
-    vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValueOnce(response({
+    vi.mocked(window.fetchWithEvents).mockResolvedValueOnce(response({
       key: "THEME", value: "light", source: "user", locked: false, namespace: "user",
     }));
     expect(await coordinator.requestPreferenceChange("light")).toBe("committed");
-    expect(dispatchHtmxTriggers).toHaveBeenCalledTimes(1);
+    expect(dispatchResponseEvents).toHaveBeenCalledTimes(1);
     coordinator.destroy();
   });
 
   it("rolls back when the response namespace is not user", async () => {
     configureAccount();
-    vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValueOnce(response({
+    vi.mocked(window.fetchWithEvents).mockResolvedValueOnce(response({
       key: "THEME", value: "light", source: "user", locked: false, namespace: "site",
     }));
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -248,7 +248,7 @@ describe("ThemeCoordinator account state", () => {
   it("does not cancel a save when subscribers disconnect and resynchronizes on reconnect", async () => {
     configureAccount();
     let resolve!: (value: Response) => void;
-    vi.mocked(window.fetchWithHtmxTriggers).mockReturnValue(new Promise((done) => {
+    vi.mocked(window.fetchWithEvents).mockReturnValue(new Promise((done) => {
       resolve = done;
     }));
     const coordinator = new ThemeCoordinator();
@@ -290,7 +290,7 @@ describe("ThemeCoordinator unavailable state", () => {
 
     expect(coordinator.currentState()).toMatchObject({ status: "unavailable" });
     expect(await coordinator.requestPreferenceChange("dark")).toBe("rolled-back");
-    expect(window.fetchWithHtmxTriggers).not.toHaveBeenCalled();
+    expect(window.fetchWithEvents).not.toHaveBeenCalled();
     expect(error).toHaveBeenCalled();
     coordinator.destroy();
   });

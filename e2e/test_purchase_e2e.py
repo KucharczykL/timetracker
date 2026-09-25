@@ -2,8 +2,8 @@
 
 - A synthetic page isolates the general ``selection-fields`` element (no API,
   deterministic option values), mirroring ``test_search_select_e2e.py``.
-- The real-app tests drive the actual add-purchase form and the split modal
-  against pytest-django's ``live_server``.
+- The real-app tests drive the actual add-purchase form and the split and
+  refund confirmation pages against pytest-django's ``live_server``.
 """
 
 from datetime import date
@@ -23,7 +23,6 @@ def selection_fields_view(request):
     <!DOCTYPE html>
     <html>
     <head>
-        <script src="/static/js/htmx.min.js"></script>
         <script type="module" src="/static/js/dist/elements/search-select.js"></script>
         <script type="module" src="/static/js/dist/elements/selection-fields.js"></script>
     </head>
@@ -175,9 +174,11 @@ def test_split_purchase_action(authenticated_page: Page, live_server, e2e_librar
     expect(page.locator('[id^="purchase-row-"]')).to_have_count(1)
 
     page.locator('[title="Split into per-game purchases"]').click()
-    modal = page.locator("#split-confirmation-modal")
-    expect(modal).to_be_visible()
-    modal.locator('button[type="submit"]', has_text="Split").click()
+    # Confirms on its own page.
+    page.wait_for_url(
+        f"{live_server.url}{reverse('games:split_purchase', args=[bundle.id])}**"
+    )
+    page.locator('button[type="submit"]', has_text="Split").click()
 
     page.wait_for_url(f"{live_server.url}{reverse('games:list_purchases')}**")
     # The UI must observe the completed operation: the bundle row is gone and
@@ -186,22 +187,18 @@ def test_split_purchase_action(authenticated_page: Page, live_server, e2e_librar
     expect(page.locator('[id^="purchase-row-"]')).to_have_count(2)
 
 
-def test_split_modal_dismisses_on_escape_and_backdrop(
+def test_refund_confirms_on_a_page_and_returns_to_the_list(
     authenticated_page: Page, live_server, e2e_library
 ):
-    """The confirm modal is a <modal-dialog>: Escape and a backdrop click close
-    it."""
+    """Refund confirms on a page, returns to list."""
     page = authenticated_page
     platform = Platform.objects.create(
         library=e2e_library, name="PC", icon="pc", group="PC"
     )
-    game_a = Game.objects.create(
+    game = Game.objects.create(
         library=e2e_library, name="Alpha Game", platform=platform
     )
-    game_b = Game.objects.create(
-        library=e2e_library, name="Beta Game", platform=platform
-    )
-    bundle = Purchase.objects.create(
+    purchase = Purchase.objects.create(
         library=e2e_library,
         price=30.0,
         price_currency="USD",
@@ -210,24 +207,22 @@ def test_split_modal_dismisses_on_escape_and_backdrop(
         ownership_type=Purchase.DIGITAL,
         type=Purchase.GAME,
     )
-    bundle.games.set([game_a, game_b])
+    purchase.games.set([game])
+    list_url = f"{live_server.url}{reverse('games:list_purchases')}?page=1"
 
-    page.goto(f"{live_server.url}{reverse('games:list_purchases')}")
-    modal = page.locator("#split-confirmation-modal")
+    page.goto(list_url)
+    page.locator('[title="Mark as refunded"]').click()
+    page.wait_for_url(
+        f"{live_server.url}{reverse('games:refund_purchase', args=[purchase.id])}**"
+    )
+    page.locator('button[type="submit"]', has_text="Refund").click()
 
-    # Escape closes it.
-    page.locator('[title="Split into per-game purchases"]').click()
-    expect(modal).to_be_visible()
-    page.keyboard.press("Escape")
-    expect(modal).to_have_count(0)
-
-    # A click on the backdrop (outside the panel) closes it. (5, 5) lands on the
-    # overlay corner, well away from the centered panel. Coordinate-based (not a
-    # locator click) because the overlay detaches mid-click when it dismisses.
-    page.locator('[title="Split into per-game purchases"]').click()
-    expect(modal).to_be_visible()
-    page.mouse.click(5, 5)
-    expect(modal).to_have_count(0)
+    page.wait_for_url(list_url)
+    # The refunded row offers no second refund.
+    expect(page.locator(f"#purchase-row-{purchase.id}")).to_be_visible()
+    expect(page.locator('[title="Mark as refunded"]')).to_have_count(0)
+    purchase.refresh_from_db()
+    assert purchase.date_refunded is not None
 
 
 @pytest.fixture
