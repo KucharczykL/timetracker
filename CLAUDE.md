@@ -157,9 +157,9 @@ Django 6+ monolith (v1.7.0), single app (`games/`), tracks video game purchases,
 play sessions, stats. Full-page requests and custom elements over pure-Python
 server-side component system, plus Django Ninja REST API. No htmx: every
 mutation is form POST that redirects, or custom element's `fetch`.
-**pydantic** declared runtime dep,
-not just Ninja's transitive one: event vocabulary (`games/events/vocabulary.py`)
-validates every event payload with `TypeAdapter`.
+**pydantic** declared runtime dep, not just Ninja's transitive one: event
+vocabulary (`games/events/vocabulary.py`) validates every event payload with
+`TypeAdapter`.
 
 ```
 games/          — Django app: models, views, templates, forms, signals, tasks, API,
@@ -673,7 +673,7 @@ Submodules re-exported via `common/components/__init__.py`:
   `Input()`, `Checkbox()`, `Radio()`, `Pill()`, `Icon()`, `Popover()`,
   `TruncatedText()`, `SegmentedField()`, `PageHeading()` (badge heading; plain `<h1>`
   is generated `H1`), `ConfirmPage()` (full-page POST confirmation — the only
-  confirmation, no modal exists; `details` is block slot beside `message`, which
+  confirmation; `details` is block slot beside `message`, which
   renders inside `<p>`), `StyledTable()`, `TableRow()`, `TableTd()`,
   `TableHeader()`, `ContentContainer()` (page-body width container,
   `w-full max-w-7xl self-center` — every list/detail/stats body sits in one),
@@ -811,7 +811,7 @@ organized by domain entity:
 - `general.py` — `stats()`, `stats_alltime()`, `index()`, `model_counts` and
   `global_current_year` context processors
 - `returns.py` — route classification (`READ_ONLY` / `ORIGIN_AWARE` /
-  `CONFIRMATION` / `IN_PLACE`, guarded for completeness against route table) plus
+  `IN_PLACE`, guarded for completeness against route table) plus
   `origin_from()` and `return_url()`, app-bound half of `common/returns.py`
 - `removal.py` — `confirm_and_remove()`: GET renders `ConfirmPage`, POST stamps
   `removed_at`, queues the Undo notice and returns to origin. Every `remove_*`
@@ -902,7 +902,7 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
 
 ### Templates
 
-Few HTML templates remain; bulk of UI is Python components.
+No template renders at runtime; UI is Python components.
 
 - `games/templates/icons/<slug>.html` — SVG icon snippets; **source** for icon
   codegen (`manage.py gen_icons` → committed
@@ -1113,7 +1113,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   flattens tree and drops media); wrap trusted pre-rendered HTML in `Safe(html)`.
   Plain strings — `SafeText` included — auto-escaped as children.
 - **Builders take htpy form only** — static attributes as kwargs, children via `[]`:
-  `Builder(class_="x", hx_get="/y")[child1, child2]`. Dynamic attributes (runtime
+  `Builder(class_="x", data_row="/y")[child1, child2]`. Dynamic attributes (runtime
   `list[(name, value)]` or `Mapping`) go through single positional slot. Generic
   and six styled builders (`Input`, `Checkbox`, `Radio`, `Pill`, `ControlButton`,
   `SegmentedField`) **do not accept `attributes=`/`children=`** — passing either

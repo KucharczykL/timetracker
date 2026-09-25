@@ -8,7 +8,7 @@ from common.notices import toast_payloads
 
 #: Events the page dispatches, as JSON.
 EVENTS_HEADER = "X-Events"
-#: The page answers this by reloading.
+#: Its page reloads; messages wait for it.
 RELOAD_HEADER = "X-Reload"
 
 

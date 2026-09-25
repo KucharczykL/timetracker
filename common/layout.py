@@ -311,8 +311,7 @@ def TimetrackerDocument(
         origin=navbar_origin,
     )
 
-    # Collect JS from both the page body and the navbar (the navbar owns the
-    # <drop-down> custom element, so its media must be emitted too).
+    # Toast stack first, then body and navbar.
     # First: its listener stands before any element upgrades.
     toast_container = ToastStack()
     media = (

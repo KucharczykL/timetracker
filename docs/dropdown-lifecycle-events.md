@@ -86,12 +86,11 @@ This is the pattern to copy for any "do something when the panel opens" need:
 listen on the host, duck-type into the hosted widget, tear down in the returned
 cleanup.
 
-## Consuming from markup
+## Consuming from an ancestor
 
 Because these are ordinary bubbling DOM events, any ancestor can observe them
 with `addEventListener`, as above; a new consumer is a custom element or a
-registered behavior. The project carries no htmx, so there is no inline
-listener syntax to reach for.
+registered behavior.
 
 ## Programmatic control
 

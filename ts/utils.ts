@@ -1,4 +1,4 @@
-/** Initializes each match once, after parsing. */
+/** Initializes matches present once parsing ends. */
 function onReady(selector: string, initializeElement: (element: Element) => void) {
   const run = () => {
     for (const element of document.querySelectorAll(selector)) {

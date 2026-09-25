@@ -209,7 +209,6 @@ class RenderedPagesTest(TestCase):
         # The device selector stays (vanilla-fetch custom element); no row
         # refreshes itself.
         self.assertIn(f"session-{self.session.pk}-device", html)
-        self.assertNotIn("device-changed from:body", html)
 
     def test_list_page_filter_tiers_share_content_container(self):
         """Every list page renders exactly one filter tier —

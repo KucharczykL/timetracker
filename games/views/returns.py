@@ -85,7 +85,7 @@ ORIGIN_AWARE: frozenset[UrlName] = frozenset(
     }
 )
 
-# Mutates and answers with a partial swap, leaving the user where they are.
+# Mutates; the page stays where it is.
 IN_PLACE: frozenset[UrlName] = frozenset(
     {
         "games:settings_kit_preview_patch",

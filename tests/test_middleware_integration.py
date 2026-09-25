@@ -36,7 +36,7 @@ class MiddlewareIntegrationTest(TestCase):
 
 @pytest.mark.django_db(transaction=True)
 def test_a_fetch_with_a_message_gets_the_events_header(client, owned_user):
-    """A plain fetch() still gets X-Events.
+    """A plain fetch() gets X-Events.
 
     fetchWithEvents reads the header, so the toast depends on it.
     """

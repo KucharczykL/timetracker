@@ -2394,9 +2394,7 @@ def TableRow(
 
     ``data_table`` mirrors :func:`StyledTable`'s gate: on a table that can
     scroll, body cells stay on one line unless their column sets ``wrap``. A
-    row fragment swapped into such a table must pass both this flag and the
-    table's ``columns``, or it renders under a different width policy than the
-    rows around it.
+    row passes this flag and ``columns`` as its table does.
 
     ``menu_slot`` mirrors the table's trailing menu cell, which is the whole
     table's or no row's: a row that states no ``menu`` under it still renders
@@ -2404,9 +2402,8 @@ def TableRow(
     position and a short row would shift every column after it.
 
     ``selectable`` mirrors the table's selection declaration, and a row with
-    no ``key`` under it is refused — always, and not in debug alone. A row
-    swapped into a selectable table must pass it, or it arrives unnamed: no
-    checkbox, no way to act on it, and nothing said.
+    no ``key`` under it is refused — always, and not in debug alone: an
+    unnamed row has no checkbox and says nothing.
     """
     cells = data["cell_data"]
     if selectable and not data.get("key"):
@@ -3377,7 +3374,7 @@ def StyledTable(
         if data_table:
             thead_class = f"{thead_class} {_FALLBACK_HIDE_HEADER_CLASS}"
         table_children.append(Thead(class_=thead_class)[header_row])
-    # Alignment is table-level, so added rows align.
+    # Alignment is table-level, not per row.
     # Driven by Column.align; a right column at position i targets its
     # <td> (the first cell is a <th scope="row">, so td:nth-child(i+1) is right).
     # The nth-child literals are safelisted via @source inline in input.css.

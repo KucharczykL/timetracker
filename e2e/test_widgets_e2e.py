@@ -104,7 +104,7 @@ def test_number_filter_between_reveals_second_input(
 def test_widgets_initialize_inside_inserted_content(
     authenticated_page: Page, live_server
 ):
-    """Widgets inserted after load wire themselves."""
+    """Custom elements inserted after load wire themselves."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 

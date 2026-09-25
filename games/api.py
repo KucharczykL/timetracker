@@ -1566,9 +1566,8 @@ def _report_saved(
 ) -> None:
     """One toast: the calendar's sentence when its zone moved, else "saved".
 
-    A setting that reloads the page after a save reads the toast on
-    the page it lands on, so the header rides no response the browser
-    discards.
+    A setting whose page reloads marks the answer ``X-Reload``, so its
+    toast waits for the reloaded page.
     """
     if get_definition(key).reload_after_save:
         response[RELOAD_HEADER] = "true"

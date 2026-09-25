@@ -164,7 +164,6 @@ EDITIONS_UNDER_CONSTRUCTION = (
     "A platform beyond the first one does not reach the games list yet."
 )
 
-#: Carries its own script; no `scripts=` needed.
 _RefreshingSection = custom_element_builder("refreshing-section")
 
 
