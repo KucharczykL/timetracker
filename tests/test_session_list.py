@@ -286,7 +286,7 @@ def test_each_row_states_its_own_menu(logged_in, game, owned_library):
     assert f'id="session-menu-{session.pk}"' in body
 
 
-def test_the_tray_offers_four_acts_with_remove_last(logged_in, game, owned_library):
+def test_the_tray_offers_five_acts_with_remove_last(logged_in, game, owned_library):
     timed_row(
         tracked_run(owned_library, game), STARTED_AT, STARTED_AT + timedelta(hours=1)
     )
@@ -296,6 +296,7 @@ def test_the_tray_offers_four_acts_with_remove_last(logged_in, game, owned_libra
     assert _tray_labels(body) == [
         "Finish",
         "Move to playthrough…",
+        "Edit…",
         "Record as historical playtime",
         "Remove",
     ]

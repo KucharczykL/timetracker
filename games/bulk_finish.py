@@ -33,9 +33,9 @@ from games.bulk_actions import (
     PreviewColumn,
     RowOutcome,
 )
-from games.bulk_sessions import session_resolution, session_scope
+from games.bulk_sessions import session_of, session_resolution, session_scope
 from games.commands.playersession import TimedTiming
-from games.events.dispatch import CommandRejected, RowNotHeld
+from games.events.dispatch import CommandRejected
 from games.events.idempotency import IdempotencyKey
 from games.events.playersession import ZoneName
 from games.models import PlayerSession, UserLibrary
@@ -220,7 +220,7 @@ def unfinish_one(
     accepts: a correction between the Finish and the Undo is what the
     row states, and this restates whatever it finds.
     """
-    session = _row(actor, session_id)
+    session = session_of(actor, session_id)
     #: A correction since the Finish can have taken both away.
     #:
     #: `CorrectSessionTiming` states a whole timing, and a Duration-only row
@@ -248,26 +248,6 @@ def unfinish_one(
             source_metadata=_source(FINISH_SESSION.name),
         )
     )
-
-
-def _row(actor: User, session_id: uuid.UUID) -> PlayerSession:
-    """The row an Undo puts back to running.
-
-    The plain manager: `library_sessions` reads the catalog mark, and a
-    session whose catalog game went is still this library's to unwind.
-    """
-    with answered("session"):
-        row = (
-            PlayerSession.objects.filter(library=actor.library, pk=session_id)
-            .select_related("playthrough")
-            .first()
-        )
-        if row is None:
-            raise RowNotHeld(
-                f"PlayerSession {session_id} is not library {actor.library.pk}'s, "
-                "so the batch's inverse has no row to put back to running."
-            )
-        return row
 
 
 def _started(session: PlayerSession, presentations: Presentations) -> Cell:
