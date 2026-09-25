@@ -8,7 +8,6 @@ has no such hole, and READ_ONLY doubles as the origin allow-list.
 
 from games import urls as games_urls
 from games.views.returns import (
-    CONFIRMATION,
     DEBUG_ONLY,
     IN_PLACE,
     ORIGIN_AWARE,
@@ -18,7 +17,6 @@ from games.views.returns import (
 BUCKETS = {
     "READ_ONLY": READ_ONLY,
     "ORIGIN_AWARE": ORIGIN_AWARE,
-    "CONFIRMATION": CONFIRMATION,
     "IN_PLACE": IN_PLACE,
 }
 

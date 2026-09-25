@@ -2,6 +2,10 @@
 
 ### Changed
 
+* Refunding or splitting a purchase asks on its own confirmation page and
+  returns to the list it came from, as removing one does, instead of opening a
+  modal over the list. htmx is gone: no page swaps fragments any more, and the
+  toast header is `X-Events`.
 * The legacy session table is gone; every session is its events, and the
   sample fixture carries them.
 

@@ -21,7 +21,6 @@ from django.templatetags.static import static
 from django.urls import reverse
 from django.utils.safestring import SafeText
 from django.utils.translation import get_language
-from django_htmx.jinja import django_htmx_script
 
 from common.components.core import Document, Safe
 from common.components.elements import Footer, LinkTag
@@ -275,7 +274,7 @@ def TimetrackerDocument(
     """
     from django.urls import Resolver404, resolve
 
-    from common.components import Media, ModuleScript, StaticScript, collect_media
+    from common.components import ModuleScript, StaticScript, collect_media
     from common.date_time_presentation import date_time_presentation_for_request
     from games.views.general import global_current_year, model_counts
     from games.views.returns import READ_ONLY
@@ -313,17 +312,11 @@ def TimetrackerDocument(
     )
 
     # Collect JS from both the page body and the navbar (the navbar owns the
-    # <drop-down> custom element, so its media must be emitted too). The global
-    # modal container (below) receives HTMX-swapped confirm modals
-    # (<modal-dialog>) on any page, and the swapped-in fragment carries no script
-    # of its own — so its dismiss element must be defined page-globally.
+    # <drop-down> custom element, so its media must be emitted too).
     # First: its listener stands before any element upgrades.
     toast_container = ToastStack()
     media = (
-        collect_media(toast_container)
-        + collect_media(content)
-        + collect_media(navbar)
-        + Media(js=("dist/elements/modal-dialog.js",))
+        collect_media(toast_container) + collect_media(content) + collect_media(navbar)
     )
     collected_scripts = "".join(
         [str(ModuleScript(name)) for name in media.js]
@@ -337,22 +330,12 @@ def TimetrackerDocument(
     messages_json = json.dumps(toast_payloads(request)).replace("</", "<\\/")
 
     def html_document(title: str = "") -> Document:
-        htmx_indicator = Img(
-            id="indicator",
-            src=static("icons/loading.png"),
-            class_="absolute right-3 top-3 animate-spin htmx-indicator",
-            height="24",
-            width="24",
-            alt="loading indicator",
-        )
-
         version_footer_note = Footer(class_=VERSION_STAMP_CLASS)[
             f"{version()} "
             f"({date_time_presentation.format(version_modified_at(), 'datetime')})"
         ]
 
         script_body = Safe(all_scripts)
-        global_modal_container = Div(id="global-modal-container", hx_swap_oob="true")
         mastered_script_IS_THIS_REALLY_NEEDED = Script(type="module")[
             _main_script(mastered)
         ]
@@ -450,24 +433,16 @@ def TimetrackerDocument(
                         # that have one keep it.
                         Script(src=static("js/temporal-polyfill.js")),
                         ModuleScript("dist/global-error-handler.js"),
-                        Script(src=static("js/htmx.min.js")),
-                        ModuleScript("dist/htmx-redirect-toast.js"),
                         ModuleScript("dist/toast.js"),
                         Script(defer=True, src=static("js/alpine-mask.min.js")),
                         Script(defer=True, src=static("js/alpine.min.js")),
-                        Script()[
-                            "htmx.config.scrollBehavior = 'smooth';\n"
-                            "htmx.config.selfRequestsOnly = false;\n"
-                        ],
                         Script(id="django-messages", type="application/json")[
                             messages_json
                         ],
-                        Safe(str(django_htmx_script(nonce=None))),
                         LinkTag(rel="stylesheet", href=static("base.css")),
                     ]
                 ],
-                Body(hx_indicator="#indicator", class_="bg-neutral-primary text-body")[
-                    htmx_indicator,
+                Body(class_="bg-neutral-primary text-body")[
                     Div(class_="flex flex-col min-h-screen")[
                         navbar,
                         Div(
@@ -478,7 +453,6 @@ def TimetrackerDocument(
                     ],
                     script_body,
                     mastered_script_IS_THIS_REALLY_NEEDED,
-                    global_modal_container,
                     toast_container,
                 ],
             ],

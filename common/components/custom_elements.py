@@ -561,6 +561,16 @@ class ContinuingBatchProps(TypedDict):
 register_element("continuing-batch", "ContinuingBatch", ContinuingBatchProps)
 
 
+# Built in games/views/game.py; behavior in
+# ts/elements/refreshing-section.ts. On the named document event it reads
+# the page again and takes its own part of the answer, found by its id.
+class RefreshingSectionProps(TypedDict):
+    event: str
+
+
+register_element("refreshing-section", "RefreshingSection", RefreshingSectionProps)
+
+
 # Built in primitives.py; behavior in ts/elements/selectable-table.ts.
 class SelectableTableProps(TypedDict):
     # The list's filter JSON, for the wider scope.
@@ -713,16 +723,6 @@ class TruncatedTextProps(TypedDict):
 # The <truncated-text> builder lives beside Popover in primitives.py; this is
 # its codegen-only property schema.
 register_element("truncated-text", "TruncatedText", TruncatedTextProps)
-
-
-class ModalDialogProps(TypedDict):
-    pass
-
-
-# The <modal-dialog> confirm-overlay element. Its builder (_ModalDialog) lives in
-# primitives.py next to the Modal component. It takes no props, so the schema is
-# empty.
-register_element("modal-dialog", "ModalDialog", ModalDialogProps)
 
 
 def SelectionFields(
@@ -898,7 +898,7 @@ class DropdownContractWarning(UserWarning):
 
 def _stamp(element: Element, contract: list[tuple[str, str]], id: str) -> Element:
     """Return a clone of `element` carrying `contract`, preserving its other attrs
-    (class, hx-*, …) and media. Warns on each reserved-key collision."""
+    (class, data-*, …) and media. Warns on each reserved-key collision."""
     reserved = {key for key, _ in contract}
     for key, _ in element.attributes:
         if key in reserved:
@@ -958,7 +958,7 @@ def _as_menu_trigger(trigger: Element) -> Element:
 
 
 def _as_dialog_trigger(trigger: Element) -> Element:
-    """Add the modal-dialog popup semantic without overriding an explicit one."""
+    """Add the dialog popup semantic without overriding an explicit one."""
     if any(key == "aria-haspopup" for key, _ in trigger.attributes):
         return trigger
     return _stamp(trigger, [("aria-haspopup", "dialog")], "dialog")

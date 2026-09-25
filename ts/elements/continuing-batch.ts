@@ -4,7 +4,7 @@
  * posts it, so a person watches a count rise. Stop is the one press
  * left.
  *
- * An element and not `onSwap`: each chunk is a whole document, and
+ * An element and not `onReady`: each chunk is a whole document, and
  * connecting is the moment to act.
  */
 

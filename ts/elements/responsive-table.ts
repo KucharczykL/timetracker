@@ -4,7 +4,7 @@
  * (max-content) width, then hides the lowest-priority columns until the table
  * fits the region — continuously, with no breakpoints. The decision is
  * expressed as table-level `[&_tr>*:nth-child(N)]:hidden` classes (safelisted
- * in input.css), so a row fragment htmx swaps into the live tbody inherits the
+ * in input.css), so a row added to the live tbody inherits the
  * current decision without carrying any state of its own.
  *
  * The no-JS fallback (the `max-md` positional hiding) is scoped to
@@ -153,7 +153,7 @@ export class ResponsiveTableElement extends HTMLElement {
     }
     const body = this.table.querySelector("tbody");
     if (body && typeof MutationObserver !== "undefined") {
-      // Content changes (an htmx-swapped row, a cloned session row) change
+      // Content changes (an added row, a cloned session row) change
       // natural widths. Attribute changes are deliberately not observed:
       // measurement itself toggles classes and inline styles, and must not
       // re-trigger itself.

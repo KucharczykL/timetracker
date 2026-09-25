@@ -16,8 +16,6 @@ def e2e_test_view(request):
         <!-- Load the compiled CSS so tests can assert real rendered visibility
              (the .hidden utility resolves to display:none) instead of class strings. -->
         <link rel="stylesheet" href="/static/base.css">
-        <!-- search-select is a custom element; htmx must be present for filter_bar. -->
-        <script src="/static/js/htmx.min.js"></script>
         <script type="module" src="/static/js/dist/elements/search-select.js"></script>
         <!-- host_dropdown=True wraps each widget in <drop-down behavior=inline-combobox>,
              whose behaviors are registered by drop-down.js (#348). -->
@@ -67,7 +65,6 @@ def anchor_test_view(request):
     <head>
         <title>Anchor E2E Test</title>
         <link rel="stylesheet" href="/static/base.css">
-        <script src="/static/js/htmx.min.js"></script>
         <script type="module" src="/static/js/dist/elements/search-select.js"></script>
         <script type="module" src="/static/js/dist/elements/drop-down.js"></script>
     </head>
@@ -105,7 +102,6 @@ def searchurl_committed_view(request):
     <html>
     <head>
         <link rel="stylesheet" href="/static/base.css">
-        <script src="/static/js/htmx.min.js"></script>
         <script type="module" src="/static/js/dist/elements/search-select.js"></script>
         <script type="module" src="/static/js/dist/elements/drop-down.js"></script>
     </head>
@@ -148,7 +144,6 @@ def slow_search_view(request):
     <head>
         <title>SearchSelect slow-fetch E2E Test</title>
         <link rel="stylesheet" href="/static/base.css">
-        <script src="/static/js/htmx.min.js"></script>
         <script type="module" src="/static/js/dist/elements/search-select.js"></script>
     </head>
     <body>

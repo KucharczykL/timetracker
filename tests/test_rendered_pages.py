@@ -181,8 +181,8 @@ class RenderedPagesTest(TestCase):
         # No script tag should appear escaped anywhere on the page.
         self.assertNotIn("&lt;script", html)
         # Inline JS keeps its quotes (escaping would yield &#x27;).
-        self.assertIn("htmx.config.scrollBehavior = 'smooth';", html)
-        self.assertNotIn("&#x27;smooth&#x27;", html)
+        self.assertIn("document.addEventListener('DOMContentLoaded'", html)
+        self.assertNotIn("&#x27;DOMContentLoaded&#x27;", html)
         # Correct charset markup, not <meta name="charset">.
         self.assertIn('<meta charset="utf-8"', html)
         # A single, un-escaped django-messages JSON block.
@@ -207,8 +207,8 @@ class RenderedPagesTest(TestCase):
     def test_session_list_row_has_id_and_device_selector(self):
         html = self.get("games:list_sessions").content.decode()
         self.assertIn(f"session-row-{self.session.pk}", html)
-        # The device selector stays (vanilla-fetch custom element); the htmx
-        # row-refresh wiring is gone.
+        # The device selector stays (vanilla-fetch custom element); no row
+        # refreshes itself.
         self.assertIn(f"session-{self.session.pk}-device", html)
         self.assertNotIn("device-changed from:body", html)
 
@@ -477,7 +477,7 @@ class RenderedPagesTest(TestCase):
         self.assertNotIn("No playthroughs yet.", html)
         self.assertNoEscapedTags(html)
 
-    # --- HTMX fragments ------------------------------------------------------
+    # --- confirmation pages --------------------------------------------------
 
     def test_remove_game_confirmation_page(self):
         html = self.get("games:remove_game", self.game.id).content.decode()
@@ -487,13 +487,17 @@ class RenderedPagesTest(TestCase):
         self.assertIn('method="post"', html)
         self.assertNoEscapedTags(html)
 
-    def test_refund_confirmation_modal(self):
-        html = self.get(
-            "games:refund_purchase_confirmation", self.purchase.id
-        ).content.decode()
-        self.assertIn('id="refund-confirmation-modal"', html)
-        self.assertIn(f"#purchase-row-{self.purchase.id}", html)
-        self.assertIn("Refund", html)
+    def test_refund_confirmation_page(self):
+        html = self.get("games:refund_purchase", self.purchase.id).content.decode()
+        self.assertIn("Refund purchase", html)
+        self.assertIn("marked as abandoned", html)
+        self.assertIn('method="post"', html)
+        self.assertNoEscapedTags(html)
+
+    def test_split_confirmation_page(self):
+        html = self.get("games:split_purchase", self.purchase.id).content.decode()
+        self.assertIn("Split purchase", html)
+        self.assertIn('method="post"', html)
         self.assertNoEscapedTags(html)
 
     def test_session_list_actions_do_not_reach_the_api(self):

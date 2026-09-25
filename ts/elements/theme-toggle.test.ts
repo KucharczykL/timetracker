@@ -60,8 +60,8 @@ beforeEach(() => {
     dispatchEvent: vi.fn(),
   });
   window.toast = vi.fn();
-  window.fetchWithHtmxTriggers = vi.fn();
-  window.dispatchHtmxTriggers = vi.fn();
+  window.fetchWithEvents = vi.fn();
+  window.dispatchResponseEvents = vi.fn();
 });
 afterEach(() => {
   resetThemeCoordinatorForTests();
@@ -97,7 +97,7 @@ describe("<theme-toggle>", () => {
   it("does not request a preference change from a permanently disabled toggle", async () => {
     configure("account", "dark");
     const fetchStub = vi.fn();
-    window.fetchWithHtmxTriggers = fetchStub;
+    window.fetchWithEvents = fetchStub;
     const host = mount(true);
     const button = host.querySelector<HTMLButtonElement>("button")!;
     const requestPreferenceChange = vi.spyOn(
@@ -138,7 +138,7 @@ describe("<theme-toggle>", () => {
 
   it("disables while an account save is pending and reflects rollback", async () => {
     configure("account", "dark");
-    vi.mocked(window.fetchWithHtmxTriggers).mockResolvedValue({
+    vi.mocked(window.fetchWithEvents).mockResolvedValue({
       ok: false,
       status: 500,
     } as Response);
@@ -149,7 +149,7 @@ describe("<theme-toggle>", () => {
     button.click();
     expect(button.disabled).toBe(true);
     expect(button.getAttribute("aria-busy")).toBe("true");
-    expect(window.fetchWithHtmxTriggers).toHaveBeenCalledTimes(1);
+    expect(window.fetchWithEvents).toHaveBeenCalledTimes(1);
     expect(document.documentElement.dataset.themePreference).toBe("system");
 
     await vi.waitFor(() => expect(button.disabled).toBe(false));

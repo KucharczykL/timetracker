@@ -5,14 +5,14 @@ import "./toast.js";
 function responseWithTrigger(): Response {
   return new Response("", {
     headers: {
-      "HX-Trigger": JSON.stringify({
+      "X-Events": JSON.stringify({
         "show-toast": { message: "Theme saved", type: "success" },
       }),
     },
   });
 }
 
-describe("fetchWithHtmxTriggers", () => {
+describe("fetchWithEvents", () => {
   beforeEach(() => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(responseWithTrigger()));
   });
@@ -23,7 +23,7 @@ describe("fetchWithHtmxTriggers", () => {
     const listener = vi.fn();
     document.addEventListener("show-toast", listener, { once: true });
 
-    await window.fetchWithHtmxTriggers("/settings");
+    await window.fetchWithEvents("/settings");
 
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({
       detail: { message: "Theme saved", type: "success" },
@@ -34,14 +34,14 @@ describe("fetchWithHtmxTriggers", () => {
     const listener = vi.fn();
     document.addEventListener("show-toast", listener);
 
-    const response = await (window.fetchWithHtmxTriggers as any)(
+    const response = await (window.fetchWithEvents as any)(
       "/settings",
       {},
       "deferred",
     );
 
     expect(listener).not.toHaveBeenCalled();
-    (window as any).dispatchHtmxTriggers(response);
+    (window as any).dispatchResponseEvents(response);
     expect(listener).toHaveBeenCalledWith(expect.objectContaining({
       detail: { message: "Theme saved", type: "success" },
     }));

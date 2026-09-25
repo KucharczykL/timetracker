@@ -10,7 +10,7 @@ export function selectPayloadValue(
 
 // Value-selector behavior: pick an option → swap the toggle label, reflect the
 // selection (aria-selected), close, PATCH the server, and fire the body event
-// that drives cross-widget htmx refresh. Config comes from data-* on the host.
+// a <refreshing-section> listens for. Config comes from data-* on the host.
 registerBehavior("select", {
   menuOptions: (): Partial<MenuOptions> => ({
     itemSelector: "[data-option]",
@@ -43,7 +43,7 @@ registerBehavior("select", {
         }
         controller.close();
         window
-          .fetchWithHtmxTriggers(patchUrl, {
+          .fetchWithEvents(patchUrl, {
             method: "PATCH",
             headers: { "Content-Type": "application/json", "X-CSRFToken": csrf },
             body: JSON.stringify({

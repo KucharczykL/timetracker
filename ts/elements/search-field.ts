@@ -11,7 +11,7 @@
  * Choosing a mode applies nothing. Each apply loads a page, so one that fired
  * while a person typed would take the focus and scroll with every pause.
  */
-import { onSwap } from "../utils.js";
+import { onReady } from "../utils.js";
 
 const MODE_ITEM = "[data-match-mode]";
 
@@ -70,7 +70,7 @@ class SearchFieldElement extends HTMLElement {
 customElements.define("search-field", SearchFieldElement);
 
 // Enter applies, as in a facet input. The bar owns the submit.
-onSwap("search-field [data-match-value]", (input) => {
+onReady("search-field [data-match-value]", (input) => {
   input.addEventListener("keydown", (event) => {
     if ((event as KeyboardEvent).key !== "Enter") return;
     const form = input.closest("form");

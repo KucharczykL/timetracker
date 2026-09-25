@@ -1,27 +1,20 @@
-declare const htmx: any;
-
-
 /**
- * Runs initializeElement once for each element matching selector, on initial
- * page load and inside every htmx-swapped fragment (a port of FastHTML's
- * proc_htmx). htmx fires htmx:load for the initial document and for each
- * swapped-in element, so a single registration covers both; the WeakSet
- * guarantees once-per-element initialization, replacing the old
- * DOMContentLoaded + htmx:afterSwap + per-element guard-flag pattern.
+ * Runs initializeElement once for each element matching selector, when the
+ * document is parsed. Nothing swaps a fragment into a page, so the parse is
+ * the only moment a matching element appears; an element that must react to
+ * being moved or added later is a custom element instead.
  */
-function onSwap(selector: string, initializeElement: (element: Element) => void) {
-  const initialized = new WeakSet();
-  htmx.onLoad((swappedElement: Element) => {
-    const elements: Element[] = Array.from(htmx.findAll(swappedElement, selector));
-    if (swappedElement.matches && swappedElement.matches(selector)) {
-      elements.unshift(swappedElement);
-    }
-    for (const element of elements) {
-      if (initialized.has(element)) continue;
-      initialized.add(element);
+function onReady(selector: string, initializeElement: (element: Element) => void) {
+  const run = () => {
+    for (const element of document.querySelectorAll(selector)) {
       initializeElement(element);
     }
-  });
+  };
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", run, { once: true });
+  } else {
+    run();
+  }
 }
 
 /**
@@ -258,7 +251,7 @@ function disableElementsWhenTrue(targetSelect: string, targetValue: string | str
 }
 
 export {
-  onSwap,
+  onReady,
   nowISOUTC,
   toISOUTCString,
   syncSelectInputUntilChanged,

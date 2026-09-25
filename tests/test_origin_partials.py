@@ -1,5 +1,5 @@
-"""Htmx partials carry the origin too — the parity backstop cannot see them,
-because the page they render into is not the page they were requested from."""
+"""The refund and split confirmations carry the origin to their POST and
+return to it when done."""
 
 from datetime import date
 
@@ -37,22 +37,17 @@ def logged_in(client, owned_user):
     return client
 
 
-def test_the_refund_modal_posts_with_the_origin(logged_in, purchase):
-    body = logged_in.get(
-        action_url("games:refund_purchase_confirmation", purchase.id, origin=ORIGIN)
-    ).content.decode()
-    assert "origin=%2Ftracker%2Fpurchase%2Flist%3Fpage%3D2" in body
+ENCODED_ORIGIN = "origin=%2Ftracker%2Fpurchase%2Flist%3Fpage%3D2"
 
 
-def test_the_refunded_row_keeps_the_origin(logged_in, purchase):
-    body = logged_in.post(
-        action_url("games:refund_purchase", purchase.id, origin=ORIGIN)
-    ).content.decode()
-    assert "origin=%2Ftracker%2Fpurchase%2Flist%3Fpage%3D2" in body
+@pytest.mark.parametrize("route", ["games:refund_purchase", "games:split_purchase"])
+def test_the_confirmation_posts_with_the_origin(logged_in, purchase, route):
+    body = logged_in.get(action_url(route, purchase.id, origin=ORIGIN)).content.decode()
+    assert ENCODED_ORIGIN in body
 
 
-def test_split_redirects_to_the_origin(logged_in, purchase):
-    response = logged_in.post(
-        action_url("games:split_purchase", purchase.id, origin=ORIGIN)
-    )
-    assert response["HX-Redirect"] == ORIGIN
+@pytest.mark.parametrize("route", ["games:refund_purchase", "games:split_purchase"])
+def test_the_act_redirects_to_the_origin(logged_in, purchase, route):
+    response = logged_in.post(action_url(route, purchase.id, origin=ORIGIN))
+    assert response.status_code == 302
+    assert response["Location"] == ORIGIN

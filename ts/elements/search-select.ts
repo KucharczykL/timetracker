@@ -640,7 +640,7 @@ const initWidget = (containerElement: Element) => {
     createRow.setAttribute("aria-disabled", "true");
     const body = { name, ...resolveParams(container, params) };
     void window
-      .fetchWithHtmxTriggers(createUrl, {
+      .fetchWithEvents(createUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -653,7 +653,7 @@ const initWidget = (containerElement: Element) => {
           return response.json() as Promise<{ value: string; label: string }>;
         //: A refusal queues its own sentence, which rides the header.
         //: An answer that queues none says nothing at all, so this does.
-        if (!response.headers.get("HX-Trigger")) {
+        if (!response.headers.get("X-Events")) {
           reportClientError(
             "search-select[create]",
             `${response.status} from ${createUrl}`

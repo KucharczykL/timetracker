@@ -93,6 +93,7 @@ from games.sorting import (
     parse_find_filter,
     parse_per_page_override,
 )
+from games.toast_middleware import RELOAD_HEADER
 from games.writes.answers import CommandFailed, answered
 from games.writes.device import create_device as create_device_row
 from games.writes.playergame import new_correlation_id, record_facts
@@ -1570,7 +1571,7 @@ def _report_saved(
     discards.
     """
     if get_definition(key).reload_after_save:
-        response["HX-Refresh"] = "true"
+        response[RELOAD_HEADER] = "true"
     if mutation.calendar is not None:
         messages.success(request, calendar_sentence(mutation.calendar))
         return

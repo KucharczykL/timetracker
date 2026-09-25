@@ -195,7 +195,7 @@ export class ThemeCoordinator {
     this.notify();
 
     try {
-      const response = await window.fetchWithHtmxTriggers(
+      const response = await window.fetchWithEvents(
         this.configuration.updateUrl,
         {
           method: "PATCH",
@@ -238,7 +238,7 @@ export class ThemeCoordinator {
       this.applyState();
       this.notify();
       dispatchSettingCommitted(resolved);
-      window.dispatchHtmxTriggers(response);
+      window.dispatchResponseEvents(response);
       return "committed";
     } catch (error) {
       console.error("Failed to update theme", error);

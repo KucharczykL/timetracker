@@ -218,9 +218,8 @@ export function attachMenu(
     // keeping a stale top.
     resizeObserver?.observe(menu);
     notifyDropdownOpen(host);
-    // Lifecycle plug point for future consumers: behaviors or htmx
-    // (hx-on:dropdown:show) can observe visibility here instead of via a JS
-    // callback. These bubble, so a
+    // Lifecycle plug point for future consumers: behaviors can observe
+    // visibility here instead of via a JS callback. These bubble, so a
     // submenu open also fires dropdown:show on its ancestor <drop-down>s.
     host.dispatchEvent(new CustomEvent("dropdown:show", { bubbles: true }));
   };
@@ -469,7 +468,7 @@ export function attachMenu(
   };
 
   // Bound per connection (see MenuController.bindDocument): unbound
-  // document listeners would accumulate across htmx re-mounts or dangle
+  // document listeners would accumulate across re-mounts or dangle
   // after a permanent removal.
   const bindDocument = (): (() => void) => {
     document.addEventListener("click", onDocumentClick);

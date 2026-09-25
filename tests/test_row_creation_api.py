@@ -78,7 +78,7 @@ def test_a_refusal_queues_its_sentence(client, user):
 
     response = _create(client, "/api/platforms/", "Arcade")
 
-    assert "HX-Trigger" in response.headers
+    assert "X-Events" in response.headers
 
 
 def test_a_blank_name_is_refused(client, user):

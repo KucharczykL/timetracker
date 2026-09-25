@@ -20,9 +20,7 @@ PURCHASE_IDENTITY_ROUTES = [
     ("games:edit_purchase", "purchase_id"),
     ("games:remove_purchase", "purchase_id"),
     ("games:view_purchase", "purchase_id"),
-    ("games:refund_purchase_confirmation", "purchase_id"),
     ("games:refund_purchase", "purchase_id"),
-    ("games:split_purchase_confirmation", "purchase_id"),
     ("games:split_purchase", "purchase_id"),
 ]
 
@@ -98,10 +96,10 @@ def runtime_world(db):
         ("get", "games:edit_purchase", 200),
         ("get", "games:remove_purchase", 200),
         ("get", "games:view_purchase", 200),
-        ("get", "games:refund_purchase_confirmation", 200),
-        ("post", "games:refund_purchase", 200),
-        ("get", "games:split_purchase_confirmation", 200),
-        ("post", "games:split_purchase", 204),
+        ("get", "games:refund_purchase", 200),
+        ("post", "games:refund_purchase", 302),
+        ("get", "games:split_purchase", 200),
+        ("post", "games:split_purchase", 302),
     ],
 )
 def test_purchase_identity_routes_accept_owned_uuidv7s(
@@ -121,9 +119,9 @@ def test_purchase_identity_routes_accept_owned_uuidv7s(
         ("get", "games:edit_purchase"),
         ("get", "games:remove_purchase"),
         ("get", "games:view_purchase"),
-        ("get", "games:refund_purchase_confirmation"),
+        ("get", "games:refund_purchase"),
         ("post", "games:refund_purchase"),
-        ("get", "games:split_purchase_confirmation"),
+        ("get", "games:split_purchase"),
         ("post", "games:split_purchase"),
     ],
 )

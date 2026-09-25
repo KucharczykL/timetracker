@@ -24,7 +24,6 @@ _PAGE_TEMPLATE = """<!DOCTYPE html>
 <head>
     <title>Number filter E2E</title>
     <link rel="stylesheet" href="/static/base.css">
-    <script src="/static/js/htmx.min.js"></script>
     <script src="/static/js/dist/elements/search-select.js" type="module"></script>
     <script src="/static/js/dist/elements/drop-down.js" type="module"></script>
     <script src="/static/js/dist/elements/quick-filter-bar.js" type="module"></script>

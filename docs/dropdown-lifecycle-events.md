@@ -88,19 +88,10 @@ cleanup.
 
 ## Consuming from markup
 
-Because these are ordinary bubbling DOM events, server-rendered markup can
-observe them without any behavior registration — e.g. htmx's inline listener
-syntax:
-
-```html
-<drop-down … hx-on:dropdown:show="htmx.trigger(this, 'refresh')">
-```
-
-> **Note:** the project is phasing HTMX out. The `hx-on:` form works today and
-> illustrates why DOM events beat JS callbacks (observable from emitted
-> attributes alone), but new interactive consumers should be custom elements or
-> registered behaviors using `addEventListener` as above — not new inline
-> `hx-on:` wiring.
+Because these are ordinary bubbling DOM events, any ancestor can observe them
+with `addEventListener`, as above; a new consumer is a custom element or a
+registered behavior. The project carries no htmx, so there is no inline
+listener syntax to reach for.
 
 ## Programmatic control
 

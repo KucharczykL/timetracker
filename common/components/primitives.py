@@ -1032,7 +1032,7 @@ class ControlButton(BaseComponent):
     Children go via the htpy ``[]`` slot — ``ControlButton(color="red")[label]``
     — which routes into the inner button in post mode. Extra attributes take the
     usual forms: dynamic pairs through the positional slot, static ones as
-    kwargs (``hx_get=…``, ``data_x=""``, ``title=…``, ``onclick=…``, ``name=…``).
+    kwargs (``data_x=""``, ``title=…``, ``onclick=…``, ``name=…``).
     """
 
     def __init__(
@@ -1162,9 +1162,6 @@ class ButtonGroupMember(TypedDict, total=False):
     href: str
     color: ButtonColor
     title: str
-    hx_get: str
-    hx_target: str
-    hx_swap: str
     method: str
     action: str
     csrf_token: str
@@ -1203,8 +1200,8 @@ _JOINED_ROW_CLASS = "inline-flex rounded-base shadow-xs"
 def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
     """Generate a button group div of segmented :class:`ControlButton` members.
 
-    Each member dict accepts: slot (required), href, color, title, hx_get,
-    hx_target, hx_swap, and — for a state-changing member — method ("post"),
+    Each member dict accepts: slot (required), href, color, title, and — for a
+    state-changing member — method ("post"),
     action (URL), csrf_token. A ``method="post"`` member renders as a no-JS
     ``<form>`` submit button instead of a link; a member with
     ``button_attributes`` renders as a bare ``<button type="button">`` carrying
@@ -1220,19 +1217,9 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
     children: list[Node] = []
     for shape, member in shaped(present):
         slot = member["slot"]
-        # Attributes are added only when non-empty: an empty ``hx-get=""``
-        # would still register with htmx and hijack the link's click into an
-        # AJAX GET of the current URL.
         member_attributes: list[HTMLAttribute] = []
         if title := member.get("title", ""):
             member_attributes.append(("title", title))
-        for attribute_name, value in (
-            ("hx-get", member.get("hx_get", "")),
-            ("hx-target", member.get("hx_target", "")),
-            ("hx-swap", member.get("hx_swap", "")),
-        ):
-            if value:
-                member_attributes.append((attribute_name, value))
         button_attributes = member.get("button_attributes")
         is_plain_button = button_attributes is not None
         if button_attributes:
@@ -2102,60 +2089,6 @@ def DialogTitle(children: Children = None) -> Element:
     return PlainH1(class_=DIALOG_TITLE_CLASS)[*as_children(children)]
 
 
-# The <modal-dialog> overlay element (behavior: ts/elements/modal-dialog.ts).
-# Registered for codegen in common/components/custom_elements.py. Media is
-# auto-attached, so Page() emits the compiled JS wherever a Modal appears.
-_ModalDialog = custom_element_builder("modal-dialog")
-
-
-class Modal(BaseComponent):
-    """Modal overlay with container. Content goes via the htpy ``[]`` slot —
-    ``Modal(modal_id)[form, buttons]`` — which the inner panel ``<div>`` wraps.
-
-    The overlay is the ``<modal-dialog>`` custom element (behavior:
-    ``ts/elements/modal-dialog.ts``): it wires the dismiss contract — Escape, a
-    backdrop click, and any ``[data-modal-dismiss]`` control (via
-    ``bindPopupDismiss``) — and carries ``role="dialog"``/``aria-modal``.
-    Dismissing removes the overlay from the DOM.
-    """
-
-    def __init__(
-        self,
-        modal_id: str,
-        _children: Children = None,
-    ) -> None:
-        self.modal_id = modal_id
-        self._children = as_children(_children)
-
-    def __getitem__(self, children: Children) -> Modal:
-        return Modal(self.modal_id, as_children(children))
-
-    def render(self) -> Node:
-        return _ModalDialog(
-            id_=self.modal_id,
-            role="dialog",
-            aria_modal="true",
-            # z-40: above in-page positioned UI (popovers z-10, dropdown
-            # panels z-20) so the overlay dims and covers them, but below the
-            # toast container (z-50). Matters for modals rendered inline in a
-            # row (e.g. the session reset confirm) rather than portaled into
-            # the body-level #global-modal-container.
-            class_=(
-                "fixed z-40 inset-0 bg-dark-backdrop/70 overflow-y-auto "
-                "h-full w-full flex items-center justify-center"
-            ),
-        )[
-            Div(
-                [("data-modal-panel", "")],
-                class_=(
-                    f"relative mx-auto p-5 border-accent border w-full "
-                    f"{FORM_MAX_WIDTH_CLASS} shadow-lg/50 rounded-base "
-                    "bg-neutral-primary-soft @container"
-                ),
-            )[*self._children]
-        ]
-
-
 def ConfirmPage(
     *,
     title: str,
@@ -2171,8 +2104,8 @@ def ConfirmPage(
     max_width: str = FORM_MAX_WIDTH_CLASS,
 ) -> Node:
     """Full-page confirmation: a prompt, a POST ``<form>`` (the confirm action)
-    and a cancel link back to the origin. The no-JS replacement for the htmx
-    confirmation modals — reusable across delete/refund/split/reset flows.
+    and a cancel link back to the origin — the one confirmation, reusable
+    across remove/refund/split/reset flows.
 
     ``confirm_label=None`` draws no submit; a defect admits none.
 
@@ -2245,7 +2178,7 @@ class TableRowData(TypedDict):
 
     Build with :func:`make_row`; rendered by :func:`TableRow`. The first cell
     becomes a ``<th scope="row">``, the rest ``<td>``. ``attributes`` carries
-    htpy-style ``<tr>`` attributes (``id``, ``hx-*`` …) already translated to
+    htpy-style ``<tr>`` attributes (``id``, ``data-*`` …) already translated to
     ``(name, value)`` pairs.
     """
 
@@ -2390,7 +2323,7 @@ def make_row(
     **attributes: object,
 ) -> TableRowData:
     """Build a :class:`TableRowData` from positional cells and htpy-style
-    attribute kwargs (``id=...``, ``hx_select=...`` → ``hx-select`` …).
+    attribute kwargs (``id=...``, ``data_row=...`` → ``data-row`` …).
 
     Mirrors the generic element builders: ``class_`` → ``class``, ``True`` →
     bare attribute, ``False``/``None`` omitted. Passing a ``class`` is rejected —
@@ -2456,7 +2389,7 @@ def TableRow(
     """Render a styled ``<tr>`` from a :class:`TableRowData`.
 
     First cell is a ``<th scope="row">``, the rest ``<td>``. The cosmetic row
-    ``class`` is fixed here; ``data["attributes"]`` (``id``, ``hx-*`` …) is
+    ``class`` is fixed here; ``data["attributes"]`` (``id``, ``data-*`` …) is
     applied on top. For a differently-styled row use the generic ``Tr`` builder.
 
     ``data_table`` mirrors :func:`StyledTable`'s gate: on a table that can
@@ -3444,9 +3377,8 @@ def StyledTable(
         if data_table:
             thead_class = f"{thead_class} {_FALLBACK_HIDE_HEADER_CLASS}"
         table_children.append(Thead(class_=thead_class)[header_row])
-    # Body-cell alignment is a table-level rule (not per-row) so an htmx-swapped
-    # <tr> aligns from the live <tbody> it lands in — the fragment row stays
-    # dumb. Driven by Column.align; a right column at position i targets its
+    # Body-cell alignment is a table-level rule (not per-row), so a row
+    # added to the live <tbody> aligns from it — the row stays dumb. Driven by Column.align; a right column at position i targets its
     # <td> (the first cell is a <th scope="row">, so td:nth-child(i+1) is right).
     # The nth-child literals are safelisted via @source inline in input.css.
     # In the separated model a <tr> border is ignored, so the divider lives on
@@ -3573,9 +3505,7 @@ def StyledTable(
     # here — it would make the shell a containing block for the
     # `position: fixed` dropdown menus and clip them
     # (see e2e/test_dropdown_clipping_e2e.py).
-    return Div(class_="shadow-md sm:rounded-base overflow-clip", hx_boost="false")[
-        *inner_children
-    ]
+    return Div(class_="shadow-md sm:rounded-base overflow-clip")[*inner_children]
 
 
 def ContentContainer(attrs: AttrsArg | None = None, **kwargs: object) -> Element:

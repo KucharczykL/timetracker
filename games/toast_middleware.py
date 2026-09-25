@@ -6,15 +6,19 @@ from django.contrib.messages import constants as message_constants
 
 from common.notices import toast_payloads
 
+#: The events a response asks the page to dispatch, as JSON.
+EVENTS_HEADER = "X-Events"
+#: Set on a response the page answers by reloading itself.
+RELOAD_HEADER = "X-Reload"
 
-class HTMXMessagesMiddleware:
+
+class ToastMessagesMiddleware:
     """
-    Converts Django messages into HX-Trigger headers so toasts display
+    Converts Django messages into an X-Events header so toasts display
     automatically without changes to views.
 
-    Works for HTMX requests (processed natively by HTMX client),
-    vanilla fetch() calls using fetchWithHtmxTriggers(), and is harmless
-    for full-page loads (browsers ignore HX-Trigger).
+    fetch() calls through fetchWithEvents() dispatch it; a full-page load
+    ignores it and reads its messages from the page instead.
     """
 
     def __init__(self, get_response):
@@ -27,11 +31,7 @@ class HTMXMessagesMiddleware:
         # on. Reading them here marks the storage used, so MessageMiddleware
         # then stores an empty queue -- and the header rides a response the
         # browser discards, which loses the sentence entirely.
-        if (
-            "HX-Redirect" in response
-            or "HX-Refresh" in response
-            or 300 <= response.status_code < 400
-        ):
+        if RELOAD_HEADER in response or 300 <= response.status_code < 400:
             return response
 
         min_level = (
@@ -44,5 +44,5 @@ class HTMXMessagesMiddleware:
         if not payloads:
             return response
 
-        response["HX-Trigger"] = json.dumps({"show-toast": payloads})
+        response[EVENTS_HEADER] = json.dumps({"show-toast": payloads})
         return response

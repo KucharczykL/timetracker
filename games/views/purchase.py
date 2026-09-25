@@ -1,4 +1,3 @@
-from collections.abc import Collection
 from functools import partial
 from typing import cast
 from uuid import UUID
@@ -25,13 +24,9 @@ from common.components import (
     Cell,
     Checkbox,
     Column,
-    ColumnKey,
     ContentContainer,
     ControlButton,
-    CsrfInput,
-    DialogTitle,
     Div,
-    Form,
     FormFields,
     Fragment,
     GameLink,
@@ -39,15 +34,12 @@ from common.components import (
     Input,
     Link,
     LinkedPurchase,
-    Modal,
     ModuleScript,
     Node,
     PriceConverted,
     PurchasePrice,
     SelectionFields,
     TableData,
-    TableRow,
-    TableRowData,
     drop_columns,
     make_row,
     paginated_table_content,
@@ -80,10 +72,14 @@ from games.sorting import (
     parse_find_filter,
 )
 from games.views.filtering import warn_unknown_sort
-from games.views.playergame_writes import record_facts_for_request
-from games.views.removal import confirm_and_remove, restore_and_return
+from games.views.removal import (
+    confirm_and_apply,
+    confirm_and_remove,
+    restore_and_return,
+)
 from games.views.returns import origin_from, return_url
-from games.writes.playergame import new_correlation_id
+from games.writes.answers import CommandFailed
+from games.writes.playergame import new_correlation_id, record_facts
 
 
 def _render_purchase_buttons(
@@ -93,22 +89,14 @@ def _render_purchase_buttons(
     return ButtonGroup(
         [
             {
-                "href": "#",
-                "hx_get": action_url(
-                    "games:refund_purchase_confirmation", purchase_id, origin=origin
-                ),
-                "hx_target": "#global-modal-container",
+                "href": action_url("games:refund_purchase", purchase_id, origin=origin),
                 "slot": Icon("refund", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Mark as refunded",
             }
             if not is_refunded
             else {},
             {
-                "href": "#",
-                "hx_get": action_url(
-                    "games:split_purchase_confirmation", purchase_id, origin=origin
-                ),
-                "hx_target": "#global-modal-container",
+                "href": action_url("games:split_purchase", purchase_id, origin=origin),
                 "slot": Icon("split", size=ICON_BUTTON_SIZE_CLASS),
                 "title": "Split into per-game purchases",
                 "color": "gray",
@@ -131,9 +119,6 @@ def _render_purchase_buttons(
     )
 
 
-# Module-level because the refund endpoint re-renders a single row outside the
-# list view and has to hand TableRow the same column policy the surrounding
-# rows were built with.
 PURCHASE_COLUMNS: list[Column] = [
     Column("Name", "name", shrinkable=True, key="name", hideable=False),
     Column("Type", "type", priority=2, key="type"),
@@ -148,11 +133,7 @@ PURCHASE_COLUMNS: list[Column] = [
 
 
 def _purchases_with_completions(library: UserLibrary) -> QuerySet[Purchase]:
-    """The list's rows, carrying the Finished facts.
-
-    Both render paths read through this, so the row a refund
-    swaps in answers what the list's row answers.
-    """
+    """The list's rows, carrying the Finished facts."""
     return (
         Purchase.objects.for_library(library)
         .select_related("platform")
@@ -197,26 +178,6 @@ def _purchase_cells(
             origin=origin,
         ),
     ]
-
-
-def _render_purchase_row(
-    purchase: Purchase,
-    presentation: DateTimePresentation,
-    *,
-    origin: OriginUrl | None,
-    hidden: Collection[ColumnKey] = (),
-) -> tuple[list[Column], TableRowData]:
-    """One row and its columns, reduced together.
-
-    The refund route sends a row from outside the list and reads the same
-    choice. A row of the full width is not correct in a reduced table.
-    """
-    columns, [cells] = drop_columns(
-        PURCHASE_COLUMNS,
-        [_purchase_cells(purchase, presentation, origin=origin)],
-        hidden,
-    )
-    return columns, make_row(*cells, id=f"purchase-row-{purchase.id}")
 
 
 @login_required
@@ -571,161 +532,69 @@ def view_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     )
 
 
-def _refund_confirmation_modal(
-    purchase_id: UUID, request: HttpRequest, origin: OriginUrl | None
-) -> Node:
-    form = Form(
-        hx_post=action_url("games:refund_purchase", purchase_id, origin=origin),
-        hx_target=f"#purchase-row-{purchase_id}",
-        hx_swap="outerHTML",
-    )[
-        CsrfInput(request),
-        P(class_="dark:text-white text-center mt-3 text-type-body")[
-            "Games will be marked as abandoned."
-        ],
-        Div(class_="flex flex-col gap-2 mt-5")[
-            ControlButton(
-                color="blue",
-                type="submit",
-            )["Refund"],
-            ControlButton(
-                color="gray",
-                data_modal_dismiss="",
-            )["Cancel"],
-        ],
-    ]
-    return Modal("refund-confirmation-modal")[
-        DialogTitle("Confirm Refund"),
-        P(class_="dark:text-white text-center mt-5")[
-            "Are you sure you want to mark this purchase as refunded?"
-        ],
-        form,
-    ]
-
-
-@login_required
-def refund_purchase_confirmation(
-    request: HttpRequest, purchase_id: UUID
-) -> HttpResponse:
-    library = cast(User, request.user).library
-    purchase = owned_or_404(
-        Purchase.objects.for_library(library), library, id=purchase_id
-    )
-    return HttpResponse(
-        _refund_confirmation_modal(purchase.pk, request, origin_from(request))
-    )
-
-
-@login_required
-@require_POST
-def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
-    library = cast(User, request.user).library
-    purchase = owned_or_404(
-        _purchases_with_completions(library), library, id=purchase_id
-    )
-
+def _refund(user: User, purchase: Purchase) -> None:
+    """Abandon every game of the purchase, then mark it refunded."""
     correlation_id = new_correlation_id()
     games = list(purchase.games.all())
     for abandoned, game in enumerate(games):
-        answer = record_facts_for_request(
-            request,
-            game,
-            status=PlayerGameStatus.ABANDONED,
-            correlation_id=correlation_id,
-        )
-        if answer.refusal is not None:
-            if abandoned:
-                #: Say how far it went: the earlier games are
-                #: abandoned already and no rollback takes them
-                #: back. Refunding again restates the same fact,
-                #: which build() absorbs, so a retry is safe.
-                messages.error(
-                    request,
-                    f"{abandoned} of {len(games)} games were abandoned before "
-                    "this one. Refunding again is safe.",
-                )
-            #: A redirect would swap into a cell.
-            #: htmx swaps nothing outside 2xx.
-            #: The toast rides the middleware's header.
-            return HttpResponse(status=answer.refusal.status_code)
-
+        try:
+            record_facts(
+                user,
+                game,
+                status=PlayerGameStatus.ABANDONED,
+                correlation_id=correlation_id,
+            )
+        except CommandFailed as failure:
+            if not abandoned:
+                raise
+            #: Say how far it went: the earlier games are
+            #: abandoned already and no rollback takes them
+            #: back. Refunding again restates the same fact,
+            #: which build() absorbs, so a retry is safe.
+            raise CommandFailed(
+                f"{failure.message} {abandoned} of {len(games)} games were "
+                "abandoned before this one. Refunding again is safe.",
+                failure.status_code,
+            ) from failure
     purchase.refund()
 
-    messages.success(request, "Purchase refunded")
-    columns, row_data = _render_purchase_row(
-        purchase,
-        date_time_presentation_for_request(request),
-        origin=origin_from(request),
-        hidden=column_choice(request, "purchases", PURCHASE_COLUMNS).hidden,
-    )
-    row_html = str(TableRow(data=row_data, columns=columns, data_table=True))
-    modal_close = (
-        '<template id="refund-confirmation-modal" hx-swap-oob="outerHTML"></template>'
-    )
-    return HttpResponse(row_html + modal_close, status=200)
-
-
-def _split_confirmation_modal(
-    purchase: Purchase, request: HttpRequest, origin: OriginUrl | None
-) -> Node:
-    count = purchase.num_purchases
-    form = Form(
-        hx_post=action_url("games:split_purchase", purchase.id, origin=origin),
-    )[
-        CsrfInput(request),
-        P(class_="dark:text-white text-center mt-3 text-type-body")[
-            f"Creates {count} separate purchases, one per game, with the "
-            "price split evenly. Each can then be priced and refunded "
-            "independently."
-        ],
-        Div(class_="flex flex-col gap-2 mt-5")[
-            ControlButton(
-                color="blue",
-                type="submit",
-            )["Split"],
-            ControlButton(
-                color="gray",
-                data_modal_dismiss="",
-            )["Cancel"],
-        ],
-    ]
-    return Modal("split-confirmation-modal")[
-        DialogTitle("Split purchase"),
-        P(class_="dark:text-white text-center mt-5")[
-            f"Split “{purchase.standardized_name}” into per-game purchases?"
-        ],
-        form,
-    ]
-
 
 @login_required
-def split_purchase_confirmation(
-    request: HttpRequest, purchase_id: UUID
-) -> HttpResponse:
+def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     purchase = owned_or_404(
         Purchase.objects.for_library(library), library, id=purchase_id
     )
-    return HttpResponse(
-        _split_confirmation_modal(purchase, request, origin_from(request))
+
+    def refund() -> None:
+        _refund(cast(User, request.user), purchase)
+        messages.success(request, "Purchase refunded")
+
+    return confirm_and_apply(
+        request,
+        action=refund,
+        title="Refund purchase",
+        message=(
+            f"Mark this purchase of {purchase.first_game} as refunded? "
+            "Its games will be marked as abandoned."
+        ),
+        confirm_label="Refund",
+        fallback="games:list_purchases",
     )
 
 
-@login_required
-@require_POST
-#: No dispatch here: run_in_transaction refuses to nest.
-@transaction.atomic
-def split_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
-    """Replace one multi-game (unsplittable-style) purchase with one single-game
-    purchase per game, splitting the price evenly as a starting point. Each new
-    purchase is then independently priceable and refundable."""
-    library = cast(User, request.user).library
-    purchase = owned_or_404(
-        Purchase.objects.for_library(library), library, id=purchase_id
-    )
+def _split(purchase: Purchase) -> int:
+    """Replace one multi-game purchase with one purchase per game.
+
+    The price is split evenly as a starting point. Each new purchase
+    is then priced and refunded on its own. Answers how many there are.
+    """
     games = list(purchase.games.all())
     count = len(games)
-    if count > 1:
+    if count < 2:
+        return count
+    #: No dispatch here: run_in_transaction refuses to nest.
+    with transaction.atomic():
         share = purchase.price / count
         for game in games:
             new_purchase = Purchase(
@@ -746,14 +615,36 @@ def split_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
             new_purchase.games.set([game])
         #: The parts carry the facts now.
         remove(purchase)
-        messages.success(request, f"Split into {count} purchases")
+    return count
 
-    response = HttpResponse(status=204)
-    response["HX-Redirect"] = return_url(
+
+@login_required
+def split_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
+    library = cast(User, request.user).library
+    purchase = owned_or_404(
+        Purchase.objects.for_library(library), library, id=purchase_id
+    )
+    count = purchase.num_purchases
+
+    def split() -> None:
+        parts = _split(purchase)
+        if parts > 1:
+            messages.success(request, f"Split into {parts} purchases")
+
+    return confirm_and_apply(
         request,
+        action=split,
+        title="Split purchase",
+        message=f"Split “{purchase.standardized_name}” into per-game purchases?",
+        details=P(class_="text-type-body")[
+            f"Creates {count} separate purchases, one per game, with the "
+            "price split evenly. Each can then be priced and refunded "
+            "independently."
+        ],
+        confirm_label="Split",
         fallback="games:list_purchases",
+        #: The bundle's own page is gone once it splits.
         reject=reverse("games:view_purchase", args=[purchase_id])
         if count > 1
         else None,
     )
-    return response

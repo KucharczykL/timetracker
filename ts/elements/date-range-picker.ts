@@ -401,7 +401,7 @@ function createCalendarState(picker: HTMLElement): CalendarState {
 }
 
 // One-time wiring: field + calendar listeners persist with the subtree across
-// htmx swaps and DOM moves (the nested filter builder reorders rows), so
+// DOM moves (the nested filter builder reorders rows), so
 // there is nothing left to (re)bind on reconnection — unlike the old bespoke
 // popup, which needed its own document-level dismiss listeners rebound.
 function initPicker(picker: HTMLElement): void {

@@ -9,8 +9,6 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
-from games.list_columns import hidden_columns
-from games.views.purchase import PURCHASE_COLUMNS
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
@@ -47,13 +45,6 @@ def finished_cell(client, purchase):
     row = re.search(rf'id="purchase-row-{purchase.pk}".*?</tr>', body, re.DOTALL)
     assert row, "row not rendered"
     return cell_text(row.group(0), _column_index(body, "Finished"))
-
-
-def _row_index(user, key: str = "finished") -> int:
-    """Where that column sits in a row the list renders for this person."""
-    hidden = hidden_columns(user, "purchases", PURCHASE_COLUMNS)
-    shown = [column.key for column in PURCHASE_COLUMNS if column.key not in hidden]
-    return shown.index(key)
 
 
 def _column_index(body: str, label: str) -> int:
@@ -127,25 +118,6 @@ def test_an_open_start_range_prints_its_words(logged_client, owned_user, owned_l
     )
 
     assert finished_cell(logged_client, purchase) == "until 2020-05-01"
-
-
-@pytest.mark.django_db(transaction=True)
-def test_the_refunded_row_keeps_its_cell(logged_client, owned_user, owned_library):
-    """The refund swap reads the list's queryset."""
-    purchase = make_purchase(owned_library)
-    add_game(
-        owned_user,
-        owned_library,
-        purchase,
-        "Dated",
-        TemporalValue.from_day(date(2024, 7, 1)),
-    )
-
-    response = logged_client.post(reverse("games:refund_purchase", args=[purchase.pk]))
-
-    assert response.status_code == 200
-    #: The row has the columns of this person, thus count the same way.
-    assert cell_text(response.content.decode(), _row_index(owned_user)) == "2024-07-01"
 
 
 def seed_rows(user, library, count):

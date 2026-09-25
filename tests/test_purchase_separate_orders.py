@@ -118,8 +118,9 @@ class SplitPurchaseTest(TestCase):
 
         response = self.client.post(reverse("games:split_purchase", args=[bundle.id]))
 
-        self.assertEqual(response.status_code, 204)
-        self.assertEqual(response["HX-Redirect"], reverse("games:list_purchases"))
+        self.assertRedirects(
+            response, reverse("games:list_purchases"), fetch_redirect_response=False
+        )
         visible = Purchase.objects.for_library(self.library)
         self.assertTrue(Purchase.objects.filter(id=bundle.id).exists())
         self.assertFalse(visible.filter(id=bundle.id).exists())
@@ -135,6 +136,6 @@ class SplitPurchaseTest(TestCase):
 
         response = self.client.post(reverse("games:split_purchase", args=[single.id]))
 
-        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.status_code, 302)
         self.assertTrue(Purchase.objects.filter(id=single.id).exists())
         self.assertEqual(Purchase.objects.for_library(self.library).count(), 1)
