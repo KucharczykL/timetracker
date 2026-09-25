@@ -15,7 +15,7 @@ window.removeToast = (id: ToastId): void => {
   window.dispatchEvent(new CustomEvent("remove-toast", { detail: { id } }));
 };
 
-/** Dispatch the events one fetch response carries in its X-Events header. */
+/** Dispatches a response's X-Events header events. */
 function dispatchResponseEvents(response: Response): void {
   const eventsHeader = response.headers.get("X-Events");
   if (!eventsHeader) return;
@@ -51,7 +51,7 @@ function dispatchResponseEvents(response: Response): void {
 }
 window.dispatchResponseEvents = dispatchResponseEvents;
 
-/** fetch() that dispatches X-Events events; "deferred" lets the caller validate first. */
+/** fetch() dispatching X-Events; "deferred" lets callers validate. */
 window.fetchWithEvents = function fetchWithEvents(
   url: RequestInfo | URL,
   options: RequestInit = {},

@@ -561,9 +561,7 @@ class ContinuingBatchProps(TypedDict):
 register_element("continuing-batch", "ContinuingBatch", ContinuingBatchProps)
 
 
-# Built in games/views/game.py; behavior in
-# ts/elements/refreshing-section.ts. On the named document event it reads
-# the page again and takes its own part of the answer, found by its id.
+# Built in games/views/game.py; behavior in ts/elements/refreshing-section.ts.
 class RefreshingSectionProps(TypedDict):
     event: str
 

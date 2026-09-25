@@ -8,9 +8,7 @@ export function selectPayloadValue(
   return emptyIsNull && rawValue === "" ? null : rawValue;
 }
 
-// Value-selector behavior: pick an option → swap the toggle label, reflect the
-// selection (aria-selected), close, PATCH the server, and fire the body event
-// a <refreshing-section> listens for. Config comes from data-* on the host.
+// Picks an option, PATCHes, fires its body event.
 registerBehavior("select", {
   menuOptions: (): Partial<MenuOptions> => ({
     itemSelector: "[data-option]",

@@ -547,10 +547,7 @@ def _refund(user: User, purchase: Purchase) -> None:
         except CommandFailed as failure:
             if not abandoned:
                 raise
-            #: Say how far it went: the earlier games are
-            #: abandoned already and no rollback takes them
-            #: back. Refunding again restates the same fact,
-            #: which build() absorbs, so a retry is safe.
+            #: Earlier games stay abandoned; retry is safe.
             raise CommandFailed(
                 f"{failure.message} {abandoned} of {len(games)} games were "
                 "abandoned before this one. Refunding again is safe.",
@@ -584,11 +581,7 @@ def refund_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
 
 
 def _split(purchase: Purchase) -> int:
-    """Replace one multi-game purchase with one purchase per game.
-
-    The price is split evenly as a starting point. Each new purchase
-    is then priced and refunded on its own. Answers how many there are.
-    """
+    """One purchase per game; answers how many."""
     games = list(purchase.games.all())
     count = len(games)
     if count < 2:

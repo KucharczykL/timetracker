@@ -55,8 +55,7 @@ def status_filter_widget(page: Page):
 
 
 def test_search_select_initializes_on_page_load(authenticated_page: Page, live_server):
-    """Clicking into a FilterSelect search box opens its options panel —
-    proof that onReady ran the widget initializer on the initial page load."""
+    """A FilterSelect opens after the first load."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
     open_status_facet(page)
@@ -105,12 +104,7 @@ def test_number_filter_between_reveals_second_input(
 def test_widgets_initialize_inside_inserted_content(
     authenticated_page: Page, live_server
 ):
-    """Widgets inserted after the page loaded initialize without a page load.
-
-    The filter bar is re-fetched and put in place of the old one — fresh,
-    uninitialized DOM. The inserted FilterSelect must open its panel and the
-    inserted NumberFilter must reveal its second input on BETWEEN, proving
-    the widgets are custom elements that wire themselves on connect."""
+    """Widgets inserted after load wire themselves."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 

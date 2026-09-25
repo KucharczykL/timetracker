@@ -1,14 +1,8 @@
-/** <refreshing-section> — a part of the page that reads itself again.
- *
- * When the named event reaches the body, the element reads the page
- * again and takes the children of the element with its own id from the
- * answer. The Game detail History section refreshes this way after a
- * status change.
- */
+/** On its event, re-reads its own id's children. */
 import { reportClientError } from "../client-errors.js";
 import { readRefreshingSectionProps } from "../generated/props.js";
 
-/** The children of the element with this id in a page's HTML, or null. */
+/** Children of `id` in `html`, or null. */
 export function sectionFrom(html: string, id: string): Node[] | null {
   const page = new DOMParser().parseFromString(html, "text/html");
   const section = page.getElementById(id);

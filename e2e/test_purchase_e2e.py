@@ -174,7 +174,7 @@ def test_split_purchase_action(authenticated_page: Page, live_server, e2e_librar
     expect(page.locator('[id^="purchase-row-"]')).to_have_count(1)
 
     page.locator('[title="Split into per-game purchases"]').click()
-    # A confirmation page, not a modal: its own URL, one POST form.
+    # Confirms on its own page.
     page.wait_for_url(
         f"{live_server.url}{reverse('games:split_purchase', args=[bundle.id])}**"
     )
@@ -190,7 +190,7 @@ def test_split_purchase_action(authenticated_page: Page, live_server, e2e_librar
 def test_refund_confirms_on_a_page_and_returns_to_the_list(
     authenticated_page: Page, live_server, e2e_library
 ):
-    """Refund asks on its own page, then lands back on the list it left."""
+    """Refund confirms on a page, returns to list."""
     page = authenticated_page
     platform = Platform.objects.create(
         library=e2e_library, name="PC", icon="pc", group="PC"
@@ -218,7 +218,7 @@ def test_refund_confirms_on_a_page_and_returns_to_the_list(
     page.locator('button[type="submit"]', has_text="Refund").click()
 
     page.wait_for_url(list_url)
-    # Server-rendered: the refunded row offers no second refund.
+    # The refunded row offers no second refund.
     expect(page.locator(f"#purchase-row-{purchase.id}")).to_be_visible()
     expect(page.locator('[title="Mark as refunded"]')).to_have_count(0)
     purchase.refresh_from_db()

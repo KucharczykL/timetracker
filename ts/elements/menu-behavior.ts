@@ -218,9 +218,7 @@ export function attachMenu(
     // keeping a stale top.
     resizeObserver?.observe(menu);
     notifyDropdownOpen(host);
-    // Lifecycle plug point for future consumers: behaviors can observe
-    // visibility here instead of via a JS callback. These bubble, so a
-    // submenu open also fires dropdown:show on its ancestor <drop-down>s.
+    // Bubbles, so ancestors see submenus open.
     host.dispatchEvent(new CustomEvent("dropdown:show", { bubbles: true }));
   };
 
@@ -467,9 +465,7 @@ export function attachMenu(
     close();
   };
 
-  // Bound per connection (see MenuController.bindDocument): unbound
-  // document listeners would accumulate across re-mounts or dangle
-  // after a permanent removal.
+  // Bound per connection, so none accumulate.
   const bindDocument = (): (() => void) => {
     document.addEventListener("click", onDocumentClick);
     document.addEventListener(OPEN_MENUS_EVENT, onOtherMenuOpen);

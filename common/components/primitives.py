@@ -3377,8 +3377,8 @@ def StyledTable(
         if data_table:
             thead_class = f"{thead_class} {_FALLBACK_HIDE_HEADER_CLASS}"
         table_children.append(Thead(class_=thead_class)[header_row])
-    # Body-cell alignment is a table-level rule (not per-row), so a row
-    # added to the live <tbody> aligns from it — the row stays dumb. Driven by Column.align; a right column at position i targets its
+    # Alignment is table-level, so added rows align.
+    # Driven by Column.align; a right column at position i targets its
     # <td> (the first cell is a <th scope="row">, so td:nth-child(i+1) is right).
     # The nth-child literals are safelisted via @source inline in input.css.
     # In the separated model a <tr> border is ignored, so the divider lives on

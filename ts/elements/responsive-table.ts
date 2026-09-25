@@ -153,8 +153,7 @@ export class ResponsiveTableElement extends HTMLElement {
     }
     const body = this.table.querySelector("tbody");
     if (body && typeof MutationObserver !== "undefined") {
-      // Content changes (an added row, a cloned session row) change
-      // natural widths. Attribute changes are deliberately not observed:
+      // Added rows change widths; attributes are not observed:
       // measurement itself toggles classes and inline styles, and must not
       // re-trigger itself.
       this.mutationObserver = new MutationObserver(() => this.queueRelayout());

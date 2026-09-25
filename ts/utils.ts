@@ -1,9 +1,4 @@
-/**
- * Runs initializeElement once for each element matching selector, when the
- * document is parsed. Nothing swaps a fragment into a page, so the parse is
- * the only moment a matching element appears; an element that must react to
- * being moved or added later is a custom element instead.
- */
+/** Initializes each match once, after parsing. */
 function onReady(selector: string, initializeElement: (element: Element) => void) {
   const run = () => {
     for (const element of document.querySelectorAll(selector)) {

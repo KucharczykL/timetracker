@@ -156,7 +156,8 @@ path**, so verify against `make check` before pushing when possible.
 Django 6+ monolith (v1.7.0), single app (`games/`), tracks video game purchases,
 play sessions, stats. Full-page requests and custom elements over pure-Python
 server-side component system, plus Django Ninja REST API. No htmx: every
-mutation is a form POST that redirects, or a custom element's `fetch`. **pydantic** declared runtime dep,
+mutation is form POST that redirects, or custom element's `fetch`.
+**pydantic** declared runtime dep,
 not just Ninja's transitive one: event vocabulary (`games/events/vocabulary.py`)
 validates every event payload with `TypeAdapter`.
 
@@ -671,8 +672,8 @@ Submodules re-exported via `common/components/__init__.py`:
   `method="post"` renders `<form>`+submit, default `<button>`), `ButtonGroup()`,
   `Input()`, `Checkbox()`, `Radio()`, `Pill()`, `Icon()`, `Popover()`,
   `TruncatedText()`, `SegmentedField()`, `PageHeading()` (badge heading; plain `<h1>`
-  is generated `H1`), `ConfirmPage()` (full-page POST confirmation — the one
-  confirmation, for removal, refund, split and reset alike; there is no modal; `details` is block slot beside `message`, which
+  is generated `H1`), `ConfirmPage()` (full-page POST confirmation — the only
+  confirmation, no modal exists; `details` is block slot beside `message`, which
   renders inside `<p>`), `StyledTable()`, `TableRow()`, `TableTd()`,
   `TableHeader()`, `ContentContainer()` (page-body width container,
   `w-full max-w-7xl self-center` — every list/detail/stats body sits in one),
@@ -922,15 +923,14 @@ Few HTML templates remain; bulk of UI is Python components.
   `ts/elements/toast-stack.ts` (the toasts' store and DOM),
   `ts/elements/search-select.ts`, `ts/utils.ts` (shared helpers — `onReady`,
   `toISOUTCString`, …)
-- **Widget initialization**: page glue that is not a custom element registers
-  with `onReady(selector, initializeElement)` from `ts/utils.ts`, which runs the
-  initializer once per matching element when the document is parsed. Nothing
-  swaps fragments into a page, so an element that must wire itself on insertion
-  is a custom element instead.
-- **A section that reads itself again** is `<refreshing-section event="…">`
+- **Widget initialization**: page glue that is not custom element registers
+  with `onReady(selector, initializeElement)` from `ts/utils.ts`, run once per
+  match after parse. Element that must wire itself on insertion is custom
+  element.
+- **Section that reads itself again** is `<refreshing-section event="…">`
   (`ts/elements/refreshing-section.ts`): on that body event it GETs the page and
-  takes the children of its own id from the answer. Game detail's History
-  section listens for the status selector's `status-changed`.
+  takes its own id's children from the answer. Game detail's History listens
+  for `status-changed`.
 
 ### Interactive components: custom elements + TypeScript
 
