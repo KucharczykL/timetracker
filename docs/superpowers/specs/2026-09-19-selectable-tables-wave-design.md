@@ -691,7 +691,9 @@ row's ⋯ and its items; the other four tables are Playwright only.
    `EllipsisTrigger` shared with the quick bar and the summary rows,
    `Cardinality` removed whole, the Orca pass, with the checkbox reserve
    as it stands.
-9. **#1211** TABLE-04 — bulk Edit on the session tables, after #714.
+9. **#1211** TABLE-04 — bulk Edit on the session tables, after #714:
+   device and emulated through `DescribeSession`, contract
+   [Set one device across many sessions](2026-09-25-issue-1211-bulk-edit-design.md).
 10. **#1256** — bulk Started today and Completed today, after #718,
     delivered as PR #1265.
 11. **#1245** — the columns a list shows, after #718, delivered as PR
@@ -700,7 +702,7 @@ row's ⋯ and its items; the other four tables are Playwright only.
 `#711 → #713 → #712 → #714 → #715 → #717 → #718 → #1256 → #1245 → #1211`.
 #1212 and #1254 are parked by the user's decision on 2026-09-22, so #718
 landed with the checkbox reserve as it stands. Delivered through #1245
-as of 2026-09-22; #1211 and the four lists remain. #713 needs no table, so it
+as of 2026-09-22, and #1211 on 2026-09-25; the four lists remain. #713 needs no table, so it
 runs beside #711. One prerequisite lies outside the wave: #1080, in the
 Session wave, landed before #714 as stack #1226–#1228 (`main` at
 63b5940f). Every issue merges alone and leaves `main` incomplete

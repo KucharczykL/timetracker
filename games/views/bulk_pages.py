@@ -136,7 +136,7 @@ def ConfirmBatch(
     return ConfirmPage(
         title=action.title.for_count(total),
         message=(
-            #: The label's three dots ask first; the question itself asks.
+            #: The question asks; no three dots.
             f"{action.label.removesuffix('…')}: {total} "
             f"{action.subject}{pluralize(total)}?"
             if total

@@ -1,4 +1,4 @@
-"""One device, one emulated flag, or both, on many sessions."""
+"""Device or emulated, set on many sessions."""
 
 import json
 import uuid
@@ -83,11 +83,7 @@ _EMULATED_ANSWERS: dict[str, bool | None] = {
 
 @dataclass(frozen=True, slots=True)
 class EditStatement:
-    """The facts one batch states; None leaves one alone.
-
-    Named rather than a bare pair: it crosses three boundaries as one
-    string — the hidden field, `settle`'s answer, and the waypoint.
-    """
+    """What one batch states; None leaves alone."""
 
     device: StatedDevice | None
     emulated: bool | None
@@ -107,10 +103,7 @@ class EditStatement:
 
     @classmethod
     def decode(cls, raw: ChoiceValue) -> EditStatement:
-        """The statement an earlier settle answered.
-
-        Refuses what it cannot read: a guess is a second statement.
-        """
+        """An earlier settle's answer, or a refusal."""
         try:
             stated = json.loads(raw)
         except ValueError as unreadable:
@@ -165,12 +158,7 @@ def emulated_field(field_name: FieldName) -> FieldName:
 def offer_edit(
     library: UserLibrary, rows: Sequence[PlayerSession], field_name: FieldName
 ) -> Offered:
-    """A device picker and the emulated question.
-
-    Never named `field_name` itself: each later chunk posts the
-    settled statement under that name, and that is how `settle`
-    tells a carried statement from a first press.
-    """
+    """Device picker and emulated radios, never `field_name`."""
     if not rows:
         #: The confirmation says so itself.
         return AsksNothing()
@@ -201,11 +189,7 @@ def offer_edit(
 
 
 def settle_edit(library: UserLibrary, post: QueryDict) -> ChoiceValue:
-    """The statement every row is handed.
-
-    A later chunk posts the one an earlier settle answered, and no
-    control; the first press posts the control alone.
-    """
+    """Carried statement, else the control's; checked."""
     #: Local: the act table imports this module.
     from games.views.bulk import CHOICE_FIELD
 
@@ -292,11 +276,7 @@ def edit_one(
 def _before(
     events: Sequence[LibraryEvent], batch_id: uuid.UUID, changed: str, key: str
 ) -> tuple[bool, object]:
-    """Whether the batch changed one fact, and what stood before.
-
-    The family is the creation and that fact's own change event; the
-    value is what the latest of them ahead of the batch's own states.
-    """
+    """Whether the batch changed it; the value before."""
     ours = next(
         (
             event
@@ -325,7 +305,7 @@ def _before(
 def values_before(
     library: UserLibrary, session_id: uuid.UUID, batch_id: uuid.UUID
 ) -> EditStatement:
-    """What the facts this batch changed stated before it."""
+    """The changed facts' values before the batch."""
     events = list(aggregate_events(library, session_id))
     device_changed, device = _before(
         events, batch_id, PLAYERSESSION_DEVICE_CHANGED.event_type, _DEVICE_KEY
@@ -356,11 +336,7 @@ def edit_back(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """What the row stated before, restated.
-
-    Reads the row as it stands: a value set since the batch is
-    overwritten, the hazard every restating inverse accepts.
-    """
+    """Earlier values restated; later edits overwritten."""
     with answered("session"):
         before = values_before(actor.library, session_id, undoes)
     return RowOutcome.of(

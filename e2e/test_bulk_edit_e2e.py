@@ -1,4 +1,4 @@
-"""A person sets one device on two sessions, and takes it back."""
+"""One device on two sessions, then undone."""
 
 import uuid
 from datetime import date, timedelta
@@ -25,7 +25,7 @@ def _login(page: Page, live_server) -> None:
 
 
 def _two_sessions(library, actor) -> list[PlayerSession]:
-    """Recorded by command: the Undo reads each row's own stream."""
+    """Recorded by command: the Undo reads events."""
     run = tracked_run(library, create_tracked_game(library, "Outer Wilds"))
     for day in (5, 6):
         dispatch(
@@ -81,7 +81,7 @@ def test_two_sessions_take_one_device_and_the_undo_takes_it_back(
 
     page.get_by_role("button", name="Undo").click()
 
-    #: The Undo's own answer offers no Undo: its write has landed.
+    #: No Undo button: the Undo landed.
     expect(page.get_by_role("button", name="Undo")).to_have_count(0)
     for session in sessions:
         session.refresh_from_db()
