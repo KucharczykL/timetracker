@@ -294,6 +294,9 @@ def _platform_options(values, *, library: UserLibrary) -> list[SearchSelectOptio
     ]
 
 
+#: Where a picker searches a library's devices.
+DEVICE_SEARCH_URL = "/api/devices/search"
+
 #: Where a picker makes the row a person typed.
 DEVICE_CREATE_URL = "/api/devices/"
 PLATFORM_CREATE_URL = "/api/platforms/"
@@ -941,7 +944,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
         queryset=Device.objects.order_by("name"),
         required=False,
         widget=SearchSelectWidget(
-            search_url="/api/devices/search",
+            search_url=DEVICE_SEARCH_URL,
             options_resolver=_device_options,
             create_url=DEVICE_CREATE_URL,
         ),
@@ -1192,7 +1195,7 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         queryset=Device.objects.none(),
         required=False,
         widget=SearchSelectWidget(
-            search_url="/api/devices/search",
+            search_url=DEVICE_SEARCH_URL,
             options_resolver=_device_options,
             create_url=DEVICE_CREATE_URL,
         ),

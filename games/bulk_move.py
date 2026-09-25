@@ -27,8 +27,8 @@ from games.bulk_actions import (
     RowOutcome,
 )
 from games.bulk_narrowing import narrowed
-from games.bulk_sessions import SESSION_GONE, lost
-from games.events.dispatch import CommandRejected, RowNotHeld, RowUnreadable
+from games.bulk_sessions import SESSION_GONE, lost, session_of
+from games.events.dispatch import CommandRejected, RowUnreadable
 from games.events.idempotency import IdempotencyKey
 from games.events.playersession import PLAYERSESSION_CREATED, PLAYERSESSION_MOVED
 from games.events.playthrough import PLAYTHROUGH_REMOVED
@@ -371,18 +371,6 @@ def run_before(
     return uuid.UUID(earlier[-1].payload["playthrough"])
 
 
-def _session_of(actor: User, session_id: uuid.UUID) -> PlayerSession:
-    """The row an Undo speaks about."""
-    with answered("session"):
-        row = PlayerSession.objects.filter(library=actor.library, pk=session_id).first()
-        if row is None:
-            raise RowNotHeld(
-                f"PlayerSession {session_id} is not library {actor.library.pk}'s, "
-                "so the batch's inverse has no row to state a fact about."
-            )
-    return row
-
-
 def _put_back_the_run(
     actor: User,
     batch_id: uuid.UUID,
@@ -443,7 +431,7 @@ def move_back(
     return RowOutcome.of(
         move_session(
             actor,
-            _session_of(actor, session_id),
+            session_of(actor, session_id),
             earlier,
             idempotency_key=f"{idempotency_key}-move",
             correlation_id=correlation_id,

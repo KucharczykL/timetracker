@@ -136,7 +136,9 @@ def ConfirmBatch(
     return ConfirmPage(
         title=action.title.for_count(total),
         message=(
-            f"{action.label}: {total} {action.subject}{pluralize(total)}?"
+            #: The label's three dots ask first; the question itself asks.
+            f"{action.label.removesuffix('…')}: {total} "
+            f"{action.subject}{pluralize(total)}?"
             if total
             #: `pluralize` here too: a hardcoded "s" reads the plural
             #: of one subject and mis-spells the next.

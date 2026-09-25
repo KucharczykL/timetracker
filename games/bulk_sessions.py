@@ -8,13 +8,16 @@ runs that foot before its own body, and the sibling finds nothing.
 import uuid
 from collections.abc import Sequence
 
+from django.contrib.auth.models import User
 from django.db.models import QuerySet
 
 from games.bulk_actions import FilterJson, Refused, Resolution
 from games.bulk_narrowing import narrowed
+from games.events.dispatch import RowNotHeld
 from games.filters import parse_session_filter
 from games.models import PlayerSession, UserLibrary
 from games.reads.player_sessions import library_sessions
+from games.writes.answers import answered
 
 SESSION_GONE = "One of the sessions is no longer available, so it was left as it is."
 
@@ -45,3 +48,23 @@ def session_resolution(
         .order_by("-sort_instant", "id")
     )
     return Resolution(rows, tuple(lost(wanted, {row.pk for row in rows}, SESSION_GONE)))
+
+
+def session_of(actor: User, session_id: uuid.UUID) -> PlayerSession:
+    """The row an Undo speaks about.
+
+    The plain manager: `library_sessions` reads the catalog mark, and a
+    session whose catalog game went is still this library's to unwind.
+    """
+    with answered("session"):
+        row = (
+            PlayerSession.objects.filter(library=actor.library, pk=session_id)
+            .select_related("playthrough")
+            .first()
+        )
+        if row is None:
+            raise RowNotHeld(
+                f"PlayerSession {session_id} is not library {actor.library.pk}'s, "
+                "so the batch's inverse has no row to state a fact about."
+            )
+        return row

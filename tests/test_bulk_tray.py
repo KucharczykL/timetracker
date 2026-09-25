@@ -130,6 +130,7 @@ def _a_record(owned_user, owned_library, game):
 SESSION_ACTS = (
     "session.finish",
     "session.move",
+    "session.edit",
     "session.reclassify",
     "session.remove",
 )
@@ -143,7 +144,7 @@ def _tray(html: str) -> str:
 
 @pytest.mark.untracked_games
 @pytest.mark.django_db(transaction=True)
-def test_the_session_list_names_its_rows_and_offers_four_acts(
+def test_the_session_list_names_its_rows_and_offers_five_acts(
     client_in, owned_user, owned_library, game
 ):
     session = _a_session(owned_user, owned_library, game)
