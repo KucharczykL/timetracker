@@ -431,12 +431,22 @@ def test_a_row_that_left_outside_the_policy_reports_itself(owned_library, device
 # --- the guard holds outside the views ---------------------------------------
 
 
-@pytest.mark.parametrize("fixture", ["game", "platform", "device"])
-def test_a_raw_delete_of_a_referenced_row_is_refused(owned_library, request, fixture):
+@pytest.mark.parametrize(
+    ("fixture", "remedy"),
+    [
+        ("game", "games.removal.remove"),
+        ("platform", "games.removal.remove"),
+        #: A projection's mark is its remove command's.
+        ("device", "its remove command"),
+    ],
+)
+def test_a_raw_delete_of_a_referenced_row_is_refused(
+    owned_library, request, fixture, remedy
+):
     instance = request.getfixturevalue(fixture)
     name_in_an_event(owned_library, instance)
 
-    with pytest.raises(ReferencedRowDeletion, match="games.removal.remove"):
+    with pytest.raises(ReferencedRowDeletion, match=remedy):
         instance.delete()
 
     assert type(instance).objects.filter(pk=instance.pk).exists()
