@@ -1,4 +1,4 @@
-"""One device, or emulated, set on many sessions, and put back."""
+"""Device or emulated on many sessions, undone."""
 
 import uuid
 from datetime import date, timedelta
@@ -68,7 +68,7 @@ def desktop(owned_library):
 
 
 def a_session(owned_user, run, day=A_DAY, device=None, emulated=False):
-    """A session with the events a real one has; the Undo reads them."""
+    """Recorded by command: the Undo reads events."""
     dispatch(
         CreateSession(
             playthrough_id=run.pk,
@@ -90,7 +90,7 @@ def post(**fields) -> QueryDict:
 
 
 def control(**answers) -> QueryDict:
-    """The confirmation's own fields, as the first press posts them."""
+    """The fields the first press posts."""
     names = {
         "device": device_field(CHOICE_FIELD),
         "no_device": no_device_field(CHOICE_FIELD),
@@ -307,7 +307,7 @@ def test_values_before_read_an_earlier_change(
 def test_values_before_name_only_the_fact_the_batch_changed(
     owned_user, owned_library, game, deck
 ):
-    """Emulated was already so: the batch wrote a device event alone."""
+    """Emulated already so: one device event."""
     session = a_session(owned_user, tracked_run(owned_library, game), emulated=True)
     batch = uuid.uuid7()
     _edit(owned_user, session, EditStatement(StatedDevice(deck.pk), True), batch)

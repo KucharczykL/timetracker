@@ -581,6 +581,10 @@ aggregate, its row menu `device_row_menu` (Edit, Remove), its preview's
 Sessions count `games/reads/device_departures.py`, which the per-row
 confirmation reads too. Contract is
 [Select devices and remove them in bulk](docs/superpowers/specs/2026-09-24-issue-1135-devices-list-selectable-design.md).
+#1211's `session.edit` sets one device, emulated, or both on selected
+sessions through `DescribeSession`; its Undo restates each changed fact
+from the row's events. Contract is
+[Set one device across many sessions](docs/superpowers/specs/2026-09-25-issue-1211-bulk-edit-design.md).
 
 **Multi-game Purchase is *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. Humble Bundle). Independently-refundable multi-item orders (e.g.
