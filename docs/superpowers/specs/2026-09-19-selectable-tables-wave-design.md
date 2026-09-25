@@ -238,8 +238,9 @@ as every mutating link). The wave first planned a `one` cardinality, a
 link to the row's own page offered while exactly one row was selected,
 for Edit, Reset and Was-an-estimate. The user overturned it on the
 shipped tray: no act in the Actions column must be single, because bulk
-Edit is a different act from the row's Edit (it sets one value on every
-selected row, #1211) and Finish is coherent over many running sessions.
+Edit is a different act from the row's Edit (it sets one device, one
+emulated flag, or both on every selected row, #1211) and Finish is
+coherent over many running sessions.
 The ⋯ menu on the row carries every act valid for one row, the tray
 every act, two complete lists (below), so the tray renders no `one` path
 and `Cardinality` leaves whole with #718.
@@ -300,7 +301,7 @@ the submission token.
    through the row's `games/writes/` wrapper, under `answered()`, which
    takes `idempotency_key` and `source_metadata` and answers the
    `CommandResult` (`end_session`, `correct_session` and `move_session`
-   do since #718; `describe_session` does not yet, and #1211 grows it),
+   since #718, `describe_session` since #1211),
    behind a callable of the act's own that takes `choice`,
    `idempotency_key` and `correlation_id` as keywords and answers a
    `RowOutcome`. An act's title is an `ActTitle(one, many)`, both halves
@@ -359,7 +360,9 @@ leave 92 rows stuck, which is #1123's own complaint.
 The inverses: reclassify → `UndoSessionReclassification`; remove → the
 row's restore command; move → `MoveSessionToPlaythrough` back to the run
 the session named before the batch; finish → `CorrectSessionTiming` back
-to running; start and complete (#1256) → `VoidPlaythroughStart` and
+to running; edit (#1211) → `DescribeSession` restating, per fact the
+batch changed, the value the row's latest earlier `created` or
+`*_changed` event states; start and complete (#1256) → `VoidPlaythroughStart` and
 `VoidPlaythroughCompletion`, two commands and two event specs the issue
 declares, a void being a retraction in the retention doc's own word,
 which put the endpoint back to never stated. What an inverse does with a
@@ -373,7 +376,22 @@ aggregate is put back by the inverse as well, read from the batch's own
 events by correlation id while `inverse_aggregate` names the rows: a
 completion's Completed and a start's Played go back to the status that
 stood before, and a status changed since the batch is left and said. An
-Undo that leaves the game Completed is half an Undo. The move event carries its target only,
+Undo that leaves the game Completed is half an Undo. Two rules every
+inverse that reads a row's earlier events inherits, both found by
+#1211's review: a stream with no creation before the batch's event, or a
+payload of the wrong shape, is the row's fault and raises
+`RowUnreadable`, a defect that ends the batch, never a sentence the
+person cannot act on (`games/bulk_edit.py` does; move's `run_before`
+still refuses, #1283); and a second press of Undo runs under a fresh
+correlation id, so a gate that asks whether the batch's own event is the
+latest of its family reads the first Undo as a later change and refuses
+every row it already put back (#1256's acts do, #1284). A confirmation
+asking two facts at once rides the one `CHOICE_FIELD` as JSON, its
+controls under suffixed names of their own, so `settle` tells a carried
+statement from a first press; one fact needs no more than the plain
+`BulkChoice`. Every session inverse resolves its row through
+`session_of` in `games/bulk_sessions.py`, on the plain manager, because
+`library_sessions` hides a row whose catalog game was removed since. The move event carries its target only,
 and the run before is the target of the session's latest earlier `moved`
 event, or of its `created` payload. Reading that is new: nothing today reads
 events by aggregate, and `aggregate_id` is unindexed. #713 adds one
@@ -697,7 +715,11 @@ Remove, in #712.
 - **The lists that stay** — Games (#1134), Devices (#1135) and Platforms
   (#1136) each inherit the personality and the retirement of their column
   after #718, and #1245's picker moves into their row-menu slot by
-  itself; Purchases' table is #725–#736's, then #1266's.
+  itself; Purchases' table is #725–#736's, then #1266's. Bulk Set status
+  on the Games list is #1270's, after #1211 and #1134: one fact, so the
+  plain `BulkChoice`, and an inverse reading the latest earlier
+  `status_changed` the way #1211's reads its facts, not through #1256's
+  gate (#1284).
 - **The Trash** — #795 inherits "recent batches": the batch's correlation id
   and the Undo route are what a Trash lists, and the correlation index is
   what it reads.
