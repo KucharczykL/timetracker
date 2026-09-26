@@ -1,7 +1,4 @@
-"""The clear × empties a picker in one press, by keyboard or by pointer.
-
-Single on the real session form; multi on a bare harness.
-"""
+"""Clear × by keyboard and by pointer."""
 
 import pytest
 from devices import create_device
@@ -77,7 +74,7 @@ START_FIELD = 'date-time-field[field-name="started_at"]'
 
 
 def _fill_start(page: Page) -> None:
-    """A start alone is a running Timed session, which is enough."""
+    """A start alone makes a running session."""
     for part, value in (
         ("year", "2026"),
         ("month", "01"),

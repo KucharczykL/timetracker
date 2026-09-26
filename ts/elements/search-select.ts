@@ -51,9 +51,7 @@ export interface SearchSelectChangeDetail {
   last: SearchSelectOption | null;
 }
 
-// The "search-select:clear" CustomEvent: a press of the clear ×, fired after
-// any search-select:change that press caused, even when it only emptied the
-// query.
+// Each × press, query-only too; after change.
 export interface SearchSelectClearDetail {
   name: string;
 }
@@ -289,11 +287,12 @@ const initWidget = (containerElement: Element) => {
   // Like the listbox id, the describedby id is assigned here, never
   // server-side (the filter builder clones whole <search-select> prototypes).
   const statusEl = container.querySelector<HTMLElement>("[data-search-select-status]");
-  //: Rendered only on clearable widgets, so its presence is the opt-in.
+  //: Present only on clearable widgets.
   const clearButton = container.querySelector<HTMLButtonElement>(
     "[data-search-select-clear]"
   );
-  //: A clear declines the sole option a later search answers.
+  //: A clear refuses the next sole-option commit.
+  //: Not _searchSelectDirty: runFocus resets that on an empty box.
   let soleDeclined = false;
 
   const syncClearButton = () => {
@@ -1287,8 +1286,7 @@ const initWidget = (containerElement: Element) => {
   // truthful if init ever runs against hydrated markup.
   syncUncommitted();
 
-  // Cancel a pending or in-flight search so a late answer cannot reopen the
-  // panel (via renderRows → showPanel) once focus has left the box.
+  // Late answers must not reopen the panel.
   const cancelPendingSearch = () => {
     if (debounceTimer) {
       clearTimeout(debounceTimer);
@@ -1300,11 +1298,11 @@ const initWidget = (containerElement: Element) => {
     }
   };
 
-  // ── The clear ×: one press empties the query and the value. ──
+  // ── The clear ×: empties query and value. ──
   if (clearButton) {
-    //: A pointer press keeps focus where it was, so a tap opens no keyboard.
+    //: Pointer press keeps focus: no phone keyboard.
     clearButton.addEventListener("mousedown", event => event.preventDefault());
-    //: Tab onto the × leaves the box, so the panel closes as on Tab out.
+    //: Tab onto × closes the panel.
     clearButton.addEventListener("focus", () => {
       cancelPendingSearch();
       hidePanel();
@@ -1325,7 +1323,7 @@ const initWidget = (containerElement: Element) => {
           detail: { name },
         })
       );
-      //: The × hides under focus; the box takes it rather than <body>.
+      //: The × hides; focus goes to box.
       if (fromFocus) search.focus();
     });
   }

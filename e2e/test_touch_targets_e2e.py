@@ -129,8 +129,7 @@ def test_datetime_field_controls_meet_min_touch_target(touch_page: Page, live_se
 def test_search_select_clear_meets_min_touch_target_and_a_tap_clears(
     touch_page: Page, live_server, e2e_library
 ):
-    """A tap on the clear × empties the picker without moving focus into its
-    box, which would summon the keyboard."""
+    """A tap clears without focusing the box."""
     from devices import create_device
     from tracked_games import create_tracked_game
 

@@ -1082,7 +1082,7 @@ _DEVICE = {"value": "7", "label": "Deck"}
 
 
 class ClearableSearchSelectTest(unittest.TestCase):
-    """``clearable=True`` renders the trailing × the element wires."""
+    """The component renders the clear ×."""
 
     def _clear_tag(self, html: str) -> str:
         return _tag_around(html, "data-search-select-clear")
@@ -1159,7 +1159,7 @@ class ClearableSearchSelectTest(unittest.TestCase):
 
 
 class ClearableWidgetTest(unittest.TestCase):
-    """``SearchSelectWidget`` offers × on every field, required or not."""
+    """Every widget field offers ×, required too."""
 
     @staticmethod
     def _form(*, required: bool, clearable: bool = True) -> str:

@@ -1,8 +1,6 @@
 // @vitest-environment jsdom
 //
-// The clear ×: shown while the widget holds a value or a typed query; one
-// press empties both, announces itself, and never lets a sole option put the
-// cleared value back.
+// The clear ×: visibility, press, events, focus.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "./search-select.js"; // side effect: customElements.define
 import type {

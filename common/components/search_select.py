@@ -124,37 +124,17 @@ class OptionGroup(NamedTuple):
     options: list[SearchSelectOption]
 
 
-# The field box: one bordered flex-wrap row holding the search input, the
-# clear × and the #450 marker, and in the field personality the pills too
-# (their wrapper uses `contents`, so pills and hidden inputs flow inline with
-# the input). Every personality draws its field with this one element; they
-# differ only in where the pills sit and where the box lives.
-# Border + focus styling mirror a native input (INPUT_CLASS): border-default-medium
-# normally, brand border + ring on focus. The search input is the focusable
-# element, so the focus state is expressed on the box with focus-within: (and
-# the inner input suppresses its own ring — see _SEARCH_CLASS).
-# The widget owns its disabled appearance: when any control inside it is
-# :disabled (e.g. add_purchase.ts disabling the search input), the box fades
-# via :has() — the same opacity-50 a disabled native input uses (see
-# _DISABLED_CONTROL in games/forms.py), so the two look identical. Callers only
-# toggle the control's `disabled`, never styles.
-# px-3 + min-h-control matches INPUT_CLASS (the shared 42px control height).
-# The box is text-type-body (pill/label text); the inner search input is
-# text-type-input (16px, below which iOS focus-zooms, #427). The input zeroes
-# its own padding (p-0); min-h floors the field at 42 and grows as pills wrap.
+# One bordered field box, every personality.
 _BOX_CLASS = (
     "flex flex-wrap items-center gap-1 px-3 min-h-control rounded-base text-type-body "
     "bg-neutral-secondary-medium border border-default-medium "
     "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand "
     f"{DISABLED_WITHIN_CLASS}"
 )
-# The field personality's element: the anchor the standalone options panel
-# (absolute top-full) and the drop-down position against.
+# Anchors the standalone panel and drop-down.
 _CONTAINER_CLASS = "relative block"
 _PILLS_CLASS = "contents"
-# disabled:cursor-not-allowed matches the box's cursor so hovering across
-# the whole widget stays consistent (the box handles the faded look via
-# has-[:disabled]:opacity-50).
+# Under 16px text, iOS zooms on focus.
 _SEARCH_CLASS = (
     "flex-1 min-w-[8rem] border-0 p-0 bg-transparent text-type-input text-heading "
     "focus:ring-0 focus:outline-hidden placeholder:text-body "
@@ -176,10 +156,7 @@ _UNCOMMITTED_SEARCH_CLASS = (
 # Icon() drops the snippet's baked color classes, so text-body must ride here
 # (sizing stays Icon()'s default ICON_SIZE_CLASS).
 _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]:block"
-# The trailing clear ×. ml-auto pins it to the row's end, where pills wrapping
-# before the input would otherwise leave it on a line alone; size-8 is a 32px
-# target, above the 24px touch minimum. The input is its peer, so a
-# disabled input hides it without script.
+# ml-auto ends the row; peer-disabled hides it.
 _CLEAR_BUTTON_CLASS = (
     "ml-auto -mr-1 shrink-0 size-8 inline-flex items-center justify-center "
     "rounded-base text-body hover:text-heading hover:bg-neutral-tertiary-medium "
@@ -205,8 +182,7 @@ _OPTION_ROW_CLASS = (
     "px-3 py-2 text-type-body text-heading cursor-pointer "
     "hover:bg-brand-soft data-[search-select-highlighted]:bg-brand-soft"
 )
-# A row on the padded dialog surface is inset, so it rounds its corners as
-# every other item on that surface does (DROPDOWN_ITEM_CLASS).
+# Inset rows round, like dropdown items.
 _DIALOG_OPTION_ROW_CLASS = f"{_OPTION_ROW_CLASS} rounded-base"
 _NO_RESULTS_CLASS = "px-3 py-2 text-type-body italic text-body hidden"
 # A non-selectable group header in a grouped panel. role="presentation" keeps it
@@ -370,20 +346,15 @@ def _grouped_option_rows(groups: list[OptionGroup], row_class: str) -> list[Node
 
 
 class _OptionsSurface(NamedTuple):
-    """Where the options list lives, and the row look that surface takes.
-
-    Declared together so a list and its rows cannot disagree: rows fill an
-    unpadded list edge to edge, and sit inset and rounded on the padded
-    dialog surface.
-    """
+    """An options list and the rows it takes."""
 
     options_class: str | None
     row_class: str
 
 
-# Absolute below the field box, when no drop-down hosts the widget.
+# Absolute below the box; no drop-down.
 _STANDALONE_LIST = _OptionsSurface(None, _OPTION_ROW_CLASS)
-# Pinned by the <drop-down> engine, when one hosts the widget.
+# Pinned by the hosting drop-down.
 _INLINE_LIST = _OptionsSurface(_INLINE_OPTIONS_CLASS, _OPTION_ROW_CLASS)
 
 
@@ -431,9 +402,7 @@ def _combobox_children(
     ``marker`` nodes (the #450 committed-marker glyph + sr-only status span) sit
     between the search box and the options panel, so in the flex row they render
     at the field's right edge (the panel is absolutely positioned / menu-hosted).
-    The search input, ``clear_button`` and ``marker`` share one field box
-    (``box_class``). ``pills_in_box`` flows the pills inline inside it (the
-    field personality); otherwise they wrap in their own row above it.
+    One box holds input, ×, marker, maybe pills.
     """
     aria_attributes: list[HTMLAttribute] = [
         ("role", "combobox"),
@@ -552,9 +521,8 @@ def SearchSelect(
     correctly so for the preset picker, whose pick is a command and whose box
     clears by design.
 
-    ``clearable`` (default on) renders a trailing × that empties the query and
-    the value in one press; its presence is the element's opt-in. ``clear_description_id``
-    names the element that describes it, the field's label in a form.
+    ``clearable``: a trailing × empties query and value.
+    ``clear_description_id``: the ×'s ``aria-describedby`` target.
     """
     if panel:
         always_visible = True
@@ -1013,10 +981,7 @@ def FilterSelect(
 
 
 # ── Panel personality styling ───────────────────────────
-# The layout shared by every combobox-shell widget hosted inside a <drop-down>
-# combobox dialog (PresetSelect, panel-layout FilterSelect, SearchSelect
-# panel=True): the same field box as a form field, and the options list flowing
-# statically below it on the dialog surface (GitHub-label-picker layout).
+# Dialog-hosted comboboxes: field box above a list.
 _PANEL_CONTAINER_CLASS = "block text-type-body"
 _PANEL_OPTIONS_CLASS = "mt-2 overflow-y-auto"
 # The dialog's padded surface.

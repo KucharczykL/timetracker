@@ -60,7 +60,7 @@ class TimeZoneRowElement extends HTMLElement {
       // The API's pinned "" option is an explicit clear back to NULL.
       applyZone(detail.last.value);
     });
-    // The picker's × empties it, which states NULL as the pinned "" does.
+    // A clear states NULL, as pinned "" does.
     this.addEventListener("search-select:clear", () => applyZone(""));
   }
 

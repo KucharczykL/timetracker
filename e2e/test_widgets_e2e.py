@@ -173,9 +173,7 @@ def test_add_purchase_related_game_is_flat_game_search(
 def test_searchselect_border_matches_native_input(
     authenticated_page: Page, live_server
 ):
-    """A SearchSelect's field box has the same border as a native input, and
-    turns brand on focus (via focus-within on the box, since the inner search
-    input is what's focused)."""
+    """Field box borders like a native input."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
     price = page.locator("#id_price")  # always-enabled native input
@@ -271,14 +269,12 @@ def test_add_game_syncs_sort_name_from_name(authenticated_page: Page, live_serve
 def test_add_purchase_type_game_disables_related_game_search(
     authenticated_page: Page, live_server
 ):
-    """When Type is 'game', the related-game SearchSelect is disabled.
-    #id_related_game is the inner search <input> (the real labelable control),
-    and its field box fades via has-[:disabled]:opacity-50."""
+    """Type "game" disables and fades related game."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
     # #id_related_game is now on the inner <input data-search-select-search>
     search_input = page.locator("#id_related_game")
-    # The box has no id; find it under the stable `name` attribute.
+    # Found under the stable name.
     wrapper = page.locator(
         "search-select[name='related_game'] [data-search-select-box]"
     )

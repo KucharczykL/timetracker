@@ -884,10 +884,7 @@ def test_builder_comparison_leaf_clone_seed_and_operator_rewire(
 
     operator_select = comparison_row.locator("[data-fc-op]")
 
-    # 1. Template clone: the left operand came from the server template, so its
-    # SearchSelect carries the server-owned field box class. This pins that the
-    # styling really arrived from the server template — the jsdom suite's
-    # synthetic fixtures are classless, so only a browser test can assert this.
+    # 1. Box class proves the server template cloned.
     expect(
         comparison_row.locator("[data-fc-left] search-select [data-search-select-box]")
     ).to_have_class(re.compile(r"rounded-base"))

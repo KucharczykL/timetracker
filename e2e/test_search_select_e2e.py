@@ -291,8 +291,7 @@ def test_search_select_tab_closes_panel(live_server, page):
 
     page.keyboard.press("Tab")
 
-    # Tab lands on the clear ×, which leaves the box: the panel closed with no
-    # lingering highlight.
+    # Tab lands on ×; the panel closes.
     expect(
         page.locator('search-select[name="games"] [data-search-select-clear]')
     ).to_be_focused()
@@ -775,9 +774,7 @@ def test_search_select_late_fetch_does_not_reopen_after_blur(live_server, page):
     page.keyboard.press("Tab")
     expect(options_panel).to_be_hidden()
 
-    # Tab landed on the clear ×, still inside the widget, so focusout never
-    # fired; the × itself must cancel the search. Wait past the fetch's
-    # completion: the aborted response must not reopen the panel.
+    # Inside the widget: the × must cancel.
     expect(
         page.locator('search-select[name="games"] [data-search-select-clear]')
     ).to_be_focused()
