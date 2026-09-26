@@ -1207,3 +1207,71 @@ class ClearableWidgetTest(unittest.TestCase):
         for name, html in rendered.items():
             with self.subTest(field=name):
                 self.assertIn("data-search-select-clear", html)
+
+
+def _row_classes(html: str, hook: str) -> list[str]:
+    return [
+        match.group(1)
+        for match in re.finditer(rf'<div[^>]*{hook}(?![-\w])[^>]*class="([^"]*)"', html)
+    ]
+
+
+def test_every_picker_row_wears_one_look():
+    from common.components.search_select import _ROW_CLASS
+
+    search = str(SearchSelect(name="game", options=[{"value": "1", "label": "One"}]))
+    filter_ = str(
+        FilterSelect(
+            field_name="status",
+            options=[("f", "Finished")],
+            modifier_options=[("any", "(Any)")],
+        )
+    )
+    preset = str(PresetSelect(api_url="/api/presets/", mode="games"))
+    rows = [
+        *_row_classes(search, "data-search-select-option"),
+        *_row_classes(filter_, "data-search-select-option"),
+        *_row_classes(filter_, "data-search-select-modifier-option"),
+        *_row_classes(preset, "data-search-select-option"),
+    ]
+    assert len(rows) >= 4  # templates count too
+    for classes in rows:
+        assert set(_ROW_CLASS.split()) <= set(classes.split())
+        assert "hover:" not in classes
+
+
+def test_the_highlight_spells_the_menu_active_look():
+    from common.components import DROPDOWN_ITEM_ACTIVE
+    from common.components.search_select import _ROW_CLASS
+
+    for token in DROPDOWN_ITEM_ACTIVE.split():
+        assert f"data-[search-select-highlighted]:{token}" in _ROW_CLASS.split()
+
+
+def test_row_kinds_carry_their_own_hook():
+    from common.components.search_select import RowKind, _option_row
+
+    option = {"value": "any", "label": "(Any)", "data": {}}
+    modifier = str(_option_row(option, RowKind.MODIFIER))
+    create = str(_option_row(option, RowKind.CREATE))
+    plain = str(_option_row(option))
+
+    assert 'data-search-select-modifier-option="any"' in modifier
+    assert "data-search-select-option" not in modifier
+    assert "data-value" not in modifier
+    assert "data-search-select-create" in create
+    assert "hidden" in create
+    assert "data-search-select-option" not in create
+    assert 'data-search-select-option=""' in plain
+    assert 'data-value="any"' in plain
+
+
+def test_actions_follow_the_label():
+    html = str(FilterSelect(field_name="status", options=[("f", "Finished")]))
+    row = html[html.index('data-value="f"') :]
+    assert row.index("data-search-select-label") < row.index(
+        'data-search-select-action="include"'
+    )
+    assert row.index('data-search-select-action="include"') < row.index(
+        'data-search-select-action="exclude"'
+    )

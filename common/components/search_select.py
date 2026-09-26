@@ -48,10 +48,12 @@ user types.
 
 import json
 from collections.abc import Callable, Iterable, Sequence
+from enum import Enum
 from typing import Literal, NamedTuple, TypedDict
 
-from common.components.core import Attributes, HTMLAttribute, Node
+from common.components.core import Attributes, Child, HTMLAttribute, Node
 from common.components.custom_elements import (
+    DROPDOWN_ITEM_SHAPE,
     Dropdown,
     DropdownPanel,
     _Dropdown,
@@ -171,18 +173,32 @@ _INLINE_OPTIONS_CLASS = (
     "z-20 overflow-y-auto "
     "border border-default-medium rounded-base bg-neutral-secondary-medium shadow-lg"
 )
-_OPTION_ROW_CLASS = (
-    "px-3 py-2 text-type-body text-heading cursor-pointer "
-    "hover:bg-brand-soft data-[search-select-highlighted]:bg-brand-soft"
+#: Every picker row wears the menu item's look.
+#: Tailwind reads literals, so the active look is spelled.
+_ROW_CLASS = (
+    f"{DROPDOWN_ITEM_SHAPE} text-type-body "
+    "data-[search-select-highlighted]:bg-neutral-tertiary-medium "
+    "data-[search-select-highlighted]:text-heading"
 )
-# Inset rows round, like dropdown items.
-_DIALOG_OPTION_ROW_CLASS = f"{_OPTION_ROW_CLASS} rounded-base"
-_NO_RESULTS_CLASS = "px-3 py-2 text-type-body italic text-body hidden"
+_ROW_WITH_ACTIONS_CLASS = f"{_ROW_CLASS} flex items-center justify-between"
+_ROW_ACTIONS_CLASS = "flex gap-1 ml-2 shrink-0"
+#: -my-1 keeps the row its height.
+_ROW_ACTION_SHAPE = (
+    "size-6 -my-1 inline-flex items-center justify-center rounded-base "
+    "text-type-micro font-bold text-body cursor-pointer"
+)
+_ROW_ACTION_CLASS = (
+    f"{_ROW_ACTION_SHAPE} hover:text-heading hover:bg-neutral-quaternary-medium"
+)
+_ROW_REMOVE_ACTION_CLASS = (
+    f"{_ROW_ACTION_SHAPE} hover:text-fg-danger-strong hover:bg-danger-soft"
+)
+_NO_RESULTS_CLASS = "px-4 py-2 text-type-body italic text-body hidden"
 # A non-selectable group header in a grouped panel. role="presentation" keeps it
 # out of the combobox's option semantics; carrying no data-search-select-option
 # excludes it from keyboard nav, client-side filtering, and selection. The JS
 # hides a header whose whole run of following option rows is filtered out.
-_GROUP_HEADER_CLASS = f"px-3 pt-2 pb-1 {MICRO_LABEL_CLASS} text-body"
+_GROUP_HEADER_CLASS = f"px-4 pt-2 pb-1 {MICRO_LABEL_CLASS} text-body"
 
 # Approximate rendered height of one option row (px-3 py-2 text-type-body) in rem,
 # used to derive the panel's max-height from items_visible.
@@ -217,34 +233,6 @@ _FILTER_MODIFIER_PILL_CLASS = (
     "bg-amber-500/15 text-amber-600 cursor-pointer"
 )
 _FILTER_PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
-_FILTER_OPTION_ROW_CLASS = (
-    "group flex items-center justify-between px-2 py-1 rounded text-type-body "
-    "hover:bg-neutral-secondary-strong cursor-pointer "
-    "data-[search-select-highlighted]:bg-brand "
-    "data-[search-select-highlighted]:outline data-[search-select-highlighted]:outline-1 "
-    "data-[search-select-highlighted]:outline-brand-strong"
-)
-_FILTER_OPTION_LABEL_CLASS = (
-    "truncate text-body group-data-[search-select-highlighted]:text-white"
-)
-_FILTER_OPTION_BUTTONS_CLASS = "flex gap-1 ml-2 shrink-0"
-# text-body keeps the +/− readable on dark backgrounds; hover:border-brand-strong
-# keeps the edge visible against the brand hover fill. When the row is the
-# keyboard-highlighted one its bg is brand, so the button text/border switch
-# to white and the hover fill shifts to brand-strong for contrast.
-_FILTER_ACTION_BUTTON_CLASS = (
-    "w-5 h-5 flex items-center justify-center text-type-micro font-bold rounded text-body "
-    "border border-brand "
-    "hover:solid-brand hover:border-brand-strong "
-    "group-data-[search-select-highlighted]:text-white "
-    "group-data-[search-select-highlighted]:border-white "
-    "group-data-[search-select-highlighted]:hover:bg-brand-strong "
-    "group-data-[search-select-highlighted]:hover:border-white"
-)
-_FILTER_MODIFIER_ROW_CLASS = (
-    "px-2 py-1 text-type-body text-body hover:bg-neutral-secondary-strong cursor-pointer "
-    "data-[search-select-highlighted]:solid-brand"
-)
 
 
 def _normalize_option(option) -> SearchSelectOption:
@@ -285,34 +273,61 @@ def _label_slot(text: str, *, extra_class: str = "") -> Node:
 _BLANK_OPTION: SearchSelectOption = {"value": "", "label": "", "data": {}}
 
 
+class RowKind(Enum):
+    """Which hook a row carries for the element."""
+
+    OPTION = "option"
+    #: Pinned; the text filter never hides it.
+    MODIFIER = "modifier"
+    #: Hidden until no label equals the query.
+    CREATE = "create"
+
+
 def _option_row(
-    option: SearchSelectOption, layout: _ComboboxLayout, *, selected: bool = False
+    option: SearchSelectOption,
+    kind: RowKind = RowKind.OPTION,
+    *,
+    selected: bool = False,
+    actions: Sequence[Node] = (),
 ) -> Node:
-    return Div(
-        [*_data_attributes(option["data"]), *_option_role_attributes(selected)],
-        data_search_select_option="",
-        data_value=str(option["value"]),
-        data_label=option["label"],
-        class_=layout.row_class,
-    )[_label_slot(option["label"])]
+    """Every picker row: one look, the kind's hook, trailing actions.
 
-
-def _create_row(layout: _ComboboxLayout) -> Node:
-    """The row that makes the thing a person typed.
-
-    Rendered hidden, and shown by the element once the
-    answer decides that no loaded label equals the query.
-    Its own attribute, not an option's: `renderRows`
-    empties every option row on each answer, and a create
-    row wearing that attribute would vanish mid-keystroke.
+    A create row carries its own hook, not an option's:
+    each answer empties the option rows, and it would
+    vanish mid-keystroke.
     """
-    return Div(
-        data_search_select_create="",
-        role="option",
-        aria_selected="false",
-        hidden="",
-        class_=layout.row_class,
-    )[Span(data_label="")]
+    label: Node
+    if kind is RowKind.CREATE:
+        attributes: list[HTMLAttribute] = [
+            ("data-search-select-create", ""),
+            ("role", "option"),
+            ("aria-selected", "false"),
+            ("hidden", ""),
+        ]
+        label = Span(data_label="")
+    elif kind is RowKind.MODIFIER:
+        attributes = [
+            *_option_role_attributes(selected),
+            ("data-search-select-modifier-option", str(option["value"])),
+            ("data-label", option["label"]),
+        ]
+        label = Span()[option["label"]]
+    else:
+        attributes = [
+            *_data_attributes(option["data"]),
+            *_option_role_attributes(selected),
+            ("data-search-select-option", ""),
+            ("data-value", str(option["value"])),
+            ("data-label", option["label"]),
+        ]
+        label = _label_slot(
+            option["label"], extra_class="truncate min-w-0" if actions else ""
+        )
+    if not actions:
+        return Div(attributes, class_=_ROW_CLASS)[label]
+    return Div(attributes, class_=_ROW_WITH_ACTIONS_CLASS)[
+        label, Span(class_=_ROW_ACTIONS_CLASS)[*actions]
+    ]
 
 
 def _group_header(label: str) -> Node:
@@ -323,16 +338,12 @@ def _group_header(label: str) -> Node:
     )[label]
 
 
-def _grouped_option_rows(
-    groups: list[OptionGroup], layout: _ComboboxLayout
-) -> list[Node]:
+def _grouped_option_rows(groups: list[OptionGroup]) -> list[Node]:
     """Flatten groups into header + option-row nodes for the options panel."""
     rows: list[Node] = []
     for group in groups:
         rows.append(_group_header(group.label))
-        rows.extend(
-            _option_row(_normalize_option(option), layout) for option in group.options
-        )
+        rows.extend(_option_row(_normalize_option(option)) for option in group.options)
     return rows
 
 
@@ -341,7 +352,6 @@ class _ComboboxLayout(NamedTuple):
 
     container_class: str
     options_class: str
-    row_class: str
     #: The <drop-down> owns the list's visibility.
     menu_target: bool
     pills_in_box: bool
@@ -569,7 +579,7 @@ def SearchSelect(
     if search_url:
         option_rows: list[Node] = []
     elif option_groups:
-        option_rows = _grouped_option_rows(option_groups, layout)
+        option_rows = _grouped_option_rows(option_groups)
     else:
         # In the multi (aria-multiselectable) listbox aria-selected conveys
         # membership, so pre-render it for already-selected values. Single-select
@@ -578,9 +588,7 @@ def SearchSelect(
             {str(option["value"]) for option in selected} if multi_select else set()
         )
         option_rows = [
-            _option_row(
-                option, layout, selected=str(option["value"]) in selected_values
-            )
+            _option_row(option, selected=str(option["value"]) in selected_values)
             for option in options
         ]
 
@@ -590,9 +598,7 @@ def SearchSelect(
     templates: list[Node] = []
     if search_url or dynamic_options:
         templates.append(
-            Template(data_search_select_template="row")[
-                _option_row(_BLANK_OPTION, layout)
-            ]
+            Template(data_search_select_template="row")[_option_row(_BLANK_OPTION)]
         )
     if multi_select:
         templates.append(
@@ -625,7 +631,7 @@ def SearchSelect(
         ]
 
     children = _combobox_children(
-        create_row=_create_row(layout) if create_url else None,
+        create_row=_option_row(_BLANK_OPTION, RowKind.CREATE) if create_url else None,
         pill_nodes=pills_children,
         search_attributes=search_attrs,
         options_children=option_rows,
@@ -710,53 +716,42 @@ def _filter_modifier_pill(modifier_value: str, label: str) -> Node:
     )[_label_slot(label, extra_class="truncate"), _filter_remove_button()]
 
 
-def _filter_action_button(action: str, symbol: str, title: str) -> Node:
+def _row_action(action: str, symbol: Child, title: str, *, css: str) -> Node:
+    """A row's trailing button, outside the tab order."""
     return Button(
         type="button",
-        # Include (+) is reachable via row highlight + Enter; both +/− are
-        # reachable by mouse. Keep every per-row button out of the
-        # sequential tab order (issue #119).
         tabindex="-1",
         data_search_select_action=action,
-        class_=_FILTER_ACTION_BUTTON_CLASS,
+        class_=css,
         title=title,
+        aria_label=title,
     )[symbol]
 
 
 def _filter_option_row(value: str | int, label: str, *, selected: bool = False) -> Node:
-    """A value row with include (+) and exclude (−) buttons. ``selected`` marks
-    the row as a member of the filter set (an include or exclude pill exists),
-    which is what ``aria-selected`` means in this multiselectable listbox."""
-    return Div(
-        _option_role_attributes(selected),
-        data_search_select_option="",
-        data_value=str(value),
-        data_label=label,
-        class_=_FILTER_OPTION_ROW_CLASS,
-    )[
-        _label_slot(label, extra_class=_FILTER_OPTION_LABEL_CLASS),
-        Span(class_=_FILTER_OPTION_BUTTONS_CLASS)[
-            _filter_action_button("include", "+", "Include"),
-            _filter_action_button("exclude", "−", "Exclude"),
+    """A value row with include (+) and exclude (−) buttons.
+
+    ``selected`` means an include or exclude pill exists.
+    """
+    return _option_row(
+        {"value": value, "label": label, "data": {}},
+        selected=selected,
+        actions=[
+            _row_action("include", "+", "Include", css=_ROW_ACTION_CLASS),
+            _row_action("exclude", "−", "Exclude", css=_ROW_ACTION_CLASS),
         ],
-    ]
+    )
 
 
 def _filter_modifier_row(
     modifier_value: str, label: str, *, selected: bool = False
 ) -> Node:
-    """A pinned pseudo-option row. It carries no ``data-search-select-option`` so the text
-    filter never hides it — modifiers stay visible at the top of the panel.
-
-    Carries ``role="option"`` like the value rows, and the JS includes it in
-    arrow-key navigation and Enter selection, so every advertised option is
-    keyboard-reachable. ``selected`` marks the currently active modifier."""
-    return Div(
-        _option_role_attributes(selected),
-        data_search_select_modifier_option=modifier_value,
-        data_label=label,
-        class_=_FILTER_MODIFIER_ROW_CLASS,
-    )[label]
+    """A pinned pseudo-option row, e.g. "(Any)"."""
+    return _option_row(
+        {"value": modifier_value, "label": label, "data": {}},
+        RowKind.MODIFIER,
+        selected=selected,
+    )
 
 
 def FilterSelect(
@@ -960,7 +955,6 @@ _PANEL_PILLS_CLASS = "hidden has-[[data-pill]]:flex flex-wrap gap-1 mb-2"
 _STANDALONE_LAYOUT = _ComboboxLayout(
     container_class=_CONTAINER_CLASS,
     options_class=_OPTIONS_CLASS,
-    row_class=_OPTION_ROW_CLASS,
     menu_target=False,
     pills_in_box=True,
 )
@@ -968,7 +962,6 @@ _STANDALONE_LAYOUT = _ComboboxLayout(
 _INLINE_LAYOUT = _ComboboxLayout(
     container_class=_CONTAINER_CLASS,
     options_class=_INLINE_OPTIONS_CLASS,
-    row_class=_OPTION_ROW_CLASS,
     menu_target=True,
     pills_in_box=True,
 )
@@ -976,54 +969,30 @@ _INLINE_LAYOUT = _ComboboxLayout(
 _DIALOG_LAYOUT = _ComboboxLayout(
     container_class=_PANEL_CONTAINER_CLASS,
     options_class=_PANEL_OPTIONS_CLASS,
-    row_class=_DIALOG_OPTION_ROW_CLASS,
     menu_target=False,
     pills_in_box=False,
 )
-_PRESET_OPTION_ROW_CLASS = (
-    "group flex items-center justify-between px-3 py-2 text-type-body text-heading "
-    "cursor-pointer rounded "
-    "hover:bg-brand-soft data-[search-select-highlighted]:bg-brand-soft"
-)
-_PRESET_DELETE_BUTTON_CLASS = (
-    "w-5 h-5 flex items-center justify-center text-type-micro font-bold rounded "
-    "shrink-0 ml-2 text-body border border-transparent "
-    "hover:bg-red-500/15 hover:text-red-600 hover:border-red-400"
-)
-
 # Fetch-on-open window. A preset collection is per-user and small; one fetch
 # returns it all, and the type-to-filter narrows client-side.
 _PRESET_PREFETCH = 100
 
 
 def _preset_option_row(option: SearchSelectOption) -> Node:
-    """A preset row: a pickable label plus a per-row delete (×) action button.
+    """A preset row: a pickable label and a remove action.
 
-    The button carries ``data-search-select-action="delete"`` — in form mode the
-    widget dispatches ``search-select:action`` for it instead of picking the row
-    (issue #297). Preset rows are only ever client-built from the ``row``
-    template clone, so the label flows through ``textContent`` and the data
-    attributes through ``setAttribute`` — XSS-safe by construction.
+    The action dispatches ``search-select:action``, never a pick.
     """
-    return Div(
-        [*_data_attributes(option["data"]), *_option_role_attributes()],
-        data_search_select_option="",
-        data_value=str(option["value"]),
-        data_label=option["label"],
-        class_=_PRESET_OPTION_ROW_CLASS,
-    )[
-        _label_slot(option["label"], extra_class="truncate"),
-        Button(
-            type="button",
-            # Out of the sequential tab order like every per-row button (#119);
-            # mouse-reachable, and the row itself is the keyboard pick target.
-            tabindex="-1",
-            data_search_select_action="delete",
-            aria_label="Remove preset",
-            title="Remove preset",
-            class_=_PRESET_DELETE_BUTTON_CLASS,
-        )["×"],
-    ]
+    return _option_row(
+        option,
+        actions=[
+            _row_action(
+                "delete",
+                Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")]),
+                "Remove preset",
+                css=_ROW_REMOVE_ACTION_CLASS,
+            )
+        ],
+    )
 
 
 def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
