@@ -189,7 +189,7 @@ export function attachMenu(
 
   const isOpen = (): boolean => !menu.hidden;
 
-  // A hover activates without scrolling; a keyboard step scrolls.
+  // Hover never scrolls; keyboard steps do.
   const setActive = (index: number, { scroll = true } = {}): void => {
     const items = enabledItems();
     if (items.length === 0) return;
@@ -419,7 +419,7 @@ export function attachMenu(
     });
   }
 
-  // The highlight follows the mouse; own items only, not a submenu's.
+  // The mouse moves focus; own items only.
   followPointer(menu, itemSelector, (item) => {
     if (item.closest("[data-menu]") !== menu) return;
     const index = enabledItems().indexOf(item);

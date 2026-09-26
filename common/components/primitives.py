@@ -1426,7 +1426,7 @@ def Radio(
 # than the 42px field it sits in (min-h-control here made it fill the field edge
 # to edge) and share the field's font (font-condensed here read as squashed next
 # to the un-condensed search box).
-#: max-w-full lets the label truncate in a narrow host.
+#: max-w-full lets a narrow host truncate.
 _PILL_CLASS = (
     "inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded-base max-w-full"
 )
@@ -1434,7 +1434,7 @@ _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer
 
 type PillKind = Literal["include", "exclude", "modifier"]
 
-#: Each kind replaces the tone; none is plain brand.
+#: Each kind replaces the brand tone.
 _PILL_TONE_CLASSES: dict[PillKind | None, str] = {
     None: "bg-brand-soft text-heading",
     "include": "bg-brand-soft text-heading",

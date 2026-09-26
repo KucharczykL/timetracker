@@ -30,7 +30,7 @@ SHOWN_FIELD = "shown"
 #: The field that only the reset button posts.
 RESET_FIELD = "reset"
 
-#: The header row is uppercase and right-aligned; the panel is prose.
+#: Undo the header row's case and alignment.
 _PANEL_CLASS = "normal-case text-left"
 
 #: A panel row is a dropdown item.

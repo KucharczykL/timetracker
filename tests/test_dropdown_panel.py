@@ -1,4 +1,4 @@
-"""Every dropdown panel is a still surface around one scroller."""
+"""Every dropdown panel scrolls inside its surface."""
 
 from html.parser import HTMLParser
 from zoneinfo import ZoneInfo

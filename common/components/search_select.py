@@ -161,10 +161,10 @@ _CLEAR_BUTTON_CLASS = (
 )
 #: The standalone panel hangs below the box.
 _STANDALONE_PANEL_CLASS = "top-full left-0 right-0 mt-1"
-#: The dialog's listbox sits in the dialog's scroller.
+#: The dialog is this listbox's panel.
 _DIALOG_LISTBOX_CLASS = "mt-2 overflow-y-auto scroll-py-2"
-#: Every picker row wears the menu item's look.
-#: Tailwind reads literals, so the active look is spelled.
+#: Picker rows wear the menu item look.
+#: Literal, so Tailwind sees it.
 _ROW_CLASS = (
     f"{DROPDOWN_ITEM_SHAPE} text-type-body "
     "data-[search-select-highlighted]:bg-neutral-tertiary-medium "
@@ -239,7 +239,7 @@ _BLANK_OPTION: SearchSelectOption = {"value": "", "label": "", "data": {}}
 
 
 class RowKind(Enum):
-    """Which hook a row carries for the element."""
+    """The hook the element reads."""
 
     OPTION = "option"
     #: Pinned; the text filter never hides it.
@@ -255,7 +255,7 @@ def _option_row(
     selected: bool = False,
     actions: Sequence[Node] = (),
 ) -> Node:
-    """Every picker row: one look, the kind's hook, trailing actions.
+    """Every picker row, in one look.
 
     A create row carries its own hook, not an option's:
     each answer empties the option rows, and it would
@@ -372,7 +372,7 @@ def _combobox_children(
     listbox_attributes: list[HTMLAttribute] = [
         ("data-search-select-options", ""),
         ("role", "listbox"),
-        # Chrome makes an overflowing scroller a Tab stop.
+        # Else Chrome makes the scroller tabbable.
         ("tabindex", "-1"),
         ("style", f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem"),
     ]
@@ -669,7 +669,7 @@ def _filter_modifier_pill(modifier_value: str, label: str) -> Node:
 
 
 def _row_action(action: str, symbol: Child, title: str, *, css: str) -> Node:
-    """A row's trailing button, outside the tab order."""
+    """A trailing row button, never tabbable."""
     return Button(
         type="button",
         tabindex="-1",
@@ -681,10 +681,7 @@ def _row_action(action: str, symbol: Child, title: str, *, css: str) -> Node:
 
 
 def _filter_option_row(value: str | int, label: str, *, selected: bool = False) -> Node:
-    """A value row with include (+) and exclude (−) buttons.
-
-    ``selected`` means an include or exclude pill exists.
-    """
+    """A value row; ``selected``: a pill names it."""
     return _option_row(
         {"value": value, "label": label, "data": {}},
         selected=selected,
@@ -921,10 +918,7 @@ _PRESET_PREFETCH = 100
 
 
 def _preset_option_row(option: SearchSelectOption) -> Node:
-    """A preset row: a pickable label and a remove action.
-
-    The action dispatches ``search-select:action``, never a pick.
-    """
+    """A preset row with a remove action."""
     return _option_row(
         option,
         actions=[
@@ -1015,8 +1009,7 @@ def ComboboxDropdown(
         label,
         Icon("arrowdown", size="h-3 w-3"),
     ].as_element()
-    # A search dialog, not a menu: no role="menu"/menuitem anywhere — the
-    # inner widget provides the combobox/listbox semantics (#154).
+    # A dialog; the widget brings listbox semantics.
     panel = DropdownPanel(role="dialog", aria_label=label, width=panel_width)[content]
     return Dropdown(
         trigger_element=trigger,

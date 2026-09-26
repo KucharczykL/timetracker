@@ -435,7 +435,7 @@ class QuickFilterBar(BaseComponent):
             orientation="horizontal",
             haspopup="dialog",
         ).as_element()
-        # The moved facets' own dropdowns open fixed, unclipped.
+        # Moved facets' dropdowns open fixed, unclipped.
         panel = DropdownPanel(
             role="dialog",
             aria_label="More filters",

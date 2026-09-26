@@ -330,8 +330,7 @@ const initWidget = (containerElement: Element) => {
     statusEl.textContent = uncommitted ? "No option selected" : "";
   };
 
-  // The panel's `hidden` attribute is the one truth; attachMenu
-  // toggles it when delegated. A dialog's listbox is its own panel.
+  // Visibility is the panel's `hidden` attribute.
   const panel = options.closest<HTMLElement>("[data-search-select-panel]") ?? options;
   const isPanelOpen = () => !panel.hidden;
 
@@ -392,7 +391,7 @@ const initWidget = (containerElement: Element) => {
   // ── Highlight tracking (filter mode) ──
   let highlightedRow: HTMLElement | null = null;
 
-  // A hover highlights without scrolling; a keyboard step scrolls.
+  // Hover never scrolls; keyboard steps do.
   const highlightOption = (row: HTMLElement | null, { scroll = true } = {}) => {
     clearHighlight();
     if (!row) return;

@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { followPointer } from "./pointer-follow.js";
 
-// jsdom ignores PointerEvent's pointerType init; pin it on a MouseEvent.
+// jsdom drops pointerType; pin it.
 function move(target: Element, pointerType: string, x: number, y: number): void {
   const event = new MouseEvent("pointermove", { bubbles: true, clientX: x, clientY: y });
   Object.defineProperty(event, "pointerType", { value: pointerType });

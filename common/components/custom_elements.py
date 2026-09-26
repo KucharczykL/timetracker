@@ -811,13 +811,7 @@ _DROPDOWN_SCROLL_CLASS = "min-h-0 overflow-y-auto overflow-x-hidden"
 
 
 class DropdownPanel:
-    """Every dropdown's panel: a surface around one scroller.
-
-    ``DropdownPanel(role="menu", width="w-44")[items]``. The surface takes
-    ``attributes`` and the height attachMenu writes; the scroller,
-    ``[data-menu-scroll]``, takes the children, ``content_attributes`` and
-    ``content_class``, and shrinks to that height.
-    """
+    """A still surface; children fill its scroller."""
 
     def __init__(
         self,
@@ -851,8 +845,7 @@ class DropdownPanel:
 
 #: A menu item's and a picker row's shape.
 DROPDOWN_ITEM_SHAPE = "px-4 py-2 rounded-base text-body cursor-pointer"
-#: The one active look. Tailwind reads only literal
-#: classes, so each state spells it out; a test pins them.
+#: Tailwind needs literals; a test pins each.
 DROPDOWN_ITEM_ACTIVE = "bg-neutral-tertiary-medium text-heading"
 _ITEM_ACTIVE_ON_HOVER = "hover:bg-neutral-tertiary-medium hover:text-heading"
 _ITEM_ACTIVE_ON_FOCUS = "focus:bg-neutral-tertiary-medium focus:text-heading"

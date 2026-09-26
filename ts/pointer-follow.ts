@@ -1,8 +1,6 @@
 // One hover model for menus and pickers.
-//
-// Only a real mouse move activates: a touch has no hover, and a list that
-// scrolls under a still cursor reports a move at the same position.
-// `activate` must not scroll, or the list creeps under the cursor.
+// A scroll repeats the position; skip it.
+// `activate` must not scroll.
 export function followPointer(
   container: HTMLElement,
   itemSelector: string,

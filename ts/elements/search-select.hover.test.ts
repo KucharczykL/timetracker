@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// The mouse moves the one highlight, and a hover never scrolls.
+// Hover highlights one row, never scrolling.
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import "./search-select.js"; // side effect: customElements.define
 
@@ -62,7 +62,7 @@ describe("picker pointer follow", () => {
     search.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
     expect(highlighted(host)).toEqual([rows[1]]);
     expect(scrollIntoView).toHaveBeenCalled();
-    // The list scrolled under the cursor: same position, new row.
+    // Scrolled under a still cursor.
     move(rows[2], 5, 5);
     expect(highlighted(host)).toEqual([rows[1]]);
   });
