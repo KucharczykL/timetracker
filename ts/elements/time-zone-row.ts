@@ -41,22 +41,40 @@ class TimeZoneRowElement extends HTMLElement {
       valueInput.value = detectedZone;
       this.updateTriggerLabel(trigger, detectedZone);
       this.announceZone(props.fieldName, detectedZone);
+      this.holdInPicker(detectedZone);
     }
     const effectiveZone = valueInput.value || props.displayZone;
     // The zone this row will submit is not necessarily the zone this browser
     // is in — worth a look. Emphasis only: the trigger already names the value.
     this.updateEmphasis(trigger, effectiveZone);
 
+    const applyZone = (zone: string) => {
+      valueInput.value = zone;
+      this.updateTriggerLabel(trigger, zone || fallbackLabel);
+      const effectiveZone = zone || props.displayZone;
+      this.updateEmphasis(trigger, effectiveZone);
+      this.announceZone(props.fieldName, effectiveZone);
+    };
     this.addEventListener("search-select:change", (event) => {
       const detail = (event as CustomEvent<SearchSelectChangeDetail>).detail;
       if (!detail || detail.last === null) return;
       // The API's pinned "" option is an explicit clear back to NULL.
-      valueInput.value = detail.last.value;
-      this.updateTriggerLabel(trigger, detail.last.value || fallbackLabel);
-      const pickedZone = detail.last.value || props.displayZone;
-      this.updateEmphasis(trigger, pickedZone);
-      this.announceZone(props.fieldName, pickedZone);
+      applyZone(detail.last.value);
     });
+    // A clear states NULL, as pinned "" does.
+    this.addEventListener("search-select:clear", () => applyZone(""));
+  }
+
+  /** The picker shows what the row submits. */
+  private holdInPicker(zone: string): void {
+    const picker = this.querySelector<HTMLElement & { setSelected(value: string, label?: string): void }>(
+      "search-select",
+    );
+    if (!picker) return;
+    //: A child upgrades after its parent connects.
+    void customElements
+      .whenDefined("search-select")
+      .then(() => picker.setSelected(zone, zone));
   }
 
   private updateTriggerLabel(trigger: HTMLElement, zoneName: string): void {

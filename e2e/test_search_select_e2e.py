@@ -291,17 +291,23 @@ def test_search_select_tab_closes_panel(live_server, page):
 
     page.keyboard.press("Tab")
 
-    # Focus left the widget, and the panel closed with no lingering highlight.
+    # Tab lands on ×; the panel closes.
+    expect(
+        page.locator('search-select[name="games"] [data-search-select-clear]')
+    ).to_be_focused()
     expect(options_panel).to_be_hidden()
-    assert page.evaluate(
-        "() => !document.activeElement.closest('search-select[name=\"games\"]')"
-    )
     assert (
         page.locator(
             'search-select[name="games"] [data-search-select-highlighted]'
         ).count()
         == 0
     )
+
+    page.keyboard.press("Tab")
+    assert page.evaluate(
+        "() => !document.activeElement.closest('search-select[name=\"games\"]')"
+    )
+    expect(options_panel).to_be_hidden()
 
 
 @pytest.mark.django_db
@@ -768,9 +774,9 @@ def test_search_select_late_fetch_does_not_reopen_after_blur(live_server, page):
     page.keyboard.press("Tab")
     expect(options_panel).to_be_hidden()
 
-    # Wait past the fetch's completion: the aborted response must not reopen it.
+    # Inside the widget: the × must cancel.
+    expect(
+        page.locator('search-select[name="games"] [data-search-select-clear]')
+    ).to_be_focused()
     page.wait_for_timeout(400)
     expect(options_panel).to_be_hidden()
-    assert page.evaluate(
-        "() => !document.activeElement.closest('search-select[name=\"games\"]')"
-    )

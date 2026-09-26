@@ -124,3 +124,35 @@ def test_datetime_field_controls_meet_min_touch_target(touch_page: Page, live_se
             assert box["height"] >= MIN_TOUCH_TARGET, (
                 f"{field_name} {hook} height {box['height']} too small"
             )
+
+
+def test_search_select_clear_meets_min_touch_target_and_a_tap_clears(
+    touch_page: Page, live_server, e2e_library
+):
+    """A tap clears without focusing the box."""
+    from devices import create_device
+    from tracked_games import create_tracked_game
+
+    game = create_tracked_game(e2e_library, "Outer Wilds")
+    create_device(e2e_library, "Steam Deck")
+    page = touch_page
+    page.goto(
+        f"{live_server.url}{reverse('games:add_session_for_game', args=[game.pk])}"
+    )
+    picker = page.locator("search-select[name='device']")
+    picker.locator("[data-search-select-search]").tap()
+    picker.locator("[data-search-select-option]", has_text="Steam Deck").tap()
+    note = page.locator("textarea[name='note']")
+    note.tap()
+
+    clear = picker.get_by_role("button", name="Clear")
+    expect(clear).to_be_visible()
+    box = clear.bounding_box()
+    assert box is not None
+    assert box["width"] >= MIN_TOUCH_TARGET, f"width {box['width']} too small"
+    assert box["height"] >= MIN_TOUCH_TARGET, f"height {box['height']} too small"
+
+    clear.tap()
+    expect(picker.locator('input[type="hidden"][name="device"]')).to_have_count(0)
+    expect(picker.locator("[data-search-select-search]")).to_have_value("")
+    expect(note).to_be_focused()

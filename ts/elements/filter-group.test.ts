@@ -643,6 +643,21 @@ describe("<filter-group> live criterion leaf row (#192)", () => {
     });
   });
 
+  it("clearing the field picker drops the leaf's field and value", () => {
+    const host = mountLive();
+    pickField(host, [0], NAME_META);
+    typeValue(host, [0], "Hades");
+    const picker = row(host, [0]).querySelector<HTMLElement>("[data-field-picker]")!;
+    picker.dispatchEvent(
+      new CustomEvent("search-select:change", {
+        bubbles: true,
+        detail: { name: "field-picker", values: [], last: null },
+      }),
+    );
+    expect(row(host, [0]).querySelector('[data-value-cell] input[type="text"]')).toBeNull();
+    expect(host.serializeForQuery()).toEqual({});
+  });
+
   it("excludes an incomplete leaf (no value) from the query + flags it", () => {
     const host = mountLive();
     pickField(host, [0], NAME_META); // field chosen, value still empty

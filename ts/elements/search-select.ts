@@ -51,6 +51,11 @@ export interface SearchSelectChangeDetail {
   last: SearchSelectOption | null;
 }
 
+// Every × press; follows any change event.
+export interface SearchSelectClearDetail {
+  name: string;
+}
+
 // The "search-select:action" CustomEvent: a click on a
 // [data-search-select-action] button in a form-mode row (the preset delete ×),
 // for an external consumer. Filter +/− are the widget's own state, handled
@@ -282,6 +287,22 @@ const initWidget = (containerElement: Element) => {
   // Like the listbox id, the describedby id is assigned here, never
   // server-side (the filter builder clones whole <search-select> prototypes).
   const statusEl = container.querySelector<HTMLElement>("[data-search-select-status]");
+  //: Present only on clearable widgets.
+  const clearButton = container.querySelector<HTMLButtonElement>(
+    "[data-search-select-clear]"
+  );
+  //: No sole commit until pick or dependency.
+  //: Not _searchSelectDirty: runFocus resets that on an empty box.
+  let soleDeclined = false;
+  //: Counts × presses; a create outlived by one selects nothing.
+  let clears = 0;
+
+  const syncClearButton = () => {
+    if (!clearButton) return;
+    clearButton.hidden = !(
+      pills.querySelector('input[type="hidden"], [data-pill]') || search.value.trim()
+    );
+  };
   if (statusEl) {
     statusEl.id = `${listboxId}-status`;
     search.setAttribute("aria-describedby", statusEl.id);
@@ -294,7 +315,9 @@ const initWidget = (containerElement: Element) => {
   // the live region each time. Browser form-state restore (session restore /
   // back-navigation autofill) can repopulate the box without an input event —
   // that pre-existing hazard is not covered here.
+  //: Also syncs the ×, every mode.
   const syncUncommitted = () => {
+    syncClearButton();
     if (!statusEl || multi || isFilter) return;
     const uncommitted =
       search.value.trim() !== "" && !pills.querySelector('input[type="hidden"]');
@@ -639,6 +662,7 @@ const initWidget = (containerElement: Element) => {
     creating = true;
     createRow.setAttribute("aria-disabled", "true");
     const body = { name, ...resolveParams(container, params) };
+    const clearsAtStart = clears;
     void window
       .fetchWithEvents(createUrl, {
         method: "POST",
@@ -672,6 +696,7 @@ const initWidget = (containerElement: Element) => {
         };
         upsertOption(option);
         createRow.hidden = true;
+        if (clears !== clearsAtStart) return;
         selectOption(option);
         hidePanel();
       })
@@ -691,7 +716,7 @@ const initWidget = (containerElement: Element) => {
 
   /** Hold the one option a search answered, where nothing is held. */
   const commitTheSoleOption = () => {
-    if (!commitSoleOption || multi) return;
+    if (!commitSoleOption || multi || soleDeclined) return;
     //: A typed box holds a name, not a label to overwrite.
     if (container._searchSelectDirty) return;
     if (pills.querySelector('input[type="hidden"]')) return;
@@ -710,6 +735,7 @@ const initWidget = (containerElement: Element) => {
     const signature = dependencySignature(container, dependencyFields);
     if (signature === dependencyValues) return;
     dependencyValues = signature;
+    soleDeclined = false;
     container._searchSelectClear?.();
     hasPrefetched = false;
     if (searchUrl) fetchFromServer(currentQuery());
@@ -743,9 +769,15 @@ const initWidget = (containerElement: Element) => {
     });
     dependencyValues = dependencySignature(container, dependencyFields);
     if (prefetch && !query) url.searchParams.set("limit", String(prefetch));
-    fetch(url.toString(), { credentials: "same-origin", signal: pendingRequest.signal })
-      .then(response => response.json())
-      .then((items: SearchSelectOption[]) => {
+    const request = pendingRequest;
+    fetch(url.toString(), { credentials: "same-origin", signal: request.signal })
+      .then(response => {
+        if (!response.ok) throw new Error(`${response.status} from ${url.pathname}`);
+        return response.json() as Promise<SearchSelectOption[]>;
+      })
+      .then(items => {
+        //: An answer can land after its abort.
+        if (request.signal.aborted) return;
         pendingRequest = null;
         renderRows(items);
         // Re-apply the live query: the box may hold more text than was sent.
@@ -759,8 +791,9 @@ const initWidget = (containerElement: Element) => {
       })
       .catch(error => {
         if (error?.name === "AbortError") return; // superseded
-        pendingRequest = null;
+        if (pendingRequest === request) pendingRequest = null;
         setNoResults(true);
+        reportClientError("search-select[search]", String(error?.message ?? error));
       });
   };
 
@@ -1112,6 +1145,7 @@ const initWidget = (containerElement: Element) => {
       container._searchSelectDirty = false;
       hidePanel();
     }
+    if (emit) soleDeclined = false;
     syncUncommitted();
     if (emit) emitChange(option);
   };
@@ -1124,16 +1158,14 @@ const initWidget = (containerElement: Element) => {
     selectOption({ value, label: label ?? value, data: {} }, false);
   };
 
-  // Public refetch: reset to a blank query and re-request the prefetch window.
-  // The query reset matters — a committed single-select pick leaves its label in
-  // the search box, and refetching with that as `q` would return only the
-  // matching subset and present it as the full list. Marks hasPrefetched so a
+  // Public refetch: re-request the prefetch window with a blank query. The box
+  // shows the held label again, never a stale query. Marks hasPrefetched so a
   // following focus doesn't double-fetch (the combobox dropdown behavior calls
   // this on dropdown:show, then focuses the input — issues #297/#94).
   container._searchSelectRefetch = () => {
     if (!searchUrl) return;
     hasPrefetched = true;
-    search.value = "";
+    search.value = multi ? "" : (container._searchSelectLabel ?? "");
     if (!multi) container._searchSelectDirty = false;
     syncUncommitted();
     fetchFromServer("");
@@ -1227,6 +1259,7 @@ const initWidget = (containerElement: Element) => {
 
   const emitChange = (last: SearchSelectOption | null) => {
     syncSelectedStates();
+    syncClearButton();
     const values = currentValues();
     if (syncUrl) syncToUrl(values);
     container.dispatchEvent(
@@ -1263,23 +1296,64 @@ const initWidget = (containerElement: Element) => {
   // truthful if init ever runs against hydrated markup.
   syncUncommitted();
 
+  // Late answers must not reopen the panel.
+  const cancelPendingSearch = () => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    if (pendingRequest) {
+      pendingRequest.abort();
+      pendingRequest = null;
+    }
+  };
+
+  // ── The clear ×: empties query and value. ──
+  if (clearButton) {
+    //: Pointer press keeps focus: no phone keyboard.
+    clearButton.addEventListener("mousedown", event => event.preventDefault());
+    //: Tab onto × closes the panel.
+    clearButton.addEventListener("focus", () => {
+      cancelPendingSearch();
+      hidePanel();
+    });
+    clearButton.addEventListener("click", () => {
+      const heldValue = currentValues().length > 0;
+      const fromFocus = document.activeElement === clearButton;
+      cancelPendingSearch();
+      clears += 1;
+      container._searchSelectClear?.();
+      soleDeclined = true;
+      //: Loaded rows answered the old query; drop them.
+      if (searchUrl) {
+        options
+          .querySelectorAll("[data-search-select-option]")
+          .forEach(row => row.remove());
+        hasPrefetched = false;
+        if (!fromFocus && isPanelOpen()) fetchFromServer("");
+      }
+      filterRows("");
+      setCreateRow("");
+      setNoResults(false);
+      if (heldValue) emitChange(null);
+      container.dispatchEvent(
+        new CustomEvent<SearchSelectClearDetail>("search-select:clear", {
+          bubbles: true,
+          detail: { name },
+        })
+      );
+      //: × hides; focus moves to the input.
+      if (fromFocus) search.focus();
+    });
+  }
+
   // ── Close panel when focus leaves the widget (e.g. Tab away) ──
   // focusout bubbles, so the container catches the input losing focus in every
   // mode. Option mousedown preventDefault keeps the input focused during a
   // click, so this only fires on a genuine exit.
   container.addEventListener("focusout", (event) => {
     if (!container.contains(event.relatedTarget as Node)) {
-      // Cancel any pending/in-flight search so a late debounced fetch can't
-      // resolve and reopen the panel (via renderRows → showPanel) over the
-      // next field after the user has already tabbed away (issue #451).
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-      }
-      if (pendingRequest) {
-        pendingRequest.abort();
-        pendingRequest = null;
-      }
+      cancelPendingSearch();
       hidePanel(); // also clears the highlight
       // Both modes keep their box text across tab-out/refocus: single-select
       // commits only on an explicit pick, so blur touches neither value nor text.

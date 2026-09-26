@@ -703,7 +703,10 @@ Submodules re-exported via `common/components/__init__.py`:
   row for a query no loaded label **equals**, which POSTs `{name, ...params}`
   and upserts the answered `{value, label}` on its key, and `params` is one JSON
   mapping — a literal or a sibling field — read by that POST and by the search
-  query alike, a field source being a dependency that re-searches, #1080),
+  query alike, a field source being a dependency that re-searches, #1080;
+  a trailing × empties query and value in one press and emits
+  `search-select:clear` after any `search-select:change`; on by default,
+  `clearable=False` opts out, #1287),
   `FilterSelect()` (include/exclude
   with pinned Any/None modifiers; `layout="panel"` is GitHub-label-picker
   personality for hosting inside dropdown dialog, #315), `ComboboxDropdown()`

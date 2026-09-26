@@ -57,7 +57,7 @@ function stubFetch(items: unknown[]): string[] {
   const requestedUrls: string[] = [];
   vi.stubGlobal("fetch", (url: string) => {
     requestedUrls.push(String(url));
-    return Promise.resolve({ json: () => Promise.resolve(items) });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(items) });
   });
   return requestedUrls;
 }
@@ -80,7 +80,7 @@ describe("preset personality shell additions (#297)", () => {
     expect(url.searchParams.get("limit")).toBe("100");
   });
 
-  it("refetchOptions resets a committed label so it never becomes the query", async () => {
+  it("refetchOptions keeps a committed label but never makes it the query", async () => {
     const requestedUrls = stubFetch([]);
     const host = mountPreset();
     host.setSelected(PRESET_UUID, "Backlog"); // committed pick leaves its label in the box
@@ -89,7 +89,7 @@ describe("preset personality shell additions (#297)", () => {
     host.refetchOptions();
     await flushPromises();
 
-    expect(searchBox(host).value).toBe("");
+    expect(searchBox(host).value).toBe("Backlog");
     expect(new URL(requestedUrls[0], "http://localhost").searchParams.get("q")).toBe("");
   });
 

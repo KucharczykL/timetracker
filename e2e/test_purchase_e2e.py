@@ -98,6 +98,11 @@ def test_selection_fields_syncs_with_source(live_server, page: Page):
         page.locator('selection-fields input[name="price_for_game_7"]')
     ).to_have_value("12")
 
+    # The × empties every pill at once; no row outlives them.
+    games.get_by_role("button", name="Clear").click()
+    expect(games.locator("[data-pill]")).to_have_count(0)
+    expect(rows).to_have_count(0)
+
 
 @pytest.fixture
 def authenticated_page(live_server, page: Page, e2e_user) -> Page:

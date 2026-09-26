@@ -220,9 +220,7 @@ class SearchSelectCommittedMarkerTest(unittest.TestCase):
         html = str(SearchSelect(name="device", committed_marker=False))
         self.assertNotIn("data-search-select-marker", html)
         self.assertNotIn("data-search-select-status", html)
-        # Including the state-utility class tokens — they must not leak into
-        # the shared constants (FilterSelect's serializer-contract test scans
-        # every data-* token, class strings included).
+        # The cue's classes stay off opted-out widgets.
         self.assertNotIn("data-uncommitted", html)
 
     def test_multi_select_never_renders_the_cue(self):
@@ -1016,15 +1014,20 @@ class FilterSelectPanelLayoutTest(unittest.TestCase):
         self.assertIn('class="block text-type-body"', root_tag)
         self.assertIn('always-visible="true"', root_tag)
 
-    def test_field_root_keeps_the_bordered_field_look(self):
-        root_tag = _tag_around(self._html("field"), "always-visible=")
-        self.assertIn("focus-within:border-brand", root_tag)
-        self.assertIn('always-visible="false"', root_tag)
+    def test_both_layouts_draw_one_bordered_field_box(self):
+        self.assertIn(
+            'always-visible="false"',
+            _tag_around(self._html("field"), "always-visible="),
+        )
+        for layout in ("field", "panel"):
+            with self.subTest(layout=layout):
+                box_tag = _tag_around(self._html(layout), "data-search-select-box")
+                self.assertIn("focus-within:border-brand", box_tag)
 
     def test_panel_pills_row_hides_when_empty(self):
         pills_tag = _tag_around(self._html("panel"), "data-search-select-pills")
         self.assertIn("flex flex-wrap", pills_tag)
-        self.assertIn("empty:hidden", pills_tag)
+        self.assertIn("hidden has-[[data-pill]]:flex", pills_tag)
 
     def test_search_aria_label_names_the_input(self):
         html = self._html("panel", search_aria_label="Game")
@@ -1038,7 +1041,7 @@ class FilterSelectPanelLayoutTest(unittest.TestCase):
         # its own inline-combobox drop-down, while the panel layout's live on the
         # ComboboxDropdown that wraps it a level up — orthogonal to the serializer.
         host_hooks = {"data-toggle", "data-menu"}
-        data_attribute = re.compile(r"data-[a-z-]+")
+        data_attribute = re.compile(r"\s(data-[a-z-]+)=")
         field_hooks = sorted(
             hook
             for hook in data_attribute.findall(self._html("field"))
@@ -1071,3 +1074,136 @@ def test_default_search_select_keeps_the_field_personality():
     html = str(SearchSelect(name="zone", search_url="/api/timezones/search"))
     assert 'always-visible="false"' in html
     assert "mt-2 overflow-y-auto" not in html
+
+
+_DEVICE = {"value": "7", "label": "Deck"}
+
+
+class ClearableSearchSelectTest(unittest.TestCase):
+    """The component renders the clear ×."""
+
+    def _clear_tag(self, html: str) -> str:
+        return _tag_around(html, "data-search-select-clear")
+
+    def test_hidden_without_a_selection(self):
+        for multi in (False, True):
+            with self.subTest(multi=multi):
+                html = str(
+                    SearchSelect(name="device", clearable=True, multi_select=multi)
+                )
+                self.assertIn("hidden", self._clear_tag(html))
+
+    def test_shown_with_a_selection(self):
+        for multi in (False, True):
+            with self.subTest(multi=multi):
+                html = str(
+                    SearchSelect(
+                        name="device",
+                        clearable=True,
+                        multi_select=multi,
+                        selected=[_DEVICE],
+                    )
+                )
+                self.assertNotIn(" hidden", self._clear_tag(html))
+
+    def test_is_a_named_button(self):
+        tag = self._clear_tag(str(SearchSelect(name="device", clearable=True)))
+        self.assertIn('type="button"', tag)
+        self.assertIn('aria-label="Clear"', tag)
+        self.assertIn('title="Clear"', tag)
+        self.assertNotIn("aria-describedby", tag)
+
+    def test_described_by_the_given_id(self):
+        html = str(
+            SearchSelect(
+                name="device", clearable=True, clear_description_id="id_device_label"
+            )
+        )
+        self.assertIn('aria-describedby="id_device_label"', self._clear_tag(html))
+
+    def test_follows_the_search_box(self):
+        html = str(SearchSelect(name="device", clearable=True))
+        self.assertLess(
+            html.index("data-search-select-search"),
+            html.index("data-search-select-clear"),
+        )
+        self.assertLess(
+            html.index("data-search-select-clear"),
+            html.index("data-search-select-marker"),
+        )
+
+    def test_search_box_is_its_peer(self):
+        clearable = str(SearchSelect(name="device", clearable=True))
+        plain = str(SearchSelect(name="device", clearable=False))
+        self.assertIn("peer ", _tag_around(clearable, "data-search-select-search"))
+        self.assertNotIn("peer ", _tag_around(plain, "data-search-select-search"))
+        self.assertIn("peer-disabled:hidden", self._clear_tag(clearable))
+
+    def test_every_personality_holds_the_button_in_its_field_box(self):
+        for panel in (False, True):
+            with self.subTest(panel=panel):
+                html = str(SearchSelect(name="zone", panel=panel, selected=[_DEVICE]))
+                box_start = html.index("data-search-select-box")
+                box = html[box_start : html.index("data-search-select-options")]
+                self.assertIn("data-search-select-search", box)
+                self.assertIn("data-search-select-clear", box)
+
+    def test_on_by_default_and_off_on_request(self):
+        self.assertIn("data-search-select-clear", str(SearchSelect(name="device")))
+        self.assertNotIn(
+            "data-search-select-clear",
+            str(SearchSelect(name="device", clearable=False)),
+        )
+
+
+class ClearableWidgetTest(unittest.TestCase):
+    """Every widget field offers ×, required too."""
+
+    @staticmethod
+    def _form(*, required: bool, clearable: bool = True) -> str:
+        from django import forms
+
+        from games.forms import SearchSelectWidget
+
+        class DeviceForm(forms.Form):
+            device = forms.CharField(
+                required=required,
+                widget=SearchSelectWidget(
+                    search_url="/api/devices/search",
+                    options_resolver=lambda values: [],
+                    clearable=clearable,
+                ),
+            )
+
+        return str(DeviceForm()["device"])
+
+    def test_required_and_optional_fields_are_clearable(self):
+        for required in (True, False):
+            with self.subTest(required=required):
+                self.assertIn("data-search-select-clear", self._form(required=required))
+
+    def test_call_site_turns_it_off(self):
+        self.assertNotIn(
+            "data-search-select-clear", self._form(required=False, clearable=False)
+        )
+
+    def test_described_by_the_field_label(self):
+        from common.components.primitives import field_label_id
+
+        html = self._form(required=False)
+        self.assertIn(
+            f'aria-describedby="{field_label_id("id_device")}"',
+            _tag_around(html, "data-search-select-clear"),
+        )
+
+    def test_session_form_offers_it_on_every_picker(self):
+        from games.forms import SessionForm
+
+        fields = SessionForm.base_fields
+        rendered = {
+            name: fields[name].widget.render(name, None, {"id": f"id_{name}"})
+            for name in ("game", "playthrough", "device")
+        }
+        for name, html in rendered.items():
+            with self.subTest(field=name):
+                self.assertIn("data-search-select-clear", html)
