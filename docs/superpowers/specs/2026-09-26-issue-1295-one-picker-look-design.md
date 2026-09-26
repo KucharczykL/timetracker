@@ -46,7 +46,8 @@ A picker's list in the standalone and drop-down layouts is a `DropdownPanel`
 whose scroller is the listbox. The standalone panel sits below the box
 (`top-full`); the drop-down panel carries `[data-menu]` and `hidden`. In the
 dialog layout the dialog already is the panel, so the listbox sits in the
-dialog's scroller. The element reads and toggles the panel, never the listbox.
+dialog's scroller. The element reads and toggles the panel's `hidden`
+attribute in every personality, never the listbox.
 
 The listbox takes `scroll-py-2`. The group header and the no-results line take
 the row padding.
@@ -68,7 +69,7 @@ goes. `tests/test_admin_settings_page.py` pins the string and changes with it.
 
 A picker row applies the active look on `data-[search-select-highlighted]:`.
 
-`_option_row(option, layout, kind, *, selected=False, actions=())` builds
+`_option_row(option, kind, *, selected=False, actions=())` builds
 every row. `kind` is a `RowKind`: `OPTION`, `MODIFIER` or `CREATE`. It
 decides the hook the element reads: `data-search-select-option` with
 `data-value` and a label slot, `data-search-select-modifier-option`, or
