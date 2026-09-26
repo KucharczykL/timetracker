@@ -22,7 +22,7 @@ from common.components.primitives import _selection_actions_slot
 class _Tree(HTMLParser):
     """Each element's attributes and its element children."""
 
-    VOID = {"input", "br", "img", "hr", "meta", "link"}
+    VOID = frozenset({"input", "br", "img", "hr", "meta", "link"})
 
     def __init__(self) -> None:
         super().__init__()
