@@ -51,6 +51,13 @@ export interface SearchSelectChangeDetail {
   last: SearchSelectOption | null;
 }
 
+// The "search-select:clear" CustomEvent: a press of the clear ×, fired after
+// any search-select:change that press caused, even when it only emptied the
+// query.
+export interface SearchSelectClearDetail {
+  name: string;
+}
+
 // The "search-select:action" CustomEvent: a click on a
 // [data-search-select-action] button in a form-mode row (the preset delete ×),
 // for an external consumer. Filter +/− are the widget's own state, handled
@@ -282,6 +289,19 @@ const initWidget = (containerElement: Element) => {
   // Like the listbox id, the describedby id is assigned here, never
   // server-side (the filter builder clones whole <search-select> prototypes).
   const statusEl = container.querySelector<HTMLElement>("[data-search-select-status]");
+  //: Rendered only on clearable widgets, so its presence is the opt-in.
+  const clearButton = container.querySelector<HTMLButtonElement>(
+    "[data-search-select-clear]"
+  );
+  //: A clear declines the sole option a later search answers.
+  let soleDeclined = false;
+
+  const syncClearButton = () => {
+    if (!clearButton) return;
+    clearButton.hidden = !(
+      pills.querySelector('input[type="hidden"], [data-pill]') || search.value.trim()
+    );
+  };
   if (statusEl) {
     statusEl.id = `${listboxId}-status`;
     search.setAttribute("aria-describedby", statusEl.id);
@@ -295,6 +315,7 @@ const initWidget = (containerElement: Element) => {
   // back-navigation autofill) can repopulate the box without an input event —
   // that pre-existing hazard is not covered here.
   const syncUncommitted = () => {
+    syncClearButton();
     if (!statusEl || multi || isFilter) return;
     const uncommitted =
       search.value.trim() !== "" && !pills.querySelector('input[type="hidden"]');
@@ -691,7 +712,7 @@ const initWidget = (containerElement: Element) => {
 
   /** Hold the one option a search answered, where nothing is held. */
   const commitTheSoleOption = () => {
-    if (!commitSoleOption || multi) return;
+    if (!commitSoleOption || multi || soleDeclined) return;
     //: A typed box holds a name, not a label to overwrite.
     if (container._searchSelectDirty) return;
     if (pills.querySelector('input[type="hidden"]')) return;
@@ -710,6 +731,7 @@ const initWidget = (containerElement: Element) => {
     const signature = dependencySignature(container, dependencyFields);
     if (signature === dependencyValues) return;
     dependencyValues = signature;
+    soleDeclined = false;
     container._searchSelectClear?.();
     hasPrefetched = false;
     if (searchUrl) fetchFromServer(currentQuery());
@@ -1112,6 +1134,7 @@ const initWidget = (containerElement: Element) => {
       container._searchSelectDirty = false;
       hidePanel();
     }
+    if (emit) soleDeclined = false;
     syncUncommitted();
     if (emit) emitChange(option);
   };
@@ -1227,6 +1250,7 @@ const initWidget = (containerElement: Element) => {
 
   const emitChange = (last: SearchSelectOption | null) => {
     syncSelectedStates();
+    syncClearButton();
     const values = currentValues();
     if (syncUrl) syncToUrl(values);
     container.dispatchEvent(
@@ -1262,6 +1286,40 @@ const initWidget = (containerElement: Element) => {
   // (committed label + hidden input, or empty box), but keeps the attribute
   // truthful if init ever runs against hydrated markup.
   syncUncommitted();
+
+  // ── The clear ×: one press empties the query and the value. ──
+  if (clearButton) {
+    //: A pointer press keeps focus where it was, so a tap opens no keyboard.
+    clearButton.addEventListener("mousedown", event => event.preventDefault());
+    //: Tab onto the × leaves the box, so the panel closes as on Tab out.
+    clearButton.addEventListener("focus", () => hidePanel());
+    clearButton.addEventListener("click", () => {
+      const heldValue = currentValues().length > 0;
+      const fromFocus = document.activeElement === clearButton;
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      if (pendingRequest) {
+        pendingRequest.abort();
+        pendingRequest = null;
+      }
+      container._searchSelectClear?.();
+      soleDeclined = true;
+      filterRows("");
+      setCreateRow("");
+      setNoResults(false);
+      if (heldValue) emitChange(null);
+      container.dispatchEvent(
+        new CustomEvent<SearchSelectClearDetail>("search-select:clear", {
+          bubbles: true,
+          detail: { name },
+        })
+      );
+      //: The × hides under focus; the box takes it rather than <body>.
+      if (fromFocus) search.focus();
+    });
+  }
 
   // ── Close panel when focus leaves the widget (e.g. Tab away) ──
   // focusout bubbles, so the container catches the input losing focus in every
