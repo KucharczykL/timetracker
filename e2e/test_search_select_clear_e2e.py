@@ -68,7 +68,9 @@ def console_errors(page: Page) -> list[str]:
     errors: list[str] = []
     page.on(
         "console",
-        lambda message: errors.append(message.text) if message.type == "error" else None,
+        lambda message: (
+            errors.append(message.text) if message.type == "error" else None
+        ),
     )
     return errors
 

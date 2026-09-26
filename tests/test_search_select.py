@@ -1073,10 +1073,11 @@ def test_default_search_select_keeps_the_field_personality():
     assert "mt-2 overflow-y-auto" not in html
 
 
+_DEVICE = {"value": "7", "label": "Deck"}
+
+
 class ClearableSearchSelectTest(unittest.TestCase):
     """``clearable=True`` renders the trailing × the element wires."""
-
-    _DEVICE = {"value": "7", "label": "Deck"}
 
     def _clear_tag(self, html: str) -> str:
         return _tag_around(html, "data-search-select-clear")
@@ -1084,7 +1085,9 @@ class ClearableSearchSelectTest(unittest.TestCase):
     def test_hidden_without_a_selection(self):
         for multi in (False, True):
             with self.subTest(multi=multi):
-                html = str(SearchSelect(name="device", clearable=True, multi_select=multi))
+                html = str(
+                    SearchSelect(name="device", clearable=True, multi_select=multi)
+                )
                 self.assertIn("hidden", self._clear_tag(html))
 
     def test_shown_with_a_selection(self):
@@ -1095,7 +1098,7 @@ class ClearableSearchSelectTest(unittest.TestCase):
                         name="device",
                         clearable=True,
                         multi_select=multi,
-                        selected=[self._DEVICE],
+                        selected=[_DEVICE],
                     )
                 )
                 self.assertNotIn(" hidden", self._clear_tag(html))

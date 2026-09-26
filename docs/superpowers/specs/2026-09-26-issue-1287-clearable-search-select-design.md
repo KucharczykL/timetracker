@@ -38,9 +38,11 @@ Three rules of the filed text are reversed. Each follows the prior art below.
 
 `SearchSelect(clearable=True)` renders a `<button type="button">` inside the
 field, after the search box and before the #450 committed marker. It carries
-`aria-label="Clear"`, `title="Clear"`, `data-search-select-clear`, `shrink-0` and
-`ml-auto`. In multi mode the pills flow before the box in the same wrapping row,
-so without `ml-auto` the button could wrap onto a line alone. Its presence is the
+`aria-label="Clear"`, `title="Clear"`, `data-search-select-clear`, `shrink-0`,
+`ml-auto` and `size-6`. In multi mode the pills flow before the box in the same
+wrapping row, so without `ml-auto` the button could wrap onto a line alone. The
+glyph alone is narrower than the 24px touch target WCAG 2.5.8 asks for, so the
+box carries the size. Its presence is the
 element's opt-in, as the #450 status span is. No prop carries it.
 
 The button shows when the widget holds a committed value (a single label or at
