@@ -117,7 +117,7 @@ def test_keyboard_clears_the_device_and_the_form_posts_none(
     expect(picker.locator("[data-search-select-options]")).to_be_hidden()
 
     page.keyboard.press("Enter")
-    expect(search).to_have_value("")
+    expect(search).to_have_value("No device")
     expect(search).to_be_focused()
     expect(clear).to_be_hidden()
 
@@ -137,9 +137,32 @@ def test_pointer_clears_the_device_and_leaves_focus_alone(
     note.focus()
 
     picker.get_by_role("button", name="Clear").click()
-    expect(search).to_have_value("")
-    expect(picker.locator('input[type="hidden"][name="device"]')).to_have_count(0)
+    expect(search).to_have_value("No device")
+    expect(
+        picker.locator('input[type="hidden"][name="device"][data-search-select-none]')
+    ).to_have_count(1)
     expect(note).to_be_focused()
+    assert console_errors == []
+
+
+def test_picking_no_device_posts_none(
+    authenticated_page: Page, live_server, e2e_library, console_errors
+):
+    from games.models import PlayerSession
+
+    page = authenticated_page
+    picker, search = _session_form_holding_a_device(page, live_server, e2e_library)
+
+    page.locator("textarea[name='note']").focus()
+    search.click()
+    picker.get_by_role("option", name="No device").click()
+    expect(search).to_have_value("No device")
+    expect(picker.get_by_role("button", name="Clear")).to_be_hidden()
+
+    _fill_start(page)
+    with page.expect_navigation():
+        page.get_by_role("button", name="Submit", exact=True).click()
+    assert PlayerSession.objects.get(library=e2e_library).device_id is None
     assert console_errors == []
 
 

@@ -1389,3 +1389,49 @@ class NoneLabelSearchSelectTest(unittest.TestCase):
         for kwargs in ({"multi_select": True}, {"panel": True}):
             with self.subTest(**kwargs), self.assertRaises(ValueError):
                 self._render(**kwargs)
+
+
+class NoneLabelWidgetTest(unittest.TestCase):
+    """Optional pickers hold none under their own word."""
+
+    def test_each_optional_picker_holds_none(self):
+        from games.forms import HistoricalPlaytimeForm, PurchaseForm, SessionForm
+
+        cases = [
+            (SessionForm, "device", "No device"),
+            (HistoricalPlaytimeForm, "device", "No device"),
+            (PurchaseForm, "platform", "Unspecified"),
+        ]
+        for form_class, name, label in cases:
+            with self.subTest(form=form_class.__name__, field=name):
+                html = form_class.base_fields[name].widget.render(
+                    name, None, {"id": f"id_{name}"}
+                )
+                self.assertIn(f'data-label="{label}"', html)
+                self.assertIn("data-search-select-none=", html)
+
+    def test_a_required_field_refuses_it(self):
+        from django import forms
+
+        from games.forms import SearchSelectWidget
+
+        class DeviceForm(forms.Form):
+            device = forms.CharField(
+                widget=SearchSelectWidget(
+                    search_url="/api/devices/search",
+                    options_resolver=lambda values: [],
+                    none_label="No device",
+                ),
+            )
+
+        with self.assertRaises(ValueError):
+            str(DeviceForm()["device"])
+
+    def test_none_and_nothing_picked_both_clean_to_none(self):
+        from games.forms import SessionForm
+
+        field = SessionForm.base_fields["device"]
+        for data in ({"device": ""}, {}):
+            with self.subTest(data=data):
+                value = field.widget.value_from_datadict(data, {}, "device")
+                self.assertIsNone(field.clean(value))

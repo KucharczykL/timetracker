@@ -167,9 +167,7 @@ def test_session_add_forms_use_user_device(auth_client, user, game, url_name):
     _tag_with(html, name="device", value=preferred.pk)
 
 
-def test_session_edit_uses_user_device_only_when_existing_value_is_empty(
-    auth_client, user, game
-):
+def test_session_edit_holds_what_the_session_states(auth_client, user, game):
     preferred = create_device(
         library=user.library, name="Steam Deck", type=Device.HANDHELD
     )
@@ -191,5 +189,6 @@ def test_session_edit_uses_user_device_only_when_existing_value_is_empty(
         reverse("games:edit_session", args=[existing.pk])
     ).content.decode()
 
-    _tag_with(empty_html, name="device", value=preferred.pk)
+    _tag_with(empty_html, name="device", value="", **{"data-search-select-none": ""})
+    assert f'value="{preferred.pk}"' not in empty_html
     _tag_with(existing_html, name="device", value=existing_device.pk)

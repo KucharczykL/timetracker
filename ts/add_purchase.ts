@@ -33,6 +33,10 @@ function applyPricingMode(separate: boolean): void {
 // related_game branch of the change listener below.
 let autofilledRelatedGameValue: string | null = null;
 
+//: Platform follows the Games pick until the person commits one of their own:
+//: a platform, "Unspecified", or ×. A keystroke commits nothing.
+let platformOwnedByPerson = false;
+
 interface SelectedGame {
   value: string;
   label: string;
@@ -96,6 +100,10 @@ document.addEventListener("search-select:change", (event) => {
     autofilledRelatedGameValue = null;
     return;
   }
+  if (detail.name === "platform") {
+    if (detail.last !== null || detail.none) platformOwnedByPerson = true;
+    return;
+  }
   if (detail.name !== "games") return;
 
   // Auto-fill platform from the clicked option's data. The platform field is a
@@ -104,7 +112,7 @@ document.addEventListener("search-select:change", (event) => {
   // display the ID and submit no hidden value (issue #259).
   const last = detail.last;
   const platformId = last && last.data ? last.data.platform : "";
-  if (last && platformId) {
+  if (last && platformId && !platformOwnedByPerson) {
     const platformSelect = document.querySelector<SearchSelectElement>(
       'search-select[name="platform"]'
     );

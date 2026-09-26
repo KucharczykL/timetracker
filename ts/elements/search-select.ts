@@ -1460,7 +1460,8 @@ const initWidget = (containerElement: Element) => {
     // Only a fresh, empty add form should steal focus and drive the panel open;
     // a pre-committed single-select keeps its label and whatever native focus it
     // got. Snapshot emptiness now — before any focus() runs the flow below.
-    const startedEmpty = !search.value;
+    //: A held none is a fresh form's own state, not a pick.
+    const startedEmpty = !search.value || holdsNone();
     requestAnimationFrame(() => {
       if (!search.isConnected || !startedEmpty) return;
       if (document.activeElement === search) {

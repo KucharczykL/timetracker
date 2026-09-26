@@ -296,6 +296,20 @@ describe("<search-select> none: beside answers and dependencies", () => {
     holdsNone(host);
   });
 
+  it("opens and prefetches an autofocused picker that holds none", async () => {
+    const fetchMock = answering([{ value: "9", label: "Deck", data: {} }]);
+    vi.stubGlobal("fetch", fetchMock);
+    document.body.replaceChildren();
+    const host = build({
+      staticRows: false,
+      attributes: { "search-url": "/api/devices/search", prefetch: "20" },
+    });
+    searchBox(host).setAttribute("autofocus", "");
+    document.body.appendChild(host);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    holdsNone(host);
+  });
+
   it("keeps none held through setOptions", () => {
     const host = mount();
     host.setOptions([{ value: "5", label: "PC", data: {} }]);
