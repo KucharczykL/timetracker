@@ -304,7 +304,8 @@ class SearchSelectWidget(forms.Widget):
     """Thin Django adapter that renders a `SearchSelect()` component.
 
     The only place that knows about Django/forms — the component itself stays
-    reusable outside forms.
+    reusable outside forms. ``clearable=None`` offers the clear × exactly
+    where the field is optional; ``True``/``False`` overrides that.
     """
 
     def __init__(
@@ -322,9 +323,11 @@ class SearchSelectWidget(forms.Widget):
         always_visible=False,
         placeholder="Search…",
         autofocus=False,
+        clearable: bool | None = None,
         attrs=None,
     ):
         super().__init__(attrs)
+        self.clearable = clearable
         self.search_url = search_url
         self.options_resolver = options_resolver
         self.create_url = create_url
@@ -346,8 +349,12 @@ class SearchSelectWidget(forms.Widget):
             return [v for v in value if v not in (None, "")]
         return [value] if value not in (None, "") else []
 
+    def _offers_clear(self) -> bool:
+        return not self.is_required if self.clearable is None else self.clearable
+
     def render(self, name, value, attrs=None, renderer=None):
         selected = searchselect_selected(self._values(value), self.options_resolver)
+        input_id = (attrs or {}).get("id", "")
         # Django widgets must return a safe string; the component is a node.
         return render(
             SearchSelect(
@@ -364,8 +371,10 @@ class SearchSelectWidget(forms.Widget):
                 prefetch=self.prefetch,
                 always_visible=self.always_visible,
                 placeholder=self.placeholder,
-                id=(attrs or {}).get("id", ""),
+                id=input_id,
                 autofocus=self.autofocus,
+                clearable=self._offers_clear(),
+                clear_description_id=field_label_id(input_id) if input_id else "",
                 # Host the form combobox in <drop-down behavior="inline-combobox">
                 # so its panel uses the shared attachMenu open/close/position/dismiss
                 # engine (issue #348). The widget's own input stays the trigger.
@@ -791,7 +800,7 @@ class PlaythroughSelectWidget(SearchSelectWidget):
     into a hidden control.
     """
 
-    def __init__(self, *, game_field: str, attrs=None):
+    def __init__(self, *, game_field: str, clearable: bool | None = None, attrs=None):
         super().__init__(
             search_url=PLAYTHROUGH_SEARCH_URL,
             options_resolver=_run_options,
@@ -800,6 +809,7 @@ class PlaythroughSelectWidget(SearchSelectWidget):
             #: Required field: a submit with no pick posts a run.
             commit_sole_option=True,
             prefetch=DEFAULT_PREFETCH,
+            clearable=clearable,
             attrs=attrs,
         )
 

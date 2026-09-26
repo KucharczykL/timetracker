@@ -1135,3 +1135,60 @@ class ClearableSearchSelectTest(unittest.TestCase):
 
     def test_default_renders_no_button(self):
         self.assertNotIn("data-search-select-clear", str(SearchSelect(name="device")))
+
+
+class ClearableWidgetTest(unittest.TestCase):
+    """``SearchSelectWidget`` offers × where the field is optional."""
+
+    @staticmethod
+    def _form(*, required: bool, clearable: bool | None = None) -> str:
+        from django import forms
+
+        from games.forms import SearchSelectWidget
+
+        class DeviceForm(forms.Form):
+            device = forms.CharField(
+                required=required,
+                widget=SearchSelectWidget(
+                    search_url="/api/devices/search",
+                    options_resolver=lambda values: [],
+                    clearable=clearable,
+                ),
+            )
+
+        return str(DeviceForm()["device"])
+
+    def test_optional_field_is_clearable(self):
+        self.assertIn("data-search-select-clear", self._form(required=False))
+
+    def test_required_field_is_not(self):
+        self.assertNotIn("data-search-select-clear", self._form(required=True))
+
+    def test_call_site_overrides_both_ways(self):
+        self.assertIn(
+            "data-search-select-clear", self._form(required=True, clearable=True)
+        )
+        self.assertNotIn(
+            "data-search-select-clear", self._form(required=False, clearable=False)
+        )
+
+    def test_described_by_the_field_label(self):
+        from common.components.primitives import field_label_id
+
+        html = self._form(required=False)
+        self.assertIn(
+            f'aria-describedby="{field_label_id("id_device")}"',
+            _tag_around(html, "data-search-select-clear"),
+        )
+
+    def test_session_form_offers_it_on_device_alone(self):
+        from games.forms import SessionForm
+
+        fields = SessionForm.base_fields
+        rendered = {
+            name: fields[name].widget.render(name, None, {"id": f"id_{name}"})
+            for name in ("game", "playthrough", "device")
+        }
+        self.assertIn("data-search-select-clear", rendered["device"])
+        self.assertNotIn("data-search-select-clear", rendered["game"])
+        self.assertNotIn("data-search-select-clear", rendered["playthrough"])
