@@ -180,3 +180,16 @@ def test_pointer_clears_every_pill_and_leaves_focus_alone(
     expect(picker.locator("[data-pill]")).to_have_count(0)
     expect(page.locator("#next-field")).to_be_focused()
     assert console_errors == []
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_clear_e2e")
+def test_a_disabled_box_hides_the_clear_button(live_server, page: Page):
+    page.goto(live_server.url + "/clear-multi/")
+    clear = page.locator("search-select[name='tags']").get_by_role(
+        "button", name="Clear"
+    )
+    expect(clear).to_be_visible()
+
+    page.locator("#tags").evaluate("box => { box.disabled = true; }")
+    expect(clear).to_be_hidden()
