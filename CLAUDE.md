@@ -706,7 +706,9 @@ Submodules re-exported via `common/components/__init__.py`:
   query alike, a field source being a dependency that re-searches, #1080;
   a trailing × empties query and value in one press and emits
   `search-select:clear` after any `search-select:change`; on by default,
-  `clearable=False` opts out, #1287),
+  `clearable=False` opts out, #1287; `none_label` pins a row that holds
+  none — an empty hidden input, key present — apart from nothing picked,
+  key absent; × then holds none, and the change event states `none`, #1288),
   `FilterSelect()` (include/exclude
   with pinned Any/None modifiers; `layout="panel"` is GitHub-label-picker
   personality for hosting inside dropdown dialog, #315), `ComboboxDropdown()`
