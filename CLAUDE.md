@@ -703,12 +703,20 @@ Submodules re-exported via `common/components/__init__.py`:
   row for a query no loaded label **equals**, which POSTs `{name, ...params}`
   and upserts the answered `{value, label}` on its key, and `params` is one JSON
   mapping — a literal or a sibling field — read by that POST and by the search
-  query alike, a field source being a dependency that re-searches, #1080),
+  query alike, a field source being a dependency that re-searches, #1080;
+  a trailing × empties query and value in one press and emits
+  `search-select:clear` after any `search-select:change`; on by default,
+  `clearable=False` opts out, #1287),
   `FilterSelect()` (include/exclude
   with pinned Any/None modifiers; `layout="panel"` is GitHub-label-picker
   personality for hosting inside dropdown dialog, #315), `ComboboxDropdown()`
   (generic "Label ▾" trigger + dialog), `PresetSelect()`/`LoadPresetDropdown()`
-  (fetch-on-open preset picker, #297), `SearchSelectOption`
+  (fetch-on-open preset picker, #297), `SearchSelectOption`. Every picker
+  builds rows through one `_option_row(option, kind, *, actions)` in the menu
+  item's look (`DROPDOWN_ITEM_SHAPE`/`DROPDOWN_ITEM_ACTIVE`), pills through
+  `Pill(kind=…)` inside the field box, and its list is a `DropdownPanel`; the
+  mouse moves the one highlight through `followPointer` (`ts/pointer-follow.ts`),
+  as in menus, #1295
 - **`date_range_picker.py`** — `DateRangePicker()`/`DateRangeField()`/
   `DateRangeCalendar()` custom element (wired by `ts/elements/date-range-picker.ts`)
 - **`temporal_field.py`** — `TemporalField()`, native controls for date at any
@@ -1166,11 +1174,20 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `gray` (secondary), `green` (positive); variants: `filled` (default),
   `segmented` (ButtonGroup members), plus colorless single-look toggles that ignore
   `color` — `outline` (bordered dropdown toggle), `ghost` (transparent until hover;
-  quick-facet triggers), `plain` (navbar nav-link). No size parameter and no
-  `icon=` flag: one size everywhere (`min-h-control`, 42px floored), the same in
-  every row and at every width; icon+text layout
-  (`inline-flex items-center gap-2`) baked in. Never wrap button in `A(href=…)` —
+  quick-facet triggers; `color="red"` gives it a danger hover), `plain` (navbar
+  nav-link). Three sizes and no `icon=` flag: `size="control"` (default,
+  `min-h-control`, 42px floored, the same in every row and at every width);
+  `size="compact"`, a 32px glyph square inside a field box; `size="row"`, a
+  26px one inside a 36px picker row with `-my-0.75`. Corners scale with size.
+  Icon+text layout (`inline-flex items-center gap-2`) baked in. A raw `Button`
+  outside `ControlButton` and the allow list in `tests/test_button_guard.py`
+  fails that test. Never wrap button in `A(href=…)` —
   pass `href=` to `ControlButton`; `method="post"` renders no-JS `<form>` submit.
+- **Every dropdown panel is `DropdownPanel`** (`custom_elements.py`): a still
+  overlay surface around one `[data-menu-scroll]` scroller, so the dark-mode
+  blur never scrolls away and attachMenu's `max-height` shrinks the scroller.
+  Children, `content_attributes` and `content_class` go to the scroller; never
+  hand-write a panel that scrolls itself.
 - **Read settings via `config()`** from `timetracker/config.py`, never bare
   `os.environ.get` in `settings.py`. Declare `cast`/`allow_file`/`required_in_prod`
   explicitly. Container-bootstrap flags belong in `entrypoint.sh`.

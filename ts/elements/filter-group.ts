@@ -59,6 +59,7 @@ import {
   removeAt,
   removeScope,
   setLeafField,
+  clearLeafField,
   setMatch,
   setRelationField,
   toggleConnective,
@@ -1212,12 +1213,34 @@ export class FilterGroupElement extends HTMLElement {
     if (target.closest("[data-value-cell]")) this.refreshCompleteness(target);
   };
 
+  /** A cleared picker states no field. */
+  private unpickField(row: HTMLElement, path: NodePath): void {
+    const node = this.nodeAtPath(path);
+    if (node?.kind !== "criterion" || !node.field) return;
+    this.tree = clearLeafField(this.tree, path);
+    const cells = this.rowCache.get(node.id);
+    //: A scope hangs below the row: rebuild.
+    if (!cells || node.scope) {
+      this.render();
+      this.dispatchChange();
+      return;
+    }
+    //: In place: the picker may hold typed text.
+    const placeholder = this.buildValueCell("", row.dataset.model ?? this.model);
+    cells.valueCell.replaceWith(placeholder);
+    cells.valueCell = placeholder;
+    cells.field = "";
+    this.refreshCompleteness(placeholder);
+  }
+
   private handleFieldPick(fieldPicker: HTMLElement, event: CustomEvent<SearchSelectChangeDetail>): void {
     const row = fieldPicker.closest<HTMLElement>("[data-node-slot]");
     if (!row?.dataset.path) return;
-    const meta = parseFieldMeta(event.detail.last?.data?.meta ?? "");
-    if (!meta) return;
     const path = JSON.parse(row.dataset.path) as NodePath;
+    const { last } = event.detail;
+    if (last === null) return this.unpickField(row, path);
+    const meta = parseFieldMeta(last.data?.meta ?? "");
+    if (!meta) return;
     this.tree = setLeafField(this.tree, path, meta);
     this.render();
     this.dispatchChange();

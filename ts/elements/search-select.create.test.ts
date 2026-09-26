@@ -42,7 +42,7 @@ function mount(attributes: Record<string, string> = {}): SearchSelectLike {
   host.innerHTML = `
     <div data-search-select-pills></div>
     <input data-search-select-search />
-    <div data-search-select-options>
+    <div data-search-select-options hidden>
       <div data-search-select-no-results class="hidden">No results</div>
       <div data-search-select-create hidden role="option" aria-selected="false">
         <span data-label></span>
@@ -328,6 +328,6 @@ describe("<search-select> create row (#1080)", () => {
 
     await type(host, "New Game Plus");
 
-    expect(panel.classList.contains("hidden")).toBe(false);
+    expect(panel.hidden).toBe(false);
   });
 });

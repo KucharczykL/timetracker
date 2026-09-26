@@ -6,7 +6,7 @@ from common.components.core import Node
 from common.components.custom_elements import (
     DROPDOWN_ITEM_WITH_ICON_CLASS,
     Dropdown,
-    dropdown_combobox_panel_class,
+    DropdownPanel,
 )
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
@@ -30,10 +30,8 @@ SHOWN_FIELD = "shown"
 #: The field that only the reset button posts.
 RESET_FIELD = "reset"
 
-#: The shared surface. It states the layer, which a hand-written one omits
-#: and then opens below the device selector of each row. The header row is
-#: uppercase and right-aligned; the panel is prose.
-_PANEL_CLASS = f"{dropdown_combobox_panel_class('w-64')} normal-case text-left"
+#: Undo the header row's case and alignment.
+_PANEL_CLASS = "normal-case text-left"
 
 #: A panel row is a dropdown item.
 _SHOWS_CLASS = DROPDOWN_ITEM_WITH_ICON_CLASS
@@ -83,7 +81,9 @@ def ColumnPicker(
         haspopup="dialog",
     ).as_element()
 
-    panel = Div(role="dialog", aria_label=COLUMN_PICKER_LABEL, class_=_PANEL_CLASS)[
+    panel = DropdownPanel(
+        role="dialog", aria_label=COLUMN_PICKER_LABEL, class_=_PANEL_CLASS, width="w-64"
+    )[
         Form(method="post", action=post_url)[
             csrf_input,
             Div(class_="px-4 pt-1 pb-2 text-type-micro text-body-subtle")[

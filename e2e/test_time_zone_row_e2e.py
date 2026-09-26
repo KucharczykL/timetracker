@@ -129,3 +129,31 @@ def test_finish_stamps_the_end_zone(tokyo_page, live_server, e2e_library):
     session.refresh_from_db()
     assert session.ended_at_zone == BROWSER_TIME_ZONE
     assert session.ended_at is not None
+
+
+def test_clearing_the_picker_submits_the_display_zone(
+    tokyo_page, live_server, e2e_library
+):
+    game = Game.objects.create(library=e2e_library, name="Hades")
+    tokyo_page.goto(f"{live_server.url}{reverse('games:add_session')}")
+    game_search = tokyo_page.locator("input[data-search-select-search]").first
+    game_search.fill("Hades")
+    tokyo_page.locator(f'[data-search-select-option][data-value="{game.pk}"]').click()
+
+    start_row = tokyo_page.locator('time-zone-row[field-name="started_at_zone"]')
+    start_row.locator('button[aria-haspopup="dialog"]').click()
+    picker = start_row.locator("search-select")
+    #: The picker holds what the row captured.
+    expect(picker.locator("[data-search-select-search]")).to_have_value(
+        BROWSER_TIME_ZONE
+    )
+    picker.get_by_role("button", name="Clear").click()
+
+    expect(start_row.locator("[data-time-zone-value]")).to_have_value("")
+    expect(start_row.locator('button[aria-haspopup="dialog"]')).to_contain_text(
+        "(display zone)"
+    )
+    tokyo_page.keyboard.press("Escape")
+    tokyo_page.click('button[type="submit"]:has-text("Submit")')
+    tokyo_page.wait_for_url(f"{live_server.url}{reverse('games:list_sessions')}**")
+    assert PlayerSession.objects.get().started_at_zone is None

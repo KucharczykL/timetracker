@@ -36,6 +36,12 @@ import { isPresenceModifier } from "./filter-tokens.js";
 import { bindPopupDismiss } from "../utils.js";
 import { reportClientError } from "../client-errors.js";
 import { readSearchSelectProps } from "../generated/props.js";
+import { followPointer } from "../pointer-follow.js";
+
+//: Every row a person can highlight and pick.
+const NAVIGABLE_ROWS =
+  "[data-search-select-option], [data-search-select-modifier-option], " +
+  "[data-search-select-create]";
 
 // The contract for the "search-select:change" CustomEvent this widget emits.
 // Consumers (e.g. add_purchase.ts) import these types — never redefine them.
@@ -49,6 +55,11 @@ export interface SearchSelectChangeDetail {
   name: string;
   values: string[];
   last: SearchSelectOption | null;
+}
+
+// Every × press; follows any change event.
+export interface SearchSelectClearDetail {
+  name: string;
 }
 
 // The "search-select:action" CustomEvent: a click on a
@@ -233,10 +244,8 @@ const initWidget = (containerElement: Element) => {
   // Issue #348: form comboboxes and filter-builder field-layout rows are hosted in
   // <drop-down behavior="inline-combobox">, which owns the panel's open/close/
   // positioning/dismiss through attachMenu. When hosted, this widget delegates
-  // showPanel/hidePanel to the host and reads panel visibility from the `hidden`
-  // attribute attachMenu toggles (not the `.hidden` class it uses standalone). No
-  // host (the bare field picker, bare test mounts) → the widget keeps owning
-  // visibility on its own panel via `.hidden`.
+  // showPanel/hidePanel to the host. No host (the bare field picker, bare test
+  // mounts) → the widget toggles its own panel.
   const dropdownHost = container.closest<HTMLElement & { open(): void; close(): void }>(
     "drop-down"
   );
@@ -282,6 +291,22 @@ const initWidget = (containerElement: Element) => {
   // Like the listbox id, the describedby id is assigned here, never
   // server-side (the filter builder clones whole <search-select> prototypes).
   const statusEl = container.querySelector<HTMLElement>("[data-search-select-status]");
+  //: Present only on clearable widgets.
+  const clearButton = container.querySelector<HTMLButtonElement>(
+    "[data-search-select-clear]"
+  );
+  //: No sole commit until pick or dependency.
+  //: Not _searchSelectDirty: runFocus resets that on an empty box.
+  let soleDeclined = false;
+  //: Counts × presses; a create outlived by one selects nothing.
+  let clears = 0;
+
+  const syncClearButton = () => {
+    if (!clearButton) return;
+    clearButton.hidden = !(
+      pills.querySelector('input[type="hidden"], [data-pill]') || search.value.trim()
+    );
+  };
   if (statusEl) {
     statusEl.id = `${listboxId}-status`;
     search.setAttribute("aria-describedby", statusEl.id);
@@ -294,7 +319,9 @@ const initWidget = (containerElement: Element) => {
   // the live region each time. Browser form-state restore (session restore /
   // back-navigation autofill) can repopulate the box without an input event —
   // that pre-existing hazard is not covered here.
+  //: Also syncs the ×, every mode.
   const syncUncommitted = () => {
+    syncClearButton();
     if (!statusEl || multi || isFilter) return;
     const uncommitted =
       search.value.trim() !== "" && !pills.querySelector('input[type="hidden"]');
@@ -303,10 +330,9 @@ const initWidget = (containerElement: Element) => {
     statusEl.textContent = uncommitted ? "No option selected" : "";
   };
 
-  // Panel-open source of truth: the `hidden` attribute when delegated (attachMenu
-  // toggles menu.hidden), the `.hidden` class in the standalone/legacy path.
-  const isPanelOpen = () =>
-    delegated ? !options.hasAttribute("hidden") : !options.classList.contains("hidden");
+  // Visibility is the panel's `hidden` attribute.
+  const panel = options.closest<HTMLElement>("[data-search-select-panel]") ?? options;
+  const isPanelOpen = () => !panel.hidden;
 
   const syncExpanded = () => {
     search.setAttribute("aria-expanded", isPanelOpen() ? "true" : "false");
@@ -331,7 +357,7 @@ const initWidget = (containerElement: Element) => {
       // The hasVisibleContent gate stays the empty-panel guard: when delegated
       // it decides whether to open the host at all, so an empty panel never opens.
       if (delegated) dropdownHost!.open();
-      else options.classList.remove("hidden");
+      else panel.hidden = false;
     }
     syncExpanded();
   };
@@ -343,7 +369,7 @@ const initWidget = (containerElement: Element) => {
     clearHighlight();
     if (!alwaysVisible) {
       if (delegated) dropdownHost!.close();
-      else options.classList.add("hidden");
+      else panel.hidden = true;
     }
     syncExpanded();
   };
@@ -365,7 +391,8 @@ const initWidget = (containerElement: Element) => {
   // ── Highlight tracking (filter mode) ──
   let highlightedRow: HTMLElement | null = null;
 
-  const highlightOption = (row: HTMLElement | null) => {
+  // Hover never scrolls; keyboard steps do.
+  const highlightOption = (row: HTMLElement | null, { scroll = true } = {}) => {
     clearHighlight();
     if (!row) return;
     row.setAttribute("data-search-select-highlighted", "");
@@ -377,7 +404,7 @@ const initWidget = (containerElement: Element) => {
     if (!multi) row.setAttribute("aria-selected", "true");
     search.setAttribute("aria-activedescendant", ensureOptionId(row));
     highlightedRow = row;
-    row.scrollIntoView({ block: "nearest" });
+    if (scroll) row.scrollIntoView({ block: "nearest" });
   };
 
   const clearHighlight = () => {
@@ -389,14 +416,16 @@ const initWidget = (containerElement: Element) => {
     search.removeAttribute("aria-activedescendant");
   };
 
+  //: The mouse moves the one highlight.
+  followPointer(options, NAVIGABLE_ROWS, row => {
+    if (row !== highlightedRow) highlightOption(row, { scroll: false });
+  });
+
   // Keyboard-navigable rows: value rows plus the pinned modifier
   // pseudo-options — every row advertised as role="option" must be reachable
   // by ArrowUp/ArrowDown, and modifier rows sit first in document order.
   const getVisibleOptions = (): HTMLElement[] => {
-    const all = options.querySelectorAll<HTMLElement>(
-      "[data-search-select-option], [data-search-select-modifier-option], " +
-        "[data-search-select-create]"
-    );
+    const all = options.querySelectorAll<HTMLElement>(NAVIGABLE_ROWS);
     return Array.from(all).filter(
       row => row.style.display !== "none" && !row.hidden
     );
@@ -639,6 +668,7 @@ const initWidget = (containerElement: Element) => {
     creating = true;
     createRow.setAttribute("aria-disabled", "true");
     const body = { name, ...resolveParams(container, params) };
+    const clearsAtStart = clears;
     void window
       .fetchWithEvents(createUrl, {
         method: "POST",
@@ -672,6 +702,7 @@ const initWidget = (containerElement: Element) => {
         };
         upsertOption(option);
         createRow.hidden = true;
+        if (clears !== clearsAtStart) return;
         selectOption(option);
         hidePanel();
       })
@@ -691,7 +722,7 @@ const initWidget = (containerElement: Element) => {
 
   /** Hold the one option a search answered, where nothing is held. */
   const commitTheSoleOption = () => {
-    if (!commitSoleOption || multi) return;
+    if (!commitSoleOption || multi || soleDeclined) return;
     //: A typed box holds a name, not a label to overwrite.
     if (container._searchSelectDirty) return;
     if (pills.querySelector('input[type="hidden"]')) return;
@@ -710,6 +741,7 @@ const initWidget = (containerElement: Element) => {
     const signature = dependencySignature(container, dependencyFields);
     if (signature === dependencyValues) return;
     dependencyValues = signature;
+    soleDeclined = false;
     container._searchSelectClear?.();
     hasPrefetched = false;
     if (searchUrl) fetchFromServer(currentQuery());
@@ -743,9 +775,15 @@ const initWidget = (containerElement: Element) => {
     });
     dependencyValues = dependencySignature(container, dependencyFields);
     if (prefetch && !query) url.searchParams.set("limit", String(prefetch));
-    fetch(url.toString(), { credentials: "same-origin", signal: pendingRequest.signal })
-      .then(response => response.json())
-      .then((items: SearchSelectOption[]) => {
+    const request = pendingRequest;
+    fetch(url.toString(), { credentials: "same-origin", signal: request.signal })
+      .then(response => {
+        if (!response.ok) throw new Error(`${response.status} from ${url.pathname}`);
+        return response.json() as Promise<SearchSelectOption[]>;
+      })
+      .then(items => {
+        //: An answer can land after its abort.
+        if (request.signal.aborted) return;
         pendingRequest = null;
         renderRows(items);
         // Re-apply the live query: the box may hold more text than was sent.
@@ -759,8 +797,9 @@ const initWidget = (containerElement: Element) => {
       })
       .catch(error => {
         if (error?.name === "AbortError") return; // superseded
-        pendingRequest = null;
+        if (pendingRequest === request) pendingRequest = null;
         setNoResults(true);
+        reportClientError("search-select[search]", String(error?.message ?? error));
       });
   };
 
@@ -1112,6 +1151,7 @@ const initWidget = (containerElement: Element) => {
       container._searchSelectDirty = false;
       hidePanel();
     }
+    if (emit) soleDeclined = false;
     syncUncommitted();
     if (emit) emitChange(option);
   };
@@ -1124,16 +1164,14 @@ const initWidget = (containerElement: Element) => {
     selectOption({ value, label: label ?? value, data: {} }, false);
   };
 
-  // Public refetch: reset to a blank query and re-request the prefetch window.
-  // The query reset matters — a committed single-select pick leaves its label in
-  // the search box, and refetching with that as `q` would return only the
-  // matching subset and present it as the full list. Marks hasPrefetched so a
+  // Public refetch: re-request the prefetch window with a blank query. The box
+  // shows the held label again, never a stale query. Marks hasPrefetched so a
   // following focus doesn't double-fetch (the combobox dropdown behavior calls
   // this on dropdown:show, then focuses the input — issues #297/#94).
   container._searchSelectRefetch = () => {
     if (!searchUrl) return;
     hasPrefetched = true;
-    search.value = "";
+    search.value = multi ? "" : (container._searchSelectLabel ?? "");
     if (!multi) container._searchSelectDirty = false;
     syncUncommitted();
     fetchFromServer("");
@@ -1227,6 +1265,7 @@ const initWidget = (containerElement: Element) => {
 
   const emitChange = (last: SearchSelectOption | null) => {
     syncSelectedStates();
+    syncClearButton();
     const values = currentValues();
     if (syncUrl) syncToUrl(values);
     container.dispatchEvent(
@@ -1263,23 +1302,64 @@ const initWidget = (containerElement: Element) => {
   // truthful if init ever runs against hydrated markup.
   syncUncommitted();
 
+  // Late answers must not reopen the panel.
+  const cancelPendingSearch = () => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    if (pendingRequest) {
+      pendingRequest.abort();
+      pendingRequest = null;
+    }
+  };
+
+  // ── The clear ×: empties query and value. ──
+  if (clearButton) {
+    //: Pointer press keeps focus: no phone keyboard.
+    clearButton.addEventListener("mousedown", event => event.preventDefault());
+    //: Tab onto × closes the panel.
+    clearButton.addEventListener("focus", () => {
+      cancelPendingSearch();
+      hidePanel();
+    });
+    clearButton.addEventListener("click", () => {
+      const heldValue = currentValues().length > 0;
+      const fromFocus = document.activeElement === clearButton;
+      cancelPendingSearch();
+      clears += 1;
+      container._searchSelectClear?.();
+      soleDeclined = true;
+      //: Loaded rows answered the old query; drop them.
+      if (searchUrl) {
+        options
+          .querySelectorAll("[data-search-select-option]")
+          .forEach(row => row.remove());
+        hasPrefetched = false;
+        if (!fromFocus && isPanelOpen()) fetchFromServer("");
+      }
+      filterRows("");
+      setCreateRow("");
+      setNoResults(false);
+      if (heldValue) emitChange(null);
+      container.dispatchEvent(
+        new CustomEvent<SearchSelectClearDetail>("search-select:clear", {
+          bubbles: true,
+          detail: { name },
+        })
+      );
+      //: × hides; focus moves to the input.
+      if (fromFocus) search.focus();
+    });
+  }
+
   // ── Close panel when focus leaves the widget (e.g. Tab away) ──
   // focusout bubbles, so the container catches the input losing focus in every
   // mode. Option mousedown preventDefault keeps the input focused during a
   // click, so this only fires on a genuine exit.
   container.addEventListener("focusout", (event) => {
     if (!container.contains(event.relatedTarget as Node)) {
-      // Cancel any pending/in-flight search so a late debounced fetch can't
-      // resolve and reopen the panel (via renderRows → showPanel) over the
-      // next field after the user has already tabbed away (issue #451).
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-      }
-      if (pendingRequest) {
-        pendingRequest.abort();
-        pendingRequest = null;
-      }
+      cancelPendingSearch();
       hidePanel(); // also clears the highlight
       // Both modes keep their box text across tab-out/refocus: single-select
       // commits only on an explicit pick, so blur touches neither value nor text.

@@ -11,6 +11,7 @@ from common.components.date_range_picker import DateRangePanel, DateRangePicker
 from common.components.primitives import (
     MICRO_LABEL_CLASS,
     Button,
+    ControlButton,
     Div,
     FilterWidgetPath,
     Input,
@@ -643,11 +644,12 @@ def _field_comparison_row(
             selected_value=right_value,
             dynamic=True,
         ),
-        Button(
-            type="button",
+        ControlButton(
+            variant="ghost",
+            size="compact",
+            color="red",
             data_fc_remove="",
             aria_label="Remove comparison",
-            class_="p-2 text-body hover:text-fg-danger cursor-pointer",
         )["✕"],
     ]
 

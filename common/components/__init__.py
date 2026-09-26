@@ -29,6 +29,8 @@ from common.components.core import (
     render,
 )
 from common.components.custom_elements import (
+    DROPDOWN_ITEM_ACTIVE,
+    DROPDOWN_ITEM_SHAPE,
     BottomSheet,
     ButtonDropdown,
     Dropdown,
@@ -38,6 +40,7 @@ from common.components.custom_elements import (
     DropdownDivider,
     DropdownLinkItem,
     DropdownMenuPanel,
+    DropdownPanel,
     DropdownPostItem,
     FilterBuilder,
     FilterCount,
@@ -48,7 +51,6 @@ from common.components.custom_elements import (
     SelectDropdown,
     SelectionFields,
     SplitButtonDropdown,
-    dropdown_combobox_panel_class,
     register_element,
 )
 from common.components.date_picker import (
@@ -111,8 +113,10 @@ from common.components.library_kit import (
     SummaryRow,
     SummaryValue,
 )
-from common.components.navigation import AccountMenu
+from common.components.navigation import AccountMenu, AvatarButton
 from common.components.primitives import (
+    COMPACT_SHAPE_CLASSES,
+    COMPACT_SIZE_CLASS,
     CONTENT_MAX_WIDTH_CLASS,
     CONTROL_SIZE_CLASS,
     DIALOG_TITLE_CLASS,
@@ -129,6 +133,7 @@ from common.components.primitives import (
     MICRO_LABEL_CLASS,
     PAGE_GUTTER_CLASS,
     PAGE_SIZE_PRESETS,
+    ROW_SIZE_CLASS,
     SEGMENTED_FIELD_CLASS,
     SELECTION_CHECKBOX_CLASS,
     SELECTION_STATEMENT_FIELD,
@@ -144,6 +149,7 @@ from common.components.primitives import (
     ButtonGroup,
     ButtonGroupMember,
     ButtonShape,
+    ButtonSize,
     ButtonVariant,
     Caption,
     Cell,
@@ -278,6 +284,8 @@ from common.utils import Truncation, truncate, truncate_info
 __all__ = [
     "CHOICE_CARD_MARK_ATTRIBUTE",
     "COLUMN_PICKER_LABEL",
+    "COMPACT_SHAPE_CLASSES",
+    "COMPACT_SIZE_CLASS",
     "CONTENT_MAX_WIDTH_CLASS",
     "CONTROL_SIZE_CLASS",
     "DEFAULT_MATCH_MODE",
@@ -285,6 +293,8 @@ __all__ = [
     "DIALOG_TITLE_CLASS",
     "DISABLED_CONTROL_CLASS",
     "DISABLED_WITHIN_CLASS",
+    "DROPDOWN_ITEM_ACTIVE",
+    "DROPDOWN_ITEM_SHAPE",
     "FORM_LABEL_CLASS",
     "FORM_MAX_WIDTH_CLASS",
     "H1",
@@ -300,6 +310,7 @@ __all__ = [
     "PAGE_SIZE_PRESETS",
     "QUICK_FACETS",
     "QUICK_FACET_KINDS",
+    "ROW_SIZE_CLASS",
     "SEARCH_PLACEHOLDERS",
     "SEGMENTED_FIELD_CLASS",
     "SELECTION_CHECKBOX_CLASS",
@@ -308,6 +319,7 @@ __all__ = [
     "AccountMenu",
     "AddForm",
     "AttrsArg",
+    "AvatarButton",
     "Badge",
     "BadgeSize",
     "BadgeTone",
@@ -322,6 +334,7 @@ __all__ = [
     "ButtonGroup",
     "ButtonGroupMember",
     "ButtonShape",
+    "ButtonSize",
     "ButtonVariant",
     "Caption",
     "Cell",
@@ -361,6 +374,7 @@ __all__ = [
     "DropdownDivider",
     "DropdownLinkItem",
     "DropdownMenuPanel",
+    "DropdownPanel",
     "DropdownPostItem",
     "Duration",
     "DurationAlternates",
@@ -504,7 +518,6 @@ __all__ = [
     "collect_media",
     "custom_element_builder",
     "drop_columns",
-    "dropdown_combobox_panel_class",
     "field_widget",
     "field_widget_templates",
     "is_quick_editable",

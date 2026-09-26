@@ -453,6 +453,11 @@ ICON_NODES: dict[str, Element] = {
             Path([('fill', 'currentColor'), ('d', 'M1,127h126V1H1V127z M9,9h110v110H9V9z')]),
         ],
     ],
+    'x-mark': Svg(
+        [('x', '0px'), ('y', '0px'), ('width', '50'), ('height', '50'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('fill', 'currentColor'), ('transform', 'rotate(45 24 24)'), ('d', 'M 23.976562 4.9785156 A 1.50015 1.50015 0 0 0 22.5 6.5 L 22.5 22.5 L 6.5 22.5 A 1.50015 1.50015 0 1 0 6.5 25.5 L 22.5 25.5 L 22.5 41.5 A 1.50015 1.50015 0 1 0 25.5 41.5 L 25.5 25.5 L 41.5 25.5 A 1.50015 1.50015 0 1 0 41.5 22.5 L 25.5 22.5 L 25.5 6.5 A 1.50015 1.50015 0 0 0 23.976562 4.9785156 z')]),
+    ],
     'xbox-gamepass': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 30 30'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[

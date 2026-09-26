@@ -15,7 +15,7 @@ from common.components.primitives import (
     ControlButton,
 )
 from common.components.search_field import _INPUT_CLASS as _SEARCH_FIELD_INPUT_CLASS
-from common.components.search_select import _CONTAINER_CLASS
+from common.components.search_select import _BOX_CLASS
 from games.forms import INPUT_CLASS, SELECT_CLASS
 
 REPO = Path(__file__).resolve().parent.parent
@@ -26,7 +26,7 @@ HEIGHT_BEARING_CONSTANTS = {
     "CONTROL_SIZE_CLASS": CONTROL_SIZE_CLASS,
     "INPUT_CLASS": INPUT_CLASS,
     "SELECT_CLASS": SELECT_CLASS,
-    "SearchSelect._CONTAINER_CLASS": _CONTAINER_CLASS,
+    "SearchSelect._BOX_CLASS": _BOX_CLASS,
     "_NUMBER_FILTER_INPUT_CLASS": _NUMBER_FILTER_INPUT_CLASS,
     "SEGMENTED_FIELD_CLASS": SEGMENTED_FIELD_CLASS,
     "SearchField._INPUT_CLASS": _SEARCH_FIELD_INPUT_CLASS,
@@ -59,6 +59,7 @@ def test_control_height_is_container_independent():
 
 
 def test_button_variants_emit_the_height_token():
+    """Only at the control size."""
     for variant in ("filled", "segmented", "outline", "ghost"):
         assert "min-h-control" in render(ControlButton(variant=variant)["x"]), variant
 

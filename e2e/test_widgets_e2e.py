@@ -173,13 +173,11 @@ def test_add_purchase_related_game_is_flat_game_search(
 def test_searchselect_border_matches_native_input(
     authenticated_page: Page, live_server
 ):
-    """A SearchSelect's wrapper has the same border as a native input, and turns
-    brand on focus (via focus-within on the wrapper, since the inner search box
-    is what's focused)."""
+    """Field box borders like a native input."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
     price = page.locator("#id_price")  # always-enabled native input
-    wrapper = page.locator("search-select[name='platform']")
+    wrapper = page.locator("search-select[name='platform'] [data-search-select-box]")
     search_input = page.locator("#id_platform")
     border = "el => getComputedStyle(el).borderColor"
 
@@ -206,6 +204,7 @@ def test_uncommitted_single_select_shows_draft_cue(
     page.goto(f"{live_server.url}{reverse('games:add_session')}")
 
     wrapper = page.locator("search-select[name='device']")
+    field_box = wrapper.locator("[data-search-select-box]")
     box = page.locator("#id_device")
     pencil = wrapper.locator("[data-search-select-marker]")
     status = wrapper.locator("[data-search-select-status]")
@@ -221,7 +220,7 @@ def test_uncommitted_single_select_shows_draft_cue(
     page.locator("#id_note").click()  # blur the combobox
     expect(hidden).to_have_count(1)
     assert wrapper.get_attribute("data-uncommitted") is None
-    assert wrapper.evaluate(border_style) == "solid"
+    assert field_box.evaluate(border_style) == "solid"
     assert box.evaluate(font_style) == "normal"
     expect(pencil).to_be_hidden()
     expect(status).to_have_text("")
@@ -235,7 +234,7 @@ def test_uncommitted_single_select_shows_draft_cue(
     expect(wrapper).to_have_attribute("data-uncommitted", "")
     expect(hidden).to_have_count(0)
     expect(box).to_have_value(committed_label)  # text still masquerades
-    assert wrapper.evaluate(border_style) == "dashed"
+    assert field_box.evaluate(border_style) == "dashed"
     assert box.evaluate(font_style) == "italic"
     expect(pencil).to_be_visible()
     # The assistive channel: status text + describedby wiring.
@@ -244,7 +243,7 @@ def test_uncommitted_single_select_shows_draft_cue(
 
     # Focused again, the cues yield to the focus ring (user is mid-pick).
     box.click()
-    assert wrapper.evaluate(border_style) == "solid"
+    assert field_box.evaluate(border_style) == "solid"
     assert box.evaluate(font_style) == "normal"
     expect(pencil).to_be_hidden()
 
@@ -254,7 +253,7 @@ def test_uncommitted_single_select_shows_draft_cue(
     assert wrapper.get_attribute("data-uncommitted") is None
     expect(status).to_have_text("")
     page.locator("#id_note").click()
-    assert wrapper.evaluate(border_style) == "solid"
+    assert field_box.evaluate(border_style) == "solid"
 
 
 def test_add_game_syncs_sort_name_from_name(authenticated_page: Page, live_server):
@@ -270,15 +269,15 @@ def test_add_game_syncs_sort_name_from_name(authenticated_page: Page, live_serve
 def test_add_purchase_type_game_disables_related_game_search(
     authenticated_page: Page, live_server
 ):
-    """When Type is 'game', the related-game SearchSelect is disabled.
-    #id_related_game is the inner search <input> (the real labelable control),
-    and the <search-select> wrapper fades via has-[:disabled]:opacity-50."""
+    """Type "game" disables and fades related game."""
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
     # #id_related_game is now on the inner <input data-search-select-search>
     search_input = page.locator("#id_related_game")
-    # The wrapper has no id; find it by the stable `name` attribute.
-    wrapper = page.locator("search-select[name='related_game']")
+    # Found under the stable name.
+    wrapper = page.locator(
+        "search-select[name='related_game'] [data-search-select-box]"
+    )
     name = page.locator("#id_name")
     opacity = "el => getComputedStyle(el).opacity"
     bg = "el => getComputedStyle(el).backgroundColor"

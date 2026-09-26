@@ -6,8 +6,8 @@ hidden ``<input>`` so an existing ``ModelMultipleChoiceField`` keeps validating.
 
 This module imports only from ``common.components`` — it has no Django-forms or
 ``games`` knowledge. Styling is inline Tailwind utilities; behavioural hooks are
-``data-*`` attributes wired up by ``ts/search_select.ts`` (compiled to
-``games/static/js/dist/search_select.js``).
+``data-*`` attributes wired up by ``ts/elements/search-select.ts`` (compiled to
+``games/static/js/dist/elements/search-select.js``).
 
 **Field id / label association**: when ``SearchSelect`` is used as a Django form
 widget, the field ``id`` (e.g. ``id_related_game``) is placed on the inner
@@ -16,10 +16,9 @@ control. ``<label for="id_X">`` therefore focuses the search box, and
 ``document.querySelector('#id_X').disabled`` behaves as for a native input.
 
 **Disabling**: set ``disabled`` directly on the field id (or on the inner
-``[data-search-select-search]`` input). The wrapper greys itself via the
-``has-[:disabled]:`` utilities in ``_CONTAINER_CLASS``. The inner input stays
-transparent — the widget reads as one faded element, not a nested box. Callers
-toggle only the control's ``disabled`` — never styles.
+``[data-search-select-search]`` input). The field box greys itself via
+``DISABLED_WITHIN_CLASS`` in ``_BOX_CLASS``. Callers toggle only the control's
+``disabled`` — never styles.
 
 **ARIA combobox semantics** (issue #154): the search input is a
 ``role="combobox"`` with ``aria-expanded``/``aria-autocomplete``; the options
@@ -49,19 +48,21 @@ user types.
 
 import json
 from collections.abc import Callable, Iterable, Sequence
+from enum import Enum
 from typing import Literal, NamedTuple, TypedDict
 
-from common.components.core import Attributes, HTMLAttribute, Node
+from common.components.core import Attributes, Child, HTMLAttribute, Node
 from common.components.custom_elements import (
+    DROPDOWN_ITEM_SHAPE,
     Dropdown,
+    DropdownPanel,
     _Dropdown,
     _SearchSelect,
-    dropdown_combobox_panel_class,
 )
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
     MICRO_LABEL_CLASS,
-    Button,
+    ButtonColor,
     ControlButton,
     Div,
     FilterWidgetPath,
@@ -106,8 +107,8 @@ LabeledOption = tuple[str, str]
 
 # FilterSelect's two visual personalities: "field" is the bordered form-field
 # look (the nested builder's leaf rows); "panel" is the GitHub-label-picker look for widgets
-# hosted inside a ComboboxDropdown dialog (pills row above a self-bordered
-# search box, always-visible statically-flowing options).
+# hosted inside a ComboboxDropdown dialog (pills row above the field box,
+# always-visible statically-flowing options).
 type FilterSelectLayout = Literal["field", "panel"]
 
 
@@ -124,45 +125,25 @@ class OptionGroup(NamedTuple):
     options: list[SearchSelectOption]
 
 
-# The pills and the search box share one flex-wrap row (with padding) so the
-# widget reads as a single clickable field; the pills wrapper uses `contents`
-# so its pills/hidden inputs flow as direct participants of that row, inline
-# with the search input. The options panel is absolute, so it sits outside the
-# flex flow.
-# Border + focus styling mirror a native input (INPUT_CLASS): border-default-medium
-# normally, brand border + ring on focus. The search input is the focusable
-# element, so the focus state is expressed on the wrapper with focus-within: (and
-# the inner input suppresses its own ring — see _SEARCH_CLASS).
-# The widget owns its disabled appearance: when any control inside it is
-# :disabled (e.g. add_purchase.ts disabling the search input), the wrapper fades
-# via :has() — the same opacity-50 a disabled native input uses (see
-# _DISABLED_CONTROL in games/forms.py), so the two look identical. Callers only
-# toggle the control's `disabled`, never styles.
-# px-3 + min-h-control matches INPUT_CLASS (the shared 42px control height).
-# Container is text-type-body (pill/label text); the inner search box is
-# text-type-input (16px, below which iOS focus-zooms, #427). The box zeroes its
-# own padding (p-0); min-h floors the field at 42 and grows as pills wrap.
-_CONTAINER_CLASS = (
-    "relative flex flex-wrap items-center gap-1 px-3 min-h-control rounded-base text-type-body "
+# One bordered field box, every personality.
+_BOX_CLASS = (
+    "flex flex-wrap items-center gap-1 px-3 py-1 min-h-control rounded-base "
+    "text-type-body "
     "bg-neutral-secondary-medium border border-default-medium "
     "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand "
     f"{DISABLED_WITHIN_CLASS}"
 )
+# Anchors the standalone panel and drop-down.
+_CONTAINER_CLASS = "relative block"
 _PILLS_CLASS = "contents"
-# disabled:cursor-not-allowed matches the wrapper's cursor so hovering across
-# the whole widget stays consistent (the wrapper handles the faded look via
-# has-[:disabled]:opacity-50).
+# Under 16px text, iOS zooms on focus.
 _SEARCH_CLASS = (
     "flex-1 min-w-[8rem] border-0 p-0 bg-transparent text-type-input text-heading "
     "focus:ring-0 focus:outline-hidden placeholder:text-body "
     "disabled:cursor-not-allowed"
 )
-# Uncommitted "draft" cue (#450), rendered ONLY on committed_marker widgets —
-# kept out of the shared class constants so every other combobox flavor stays
-# byte-identical (FilterSelect's field/panel serializer-contract test scans all
-# data-* tokens, class strings included). At rest only: the focus ring owns the
-# focused look, so all three cues vanish under :focus-within with no JS.
-_UNCOMMITTED_CONTAINER_CLASS = "data-uncommitted:not-focus-within:border-dashed"
+# The #450 draft cue, at rest only.
+_UNCOMMITTED_BOX_CLASS = "not-focus-within:[[data-uncommitted]_&]:border-dashed"
 # The loose text reads like a placeholder — muted (the audited placeholder
 # token) + italic.
 _UNCOMMITTED_SEARCH_CLASS = (
@@ -173,32 +154,29 @@ _UNCOMMITTED_SEARCH_CLASS = (
 # Icon() drops the snippet's baked color classes, so text-body must ride here
 # (sizing stays Icon()'s default ICON_SIZE_CLASS).
 _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]:block"
-# top-full anchors the panel to the container's bottom edge: as an absolutely
-# positioned child of the flex field, its static position would otherwise be
-# centered by items-center and overlap the search box.
-_OPTIONS_CLASS = (
-    "absolute z-10 top-full left-0 right-0 mt-1 overflow-y-auto "
-    "border border-default-medium rounded-base bg-neutral-secondary-medium shadow-lg"
+# ml-auto ends the row; peer-disabled hides it.
+_CLEAR_PLACEMENT_CLASS = "ml-auto -mr-1 peer-disabled:hidden"
+#: The standalone panel hangs below the box.
+_STANDALONE_PANEL_CLASS = "top-full left-0 right-0 mt-1"
+#: The dialog is this listbox's panel.
+_DIALOG_LISTBOX_CLASS = "mt-2 overflow-y-auto scroll-py-2"
+#: Picker rows wear the menu item look.
+#: Literal, so Tailwind sees it.
+_ROW_CLASS = (
+    f"{DROPDOWN_ITEM_SHAPE} text-type-body "
+    "data-[search-select-highlighted]:bg-neutral-tertiary-medium "
+    "data-[search-select-highlighted]:text-heading"
 )
-# Panel class when the widget is hosted in <drop-down behavior="inline-combobox">
-# (issue #348): attachMenu pins it position:fixed and writes top/left/width, so it
-# drops the self-positioning (absolute top-full left-0 right-0 mt-1) the standalone
-# panel uses and only keeps the surface look. z-20 matches the other drop-down
-# menus (the standalone panel is z-10). matchToggleWidth gives it the field width.
-_INLINE_OPTIONS_CLASS = (
-    "z-20 overflow-y-auto "
-    "border border-default-medium rounded-base bg-neutral-secondary-medium shadow-lg"
-)
-_OPTION_ROW_CLASS = (
-    "px-3 py-2 text-type-body text-heading cursor-pointer "
-    "hover:bg-brand-soft data-[search-select-highlighted]:bg-brand-soft"
-)
-_NO_RESULTS_CLASS = "px-3 py-2 text-type-body italic text-body hidden"
+_ROW_WITH_ACTIONS_CLASS = f"{_ROW_CLASS} flex items-center justify-between"
+_ROW_ACTIONS_CLASS = "flex gap-1 ml-2 shrink-0"
+#: Keeps a 26px button in a 36px row.
+_ROW_ACTION_PLACEMENT_CLASS = "-my-0.75"
+_NO_RESULTS_CLASS = "px-4 py-2 text-type-body italic text-body hidden"
 # A non-selectable group header in a grouped panel. role="presentation" keeps it
 # out of the combobox's option semantics; carrying no data-search-select-option
 # excludes it from keyboard nav, client-side filtering, and selection. The JS
 # hides a header whose whole run of following option rows is filtered out.
-_GROUP_HEADER_CLASS = f"px-3 pt-2 pb-1 {MICRO_LABEL_CLASS} text-body"
+_GROUP_HEADER_CLASS = f"px-4 pt-2 pb-1 {MICRO_LABEL_CLASS} text-body"
 
 # Approximate rendered height of one option row (px-3 py-2 text-type-body) in rem,
 # used to derive the panel's max-height from items_visible.
@@ -208,59 +186,6 @@ _ROW_HEIGHT_REM = 2.25
 # Shared by filter and form widgets so the dropdown is populated for keyboard
 # navigation as soon as the user opens it.
 DEFAULT_PREFETCH = 20
-
-# ── FilterSelect styling ───────────────────────────────────────────────────
-# Inline class strings (ported verbatim from the retired SelectableFilter CSS)
-# so the filter combobox is fully self-styled — nothing in input.css. JS-added
-# rows/pills are cloned from server-rendered <template>s, so these strings live
-# only here — never duplicated in ts/search_select.ts. The keyboard-highlighted
-# state is expressed via Tailwind `data-[search-select-highlighted]` and
-# `group-data-[search-select-highlighted]` variants on the row/label/button
-# classes below; the JS only toggles the data attribute on the row.
-# max-w-full + a truncating label slot keep a long value (a full game title)
-# from overflowing a width-capped host — the ComboboxDropdown panel is w-72
-# with overflow-hidden. Applied in both layouts so the pill shape never forks.
-_FILTER_INCLUDE_PILL_CLASS = (
-    "inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded max-w-full "
-    "bg-brand-soft text-heading"
-)
-_FILTER_EXCLUDE_PILL_CLASS = (
-    "inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded max-w-full "
-    "bg-red-500/15 text-red-600 line-through decoration-red-400"
-)
-_FILTER_MODIFIER_PILL_CLASS = (
-    "inline-flex items-center px-2 py-0.5 text-type-body rounded max-w-full "
-    "bg-amber-500/15 text-amber-600 cursor-pointer"
-)
-_FILTER_PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
-_FILTER_OPTION_ROW_CLASS = (
-    "group flex items-center justify-between px-2 py-1 rounded text-type-body "
-    "hover:bg-neutral-secondary-strong cursor-pointer "
-    "data-[search-select-highlighted]:bg-brand "
-    "data-[search-select-highlighted]:outline data-[search-select-highlighted]:outline-1 "
-    "data-[search-select-highlighted]:outline-brand-strong"
-)
-_FILTER_OPTION_LABEL_CLASS = (
-    "truncate text-body group-data-[search-select-highlighted]:text-white"
-)
-_FILTER_OPTION_BUTTONS_CLASS = "flex gap-1 ml-2 shrink-0"
-# text-body keeps the +/− readable on dark backgrounds; hover:border-brand-strong
-# keeps the edge visible against the brand hover fill. When the row is the
-# keyboard-highlighted one its bg is brand, so the button text/border switch
-# to white and the hover fill shifts to brand-strong for contrast.
-_FILTER_ACTION_BUTTON_CLASS = (
-    "w-5 h-5 flex items-center justify-center text-type-micro font-bold rounded text-body "
-    "border border-brand "
-    "hover:solid-brand hover:border-brand-strong "
-    "group-data-[search-select-highlighted]:text-white "
-    "group-data-[search-select-highlighted]:border-white "
-    "group-data-[search-select-highlighted]:hover:bg-brand-strong "
-    "group-data-[search-select-highlighted]:hover:border-white"
-)
-_FILTER_MODIFIER_ROW_CLASS = (
-    "px-2 py-1 text-type-body text-body hover:bg-neutral-secondary-strong cursor-pointer "
-    "data-[search-select-highlighted]:solid-brand"
-)
 
 
 def _normalize_option(option) -> SearchSelectOption:
@@ -301,32 +226,61 @@ def _label_slot(text: str, *, extra_class: str = "") -> Node:
 _BLANK_OPTION: SearchSelectOption = {"value": "", "label": "", "data": {}}
 
 
-def _option_row(option: SearchSelectOption, *, selected: bool = False) -> Node:
-    return Div(
-        [*_data_attributes(option["data"]), *_option_role_attributes(selected)],
-        data_search_select_option="",
-        data_value=str(option["value"]),
-        data_label=option["label"],
-        class_=_OPTION_ROW_CLASS,
-    )[_label_slot(option["label"])]
+class RowKind(Enum):
+    """The hook the element reads."""
+
+    OPTION = "option"
+    #: Pinned; the text filter never hides it.
+    MODIFIER = "modifier"
+    #: Hidden until no label equals the query.
+    CREATE = "create"
 
 
-def _create_row() -> Node:
-    """The row that makes the thing a person typed.
+def _option_row(
+    option: SearchSelectOption,
+    kind: RowKind = RowKind.OPTION,
+    *,
+    selected: bool = False,
+    actions: Sequence[Node] = (),
+) -> Node:
+    """Every picker row, in one look.
 
-    Rendered hidden, and shown by the element once the
-    answer decides that no loaded label equals the query.
-    Its own attribute, not an option's: `renderRows`
-    empties every option row on each answer, and a create
-    row wearing that attribute would vanish mid-keystroke.
+    A create row carries its own hook, not an option's:
+    each answer empties the option rows, and it would
+    vanish mid-keystroke.
     """
-    return Div(
-        data_search_select_create="",
-        role="option",
-        aria_selected="false",
-        hidden="",
-        class_=_OPTION_ROW_CLASS,
-    )[Span(data_label="")]
+    label: Node
+    if kind is RowKind.CREATE:
+        attributes: list[HTMLAttribute] = [
+            ("data-search-select-create", ""),
+            ("role", "option"),
+            ("aria-selected", "false"),
+            ("hidden", ""),
+        ]
+        label = Span(data_label="")
+    elif kind is RowKind.MODIFIER:
+        attributes = [
+            *_option_role_attributes(selected),
+            ("data-search-select-modifier-option", str(option["value"])),
+            ("data-label", option["label"]),
+        ]
+        label = Span()[option["label"]]
+    else:
+        attributes = [
+            *_data_attributes(option["data"]),
+            *_option_role_attributes(selected),
+            ("data-search-select-option", ""),
+            ("data-value", str(option["value"])),
+            ("data-label", option["label"]),
+        ]
+        label = _label_slot(
+            option["label"], extra_class="truncate min-w-0" if actions else ""
+        )
+    if not actions:
+        return Div(attributes, class_=_ROW_CLASS)[label]
+    return Div(attributes, class_=_ROW_WITH_ACTIONS_CLASS)[
+        label, Span(class_=_ROW_ACTIONS_CLASS)[*actions]
+    ]
 
 
 def _group_header(label: str) -> Node:
@@ -346,26 +300,35 @@ def _grouped_option_rows(groups: list[OptionGroup]) -> list[Node]:
     return rows
 
 
+class _ComboboxLayout(NamedTuple):
+    """Where a combobox lives, declared once."""
+
+    container_class: str
+    #: None: the hosting dialog is the panel.
+    panel_class: str | None
+    #: The <drop-down> owns the list's visibility.
+    menu_target: bool
+
+
 def _combobox_children(
     *,
-    pills: Node,
+    pill_nodes: list[Node],
     search_attributes: Attributes,
     options_children: list[Node],
     always_visible: bool,
     items_visible: int,
     multi_select: bool = False,
+    layout: _ComboboxLayout,
     templates: list[Node] | None = None,
-    options_class: str | None = None,
     no_results_text: str = "No results",
     create_row: Node | None = None,
-    menu_target: bool = False,
     marker: list[Node] | None = None,
+    clear_button: Node | None = None,
+    box_class: str = _BOX_CLASS,
 ) -> list[Node]:
     """Build and return the shared combobox interior nodes.
 
-    Returns the three content regions (pills, search box, options panel) plus
-    any templates — ready to be placed as children of the caller's container
-    element. The shell knows nothing about how individual rows or pills look.
+    Returns the field box, the options panel and any templates.
 
     The shell owns the ARIA combobox pattern (issue #154): the search input is
     the combobox, the options panel the listbox. ``aria-controls`` /
@@ -373,20 +336,9 @@ def _combobox_children(
     init (see module docstring); the JS also keeps ``aria-expanded`` in sync
     with the panel's visibility.
 
-    ``options_class`` overrides the panel's class (``None`` keeps the default
-    absolute-anchored :data:`_OPTIONS_CLASS`); ``no_results_text`` the empty-state
-    label. Both are personality knobs (the preset picker's panel flows statically
-    inside its dropdown dialog and says "No saved presets" — issue #297).
-
-    ``menu_target`` makes the options panel the ``<drop-down>``'s ``[data-menu]``
-    (issue #348): it carries the ``data-menu`` hook and the initial ``hidden``
-    attribute (so attachMenu owns visibility) instead of the ``.hidden`` class the
-    standalone widget toggles. The caller pairs it with ``options_class=``
-    :data:`_INLINE_OPTIONS_CLASS`.
-
-    ``marker`` nodes (the #450 committed-marker glyph + sr-only status span) sit
-    between the search box and the options panel, so in the flex row they render
-    at the field's right edge (the panel is absolutely positioned / menu-hosted).
+    ``layout`` places the list; pills always sit in the box.
+    ``box_class`` styles the field box.
+    ``clear_button`` and ``marker`` follow the input inside it.
     """
     aria_attributes: list[HTMLAttribute] = [
         ("role", "combobox"),
@@ -402,31 +354,44 @@ def _combobox_children(
         role="presentation",
         class_=_NO_RESULTS_CLASS,
     )[no_results_text]
-    panel_class = _OPTIONS_CLASS if options_class is None else options_class
-    # menu_target: attachMenu owns visibility via the `hidden` attribute, so never
-    # add the `.hidden` class. Otherwise the class is the visibility mechanism.
-    if menu_target or always_visible:
-        options_class = panel_class
-    else:
-        options_class = panel_class + " hidden"
     panel_children = [*options_children, no_results]
     if create_row:
         panel_children.append(create_row)
-    options_panel = Div(
-        # The [data-menu] hook + initial hidden state when hosted in a <drop-down>.
-        [("data-menu", ""), ("hidden", "")] if menu_target else [],
-        data_search_select_options="",
-        role="listbox",
-        aria_multiselectable="true" if multi_select else None,
-        # Keep the scroller out of the sequential tab order. Chrome makes any
-        # overflowing scroll container keyboard-focusable by default, which
-        # would steal focus from the search input on Tab (issue #119).
-        tabindex="-1",
-        style=f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem",
-        class_=options_class,
-    )[*panel_children]
-
-    return [pills, search, *(marker or []), options_panel, *(templates or [])]
+    listbox_attributes: list[HTMLAttribute] = [
+        ("data-search-select-options", ""),
+        ("role", "listbox"),
+        # Else Chrome makes the scroller tabbable.
+        ("tabindex", "-1"),
+        ("style", f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem"),
+    ]
+    if multi_select:
+        listbox_attributes.append(("aria-multiselectable", "true"))
+    options_panel: Node
+    if layout.panel_class is None:
+        options_panel = Div(listbox_attributes, class_=_DIALOG_LISTBOX_CLASS)[
+            *panel_children
+        ]
+    else:
+        panel_attributes: list[HTMLAttribute] = [("data-search-select-panel", "")]
+        if layout.menu_target:
+            panel_attributes.append(("data-menu", ""))
+        if layout.menu_target or not always_visible:
+            panel_attributes.append(("hidden", ""))
+        options_panel = DropdownPanel(
+            panel_attributes,
+            width="w-full",
+            class_=layout.panel_class,
+            content_attributes=listbox_attributes,
+            content_class="scroll-py-2",
+        )[panel_children]
+    pills = Div(data_search_select_pills="", class_=_PILLS_CLASS)[*pill_nodes]
+    box = Div(data_search_select_box="", class_=box_class)[
+        pills,
+        search,
+        *([clear_button] if clear_button else []),
+        *(marker or []),
+    ]
+    return [box, options_panel, *(templates or [])]
 
 
 def SearchSelect(
@@ -453,6 +418,8 @@ def SearchSelect(
     dynamic_options: bool = False,
     committed_marker: bool = True,
     panel: bool = False,
+    clearable: bool = True,
+    clear_description_id: str | None = None,
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
 
@@ -491,6 +458,9 @@ def SearchSelect(
     ``FilterSelect`` build their own markup and are structurally unaffected —
     correctly so for the preset picker, whose pick is a command and whose box
     clears by design.
+
+    ``clearable``: a trailing × empties query and value.
+    ``clear_description_id``: the ×'s ``aria-describedby`` target.
     """
     if panel:
         always_visible = True
@@ -523,14 +493,12 @@ def SearchSelect(
         pills_children.append(_hidden_input(name, option["value"]))
         search_value = option["label"]
 
-    pills = Div(data_search_select_pills="", class_=_PILLS_CLASS)[*pills_children]
-
     # ── Search box (NO name — the query is never submitted) ──
     search_attrs: list[HTMLAttribute] = [
         ("data-search-select-search", ""),
         ("placeholder", placeholder),
         ("autocomplete", "off"),
-        ("class", _PANEL_SEARCH_CLASS if panel else _SEARCH_CLASS),
+        ("class", _SEARCH_CLASS),
     ]
     if id:
         search_attrs.append(("id", id))
@@ -538,6 +506,26 @@ def SearchSelect(
         search_attrs.append(("autofocus", ""))
     if search_value:
         search_attrs.append(("value", search_value))
+
+    clear_button: Node | None = None
+    if clearable:
+        search_attrs.append(("class", "peer"))
+        clear_button = ControlButton(
+            variant="ghost",
+            size="compact",
+            data_search_select_clear="",
+            aria_label="Clear",
+            title="Clear",
+            aria_describedby=clear_description_id,
+            hidden=not selected,
+            class_=_CLEAR_PLACEMENT_CLASS,
+        )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
+
+    layout = (
+        _DIALOG_LAYOUT
+        if panel
+        else (_INLINE_LAYOUT if host_dropdown else _STANDALONE_LAYOUT)
+    )
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
     if search_url:
@@ -595,19 +583,20 @@ def SearchSelect(
         ]
 
     children = _combobox_children(
-        create_row=_create_row() if create_url else None,
-        pills=pills,
+        create_row=_option_row(_BLANK_OPTION, RowKind.CREATE) if create_url else None,
+        pill_nodes=pills_children,
         search_attributes=search_attrs,
         options_children=option_rows,
         always_visible=always_visible,
         items_visible=items_visible,
         multi_select=multi_select,
         templates=templates,
-        options_class=_PANEL_OPTIONS_CLASS
-        if panel
-        else (_INLINE_OPTIONS_CLASS if host_dropdown else None),
-        menu_target=host_dropdown,
+        layout=layout,
         marker=marker,
+        clear_button=clear_button,
+        box_class=f"{_BOX_CLASS} {_UNCOMMITTED_BOX_CLASS}"
+        if show_marker
+        else _BOX_CLASS,
     )
     widget = _SearchSelect(
         # The <search-select> element itself is the drop-down's [data-toggle]: it
@@ -626,13 +615,7 @@ def SearchSelect(
         always_visible="true" if always_visible else "false",
         prefetch=prefetch,
         sync_url="true" if sync_url else "false",
-        class_=_PANEL_CONTAINER_CLASS
-        if panel
-        else (
-            f"{_CONTAINER_CLASS} {_UNCOMMITTED_CONTAINER_CLASS}"
-            if show_marker
-            else _CONTAINER_CLASS
-        ),
+        class_=layout.container_class,
     )[*children]
     if not host_dropdown:
         return widget
@@ -647,91 +630,70 @@ def SearchSelect(
     )[widget]
 
 
-def _filter_remove_button() -> Node:
-    return Button(
-        type="button",
-        data_pill_remove="",
-        class_=_FILTER_PILL_REMOVE_CLASS,
-        aria_label="Remove",
-    )["×"]
-
-
-def _filter_value_pill(option: SearchSelectOption, kind: str) -> Node:
-    """An include (✓) or exclude (✗) value pill. ``kind`` is "include"/"exclude"."""
-    symbol = "✓" if kind == "include" else "✗"
-    css = (
-        _FILTER_INCLUDE_PILL_CLASS if kind == "include" else _FILTER_EXCLUDE_PILL_CLASS
-    )
-    return Span(
+def _filter_value_pill(
+    option: SearchSelectOption, kind: Literal["include", "exclude"]
+) -> Node:
+    """An include (✓) or exclude (✗) value pill."""
+    return Pill(
         _data_attributes(option["data"]),
-        class_=css,
-        data_pill="",
+        label=option["label"],
+        removable=True,
+        label_slot=True,
+        kind=kind,
         data_value=str(option["value"]),
         data_label=option["label"],
         data_search_select_type=kind,
-    )[
-        f"{symbol} ",
-        _label_slot(option["label"], extra_class="truncate"),
-        _filter_remove_button(),
-    ]
+    )
 
 
 def _filter_modifier_pill(modifier_value: str, label: str) -> Node:
     """The lone, sticky modifier pill (e.g. "(Any)"/"(None)")."""
-    return Span(
-        class_=_FILTER_MODIFIER_PILL_CLASS,
-        data_pill="",
+    return Pill(
+        label=label,
+        removable=True,
+        label_slot=True,
+        kind="modifier",
         data_search_select_modifier=modifier_value,
-    )[_label_slot(label, extra_class="truncate"), _filter_remove_button()]
+    )
 
 
-def _filter_action_button(action: str, symbol: str, title: str) -> Node:
-    return Button(
-        type="button",
-        # Include (+) is reachable via row highlight + Enter; both +/− are
-        # reachable by mouse. Keep every per-row button out of the
-        # sequential tab order (issue #119).
+def _row_action(
+    action: str, symbol: Child, title: str, *, color: ButtonColor = "gray"
+) -> Node:
+    """A trailing row button, never tabbable."""
+    return ControlButton(
+        variant="ghost",
+        size="row",
+        color=color,
         tabindex="-1",
         data_search_select_action=action,
-        class_=_FILTER_ACTION_BUTTON_CLASS,
+        class_=_ROW_ACTION_PLACEMENT_CLASS,
         title=title,
+        aria_label=title,
     )[symbol]
 
 
 def _filter_option_row(value: str | int, label: str, *, selected: bool = False) -> Node:
-    """A value row with include (+) and exclude (−) buttons. ``selected`` marks
-    the row as a member of the filter set (an include or exclude pill exists),
-    which is what ``aria-selected`` means in this multiselectable listbox."""
-    return Div(
-        _option_role_attributes(selected),
-        data_search_select_option="",
-        data_value=str(value),
-        data_label=label,
-        class_=_FILTER_OPTION_ROW_CLASS,
-    )[
-        _label_slot(label, extra_class=_FILTER_OPTION_LABEL_CLASS),
-        Span(class_=_FILTER_OPTION_BUTTONS_CLASS)[
-            _filter_action_button("include", "+", "Include"),
-            _filter_action_button("exclude", "−", "Exclude"),
+    """A value row; ``selected``: a pill names it."""
+    return _option_row(
+        {"value": value, "label": label, "data": {}},
+        selected=selected,
+        actions=[
+            _row_action("include", "+", "Include"),
+            _row_action("exclude", "−", "Exclude"),
         ],
-    ]
+    )
 
 
 def _filter_modifier_row(
     modifier_value: str, label: str, *, selected: bool = False
 ) -> Node:
-    """A pinned pseudo-option row. It carries no ``data-search-select-option`` so the text
-    filter never hides it — modifiers stay visible at the top of the panel.
-
-    Carries ``role="option"`` like the value rows, and the JS includes it in
-    arrow-key navigation and Enter selection, so every advertised option is
-    keyboard-reachable. ``selected`` marks the currently active modifier."""
-    return Div(
-        _option_role_attributes(selected),
-        data_search_select_modifier_option=modifier_value,
-        data_label=label,
-        class_=_FILTER_MODIFIER_ROW_CLASS,
-    )[label]
+    """A pinned pseudo-option row, e.g. "(Any)"."""
+    return _option_row(
+        {"value": modifier_value, "label": label, "data": {}},
+        RowKind.MODIFIER,
+        selected=selected,
+    )
 
 
 def FilterSelect(
@@ -780,8 +742,8 @@ def FilterSelect(
     trigger — focus opens), mirroring :func:`SearchSelect` ``host_dropdown=True``.
 
     ``layout="panel"`` renders the same widget in the panel personality (see
-    :data:`FilterSelectLayout`): pills in their own wrap row above a
-    self-bordered search box, options always visible and flowing statically —
+    :data:`FilterSelectLayout`): pills in their own wrap row above the
+    field box, options always visible and flowing statically —
     for hosting inside a :func:`ComboboxDropdown` dialog (which supplies the
     drop-down at that level, so the panel layout stays bare here). State logic,
     templates, every ``data-search-select-*`` hook and the serializer DOM
@@ -820,17 +782,14 @@ def FilterSelect(
     for option in normalized_excluded:
         pills_children.append(_filter_value_pill(option, "exclude"))
 
-    pills = Div(
-        data_search_select_pills="",
-        class_=_PANEL_PILLS_CLASS if panel_layout else _PILLS_CLASS,
-    )[*pills_children]
+    combobox_layout = _DIALOG_LAYOUT if panel_layout else _INLINE_LAYOUT
 
     # ── Search box (NO name — the query is never submitted) ──
     search_attributes: list[HTMLAttribute] = [
         ("data-search-select-search", ""),
         ("placeholder", placeholder),
         ("autocomplete", "off"),
-        ("class", _PANEL_SEARCH_CLASS if panel_layout else _SEARCH_CLASS),
+        ("class", _SEARCH_CLASS),
     ]
     if search_aria_label:
         search_attributes.append(("aria-label", search_aria_label))
@@ -881,7 +840,7 @@ def FilterSelect(
         )
 
     children = _combobox_children(
-        pills=pills,
+        pill_nodes=pills_children,
         search_attributes=search_attributes,
         options_children=[*modifier_rows, *value_rows],
         always_visible=panel_layout,
@@ -889,8 +848,7 @@ def FilterSelect(
         # FilterSelect is always multi (include/exclude pill sets).
         multi_select=True,
         templates=templates,
-        options_class=_PANEL_OPTIONS_CLASS if panel_layout else _INLINE_OPTIONS_CLASS,
-        menu_target=field_host,
+        layout=combobox_layout,
     )
     # The self-describe root attributes for the generic filter serializer. Only
     # Filter-layer callers pass ``path``; synthetic/test callers leave it None and
@@ -912,7 +870,7 @@ def FilterSelect(
         always_visible="true" if panel_layout else "false",
         prefetch=prefetch,
         sync_url="false",
-        class_=_PANEL_CONTAINER_CLASS if panel_layout else _CONTAINER_CLASS,
+        class_=combobox_layout.container_class,
         id_=id or None,
         data_modifier=modifier or None,
     )[*children]
@@ -929,30 +887,22 @@ def FilterSelect(
 
 
 # ── Panel personality styling ───────────────────────────
-# The layout shared by every combobox-shell widget hosted inside a <drop-down>
-# combobox dialog (PresetSelect, panel-layout FilterSelect). Unlike the
-# form/filter field personalities it has no bordered field wrapper: the search
-# input is its own bordered field, and the options panel flows statically
-# below it on the dialog surface (GitHub-label-picker layout).
+# Dialog-hosted comboboxes: field box above a list.
 _PANEL_CONTAINER_CLASS = "block text-type-body"
-_PANEL_SEARCH_CLASS = (
-    "w-full px-3 py-2 rounded-base border border-default-medium "
-    "bg-neutral-secondary-medium text-type-body text-heading placeholder:text-body "
-    "focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
+
+# Absolute below the box; no drop-down.
+_STANDALONE_LAYOUT = _ComboboxLayout(
+    container_class=_CONTAINER_CLASS,
+    panel_class=_STANDALONE_PANEL_CLASS,
+    menu_target=False,
 )
-_PANEL_OPTIONS_CLASS = "mt-2 overflow-y-auto"
-# Pills sit in their own wrap row above the search box; empty:hidden keeps an
-# empty pill set from adding a stray gap.
-_PANEL_PILLS_CLASS = "mb-2 flex flex-wrap gap-1 empty:hidden"
-_PRESET_OPTION_ROW_CLASS = (
-    "group flex items-center justify-between px-3 py-2 text-type-body text-heading "
-    "cursor-pointer rounded "
-    "hover:bg-brand-soft data-[search-select-highlighted]:bg-brand-soft"
+# Pinned by the hosting drop-down.
+_INLINE_LAYOUT = _ComboboxLayout(
+    container_class=_CONTAINER_CLASS, panel_class="", menu_target=True
 )
-_PRESET_DELETE_BUTTON_CLASS = (
-    "w-5 h-5 flex items-center justify-center text-type-micro font-bold rounded "
-    "shrink-0 ml-2 text-body border border-transparent "
-    "hover:bg-red-500/15 hover:text-red-600 hover:border-red-400"
+# Inside a dialog's padded surface.
+_DIALOG_LAYOUT = _ComboboxLayout(
+    container_class=_PANEL_CONTAINER_CLASS, panel_class=None, menu_target=False
 )
 
 # Fetch-on-open window. A preset collection is per-user and small; one fetch
@@ -961,33 +911,18 @@ _PRESET_PREFETCH = 100
 
 
 def _preset_option_row(option: SearchSelectOption) -> Node:
-    """A preset row: a pickable label plus a per-row delete (×) action button.
-
-    The button carries ``data-search-select-action="delete"`` — in form mode the
-    widget dispatches ``search-select:action`` for it instead of picking the row
-    (issue #297). Preset rows are only ever client-built from the ``row``
-    template clone, so the label flows through ``textContent`` and the data
-    attributes through ``setAttribute`` — XSS-safe by construction.
-    """
-    return Div(
-        [*_data_attributes(option["data"]), *_option_role_attributes()],
-        data_search_select_option="",
-        data_value=str(option["value"]),
-        data_label=option["label"],
-        class_=_PRESET_OPTION_ROW_CLASS,
-    )[
-        _label_slot(option["label"], extra_class="truncate"),
-        Button(
-            type="button",
-            # Out of the sequential tab order like every per-row button (#119);
-            # mouse-reachable, and the row itself is the keyboard pick target.
-            tabindex="-1",
-            data_search_select_action="delete",
-            aria_label="Remove preset",
-            title="Remove preset",
-            class_=_PRESET_DELETE_BUTTON_CLASS,
-        )["×"],
-    ]
+    """A preset row with a remove action."""
+    return _option_row(
+        option,
+        actions=[
+            _row_action(
+                "delete",
+                Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")]),
+                "Remove preset",
+                color="red",
+            )
+        ],
+    )
 
 
 def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
@@ -1002,24 +937,23 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
     loads it into the tree, the filter bar navigates). The pick is transient —
     consumers call ``clearSelection()`` after handling it.
     """
-    pills = Div(data_search_select_pills="", class_=_PILLS_CLASS)
     search_attributes: list[HTMLAttribute] = [
         ("data-search-select-search", ""),
         ("placeholder", "Filter presets…"),
         ("autocomplete", "off"),
-        ("class", _PANEL_SEARCH_CLASS),
+        ("class", _SEARCH_CLASS),
     ]
     templates: list[Node] = [
         Template(data_search_select_template="row")[_preset_option_row(_BLANK_OPTION)]
     ]
     children = _combobox_children(
-        pills=pills,
+        pill_nodes=[],
         search_attributes=search_attributes,
         options_children=[],
         always_visible=True,
         items_visible=items_visible,
         templates=templates,
-        options_class=_PANEL_OPTIONS_CLASS,
+        layout=_DIALOG_LAYOUT,
         no_results_text="No saved presets",
     )
     return _SearchSelect(
@@ -1031,7 +965,7 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         always_visible="true",
         prefetch=_PRESET_PREFETCH,
         sync_url="false",
-        class_=_PANEL_CONTAINER_CLASS,
+        class_=_DIALOG_LAYOUT.container_class,
     )[*children]
 
 
@@ -1068,13 +1002,8 @@ def ComboboxDropdown(
         label,
         Icon("arrowdown", size="h-3 w-3"),
     ].as_element()
-    panel = Div(
-        # A search dialog, not a menu: no role="menu"/menuitem anywhere — the
-        # inner widget provides the combobox/listbox semantics (#154).
-        role="dialog",
-        aria_label=label,
-        class_=dropdown_combobox_panel_class(panel_width),
-    )[content]
+    # A dialog; the widget brings listbox semantics.
+    panel = DropdownPanel(role="dialog", aria_label=label, width=panel_width)[content]
     return Dropdown(
         trigger_element=trigger,
         target_element=panel,
