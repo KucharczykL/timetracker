@@ -849,11 +849,17 @@ class DropdownPanel:
         )[scroller]
 
 
-# One item look: dark text on white (light), light text on frosted (dark).
+#: A menu item's and a picker row's shape.
+DROPDOWN_ITEM_SHAPE = "px-4 py-2 rounded-base text-body cursor-pointer"
+#: The one active look. Tailwind reads only literal
+#: classes, so each state spells it out; a test pins them.
+DROPDOWN_ITEM_ACTIVE = "bg-neutral-tertiary-medium text-heading"
+_ITEM_ACTIVE_ON_HOVER = "hover:bg-neutral-tertiary-medium hover:text-heading"
+_ITEM_ACTIVE_ON_FOCUS = "focus:bg-neutral-tertiary-medium focus:text-heading"
+
 DROPDOWN_ITEM_CLASS = (
-    "block w-full text-left px-4 py-2 cursor-pointer no-underline rounded-base "
-    "hover:bg-neutral-tertiary-medium text-body hover:text-heading "
-    "focus:bg-neutral-tertiary-medium dark:focus:text-white "
+    f"block w-full text-left no-underline {DROPDOWN_ITEM_SHAPE} "
+    f"{_ITEM_ACTIVE_ON_HOVER} {_ITEM_ACTIVE_ON_FOCUS} "
     "focus:outline-hidden aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
 )
 

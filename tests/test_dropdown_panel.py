@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from common.components import (
+    DROPDOWN_ITEM_ACTIVE,
     Column,
     ColumnPicker,
     ComboboxDropdown,
@@ -154,3 +155,14 @@ def test_content_attributes_and_class_reach_the_scroller():
     assert "w-44" in panel["attributes"]["class"].split()
     assert scroller["attributes"]["role"] == "listbox"
     assert "max-h-40" in scroller["attributes"]["class"].split()
+
+
+def test_every_state_spells_the_one_active_look():
+    from common.components import custom_elements
+
+    for variant, spelled in [
+        ("hover", custom_elements._ITEM_ACTIVE_ON_HOVER),
+        ("focus", custom_elements._ITEM_ACTIVE_ON_FOCUS),
+    ]:
+        expected = [f"{variant}:{token}" for token in DROPDOWN_ITEM_ACTIVE.split()]
+        assert spelled.split() == expected

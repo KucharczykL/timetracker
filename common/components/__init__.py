@@ -29,6 +29,8 @@ from common.components.core import (
     render,
 )
 from common.components.custom_elements import (
+    DROPDOWN_ITEM_ACTIVE,
+    DROPDOWN_ITEM_SHAPE,
     BottomSheet,
     ButtonDropdown,
     Dropdown,
@@ -285,6 +287,8 @@ __all__ = [
     "DIALOG_TITLE_CLASS",
     "DISABLED_CONTROL_CLASS",
     "DISABLED_WITHIN_CLASS",
+    "DROPDOWN_ITEM_ACTIVE",
+    "DROPDOWN_ITEM_SHAPE",
     "FORM_LABEL_CLASS",
     "FORM_MAX_WIDTH_CLASS",
     "H1",
