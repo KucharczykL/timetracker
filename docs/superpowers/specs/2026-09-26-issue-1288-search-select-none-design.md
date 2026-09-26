@@ -19,23 +19,23 @@ row, so their callers add one.
 | none | `none_label` | `name=""`, `data-search-select-none` | hidden |
 | nothing picked | typed text | absent | shown while text is present |
 
-- A value of `None` renders none. A value that the resolver cannot find also
-  renders none. The box shows what a save posts.
+- A value of `None` renders none. So does a value that the resolver cannot
+  find.
 - A click or Enter on the row holds none.
 - × holds none, from a value and from typed text.
 - The first keystroke drops a value or none to nothing picked.
 - A change to a field that the picker depends on drops a value to none. A held
   none stays.
 - `setOptions` drops a value that it no longer offers to none.
-- An autofocused picker that holds none opens and prefetches, as an empty one
-  does.
+- An autofocused picker that holds none opens, as an empty one does.
 
 ## The row
 
 The row uses its own hook, `data-search-select-none-option`, so filter mode
 does not change. The row is first. The text filter and a server answer do not
 remove it. A query highlights the row only when the query equals its label.
-The label counts as a loaded label, so it offers no Create row. The row has no
+Its label offers
+no Create row. The row has no
 `id`, so a cloned prototype keeps it.
 
 ## The wire
