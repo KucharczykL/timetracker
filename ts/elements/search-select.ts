@@ -43,7 +43,7 @@ const NAVIGABLE_ROWS =
   "[data-search-select-none-option], [data-search-select-option], " +
   "[data-search-select-modifier-option], [data-search-select-create]";
 
-//: Every hidden input that carries a value; a held none carries none.
+//: Hidden inputs that carry a value.
 const HELD_VALUE_INPUTS = 'input[type="hidden"]:not([data-search-select-none])';
 
 // The contract for the "search-select:change" CustomEvent this widget emits.
@@ -58,7 +58,7 @@ export interface SearchSelectChangeDetail {
   name: string;
   values: string[];
   last: SearchSelectOption | null;
-  //: A committed none, apart from a value dropped mid-edit.
+  //: A committed none, not a mid-edit drop.
   none: boolean;
 }
 
@@ -231,7 +231,7 @@ const initWidget = (containerElement: Element) => {
   //: A required field whose list usually holds one row commits it, so
   //: a submit with no pick still posts one.
   const commitSoleOption = props.commitSoleOption;
-  //: The pinned row's label; blank offers no none.
+  //: Blank offers no none row.
   const noneLabel = multi ? "" : props.noneLabel;
   //: The hosting form renders a token, so a consumer states no prop.
   //: The prop is for a create row that stands outside a form.
@@ -308,7 +308,7 @@ const initWidget = (containerElement: Element) => {
   //: Counts × presses; a create outlived by one selects nothing.
   let clears = 0;
 
-  //: A held none's label fills the box; it is nothing to clear.
+  //: A held none has nothing to clear.
   const holdsNone = (): boolean =>
     pills.querySelector("input[data-search-select-none]") !== null &&
     !container._searchSelectDirty;
@@ -451,7 +451,7 @@ const initWidget = (containerElement: Element) => {
 
   const autoHighlight = (query: string) => {
     const lower = query.toLowerCase();
-    //: A query names a value; the none row answers only its own label.
+    //: A query highlights none only verbatim.
     const visible = getVisibleOptions().filter(
       row =>
         !lower ||
@@ -768,7 +768,7 @@ const initWidget = (containerElement: Element) => {
     if (signature === dependencyValues) return;
     dependencyValues = signature;
     soleDeclined = false;
-    //: None names no parent, so it outlives the change.
+    //: None belongs to no parent.
     if (noneLabel) {
       if (!holdsNone()) holdNone();
     } else {
@@ -1231,7 +1231,7 @@ const initWidget = (containerElement: Element) => {
     syncSelectedStates();
   };
 
-  //: Drop what is held, then hold none: an empty value that still posts.
+  //: Hold none: an empty value that posts.
   const holdNone = () => {
     container._searchSelectClear?.();
     const input = buildHidden("");
@@ -1242,7 +1242,7 @@ const initWidget = (containerElement: Element) => {
     syncUncommitted();
   };
 
-  //: A person's pick of none: hold it and say so.
+  //: A person picks none.
   const pickNone = () => {
     holdNone();
     soleDeclined = false;
@@ -1460,7 +1460,7 @@ const initWidget = (containerElement: Element) => {
     // Only a fresh, empty add form should steal focus and drive the panel open;
     // a pre-committed single-select keeps its label and whatever native focus it
     // got. Snapshot emptiness now — before any focus() runs the flow below.
-    //: A held none is a fresh form's own state, not a pick.
+    //: A held none counts as empty.
     const startedEmpty = !search.value || holdsNone();
     requestAnimationFrame(() => {
       if (!search.isConnected || !startedEmpty) return;

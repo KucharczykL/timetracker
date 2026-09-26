@@ -616,7 +616,7 @@ class SearchSelectProps(TypedDict):
     always_visible: bool
     prefetch: int
     sync_url: bool
-    #: The pinned row that holds none; blank offers none.
+    #: The pinned none row's label.
     none_label: str
 
 

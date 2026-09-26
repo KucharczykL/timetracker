@@ -471,7 +471,7 @@ def SearchSelect(
 
     ``clearable``: a trailing × empties query and value.
     ``clear_description_id``: the ×'s ``aria-describedby`` target.
-    ``none_label``: a pinned row that holds none, apart from nothing picked.
+    ``none_label``: a pinned row holding none.
     """
     if none_label and (multi_select or panel):
         raise ValueError("none_label is single-select and field-hosted only")

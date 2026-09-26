@@ -162,7 +162,7 @@ def _platform_autofill_page(page: Page, live_server, library):
     Game.objects.create(library=library, name="Alpha Game", platform=personal_computer)
     Game.objects.create(library=library, name="Beta Game", platform=switch)
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-    #: Games autofocuses and prefetches; leaving it early would abort that.
+    #: Leaving Games early aborts its prefetch.
     expect(
         page.locator('search-select[name="games"] [data-search-select-option]')
     ).to_have_count(2)

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// A pinned row that holds none, apart from nothing picked.
+// A pinned row that holds none.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import "./search-select.js"; // side effect: customElements.define
 import type { SearchSelectChangeDetail, SearchSelectOption } from "./search-select.js";

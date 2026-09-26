@@ -33,8 +33,7 @@ function applyPricingMode(separate: boolean): void {
 // related_game branch of the change listener below.
 let autofilledRelatedGameValue: string | null = null;
 
-//: Platform follows the Games pick until the person commits one of their own:
-//: a platform, "Unspecified", or ×. A keystroke commits nothing.
+//: Autofill stops at the person's own commit.
 let platformOwnedByPerson = false;
 
 interface SelectedGame {

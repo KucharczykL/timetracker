@@ -1332,7 +1332,7 @@ _STEAM_DECK: SearchSelectOption = {"value": "7", "label": "Steam Deck", "data": 
 
 
 class NoneLabelSearchSelectTest(unittest.TestCase):
-    """A pinned row holds none, apart from nothing picked."""
+    """A pinned row holds none."""
 
     DEVICE = _STEAM_DECK
 
@@ -1392,7 +1392,7 @@ class NoneLabelSearchSelectTest(unittest.TestCase):
 
 
 class NoneLabelWidgetTest(unittest.TestCase):
-    """Optional pickers hold none under their own word."""
+    """Optional pickers hold none."""
 
     def test_each_optional_picker_holds_none(self):
         from games.forms import HistoricalPlaytimeForm, PurchaseForm, SessionForm
