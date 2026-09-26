@@ -1287,23 +1287,32 @@ const initWidget = (containerElement: Element) => {
   // truthful if init ever runs against hydrated markup.
   syncUncommitted();
 
+  // Cancel a pending or in-flight search so a late answer cannot reopen the
+  // panel (via renderRows → showPanel) once focus has left the box.
+  const cancelPendingSearch = () => {
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
+    if (pendingRequest) {
+      pendingRequest.abort();
+      pendingRequest = null;
+    }
+  };
+
   // ── The clear ×: one press empties the query and the value. ──
   if (clearButton) {
     //: A pointer press keeps focus where it was, so a tap opens no keyboard.
     clearButton.addEventListener("mousedown", event => event.preventDefault());
     //: Tab onto the × leaves the box, so the panel closes as on Tab out.
-    clearButton.addEventListener("focus", () => hidePanel());
+    clearButton.addEventListener("focus", () => {
+      cancelPendingSearch();
+      hidePanel();
+    });
     clearButton.addEventListener("click", () => {
       const heldValue = currentValues().length > 0;
       const fromFocus = document.activeElement === clearButton;
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-      }
-      if (pendingRequest) {
-        pendingRequest.abort();
-        pendingRequest = null;
-      }
+      cancelPendingSearch();
       container._searchSelectClear?.();
       soleDeclined = true;
       filterRows("");
@@ -1327,17 +1336,7 @@ const initWidget = (containerElement: Element) => {
   // click, so this only fires on a genuine exit.
   container.addEventListener("focusout", (event) => {
     if (!container.contains(event.relatedTarget as Node)) {
-      // Cancel any pending/in-flight search so a late debounced fetch can't
-      // resolve and reopen the panel (via renderRows → showPanel) over the
-      // next field after the user has already tabbed away (issue #451).
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-      }
-      if (pendingRequest) {
-        pendingRequest.abort();
-        pendingRequest = null;
-      }
+      cancelPendingSearch();
       hidePanel(); // also clears the highlight
       // Both modes keep their box text across tab-out/refocus: single-select
       // commits only on an explicit pick, so blur touches neither value nor text.
