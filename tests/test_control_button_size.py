@@ -1,4 +1,4 @@
-"""The compact size and the ghost tone of ControlButton."""
+"""ControlButton sizes and ghost tones."""
 
 import itertools
 import re
@@ -20,7 +20,7 @@ SIZES = ("control", "compact", "row")
 
 
 def _property(token: str) -> tuple[str, str] | None:
-    """The (state, property) one utility sets, for the ones that collide."""
+    """The (state, property) a utility sets."""
     state, _, utility = token.rpartition(":")
     rules = [
         (r"^bg-", "background"),

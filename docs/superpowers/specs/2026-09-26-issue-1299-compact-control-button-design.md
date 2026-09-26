@@ -1,110 +1,74 @@
-# A compact ControlButton
+# ControlButton sizes
 
-`ControlButton` is the one builder for a button. A glyph button inside another
-control uses it too, at the compact size.
+`ControlButton` is the one builder for a button. A glyph button inside
+another control uses it too, at a small size.
 
-## The size
+## The sizes
 
 `ControlButton` and `control_button_class()` take `size`:
 
-- `"control"`: the default. `min-h-control px-3`, as today.
-- `"compact"`: `size-8 p-0`, a 32px square that holds one glyph, for a
-  field box.
-- `"row"`: `size-6.5 p-0`, a 26px square for a 36px picker row. 32px also
-  fits a row, but it fills the row to 2px of each edge and reads too big.
+| Size | Box | Use |
+|---|---|---|
+| `"control"` | `min-h-control px-3`, 42px | the default |
+| `"compact"` | `size-8 p-0`, 32px square | a glyph in a 42px field box |
+| `"row"` | `size-6.5 p-0`, 26px square | a glyph in a 36px picker row |
 
-Size is its own part of `control_button_class()`. Today `CONTROL_SIZE_CLASS`
-is inside the filled, segmented, outline and ghost strings. It comes out of
-them, and the function adds the string for the size. Each size string is a
-literal, so Tailwind generates it. `plain` stays outside sizing.
+Size is a separate part of `control_button_class()`, not a part of a variant
+string. Each size string is a literal, because Tailwind reads only literal
+class names. `plain` has no size.
 
-A 32px button fits in the 42px field box (`FIELD_CONTAINER_CLASS` and the
-SearchSelect box have no vertical padding problem). A 26px button fits in a
-36px picker row when the caller adds `-my-0.75`: the button then takes 20px
-of the row, one text line, and the row stays 36px. The border does not add
-to a fixed size.
+A row action takes `-my-0.75`. It then uses 20px of the row height, which is
+one text line, and the row stays 36px. A 32px button also fits in a row, but
+it touches the row edges and looks too large.
 
 ## The corners
 
-`SHAPE_CLASSES` does not change: codegen publishes it to TS as
+`SHAPE_CLASSES` does not change. Codegen publishes it to TS as
 `BUTTON_SHAPE_CLASSES`, and the day cells, the search field and `PageTabs`
-read it by shape. `COMPACT_SHAPE_CLASSES` gives the corners of both glyph
-squares for all four shapes: `rounded`, `rounded-s`, `rounded-e`, none. 8px
-is the nearest token to the proportion of 12px on 42px at 26px and at 32px. The component still refuses a caller class that
-states a corner.
+read it by shape. `COMPACT_SHAPE_CLASSES` gives the corners of the two glyph
+squares for each shape: `rounded`, `rounded-s`, `rounded-e`, or none. 8px is
+the nearest token to the 12px-on-42px proportion. The component refuses a
+caller class that states a corner.
 
 ## The ghost tone
 
-The ghost look splits into a still part and a tone. The tone depends on size
-and color, from one table:
+The ghost look has a still part and a tone. `_GHOST_TONE_CLASSES` gives the
+tone for each size and color. Each entry is one full string, thus no two
+classes set one property. A test checks this for all combinations.
 
-- Control, any color but red: today's ghost tone.
-- Compact and row, any color but red: `text-body` at rest, `hover:text-heading` and
-  `hover:bg-neutral-quaternary-medium`. A highlighted picker row is
-  `bg-neutral-tertiary-medium`, so a tertiary hover would not show on it.
-- Red, both sizes: a full tone of its own with `hover:text-fg-danger-strong`,
-  `hover:bg-danger-soft` and a danger hover border.
+- At the control size, the tone does not change.
+- A glyph square rests at `text-body` and hovers
+  `bg-neutral-quaternary-medium`. A highlighted picker row is
+  `bg-neutral-tertiary-medium`, and a hover in that color does not show.
+- A red ghost hovers `bg-danger-soft` with danger text and border, at all
+  sizes.
 
-Each entry is one complete string, so no two classes set one property.
-`games/views/catalog_section.py` already renders a red ghost button; it now
-gets the danger hover, which is intended.
+## The buttons
 
-## The buttons that move
-
-| Button | Now |
+| Button | Look |
 |---|---|
 | SearchSelect clear × | ghost, compact |
-| Filter +/− row actions | ghost, row, `-my-0.75` |
-| Preset remove | ghost red, row, `-my-0.75` |
-| Calendar toggle of the date, date range and date-time fields | ghost, compact |
-| Date-time copy button | ghost, compact |
+| Calendar toggles and the date-time copy button | ghost, compact |
 | Filter builder comparison-row remove | ghost red, compact |
-| Year picker toggle | filled, control; blue when a year is set, gray when not |
+| Filter +/− | ghost, row |
+| Preset remove | ghost red, row |
+| Year picker toggle | filled, control; blue with a year, gray without |
 
-What changes on the page: the +/− glyphs take the body text size; the
-date-time copy arrow takes the body font; the date-time field is 16px wider;
-the gray year toggle takes the filled gray surface; its chevron loses `ms-2`,
-because the button gap is already there.
+These builders keep a raw `Button`, because they are not box buttons:
 
-`_CLEAR_BUTTON_CLASS`, `_ROW_ACTION_*`, `_FIELD_ICON_BUTTON_CLASS` with its
-comment, and the inline toggle classes go.
+- The menu items, the listbox options and the match-mode rows.
+- Glyphs at text size: the popover reveal and trigger, the `TruncatedText`
+  reveal and the `Pill` ×.
+- The filter chips.
+- The temporal field disclosure, which looks like a text link.
+- `AvatarButton`, the 40px account circle.
 
-## The buttons that stay
-
-These keep their own builders:
-
-- The menu item family: `DropdownLinkItem`, `DropdownActionItem`,
-  `DropdownCheckItem`, the `ListboxPanel` option, `_mode_row`.
-- Glyphs sized to text: `_popover_reveal`, the `Popover` trigger, the
-  `TruncatedText` reveal, the `Pill` ×.
-- The filter chip template.
-- The temporal field disclosure, a button that reads as a text link.
-- `AvatarButton`, the account trigger, a 40px circle. It moves out of
-  `AccountMenu` into its own component.
-- TS `createElement("button")`: the toast dismiss and the calendar fallback.
-  The guard does not read TS.
+TS builds two buttons with `createElement`: the toast dismiss and the
+calendar fallback. They are also glyphs at text size.
 
 ## The guard
 
-A test walks the syntax tree of `common/` and `games/`. It refuses a call to
-`Button`, under any imported name, and `Element("button", …)`, outside
-`ControlButton.render` and the builders above.
-
-## Documentation
-
-CLAUDE.md "Buttons are ControlButton" and the `ControlButton` docstring say
-there is no size parameter. Both change. `tests/test_control_height.py`
-requires `min-h-control` from every variant; it now asks it of the control
-size.
-
-## Tests
-
-- Compact renders `size-8` with `rounded`, and no `min-h-control`.
-- `COMPACT_SHAPE_CLASSES` covers every `ButtonShape`; `BUTTON_SHAPE_CLASSES`
-  in TS keeps its keys.
-- A red ghost has the danger tone; a gray one does not; no ghost string sets
-  one property twice.
-- Each moved button renders the `ControlButton` classes.
-- The guard.
-- e2e: a picker row with actions is 36px high and its actions 26px; the
-  clear × and the field toggles are 32px; the date-time field does not overflow its column.
+`tests/test_button_guard.py` walks the syntax tree of `common/` and `games/`.
+It refuses a `Button` call, under any imported name, and
+`Element("button", …)` outside `ControlButton.render` and the builders above.
+It also refuses an allow list entry that names no builder.

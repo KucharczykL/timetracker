@@ -1,4 +1,4 @@
-"""A button is a ControlButton, or it is named here."""
+"""Every button is a ControlButton, or allowed."""
 
 import ast
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 ROOTS = ("common", "games")
 
-#: Builders that are not box buttons: items, text glyphs, chips.
+#: Not box buttons: items, glyphs, chips.
 ALLOWED = {
     ("common/components/primitives.py", "ControlButton.render"),
     ("common/components/primitives.py", "_popover_reveal"),
@@ -25,7 +25,7 @@ ALLOWED = {
 
 
 def _button_names(tree: ast.Module) -> set[str]:
-    """Every local name this module binds to Button."""
+    """Local names bound to Button."""
     names = {"Button"}
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(

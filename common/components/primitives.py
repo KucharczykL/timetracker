@@ -179,8 +179,7 @@ type PopupKind = Literal["menu", "dialog"]
 # of a row, and "square" the absence of an end — a member with a neighbour on
 # both sides.
 type ButtonShape = Literal["full", "start", "end", "square"]
-#: Glyph squares inside a control: "compact" 32px
-#: for a field box, "row" 26px for a 36px row.
+#: compact: 32px, in a field; row: 26px.
 type ButtonSize = Literal["control", "compact", "row"]
 type BadgeSize = Literal["sm", "base", "lg"]
 type BadgeTone = Literal["brand", "neutral", "success", "warning", "danger"]
@@ -914,9 +913,7 @@ _GHOST_VARIANT_CLASS = (
     "gap-2 bg-transparent border border-transparent focus:outline-hidden "
     "focus:ring-2 focus:ring-fg-brand whitespace-nowrap"
 )
-# The ghost tone, one whole string per entry. Every
-# glyph square reads "compact"; its hover passes a
-# highlighted picker row.
+# Whole strings; glyph squares share one tone.
 _GHOST_TONE_CLASSES: dict[tuple[ButtonSize, bool], str] = {
     ("control", False): (
         "text-heading hover:bg-neutral-tertiary-medium hover:border-default-strong"

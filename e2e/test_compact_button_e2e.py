@@ -1,4 +1,4 @@
-"""Compact buttons fit their control without growing it."""
+"""Compact buttons fit without growing their control."""
 
 import pytest
 from django.http import HttpResponse
