@@ -3,7 +3,8 @@
 Every picker looks and behaves like one control. `SearchSelect`,
 `FilterSelect` and `PresetSelect` differ only in content: filter rows carry
 + and −, preset rows carry a remove button, filter pills show ✓ or ✗. A
-picker's list looks like the app's dropdown menus.
+picker's list looks like the app's dropdown menus, and both share one panel
+and one hover model.
 
 ## Decisions
 
@@ -16,25 +17,39 @@ picker's list looks like the app's dropdown menus.
    row is lit. No row has a `hover:` style. The active row takes the menu
    item's active look: `bg-neutral-tertiary-medium` and heading text.
 
-## The list
+## The dropdown panel
 
-Every layout wraps the listbox in one element, `[data-search-select-surface]`.
-The wrapper carries the visibility (`[data-menu]` and `hidden` when a
-`<drop-down>` hosts it, the `.hidden` class otherwise). The element toggles
-the wrapper, never the listbox.
+Every dropdown panel in the app is one builder, `DropdownPanel`. The panel is
+the surface: `OVERLAY_SURFACE_CLASS`, `p-2`, border, `rounded-base`,
+`shadow-sm`, a stacking context for its `before:` blur, and a flex column. It
+does not scroll. Its one child, `[data-menu-scroll]`, is `min-h-0
+overflow-y-auto` and holds the content.
 
-- **Standalone and drop-down:** the wrapper is the menu surface:
-  `OVERLAY_SURFACE_CLASS`, `p-2`, border, `rounded-base`, `shadow-sm`, and a
-  stacking context for its `before:` blur. It does not scroll, so the blur
-  covers the whole list. It is a flex column. attachMenu writes the viewport
-  room to the wrapper's `max-height`; the listbox keeps its `items_visible`
-  cap, `min-h-0` and `overflow-y-auto`. The list therefore shows the smaller
-  of the two.
-- **Dialog:** the dialog already is the menu surface, so the wrapper is plain
-  and always visible.
+Today the panel scrolls itself, and the blur layer is an absolute `::before`
+inside the scrolled content. A dark panel therefore loses its blur below its
+first screen. The blur cannot move onto the panel itself: a `backdrop-filter`
+makes the panel the containing block of its `fixed` submenus.
 
-The listbox takes `scroll-py-2`, so a scrolled-to row keeps a gap from the
-edge. The group header and the no-results line take the row padding.
+attachMenu already writes the viewport room to the panel's `max-height`. The
+scroller shrinks to fit, so no positioning code changes. A caller that caps its
+content (a picker's `items_visible`) puts the cap on the scroller, and the list
+shows the smaller of the two.
+
+`DropdownMenuPanel`, `ListboxPanel`, `ComboboxDropdown`, the column picker, the
+quick filter's overflow panel and the selection bar's overflow panel use the
+builder. A hook that names where items go (`data-quick-overflow-items`,
+`data-selection-overflow-items`) sits on the scroller.
+
+## The picker list
+
+A picker's list in the standalone and drop-down layouts is a `DropdownPanel`
+whose scroller is the listbox. The standalone panel sits below the box
+(`top-full`); the drop-down panel carries `[data-menu]` and `hidden`. In the
+dialog layout the dialog already is the panel, so the listbox sits in the
+dialog's scroller. The element reads and toggles the panel, never the listbox.
+
+The listbox takes `scroll-py-2`. The group header and the no-results line take
+the row padding.
 
 ## The row
 
@@ -68,13 +83,18 @@ the row stays 2.25rem high; `rounded-base`; body text; on hover, heading text
 and `bg-neutral-quaternary-medium`, which differs from the resting and the
 active row in both themes. Remove adds a red hover.
 
-## Hover
+## Pointer follow
 
-The element listens for `pointermove` on the listbox, mouse pointers only.
-A move whose position differs from the last one highlights the row under the
-pointer, without scrolling. A keyboard step or a new set of rows records the
-pointer position, so a resting pointer never takes the highlight back and a
-list never scrolls under it.
+One helper, `followPointer(container, itemSelector, activate)` in
+`ts/pointer-follow.ts`, gives menus and pickers the same hover model. It acts
+on `pointermove` from a mouse, and only when the position changed since the
+last move. Scrolling under a still cursor, or a keyboard step, moves no item.
+`activate` never scrolls: a menu focuses with `preventScroll`, a picker
+highlights without `scrollIntoView`. Keyboard steps still scroll.
+
+Today a menu activates on `pointerover` through `focus()`, which scrolls a
+partly hidden item into view and lets the list creep under a still cursor.
+The picker would inherit the same fault.
 
 ## The pill
 
@@ -88,11 +108,12 @@ The label is always a slot that truncates.
 
 - **pytest.** One row look across the three widgets; `RowKind` stamps the
   right hook; actions follow the label; `Pill` with each kind; pills inside
-  the box in both FilterSelect layouts; the surface wrapper in each layout.
+  the box in both FilterSelect layouts; each panel site is a `DropdownPanel`.
   `test_panel_pills_row_hides_when_empty` goes.
-- **vitest.** A mouse move highlights the row under it; a touch move does
-  not; ArrowDown under a resting pointer keeps the keyboard row; a hover
-  never scrolls.
+- **vitest.** `followPointer`: a mouse move activates the item under it; a
+  touch move and a move at the same position do not. A picker hover never
+  scrolls; ArrowDown under a resting pointer keeps the keyboard row. A menu
+  hover focuses with `preventScroll`.
 - **e2e.** Screenshots of a form picker, a facet, the preset picker and the
-  time zone picker, both themes; a long list scrolled in dark mode keeps its
-  blur.
+  time zone picker, both themes. A long picker list and a long menu, scrolled
+  in dark mode, keep their blur. Every existing dropdown e2e passes.
