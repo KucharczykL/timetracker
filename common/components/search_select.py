@@ -174,11 +174,12 @@ _UNCOMMITTED_SEARCH_CLASS = (
 # (sizing stays Icon()'s default ICON_SIZE_CLASS).
 _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]:block"
 # The trailing clear ×. ml-auto pins it to the row's end, where pills wrapping
-# before the box would otherwise leave it on a line alone. The box is its
-# peer, so a disabled box hides it without script.
+# before the box would otherwise leave it on a line alone; size-6 is the 24px
+# touch target a glyph alone falls short of. The box is its peer, so a
+# disabled box hides it without script.
 _CLEAR_BUTTON_CLASS = (
-    "ml-auto shrink-0 px-1 text-body hover:text-heading font-bold cursor-pointer "
-    "peer-disabled:hidden"
+    "ml-auto shrink-0 size-6 inline-flex items-center justify-center "
+    "text-body hover:text-heading font-bold cursor-pointer peer-disabled:hidden"
 )
 # top-full anchors the panel to the container's bottom edge: as an absolutely
 # positioned child of the flex field, its static position would otherwise be
