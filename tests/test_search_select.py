@@ -1325,3 +1325,63 @@ def test_filter_pills_keep_their_hooks():
     )
     assert 'data-search-select-type="include"' in html
     assert 'data-search-select-modifier="any"' in html
+
+
+class NoneLabelSearchSelectTest(unittest.TestCase):
+    """A pinned row holds none, apart from nothing picked."""
+
+    DEVICE = {"value": "7", "label": "Steam Deck", "data": {}}
+
+    @staticmethod
+    def _render(**kwargs) -> str:
+        return str(SearchSelect(name="device", none_label="No device", **kwargs))
+
+    @staticmethod
+    def _first_row(html: str) -> str:
+        options = html[html.index("data-search-select-options") :]
+        return _tag_around(options, 'role="option"')
+
+    def test_none_row_is_the_first_row(self):
+        for kwargs in ({}, {"search_url": "/api/devices/search"}):
+            with self.subTest(**kwargs):
+                row = self._first_row(self._render(options=[self.DEVICE], **kwargs))
+                self.assertIn("data-search-select-none-option", row)
+                self.assertIn('data-label="No device"', row)
+                self.assertNotIn(" id=", row)
+                self.assertNotIn("data-search-select-modifier-option", row)
+
+    def test_nothing_resolved_holds_none(self):
+        html = self._render()
+        hidden = _tag_around(html, "data-search-select-none")
+        self.assertIn('type="hidden"', hidden)
+        self.assertIn('name="device"', hidden)
+        self.assertIn('value=""', hidden)
+        self.assertIn(
+            'value="No device"', _tag_around(html, "data-search-select-search")
+        )
+
+    def test_a_held_value_is_not_none(self):
+        html = self._render(selected=[self.DEVICE])
+        self.assertNotIn("data-search-select-none=", html)
+        self.assertNotIn("data-search-select-none ", html)
+        self.assertIn(
+            'value="Steam Deck"', _tag_around(html, "data-search-select-search")
+        )
+        self.assertIn("data-search-select-none-option", html)
+
+    def test_the_element_states_the_label(self):
+        self.assertTrue(
+            _tag_around(self._render(), 'none-label="No device"').startswith(
+                "<search-select"
+            )
+        )
+
+    def test_without_it_nothing_changes(self):
+        html = str(SearchSelect(name="device"))
+        self.assertNotIn("none-label", html)
+        self.assertNotIn("data-search-select-none", html)
+
+    def test_multi_and_panel_refuse_it(self):
+        for kwargs in ({"multi_select": True}, {"panel": True}):
+            with self.subTest(**kwargs), self.assertRaises(ValueError):
+                self._render(**kwargs)
