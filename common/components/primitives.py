@@ -179,6 +179,8 @@ type PopupKind = Literal["menu", "dialog"]
 # of a row, and "square" the absence of an end — a member with a neighbour on
 # both sides.
 type ButtonShape = Literal["full", "start", "end", "square"]
+#: "compact" is a 32px glyph square inside a control.
+type ButtonSize = Literal["control", "compact"]
 type BadgeSize = Literal["sm", "base", "lg"]
 type BadgeTone = Literal["brand", "neutral", "success", "warning", "danger"]
 
@@ -799,6 +801,13 @@ SHAPE_CLASSES: dict[ButtonShape, str] = {
     "end": "rounded-e-base",
     "square": "",
 }
+#: The control radius, scaled to 32px.
+COMPACT_SHAPE_CLASSES: dict[ButtonShape, str] = {
+    "full": "rounded",
+    "start": "rounded-s",
+    "end": "rounded-e",
+    "square": "",
+}
 
 # Shared by EVERY button-shaped variant. Height is the canonical control
 # height (min-h-control = 42px, from --height-control), floored not fixed so a
@@ -808,13 +817,18 @@ SHAPE_CLASSES: dict[ButtonShape, str] = {
 # row (the container-query step and its cross-row inconsistency are gone).
 CONTROL_SIZE_CLASS = "min-h-control px-3"
 
-_FILLED_VARIANT_CLASS = (
-    f"gap-2 leading-5 focus:outline-hidden focus:ring-4 {CONTROL_SIZE_CLASS}"
-)
+#: A glyph square; it sets no padding.
+COMPACT_SIZE_CLASS = "size-8 p-0 shrink-0"
+_SIZE_CLASSES: dict[ButtonSize, str] = {
+    "control": CONTROL_SIZE_CLASS,
+    "compact": COMPACT_SIZE_CLASS,
+}
+
+_FILLED_VARIANT_CLASS = "gap-2 leading-5 focus:outline-hidden focus:ring-4"
 
 # gap-2 like every other variant: a mark beside a chevron reads as one glyph
 # without it. Existing members carry a bare label, which hid the omission.
-_SEGMENTED_VARIANT_CLASS = f"gap-2 focus:z-10 {CONTROL_SIZE_CLASS}"
+_SEGMENTED_VARIANT_CLASS = "gap-2 focus:z-10"
 
 # Status-token notes shared by both tables:
 # - danger/success -subtle rings shade-match brand-medium (x-200 light /
@@ -882,7 +896,7 @@ _SEGMENTED_COLOR_CLASSES: dict[ButtonColor, str] = {
 # md:p-0) contradicts the base and the sizing scale, so it alone carries its
 # complete look and skips both.
 _OUTLINE_VARIANT_CLASS = (
-    f"{CONTROL_SIZE_CLASS} gap-2 text-heading bg-neutral-primary-medium border "
+    "gap-2 text-heading bg-neutral-primary-medium border "
     "border-default-medium hover:bg-neutral-tertiary-medium "
     "hover:border-default-strong focus:outline-hidden focus:ring-2 "
     "focus:ring-fg-brand whitespace-nowrap"
@@ -894,11 +908,28 @@ _OUTLINE_VARIANT_CLASS = (
 # compact triggers that would read as clutter in a row of many (the quick
 # filter bar's facet dropdowns).
 _GHOST_VARIANT_CLASS = (
-    f"{CONTROL_SIZE_CLASS} gap-2 bg-transparent border "
-    "border-transparent text-heading hover:bg-neutral-tertiary-medium "
-    "hover:border-default-strong focus:outline-hidden focus:ring-2 "
-    "focus:ring-fg-brand whitespace-nowrap"
+    "gap-2 bg-transparent border border-transparent focus:outline-hidden "
+    "focus:ring-2 focus:ring-fg-brand whitespace-nowrap"
 )
+# The ghost tone, one whole string per entry. A compact
+# hover goes one step past a highlighted picker row.
+_GHOST_TONE_CLASSES: dict[tuple[ButtonSize, bool], str] = {
+    ("control", False): (
+        "text-heading hover:bg-neutral-tertiary-medium hover:border-default-strong"
+    ),
+    ("compact", False): (
+        "text-body hover:text-heading hover:bg-neutral-quaternary-medium "
+        "hover:border-default-strong"
+    ),
+    ("control", True): (
+        "text-heading hover:text-fg-danger-strong hover:bg-danger-soft "
+        "hover:border-danger-subtle"
+    ),
+    ("compact", True): (
+        "text-body hover:text-fg-danger-strong hover:bg-danger-soft "
+        "hover:border-danger-subtle"
+    ),
+}
 
 _PLAIN_VARIANT_CLASS = (
     "flex items-center justify-between w-full py-2 px-3 text-gray-900 "
@@ -915,6 +946,7 @@ def control_button_class(
     variant: ButtonVariant = "filled",
     align: ButtonAlign = "center",
     shape: ButtonShape = "full",
+    size: ButtonSize = "control",
 ) -> str:
     """The exact class string :class:`ControlButton` renders for a combination.
 
@@ -933,17 +965,18 @@ def control_button_class(
     string instead stands outside that refusal — which is the route the
     calendar drifted through.
     """
-    shape_class = SHAPE_CLASSES[shape]
+    corners = SHAPE_CLASSES if size == "control" else COMPACT_SHAPE_CLASSES
+    shape_class = corners[shape]
     if variant == "plain":
         # The navbar nav-link owns its whole layout (flex justify-between,
         # md:p-0) and sits outside both the base and the sizing contract, so
         # neither the base nor alignment applies to it.
         return " ".join(part for part in (_PLAIN_VARIANT_CLASS, shape_class) if part)
-    parts = [_CONTROL_BASE_CLASS, _ALIGN_CLASSES[align]]
+    parts = [_CONTROL_BASE_CLASS, _ALIGN_CLASSES[align], _SIZE_CLASSES[size]]
     if variant == "outline":
         parts.append(_OUTLINE_VARIANT_CLASS)
     elif variant == "ghost":
-        parts.append(_GHOST_VARIANT_CLASS)
+        parts += [_GHOST_VARIANT_CLASS, _GHOST_TONE_CLASSES[(size, color == "red")]]
     else:
         if variant == "filled":
             parts += [_FILLED_VARIANT_CLASS, _FILLED_COLOR_CLASSES[color]]
@@ -1001,11 +1034,12 @@ class ControlButton(BaseComponent):
       ``action`` defaults to ``href``;
     - otherwise → a ``<button>`` with ``type`` (default ``"button"``).
 
-    Sizing contract: one size everywhere. Every button-shaped variant carries
+    Sizing contract: ``size="control"`` (the default) carries
     ``CONTROL_SIZE_CLASS``, whose ``min-h-control`` is 42px floored, so a
-    button is the same height in every row. There is no size parameter and no
-    breakpoint or container step: height stopped depending on font, padding
-    and ancestor alike, which is what made it differ across rows.
+    button is the same height in every row, with no breakpoint or container
+    step. ``size="compact"`` is a 32px square for one glyph inside another
+    control (a field box, a picker row); its corners scale with it. There is
+    no third size.
     ``variant="segmented"`` is the ButtonGroup-member look (white background,
     hover hue).
 
@@ -1014,6 +1048,7 @@ class ControlButton(BaseComponent):
     selectors);
     ``variant="ghost"`` is the transparent-until-hover toggle (quick-facet
     dropdown triggers) — outline's look on hover, invisible chrome at rest;
+    ``color="red"`` gives it a danger hover;
     ``variant="plain"`` is the borderless navbar nav-link trigger, the one
     variant outside the sizing contract (its navbar layout is its own).
 
@@ -1043,6 +1078,7 @@ class ControlButton(BaseComponent):
         variant: ButtonVariant = "filled",
         align: ButtonAlign = "center",
         shape: ButtonShape = "full",
+        size: ButtonSize = "control",
         href: str = "",
         method: str = "",
         action: str = "",
@@ -1066,6 +1102,7 @@ class ControlButton(BaseComponent):
         self._variant = variant
         self._align = align
         self._shape = shape
+        self._size = size
         self._href = href
         self._method = method
         self._action = action
@@ -1098,6 +1135,7 @@ class ControlButton(BaseComponent):
                     variant=self._variant,
                     align=self._align,
                     shape=self._shape,
+                    size=self._size,
                 ),
             ),
             *self._caller_attributes,

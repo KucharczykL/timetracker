@@ -115,6 +115,8 @@ from common.components.library_kit import (
 )
 from common.components.navigation import AccountMenu
 from common.components.primitives import (
+    COMPACT_SHAPE_CLASSES,
+    COMPACT_SIZE_CLASS,
     CONTENT_MAX_WIDTH_CLASS,
     CONTROL_SIZE_CLASS,
     DIALOG_TITLE_CLASS,
@@ -146,6 +148,7 @@ from common.components.primitives import (
     ButtonGroup,
     ButtonGroupMember,
     ButtonShape,
+    ButtonSize,
     ButtonVariant,
     Caption,
     Cell,
@@ -280,6 +283,8 @@ from common.utils import Truncation, truncate, truncate_info
 __all__ = [
     "CHOICE_CARD_MARK_ATTRIBUTE",
     "COLUMN_PICKER_LABEL",
+    "COMPACT_SHAPE_CLASSES",
+    "COMPACT_SIZE_CLASS",
     "CONTENT_MAX_WIDTH_CLASS",
     "CONTROL_SIZE_CLASS",
     "DEFAULT_MATCH_MODE",
@@ -326,6 +331,7 @@ __all__ = [
     "ButtonGroup",
     "ButtonGroupMember",
     "ButtonShape",
+    "ButtonSize",
     "ButtonVariant",
     "Caption",
     "Cell",

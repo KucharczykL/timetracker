@@ -59,6 +59,7 @@ def test_control_height_is_container_independent():
 
 
 def test_button_variants_emit_the_height_token():
+    """At the control size; compact sits inside a control."""
     for variant in ("filled", "segmented", "outline", "ghost"):
         assert "min-h-control" in render(ControlButton(variant=variant)["x"]), variant
 

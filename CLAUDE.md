@@ -1174,10 +1174,14 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `gray` (secondary), `green` (positive); variants: `filled` (default),
   `segmented` (ButtonGroup members), plus colorless single-look toggles that ignore
   `color` — `outline` (bordered dropdown toggle), `ghost` (transparent until hover;
-  quick-facet triggers), `plain` (navbar nav-link). No size parameter and no
-  `icon=` flag: one size everywhere (`min-h-control`, 42px floored), the same in
-  every row and at every width; icon+text layout
-  (`inline-flex items-center gap-2`) baked in. Never wrap button in `A(href=…)` —
+  quick-facet triggers; `color="red"` gives it a danger hover), `plain` (navbar
+  nav-link). Two sizes and no `icon=` flag: `size="control"` (default,
+  `min-h-control`, 42px floored, the same in every row and at every width) and
+  `size="compact"`, a 32px glyph square for a button inside another control —
+  a field box, or a picker row with `-my-1.5`; corners scale with the size.
+  Icon+text layout (`inline-flex items-center gap-2`) baked in. A raw `Button`
+  outside `ControlButton` and the allow list in `tests/test_button_guard.py`
+  fails that test. Never wrap button in `A(href=…)` —
   pass `href=` to `ControlButton`; `method="post"` renders no-JS `<form>` submit.
 - **Every dropdown panel is `DropdownPanel`** (`custom_elements.py`): a still
   overlay surface around one `[data-menu-scroll]` scroller, so the dark-mode
