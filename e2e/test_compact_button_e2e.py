@@ -4,7 +4,7 @@ import pytest
 from django.http import HttpResponse
 from django.test import override_settings
 from django.urls import path, reverse
-from playwright.sync_api import Page
+from playwright.sync_api import FloatRect, Page
 
 from common.components import ComboboxDropdown, FilterSelect, SearchSelect
 
@@ -36,8 +36,10 @@ def harness_view(request):
 urlpatterns = [path("compact/", harness_view)]
 
 
-def _box(page: Page, selector: str) -> dict:
-    return page.locator(selector).first.bounding_box()
+def _box(page: Page, selector: str) -> FloatRect:
+    box = page.locator(selector).first.bounding_box()
+    assert box is not None, selector
+    return box
 
 
 @pytest.mark.django_db
@@ -73,6 +75,7 @@ def test_date_time_buttons_fit_the_field_at_phone_width(
     assert buttons.count() >= 2
     for index in range(buttons.count()):
         box = buttons.nth(index).bounding_box()
+        assert box is not None
         assert box["height"] == 32 and box["width"] == 32
     overflowing = page.evaluate(
         """() => [...document.querySelectorAll('[data-date-picker-calendar-toggle]')]
