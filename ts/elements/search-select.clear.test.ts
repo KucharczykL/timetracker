@@ -74,7 +74,7 @@ function mount(
     <div data-search-select-pills>${hidden}</div>
     <input data-search-select-search value="${boxText}" />
     ${button}
-    <div data-search-select-options class="hidden">
+    <div data-search-select-options hidden>
       ${rows}
       <div data-search-select-no-results class="hidden">No results</div>
       ${createRow ? '<div data-search-select-create hidden><span data-label></span></div>' : ""}

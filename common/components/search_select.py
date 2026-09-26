@@ -159,20 +159,10 @@ _CLEAR_BUTTON_CLASS = (
     "rounded-base text-body hover:text-heading hover:bg-neutral-tertiary-medium "
     "cursor-pointer peer-disabled:hidden"
 )
-# top-full hangs the panel below the box.
-_OPTIONS_CLASS = (
-    "absolute z-10 top-full left-0 right-0 mt-1 overflow-y-auto "
-    "border border-default-medium rounded-base bg-neutral-secondary-medium shadow-lg"
-)
-# Panel class when the widget is hosted in <drop-down behavior="inline-combobox">
-# (issue #348): attachMenu pins it position:fixed and writes top/left/width, so it
-# drops the self-positioning (absolute top-full left-0 right-0 mt-1) the standalone
-# panel uses and only keeps the surface look. z-20 matches the other drop-down
-# menus (the standalone panel is z-10). matchToggleWidth gives it the field width.
-_INLINE_OPTIONS_CLASS = (
-    "z-20 overflow-y-auto "
-    "border border-default-medium rounded-base bg-neutral-secondary-medium shadow-lg"
-)
+#: The standalone panel hangs below the box.
+_STANDALONE_PANEL_CLASS = "top-full left-0 right-0 mt-1"
+#: The dialog's listbox sits in the dialog's scroller.
+_DIALOG_LISTBOX_CLASS = "mt-2 overflow-y-auto scroll-py-2"
 #: Every picker row wears the menu item's look.
 #: Tailwind reads literals, so the active look is spelled.
 _ROW_CLASS = (
@@ -326,14 +316,10 @@ class _ComboboxLayout(NamedTuple):
     """Where a combobox lives, declared once."""
 
     container_class: str
-    options_class: str
+    #: None: the hosting dialog is the panel.
+    panel_class: str | None
     #: The <drop-down> owns the list's visibility.
     menu_target: bool
-    pills_in_box: bool
-
-    @property
-    def pills_class(self) -> str:
-        return _PILLS_CLASS if self.pills_in_box else _PANEL_PILLS_CLASS
 
 
 def _combobox_children(
@@ -362,7 +348,7 @@ def _combobox_children(
     init (see module docstring); the JS also keeps ``aria-expanded`` in sync
     with the panel's visibility.
 
-    ``layout`` places the list, its rows and the pills.
+    ``layout`` places the list; pills always sit in the box.
     ``box_class`` styles the field box.
     ``clear_button`` and ``marker`` follow the input inside it.
     """
@@ -380,42 +366,44 @@ def _combobox_children(
         role="presentation",
         class_=_NO_RESULTS_CLASS,
     )[no_results_text]
-    # menu_target: attachMenu owns visibility via the `hidden` attribute, so never
-    # add the `.hidden` class. Otherwise the class is the visibility mechanism.
-    if layout.menu_target or always_visible:
-        options_class = layout.options_class
-    else:
-        options_class = f"{layout.options_class} hidden"
     panel_children = [*options_children, no_results]
     if create_row:
         panel_children.append(create_row)
-    options_panel = Div(
-        # The [data-menu] hook + initial hidden state when hosted in a <drop-down>.
-        [("data-menu", ""), ("hidden", "")] if layout.menu_target else [],
-        data_search_select_options="",
-        role="listbox",
-        aria_multiselectable="true" if multi_select else None,
-        # Keep the scroller out of the sequential tab order. Chrome makes any
-        # overflowing scroll container keyboard-focusable by default, which
-        # would steal focus from the search input on Tab (issue #119).
-        tabindex="-1",
-        style=f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem",
-        class_=options_class,
-    )[*panel_children]
-
-    pills = Div(data_search_select_pills="", class_=layout.pills_class)[*pill_nodes]
+    listbox_attributes: list[HTMLAttribute] = [
+        ("data-search-select-options", ""),
+        ("role", "listbox"),
+        # Chrome makes an overflowing scroller a Tab stop.
+        ("tabindex", "-1"),
+        ("style", f"max-height: {items_visible * _ROW_HEIGHT_REM:.2f}rem"),
+    ]
+    if multi_select:
+        listbox_attributes.append(("aria-multiselectable", "true"))
+    options_panel: Node
+    if layout.panel_class is None:
+        options_panel = Div(listbox_attributes, class_=_DIALOG_LISTBOX_CLASS)[
+            *panel_children
+        ]
+    else:
+        panel_attributes: list[HTMLAttribute] = [("data-search-select-panel", "")]
+        if layout.menu_target:
+            panel_attributes.append(("data-menu", ""))
+        if layout.menu_target or not always_visible:
+            panel_attributes.append(("hidden", ""))
+        options_panel = DropdownPanel(
+            panel_attributes,
+            width="w-full",
+            class_=layout.panel_class,
+            content_attributes=listbox_attributes,
+            content_class="scroll-py-2",
+        )[panel_children]
+    pills = Div(data_search_select_pills="", class_=_PILLS_CLASS)[*pill_nodes]
     box = Div(data_search_select_box="", class_=box_class)[
-        *([pills] if layout.pills_in_box else []),
+        pills,
         search,
         *([clear_button] if clear_button else []),
         *(marker or []),
     ]
-    return [
-        *([] if layout.pills_in_box else [pills]),
-        box,
-        options_panel,
-        *(templates or []),
-    ]
+    return [box, options_panel, *(templates or [])]
 
 
 def SearchSelect(
@@ -911,31 +899,22 @@ def FilterSelect(
 # ── Panel personality styling ───────────────────────────
 # Dialog-hosted comboboxes: field box above a list.
 _PANEL_CONTAINER_CLASS = "block text-type-body"
-_PANEL_OPTIONS_CLASS = "mt-2 overflow-y-auto"
-# Above the box; shown only holding a pill.
-_PANEL_PILLS_CLASS = "hidden has-[[data-pill]]:flex flex-wrap gap-1 mb-2"
 
 # Absolute below the box; no drop-down.
 _STANDALONE_LAYOUT = _ComboboxLayout(
     container_class=_CONTAINER_CLASS,
-    options_class=_OPTIONS_CLASS,
+    panel_class=_STANDALONE_PANEL_CLASS,
     menu_target=False,
-    pills_in_box=True,
 )
 # Pinned by the hosting drop-down.
 _INLINE_LAYOUT = _ComboboxLayout(
-    container_class=_CONTAINER_CLASS,
-    options_class=_INLINE_OPTIONS_CLASS,
-    menu_target=True,
-    pills_in_box=True,
+    container_class=_CONTAINER_CLASS, panel_class="", menu_target=True
 )
 # Inside a dialog's padded surface.
 _DIALOG_LAYOUT = _ComboboxLayout(
-    container_class=_PANEL_CONTAINER_CLASS,
-    options_class=_PANEL_OPTIONS_CLASS,
-    menu_target=False,
-    pills_in_box=False,
+    container_class=_PANEL_CONTAINER_CLASS, panel_class=None, menu_target=False
 )
+
 # Fetch-on-open window. A preset collection is per-user and small; one fetch
 # returns it all, and the type-to-filter narrows client-side.
 _PRESET_PREFETCH = 100

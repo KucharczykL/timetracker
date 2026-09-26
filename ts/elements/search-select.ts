@@ -238,10 +238,8 @@ const initWidget = (containerElement: Element) => {
   // Issue #348: form comboboxes and filter-builder field-layout rows are hosted in
   // <drop-down behavior="inline-combobox">, which owns the panel's open/close/
   // positioning/dismiss through attachMenu. When hosted, this widget delegates
-  // showPanel/hidePanel to the host and reads panel visibility from the `hidden`
-  // attribute attachMenu toggles (not the `.hidden` class it uses standalone). No
-  // host (the bare field picker, bare test mounts) → the widget keeps owning
-  // visibility on its own panel via `.hidden`.
+  // showPanel/hidePanel to the host. No host (the bare field picker, bare test
+  // mounts) → the widget toggles its own panel.
   const dropdownHost = container.closest<HTMLElement & { open(): void; close(): void }>(
     "drop-down"
   );
@@ -326,10 +324,10 @@ const initWidget = (containerElement: Element) => {
     statusEl.textContent = uncommitted ? "No option selected" : "";
   };
 
-  // Panel-open source of truth: the `hidden` attribute when delegated (attachMenu
-  // toggles menu.hidden), the `.hidden` class in the standalone/legacy path.
-  const isPanelOpen = () =>
-    delegated ? !options.hasAttribute("hidden") : !options.classList.contains("hidden");
+  // The panel's `hidden` attribute is the one truth; attachMenu
+  // toggles it when delegated. A dialog's listbox is its own panel.
+  const panel = options.closest<HTMLElement>("[data-search-select-panel]") ?? options;
+  const isPanelOpen = () => !panel.hidden;
 
   const syncExpanded = () => {
     search.setAttribute("aria-expanded", isPanelOpen() ? "true" : "false");
@@ -354,7 +352,7 @@ const initWidget = (containerElement: Element) => {
       // The hasVisibleContent gate stays the empty-panel guard: when delegated
       // it decides whether to open the host at all, so an empty panel never opens.
       if (delegated) dropdownHost!.open();
-      else options.classList.remove("hidden");
+      else panel.hidden = false;
     }
     syncExpanded();
   };
@@ -366,7 +364,7 @@ const initWidget = (containerElement: Element) => {
     clearHighlight();
     if (!alwaysVisible) {
       if (delegated) dropdownHost!.close();
-      else options.classList.add("hidden");
+      else panel.hidden = true;
     }
     syncExpanded();
   };

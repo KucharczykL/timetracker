@@ -268,19 +268,19 @@ class SearchSelectHostDropdownTest(unittest.TestCase):
 
     def test_panel_is_menu_target_hidden_by_attribute_not_class(self):
         html = str(SearchSelect(name="games", host_dropdown=True))
-        panel_tag = _tag_around(html, "data-search-select-options")
+        panel_tag = _tag_around(html, "data-search-select-panel")
         self.assertIn("data-menu", panel_tag)
-        # Visibility is the `hidden` attribute (attachMenu owns it), never the
-        # `.hidden` class the standalone panel toggles.
+        # attachMenu owns the `hidden` attribute.
         self.assertIn('hidden=""', panel_tag)
         self.assertNotIn(' hidden"', panel_tag)
 
-    def test_default_is_bare_widget_with_class_visibility(self):
+    def test_default_is_bare_widget_hidden_by_attribute(self):
         html = str(SearchSelect(name="games"))
         self.assertNotIn("<drop-down", html)
         self.assertNotIn("data-toggle", html)
-        # The standalone panel keeps the `.hidden` class as its visibility mechanism.
-        self.assertIn(" hidden", _tag_around(html, "data-search-select-options"))
+        panel_tag = _tag_around(html, "data-search-select-panel")
+        self.assertIn('hidden=""', panel_tag)
+        self.assertNotIn("data-menu", panel_tag)
 
     def test_media_includes_dropdown_js(self):
         media = collect_media(SearchSelect(name="games", host_dropdown=True))
@@ -306,11 +306,10 @@ class FilterSelectFieldHostTest(unittest.TestCase):
     def test_panel_is_menu_target_hidden_by_attribute_not_class(self):
         panel_tag = _tag_around(
             str(FilterSelect(field_name="type", options=[("g", "Game")])),
-            "data-search-select-options",
+            "data-search-select-panel",
         )
         self.assertIn("data-menu", panel_tag)
-        # Visibility is the `hidden` attribute (attachMenu owns it), never the
-        # `.hidden` class the standalone panel toggles.
+        # attachMenu owns the `hidden` attribute.
         self.assertIn('hidden=""', panel_tag)
         self.assertNotIn(' hidden"', panel_tag)
 
@@ -1024,10 +1023,16 @@ class FilterSelectPanelLayoutTest(unittest.TestCase):
                 box_tag = _tag_around(self._html(layout), "data-search-select-box")
                 self.assertIn("focus-within:border-brand", box_tag)
 
-    def test_panel_pills_row_hides_when_empty(self):
-        pills_tag = _tag_around(self._html("panel"), "data-search-select-pills")
-        self.assertIn("flex flex-wrap", pills_tag)
-        self.assertIn("hidden has-[[data-pill]]:flex", pills_tag)
+    def test_pills_sit_inside_the_box_in_both_layouts(self):
+        for layout in ("field", "panel"):
+            with self.subTest(layout=layout):
+                html = self._html(layout)
+                box = html.index("data-search-select-box")
+                self.assertLess(box, html.index("data-search-select-pills"))
+                self.assertLess(
+                    html.index("data-search-select-pills"),
+                    html.index("data-search-select-search"),
+                )
 
     def test_search_aria_label_names_the_input(self):
         html = self._html("panel", search_aria_label="Game")
@@ -1040,7 +1045,12 @@ class FilterSelectPanelLayoutTest(unittest.TestCase):
         # attachMenu hosting hooks are excluded: the field layout carries them on
         # its own inline-combobox drop-down, while the panel layout's live on the
         # ComboboxDropdown that wraps it a level up — orthogonal to the serializer.
-        host_hooks = {"data-toggle", "data-menu"}
+        host_hooks = {
+            "data-toggle",
+            "data-menu",
+            "data-search-select-panel",
+            "data-menu-scroll",
+        }
         data_attribute = re.compile(r"\s(data-[a-z-]+)=")
         field_hooks = sorted(
             hook
@@ -1066,7 +1076,8 @@ def test_panel_personality_is_always_visible_with_the_panel_classes():
         SearchSelect(name="zone", search_url="/api/timezones/search", panel=True)
     )
     assert 'always-visible="true"' in html
-    assert "mt-2 overflow-y-auto" in html  # _PANEL_OPTIONS_CLASS
+    assert "data-search-select-panel" not in html  # the dialog is the panel
+    assert "mt-2 overflow-y-auto" in html  # _DIALOG_LISTBOX_CLASS
     assert "block text-type-body" in html  # _PANEL_CONTAINER_CLASS
 
 
@@ -1074,6 +1085,9 @@ def test_default_search_select_keeps_the_field_personality():
     html = str(SearchSelect(name="zone", search_url="/api/timezones/search"))
     assert 'always-visible="false"' in html
     assert "mt-2 overflow-y-auto" not in html
+    panel_tag = _tag_around(html, "data-search-select-panel")
+    assert "top-full" in panel_tag
+    assert "data-menu-scroll" in _tag_around(html, "data-search-select-options")
 
 
 _DEVICE = {"value": "7", "label": "Deck"}
