@@ -127,7 +127,8 @@ class OptionGroup(NamedTuple):
 
 # One bordered field box, every personality.
 _BOX_CLASS = (
-    "flex flex-wrap items-center gap-1 px-3 min-h-control rounded-base text-type-body "
+    "flex flex-wrap items-center gap-1 px-3 py-1 min-h-control rounded-base "
+    "text-type-body "
     "bg-neutral-secondary-medium border border-default-medium "
     "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand "
     f"{DISABLED_WITHIN_CLASS}"
@@ -156,7 +157,7 @@ _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]
 # ml-auto ends the row; peer-disabled hides it.
 _CLEAR_BUTTON_CLASS = (
     "ml-auto -mr-1 shrink-0 size-8 inline-flex items-center justify-center "
-    "rounded-base text-body hover:text-heading hover:bg-neutral-tertiary-medium "
+    "rounded text-body hover:text-heading hover:bg-neutral-tertiary-medium "
     "cursor-pointer peer-disabled:hidden"
 )
 #: The standalone panel hangs below the box.
@@ -172,9 +173,9 @@ _ROW_CLASS = (
 )
 _ROW_WITH_ACTIONS_CLASS = f"{_ROW_CLASS} flex items-center justify-between"
 _ROW_ACTIONS_CLASS = "flex gap-1 ml-2 shrink-0"
-#: -my-1 keeps the row its height.
+#: -my-1 keeps row height; radius scales down.
 _ROW_ACTION_SHAPE = (
-    "size-6 -my-1 inline-flex items-center justify-center rounded-base "
+    "size-6 -my-1 inline-flex items-center justify-center rounded-sm "
     "text-type-micro font-bold text-body cursor-pointer"
 )
 _ROW_ACTION_CLASS = (
