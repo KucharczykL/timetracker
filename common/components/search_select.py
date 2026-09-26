@@ -62,7 +62,7 @@ from common.components.custom_elements import (
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
     MICRO_LABEL_CLASS,
-    Button,
+    ButtonColor,
     ControlButton,
     Div,
     FilterWidgetPath,
@@ -155,11 +155,7 @@ _UNCOMMITTED_SEARCH_CLASS = (
 # (sizing stays Icon()'s default ICON_SIZE_CLASS).
 _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]:block"
 # ml-auto ends the row; peer-disabled hides it.
-_CLEAR_BUTTON_CLASS = (
-    "ml-auto -mr-1 shrink-0 size-8 inline-flex items-center justify-center "
-    "rounded text-body hover:text-heading hover:bg-neutral-tertiary-medium "
-    "cursor-pointer peer-disabled:hidden"
-)
+_CLEAR_PLACEMENT_CLASS = "ml-auto -mr-1 peer-disabled:hidden"
 #: The standalone panel hangs below the box.
 _STANDALONE_PANEL_CLASS = "top-full left-0 right-0 mt-1"
 #: The dialog is this listbox's panel.
@@ -173,17 +169,8 @@ _ROW_CLASS = (
 )
 _ROW_WITH_ACTIONS_CLASS = f"{_ROW_CLASS} flex items-center justify-between"
 _ROW_ACTIONS_CLASS = "flex gap-1 ml-2 shrink-0"
-#: -my-1 keeps row height; radius scales down.
-_ROW_ACTION_SHAPE = (
-    "size-6 -my-1 inline-flex items-center justify-center rounded-sm "
-    "text-type-micro font-bold text-body cursor-pointer"
-)
-_ROW_ACTION_CLASS = (
-    f"{_ROW_ACTION_SHAPE} hover:text-heading hover:bg-neutral-quaternary-medium"
-)
-_ROW_REMOVE_ACTION_CLASS = (
-    f"{_ROW_ACTION_SHAPE} hover:text-fg-danger-strong hover:bg-danger-soft"
-)
+#: Keeps a 32px button in a 36px row.
+_ROW_ACTION_PLACEMENT_CLASS = "-my-1.5"
 _NO_RESULTS_CLASS = "px-4 py-2 text-type-body italic text-body hidden"
 # A non-selectable group header in a grouped panel. role="presentation" keeps it
 # out of the combobox's option semantics; carrying no data-search-select-option
@@ -523,14 +510,15 @@ def SearchSelect(
     clear_button: Node | None = None
     if clearable:
         search_attrs.append(("class", "peer"))
-        clear_button = Button(
-            type="button",
+        clear_button = ControlButton(
+            variant="ghost",
+            size="compact",
             data_search_select_clear="",
             aria_label="Clear",
             title="Clear",
             aria_describedby=clear_description_id,
             hidden=not selected,
-            class_=_CLEAR_BUTTON_CLASS,
+            class_=_CLEAR_PLACEMENT_CLASS,
         )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
 
     layout = (
@@ -669,13 +657,17 @@ def _filter_modifier_pill(modifier_value: str, label: str) -> Node:
     )
 
 
-def _row_action(action: str, symbol: Child, title: str, *, css: str) -> Node:
+def _row_action(
+    action: str, symbol: Child, title: str, *, color: ButtonColor = "gray"
+) -> Node:
     """A trailing row button, never tabbable."""
-    return Button(
-        type="button",
+    return ControlButton(
+        variant="ghost",
+        size="compact",
+        color=color,
         tabindex="-1",
         data_search_select_action=action,
-        class_=css,
+        class_=_ROW_ACTION_PLACEMENT_CLASS,
         title=title,
         aria_label=title,
     )[symbol]
@@ -687,8 +679,8 @@ def _filter_option_row(value: str | int, label: str, *, selected: bool = False) 
         {"value": value, "label": label, "data": {}},
         selected=selected,
         actions=[
-            _row_action("include", "+", "Include", css=_ROW_ACTION_CLASS),
-            _row_action("exclude", "−", "Exclude", css=_ROW_ACTION_CLASS),
+            _row_action("include", "+", "Include"),
+            _row_action("exclude", "−", "Exclude"),
         ],
     )
 
@@ -927,7 +919,7 @@ def _preset_option_row(option: SearchSelectOption) -> Node:
                 "delete",
                 Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")]),
                 "Remove preset",
-                css=_ROW_REMOVE_ACTION_CLASS,
+                color="red",
             )
         ],
     )

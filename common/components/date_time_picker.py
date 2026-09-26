@@ -26,7 +26,7 @@ from common.components.date_range_picker import (
     footer_button,
     segment_group,
 )
-from common.components.primitives import Button, Div, Input, field_label_id
+from common.components.primitives import ControlButton, Div, Input, field_label_id
 from common.date_time_presentation import (
     DateTimePresentation,
     day_periods_for_locale,
@@ -93,17 +93,6 @@ def datetime_part_values(
     return buffers, display
 
 
-# size-6 is the WCAG 2.5.8 floor stated as a box, not inferred from padding
-# around a child. The calendar toggle already came out 24x24 that way (16px svg
-# + p-1), but the copy arrow is a text glyph ~9px wide, so the same padding gave
-# it 17.6x32 — the failure the calendar's own ‹/› buttons hit in #485. Sizing
-# both means neither depends on what its child happens to measure.
-_FIELD_ICON_BUTTON_CLASS = (
-    "size-6 flex items-center justify-center text-body hover:text-heading "
-    "rounded cursor-pointer shrink-0"
-)
-
-
 def DateTimeField(
     *,
     presentation: DateTimePresentation,
@@ -139,21 +128,22 @@ def DateTimeField(
             display_values=display,
             first_segment_id=input_id,
         ),
-        Button(
-            type="button",
+        ControlButton(
+            variant="ghost",
+            size="compact",
             data_date_picker_calendar_toggle="",
             aria_label=f"Open {label} calendar",
-            class_=f"ms-auto {_FIELD_ICON_BUTTON_CLASS}",
+            class_="ms-auto",
         )[Safe(CALENDAR_ICON_SVG)],
     ]
     if copy_target is not None:
         children.append(
-            Button(
-                type="button",
+            ControlButton(
+                variant="ghost",
+                size="compact",
                 data_date_time_copy=copy_target.field_name,
                 aria_label=copy_target.label,
                 title=copy_target.label,
-                class_=_FIELD_ICON_BUTTON_CLASS,
             )[copy_target.glyph]
         )
     # aria-labelledby when the form row rendered a <label> for this field: that

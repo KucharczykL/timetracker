@@ -25,7 +25,6 @@ from common.components.custom_elements import (
     _Dropdown,
 )
 from common.components.primitives import (
-    Button,
     ButtonColor,
     ControlButton,
     Div,
@@ -338,14 +337,12 @@ def DateRangeField(
     ]
     if calendar_toggle:
         children.append(
-            Button(
-                type="button",
+            ControlButton(
+                variant="ghost",
+                size="compact",
                 data_date_range_calendar_toggle="",
                 aria_label=f"Open {label} calendar",
-                class_=(
-                    "ms-auto p-1 text-body hover:text-heading rounded "
-                    "cursor-pointer shrink-0"
-                ),
+                class_="ms-auto",
             )[Safe(CALENDAR_ICON_SVG)]
         )
     # role="group" + the field name, matching DatePickerField: the six segments

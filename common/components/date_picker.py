@@ -26,7 +26,7 @@ from common.components.date_range_picker import (
     date_segment_group,
     footer_button,
 )
-from common.components.primitives import Button, Div, Input, field_label_id
+from common.components.primitives import ControlButton, Div, Input, field_label_id
 from common.date_time_presentation import DateTimePresentation
 
 # The single side id DatePicker's segment/hidden-input hooks use — DateRangePicker's
@@ -64,14 +64,12 @@ def DatePickerField(
             presentation=presentation,
             first_segment_id=input_id,
         ),
-        Button(
-            type="button",
+        ControlButton(
+            variant="ghost",
+            size="compact",
             data_date_picker_calendar_toggle="",
             aria_label=f"Open {label} calendar",
-            class_=(
-                "ms-auto p-1 text-body hover:text-heading rounded "
-                "cursor-pointer shrink-0"
-            ),
+            class_="ms-auto",
         )[Safe(CALENDAR_ICON_SVG)],
     ]
     # aria-labelledby when the form row rendered a <label> for this field: that

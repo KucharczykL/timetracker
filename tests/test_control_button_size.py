@@ -81,3 +81,54 @@ def test_with_shape_keeps_the_size():
     html = render(button)
     assert "size-8" in html
     assert "rounded-s" in html.split('class="')[1].split('"')[0].split()
+
+
+def _tag_with(html: str, marker: str) -> str:
+    position = html.index(marker)
+    return html[html.rindex("<", 0, position) : html.index(">", position)]
+
+
+def _compact_ghost(tag: str) -> bool:
+    return all(token in tag for token in ("size-8", "rounded", "bg-transparent"))
+
+
+def test_the_clear_button_is_a_compact_ghost():
+    from common.components import SearchSelect
+
+    html = str(SearchSelect(name="game", selected=[{"value": "1", "label": "One"}]))
+    tag = _tag_with(html, "data-search-select-clear")
+    assert _compact_ghost(tag)
+    assert "peer-disabled:hidden" in tag
+
+
+def test_row_actions_are_compact_ghosts_in_the_row():
+    from common.components import FilterSelect, PresetSelect
+
+    filter_html = str(FilterSelect(field_name="status", options=[("f", "Finished")]))
+    include = _tag_with(filter_html, 'data-search-select-action="include"')
+    assert _compact_ghost(include) and "-my-1.5" in include
+    assert 'tabindex="-1"' in include
+    preset_html = str(PresetSelect(api_url="/api/presets/", mode="games"))
+    remove = _tag_with(preset_html, 'data-search-select-action="delete"')
+    assert _compact_ghost(remove) and "hover:bg-danger-soft" in remove
+
+
+def test_the_comparison_remove_is_a_red_compact_ghost():
+    from common.components.filters import comparison_row_template
+
+    html = str(comparison_row_template([]))
+    tag = _tag_with(html, "data-fc-remove")
+    assert _compact_ghost(tag) and "hover:bg-danger-soft" in tag
+
+
+def test_the_year_toggle_is_a_control_button():
+    from common.components import YearPicker
+
+    chosen = _tag_with(
+        str(YearPicker(2024, (2024,), "/y/__year__/")), "data-year-picker-toggle"
+    )
+    empty = _tag_with(
+        str(YearPicker(None, (2024,), "/y/__year__/")), "data-year-picker-toggle"
+    )
+    assert "min-h-control" in chosen and "solid-brand" in chosen
+    assert "bg-neutral-primary-medium" in empty

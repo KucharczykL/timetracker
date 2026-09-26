@@ -1625,7 +1625,7 @@ _YearPicker = custom_element_builder("year-picker")
 
 # The down-chevron rendered inside the YearPicker button. Trusted static SVG.
 _YEAR_PICKER_CHEVRON = Safe(
-    '<svg class="w-4 h-4 ms-2 rtl:rotate-180" aria-hidden="true" '
+    '<svg class="w-4 h-4 rtl:rotate-180" aria-hidden="true" '
     'xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 14 10">'
     '<path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" '
     'stroke-width="2" d="M1 5h12m0 0L9 1m4 4L9 9"/></svg>'
@@ -1680,12 +1680,6 @@ def YearPicker(
 
     label = str(year) if year is not None else "Choose a year"
     selected = str(year) if year is not None else ""
-    classes = (
-        "solid-brand border-transparent hover:bg-brand-strong"
-        if year is not None
-        else "bg-neutral-secondary-medium text-heading border border-default-medium "
-        "hover:bg-neutral-tertiary-medium focus:ring-4 focus:ring-brand-medium"
-    )
     years_csv = ",".join(str(y) for y in available_years)
     popup_id = "year-picker-popup"
     period_id = "year-picker-period"
@@ -1701,22 +1695,15 @@ def YearPicker(
             ("class", "inline-block"),
         ]
     )[
-        Button(
+        ControlButton(
             [
-                ("type", "button"),
                 ("data-toggle", ""),
                 ("data-year-picker-toggle", ""),
                 ("aria-controls", popup_id),
                 ("aria-expanded", "false"),
                 ("aria-haspopup", "dialog"),
-                (
-                    "class",
-                    (
-                        f"inline-flex items-center rounded-base {CONTROL_SIZE_CLASS} "
-                        f"text-type-body font-medium {classes}"
-                    ),
-                ),
-            ]
+            ],
+            color="blue" if year is not None else "gray",
         )[label, _YEAR_PICKER_CHEVRON],
         Div(
             [
