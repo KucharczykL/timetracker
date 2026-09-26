@@ -17,6 +17,7 @@ from common.components import (
     Pill,
     PresetSelect,
     SearchSelect,
+    SearchSelectOption,
     searchselect_selected,
 )
 from common.components.core import collect_media
@@ -1327,10 +1328,13 @@ def test_filter_pills_keep_their_hooks():
     assert 'data-search-select-modifier="any"' in html
 
 
+_STEAM_DECK: SearchSelectOption = {"value": "7", "label": "Steam Deck", "data": {}}
+
+
 class NoneLabelSearchSelectTest(unittest.TestCase):
     """A pinned row holds none, apart from nothing picked."""
 
-    DEVICE = {"value": "7", "label": "Steam Deck", "data": {}}
+    DEVICE = _STEAM_DECK
 
     @staticmethod
     def _render(**kwargs) -> str:
