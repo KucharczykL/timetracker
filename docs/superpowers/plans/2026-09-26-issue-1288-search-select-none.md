@@ -35,7 +35,7 @@
   - `none_label="No device"` with no `selected` renders the none row as the options panel's first row: `role="option"`, `data-search-select-none-option`, `data-label="No device"`, no `id`. It also renders `<input type="hidden" name=… value="" data-search-select-none>` in `[data-search-select-pills]`, and the search box `value="No device"`.
   - With `selected=[device]`, the row is still first, and the box and input hold the device. No `data-search-select-none` input renders.
   - The row renders with `search_url` set, where no option rows render, and without it.
-  - The element carries `none-label="No device"`. Without `none_label`, the attribute is blank and nothing else changes: an existing render test stays green.
+  - The element carries `none-label="No device"`. Without `none_label`, the attribute is absent and nothing else changes: an existing render test stays green.
   - `none_label` with `multi_select=True` raises `ValueError`. So does `none_label` with `panel=True`.
 - [ ] Run: `make test-fast ARGS="tests/test_search_select.py -x"`. Expect FAIL.
 - [ ] Implement:
@@ -43,7 +43,7 @@
   - In `SearchSelect`, refuse the two combinations at the top.
   - In the single branch of the pills block, `elif none_label:` appends `Input(type="hidden", name=name, value="", data_search_select_none="")` and sets `search_value = none_label`.
   - Prepend `_option_row({"value": "", "label": none_label, "data": {}}, RowKind.NONE)` to `option_rows` in every branch.
-  - Pass `none_label=none_label or ""` to `_SearchSelect`.
+  - Pass `none_label=none_label` to `_SearchSelect`. `None` omits the attribute, so other pickers' markup stays byte-identical. The generated reader reads a missing attribute as `""`.
   - Add `none_label: str` to `SearchSelectProps`, with a `#:` comment.
 - [ ] Run `make gen-element-types`, then the same test command. Expect PASS.
 - [ ] Commit `feat: SearchSelect renders a held none and its pinned row`.
@@ -62,7 +62,7 @@
   3. × on a held value holds none, emits change `none: true` then `search-select:clear`, and × is hidden afterwards.
   4. Typing into a held none, then ×, holds none again with `none: true`.
   5. The first keystroke into a held value or a held none emits `values: []` with `none: false`.
-  6. A non-empty query never highlights the none row, and an empty query highlights as before.
+  6. A query that does not equal the label never highlights the none row. Typing the label exactly highlights it, and Enter holds none. An empty query highlights as before.
   7. Typing the exact none label offers no Create row (mount with `createRow: true`).
   8. A server answer (mock `fetch`) and `setOptions` both keep the row and a held none.
   9. `commit-sole-option="true"` with a held none: an answer of one row leaves none held.
@@ -70,19 +70,21 @@
   11. `setSelected` replaces a held none, and the input is no longer marked.
   12. Two cloned mounts hold none independently.
   13. A picker without `none-label`: every change event carries `none: false`, and filter-mode modifier rows are unchanged (the existing filter suites cover this).
-- [ ] Run: `make test-ts ARGS="ts/elements/search-select.none.test.ts"`. Expect FAIL. `test-ts` takes no `ARGS` today, so first change its recipe to `pnpm test:ts $(ARGS)`; vitest reads the trailing path as a filter.
+- [ ] Run: `make test-ts TS_ARGS="ts/elements/search-select.none.test.ts"`. Expect FAIL. `test-ts` takes no arguments today, and `ARGS` cannot be used for them: `test` and `test-fast` depend on `test-ts` and share the global `ARGS`, so a pytest path would reach vitest. Add `TS_ARGS` (recipe `pnpm test:ts $(TS_ARGS)`), and run `make test-ts TS_ARGS="ts/elements/search-select.none.test.ts"`. Add a line for it to the CLAUDE.md commands table.
 - [ ] Implement in `search-select.ts`:
   - Add `"[data-search-select-none-option]"` to `NAVIGABLE_ROWS`.
   - Add `SearchSelectChangeDetail.none: boolean`. `emitChange(last, none = false)` puts it in `detail`.
   - Add `const noneLabel = multi ? "" : props.noneLabel;`.
   - Add a helper that returns the hidden inputs other than `[data-search-select-none]`. `currentValues`, `getSelectedValues` and `syncClearButton` use it. `syncUncommitted` and `commitTheSoleOption` stay as they are.
+  - `syncClearButton` also hides × while the none input is present and `!container._searchSelectDirty`. Otherwise the box text, `none_label`, shows it.
+  - `hasVisibleContent`: count `[data-search-select-none-option]`.
   - `holdNone()`: `_searchSelectClear?.()`, then append the marked empty input (`buildHidden("")` plus the attribute), set `search.value` and `_searchSelectLabel` to `noneLabel`, set `_searchSelectDirty = false`, then `syncUncommitted()`.
   - Click handler: a branch for `[data-search-select-none-option]` placed before the filter-modifier branch. It runs `holdNone(); hidePanel(); soleDeclined = false; emitChange(null, true)`.
   - Enter handler: the same branch, placed before the `data-search-select-modifier-option` check.
   - × click: `if (noneLabel) { holdNone(); emitChange(null, true); } else if (heldValue) emitChange(null);`. The clear event follows as today.
   - `onDependencyChange`: after `_searchSelectClear`, call `holdNone()` when `noneLabel` is set. Emit nothing, as today.
   - `_searchSelectSetOptions`: where it clears a stale value, call `holdNone()` after it when `noneLabel` is set.
-  - `autoHighlight`: with a non-empty `lower`, skip rows that match `[data-search-select-none-option]`.
+  - `autoHighlight`: with a non-empty `lower`, skip the `[data-search-select-none-option]` row unless its label, lowercased, equals `lower`.
   - `loadedLabels`: add `noneLabel.trim().toLowerCase()` when set.
 - [ ] Run the new file, then `make test-ts`. Expect every suite PASS.
 - [ ] Commit `feat: the SearchSelect element holds none`.
@@ -92,8 +94,11 @@
 **Files:**
 - Modify: `games/forms.py`: `SearchSelectWidget`, `SessionForm.device` (about line 946), `HistoricalPlaytimeForm.device` (about 1197), `PurchaseForm.platform` (about 1435)
 - Modify: `ts/add_purchase.ts`: platform autofill
+- Modify: `games/views/session.py`: `edit_session` drops the default-device `initial`
+- Modify: `tests/test_user_preference_consumers.py`: `test_session_edit_uses_user_device_only_when_existing_value_is_empty` becomes "Edit holds none where the session names no device; Add pre-fills the default"
+- Modify: `e2e/test_search_select_clear_e2e.py` (about :120, :140-141) and `e2e/test_touch_targets_e2e.py` (about :156-157). After × on the session device, these expect an empty box and 0 hidden inputs. Update them to the box reading "No device" and one marked input.
 - Test: `tests/test_search_select.py`, the file that already covers `SearchSelectWidget`
-- Test: create `e2e/test_search_select_none_e2e.py`, and extend `e2e/test_purchase_e2e.py`
+- Test: extend `e2e/test_search_select_clear_e2e.py`, which has `_session_form_holding_a_device` (about :89). Seed rows with `session_row` (`e2e/session_rows.py`) and `create_device` (`e2e/devices.py`), as `e2e/test_device_clear_e2e.py` does. Extend `e2e/test_purchase_e2e.py` for autofill.
 
 **Consumes:** `SearchSelect(none_label=…)`, and change events with `none`.
 
@@ -102,13 +107,16 @@
   - pytest: a `SearchSelectWidget(none_label="x")` on a `required=True` field raises `ValueError` on render.
   - pytest: `SessionForm` posted with `device=""` and posted with no `device` key both clean to `None`.
   - e2e: on Edit Session with a device held, pick "No device" and save, and the row's `device_id` is `None`. Press × on a held device and save, with the same result. Wait on the redirect page before reading the ORM.
-  - e2e: on Add Purchase, pick a game with a platform, and Platform fills. Pick "Unspecified", then pick another game, and Platform stays "Unspecified".
+  - pytest: GET Edit Session for a session with no device while the library states a default: the device field holds none. GET Add Session: it pre-fills the default.
+  - e2e: on Add Purchase, pick a game with a platform, and Platform fills. Pick a second game, and the autofilled Platform is replaced. Pick "Unspecified", then another game, and Platform stays "Unspecified". Pick a platform by hand, then a game, and the hand pick stays. Type into the autofilled Platform without picking, then pick a game, and autofill still writes.
+  - e2e (accessibility): the held none's search input has the accessible value "No device" (`to_have_value`).
 - [ ] Run: `make test-fast ARGS="tests/test_search_select.py -x"`. Expect FAIL.
 - [ ] Implement:
   - `SearchSelectWidget(none_label: str | None = None)` stores the label. `render` raises when `self.none_label and self.is_required`, and passes it to `SearchSelect`.
   - Set `none_label="No device"` on the two device widgets and `"Unspecified"` on platform.
-  - `add_purchase.ts`: add `let platformOwnedByPerson = false`. A `search-select:change` whose `detail.name === "platform"` sets it to `true`; programmatic `setSelected` emits no event, so autofill never trips it. The platform autofill returns early when the flag is set.
-- [ ] Run `make ts`, then the pytest file. Then run under the lock: `make test-e2e ARGS="e2e/test_search_select_none_e2e.py e2e/test_purchase_e2e.py"`. Expect PASS.
+  - `add_purchase.ts`: add `let platformOwnedByPerson = false`. A `search-select:change` with `detail.name === "platform"` and `detail.last !== null || detail.none` sets it to `true`, so a keystroke does not count. Programmatic `setSelected` emits no event. The platform autofill returns early when the flag is set.
+  - `edit_session`: remove the `initial` default-device block; pass no `initial`.
+- [ ] Run `make ts`, then the pytest file. Then run under the lock: `make test-e2e ARGS="e2e/test_search_select_clear_e2e.py e2e/test_touch_targets_e2e.py e2e/test_purchase_e2e.py"`. Expect PASS.
 - [ ] Commit `feat: optional device and platform pickers hold none`.
 
 ### Task 4: Gate

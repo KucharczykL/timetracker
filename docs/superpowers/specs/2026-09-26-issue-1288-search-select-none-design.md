@@ -80,11 +80,12 @@ A separate hook keeps filter mode unchanged. The none row joins
 remove it.
 
 - **Highlight.** `autoHighlight` walks visible rows in order, and the none row
-  comes first. With a query, it skips the none row, so "No" never highlights
-  "No device" over a real device. With an empty query, it highlights as today.
+  comes first. With a query, it skips the none row unless the query equals its
+  label, so "No" never highlights "No device" over a real device, and typing
+  the label exactly highlights it. With an empty query, it highlights as today.
 - **Create row.** `loadedLabels` counts `none_label`. Typing the label exactly
   offers no Create row. Enter then picks none.
-- **Panel.** A pinned row makes `hasVisibleContent` true, so the panel opens on
+- **Panel.** `hasVisibleContent` counts the none row. The pinned row makes it true, so the panel opens on
   focus. With a query that matches nothing, "No results" shows under the none
   row. That is correct: none stays reachable.
 
@@ -128,7 +129,7 @@ Every reader of the hidden inputs must decide about the none input:
 |---|---|
 | `currentValues` | skips it, so `values` never carries `""` |
 | `getSelectedValues` | skips it, so `_searchSelectSetOptions` keeps a held none |
-| `syncClearButton` | skips it, so × hides while none is held |
+| `syncClearButton` | skips it, and also hides × while a held none's label fills the box, since the box text alone would show it |
 | `syncUncommitted` | counts it, so the pencil cue stays off (no change) |
 | `commitTheSoleOption` | counts it, so none is held and never replaced (no change; a test pins it) |
 
@@ -185,13 +186,22 @@ catalog gives a game with no platform, and the Release row's empty choice uses i
 
 **Purchase platform autofill.** `add_purchase.ts` fills Platform from each game
 pick. A fresh form holds "Unspecified" because its value is `None`, so
-"empty" is not the test. The test is who set the value. A person's own act in
-the Platform picker (a pick, "Unspecified", or ×) makes the field theirs, and
-autofill then leaves it alone. Until that act, autofill writes as it does today.
+"empty" is not the test. The test is who set the value. A person's own
+committed act in the Platform picker makes the field theirs: a pick, a pick of
+"Unspecified", or ×. A change event with `last` set or `none: true` is such an
+act. A keystroke is not. After that act, autofill leaves the field alone. Until
+it, autofill writes as it does today. Edit Purchase runs the same script, so a
+stored platform is overwritten by a game pick until the person acts in the
+field, which is today's behaviour.
 The existing guard on `related_game` (`autofilledRelatedGameValue`) has the
 same intent.
 Purchase `related_game` stays as it is: blank means "not an add-on" there, and
 no word is needed.
+
+**Edit Session and the default device.** `edit_session` pre-fills the
+library's default device where the session names none. Now that "No device"
+can be picked, that pre-fill would undo it on the next edit. Edit shows what the
+session holds. The default pre-fills Add Session alone.
 
 Settings and the Library default Device use this through #1289, which adds the
 live-settings reader.
