@@ -35,7 +35,6 @@ from games.bulk_reclassification import (
     REVIEW_THRESHOLD_HOURS,
     UNDER_THRESHOLD,
 )
-from games.bulk_removal import REMOVE_SESSION
 from games.commands.session_reclassification import statement_from_session
 from games.events.dispatch import CommandRejected
 from games.models import (
@@ -254,10 +253,10 @@ def test_a_confirmation_shows_the_columns_the_act_states(
     assert str(session.effective_day) in html
 
 
-def test_a_confirmation_names_the_act_and_what_it_counts(
+def test_a_confirmation_heads_the_act_with_what_it_counts(
     client_in, owned_library, game
 ):
-    """The noun is the act's own, so a second act needs no second page."""
+    """The heading counts; no question repeats it."""
     action = BULK_ACTIONS["session.reclassify"]
     one = a_written_session(owned_library, game)
     two = a_written_session(owned_library, game, day=date(2026, 3, 6))
@@ -265,8 +264,9 @@ def test_a_confirmation_names_the_act_and_what_it_counts(
     alone = confirm(client_in, some(one)).content.decode()
     both = confirm(client_in, some(one, two)).content.decode()
 
-    assert f"{action.label}: 1 {action.subject}?" in alone
-    assert f"{action.label}: 2 {action.subject}s?" in both
+    assert action.title.one in alone
+    assert "Record 2 sessions as historical playtime" in both
+    assert f"{action.label}:" not in alone + both
 
 
 def test_a_confirmation_prints_a_duration_the_way_a_person_reads_it(
@@ -552,7 +552,7 @@ def test_a_refusal_before_the_resolve_heads_in_the_plural(client_in, owned_libra
     """`_act_refused` holds a sentence and no rows.
 
     An act turned down before it resolved anything states nothing about how
-    many rows it would have touched, so the heading stays plural.
+    many rows it would have touched, so the heading counts none.
     """
     response = client_in.post(
         reverse("games:run_bulk_action", args=["session.remove"]),
@@ -561,8 +561,8 @@ def test_a_refusal_before_the_resolve_heads_in_the_plural(client_in, owned_libra
 
     page = response.content.decode()
     assert response.status_code == 400
-    assert REMOVE_SESSION.title.many in page
-    assert REMOVE_SESSION.title.one not in page
+    assert "Remove these sessions" in page
+    assert "{count}" not in page
 
 
 def test_a_row_the_library_does_not_hold_ends_the_batch(

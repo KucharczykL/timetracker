@@ -477,7 +477,7 @@ def _source(name: str) -> dict[str, object]:
 REMOVE_SESSION = BulkAction(
     name="session.remove",
     label="Remove",
-    title=ActTitle(one="Remove this session", many="Remove these sessions"),
+    title=ActTitle(one="Remove this session", many="Remove {count} sessions"),
     confirm_label="Remove",
     subject="session",
     color="red",
@@ -494,7 +494,7 @@ REMOVE_SESSION = BulkAction(
 REMOVE_RUN = BulkAction(
     name="playthrough.remove",
     label="Remove",
-    title=ActTitle(one="Remove this playthrough", many="Remove these playthroughs"),
+    title=ActTitle(one="Remove this playthrough", many="Remove {count} playthroughs"),
     confirm_label="Remove",
     subject="playthrough",
     color="red",
@@ -511,7 +511,7 @@ REMOVE_RUN = BulkAction(
 REMOVE_RECORD = BulkAction(
     name="historicalplaytime.remove",
     label="Remove",
-    title=ActTitle(one="Remove this record", many="Remove these records"),
+    title=ActTitle(one="Remove this record", many="Remove {count} records"),
     confirm_label="Remove",
     #: The word the lists use, and the one that counts: three
     #: "historical playtimes" is nobody's sentence.
@@ -530,7 +530,7 @@ REMOVE_RECORD = BulkAction(
 REMOVE_GAME = BulkAction(
     name="playergame.remove",
     label="Remove",
-    title=ActTitle(one="Remove this game", many="Remove these games"),
+    title=ActTitle(one="Remove this game", many="Remove {count} games"),
     confirm_label="Remove",
     subject="game",
     color="red",
@@ -547,7 +547,7 @@ REMOVE_GAME = BulkAction(
 REMOVE_DEVICE = BulkAction(
     name="device.remove",
     label="Remove",
-    title=ActTitle(one="Remove this device", many="Remove these devices"),
+    title=ActTitle(one="Remove this device", many="Remove {count} devices"),
     confirm_label="Remove",
     subject="device",
     color="red",

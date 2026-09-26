@@ -1,4 +1,4 @@
-"""Device or emulated on many sessions, undone."""
+"""Device, emulated or note on many sessions, undone."""
 
 import json
 import uuid
@@ -14,7 +14,6 @@ from session_rows import duration_only_row, tracked_run
 
 from games.bulk_actions import AsksNothing, Control
 from games.bulk_edit import (
-    DEVICE_AND_NONE,
     DEVICE_GONE,
     EDIT,
     EMULATED,
@@ -68,7 +67,7 @@ def desktop(owned_library):
     return create_device(owned_library, "Desktop")
 
 
-def a_session(owned_user, run, day=A_DAY, device=None, emulated=False):
+def a_session(owned_user, run, day=A_DAY, device=None, emulated=False, note=""):
     """Recorded by command: the Undo reads events."""
     dispatch(
         CreateSession(
@@ -76,6 +75,7 @@ def a_session(owned_user, run, day=A_DAY, device=None, emulated=False):
             timing=DurationOnlyTiming(day=day, duration=AN_HOUR),
             device_id=None if device is None else device.pk,
             emulated=emulated,
+            note=note,
         ),
         actor=owned_user,
         library=owned_user.library,
@@ -106,6 +106,9 @@ def control(**answers) -> QueryDict:
         EditStatement(StatedDevice(None), None),
         EditStatement(None, True),
         EditStatement(StatedDevice(uuid.uuid7()), False),
+        EditStatement(None, None, "co-op with Ann"),
+        EditStatement(None, None, ""),
+        EditStatement(StatedDevice(None), True, ""),
     ],
 )
 def test_a_statement_round_trips(statement):
@@ -124,7 +127,9 @@ def test_a_statement_stating_nothing_is_no_statement():
         "not json",
         "[]",
         "{}",
-        '{"note": "x"}',
+        '{"colour": "x"}',
+        '{"note": 3}',
+        '{"note": null}',
         '{"device": 3}',
         '{"emulated": 1}',
         '{"emulated": null}',
@@ -135,6 +140,11 @@ def test_an_unreadable_statement_refuses(raw):
     with pytest.raises(CommandRejected) as refused:
         EditStatement.decode(raw)
     assert refused.value.sentence == STATEMENT_UNREADABLE
+
+
+def test_a_note_jsonb_cannot_store_refuses():
+    with pytest.raises(CommandRejected, match="NUL"):
+        EditStatement.decode('{"note": "nul \\u0000 byte"}')
 
 
 # ── The question ─────────────────────────────────────────────────────────────
@@ -158,10 +168,75 @@ def test_the_control_never_posts_under_the_choice_field(
         assert f'name="{name}"' in markup
 
 
+def _offered(library, rows) -> str:
+    offered = offer_edit(library, rows, CHOICE_FIELD)
+    assert isinstance(offered, Control)
+    return str(offered.node)
+
+
+def test_the_placeholders_keep_what_every_row_holds(
+    owned_user, owned_library, game, deck
+):
+    run = tracked_run(owned_library, game)
+    rows = [
+        a_session(owned_user, run, day=date(2026, 3, day), device=deck, note="co-op")
+        for day in (5, 6)
+    ]
+
+    markup = _offered(owned_library, rows)
+
+    assert 'placeholder="Keep: Steam Deck"' in markup
+    assert 'placeholder="Keep: co-op"' in markup
+
+
+def test_the_placeholders_say_mixed_where_rows_differ(
+    owned_user, owned_library, game, deck
+):
+    run = tracked_run(owned_library, game)
+    rows = [
+        a_session(owned_user, run, day=date(2026, 3, 5), device=deck, note="a"),
+        a_session(owned_user, run, day=date(2026, 3, 6), note="b"),
+    ]
+
+    assert _offered(owned_library, rows).count('placeholder="Keep: mixed"') == 2
+
+
+def test_the_placeholders_name_nothing_held(owned_user, owned_library, game):
+    markup = _offered(
+        owned_library, [a_session(owned_user, tracked_run(owned_library, game))]
+    )
+
+    assert 'placeholder="Keep: no device"' in markup
+    assert 'placeholder="Keep: no note"' in markup
+
+
+def test_each_unset_toggle_is_a_named_checkbox(owned_user, owned_library, game):
+    markup = _offered(
+        owned_library, [a_session(owned_user, tracked_run(owned_library, game))]
+    )
+    fields = edit_fields(CHOICE_FIELD)
+
+    for name, what in ((fields.unset_device, "device"), (fields.unset_note, "note")):
+        assert f'type="checkbox" name="{name}"' in markup
+        assert f'aria-label="No {what}"' in markup
+
+
+def test_emulated_leaves_as_it_is_until_chosen(owned_user, owned_library, game):
+    markup = _offered(
+        owned_library, [a_session(owned_user, tracked_run(owned_library, game))]
+    )
+    name = edit_fields(CHOICE_FIELD).emulated
+
+    assert f'type="radio" name="{name}" value="" class="sr-only" checked' in markup
+    assert markup.count(f'type="radio" name="{name}"') == 3
+
+
 @pytest.mark.parametrize(
     ("answers", "expected"),
     [
-        ({"no_device": "1"}, EditStatement(StatedDevice(None), None)),
+        ({"unset_device": "1"}, EditStatement(StatedDevice(None), None)),
+        ({"note": "  co-op  "}, EditStatement(None, None, "co-op")),
+        ({"unset_note": "1"}, EditStatement(None, None, "")),
         ({"emulated": EMULATED}, EditStatement(None, True)),
         ({"emulated": NOT_EMULATED}, EditStatement(None, False)),
     ],
@@ -202,6 +277,7 @@ def test_a_carried_statement_outranks_the_control(owned_library, deck):
     [
         ({}, NOTHING_STATED),
         ({"emulated": ""}, NOTHING_STATED),
+        ({"note": "   "}, NOTHING_STATED),
         ({"emulated": "maybe"}, STATEMENT_UNREADABLE),
     ],
 )
@@ -211,10 +287,14 @@ def test_a_control_stating_nothing_readable_refuses(owned_library, answers, sent
     assert refused.value.sentence == sentence
 
 
-def test_a_device_and_no_device_refuse(owned_library, deck):
-    with pytest.raises(CommandRejected) as refused:
-        settle_edit(owned_library, control(device=str(deck.pk), no_device="1"))
-    assert refused.value.sentence == DEVICE_AND_NONE
+def test_the_unset_toggle_wins_over_its_field(owned_library, deck):
+    """The field fades under ⊘, so its value is not read."""
+    settled = settle_edit(
+        owned_library,
+        control(device=str(deck.pk), unset_device="1", note="x", unset_note="1"),
+    )
+
+    assert EditStatement.decode(settled) == EditStatement(StatedDevice(None), None, "")
 
 
 def test_a_removed_device_refuses(owned_library, deck):
@@ -319,6 +399,39 @@ def test_values_before_name_only_the_fact_the_batch_changed(
     assert values_before(owned_library, session.pk, batch) == EditStatement(
         StatedDevice(None), None
     )
+
+
+def test_values_before_read_an_earlier_note(owned_user, owned_library, game):
+    session = a_session(owned_user, tracked_run(owned_library, game), note="first")
+    describe_session(owned_user, session, note="second", correlation_id=uuid.uuid7())
+    batch = uuid.uuid7()
+    _edit(owned_user, session, EditStatement(None, None, ""), batch)
+
+    assert values_before(owned_library, session.pk, batch) == EditStatement(
+        None, None, "second"
+    )
+
+
+def test_a_batch_sets_a_note_and_its_undo_puts_each_back(
+    client_in, owned_user, owned_library, game
+):
+    run = tracked_run(owned_library, game)
+    rows = [
+        a_session(owned_user, run, date(2026, 3, 5)),
+        a_session(owned_user, run, date(2026, 3, 6), note="solo"),
+    ]
+    fields = _token(client_in, *rows)
+    client_in.post(act_url(EDIT), {**fields, **control(note="co-op").dict()})
+
+    assert {
+        row.note for row in PlayerSession.objects.filter(pk__in=[r.pk for r in rows])
+    } == {"co-op"}
+
+    _undo(client_in, fields[TOKEN_FIELD])
+
+    for row, note in zip(rows, ("", "solo"), strict=True):
+        row.refresh_from_db()
+        assert row.note == note
 
 
 def test_a_row_the_batch_left_alone_refuses_its_undo(owned_user, owned_library, game):
@@ -429,17 +542,16 @@ def test_a_refused_settle_asks_again_on_the_same_token(
     assert session.device_id is None
 
 
-def test_the_question_drops_the_labels_three_dots(
-    client_in, owned_user, owned_library, game
-):
-    session = a_session(owned_user, tracked_run(owned_library, game))
+def test_the_heading_counts_the_sessions(client_in, owned_user, owned_library, game):
+    run = tracked_run(owned_library, game)
+    sessions = [a_session(owned_user, run, date(2026, 3, day)) for day in (5, 6)]
 
     body = client_in.post(
-        act_url(EDIT), {STATEMENT_FIELD: selection(session)}
+        act_url(EDIT), {STATEMENT_FIELD: selection(*sessions)}
     ).content.decode()
 
-    assert "Edit: 1 session?" in body
-    assert "Edit…:" not in body
+    assert "Edit 2 sessions" in body
+    assert "Edit…" not in body
 
 
 def test_a_carried_statement_that_is_garbled_asks_again(

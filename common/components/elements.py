@@ -124,6 +124,7 @@ Script = element_builder("script")
 # primitives.Link for those.
 LinkTag = element_builder("link")
 Select = element_builder("select")
+Textarea = element_builder("textarea")
 Option = element_builder("option")
 Optgroup = element_builder("optgroup")
 Noscript = element_builder("noscript")

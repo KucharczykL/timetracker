@@ -828,13 +828,3 @@ def test_a_move_with_no_target_answers_a_defect(owned_user, owned_library, game)
         )
 
     assert defect.value.status_code == 500
-
-
-def test_the_question_drops_the_labels_three_dots(
-    client_in, owned_user, owned_library, game
-):
-    session = a_recorded_session(owned_user, tracked_run(owned_library, game))
-
-    body = _confirm(client_in, session).content.decode()
-
-    assert "Move to playthrough: 1 session?" in body

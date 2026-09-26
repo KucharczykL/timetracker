@@ -32,7 +32,7 @@ def test_two_devices_are_removed_and_the_undo_puts_them_back(
     boxes.nth(1).click()
     page.get_by_role("button", name="Remove", exact=True).first.click()
 
-    expect(page.get_by_role("heading", name="Remove these devices")).to_be_visible()
+    expect(page.get_by_role("heading", name="Remove 2 devices")).to_be_visible()
     expect(page.locator("[data-bulk-sample-row]")).to_have_count(2)
     page.get_by_role("button", name="Remove", exact=True).click()
 

@@ -97,9 +97,9 @@ def test_two_sessions_leave_the_bucket_and_the_undo_puts_them_back(
     _select_rows(page, 0, 1)
     page.get_by_role("button", name=ACT).click()
 
-    #: The act's preview, and its own question.
+    #: The act's preview, and its own heading.
     expect(
-        page.get_by_role("heading", name="Move these sessions to a playthrough")
+        page.get_by_role("heading", name="Move 2 sessions to a playthrough")
     ).to_be_visible()
     expect(page.locator("[data-bulk-sample-row]")).to_have_count(2)
     for heading in ("Playthrough", "Day", "Duration", "Device", "Note"):

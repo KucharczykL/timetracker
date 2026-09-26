@@ -418,7 +418,7 @@ def _act_refused(
     The plural: a refusal ahead of the resolve counts no rows.
     """
     return _refused_page(
-        request, sentence, title=action.title.many, fallback=action.fallback
+        request, sentence, title=action.title.for_count(None), fallback=action.fallback
     )
 
 

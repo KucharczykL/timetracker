@@ -1,4 +1,4 @@
-"""One device on two sessions, then undone."""
+"""One device, emulated or note on two sessions, then undone."""
 
 import uuid
 from datetime import date, timedelta
@@ -24,7 +24,7 @@ def _login(page: Page, live_server) -> None:
     page.wait_for_url(f"{live_server.url}/tracker**")
 
 
-def _two_sessions(library, actor) -> list[PlayerSession]:
+def _two_sessions(library, actor, device=None) -> list[PlayerSession]:
     """Recorded by command: the Undo reads events."""
     run = tracked_run(library, create_tracked_game(library, "Outer Wilds"))
     for day in (5, 6):
@@ -34,6 +34,7 @@ def _two_sessions(library, actor) -> list[PlayerSession]:
                 timing=DurationOnlyTiming(
                     day=date(2026, 3, day), duration=timedelta(hours=2)
                 ),
+                device_id=None if device is None else device.pk,
             ),
             actor=actor,
             library=library,
@@ -42,11 +43,7 @@ def _two_sessions(library, actor) -> list[PlayerSession]:
     return list(PlayerSession.objects.filter(playthrough=run))
 
 
-def test_two_sessions_take_one_device_and_the_undo_takes_it_back(
-    live_server, page: Page, e2e_user, e2e_library
-):
-    sessions = _two_sessions(e2e_library, e2e_user)
-    deck = create_device(library=e2e_library, name="Steam Deck")
+def _console_errors(page: Page) -> list[str]:
     errors: list[str] = []
     page.on(
         "console",
@@ -54,8 +51,12 @@ def test_two_sessions_take_one_device_and_the_undo_takes_it_back(
             errors.append(message.text) if message.type == "error" else None
         ),
     )
-    _login(page, live_server)
+    return errors
 
+
+def _edit_both(page: Page, live_server) -> str:
+    """Logged in, both rows selected, Edit… pressed."""
+    _login(page, live_server)
     listed = f"{live_server.url}{reverse('games:list_sessions')}"
     page.goto(listed)
     page.get_by_role("button", name="Select rows").first.click()
@@ -63,10 +64,20 @@ def test_two_sessions_take_one_device_and_the_undo_takes_it_back(
     boxes.nth(0).click()
     boxes.nth(1).click()
     page.get_by_role("button", name=ACT).click()
+    return listed
 
-    expect(page.get_by_role("heading", name="Edit these sessions")).to_be_visible()
+
+def test_two_sessions_take_one_device_and_the_undo_takes_it_back(
+    live_server, page: Page, e2e_user, e2e_library
+):
+    sessions = _two_sessions(e2e_library, e2e_user)
+    deck = create_device(library=e2e_library, name="Steam Deck")
+    errors = _console_errors(page)
+    listed = _edit_both(page, live_server)
+
+    expect(page.get_by_role("heading", name="Edit 2 sessions")).to_be_visible()
     expect(page.locator("[data-bulk-sample-row]")).to_have_count(2)
-    for heading in ("Game", "Day", "Duration", "Device", "Emulated"):
+    for heading in ("Game", "Day", "Duration", "Device", "Emulated", "Note"):
         expect(page.get_by_role("columnheader", name=heading)).to_be_visible()
 
     picker = page.locator("search-select[name='choice-device']")
@@ -87,4 +98,32 @@ def test_two_sessions_take_one_device_and_the_undo_takes_it_back(
     for session in sessions:
         session.refresh_from_db()
         assert session.device_id is None
+    assert errors == []
+
+
+def test_the_unset_toggle_and_the_emulated_segment_state_their_facts(
+    live_server, page: Page, e2e_user, e2e_library
+):
+    deck = create_device(library=e2e_library, name="Steam Deck")
+    sessions = _two_sessions(e2e_library, e2e_user, device=deck)
+    errors = _console_errors(page)
+    listed = _edit_both(page, live_server)
+
+    picker = page.locator("search-select[name='choice-device']")
+    expect(picker.locator("[data-search-select-search]")).to_have_attribute(
+        "placeholder", "Keep: Steam Deck"
+    )
+    page.get_by_title("No device").click()
+    expect(page.get_by_role("checkbox", name="No device")).to_be_checked()
+    expect(picker.locator("xpath=..")).to_have_css("opacity", "0.5")
+    emulated = page.get_by_role("radio", name="Emulated", exact=True)
+    page.locator("label", has=emulated).click()
+    expect(emulated).to_be_checked()
+    page.get_by_role("button", name="Save", exact=True).click()
+
+    page.wait_for_url(listed)
+    for session in sessions:
+        session.refresh_from_db()
+        assert session.device_id is None
+        assert session.emulated is True
     assert errors == []
