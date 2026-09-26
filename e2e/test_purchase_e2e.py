@@ -162,7 +162,7 @@ def _platform_autofill_page(page: Page, live_server, library):
     Game.objects.create(library=library, name="Alpha Game", platform=personal_computer)
     Game.objects.create(library=library, name="Beta Game", platform=switch)
     page.goto(f"{live_server.url}{reverse('games:add_purchase')}")
-    #: Leaving Games early aborts its prefetch.
+    # Leaving Games early aborts its prefetch.
     expect(
         page.locator('search-select[name="games"] [data-search-select-option]')
     ).to_have_count(2)
@@ -172,6 +172,8 @@ def _platform_autofill_page(page: Page, live_server, library):
 
 def _pick_game(page: Page, name: str) -> None:
     games = page.locator('search-select[name="games"]')
+    # A click into a focused box opens nothing.
+    page.locator("#id_price").focus()
     games.locator("[data-search-select-search]").click()
     games.locator("[data-search-select-option]", has_text=name).click()
 
@@ -194,6 +196,19 @@ def test_platform_follows_the_games_until_the_person_picks(
     games = page.locator('search-select[name="games"]')
     games.locator("[data-pill-remove]").first.click()
     _pick_game(page, "Alpha Game")
+    expect(platform_search).to_have_value("Unspecified")
+
+
+def test_clearing_the_platform_keeps_it_unspecified(
+    authenticated_page: Page, live_server, e2e_library
+):
+    page = authenticated_page
+    platform, platform_search = _platform_autofill_page(page, live_server, e2e_library)
+    _pick_game(page, "Alpha Game")
+    expect(platform_search).to_have_value("PC")
+    platform.get_by_role("button", name="Clear").click()
+    expect(platform_search).to_have_value("Unspecified")
+    _pick_game(page, "Beta Game")
     expect(platform_search).to_have_value("Unspecified")
 
 

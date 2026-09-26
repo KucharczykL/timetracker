@@ -28,14 +28,16 @@ row, so their callers add one.
   none stays.
 - `setOptions` drops a value that it no longer offers to none.
 - An autofocused picker that holds none opens, as an empty one does.
+- With an empty query, the default highlight skips the none row, so Enter
+  never picks none by accident.
 
 ## The row
 
 The row uses its own hook, `data-search-select-none-option`, so filter mode
 does not change. The row is first. The text filter and a server answer do not
 remove it. A query highlights the row only when the query equals its label.
-Its label offers no Create row. The row has no `id`, so a cloned prototype
-keeps it.
+Its label offers no Create row. The element assigns ids at init, so the
+row renders no `id`, and a cloned prototype carries no duplicate.
 
 ## The wire
 

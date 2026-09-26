@@ -246,6 +246,17 @@ describe("<search-select> none: typing", () => {
     searchBox(host).focus();
     type(host, "No");
     expect(highlighted(host)).not.toBe(noneRow(host));
+    type(host, "Sw");
+    expect(noneRow(host).style.display).not.toBe("none");
+    expect(noneRow(host).hidden).toBe(false);
+  });
+
+  it("does not pick none on Enter over a panel with no value rows", () => {
+    const host = mount({ held: { value: "1", label: "Deck" }, staticRows: false });
+    searchBox(host).focus();
+    press(host, "Enter");
+    expect(noneInput(host)).toBeNull();
+    expect(hiddenInputs(host).map(input => input.value)).toEqual(["1"]);
   });
 
   it("highlights the none row for its exact label, and Enter holds none", () => {
@@ -308,6 +319,23 @@ describe("<search-select> none: beside answers and dependencies", () => {
     document.body.appendChild(host);
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
     holdsNone(host);
+    expect(document.activeElement).toBe(searchBox(host));
+    expect(searchBox(host).getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("keeps the row through a typed query's server answer", async () => {
+    vi.stubGlobal("fetch", answering([{ value: "9", label: "Switch", data: {} }]));
+    const host = mount({
+      staticRows: false,
+      attributes: { "search-url": "/api/devices/search" },
+    });
+    searchBox(host).focus();
+    type(host, "Sw");
+    await vi.waitFor(() =>
+      expect(host.querySelector("[data-search-select-option]")).not.toBeNull()
+    );
+    expect(host.querySelectorAll("[role='option']")[0]).toBe(noneRow(host));
+    expect(noneRow(host).style.display).not.toBe("none");
   });
 
   it("keeps none held through setOptions", () => {

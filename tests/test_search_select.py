@@ -1428,10 +1428,28 @@ class NoneLabelWidgetTest(unittest.TestCase):
             str(DeviceForm()["device"])
 
     def test_none_and_nothing_picked_both_clean_to_none(self):
-        from games.forms import SessionForm
+        from games.forms import HistoricalPlaytimeForm, PurchaseForm, SessionForm
 
-        field = SessionForm.base_fields["device"]
-        for data in ({"device": ""}, {}):
-            with self.subTest(data=data):
-                value = field.widget.value_from_datadict(data, {}, "device")
-                self.assertIsNone(field.clean(value))
+        for form_class, name in (
+            (SessionForm, "device"),
+            (HistoricalPlaytimeForm, "device"),
+            (PurchaseForm, "platform"),
+        ):
+            field = form_class.base_fields[name]
+            for data in ({name: ""}, {}):
+                with self.subTest(form=form_class.__name__, data=data):
+                    value = field.widget.value_from_datadict(data, {}, name)
+                    self.assertIsNone(field.clean(value))
+
+    def test_a_value_the_resolver_cannot_find_holds_none(self):
+        from games.forms import SearchSelectWidget
+
+        widget = SearchSelectWidget(
+            search_url="/api/devices/search",
+            options_resolver=lambda values: [],
+            none_label="No device",
+        )
+        widget.is_required = False
+        html = widget.render("device", "gone", {"id": "id_device"})
+        self.assertIn("data-search-select-none=", html)
+        self.assertNotIn('value="gone"', html)

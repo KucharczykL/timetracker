@@ -18,6 +18,7 @@ from common.components import (
     DatePicker,
     DateTimeCopyTarget,
     DateTimePicker,
+    NoneLabel,
     SearchSelect,
     SearchSelectOption,
     TemporalCopySource,
@@ -323,7 +324,7 @@ class SearchSelectWidget(forms.Widget):
         placeholder="Search…",
         autofocus=False,
         clearable: bool = True,
-        none_label: str | None = None,
+        none_label: NoneLabel | None = None,
         attrs=None,
     ):
         super().__init__(attrs)
