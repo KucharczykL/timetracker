@@ -1,6 +1,6 @@
 """Pure reusable navigation compositions."""
 
-from common.components.core import Child, Node
+from common.components.core import Child, Element, Node
 from common.components.custom_elements import (
     Dropdown,
     DropdownDivider,
@@ -21,6 +21,22 @@ def _account_value(label: str, value: Child) -> Node:
     ]
 
 
+def AvatarButton(*, initials: str, username: str) -> Element:
+    """The account trigger: a 40px circle of initials."""
+    return Button(
+        type="button",
+        aria_haspopup="menu",
+        aria_label=f"Open account menu for {username}",
+        data_account_menu_trigger="",
+        class_=(
+            "inline-flex h-10 w-10 shrink-0 items-center justify-center "
+            "rounded-full border border-default-medium bg-neutral-secondary-medium "
+            "text-heading hover:bg-neutral-tertiary-medium focus:outline-hidden "
+            "focus:ring-2 focus:ring-fg-brand"
+        ),
+    )[Span(aria_hidden="true", class_="text-type-body font-semibold")[initials]]
+
+
 def AccountMenu(
     *,
     username: str,
@@ -37,26 +53,7 @@ def AccountMenu(
 ) -> Node:
     if not initials.strip():
         raise ValueError("AccountMenu initials must not be empty.")
-    trigger_content = Span(aria_hidden="true", class_="text-type-body font-semibold")[
-        initials
-    ]
-    trigger = Button(
-        [
-            ("type", "button"),
-            ("aria-haspopup", "menu"),
-            ("aria-label", f"Open account menu for {username}"),
-            ("data-account-menu-trigger", ""),
-            (
-                "class",
-                (
-                    "inline-flex h-10 w-10 shrink-0 items-center justify-center "
-                    "rounded-full border border-default-medium bg-neutral-secondary-medium "
-                    "text-heading hover:bg-neutral-tertiary-medium focus:outline-hidden "
-                    "focus:ring-2 focus:ring-fg-brand"
-                ),
-            ),
-        ]
-    )[trigger_content]
+    trigger = AvatarButton(initials=initials, username=username)
     items: list[Node] = [
         Li(
             role="presentation",

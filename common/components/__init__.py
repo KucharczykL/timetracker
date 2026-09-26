@@ -113,7 +113,7 @@ from common.components.library_kit import (
     SummaryRow,
     SummaryValue,
 )
-from common.components.navigation import AccountMenu
+from common.components.navigation import AccountMenu, AvatarButton
 from common.components.primitives import (
     COMPACT_SHAPE_CLASSES,
     COMPACT_SIZE_CLASS,
@@ -317,6 +317,7 @@ __all__ = [
     "AccountMenu",
     "AddForm",
     "AttrsArg",
+    "AvatarButton",
     "Badge",
     "BadgeSize",
     "BadgeTone",

@@ -75,6 +75,7 @@ These keep their own builders:
 - Glyphs sized to text: `_popover_reveal`, the `Popover` trigger, the
   `TruncatedText` reveal, the `Pill` ×.
 - The filter chip template.
+- The temporal field disclosure, a button that reads as a text link.
 - `AvatarButton`, the account trigger, a 40px circle. It moves out of
   `AccountMenu` into its own component.
 - TS `createElement("button")`: the toast dismiss and the calendar fallback.
