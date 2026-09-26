@@ -29,6 +29,8 @@ from common.components.core import (
     render,
 )
 from common.components.custom_elements import (
+    DROPDOWN_ITEM_ACTIVE,
+    DROPDOWN_ITEM_SHAPE,
     BottomSheet,
     ButtonDropdown,
     Dropdown,
@@ -38,6 +40,7 @@ from common.components.custom_elements import (
     DropdownDivider,
     DropdownLinkItem,
     DropdownMenuPanel,
+    DropdownPanel,
     DropdownPostItem,
     FilterBuilder,
     FilterCount,
@@ -48,7 +51,6 @@ from common.components.custom_elements import (
     SelectDropdown,
     SelectionFields,
     SplitButtonDropdown,
-    dropdown_combobox_panel_class,
     register_element,
 )
 from common.components.date_picker import (
@@ -285,6 +287,8 @@ __all__ = [
     "DIALOG_TITLE_CLASS",
     "DISABLED_CONTROL_CLASS",
     "DISABLED_WITHIN_CLASS",
+    "DROPDOWN_ITEM_ACTIVE",
+    "DROPDOWN_ITEM_SHAPE",
     "FORM_LABEL_CLASS",
     "FORM_MAX_WIDTH_CLASS",
     "H1",
@@ -361,6 +365,7 @@ __all__ = [
     "DropdownDivider",
     "DropdownLinkItem",
     "DropdownMenuPanel",
+    "DropdownPanel",
     "DropdownPostItem",
     "Duration",
     "DurationAlternates",
@@ -504,7 +509,6 @@ __all__ = [
     "collect_media",
     "custom_element_builder",
     "drop_columns",
-    "dropdown_combobox_panel_class",
     "field_widget",
     "field_widget_templates",
     "is_quick_editable",

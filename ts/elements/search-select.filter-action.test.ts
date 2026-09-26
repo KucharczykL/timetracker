@@ -29,7 +29,7 @@ function mountFilter(rows: string): HTMLElement {
   host.innerHTML = `
     <div data-search-select-pills></div>
     <input data-search-select-search role="combobox" aria-expanded="false" aria-autocomplete="list" />
-    <div data-search-select-options class="hidden" role="listbox" aria-multiselectable="true" tabindex="-1">${rows}</div>
+    <div data-search-select-options hidden role="listbox" aria-multiselectable="true" tabindex="-1">${rows}</div>
     <template data-search-select-template="pill-include"><span data-pill data-search-select-type="include"><span data-search-select-label></span><button data-pill-remove></button></span></template>
     <template data-search-select-template="pill-exclude"><span data-pill data-search-select-type="exclude"><span data-search-select-label></span><button data-pill-remove></button></span></template>
   `;

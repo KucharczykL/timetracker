@@ -517,7 +517,7 @@ def test_single_select_panel_stays_anchored_when_filtered(live_server, page):
         return page.evaluate(
             """() => {
                 const trigger = document.querySelector('search-select[name="thing"]');
-                const panel = document.querySelector('search-select[name="thing"] [data-search-select-options]');
+                const panel = document.querySelector('search-select[name="thing"] [data-search-select-panel]');
                 const triggerRect = trigger.getBoundingClientRect();
                 const panelRect = panel.getBoundingClientRect();
                 return {

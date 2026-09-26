@@ -28,9 +28,9 @@ from common.components.core import BaseComponent, Node
 from common.components.custom_elements import (
     FILTER_MODE_MODELS,
     Dropdown,
+    DropdownPanel,
     FilterMode,
     _QuickFilterBarElement,
-    dropdown_combobox_panel_class,
     list_url_for,
 )
 from common.components.filters import (
@@ -435,18 +435,14 @@ class QuickFilterBar(BaseComponent):
             orientation="horizontal",
             haspopup="dialog",
         ).as_element()
-        panel = Div(
+        # Moved facets' dropdowns open fixed, unclipped.
+        panel = DropdownPanel(
             role="dialog",
             aria_label="More filters",
-            # The shared dialog surface + a vertical stack for the moved
-            # facet triggers (their own dropdowns open position:fixed, so
-            # the surface's overflow-hidden never clips them).
-            class_=(
-                f"{dropdown_combobox_panel_class('w-auto')} "
-                "flex flex-col items-stretch gap-1"
-            ),
-            data_quick_overflow_items="",
-        )
+            width="w-auto",
+            content_attributes=[("data-quick-overflow-items", "")],
+            content_class="flex flex-col items-stretch gap-1",
+        )[()]
         return Div(class_="hidden", data_quick_overflow="")[
             Dropdown(
                 trigger_element=trigger,

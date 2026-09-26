@@ -15,7 +15,7 @@ function mountSingle(name: string): HTMLElement {
   host.innerHTML = `
     <div data-search-select-pills></div>
     <input data-search-select-search role="combobox" aria-expanded="false" aria-autocomplete="list" />
-    <div data-search-select-options class="hidden" role="listbox" tabindex="-1">
+    <div data-search-select-options hidden role="listbox" tabindex="-1">
       <div data-search-select-option data-value="1" data-label="One" role="option" aria-selected="false"></div>
       <div data-search-select-option data-value="2" data-label="Two" role="option" aria-selected="false"></div>
     </div>
@@ -34,7 +34,7 @@ function mountFilter(pillsHtml = ""): HTMLElement {
   host.innerHTML = `
     <div data-search-select-pills>${pillsHtml}</div>
     <input data-search-select-search role="combobox" aria-expanded="false" aria-autocomplete="list" />
-    <div data-search-select-options class="hidden" role="listbox" aria-multiselectable="true" tabindex="-1">
+    <div data-search-select-options hidden role="listbox" aria-multiselectable="true" tabindex="-1">
       <div data-search-select-modifier-option="IS_NULL" data-label="(None)" role="option" aria-selected="false"></div>
       <div data-search-select-option data-value="1" data-label="One" role="option" aria-selected="false"></div>
       <div data-search-select-option data-value="2" data-label="Two" role="option" aria-selected="false"></div>
@@ -112,10 +112,10 @@ describe("<search-select> ARIA combobox wiring (#154)", () => {
     const search = searchOf(host);
 
     search.dispatchEvent(new Event("focus"));
-    expect(panelOf(host).classList.contains("hidden")).toBe(false);
+    expect(panelOf(host).hidden).toBe(false);
 
     document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    expect(panelOf(host).classList.contains("hidden")).toBe(true);
+    expect(panelOf(host).hidden).toBe(true);
     expect(search.getAttribute("aria-expanded")).toBe("false");
   });
 
@@ -138,9 +138,9 @@ describe("<search-select> ARIA combobox wiring (#154)", () => {
     // The outside-mousedown dismiss still works, so the document listeners were
     // re-bound by the reconnect (not left dangling from the first mount).
     search.dispatchEvent(new Event("focus"));
-    expect(panelOf(host).classList.contains("hidden")).toBe(false);
+    expect(panelOf(host).hidden).toBe(false);
     document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-    expect(panelOf(host).classList.contains("hidden")).toBe(true);
+    expect(panelOf(host).hidden).toBe(true);
   });
 
   it("clears the highlight when a single-select option is click-committed", () => {
@@ -237,7 +237,7 @@ describe("<search-select> status-span describedby wiring (#450)", () => {
       <div data-search-select-pills></div>
       <input data-search-select-search role="combobox" aria-expanded="false" aria-autocomplete="list" />
       <span data-search-select-status role="status" class="sr-only"></span>
-      <div data-search-select-options class="hidden" role="listbox" tabindex="-1"></div>
+      <div data-search-select-options hidden role="listbox" tabindex="-1"></div>
     `;
     document.body.appendChild(host);
 
@@ -256,7 +256,7 @@ describe("<search-select> status-span describedby wiring (#450)", () => {
         <div data-search-select-pills></div>
         <input data-search-select-search role="combobox" aria-expanded="false" aria-autocomplete="list" />
         <span data-search-select-status role="status" class="sr-only"></span>
-        <div data-search-select-options class="hidden" role="listbox" tabindex="-1"></div>
+        <div data-search-select-options hidden role="listbox" tabindex="-1"></div>
       `;
       document.body.appendChild(host);
       return host.querySelector<HTMLElement>("[data-search-select-status]")!.id;

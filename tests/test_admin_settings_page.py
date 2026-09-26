@@ -435,10 +435,10 @@ def test_navbar_keeps_personal_settings_for_normal_user_without_admin_link(
         "role": "menuitem",
         "tabindex": "-1",
         "class": (
-            "block w-full text-left px-4 py-2 cursor-pointer no-underline "
-            "rounded-base hover:bg-neutral-tertiary-medium text-body "
+            "block w-full text-left no-underline px-4 py-2 rounded-base "
+            "text-body cursor-pointer hover:bg-neutral-tertiary-medium "
             "hover:text-heading focus:bg-neutral-tertiary-medium "
-            "dark:focus:text-white focus:outline-hidden "
+            "focus:text-heading focus:outline-hidden "
             "aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
         ),
     }

@@ -281,3 +281,45 @@ describe("attachMenu keepOpenOnTab", () => {
     expect(controller.isOpen()).toBe(false);
   });
 });
+
+describe("attachMenu pointer follow", () => {
+  function mountMenu(): { menu: HTMLElement; items: HTMLElement[]; controller: MenuController } {
+    document.body.innerHTML = `
+      <div id="host">
+        <button data-toggle type="button">Open</button>
+        <div data-menu role="menu" hidden>
+          <button role="menuitem" type="button">one</button>
+          <button role="menuitem" type="button">two</button>
+        </div>
+      </div>`;
+    const host = document.querySelector<HTMLElement>("#host") as HTMLElement;
+    const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
+    const menu = host.querySelector<HTMLElement>("[data-menu]") as HTMLElement;
+    const controller = attachMenu(host, toggle, menu);
+    const items = Array.from(menu.querySelectorAll<HTMLElement>("[role=menuitem]"));
+    return { menu, items, controller };
+  }
+
+  function move(target: Element, x: number, y: number): void {
+    const event = new MouseEvent("pointermove", { bubbles: true, clientX: x, clientY: y });
+    Object.defineProperty(event, "pointerType", { value: "mouse" });
+    target.dispatchEvent(event);
+  }
+
+  it("a hover focuses the item without scrolling it into view", () => {
+    const { items, controller } = mountMenu();
+    controller.open();
+    const focus = vi.spyOn(items[1], "focus");
+    move(items[1], 3, 30);
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    expect(document.activeElement).toBe(items[1]);
+  });
+
+  it("a still cursor over scrolled content moves nothing", () => {
+    const { items, controller } = mountMenu();
+    controller.open();
+    move(items[0], 3, 10);
+    move(items[1], 3, 10);
+    expect(document.activeElement).toBe(items[0]);
+  });
+});
