@@ -16,13 +16,10 @@ from games.bulk_actions import AsksNothing, Control
 from games.bulk_edit import (
     DEVICE_GONE,
     EDIT,
-    EMULATED,
     NOT_EDITED_BY_THIS_BATCH,
-    NOT_EMULATED,
     NOTHING_STATED,
     STATEMENT_UNREADABLE,
     EditStatement,
-    edit_fields,
     edit_one,
     offer_edit,
     settle_edit,
@@ -92,8 +89,7 @@ def post(**fields) -> QueryDict:
 
 def control(**answers) -> QueryDict:
     """The fields the first press posts."""
-    names = edit_fields(CHOICE_FIELD)._asdict()
-    return post(**{names[key]: value for key, value in answers.items()})
+    return post(**{f"{CHOICE_FIELD}-{key}": value for key, value in answers.items()})
 
 
 # ── The statement ────────────────────────────────────────────────────────────
@@ -164,8 +160,8 @@ def test_the_control_never_posts_under_the_choice_field(
     assert isinstance(offered, Control)
     markup = str(offered.node)
     assert f'name="{CHOICE_FIELD}"' not in markup
-    for name in edit_fields(CHOICE_FIELD):
-        assert f'name="{name}"' in markup
+    for name in ("device", "note"):
+        assert f'name="{CHOICE_FIELD}-{name}"' in markup
 
 
 def _offered(library, rows) -> str:
@@ -210,35 +206,10 @@ def test_the_placeholders_name_nothing_held(owned_user, owned_library, game):
     assert 'placeholder="Keep: no note"' in markup
 
 
-def test_each_unset_toggle_is_a_named_checkbox(owned_user, owned_library, game):
-    markup = _offered(
-        owned_library, [a_session(owned_user, tracked_run(owned_library, game))]
-    )
-    fields = edit_fields(CHOICE_FIELD)
-
-    for name, what in ((fields.unset_device, "device"), (fields.unset_note, "note")):
-        assert f'type="checkbox" name="{name}"' in markup
-        assert f'aria-label="No {what}"' in markup
-
-
-def test_emulated_leaves_as_it_is_until_chosen(owned_user, owned_library, game):
-    markup = _offered(
-        owned_library, [a_session(owned_user, tracked_run(owned_library, game))]
-    )
-    name = edit_fields(CHOICE_FIELD).emulated
-
-    assert f'type="radio" name="{name}" value="" class="sr-only" checked' in markup
-    assert markup.count(f'type="radio" name="{name}"') == 3
-
-
 @pytest.mark.parametrize(
     ("answers", "expected"),
     [
-        ({"unset_device": "1"}, EditStatement(StatedDevice(None), None)),
         ({"note": "  co-op  "}, EditStatement(None, None, "co-op")),
-        ({"unset_note": "1"}, EditStatement(None, None, "")),
-        ({"emulated": EMULATED}, EditStatement(None, True)),
-        ({"emulated": NOT_EMULATED}, EditStatement(None, False)),
     ],
 )
 def test_the_control_composes_a_statement(owned_library, answers, expected):
@@ -248,11 +219,11 @@ def test_the_control_composes_a_statement(owned_library, answers, expected):
 
 
 def test_a_picked_device_settles(owned_library, deck):
-    settled = settle_edit(
-        owned_library, control(device=str(deck.pk), emulated=EMULATED)
-    )
+    settled = settle_edit(owned_library, control(device=str(deck.pk), note="co-op"))
 
-    assert EditStatement.decode(settled) == EditStatement(StatedDevice(deck.pk), True)
+    assert EditStatement.decode(settled) == EditStatement(
+        StatedDevice(deck.pk), None, "co-op"
+    )
 
 
 def test_settling_its_own_answer_answers_it_again(owned_library, deck):
@@ -266,7 +237,7 @@ def test_a_carried_statement_outranks_the_control(owned_library, deck):
 
     settled = settle_edit(
         owned_library,
-        post(**{CHOICE_FIELD: carried, edit_fields(CHOICE_FIELD).device: ""}),
+        post(**{CHOICE_FIELD: carried, f"{CHOICE_FIELD}-device": ""}),
     )
 
     assert settled == carried
@@ -276,25 +247,15 @@ def test_a_carried_statement_outranks_the_control(owned_library, deck):
     ("answers", "sentence"),
     [
         ({}, NOTHING_STATED),
-        ({"emulated": ""}, NOTHING_STATED),
+        ({"device": ""}, NOTHING_STATED),
         ({"note": "   "}, NOTHING_STATED),
-        ({"emulated": "maybe"}, STATEMENT_UNREADABLE),
+        ({"device": "not a key"}, DEVICE_GONE),
     ],
 )
 def test_a_control_stating_nothing_readable_refuses(owned_library, answers, sentence):
     with pytest.raises(CommandRejected) as refused:
         settle_edit(owned_library, control(**answers))
     assert refused.value.sentence == sentence
-
-
-def test_the_unset_toggle_wins_over_its_field(owned_library, deck):
-    """The field fades under ⊘, so its value is not read."""
-    settled = settle_edit(
-        owned_library,
-        control(device=str(deck.pk), unset_device="1", note="x", unset_note="1"),
-    )
-
-    assert EditStatement.decode(settled) == EditStatement(StatedDevice(None), None, "")
 
 
 def test_a_removed_device_refuses(owned_library, deck):
@@ -480,14 +441,14 @@ def test_a_second_undo_changes_nothing(
 ):
     session = a_session(owned_user, tracked_run(owned_library, game))
     fields = _token(client_in, session)
-    client_in.post(act_url(EDIT), {**fields, **control(emulated=EMULATED).dict()})
+    client_in.post(act_url(EDIT), {**fields, **control(note="co-op").dict()})
     _undo(client_in, fields[TOKEN_FIELD])
     appended = LibraryEvent.objects.filter(aggregate_id=session.pk).count()
 
     _undo(client_in, fields[TOKEN_FIELD])
 
     session.refresh_from_db()
-    assert session.emulated is False
+    assert session.note == ""
     assert LibraryEvent.objects.filter(aggregate_id=session.pk).count() == appended
 
 
@@ -589,7 +550,7 @@ def test_a_batch_spanning_chunks_carries_one_statement(
 
     first = client_in.post(
         act_url(EDIT),
-        {**fields, **control(device=str(deck.pk), emulated=EMULATED).dict()},
+        {**fields, **control(device=str(deck.pk), note="co-op").dict()},
     )
     assert CHOICE_FIELD in posted(first)
     _run_every_chunk(client_in, first)
@@ -597,7 +558,7 @@ def test_a_batch_spanning_chunks_carries_one_statement(
     for session in sessions:
         session.refresh_from_db()
         assert session.device_id == deck.pk
-        assert session.emulated is True
+        assert session.note == "co-op"
 
 
 def test_a_device_removed_between_chunks_asks_again_for_the_rest(
@@ -645,14 +606,14 @@ def test_an_undo_puts_back_both_facts(client_in, owned_user, owned_library, game
     fields = _token(client_in, session)
     client_in.post(
         act_url(EDIT),
-        {**fields, **control(device=str(deck.pk), emulated=EMULATED).dict()},
+        {**fields, **control(device=str(deck.pk), note="co-op").dict()},
     )
 
     _undo(client_in, fields[TOKEN_FIELD])
 
     session.refresh_from_db()
     assert session.device_id is None
-    assert session.emulated is False
+    assert session.note == ""
 
 
 def test_an_undo_reaches_a_row_whose_catalog_game_was_removed(

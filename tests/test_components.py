@@ -619,6 +619,13 @@ class ComponentEdgeCasesTest(unittest.TestCase):
         self.assertTrue(str(document).startswith("<!DOCTYPE html><html>"))
         self.assertIn("widget.js", components.collect_media(document).js)
 
+    def test_media_attached_to_a_fragment_bubbles(self):
+        fragment = components.Fragment(components.Element(tag_name="div")).with_media(
+            components.Media(js=("widget.js",))
+        )
+        parent = components.Element(tag_name="section", children=[fragment])
+        self.assertIn("widget.js", components.collect_media(parent).js)
+
     def test_safe_node_children_pass_through(self):
         result = str(
             components.Element(

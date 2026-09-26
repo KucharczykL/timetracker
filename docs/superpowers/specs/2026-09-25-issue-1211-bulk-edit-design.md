@@ -25,28 +25,23 @@ text that is not JSON, an unknown key, a wrong type, a null `emulated` or
 
 ## The question
 
-Each field has three states: leave, set, and unset.
+`BulkEditForm` is a Django form that `FormFields` renders. Its prefix is the
+runner's `CHOICE_FIELD`. Each field has three states: leave, set, and none. An
+empty field is "leave", and its placeholder shows what the rows keep: "Keep:
+Steam Deck" when all rows agree, "Keep: mixed" when they differ.
 
-- Device is a picker joined to a ⊘ toggle. An empty picker is "leave". The
-  picker searches and creates devices as the session form's picker does. The
-  toggle states "no device", and the picker then fades. The toggle wins over
-  a value left in the picker, because the person sees that value faded.
-- Note is a text area joined to a ⊘ toggle, the same way. A blank text area
-  is "leave".
-- Emulated is a segmented group of three radios: `—`, `Emulated`,
-  `Not emulated`. `—` is "leave". The flag has no unset state.
+- Device is a `SearchSelectWidget` over the library's devices. It searches and
+  creates as the session form's picker does. Its × empties it back to
+  "leave".
+- Note is a text area. A blank note is "leave".
+- Emulated waits for #1301, a `SearchSelectWidget` over fixed choices.
+- "None" (no device, no note) waits for #1302, a ⊘ toggle joined to a field.
 
-The ⊘ toggle is a checkbox drawn as a joined button, so it needs no script.
-Each placeholder shows what "leave" keeps: "Keep: Steam Deck" when all rows
-agree, "Keep: mixed" when they differ.
+The create row makes a device outside the batch, so the Undo keeps it.
 
-`EditFields` puts a suffix on the runner's field name for each control, and
-no control uses `CHOICE_FIELD`. The create row makes a device outside the
-batch, so the Undo keeps it.
-
-The first press posts the control fields; each later chunk posts
-`CHOICE_FIELD`, an earlier settle's answer. `settle_edit` decodes that when
-present, and composes from the controls when not. A stated device must be in
+The first press posts the form; each later chunk posts `CHOICE_FIELD`, an
+earlier settle's answer. `settle_edit` decodes that when present, and
+validates the form when not. A stated device must be in
 `Device.objects.for_library(library)`. The answer is `encode()`, so
 `settle(settle(x)) == settle(x)`.
 

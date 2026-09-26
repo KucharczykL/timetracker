@@ -2,28 +2,17 @@
 
 import json
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from types import MappingProxyType
-from typing import NamedTuple, TypedDict
+from functools import partial
+from typing import Any, TypedDict, cast
 
+from django import forms
 from django.contrib.auth.models import User
 from django.http import QueryDict
 
-from common.components.core import Node
-from common.components.primitives import (
-    SHAPE_CLASSES,
-    ButtonShape,
-    ChoiceSegment,
-    Div,
-    Icon,
-    Label,
-    SegmentedField,
-    SegmentedRadios,
-    SegmentOption,
-    Textarea,
-)
-from common.components.search_select import DEFAULT_PREFETCH, SearchSelect
+from common.components.core import Media
+from common.components.primitives import FormFields
 from common.utils import truncate
 from games.bulk_actions import (
     ActTitle,
@@ -53,7 +42,13 @@ from games.events.playersession import (
     PLAYERSESSION_NOTE_CHANGED,
 )
 from games.events.vocabulary import EventType
-from games.forms import DEVICE_CREATE_URL, DEVICE_SEARCH_URL, TEXTAREA_CLASS
+from games.forms import (
+    DEVICE_CREATE_URL,
+    DEVICE_SEARCH_URL,
+    PrimitiveWidgetsMixin,
+    SearchSelectWidget,
+    device_options,
+)
 from games.models import Device, LibraryEvent, PlayerSession, UserLibrary
 from games.reads.events import aggregate_events
 from games.writes.answers import answered
@@ -72,7 +67,7 @@ class EditJson(TypedDict, total=False):
 _KEYS = frozenset(EditJson.__annotations__)
 
 #: What settling refuses.
-NOTHING_STATED = "Choose a device, whether the sessions were emulated, or a note."
+NOTHING_STATED = "Choose a device or write a note."
 DEVICE_UNREADABLE = "That device could not be read. Choose one again."
 DEVICE_GONE = (
     "That device is no longer available. Choose another one, or restore it first."
@@ -84,18 +79,8 @@ NOT_EDITED_BY_THIS_BATCH = (
     "That session was not changed by this batch, so it was left as it is."
 )
 
-#: Heading style for every field.
-_HEADING = "text-type-body text-body"
-
-#: A radio value of the emulated group.
-type EmulatedAnswer = str  # "", "yes", "no"
-
-LEAVE: EmulatedAnswer = ""
-EMULATED: EmulatedAnswer = "yes"
-NOT_EMULATED: EmulatedAnswer = "no"
-_EMULATED_ANSWERS: Mapping[EmulatedAnswer, bool | None] = MappingProxyType(
-    {LEAVE: None, EMULATED: True, NOT_EMULATED: False}
-)
+#: The picker's element script.
+SEARCH_SELECT_SCRIPT = "dist/elements/search-select.js"
 
 #: A placeholder: what "leave as it is" keeps.
 type Keeping = str  # "Keep: Steam Deck"
@@ -175,26 +160,6 @@ def _device_key(stated: str) -> uuid.UUID:
 # ── The question ─────────────────────────────────────────────────────────────
 
 
-class EditFields(NamedTuple):
-    """The control's names, suffixed onto the runner's."""
-
-    device: FieldName
-    unset_device: FieldName
-    emulated: FieldName
-    note: FieldName
-    unset_note: FieldName
-
-
-def edit_fields(field_name: FieldName) -> EditFields:
-    return EditFields(
-        device=f"{field_name}-device",
-        unset_device=f"{field_name}-unset-device",
-        emulated=f"{field_name}-emulated",
-        note=f"{field_name}-note",
-        unset_note=f"{field_name}-unset-note",
-    )
-
-
 def _keeping[T](
     rows: Sequence[PlayerSession],
     value: Callable[[PlayerSession], T],
@@ -215,112 +180,85 @@ def _note_shown(note: str) -> str:
     return truncate(note, _KEPT_NOTE_LENGTH) if note else "no note"
 
 
-def _unset_toggle(name: FieldName, what: str) -> Callable[[ButtonShape], Node]:
-    """⊘: states "none"; wins over its field."""
+class BulkEditForm(PrimitiveWidgetsMixin, forms.Form):
+    """An empty field leaves the rows alone."""
 
-    def toggle(shape: ButtonShape) -> Node:
-        return ChoiceSegment(
-            shape,
-            type="checkbox",
-            name=name,
-            value="1",
-            label=Icon("ban", attributes=[("aria-hidden", "true")]),
-            aria_label=f"No {what}",
-            title=f"No {what}",
+    device = forms.ModelChoiceField(
+        queryset=Device.objects.none(),
+        required=False,
+        error_messages={"invalid_choice": DEVICE_GONE},
+        widget=SearchSelectWidget(
+            search_url=DEVICE_SEARCH_URL,
+            options_resolver=device_options,
+            create_url=DEVICE_CREATE_URL,
+        ),
+    )
+    note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}))
+
+    def __init__(
+        self,
+        data: QueryDict | None = None,
+        *,
+        library: UserLibrary,
+        prefix: FieldName,
+        rows: Sequence[PlayerSession] = (),
+    ) -> None:
+        super().__init__(data, prefix=prefix)
+        device = cast(forms.ModelChoiceField, self.fields["device"])
+        device.queryset = Device.objects.for_library(library)
+        widget = cast(SearchSelectWidget, device.widget)
+        widget.options_resolver = partial(device_options, library=library)
+        if rows:
+            widget.placeholder = _keeping(rows, _device_name, str)
+            self.fields["note"].widget.attrs["placeholder"] = _keeping(
+                rows, lambda row: row.note, _note_shown
+            )
+
+    def clean_note(self) -> str:
+        note = self.cleaned_data["note"]
+        if note:
+            try:
+                check_note(note)
+            except CommandRejected as refused:
+                raise forms.ValidationError(refused.sentence or "") from refused
+        return note
+
+    def clean(self) -> dict[str, Any]:
+        cleaned = super().clean() or {}
+        if cleaned.get("device") is None and not cleaned.get("note"):
+            raise forms.ValidationError(NOTHING_STATED)
+        return cleaned
+
+    def statement(self) -> EditStatement:
+        """The valid form, as one statement."""
+        device: Device | None = self.cleaned_data["device"]
+        note: str = self.cleaned_data["note"]
+        return EditStatement(
+            None if device is None else StatedDevice(device.pk),
+            None,
+            note or None,
         )
-
-    return toggle
-
-
-#: ⊘ is the row's one checkbox; its field fades.
-_UNSET_ROW = "group/unset w-full"
-_UNSET_FIELD = (
-    "flex-1 min-w-0 "
-    "group-has-[:checked]/unset:opacity-50 "
-    "group-has-[:checked]/unset:pointer-events-none"
-)
 
 
 def offer_edit(
     library: UserLibrary, rows: Sequence[PlayerSession], field_name: FieldName
 ) -> Offered:
-    """Controls suffix `field_name`; none uses it bare."""
+    """Every field is prefixed `field_name`."""
     if not rows:
         #: The confirmation says so itself.
         return AsksNothing()
-    fields = edit_fields(field_name)
-
-    def device(shape: ButtonShape) -> Node:
-        return Div(class_=_UNSET_FIELD)[
-            SearchSelect(
-                name=fields.device,
-                search_url=DEVICE_SEARCH_URL,
-                create_url=DEVICE_CREATE_URL,
-                prefetch=DEFAULT_PREFETCH,
-                placeholder=_keeping(rows, _device_name, str),
-                id=fields.device,
-                shape=shape,
-            )
-        ]
-
-    def note(shape: ButtonShape) -> Node:
-        return Div(class_=_UNSET_FIELD)[
-            Textarea(
-                name=fields.note,
-                id=fields.note,
-                rows="2",
-                placeholder=_keeping(rows, lambda row: row.note, _note_shown),
-                class_=_shaped_textarea(shape),
-            )
-        ]
-
-    return Control(
-        Div(class_="flex flex-col gap-4")[
-            Div(class_="flex flex-col gap-2")[
-                Label(for_=fields.device, class_=_HEADING)["Device"],
-                SegmentedField(
-                    class_=_UNSET_ROW,
-                    field=device,
-                    trailing=_unset_toggle(fields.unset_device, "device"),
-                ),
-            ],
-            SegmentedRadios(
-                name=fields.emulated,
-                legend="Emulated",
-                legend_class=f"{_HEADING} mb-2",
-                options=(
-                    SegmentOption(LEAVE, "Leave as it is"),
-                    SegmentOption(EMULATED, "Emulated"),
-                    SegmentOption(NOT_EMULATED, "Not emulated"),
-                ),
-                checked=LEAVE,
-            ),
-            Div(class_="flex flex-col gap-2")[
-                Label(for_=fields.note, class_=_HEADING)["Note"],
-                SegmentedField(
-                    class_=_UNSET_ROW,
-                    field=note,
-                    trailing=_unset_toggle(fields.unset_note, "note"),
-                ),
-            ],
-        ]
-    )
-
-
-def _shaped_textarea(shape: ButtonShape) -> str:
-    """The shared look, with the row's corners."""
-    return TEXTAREA_CLASS.replace("rounded-base", SHAPE_CLASSES[shape])
+    form = BulkEditForm(library=library, prefix=field_name, rows=rows)
+    #: Widget Media never bubbles.
+    return Control(FormFields(form).with_media(Media(js=(SEARCH_SELECT_SCRIPT,))))
 
 
 def settle_edit(library: UserLibrary, post: QueryDict) -> ChoiceValue:
-    """Carried statement, else the control's; checked."""
+    """Carried statement, else the form's; checked."""
     #: Local: the act table imports this module.
     from games.views.bulk import CHOICE_FIELD
 
     carried = post.get(CHOICE_FIELD, "")
-    statement = (
-        EditStatement.decode(carried) if carried else _composed(post, CHOICE_FIELD)
-    )
+    statement = EditStatement.decode(carried) if carried else _composed(library, post)
     device = statement.device
     if device is not None and device.device_id is not None:
         held = Device.objects.for_library(library).filter(pk=device.device_id)
@@ -332,26 +270,18 @@ def settle_edit(library: UserLibrary, post: QueryDict) -> ChoiceValue:
     return statement.encode()
 
 
-def _composed(post: QueryDict, field_name: FieldName) -> EditStatement:
-    fields = edit_fields(field_name)
-    device: StatedDevice | None = None
-    if post.get(fields.unset_device):
-        device = StatedDevice(None)
-    elif picked := post.get(fields.device, ""):
-        device = StatedDevice(_device_key(picked))
-    answer = post.get(fields.emulated, LEAVE)
-    if answer not in _EMULATED_ANSWERS:
-        raise _unreadable(f"{answer!r} is no emulated answer")
-    emulated = _EMULATED_ANSWERS[answer]
-    note: str | None = None
-    if post.get(fields.unset_note):
-        note = ""
-    elif written := post.get(fields.note, "").strip():
-        check_note(written)
-        note = written
-    if device is None and emulated is None and note is None:
-        raise CommandRejected("the edit states nothing", sentence=NOTHING_STATED)
-    return EditStatement(device, emulated, note)
+def _composed(library: UserLibrary, post: QueryDict) -> EditStatement:
+    from games.views.bulk import CHOICE_FIELD
+
+    form = BulkEditForm(post, library=library, prefix=CHOICE_FIELD)
+    if not form.is_valid():
+        sentences = [
+            str(message) for messages in form.errors.values() for message in messages
+        ]
+        raise CommandRejected(
+            f"the edit form refuses: {sentences}", sentence=sentences[0]
+        )
+    return form.statement()
 
 
 EDIT_CHOICE: BulkChoice[PlayerSession] = BulkChoice(

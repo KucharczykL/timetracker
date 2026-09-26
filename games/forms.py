@@ -283,7 +283,7 @@ def _game_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     ]
 
 
-def _device_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
+def device_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     return [
         {"value": d.id, "label": d.name, "data": {}}
         for d in Device.objects.for_library(library).filter(pk__in=values)
@@ -1302,7 +1302,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
             forms.ModelChoiceField, self.fields["device"]
         ).queryset = Device.objects.for_library(library).order_by("name")
         self.fields["device"].widget.options_resolver = partial(
-            _device_options, library=library
+            device_options, library=library
         )
         self._presentation = presentation
         for field_name, copy_target in _INSTANT_COPY_TARGETS.items():
@@ -1386,7 +1386,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
         required=False,
         widget=SearchSelectWidget(
             search_url=DEVICE_SEARCH_URL,
-            options_resolver=_device_options,
+            options_resolver=device_options,
             create_url=DEVICE_CREATE_URL,
             none_label="No device",
         ),
@@ -1638,7 +1638,7 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         required=False,
         widget=SearchSelectWidget(
             search_url=DEVICE_SEARCH_URL,
-            options_resolver=_device_options,
+            options_resolver=device_options,
             create_url=DEVICE_CREATE_URL,
             none_label="No device",
         ),

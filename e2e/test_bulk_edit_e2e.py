@@ -99,31 +99,3 @@ def test_two_sessions_take_one_device_and_the_undo_takes_it_back(
         session.refresh_from_db()
         assert session.device_id is None
     assert errors == []
-
-
-def test_the_unset_toggle_and_the_emulated_segment_state_their_facts(
-    live_server, page: Page, e2e_user, e2e_library
-):
-    deck = create_device(library=e2e_library, name="Steam Deck")
-    sessions = _two_sessions(e2e_library, e2e_user, device=deck)
-    errors = _console_errors(page)
-    listed = _edit_both(page, live_server)
-
-    picker = page.locator("search-select[name='choice-device']")
-    expect(picker.locator("[data-search-select-search]")).to_have_attribute(
-        "placeholder", "Keep: Steam Deck"
-    )
-    page.get_by_title("No device").click()
-    expect(page.get_by_role("checkbox", name="No device")).to_be_checked()
-    expect(picker.locator("xpath=..")).to_have_css("opacity", "0.5")
-    emulated = page.get_by_role("radio", name="Emulated", exact=True)
-    page.locator("label", has=emulated).click()
-    expect(emulated).to_be_checked()
-    page.get_by_role("button", name="Save", exact=True).click()
-
-    page.wait_for_url(listed)
-    for session in sessions:
-        session.refresh_from_db()
-        assert session.device_id is None
-        assert session.emulated is True
-    assert errors == []
