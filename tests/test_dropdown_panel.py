@@ -1,6 +1,7 @@
 """Every dropdown panel is a still surface around one scroller."""
 
 from html.parser import HTMLParser
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -12,11 +13,16 @@ from common.components import (
     DropdownMenuPanel,
     DropdownPanel,
     ListboxPanel,
+    QuickFilterBar,
     Safe,
     Span,
 )
 from common.components.custom_elements import SelectOption
 from common.components.primitives import _selection_actions_slot
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
+)
 
 
 class _Tree(HTMLParser):
@@ -113,9 +119,10 @@ def test_the_panel_is_a_still_surface_around_one_scroller(site):
 
 
 def test_the_quick_overflow_moves_facets_into_the_scroller():
-    from tests.test_quick_filter_bar import QuickFilterBar
-
-    html = str(QuickFilterBar(mode="games"))
+    presentation = DateTimePresentation(
+        DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+    )
+    html = str(QuickFilterBar(mode="games", presentation=presentation))
     [panel] = [
         panel
         for panel in _panels(html)
