@@ -177,11 +177,18 @@ _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]
 # before the box would otherwise leave it on a line alone; size-8 is a 32px
 # target, above the 24px touch minimum. The box is its peer, so a
 # disabled box hides it without script.
-_CLEAR_BUTTON_CLASS = (
-    "ml-auto shrink-0 size-8 -mr-1 inline-flex items-center justify-center "
-    "rounded-base text-body hover:text-heading hover:bg-neutral-tertiary-medium "
+_CLEAR_BUTTON_LOOK = (
+    "shrink-0 size-8 inline-flex items-center justify-center rounded-base "
+    "text-body hover:text-heading hover:bg-neutral-tertiary-medium "
     "cursor-pointer peer-disabled:hidden"
 )
+_CLEAR_BUTTON_CLASS = f"ml-auto -mr-1 {_CLEAR_BUTTON_LOOK}"
+# The panel personality's box draws its own border, so the × sits inside it,
+# pinned over the box's right padding, which pr-10 widens to clear it.
+_PANEL_CLEAR_BUTTON_CLASS = (
+    f"absolute right-1 top-1/2 -translate-y-1/2 {_CLEAR_BUTTON_LOOK}"
+)
+_PANEL_CLEARABLE_SEARCH_CLASS = "pr-10"
 # top-full anchors the panel to the container's bottom edge: as an absolutely
 # positioned child of the flex field, its static position would otherwise be
 # centered by items-center and overlap the search box.
@@ -370,6 +377,7 @@ def _combobox_children(
     menu_target: bool = False,
     marker: list[Node] | None = None,
     clear_button: Node | None = None,
+    clear_inside_box: bool = False,
 ) -> list[Node]:
     """Build and return the shared combobox interior nodes.
 
@@ -397,7 +405,9 @@ def _combobox_children(
     ``marker`` nodes (the #450 committed-marker glyph + sr-only status span) sit
     between the search box and the options panel, so in the flex row they render
     at the field's right edge (the panel is absolutely positioned / menu-hosted).
-    ``clear_button`` sits between the search box and those marker nodes.
+    ``clear_button`` sits between the search box and those marker nodes;
+    with ``clear_inside_box`` the two share a positioned wrapper instead,
+    for a box that draws its own border.
     """
     aria_attributes: list[HTMLAttribute] = [
         ("role", "combobox"),
@@ -437,10 +447,13 @@ def _combobox_children(
         class_=options_class,
     )[*panel_children]
 
+    if clear_button and clear_inside_box:
+        box: list[Node] = [Div(class_="relative")[search, clear_button]]
+    else:
+        box = [search, *([clear_button] if clear_button else [])]
     return [
         pills,
-        search,
-        *([clear_button] if clear_button else []),
+        *box,
         *(marker or []),
         options_panel,
         *(templates or []),
@@ -566,6 +579,8 @@ def SearchSelect(
     clear_button: Node | None = None
     if clearable:
         search_attrs.append(("class", "peer"))
+        if panel:
+            search_attrs.append(("class", _PANEL_CLEARABLE_SEARCH_CLASS))
         clear_button = Button(
             type="button",
             data_search_select_clear="",
@@ -573,7 +588,7 @@ def SearchSelect(
             title="Clear",
             aria_describedby=clear_description_id or None,
             hidden=not selected,
-            class_=_CLEAR_BUTTON_CLASS,
+            class_=_PANEL_CLEAR_BUTTON_CLASS if panel else _CLEAR_BUTTON_CLASS,
         )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
@@ -646,6 +661,7 @@ def SearchSelect(
         menu_target=host_dropdown,
         marker=marker,
         clear_button=clear_button,
+        clear_inside_box=panel,
     )
     widget = _SearchSelect(
         # The <search-select> element itself is the drop-down's [data-toggle]: it

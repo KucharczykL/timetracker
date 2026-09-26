@@ -1136,6 +1136,17 @@ class ClearableSearchSelectTest(unittest.TestCase):
         self.assertNotIn("peer ", _tag_around(plain, "data-search-select-search"))
         self.assertIn("peer-disabled:hidden", self._clear_tag(clearable))
 
+    def test_panel_box_holds_the_button_inside_its_border(self):
+        html = str(SearchSelect(name="zone", panel=True, selected=[_DEVICE]))
+        wrapper_start = html.rindex(
+            '<div class="relative">', 0, html.index("data-search-select-search")
+        )
+        wrapper = html[wrapper_start : html.index("</div>", wrapper_start)]
+        self.assertIn("data-search-select-search", wrapper)
+        self.assertIn("data-search-select-clear", wrapper)
+        self.assertIn("absolute", self._clear_tag(html))
+        self.assertIn("pr-10", _tag_around(html, "data-search-select-search"))
+
     def test_on_by_default_and_off_on_request(self):
         self.assertIn("data-search-select-clear", str(SearchSelect(name="device")))
         self.assertNotIn(
