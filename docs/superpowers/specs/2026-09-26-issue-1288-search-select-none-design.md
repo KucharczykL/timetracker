@@ -184,9 +184,12 @@ No page renders a `NULL` `Purchase.platform`. "Unspecified" is the word the
 catalog gives a game with no platform, and the Release row's empty choice uses it.
 
 **Purchase platform autofill.** `add_purchase.ts` fills Platform from each game
-pick. A person's own pick, a platform or "Unspecified", then stays. Autofill
-writes only a Platform that is empty or that autofill wrote itself. This
-matches the existing guard on `related_game` (`autofilledRelatedGameValue`).
+pick. A fresh form holds "Unspecified" because its value is `None`, so
+"empty" is not the test. The test is who set the value. A person's own act in
+the Platform picker (a pick, "Unspecified", or ×) makes the field theirs, and
+autofill then leaves it alone. Until that act, autofill writes as it does today.
+The existing guard on `related_game` (`autofilledRelatedGameValue`) has the
+same intent.
 Purchase `related_game` stays as it is: blank means "not an add-on" there, and
 no word is needed.
 
