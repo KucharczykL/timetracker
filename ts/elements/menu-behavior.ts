@@ -13,6 +13,7 @@ import {
   positionAnchored,
   VIEWPORT_MARGIN,
 } from "./anchored-position.js";
+import { followPointer } from "../pointer-follow.js";
 
 export type MenuPlacement =
   | "bottom-start"
@@ -188,14 +189,15 @@ export function attachMenu(
 
   const isOpen = (): boolean => !menu.hidden;
 
-  const setActive = (index: number): void => {
+  // A hover activates without scrolling; a keyboard step scrolls.
+  const setActive = (index: number, { scroll = true } = {}): void => {
     const items = enabledItems();
     if (items.length === 0) return;
     const clamped = (index + items.length) % items.length;
     items.forEach((item, position) => {
       item.tabIndex = position === clamped ? 0 : -1;
     });
-    items[clamped].focus();
+    items[clamped].focus({ preventScroll: !scroll });
   };
 
   const focusFirst = (): void => setActive(0);
@@ -417,14 +419,11 @@ export function attachMenu(
     });
   }
 
-  // Mouse hover drives the active item, so the highlight follows the cursor and
-  // only one item is ever highlighted (own items only — not a nested submenu's).
-  menu.addEventListener("pointerover", (event) => {
-    if (event.pointerType !== "mouse") return;
-    const item = (event.target as HTMLElement).closest<HTMLElement>(itemSelector);
-    if (!item || item.closest("[data-menu]") !== menu) return;
+  // The highlight follows the mouse; own items only, not a submenu's.
+  followPointer(menu, itemSelector, (item) => {
+    if (item.closest("[data-menu]") !== menu) return;
     const index = enabledItems().indexOf(item);
-    if (index >= 0) setActive(index);
+    if (index >= 0) setActive(index, { scroll: false });
   });
 
   // Pointer activation for menu items. Listbox `option`s are owned by the select
