@@ -61,7 +61,9 @@ from common.components.custom_elements import (
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
     MICRO_LABEL_CLASS,
+    SHAPE_CLASSES,
     Button,
+    ButtonShape,
     ControlButton,
     Div,
     FilterWidgetPath,
@@ -143,7 +145,7 @@ class OptionGroup(NamedTuple):
 # text-type-input (16px, below which iOS focus-zooms, #427). The box zeroes its
 # own padding (p-0); min-h floors the field at 42 and grows as pills wrap.
 _CONTAINER_CLASS = (
-    "relative flex flex-wrap items-center gap-1 px-3 min-h-control rounded-base text-type-body "
+    "relative flex flex-wrap items-center gap-1 px-3 min-h-control text-type-body "
     "bg-neutral-secondary-medium border border-default-medium "
     "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand "
     f"{DISABLED_WITHIN_CLASS}"
@@ -453,8 +455,11 @@ def SearchSelect(
     dynamic_options: bool = False,
     committed_marker: bool = True,
     panel: bool = False,
+    shape: ButtonShape = "full",
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
+
+    ``shape`` is its corners, when it sits in a ``SegmentedField``.
 
     ``panel=True`` is the panel-hosted personality: an always-visible widget
     using the module's static panel classes, for content placed inside a
@@ -629,9 +634,9 @@ def SearchSelect(
         class_=_PANEL_CONTAINER_CLASS
         if panel
         else (
-            f"{_CONTAINER_CLASS} {_UNCOMMITTED_CONTAINER_CLASS}"
+            f"{_CONTAINER_CLASS} {SHAPE_CLASSES[shape]} {_UNCOMMITTED_CONTAINER_CLASS}"
             if show_marker
-            else _CONTAINER_CLASS
+            else f"{_CONTAINER_CLASS} {SHAPE_CLASSES[shape]}"
         ),
     )[*children]
     if not host_dropdown:
@@ -912,7 +917,9 @@ def FilterSelect(
         always_visible="true" if panel_layout else "false",
         prefetch=prefetch,
         sync_url="false",
-        class_=_PANEL_CONTAINER_CLASS if panel_layout else _CONTAINER_CLASS,
+        class_=_PANEL_CONTAINER_CLASS
+        if panel_layout
+        else f"{_CONTAINER_CLASS} {SHAPE_CLASSES['full']}",
         id_=id or None,
         data_modifier=modifier or None,
     )[*children]

@@ -47,11 +47,16 @@ type ChoiceValue = str  # a run's key, a batch's id, an instant and its zone
 type FieldName = str
 
 
+#: Where `ActTitle.many` reads its count.
+COUNT_SLOT = "{count}"
+
+
 @dataclass(frozen=True, slots=True)
 class ActTitle:
     """The confirmation's heading, in either count.
 
-    A whole clause, not a noun with a suffix.
+    A whole clause, not a noun with a suffix. `many` holds
+    `COUNT_SLOT` once; `one` holds none.
     """
 
     one: str
@@ -63,15 +68,17 @@ class ActTitle:
                 "An act states both halves of its title: "
                 f"{self.one!r} for one row and {self.many!r} for several."
             )
-        if self.one == self.many:
+        if self.many.count(COUNT_SLOT) != 1 or COUNT_SLOT in self.one:
             raise ValueError(
-                f"{self.one!r} is both halves of a title. An act reading the "
-                "same over one row and over several states no count."
+                f"{self.many!r} states {COUNT_SLOT} once, and {self.one!r} "
+                "states none: the heading says how many rows."
             )
 
-    def for_count(self, count: int) -> str:
-        """The half this many rows reads in; none is plural."""
-        return self.one if count == 1 else self.many
+    def for_count(self, count: int | None) -> str:
+        """None: rows not counted yet."""
+        if count == 1:
+            return self.one
+        return self.many.replace(COUNT_SLOT, "these" if count is None else str(count))
 
 
 class RowOutcome(StrEnum):
@@ -330,6 +337,7 @@ BULK_ACTIONS: Mapping[BulkActionName, BulkAction[Any]] = MappingProxyType(_TABLE
 
 #: Imported last: each module declares its acts.
 from games import (  # noqa: F401
+    bulk_edit,
     bulk_finish,
     bulk_move,
     bulk_playthrough_acts,

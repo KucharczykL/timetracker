@@ -82,6 +82,7 @@ from common.components.elements import (
     Tbody,
     Td,
     Template,
+    Textarea,
     Th,
     Thead,
     Title,
@@ -146,6 +147,7 @@ __all__ = [
     "Tbody",
     "Td",
     "Template",
+    "Textarea",
     "Th",
     "Thead",
     "Title",
@@ -1290,6 +1292,78 @@ def PageTabs(aria_label: NavLabel, tabs: Sequence[PageTab]) -> Node:
     ]
 
 
+#: A checkbox or radio drawn as a joined segment: idle gray, checked brand.
+_CHOICE_SEGMENT_CLASS = (
+    f"{_TAB_CLASS} {_TAB_IDLE_CLASS} cursor-pointer select-none "
+    "has-[:checked]:solid-brand has-[:checked]:border-brand "
+    "has-[:focus-visible]:z-10 has-[:focus-visible]:ring-2 "
+    "has-[:focus-visible]:ring-fg-brand"
+)
+
+
+class SegmentOption(NamedTuple):
+    """One radio of a segmented group."""
+
+    value: str
+    label: str
+
+
+def ChoiceSegment(
+    shape: ButtonShape,
+    *,
+    type: Literal["checkbox", "radio"],
+    name: str,
+    value: str,
+    label: Children,
+    checked: bool = False,
+    aria_label: str | None = None,
+    title: str | None = None,
+) -> Node:
+    """A native input inside a button-shaped label."""
+    input_attrs: list[HTMLAttribute] = [
+        ("type", type),
+        ("name", name),
+        ("value", value),
+        ("class", "sr-only"),
+    ]
+    if checked:
+        input_attrs.append(("checked", ""))
+    if aria_label:
+        input_attrs.append(("aria-label", aria_label))
+    shape_class = SHAPE_CLASSES[shape]
+    return Label(
+        [("title", title)] if title else [],
+        class_=f"{_CHOICE_SEGMENT_CLASS} {shape_class}".strip(),
+    )[Element("input", input_attrs, []), *as_children(label)]
+
+
+def SegmentedRadios(
+    *,
+    name: str,
+    legend: Children,
+    options: Sequence[SegmentOption],
+    checked: str,
+    legend_class: str = "",
+) -> Node:
+    """A radio group drawn as one joined row."""
+    return Fieldset(class_="flex flex-col gap-2")[
+        Legend(class_=legend_class)[*as_children(legend)],
+        Div(class_=_JOINED_ROW_CLASS)[
+            *(
+                ChoiceSegment(
+                    shape,
+                    type="radio",
+                    name=name,
+                    value=option.value,
+                    label=option.label,
+                    checked=option.value == checked,
+                )
+                for shape, option in shaped(options)
+            )
+        ],
+    ]
+
+
 #: A field row, on top of the shell every joined row shares.
 #:
 #: ``items-stretch`` and the height floor are this row's own: a box and a
@@ -2092,7 +2166,7 @@ def DialogTitle(children: Children = None) -> Element:
 def ConfirmPage(
     *,
     title: str,
-    message: Children,
+    message: Children = None,
     post_url: str,
     csrf_token: str,
     cancel_url: str,
@@ -2129,7 +2203,11 @@ def ConfirmPage(
             ),
             DialogTitle(title),
             *([refused] if refused is not None else []),
-            P(class_="text-heading text-center mt-5")[*as_children(message)],
+            *(
+                [P(class_="text-heading text-center mt-5")[*as_children(message)]]
+                if message
+                else []
+            ),
             *(
                 [
                     Div(class_="text-type-body text-body text-start mt-5")[

@@ -330,7 +330,7 @@ def test_the_confirmation_states_what_leaves_with_each_game(logged_in, owned, sh
 
     for heading in ("Game", "Sessions", "Purchases", "Playthroughs"):
         assert heading in html
-    assert "Remove these games" in html
+    assert "Remove 2 games" in html
     assert html.count("data-bulk-sample-row") == 2
     #: `sort_name` order.
     assert html.index("Celeste") < html.index("Outer Wilds")

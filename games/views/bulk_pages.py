@@ -135,13 +135,11 @@ def ConfirmBatch(
     total = len(rows)
     return ConfirmPage(
         title=action.title.for_count(total),
-        message=(
-            f"{action.label}: {total} {action.subject}{pluralize(total)}?"
-            if total
-            #: `pluralize` here too: a hardcoded "s" reads the plural
-            #: of one subject and mis-spells the next.
-            else f"None of those {action.subject}{pluralize(0)} can be changed."
-        ),
+        #: The heading states the count; nothing to ask.
+        message=None
+        if total
+        #: `pluralize`: a hardcoded "s" mis-spells some subject.
+        else f"None of those {action.subject}{pluralize(0)} can be changed.",
         details=Fragment(
             *(Input(type="hidden", name=name, value=value) for name, value in hidden),
             _refusals(len(refused), _reasons(refused), WILL_BE_LEFT_ALONE),

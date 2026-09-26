@@ -60,7 +60,7 @@ def test_two_runs_are_completed_today_and_the_undo_takes_it_back(
     #: The preview, the day and the status.
     expect(
         page.get_by_role(
-            "heading", name="Record that these playthroughs were completed today"
+            "heading", name="Record that 2 playthroughs were completed today"
         )
     ).to_be_visible()
     expect(page.locator("[data-bulk-sample-row]")).to_have_count(2)

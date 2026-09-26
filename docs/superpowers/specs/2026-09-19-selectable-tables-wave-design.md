@@ -691,7 +691,9 @@ row's ⋯ and its items; the other four tables are Playwright only.
    `EllipsisTrigger` shared with the quick bar and the summary rows,
    `Cardinality` removed whole, the Orca pass, with the checkbox reserve
    as it stands.
-9. **#1211** TABLE-04 — bulk Edit on the session tables, after #714.
+9. **#1211** TABLE-04 — bulk Edit on the session tables, after #714:
+   device and emulated through `DescribeSession`, contract
+   [Set one device across many sessions](2026-09-25-issue-1211-bulk-edit-design.md).
 10. **#1256** — bulk Started today and Completed today, after #718,
     delivered as PR #1265.
 11. **#1245** — the columns a list shows, after #718, delivered as PR
