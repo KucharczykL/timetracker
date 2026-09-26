@@ -17,7 +17,8 @@ Three rules of the filed text are reversed. Each follows the prior art below.
    the selection. No surveyed system does this. In single mode it protects
    nothing either: the first keystroke already abandons the committed value
    (`search-select.ts`, the `input` listener). So × resets query and value
-   together, in both flavours.
+   together, in both flavours. In multi mode that drops every pill with the
+   query, as MUI's multiple mode does.
 2. **The button is named "Clear", not "Clear Device".** No surveyed system puts
    the field in the name. The field reaches assistive technology as the
    button's description instead (below).
@@ -37,41 +38,60 @@ Three rules of the filed text are reversed. Each follows the prior art below.
 
 `SearchSelect(clearable=True)` renders a `<button type="button">` inside the
 field, after the search box and before the #450 committed marker. It carries
-`aria-label="Clear"`, `title="Clear"` and a `data-search-select-clear` hook.
+`aria-label="Clear"`, `title="Clear"`, `data-search-select-clear`, `shrink-0` and
+`ml-auto`. In multi mode the pills flow before the box in the same wrapping row,
+so without `ml-auto` the button could wrap onto a line alone. Its presence is the
+element's opt-in, as the #450 status span is. No prop carries it.
 
 The button shows when the widget holds a committed value (a single label or at
-least one pill) or the box holds a typed query. Otherwise it carries `hidden`.
-The server renders it hidden when no option is selected. One function in the
-element, `syncClearButton()`, decides visibility. Every path that changes the
-value or the box text calls it: a pick, a pill ×, an input, `setSelected`,
-`_searchSelectClear`, `setOptions`, the create row, a dependency change and the
-× itself. The button is also hidden while the search box is `disabled`. Nothing
-disables a `SearchSelect` at runtime today, so no observer watches for it.
+least one pill) or the box holds a typed query. Otherwise it carries `hidden`,
+and the server renders it hidden when no option is selected.
+`syncClearButton()` decides visibility. It runs inside `syncUncommitted()`,
+before that function's early return, and inside `emitChange()`. Between them,
+the two already run on every path: a pick, an input, `setSelected`,
+`_searchSelectClear`, `setOptions`, `_searchSelectRefetch`, the `sync_url`
+restore at init, and the pill ×.
 
-The field's name reaches the button as a description. At init the element finds
-the field's `<label>`, the same lookup `fieldLabel` performs, assigns it an id
-if it has none, and points the button's `aria-describedby` at it. Orca then
-reads "Clear, push button, Device". A field without a `<label>` gets no
-description. The id is assigned at init, not rendered, because the filter
-builder clones whole `<search-select>` prototypes.
+A disabled box hides the button in CSS: the box is a `peer` and the button
+carries `peer-disabled:hidden`. `add_purchase.ts` disables the optional
+`related_game` picker's box while its type is "game", and the box can still hold
+a pick at that point.
+
+The field's name reaches the button as a description. `SearchSelectWidget`
+renders `aria-describedby="{field_label_id(id)}"` on it. That is the id
+`FormFields` gives every label, the same way `DatePicker` names its group. Orca
+reads "Clear, push button, Device". A bare `SearchSelect` outside a form states
+no description.
+
+The button is a Tab stop. Tab from the box lands on it and closes the panel, as
+Tab out of the widget does today. The container's `focusout` does not fire
+while focus stays inside, so the button's `focus` hides the panel itself.
 
 ## A press
 
-A press clears the pills or hidden inputs, the label and the box text. Then it
-marks the box as a typed query that is empty. That mark keeps
-`commitTheSoleOption` from committing the one option the next fetch answers.
-Without it, a field whose search states one option would put back the value the
-person just removed. A later pick, or a dependency change, lifts the mark as it
-does today.
+A press builds on `_searchSelectClear()`, which already empties the pills or
+hidden inputs, the label and the box text. It then:
 
-Focus follows the input method:
+- clears the debounce timer and aborts the pending request, as `focusout`
+  does. Otherwise a response for the old query lands after the clear and shows
+  its matches as the whole list;
+- runs `filterRows("")`, hides the create row and the no-results line;
+- sets a flag, `_searchSelectSoleDeclined`, that only `commitTheSoleOption`
+  reads. Without it, a field whose search states one option would put back the
+  value the person just removed. `runFocus` resets `_searchSelectDirty` when the
+  box and the label are both empty, so the dirty mark cannot do this job. A
+  pick and a dependency change lift the flag.
 
-- **Pointer or touch.** The button takes no focus: its `mousedown` is
-  prevented, as the pill × already is. Focus stays where it was. A phone tap
+Focus follows where it was:
+
+- **Pointer or touch.** The button's `mousedown` is prevented, as the pill ×
+  already is, so it never takes focus. Focus stays where it was. A phone tap
   clears the field without opening the keyboard or the panel.
-- **Keyboard.** Enter or Space produces a click whose `detail` is 0. Focus
-  moves to the search box, because the button hides under it and focus would
-  otherwise fall to `<body>`.
+- **Keyboard or assistive technology.** The button holds focus when it is
+  activated (`document.activeElement === button`). The press moves focus to the
+  box, because the button hides under it and focus would otherwise fall to
+  `<body>`. Focusing the box opens the panel, as any focus of it does. A
+  click's `detail` is not used: a screen reader's virtual cursor can report 1.
 
 ## The events
 
@@ -79,7 +99,8 @@ A press dispatches, in order:
 
 1. `search-select:change` with `values: []` and `last: null`, only when the
    press removed a committed value. A press that emptied a query alone does not
-   change the value, so it does not claim one.
+   change the value, so it does not claim one. The input listener already emits
+   this shape, and no consumer misreads it.
 2. `search-select:clear`, always, bubbling, with detail `{ name }`. Its type,
    `SearchSelectClearDetail`, sits beside `SearchSelectChangeDetail` in
    `ts/elements/search-select.ts`, which consumers import and never redefine.
@@ -94,31 +115,34 @@ The component takes `clearable: bool = False`. It knows nothing of forms, so it
 has no notion of required.
 
 `SearchSelectWidget` takes `clearable: bool | None = None`. `None` resolves at
-render to `not self.is_required`, which Django sets from the field. `True` or
-`False` at the call site overrides it. Every optional form picker offers ×
-without being told. A required one does not offer an emptiness the form would
-refuse, unless its call site asks.
+render to `not self.is_required`, which Django's `Field.__init__` sets on its
+copy of the widget. `True` or `False` at the call site overrides it.
+`PlaythroughSelectWidget` passes the parameter through. Every optional form
+picker offers × without being told. A required one does not offer an emptiness
+the form would refuse, unless its call site asks.
+
+No form holds an optional multi picker today (`games` is required), so the
+multi flavour reaches a page only through an explicit `clearable=True`.
 
 `FilterSelect` and `PresetSelect` do not take the parameter. The quick filter
 bar has its own Clear, and the builder's rows belong to #481's third
 workstream.
-
-## The contract
-
-`clearable` reaches the element as a prop registered through
-`register_element`. `make gen-element-types` regenerates `ts/generated/props.ts`.
 
 ## Tests
 
 - **pytest, component.** A clearable widget renders the button hidden with no
   selection and shown with one, in both flavours. The attributes are as stated.
   A non-clearable widget renders no button. `SearchSelectWidget` resolves
-  `None` from `is_required` both ways and honours both overrides.
-- **vitest.** Visibility follows every path `syncClearButton()` names. A press
-  with a committed value emits change, then clear. A query-only press emits
-  clear and no change. A press on a `commit_sole_option` field whose next fetch
-  answers one option leaves it empty. `aria-describedby` points at the label,
-  and at nothing when there is no label.
-- **e2e, one per flavour.** A keyboard press empties the field, moves focus to
-  the box, and the form posts no value. A pointer press empties it and leaves
-  focus where it was.
+  `None` from `is_required` both ways, honours both overrides, and renders the
+  label id as the description.
+- **vitest.** Visibility follows every path above. A press with a committed
+  value emits change, then clear. A query-only press emits clear and no change.
+  A press while a debounced fetch is pending renders nothing from it. On a
+  `commit_sole_option` field with `prefetch`, a keyboard press leaves the field
+  empty after the focus fetch answers one option. Focus on the button closes the
+  panel.
+- **e2e, one per flavour.** Single, on a real form: a keyboard press empties
+  the field, moves focus to the box, and the form posts no value; a pointer
+  press empties it and leaves focus where it was. Multi, on the synthetic
+  harness with `clearable=True`: a keyboard press removes every pill and a
+  pointer press does the same without moving focus.
