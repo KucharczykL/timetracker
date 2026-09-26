@@ -209,31 +209,6 @@ _ROW_HEIGHT_REM = 2.25
 # navigation as soon as the user opens it.
 DEFAULT_PREFETCH = 20
 
-# ── FilterSelect styling ───────────────────────────────────────────────────
-# Inline class strings (ported verbatim from the retired SelectableFilter CSS)
-# so the filter combobox is fully self-styled — nothing in input.css. JS-added
-# rows/pills are cloned from server-rendered <template>s, so these strings live
-# only here — never duplicated in ts/search_select.ts. The keyboard-highlighted
-# state is expressed via Tailwind `data-[search-select-highlighted]` and
-# `group-data-[search-select-highlighted]` variants on the row/label/button
-# classes below; the JS only toggles the data attribute on the row.
-# max-w-full + a truncating label slot keep a long value (a full game title)
-# from overflowing a width-capped host — the ComboboxDropdown panel is w-72
-# with overflow-hidden. Applied in both layouts so the pill shape never forks.
-_FILTER_INCLUDE_PILL_CLASS = (
-    "inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded max-w-full "
-    "bg-brand-soft text-heading"
-)
-_FILTER_EXCLUDE_PILL_CLASS = (
-    "inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded max-w-full "
-    "bg-red-500/15 text-red-600 line-through decoration-red-400"
-)
-_FILTER_MODIFIER_PILL_CLASS = (
-    "inline-flex items-center px-2 py-0.5 text-type-body rounded max-w-full "
-    "bg-amber-500/15 text-amber-600 cursor-pointer"
-)
-_FILTER_PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
-
 
 def _normalize_option(option) -> SearchSelectOption:
     """Coerce a dict option or a ``(value, label)`` tuple into the TypedDict."""
@@ -678,42 +653,31 @@ def SearchSelect(
     )[widget]
 
 
-def _filter_remove_button() -> Node:
-    return Button(
-        type="button",
-        data_pill_remove="",
-        class_=_FILTER_PILL_REMOVE_CLASS,
-        aria_label="Remove",
-    )["×"]
-
-
-def _filter_value_pill(option: SearchSelectOption, kind: str) -> Node:
-    """An include (✓) or exclude (✗) value pill. ``kind`` is "include"/"exclude"."""
-    symbol = "✓" if kind == "include" else "✗"
-    css = (
-        _FILTER_INCLUDE_PILL_CLASS if kind == "include" else _FILTER_EXCLUDE_PILL_CLASS
-    )
-    return Span(
+def _filter_value_pill(
+    option: SearchSelectOption, kind: Literal["include", "exclude"]
+) -> Node:
+    """An include (✓) or exclude (✗) value pill."""
+    return Pill(
         _data_attributes(option["data"]),
-        class_=css,
-        data_pill="",
+        label=option["label"],
+        removable=True,
+        label_slot=True,
+        kind=kind,
         data_value=str(option["value"]),
         data_label=option["label"],
         data_search_select_type=kind,
-    )[
-        f"{symbol} ",
-        _label_slot(option["label"], extra_class="truncate"),
-        _filter_remove_button(),
-    ]
+    )
 
 
 def _filter_modifier_pill(modifier_value: str, label: str) -> Node:
     """The lone, sticky modifier pill (e.g. "(Any)"/"(None)")."""
-    return Span(
-        class_=_FILTER_MODIFIER_PILL_CLASS,
-        data_pill="",
+    return Pill(
+        label=label,
+        removable=True,
+        label_slot=True,
+        kind="modifier",
         data_search_select_modifier=modifier_value,
-    )[_label_slot(label, extra_class="truncate"), _filter_remove_button()]
+    )
 
 
 def _row_action(action: str, symbol: Child, title: str, *, css: str) -> Node:

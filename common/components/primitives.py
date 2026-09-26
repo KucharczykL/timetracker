@@ -1426,11 +1426,22 @@ def Radio(
 # than the 42px field it sits in (min-h-control here made it fill the field edge
 # to edge) and share the field's font (font-condensed here read as squashed next
 # to the un-condensed search box).
+#: max-w-full lets the label truncate in a narrow host.
 _PILL_CLASS = (
-    "inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded-base "
-    "bg-brand-soft text-heading"
+    "inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded-base max-w-full"
 )
 _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
+
+type PillKind = Literal["include", "exclude", "modifier"]
+
+#: Each kind replaces the tone; none is plain brand.
+_PILL_TONE_CLASSES: dict[PillKind | None, str] = {
+    None: "bg-brand-soft text-heading",
+    "include": "bg-brand-soft text-heading",
+    "exclude": "bg-danger-soft text-fg-danger-strong line-through",
+    "modifier": "bg-warning-soft text-fg-warning",
+}
+_PILL_GLYPHS: dict[PillKind | None, str] = {"include": "✓", "exclude": "✗"}
 
 
 def Pill(
@@ -1441,21 +1452,21 @@ def Pill(
     removable: bool = False,
     extra_class: str = "",
     label_slot: bool = False,
+    kind: PillKind | None = None,
     **kwargs: object,
 ) -> Node:
     """A small label pill, optionally removable (× button).
 
-    Styling is inline Tailwind utilities; ``data-pill`` / ``data-pill-remove``
-    are JS hooks only (no CSS attached). ``value`` (when set) becomes
-    ``data-value``; ``extra_class`` and any caller ``class`` accumulate onto the
-    pill's base class; extra dynamic ``attrs`` / kwargs land on the outer span.
+    ``data-pill`` / ``data-pill-remove`` are JS hooks only. ``value``
+    becomes ``data-value``; ``extra_class`` and a caller ``class``
+    accumulate.
 
-    ``label_slot=True`` wraps the label in a ``<span data-search-select-label>`` so JS can
-    fill it when cloning the pill from a server-rendered ``<template>`` (keeps the
-    markup single-sourced — see ``search_select.py``).
+    ``kind`` sets the tone and a leading glyph outside the label.
+    The label is always a truncating span; ``label_slot=True`` marks
+    it ``data-search-select-label`` for a template clone to fill.
     """
     baked: list[HTMLAttribute] = [
-        ("class", _PILL_CLASS),
+        ("class", f"{_PILL_CLASS} {_PILL_TONE_CLASSES[kind]}"),
         ("class", extra_class),
         ("data-pill", ""),
     ]
@@ -1463,10 +1474,15 @@ def Pill(
         baked.append(("data-value", str(value)))
     pill_attrs = baked + _coerce_attrs(attrs) + _attrs_from_kwargs(kwargs)
 
-    label_child: Node | str = (
-        Span(data_search_select_label="")[label] if label_slot else label
+    children: list[Node | str] = []
+    if kind in _PILL_GLYPHS:
+        children.append(Span()[_PILL_GLYPHS[kind]])
+    children.append(
+        Span(
+            data_search_select_label="" if label_slot else None,
+            class_="truncate min-w-0",
+        )[label]
     )
-    children: list[Node | str] = [label_child]
     if removable:
         children.append(
             Button(

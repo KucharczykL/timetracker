@@ -1275,3 +1275,39 @@ def test_actions_follow_the_label():
     assert row.index('data-search-select-action="include"') < row.index(
         'data-search-select-action="exclude"'
     )
+
+
+def test_a_pill_kind_replaces_the_tone_and_adds_its_glyph():
+    plain = str(Pill(label="Plain"))
+    include = str(Pill(label="Kept", kind="include"))
+    exclude = str(Pill(label="Dropped", kind="exclude"))
+    modifier = str(Pill(label="(Any)", kind="modifier"))
+
+    assert "bg-brand-soft" in plain and "✓" not in plain
+    assert "bg-brand-soft" in include and "✓" in include
+    assert "bg-danger-soft" in exclude and "bg-brand-soft" not in exclude
+    assert "line-through" in exclude and "✗" in exclude
+    assert "bg-warning-soft" in modifier and "bg-brand-soft" not in modifier
+    for html in (plain, include, exclude, modifier):
+        assert '<span class="truncate min-w-0">' in html
+
+
+def test_the_glyph_sits_outside_the_label_slot():
+    html = str(Pill(label="", label_slot=True, kind="include"))
+    slot = re.search(r"<span data-search-select-label[^>]*>([^<]*)</span>", html)
+    assert slot is not None and slot.group(1) == ""
+    assert html.index("✓") < html.index("data-search-select-label")
+
+
+def test_filter_pills_keep_their_hooks():
+    html = str(
+        FilterSelect(
+            field_name="status",
+            options=[("f", "Finished")],
+            included=[("f", "Finished")],
+            modifier="any",
+            modifier_options=[("any", "(Any)")],
+        )
+    )
+    assert 'data-search-select-type="include"' in html
+    assert 'data-search-select-modifier="any"' in html
