@@ -47,16 +47,21 @@ class TimeZoneRowElement extends HTMLElement {
     // is in — worth a look. Emphasis only: the trigger already names the value.
     this.updateEmphasis(trigger, effectiveZone);
 
+    const applyZone = (zone: string) => {
+      valueInput.value = zone;
+      this.updateTriggerLabel(trigger, zone || fallbackLabel);
+      const effectiveZone = zone || props.displayZone;
+      this.updateEmphasis(trigger, effectiveZone);
+      this.announceZone(props.fieldName, effectiveZone);
+    };
     this.addEventListener("search-select:change", (event) => {
       const detail = (event as CustomEvent<SearchSelectChangeDetail>).detail;
       if (!detail || detail.last === null) return;
       // The API's pinned "" option is an explicit clear back to NULL.
-      valueInput.value = detail.last.value;
-      this.updateTriggerLabel(trigger, detail.last.value || fallbackLabel);
-      const pickedZone = detail.last.value || props.displayZone;
-      this.updateEmphasis(trigger, pickedZone);
-      this.announceZone(props.fieldName, pickedZone);
+      applyZone(detail.last.value);
     });
+    // The picker's × empties it, which states NULL as the pinned "" does.
+    this.addEventListener("search-select:clear", () => applyZone(""));
   }
 
   private updateTriggerLabel(trigger: HTMLElement, zoneName: string): void {

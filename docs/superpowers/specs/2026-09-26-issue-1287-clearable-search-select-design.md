@@ -10,7 +10,7 @@ empties the field in one press, from any state, without the box being focused.
 
 ## Where this departs from #481 and the issue
 
-Three rules of the filed text are reversed. Each follows the prior art below.
+Four rules of the filed text are reversed. Each follows the prior art below.
 
 1. **One press clears everything.** The epic asked for two stages: × first
    clears a typed query and keeps the committed selection, a second × clears
@@ -22,7 +22,9 @@ Three rules of the filed text are reversed. Each follows the prior art below.
 2. **The button is named "Clear", not "Clear Device".** No surveyed system puts
    the field in the name. The field reaches assistive technology as the
    button's description instead (below).
-3. **Every press is announced.** The issue had a query-only press emit nothing.
+3. **Every picker offers it.** The epic tied it to optional fields; a required
+   picker holding a value needs one press to empty just as much.
+4. **Every press is announced.** The issue had a query-only press emit nothing.
    A dedicated clear event is common prior art, and a consumer can use it to
    tell a reset gesture from a pick.
 
@@ -39,10 +41,10 @@ Three rules of the filed text are reversed. Each follows the prior art below.
 `SearchSelect(clearable=True)` renders a `<button type="button">` inside the
 field, after the search box and before the #450 committed marker. It carries
 `aria-label="Clear"`, `title="Clear"`, `data-search-select-clear`, `shrink-0`,
-`ml-auto` and `size-6`. In multi mode the pills flow before the box in the same
-wrapping row, so without `ml-auto` the button could wrap onto a line alone. The
-glyph alone is narrower than the 24px touch target WCAG 2.5.8 asks for, so the
-box carries the size. Its presence is the
+`ml-auto` and `size-8`, around a 16px `x-mark` icon. In multi mode the pills
+flow before the box in the same wrapping row, so without `ml-auto` the button
+could wrap onto a line alone. The 32px box is above the 24px touch target WCAG
+2.5.8 asks for, and matches the field's weight where a bare glyph looked lost. Its presence is the
 element's opt-in, as the #450 status span is. No prop carries it.
 
 The button shows when the widget holds a committed value (a single label or at
@@ -113,18 +115,21 @@ and the two stay different facts.
 
 ## Who gets the button
 
-The component takes `clearable: bool = False`. It knows nothing of forms, so it
-has no notion of required.
+Every `SearchSelect` gets it: the component and `SearchSelectWidget` both take
+`clearable: bool = True`, and a call site passes `False` to opt out. Whether a
+field is required does not decide it. A required picker that holds a value is
+the one a person most needs to change, and without × the only way to empty it
+is the keyboard. A required field left empty is the form's refusal to state,
+not the picker's.
 
-`SearchSelectWidget` takes `clearable: bool | None = None`. `None` resolves at
-render to `not self.is_required`, which Django's `Field.__init__` sets on its
-copy of the widget. `True` or `False` at the call site overrides it.
-`PlaythroughSelectWidget` passes the parameter through. Every optional form
-picker offers × without being told. A required one does not offer an emptiness
-the form would refuse, unless its call site asks.
+A press always leaves the field empty, never back at the value the page
+rendered. On an add page that is the state the person arrived at; on an edit
+page it is still one press to empty, which a reset would lose.
 
-No form holds an optional multi picker today (`games` is required), so the
-multi flavour reaches a page only through an explicit `clearable=True`.
+The time zone row reads `search-select:clear` as its pinned "" option: it
+states NULL and falls back to the display zone. Every other consumer already
+receives `values: []` and `last: null` when a person types over a committed
+label, so the × brings them nothing new.
 
 `FilterSelect` and `PresetSelect` do not take the parameter. The quick filter
 bar has its own Clear, and the builder's rows belong to #481's third
@@ -134,17 +139,19 @@ workstream.
 
 - **pytest, component.** A clearable widget renders the button hidden with no
   selection and shown with one, in both flavours. The attributes are as stated.
-  A non-clearable widget renders no button. `SearchSelectWidget` resolves
-  `None` from `is_required` both ways, honours both overrides, and renders the
+  `clearable=False` renders no button. `SearchSelectWidget` renders it on
+  required and optional fields alike, drops it on `False`, and renders the
   label id as the description.
 - **vitest.** Visibility follows every path above. A press with a committed
   value emits change, then clear. A query-only press emits clear and no change.
   A press while a debounced fetch is pending renders nothing from it. On a
   `commit_sole_option` field with `prefetch`, a keyboard press leaves the field
   empty after the focus fetch answers one option. Focus on the button closes the
-  panel.
+  panel. The time zone row states NULL on a clear.
 - **e2e, one per flavour.** Single, on a real form: a keyboard press empties
   the field, moves focus to the box, and the form posts no value; a pointer
   press empties it and leaves focus where it was. Multi, on the synthetic
-  harness with `clearable=True`: a keyboard press removes every pill and a
-  pointer press does the same without moving focus.
+  harness: a keyboard press removes every pill and a pointer press does the
+  same without moving focus. A disabled box hides the button. On a touch
+  device the button is at least 24px square and a tap clears without focusing
+  the box.

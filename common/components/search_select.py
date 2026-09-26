@@ -174,12 +174,13 @@ _UNCOMMITTED_SEARCH_CLASS = (
 # (sizing stays Icon()'s default ICON_SIZE_CLASS).
 _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]:block"
 # The trailing clear ×. ml-auto pins it to the row's end, where pills wrapping
-# before the box would otherwise leave it on a line alone; size-6 is the 24px
-# touch target a glyph alone falls short of. The box is its peer, so a
+# before the box would otherwise leave it on a line alone; size-8 is a 32px
+# target, above the 24px touch minimum. The box is its peer, so a
 # disabled box hides it without script.
 _CLEAR_BUTTON_CLASS = (
-    "ml-auto shrink-0 size-6 inline-flex items-center justify-center "
-    "text-body hover:text-heading font-bold cursor-pointer peer-disabled:hidden"
+    "ml-auto shrink-0 size-8 -mr-1 inline-flex items-center justify-center "
+    "rounded-base text-body hover:text-heading hover:bg-neutral-tertiary-medium "
+    "cursor-pointer peer-disabled:hidden"
 )
 # top-full anchors the panel to the container's bottom edge: as an absolutely
 # positioned child of the flex field, its static position would otherwise be
@@ -470,7 +471,7 @@ def SearchSelect(
     dynamic_options: bool = False,
     committed_marker: bool = True,
     panel: bool = False,
-    clearable: bool = False,
+    clearable: bool = True,
     clear_description_id: str = "",
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
@@ -511,8 +512,8 @@ def SearchSelect(
     correctly so for the preset picker, whose pick is a command and whose box
     clears by design.
 
-    ``clearable`` renders a trailing × that empties the query and the value in
-    one press; its presence is the element's opt-in. ``clear_description_id``
+    ``clearable`` (default on) renders a trailing × that empties the query and
+    the value in one press; its presence is the element's opt-in. ``clear_description_id``
     names the element that describes it, the field's label in a form.
     """
     if panel:
@@ -573,7 +574,7 @@ def SearchSelect(
             aria_describedby=clear_description_id or None,
             hidden=not selected,
             class_=_CLEAR_BUTTON_CLASS,
-        )["×"]
+        )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
     if search_url:

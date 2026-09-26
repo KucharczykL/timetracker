@@ -1131,20 +1131,24 @@ class ClearableSearchSelectTest(unittest.TestCase):
 
     def test_search_box_is_its_peer(self):
         clearable = str(SearchSelect(name="device", clearable=True))
-        plain = str(SearchSelect(name="device"))
+        plain = str(SearchSelect(name="device", clearable=False))
         self.assertIn("peer ", _tag_around(clearable, "data-search-select-search"))
         self.assertNotIn("peer ", _tag_around(plain, "data-search-select-search"))
         self.assertIn("peer-disabled:hidden", self._clear_tag(clearable))
 
-    def test_default_renders_no_button(self):
-        self.assertNotIn("data-search-select-clear", str(SearchSelect(name="device")))
+    def test_on_by_default_and_off_on_request(self):
+        self.assertIn("data-search-select-clear", str(SearchSelect(name="device")))
+        self.assertNotIn(
+            "data-search-select-clear",
+            str(SearchSelect(name="device", clearable=False)),
+        )
 
 
 class ClearableWidgetTest(unittest.TestCase):
-    """``SearchSelectWidget`` offers × where the field is optional."""
+    """``SearchSelectWidget`` offers × on every field, required or not."""
 
     @staticmethod
-    def _form(*, required: bool, clearable: bool | None = None) -> str:
+    def _form(*, required: bool, clearable: bool = True) -> str:
         from django import forms
 
         from games.forms import SearchSelectWidget
@@ -1161,16 +1165,12 @@ class ClearableWidgetTest(unittest.TestCase):
 
         return str(DeviceForm()["device"])
 
-    def test_optional_field_is_clearable(self):
-        self.assertIn("data-search-select-clear", self._form(required=False))
+    def test_required_and_optional_fields_are_clearable(self):
+        for required in (True, False):
+            with self.subTest(required=required):
+                self.assertIn("data-search-select-clear", self._form(required=required))
 
-    def test_required_field_is_not(self):
-        self.assertNotIn("data-search-select-clear", self._form(required=True))
-
-    def test_call_site_overrides_both_ways(self):
-        self.assertIn(
-            "data-search-select-clear", self._form(required=True, clearable=True)
-        )
+    def test_call_site_turns_it_off(self):
         self.assertNotIn(
             "data-search-select-clear", self._form(required=False, clearable=False)
         )
@@ -1184,7 +1184,7 @@ class ClearableWidgetTest(unittest.TestCase):
             _tag_around(html, "data-search-select-clear"),
         )
 
-    def test_session_form_offers_it_on_device_alone(self):
+    def test_session_form_offers_it_on_every_picker(self):
         from games.forms import SessionForm
 
         fields = SessionForm.base_fields
@@ -1192,6 +1192,6 @@ class ClearableWidgetTest(unittest.TestCase):
             name: fields[name].widget.render(name, None, {"id": f"id_{name}"})
             for name in ("game", "playthrough", "device")
         }
-        self.assertIn("data-search-select-clear", rendered["device"])
-        self.assertNotIn("data-search-select-clear", rendered["game"])
-        self.assertNotIn("data-search-select-clear", rendered["playthrough"])
+        for name, html in rendered.items():
+            with self.subTest(field=name):
+                self.assertIn("data-search-select-clear", html)

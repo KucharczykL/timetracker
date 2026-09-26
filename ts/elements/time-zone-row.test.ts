@@ -127,6 +127,21 @@ describe("time-zone-row", () => {
     );
   });
 
+  it("treats the picker's clear as a clear back to NULL", () => {
+    stubBrowserZone("Asia/Tokyo");
+    const host = mount({ storedZone: "Asia/Tokyo", captureDefault: false });
+    host.dispatchEvent(
+      new CustomEvent("search-select:clear", {
+        bubbles: true,
+        detail: { name: "timestamp_start_timezone_picker" },
+      }),
+    );
+    expect(valueInput(host).value).toBe("");
+    expect(trigger(host).textContent).toContain(
+      "Start time zone: Europe/Prague (display zone)",
+    );
+  });
+
   it("announces the picked zone", () => {
     stubBrowserZone("Europe/Prague");
     const host = mount({ storedZone: "Europe/Prague", captureDefault: false });

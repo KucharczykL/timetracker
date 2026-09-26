@@ -704,9 +704,8 @@ Submodules re-exported via `common/components/__init__.py`:
   and upserts the answered `{value, label}` on its key, and `params` is one JSON
   mapping — a literal or a sibling field — read by that POST and by the search
   query alike, a field source being a dependency that re-searches, #1080;
-  `clearable` adds a trailing × that empties query and value in one press and
-  emits `search-select:clear`, on by default where a form field is optional,
-  #1287),
+  a trailing × empties query and value in one press and emits
+  `search-select:clear`, on for every picker unless `clearable=False`, #1287),
   `FilterSelect()` (include/exclude
   with pinned Any/None modifiers; `layout="panel"` is GitHub-label-picker
   personality for hosting inside dropdown dialog, #315), `ComboboxDropdown()`

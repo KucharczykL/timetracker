@@ -1,7 +1,6 @@
 """The clear × empties a picker in one press, by keyboard or by pointer.
 
-Single on the real session form, whose Device field is optional; multi on a
-bare harness, since no form holds an optional multi picker.
+Single on the real session form; multi on a bare harness.
 """
 
 import pytest
@@ -27,7 +26,6 @@ def multi_harness_view(request):
             {"value": "3", "label": "Cherry", "data": {}},
         ],
         multi_select=True,
-        clearable=True,
         id="tags",
         host_dropdown=True,
     )

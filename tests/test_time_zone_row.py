@@ -49,8 +49,9 @@ def test_trigger_is_always_visible_with_a_ghost_style():
     # row must not contain. Asserting on the bare word would be wrong: the
     # submitted input is type="hidden", and the dropdown panel is stamped
     # hidden="" by the <drop-down> engine, which owns its visibility.
-    assert 'hidden="hidden"' not in html
-    assert 'aria-haspopup="dialog"' in html
+    trigger_start = html.index('aria-haspopup="dialog"')
+    trigger = html[html.rindex("<", 0, trigger_start) : html.index(">", trigger_start)]
+    assert 'hidden="hidden"' not in trigger
     assert "bg-transparent" in html  # the ghost ControlButton variant
     # NULL renders the display-zone fallback in the trigger label.
     assert "Start time zone: Europe/Prague (display zone)" in html

@@ -304,8 +304,7 @@ class SearchSelectWidget(forms.Widget):
     """Thin Django adapter that renders a `SearchSelect()` component.
 
     The only place that knows about Django/forms — the component itself stays
-    reusable outside forms. ``clearable=None`` offers the clear × exactly
-    where the field is optional; ``True``/``False`` overrides that.
+    reusable outside forms.
     """
 
     def __init__(
@@ -323,7 +322,7 @@ class SearchSelectWidget(forms.Widget):
         always_visible=False,
         placeholder="Search…",
         autofocus=False,
-        clearable: bool | None = None,
+        clearable: bool = True,
         attrs=None,
     ):
         super().__init__(attrs)
@@ -349,9 +348,6 @@ class SearchSelectWidget(forms.Widget):
             return [v for v in value if v not in (None, "")]
         return [value] if value not in (None, "") else []
 
-    def _offers_clear(self) -> bool:
-        return not self.is_required if self.clearable is None else self.clearable
-
     def render(self, name, value, attrs=None, renderer=None):
         selected = searchselect_selected(self._values(value), self.options_resolver)
         input_id = (attrs or {}).get("id", "")
@@ -373,7 +369,7 @@ class SearchSelectWidget(forms.Widget):
                 placeholder=self.placeholder,
                 id=input_id,
                 autofocus=self.autofocus,
-                clearable=self._offers_clear(),
+                clearable=self.clearable,
                 clear_description_id=field_label_id(input_id) if input_id else "",
                 # Host the form combobox in <drop-down behavior="inline-combobox">
                 # so its panel uses the shared attachMenu open/close/position/dismiss
@@ -800,7 +796,7 @@ class PlaythroughSelectWidget(SearchSelectWidget):
     into a hidden control.
     """
 
-    def __init__(self, *, game_field: str, clearable: bool | None = None, attrs=None):
+    def __init__(self, *, game_field: str, clearable: bool = True, attrs=None):
         super().__init__(
             search_url=PLAYTHROUGH_SEARCH_URL,
             options_resolver=_run_options,
