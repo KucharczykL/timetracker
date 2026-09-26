@@ -119,7 +119,7 @@ path**, so verify against `make check` before pushing when possible.
 | Production-like dev | `make dev-prod` (Caddy + Gunicorn/Uvicorn + Django-Q cluster) |
 | Run tests | `make test` (pytest; also runs vitest via its `test-ts` prereq) |
 | Run a subset of tests | `make test ARGS="tests/test_filters.py -k relation -x"` (same for `make test-fast` / `make test-e2e`; a path in `ARGS` replaces the directory those two pin) |
-| Run TypeScript tests | `make test-ts` (vitest over `ts/**/*.test.ts`) |
+| Run TypeScript tests | `make test-ts` (vitest over `ts/**/*.test.ts`; `TS_ARGS="ts/elements/x.test.ts"` narrows it, since `ARGS` reaches pytest) |
 | Squash the migration history | `make squash-migrations ARGS="games 0006"` (Django's tool; old files stay until the deployment records the squash, see [Squashing](docs/migration-squash.md)) |
 | Make / apply migrations | `make makemigrations` (`ARGS="games --name edition_name"` names the file) / `make migrate` (`ARGS="games 0001_squashed_0006_remove_session"` targets one) |
 | CSS (Tailwind) | `make css` |

@@ -240,7 +240,7 @@ ts-check: ensure-node-deps gen-element-types
 # Vitest consumes generated modules, and the classic bootstrap tests inspect its
 # emitted script, so a clean checkout needs the complete TypeScript build first.
 test-ts: ts
-	pnpm test:ts
+	pnpm test:ts $(TS_ARGS)
 
 dev: export DEV_LOGIN_PREFILL := admin:admin
 dev: ensure-postgres ensure-python ensure-node-deps gen-element-types
