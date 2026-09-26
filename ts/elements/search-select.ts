@@ -36,6 +36,12 @@ import { isPresenceModifier } from "./filter-tokens.js";
 import { bindPopupDismiss } from "../utils.js";
 import { reportClientError } from "../client-errors.js";
 import { readSearchSelectProps } from "../generated/props.js";
+import { followPointer } from "../pointer-follow.js";
+
+//: Every row a person can highlight and pick.
+const NAVIGABLE_ROWS =
+  "[data-search-select-option], [data-search-select-modifier-option], " +
+  "[data-search-select-create]";
 
 // The contract for the "search-select:change" CustomEvent this widget emits.
 // Consumers (e.g. add_purchase.ts) import these types — never redefine them.
@@ -386,7 +392,8 @@ const initWidget = (containerElement: Element) => {
   // ── Highlight tracking (filter mode) ──
   let highlightedRow: HTMLElement | null = null;
 
-  const highlightOption = (row: HTMLElement | null) => {
+  // A hover highlights without scrolling; a keyboard step scrolls.
+  const highlightOption = (row: HTMLElement | null, { scroll = true } = {}) => {
     clearHighlight();
     if (!row) return;
     row.setAttribute("data-search-select-highlighted", "");
@@ -398,7 +405,7 @@ const initWidget = (containerElement: Element) => {
     if (!multi) row.setAttribute("aria-selected", "true");
     search.setAttribute("aria-activedescendant", ensureOptionId(row));
     highlightedRow = row;
-    row.scrollIntoView({ block: "nearest" });
+    if (scroll) row.scrollIntoView({ block: "nearest" });
   };
 
   const clearHighlight = () => {
@@ -410,14 +417,16 @@ const initWidget = (containerElement: Element) => {
     search.removeAttribute("aria-activedescendant");
   };
 
+  //: The mouse moves the one highlight.
+  followPointer(options, NAVIGABLE_ROWS, row => {
+    if (row !== highlightedRow) highlightOption(row, { scroll: false });
+  });
+
   // Keyboard-navigable rows: value rows plus the pinned modifier
   // pseudo-options — every row advertised as role="option" must be reachable
   // by ArrowUp/ArrowDown, and modifier rows sit first in document order.
   const getVisibleOptions = (): HTMLElement[] => {
-    const all = options.querySelectorAll<HTMLElement>(
-      "[data-search-select-option], [data-search-select-modifier-option], " +
-        "[data-search-select-create]"
-    );
+    const all = options.querySelectorAll<HTMLElement>(NAVIGABLE_ROWS);
     return Array.from(all).filter(
       row => row.style.display !== "none" && !row.hidden
     );
