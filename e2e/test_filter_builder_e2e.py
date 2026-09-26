@@ -885,12 +885,12 @@ def test_builder_comparison_leaf_clone_seed_and_operator_rewire(
     operator_select = comparison_row.locator("[data-fc-op]")
 
     # 1. Template clone: the left operand came from the server template, so its
-    # SearchSelect carries the server-owned container class. This pins that the
+    # SearchSelect carries the server-owned field box class. This pins that the
     # styling really arrived from the server template — the jsdom suite's
     # synthetic fixtures are classless, so only a browser test can assert this.
-    expect(comparison_row.locator("[data-fc-left] search-select")).to_have_class(
-        re.compile(r"rounded-base")
-    )
+    expect(
+        comparison_row.locator("[data-fc-left] search-select [data-search-select-box]")
+    ).to_have_class(re.compile(r"rounded-base"))
 
     # 2. Packed-operator seed: the stored {modifier, granularity} pair hydrates
     # as the packed operator value, and both operand comboboxes restore their

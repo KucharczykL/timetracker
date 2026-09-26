@@ -1016,10 +1016,15 @@ class FilterSelectPanelLayoutTest(unittest.TestCase):
         self.assertIn('class="block text-type-body"', root_tag)
         self.assertIn('always-visible="true"', root_tag)
 
-    def test_field_root_keeps_the_bordered_field_look(self):
-        root_tag = _tag_around(self._html("field"), "always-visible=")
-        self.assertIn("focus-within:border-brand", root_tag)
-        self.assertIn('always-visible="false"', root_tag)
+    def test_both_layouts_draw_one_bordered_field_box(self):
+        self.assertIn(
+            'always-visible="false"',
+            _tag_around(self._html("field"), "always-visible="),
+        )
+        for layout in ("field", "panel"):
+            with self.subTest(layout=layout):
+                box_tag = _tag_around(self._html(layout), "data-search-select-box")
+                self.assertIn("focus-within:border-brand", box_tag)
 
     def test_panel_pills_row_hides_when_empty(self):
         pills_tag = _tag_around(self._html("panel"), "data-search-select-pills")
@@ -1136,16 +1141,14 @@ class ClearableSearchSelectTest(unittest.TestCase):
         self.assertNotIn("peer ", _tag_around(plain, "data-search-select-search"))
         self.assertIn("peer-disabled:hidden", self._clear_tag(clearable))
 
-    def test_panel_box_holds_the_button_inside_its_border(self):
-        html = str(SearchSelect(name="zone", panel=True, selected=[_DEVICE]))
-        wrapper_start = html.rindex(
-            '<div class="relative">', 0, html.index("data-search-select-search")
-        )
-        wrapper = html[wrapper_start : html.index("</div>", wrapper_start)]
-        self.assertIn("data-search-select-search", wrapper)
-        self.assertIn("data-search-select-clear", wrapper)
-        self.assertIn("absolute", self._clear_tag(html))
-        self.assertIn("pr-10", _tag_around(html, "data-search-select-search"))
+    def test_every_personality_holds_the_button_in_its_field_box(self):
+        for panel in (False, True):
+            with self.subTest(panel=panel):
+                html = str(SearchSelect(name="zone", panel=panel, selected=[_DEVICE]))
+                box_start = html.index("data-search-select-box")
+                box = html[box_start : html.index("data-search-select-options")]
+                self.assertIn("data-search-select-search", box)
+                self.assertIn("data-search-select-clear", box)
 
     def test_on_by_default_and_off_on_request(self):
         self.assertIn("data-search-select-clear", str(SearchSelect(name="device")))

@@ -124,33 +124,36 @@ class OptionGroup(NamedTuple):
     options: list[SearchSelectOption]
 
 
-# The pills and the search box share one flex-wrap row (with padding) so the
-# widget reads as a single clickable field; the pills wrapper uses `contents`
-# so its pills/hidden inputs flow as direct participants of that row, inline
-# with the search input. The options panel is absolute, so it sits outside the
-# flex flow.
+# The field box: one bordered flex-wrap row holding the search input, the
+# clear × and the #450 marker, and in the field personality the pills too
+# (their wrapper uses `contents`, so pills and hidden inputs flow inline with
+# the input). Every personality draws its field with this one element; they
+# differ only in where the pills sit and where the box lives.
 # Border + focus styling mirror a native input (INPUT_CLASS): border-default-medium
 # normally, brand border + ring on focus. The search input is the focusable
-# element, so the focus state is expressed on the wrapper with focus-within: (and
+# element, so the focus state is expressed on the box with focus-within: (and
 # the inner input suppresses its own ring — see _SEARCH_CLASS).
 # The widget owns its disabled appearance: when any control inside it is
-# :disabled (e.g. add_purchase.ts disabling the search input), the wrapper fades
+# :disabled (e.g. add_purchase.ts disabling the search input), the box fades
 # via :has() — the same opacity-50 a disabled native input uses (see
 # _DISABLED_CONTROL in games/forms.py), so the two look identical. Callers only
 # toggle the control's `disabled`, never styles.
 # px-3 + min-h-control matches INPUT_CLASS (the shared 42px control height).
-# Container is text-type-body (pill/label text); the inner search box is
-# text-type-input (16px, below which iOS focus-zooms, #427). The box zeroes its
-# own padding (p-0); min-h floors the field at 42 and grows as pills wrap.
-_CONTAINER_CLASS = (
-    "relative flex flex-wrap items-center gap-1 px-3 min-h-control rounded-base text-type-body "
+# The box is text-type-body (pill/label text); the inner search input is
+# text-type-input (16px, below which iOS focus-zooms, #427). The input zeroes
+# its own padding (p-0); min-h floors the field at 42 and grows as pills wrap.
+_BOX_CLASS = (
+    "flex flex-wrap items-center gap-1 px-3 min-h-control rounded-base text-type-body "
     "bg-neutral-secondary-medium border border-default-medium "
     "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand "
     f"{DISABLED_WITHIN_CLASS}"
 )
+# The field personality's element: the anchor the standalone options panel
+# (absolute top-full) and the drop-down position against.
+_CONTAINER_CLASS = "relative block"
 _PILLS_CLASS = "contents"
-# disabled:cursor-not-allowed matches the wrapper's cursor so hovering across
-# the whole widget stays consistent (the wrapper handles the faded look via
+# disabled:cursor-not-allowed matches the box's cursor so hovering across
+# the whole widget stays consistent (the box handles the faded look via
 # has-[:disabled]:opacity-50).
 _SEARCH_CLASS = (
     "flex-1 min-w-[8rem] border-0 p-0 bg-transparent text-type-input text-heading "
@@ -162,7 +165,7 @@ _SEARCH_CLASS = (
 # byte-identical (FilterSelect's field/panel serializer-contract test scans all
 # data-* tokens, class strings included). At rest only: the focus ring owns the
 # focused look, so all three cues vanish under :focus-within with no JS.
-_UNCOMMITTED_CONTAINER_CLASS = "data-uncommitted:not-focus-within:border-dashed"
+_UNCOMMITTED_BOX_CLASS = "not-focus-within:[[data-uncommitted]_&]:border-dashed"
 # The loose text reads like a placeholder — muted (the audited placeholder
 # token) + italic.
 _UNCOMMITTED_SEARCH_CLASS = (
@@ -174,21 +177,14 @@ _UNCOMMITTED_SEARCH_CLASS = (
 # (sizing stays Icon()'s default ICON_SIZE_CLASS).
 _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]:block"
 # The trailing clear ×. ml-auto pins it to the row's end, where pills wrapping
-# before the box would otherwise leave it on a line alone; size-8 is a 32px
-# target, above the 24px touch minimum. The box is its peer, so a
-# disabled box hides it without script.
-_CLEAR_BUTTON_LOOK = (
-    "shrink-0 size-8 inline-flex items-center justify-center rounded-base "
-    "text-body hover:text-heading hover:bg-neutral-tertiary-medium "
+# before the input would otherwise leave it on a line alone; size-8 is a 32px
+# target, above the 24px touch minimum. The input is its peer, so a
+# disabled input hides it without script.
+_CLEAR_BUTTON_CLASS = (
+    "ml-auto -mr-1 shrink-0 size-8 inline-flex items-center justify-center "
+    "rounded-base text-body hover:text-heading hover:bg-neutral-tertiary-medium "
     "cursor-pointer peer-disabled:hidden"
 )
-_CLEAR_BUTTON_CLASS = f"ml-auto -mr-1 {_CLEAR_BUTTON_LOOK}"
-# The panel personality's box draws its own border, so the × sits inside it,
-# pinned over the box's right padding, which pr-10 widens to clear it.
-_PANEL_CLEAR_BUTTON_CLASS = (
-    f"absolute right-1 top-1/2 -translate-y-1/2 {_CLEAR_BUTTON_LOOK}"
-)
-_PANEL_CLEARABLE_SEARCH_CLASS = "pr-10"
 # top-full anchors the panel to the container's bottom edge: as an absolutely
 # positioned child of the flex field, its static position would otherwise be
 # centered by items-center and overlap the search box.
@@ -209,6 +205,9 @@ _OPTION_ROW_CLASS = (
     "px-3 py-2 text-type-body text-heading cursor-pointer "
     "hover:bg-brand-soft data-[search-select-highlighted]:bg-brand-soft"
 )
+# A row on the padded dialog surface is inset, so it rounds its corners as
+# every other item on that surface does (DROPDOWN_ITEM_CLASS).
+_DIALOG_OPTION_ROW_CLASS = f"{_OPTION_ROW_CLASS} rounded-base"
 _NO_RESULTS_CLASS = "px-3 py-2 text-type-body italic text-body hidden"
 # A non-selectable group header in a grouped panel. role="presentation" keeps it
 # out of the combobox's option semantics; carrying no data-search-select-option
@@ -317,17 +316,22 @@ def _label_slot(text: str, *, extra_class: str = "") -> Node:
 _BLANK_OPTION: SearchSelectOption = {"value": "", "label": "", "data": {}}
 
 
-def _option_row(option: SearchSelectOption, *, selected: bool = False) -> Node:
+def _option_row(
+    option: SearchSelectOption,
+    *,
+    selected: bool = False,
+    row_class: str = _OPTION_ROW_CLASS,
+) -> Node:
     return Div(
         [*_data_attributes(option["data"]), *_option_role_attributes(selected)],
         data_search_select_option="",
         data_value=str(option["value"]),
         data_label=option["label"],
-        class_=_OPTION_ROW_CLASS,
+        class_=row_class,
     )[_label_slot(option["label"])]
 
 
-def _create_row() -> Node:
+def _create_row(row_class: str) -> Node:
     """The row that makes the thing a person typed.
 
     Rendered hidden, and shown by the element once the
@@ -341,7 +345,7 @@ def _create_row() -> Node:
         role="option",
         aria_selected="false",
         hidden="",
-        class_=_OPTION_ROW_CLASS,
+        class_=row_class,
     )[Span(data_label="")]
 
 
@@ -353,13 +357,34 @@ def _group_header(label: str) -> Node:
     )[label]
 
 
-def _grouped_option_rows(groups: list[OptionGroup]) -> list[Node]:
+def _grouped_option_rows(groups: list[OptionGroup], row_class: str) -> list[Node]:
     """Flatten groups into header + option-row nodes for the options panel."""
     rows: list[Node] = []
     for group in groups:
         rows.append(_group_header(group.label))
-        rows.extend(_option_row(_normalize_option(option)) for option in group.options)
+        rows.extend(
+            _option_row(_normalize_option(option), row_class=row_class)
+            for option in group.options
+        )
     return rows
+
+
+class _OptionsSurface(NamedTuple):
+    """Where the options list lives, and the row look that surface takes.
+
+    Declared together so a list and its rows cannot disagree: rows fill an
+    unpadded list edge to edge, and sit inset and rounded on the padded
+    dialog surface.
+    """
+
+    options_class: str | None
+    row_class: str
+
+
+# Absolute below the field box, when no drop-down hosts the widget.
+_STANDALONE_LIST = _OptionsSurface(None, _OPTION_ROW_CLASS)
+# Pinned by the <drop-down> engine, when one hosts the widget.
+_INLINE_LIST = _OptionsSurface(_INLINE_OPTIONS_CLASS, _OPTION_ROW_CLASS)
 
 
 def _combobox_children(
@@ -377,7 +402,8 @@ def _combobox_children(
     menu_target: bool = False,
     marker: list[Node] | None = None,
     clear_button: Node | None = None,
-    clear_inside_box: bool = False,
+    pills_in_box: bool = True,
+    box_class: str = _BOX_CLASS,
 ) -> list[Node]:
     """Build and return the shared combobox interior nodes.
 
@@ -405,9 +431,9 @@ def _combobox_children(
     ``marker`` nodes (the #450 committed-marker glyph + sr-only status span) sit
     between the search box and the options panel, so in the flex row they render
     at the field's right edge (the panel is absolutely positioned / menu-hosted).
-    ``clear_button`` sits between the search box and those marker nodes;
-    with ``clear_inside_box`` the two share a positioned wrapper instead,
-    for a box that draws its own border.
+    The search input, ``clear_button`` and ``marker`` share one field box
+    (``box_class``). ``pills_in_box`` flows the pills inline inside it (the
+    field personality); otherwise they wrap in their own row above it.
     """
     aria_attributes: list[HTMLAttribute] = [
         ("role", "combobox"),
@@ -447,14 +473,15 @@ def _combobox_children(
         class_=options_class,
     )[*panel_children]
 
-    if clear_button and clear_inside_box:
-        box: list[Node] = [Div(class_="relative")[search, clear_button]]
-    else:
-        box = [search, *([clear_button] if clear_button else [])]
-    return [
-        pills,
-        *box,
+    box = Div(data_search_select_box="", class_=box_class)[
+        *([pills] if pills_in_box else []),
+        search,
+        *([clear_button] if clear_button else []),
         *(marker or []),
+    ]
+    return [
+        *([] if pills_in_box else [pills]),
+        box,
         options_panel,
         *(templates or []),
     ]
@@ -567,7 +594,7 @@ def SearchSelect(
         ("data-search-select-search", ""),
         ("placeholder", placeholder),
         ("autocomplete", "off"),
-        ("class", _PANEL_SEARCH_CLASS if panel else _SEARCH_CLASS),
+        ("class", _SEARCH_CLASS),
     ]
     if id:
         search_attrs.append(("id", id))
@@ -579,8 +606,6 @@ def SearchSelect(
     clear_button: Node | None = None
     if clearable:
         search_attrs.append(("class", "peer"))
-        if panel:
-            search_attrs.append(("class", _PANEL_CLEARABLE_SEARCH_CLASS))
         clear_button = Button(
             type="button",
             data_search_select_clear="",
@@ -588,14 +613,18 @@ def SearchSelect(
             title="Clear",
             aria_describedby=clear_description_id or None,
             hidden=not selected,
-            class_=_PANEL_CLEAR_BUTTON_CLASS if panel else _CLEAR_BUTTON_CLASS,
+            class_=_CLEAR_BUTTON_CLASS,
         )[Icon("x-mark", [("aria-hidden", "true"), ("class", "size-4")])]
+
+    surface = (
+        _DIALOG_LIST if panel else (_INLINE_LIST if host_dropdown else _STANDALONE_LIST)
+    )
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
     if search_url:
         option_rows: list[Node] = []
     elif option_groups:
-        option_rows = _grouped_option_rows(option_groups)
+        option_rows = _grouped_option_rows(option_groups, surface.row_class)
     else:
         # In the multi (aria-multiselectable) listbox aria-selected conveys
         # membership, so pre-render it for already-selected values. Single-select
@@ -604,7 +633,11 @@ def SearchSelect(
             {str(option["value"]) for option in selected} if multi_select else set()
         )
         option_rows = [
-            _option_row(option, selected=str(option["value"]) in selected_values)
+            _option_row(
+                option,
+                selected=str(option["value"]) in selected_values,
+                row_class=surface.row_class,
+            )
             for option in options
         ]
 
@@ -614,7 +647,9 @@ def SearchSelect(
     templates: list[Node] = []
     if search_url or dynamic_options:
         templates.append(
-            Template(data_search_select_template="row")[_option_row(_BLANK_OPTION)]
+            Template(data_search_select_template="row")[
+                _option_row(_BLANK_OPTION, row_class=surface.row_class)
+            ]
         )
     if multi_select:
         templates.append(
@@ -647,7 +682,7 @@ def SearchSelect(
         ]
 
     children = _combobox_children(
-        create_row=_create_row() if create_url else None,
+        create_row=_create_row(surface.row_class) if create_url else None,
         pills=pills,
         search_attributes=search_attrs,
         options_children=option_rows,
@@ -655,13 +690,13 @@ def SearchSelect(
         items_visible=items_visible,
         multi_select=multi_select,
         templates=templates,
-        options_class=_PANEL_OPTIONS_CLASS
-        if panel
-        else (_INLINE_OPTIONS_CLASS if host_dropdown else None),
+        options_class=surface.options_class,
         menu_target=host_dropdown,
         marker=marker,
         clear_button=clear_button,
-        clear_inside_box=panel,
+        box_class=f"{_BOX_CLASS} {_UNCOMMITTED_BOX_CLASS}"
+        if show_marker
+        else _BOX_CLASS,
     )
     widget = _SearchSelect(
         # The <search-select> element itself is the drop-down's [data-toggle]: it
@@ -680,13 +715,7 @@ def SearchSelect(
         always_visible="true" if always_visible else "false",
         prefetch=prefetch,
         sync_url="true" if sync_url else "false",
-        class_=_PANEL_CONTAINER_CLASS
-        if panel
-        else (
-            f"{_CONTAINER_CLASS} {_UNCOMMITTED_CONTAINER_CLASS}"
-            if show_marker
-            else _CONTAINER_CLASS
-        ),
+        class_=_PANEL_CONTAINER_CLASS if panel else _CONTAINER_CLASS,
     )[*children]
     if not host_dropdown:
         return widget
@@ -884,7 +913,7 @@ def FilterSelect(
         ("data-search-select-search", ""),
         ("placeholder", placeholder),
         ("autocomplete", "off"),
-        ("class", _PANEL_SEARCH_CLASS if panel_layout else _SEARCH_CLASS),
+        ("class", _SEARCH_CLASS),
     ]
     if search_aria_label:
         search_attributes.append(("aria-label", search_aria_label))
@@ -945,6 +974,7 @@ def FilterSelect(
         templates=templates,
         options_class=_PANEL_OPTIONS_CLASS if panel_layout else _INLINE_OPTIONS_CLASS,
         menu_target=field_host,
+        pills_in_box=not panel_layout,
     )
     # The self-describe root attributes for the generic filter serializer. Only
     # Filter-layer callers pass ``path``; synthetic/test callers leave it None and
@@ -984,17 +1014,13 @@ def FilterSelect(
 
 # ── Panel personality styling ───────────────────────────
 # The layout shared by every combobox-shell widget hosted inside a <drop-down>
-# combobox dialog (PresetSelect, panel-layout FilterSelect). Unlike the
-# form/filter field personalities it has no bordered field wrapper: the search
-# input is its own bordered field, and the options panel flows statically
-# below it on the dialog surface (GitHub-label-picker layout).
+# combobox dialog (PresetSelect, panel-layout FilterSelect, SearchSelect
+# panel=True): the same field box as a form field, and the options list flowing
+# statically below it on the dialog surface (GitHub-label-picker layout).
 _PANEL_CONTAINER_CLASS = "block text-type-body"
-_PANEL_SEARCH_CLASS = (
-    "w-full px-3 py-2 rounded-base border border-default-medium "
-    "bg-neutral-secondary-medium text-type-body text-heading placeholder:text-body "
-    "focus:border-brand focus:ring-1 focus:ring-brand focus:outline-hidden"
-)
 _PANEL_OPTIONS_CLASS = "mt-2 overflow-y-auto"
+# The dialog's padded surface.
+_DIALOG_LIST = _OptionsSurface(_PANEL_OPTIONS_CLASS, _DIALOG_OPTION_ROW_CLASS)
 # Pills sit in their own wrap row above the search box; empty:hidden keeps an
 # empty pill set from adding a stray gap.
 _PANEL_PILLS_CLASS = "mb-2 flex flex-wrap gap-1 empty:hidden"
@@ -1061,7 +1087,7 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         ("data-search-select-search", ""),
         ("placeholder", "Filter presets…"),
         ("autocomplete", "off"),
-        ("class", _PANEL_SEARCH_CLASS),
+        ("class", _SEARCH_CLASS),
     ]
     templates: list[Node] = [
         Template(data_search_select_template="row")[_preset_option_row(_BLANK_OPTION)]

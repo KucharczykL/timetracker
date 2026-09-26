@@ -39,7 +39,11 @@ Four rules of the filed text are reversed. Each follows the prior art below.
 ## The button
 
 `SearchSelect(clearable=True)` renders a `<button type="button">` inside the
-field, after the search box and before the #450 committed marker. It carries
+field box, after the search input and before the #450 committed marker. Every
+combobox personality draws its field with that one box
+(`[data-search-select-box]`, `_BOX_CLASS`), so the button needs no placement
+of its own; the panel personality once drew the border on the input instead,
+and a sibling of the input landed under it. It carries
 `aria-label="Clear"`, `title="Clear"`, `data-search-select-clear`, `shrink-0`,
 `ml-auto` and `size-8`, around a 16px `x-mark` icon. In multi mode the pills
 flow before the box in the same wrapping row, so without `ml-auto` the button
