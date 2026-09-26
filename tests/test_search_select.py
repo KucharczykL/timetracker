@@ -1071,3 +1071,67 @@ def test_default_search_select_keeps_the_field_personality():
     html = str(SearchSelect(name="zone", search_url="/api/timezones/search"))
     assert 'always-visible="false"' in html
     assert "mt-2 overflow-y-auto" not in html
+
+
+class ClearableSearchSelectTest(unittest.TestCase):
+    """``clearable=True`` renders the trailing × the element wires."""
+
+    _DEVICE = {"value": "7", "label": "Deck"}
+
+    def _clear_tag(self, html: str) -> str:
+        return _tag_around(html, "data-search-select-clear")
+
+    def test_hidden_without_a_selection(self):
+        for multi in (False, True):
+            with self.subTest(multi=multi):
+                html = str(SearchSelect(name="device", clearable=True, multi_select=multi))
+                self.assertIn("hidden", self._clear_tag(html))
+
+    def test_shown_with_a_selection(self):
+        for multi in (False, True):
+            with self.subTest(multi=multi):
+                html = str(
+                    SearchSelect(
+                        name="device",
+                        clearable=True,
+                        multi_select=multi,
+                        selected=[self._DEVICE],
+                    )
+                )
+                self.assertNotIn(" hidden", self._clear_tag(html))
+
+    def test_is_a_named_button(self):
+        tag = self._clear_tag(str(SearchSelect(name="device", clearable=True)))
+        self.assertIn('type="button"', tag)
+        self.assertIn('aria-label="Clear"', tag)
+        self.assertIn('title="Clear"', tag)
+        self.assertNotIn("aria-describedby", tag)
+
+    def test_described_by_the_given_id(self):
+        html = str(
+            SearchSelect(
+                name="device", clearable=True, clear_description_id="id_device_label"
+            )
+        )
+        self.assertIn('aria-describedby="id_device_label"', self._clear_tag(html))
+
+    def test_follows_the_search_box(self):
+        html = str(SearchSelect(name="device", clearable=True))
+        self.assertLess(
+            html.index("data-search-select-search"),
+            html.index("data-search-select-clear"),
+        )
+        self.assertLess(
+            html.index("data-search-select-clear"),
+            html.index("data-search-select-marker"),
+        )
+
+    def test_search_box_is_its_peer(self):
+        clearable = str(SearchSelect(name="device", clearable=True))
+        plain = str(SearchSelect(name="device"))
+        self.assertIn("peer ", _tag_around(clearable, "data-search-select-search"))
+        self.assertNotIn("peer ", _tag_around(plain, "data-search-select-search"))
+        self.assertIn("peer-disabled:hidden", self._clear_tag(clearable))
+
+    def test_default_renders_no_button(self):
+        self.assertNotIn("data-search-select-clear", str(SearchSelect(name="device")))

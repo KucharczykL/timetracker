@@ -173,6 +173,13 @@ _UNCOMMITTED_SEARCH_CLASS = (
 # Icon() drops the snippet's baked color classes, so text-body must ride here
 # (sizing stays Icon()'s default ICON_SIZE_CLASS).
 _MARKER_ICON_CLASS = "hidden text-body [[data-uncommitted]:not(:focus-within)_&]:block"
+# The trailing clear ×. ml-auto pins it to the row's end, where pills wrapping
+# before the box would otherwise leave it on a line alone. The box is its
+# peer, so a disabled box hides it without script.
+_CLEAR_BUTTON_CLASS = (
+    "ml-auto shrink-0 px-1 text-body hover:text-heading font-bold cursor-pointer "
+    "peer-disabled:hidden"
+)
 # top-full anchors the panel to the container's bottom edge: as an absolutely
 # positioned child of the flex field, its static position would otherwise be
 # centered by items-center and overlap the search box.
@@ -360,6 +367,7 @@ def _combobox_children(
     create_row: Node | None = None,
     menu_target: bool = False,
     marker: list[Node] | None = None,
+    clear_button: Node | None = None,
 ) -> list[Node]:
     """Build and return the shared combobox interior nodes.
 
@@ -387,6 +395,7 @@ def _combobox_children(
     ``marker`` nodes (the #450 committed-marker glyph + sr-only status span) sit
     between the search box and the options panel, so in the flex row they render
     at the field's right edge (the panel is absolutely positioned / menu-hosted).
+    ``clear_button`` sits between the search box and those marker nodes.
     """
     aria_attributes: list[HTMLAttribute] = [
         ("role", "combobox"),
@@ -426,7 +435,14 @@ def _combobox_children(
         class_=options_class,
     )[*panel_children]
 
-    return [pills, search, *(marker or []), options_panel, *(templates or [])]
+    return [
+        pills,
+        search,
+        *([clear_button] if clear_button else []),
+        *(marker or []),
+        options_panel,
+        *(templates or []),
+    ]
 
 
 def SearchSelect(
@@ -453,6 +469,8 @@ def SearchSelect(
     dynamic_options: bool = False,
     committed_marker: bool = True,
     panel: bool = False,
+    clearable: bool = False,
+    clear_description_id: str = "",
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
 
@@ -491,6 +509,10 @@ def SearchSelect(
     ``FilterSelect`` build their own markup and are structurally unaffected —
     correctly so for the preset picker, whose pick is a command and whose box
     clears by design.
+
+    ``clearable`` renders a trailing × that empties the query and the value in
+    one press; its presence is the element's opt-in. ``clear_description_id``
+    names the element that describes it, the field's label in a form.
     """
     if panel:
         always_visible = True
@@ -538,6 +560,19 @@ def SearchSelect(
         search_attrs.append(("autofocus", ""))
     if search_value:
         search_attrs.append(("value", search_value))
+
+    clear_button: Node | None = None
+    if clearable:
+        search_attrs.append(("class", "peer"))
+        clear_button = Button(
+            type="button",
+            data_search_select_clear="",
+            aria_label="Clear",
+            title="Clear",
+            aria_describedby=clear_description_id or None,
+            hidden=not selected,
+            class_=_CLEAR_BUTTON_CLASS,
+        )["×"]
 
     # ── Options panel (pre-rendered only when there is no search_url) ──
     if search_url:
@@ -608,6 +643,7 @@ def SearchSelect(
         else (_INLINE_OPTIONS_CLASS if host_dropdown else None),
         menu_target=host_dropdown,
         marker=marker,
+        clear_button=clear_button,
     )
     widget = _SearchSelect(
         # The <search-select> element itself is the drop-down's [data-toggle]: it
