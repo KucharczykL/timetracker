@@ -29,7 +29,7 @@ from datetime import UTC, date, datetime
 import pytest
 from devices import create_device
 from django.urls import reverse
-from playwright.sync_api import Page, expect
+from playwright.sync_api import Locator, Page, expect
 from session_rows import session_row
 
 from e2e.tracked_games import create_tracked_game
@@ -1109,3 +1109,51 @@ def test_preset_keyboard_pick_and_empty_enter(
     expect(page.locator("[data-node-kind='criterion']")).to_be_attached(timeout=5_000)
     expect(picker.locator("[data-menu]")).to_be_hidden()
     assert page.url == url_before  # loaded into the tree, no navigation
+
+
+def _status_prefilled_builder(page: Page, live_server) -> Locator:
+    filter_param = _encode_filter(
+        {"status": {"modifier": "INCLUDES", "value": ["completed"]}}
+    )
+    page.goto(
+        f"{live_server.url}{reverse('games:filter_builder', args=['game'])}"
+        f"?filter={filter_param}"
+    )
+    expect(page.locator("filter-count")).not_to_contain_text("Counting…")
+    return page.locator("[data-node-kind='criterion']").first
+
+
+def test_clearing_the_field_picker_drops_the_criterion(
+    authenticated_page: Page, live_server
+) -> None:
+    page = authenticated_page
+    row = _status_prefilled_builder(page, live_server)
+    picker = row.locator("[data-field-picker]")
+    expect(row.locator("[data-value-cell] search-select")).to_have_count(1)
+
+    picker.get_by_role("button", name="Clear").click()
+
+    expect(picker.locator("[data-search-select-search]")).to_have_value("")
+    expect(row.locator("[data-value-cell] search-select")).to_have_count(0)
+    with page.expect_navigation():
+        page.locator("filter-builder [data-apply]").click()
+    assert "status" not in _filter_from_url(page.url)
+
+
+def test_typing_over_a_picked_field_keeps_the_typed_text(
+    authenticated_page: Page, live_server
+) -> None:
+    page = authenticated_page
+    row = _status_prefilled_builder(page, live_server)
+    search = row.locator("[data-field-picker] [data-search-select-search]")
+
+    search.click()
+    page.keyboard.type("Nam")
+
+    expect(search).to_have_value("Nam")
+    expect(search).to_be_focused()
+    expect(
+        row.locator(
+            "[data-field-picker] [data-search-select-option]", has_text="Name"
+        ).first
+    ).to_be_visible()

@@ -25,6 +25,8 @@ interface MountOptions {
   attributes?: Record<string, string>;
   withButton?: boolean;
   staticRows?: boolean;
+  createRow?: boolean;
+  formFields?: string;
 }
 
 const ROW_TEMPLATE = `<template data-search-select-template="row"><div
@@ -38,6 +40,8 @@ function mount(
     attributes = {},
     withButton = true,
     staticRows = true,
+    createRow = false,
+    formFields,
   }: MountOptions = {},
 ): StatefulHost {
   document.body.replaceChildren();
@@ -73,10 +77,18 @@ function mount(
     <div data-search-select-options class="hidden">
       ${rows}
       <div data-search-select-no-results class="hidden">No results</div>
+      ${createRow ? '<div data-search-select-create hidden><span data-label></span></div>' : ""}
     </div>
     ${ROW_TEMPLATE}
   `;
-  document.body.appendChild(host);
+  if (formFields === undefined) {
+    document.body.appendChild(host);
+  } else {
+    const form = document.createElement("form");
+    form.innerHTML = formFields;
+    form.appendChild(host);
+    document.body.appendChild(form);
+  }
   return host;
 }
 
@@ -253,6 +265,129 @@ describe("<search-select> clear ×: a press", () => {
   });
 });
 
+type Answer = { value: string; label: string; data: Record<string, string> };
+const DECK: Answer = { value: "1", label: "Deck", data: {} };
+const SWITCH: Answer = { value: "2", label: "Switch", data: {} };
+
+function answer(rows: Answer[]): Response {
+  return { ok: true, json: () => Promise.resolve(rows) } as Response;
+}
+
+/** A search route answering by query; every call is recorded. */
+function stubSearch(byQuery: (query: string) => Answer[]) {
+  const fetchMock = vi.fn((input: RequestInfo | URL) =>
+    Promise.resolve(answer(byQuery(new URL(String(input)).searchParams.get("q") ?? ""))),
+  );
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+const rowLabels = (host: HTMLElement) =>
+  Array.from(host.querySelectorAll<HTMLElement>("[data-search-select-option]")).map(
+    row => row.textContent?.trim(),
+  );
+
+describe("<search-select> clear ×: what a search answered", () => {
+  beforeEach(() => document.body.replaceChildren());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("a pointer press over a filtered answer asks again for the whole list", async () => {
+    const fetchMock = stubSearch(query => (query ? [SWITCH] : [DECK, SWITCH]));
+    const host = mount([], {
+      attributes: { "search-url": "/api/devices/search" },
+      staticRows: false,
+    });
+    searchBox(host).focus();
+    type(host, "Sw");
+    await vi.waitFor(() => expect(rowLabels(host)).toEqual(["Switch"]));
+
+    clearButton(host).dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    clearButton(host).click();
+
+    await vi.waitFor(() => expect(rowLabels(host)).toEqual(["Deck", "Switch"]));
+    const lastUrl = new URL(String(fetchMock.mock.lastCall![0]));
+    expect(lastUrl.searchParams.get("q")).toBe("");
+  });
+
+  it("an answer in flight when the × takes focus renders nothing", async () => {
+    let settle: (rows: Answer[]) => void = () => {};
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => new Promise<Response>(resolve => (settle = rows => resolve(answer(rows))))),
+    );
+    const host = mount([], {
+      attributes: { "search-url": "/api/devices/search" },
+      staticRows: false,
+    });
+    searchBox(host).focus();
+    type(host, "Sw");
+    await new Promise(resolve => setTimeout(resolve, 150));
+    clearButton(host).focus();
+    settle([SWITCH]);
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(rowLabels(host)).toEqual([]);
+    expect(searchBox(host).getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("a create answered after a clear adds the row but holds nothing", async () => {
+    stubSearch(() => []);
+    let settle: () => void = () => {};
+    window.fetchWithEvents = vi.fn(
+      () =>
+        new Promise<Response>(resolve => {
+          settle = () =>
+            resolve({
+              ok: true,
+              json: () => Promise.resolve({ value: "new", label: "Steam Deck" }),
+            } as Response);
+        }),
+    ) as unknown as typeof window.fetchWithEvents;
+    const host = mount([], {
+      attributes: { "search-url": "/api/devices/search", "create-url": "/api/devices/" },
+      staticRows: false,
+      createRow: true,
+    });
+    const createRow = host.querySelector<HTMLElement>("[data-search-select-create]")!;
+    searchBox(host).focus();
+    type(host, "Steam Deck");
+    await vi.waitFor(() => expect(createRow.hidden).toBe(false));
+
+    createRow.click();
+    clearButton(host).click();
+    settle();
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    expect(heldValues(host)).toEqual([]);
+    expect(searchBox(host).value).toBe("");
+  });
+
+  it("a change to a field it depends on commits the sole option again", async () => {
+    stubSearch(() => [{ value: "r1", label: "Playthrough 1", data: {} }]);
+    const host = mount([{ value: "r1", label: "Playthrough 1" }], {
+      attributes: {
+        "search-url": "/api/playthrough/search",
+        prefetch: "20",
+        "commit-sole-option": "true",
+        params: JSON.stringify({ game_id: { field: "game" } }),
+      },
+      staticRows: false,
+      formFields: '<input type="hidden" name="game" value="g1" />',
+    });
+    const form = host.closest("form")!;
+    clearButton(host).focus();
+    clearButton(host).click();
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(heldValues(host)).toEqual([]);
+
+    const game = form.querySelector<HTMLInputElement>('[name="game"]')!;
+    game.value = "g2";
+    game.dispatchEvent(new CustomEvent("search-select:change", { bubbles: true }));
+
+    await vi.waitFor(() => expect(heldValues(host)).toEqual(["r1"]));
+  });
+});
+
 describe("<search-select> clear ×: focus", () => {
   beforeEach(() => document.body.replaceChildren());
 
@@ -285,9 +420,11 @@ describe("<search-select> clear ×: focus", () => {
     expect(searchBox(host).getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("changes nothing on a widget without the button", () => {
+  it("a widget without the button never announces a clear", () => {
     const host = mount([{ value: "1", label: "Deck" }], { withButton: false });
+    const events = record(host);
     type(host, "Sw");
-    expect(heldValues(host)).toEqual([]);
+    host._searchSelectClear!();
+    expect(events.map(event => event.type)).toEqual(["search-select:change"]);
   });
 });

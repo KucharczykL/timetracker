@@ -370,7 +370,7 @@ class SearchSelectWidget(forms.Widget):
                 id=input_id,
                 autofocus=self.autofocus,
                 clearable=self.clearable,
-                clear_description_id=field_label_id(input_id) if input_id else "",
+                clear_description_id=field_label_id(input_id) if input_id else None,
                 # Host the form combobox in <drop-down behavior="inline-combobox">
                 # so its panel uses the shared attachMenu open/close/position/dismiss
                 # engine (issue #348). The widget's own input stays the trigger.

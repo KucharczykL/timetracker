@@ -38,6 +38,7 @@ import {
   setConnective,
   setLeafCriterion,
   setLeafField,
+  clearLeafField,
   setMatch,
   setRelationField,
   toggleConnective,
@@ -578,6 +579,14 @@ describe("leaf payload edits (#192)", () => {
       criterion: { modifier: "INCLUDES" }, // value dropped, modifier reset
       negate: true, // preserved
     });
+  });
+
+  it("clearLeafField returns the leaf to no field, preserving negate", () => {
+    const tree = group("AND", [
+      { kind: "criterion", id: "c", field: "name", criterion: { modifier: "EQUALS", value: "x" }, negate: true },
+    ]);
+    const next = clearLeafField(tree, [0]);
+    expect(nodeAt(next, [0])).toEqual({ kind: "criterion", field: "", criterion: {}, negate: true });
   });
 
   it("setLeafCriterion swaps the opaque payload verbatim", () => {

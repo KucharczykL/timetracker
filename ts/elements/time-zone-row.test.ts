@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./time-zone-row.js";
+import "./search-select.js";
 import { TIME_ZONE_ROW_CHANGE_EVENT } from "./time-zone-row-events.js";
 
 const REAL_DATE_TIME_FORMAT = Intl.DateTimeFormat;
@@ -18,7 +19,20 @@ function mount({
   storedZone = "",
   displayZone = "Europe/Prague",
   captureDefault = true,
-}: { storedZone?: string; displayZone?: string; captureDefault?: boolean } = {}): HTMLElement {
+  withPicker = false,
+}: {
+  storedZone?: string;
+  displayZone?: string;
+  captureDefault?: boolean;
+  withPicker?: boolean;
+} = {}): HTMLElement {
+  const picker = withPicker
+    ? `<search-select name="timestamp_start_timezone_picker">
+        <div data-search-select-pills></div>
+        <input data-search-select-search />
+        <div data-search-select-options></div>
+      </search-select>`
+    : "";
   document.body.innerHTML = `
     <time-zone-row field-name="timestamp_start_timezone"
         stored-zone="${storedZone}" display-zone="${displayZone}"
@@ -29,6 +43,7 @@ function mount({
         <button type="button" aria-haspopup="dialog">Start time zone: ${
           storedZone || `${displayZone} (display zone)`
         }<svg></svg></button>
+        ${picker}
       </div>
     </time-zone-row>`;
   return document.querySelector("time-zone-row")!;
@@ -51,6 +66,22 @@ afterEach(() => {
 });
 
 describe("time-zone-row", () => {
+  it("holds a captured zone in the picker too", async () => {
+    stubBrowserZone("Asia/Tokyo");
+    const host = mount({ captureDefault: true, withPicker: true });
+    const picker = host.querySelector<HTMLElement>("search-select")!;
+
+    await vi.waitFor(() =>
+      expect(
+        picker.querySelector<HTMLInputElement>('[data-search-select-pills] input[type="hidden"]')
+          ?.value,
+      ).toBe("Asia/Tokyo"),
+    );
+    expect(picker.querySelector<HTMLInputElement>("[data-search-select-search]")!.value).toBe(
+      "Asia/Tokyo",
+    );
+  });
+
   it("captures the browser zone into an empty input on a new record", () => {
     stubBrowserZone("Asia/Tokyo");
     const host = mount({ captureDefault: true });

@@ -41,6 +41,7 @@ class TimeZoneRowElement extends HTMLElement {
       valueInput.value = detectedZone;
       this.updateTriggerLabel(trigger, detectedZone);
       this.announceZone(props.fieldName, detectedZone);
+      this.holdInPicker(detectedZone);
     }
     const effectiveZone = valueInput.value || props.displayZone;
     // The zone this row will submit is not necessarily the zone this browser
@@ -62,6 +63,18 @@ class TimeZoneRowElement extends HTMLElement {
     });
     // A clear states NULL, as pinned "" does.
     this.addEventListener("search-select:clear", () => applyZone(""));
+  }
+
+  /** The picker shows what the row submits. */
+  private holdInPicker(zone: string): void {
+    const picker = this.querySelector<HTMLElement & { setSelected(value: string, label?: string): void }>(
+      "search-select",
+    );
+    if (!picker) return;
+    //: A child upgrades after its parent connects.
+    void customElements
+      .whenDefined("search-select")
+      .then(() => picker.setSelected(zone, zone));
   }
 
   private updateTriggerLabel(trigger: HTMLElement, zoneName: string): void {

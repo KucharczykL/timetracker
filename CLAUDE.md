@@ -705,7 +705,8 @@ Submodules re-exported via `common/components/__init__.py`:
   mapping — a literal or a sibling field — read by that POST and by the search
   query alike, a field source being a dependency that re-searches, #1080;
   a trailing × empties query and value in one press and emits
-  `search-select:clear`, on for every picker unless `clearable=False`, #1287),
+  `search-select:clear` after any `search-select:change`; on by default,
+  `clearable=False` opts out, #1287),
   `FilterSelect()` (include/exclude
   with pinned Any/None modifiers; `layout="panel"` is GitHub-label-picker
   personality for hosting inside dropdown dialog, #315), `ComboboxDropdown()`

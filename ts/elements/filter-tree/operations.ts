@@ -415,6 +415,14 @@ export function setLeafField(root: GroupNode, path: NodePath, meta: FilterFieldM
   });
 }
 
+// Unpick a criterion leaf's field: back to a fresh row.
+export function clearLeafField(root: GroupNode, path: NodePath): GroupNode {
+  return replaceNodeAt(root, path, (node) => {
+    if (node.kind !== "criterion") throw new Error(`Node at path is not a criterion leaf`);
+    return { ...emptyCriterion(), id: node.id, negate: node.negate };
+  });
+}
+
 // Set a criterion leaf's whole opaque payload (what a value widget produced). The
 // serializer wraps it verbatim as `{field: payload}`, so the widget owns the shape.
 export function setLeafCriterion(

@@ -188,3 +188,29 @@ def test_a_disabled_box_hides_the_clear_button(live_server, page: Page):
 
     page.locator("#tags").evaluate("box => { box.disabled = true; }")
     expect(clear).to_be_hidden()
+
+
+def test_clearing_a_required_field_is_refused_on_submit(
+    authenticated_page: Page, live_server, e2e_library
+):
+    from tracked_games import create_tracked_game
+
+    from games.models import PlayerSession
+
+    page = authenticated_page
+    game = create_tracked_game(e2e_library, "Outer Wilds")
+    page.goto(
+        f"{live_server.url}{reverse('games:add_session_for_game', args=[game.pk])}"
+    )
+    run_picker = page.locator("search-select[name='playthrough']")
+    expect(run_picker.locator('input[type="hidden"]')).to_have_count(1)
+
+    run_picker.get_by_role("button", name="Clear").click()
+    expect(run_picker.locator('input[type="hidden"]')).to_have_count(0)
+    _fill_start(page)
+    with page.expect_navigation() as navigation:
+        page.get_by_role("button", name="Submit", exact=True).click()
+
+    assert navigation.value.status == 200
+    expect(page.get_by_text("This field is required.")).to_be_visible()
+    assert not PlayerSession.objects.filter(library=e2e_library).exists()

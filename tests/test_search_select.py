@@ -220,9 +220,7 @@ class SearchSelectCommittedMarkerTest(unittest.TestCase):
         html = str(SearchSelect(name="device", committed_marker=False))
         self.assertNotIn("data-search-select-marker", html)
         self.assertNotIn("data-search-select-status", html)
-        # Including the state-utility class tokens — they must not leak into
-        # the shared constants (FilterSelect's serializer-contract test scans
-        # every data-* token, class strings included).
+        # The cue's classes stay off opted-out widgets.
         self.assertNotIn("data-uncommitted", html)
 
     def test_multi_select_never_renders_the_cue(self):
@@ -1029,7 +1027,7 @@ class FilterSelectPanelLayoutTest(unittest.TestCase):
     def test_panel_pills_row_hides_when_empty(self):
         pills_tag = _tag_around(self._html("panel"), "data-search-select-pills")
         self.assertIn("flex flex-wrap", pills_tag)
-        self.assertIn("empty:hidden", pills_tag)
+        self.assertIn("hidden has-[[data-pill]]:flex", pills_tag)
 
     def test_search_aria_label_names_the_input(self):
         html = self._html("panel", search_aria_label="Game")
@@ -1043,7 +1041,7 @@ class FilterSelectPanelLayoutTest(unittest.TestCase):
         # its own inline-combobox drop-down, while the panel layout's live on the
         # ComboboxDropdown that wraps it a level up — orthogonal to the serializer.
         host_hooks = {"data-toggle", "data-menu"}
-        data_attribute = re.compile(r"data-[a-z-]+")
+        data_attribute = re.compile(r"\s(data-[a-z-]+)=")
         field_hooks = sorted(
             hook
             for hook in data_attribute.findall(self._html("field"))
