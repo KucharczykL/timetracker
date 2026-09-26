@@ -3036,10 +3036,7 @@ def _selection_actions_slot(
     Declaration order is priority order: the rightmost overflows first.
     """
     # Deferred: `custom_elements` reads this module at import.
-    from common.components.custom_elements import (
-        Dropdown,
-        dropdown_combobox_panel_class,
-    )
+    from common.components.custom_elements import Dropdown, DropdownPanel
 
     offered = list(actions)
     slot = Div([("data-selection-actions", "")], class_="flex gap-2")
@@ -3053,15 +3050,13 @@ def _selection_actions_slot(
         )
     overflow_id = f"selection-overflow-{randomid(content=id_seed)}"
     #: Moved submits, not items: the row's own buttons travel.
-    panel = Div(
-        [("data-selection-overflow-items", "")],
+    panel = DropdownPanel(
         role="dialog",
         aria_label="More actions",
-        class_=(
-            f"{dropdown_combobox_panel_class('w-auto')} "
-            "flex flex-col items-stretch gap-1"
-        ),
-    )
+        width="w-auto",
+        content_attributes=[("data-selection-overflow-items", "")],
+        content_class="flex flex-col items-stretch gap-1",
+    )[()]
     overflow = Div([("data-selection-overflow", "")], class_="hidden")[
         Dropdown(
             trigger_element=EllipsisTrigger(

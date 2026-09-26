@@ -53,9 +53,9 @@ from typing import Literal, NamedTuple, TypedDict
 from common.components.core import Attributes, HTMLAttribute, Node
 from common.components.custom_elements import (
     Dropdown,
+    DropdownPanel,
     _Dropdown,
     _SearchSelect,
-    dropdown_combobox_panel_class,
 )
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
@@ -1103,13 +1103,9 @@ def ComboboxDropdown(
         label,
         Icon("arrowdown", size="h-3 w-3"),
     ].as_element()
-    panel = Div(
-        # A search dialog, not a menu: no role="menu"/menuitem anywhere — the
-        # inner widget provides the combobox/listbox semantics (#154).
-        role="dialog",
-        aria_label=label,
-        class_=dropdown_combobox_panel_class(panel_width),
-    )[content]
+    # A search dialog, not a menu: no role="menu"/menuitem anywhere — the
+    # inner widget provides the combobox/listbox semantics (#154).
+    panel = DropdownPanel(role="dialog", aria_label=label, width=panel_width)[content]
     return Dropdown(
         trigger_element=trigger,
         target_element=panel,

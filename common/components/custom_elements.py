@@ -23,6 +23,7 @@ from typing import (
 from django.urls import reverse
 
 from common.components.core import (
+    AttrsArg,
     BaseComponent,
     Child,
     Children,
@@ -794,46 +795,59 @@ _Dropdown = custom_element_builder("drop-down")
 # panel's overflow, growing a transient scrollbar that mis-anchored low submenus.
 # Putting the filter on a childless `::before` keeps the frosted look while
 # leaving the panel filter-free, so submenus still resolve against the viewport.
-# Width-free surface (colors, frosted layer, rounding, padding) shared by every
-# panel constant below — the single source of truth for "what a dropdown panel
-# looks like" (#295: unshared panel styling is how a text token ends up as a
-# background). Width is per-variant.
+# The one overlay look every floating surface shares.
 OVERLAY_SURFACE_CLASS = (
     "bg-surface-overlay text-type-body "
     "before:content-[''] before:absolute before:inset-0 before:-z-10 "
     "before:rounded-[inherit] dark:before:backdrop-blur-xl"
 )
-_DROPDOWN_PANEL_SURFACE = (
-    "absolute z-20 overflow-x-hidden overflow-y-auto rounded-base p-2 "
-    f"{OVERLAY_SURFACE_CLASS}"
+#: The surface never scrolls, so its blur stays put.
+_DROPDOWN_PANEL_CLASS = (
+    "absolute z-20 isolate flex flex-col rounded-base p-2 "
+    f"border border-default-medium shadow-sm {OVERLAY_SURFACE_CLASS}"
 )
-_DROPDOWN_PANEL_BASE = f"{_DROPDOWN_PANEL_SURFACE} w-44"
-DROPDOWN_PANEL_OUTLINE_CLASS = f"{_DROPDOWN_PANEL_BASE} border border-default-medium"
-_DROPDOWN_PANEL_PLAIN_CLASS = (
-    f"{_DROPDOWN_PANEL_BASE} shadow-sm border border-default-medium"
-)
+#: The one child that scrolls the content.
+_DROPDOWN_SCROLL_CLASS = "min-h-0 overflow-y-auto overflow-x-hidden"
 
 
-def _menu_panel_class(width: str = "w-44") -> str:
-    """The plain menu-panel look at an arbitrary width. Default ``w-44`` matches
-    the fixed-width menus; a split button can pass e.g. ``w-max max-w-xs`` to grow
-    to its item content (the item names self-clip via ``TruncatedText``)."""
-    return f"{_DROPDOWN_PANEL_SURFACE} {width} shadow-sm border border-default-medium"
+class DropdownPanel:
+    """Every dropdown's panel: a surface around one scroller.
 
+    ``DropdownPanel(role="menu", width="w-44")[items]``. The surface takes
+    ``attributes`` and the height attachMenu writes; the scroller,
+    ``[data-menu-scroll]``, takes the children, ``content_attributes`` and
+    ``content_class``, and shrinks to that height.
+    """
 
-# The combobox dialog (the preset picker, #297): wider than a menu, bordered.
-# Width is a knob: w-72 suits list-shaped content (presets, filter options);
-# content with an intrinsic width (the date facets' calendar) passes w-auto.
-_DROPDOWN_COMBOBOX_PANEL_BASE = (
-    f"{_DROPDOWN_PANEL_SURFACE} border border-default-medium"
-)
+    def __init__(
+        self,
+        attributes: AttrsArg = (),
+        *,
+        width: str,
+        content_attributes: AttrsArg = (),
+        content_class: str = "",
+        **attrs: str,
+    ) -> None:
+        self._attributes = attributes
+        self._attrs = attrs
+        self._width = width
+        self._content_attributes = content_attributes
+        self._content_class = content_class
 
+    def __getitem__(self, children: Children) -> Element:
+        scroller = Div(
+            self._content_attributes,
+            data_menu_scroll="",
+            class_=f"{_DROPDOWN_SCROLL_CLASS} {self._content_class}".strip(),
+        )[as_children(children)]
+        attrs = dict(self._attrs)
+        extra_class = attrs.pop("class_", "")
+        return Div(
+            self._attributes,
+            class_=f"{_DROPDOWN_PANEL_CLASS} {self._width} {extra_class}".strip(),
+            **attrs,
+        )[scroller]
 
-def dropdown_combobox_panel_class(width: str = "w-72") -> str:
-    return f"{_DROPDOWN_COMBOBOX_PANEL_BASE} {width}"
-
-
-DROPDOWN_COMBOBOX_PANEL_CLASS = dropdown_combobox_panel_class()
 
 # One item look: dark text on white (light), light text on frosted (dark).
 DROPDOWN_ITEM_CLASS = (
@@ -871,12 +885,6 @@ def _item_children(label: Child, icon: str, danger: bool = False) -> list[Child]
 
 def _item_class(icon: str) -> str:
     return DROPDOWN_ITEM_WITH_ICON_CLASS if icon else DROPDOWN_ITEM_CLASS
-
-
-# The single panel look for menu-style dropdowns (shadow + border). The old
-# OUTLINE/PLAIN split collapsed into one; DROPDOWN_PANEL_OUTLINE_CLASS is now the
-# borderless-shadow variant used by ListboxPanel/SelectDropdown (this file).
-_DROPDOWN_MENU_PANEL_CLASS = _DROPDOWN_PANEL_PLAIN_CLASS
 
 
 # ── Trigger/target contract stamping ─────────────────────────────────────────
@@ -1231,18 +1239,14 @@ def DropdownMenuPanel(
     list. Pass ``aria_label`` to name the menu when its trigger has no text (an
     icon-only trigger); otherwise the core auto-labels it from the trigger.
     ``menu_width`` overrides the default ``w-44`` (e.g. ``w-max max-w-xs``)."""
-    panel_class = (
-        _menu_panel_class(menu_width) if menu_width else _DROPDOWN_MENU_PANEL_CLASS
-    )
-    attributes: list[tuple[str, str]] = [
-        ("role", "menu"),
-        ("class", panel_class),
-    ]
+    attributes: list[tuple[str, str]] = [("role", "menu")]
     if aria_label:
         attributes.append(("aria-label", aria_label))
     # role="presentation" on the list wrappers so the implicit list/listitem roles
     # don't break the menu→menuitem ownership the role="menu" panel declares.
-    return Div(attributes)[Ul(role="presentation")[*items]]
+    return DropdownPanel(attributes, width=menu_width or "w-44")[
+        Ul(role="presentation")[*items]
+    ]
 
 
 #: A row menu fits its longest act, capped by the screen.
@@ -1376,10 +1380,7 @@ def ListboxPanel(*, options: list[SelectOption], aria_label: str = "") -> Elemen
     """A single-select listbox target: role="listbox" over role="option" items
     carrying [data-option][data-value][aria-selected]. The select behavior wires
     clicks; the core stamps data-menu/hidden/id when it's used as target_element."""
-    attributes: list[tuple[str, str]] = [
-        ("role", "listbox"),
-        ("class", DROPDOWN_PANEL_OUTLINE_CLASS),
-    ]
+    attributes: list[tuple[str, str]] = [("role", "listbox")]
     if aria_label:
         attributes.append(("aria-label", aria_label))
     option_nodes = [
@@ -1398,7 +1399,9 @@ def ListboxPanel(*, options: list[SelectOption], aria_label: str = "") -> Elemen
     ]
     # role="presentation" on the list wrappers keeps the listbox→option ownership
     # intact (the implicit list/listitem roles would otherwise interrupt it).
-    return Div(attributes)[Ul(role="presentation")[*option_nodes]]
+    return DropdownPanel(attributes, width="w-44")[
+        Ul(role="presentation")[*option_nodes]
+    ]
 
 
 def SelectDropdown(

@@ -10,7 +10,6 @@ from common.components import (
     EllipsisTrigger,
     Safe,
     StyledTable,
-    dropdown_combobox_panel_class,
     make_row,
 )
 
@@ -108,9 +107,9 @@ def test_the_glyph_takes_the_colour_of_the_button_it_sits_in():
 
 def test_the_panel_sits_on_the_stratum_every_dropdown_shares():
     """A hand-written surface opens under the row's own selectors."""
-    [panel] = re.findall(r'<div role="dialog"[^>]*>', picker())
+    [panel] = re.findall(r'<div[^>]*role="dialog"[^>]*>', picker())
 
-    assert _classes(panel) >= set(dropdown_combobox_panel_class("w-64").split())
+    assert _classes(panel) >= {"absolute", "z-20", "w-64"}
 
 
 def test_the_trigger_is_named_and_states_no_visible_word():
