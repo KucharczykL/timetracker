@@ -29,16 +29,16 @@ Each field has three states: leave, set, and unset.
 
 - Device is a picker joined to a ⊘ toggle. An empty picker is "leave". The
   picker searches and creates devices as the session form's picker does. The
-  toggle states "no device", and the picker then fades. A picked device with
-  the toggle on is refused.
+  toggle states "no device", and the picker then fades. The toggle wins over
+  a value left in the picker, because the person sees that value faded.
 - Note is a text area joined to a ⊘ toggle, the same way. A blank text area
   is "leave".
 - Emulated is a segmented group of three radios: `—`, `Emulated`,
   `Not emulated`. `—` is "leave". The flag has no unset state.
 
 The ⊘ toggle is a checkbox drawn as a joined button, so it needs no script.
-Each placeholder shows what the selected rows hold now: one value when all
-agree, "Mixed (N devices)" when they differ.
+Each placeholder shows what "leave" keeps: "Keep: Steam Deck" when all rows
+agree, "Keep: mixed" when they differ.
 
 `EditFields` puts a suffix on the runner's field name for each control, and
 no control uses `CHOICE_FIELD`. The create row makes a device outside the
@@ -51,8 +51,8 @@ present, and composes from the controls when not. A stated device must be in
 `settle(settle(x)) == settle(x)`.
 
 Every chunk settles again. `settle_edit` refuses, each with a sentence: no
-fact; a value and ⊘ on one field; a device the library does not hold as a
-live row; a value it cannot read. The runner then shows the confirmation
+fact; a device the library does not hold as a live row; a value it cannot
+read; a note the store cannot hold. The runner then shows the confirmation
 again on the same token, with empty controls. A second statement in one
 batch is correct, because each row's Undo reads its own events.
 

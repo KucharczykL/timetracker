@@ -19,6 +19,12 @@ ICON_NODES: dict[str, Element] = {
     )[
         Path([('d', 'M9 6L15 12L9 18'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round')]),
     ],
+    'ban': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Circle([('cx', '12'), ('cy', '12'), ('r', '10')]),
+        Path([('d', 'm4.9 4.9 14.2 14.2')]),
+    ],
     'battlenet': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[

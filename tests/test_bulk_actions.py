@@ -458,16 +458,17 @@ def _spare(reclassify: BulkAction, name: str, preview) -> BulkAction:
 
 
 def test_a_title_answers_its_singular_at_exactly_one():
-    title = ActTitle(one="Remove this session", many="Remove these sessions")
+    title = ActTitle(one="Remove this session", many="Remove {count} sessions")
 
     assert title.for_count(1) == "Remove this session"
-    assert title.for_count(0) == "Remove these sessions"
-    assert title.for_count(2) == "Remove these sessions"
+    assert title.for_count(0) == "Remove 0 sessions"
+    assert title.for_count(2) == "Remove 2 sessions"
+    assert title.for_count(None) == "Remove these sessions"
 
 
 @pytest.mark.parametrize(
     "one,many",
-    [("", "Remove these sessions"), ("Remove this session", "")],
+    [("", "Remove {count} sessions"), ("Remove this session", "")],
 )
 def test_a_title_stating_half_of_itself_is_refused(one, many):
     """At the declaration, so the next act states both or fails at import."""
@@ -503,7 +504,7 @@ def test_the_confirmation_heads_one_row_in_the_singular(reclassify, presentation
         _TABLE.pop(name, None)
 
     assert reclassify.title.one in page
-    assert reclassify.title.many not in page
+    assert "Record 1 session" not in page
 
 
 def test_the_confirmation_heads_three_rows_in_the_plural(reclassify, presentations):
@@ -527,22 +528,30 @@ def test_the_confirmation_heads_three_rows_in_the_plural(reclassify, presentatio
     finally:
         _TABLE.pop(name, None)
 
-    assert reclassify.title.many in page
+    assert reclassify.title.for_count(3) in page
 
 
-def test_a_title_reading_the_same_in_both_counts_is_refused():
-    """One clause for two counts states no count at all."""
+@pytest.mark.parametrize(
+    "one,many",
+    [
+        ("Remove this session", "Remove these sessions"),
+        ("Remove this session", "Remove {count} of {count} sessions"),
+        ("Remove {count} session", "Remove {count} sessions"),
+    ],
+)
+def test_a_title_that_does_not_count_once_is_refused(one, many):
+    """Only `many` states the count, and once."""
     from games.bulk_actions import ActTitle
 
-    with pytest.raises(ValueError, match="both halves"):
-        ActTitle(one="Remove these sessions", many="Remove these sessions")
+    with pytest.raises(ValueError, match="states {count} once"):
+        ActTitle(one=one, many=many)
 
 
 def test_every_declared_act_states_both_halves():
     for action in BULK_ACTIONS.values():
         assert action.title.one
         assert action.title.many
-        assert action.title.one != action.title.many
+        assert "{count}" in action.title.many
 
 
 def test_the_confirmation_renders_the_columns_the_act_states(reclassify, presentations):

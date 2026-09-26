@@ -443,7 +443,7 @@ MOVE = BulkAction(
     label="Move to playthrough…",
     title=ActTitle(
         one="Move this session to a playthrough",
-        many="Move these sessions to a playthrough",
+        many="Move {count} sessions to a playthrough",
     ),
     confirm_label="Move",
     subject="session",

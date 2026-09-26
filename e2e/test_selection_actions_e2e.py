@@ -51,7 +51,7 @@ def test_two_rows_are_removed_from_the_line_and_put_back(
     page.get_by_role("button", name="Remove", exact=True).click()
 
     #: The act's preview: its three columns, and one row apiece.
-    expect(page.get_by_role("heading", name="Remove these sessions")).to_be_visible()
+    expect(page.get_by_role("heading", name="Remove 2 sessions")).to_be_visible()
     expect(page.locator("[data-bulk-sample-row]")).to_have_count(2)
     for heading in ("Game", "Day", "Duration"):
         expect(page.get_by_role("columnheader", name=heading)).to_be_visible()

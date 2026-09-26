@@ -272,7 +272,7 @@ FINISH_PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
 FINISH_SESSION = BulkAction(
     name="session.finish",
     label="Finish",
-    title=ActTitle(one="Finish this session", many="Finish these sessions"),
+    title=ActTitle(one="Finish this session", many="Finish {count} sessions"),
     confirm_label="Finish",
     subject="session",
     color="green",
