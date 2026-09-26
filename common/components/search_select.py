@@ -169,8 +169,8 @@ _ROW_CLASS = (
 )
 _ROW_WITH_ACTIONS_CLASS = f"{_ROW_CLASS} flex items-center justify-between"
 _ROW_ACTIONS_CLASS = "flex gap-1 ml-2 shrink-0"
-#: Keeps a 32px button in a 36px row.
-_ROW_ACTION_PLACEMENT_CLASS = "-my-1.5"
+#: Keeps a 26px button in a 36px row.
+_ROW_ACTION_PLACEMENT_CLASS = "-my-0.75"
 _NO_RESULTS_CLASS = "px-4 py-2 text-type-body italic text-body hidden"
 # A non-selectable group header in a grouped panel. role="presentation" keeps it
 # out of the combobox's option semantics; carrying no data-search-select-option
@@ -663,7 +663,7 @@ def _row_action(
     """A trailing row button, never tabbable."""
     return ControlButton(
         variant="ghost",
-        size="compact",
+        size="row",
         color=color,
         tabindex="-1",
         data_search_select_action=action,

@@ -179,8 +179,9 @@ type PopupKind = Literal["menu", "dialog"]
 # of a row, and "square" the absence of an end — a member with a neighbour on
 # both sides.
 type ButtonShape = Literal["full", "start", "end", "square"]
-#: "compact" is a 32px glyph square inside a control.
-type ButtonSize = Literal["control", "compact"]
+#: Glyph squares inside a control: "compact" 32px
+#: for a field box, "row" 26px for a 36px row.
+type ButtonSize = Literal["control", "compact", "row"]
 type BadgeSize = Literal["sm", "base", "lg"]
 type BadgeTone = Literal["brand", "neutral", "success", "warning", "danger"]
 
@@ -801,7 +802,7 @@ SHAPE_CLASSES: dict[ButtonShape, str] = {
     "end": "rounded-e-base",
     "square": "",
 }
-#: The control radius, scaled to 32px.
+#: The control radius, scaled to a glyph square.
 COMPACT_SHAPE_CLASSES: dict[ButtonShape, str] = {
     "full": "rounded",
     "start": "rounded-s",
@@ -819,9 +820,11 @@ CONTROL_SIZE_CLASS = "min-h-control px-3"
 
 #: A glyph square; it sets no padding.
 COMPACT_SIZE_CLASS = "size-8 p-0 shrink-0"
+ROW_SIZE_CLASS = "size-6.5 p-0 shrink-0"
 _SIZE_CLASSES: dict[ButtonSize, str] = {
     "control": CONTROL_SIZE_CLASS,
     "compact": COMPACT_SIZE_CLASS,
+    "row": ROW_SIZE_CLASS,
 }
 
 _FILLED_VARIANT_CLASS = "gap-2 leading-5 focus:outline-hidden focus:ring-4"
@@ -911,8 +914,9 @@ _GHOST_VARIANT_CLASS = (
     "gap-2 bg-transparent border border-transparent focus:outline-hidden "
     "focus:ring-2 focus:ring-fg-brand whitespace-nowrap"
 )
-# The ghost tone, one whole string per entry. A compact
-# hover goes one step past a highlighted picker row.
+# The ghost tone, one whole string per entry. Every
+# glyph square reads "compact"; its hover passes a
+# highlighted picker row.
 _GHOST_TONE_CLASSES: dict[tuple[ButtonSize, bool], str] = {
     ("control", False): (
         "text-heading hover:bg-neutral-tertiary-medium hover:border-default-strong"
@@ -965,7 +969,8 @@ def control_button_class(
     string instead stands outside that refusal — which is the route the
     calendar drifted through.
     """
-    corners = SHAPE_CLASSES if size == "control" else COMPACT_SHAPE_CLASSES
+    glyph_square = size != "control"
+    corners = COMPACT_SHAPE_CLASSES if glyph_square else SHAPE_CLASSES
     shape_class = corners[shape]
     if variant == "plain":
         # The navbar nav-link owns its whole layout (flex justify-between,
@@ -976,7 +981,11 @@ def control_button_class(
     if variant == "outline":
         parts.append(_OUTLINE_VARIANT_CLASS)
     elif variant == "ghost":
-        parts += [_GHOST_VARIANT_CLASS, _GHOST_TONE_CLASSES[(size, color == "red")]]
+        tone_size: ButtonSize = "compact" if glyph_square else "control"
+        parts += [
+            _GHOST_VARIANT_CLASS,
+            _GHOST_TONE_CLASSES[(tone_size, color == "red")],
+        ]
     else:
         if variant == "filled":
             parts += [_FILLED_VARIANT_CLASS, _FILLED_COLOR_CLASSES[color]]
@@ -1037,9 +1046,9 @@ class ControlButton(BaseComponent):
     Sizing contract: ``size="control"`` (the default) carries
     ``CONTROL_SIZE_CLASS``, whose ``min-h-control`` is 42px floored, so a
     button is the same height in every row, with no breakpoint or container
-    step. ``size="compact"`` is a 32px square for one glyph inside another
-    control (a field box, a picker row); its corners scale with it. There is
-    no third size.
+    step. ``size="compact"`` is a 32px square for one glyph inside a field
+    box, ``size="row"`` a 26px one inside a 36px picker row; their corners
+    scale with them.
     ``variant="segmented"`` is the ButtonGroup-member look (white background,
     hover hue).
 

@@ -8,7 +8,10 @@ control uses it too, at the compact size.
 `ControlButton` and `control_button_class()` take `size`:
 
 - `"control"`: the default. `min-h-control px-3`, as today.
-- `"compact"`: `size-8 p-0`, a 32px square that holds one glyph.
+- `"compact"`: `size-8 p-0`, a 32px square that holds one glyph, for a
+  field box.
+- `"row"`: `size-6.5 p-0`, a 26px square for a 36px picker row. 32px also
+  fits a row, but it fills the row to 2px of each edge and reads too big.
 
 Size is its own part of `control_button_class()`. Today `CONTROL_SIZE_CLASS`
 is inside the filled, segmented, outline and ghost strings. It comes out of
@@ -16,18 +19,18 @@ them, and the function adds the string for the size. Each size string is a
 literal, so Tailwind generates it. `plain` stays outside sizing.
 
 A 32px button fits in the 42px field box (`FIELD_CONTAINER_CLASS` and the
-SearchSelect box have no vertical padding problem). It fits in a 36px picker
-row when the caller adds `-my-1.5`: the button then takes 20px of the row,
-one text line, and the row stays 36px. This was measured in the browser.
-The border does not add to a fixed `size-8`.
+SearchSelect box have no vertical padding problem). A 26px button fits in a
+36px picker row when the caller adds `-my-0.75`: the button then takes 20px
+of the row, one text line, and the row stays 36px. The border does not add
+to a fixed size.
 
 ## The corners
 
 `SHAPE_CLASSES` does not change: codegen publishes it to TS as
 `BUTTON_SHAPE_CLASSES`, and the day cells, the search field and `PageTabs`
-read it by shape. `COMPACT_SHAPE_CLASSES` gives the compact corners for all
-four shapes: `rounded`, `rounded-s`, `rounded-e`, none. 8px on 32px is the
-proportion of 12px on 42px. The component still refuses a caller class that
+read it by shape. `COMPACT_SHAPE_CLASSES` gives the corners of both glyph
+squares for all four shapes: `rounded`, `rounded-s`, `rounded-e`, none. 8px
+is the nearest token to the proportion of 12px on 42px at 26px and at 32px. The component still refuses a caller class that
 states a corner.
 
 ## The ghost tone
@@ -36,7 +39,7 @@ The ghost look splits into a still part and a tone. The tone depends on size
 and color, from one table:
 
 - Control, any color but red: today's ghost tone.
-- Compact, any color but red: `text-body` at rest, `hover:text-heading` and
+- Compact and row, any color but red: `text-body` at rest, `hover:text-heading` and
   `hover:bg-neutral-quaternary-medium`. A highlighted picker row is
   `bg-neutral-tertiary-medium`, so a tertiary hover would not show on it.
 - Red, both sizes: a full tone of its own with `hover:text-fg-danger-strong`,
@@ -51,8 +54,8 @@ gets the danger hover, which is intended.
 | Button | Now |
 |---|---|
 | SearchSelect clear × | ghost, compact |
-| Filter +/− row actions | ghost, compact, `-my-1.5` |
-| Preset remove | ghost red, compact, `-my-1.5` |
+| Filter +/− row actions | ghost, row, `-my-0.75` |
+| Preset remove | ghost red, row, `-my-0.75` |
 | Calendar toggle of the date, date range and date-time fields | ghost, compact |
 | Date-time copy button | ghost, compact |
 | Filter builder comparison-row remove | ghost red, compact |
@@ -103,5 +106,5 @@ size.
   one property twice.
 - Each moved button renders the `ControlButton` classes.
 - The guard.
-- e2e: a picker row with actions is 36px high; the clear × and the field
-  toggles are 32px; the date-time field does not overflow its column.
+- e2e: a picker row with actions is 36px high and its actions 26px; the
+  clear × and the field toggles are 32px; the date-time field does not overflow its column.

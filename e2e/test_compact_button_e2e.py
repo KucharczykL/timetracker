@@ -55,8 +55,8 @@ def test_row_actions_and_clear_fit_their_control(live_server, page: Page):
     row = _box(page, "[role=dialog] [data-search-select-option]")
     action = _box(page, '[data-search-select-action="include"]')
     assert row["height"] == 36
-    assert action["height"] == 32
-    assert row["y"] <= action["y"] and action["y"] + 32 <= row["y"] + row["height"]
+    assert action["height"] == 26
+    assert row["y"] <= action["y"] and action["y"] + 26 <= row["y"] + row["height"]
 
 
 @pytest.mark.django_db(transaction=True)

@@ -16,7 +16,7 @@ from common.components.primitives import SHAPE_CLASSES, control_button_class
 
 COLORS = ("blue", "red", "gray", "green")
 VARIANTS = ("filled", "segmented", "outline", "ghost")
-SIZES = ("control", "compact")
+SIZES = ("control", "compact", "row")
 
 
 def _property(token: str) -> tuple[str, str] | None:
@@ -106,11 +106,12 @@ def test_row_actions_are_compact_ghosts_in_the_row():
 
     filter_html = str(FilterSelect(field_name="status", options=[("f", "Finished")]))
     include = _tag_with(filter_html, 'data-search-select-action="include"')
-    assert _compact_ghost(include) and "-my-1.5" in include
+    assert "size-6.5" in include and "-my-0.75" in include
+    assert "rounded" in include and "bg-transparent" in include
     assert 'tabindex="-1"' in include
     preset_html = str(PresetSelect(api_url="/api/presets/", mode="games"))
     remove = _tag_with(preset_html, 'data-search-select-action="delete"')
-    assert _compact_ghost(remove) and "hover:bg-danger-soft" in remove
+    assert "size-6.5" in remove and "hover:bg-danger-soft" in remove
 
 
 def test_the_comparison_remove_is_a_red_compact_ghost():
@@ -132,3 +133,10 @@ def test_the_year_toggle_is_a_control_button():
     )
     assert "min-h-control" in chosen and "solid-brand" in chosen
     assert "bg-neutral-primary-medium" in empty
+
+
+def test_row_is_a_26px_glyph_square_with_the_compact_tone():
+    row = control_button_class(variant="ghost", size="row").split()
+    compact = control_button_class(variant="ghost", size="compact").split()
+    assert {"size-6.5", "p-0", "rounded"} <= set(row)
+    assert set(row) - {"size-6.5"} == set(compact) - {"size-8"}
