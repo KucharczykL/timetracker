@@ -177,7 +177,7 @@ class DateTimeFieldElement extends HTMLElement implements UnsetTarget {
   restoreValue(): void {
     this.hold.release(({ wire, zone }) => {
       this.setValue(wire);
-      // Same zone: the exact wire. Else re-encoded, as a zone change does.
+      // Same zone keeps the exact wire.
       const hiddenInput = resolveHidden(this);
       if (hiddenInput && zone === this.selectedZone()) hiddenInput.value = wire;
     });

@@ -23,7 +23,7 @@ type PostedName = str  # a posted field name, e.g. "edit-device"
 
 _UNSET_SUFFIX = "-unset"
 
-#: Joined to the field, or beside a composite.
+#: Joined, or beside a composite.
 type UnsetLayout = Literal["joined", "beside"]
 
 _HIDDEN_UNTIL_DEFINED = "[unset-field:not(:defined)_&]:hidden"

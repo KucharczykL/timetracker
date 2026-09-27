@@ -1,4 +1,4 @@
-/** A composite field a ⊘ can empty and restore. */
+/** A composite a ⊘ empties and restores. */
 export interface UnsetTarget {
   /** Keep, empty, freeze; no-op while unset. */
   unsetValue(): void;
@@ -41,14 +41,11 @@ export class UnsetHold<Value> {
     return this.kept !== null;
   }
 
-  /**
-   * Keep `read()`, run `empty`, freeze `root`.
-   *
-   * Empty runs before the hold, so guards see it.
-   */
+  /** Keep `read()`, run `empty`, freeze `root`. */
   hold(root: HTMLElement, read: () => Value, empty: () => void): void {
     if (this.kept) return;
     const value = read();
+    // Before holding: guards would skip it.
     empty();
     this.kept = { value, thaw: freezeControls(root) };
   }

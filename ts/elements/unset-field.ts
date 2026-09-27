@@ -15,7 +15,7 @@ export interface UnsetFieldChangeDetail {
   unset: boolean;
 }
 
-/** One native control, as a press found it. */
+/** A native control before its press. */
 interface KeptControl {
   control: Control;
   value: string;

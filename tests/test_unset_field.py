@@ -1,4 +1,4 @@
-"""A field joined to a ⊘ that states none."""
+"""A field joined to a ⊘ stating none."""
 
 import copy
 import datetime

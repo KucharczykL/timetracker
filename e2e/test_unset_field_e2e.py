@@ -1,4 +1,4 @@
-"""The ⊘ toggle posting none from a real form."""
+"""⊘ posting none from a real form."""
 
 import datetime
 from zoneinfo import ZoneInfo

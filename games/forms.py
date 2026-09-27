@@ -555,7 +555,7 @@ class SearchSelectMultiple(SearchSelectWidget):
 
 
 class Keep(Enum):
-    """An empty ⊘ field: leave the rows as they are."""
+    """An empty ⊘ field: leave it."""
 
     KEEP = "keep"
 
