@@ -39,7 +39,7 @@ def _hidden_values(html: str) -> list[str]:
         for tag in re.findall(r"<input[^>]*>", html)
         if 'type="hidden"' in tag and 'name="choice"' in tag
     ]
-    return [re.search(r'value="([^"]*)"', tag).group(1) for tag in hidden]
+    return [value for tag in hidden for value in re.findall(r'value="([^"]*)"', tag)]
 
 
 def _optional(choices, **widget) -> forms.TypedChoiceField:
