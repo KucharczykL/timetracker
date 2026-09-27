@@ -27,12 +27,12 @@ def test_the_url_carries_the_page_the_person_stands_on():
 
 def test_every_named_act_is_offered_in_the_order_it_was_named():
     offered = tray_actions(
-        "session.reclassify", "session.move", "session.remove", origin=ORIGIN
+        "session.reclassify", "session.edit", "session.remove", origin=ORIGIN
     )
 
     assert [action["label"] for action in offered] == [
         "Record as historical playtime",
-        "Move to playthrough…",
+        "Edit…",
         "Remove",
     ]
 
@@ -129,7 +129,6 @@ def _a_record(owned_user, owned_library, game):
 #: The session list's acts, in the order the tray lays them out.
 SESSION_ACTS = (
     "session.finish",
-    "session.move",
     "session.edit",
     "session.reclassify",
     "session.remove",
@@ -144,7 +143,7 @@ def _tray(html: str) -> str:
 
 @pytest.mark.untracked_games
 @pytest.mark.django_db(transaction=True)
-def test_the_session_list_names_its_rows_and_offers_five_acts(
+def test_the_session_list_names_its_rows_and_offers_four_acts(
     client_in, owned_user, owned_library, game
 ):
     session = _a_session(owned_user, owned_library, game)
@@ -254,15 +253,15 @@ def test_the_line_keeps_green_and_red_and_greys_the_rest():
     """Blue is the page's primary colour, and a line of four primaries
     names none of them. Only the act that adds and the act that takes
     away keep a colour; the rest read as ordinary."""
+    from games.bulk_edit import EDIT
     from games.bulk_finish import FINISH_SESSION
-    from games.bulk_move import MOVE
     from games.bulk_reclassification import RECLASSIFY
     from games.bulk_removal import REMOVE_SESSION
     from games.bulk_tray import tray_actions
 
     offered = tray_actions(
         FINISH_SESSION.name,
-        MOVE.name,
+        EDIT.name,
         RECLASSIFY.name,
         REMOVE_SESSION.name,
         origin=None,
@@ -273,6 +272,6 @@ def test_the_line_keeps_green_and_red_and_greys_the_rest():
 
 def test_an_act_keeps_its_own_colour_on_its_confirmation():
     """One page, one primary press: the act's blue belongs there."""
-    from games.bulk_move import MOVE
+    from games.bulk_edit import EDIT
 
-    assert MOVE.color == "blue"
+    assert EDIT.color == "blue"

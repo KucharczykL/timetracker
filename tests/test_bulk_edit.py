@@ -22,11 +22,13 @@ from games.bulk_edit import (
     NOTHING_STATED,
     STATEMENT_UNREADABLE,
     EditStatement,
+    edit_back,
     edit_one,
     offer_edit,
     settle_edit,
     values_before,
 )
+from games.bulk_sessions import labelled_session_resolution
 from games.commands.playersession import (
     CreateSession,
     DurationOnlyTiming,
@@ -163,7 +165,9 @@ def test_the_control_never_posts_under_the_choice_field(
 ):
     session = a_session(owned_user, tracked_run(owned_library, game))
 
-    offered = offer_edit(owned_library, [session], CHOICE_FIELD)
+    offered = offer_edit(
+        owned_library, _labelled(owned_library, [session]), CHOICE_FIELD
+    )
 
     assert isinstance(offered, Control)
     markup = str(offered.node)
@@ -172,8 +176,13 @@ def test_the_control_never_posts_under_the_choice_field(
         assert f'name="{CHOICE_FIELD}-{name}"' in markup
 
 
+def _labelled(library, rows):
+    """As the act's resolve hands them over."""
+    return labelled_session_resolution(library, [row.pk for row in rows]).rows
+
+
 def _offered(library, rows) -> str:
-    offered = offer_edit(library, rows, CHOICE_FIELD)
+    offered = offer_edit(library, _labelled(library, rows), CHOICE_FIELD)
     assert isinstance(offered, Control)
     return str(offered.node)
 
@@ -437,9 +446,18 @@ def test_a_batch_sets_a_note_and_its_undo_puts_each_back(
 def test_a_row_the_batch_left_alone_refuses_its_undo(owned_user, owned_library, game):
     session = a_session(owned_user, tracked_run(owned_library, game))
 
-    with pytest.raises(CommandRejected) as refused:
-        values_before(owned_library, session.pk, uuid.uuid7())
-    assert refused.value.sentence == NOT_EDITED_BY_THIS_BATCH
+    batch = uuid.uuid7()
+    assert values_before(owned_library, session.pk, batch) is None
+
+    with pytest.raises(CommandFailed) as refused:
+        edit_back(
+            owned_user,
+            session.pk,
+            undoes=batch,
+            idempotency_key=str(uuid.uuid7()),
+            correlation_id=uuid.uuid7(),
+        )
+    assert refused.value.message == NOT_EDITED_BY_THIS_BATCH
 
 
 # ── Through the runner ───────────────────────────────────────────────────────

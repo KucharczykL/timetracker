@@ -583,7 +583,11 @@ confirmation reads too. Contract is
 [Select devices and remove them in bulk](docs/superpowers/specs/2026-09-24-issue-1135-devices-list-selectable-design.md).
 #1211's `session.edit` sets a device, emulated, a note, or several on
 selected sessions through `DescribeSession`; its Undo restates each changed
-fact from the row's events. Every act's heading counts its rows
+fact from the row's events. #1310 adds the run: the move of one row
+(`games/bulk_move.py`) runs before the description, and #714's
+`session.move` act is off the table, so its old batches' Undo answers
+`UNKNOWN_ACT`
+([Bulk Edit states the playthrough](docs/superpowers/specs/2026-09-27-issue-1310-bulk-edit-moves-design.md)). Every act's heading counts its rows
 (`ActTitle.many` holds `{count}`). Contract is
 [Set one device across many sessions](docs/superpowers/specs/2026-09-25-issue-1211-bulk-edit-design.md).
 

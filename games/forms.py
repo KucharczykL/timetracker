@@ -290,7 +290,7 @@ def device_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     ]
 
 
-def _run_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
+def run_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     """Resolve run ids to options, each by its display name.
 
     A blank name is numbered rather than stored, so the rows are
@@ -1242,7 +1242,7 @@ class PlaythroughSelectWidget(SearchSelectWidget):
     def __init__(self, *, game_field: str, clearable: bool = True, attrs=None):
         super().__init__(
             search_url=PLAYTHROUGH_SEARCH_URL,
-            options_resolver=_run_options,
+            options_resolver=run_options,
             create_url=PLAYTHROUGH_CREATE_URL,
             params={"game_id": {"field": game_field}},
             #: Required field: a submit with no pick posts a run.
@@ -1297,7 +1297,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
         )
         runs = cast(forms.ModelChoiceField, self.fields["playthrough"])
         runs.queryset = library_runs(library)
-        runs.widget.options_resolver = partial(_run_options, library=library)
+        runs.widget.options_resolver = partial(run_options, library=library)
         cast(
             forms.ModelChoiceField, self.fields["device"]
         ).queryset = Device.objects.for_library(library).order_by("name")

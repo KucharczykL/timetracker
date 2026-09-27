@@ -11,7 +11,8 @@ from django import forms
 from django.contrib.auth.models import User
 from django.http import QueryDict
 
-from common.components.primitives import FormFields
+from common.components.core import Fragment
+from common.components.primitives import FORM_LABEL_CLASS, Div, FormFields, P
 from common.utils import truncate
 from games.bulk_actions import (
     ActTitle,
@@ -25,10 +26,20 @@ from games.bulk_actions import (
     PreviewColumn,
     RowOutcome,
 )
+from games.bulk_move import (
+    TARGET_GONE,
+    move_back_row,
+    move_row,
+    moved_by,
+    refuse_another_game,
+    target_run,
+)
 from games.bulk_sessions import (
     device_cell,
+    labelled_session_resolution,
+    run_label,
+    run_label_cell,
     session_of,
-    session_resolution,
     session_scope,
 )
 from games.commands.playersession import StatedDevice, check_note
@@ -45,6 +56,8 @@ from games.forms import (
     DEVICE_CREATE_URL,
     DEVICE_SEARCH_URL,
     KEEP,
+    PLAYTHROUGH_CREATE_URL,
+    PLAYTHROUGH_SEARCH_URL,
     ChoiceSearchSelectWidget,
     Keep,
     PrimitiveWidgetsMixin,
@@ -52,9 +65,11 @@ from games.forms import (
     UnsetFieldsForm,
     UnsetWidget,
     device_options,
+    run_options,
 )
-from games.models import Device, LibraryEvent, PlayerSession, UserLibrary
+from games.models import Device, LibraryEvent, PlayerSession, Playthrough, UserLibrary
 from games.reads.events import aggregate_events
+from games.reads.playthrough_runs import library_runs
 from games.writes.answers import answered
 from games.writes.playersession import describe_session
 
@@ -65,14 +80,22 @@ class EditJson(TypedDict, total=False):
     device: str | None
     emulated: bool
     note: str
+    playthrough: str
 
 
 #: What a statement's JSON may name.
 _KEYS = frozenset(EditJson.__annotations__)
 
 #: What settling refuses.
-NOTHING_STATED = "Choose a device, whether the sessions were emulated, or a note."
+NOTHING_STATED = (
+    "Choose a playthrough, a device, whether the sessions were emulated, or a note."
+)
 DEVICE_UNREADABLE = "That device could not be read. Choose one again."
+PLAYTHROUGH_UNREADABLE = "That playthrough could not be read. Choose one again."
+SEVERAL_GAMES = (
+    "These sessions are at {count} games. Narrow the list by game to change "
+    "the playthrough."
+)
 DEVICE_GONE = (
     "That device is no longer available. Choose another one, or restore it first."
 )
@@ -82,6 +105,9 @@ STATEMENT_UNREADABLE = "What to change could not be read. Choose it again."
 NOT_EDITED_BY_THIS_BATCH = (
     "That session was not changed by this batch, so it was left as it is."
 )
+
+#: The field's label.
+PLAYTHROUGH_LABEL = "Playthrough"
 
 #: A placeholder: what "leave as it is" keeps.
 type Keeping = str  # "Keep: Steam Deck"
@@ -97,10 +123,16 @@ class EditStatement:
     device: StatedDevice | None
     emulated: bool | None
     note: str | None = None
+    playthrough: uuid.UUID | None = None
 
     def __post_init__(self) -> None:
-        if self.device is None and self.emulated is None and self.note is None:
-            raise ValueError("An edit states a device, emulated, a note, or more.")
+        if self.playthrough is None and not self.describes:
+            raise ValueError("An edit states a run, a device, emulated or a note.")
+
+    @property
+    def describes(self) -> bool:
+        """Whether `DescribeSession` has work."""
+        return not (self.device is None and self.emulated is None and self.note is None)
 
     def encode(self) -> ChoiceValue:
         stated: EditJson = {}
@@ -111,6 +143,8 @@ class EditStatement:
             stated["emulated"] = self.emulated
         if self.note is not None:
             stated["note"] = self.note
+        if self.playthrough is not None:
+            stated["playthrough"] = str(self.playthrough)
         return json.dumps(stated, sort_keys=True)
 
     @classmethod
@@ -140,13 +174,28 @@ class EditStatement:
             raise _unreadable(f"{raw!r} states a note that is no text")
         if note is not None:
             check_note(note)
-        if device is None and emulated is None and note is None:
+        playthrough: uuid.UUID | None = None
+        if "playthrough" in stated:
+            run = stated["playthrough"]
+            if not isinstance(run, str):
+                raise _unreadable(f"{raw!r} states a playthrough that is no key")
+            playthrough = _run_key(run)
+        if device is None and emulated is None and note is None and playthrough is None:
             raise _unreadable(f"{raw!r} states nothing")
-        return cls(device, emulated, note)
+        return cls(device, emulated, note, playthrough)
 
 
 def _unreadable(message: str) -> CommandRejected:
     return CommandRejected(message, sentence=STATEMENT_UNREADABLE)
+
+
+def _run_key(stated: str) -> uuid.UUID:
+    try:
+        return uuid.UUID(stated)
+    except ValueError as unreadable:
+        raise CommandRejected(
+            f"{stated!r} is no uuid: {unreadable}", sentence=PLAYTHROUGH_UNREADABLE
+        ) from unreadable
 
 
 def _device_key(stated: str) -> uuid.UUID:
@@ -173,6 +222,13 @@ def _keeping[T](
     return f"Keep: {shown(held.pop())}"
 
 
+def _keeping_run(rows: Sequence[PlayerSession]) -> Keeping:
+    """By key: two games' runs share labels."""
+    if len({row.playthrough_id for row in rows}) != 1:
+        return "Keep: mixed"
+    return f"Keep: {run_label(rows[0])}"
+
+
 def _device_name(row: PlayerSession) -> str:
     return "no device" if row.device is None else row.device.name
 
@@ -192,6 +248,16 @@ def _emulated_shown(emulated: bool) -> str:
 class BulkEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
     """An empty field keeps; ⊘ states none."""
 
+    playthrough = forms.ModelChoiceField(
+        queryset=Playthrough.objects.none(),
+        required=False,
+        error_messages={"invalid_choice": TARGET_GONE},
+        widget=SearchSelectWidget(
+            search_url=PLAYTHROUGH_SEARCH_URL,
+            options_resolver=run_options,
+            create_url=PLAYTHROUGH_CREATE_URL,
+        ),
+    )
     device = forms.ModelChoiceField(
         queryset=Device.objects.none(),
         required=False,
@@ -226,11 +292,20 @@ class BulkEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
         rows: Sequence[PlayerSession] = (),
     ) -> None:
         super().__init__(data, prefix=prefix)
+        run = cast(forms.ModelChoiceField, self.fields["playthrough"])
+        run.queryset = library_runs(library)
+        runs = cast(SearchSelectWidget, run.widget)
+        runs.options_resolver = partial(run_options, library=library)
+        games = {row.playthrough.player_game.game_id for row in rows}
+        if len(games) == 1:
+            #: One mapping feeds search and create.
+            runs.params = {"game_id": {"value": str(games.pop())}}
         device = cast(forms.ModelChoiceField, self.fields["device"])
         device.queryset = Device.objects.for_library(library)
         picker = cast(SearchSelectWidget, cast(UnsetWidget, device.widget).widget)
         picker.options_resolver = partial(device_options, library=library)
         if rows:
+            runs.placeholder = _keeping_run(rows)
             picker.placeholder = _keeping(rows, _device_name, str)
             cast(
                 ChoiceSearchSelectWidget, self.fields["emulated"].widget
@@ -252,7 +327,8 @@ class BulkEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
     def clean(self) -> dict[str, Any]:
         cleaned = super().clean()
         if (
-            cleaned.get("device") is KEEP
+            cleaned.get("playthrough") is None
+            and cleaned.get("device") is KEEP
             and cleaned.get("emulated") is None
             and cleaned.get("note") is KEEP
         ):
@@ -263,12 +339,14 @@ class BulkEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
         """The valid form, as one statement."""
         device: Device | None | Keep = self.cleaned_data["device"]
         note: str | Keep = self.cleaned_data["note"]
+        run: Playthrough | None = self.cleaned_data["playthrough"]
         return EditStatement(
             None
             if device is KEEP
             else StatedDevice(None if device is None else device.pk),
             self.cleaned_data["emulated"],
             None if note is KEEP else note,
+            None if run is None else run.pk,
         )
 
 
@@ -279,8 +357,22 @@ def offer_edit(
     if not rows:
         #: The confirmation says so itself.
         return AsksNothing()
+    form = BulkEditForm(library=library, prefix=field_name, rows=rows)
+    games = {row.playthrough.player_game_id for row in rows}
+    if len(games) == 1:
+        return Control(FormFields(form))
+    #: Shown only: the settle form keeps it.
+    del form.fields["playthrough"]
     return Control(
-        FormFields(BulkEditForm(library=library, prefix=field_name, rows=rows))
+        Fragment(
+            Div(data_field_row="playthrough")[
+                P(class_=FORM_LABEL_CLASS)[PLAYTHROUGH_LABEL],
+                P(class_="text-type-body text-body")[
+                    SEVERAL_GAMES.format(count=len(games))
+                ],
+            ],
+            FormFields(form),
+        )
     )
 
 
@@ -291,6 +383,8 @@ def settle_edit(library: UserLibrary, post: QueryDict) -> ChoiceValue:
 
     carried = post.get(CHOICE_FIELD, "")
     statement = EditStatement.decode(carried) if carried else _composed(library, post)
+    if statement.playthrough is not None:
+        target_run(library, statement.playthrough)
     device = statement.device
     if device is not None and device.device_id is not None:
         held = Device.objects.for_library(library).filter(pk=device.device_id)
@@ -350,18 +444,44 @@ def edit_one(
             raise RowUnreadable(
                 f"{EDIT.name} settled {choice!r} and cannot read it back: {drift}"
             ) from drift
-    return RowOutcome.of(
-        describe_session(
-            actor,
-            session,
-            device=statement.device,
-            emulated=statement.emulated,
-            note=statement.note,
-            idempotency_key=idempotency_key,
-            correlation_id=correlation_id,
-            source_metadata=_source(),
+        target = None
+        if statement.playthrough is not None:
+            target = target_run(actor.library, statement.playthrough)
+            #: Before any write: nothing half-done.
+            refuse_another_game(session, target)
+    outcomes: list[RowOutcome] = []
+    if target is not None:
+        outcomes.append(
+            move_row(
+                actor,
+                session,
+                target,
+                act=EDIT.name,
+                idempotency_key=idempotency_key,
+                correlation_id=correlation_id,
+            )
         )
-    )
+    if statement.describes:
+        outcomes.append(
+            RowOutcome.of(
+                describe_session(
+                    actor,
+                    session,
+                    device=statement.device,
+                    emulated=statement.emulated,
+                    note=statement.note,
+                    idempotency_key=idempotency_key,
+                    correlation_id=correlation_id,
+                    source_metadata=_source(),
+                )
+            )
+        )
+    return _either(outcomes)
+
+
+def _either(outcomes: Sequence[RowOutcome]) -> RowOutcome:
+    """Moved when any write changed it."""
+    return RowOutcome.MOVED if RowOutcome.MOVED in outcomes else RowOutcome.UNCHANGED
 
 
 # ── Backward ─────────────────────────────────────────────────────────────────
@@ -426,17 +546,14 @@ def _emulated_of(event: LibraryEvent) -> bool:
 
 def values_before(
     library: UserLibrary, session_id: uuid.UUID, batch_id: uuid.UUID
-) -> EditStatement:
-    """The changed facts' values before the batch."""
+) -> EditStatement | None:
+    """Described facts' values before the batch; none described."""
     events = list(aggregate_events(library, session_id))
     device = _earlier(events, batch_id, PLAYERSESSION_DEVICE_CHANGED.event_type)
     emulated = _earlier(events, batch_id, PLAYERSESSION_EMULATED_CHANGED.event_type)
     note = _earlier(events, batch_id, PLAYERSESSION_NOTE_CHANGED.event_type)
     if device is None and emulated is None and note is None:
-        raise CommandRejected(
-            f"batch {batch_id} changed no fact of session {session_id}",
-            sentence=NOT_EDITED_BY_THIS_BATCH,
-        )
+        return None
     return EditStatement(
         None if device is None else _device_of(device),
         None if emulated is None else _emulated_of(emulated),
@@ -452,21 +569,47 @@ def edit_back(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """Earlier values restated; later edits overwritten."""
+    """Earlier values restated, then the run.
+
+    Later edits are overwritten. A refused move-back refuses
+    the row after its description is restated.
+    """
     with answered("session"):
         before = values_before(actor.library, session_id, undoes)
-    return RowOutcome.of(
-        describe_session(
-            actor,
-            session_of(actor, session_id),
-            device=before.device,
-            emulated=before.emulated,
-            note=before.note,
-            idempotency_key=idempotency_key,
-            correlation_id=correlation_id,
-            source_metadata=_source(),
+        moved = moved_by(actor.library, session_id, undoes)
+        if before is None and not moved:
+            raise CommandRejected(
+                f"batch {undoes} changed no fact of session {session_id}",
+                sentence=NOT_EDITED_BY_THIS_BATCH,
+            )
+    outcomes: list[RowOutcome] = []
+    if before is not None:
+        outcomes.append(
+            RowOutcome.of(
+                describe_session(
+                    actor,
+                    session_of(actor, session_id),
+                    device=before.device,
+                    emulated=before.emulated,
+                    note=before.note,
+                    idempotency_key=idempotency_key,
+                    correlation_id=correlation_id,
+                    source_metadata=_source(),
+                )
+            )
         )
-    )
+    if moved:
+        outcomes.append(
+            move_back_row(
+                actor,
+                session_id,
+                act=EDIT.name,
+                undoes=undoes,
+                idempotency_key=idempotency_key,
+                correlation_id=correlation_id,
+            )
+        )
+    return _either(outcomes)
 
 
 # ── The confirmation ─────────────────────────────────────────────────────────
@@ -474,6 +617,7 @@ def edit_back(
 
 EDIT_PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
     PreviewColumn("Game", lambda row, _: row.playthrough.player_game.game.name),
+    PreviewColumn(PLAYTHROUGH_LABEL, run_label_cell),
     PreviewColumn("Day", lambda row, _: str(row.effective_day)),
     PreviewColumn(
         "Duration",
@@ -498,7 +642,7 @@ EDIT = BulkAction(
     inverse_model=PlayerSession,
     fallback="games:list_sessions",
     scope=session_scope,
-    resolve=session_resolution,
+    resolve=labelled_session_resolution,
     run=edit_one,
     inverse=edit_back,
     preview=EDIT_PREVIEW,
