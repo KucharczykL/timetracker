@@ -473,3 +473,23 @@ describe("date-time-field under ⊘, peers", () => {
     expect(hidden(field).value).toBe(before);
   });
 });
+
+describe("date-time-field under ⊘, zone moves", () => {
+  it("restores the exact wire in the same zone, re-encodes in another", () => {
+    const { start } = mountWithZoneRow("Asia/Tokyo");
+    fillWholeField(start);
+    const field = start as HTMLElement & { unsetValue(): void; restoreValue(): void };
+    const tokyo = hidden(field).value;
+
+    field.unsetValue();
+    field.restoreValue();
+    expect(hidden(field).value).toBe(tokyo);
+
+    field.unsetValue();
+    changeZone("timestamp_start_timezone", "America/New_York");
+    expect(hidden(field).value).toBe("");
+    field.restoreValue();
+    expect(hidden(field).value).not.toBe(tokyo);
+    expect(hidden(field).value.slice(0, 16)).toBe(tokyo.slice(0, 16));
+  });
+});

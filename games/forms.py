@@ -5,7 +5,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
-from typing import TYPE_CHECKING, Any, ClassVar, Final, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, NamedTuple, cast
 from zoneinfo import ZoneInfo
 
 from django import forms
@@ -13,8 +13,10 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
 from django.db.models import QuerySet
 from django.forms.models import ModelChoiceIterator
+from django.http import QueryDict
 from django.utils import timezone
 from django.utils.choices import normalize_choices
+from django.utils.datastructures import MultiValueDict
 
 from common.components import (
     DEFAULT_PREFETCH,
@@ -574,15 +576,14 @@ _WRAPPER_OWNED = frozenset(
     }
 )
 
-#: Native controls a ⊘ can join.
-_UNSET_NATIVE = (forms.widgets.Input, forms.Textarea, forms.Select)
-#: Inputs whose empty is not keep.
-_UNSET_REFUSED = (
-    forms.CheckboxInput,
-    forms.HiddenInput,
-    forms.FileInput,
-    forms.NullBooleanSelect,
+#: Input types a ⊘ can empty.
+_EMPTYABLE_INPUT_TYPES = frozenset(
+    {"text", "search", "email", "url", "tel", "password", "number"}
+    | {"date", "time", "datetime-local", "month", "week"}
 )
+
+#: How a ⊘ reaches its field.
+type UnsetJoin = Literal["picker", "native", "beside"]
 #: What the ⊘ checkbox posts.
 _UNSET_POSTED = "1"
 
@@ -602,8 +603,7 @@ class UnsetWidget(forms.Widget):
             widget, "multi_select", False
         ):
             raise TypeError("⊘ joins a single value, not a multi-select")
-        joinable = isinstance(widget, _SearchSelectAdapter) or _native(widget)
-        if not (joinable or _stands_beside(widget)):
+        if _join_of(widget) is None:
             raise TypeError(f"⊘ does not join {type(widget).__name__}")
         # These rewrite a disabled picker's value.
         if getattr(widget, "params", None) or getattr(
@@ -675,8 +675,10 @@ class UnsetWidget(forms.Widget):
         merged = self.build_attrs(self.attrs, attrs)
         input_id = merged.get("id", "")
 
+        join = _join_of(inner)
+
         def field(shape: ButtonShape) -> Node:
-            if _stands_beside(inner):
+            if join == "beside":
                 return Safe(inner.render(name, value, merged, renderer))
             if isinstance(inner, _SearchSelectAdapter):
                 return Safe(inner.render(name, value, merged, renderer, shape=shape))
@@ -698,32 +700,51 @@ class UnsetWidget(forms.Widget):
                 field=field,
                 unset=self.unset,
                 describedby=field_label_id(input_id) or None,
-                joined=not _stands_beside(inner),
+                layout="beside" if join == "beside" else "joined",
             )
         )
 
 
-def _native(widget: forms.Widget) -> bool:
-    return isinstance(widget, _UNSET_NATIVE) and not isinstance(widget, _UNSET_REFUSED)
-
-
-def _stands_beside(widget: forms.Widget) -> bool:
-    """Composites draw their own box."""
-    return isinstance(widget, (DatePickerWidget, DateTimeFieldWidget, TemporalWidget))
+def _join_of(widget: forms.Widget) -> UnsetJoin | None:
+    """None: a ⊘ cannot reach it."""
+    if getattr(widget, "draws_own_box", False):
+        return "beside"
+    if isinstance(widget, _SearchSelectAdapter):
+        return "picker"
+    if isinstance(widget, forms.Textarea):
+        return "native"
+    if isinstance(widget, forms.Select):
+        # Its empty is a state.
+        if isinstance(widget, forms.NullBooleanSelect):
+            return None
+        return "native"
+    if isinstance(widget, forms.widgets.Input):
+        return "native" if widget.input_type in _EMPTYABLE_INPUT_TYPES else None
+    return None
 
 
 def _require_empty_cleans_empty(name: str, field: forms.Field) -> None:
     """Else keep and a value clean alike."""
-    try:
-        empty = field.clean(None)
-    except forms.ValidationError as refused:
-        raise ValueError(
-            f"{name}: an empty field is refused, so ⊘ cannot keep"
-        ) from refused
-    if empty not in field.empty_values:
-        raise ValueError(
-            f"{name}: an empty field cleans to {empty!r}, so ⊘ cannot keep"
-        )
+    inner = cast(UnsetWidget, field.widget).widget
+    # None: pressed. The empty post: kept.
+    for empty_input in (
+        None,
+        inner.value_from_datadict(QueryDict(), MultiValueDict(), name),
+    ):
+        try:
+            empty = field.clean(empty_input)
+        except forms.ValidationError as refused:
+            raise ValueError(
+                f"{name}: an empty field is refused, so ⊘ cannot keep"
+            ) from refused
+        except Exception as broken:
+            raise TypeError(
+                f"{name}: clean({empty_input!r}) raised; ⊘ needs empty to clean empty"
+            ) from broken
+        if empty not in field.empty_values:
+            raise ValueError(
+                f"{name}: an empty field cleans to {empty!r}, so ⊘ cannot keep"
+            )
 
 
 def _param_fields(widget: forms.Widget) -> set[str]:
@@ -791,6 +812,8 @@ class DatePickerWidget(forms.Widget):
     and binds canonical ISO ``YYYY-MM-DD`` through the hidden input
     unchanged — Django's default `DateField` parsing is untouched."""
 
+    #: A ⊘ stands beside it.
+    draws_own_box: ClassVar[bool] = True
     component_media: ClassVar[Media] = Media(
         js=("dist/elements/date-picker.js", "dist/elements/drop-down.js")
     )
@@ -846,6 +869,8 @@ class TemporalWidget(forms.Widget):
     date picker. #969 is the first page that hosts one.
     """
 
+    #: A ⊘ stands beside it.
+    draws_own_box: ClassVar[bool] = True
     component_media: ClassVar[Media] = Media(js=("dist/elements/temporal-field.js",))
 
     def __init__(
@@ -1019,6 +1044,8 @@ class DateTimeFieldWidget(forms.Widget):
     the bare wall clock a DST-gap submission posts back. `datetime_part_values`
     reads both, so a rejected form re-renders what was typed."""
 
+    #: A ⊘ stands beside it.
+    draws_own_box: ClassVar[bool] = True
     component_media: ClassVar[Media] = Media(
         js=("dist/elements/date-time-field.js", "dist/elements/drop-down.js")
     )
@@ -1085,6 +1112,14 @@ class TimeZoneRowWidget(forms.Widget):
     per-timestamp zone field. The row's picker trigger is always visible; the
     hidden input inside the component is the submitted channel this widget
     reads back."""
+
+    component_media: ClassVar[Media] = Media(
+        js=(
+            "dist/elements/time-zone-row.js",
+            "dist/elements/search-select.js",
+            "dist/elements/drop-down.js",
+        )
+    )
 
     def __init__(
         self,

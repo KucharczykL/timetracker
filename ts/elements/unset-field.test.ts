@@ -1,11 +1,15 @@
 // @vitest-environment jsdom
 import { beforeEach, expect, it, vi } from "vitest";
 
+const reportClientError = vi.hoisted(() => vi.fn(() => "id"));
+vi.mock("../client-errors.js", () => ({ reportClientError }));
+
 import "./unset-field.js";
 import type { UnsetFieldChangeDetail } from "./unset-field.js";
 
 beforeEach(() => {
   document.body.innerHTML = "";
+  reportClientError.mockClear();
 });
 
 function mount(member: string, { checked = false } = {}): HTMLElement {
@@ -147,15 +151,13 @@ it("on a select, empties and restores the choice", async () => {
   expect(select.value).toBe("b");
 });
 
-it("says so and stays unpressed when the field has no control", async () => {
-  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+it("reports and stays unpressed when the field has no control", async () => {
   mount(`<input type="hidden" name="note" value="x">`);
   await settled();
   toggle().click();
-  expect(error).toHaveBeenCalledOnce();
+  expect(reportClientError).toHaveBeenCalledWith("unset-field", "no control to empty");
   expect(toggle().getAttribute("aria-pressed")).toBe("false");
   expect(state().checked).toBe(false);
-  error.mockRestore();
 });
 
 it("on several native controls, empties all and labels the first", async () => {
@@ -204,4 +206,51 @@ it("keeps the toggle disabled until the field's elements are defined", async () 
   );
   await settled();
   expect(toggle().disabled).toBe(false);
+});
+
+it("keeps the server's none when a press at connect finds nothing", async () => {
+  mount(`<input type="hidden" name="note" value="x">`, { checked: true });
+  await settled();
+  expect(state().checked).toBe(true);
+  expect(toggle().getAttribute("aria-pressed")).toBe("true");
+});
+
+it("presses a composite checked at connect once it defines, silently", async () => {
+  let fired = false;
+  document.addEventListener("unset-field:change", () => (fired = true), { once: true });
+  const element = mount(`<late-checked><input name="inner" value="x"></late-checked>`, { checked: true });
+  const member = element.querySelector<HTMLElement>("[data-unset-field-member]")!;
+  expect(member.hasAttribute("inert")).toBe(true);
+  const calls: string[] = [];
+  customElements.define(
+    "late-checked",
+    class extends HTMLElement {
+      unsetValue(): void {
+        calls.push("unset");
+      }
+      restoreValue(): void {
+        calls.push("restore");
+      }
+    },
+  );
+  await settled();
+  expect(calls).toEqual(["unset"]);
+  expect(fired).toBe(false);
+  expect(member.hasAttribute("inert")).toBe(false);
+  expect(toggle().getAttribute("aria-pressed")).toBe("true");
+});
+
+it("falls back to the native path when an element never defines", async () => {
+  vi.useFakeTimers();
+  try {
+    mount(`<never-defined></never-defined><input name="raw" value="x">`, { checked: true });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(reportClientError).toHaveBeenCalledWith("unset-field", "never defined: never-defined");
+    const raw = document.querySelector<HTMLInputElement>("input[name=raw]")!;
+    expect(raw.disabled).toBe(true);
+    expect(raw.value).toBe("");
+    expect(toggle().disabled).toBe(false);
+  } finally {
+    vi.useRealTimers();
+  }
 });

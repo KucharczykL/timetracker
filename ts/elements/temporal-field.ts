@@ -24,7 +24,7 @@ import {
   type PartValues,
 } from "./date-field-core.js";
 import { decadeStart, temporalCodec } from "./temporal-codec.js";
-import { freezeControls, type UnsetTarget } from "./unset-target.js";
+import { UnsetHold, type UnsetTarget } from "./unset-target.js";
 
 /**
  * Announced when the value moves.
@@ -629,7 +629,7 @@ const EMPTY_DRAFT = Object.fromEntries(DRAFT_KEYS.map((key) => [key, ""])) as Te
 
 class TemporalFieldElement extends HTMLElement implements UnsetTarget {
   private initialized = false;
-  private kept: { draft: TemporalDraft; thaw: () => void } | null = null;
+  private readonly hold = new UnsetHold<TemporalDraft>();
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -638,22 +638,24 @@ class TemporalFieldElement extends HTMLElement implements UnsetTarget {
   }
 
   unsetValue(): void {
-    const draft = readDraft(this);
-    adoptDraft(this, EMPTY_DRAFT);
-    commitEndpoint(this, "start");
-    // "Unknown date" would misstate none.
-    const region = this.querySelector("[data-temporal-announcement]");
-    if (region) region.textContent = "";
-    this.kept = { draft, thaw: freezeControls(this) };
+    this.hold.hold(
+      this,
+      () => readDraft(this),
+      () => {
+        adoptDraft(this, EMPTY_DRAFT);
+        commitEndpoint(this, "start");
+        // "Unknown date" would misstate none.
+        const region = this.querySelector("[data-temporal-announcement]");
+        if (region) region.textContent = "";
+      },
+    );
   }
 
   restoreValue(): void {
-    const kept = this.kept;
-    this.kept = null;
-    if (!kept) return;
-    kept.thaw();
-    adoptDraft(this, kept.draft);
-    commitEndpoint(this, "start");
+    this.hold.release((draft) => {
+      adoptDraft(this, draft);
+      commitEndpoint(this, "start");
+    });
   }
 }
 

@@ -11,7 +11,7 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.views.decorators.http import require_POST
 
-from common.components import AddForm, FormFields, Fragment, ModuleScript
+from common.components import AddForm, FormFields
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
 from games.forms import HistoricalPlaytimeForm
@@ -32,12 +32,6 @@ from games.writes.historical_playtime import (
     restore_historical_playtime as restore_record,
 )
 from games.writes.playergame import new_correlation_id
-
-#: Widget Media never bubbles.
-FORM_SCRIPTS = (
-    "dist/elements/temporal-field.js",
-    "dist/elements/search-select.js",
-)
 
 
 def _game_page(request: HttpRequest, game: Game) -> str:
@@ -74,7 +68,6 @@ def _render_form(
         request,
         AddForm(form, request=request, submit_class="", fields=FormFields(form)),
         title=title,
-        scripts=Fragment(*(ModuleScript(path) for path in FORM_SCRIPTS)),
         status=status,
     )
 

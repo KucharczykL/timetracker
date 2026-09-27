@@ -223,6 +223,9 @@ def test_without_scripting_the_checkbox_states_none(live_server, browser):
 @HARNESS
 def test_composites_state_none_and_restore(live_server, page: Page, console_errors):
     _open(page, live_server)
+    _submit(page)
+    untouched_when = page.inner_text("#when")
+    _open(page, live_server)
     day = page.locator("date-picker [data-date-picker-hidden]")
     expect(day).to_have_value("2024-05-06")
     page.get_by_role("button", name="No day").click()
@@ -233,6 +236,14 @@ def test_composites_state_none_and_restore(live_server, page: Page, console_erro
 
     _submit(page)
     assert page.inner_text("#day") == "None"
-    assert page.inner_text("#when") != "<Keep.KEEP: 'keep'>"
-    assert page.inner_text("#when") != "None"
+    assert page.inner_text("#when") == untouched_when
+    assert console_errors == []
+
+
+@HARNESS
+def test_a_temporal_field_states_none(live_server, page: Page, console_errors):
+    _open(page, live_server)
+    page.get_by_role("button", name="No date").click()
+    _submit(page)
+    assert page.inner_text("#when") == "None"
     assert console_errors == []

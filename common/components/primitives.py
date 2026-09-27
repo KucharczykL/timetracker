@@ -1857,7 +1857,8 @@ def _form_field_label(field, label_extra: Node | None = None) -> Node:
 class MediaWidget(Protocol):
     """A widget stating its component's media."""
 
-    component_media: Media
+    @property
+    def component_media(self) -> Media: ...
 
 
 def _bound_control(field) -> Node:

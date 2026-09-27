@@ -19,9 +19,11 @@ from games.forms import (
     TEXTAREA_CLASS,
     ChoiceSearchSelectWidget,
     DatePickerWidget,
+    DateTimeFieldWidget,
     HoursMinutesWidget,
     PrimitiveWidgetsMixin,
     SearchSelectWidget,
+    TemporalFormField,
     TimeZoneRowWidget,
     UnsetFieldsForm,
     UnsetWidget,
@@ -445,6 +447,13 @@ def test_a_picker_reading_a_toggled_field_is_refused():
 # ── composites ───────────────────────────────────────────────────────────────
 
 
+@pytest.mark.parametrize(
+    "inner", [forms.DateInput(), forms.PasswordInput(), forms.URLInput()]
+)
+def test_text_like_inputs_are_joinable(inner):
+    UnsetWidget(inner, none_label="None")
+
+
 def test_every_text_like_input_joins():
     field = forms.EmailField(
         required=False, widget=UnsetWidget(forms.EmailInput(), none_label="No email")
@@ -453,9 +462,20 @@ def test_every_text_like_input_joins():
     assert "rounded-s-base" in re.search(r'<input type="email"[^>]*>', html).group(0)
 
 
+class RangeInput(forms.widgets.Input):
+    input_type = "range"
+
+
 @pytest.mark.parametrize(
     "inner",
-    [forms.RadioSelect(choices=LETTERS), forms.ClearableFileInput()],
+    [
+        forms.RadioSelect(choices=LETTERS),
+        forms.ClearableFileInput(),
+        forms.CheckboxInput(),
+        forms.HiddenInput(),
+        forms.MultipleHiddenInput(),
+        RangeInput(),
+    ],
 )
 def test_widgets_with_no_empty_are_refused(inner):
     with pytest.raises(TypeError):
@@ -470,6 +490,22 @@ def test_the_time_zone_row_is_refused():
         )
 
 
+def _date_time_field() -> forms.DateTimeField:
+    return forms.DateTimeField(
+        required=False,
+        widget=UnsetWidget(
+            DateTimeFieldWidget(presentation=presentation(), label="At"),
+            none_label="No time",
+        ),
+    )
+
+
+def _temporal_field() -> TemporalFormField:
+    field = TemporalFormField(presentation=presentation(), label="When", required=False)
+    field.widget = UnsetWidget(field.widget, none_label="No date")
+    return field
+
+
 def _date_field() -> forms.DateField:
     return forms.DateField(
         required=False,
@@ -480,12 +516,22 @@ def _date_field() -> forms.DateField:
     )
 
 
-def test_a_composite_stands_beside_its_toggle():
-    html = _render(_date_field())
+COMPOSITES = [
+    (_date_field, "date-picker"),
+    (_date_time_field, "date-time-field"),
+    (_temporal_field, "temporal-field"),
+]
+
+
+@pytest.mark.parametrize(("build", "tag"), COMPOSITES)
+def test_a_composite_stands_beside_its_toggle(build, tag):
+    form = _host(build())
+    html = str(FormFields(form))
     row = html[html.index("<unset-field") :]
     assert "flex items-start gap-2" in row
-    assert "<date-picker" in row
+    assert f"<{tag}" in row
     assert "rounded-e-base" not in _toggle(row)
+    assert f"dist/elements/{tag}.js" in collect_media(FormFields(form)).js
 
 
 @pytest.mark.parametrize(
@@ -525,3 +571,77 @@ def test_the_toggle_carries_its_field_scripts():
     js = collect_media(FormFields(_host(_date_field()))).js
     assert UNSET_SCRIPT in js
     assert "dist/elements/date-picker.js" in js
+
+
+@pytest.mark.parametrize(
+    ("posted", "cleaned"),
+    [
+        ("one=", KEEP),
+        ("one=2026-07-27T14:30:00%2B00:00&one-unset=1", None),
+    ],
+)
+def test_a_date_time_composite_cleans_keep_and_none(posted, cleaned):
+    class AtForm(UnsetFieldsForm):
+        one = _date_time_field()
+
+    form = AtForm(QueryDict(posted))
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["one"] == cleaned
+
+
+def test_a_date_time_composite_cleans_a_value():
+    class AtForm(UnsetFieldsForm):
+        one = _date_time_field()
+
+    form = AtForm(QueryDict("one=2026-07-27T14:30:00%2B00:00"))
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["one"] not in (None, KEEP)
+
+
+@pytest.mark.parametrize(
+    ("posted", "outcome"),
+    [
+        ("one-kind=unknown", "keep"),
+        ("one-kind=date&one-year=1997&one-unset=1", "none"),
+        ("one-kind=date&one-year=1997", "value"),
+    ],
+)
+def test_a_temporal_composite_cleans_keep_none_and_value(posted, outcome):
+    form = UnsetFieldsForm(QueryDict(posted))
+    form.fields["one"] = _temporal_field()
+    assert form.is_valid(), form.errors
+    cleaned = form.cleaned_data["one"]
+    if outcome == "keep":
+        assert cleaned is KEEP
+    elif outcome == "none":
+        assert cleaned is None
+    else:
+        assert cleaned not in (None, KEEP)
+
+
+class RefusingField(forms.CharField):
+    def to_python(self, value):
+        if value in self.empty_values:
+            raise forms.ValidationError("Say something.")
+        return super().to_python(value)
+
+
+class BrokenField(forms.CharField):
+    def clean(self, value):
+        return value.strip()
+
+
+def test_a_field_refusing_empty_is_refused():
+    field = RefusingField(
+        required=False, widget=UnsetWidget(forms.TextInput(), none_label="None")
+    )
+    with pytest.raises(ValueError, match="refused"):
+        _render(field)
+
+
+def test_a_field_breaking_on_empty_names_itself():
+    field = BrokenField(
+        required=False, widget=UnsetWidget(forms.TextInput(), none_label="None")
+    )
+    with pytest.raises(TypeError, match="one: clean"):
+        _render(field)

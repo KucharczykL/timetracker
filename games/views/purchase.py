@@ -410,11 +410,7 @@ def add_purchase(request: HttpRequest, game_id: UUID | None = None) -> HttpRespo
             additional_row=_purchase_additional_row(),
         ),
         title="Add New Purchase",
-        scripts=Fragment(
-            ModuleScript("dist/elements/search-select.js"),
-            ModuleScript("dist/elements/date-picker.js"),
-            ModuleScript("dist/add_purchase.js"),
-        ),
+        scripts=ModuleScript("dist/add_purchase.js"),
     )
 
 
@@ -438,11 +434,7 @@ def edit_purchase(request: HttpRequest, purchase_id: UUID) -> HttpResponse:
         request,
         AddForm(form, request=request, additional_row=_purchase_additional_row()),
         title="Edit Purchase",
-        scripts=Fragment(
-            ModuleScript("dist/elements/search-select.js"),
-            ModuleScript("dist/elements/date-picker.js"),
-            ModuleScript("dist/add_purchase.js"),
-        ),
+        scripts=ModuleScript("dist/add_purchase.js"),
     )
 
 

@@ -1,5 +1,7 @@
 """A field joined to a ⊘ stating none."""
 
+from typing import Literal
+
 from common.components.core import Node
 from common.components.custom_elements import _UnsetField
 from common.components.primitives import (
@@ -20,6 +22,9 @@ from common.components.search_select import NoneLabel
 type PostedName = str  # a posted field name, e.g. "edit-device"
 
 _UNSET_SUFFIX = "-unset"
+
+#: Joined to the field, or beside a composite.
+type UnsetLayout = Literal["joined", "beside"]
 
 _HIDDEN_UNTIL_DEFINED = "[unset-field:not(:defined)_&]:hidden"
 _HIDDEN_ONCE_DEFINED = "[unset-field:defined_&]:hidden"
@@ -42,7 +47,7 @@ def UnsetField(
     field: ShapedMember,
     unset: bool = False,
     describedby: str | None = None,
-    joined: bool = True,
+    layout: UnsetLayout = "joined",
 ) -> Node:
     """``field`` and its ⊘; ``unset`` renders it pressed."""
 
@@ -83,7 +88,7 @@ def UnsetField(
 
     row = (
         SegmentedField(field=member, trailing=toggle, class_="w-full")
-        if joined
+        if layout == "joined"
         # A composite draws its own box.
         else Div(class_="flex items-start gap-2")[member("full"), toggle("full")]
     )

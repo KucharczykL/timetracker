@@ -407,8 +407,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
             ),
         ),
         title="Add New Game",
-        #: A widget renders to text, thus its Media never bubbles.
-        #: `<catalog-editor>` is a node, so it states its own.
+        #: Release rows render outside FormFields.
         scripts=Fragment(
             ModuleScript("dist/elements/temporal-field.js"),
             ModuleScript("dist/add_game.js"),
@@ -514,12 +513,8 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
             width_class="max-w-xl md:max-w-4xl",
         ),
         title="Edit Game",
-        #: A widget renders to text, thus its Media never bubbles.
-        #: `<catalog-editor>` is a node, so it states its own.
-        scripts=Fragment(
-            ModuleScript("dist/elements/search-select.js"),
-            ModuleScript("dist/elements/temporal-field.js"),
-        ),
+        #: Release rows render outside FormFields.
+        scripts=ModuleScript("dist/elements/temporal-field.js"),
         #: The same tail renders an invalid form.
         status=refused_status,
     )

@@ -1,4 +1,5 @@
 import { readUnsetFieldProps, type UnsetFieldProps } from "../generated/props.js";
+import { reportClientError } from "../client-errors.js";
 import { isUnsetTarget, type UnsetTarget } from "./unset-target.js";
 
 /** Grace before a missing script is reported. */
@@ -15,7 +16,7 @@ export interface UnsetFieldChangeDetail {
 }
 
 /** One native control, as a press found it. */
-interface Kept {
+interface KeptControl {
   control: Control;
   value: string;
   placeholder: string | null;
@@ -23,13 +24,15 @@ interface Kept {
 }
 
 /** How a press reached the field. */
-type Pressed = { target: UnsetTarget } | { kept: Kept[] };
+type Pressed = { target: UnsetTarget } | { kept: KeptControl[] };
 
 export class UnsetFieldElement extends HTMLElement {
   private toggle: HTMLButtonElement | null = null;
   private state: HTMLInputElement | null = null;
   private member: HTMLElement | null = null;
   private pressed: Pressed | null = null;
+  /** Set when a composite never defined. */
+  private nativeOnly = false;
 
   connectedCallback(): void {
     // A DOM move reconnects; bind once.
@@ -38,18 +41,42 @@ export class UnsetFieldElement extends HTMLElement {
     this.state = this.querySelector<HTMLInputElement>("[data-unset-field-state]");
     this.member = this.querySelector<HTMLElement>("[data-unset-field-member]");
     if (!this.toggle || !this.state || !this.member) {
-      console.error("unset-field: missing toggle, checkbox or field", this);
+      reportClientError("unset-field", "missing toggle, checkbox or field");
       return;
     }
     this.toggle.addEventListener("click", this.onToggle);
     // Composites upgrade before they can empty.
     const toggle = this.toggle;
+    const member = this.member;
     const wasDisabled = toggle.disabled;
+    const wasInert = member.hasAttribute("inert");
     toggle.disabled = true;
-    void this.defined().then(() => {
+    // No typing into a field stated none.
+    if (this.state.checked) member.toggleAttribute("inert", true);
+    let settled = false;
+    const settle = (): void => {
+      if (settled) return;
+      settled = true;
       toggle.disabled = wasDisabled;
-      if (this.state?.checked && !this.pressed) this.press();
-      this.reflect();
+      member.toggleAttribute("inert", wasInert);
+      if (!this.state?.checked || this.pressed) return;
+      // A failed press keeps the server's none.
+      if (this.press()) this.reflect();
+    };
+    const tags = this.customTags();
+    const slow = window.setTimeout(() => {
+      reportClientError("unset-field", `never defined: ${tags.join(", ")}`);
+      this.nativeOnly = true;
+      settle();
+    }, DEFINE_TIMEOUT_MS);
+    void Promise.all(
+      tags.map((tag) =>
+        // Reserved names reject; skip them.
+        customElements.whenDefined(tag).catch(() => undefined),
+      ),
+    ).then(() => {
+      window.clearTimeout(slow);
+      settle();
     });
   }
 
@@ -57,26 +84,18 @@ export class UnsetFieldElement extends HTMLElement {
     return this.pressed !== null;
   }
 
-  /** Every custom element in the field, upgraded. */
-  private defined(): Promise<unknown> {
+  private customTags(): string[] {
     const tags = new Set(
       Array.from(this.member?.querySelectorAll("*") ?? [])
         .map((element) => element.localName)
         .filter((tag) => tag.includes("-")),
     );
-    const waits = Array.from(tags, (tag) =>
-      // Reserved names reject; skip them.
-      customElements.whenDefined(tag).catch(() => undefined),
-    );
-    const slow = window.setTimeout(() => {
-      console.error("unset-field: field elements never defined", Array.from(tags), this);
-    }, DEFINE_TIMEOUT_MS);
-    return Promise.all(waits).finally(() => window.clearTimeout(slow));
+    return Array.from(tags);
   }
 
   private readonly onToggle = (): void => {
     if (this.pressed) this.release();
-    else this.press();
+    else if (!this.press()) return;
     this.reflect();
     this.dispatchEvent(
       new CustomEvent<UnsetFieldChangeDetail>("unset-field:change", {
@@ -87,21 +106,23 @@ export class UnsetFieldElement extends HTMLElement {
   };
 
   private target(): (HTMLElement & UnsetTarget) | null {
+    if (this.nativeOnly) return null;
     const found = Array.from(this.member?.querySelectorAll("*") ?? []).find(isUnsetTarget);
     return found ?? null;
   }
 
-  private press(): void {
+  /** Whether the field now states none. */
+  private press(): boolean {
     const target = this.target();
     if (target) {
       target.unsetValue();
       this.pressed = { target };
-      return;
+      return true;
     }
     const controls = Array.from(this.member?.querySelectorAll<Control>(NATIVE) ?? []);
     if (controls.length === 0) {
-      console.error("unset-field: no control to empty", this);
-      return;
+      reportClientError("unset-field", "no control to empty");
+      return false;
     }
     const kept = controls.map((control) => ({
       control,
@@ -116,6 +137,7 @@ export class UnsetFieldElement extends HTMLElement {
       control.disabled = true;
     });
     this.pressed = { kept };
+    return true;
   }
 
   private release(): void {

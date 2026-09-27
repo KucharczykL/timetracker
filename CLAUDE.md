@@ -730,10 +730,13 @@ Submodules re-exported via `common/components/__init__.py`:
   cleans each such field to a value, its empty value (none) or `KEEP`; write
   inner-widget settings to `.widget`. A composite (date picker, date-time,
   temporal) implements `UnsetTarget` (`ts/elements/unset-target.ts`) and
-  gets a ⊘ beside it. A widget declaring `component_media` (`MediaWidget`:
-  the pickers, the three composites) gets it attached by `FormFields`.
-  Spec is
+  gets a ⊘ beside it. Spec is
   [The unset field](docs/superpowers/specs/2026-09-27-issue-1302-unset-field-design.md)
+- **Widget media** — a widget renders to text, so its component's `Media`
+  cannot bubble. A widget declares `component_media` (`MediaWidget` in
+  `primitives.py`: the pickers, date picker, date-time, temporal, time zone
+  row, and `UnsetWidget` with its inner widget's) and `FormFields` attaches
+  it. A view threads `scripts=` only for a field rendered outside `FormFields`
 - **`date_range_picker.py`** — `DateRangePicker()`/`DateRangeField()`/
   `DateRangeCalendar()` custom element (wired by `ts/elements/date-range-picker.ts`)
 - **`temporal_field.py`** — `TemporalField()`, native controls for date at any
@@ -745,12 +748,9 @@ Submodules re-exported via `common/components/__init__.py`:
   person filled.
   Its posted names and their draft keys live in `timetracker/temporal.py`
   (`TemporalDraftData`, `temporal_input_name()`), which `TemporalWidget` in
-  `games/forms.py` reads back. **Widget renders to text, so element's `Media`
-  never bubbles** — hosting view threads
-  `scripts=ModuleScript("dist/elements/temporal-field.js")`, as
-  `purchase.py`/`playthrough.py` already do for date picker. Both hosting pages in
-  `games/views/game.py`: Add Game and Edit Game, which host same Editions area and
-  so draw one field per Release row. Grammar, wire and no-script contract in
+  `games/forms.py` reads back. Its Release rows render outside `FormFields`,
+  so Add Game and Edit Game (`games/views/game.py`), which host the same
+  Editions area, thread `scripts=ModuleScript("dist/elements/temporal-field.js")`. Grammar, wire and no-script contract in
   [Temporal](docs/temporal.md)
 
 **Filter system** (`games/filters.py` + `common/criteria.py`): Stash-inspired

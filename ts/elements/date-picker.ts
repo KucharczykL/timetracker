@@ -26,7 +26,7 @@
  */
 import { bindSegmentField, setSideValue } from "./date-field-core.js";
 import { bindSingleSelectCalendar } from "./date-calendar-core.js";
-import { freezeControls, type UnsetTarget } from "./unset-target.js";
+import { UnsetHold, type UnsetTarget } from "./unset-target.js";
 
 export const DATE_PICKER_CHANGE_EVENT = "date-picker:change";
 
@@ -83,7 +83,7 @@ function initPicker(picker: HTMLElement): void {
 
 class DatePickerElement extends HTMLElement implements UnsetTarget {
   private initialized = false;
-  private kept: { value: string; thaw: () => void } | null = null;
+  private readonly hold = new UnsetHold<string>();
 
   connectedCallback(): void {
     if (this.initialized) return;
@@ -92,17 +92,15 @@ class DatePickerElement extends HTMLElement implements UnsetTarget {
   }
 
   unsetValue(): void {
-    const value = resolveHidden(this)?.value ?? "";
-    commitSelection(this, "");
-    this.kept = { value, thaw: freezeControls(this) };
+    this.hold.hold(
+      this,
+      () => resolveHidden(this)?.value ?? "",
+      () => commitSelection(this, ""),
+    );
   }
 
   restoreValue(): void {
-    const kept = this.kept;
-    this.kept = null;
-    if (!kept) return;
-    kept.thaw();
-    commitSelection(this, kept.value);
+    this.hold.release((value) => commitSelection(this, value));
   }
 }
 
