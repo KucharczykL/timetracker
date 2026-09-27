@@ -10,6 +10,7 @@ from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
 from django.db.models import QuerySet
+from django.forms.models import ModelChoiceIterator
 from django.utils import timezone
 
 from common.components import (
@@ -164,7 +165,7 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
         if isinstance(
             widget,
             (
-                SearchSelectWidget,
+                _SearchSelectAdapter,
                 DatePickerWidget,
                 DateTimeFieldWidget,
                 TimeZoneRowWidget,
@@ -301,12 +302,50 @@ PLATFORM_CREATE_URL = "/api/platforms/"
 PLAYTHROUGH_CREATE_URL = "/api/playthrough/"
 
 
-class SearchSelectWidget(forms.Widget):
-    """Thin Django adapter that renders a `SearchSelect()` component.
+class _SearchSelectAdapter(forms.Widget):
+    """Django adapter half both form pickers share.
 
     The only place that knows about Django/forms — the component itself stays
     reusable outside forms.
     """
+
+    def __init__(
+        self,
+        *,
+        placeholder: str,
+        autofocus: bool,
+        clearable: bool,
+        attrs=None,
+    ):
+        super().__init__(attrs)
+        self.placeholder = placeholder
+        self.autofocus = autofocus
+        self.clearable = clearable
+
+    def _render(self, name, attrs, **component) -> str:
+        input_id = (attrs or {}).get("id", "")
+        # Django widgets must return a safe string; the component is a node.
+        return render(
+            SearchSelect(
+                name=name,
+                id=input_id,
+                autofocus=self.autofocus,
+                clearable=self.clearable,
+                clear_description_id=field_label_id(input_id) if input_id else None,
+                # Host the form combobox in <drop-down behavior="inline-combobox">
+                # so its panel uses the shared attachMenu open/close/position/dismiss
+                # engine (issue #348). The widget's own input stays the trigger.
+                host_dropdown=True,
+                **component,
+            )
+        )
+
+    def value_from_datadict(self, data, files, name):
+        return data.get(name)
+
+
+class SearchSelectWidget(_SearchSelectAdapter):
+    """A `SearchSelect()` that searches a server endpoint."""
 
     def __init__(
         self,
@@ -327,8 +366,12 @@ class SearchSelectWidget(forms.Widget):
         none_label: NoneLabel | None = None,
         attrs=None,
     ):
-        super().__init__(attrs)
-        self.clearable = clearable
+        super().__init__(
+            placeholder=placeholder,
+            autofocus=autofocus,
+            clearable=clearable,
+            attrs=attrs,
+        )
         self.none_label = none_label
         self.search_url = search_url
         self.options_resolver = options_resolver
@@ -340,8 +383,6 @@ class SearchSelectWidget(forms.Widget):
         self.items_scroll = items_scroll
         self.prefetch = prefetch
         self.always_visible = always_visible
-        self.placeholder = placeholder
-        self.autofocus = autofocus
 
     @staticmethod
     def _values(value) -> list:
@@ -354,38 +395,91 @@ class SearchSelectWidget(forms.Widget):
     def render(self, name, value, attrs=None, renderer=None):
         if self.none_label and self.is_required:
             raise ValueError(f"{name}: a required field holds no none")
-        selected = searchselect_selected(self._values(value), self.options_resolver)
-        input_id = (attrs or {}).get("id", "")
-        # Django widgets must return a safe string; the component is a node.
-        return render(
-            SearchSelect(
-                name=name,
-                selected=selected,
-                options=None,
-                search_url=self.search_url,
-                create_url=self.create_url,
-                params=self.params,
-                commit_sole_option=self.commit_sole_option,
-                multi_select=self.multi_select,
-                items_visible=self.items_visible,
-                items_scroll=self.items_scroll,
-                prefetch=self.prefetch,
-                always_visible=self.always_visible,
-                placeholder=self.placeholder,
-                id=input_id,
-                autofocus=self.autofocus,
-                clearable=self.clearable,
-                none_label=self.none_label,
-                clear_description_id=field_label_id(input_id) if input_id else None,
-                # Host the form combobox in <drop-down behavior="inline-combobox">
-                # so its panel uses the shared attachMenu open/close/position/dismiss
-                # engine (issue #348). The widget's own input stays the trigger.
-                host_dropdown=True,
-            )
+        return self._render(
+            name,
+            attrs,
+            selected=searchselect_selected(self._values(value), self.options_resolver),
+            options=None,
+            search_url=self.search_url,
+            create_url=self.create_url,
+            params=self.params,
+            commit_sole_option=self.commit_sole_option,
+            multi_select=self.multi_select,
+            items_visible=self.items_visible,
+            items_scroll=self.items_scroll,
+            prefetch=self.prefetch,
+            always_visible=self.always_visible,
+            placeholder=self.placeholder,
+            none_label=self.none_label,
         )
 
-    def value_from_datadict(self, data, files, name):
-        return data.get(name)
+
+DEFAULT_CHOICE_PLACEHOLDER = "Choose…"
+
+type ChoiceValue = str  # a posted option value
+type ChoiceLabel = str  # e.g. "Playthrough 2"
+type LabeledChoice = tuple[ChoiceValue, ChoiceLabel]
+
+
+class ChoiceSearchSelectWidget(_SearchSelectAdapter):
+    """A `SearchSelect()` over a choice field's fixed `choices`.
+
+    An optional field's `""` choice is the none row; a required
+    field's is Django's prompt, and the widget drops it.
+    """
+
+    #: Django's `ChoiceField` writes any of its choice shapes here.
+    choices: Any = None
+
+    def __init__(
+        self,
+        *,
+        placeholder: str | None = None,
+        clearable: bool = True,
+        autofocus: bool = False,
+        attrs=None,
+    ):
+        super().__init__(
+            placeholder=placeholder or DEFAULT_CHOICE_PLACEHOLDER,
+            autofocus=autofocus,
+            clearable=clearable,
+            attrs=attrs,
+        )
+
+    def _fixed_choices(self, name) -> list[LabeledChoice]:
+        # Checked before iterating: iterating runs the queryset.
+        if self.choices is None or isinstance(self.choices, ModelChoiceIterator):
+            raise ValueError(f"{name}: fixed choices only; see host_choices")
+        entries = list(self.choices)
+        groups = [key for key, label in entries if isinstance(label, (list, tuple))]
+        if groups:
+            raise ValueError(f"{name}: grouped choices {groups} are not supported")
+        return [(str(key), str(label)) for key, label in entries]
+
+    def render(self, name, value, attrs=None, renderer=None):
+        choices = self._fixed_choices(name)
+        empty = [label for key, label in choices if key == ""]
+        options = [
+            SearchSelectOption(value=key, label=label, data={})
+            for key, label in choices
+            if key != ""
+        ]
+        held = "" if value is None else str(value)
+        return self._render(
+            name,
+            attrs,
+            selected=[option for option in options if option["value"] == held],
+            options=options,
+            placeholder=self.placeholder,
+            none_label=empty[0] if empty and not self.is_required else None,
+        )
+
+
+def host_choices(field: forms.ChoiceField, widget: ChoiceSearchSelectWidget) -> None:
+    """Put `widget` on a built field; Django copies both only at build."""
+    field.widget = widget
+    widget.choices = field.choices
+    widget.is_required = field.required
 
 
 class SearchSelectMultiple(SearchSelectWidget):
@@ -814,11 +908,6 @@ class PlaythroughSelectWidget(SearchSelectWidget):
             clearable=clearable,
             attrs=attrs,
         )
-
-
-type ChoiceValue = str  # a posted option value
-type ChoiceLabel = str  # e.g. "Playthrough 2"
-type LabeledChoice = tuple[ChoiceValue, ChoiceLabel]
 
 
 def _run_choices(library: UserLibrary, game: Game | None) -> list[LabeledChoice]:
