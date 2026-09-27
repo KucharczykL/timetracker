@@ -166,7 +166,7 @@ def _keeping[T](
     value: Callable[[PlayerSession], T],
     shown: Callable[[T], str],
 ) -> Keeping:
-    """What the rows hold now; "mixed" when they differ."""
+    """What the rows hold; differing, "mixed"."""
     held = {value(row) for row in rows}
     if len(held) != 1:
         return "Keep: mixed"

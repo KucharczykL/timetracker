@@ -135,7 +135,7 @@ def ConfirmBatch(
     total = len(rows)
     return ConfirmPage(
         title=action.title.for_count(total),
-        #: The heading states the count; nothing to ask.
+        #: The heading counts; nothing to ask.
         message=None
         if total
         #: `pluralize`: a hardcoded "s" mis-spells some subject.

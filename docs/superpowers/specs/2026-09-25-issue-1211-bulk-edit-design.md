@@ -1,91 +1,68 @@
 # Set one device across many sessions
 
-A person sets a device, the emulated flag, a note, or any two or three of
-them, on each selected session. The batch is one act with one Undo, in
-`games/bulk_edit.py`, through the runner of the
-[Selectable tables wave](2026-09-19-selectable-tables-wave-design.md), shaped
-as the [move confirmation](2026-09-21-issue-714-bulk-move-design.md).
+A person sets a device, the emulated flag, a note, or more than one of them,
+on each selected session. The batch is one act with one Undo. The act is in
+`games/bulk_edit.py` and uses the runner of the
+[Selectable tables wave](2026-09-19-selectable-tables-wave-design.md).
 
-The row's own Edit is a different act and stays in the row's menu. Timing
-belongs to one row, so this act does not offer it: one start on forty rows
-puts them on one instant. A shift of timing is a different act (#1294).
-Playthrough is the Move act.
+Timing belongs to one row: one start on forty rows puts them on one instant.
+A shift of timing is a different act (#1294).
 
 ## The statement
 
-`EditStatement` holds three facts. `device` is a `StatedDevice` or `None`.
-`emulated` is a `bool` or `None`. `note` is a `str` or `None`. `None` is
-"leave as it is". `StatedDevice(None)` is "no device", and `""` is "no note".
-A statement must state one fact or more.
+`EditStatement` holds three facts: `device` (a `StatedDevice`), `emulated`
+(a `bool`) and `note` (a `str`). `None` keeps the fact. `StatedDevice(None)`
+is "no device", and `""` is "no note". A statement states one fact or more.
 
-The statement goes through the hidden field, `settle` and the waypoint as one
-JSON string, `EditJson`. An absent key is an unstated fact. `decode` refuses
-text that is not JSON, an unknown key, a wrong type, a null `emulated` or
-`note`, a device key that is not a UUID, and an empty object.
+Each chunk carries it as one JSON string, `EditJson`. An absent key keeps
+its fact. `decode` refuses bad JSON, an unknown key, a wrong type, a null, a
+bad key and an empty object.
 
 ## The question
 
-`BulkEditForm` is an `UnsetFieldsForm` that `FormFields` renders. Its prefix
-is the runner's `CHOICE_FIELD`. Each field has three states: keep, a value,
-and none. An empty field keeps, and its placeholder shows what the rows keep:
-"Keep: Steam Deck" when all rows agree, "Keep: mixed" when they differ.
+`BulkEditForm` is an `UnsetFieldsForm`, and `FormFields` renders it. Its
+prefix is the runner's `CHOICE_FIELD`. Each field has three states: keep, a
+value, and none. An empty field keeps. Its placeholder shows what the rows
+keep: "Keep: Steam Deck", or "Keep: mixed" when the rows differ.
 
 - Device is a `SearchSelectWidget` in an `UnsetWidget`. It searches and
-  creates as the session form's picker does. Its ⊘ states "No device".
-- Emulated is a `ChoiceSearchSelectWidget` over Emulated and Not emulated.
-  It has no empty choice, so an empty picker keeps. The flag has no none.
+  creates devices. Its ⊘ states "No device".
+- Emulated is a `ChoiceSearchSelectWidget` with two choices, Emulated and Not
+  emulated. An empty picker keeps. The flag has no "none".
 - Note is a text area in an `UnsetWidget`. Its ⊘ states "No note".
 
-A ⊘ has priority over a value that its field also posts.
+A ⊘ has priority over a value in its field.
 
-The create row makes a device outside the batch, so the Undo keeps it.
-
-The first press posts the form; each later chunk posts `CHOICE_FIELD`, an
-earlier settle's answer. `settle_edit` decodes that when present, and
-validates the form when not. A stated device must be in
-`Device.objects.for_library(library)`. The answer is `encode()`, so
-`settle(settle(x)) == settle(x)`.
-
-Every chunk settles again. `settle_edit` refuses, each with a sentence: no
-fact; a device the library does not hold as a live row; a value it cannot
-read; a note the store cannot hold. The runner then shows the confirmation
-again on the same token, with empty controls. A second statement in one
-batch is correct, because each row's Undo reads its own events.
-
-`edit_one` decodes a statement that `settle` gave in the same request. A
-failure there is a defect, `RowUnreadable`, and ends the batch.
+The first press posts the form; each later chunk posts `CHOICE_FIELD`.
+`settle_edit` decodes that, else validates the form, and checks that the
+device is live. Its answer is `encode()`, so settling twice gives the same
+text. A refused settle shows the confirmation again on the same token. A
+second statement in one batch is correct, because each row's Undo reads its
+own events.
 
 ## The act
 
-`edit_one` dispatches one `DescribeSession` for each row through
-`describe_session`, which takes `idempotency_key` and `source_metadata` and
-gives the `CommandResult`. A row that already agrees gives `Unchanged` and
-writes no event, so the Undo does not see it.
+`edit_one` sends one `DescribeSession` for each row, with the act name in
+`source_metadata`. A row that agrees gives `Unchanged` and no event. A
+settled statement that `edit_one` cannot decode is a defect.
 
 ## The inverse
 
-`edit_back` reads the events of the row. The family of a fact is the creation
-and the change event of that fact. For each fact that the batch changed, the
-earlier value is in the latest family event before the batch's event. A
-change with no creation before it, or a payload of the wrong shape, is a
-defect, `RowUnreadable`. `edit_back` dispatches one `DescribeSession` with
-those values.
+`edit_back` reads the events of the row. The family of a fact is the
+creation event and the change event of that fact. For each fact that the
+batch changed, the earlier value is in the latest family event before the
+event of the batch. A change with no creation before it, or a payload of the
+wrong shape, is a defect.
 
-Like the other restating inverses, it accepts the hazard: it overwrites a
-value set after the batch. A second Undo gives `Unchanged` if the row did not
-change after the first. The command refuses a device removed since, unless
-the row already names it.
+The inverse restates those values and overwrites a later edit, as the other
+restating inverses do. A second Undo gives `Unchanged`. It reads the row
+through `session_of`, on the plain manager: `library_sessions` hides a row
+whose catalog game was removed.
 
-The Undo reads the row through `session_of` in `games/bulk_sessions.py`, on
-the plain manager: `library_sessions` hides a row whose catalog game was
-removed.
+## The confirmation
 
-## The tray and the confirmation
+The tray order is Finish, Move, Edit, Reclassify, Remove. The preview shows
+Game, Day, Duration, Device, Emulated and Note.
 
-The tray order is Finish, Move, Edit, Reclassify, Remove. The label is
-"Edit…". The preview columns are Game, Day, Duration, Device, Emulated and
-Note.
-
-Every act's heading states the count: `ActTitle.many` holds `{count}`, which
-reads the number, or "these" where no rows are counted yet. One row reads
-`ActTitle.one`. The confirmation asks no second question under the heading.
+Each act's heading states the count: `ActTitle.many` holds `{count}`, the
+number or "these". One row reads `ActTitle.one`. No question follows.
