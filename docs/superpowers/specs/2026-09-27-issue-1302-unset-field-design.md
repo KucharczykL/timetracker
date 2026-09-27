@@ -82,3 +82,36 @@ value:
 
 A widget can declare `component_media` (`MediaWidget`). `FormFields`
 attaches it on the row and on the embedded path.
+
+## Composite fields
+
+A composite field keeps state in its own script. The native path cannot
+empty it safely. Thus a composite element implements `UnsetTarget`:
+
+- `unsetValue()` keeps the value, empties it, and disables its own controls.
+- `restoreValue()` enables only the controls it disabled, then sets the kept
+  value again.
+
+`freezeControls(root)` in `ts/elements/unset-target.ts` disables each enabled
+`input`, `select`, `textarea` and `button` in `root`, and returns the function
+that enables them again.
+
+`<unset-field>` uses the first element in the field that implements
+`UnsetTarget`. It waits for each custom element in the field to be defined
+before it applies a checked box at connect. Without a target, it uses the
+native path: it empties and disables each visible `input`, `textarea` and
+`select`, and sets the none label as the placeholder of the first.
+
+| Widget | Path | Toggle |
+|---|---|---|
+| `SearchSelect` adapter | native, the search box | joined |
+| text-like `Input`, `Textarea`, `Select` | native | joined |
+| `HoursMinutesWidget` | native, both inputs | beside |
+| `DatePickerWidget` | `<date-picker>` | beside |
+| `DateTimeFieldWidget` | `<date-time-field>` | beside |
+| `TemporalWidget` | `<temporal-field>` | beside |
+
+A composite draws its own box, so its toggle stands beside it at the full
+shape. `UnsetWidget` refuses every other widget: a checkbox, a radio list, a
+file input, a hidden input and the time zone row, whose empty value is
+already a state.
