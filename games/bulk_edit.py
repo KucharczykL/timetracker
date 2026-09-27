@@ -547,7 +547,7 @@ def _emulated_of(event: LibraryEvent) -> bool:
 def values_before(
     library: UserLibrary, session_id: uuid.UUID, batch_id: uuid.UUID
 ) -> EditStatement | None:
-    """Described facts' values before the batch; none described."""
+    """Described facts before the batch, or None."""
     events = list(aggregate_events(library, session_id))
     device = _earlier(events, batch_id, PLAYERSESSION_DEVICE_CHANGED.event_type)
     emulated = _earlier(events, batch_id, PLAYERSESSION_EMULATED_CHANGED.event_type)
@@ -569,11 +569,7 @@ def edit_back(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """Earlier values restated, then the run.
-
-    Later edits are overwritten. A refused move-back refuses
-    the row after its description is restated.
-    """
+    """Facts restated first, then the run."""
     with answered("session"):
         before = values_before(actor.library, session_id, undoes)
         moved = moved_by(actor.library, session_id, undoes)

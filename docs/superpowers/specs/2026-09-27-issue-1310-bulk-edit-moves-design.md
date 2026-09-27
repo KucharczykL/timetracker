@@ -1,24 +1,21 @@
 # Bulk Edit states the playthrough
 
 Bulk Edit ([#1211](2026-09-25-issue-1211-bulk-edit-design.md)) gets a
-Playthrough field. The row's own Edit form already states the run with the
-other facts, and bulk Edit now does the same. The Move act
-([#714](2026-09-21-issue-714-bulk-move-design.md)) is removed from the act
-table. The Undo of a batch that Move ran gets the runner's `UNKNOWN_ACT`
-answer, which is how the runner ends a removed act.
+Playthrough field, as the row's own Edit form has. The Move act
+([#714](2026-09-21-issue-714-bulk-move-design.md)) leaves the act table. The
+Undo of an old Move batch gets the runner's `UNKNOWN_ACT` answer, which is how
+the runner ends a removed act.
 
-`games/bulk_move.py` keeps the move of one row: move it, remove the
+`games/bulk_move.py` keeps the move of one row: the move, the removal of the
 imported-history bucket that it emptied, and the move back. Each function
-takes the act name. The name goes into every `source_metadata` and every log
-line of the move, the bucket removal and the bucket restore. The runner reads
-the act from the first event of the batch, and in a moving batch that is the
-move.
+takes the act name for every `source_metadata` and log line. The runner reads
+the act from the first event of the batch, which is the move.
 
 ## The statement
 
 `EditStatement` gets a fourth fact, `playthrough`: a run key, or `None` to
-keep. A session always names a run, so this fact has no "none". A statement
-that states only the run is a statement.
+keep. A session always names a run, so this fact has no "none". The run alone
+is a statement.
 
 ## The question
 
