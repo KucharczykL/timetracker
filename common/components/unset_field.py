@@ -42,6 +42,7 @@ def UnsetField(
     field: ShapedMember,
     unset: bool = False,
     describedby: str | None = None,
+    joined: bool = True,
 ) -> Node:
     """``field`` and its ⊘; ``unset`` renders it pressed."""
 
@@ -80,6 +81,10 @@ def UnsetField(
         ]
         return Fragment(button, fallback)
 
-    return _UnsetField(name=name, none_label=none_label, class_="block")[
+    row = (
         SegmentedField(field=member, trailing=toggle, class_="w-full")
-    ]
+        if joined
+        # A composite draws its own box.
+        else Div(class_="flex items-start gap-2")[member("full"), toggle("full")]
+    )
+    return _UnsetField(name=name, none_label=none_label, class_="block")[row]

@@ -1,6 +1,7 @@
 """A field joined to a ⊘ that states none."""
 
 import copy
+import datetime
 import re
 import uuid
 
@@ -8,6 +9,7 @@ import pytest
 from devices import create_device
 from django import forms
 from django.http import QueryDict
+from test_temporal_form_field import presentation
 
 from common.components import FormFields, SearchSelect, UnsetField, collect_media
 from common.components.primitives import Safe
@@ -16,8 +18,11 @@ from games.forms import (
     KEEP,
     TEXTAREA_CLASS,
     ChoiceSearchSelectWidget,
+    DatePickerWidget,
+    HoursMinutesWidget,
     PrimitiveWidgetsMixin,
     SearchSelectWidget,
+    TimeZoneRowWidget,
     UnsetFieldsForm,
     UnsetWidget,
     native_control_class,
@@ -241,13 +246,17 @@ def test_the_full_shape_keeps_the_public_classes():
 # ── refusals ─────────────────────────────────────────────────────────────────
 
 
-def _render(field: forms.Field) -> str:
+def _host(field: forms.Field) -> UnsetFieldsForm:
     class OneForm(UnsetFieldsForm):
         pass
 
     form = OneForm()
     form.fields["one"] = field
-    return str(FormFields(form))
+    return form
+
+
+def _render(field: forms.Field) -> str:
+    return str(FormFields(_host(field)))
 
 
 def test_a_required_field_is_refused():
@@ -431,3 +440,88 @@ def test_a_picker_reading_a_toggled_field_is_refused():
 
     with pytest.raises(ValueError, match="params read"):
         DrivenForm(QueryDict("")).is_valid()
+
+
+# ── composites ───────────────────────────────────────────────────────────────
+
+
+def test_every_text_like_input_joins():
+    field = forms.EmailField(
+        required=False, widget=UnsetWidget(forms.EmailInput(), none_label="No email")
+    )
+    html = _render(field)
+    assert "rounded-s-base" in re.search(r'<input type="email"[^>]*>', html).group(0)
+
+
+@pytest.mark.parametrize(
+    "inner",
+    [forms.RadioSelect(choices=LETTERS), forms.ClearableFileInput()],
+)
+def test_widgets_with_no_empty_are_refused(inner):
+    with pytest.raises(TypeError):
+        UnsetWidget(inner, none_label="None")
+
+
+def test_the_time_zone_row_is_refused():
+    with pytest.raises(TypeError):
+        UnsetWidget(
+            TimeZoneRowWidget(label="Zone", display_zone="UTC", capture_default=False),
+            none_label="None",
+        )
+
+
+def _date_field() -> forms.DateField:
+    return forms.DateField(
+        required=False,
+        widget=UnsetWidget(
+            DatePickerWidget(presentation=presentation(), label="Day"),
+            none_label="No day",
+        ),
+    )
+
+
+def test_a_composite_stands_beside_its_toggle():
+    html = _render(_date_field())
+    row = html[html.index("<unset-field") :]
+    assert "flex items-start gap-2" in row
+    assert "<date-picker" in row
+    assert "rounded-e-base" not in _toggle(row)
+
+
+@pytest.mark.parametrize(
+    ("posted", "cleaned"),
+    [
+        ("one=", KEEP),
+        ("one=2024-05-06&one-unset=1", None),
+        ("one=2024-05-06", datetime.date(2024, 5, 6)),
+    ],
+)
+def test_a_composite_cleans_keep_none_and_value(posted, cleaned):
+    class DayForm(UnsetFieldsForm):
+        one = _date_field()
+
+    form = DayForm(QueryDict(posted))
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["one"] == cleaned
+
+
+def test_a_field_whose_empty_is_a_value_is_refused():
+    field = forms.CharField(
+        required=False,
+        empty_value="unnamed",
+        widget=UnsetWidget(forms.TextInput(), none_label="No name"),
+    )
+    with pytest.raises(ValueError, match="cleans to"):
+        _render(field)
+
+
+@pytest.mark.parametrize("inner", [HoursMinutesWidget(), forms.NullBooleanSelect()])
+def test_multi_part_and_three_state_widgets_are_refused(inner):
+    with pytest.raises(TypeError):
+        UnsetWidget(inner, none_label="None")
+
+
+def test_the_toggle_carries_its_field_scripts():
+    js = collect_media(FormFields(_host(_date_field()))).js
+    assert UNSET_SCRIPT in js
+    assert "dist/elements/date-picker.js" in js

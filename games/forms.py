@@ -44,6 +44,7 @@ from common.components.primitives import (
     Checkbox,
     Input,
     Label,
+    MediaWidget,
     Radio,
     field_label_id,
 )
@@ -331,6 +332,10 @@ PLAYTHROUGH_CREATE_URL = "/api/playthrough/"
 class _SearchSelectAdapter(forms.Widget):
     """Django half every form `SearchSelect` shares."""
 
+    component_media: ClassVar[Media] = Media(
+        js=("dist/elements/search-select.js", "dist/elements/drop-down.js")
+    )
+
     def __init__(
         self,
         *,
@@ -570,7 +575,14 @@ _WRAPPER_OWNED = frozenset(
 )
 
 #: Native controls a ⊘ can join.
-_UNSET_NATIVE = (forms.TextInput, forms.NumberInput, forms.Textarea, forms.Select)
+_UNSET_NATIVE = (forms.widgets.Input, forms.Textarea, forms.Select)
+#: Inputs whose empty is not keep.
+_UNSET_REFUSED = (
+    forms.CheckboxInput,
+    forms.HiddenInput,
+    forms.FileInput,
+    forms.NullBooleanSelect,
+)
 #: What the ⊘ checkbox posts.
 _UNSET_POSTED = "1"
 
@@ -578,7 +590,11 @@ _UNSET_POSTED = "1"
 class UnsetWidget(forms.Widget):
     """A widget joined to a ⊘ stating none."""
 
-    component_media: ClassVar[Media] = Media(js=("dist/elements/unset-field.js",))
+    @property
+    def component_media(self) -> Media:
+        own = Media(js=("dist/elements/unset-field.js",))
+        inner = self.widget
+        return own + inner.component_media if isinstance(inner, MediaWidget) else own
 
     def __init__(self, widget: forms.Widget, *, none_label: NoneLabel, attrs=None):
         super().__init__(attrs)
@@ -586,7 +602,8 @@ class UnsetWidget(forms.Widget):
             widget, "multi_select", False
         ):
             raise TypeError("⊘ joins a single value, not a multi-select")
-        if not isinstance(widget, (_SearchSelectAdapter, *_UNSET_NATIVE)):
+        joinable = isinstance(widget, _SearchSelectAdapter) or _native(widget)
+        if not (joinable or _stands_beside(widget)):
             raise TypeError(f"⊘ does not join {type(widget).__name__}")
         # These rewrite a disabled picker's value.
         if getattr(widget, "params", None) or getattr(
@@ -659,6 +676,8 @@ class UnsetWidget(forms.Widget):
         input_id = merged.get("id", "")
 
         def field(shape: ButtonShape) -> Node:
+            if _stands_beside(inner):
+                return Safe(inner.render(name, value, merged, renderer))
             if isinstance(inner, _SearchSelectAdapter):
                 return Safe(inner.render(name, value, merged, renderer, shape=shape))
             shaped = native_control_class(inner, shape)
@@ -679,7 +698,31 @@ class UnsetWidget(forms.Widget):
                 field=field,
                 unset=self.unset,
                 describedby=field_label_id(input_id) or None,
+                joined=not _stands_beside(inner),
             )
+        )
+
+
+def _native(widget: forms.Widget) -> bool:
+    return isinstance(widget, _UNSET_NATIVE) and not isinstance(widget, _UNSET_REFUSED)
+
+
+def _stands_beside(widget: forms.Widget) -> bool:
+    """Composites draw their own box."""
+    return isinstance(widget, (DatePickerWidget, DateTimeFieldWidget, TemporalWidget))
+
+
+def _require_empty_cleans_empty(name: str, field: forms.Field) -> None:
+    """Else keep and a value clean alike."""
+    try:
+        empty = field.clean(None)
+    except forms.ValidationError as refused:
+        raise ValueError(
+            f"{name}: an empty field is refused, so ⊘ cannot keep"
+        ) from refused
+    if empty not in field.empty_values:
+        raise ValueError(
+            f"{name}: an empty field cleans to {empty!r}, so ⊘ cannot keep"
         )
 
 
@@ -710,6 +753,7 @@ class UnsetFieldsForm(forms.Form):
                 continue
             if field.required:
                 raise ValueError(f"{name}: an empty required field cannot keep")
+            _require_empty_cleans_empty(name, field)
             inner = widget.widget
             inner.is_required = False
             inner.is_localized = widget.is_localized
@@ -746,6 +790,10 @@ class DatePickerWidget(forms.Widget):
     DATETIME_FORMAT preference controls the visible segment order. Submits
     and binds canonical ISO ``YYYY-MM-DD`` through the hidden input
     unchanged — Django's default `DateField` parsing is untouched."""
+
+    component_media: ClassVar[Media] = Media(
+        js=("dist/elements/date-picker.js", "dist/elements/drop-down.js")
+    )
 
     def __init__(self, *, presentation: DateTimePresentation, label: str, attrs=None):
         super().__init__(attrs)
@@ -797,6 +845,8 @@ class TemporalWidget(forms.Widget):
     itself, the way the purchase and play-event pages already do for the
     date picker. #969 is the first page that hosts one.
     """
+
+    component_media: ClassVar[Media] = Media(js=("dist/elements/temporal-field.js",))
 
     def __init__(
         self,
@@ -968,6 +1018,10 @@ class DateTimeFieldWidget(forms.Widget):
     shapes therefore reach `render()`: the offset-qualified one this emits, and
     the bare wall clock a DST-gap submission posts back. `datetime_part_values`
     reads both, so a rejected form re-renders what was typed."""
+
+    component_media: ClassVar[Media] = Media(
+        js=("dist/elements/date-time-field.js", "dist/elements/drop-down.js")
+    )
 
     def __init__(
         self,

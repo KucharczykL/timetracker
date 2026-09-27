@@ -1,5 +1,8 @@
 """The ⊘ toggle posting none from a real form."""
 
+import datetime
+from zoneinfo import ZoneInfo
+
 import pytest
 from django import forms
 from django.http import HttpRequest, HttpResponse
@@ -13,19 +16,26 @@ from common.components import (
     ControlButton,
     Form,
     FormFields,
-    Fragment,
-    ModuleScript,
+)
+from common.date_time_presentation import (
+    DEFAULT_DATE_TIME_FORMAT_PROFILE,
+    DateTimePresentation,
 )
 from common.layout import render_page
 from games.forms import (
     ChoiceSearchSelectWidget,
+    DatePickerWidget,
     PrimitiveWidgetsMixin,
+    TemporalFormField,
     UnsetFieldsForm,
     UnsetWidget,
 )
 from timetracker.urls import urlpatterns as base_urlpatterns
 
 LETTERS = [("a", "Alpha"), ("b", "Bravo")]
+PRESENTATION = DateTimePresentation(
+    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+)
 
 
 class EditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
@@ -44,6 +54,21 @@ class EditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
             none_label="No note",
         ),
     )
+    day = forms.DateField(
+        required=False,
+        widget=UnsetWidget(
+            DatePickerWidget(presentation=PRESENTATION, label="Day"),
+            none_label="No day",
+        ),
+    )
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        when = TemporalFormField(
+            presentation=PRESENTATION, label="When", required=False
+        )
+        when.widget = UnsetWidget(when.widget, none_label="No date")
+        self.fields["when"] = when
 
 
 @csrf_exempt
@@ -60,15 +85,19 @@ def edit_page_view(request: HttpRequest) -> HttpResponse:
     return render_page(
         request,
         Form(method="post")[
-            FormFields(EditForm(initial={"letter": "a", "note": "Hello"})),
+            FormFields(
+                EditForm(
+                    initial={
+                        "letter": "a",
+                        "note": "Hello",
+                        "day": datetime.date(2024, 5, 6),
+                        "when": "1997",
+                    }
+                )
+            ),
             ControlButton(type="submit")["Save"],
         ],
         title="Unset field harness",
-        # Picker Media does not bubble yet.
-        scripts=Fragment(
-            ModuleScript("dist/elements/search-select.js"),
-            ModuleScript("dist/elements/drop-down.js"),
-        ),
     )
 
 
@@ -189,3 +218,21 @@ def test_without_scripting_the_checkbox_states_none(live_server, browser):
         assert page.inner_text("#note") == "''"
     finally:
         context.close()
+
+
+@HARNESS
+def test_composites_state_none_and_restore(live_server, page: Page, console_errors):
+    _open(page, live_server)
+    day = page.locator("date-picker [data-date-picker-hidden]")
+    expect(day).to_have_value("2024-05-06")
+    page.get_by_role("button", name="No day").click()
+    expect(day).to_have_value("")
+    expect(page.locator("date-picker input[data-date-part]").first).to_be_disabled()
+    page.get_by_role("button", name="No date").click()
+    page.get_by_role("button", name="No date").click()
+
+    _submit(page)
+    assert page.inner_text("#day") == "None"
+    assert page.inner_text("#when") != "<Keep.KEEP: 'keep'>"
+    assert page.inner_text("#when") != "None"
+    assert console_errors == []

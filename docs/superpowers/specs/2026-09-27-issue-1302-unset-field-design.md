@@ -22,22 +22,24 @@ A textarea has no none row, so ⊘ is the one way to state none. Therefore
 `<unset-field>` joins one field and one ⊘ toggle through `SegmentedField`.
 Its checkbox, `<name>-unset`, holds the pressed state.
 
-The control is the first visible `input`, `textarea` or `select` in the
-field: for a `SearchSelect`, the search box.
+A plain field takes the native path. Its controls are the visible `input`,
+`textarea` and `select` elements in it: for a `SearchSelect`, the search box.
 
 A press:
 
-1. Keeps the value and the placeholder of the control.
-2. Empties the control. Sets the placeholder to the none label.
-3. Disables the control, and records if it was enabled. The hidden input of
+1. Keeps the value and the placeholder of each control.
+2. Empties each control. Sets the none label as the placeholder of the
+   first.
+3. Disables each control, and records if it was enabled. The hidden input of
    a picker stays enabled. The picker × ignores a press while its box is
    disabled.
 4. Checks the checkbox. Sets `aria-pressed="true"`.
 5. Sends `unset-field:change` with `{ name, unset }`.
 
 A second press restores each item. A field without a control logs an error
-and does not press. At connect, a checked box applies the
-press and sends no event. The checkbox has `autocomplete="off"`.
+and does not press. The toggle stays disabled until each custom element in
+the field is defined; then a checked box applies the press, with no event.
+The checkbox has `autocomplete="off"`.
 
 A ⊘ field must not be a `params` source. `UnsetFieldsForm` refuses a picker
 whose `params` name one.
@@ -81,7 +83,9 @@ value:
 `SearchSelect` and `native_control_class()` take a `ButtonShape`.
 
 A widget can declare `component_media` (`MediaWidget`). `FormFields`
-attaches it on the row and on the embedded path.
+attaches it on the row and on the embedded path. The pickers and the three
+composites declare it, and `UnsetWidget` adds the media of its inner
+widget.
 
 ## Composite fields
 
@@ -93,25 +97,31 @@ empty it safely. Thus a composite element implements `UnsetTarget`:
   value again.
 
 `freezeControls(root)` in `ts/elements/unset-target.ts` disables each enabled
-`input`, `select`, `textarea` and `button` in `root`, and returns the function
-that enables them again.
+`input`, `select`, `textarea` and `button` in `root` and makes `root` inert.
+Inert also holds a control that a script enables again, such as the temporal
+copy button. The returned function reverses exactly this. A restore commits
+after it thaws, so each control computes its state again.
 
 `<unset-field>` uses the first element in the field that implements
-`UnsetTarget`. It waits for each custom element in the field to be defined
-before it applies a checked box at connect. Without a target, it uses the
-native path: it empties and disables each visible `input`, `textarea` and
-`select`, and sets the none label as the placeholder of the first.
+`UnsetTarget`, else the native path.
+
+- A frozen date-time field ignores `setValue`, so a copy arrow cannot write
+  into it. Its restore writes the exact kept wire value.
+- The temporal field clears its announcement on unset.
+- A composite shows no placeholder. Only the pressed ⊘ tells none from keep.
 
 | Widget | Path | Toggle |
 |---|---|---|
 | `SearchSelect` adapter | native, the search box | joined |
 | text-like `Input`, `Textarea`, `Select` | native | joined |
-| `HoursMinutesWidget` | native, both inputs | beside |
 | `DatePickerWidget` | `<date-picker>` | beside |
 | `DateTimeFieldWidget` | `<date-time-field>` | beside |
 | `TemporalWidget` | `<temporal-field>` | beside |
 
 A composite draws its own box, so its toggle stands beside it at the full
 shape. `UnsetWidget` refuses every other widget: a checkbox, a radio list, a
-file input, a hidden input and the time zone row, whose empty value is
-already a state.
+file or hidden input, a `NullBooleanSelect`, a `MultiWidget` and the time
+zone row, where empty is already a state or no value.
+
+`UnsetFieldsForm` also refuses a field whose empty input does not clean to an
+empty value. `HoursMinutesField` is such a field: empty is zero.

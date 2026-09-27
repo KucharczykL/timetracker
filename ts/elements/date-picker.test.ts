@@ -234,3 +234,25 @@ describe("date-picker calendar", () => {
     ).toBe(false);
   });
 });
+
+describe("date-picker under ⊘", () => {
+  it("empties and freezes, then restores", () => {
+    const picker = mount() as HTMLElement & { unsetValue(): void; restoreValue(): void };
+    const [year, month, day] = Array.from(picker.querySelectorAll<HTMLInputElement>("input[data-date-part]"));
+    typeDigits(year, "2024");
+    typeDigits(month, "05");
+    typeDigits(day, "06");
+    expect(hidden(picker).value).toBe("2024-05-06");
+
+    picker.unsetValue();
+    expect(hidden(picker).value).toBe("");
+    expect(year.value).toBe("");
+    expect(year.disabled).toBe(true);
+    expect(picker.hasAttribute("inert")).toBe(true);
+
+    picker.restoreValue();
+    expect(hidden(picker).value).toBe("2024-05-06");
+    expect(year.disabled).toBe(false);
+    expect(picker.hasAttribute("inert")).toBe(false);
+  });
+});

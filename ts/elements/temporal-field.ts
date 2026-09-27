@@ -24,6 +24,7 @@ import {
   type PartValues,
 } from "./date-field-core.js";
 import { decadeStart, temporalCodec } from "./temporal-codec.js";
+import { freezeControls, type UnsetTarget } from "./unset-target.js";
 
 /**
  * Announced when the value moves.
@@ -623,13 +624,36 @@ function initField(host: HTMLElement): void {
   if (region) region.textContent = "";
 }
 
-class TemporalFieldElement extends HTMLElement {
+/** Every key empty. */
+const EMPTY_DRAFT = Object.fromEntries(DRAFT_KEYS.map((key) => [key, ""])) as TemporalDraft;
+
+class TemporalFieldElement extends HTMLElement implements UnsetTarget {
   private initialized = false;
+  private kept: { draft: TemporalDraft; thaw: () => void } | null = null;
 
   connectedCallback(): void {
     if (this.initialized) return;
     this.initialized = true;
     initField(this);
+  }
+
+  unsetValue(): void {
+    const draft = readDraft(this);
+    adoptDraft(this, EMPTY_DRAFT);
+    commitEndpoint(this, "start");
+    // "Unknown date" would misstate none.
+    const region = this.querySelector("[data-temporal-announcement]");
+    if (region) region.textContent = "";
+    this.kept = { draft, thaw: freezeControls(this) };
+  }
+
+  restoreValue(): void {
+    const kept = this.kept;
+    this.kept = null;
+    if (!kept) return;
+    kept.thaw();
+    adoptDraft(this, kept.draft);
+    commitEndpoint(this, "start");
   }
 }
 

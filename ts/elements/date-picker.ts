@@ -26,6 +26,7 @@
  */
 import { bindSegmentField, setSideValue } from "./date-field-core.js";
 import { bindSingleSelectCalendar } from "./date-calendar-core.js";
+import { freezeControls, type UnsetTarget } from "./unset-target.js";
 
 export const DATE_PICKER_CHANGE_EVENT = "date-picker:change";
 
@@ -50,24 +51,24 @@ function dispatchDatePickerChange(picker: HTMLElement): void {
   );
 }
 
+function commitSelection(picker: HTMLElement, isoString: string): void {
+  setSideValue(
+    picker,
+    SIDE,
+    () => resolveHidden(picker),
+    () => dispatchDatePickerChange(picker),
+    isoString,
+  );
+}
+
 // Listeners move with the subtree; wire once.
 function initPicker(picker: HTMLElement): void {
-  function commitSelection(isoString: string): void {
-    setSideValue(
-      picker,
-      SIDE,
-      () => resolveHidden(picker),
-      () => dispatchDatePickerChange(picker),
-      isoString,
-    );
-  }
-
   const calendar = bindSingleSelectCalendar({
     picker,
     idPrefix: "date-picker-calendar",
     selectedIso: () => resolveHidden(picker)?.value ?? "",
-    onPickDay: commitSelection,
-    onClear: () => commitSelection(""),
+    onPickDay: (isoString) => commitSelection(picker, isoString),
+    onClear: () => commitSelection(picker, ""),
   });
 
   const field = picker.querySelector<HTMLElement>("[data-date-picker-field]")!;
@@ -80,13 +81,28 @@ function initPicker(picker: HTMLElement): void {
   });
 }
 
-class DatePickerElement extends HTMLElement {
+class DatePickerElement extends HTMLElement implements UnsetTarget {
   private initialized = false;
+  private kept: { value: string; thaw: () => void } | null = null;
 
   connectedCallback(): void {
     if (this.initialized) return;
     this.initialized = true;
     initPicker(this);
+  }
+
+  unsetValue(): void {
+    const value = resolveHidden(this)?.value ?? "";
+    commitSelection(this, "");
+    this.kept = { value, thaw: freezeControls(this) };
+  }
+
+  restoreValue(): void {
+    const kept = this.kept;
+    this.kept = null;
+    if (!kept) return;
+    kept.thaw();
+    commitSelection(this, kept.value);
   }
 }
 

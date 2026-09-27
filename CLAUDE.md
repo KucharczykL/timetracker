@@ -728,8 +728,10 @@ Submodules re-exported via `common/components/__init__.py`:
   form's "none" apart from "keep", which an empty field states. Forms reach it
   through `UnsetWidget(widget, none_label=...)` in an `UnsetFieldsForm`, which
   cleans each such field to a value, its empty value (none) or `KEEP`; write
-  inner-widget settings to `.widget`. A widget declaring `component_media`
-  (`MediaWidget`) gets it attached by `FormFields`; no other widget does yet.
+  inner-widget settings to `.widget`. A composite (date picker, date-time,
+  temporal) implements `UnsetTarget` (`ts/elements/unset-target.ts`) and
+  gets a ⊘ beside it. A widget declaring `component_media` (`MediaWidget`:
+  the pickers, the three composites) gets it attached by `FormFields`.
   Spec is
   [The unset field](docs/superpowers/specs/2026-09-27-issue-1302-unset-field-design.md)
 - **`date_range_picker.py`** — `DateRangePicker()`/`DateRangeField()`/
