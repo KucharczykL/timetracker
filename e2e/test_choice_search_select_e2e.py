@@ -175,3 +175,18 @@ def test_clear_leaves_the_key_out_where_the_choices_state_no_none(
     assert page.inner_text("#without_none") == "None"
     assert page.inner_text("#without_none-posted") == "False"
     assert console_errors == []
+
+
+@HARNESS
+def test_picking_the_none_row_posts_none(live_server, page: Page, console_errors):
+    _open(page, live_server)
+    picker, search = _picker(page, "with_none")
+
+    search.click()
+    picker.get_by_role("option", name="No letter").click()
+    expect(search).to_have_value("No letter")
+
+    _submit(page)
+    assert page.inner_text("#with_none") == "None"
+    assert page.inner_text("#with_none-posted") == "True"
+    assert console_errors == []

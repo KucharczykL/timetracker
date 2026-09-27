@@ -1,9 +1,10 @@
+import copy
 import datetime
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, ClassVar, Final, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Final, NamedTuple, cast
 from zoneinfo import ZoneInfo
 
 from django import forms
@@ -12,6 +13,7 @@ from django.contrib.auth.models import User
 from django.db.models import QuerySet
 from django.forms.models import ModelChoiceIterator
 from django.utils import timezone
+from django.utils.choices import normalize_choices
 
 from common.components import (
     DEFAULT_PREFETCH,
@@ -81,6 +83,10 @@ from timetracker.temporal import (
     temporal_draft_from_data,
     temporal_input_name,
 )
+
+if TYPE_CHECKING:
+    from django.utils.choices import _Choices
+
 
 autofocus_input_widget = forms.TextInput(attrs={"autofocus": "autofocus"})
 
@@ -303,7 +309,7 @@ PLAYTHROUGH_CREATE_URL = "/api/playthrough/"
 
 
 class _SearchSelectAdapter(forms.Widget):
-    """Django half both form pickers share."""
+    """Django half every form `SearchSelect` shares."""
 
     def __init__(
         self,
@@ -325,6 +331,7 @@ class _SearchSelectAdapter(forms.Widget):
             SearchSelect(
                 name=name,
                 id=input_id,
+                placeholder=self.placeholder,
                 autofocus=self.autofocus,
                 clearable=self.clearable,
                 clear_description_id=field_label_id(input_id) if input_id else None,
@@ -403,7 +410,6 @@ class SearchSelectWidget(_SearchSelectAdapter):
             items_scroll=self.items_scroll,
             prefetch=self.prefetch,
             always_visible=self.always_visible,
-            placeholder=self.placeholder,
             none_label=self.none_label,
         )
 
@@ -418,8 +424,8 @@ type LabeledChoice = tuple[ChoiceValue, ChoiceLabel]
 class ChoiceSearchSelectWidget(_SearchSelectAdapter):
     """A `SearchSelect()` over a field's fixed choices."""
 
-    #: Any shape Django's `ChoiceField` writes.
-    choices: Any = None
+    #: `None` until a `ChoiceField` writes choices.
+    choices: _Choices | None = None
 
     def __init__(
         self,
@@ -430,23 +436,37 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
         attrs=None,
     ):
         super().__init__(
-            placeholder=placeholder or DEFAULT_CHOICE_PLACEHOLDER,
+            placeholder=DEFAULT_CHOICE_PLACEHOLDER
+            if placeholder is None
+            else placeholder,
             autofocus=autofocus,
             clearable=clearable,
             attrs=attrs,
         )
 
-    def _fixed_choices(self, name) -> list[LabeledChoice]:
+    def __deepcopy__(self, memo):
+        copied = super().__deepcopy__(memo)
+        copied.choices = copy.copy(self.choices)
+        return copied
+
+    def _fixed_choices(self, name: str) -> list[LabeledChoice]:
+        if self.choices is None:
+            raise ValueError(
+                f"{name}: no choices; build the field with this widget "
+                "or call host_choices"
+            )
         # Before iterating: iteration runs the queryset.
-        if self.choices is None or isinstance(self.choices, ModelChoiceIterator):
-            raise ValueError(f"{name}: fixed choices only; see host_choices")
+        if isinstance(self.choices, ModelChoiceIterator):
+            raise TypeError(f"{name}: model choices take SearchSelectWidget")
         entries = list(self.choices)
         groups = [key for key, label in entries if isinstance(label, (list, tuple))]
         if groups:
             raise ValueError(f"{name}: grouped choices {groups} are not supported")
-        return [(str(key), str(label)) for key, label in entries]
+        return [(_choice_key(key), str(label)) for key, label in entries]
 
     def render(self, name, value, attrs=None, renderer=None):
+        if isinstance(value, (list, tuple)):
+            raise TypeError(f"{name}: one value only; multi-select is unsupported")
         choices = self._fixed_choices(name)
         empty = [label for key, label in choices if key == ""]
         options = [
@@ -454,26 +474,32 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
             for key, label in choices
             if key != ""
         ]
-        held = "" if value is None else str(value)
+        held = _choice_key(value)
         return self._render(
             name,
             attrs,
             selected=[option for option in options if option["value"] == held],
             options=options,
-            placeholder=self.placeholder,
             none_label=empty[0] if empty and not self.is_required else None,
         )
+
+
+def _choice_key(value: object) -> ChoiceValue:
+    """`None` is the empty choice's key."""
+    return "" if value is None else str(value)
 
 
 def host_choices(field: forms.ChoiceField, widget: ChoiceSearchSelectWidget) -> None:
     """Put `widget` on an already built field.
 
-    Django copies `choices` and `required` onto the widget only while
-    the field is built, so a widget assigned later renders no options
-    and reads as optional.
+    Django writes `choices` onto the widget at build and on each
+    `choices` assignment, but `required` only at build. A widget set
+    later has no choices; a later `required` change is not seen.
     """
+    if isinstance(field, (forms.ModelChoiceField, forms.MultipleChoiceField)):
+        raise TypeError(f"{type(field).__name__} takes no fixed-choice picker")
     field.widget = widget
-    widget.choices = field.choices
+    widget.choices = normalize_choices(field.choices)
     widget.is_required = field.required
 
 

@@ -720,8 +720,9 @@ Submodules re-exported via `common/components/__init__.py`:
   mouse moves the one highlight through `followPointer` (`ts/pointer-follow.ts`),
   as in menus, #1295. `ChoiceSearchSelectWidget` (`games/forms.py`) renders a
   `ChoiceField`'s fixed `choices` with no search URL: an optional field's `""`
-  choice is the none row, a required field's is dropped; a widget set after
-  the field is built goes through `host_choices`, #1301
+  choice is the none row, a required field's is dropped; a widget set, or
+  `required` changed, after the field is built goes through `host_choices`,
+  #1301
 - **`date_range_picker.py`** — `DateRangePicker()`/`DateRangeField()`/
   `DateRangeCalendar()` custom element (wired by `ts/elements/date-range-picker.ts`)
 - **`temporal_field.py`** — `TemporalField()`, native controls for date at any

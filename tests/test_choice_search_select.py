@@ -1,5 +1,8 @@
 """SearchSelect over a field's fixed choices."""
 
+import copy
+import re
+
 import pytest
 from django import forms
 
@@ -28,6 +31,15 @@ def _render(field: forms.Field, initial=None) -> str:
 def _search_box(html: str) -> str:
     marker = html.index("data-search-select-search")
     return html[html.rindex("<", 0, marker) : html.index(">", marker)]
+
+
+def _hidden_values(html: str) -> list[str]:
+    hidden = [
+        tag
+        for tag in re.findall(r"<input[^>]*>", html)
+        if 'type="hidden"' in tag and 'name="choice"' in tag
+    ]
+    return [re.search(r'value="([^"]*)"', tag).group(1) for tag in hidden]
 
 
 def _optional(choices, **widget) -> forms.TypedChoiceField:
@@ -98,7 +110,7 @@ def test_a_required_field_without_an_empty_choice():
 def test_a_held_value_shows_its_label():
     html = _render(_optional([SITE_DEFAULT, *LETTERS]), initial="b")
     assert 'value="B"' in _search_box(html)
-    assert 'name="choice" value="b"' in html or 'value="b" name="choice"' in html
+    assert _hidden_values(html) == ["b"]
 
 
 def test_a_bool_initial_matches_its_key():
@@ -126,7 +138,7 @@ def test_it_refuses_a_queryset_before_reading_it(django_assert_num_queries):
     field = forms.ModelChoiceField(
         queryset=Device.objects.all(), widget=ChoiceSearchSelectWidget()
     )
-    with django_assert_num_queries(0), pytest.raises(ValueError):
+    with django_assert_num_queries(0), pytest.raises(TypeError):
         _render(field)
 
 
@@ -171,3 +183,66 @@ def test_native_classes_never_reach_it():
     field = _optional(LETTERS)
     apply_primitive_widget_classes({"choice": field})
     assert "class" not in field.widget.attrs
+
+
+def test_a_none_key_is_the_empty_choice():
+    html = _render(_optional([(None, "Unknown"), *LETTERS]))
+    assert 'none-label="Unknown"' in html
+    assert "data-search-select-none=" in html
+
+
+def test_integer_keys_post_as_text():
+    field = forms.TypedChoiceField(
+        required=False,
+        choices=[(1, "One"), (2, "Two")],
+        coerce=int,
+        empty_value=None,
+        widget=ChoiceSearchSelectWidget(),
+    )
+    html = _render(field, initial=2)
+    assert 'value="Two"' in _search_box(html)
+    assert _hidden_values(html) == ["2"]
+
+
+def test_a_list_value_is_refused():
+    with pytest.raises(TypeError):
+        ChoiceSearchSelectWidget().render("choice", ["a", "b"])
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        forms.MultipleChoiceField(choices=LETTERS),
+        forms.ModelChoiceField(queryset=Device.objects.none()),
+    ],
+    ids=["multiple", "model"],
+)
+def test_host_choices_refuses(field):
+    with pytest.raises(TypeError):
+        host_choices(field, ChoiceSearchSelectWidget())
+
+
+def test_clear_names_the_field_label():
+    html = _render(_optional(LETTERS))
+    clear = re.search(r"<button[^>]*aria-describedby=\"([^\"]+)\"", html)
+    assert clear is not None
+    assert f'id="{clear.group(1)}"' in html
+    assert clear.group(1).startswith("id_choice")
+
+
+def test_clearable_and_autofocus_reach_the_component():
+    html = _render(_optional(LETTERS, clearable=False, autofocus=True))
+    assert "autofocus" in _search_box(html)
+    assert 'aria-label="Clear"' not in html
+
+
+def test_an_explicit_empty_placeholder_stays_empty():
+    assert 'placeholder=""' in _search_box(_render(_optional(LETTERS, placeholder="")))
+
+
+def test_form_instances_hold_their_own_choices():
+    widget = ChoiceSearchSelectWidget()
+    widget.choices = list(LETTERS)
+    copied = copy.deepcopy(widget)
+    assert copied.choices == widget.choices
+    assert copied.choices is not widget.choices
