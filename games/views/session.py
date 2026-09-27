@@ -45,8 +45,8 @@ from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl
 from common.utils import paginate
+from games.bulk_edit import EDIT
 from games.bulk_finish import FINISH_SESSION
-from games.bulk_move import MOVE
 from games.bulk_reclassification import RECLASSIFY
 from games.bulk_removal import REMOVE_SESSION
 from games.bulk_tray import tray_actions
@@ -276,7 +276,7 @@ def list_sessions(request: HttpRequest) -> HttpResponse:
             "csrf_token": csrf_token,
             "actions": tray_actions(
                 FINISH_SESSION.name,
-                MOVE.name,
+                EDIT.name,
                 RECLASSIFY.name,
                 REMOVE_SESSION.name,
                 origin=origin,

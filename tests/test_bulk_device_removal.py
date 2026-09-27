@@ -148,7 +148,7 @@ def test_a_batch_removes_and_its_undo_puts_every_row_back(
     url = act_url(REMOVE_DEVICE)
     confirmation = logged_in.post(url, {STATEMENT_FIELD: selection(deck, tower)})
     html = confirmation.content.decode()
-    for heading in ("Device", "Type", "Sessions", "Remove these devices"):
+    for heading in ("Device", "Type", "Sessions", "Remove 2 devices"):
         assert heading in html
     submitted = posted(confirmation)
 

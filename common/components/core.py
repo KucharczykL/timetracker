@@ -393,7 +393,7 @@ class Fragment(Node):
         self.separator = separator
 
     def collect_media(self) -> Media:
-        media = Media()
+        media = self.media
         for child in self.children:
             if isinstance(child, Node):
                 media = media + child.collect_media()

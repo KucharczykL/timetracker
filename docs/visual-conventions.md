@@ -443,8 +443,7 @@ same line — `ActionsColumn` (a kebab in the row's last cell) for one row, a
 
 - **The words are the act's.** An item that a selection-line act also states reads
   in that act's words, so a person meets one name for one act.
-- **Three dots mean a question, not a page.** `Move to playthrough…` asks which
-  playthrough; `Record as historical playtime…` asks when the hours were played.
+- **Three dots mean a question, not a page.** `Edit…` asks what to set; `Record as historical playtime…` asks when the hours were played.
   `Remove` and `Reset start to now` open a page too, but only to confirm what is
   already chosen, so they take none. An item naming a screen rather than an act —
   `Edit` — takes none either. The character is `…`, never three periods.

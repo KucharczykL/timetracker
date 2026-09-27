@@ -537,7 +537,7 @@ def test_an_idempotent_session_move_writes_one_event_and_names_its_source(
         name="Second run",
         created_at=timezone.now(),
     )
-    source = {"bulk": {"action": "session.move"}}
+    source = {"bulk": {"action": "session.edit"}}
 
     first = move_session(
         owned_user,

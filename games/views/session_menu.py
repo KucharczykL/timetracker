@@ -12,10 +12,8 @@ from common.components import (
 )
 from common.components.core import Node
 from common.returns import OriginUrl, action_url
-from games.bulk_move import MOVE
 from games.bulk_reclassification import RECLASSIFY
 from games.bulk_removal import REMOVE_SESSION
-from games.bulk_tray import one_row_statement
 from games.models import PlayerSession, PlayerSessionTimingMode
 
 #: Three dots: the act asks first, not opens a page.
@@ -53,13 +51,6 @@ def session_row_menu(
             action_url("games:edit_session", session.pk, origin=origin),
             "Edit",
             icon="edit",
-        ),
-        DropdownPostItem(
-            action_url("games:run_bulk_action", MOVE.name, origin=origin),
-            MOVE.label,
-            csrf_token=csrf_token,
-            hidden_fields=one_row_statement(session.pk),
-            icon="move",
         ),
     ]
     if session.timing_mode == PlayerSessionTimingMode.DURATION_ONLY:

@@ -178,7 +178,7 @@ RECLASSIFY = BulkAction(
     label="Record as historical playtime",
     title=ActTitle(
         one="Record this session as historical playtime",
-        many="Record these sessions as historical playtime",
+        many="Record {count} sessions as historical playtime",
     ),
     confirm_label="Record as historical playtime",
     subject="session",

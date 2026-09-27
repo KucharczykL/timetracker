@@ -295,7 +295,7 @@ def test_the_tray_offers_four_acts_with_remove_last(logged_in, game, owned_libra
 
     assert _tray_labels(body) == [
         "Finish",
-        "Move to playthrough…",
+        "Edit…",
         "Record as historical playtime",
         "Remove",
     ]

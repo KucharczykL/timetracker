@@ -7,7 +7,6 @@ import pytest
 from django.urls import reverse
 from session_rows import corrected_row, duration_only_row, session_row, tracked_run
 
-from games.bulk_move import MOVE
 from games.models import Game, Platform
 from games.views.session_menu import session_row_menu
 
@@ -76,25 +75,25 @@ def _items(rendered: str) -> list[str]:
     ]
 
 
-def test_a_running_row_offers_five_acts_in_order(open_session):
+def test_a_running_row_offers_four_acts_in_order(open_session):
+    """Edit states the run too, so no Move item."""
     assert _items(_render(open_session)) == [
         "Finish",
         "Reset start to now",
         "Edit",
-        MOVE.label,
         "Remove",
     ]
 
 
 def test_a_finished_row_offers_neither_finish_nor_reset(finished_session):
-    assert _items(_render(finished_session)) == ["Edit", MOVE.label, "Remove"]
+    assert _items(_render(finished_session)) == ["Edit", "Remove"]
     rendered = _render(finished_session)
     assert reverse("games:finish_session", args=[finished_session.pk]) not in rendered
     assert reverse("games:reset_session", args=[finished_session.pk]) not in rendered
 
 
 def test_a_corrected_row_offers_neither_finish_nor_reset(corrected_session):
-    assert _items(_render(corrected_session)) == ["Edit", MOVE.label, "Remove"]
+    assert _items(_render(corrected_session)) == ["Edit", "Remove"]
 
 
 def test_a_written_row_offers_the_record_act_and_a_measured_one_does_not(
@@ -104,7 +103,6 @@ def test_a_written_row_offers_the_record_act_and_a_measured_one_does_not(
     #: came from, where Remove and Reset only have you confirm.
     assert _items(_render(written_session)) == [
         "Edit",
-        MOVE.label,
         "Record as historical playtime\u2026",
         "Remove",
     ]
@@ -120,16 +118,6 @@ def test_finish_posts_to_its_own_route_carrying_the_browser_zone(open_session):
     assert "origin=" in rendered
     assert "<browser-time-zone" in rendered
     assert 'name="browser_time_zone"' in rendered
-
-
-def test_move_hands_one_row_to_the_runner(open_session):
-    rendered = _render(open_session)
-
-    assert reverse("games:run_bulk_action", args=[MOVE.name]) in rendered
-    assert (
-        f"{{&quot;mode&quot;: &quot;some&quot;, &quot;keys&quot;: [&quot;{open_session.pk}&quot;]}}"
-        in rendered
-    )
 
 
 def test_every_other_act_is_a_link_to_its_confirmation(written_session):
@@ -168,6 +156,6 @@ def test_every_item_leads_with_the_glyph_its_button_had(open_session):
     """The glyph is how a reader who knows the row finds the act."""
     items = _items_markup(_render(open_session))
 
-    assert len(items) == 5
+    assert len(items) == 4
     for item in items:
         assert "<svg" in item, item[:120]

@@ -191,16 +191,20 @@ def describe_session(
     device: StatedDevice | None = None,
     emulated: bool | None = None,
     correlation_id: uuid.UUID,
-) -> None:
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
     """State note, device or emulated; None is unstated."""
     with answered("session"):
-        _dispatch(
+        return _dispatch(
             DescribeSession(
                 session_id=session.pk, note=note, device=device, emulated=emulated
             ),
             actor=actor,
             library=actor.library,
             correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
         )
 
 

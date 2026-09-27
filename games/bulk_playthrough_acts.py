@@ -452,7 +452,7 @@ START_RUNS = BulkAction(
     label="Started today",
     title=ActTitle(
         one="Record that this playthrough started today",
-        many="Record that these playthroughs started today",
+        many="Record that {count} playthroughs started today",
     ),
     confirm_label="Record",
     subject="playthrough",
@@ -473,7 +473,7 @@ COMPLETE_RUNS = BulkAction(
     label="Completed today",
     title=ActTitle(
         one="Record that this playthrough was completed today",
-        many="Record that these playthroughs were completed today",
+        many="Record that {count} playthroughs were completed today",
     ),
     confirm_label="Record",
     subject="playthrough",

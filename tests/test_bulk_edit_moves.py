@@ -1,4 +1,4 @@
-"""Many sessions moved to one playthrough, and put back."""
+"""Bulk Edit moves sessions to one playthrough, and back."""
 
 import html as html_module
 import json
@@ -13,19 +13,25 @@ from django.urls import reverse
 from django.utils import timezone
 from session_rows import duration_only_row, tracked_run
 
-from games.bulk_actions import AsksNothing, Control, RefusedAct
+from games.bulk_actions import AsksNothing, Control
+from games.bulk_edit import (
+    NOTHING_STATED,
+    SEVERAL_GAMES,
+    EditStatement,
+    edit_one,
+    offer_edit,
+    settle_edit,
+)
 from games.bulk_move import (
     ANOTHER_GAME,
     NOT_MOVED_BY_THIS_BATCH,
-    RUN_LABEL_ATTRIBUTE,
     TARGET_GONE,
-    TWO_GAMES,
-    move_one,
-    move_resolution,
-    move_scope,
-    offer_target,
     run_before,
-    settle_target,
+)
+from games.bulk_sessions import (
+    RUN_LABEL_ATTRIBUTE,
+    labelled_session_resolution,
+    session_scope,
 )
 from games.commands.playersession import CreateSession, DurationOnlyTiming
 from games.events.dispatch import CommandRejected, dispatch
@@ -53,7 +59,13 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 A_DAY = date(2026, 3, 5)
 AN_HOUR = timedelta(hours=1)
-MOVE_URL = reverse("games:run_bulk_action", args=["session.move"])
+EDIT_URL = reverse("games:run_bulk_action", args=["session.edit"])
+PLAYTHROUGH_FIELD = f"{CHOICE_FIELD}-playthrough"
+
+
+def _to(run) -> str:
+    """A statement moving to `run` alone."""
+    return EditStatement(None, None, None, run.pk).encode()
 
 
 @pytest.fixture
@@ -130,7 +142,7 @@ def test_the_scope_narrows_by_the_statements_filter(owned_library, game, other_g
     wanted = a_session(tracked_run(owned_library, game))
     a_session(tracked_run(owned_library, other_game))
 
-    narrowed = move_scope(
+    narrowed = session_scope(
         owned_library,
         json.dumps(
             {"game_filter": {"name": {"value": "Outer Wilds", "modifier": "EQUALS"}}}
@@ -147,7 +159,7 @@ def test_a_key_of_another_library_is_lost(owned_library, game, django_user_model
     theirs = Game.objects.create(library=stranger, name="Hollow Knight")
     foreign = a_session(tracked_run(stranger, theirs))
 
-    resolution = move_resolution(owned_library, [foreign.pk])
+    resolution = labelled_session_resolution(owned_library, [foreign.pk])
 
     assert resolution.rows == ()
     assert [entry.lost for entry in resolution.refused] == [True]
@@ -160,7 +172,7 @@ def test_every_resolved_row_carries_its_runs_name(owned_library, game):
         a_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
     )
 
-    resolution = move_resolution(owned_library, [sole.pk, bucket.pk])
+    resolution = labelled_session_resolution(owned_library, [sole.pk, bucket.pk])
 
     labels = {row.pk: getattr(row, RUN_LABEL_ATTRIBUTE) for row in resolution.rows}
     assert labels == {sole.pk: "Playthrough 1", bucket.pk: IMPORTED_HISTORY_LABEL}
@@ -169,8 +181,9 @@ def test_every_resolved_row_carries_its_runs_name(owned_library, game):
 # ── The question ─────────────────────────────────────────────────────────────
 
 
-def test_two_games_refuse_the_whole_act(owned_library, game, other_game):
-    rows = move_resolution(
+def test_two_games_keep_the_form_without_the_picker(owned_library, game, other_game):
+    """The other fields still apply; the run cannot."""
+    rows = labelled_session_resolution(
         owned_library,
         [
             a_session(tracked_run(owned_library, game)).pk,
@@ -178,22 +191,27 @@ def test_two_games_refuse_the_whole_act(owned_library, game, other_game):
         ],
     ).rows
 
-    assert offer_target(owned_library, rows, CHOICE_FIELD) == RefusedAct(
-        TWO_GAMES.format(count=2)
-    )
+    offered = offer_edit(owned_library, rows, CHOICE_FIELD)
+
+    assert isinstance(offered, Control)
+    markup = str(offered.node)
+    assert SEVERAL_GAMES.format(count=2) in markup
+    assert f'name="{PLAYTHROUGH_FIELD}"' not in markup
+    assert f'name="{CHOICE_FIELD}-device"' in markup
 
 
 def test_one_game_answers_a_control(owned_library, game):
-    rows = move_resolution(
+    rows = labelled_session_resolution(
         owned_library, [a_session(tracked_run(owned_library, game)).pk]
     ).rows
 
-    answered = offer_target(owned_library, rows, CHOICE_FIELD)
+    answered = offer_edit(owned_library, rows, CHOICE_FIELD)
 
     assert isinstance(answered, Control)
     offered = str(answered.node)
-    assert f'name="{CHOICE_FIELD}"' in offered
+    assert f'name="{PLAYTHROUGH_FIELD}"' in offered
     assert str(game.pk) in offered
+    assert 'placeholder="Keep: Playthrough 1"' in offered
 
 
 def test_the_game_count_is_the_selection_not_the_sample(
@@ -214,17 +232,17 @@ def test_the_game_count_is_the_selection_not_the_sample(
             tracked_run(owned_library, other_game), day=A_DAY - timedelta(days=1)
         ).pk
     )
-    rows = move_resolution(owned_library, keys).rows
+    rows = labelled_session_resolution(owned_library, keys).rows
 
     assert len(rows) == CONFIRMATION_SAMPLE + 1
-    assert offer_target(owned_library, rows, CHOICE_FIELD) == RefusedAct(
-        TWO_GAMES.format(count=2)
-    )
+    offered = offer_edit(owned_library, rows, CHOICE_FIELD)
+    assert isinstance(offered, Control)
+    assert SEVERAL_GAMES.format(count=2) in str(offered.node)
 
 
 def test_no_rows_ask_nothing(owned_library):
     """Not an empty control: there is no question to put."""
-    assert offer_target(owned_library, (), CHOICE_FIELD) == AsksNothing()
+    assert offer_edit(owned_library, (), CHOICE_FIELD) == AsksNothing()
 
 
 # ── The settle ───────────────────────────────────────────────────────────────
@@ -233,8 +251,8 @@ def test_no_rows_ask_nothing(owned_library):
 def test_a_live_ordinary_run_settles(owned_library, game):
     run = tracked_run(owned_library, game)
 
-    assert settle_target(owned_library, post(**{CHOICE_FIELD: str(run.pk)})) == str(
-        run.pk
+    assert settle_edit(owned_library, post(**{PLAYTHROUGH_FIELD: str(run.pk)})) == _to(
+        run
     )
 
 
@@ -243,15 +261,32 @@ def test_a_run_at_another_game_settles_too(owned_library, game, other_game):
     run = tracked_run(owned_library, other_game)
     tracked_run(owned_library, game)
 
-    assert settle_target(owned_library, post(**{CHOICE_FIELD: str(run.pk)})) == str(
-        run.pk
+    assert settle_edit(owned_library, post(**{PLAYTHROUGH_FIELD: str(run.pk)})) == _to(
+        run
     )
 
 
 @pytest.mark.parametrize("stated", ["", "not-a-uuid"])
 def test_an_unreadable_target_refuses(owned_library, stated):
     with pytest.raises(CommandRejected):
-        settle_target(owned_library, post(**{CHOICE_FIELD: stated}))
+        settle_edit(owned_library, post(**{PLAYTHROUGH_FIELD: stated}))
+
+
+def test_a_carried_run_that_is_gone_refuses(owned_library, game):
+    run = tracked_run(owned_library, game)
+    Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())
+
+    with pytest.raises(CommandRejected) as refusal:
+        settle_edit(owned_library, post(**{CHOICE_FIELD: _to(run)}))
+
+    assert refusal.value.sentence == TARGET_GONE
+
+
+def test_an_empty_picker_alone_states_nothing(owned_library):
+    with pytest.raises(CommandRejected) as refusal:
+        settle_edit(owned_library, post(**{PLAYTHROUGH_FIELD: ""}))
+
+    assert refusal.value.sentence == NOTHING_STATED
 
 
 def test_another_librarys_run_refuses(owned_library, django_user_model):
@@ -262,7 +297,7 @@ def test_another_librarys_run_refuses(owned_library, django_user_model):
     run = tracked_run(stranger, theirs)
 
     with pytest.raises(CommandRejected) as refusal:
-        settle_target(owned_library, post(**{CHOICE_FIELD: str(run.pk)}))
+        settle_edit(owned_library, post(**{PLAYTHROUGH_FIELD: str(run.pk)}))
 
     assert refusal.value.sentence == TARGET_GONE
 
@@ -272,7 +307,7 @@ def test_a_removed_run_refuses(owned_library, game):
     Playthrough.objects.filter(pk=run.pk).update(removed_at=timezone.now())
 
     with pytest.raises(CommandRejected) as refusal:
-        settle_target(owned_library, post(**{CHOICE_FIELD: str(run.pk)}))
+        settle_edit(owned_library, post(**{PLAYTHROUGH_FIELD: str(run.pk)}))
 
     assert refusal.value.sentence == TARGET_GONE
 
@@ -282,7 +317,7 @@ def test_a_bucket_refuses(owned_library, game):
     bucket = a_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
 
     with pytest.raises(CommandRejected) as refusal:
-        settle_target(owned_library, post(**{CHOICE_FIELD: str(bucket.pk)}))
+        settle_edit(owned_library, post(**{PLAYTHROUGH_FIELD: str(bucket.pk)}))
 
     assert refusal.value.sentence == TARGET_GONE
 
@@ -295,10 +330,10 @@ def test_a_row_moves(owned_user, owned_library, game):
     bucket = a_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
     session = a_session(bucket)
 
-    outcome = move_one(
+    outcome = edit_one(
         owned_user,
         session,
-        choice=str(target.pk),
+        choice=_to(target),
         idempotency_key="one-move",
         correlation_id=uuid.uuid7(),
     )
@@ -312,10 +347,10 @@ def test_a_row_already_on_the_target_is_unchanged(owned_user, owned_library, gam
     target = tracked_run(owned_library, game)
     session = a_session(target)
 
-    outcome = move_one(
+    outcome = edit_one(
         owned_user,
         session,
-        choice=str(target.pk),
+        choice=_to(target),
         idempotency_key="one-move",
         correlation_id=uuid.uuid7(),
     )
@@ -328,10 +363,10 @@ def test_a_row_at_another_game_is_refused(owned_user, owned_library, game, other
     session = a_session(tracked_run(owned_library, other_game))
 
     with pytest.raises(CommandFailed) as refusal:
-        move_one(
+        edit_one(
             owned_user,
             session,
-            choice=str(target.pk),
+            choice=_to(target),
             idempotency_key="one-move",
             correlation_id=uuid.uuid7(),
         )
@@ -350,10 +385,10 @@ def test_the_last_row_out_of_a_bucket_takes_the_bucket_away(
     session = a_bucket_session(owned_user, target, bucket)
     batch = uuid.uuid7()
 
-    move_one(
+    edit_one(
         owned_user,
         session,
-        choice=str(target.pk),
+        choice=_to(target),
         idempotency_key="one-move",
         correlation_id=batch,
     )
@@ -369,10 +404,10 @@ def test_only_the_bucket_the_row_left_is_taken_away(owned_user, owned_library, g
     stranger = a_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
     session = a_bucket_session(owned_user, target, emptied)
 
-    move_one(
+    edit_one(
         owned_user,
         session,
-        choice=str(target.pk),
+        choice=_to(target),
         idempotency_key="one-move",
         correlation_id=uuid.uuid7(),
     )
@@ -392,10 +427,10 @@ def test_a_move_between_two_runs_leaves_the_games_bucket_alone(
     stranger = a_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
     session = a_recorded_session(owned_user, source)
 
-    move_one(
+    edit_one(
         owned_user,
         session,
-        choice=str(target.pk),
+        choice=_to(target),
         idempotency_key="one-move",
         correlation_id=uuid.uuid7(),
     )
@@ -420,10 +455,10 @@ def test_a_replayed_chunk_still_asks_about_the_bucket(owned_user, owned_library,
     session = a_bucket_session(owned_user, target, bucket)
     batch = uuid.uuid7()
 
-    move_one(
+    edit_one(
         owned_user,
         session,
-        choice=str(target.pk),
+        choice=_to(target),
         idempotency_key="one-move",
         correlation_id=batch,
     )
@@ -431,10 +466,10 @@ def test_a_replayed_chunk_still_asks_about_the_bucket(owned_user, owned_library,
     assert bucket.removed_at is None
 
     PlayerSession.objects.filter(pk=sibling.pk).update(removed_at=timezone.now())
-    move_one(
+    edit_one(
         owned_user,
         session,
-        choice=str(target.pk),
+        choice=_to(target),
         idempotency_key="one-move",
         correlation_id=batch,
     )
@@ -453,10 +488,10 @@ def test_a_bucket_a_removed_session_names_is_left_alone(
     PlayerSession.objects.filter(pk=gone.pk).update(removed_at=timezone.now())
     session = a_bucket_session(owned_user, target, bucket)
 
-    move_one(
+    edit_one(
         owned_user,
         session,
-        choice=str(target.pk),
+        choice=_to(target),
         idempotency_key="one-move",
         correlation_id=uuid.uuid7(),
     )
@@ -477,10 +512,10 @@ def test_a_record_naming_a_bucket_keeps_it(owned_user, owned_library, game):
         playthrough=bucket,
     )
 
-    move_one(
+    edit_one(
         owned_user,
         session,
-        choice=str(target.pk),
+        choice=_to(target),
         idempotency_key="one-move",
         correlation_id=uuid.uuid7(),
     )
@@ -501,10 +536,10 @@ def test_a_bucket_whose_removal_refuses_leaves_the_row_moved(
 
     monkeypatch.setattr("games.bulk_move.remove_run", refuses)
 
-    outcome = move_one(
+    outcome = edit_one(
         owned_user,
         session,
-        choice=str(target.pk),
+        choice=_to(target),
         idempotency_key="one-move",
         correlation_id=uuid.uuid7(),
     )
@@ -528,10 +563,10 @@ def test_a_bucket_removal_that_is_a_defect_ends_the_batch(
     monkeypatch.setattr("games.bulk_move.remove_run", breaks)
 
     with pytest.raises(CommandFailed) as defect:
-        move_one(
+        edit_one(
             owned_user,
             session,
-            choice=str(target.pk),
+            choice=_to(target),
             idempotency_key="one-move",
             correlation_id=uuid.uuid7(),
         )
@@ -543,7 +578,7 @@ def test_a_row_with_a_device_and_a_note_previews_both(owned_library, game):
     device = create_device(library=owned_library, name="Deck")
     session = a_session(tracked_run(owned_library, game), device=device, note="hi")
 
-    rows = move_resolution(owned_library, [session.pk]).rows
+    rows = labelled_session_resolution(owned_library, [session.pk]).rows
 
     assert rows[0].device.name == "Deck"
     assert rows[0].note == "hi"
@@ -566,7 +601,7 @@ def _posted(response) -> dict[str, str]:
 def _confirm(client, *sessions):
     """The first POST, which names the rows."""
     return client.post(
-        MOVE_URL,
+        EDIT_URL,
         {
             STATEMENT_FIELD: json.dumps(
                 {"mode": "some", "keys": [str(session.pk) for session in sessions]}
@@ -578,7 +613,7 @@ def _confirm(client, *sessions):
 def _batch(client, *sessions, target):
     """Confirm and act, answering the question with `target`."""
     fields = _posted(_confirm(client, *sessions))
-    client.post(MOVE_URL, {**fields, CHOICE_FIELD: str(target.pk)})
+    client.post(EDIT_URL, {**fields, PLAYTHROUGH_FIELD: str(target.pk)})
     return fields[TOKEN_FIELD]
 
 
@@ -660,7 +695,7 @@ def test_a_batch_refuses_a_cross_game_row_and_moves_the_rest(
         {"rows": [str(ours.pk), str(theirs.pk)], "total": 2}
     )
     answer = client_in.post(
-        MOVE_URL, {**fields, CHOICE_FIELD: str(target.pk)}, follow=True
+        EDIT_URL, {**fields, PLAYTHROUGH_FIELD: str(target.pk)}, follow=True
     )
 
     ours.refresh_from_db()
@@ -677,18 +712,18 @@ def test_run_before_reads_an_earlier_move(owned_user, owned_library, game):
     second = a_run(owned_library, game, name="Second run")
     third = a_run(owned_library, game, name="Third run")
     session = a_recorded_session(owned_user, first)
-    move_one(
+    edit_one(
         owned_user,
         session,
-        choice=str(second.pk),
+        choice=_to(second),
         idempotency_key="first-move",
         correlation_id=uuid.uuid7(),
     )
     batch = uuid.uuid7()
-    move_one(
+    edit_one(
         owned_user,
         session,
-        choice=str(third.pk),
+        choice=_to(third),
         idempotency_key="second-move",
         correlation_id=batch,
     )
@@ -701,10 +736,10 @@ def test_a_key_that_is_not_this_batchs_is_refused(owned_user, owned_library, gam
     session = a_recorded_session(
         owned_user, a_run(owned_library, game, name="Second run")
     )
-    move_one(
+    edit_one(
         owned_user,
         session,
-        choice=str(target.pk),
+        choice=_to(target),
         idempotency_key="one-move",
         correlation_id=uuid.uuid7(),
     )
@@ -764,6 +799,13 @@ def test_the_batchs_events_name_the_move_and_the_bucket(
         )
     )
     assert written == {"library.playersession.moved", "library.playthrough.removed"}
+    actions = set(
+        LibraryEvent.objects.filter(correlation_id=uuid.UUID(token)).values_list(
+            "source_metadata__bulk__action", flat=True
+        )
+    )
+    #: The Undo reads the first event's act.
+    assert actions == {"session.edit"}
 
 
 def test_the_undo_of_a_stopped_batch_leaves_untouched_rows_alone(
@@ -819,7 +861,7 @@ def test_a_move_with_no_target_answers_a_defect(owned_user, owned_library, game)
     session = a_session(tracked_run(owned_library, game))
 
     with pytest.raises(CommandFailed) as defect:
-        move_one(
+        edit_one(
             owned_user,
             session,
             choice=None,
@@ -828,3 +870,50 @@ def test_a_move_with_no_target_answers_a_defect(owned_user, owned_library, game)
         )
 
     assert defect.value.status_code == 500
+
+
+def test_a_move_and_a_device_in_one_batch_are_undone_together(
+    client_in, owned_user, owned_library, game
+):
+    source = tracked_run(owned_library, game)
+    target = a_run(owned_library, game, name="Target run")
+    session = a_recorded_session(owned_user, source)
+    deck = create_device(library=owned_library, name="Deck")
+
+    fields = _posted(_confirm(client_in, session))
+    client_in.post(
+        EDIT_URL,
+        {
+            **fields,
+            PLAYTHROUGH_FIELD: str(target.pk),
+            f"{CHOICE_FIELD}-device": str(deck.pk),
+        },
+    )
+    session.refresh_from_db()
+    assert (session.playthrough_id, session.device_id) == (target.pk, deck.pk)
+
+    _undo(client_in, fields[TOKEN_FIELD])
+
+    session.refresh_from_db()
+    assert (session.playthrough_id, session.device_id) == (source.pk, None)
+
+
+def test_a_row_at_another_game_is_left_wholly_alone(
+    owned_user, owned_library, game, other_game
+):
+    """Refused before any write: no half-done row."""
+    target = tracked_run(owned_library, game)
+    session = a_session(tracked_run(owned_library, other_game))
+
+    with pytest.raises(CommandFailed):
+        edit_one(
+            owned_user,
+            session,
+            choice=EditStatement(None, None, "moved?", target.pk).encode(),
+            idempotency_key="one-edit",
+            correlation_id=uuid.uuid7(),
+        )
+
+    session.refresh_from_db()
+    assert session.note == ""
+    assert not LibraryEvent.objects.filter(aggregate_id=session.pk).exists()

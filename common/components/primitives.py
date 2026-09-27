@@ -2164,7 +2164,7 @@ def DialogTitle(children: Children = None) -> Element:
 def ConfirmPage(
     *,
     title: str,
-    message: Children,
+    message: Children = None,
     post_url: str,
     csrf_token: str,
     cancel_url: str,
@@ -2201,7 +2201,11 @@ def ConfirmPage(
             ),
             DialogTitle(title),
             *([refused] if refused is not None else []),
-            P(class_="text-heading text-center mt-5")[*as_children(message)],
+            *(
+                [P(class_="text-heading text-center mt-5")[*as_children(message)]]
+                if message
+                else []
+            ),
             *(
                 [
                     Div(class_="text-type-body text-body text-start mt-5")[
