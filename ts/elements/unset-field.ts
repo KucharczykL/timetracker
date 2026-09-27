@@ -1,12 +1,12 @@
-import { readUnsetFieldProps } from "../generated/props.js";
+import { readUnsetFieldProps, type UnsetFieldProps } from "../generated/props.js";
 
 /** The field's one visible control. */
 const CONTROL = "input:not([type=hidden]), textarea, select";
 
 type Control = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
-export interface UnsetFieldChange {
-  name: string;
+export interface UnsetFieldChangeDetail {
+  name: UnsetFieldProps["name"];
   unset: boolean;
 }
 
@@ -14,14 +14,13 @@ export interface UnsetFieldChange {
 interface Pressed {
   value: string;
   placeholder: string | null;
-  /** Whether the press disabled it, not the page. */
-  disabled: boolean;
+  disabledByPress: boolean;
 }
 
 export class UnsetFieldElement extends HTMLElement {
   private toggle: HTMLButtonElement | null = null;
   private state: HTMLInputElement | null = null;
-  private member: HTMLElement | null = null;
+  private control: Control | null = null;
   private pressed: Pressed | null = null;
 
   connectedCallback(): void {
@@ -29,8 +28,12 @@ export class UnsetFieldElement extends HTMLElement {
     if (this.toggle) return;
     this.toggle = this.querySelector<HTMLButtonElement>("[data-unset-field-toggle]");
     this.state = this.querySelector<HTMLInputElement>("[data-unset-field-state]");
-    this.member = this.querySelector<HTMLElement>("[data-unset-field-member]");
-    if (!this.toggle || !this.state || !this.member) return;
+    this.control =
+      this.querySelector<HTMLElement>("[data-unset-field-member]")?.querySelector<Control>(CONTROL) ?? null;
+    if (!this.toggle || !this.state || !this.control) {
+      console.error("unset-field: missing toggle, checkbox or control", this);
+      return;
+    }
     this.toggle.addEventListener("click", this.onToggle);
     if (this.state.checked) this.press();
     this.reflect();
@@ -45,25 +48,21 @@ export class UnsetFieldElement extends HTMLElement {
     else this.press();
     this.reflect();
     this.dispatchEvent(
-      new CustomEvent<UnsetFieldChange>("unset-field:change", {
+      new CustomEvent<UnsetFieldChangeDetail>("unset-field:change", {
         bubbles: true,
         detail: { name: readUnsetFieldProps(this).name, unset: this.unset },
       }),
     );
   };
 
-  private control(): Control | null {
-    return this.member?.querySelector<Control>(CONTROL) ?? null;
-  }
-
   private press(): void {
-    const control = this.control();
-    this.pressed = {
-      value: control?.value ?? "",
-      placeholder: control?.getAttribute("placeholder") ?? null,
-      disabled: control !== null && !control.disabled,
-    };
+    const control = this.control;
     if (!control) return;
+    this.pressed = {
+      value: control.value,
+      placeholder: control.getAttribute("placeholder"),
+      disabledByPress: !control.disabled,
+    };
     control.value = "";
     control.setAttribute("placeholder", readUnsetFieldProps(this).noneLabel);
     control.disabled = true;
@@ -72,9 +71,9 @@ export class UnsetFieldElement extends HTMLElement {
   private release(): void {
     const pressed = this.pressed;
     this.pressed = null;
-    const control = this.control();
+    const control = this.control;
     if (!pressed || !control) return;
-    if (pressed.disabled) control.disabled = false;
+    if (pressed.disabledByPress) control.disabled = false;
     control.value = pressed.value;
     if (pressed.placeholder === null) control.removeAttribute("placeholder");
     else control.setAttribute("placeholder", pressed.placeholder);

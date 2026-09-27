@@ -17,9 +17,9 @@ from common.components.primitives import (
 )
 from common.components.search_select import NoneLabel
 
-type FieldName = str  # a posted field name, e.g. "edit-device"
+type PostedName = str  # a posted field name, e.g. "edit-device"
 
-UNSET_SUFFIX = "-unset"
+_UNSET_SUFFIX = "-unset"
 
 _HIDDEN_UNTIL_DEFINED = "[unset-field:not(:defined)_&]:hidden"
 _HIDDEN_ONCE_DEFINED = "[unset-field:defined_&]:hidden"
@@ -30,14 +30,14 @@ _PRESSED_CLASS = (
 _MEMBER_CLASS = "flex-1 min-w-0 focus-within:z-10"
 
 
-def unset_input_name(name: FieldName) -> FieldName:
+def unset_input_name(name: PostedName) -> PostedName:
     """The checkbox's posted name."""
-    return f"{name}{UNSET_SUFFIX}"
+    return f"{name}{_UNSET_SUFFIX}"
 
 
 def UnsetField(
     *,
-    name: FieldName,
+    name: PostedName,
     none_label: NoneLabel,
     field: ShapedMember,
     unset: bool = False,

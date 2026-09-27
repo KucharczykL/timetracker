@@ -24,6 +24,7 @@ from common.components import (
     DateTimePicker,
     Media,
     NoneLabel,
+    PostedName,
     Safe,
     SearchSelect,
     SearchSelectOption,
@@ -342,9 +343,8 @@ class _SearchSelectAdapter(forms.Widget):
         self.placeholder = placeholder
         self.autofocus = autofocus
         self.clearable = clearable
-        self.shape: ButtonShape = "full"
 
-    def _render(self, name, attrs, **component) -> str:
+    def _render(self, name, attrs, *, shape: ButtonShape, **component) -> str:
         input_id = (attrs or {}).get("id", "")
         # Widgets return safe strings, not nodes.
         return render(
@@ -357,7 +357,7 @@ class _SearchSelectAdapter(forms.Widget):
                 clear_description_id=field_label_id(input_id) if input_id else None,
                 # Panel opens through the shared attachMenu engine.
                 host_dropdown=True,
-                shape=self.shape,
+                shape=shape,
                 **component,
             )
         )
@@ -365,9 +365,12 @@ class _SearchSelectAdapter(forms.Widget):
     def value_from_datadict(self, data, files, name):
         return data.get(name)
 
-    def offers_none(self, name: str) -> bool:
+    def offers_none(self, name: PostedName) -> bool:
         """Whether ``render`` pins a none row."""
         return False
+
+    def render(self, name, value, attrs=None, renderer=None, *, shape="full"):
+        raise NotImplementedError
 
 
 class SearchSelectWidget(_SearchSelectAdapter):
@@ -418,10 +421,10 @@ class SearchSelectWidget(_SearchSelectAdapter):
             return [v for v in value if v not in (None, "")]
         return [value] if value not in (None, "") else []
 
-    def offers_none(self, name: str) -> bool:
+    def offers_none(self, name: PostedName) -> bool:
         return bool(self.none_label)
 
-    def render(self, name, value, attrs=None, renderer=None):
+    def render(self, name, value, attrs=None, renderer=None, *, shape="full"):
         if self.none_label and self.is_required:
             raise ValueError(f"{name}: a required field holds no none")
         return self._render(
@@ -439,6 +442,7 @@ class SearchSelectWidget(_SearchSelectAdapter):
             prefetch=self.prefetch,
             always_visible=self.always_visible,
             none_label=self.none_label,
+            shape=shape,
         )
 
 
@@ -492,11 +496,11 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
             raise ValueError(f"{name}: grouped choices {groups} are not supported")
         return [(_choice_key(key), str(label)) for key, label in entries]
 
-    def offers_none(self, name: str) -> bool:
+    def offers_none(self, name: PostedName) -> bool:
         has_empty = any(key == "" for key, _ in self._fixed_choices(name))
         return has_empty and not self.is_required
 
-    def render(self, name, value, attrs=None, renderer=None):
+    def render(self, name, value, attrs=None, renderer=None, *, shape="full"):
         if isinstance(value, (list, tuple)):
             raise TypeError(f"{name}: one value only; multi-select is unsupported")
         choices = self._fixed_choices(name)
@@ -513,6 +517,7 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
             selected=[option for option in options if option["value"] == held],
             options=options,
             none_label=empty[0] if empty and not self.is_required else None,
+            shape=shape,
         )
 
 
@@ -550,26 +555,34 @@ class Keep(Enum):
 
 KEEP: Final = Keep.KEEP
 
-type Kept[T] = T | Keep
-
-#: Its own, and Django's writes.
+#: The wrapper's writable attributes.
 _WRAPPER_OWNED = frozenset(
-    {"widget", "none_label", "unset", "attrs", "is_required", "is_localized", "choices"}
+    {
+        "widget",
+        "none_label",
+        "unset",
+        "hosted",
+        "attrs",
+        "is_required",
+        "is_localized",
+        "choices",
+    }
 )
 
 #: Native controls a ⊘ can join.
 _UNSET_NATIVE = (forms.TextInput, forms.NumberInput, forms.Textarea, forms.Select)
+#: What the ⊘ checkbox posts.
+_UNSET_POSTED = "1"
 
 
 class UnsetWidget(forms.Widget):
     """A widget joined to a ⊘ stating none."""
 
     component_media: ClassVar[Media] = Media(js=("dist/elements/unset-field.js",))
-    requires_form: ClassVar[type[forms.BaseForm]]
 
     def __init__(self, widget: forms.Widget, *, none_label: NoneLabel, attrs=None):
         super().__init__(attrs)
-        if isinstance(widget, SearchSelectMultiple) or getattr(
+        if isinstance(widget, (SearchSelectMultiple, forms.SelectMultiple)) or getattr(
             widget, "multi_select", False
         ):
             raise TypeError("⊘ joins a single value, not a multi-select")
@@ -582,18 +595,13 @@ class UnsetWidget(forms.Widget):
             raise TypeError("⊘ does not join a picker other fields drive")
         self.widget = widget
         self.none_label = none_label
-        #: Set by the form from its data.
+        #: The form refreshes both from its data.
         self.unset = False
+        self.hosted = False
 
     def __setattr__(self, name: str, value: object) -> None:
-        # Silently lost on the wrapper otherwise.
-        inner = self.__dict__.get("widget")
-        if (
-            inner is not None
-            and name not in _WRAPPER_OWNED
-            and name not in self.__dict__
-            and name in vars(inner)
-        ):
+        # Inner-widget settings would vanish here.
+        if name not in _WRAPPER_OWNED:
             raise AttributeError(f"set {name!r} on the inner widget, `.widget`")
         super().__setattr__(name, value)
 
@@ -623,11 +631,17 @@ class UnsetWidget(forms.Widget):
     def use_required_attribute(self, initial) -> bool:
         return False
 
-    def unset_in(self, data, name: str) -> bool:
+    def _require_host(self, name: PostedName) -> None:
+        # Elsewhere keep and none clean alike.
+        if not self.hosted:
+            raise TypeError(f"{name}: ⊘ needs an UnsetFieldsForm")
+
+    def unset_in(self, data, name: PostedName) -> bool:
         """Whether ``data`` states none for ``name``."""
-        return bool(data.get(unset_input_name(name)))
+        return data.get(unset_input_name(name)) == _UNSET_POSTED
 
     def value_from_datadict(self, data, files, name):
+        self._require_host(name)
         if self.unset_in(data, name):
             return None
         return self.widget.value_from_datadict(data, files, name)
@@ -638,20 +652,15 @@ class UnsetWidget(forms.Widget):
         )
 
     def render(self, name, value, attrs=None, renderer=None):
-        if self.is_required:
-            raise ValueError(f"{name}: an empty required field cannot keep")
-        self.widget.is_required = False
+        self._require_host(name)
         inner = self.widget
-        if isinstance(inner, _SearchSelectAdapter) and inner.offers_none(name):
-            raise ValueError(f"{name}: ⊘ states none; the picker offers none too")
         # Field attrs (maxlength) land here.
         merged = self.build_attrs(self.attrs, attrs)
         input_id = merged.get("id", "")
 
         def field(shape: ButtonShape) -> Node:
             if isinstance(inner, _SearchSelectAdapter):
-                inner.shape = shape
-                return Safe(inner.render(name, value, merged, renderer))
+                return Safe(inner.render(name, value, merged, renderer, shape=shape))
             shaped = native_control_class(inner, shape)
             own = inner.attrs.get("class", "")
             return Safe(
@@ -674,22 +683,52 @@ class UnsetWidget(forms.Widget):
         )
 
 
+def _param_fields(widget: forms.Widget) -> set[str]:
+    """Sibling fields a picker's params read."""
+    params = getattr(widget, "params", None) or {}
+    return {
+        source["field"]
+        for source in params.values()
+        if isinstance(source, dict) and "field" in source
+    }
+
+
 class UnsetFieldsForm(forms.Form):
     """Cleans ⊘ fields: value, empty (none), ``KEEP``."""
 
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-        for name, widget in self._unset_widgets():
+    def __getitem__(self, name: str) -> forms.BoundField:
+        self._unset_widgets()
+        return super().__getitem__(name)
+
+    def _unset_widgets(self) -> list[tuple[str, UnsetWidget]]:
+        """Checked, and synced with the data."""
+        # Per call: fields may arrive late.
+        found = []
+        for name, field in self.fields.items():
+            widget = field.widget
+            if not isinstance(widget, UnsetWidget):
+                continue
+            if field.required:
+                raise ValueError(f"{name}: an empty required field cannot keep")
+            inner = widget.widget
+            inner.is_required = False
+            inner.is_localized = widget.is_localized
+            if isinstance(inner, _SearchSelectAdapter) and inner.offers_none(name):
+                raise ValueError(f"{name}: ⊘ states none; the picker offers none too")
+            widget.hosted = True
             widget.unset = self.is_bound and widget.unset_in(
                 self.data, self.add_prefix(name)
             )
-
-    def _unset_widgets(self) -> list[tuple[str, UnsetWidget]]:
-        return [
-            (name, field.widget)
-            for name, field in self.fields.items()
-            if isinstance(field.widget, UnsetWidget)
-        ]
+            found.append((name, widget))
+        # Params may name the posted field.
+        unset_names = {name for name, _ in found} | {
+            self.add_prefix(name) for name, _ in found
+        }
+        for name, field in self.fields.items():
+            # A pressed field hides its value.
+            if driven := _param_fields(field.widget) & unset_names:
+                raise ValueError(f"{name}: its params read ⊘ field {min(driven)!r}")
+        return found
 
     def clean(self) -> dict[str, Any]:
         cleaned = super().clean() or {}
@@ -699,9 +738,6 @@ class UnsetFieldsForm(forms.Form):
             if cleaned[name] in self.fields[name].empty_values:
                 cleaned[name] = KEEP
         return cleaned
-
-
-UnsetWidget.requires_form = UnsetFieldsForm
 
 
 class DatePickerWidget(forms.Widget):

@@ -146,6 +146,26 @@ def test_pressing_again_posts_the_value(live_server, page: Page, console_errors)
 
 
 @HARNESS
+def test_a_pressed_picker_ignores_its_clear_and_box(
+    live_server, page: Page, console_errors
+):
+    _open(page, live_server)
+    toggle = page.get_by_role("button", name="No letter")
+    toggle.click()
+    clear = page.locator("search-select[name='letter'] [data-search-select-clear]")
+    expect(clear).to_be_hidden()
+    clear.dispatch_event("click")
+    _search(page).click(force=True)
+    expect(page.get_by_role("option", name="Bravo")).to_be_hidden()
+    toggle.click()
+    expect(_search(page)).to_have_value("Alpha")
+
+    _submit(page)
+    assert page.inner_text("#letter") == "'a'"
+    assert console_errors == []
+
+
+@HARNESS
 def test_an_emptied_field_keeps(live_server, page: Page, console_errors):
     _open(page, live_server)
     page.locator("textarea[name='note']").fill("")

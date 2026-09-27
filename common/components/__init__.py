@@ -281,7 +281,7 @@ from common.components.theme import ThemeSetting, ThemeToggle
 from common.components.time_zone_row import TimeZoneRow
 from common.components.toast import ToastStack
 from common.components.unset_field import (
-    UNSET_SUFFIX,
+    PostedName,
     UnsetField,
     unset_input_name,
 )
@@ -321,7 +321,6 @@ __all__ = [
     "SEGMENTED_FIELD_CLASS",
     "SELECTION_CHECKBOX_CLASS",
     "SELECTION_STATEMENT_FIELD",
-    "UNSET_SUFFIX",
     "A",
     "AccountMenu",
     "AddForm",
@@ -454,6 +453,7 @@ __all__ = [
     "Popover",
     "PopoverIf",
     "PopupKind",
+    "PostedName",
     "PresetSelect",
     "PriceConverted",
     "PurchasePrice",

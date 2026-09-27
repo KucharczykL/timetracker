@@ -16,6 +16,7 @@ from games.forms import (
     KEEP,
     TEXTAREA_CLASS,
     ChoiceSearchSelectWidget,
+    PrimitiveWidgetsMixin,
     SearchSelectWidget,
     UnsetFieldsForm,
     UnsetWidget,
@@ -205,8 +206,10 @@ def test_form_fields_refuse_a_plain_form():
             required=False, widget=UnsetWidget(forms.Textarea(), none_label="No note")
         )
 
-    with pytest.raises(ValueError, match="UnsetFieldsForm"):
+    with pytest.raises(TypeError, match="UnsetFieldsForm"):
         FormFields(PlainForm())
+    with pytest.raises(TypeError, match="UnsetFieldsForm"):
+        PlainForm(QueryDict("note=")).is_valid()
 
 
 def test_the_label_targets_the_inner_control():
@@ -279,6 +282,7 @@ def test_a_fixed_choice_picker_with_an_empty_choice_is_refused():
     [
         forms.CheckboxInput(),
         forms.HiddenInput(),
+        forms.SelectMultiple(choices=LETTERS),
         SearchSelectWidget(
             search_url="/x/", options_resolver=_device_options, multi_select=True
         ),
@@ -304,6 +308,8 @@ def test_a_write_meant_for_the_inner_widget_is_refused():
     )
     with pytest.raises(AttributeError, match=".widget"):
         widget.placeholder = "Keep: mixed"  # type: ignore[attr-defined]
+    with pytest.raises(AttributeError, match=".widget"):
+        widget.input_type = "email"  # type: ignore[attr-defined]
     widget.widget.placeholder = "Keep: mixed"
     widget.attrs["placeholder"] = "fine"
 
@@ -335,3 +341,93 @@ def test_form_instances_do_not_share_the_inner_widget():
     assert first_widget.widget is not second_widget.widget
     copied = copy.deepcopy(first_widget)
     assert copied.widget is not first_widget.widget
+
+
+# ── reviewer-found paths ─────────────────────────────────────────────────────
+
+
+class DynamicForm(UnsetFieldsForm):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.fields["note"] = forms.CharField(
+            required=False, widget=UnsetWidget(forms.Textarea(), none_label="No note")
+        )
+
+
+def test_a_field_added_after_init_states_none():
+    form = DynamicForm(QueryDict("note=Left&note-unset=1"))
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["note"] == ""
+    assert "checked" in _checkbox(str(FormFields(form)))
+
+
+def test_only_the_posted_one_presses():
+    form = DynamicForm(QueryDict("note=Kept&note-unset=0"))
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["note"] == "Kept"
+
+
+def test_zero_is_a_value_not_keep():
+    class CountForm(UnsetFieldsForm):
+        count = forms.IntegerField(
+            required=False,
+            widget=UnsetWidget(forms.NumberInput(), none_label="No count"),
+        )
+
+    form = CountForm(QueryDict("count=0"))
+    assert form.is_valid(), form.errors
+    assert form.cleaned_data["count"] == 0
+
+
+def test_a_native_select_gets_its_choices_and_shape():
+    field = forms.ChoiceField(
+        required=False,
+        choices=LETTERS,
+        widget=UnsetWidget(forms.Select(), none_label="No letter"),
+    )
+    html = _render(field)
+    select = re.search(r"<select[^>]*>", html)
+    assert select is not None
+    assert "rounded-s-base" in select.group(0)
+    assert "Bravo" in html
+
+
+def test_the_mixin_leaves_one_corner_class():
+    class MixedForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
+        note = forms.CharField(
+            required=False, widget=UnsetWidget(forms.Textarea(), none_label="No note")
+        )
+
+    textarea = re.search(r"<textarea[^>]*>", str(FormFields(MixedForm())))
+    assert textarea is not None
+    assert "rounded-s-base" in textarea.group(0)
+    assert "rounded-base" not in textarea.group(0)
+
+
+def test_an_embedded_unset_field_carries_the_script():
+    class HostForm(UnsetFieldsForm):
+        host = forms.CharField(required=False)
+        note = forms.CharField(
+            required=False, widget=UnsetWidget(forms.Textarea(), none_label="No note")
+        )
+
+    rendered = FormFields(HostForm(), embedded={"note": "host"})
+    assert UNSET_SCRIPT in collect_media(rendered).js
+
+
+def test_a_picker_reading_a_toggled_field_is_refused():
+    class DrivenForm(UnsetFieldsForm):
+        note = forms.CharField(
+            required=False, widget=UnsetWidget(forms.Textarea(), none_label="No note")
+        )
+        pick = forms.CharField(
+            required=False,
+            widget=SearchSelectWidget(
+                search_url="/x/",
+                options_resolver=_device_options,
+                params={"note": {"field": "note"}},
+            ),
+        )
+
+    with pytest.raises(ValueError, match="params read"):
+        DrivenForm(QueryDict("")).is_valid()

@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
-import { beforeEach, expect, it } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 
 import "./unset-field.js";
-import type { UnsetFieldChange } from "./unset-field.js";
+import type { UnsetFieldChangeDetail } from "./unset-field.js";
 
 beforeEach(() => {
   document.body.innerHTML = "";
@@ -90,9 +90,9 @@ it("leaves a control the page disabled disabled", () => {
 
 it("announces each press", () => {
   mount(TEXTAREA);
-  const events: UnsetFieldChange[] = [];
+  const events: UnsetFieldChangeDetail[] = [];
   document.addEventListener("unset-field:change", event =>
-    events.push((event as CustomEvent<UnsetFieldChange>).detail),
+    events.push((event as CustomEvent<UnsetFieldChangeDetail>).detail),
   );
   toggle().click();
   toggle().click();
@@ -123,4 +123,24 @@ it("binds once across a DOM move", () => {
   host.append(element);
   toggle().click();
   expect(toggle().getAttribute("aria-pressed")).toBe("true");
+});
+
+it("on a select, empties and restores the choice", () => {
+  mount(`<select name="letter"><option value="a">A</option><option value="b" selected>B</option></select>`);
+  const select = document.querySelector<HTMLSelectElement>("select")!;
+  toggle().click();
+  expect(select.value).toBe("");
+  expect(select.disabled).toBe(true);
+  toggle().click();
+  expect(select.value).toBe("b");
+});
+
+it("says so and stays unpressed when the field has no control", () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  mount(`<input type="hidden" name="note" value="x">`);
+  toggle().click();
+  expect(error).toHaveBeenCalledOnce();
+  expect(toggle().getAttribute("aria-pressed")).toBe("false");
+  expect(state().checked).toBe(false);
+  error.mockRestore();
 });

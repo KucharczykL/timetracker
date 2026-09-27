@@ -728,8 +728,9 @@ Submodules re-exported via `common/components/__init__.py`:
   form's "none" apart from "keep", which an empty field states. Forms reach it
   through `UnsetWidget(widget, none_label=...)` in an `UnsetFieldsForm`, which
   cleans each such field to a value, its empty value (none) or `KEEP`; write
-  inner-widget settings to `.widget`. `FormFields` attaches a widget's
-  `component_media` and refuses a widget's `requires_form` mismatch. Spec is
+  inner-widget settings to `.widget`. A widget declaring `component_media`
+  (`MediaWidget`) gets it attached by `FormFields`; no other widget does yet.
+  Spec is
   [The unset field](docs/superpowers/specs/2026-09-27-issue-1302-unset-field-design.md)
 - **`date_range_picker.py`** — `DateRangePicker()`/`DateRangeField()`/
   `DateRangeCalendar()` custom element (wired by `ts/elements/date-range-picker.ts`)
@@ -743,8 +744,7 @@ Submodules re-exported via `common/components/__init__.py`:
   Its posted names and their draft keys live in `timetracker/temporal.py`
   (`TemporalDraftData`, `temporal_input_name()`), which `TemporalWidget` in
   `games/forms.py` reads back. **Widget renders to text, so element's `Media`
-  never bubbles** unless the widget states `component_media` (#1307 moves the
-  rest) — hosting view threads
+  never bubbles** — hosting view threads
   `scripts=ModuleScript("dist/elements/temporal-field.js")`, as
   `purchase.py`/`playthrough.py` already do for date picker. Both hosting pages in
   `games/views/game.py`: Add Game and Edit Game, which host same Editions area and

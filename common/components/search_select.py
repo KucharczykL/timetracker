@@ -128,7 +128,7 @@ class OptionGroup(NamedTuple):
 
 
 def _box_class(shape: ButtonShape) -> str:
-    """One bordered field box, every personality."""
+    """Field-box classes, rounding ``shape``'s corners."""
     return (
         "flex flex-wrap items-center gap-1 px-3 py-1 min-h-control "
         f"{SHAPE_CLASSES[shape]} "
