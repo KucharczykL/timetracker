@@ -3,6 +3,7 @@ import datetime
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from enum import Enum
 from functools import partial
 from typing import TYPE_CHECKING, Any, ClassVar, Final, NamedTuple, cast
 from zoneinfo import ZoneInfo
@@ -21,18 +22,24 @@ from common.components import (
     DatePicker,
     DateTimeCopyTarget,
     DateTimePicker,
+    Media,
     NoneLabel,
+    Safe,
     SearchSelect,
     SearchSelectOption,
     TemporalCopySource,
     TemporalField,
     TimeZoneRow,
+    UnsetField,
     render,
     searchselect_selected,
+    unset_input_name,
 )
 from common.components.core import Node
 from common.components.elements import Fieldset
 from common.components.primitives import (
+    SHAPE_CLASSES,
+    ButtonShape,
     Checkbox,
     Input,
     Label,
@@ -98,9 +105,9 @@ _DISABLED_CONTROL = DISABLED_CONTROL_CLASS
 # text-type-input owns the 16px flat size — 16px everywhere stops iOS
 # Safari auto-zooming focused inputs (#427) and needs no responsive pair.
 # text-heading is the colour; placeholder:text-body the placeholder colour.
-INPUT_CLASS = (
+_INPUT_LOOK = (
     "bg-neutral-secondary-medium border border-default-medium text-heading "
-    "text-type-input rounded-base focus:ring-brand focus:border-brand block w-full "
+    "text-type-input focus:ring-brand focus:border-brand block w-full "
     f"px-3 min-h-control shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
 # No horizontal padding here: @tailwindcss/forms (base strategy) styles every
@@ -110,19 +117,35 @@ INPUT_CLASS = (
 # pulling the right padding down so option text slides under the chevron (the old
 # px-3 did exactly this on narrow selects, e.g. the field-comparison operator
 # select). So set the shared control height and let the plugin own the horizontal.
-SELECT_CLASS = (
+_SELECT_LOOK = (
     "w-full min-h-control bg-neutral-secondary-medium border border-default-medium "
-    "text-heading text-type-input rounded-base focus:ring-brand focus:border-brand "
+    "text-heading text-type-input focus:ring-brand focus:border-brand "
     f"shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
 # A textarea is multiline: it keeps its own vertical padding and is excluded
 # from the min-h-control single-height scale.
-TEXTAREA_CLASS = (
+_TEXTAREA_LOOK = (
     "bg-neutral-secondary-medium border border-default-medium text-heading "
-    "text-type-input rounded-base focus:ring-brand focus:border-brand block w-full "
+    "text-type-input focus:ring-brand focus:border-brand block w-full "
     "px-3 py-2.5 "  # control-ok: multiline textarea keeps its own vertical padding
     f"shadow-xs placeholder:text-body {_DISABLED_CONTROL}"
 )
+
+
+def native_control_class(widget: forms.Widget, shape: ButtonShape = "full") -> str:
+    """A native control's classes, rounding ``shape``'s corners."""
+    if isinstance(widget, forms.Select):
+        look = _SELECT_LOOK
+    elif isinstance(widget, forms.Textarea):
+        look = _TEXTAREA_LOOK
+    else:
+        look = _INPUT_LOOK
+    return f"{look} {SHAPE_CLASSES[shape]}".strip()
+
+
+INPUT_CLASS = native_control_class(forms.TextInput())
+SELECT_CLASS = native_control_class(forms.Select())
+TEXTAREA_CLASS = native_control_class(forms.Textarea())
 
 
 class PrimitiveCheckboxWidget(forms.CheckboxInput):
@@ -178,17 +201,13 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
                 TemporalWidget,
                 _ChoiceListWidget,
                 HoursMinutesWidget,
+                # Shapes its own control.
+                UnsetWidget,
             ),
         ):
             continue
-        if isinstance(widget, forms.Select):
-            control_class = SELECT_CLASS
-        elif isinstance(widget, forms.Textarea):
-            control_class = TEXTAREA_CLASS
-        else:
-            control_class = INPUT_CLASS
         existing = widget.attrs.get("class", "")
-        widget.attrs["class"] = f"{existing} {control_class}".strip()
+        widget.attrs["class"] = f"{existing} {native_control_class(widget)}".strip()
 
 
 class PrimitiveWidgetsMixin:
@@ -323,6 +342,7 @@ class _SearchSelectAdapter(forms.Widget):
         self.placeholder = placeholder
         self.autofocus = autofocus
         self.clearable = clearable
+        self.shape: ButtonShape = "full"
 
     def _render(self, name, attrs, **component) -> str:
         input_id = (attrs or {}).get("id", "")
@@ -337,12 +357,17 @@ class _SearchSelectAdapter(forms.Widget):
                 clear_description_id=field_label_id(input_id) if input_id else None,
                 # Panel opens through the shared attachMenu engine.
                 host_dropdown=True,
+                shape=self.shape,
                 **component,
             )
         )
 
     def value_from_datadict(self, data, files, name):
         return data.get(name)
+
+    def offers_none(self, name: str) -> bool:
+        """Whether ``render`` pins a none row."""
+        return False
 
 
 class SearchSelectWidget(_SearchSelectAdapter):
@@ -392,6 +417,9 @@ class SearchSelectWidget(_SearchSelectAdapter):
         if isinstance(value, (list, tuple)):
             return [v for v in value if v not in (None, "")]
         return [value] if value not in (None, "") else []
+
+    def offers_none(self, name: str) -> bool:
+        return bool(self.none_label)
 
     def render(self, name, value, attrs=None, renderer=None):
         if self.none_label and self.is_required:
@@ -464,6 +492,10 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
             raise ValueError(f"{name}: grouped choices {groups} are not supported")
         return [(_choice_key(key), str(label)) for key, label in entries]
 
+    def offers_none(self, name: str) -> bool:
+        has_empty = any(key == "" for key, _ in self._fixed_choices(name))
+        return has_empty and not self.is_required
+
     def render(self, name, value, attrs=None, renderer=None):
         if isinstance(value, (list, tuple)):
             raise TypeError(f"{name}: one value only; multi-select is unsupported")
@@ -508,6 +540,176 @@ class SearchSelectMultiple(SearchSelectWidget):
         if hasattr(data, "getlist"):
             return data.getlist(name)
         return data.get(name)
+
+
+class Keep(Enum):
+    """An empty ⊘ field: leave the rows as they are."""
+
+    KEEP = "keep"
+
+
+KEEP: Final = Keep.KEEP
+
+type Kept[T] = T | Keep
+
+#: The wrapper's own, and what Django writes onto a field's widget.
+_WRAPPER_OWNED = frozenset(
+    {"widget", "none_label", "unset", "attrs", "is_required", "is_localized", "choices"}
+)
+
+#: Native controls a ⊘ joins; the element empties their value.
+_UNSET_NATIVE = (forms.TextInput, forms.NumberInput, forms.Textarea, forms.Select)
+
+
+class UnsetWidget(forms.Widget):
+    """A widget joined to a ⊘ that states none.
+
+    Posted ``<name>-unset`` wins over a value left in the field. The form
+    must be an :class:`UnsetFieldsForm`, which tells keep from none.
+    """
+
+    component_media: ClassVar[Media] = Media(js=("dist/elements/unset-field.js",))
+    requires_form: ClassVar[type[forms.BaseForm]]
+
+    def __init__(self, widget: forms.Widget, *, none_label: NoneLabel, attrs=None):
+        super().__init__(attrs)
+        if isinstance(widget, SearchSelectMultiple) or getattr(
+            widget, "multi_select", False
+        ):
+            raise TypeError("⊘ joins a single value, not a multi-select")
+        if not isinstance(widget, (_SearchSelectAdapter, *_UNSET_NATIVE)):
+            raise TypeError(f"⊘ does not join {type(widget).__name__}")
+        # These rewrite a disabled picker's value behind the element.
+        if getattr(widget, "params", None) or getattr(
+            widget, "commit_sole_option", False
+        ):
+            raise TypeError("⊘ does not join a picker other fields drive")
+        self.widget = widget
+        self.none_label = none_label
+        #: Set by the form from its data.
+        self.unset = False
+
+    def __setattr__(self, name: str, value: object) -> None:
+        # Silently lost on the wrapper otherwise.
+        inner = self.__dict__.get("widget")
+        if (
+            inner is not None
+            and name not in _WRAPPER_OWNED
+            and name not in self.__dict__
+            and name in vars(inner)
+        ):
+            raise AttributeError(f"set {name!r} on the inner widget, `.widget`")
+        super().__setattr__(name, value)
+
+    def __deepcopy__(self, memo):
+        copied = super().__deepcopy__(memo)
+        copied.widget = copy.deepcopy(self.widget, memo)
+        return copied
+
+    # A ChoiceField writes its choices here.
+    @property
+    def choices(self):
+        return getattr(self.widget, "choices", None)
+
+    @choices.setter
+    def choices(self, value) -> None:
+        # Only these read them.
+        if isinstance(self.widget, (forms.Select, ChoiceSearchSelectWidget)):
+            self.widget.choices = value
+
+    @property
+    def needs_multipart_form(self) -> bool:  # type: ignore[override]
+        return self.widget.needs_multipart_form
+
+    def id_for_label(self, id_):
+        return self.widget.id_for_label(id_)
+
+    def use_required_attribute(self, initial) -> bool:
+        return False
+
+    def unset_in(self, data, name: str) -> bool:
+        """Whether ``data`` states none for ``name``."""
+        return bool(data.get(unset_input_name(name)))
+
+    def value_from_datadict(self, data, files, name):
+        if self.unset_in(data, name):
+            return None
+        return self.widget.value_from_datadict(data, files, name)
+
+    def value_omitted_from_data(self, data, files, name) -> bool:
+        return unset_input_name(name) not in data and (
+            self.widget.value_omitted_from_data(data, files, name)
+        )
+
+    def render(self, name, value, attrs=None, renderer=None):
+        if self.is_required:
+            raise ValueError(f"{name}: an empty required field cannot keep")
+        self.widget.is_required = False
+        inner = self.widget
+        if isinstance(inner, _SearchSelectAdapter) and inner.offers_none(name):
+            raise ValueError(f"{name}: ⊘ states none; the picker offers none too")
+        # The field states its attrs (maxlength) on this wrapper.
+        merged = self.build_attrs(self.attrs, attrs)
+        input_id = merged.get("id", "")
+
+        def field(shape: ButtonShape) -> Node:
+            if isinstance(inner, _SearchSelectAdapter):
+                inner.shape = shape
+                return Safe(inner.render(name, value, merged, renderer))
+            shaped = native_control_class(inner, shape)
+            own = inner.attrs.get("class", "")
+            return Safe(
+                inner.render(
+                    name,
+                    value,
+                    {**merged, "class": f"{own} {shaped}".strip()},
+                    renderer,
+                )
+            )
+
+        return render(
+            UnsetField(
+                name=name,
+                none_label=self.none_label,
+                field=field,
+                unset=self.unset,
+                describedby=field_label_id(input_id) or None,
+            )
+        )
+
+
+class UnsetFieldsForm(forms.Form):
+    """Cleans each ⊘ field to a value, none, or ``KEEP``.
+
+    None is the field's own empty value: ``None`` for a model choice,
+    ``""`` for text. A ``clean_<name>`` sees that empty value for both.
+    """
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        for name, widget in self._unset_widgets():
+            widget.unset = self.is_bound and widget.unset_in(
+                self.data, self.add_prefix(name)
+            )
+
+    def _unset_widgets(self) -> list[tuple[str, UnsetWidget]]:
+        return [
+            (name, field.widget)
+            for name, field in self.fields.items()
+            if isinstance(field.widget, UnsetWidget)
+        ]
+
+    def clean(self) -> dict[str, Any]:
+        cleaned = super().clean() or {}
+        for name, widget in self._unset_widgets():
+            if name not in cleaned or widget.unset:
+                continue
+            if cleaned[name] in self.fields[name].empty_values:
+                cleaned[name] = KEEP
+        return cleaned
+
+
+UnsetWidget.requires_form = UnsetFieldsForm
 
 
 class DatePickerWidget(forms.Widget):

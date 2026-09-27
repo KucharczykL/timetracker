@@ -624,6 +624,16 @@ register_element("search-select", "SearchSelect", SearchSelectProps)
 _SearchSelect = custom_element_builder("search-select")
 
 
+class UnsetFieldProps(TypedDict):
+    #: The field's posted name; the checkbox adds ``-unset``.
+    name: str
+    none_label: str
+
+
+register_element("unset-field", "UnsetField", UnsetFieldProps)
+_UnsetField = custom_element_builder("unset-field")
+
+
 class QuickFilterBarProps(TypedDict):
     apply_url: str  # list URL a facet change navigates to (#197)
     per_page: str  # explicit override; "" means inherit
