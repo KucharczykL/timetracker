@@ -1,4 +1,4 @@
-"""A SearchSelect over a form field's fixed choices."""
+"""SearchSelect over a field's fixed choices."""
 
 import pytest
 from django import forms

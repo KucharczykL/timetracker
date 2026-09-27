@@ -1,8 +1,4 @@
-"""A fixed-choice SearchSelect in a real browser, posting a real form.
-
-One field holds none through its empty choice; the other declares none,
-so its × leaves the key out, which a bulk form reads as "leave as it is".
-"""
+"""Fixed-choice SearchSelect posting a real form."""
 
 import pytest
 from django import forms
@@ -60,8 +56,7 @@ def letter_page_view(request: HttpRequest) -> HttpResponse:
             ControlButton(type="submit")["Save"],
         ],
         title="Fixed choices harness",
-        # A widget renders to text, so its element's Media never bubbles; an
-        # anonymous page has no navbar to load drop-down.js either.
+        # No bubbling Media, no navbar: load both.
         scripts=Fragment(
             ModuleScript("dist/elements/search-select.js"),
             ModuleScript("dist/elements/drop-down.js"),
@@ -126,7 +121,7 @@ def test_the_keyboard_picks_a_choice(live_server, page: Page, console_errors):
 
     search.click()
     search.fill("")
-    # An empty query highlights the first choice; one step reaches the second.
+    # The first choice starts highlighted.
     page.keyboard.press("ArrowDown")
     page.keyboard.press("Enter")
     expect(search).to_have_value("Bravo")

@@ -303,11 +303,7 @@ PLAYTHROUGH_CREATE_URL = "/api/playthrough/"
 
 
 class _SearchSelectAdapter(forms.Widget):
-    """Django adapter half both form pickers share.
-
-    The only place that knows about Django/forms — the component itself stays
-    reusable outside forms.
-    """
+    """Django half both form pickers share."""
 
     def __init__(
         self,
@@ -324,7 +320,7 @@ class _SearchSelectAdapter(forms.Widget):
 
     def _render(self, name, attrs, **component) -> str:
         input_id = (attrs or {}).get("id", "")
-        # Django widgets must return a safe string; the component is a node.
+        # Widgets return safe strings, not nodes.
         return render(
             SearchSelect(
                 name=name,
@@ -332,9 +328,7 @@ class _SearchSelectAdapter(forms.Widget):
                 autofocus=self.autofocus,
                 clearable=self.clearable,
                 clear_description_id=field_label_id(input_id) if input_id else None,
-                # Host the form combobox in <drop-down behavior="inline-combobox">
-                # so its panel uses the shared attachMenu open/close/position/dismiss
-                # engine (issue #348). The widget's own input stays the trigger.
+                # Panel opens through the shared attachMenu engine.
                 host_dropdown=True,
                 **component,
             )
@@ -345,7 +339,7 @@ class _SearchSelectAdapter(forms.Widget):
 
 
 class SearchSelectWidget(_SearchSelectAdapter):
-    """A `SearchSelect()` that searches a server endpoint."""
+    """A `SearchSelect()` searching a server endpoint."""
 
     def __init__(
         self,
@@ -422,13 +416,9 @@ type LabeledChoice = tuple[ChoiceValue, ChoiceLabel]
 
 
 class ChoiceSearchSelectWidget(_SearchSelectAdapter):
-    """A `SearchSelect()` over a choice field's fixed `choices`.
+    """A `SearchSelect()` over a field's fixed choices."""
 
-    An optional field's `""` choice is the none row; a required
-    field's is Django's prompt, and the widget drops it.
-    """
-
-    #: Django's `ChoiceField` writes any of its choice shapes here.
+    #: Any shape Django's `ChoiceField` writes.
     choices: Any = None
 
     def __init__(
@@ -447,7 +437,7 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
         )
 
     def _fixed_choices(self, name) -> list[LabeledChoice]:
-        # Checked before iterating: iterating runs the queryset.
+        # Before iterating: iteration runs the queryset.
         if self.choices is None or isinstance(self.choices, ModelChoiceIterator):
             raise ValueError(f"{name}: fixed choices only; see host_choices")
         entries = list(self.choices)
@@ -476,7 +466,12 @@ class ChoiceSearchSelectWidget(_SearchSelectAdapter):
 
 
 def host_choices(field: forms.ChoiceField, widget: ChoiceSearchSelectWidget) -> None:
-    """Put `widget` on a built field; Django copies both only at build."""
+    """Put `widget` on an already built field.
+
+    Django copies `choices` and `required` onto the widget only while
+    the field is built, so a widget assigned later renders no options
+    and reads as optional.
+    """
     field.widget = widget
     widget.choices = field.choices
     widget.is_required = field.required
