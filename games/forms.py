@@ -18,6 +18,7 @@ from common.components import (
     DatePicker,
     DateTimeCopyTarget,
     DateTimePicker,
+    NoneLabel,
     SearchSelect,
     SearchSelectOption,
     TemporalCopySource,
@@ -323,10 +324,12 @@ class SearchSelectWidget(forms.Widget):
         placeholder="Search…",
         autofocus=False,
         clearable: bool = True,
+        none_label: NoneLabel | None = None,
         attrs=None,
     ):
         super().__init__(attrs)
         self.clearable = clearable
+        self.none_label = none_label
         self.search_url = search_url
         self.options_resolver = options_resolver
         self.create_url = create_url
@@ -349,6 +352,8 @@ class SearchSelectWidget(forms.Widget):
         return [value] if value not in (None, "") else []
 
     def render(self, name, value, attrs=None, renderer=None):
+        if self.none_label and self.is_required:
+            raise ValueError(f"{name}: a required field holds no none")
         selected = searchselect_selected(self._values(value), self.options_resolver)
         input_id = (attrs or {}).get("id", "")
         # Django widgets must return a safe string; the component is a node.
@@ -370,6 +375,7 @@ class SearchSelectWidget(forms.Widget):
                 id=input_id,
                 autofocus=self.autofocus,
                 clearable=self.clearable,
+                none_label=self.none_label,
                 clear_description_id=field_label_id(input_id) if input_id else None,
                 # Host the form combobox in <drop-down behavior="inline-combobox">
                 # so its panel uses the shared attachMenu open/close/position/dismiss
@@ -950,6 +956,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
             search_url="/api/devices/search",
             options_resolver=_device_options,
             create_url=DEVICE_CREATE_URL,
+            none_label="No device",
         ),
     )
     note = forms.CharField(required=False, widget=forms.Textarea)
@@ -1201,6 +1208,7 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
             search_url="/api/devices/search",
             options_resolver=_device_options,
             create_url=DEVICE_CREATE_URL,
+            none_label="No device",
         ),
     )
     emulated = forms.BooleanField(required=False)
@@ -1439,6 +1447,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
             search_url="/api/platforms/search",
             options_resolver=_platform_options,
             create_url=PLATFORM_CREATE_URL,
+            none_label="Unspecified",
         ),
     )
     related_game = forms.ModelChoiceField(

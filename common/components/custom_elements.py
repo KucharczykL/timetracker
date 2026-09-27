@@ -616,6 +616,8 @@ class SearchSelectProps(TypedDict):
     always_visible: bool
     prefetch: int
     sync_url: bool
+    #: The pinned none row's label; blank offers none.
+    none_label: str
 
 
 register_element("search-select", "SearchSelect", SearchSelectProps)

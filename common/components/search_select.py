@@ -226,6 +226,9 @@ def _label_slot(text: str, *, extra_class: str = "") -> Node:
 _BLANK_OPTION: SearchSelectOption = {"value": "", "label": "", "data": {}}
 
 
+type NoneLabel = str  # e.g. "No device"
+
+
 class RowKind(Enum):
     """The hook the element reads."""
 
@@ -234,6 +237,8 @@ class RowKind(Enum):
     MODIFIER = "modifier"
     #: Hidden until no label equals the query.
     CREATE = "create"
+    #: Pinned; picking it holds none.
+    NONE = "none"
 
 
 def _option_row(
@@ -258,6 +263,13 @@ def _option_row(
             ("hidden", ""),
         ]
         label = Span(data_label="")
+    elif kind is RowKind.NONE:
+        attributes = [
+            *_option_role_attributes(),
+            ("data-search-select-none-option", ""),
+            ("data-label", option["label"]),
+        ]
+        label = Span()[option["label"]]
     elif kind is RowKind.MODIFIER:
         attributes = [
             *_option_role_attributes(selected),
@@ -420,6 +432,7 @@ def SearchSelect(
     panel: bool = False,
     clearable: bool = True,
     clear_description_id: str | None = None,
+    none_label: NoneLabel | None = None,
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
 
@@ -459,9 +472,13 @@ def SearchSelect(
     correctly so for the preset picker, whose pick is a command and whose box
     clears by design.
 
-    ``clearable``: a trailing × empties query and value.
+    ``clearable``: a trailing × empties query and value; with
+    ``none_label`` it holds none.
     ``clear_description_id``: the ×'s ``aria-describedby`` target.
+    ``none_label``: a pinned row holding none.
     """
+    if none_label and (multi_select or panel):
+        raise ValueError("none_label is single-select and field-hosted only")
     if panel:
         always_visible = True
     if options and option_groups:
@@ -492,6 +509,11 @@ def SearchSelect(
         option = selected[0]
         pills_children.append(_hidden_input(name, option["value"]))
         search_value = option["label"]
+    elif none_label:
+        pills_children.append(
+            Input(type="hidden", name=name, value="", data_search_select_none="")
+        )
+        search_value = none_label
 
     # ── Search box (NO name — the query is never submitted) ──
     search_attrs: list[HTMLAttribute] = [
@@ -543,6 +565,12 @@ def SearchSelect(
             _option_row(option, selected=str(option["value"]) in selected_values)
             for option in options
         ]
+
+    if none_label:
+        option_rows.insert(
+            0,
+            _option_row({"value": "", "label": none_label, "data": {}}, RowKind.NONE),
+        )
 
     # ── Templates the JS clones: a row when results are fetched (or when the
     #    client swaps the inline option set via ``setOptions``), a pill when
@@ -615,6 +643,7 @@ def SearchSelect(
         always_visible="true" if always_visible else "false",
         prefetch=prefetch,
         sync_url="true" if sync_url else "false",
+        none_label=none_label,
         class_=layout.container_class,
     )[*children]
     if not host_dropdown:

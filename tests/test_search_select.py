@@ -17,6 +17,7 @@ from common.components import (
     Pill,
     PresetSelect,
     SearchSelect,
+    SearchSelectOption,
     searchselect_selected,
 )
 from common.components.core import collect_media
@@ -1325,3 +1326,130 @@ def test_filter_pills_keep_their_hooks():
     )
     assert 'data-search-select-type="include"' in html
     assert 'data-search-select-modifier="any"' in html
+
+
+_STEAM_DECK: SearchSelectOption = {"value": "7", "label": "Steam Deck", "data": {}}
+
+
+class NoneLabelSearchSelectTest(unittest.TestCase):
+    """A pinned row holds none."""
+
+    DEVICE = _STEAM_DECK
+
+    @staticmethod
+    def _render(**kwargs) -> str:
+        return str(SearchSelect(name="device", none_label="No device", **kwargs))
+
+    @staticmethod
+    def _first_row(html: str) -> str:
+        options = html[html.index("data-search-select-options") :]
+        return _tag_around(options, 'role="option"')
+
+    def test_none_row_is_the_first_row(self):
+        for kwargs in ({}, {"search_url": "/api/devices/search"}):
+            with self.subTest(**kwargs):
+                row = self._first_row(self._render(options=[self.DEVICE], **kwargs))
+                self.assertIn("data-search-select-none-option", row)
+                self.assertIn('data-label="No device"', row)
+                self.assertNotIn(" id=", row)
+                self.assertNotIn("data-search-select-modifier-option", row)
+
+    def test_nothing_resolved_holds_none(self):
+        html = self._render()
+        hidden = _tag_around(html, "data-search-select-none")
+        self.assertIn('type="hidden"', hidden)
+        self.assertIn('name="device"', hidden)
+        self.assertIn('value=""', hidden)
+        self.assertIn(
+            'value="No device"', _tag_around(html, "data-search-select-search")
+        )
+
+    def test_a_held_value_is_not_none(self):
+        html = self._render(selected=[self.DEVICE])
+        self.assertNotIn("data-search-select-none=", html)
+        self.assertNotIn("data-search-select-none ", html)
+        self.assertIn(
+            'value="Steam Deck"', _tag_around(html, "data-search-select-search")
+        )
+        self.assertIn("data-search-select-none-option", html)
+
+    def test_the_element_states_the_label(self):
+        self.assertTrue(
+            _tag_around(self._render(), 'none-label="No device"').startswith(
+                "<search-select"
+            )
+        )
+
+    def test_without_it_nothing_changes(self):
+        html = str(SearchSelect(name="device"))
+        self.assertNotIn("none-label", html)
+        self.assertNotIn("data-search-select-none", html)
+
+    def test_multi_and_panel_refuse_it(self):
+        for kwargs in ({"multi_select": True}, {"panel": True}):
+            with self.subTest(**kwargs), self.assertRaises(ValueError):
+                self._render(**kwargs)
+
+
+class NoneLabelWidgetTest(unittest.TestCase):
+    """Optional pickers hold none."""
+
+    def test_each_optional_picker_holds_none(self):
+        from games.forms import HistoricalPlaytimeForm, PurchaseForm, SessionForm
+
+        cases = [
+            (SessionForm, "device", "No device"),
+            (HistoricalPlaytimeForm, "device", "No device"),
+            (PurchaseForm, "platform", "Unspecified"),
+        ]
+        for form_class, name, label in cases:
+            with self.subTest(form=form_class.__name__, field=name):
+                html = form_class.base_fields[name].widget.render(
+                    name, None, {"id": f"id_{name}"}
+                )
+                self.assertIn(f'data-label="{label}"', html)
+                self.assertIn("data-search-select-none=", html)
+
+    def test_a_required_field_refuses_it(self):
+        from django import forms
+
+        from games.forms import SearchSelectWidget
+
+        class DeviceForm(forms.Form):
+            device = forms.CharField(
+                widget=SearchSelectWidget(
+                    search_url="/api/devices/search",
+                    options_resolver=lambda values: [],
+                    none_label="No device",
+                ),
+            )
+
+        with self.assertRaises(ValueError):
+            str(DeviceForm()["device"])
+
+    def test_none_and_nothing_picked_both_clean_to_none(self):
+        from games.forms import HistoricalPlaytimeForm, PurchaseForm, SessionForm
+
+        for form_class, name in (
+            (SessionForm, "device"),
+            (HistoricalPlaytimeForm, "device"),
+            (PurchaseForm, "platform"),
+        ):
+            field = form_class.base_fields[name]
+            for data in ({name: ""}, {}):
+                with self.subTest(form=form_class.__name__, data=data):
+                    value = field.widget.value_from_datadict(data, {}, name)
+                    self.assertIsNone(field.clean(value))
+
+    def test_a_value_the_resolver_cannot_find_holds_none(self):
+        from games.forms import SearchSelectWidget
+
+        widget = SearchSelectWidget(
+            search_url="/api/devices/search",
+            options_resolver=lambda values: [],
+            none_label="No device",
+        )
+        widget.is_required = False
+        html = widget.render("device", "gone", {"id": "id_device"})
+        self.assertIn("data-search-select-none=", html)
+        self.assertNotIn('value="gone"', html)

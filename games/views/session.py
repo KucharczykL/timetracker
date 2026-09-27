@@ -445,15 +445,9 @@ def _library_session(request: HttpRequest, session_id: UUID) -> PlayerSession:
 def edit_session(request: HttpRequest, session_id: UUID) -> HttpResponse:
     library = cast(User, request.user).library
     session = _library_session(request, session_id)
-    initial = (
-        {"device": library.preferences.default_device}
-        if session.device_id is None
-        else None
-    )
     form = SessionForm(
         request.POST or None,
         instance=session,
-        initial=initial,
         library=library,
         presentation=date_time_presentation_for_request(request),
     )

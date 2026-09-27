@@ -153,6 +153,8 @@ def test_search_select_clear_meets_min_touch_target_and_a_tap_clears(
     assert box["height"] >= MIN_TOUCH_TARGET, f"height {box['height']} too small"
 
     clear.tap()
-    expect(picker.locator('input[type="hidden"][name="device"]')).to_have_count(0)
-    expect(picker.locator("[data-search-select-search]")).to_have_value("")
+    expect(
+        picker.locator('input[type="hidden"][name="device"][data-search-select-none]')
+    ).to_have_count(1)
+    expect(picker.locator("[data-search-select-search]")).to_have_value("No device")
     expect(note).to_be_focused()

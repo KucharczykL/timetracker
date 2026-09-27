@@ -119,7 +119,7 @@ path**, so verify against `make check` before pushing when possible.
 | Production-like dev | `make dev-prod` (Caddy + Gunicorn/Uvicorn + Django-Q cluster) |
 | Run tests | `make test` (pytest; also runs vitest via its `test-ts` prereq) |
 | Run a subset of tests | `make test ARGS="tests/test_filters.py -k relation -x"` (same for `make test-fast` / `make test-e2e`; a path in `ARGS` replaces the directory those two pin) |
-| Run TypeScript tests | `make test-ts` (vitest over `ts/**/*.test.ts`) |
+| Run TypeScript tests | `make test-ts` (vitest over `ts/**/*.test.ts`; `TS_ARGS="ts/elements/x.test.ts"` narrows it, since `ARGS` reaches pytest) |
 | Squash the migration history | `make squash-migrations ARGS="games 0006"` (Django's tool; old files stay until the deployment records the squash, see [Squashing](docs/migration-squash.md)) |
 | Make / apply migrations | `make makemigrations` (`ARGS="games --name edition_name"` names the file) / `make migrate` (`ARGS="games 0001_squashed_0006_remove_session"` targets one) |
 | CSS (Tailwind) | `make css` |
@@ -706,7 +706,9 @@ Submodules re-exported via `common/components/__init__.py`:
   query alike, a field source being a dependency that re-searches, #1080;
   a trailing × empties query and value in one press and emits
   `search-select:clear` after any `search-select:change`; on by default,
-  `clearable=False` opts out, #1287),
+  `clearable=False` opts out, #1287; `none_label` pins a row that holds
+  none — an empty hidden input, key present — apart from nothing picked,
+  key absent; × then holds none, and the change event states `none`, #1288),
   `FilterSelect()` (include/exclude
   with pinned Any/None modifiers; `layout="panel"` is GitHub-label-picker
   personality for hosting inside dropdown dialog, #315), `ComboboxDropdown()`

@@ -40,8 +40,11 @@ import { followPointer } from "../pointer-follow.js";
 
 //: Every row a person can highlight and pick.
 const NAVIGABLE_ROWS =
-  "[data-search-select-option], [data-search-select-modifier-option], " +
-  "[data-search-select-create]";
+  "[data-search-select-none-option], [data-search-select-option], " +
+  "[data-search-select-modifier-option], [data-search-select-create]";
+
+//: Hidden inputs that carry a value.
+const HELD_VALUE_INPUTS = 'input[type="hidden"]:not([data-search-select-none])';
 
 // The contract for the "search-select:change" CustomEvent this widget emits.
 // Consumers (e.g. add_purchase.ts) import these types — never redefine them.
@@ -51,11 +54,10 @@ export interface SearchSelectOption {
   data: Record<string, string>;
 }
 
-export interface SearchSelectChangeDetail {
-  name: string;
-  values: string[];
-  last: SearchSelectOption | null;
-}
+//: `none: true` is a committed none, never a mid-edit drop.
+export type SearchSelectChangeDetail =
+  | { name: string; values: string[]; last: SearchSelectOption | null; none: false }
+  | { name: string; values: []; last: null; none: true };
 
 // Every × press; follows any change event.
 export interface SearchSelectClearDetail {
@@ -226,6 +228,8 @@ const initWidget = (containerElement: Element) => {
   //: A required field whose list usually holds one row commits it, so
   //: a submit with no pick still posts one.
   const commitSoleOption = props.commitSoleOption;
+  //: Blank, or multi-select, offers no none.
+  const noneLabel = multi ? "" : props.noneLabel;
   //: The hosting form renders a token, so a consumer states no prop.
   //: The prop is for a create row that stands outside a form.
   const csrfToken = (): string =>
@@ -301,11 +305,16 @@ const initWidget = (containerElement: Element) => {
   //: Counts × presses; a create outlived by one selects nothing.
   let clears = 0;
 
+  //: None held, and not yet edited.
+  const holdsNone = (): boolean =>
+    pills.querySelector("input[data-search-select-none]") !== null &&
+    !container._searchSelectDirty;
+
   const syncClearButton = () => {
     if (!clearButton) return;
-    clearButton.hidden = !(
-      pills.querySelector('input[type="hidden"], [data-pill]') || search.value.trim()
-    );
+    clearButton.hidden =
+      holdsNone() ||
+      !(pills.querySelector(HELD_VALUE_INPUTS + ", [data-pill]") || search.value.trim());
   };
   if (statusEl) {
     statusEl.id = `${listboxId}-status`;
@@ -344,7 +353,13 @@ const initWidget = (containerElement: Element) => {
       if (optionRows[i].style.display !== "none") return true;
     }
     if (noResults && !noResults.classList.contains("hidden")) return true;
-    if (options.querySelector("[data-search-select-modifier-option]")) return true;
+    if (
+      options.querySelector(
+        "[data-search-select-modifier-option], [data-search-select-none-option]"
+      )
+    ) {
+      return true;
+    }
     const createRowNode = options.querySelector<HTMLElement>(
       "[data-search-select-create]"
     );
@@ -432,12 +447,18 @@ const initWidget = (containerElement: Element) => {
   };
 
   const autoHighlight = (query: string) => {
-    const visible = getVisibleOptions();
+    const lower = query.toLowerCase();
+    //: A query highlights none on exact label.
+    const visible = getVisibleOptions().filter(
+      row =>
+        !lower ||
+        !row.hasAttribute("data-search-select-none-option") ||
+        (row.getAttribute("data-label") || "").toLowerCase() === lower
+    );
     if (visible.length === 0) {
       clearHighlight();
       return;
     }
-    const lower = query.toLowerCase();
     // 1. Starts-with match
     for (let i = 0; i < visible.length; i++) {
       const label = (visible[i].getAttribute("data-label") || "").toLowerCase();
@@ -472,7 +493,12 @@ const initWidget = (containerElement: Element) => {
     if (createRowNode) {
       highlightOption(createRowNode);
     } else if (!lower) {
-      highlightOption(visible[0]);
+      //: Enter on an empty panel submits, never picks none.
+      const firstRow = visible.find(
+        row => !row.hasAttribute("data-search-select-none-option")
+      );
+      if (firstRow) highlightOption(firstRow);
+      else clearHighlight();
     } else {
       clearHighlight();
     }
@@ -481,7 +507,7 @@ const initWidget = (containerElement: Element) => {
   // Get active values in both form and filter modes
   const getSelectedValues = (): Set<string> => {
     const values = new Set<string>();
-    pills.querySelectorAll<HTMLInputElement>('input[type="hidden"]').forEach(input => {
+    pills.querySelectorAll<HTMLInputElement>(HELD_VALUE_INPUTS).forEach(input => {
       values.add(input.value);
     });
     pills.querySelectorAll<HTMLElement>("[data-pill]").forEach(pill => {
@@ -616,9 +642,11 @@ const initWidget = (containerElement: Element) => {
 
   /** Every label the panel holds, lowercased. */
   const loadedLabels = (): string[] =>
-    Array.from(options.querySelectorAll<HTMLElement>("[data-search-select-option]")).map(
-      row => (row.getAttribute("data-label") ?? "").trim().toLowerCase()
-    );
+    Array.from(
+      options.querySelectorAll<HTMLElement>(
+        "[data-search-select-option], [data-search-select-none-option]"
+      )
+    ).map(row => (row.getAttribute("data-label") ?? "").trim().toLowerCase());
 
   // Equality, not the substring the panel filters with: `PlayStation`
   // beside `PlayStation 4` matches that filter, and a rule built on it
@@ -742,7 +770,12 @@ const initWidget = (containerElement: Element) => {
     if (signature === dependencyValues) return;
     dependencyValues = signature;
     soleDeclined = false;
-    container._searchSelectClear?.();
+    //: None belongs to no parent.
+    if (noneLabel) {
+      if (!holdsNone()) holdNone();
+    } else {
+      container._searchSelectClear?.();
+    }
     hasPrefetched = false;
     if (searchUrl) fetchFromServer(currentQuery());
   };
@@ -960,6 +993,10 @@ const initWidget = (containerElement: Element) => {
           commitCreate();
           return;
         }
+        if (highlightedRow.hasAttribute("data-search-select-none-option")) {
+          pickNone();
+          return;
+        }
         const modifierValue = highlightedRow.getAttribute(
           "data-search-select-modifier-option"
         );
@@ -1010,6 +1047,11 @@ const initWidget = (containerElement: Element) => {
   //    form-mode action button goes out as an event. ──
   options.addEventListener("click", (event) => {
     const target = event.target as Element;
+
+    if (target.closest("[data-search-select-none-option]")) {
+      pickNone();
+      return;
+    }
 
     // Filter: a pinned modifier pseudo-option sets the (exclusive) modifier.
     if (isFilter) {
@@ -1191,10 +1233,30 @@ const initWidget = (containerElement: Element) => {
     syncSelectedStates();
   };
 
+  //: Hold none: an empty value that posts.
+  const holdNone = () => {
+    container._searchSelectClear?.();
+    const input = buildHidden("");
+    input.setAttribute("data-search-select-none", "");
+    pills.appendChild(input);
+    search.value = noneLabel;
+    container._searchSelectLabel = noneLabel;
+    syncUncommitted();
+  };
+
+  //: A person picks none.
+  const pickNone = () => {
+    holdNone();
+    soleDeclined = false;
+    hidePanel();
+    emitNone();
+  };
+
   // Public option swap: replace the pre-rendered (inline, no search-url) option
   // set without a fetch — the comparison widget re-filters a right-operand list
   // client-side as the left column / operator changes (#282). A committed
-  // single-select value that is no longer offered is dropped so it cannot
+  // single-select value that is no longer offered is dropped (to none, where
+  // offered) so it cannot
   // serialize a stale operand; a still-offered value is preserved. Panel
   // visibility is left untouched (no forced open).
   container._searchSelectSetOptions = (items: SearchSelectOption[]) => {
@@ -1207,7 +1269,10 @@ const initWidget = (containerElement: Element) => {
     items.forEach(item => options.insertBefore(buildRow(item), before));
     const selected = getSelectedValues();
     const stillOffered = items.some(item => selected.has(String(item.value)));
-    if (selected.size && !stillOffered) container._searchSelectClear?.();
+    if (selected.size && !stillOffered) {
+      if (noneLabel) holdNone();
+      else container._searchSelectClear?.();
+    }
     filterRows("");
   };
 
@@ -1259,22 +1324,26 @@ const initWidget = (containerElement: Element) => {
 
   const currentValues = (): string[] => {
     return Array.from(
-      pills.querySelectorAll<HTMLInputElement>('input[type="hidden"]')
+      pills.querySelectorAll<HTMLInputElement>(HELD_VALUE_INPUTS)
     ).map(input => input.value);
   };
 
-  const emitChange = (last: SearchSelectOption | null) => {
+  const dispatchChange = (detail: SearchSelectChangeDetail) => {
     syncSelectedStates();
     syncClearButton();
-    const values = currentValues();
-    if (syncUrl) syncToUrl(values);
+    if (syncUrl) syncToUrl(detail.values);
     container.dispatchEvent(
       new CustomEvent<SearchSelectChangeDetail>("search-select:change", {
         bubbles: true,
-        detail: { name, values, last },
+        detail,
       })
     );
   };
+
+  const emitChange = (last: SearchSelectOption | null) =>
+    dispatchChange({ name, values: currentValues(), last, none: false });
+
+  const emitNone = () => dispatchChange({ name, values: [], last: null, none: true });
 
   const syncToUrl = (values: string[]) => {
     const params = new URLSearchParams(window.location.search);
@@ -1314,7 +1383,7 @@ const initWidget = (containerElement: Element) => {
     }
   };
 
-  // ── The clear ×: empties query and value. ──
+  // ── The clear ×: empties query and value, or holds none. ──
   if (clearButton) {
     //: Pointer press keeps focus: no phone keyboard.
     clearButton.addEventListener("mousedown", event => event.preventDefault());
@@ -1341,7 +1410,12 @@ const initWidget = (containerElement: Element) => {
       filterRows("");
       setCreateRow("");
       setNoResults(false);
-      if (heldValue) emitChange(null);
+      if (noneLabel) {
+        holdNone();
+        emitNone();
+      } else if (heldValue) {
+        emitChange(null);
+      }
       container.dispatchEvent(
         new CustomEvent<SearchSelectClearDetail>("search-select:clear", {
           bubbles: true,
@@ -1393,7 +1467,8 @@ const initWidget = (containerElement: Element) => {
     // Only a fresh, empty add form should steal focus and drive the panel open;
     // a pre-committed single-select keeps its label and whatever native focus it
     // got. Snapshot emptiness now — before any focus() runs the flow below.
-    const startedEmpty = !search.value;
+    //: A held none counts as empty.
+    const startedEmpty = !search.value || holdsNone();
     requestAnimationFrame(() => {
       if (!search.isConnected || !startedEmpty) return;
       if (document.activeElement === search) {
@@ -1526,7 +1601,7 @@ export function readSearchSelect(form: HTMLElement): void {
     }
     const pills = container.querySelector<HTMLElement>("[data-search-select-pills]");
     const values = pills
-      ? Array.from(pills.querySelectorAll<HTMLInputElement>('input[type="hidden"]')).map(input => input.value)
+      ? Array.from(pills.querySelectorAll<HTMLInputElement>(HELD_VALUE_INPUTS)).map(input => input.value)
       : [];
     container.setAttribute("data-values", JSON.stringify(values));
   });
@@ -1570,13 +1645,14 @@ export class SearchSelectElement extends HTMLElement {
   }
 
   /** Silently drop the committed selection (hidden inputs, label, query text)
-   *  without firing a change event. No-op until the widget has initialised. */
+   *  without firing a change event. Leaves nothing picked, never none.
+   *  No-op until the widget has initialised. */
   clearSelection(): void {
     (this as SearchSelectContainer)._searchSelectClear?.();
   }
 
   /** Replace the inline option set client-side (no fetch). A committed value no
-   *  longer offered is dropped; a still-offered one is kept. For inline
+   *  longer offered is dropped, to none where offered; a still-offered one is kept. For inline
    *  (no search-url) single-selects whose options are recomputed on the client
    *  — e.g. the field-comparison right operand (#282). No change event fires. */
   setOptions(options: SearchSelectOption[]): void {
