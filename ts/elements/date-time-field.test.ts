@@ -440,3 +440,56 @@ describe("date-time-field", () => {
     expect(hidden(start).value).toBe(valueAfterRemoval);
   });
 });
+
+describe("date-time-field under ⊘", () => {
+  it("empties and freezes, then restores", () => {
+    const { start } = mount("2026-07-27T14:30:41.123456+02:00");
+    const field = start as HTMLElement & { unsetValue(): void; restoreValue(): void };
+    const before = hidden(field).value;
+
+    field.unsetValue();
+    expect(hidden(field).value).toBe("");
+    expect(partInput(field, "year").disabled).toBe(true);
+
+    field.restoreValue();
+    expect(hidden(field).value).toBe(before);
+    expect(partInput(field, "year").disabled).toBe(false);
+  });
+});
+
+describe("date-time-field under ⊘, peers", () => {
+  it("ignores a copied value while unset", () => {
+    const { start } = mount("2026-07-27T14:30:41.123456+02:00");
+    const field = start as HTMLElement & {
+      unsetValue(): void;
+      restoreValue(): void;
+      setValue(value: string): void;
+    };
+    const before = hidden(field).value;
+    field.unsetValue();
+    field.setValue("2020-01-01T00:00:00+00:00");
+    expect(hidden(field).value).toBe("");
+    field.restoreValue();
+    expect(hidden(field).value).toBe(before);
+  });
+});
+
+describe("date-time-field under ⊘, zone moves", () => {
+  it("restores the exact wire in the same zone, re-encodes in another", () => {
+    const { start } = mountWithZoneRow("Asia/Tokyo");
+    fillWholeField(start);
+    const field = start as HTMLElement & { unsetValue(): void; restoreValue(): void };
+    const tokyo = hidden(field).value;
+
+    field.unsetValue();
+    field.restoreValue();
+    expect(hidden(field).value).toBe(tokyo);
+
+    field.unsetValue();
+    changeZone("timestamp_start_timezone", "America/New_York");
+    expect(hidden(field).value).toBe("");
+    field.restoreValue();
+    expect(hidden(field).value).not.toBe(tokyo);
+    expect(hidden(field).value.slice(0, 16)).toBe(tokyo.slice(0, 16));
+  });
+});

@@ -22,8 +22,6 @@ from common.components import (
     ColumnKey,
     Duration,
     FormFields,
-    Fragment,
-    ModuleScript,
     NameWithIcon,
     SessionDeviceSelector,
     TableData,
@@ -341,15 +339,6 @@ def _record_played(request: HttpRequest, game: Game) -> None:
     )
 
 
-#: The scripts the form's widgets need; they render to text, so no Media bubbles.
-SESSION_FORM_SCRIPTS = (
-    "dist/elements/search-select.js",
-    "dist/elements/date-time-field.js",
-    "dist/elements/time-zone-row.js",
-    "dist/elements/date-picker.js",
-)
-
-
 def _session_draft(form: SessionForm, library: UserLibrary) -> SessionDraft:
     """What the valid form states, in the library's calendar."""
     device = form.cleaned_data.get("device")
@@ -374,7 +363,6 @@ def _render_session_form(
             fields=FormFields(form, embedded=SESSION_TIMEZONE_EMBEDS),
         ),
         title=title,
-        scripts=Fragment(*(ModuleScript(path) for path in SESSION_FORM_SCRIPTS)),
         status=status,
     )
 

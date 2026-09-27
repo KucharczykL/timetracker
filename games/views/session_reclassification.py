@@ -20,7 +20,6 @@ from common.components import (
     Div,
     FormFields,
     Fragment,
-    ModuleScript,
     P,
 )
 from common.components.core import Node
@@ -47,7 +46,6 @@ from games.reads.session_organization import (
     organization_counts,
     outside_dates_filter,
 )
-from games.views.historical_playtime_entry import FORM_SCRIPTS
 from games.views.removal import restore_and_return
 from games.views.returns import return_url
 from games.writes.answers import CommandFailed
@@ -130,7 +128,6 @@ def _render_form(
         request,
         AddForm(form, request=request, submit_class="", fields=FormFields(form)),
         title=title,
-        scripts=Fragment(*(ModuleScript(path) for path in FORM_SCRIPTS)),
         status=status,
     )
 

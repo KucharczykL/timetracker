@@ -47,6 +47,7 @@ import {
   TIME_ZONE_ROW_CHANGE_EVENT,
   type TimeZoneRowChangeDetail,
 } from "./time-zone-row-events.js";
+import { UnsetHold, type UnsetTarget } from "./unset-target.js";
 
 export const DATE_TIME_FIELD_CHANGE_EVENT = "date-time-field:change";
 
@@ -90,8 +91,10 @@ function midnightParts(twelveHour: boolean): PartValues {
     : { hour: "00", minute: "00" };
 }
 
-class DateTimeFieldElement extends HTMLElement {
+class DateTimeFieldElement extends HTMLElement implements UnsetTarget {
   private initialized = false;
+  /** The wire and zone a ⊘ kept. */
+  private readonly hold = new UnsetHold<{ wire: string; zone: string | null }>();
   private codec!: DateTimeCodec;
   private zoneFieldName = "";
   private handleZoneRowChange: ((event: Event) => void) | null = null;
@@ -157,8 +160,27 @@ class DateTimeFieldElement extends HTMLElement {
    * the widget knows how to turn a value back into segments.
    */
   setValue(wireValue: string): void {
+    // A field under ⊘ takes no value.
+    if (this.hold.held) return;
     this.codec.adopt(wireValue);
     this.writeParts(this.codec.decode(wireValue));
+  }
+
+  unsetValue(): void {
+    this.hold.hold(
+      this,
+      () => ({ wire: resolveHidden(this)?.value ?? "", zone: this.selectedZone() }),
+      () => this.setValue(""),
+    );
+  }
+
+  restoreValue(): void {
+    this.hold.release(({ wire, zone }) => {
+      this.setValue(wire);
+      // Same zone keeps the exact wire.
+      const hiddenInput = resolveHidden(this);
+      if (hiddenInput && zone === this.selectedZone()) hiddenInput.value = wire;
+    });
   }
 
   private announceChange(): void {

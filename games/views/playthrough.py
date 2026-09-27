@@ -18,8 +18,6 @@ from django.views.decorators.http import require_POST
 from common.components import (
     AddForm,
     ContentContainer,
-    Fragment,
-    ModuleScript,
     QuickFilterBar,
     paginated_table_content,
     parse_filter_dict,
@@ -265,10 +263,6 @@ def add_playthrough(request: HttpRequest, game_id: UUID | None = None) -> HttpRe
         request,
         AddForm(form, request=request),
         title="Add new playthrough",
-        scripts=Fragment(
-            ModuleScript("dist/elements/search-select.js"),
-            ModuleScript("dist/elements/date-picker.js"),
-        ),
         status=refused_status,
     )
 
@@ -471,10 +465,6 @@ def edit_playthrough(request: HttpRequest, playthrough_id: UUID) -> HttpResponse
         request,
         AddForm(form, request=request),
         title="Edit playthrough",
-        scripts=Fragment(
-            ModuleScript("dist/elements/search-select.js"),
-            ModuleScript("dist/elements/date-picker.js"),
-        ),
         status=refused_status,
     )
 

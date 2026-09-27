@@ -1393,6 +1393,8 @@ const initWidget = (containerElement: Element) => {
       hidePanel();
     });
     clearButton.addEventListener("click", () => {
+      // A disabled box takes no clear.
+      if (search.disabled) return;
       const heldValue = currentValues().length > 0;
       const fromFocus = document.activeElement === clearButton;
       cancelPendingSearch();

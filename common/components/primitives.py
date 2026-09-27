@@ -12,7 +12,14 @@ widgets return :class:`Safe`.
 import json
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
-from typing import Literal, NamedTuple, NotRequired, TypedDict
+from typing import (
+    Literal,
+    NamedTuple,
+    NotRequired,
+    Protocol,
+    TypedDict,
+    runtime_checkable,
+)
 
 from django.conf import settings
 from django.http import QueryDict
@@ -1846,6 +1853,24 @@ def _form_field_label(field, label_extra: Node | None = None) -> Node:
     )[label, label_extra]
 
 
+@runtime_checkable
+class MediaWidget(Protocol):
+    """A widget stating its component's media."""
+
+    @property
+    def component_media(self) -> Media: ...
+
+
+def _bound_control(field) -> Node:
+    """A bound field's markup, keeping widget media."""
+    control = Safe(str(field))
+    # Widget text drops its component's media.
+    widget = field.field.widget
+    if isinstance(widget, MediaWidget):
+        control = control.with_media(widget.component_media)
+    return control
+
+
 def _form_field_row(
     field,
     presentation: FormFieldPresentation | None = None,
@@ -1854,7 +1879,7 @@ def _form_field_row(
     presentation = presentation or FormFieldPresentation()
     is_checkbox = getattr(field.field.widget, "input_type", None) == "checkbox"
     label = _form_field_label(field, presentation.label_extra)
-    control: Node = Safe(str(field))
+    control = _bound_control(field)
     if presentation.decorate_control is not None:
         control = presentation.decorate_control(control)
     errors = FieldErrors(field.errors)
@@ -2011,7 +2036,7 @@ def FormFields(
     embedded_by_host: dict[str, list[Node]] = {}
     for embedded_name, host_name in embedded.items():
         embedded_field = form[embedded_name]
-        embed_parts: list[Node] = [Safe(str(embedded_field))]
+        embed_parts: list[Node] = [_bound_control(embedded_field)]
         embed_errors = FieldErrors(embedded_field.errors)
         if embed_errors:
             embed_parts.append(embed_errors)

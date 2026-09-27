@@ -62,7 +62,9 @@ from common.components.custom_elements import (
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
     MICRO_LABEL_CLASS,
+    SHAPE_CLASSES,
     ButtonColor,
+    ButtonShape,
     ControlButton,
     Div,
     FilterWidgetPath,
@@ -125,14 +127,19 @@ class OptionGroup(NamedTuple):
     options: list[SearchSelectOption]
 
 
-# One bordered field box, every personality.
-_BOX_CLASS = (
-    "flex flex-wrap items-center gap-1 px-3 py-1 min-h-control rounded-base "
-    "text-type-body "
-    "bg-neutral-secondary-medium border border-default-medium "
-    "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand "
-    f"{DISABLED_WITHIN_CLASS}"
-)
+def _box_class(shape: ButtonShape) -> str:
+    """Field-box classes, rounding ``shape``'s corners."""
+    return (
+        "flex flex-wrap items-center gap-1 px-3 py-1 min-h-control "
+        f"{SHAPE_CLASSES[shape]} "
+        "text-type-body "
+        "bg-neutral-secondary-medium border border-default-medium "
+        "focus-within:border-brand focus-within:ring-1 focus-within:ring-brand "
+        f"{DISABLED_WITHIN_CLASS}"
+    )
+
+
+_BOX_CLASS = _box_class("full")
 # Anchors the standalone panel and drop-down.
 _CONTAINER_CLASS = "relative block"
 _PILLS_CLASS = "contents"
@@ -433,6 +440,7 @@ def SearchSelect(
     clearable: bool = True,
     clear_description_id: str | None = None,
     none_label: NoneLabel | None = None,
+    shape: ButtonShape = "full",
 ) -> Node:
     """Render the search-select widget. See module docstring for the contract.
 
@@ -476,6 +484,7 @@ def SearchSelect(
     ``none_label`` it holds none.
     ``clear_description_id``: the ×'s ``aria-describedby`` target.
     ``none_label``: a pinned row holding none.
+    ``shape``: the corners the box rounds.
     """
     if none_label and (multi_select or panel):
         raise ValueError("none_label is single-select and field-hosted only")
@@ -622,9 +631,9 @@ def SearchSelect(
         layout=layout,
         marker=marker,
         clear_button=clear_button,
-        box_class=f"{_BOX_CLASS} {_UNCOMMITTED_BOX_CLASS}"
+        box_class=f"{_box_class(shape)} {_UNCOMMITTED_BOX_CLASS}"
         if show_marker
-        else _BOX_CLASS,
+        else _box_class(shape),
     )
     widget = _SearchSelect(
         # The <search-select> element itself is the drop-down's [data-toggle]: it

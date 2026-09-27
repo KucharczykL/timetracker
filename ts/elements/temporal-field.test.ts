@@ -1130,3 +1130,21 @@ describe("temporal-field copy, the cases that bit", () => {
     expect(named(target, "end_year").value).toBe("");
   });
 });
+
+describe("temporal-field under ⊘", () => {
+  it("empties and freezes, then restores", () => {
+    const host = mountDraft({ kind: "date", start_year: "1997" }) as HTMLElement & {
+      unsetValue(): void;
+      restoreValue(): void;
+    };
+    const before = readDraft(host);
+
+    host.unsetValue();
+    expect(named(host, "start_year").value).toBe("");
+    expect(named(host, "start_year").disabled).toBe(true);
+
+    host.restoreValue();
+    expect(readDraft(host)).toEqual(before);
+    expect(named(host, "start_year").disabled).toBe(false);
+  });
+});
