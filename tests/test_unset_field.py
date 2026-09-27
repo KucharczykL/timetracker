@@ -98,7 +98,7 @@ def test_unset_wins_over_an_invalid_value():
         device=str(uuid.uuid7()), device_unset="1", note="x" * 99, note_unset="1"
     )
     assert cleaned == {"device": None, "note": ""}
-    # The note was not unset, so its own rule still runs.
+    # Without ⊘, the note's rule runs.
     form = EditForm(_data(note="x" * 99, note_unset=""))
     assert not form.is_valid()
     assert "note" in form.errors

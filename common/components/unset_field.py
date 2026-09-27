@@ -1,8 +1,4 @@
-"""A field joined to a ⊘ toggle that states none.
-
-Wired by ``ts/elements/unset-field.ts``. The checkbox is the posted state;
-the toggle is its face once the element is defined.
-"""
+"""A field joined to a ⊘ stating none."""
 
 from common.components.core import Node
 from common.components.custom_elements import _UnsetField
@@ -27,7 +23,7 @@ UNSET_SUFFIX = "-unset"
 
 _HIDDEN_UNTIL_DEFINED = "[unset-field:not(:defined)_&]:hidden"
 _HIDDEN_ONCE_DEFINED = "[unset-field:defined_&]:hidden"
-# The dark hover and focus text outrank a bare pressed fill.
+# Dark hover text outranks bare pressed fill.
 _PRESSED_CLASS = (
     "aria-pressed:solid-brand aria-pressed:border-brand dark:aria-pressed:solid-brand"
 )

@@ -552,21 +552,17 @@ KEEP: Final = Keep.KEEP
 
 type Kept[T] = T | Keep
 
-#: The wrapper's own, and what Django writes onto a field's widget.
+#: Its own, and Django's writes.
 _WRAPPER_OWNED = frozenset(
     {"widget", "none_label", "unset", "attrs", "is_required", "is_localized", "choices"}
 )
 
-#: Native controls a ⊘ joins; the element empties their value.
+#: Native controls a ⊘ can join.
 _UNSET_NATIVE = (forms.TextInput, forms.NumberInput, forms.Textarea, forms.Select)
 
 
 class UnsetWidget(forms.Widget):
-    """A widget joined to a ⊘ that states none.
-
-    Posted ``<name>-unset`` wins over a value left in the field. The form
-    must be an :class:`UnsetFieldsForm`, which tells keep from none.
-    """
+    """A widget joined to a ⊘ stating none."""
 
     component_media: ClassVar[Media] = Media(js=("dist/elements/unset-field.js",))
     requires_form: ClassVar[type[forms.BaseForm]]
@@ -579,7 +575,7 @@ class UnsetWidget(forms.Widget):
             raise TypeError("⊘ joins a single value, not a multi-select")
         if not isinstance(widget, (_SearchSelectAdapter, *_UNSET_NATIVE)):
             raise TypeError(f"⊘ does not join {type(widget).__name__}")
-        # These rewrite a disabled picker's value behind the element.
+        # These rewrite a disabled picker's value.
         if getattr(widget, "params", None) or getattr(
             widget, "commit_sole_option", False
         ):
@@ -648,7 +644,7 @@ class UnsetWidget(forms.Widget):
         inner = self.widget
         if isinstance(inner, _SearchSelectAdapter) and inner.offers_none(name):
             raise ValueError(f"{name}: ⊘ states none; the picker offers none too")
-        # The field states its attrs (maxlength) on this wrapper.
+        # Field attrs (maxlength) land here.
         merged = self.build_attrs(self.attrs, attrs)
         input_id = merged.get("id", "")
 
@@ -679,11 +675,7 @@ class UnsetWidget(forms.Widget):
 
 
 class UnsetFieldsForm(forms.Form):
-    """Cleans each ⊘ field to a value, none, or ``KEEP``.
-
-    None is the field's own empty value: ``None`` for a model choice,
-    ``""`` for text. A ``clean_<name>`` sees that empty value for both.
-    """
+    """Cleans ⊘ fields: value, empty (none), ``KEEP``."""
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)

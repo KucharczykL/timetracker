@@ -1855,7 +1855,7 @@ def _form_field_row(
     is_checkbox = getattr(field.field.widget, "input_type", None) == "checkbox"
     label = _form_field_label(field, presentation.label_extra)
     control: Node = Safe(str(field))
-    # A widget renders text, so its component states its media.
+    # Widget text drops its component's media.
     if (media := getattr(field.field.widget, "component_media", None)) is not None:
         control = control.with_media(media)
     if presentation.decorate_control is not None:

@@ -72,7 +72,7 @@ it("on a picker, empties and disables only the search box", () => {
   expect(search.value).toBe("");
   expect(search.placeholder).toBe("No note");
   expect(search.disabled).toBe(true);
-  // The server lets ⊘ win over the value it still posts.
+  // Still posts; the server lets ⊘ win.
   expect(hidden.disabled).toBe(false);
 
   toggle().click();

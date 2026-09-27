@@ -625,7 +625,7 @@ _SearchSelect = custom_element_builder("search-select")
 
 
 class UnsetFieldProps(TypedDict):
-    #: The field's posted name; the checkbox adds ``-unset``.
+    #: The checkbox posts ``<name>-unset``.
     name: str
     none_label: str
 

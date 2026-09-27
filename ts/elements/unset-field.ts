@@ -10,7 +10,7 @@ export interface UnsetFieldChange {
   unset: boolean;
 }
 
-/** What a press changed, so a second press puts it back. */
+/** What a second press puts back. */
 interface Pressed {
   value: string;
   placeholder: string | null;

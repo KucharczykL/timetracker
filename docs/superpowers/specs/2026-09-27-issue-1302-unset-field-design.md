@@ -1,177 +1,82 @@
-# A field that states "none" apart from "leave as it is"
+# The unset field
 
-Issue #1302. Consumer: bulk Edit on the session list (#1211, PR #1285), later
-bulk status/mastered (#1270) and bulk record edits (#1150).
+A bulk form states three things for each field:
 
-## Problem
-
-A bulk form states three things per field:
-
-| State | How it is stated | Posted |
+| State | The person | The form posts |
 |---|---|---|
-| keep (leave as it is) | the field is empty; its placeholder names what is kept | field key empty or absent, no `<name>-unset` |
-| a value | the field holds a value | field key with the value |
-| none | ⊘ is pressed | `<name>-unset=1`, which wins over anything the field posts |
+| keep | leaves the field empty | an empty or absent field key |
+| a value | fills the field | the field key with the value |
+| none | presses ⊘ | `<name>-unset=1` |
 
-An empty field already means "keep", so "none" (no device, no note) needs its
-own control. The picker's × (#1287) returns a picker to empty, which here is
-"keep".
+The placeholder of an empty field names the value that stays. `<name>-unset`
+wins over a value that the field also posts.
 
-## Prior art
+## Why not the picker's none row
 
-| System | Control | State |
-|---|---|---|
-| Stash bulk edit | a ban button beside each bulk text field | removes the value on every selected item |
-| WAI-ARIA APG, toggle button | `aria-pressed` | the name stays the same in both states |
-
-## Rejected: the picker's own none row
-
-#1288 gives a picker `none_label`, whose wire already tells absent, `""` and a
-value apart. A bulk picker could read none from that row. It is not used:
-
-- With `none_label`, × holds none. Keep is then reachable only by typing into
-  the box and emptying it again, never by one tap.
-- A textarea has no none row, so the form would state none two ways.
-
-`UnsetWidget` refuses an inner picker that pins a none row.
+With `none_label`, the picker × holds none. Then keep has no one-tap path.
+A textarea has no none row. Thus `UnsetWidget` refuses a picker that pins a
+none row.
 
 ## The element
 
-`<unset-field>` wraps one field and one ⊘ toggle, joined by `SegmentedField`
-(field `start`, toggle `end`). It has a real checkbox,
-`name="<name>-unset" value="1"`, which is the one source of the pressed state.
+`<unset-field>` joins one field and one ⊘ toggle through `SegmentedField`.
+Its checkbox, `<name>-unset`, holds the pressed state.
 
-The element knows one thing about the field: its **control**, the first
-`input:not([type=hidden])`, `textarea` or `select` in the field member. A
-`SearchSelect` has one: its search box.
+The control is the first `input:not([type=hidden])`, `textarea` or `select`
+in the field. For a `SearchSelect`, it is the search box.
 
-A press on ⊘:
+A press:
 
-1. Remembers the control's value and placeholder.
-2. Empties the control and sets its placeholder to the none label ("No
-   device").
-3. Disables the control, unless the page already did. A `SearchSelect`
-   keeps its hidden value input enabled, so it still posts its value; the
-   server lets ⊘ win. Its × hides through `peer-disabled`.
-4. Checks the checkbox, sets `aria-pressed="true"`.
-5. Dispatches `unset-field:change` with `{ name, unset: true }`, bubbling.
+1. Keeps the value and the placeholder of the control.
+2. Empties the control. Sets the placeholder to the none label.
+3. Disables the control if it is enabled. The hidden input of a picker stays
+   enabled.
+4. Checks the checkbox. Sets `aria-pressed="true"`.
+5. Sends `unset-field:change` with `{ name, unset }`.
 
-A second press reverses each step: value and placeholder back, the control
-re-enabled if the press disabled it, checkbox off, `aria-pressed="false"`, event
-with `unset: false`.
+A second press puts back each item. At connect, a checked box applies the
+press and sends no event. The checkbox has `autocomplete="off"`.
 
-At connect, a checked checkbox applies the pressed state without an event. The
-checkbox has `autocomplete="off"`, so a reload does not restore a stale press.
-A reconnect after a DOM move binds nothing twice.
+A disabled control is not in `FormData`. Thus a ⊘ field cannot be a `params`
+source of a picker.
 
-`unset-field:change` is not a native `change`. A disabled control leaves
-`FormData`, so a ⊘ field is not a picker's `params` source.
+## Look and access
 
-## Layout
+The toggle is a segmented gray `ControlButton`. Its name is the none label,
+and `aria-describedby` points to the field label. The pressed toggle has the
+brand fill. `dark:aria-pressed:solid-brand` is necessary, because the dark
+hover text is stronger than a bare pressed fill.
 
-The element is `block`; the joined row is `w-full`. The field member is
-`flex-1 min-w-0 focus-within:z-10`, so a focused box's ring lies over the
-toggle's shared border. The toggle stretches to the field's height, a
-textarea's included.
+Without scripting, the element is not defined. `:defined` variants then hide
+the toggle and show the checkbox in its place.
 
-## Accessibility
+## The widget
 
-The toggle is a `ControlButton`, `variant="segmented"`, `color="gray"`, with an
-icon only. Its `aria-label` and `title` are the none label; its
-`aria-describedby` is the field label, as the picker × does. Orca reads "No
-device, toggle button, not pressed, Device". The pressed look is the brand
-fill that the current page tab uses. `dark:aria-pressed:solid-brand` repeats
-it, because the gray look's `dark:hover:` and `dark:focus:` text outrank a bare
-`aria-pressed:` fill.
+`UnsetWidget(widget, *, none_label)` wraps one single-value `SearchSelect`
+adapter or one text, number, textarea or select control. It refuses a picker
+with `params` or `commit_sole_option`, because search-select changes such a
+value while the box is disabled.
 
-## Scripting off
+- `render` gives the inner widget its shape and the field attrs.
+- A posted `<name>-unset` makes `value_from_datadict` return `None`.
+- A write to an attribute of the inner widget raises `AttributeError`. Write
+  to `.widget`.
+- At render, a required field and a none row are refused.
 
-The element is undefined. `[unset-field:not(:defined)_&]` hides the toggle
-and `[unset-field:defined_&]` hides the checkbox's label. So without
-scripting the end member is the checkbox, labelled with the none label, in
-the segmented look. The server lets a checked box win over a value left in
-the field.
-
-## Server side
-
-`UnsetWidget(widget, *, none_label)` in `games/forms.py` wraps a widget:
-
-- `render` draws `UnsetField` around the inner widget. It renders the inner
-  widget at the shape its place gives it, with the wrapper's own `attrs`
-  (Django writes `maxlength` there) merged in.
-- Only a single-value `SearchSelect` adapter and a text, number, textarea or
-  select control are joined. A picker with `params` or `commit_sole_option`
-  is refused: search-select rewrites such a picker's value while its box is
-  disabled.
-- A write to an attribute the inner widget holds (`placeholder`,
-  `options_resolver`) raises `AttributeError`, because the wrapper would keep
-  it and the inner widget would never see it. Callers write to `.widget`.
-  The names Django writes onto a field's widget stay the wrapper's.
-- `value_from_datadict`: a posted `<name>-unset` returns `None`, so the field
-  cleans to its own empty value and a value left in the field is never
-  validated. Otherwise the inner widget answers.
-- `value_omitted_from_data`: both keys absent.
-- `id_for_label`, `choices` and `needs_multipart_form` go to the inner widget.
-  `__deepcopy__` copies the inner widget.
-- Refused with `ValueError` at render: a required field, where empty cannot
-  mean keep, and an inner picker that pins a none row. A fixed-choice picker
-  pins one from a `""` choice, so the check reads the inner widget at render,
-  after the wrapper hands its `is_required` down.
-
-`UnsetFieldsForm`, a `forms.Form`, reads `<prefix>-<name>-unset` at
-construction, so a bound form shown again renders ⊘ pressed. Its `clean()`
-skips a field with errors and gives every other ⊘ field one of three values:
+`UnsetFieldsForm` reads the prefixed `-unset` key at construction. A bound
+form shows a press again. `clean()` skips a field with errors. It gives each
+other ⊘ field one value:
 
 | Posted | `cleaned_data[name]` |
 |---|---|
-| `<name>-unset` | the field's empty value: `None` for a model choice, `""` for text |
+| `-unset` | the empty value of the field: `None` or `""` |
 | an empty field | `KEEP` |
 | a value | the cleaned value |
 
-`KEEP` is the one member of `Keep`. `type Kept[T] = T | Keep` names a field's
-cleaned type. A `clean_<name>` method still sees the field's own empty value
-for both keep and none.
+## Shape and media
 
-## The shape
+`SearchSelect` and `native_control_class()` take a `ButtonShape`.
 
-- `SearchSelect` takes `shape: ButtonShape = "full"`. The box takes
-  `SHAPE_CLASSES[shape]` where it had `rounded-base`. The default output does
-  not change. `_SearchSelectAdapter` carries `shape` to it.
-- The native classes split into a look without corners and
-  `native_control_class(widget, shape)`. `apply_primitive_widget_classes`
-  skips an `UnsetWidget`, which stamps its inner native control at render.
-
-## Media
-
-A widget renders to text, so a component's `Media` does not bubble. A widget
-can now declare `component_media`; `FormFields` attaches it to the control.
-The row and the embedded path both attach it. `UnsetWidget` declares
-`dist/elements/unset-field.js`. A widget can also name `requires_form`;
-`FormFields` raises `ValueError` for a form that is not one, so an
-`UnsetWidget` outside `UnsetFieldsForm`, where keep and none would clean
-alike, fails at render. A form drawn without `FormFields` is not checked.
-
-The picker adapters do not declare media yet; their pages thread the scripts.
-A follow-up issue moves them and drops the threading.
-
-## The icon
-
-`no-symbol` (⊘), added to `games/templates/icons/` and generated by
-`make gen-icons`.
-
-## Tests
-
-- vitest: a press, a second press that restores, controls already disabled
-  stay disabled, the event, a checked box at connect, a reconnect.
-- pytest: the component markup, the three cleaned states for a model choice
-  and a text field, ⊘ over a left value and over an invalid value, a bound
-  form shown again, the refusals, the attribute guard, `choices` forwarding,
-  the deep copy, the shaped classes, the media and the missing-base refusal.
-- e2e, synthetic page: ⊘ on a picker and on a textarea posts none; a second
-  press posts the value; an empty field posts keep.
-- Orca: the pressed state, by the owner.
-
-## Out of scope
-
-- Wiring the bulk Edit form: PR #1285, after this lands.
-- Moving the picker adapters onto `component_media`: follow-up issue.
+A widget can declare `component_media`. `FormFields` attaches it. A widget
+can also declare `requires_form`. `FormFields` then refuses a form of a
+different class.
