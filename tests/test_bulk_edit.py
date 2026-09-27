@@ -1,6 +1,7 @@
 """Device, emulated or note on many sessions, undone."""
 
 import json
+import re
 import uuid
 from datetime import date, timedelta
 
@@ -12,6 +13,7 @@ from django.http import QueryDict
 from django.urls import reverse
 from session_rows import duration_only_row, tracked_run
 
+from common.components.unset_field import unset_input_name
 from games.bulk_actions import AsksNothing, Control
 from games.bulk_edit import (
     DEVICE_GONE,
@@ -88,8 +90,14 @@ def post(**fields) -> QueryDict:
 
 
 def control(**answers) -> QueryDict:
-    """The fields the first press posts."""
-    return post(**{f"{CHOICE_FIELD}-{key}": value for key, value in answers.items()})
+    """The fields the first press posts; `unset_x` is x's ⊘."""
+    names = {
+        key: unset_input_name(f"{CHOICE_FIELD}-{key.removeprefix('unset_')}")
+        if key.startswith("unset_")
+        else f"{CHOICE_FIELD}-{key}"
+        for key in answers
+    }
+    return post(**{names[key]: value for key, value in answers.items()})
 
 
 # ── The statement ────────────────────────────────────────────────────────────
@@ -160,7 +168,7 @@ def test_the_control_never_posts_under_the_choice_field(
     assert isinstance(offered, Control)
     markup = str(offered.node)
     assert f'name="{CHOICE_FIELD}"' not in markup
-    for name in ("device", "note"):
+    for name in ("device", "emulated", "note"):
         assert f'name="{CHOICE_FIELD}-{name}"' in markup
 
 
@@ -210,6 +218,10 @@ def test_the_placeholders_name_nothing_held(owned_user, owned_library, game):
     ("answers", "expected"),
     [
         ({"note": "  co-op  "}, EditStatement(None, None, "co-op")),
+        ({"unset_device": "1"}, EditStatement(StatedDevice(None), None)),
+        ({"unset_note": "1"}, EditStatement(None, None, "")),
+        ({"emulated": "True"}, EditStatement(None, True)),
+        ({"emulated": "False"}, EditStatement(None, False)),
     ],
 )
 def test_the_control_composes_a_statement(owned_library, answers, expected):
@@ -256,6 +268,33 @@ def test_a_control_stating_nothing_readable_refuses(owned_library, answers, sent
     with pytest.raises(CommandRejected) as refused:
         settle_edit(owned_library, control(**answers))
     assert refused.value.sentence == sentence
+
+
+def test_the_unset_toggle_wins_over_its_field(owned_library, deck):
+    settled = settle_edit(
+        owned_library,
+        control(device=str(deck.pk), unset_device="1", note="x", unset_note="1"),
+    )
+
+    assert EditStatement.decode(settled) == EditStatement(StatedDevice(None), None, "")
+
+
+def test_emulated_that_is_no_answer_refuses(owned_library):
+    with pytest.raises(CommandRejected):
+        settle_edit(owned_library, control(emulated="maybe"))
+
+
+def test_device_and_note_offer_none_and_emulated_is_a_picker(
+    owned_user, owned_library, game
+):
+    markup = _offered(
+        owned_library, [a_session(owned_user, tracked_run(owned_library, game))]
+    )
+
+    for field in ("device", "note"):
+        assert f'name="{unset_input_name(f"{CHOICE_FIELD}-{field}")}"' in markup
+    assert re.search(rf'<search-select [^>]*name="{CHOICE_FIELD}-emulated"', markup)
+    assert 'placeholder="Keep: not emulated"' in markup
 
 
 def test_a_removed_device_refuses(owned_library, deck):

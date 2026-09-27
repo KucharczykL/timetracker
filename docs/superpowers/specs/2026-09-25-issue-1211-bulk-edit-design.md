@@ -25,17 +25,18 @@ text that is not JSON, an unknown key, a wrong type, a null `emulated` or
 
 ## The question
 
-`BulkEditForm` is a Django form that `FormFields` renders. Its prefix is the
-runner's `CHOICE_FIELD`. Each field has three states: leave, set, and none. An
-empty field is "leave", and its placeholder shows what the rows keep: "Keep:
-Steam Deck" when all rows agree, "Keep: mixed" when they differ.
+`BulkEditForm` is an `UnsetFieldsForm` that `FormFields` renders. Its prefix
+is the runner's `CHOICE_FIELD`. Each field has three states: keep, a value,
+and none. An empty field keeps, and its placeholder shows what the rows keep:
+"Keep: Steam Deck" when all rows agree, "Keep: mixed" when they differ.
 
-- Device is a `SearchSelectWidget` over the library's devices. It searches and
-  creates as the session form's picker does. Its × empties it back to
-  "leave".
-- Note is a text area. A blank note is "leave".
-- Emulated waits for #1301, a `SearchSelectWidget` over fixed choices.
-- "None" (no device, no note) waits for #1302, a ⊘ toggle joined to a field.
+- Device is a `SearchSelectWidget` in an `UnsetWidget`. It searches and
+  creates as the session form's picker does. Its ⊘ states "No device".
+- Emulated is a `ChoiceSearchSelectWidget` over Emulated and Not emulated.
+  It has no empty choice, so an empty picker keeps. The flag has no none.
+- Note is a text area in an `UnsetWidget`. Its ⊘ states "No note".
+
+A ⊘ has priority over a value that its field also posts.
 
 The create row makes a device outside the batch, so the Undo keeps it.
 

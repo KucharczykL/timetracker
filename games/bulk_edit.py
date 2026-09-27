@@ -11,7 +11,6 @@ from django import forms
 from django.contrib.auth.models import User
 from django.http import QueryDict
 
-from common.components.core import Media
 from common.components.primitives import FormFields
 from common.utils import truncate
 from games.bulk_actions import (
@@ -45,8 +44,13 @@ from games.events.vocabulary import EventType
 from games.forms import (
     DEVICE_CREATE_URL,
     DEVICE_SEARCH_URL,
+    KEEP,
+    ChoiceSearchSelectWidget,
+    Keep,
     PrimitiveWidgetsMixin,
     SearchSelectWidget,
+    UnsetFieldsForm,
+    UnsetWidget,
     device_options,
 )
 from games.models import Device, LibraryEvent, PlayerSession, UserLibrary
@@ -67,7 +71,7 @@ class EditJson(TypedDict, total=False):
 _KEYS = frozenset(EditJson.__annotations__)
 
 #: What settling refuses.
-NOTHING_STATED = "Choose a device or write a note."
+NOTHING_STATED = "Choose a device, whether the sessions were emulated, or a note."
 DEVICE_UNREADABLE = "That device could not be read. Choose one again."
 DEVICE_GONE = (
     "That device is no longer available. Choose another one, or restore it first."
@@ -78,9 +82,6 @@ STATEMENT_UNREADABLE = "What to change could not be read. Choose it again."
 NOT_EDITED_BY_THIS_BATCH = (
     "That session was not changed by this batch, so it was left as it is."
 )
-
-#: The picker's element script.
-SEARCH_SELECT_SCRIPT = "dist/elements/search-select.js"
 
 #: A placeholder: what "leave as it is" keeps.
 type Keeping = str  # "Keep: Steam Deck"
@@ -180,20 +181,41 @@ def _note_shown(note: str) -> str:
     return truncate(note, _KEPT_NOTE_LENGTH) if note else "no note"
 
 
-class BulkEditForm(PrimitiveWidgetsMixin, forms.Form):
-    """An empty field leaves the rows alone."""
+#: Emulated's two answers; empty keeps.
+_EMULATED_CHOICES = (("True", "Emulated"), ("False", "Not emulated"))
+
+
+def _emulated_shown(emulated: bool) -> str:
+    return "emulated" if emulated else "not emulated"
+
+
+class BulkEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
+    """An empty field keeps; ⊘ states none."""
 
     device = forms.ModelChoiceField(
         queryset=Device.objects.none(),
         required=False,
         error_messages={"invalid_choice": DEVICE_GONE},
-        widget=SearchSelectWidget(
-            search_url=DEVICE_SEARCH_URL,
-            options_resolver=device_options,
-            create_url=DEVICE_CREATE_URL,
+        widget=UnsetWidget(
+            SearchSelectWidget(
+                search_url=DEVICE_SEARCH_URL,
+                options_resolver=device_options,
+                create_url=DEVICE_CREATE_URL,
+            ),
+            none_label="No device",
         ),
     )
-    note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 2}))
+    emulated = forms.TypedChoiceField(
+        choices=_EMULATED_CHOICES,
+        coerce=lambda value: value == "True",
+        empty_value=None,
+        required=False,
+        widget=ChoiceSearchSelectWidget(),
+    )
+    note = forms.CharField(
+        required=False,
+        widget=UnsetWidget(forms.Textarea(attrs={"rows": 2}), none_label="No note"),
+    )
 
     def __init__(
         self,
@@ -206,11 +228,15 @@ class BulkEditForm(PrimitiveWidgetsMixin, forms.Form):
         super().__init__(data, prefix=prefix)
         device = cast(forms.ModelChoiceField, self.fields["device"])
         device.queryset = Device.objects.for_library(library)
-        widget = cast(SearchSelectWidget, device.widget)
-        widget.options_resolver = partial(device_options, library=library)
+        picker = cast(SearchSelectWidget, cast(UnsetWidget, device.widget).widget)
+        picker.options_resolver = partial(device_options, library=library)
         if rows:
-            widget.placeholder = _keeping(rows, _device_name, str)
-            self.fields["note"].widget.attrs["placeholder"] = _keeping(
+            picker.placeholder = _keeping(rows, _device_name, str)
+            cast(
+                ChoiceSearchSelectWidget, self.fields["emulated"].widget
+            ).placeholder = _keeping(rows, lambda row: row.emulated, _emulated_shown)
+            note = cast(UnsetWidget, self.fields["note"].widget).widget
+            note.attrs["placeholder"] = _keeping(
                 rows, lambda row: row.note, _note_shown
             )
 
@@ -224,19 +250,25 @@ class BulkEditForm(PrimitiveWidgetsMixin, forms.Form):
         return note
 
     def clean(self) -> dict[str, Any]:
-        cleaned = super().clean() or {}
-        if cleaned.get("device") is None and not cleaned.get("note"):
+        cleaned = super().clean()
+        if (
+            cleaned.get("device") is KEEP
+            and cleaned.get("emulated") is None
+            and cleaned.get("note") is KEEP
+        ):
             raise forms.ValidationError(NOTHING_STATED)
         return cleaned
 
     def statement(self) -> EditStatement:
         """The valid form, as one statement."""
-        device: Device | None = self.cleaned_data["device"]
-        note: str = self.cleaned_data["note"]
+        device: Device | None | Keep = self.cleaned_data["device"]
+        note: str | Keep = self.cleaned_data["note"]
         return EditStatement(
-            None if device is None else StatedDevice(device.pk),
-            None,
-            note or None,
+            None
+            if device is KEEP
+            else StatedDevice(None if device is None else device.pk),
+            self.cleaned_data["emulated"],
+            None if note is KEEP else note,
         )
 
 
@@ -247,9 +279,9 @@ def offer_edit(
     if not rows:
         #: The confirmation says so itself.
         return AsksNothing()
-    form = BulkEditForm(library=library, prefix=field_name, rows=rows)
-    #: Widget Media never bubbles.
-    return Control(FormFields(form).with_media(Media(js=(SEARCH_SELECT_SCRIPT,))))
+    return Control(
+        FormFields(BulkEditForm(library=library, prefix=field_name, rows=rows))
+    )
 
 
 def settle_edit(library: UserLibrary, post: QueryDict) -> ChoiceValue:

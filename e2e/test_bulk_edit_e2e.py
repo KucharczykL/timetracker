@@ -82,7 +82,7 @@ def test_two_sessions_take_one_device_and_the_undo_takes_it_back(
 
     picker = page.locator("search-select[name='choice-device']")
     picker.locator("[data-search-select-search]").click()
-    picker.locator("[data-search-select-option]", has_text="Steam Deck").click()
+    picker.get_by_role("option", name="Steam Deck").click()
     page.get_by_role("button", name="Save", exact=True).click()
 
     page.wait_for_url(listed)
@@ -98,4 +98,34 @@ def test_two_sessions_take_one_device_and_the_undo_takes_it_back(
     for session in sessions:
         session.refresh_from_db()
         assert session.device_id is None
+    assert errors == []
+
+
+def test_no_device_and_emulated_are_stated_for_both_sessions(
+    live_server, page: Page, e2e_user, e2e_library
+):
+    deck = create_device(library=e2e_library, name="Steam Deck")
+    sessions = _two_sessions(e2e_library, e2e_user, device=deck)
+    errors = _console_errors(page)
+    listed = _edit_both(page, live_server)
+
+    device = page.locator("search-select[name='choice-device']")
+    expect(device.locator("[data-search-select-search]")).to_have_attribute(
+        "placeholder", "Keep: Steam Deck"
+    )
+    toggle = page.get_by_role("button", name="No device")
+    toggle.click()
+    expect(toggle).to_have_attribute("aria-pressed", "true")
+    expect(device.locator("[data-search-select-search]")).to_be_disabled()
+
+    emulated = page.locator("search-select[name='choice-emulated']")
+    emulated.locator("[data-search-select-search]").click()
+    emulated.get_by_role("option", name="Emulated", exact=True).click()
+    page.get_by_role("button", name="Save", exact=True).click()
+
+    page.wait_for_url(listed)
+    for session in sessions:
+        session.refresh_from_db()
+        assert session.device_id is None
+        assert session.emulated is True
     assert errors == []
