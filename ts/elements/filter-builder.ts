@@ -6,6 +6,7 @@ import {
   PRESET_SAVE_EVENT,
   PresetSaveRequest,
   PresetState,
+  UNREADABLE_FILTER_REFUSAL,
 } from "./presets.js";
 import { applyUrl } from "./filter-url.js";
 
@@ -14,7 +15,6 @@ import { applyUrl } from "./filter-url.js";
 // Refuses a save by the rule that disables Apply.
 export const INCOMPLETE_SAVE_REFUSAL =
   "Finish or remove the incomplete conditions before saving.";
-const UNREADABLE_SAVE_REFUSAL = "The filter could not be read — reload the page.";
 
 function isFilterGroup(element: Element | null): element is FilterGroupElement {
   return (
@@ -129,7 +129,7 @@ export class FilterBuilderElement extends HTMLElement {
     const group = this.group();
     if (!group) {
       reportClientError("filter-builder[save]", "no <filter-group>", { toast: false });
-      request.answerWith({ kind: "refused", sentence: UNREADABLE_SAVE_REFUSAL });
+      request.answerWith({ kind: "refused", sentence: UNREADABLE_FILTER_REFUSAL });
       return;
     }
     if (this.holdsIncomplete()) {

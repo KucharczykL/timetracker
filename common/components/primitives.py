@@ -1264,9 +1264,8 @@ def ButtonGroup(
     """Generate a button group div of segmented :class:`ControlButton` members.
 
     Each member dict accepts: slot (required), href, color, title, aria_label,
-    and — for a
-    state-changing member — method ("post"),
-    action (URL), csrf_token. A ``method="post"`` member renders as a no-JS
+    and — for a state-changing member — method ("post"), action (URL),
+    csrf_token. A ``method="post"`` member renders as a no-JS
     ``<form>`` submit button instead of a link; a member with
     ``button_attributes`` renders as a bare ``<button type="button">`` carrying
     those attributes (a JS-driven action with no navigation). A member with

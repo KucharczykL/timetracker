@@ -33,6 +33,14 @@ export type PresetSaveAnswer =
   | { readonly kind: "state"; readonly state: PresetState }
   | { readonly kind: "refused"; readonly sentence: string };
 
+/** A host's refusal when its own filter cannot be read. */
+export const UNREADABLE_FILTER_REFUSAL = "The filter could not be read — reload the page.";
+
+/** A filter JSON value: an object, never an array or null. */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /** The save event's detail; the host answers once, then stops propagation. */
 export class PresetSaveRequest {
   #answer: PresetSaveAnswer | null = null;

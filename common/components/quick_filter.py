@@ -328,13 +328,7 @@ class QuickFilterBar(BaseComponent):
         #
         # ``ml-auto`` adds nothing to the overflow reserve, which sums
         # ``offsetWidth``.
-        row_children.append(
-            ButtonGroup(
-                self._act_members(apply=True),
-                class_="ml-auto",
-                aria_label=FILTER_ACTS_LABEL,
-            )
-        )
+        row_children.append(self._acts(apply=True))
         return self._element(stated_filter="")[
             # A real <form> so Enter in any facet input applies; the element
             # intercepts submit and navigates.
@@ -414,6 +408,13 @@ class QuickFilterBar(BaseComponent):
             # overflow menu as the row narrows.
             config=config,
             applied=applied,
+        )
+
+    def _acts(self, *, apply: bool) -> Element:
+        return ButtonGroup(
+            self._act_members(apply=apply),
+            class_="ml-auto",
+            aria_label=FILTER_ACTS_LABEL,
         )
 
     def _act_members(self, *, apply: bool) -> list[ButtonGroupMember]:
@@ -496,10 +497,6 @@ class QuickFilterBar(BaseComponent):
         return self._element(stated_filter=json.dumps(self.existing))[
             Div(class_=_QUICK_PILL_CLASS)[
                 Span(class_="text-body")["Advanced filter active"],
-                ButtonGroup(
-                    self._act_members(apply=False),
-                    class_="ml-auto",
-                    aria_label=FILTER_ACTS_LABEL,
-                ),
+                self._acts(apply=False),
             ]
         ]

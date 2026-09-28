@@ -14,10 +14,12 @@ import type { LeafWidgetKind } from "../generated/filter-metadata.js";
 import { readQuickFilterBarProps } from "../generated/props.js";
 import { applyUrl } from "./filter-url.js";
 import {
+  isPlainObject,
   PRESET_LOAD_EVENT,
   PRESET_SAVE_EVENT,
   PresetSaveRequest,
   PresetState,
+  UNREADABLE_FILTER_REFUSAL,
 } from "./presets.js";
 import {
   readLeafWidget,
@@ -42,15 +44,11 @@ type StatedFilter =
   | { readonly kind: "page"; readonly filter: Record<string, unknown> }
   | { readonly kind: "unreadable" };
 
-const UNREADABLE_FILTER_REFUSAL = "The filter could not be read — reload the page.";
-
 function readStatedFilter(raw: string): StatedFilter {
   if (!raw) return { kind: "facets" };
   try {
     const filter: unknown = JSON.parse(raw);
-    if (typeof filter === "object" && filter !== null && !Array.isArray(filter)) {
-      return { kind: "page", filter: filter as Record<string, unknown> };
-    }
+    if (isPlainObject(filter)) return { kind: "page", filter };
   } catch {
     // Reported below.
   }

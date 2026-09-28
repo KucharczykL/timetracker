@@ -2,6 +2,7 @@ import { reportClientError } from "../client-errors.js";
 import { readPresetPanelProps } from "../generated/props.js";
 import {
   fetchPresetNames,
+  isPlainObject,
   PRESET_LOAD_EVENT,
   PRESET_SAVE_EVENT,
   PresetSaveRequest,
@@ -185,10 +186,6 @@ export class PresetPanelElement extends HTMLElement {
       this.widget()?.refetchOptions?.();
     });
   }
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 customElements.define("preset-panel", PresetPanelElement);

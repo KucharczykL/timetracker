@@ -425,12 +425,12 @@ class FilterBuilderProps(TypedDict):
 
 
 register_element("filter-builder", "FilterBuilder", FilterBuilderProps)
+_FilterBuilder = custom_element_builder("filter-builder")
 
 #: A filter-acts group's accessible name.
 FILTER_ACTS_LABEL = "Filter actions"
 #: The Clear segment's name and tooltip.
 CLEAR_FILTER_LABEL = "Clear filter"
-_FilterBuilder = custom_element_builder("filter-builder")
 
 
 def FilterBuilder(
