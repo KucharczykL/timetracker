@@ -1,4 +1,5 @@
 import { reportClientError } from "../client-errors.js";
+import "./drop-down.js";
 import { readPresetPanelProps } from "../generated/props.js";
 import {
   isPlainObject,
