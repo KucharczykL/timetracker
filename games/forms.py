@@ -504,7 +504,7 @@ USE_TYPED_TEXT = "Use"
 
 
 class TextSearchSelectWidget(_SearchSelectAdapter):
-    """A `SearchSelect()` over suggestions, taking typed text too."""
+    """Suggestions, and any typed text."""
 
     def __init__(
         self,

@@ -57,25 +57,21 @@ unlisted icon.
 
 ## The group picker
 
-The bulk Edit offered groups through a native `<datalist>`, which the
-browser draws outside the `<drop-down>` engine. Group is now a
-`SearchSelect` on the Platform form and the bulk Edit alike.
-
-A group is text on a platform, not a row, so no endpoint creates one.
-`SearchSelectProps.create` names how the create row commits, one of
-four values, and replaces the `create_event` flag of #1328:
+Group is a `SearchSelect` on the Platform form and the bulk Edit, so
+its panel is a `<drop-down>` like every other picker. A group is text
+on a platform, not a row, so no endpoint creates one.
+`SearchSelectProps.create` names how the create row commits:
 
 - `""`: no create row.
 - `post`: it posts to `create_url` and selects the answered row.
 - `event`: it emits `search-select:create`; the consumer commits.
 - `select`: it selects the typed text as value and label.
 
-The element codegen emits a `Literal` of strings as a TypeScript
-union, so the four values are one type on both sides.
-`TextSearchSelectWidget` in `games/forms.py` hosts a text field: its
-options are the suggestions, its create row reads `Use “…”`, and the
-value it posts is the text. On the bulk Edit it sits inside
-`UnsetWidget`, so ⊘ still states no group. `DatalistTextInput` goes.
+One prop, not flags, so no two ways contradict. The element codegen
+emits a `Literal` of strings as a TypeScript union.
+`TextSearchSelectWidget` hosts a text field: its options are the
+library's groups, its create row reads `Use “…”`. On the bulk Edit it
+sits inside `UnsetWidget`, so ⊘ states no group.
 
 ## Not in this issue
 
