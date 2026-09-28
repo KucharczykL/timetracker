@@ -342,4 +342,5 @@ from games import (  # noqa: F401
     bulk_playthrough_acts,
     bulk_reclassification,
     bulk_removal,
+    bulk_status,
 )

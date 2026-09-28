@@ -40,7 +40,7 @@ from games.views.bulk import (
     STATEMENT_FIELD,
     TOKEN_FIELD,
 )
-from games.writes.playergame import new_correlation_id, record_facts
+from games.writes.playergame import new_correlation_id, record_facts, track_game
 from timetracker.temporal import TemporalValue
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
@@ -58,14 +58,21 @@ def client_in(client, owned_user):
     return client
 
 
-@pytest.fixture
-def game(owned_library):
-    return Game.objects.create(library=owned_library, name="Outer Wilds")
+def _tracked(user, name) -> Game:
+    """Through the command: an Undo reads the stream."""
+    game = Game.objects.create(library=user.library, name=name)
+    track_game(user, game, correlation_id=new_correlation_id())
+    return game
 
 
 @pytest.fixture
-def second_game(owned_library):
-    return Game.objects.create(library=owned_library, name="Tunic")
+def game(owned_user):
+    return _tracked(owned_user, "Outer Wilds")
+
+
+@pytest.fixture
+def second_game(owned_user):
+    return _tracked(owned_user, "Tunic")
 
 
 def some(*runs) -> str:

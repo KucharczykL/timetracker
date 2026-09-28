@@ -720,8 +720,9 @@ Remove, in #712.
   (#1136) each inherit the personality and the retirement of their column
   after #718, and #1245's picker moves into their row-menu slot by
   itself; Purchases' table is #725–#736's, then #1266's. Bulk Set status
-  on the Games list is #1270's, after #1211 and #1134: one fact, so the
-  plain `BulkChoice`, and an inverse reading the latest earlier
+  on the Games list is #1270's
+  ([spec](2026-09-28-issue-1270-bulk-set-status-design.md)): one fact, so
+  the plain `BulkChoice`, and an inverse reading the latest earlier
   `status_changed` the way #1211's reads its facts, not through #1256's
   gate (#1284).
 - **The Trash** — #795 inherits "recent batches": the batch's correlation id
