@@ -51,23 +51,27 @@ squashed file, as the four in `0001` do. Twenty-eight operations, no
 migrated the copy, recorded the squash beside the originals, and found
 every catalog identical.
 
-## What step two takes with it
+## Step two, 2026-09-28
 
-After the deployment has run once with both present and recorded the
-squash:
+The deployment ran once on the squash (`main-b45a42b`), printed "No
+migrations to apply" and recorded
+`0007_remove_game_status_and_mastered_squashed_0018_platform_icon_glyphs`
+beside the twelve originals. Then, in one PR:
 
-- The twelve replaced files go, and `replaces` comes off the squashed one.
-- `games/backfill/device.py` goes with `0015`, and so do its call in
+- The twelve replaced files went, and `replaces` came off the squashed one.
+- `games/backfill/device.py` went with `0015`, with its call in
   `load_sample_data` and `tests/test_device_conversion.py`. The committed
-  fixture carries every device as its events since 2026-09-28, so the pass
-  converts nothing on load already.
-- `tests/test_platform_icon_migration.py` imports `0018` by module and
-  `tests/test_historical_playtime_projection.py` imports `0011`. Each
-  tests a data pass that ran once. Take the test with its file, or move the
-  function under test out of the migration first.
+  fixture has carried every device as its events since the same day, so
+  the pass converted nothing on load already.
+- `tests/test_platform_icon_migration.py` imported `0018` by module, and
+  one test in `tests/test_historical_playtime_projection.py` imported
+  `0011`. Each tested a data pass that ran once. Both went with their file;
+  the icon rename keeps its cover through the loader's synthetic-fixture
+  test and `canonical_icon`'s own.
 - The deployment keeps the twelve history rows, so one statement follows
-  that deploy, rehearsed with `make verify-baseline ARGS="--normalize
-  cutover.sql --migrate"`:
+  the deploy of step two, rehearsed with `make verify-baseline
+  ARGS="--normalize cutover.sql --migrate"` on a dump taken after the
+  squash was recorded:
 
 ```sql
 DELETE FROM django_migrations
@@ -87,6 +91,10 @@ WHERE app = 'games'
     '0018_platform_icon_glyphs'
   );
 ```
+
+A dump taken before the squash row exists cannot rehearse this: with the
+twelve rows gone and no squash row, `migrate` applies the squashed file for
+real against tables that exist. Fetch the dump after the deploy.
 
 The next migration numbers on from the replaced range: `0019`.
 

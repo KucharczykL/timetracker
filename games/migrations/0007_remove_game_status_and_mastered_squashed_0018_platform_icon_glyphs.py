@@ -13,21 +13,6 @@ import timetracker.uuidv7
 
 
 class Migration(migrations.Migration):
-    replaces = [
-        ("games", "0007_remove_game_status_and_mastered"),
-        ("games", "0008_projection_library_identity"),
-        ("games", "0009_historical_playtime"),
-        ("games", "0010_alter_filterpreset_mode"),
-        ("games", "0011_historicalplaytime_reclassified_from"),
-        ("games", "0012_library_event_batch_indexes"),
-        ("games", "0013_list_column_choice"),
-        ("games", "0014_device_projection"),
-        ("games", "0015_device_conversion"),
-        ("games", "0016_default_device_key"),
-        ("games", "0017_batch_change"),
-        ("games", "0018_platform_icon_glyphs"),
-    ]
-
     dependencies = [
         ("games", "0001_squashed_0006_remove_session"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),

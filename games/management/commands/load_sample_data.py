@@ -15,7 +15,6 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 
 from common.platform_icons import canonical_icon
-from games.backfill.device import DeviceConversionRefused, convert_devices
 from games.conversion import _request_conversion_for_locked_state
 from games.events.rebuild import (
     RebuildMode,
@@ -154,14 +153,6 @@ class Command(BaseCommand):
                     state,
                     state.requested_currency,
                 )
-
-            #: Convert device rows before rebuilding them.
-            try:
-                convert_devices(user.library)
-            except DeviceConversionRefused as error:
-                raise CommandError(
-                    f"Sample fixture's devices could not be converted: {error}"
-                ) from error
 
             #: The fixture now carries the events themselves; replay them
             #: into projections the same way make verify-replay-parity does.
