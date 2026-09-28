@@ -474,6 +474,10 @@ class Platform(ReferencedRow):
     removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
+    #: The batch that last removed it; its Undo reads this.
+    removed_in_batch = models.UUIDField(
+        null=True, blank=True, default=None, editable=False
+    )
 
     def __str__(self):
         return self.name

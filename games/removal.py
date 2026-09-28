@@ -4,7 +4,8 @@ Nothing here destroys a row. `games.retention` keeps the guard that
 refuses a destroying delete of a referenced row.
 """
 
-from collections.abc import Callable
+import uuid
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Any
 
@@ -93,7 +94,20 @@ _AFTER_STAMP: dict[type[Model], tuple[Callable[[Any, datetime | None], None], ..
 }
 
 
-def _stamp(instance: Model, value: datetime | None) -> None:
+#: The column naming the batch that removed a row.
+BATCH_COLUMN = "removed_in_batch"
+
+
+def names_its_batch(model: type[Model]) -> bool:
+    """Whether a removal of this model names its batch."""
+    return any(field.name == BATCH_COLUMN for field in model._meta.concrete_fields)
+
+
+def _stamp(
+    instance: Model,
+    value: datetime | None,
+    columns: Mapping[str, object] | None = None,
+) -> None:
     model = type(instance)
     if model not in REMOVABLE_MODELS:
         raise TypeError(f"{model.__name__} is not a removable model.")
@@ -108,15 +122,27 @@ def _stamp(instance: Model, value: datetime | None) -> None:
         #: and a stamp must not revalidate
         #: a row a user is taking out.
         #: _AFTER_STAMP does what post_save would.
-        rows.update(removed_at=value)
-        instance.removed_at = value  # type: ignore[attr-defined]
+        stamped = {"removed_at": value, **(columns or {})}
+        rows.update(**stamped)
+        for column, stated in stamped.items():
+            setattr(instance, column, stated)
         for after in _AFTER_STAMP.get(model, ()):
             after(instance, previous_mark)
 
 
-def remove(instance: Model) -> None:
-    """Take the row out of the library."""
-    _stamp(instance, now())
+def remove(instance: Model, *, batch: uuid.UUID | None = None) -> None:
+    """Take the row out of the library.
+
+    Outside a batch, a model naming batches writes none: an earlier
+    batch's Undo must not claim a row a later act removed.
+    """
+    model = type(instance)
+    if not names_its_batch(model):
+        if batch is not None:
+            raise TypeError(f"{model.__name__} names no batch that removed it.")
+        _stamp(instance, now())
+        return
+    _stamp(instance, now(), {BATCH_COLUMN: batch})
 
 
 def restore(instance: Model) -> None:
