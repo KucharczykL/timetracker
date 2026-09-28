@@ -1075,10 +1075,10 @@ def ComboboxDropdown(
     )
 
 
-#: The accessible name of the Presets segment and of the panel it opens.
+#: The Presets segment's and panel's name.
 PRESETS_LABEL = "Presets"
 
-#: The Save button's resting label; ``preset-panel.ts`` restores it.
+#: Save's resting label; ``preset-panel.ts`` restores it.
 SAVE_PRESET_LABEL = "Save"
 
 _PRESET_NAME_CLASS = (
@@ -1090,11 +1090,9 @@ _PRESET_NAME_CLASS = (
 
 
 def PresetPanel(*, api_url: str, mode: str) -> Node:
-    """The saved presets above, a name box and Save below.
+    """Saved presets above a name box and Save.
 
-    The host page answers ``preset-panel:load`` and ``preset-panel:save``;
-    the panel owns every preset API call. ``data-preset-picker`` is the hook
-    the removal wiring and the tests read.
+    ``data-preset-picker`` is the removal wiring's hook.
     """
     return _PresetPanelElement(api_url=api_url, mode=mode, data_preset_picker="")[
         PresetSelect(api_url=api_url, mode=mode),
@@ -1122,7 +1120,7 @@ def PresetPanel(*, api_url: str, mode: str) -> Node:
 
 
 def presets_member(*, api_url: str, mode: str, id: str) -> ButtonGroupMember:
-    """The Presets segment of a filter-acts group, opening the panel."""
+    """The Presets segment, opening the panel."""
 
     def opens(trigger: Element) -> Node:
         panel = DropdownPanel(role="dialog", aria_label=PRESETS_LABEL, width="w-80")[

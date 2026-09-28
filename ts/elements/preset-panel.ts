@@ -10,10 +10,7 @@ import {
   wirePresetDelete,
 } from "./presets.js";
 
-// <preset-panel> — the saved presets above a name box and Save. It owns
-// every preset API call and knows no page: a pick is announced as
-// preset-panel:load, and a save asks the nearest host for its state through
-// preset-panel:save (see presets.ts).
+// <preset-panel> — loads and saves presets; hosts answer (presets.ts).
 
 // Must match SAVE_PRESET_LABEL in common/components/search_select.py.
 const SAVE_LABEL = "Save";
@@ -35,8 +32,7 @@ interface ClosableHost extends HTMLElement {
 export class PresetPanelElement extends HTMLElement {
   private apiUrl = "";
   private mode = "";
-  // Every preset name for the mode, fetched when the name box gains focus.
-  // A failed fetch leaves it empty, so the overwrite hint stays off.
+  // Empty after a failed fetch: no overwrite hint.
   private presetNames = new Set<string>();
   private disposeDelete: (() => void) | null = null;
 
@@ -70,8 +66,7 @@ export class PresetPanelElement extends HTMLElement {
     return this.querySelector<HTMLInputElement>("[data-preset-name]");
   }
 
-  // A pick is a command, not a value: announce it, then clear the transient
-  // selection so it cannot pin a stale row, and close the panel.
+  // A kept selection would pin a stale row.
   private onPick = (event: Event): void => {
     const detail = (event as CustomEvent<PresetChangeDetail>).detail;
     if (!detail?.last) return;
@@ -100,8 +95,7 @@ export class PresetPanelElement extends HTMLElement {
     if ((event.target as HTMLElement).closest("[data-save-preset]")) this.save();
   };
 
-  // Enter in the name box saves. Without preventDefault it would submit the
-  // quick bar's form and navigate as Apply.
+  // Else Enter submits the quick bar's form.
   private onKeydown = (event: KeyboardEvent): void => {
     if (event.key !== "Enter") return;
     if (!(event.target as HTMLElement).closest("[data-preset-name]")) return;
@@ -122,9 +116,7 @@ export class PresetPanelElement extends HTMLElement {
     this.updateOverwriteHint();
   };
 
-  // The hint and the button's label both carry the collision, so the state
-  // reaches the button's accessible name too. Compared as the server's
-  // (user, mode, name) uniqueness compares: fetchPresetNames trims.
+  // The label carries the collision to the button's name.
   private updateOverwriteHint(): void {
     const input = this.nameInput();
     const hint = this.querySelector<HTMLElement>("[data-preset-name-warning]");
@@ -170,7 +162,7 @@ export class PresetPanelElement extends HTMLElement {
       sort: state.sort,
       per_page: state.perPage,
     }).then((response) => {
-      // A rejected save keeps the typed name so it can be corrected.
+      // A rejected save keeps the name.
       if (!response?.ok) return;
       this.presetNames.add(name);
       input.value = "";

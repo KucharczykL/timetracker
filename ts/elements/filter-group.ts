@@ -426,8 +426,7 @@ export class FilterGroupElement extends HTMLElement {
     return this.tree;
   }
 
-  /** The canonical OperatorFilter JSON for the current tree structure (leaf values
-   *  are read live from the widgets — see serializeForQuery). */
+  /** The stored tree; live widget values are not read. */
   serialize(): Record<string, unknown> {
     return serialize(this.tree);
   }

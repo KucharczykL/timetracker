@@ -78,7 +78,7 @@ class QuickFacet(NamedTuple):
 # sub-filter, which the predicate below rejects).
 QUICK_FACET_KINDS = frozenset({"set", "number", "date", "string", "bool"})
 
-#: The accessible name and tooltip of the builder link.
+#: The builder segment's name and tooltip.
 ADVANCED_FILTER_LABEL = "Advanced filter"
 
 OVERFLOW_LABEL = "More filters"
@@ -323,9 +323,10 @@ class QuickFilterBar(BaseComponent):
             *[self._facet(filter_cls, facet) for facet in facets],
             self._overflow_dropdown(),
         ]
-        # From the overflow host on, the row is furniture: the acts, as one
-        # group pushed to the row's end. ``ml-auto`` adds nothing to the
-        # overflow reserve, which sums ``offsetWidth``.
+        # From the overflow host on, the row is furniture.
+        #
+        # ``ml-auto`` adds nothing to the overflow reserve, which sums
+        # ``offsetWidth``.
         row_children.append(
             ButtonGroup(
                 self._act_members(apply=True),
@@ -486,8 +487,7 @@ class QuickFilterBar(BaseComponent):
         ]
 
     def _degraded(self) -> Node:
-        # The element hosts the Presets panel; with no ``data-quick-row`` its
-        # overflow layout does nothing.
+        # No ``data-quick-row``: the overflow layout stays off.
         return _QuickFilterBarElement(
             apply_url=self._list_url(),
             per_page=(

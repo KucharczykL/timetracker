@@ -428,9 +428,9 @@ class FilterBuilderProps(TypedDict):
 
 register_element("filter-builder", "FilterBuilder", FilterBuilderProps)
 
-#: The accessible name of a filter-acts group.
+#: A filter-acts group's accessible name.
 FILTER_ACTS_LABEL = "Filter actions"
-#: The accessible name and tooltip of the Clear segment.
+#: The Clear segment's name and tooltip.
 CLEAR_FILTER_LABEL = "Clear filter"
 _FilterBuilder = custom_element_builder("filter-builder")
 

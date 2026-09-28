@@ -28,11 +28,7 @@ export interface PresetState {
   perPage: string;
 }
 
-/**
- * The mutable detail of PRESET_SAVE_EVENT. The host writes `state`, or a
- * `refusal` sentence the panel shows instead of saving, and stops
- * propagation.
- */
+/** The host writes `state` or `refusal`, and stops propagation. */
 export interface PresetSaveRequest {
   state: PresetState | null;
   refusal: string | null;

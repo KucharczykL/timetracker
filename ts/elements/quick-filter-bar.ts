@@ -91,7 +91,7 @@ class QuickFilterBarElement extends HTMLElement {
     this.navigate(applyUrl(this.applyTarget, preset.filter, preset.sort, preset.perPage));
   };
 
-  // A save states what the bar states now, applied or not.
+  // Applied or not.
   private onPresetSave = (event: Event): void => {
     event.stopPropagation();
     (event as CustomEvent<PresetSaveRequest>).detail.state = {
@@ -243,8 +243,7 @@ class QuickFilterBarElement extends HTMLElement {
     );
   };
 
-  // Page size is server-normalized, so it comes from the prop; the sort from
-  // the URL.
+  // Page size is server-normalized; the raw URL may be invalid.
   private currentSort(): string {
     return new URLSearchParams(window.location.search).get("sort") ?? "";
   }

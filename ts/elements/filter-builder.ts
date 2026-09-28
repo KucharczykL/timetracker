@@ -8,12 +8,9 @@ import {
 } from "./presets.js";
 import { applyUrl } from "./filter-url.js";
 
-// <filter-builder> — the builder-page toolbar (#196). Owns Apply and Clear
-// and drives the sibling <filter-group>; it hosts the <preset-panel>, loading
-// a picked preset into the tree and answering a save with the tree's filter.
+// <filter-builder> — the builder-page toolbar and <preset-panel> host.
 
-// The refusal a save meets while a criterion is incomplete, the rule that
-// disables Apply.
+// Refuses a save by the rule that disables Apply.
 export const INCOMPLETE_SAVE_REFUSAL =
   "Finish or remove the incomplete conditions before saving.";
 
@@ -117,7 +114,7 @@ export class FilterBuilderElement extends HTMLElement {
     if (target.closest("[data-clear]")) return this.group()?.clear();
   };
 
-  // A loaded preset goes into the tree; the page stays.
+  // A loaded preset fills the tree.
   private onPresetLoad = (event: Event): void => {
     const preset = (event as CustomEvent<PresetState>).detail;
     this.group()?.loadFilter(preset.filter);
@@ -125,8 +122,7 @@ export class FilterBuilderElement extends HTMLElement {
     this.perPage = preset.perPage;
   };
 
-  // A save states the filter Apply queries, read from the live widgets. An
-  // incomplete criterion refuses the save rather than dropping in silence.
+  // serialize() misses live widget values.
   private onPresetSave = (event: Event): void => {
     event.stopPropagation();
     const request = (event as CustomEvent<PresetSaveRequest>).detail;

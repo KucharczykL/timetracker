@@ -1224,7 +1224,7 @@ class ButtonGroupMember(TypedDict, total=False):
     type: str
     # An icon-only member's accessible name.
     aria_label: str
-    # Wraps the member's shaped trigger in the popup it opens.
+    # Wraps the shaped button in its popup.
     opens: Callable[[Element], Node]
 
 

@@ -51,8 +51,7 @@ registerBehavior("combobox", {
   wire: wireCombobox,
 });
 
-// The presets panel: the combobox above a name box and Save, so Tab stays
-// inside to reach them. The shared focus-leave handler closes it.
+// Tab stays inside, reaching the name box and Save.
 registerBehavior("presets", {
   menuOptions: () => ({
     itemSelector: "[data-combobox-no-items]",
