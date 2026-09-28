@@ -2690,10 +2690,10 @@ _ELLIPSIS_GLYPHS: Mapping[EllipsisOrientation, str] = {
 
 
 def AppliedDot(attrs: AttrsArg | None = None, /) -> Node:
-    """Brand dot marking an applied filter."""
+    """Brand dot in a relative parent's corner."""
     return Span(
         attrs,
-        class_="inline-block size-1.5 shrink-0 rounded-full bg-brand",
+        class_="absolute top-1 right-1 size-1.5 rounded-full bg-brand",
         aria_hidden="true",
     )
 

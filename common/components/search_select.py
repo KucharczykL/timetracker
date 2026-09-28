@@ -51,7 +51,7 @@ from collections.abc import Callable, Iterable, Sequence
 from enum import Enum
 from typing import Literal, NamedTuple, TypedDict
 
-from common.components.core import Attributes, Child, Fragment, HTMLAttribute, Node
+from common.components.core import Attributes, Child, HTMLAttribute, Node
 from common.components.custom_elements import (
     DROPDOWN_ITEM_SHAPE,
     Dropdown,
@@ -1034,22 +1034,20 @@ def ComboboxDropdown(
     list-shaped content; content with an intrinsic width (a calendar) passes
     ``w-auto``.
 
-    ``applied`` marks the trigger and its accessible name. The label is its own span: the ghost
-    tone's ``text-heading`` outranks a color class on the button.
+    ``applied`` puts a dot in the trigger's corner and "(applied)" in
+    its accessible name.
     """
-    trigger_label: Node | str = label
+    mark: list[Node] = []
     if applied:
-        trigger_label = Fragment(
-            AppliedDot(),
-            Span(class_="text-fg-brand")[label],
-            Span(class_="sr-only")[" (applied)"],
-        )
+        mark = [Span(class_="sr-only")[" (applied)"], AppliedDot()]
     trigger = ControlButton(
         color="gray",
         variant="ghost" if ghost else "filled",
         aria_haspopup="dialog",
+        class_="relative" if applied else None,
     )[
-        trigger_label,
+        label,
+        *mark,
         Icon("arrowdown", size="h-3 w-3"),
     ].as_element()
     # A dialog; the widget brings listbox semantics.

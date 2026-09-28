@@ -542,7 +542,7 @@ class AppliedFacetMarkTest(TestCase):
             str(ComboboxDropdown(**arguments, applied=False)),
         )
 
-    def test_an_applied_dropdown_marks_its_label_not_its_button(self):
+    def test_an_applied_dropdown_puts_a_dot_in_its_corner(self):
         from common.components.search_select import ComboboxDropdown
 
         html = str(
@@ -552,9 +552,12 @@ class AppliedFacetMarkTest(TestCase):
         )
         button = html[html.index("<button") : html.index("</button>")]
         button_tag = button[: button.index(">")]
-        self.assertNotIn("text-fg-brand", button_tag)
-        self.assertIn('class="text-fg-brand">Device</span>', button)
-        self.assertIn("bg-brand", button)
+        self.assertIn("relative", button_tag)
+        self.assertNotIn("text-fg-brand", button)
+        self.assertIn(">Device<span", button)
+        dot = re.search(r'<span class="([^"]*bg-brand[^"]*)"', button)
+        assert dot is not None
+        self.assertIn("absolute", dot.group(1))
         self.assertIn('<span class="sr-only"> (applied)</span>', button)
         # The panel's name stays the bare label.
         self.assertIn('aria-label="Device"', html)

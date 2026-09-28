@@ -23,13 +23,11 @@ the filter, which are the keys that Clear removes.
 
 ## The mark
 
-An applied facet's trigger shows a brand dot and a brand label. The label
-is a separate span, because the ghost button's `text-heading` class comes
-after `text-fg-brand` in the stylesheet. The trigger text also has
-"(applied)" for screen readers.
+An applied facet's trigger shows a brand dot in its top-right corner. The
+label keeps its usual color. The trigger text also has "(applied)" for
+screen readers. The dot is absolutely placed, so it adds no width.
 
-The `⋯` trigger has the same dot. The dot is `invisible` when it is off,
-so the width measured at connect stays correct. The `⋯` trigger's
+The `⋯` trigger has the same dot, `invisible` when it is off. Its
 `aria-label` is "More filters", or "More filters, some applied" when the
 menu holds an applied facet.
 

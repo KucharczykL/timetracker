@@ -452,9 +452,8 @@ class QuickFilterBar(BaseComponent):
             content_attributes=[("data-quick-overflow-items", "")],
             content_class="flex flex-col items-stretch gap-1",
         )[()]
-        # Invisible, not hidden: connect measures its width.
         return Div(class_="hidden", data_quick_overflow="")[
-            Div(class_="flex items-center gap-1")[
+            Div(class_="relative")[
                 Dropdown(
                     trigger_element=trigger,
                     target_element=panel,
