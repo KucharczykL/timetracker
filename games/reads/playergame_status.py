@@ -7,14 +7,17 @@ from games.events.playergame import PLAYERGAME_CREATED, PLAYERGAME_STATUS_CHANGE
 from games.models import PlayerGameStatus, UserLibrary
 from games.reads.events import aggregate_events
 
-#: Events stating a word; creation implies Unplayed.
+#: Events that set a word; creation means Unplayed.
 _STATUS_FAMILY = (PLAYERGAME_CREATED.event_type, PLAYERGAME_STATUS_CHANGED.event_type)
 
 
 def status_before(
     library: UserLibrary, player_game_id: uuid.UUID, batch_id: uuid.UUID
 ) -> PlayerGameStatus | None:
-    """The word before the batch's; None if unchanged."""
+    """Word before the batch's; None where it stated none.
+
+    Raises `RowUnreadable` for a stream with no creation.
+    """
     events = list(
         aggregate_events(library, player_game_id).filter(event_type__in=_STATUS_FAMILY)
     )

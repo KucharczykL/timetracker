@@ -1,5 +1,6 @@
 """One status stated on many games, and back."""
 
+import logging
 import uuid
 from collections.abc import Sequence
 
@@ -23,13 +24,18 @@ from games.bulk_actions import (
 )
 from games.bulk_removal import GAME_GONE, game_scope
 from games.bulk_sessions import lost
+from games.events.append import SourceMetadata
 from games.events.dispatch import CommandRejected, RowNotHeld, RowUnreadable
 from games.events.idempotency import IdempotencyKey
+from games.events.playergame import PLAYERGAME_STATUS_CHANGED
 from games.forms import ChoiceSearchSelectWidget, apply_primitive_widget_classes
 from games.models import Game, PlayerGame, PlayerGameStatus, UserLibrary
+from games.reads.events import batch_events
 from games.reads.playergame_status import status_before
 from games.writes.answers import answered
 from games.writes.playergame import record_facts
+
+logger = logging.getLogger("games")
 
 #: What settling refuses.
 CHOOSE_A_STATUS = "Choose a status."
@@ -51,7 +57,7 @@ def _label(status: str) -> str:
 def status_resolution(
     library: UserLibrary, keys: Sequence[uuid.UUID]
 ) -> Resolution[Game]:
-    """Keys to tracked games, each with its word."""
+    """Keys to tracked games, annotated with their word."""
     wanted = list(dict.fromkeys(keys))
     rows = tuple(
         Game.objects.tracked_by(library)
@@ -92,8 +98,9 @@ class StatusForm(forms.Form):
                 "required": CHOOSE_A_STATUS,
                 "invalid_choice": CHOOSE_A_STATUS,
             },
+            #: Required: emptying it only earns a refusal.
             widget=ChoiceSearchSelectWidget(
-                placeholder=_holding(rows) if rows else None
+                placeholder=_holding(rows) if rows else None, clearable=False
             ),
         )
         apply_primitive_widget_classes(self.fields)
@@ -134,8 +141,24 @@ STATUS_CHOICE: BulkChoice[Game] = BulkChoice(offer=offer_status, settle=settle_s
 # ── Forward ──────────────────────────────────────────────────────────────────
 
 
-def _source() -> dict[str, object]:
+def _source() -> SourceMetadata:
     return {"bulk": {"action": SET_STATUS.name}}
+
+
+def _stated(game: Game, actor: User, choice: ChoiceValue | None) -> PlayerGameStatus:
+    """The settled word; anything else is ours."""
+    if choice is None:
+        raise RowUnreadable(
+            f"{SET_STATUS.name} ran with no choice for Game {game.pk} of "
+            f"library {actor.library.pk}. The act declares a choice, so the "
+            "runner settles one before a row."
+        )
+    if choice not in PlayerGameStatus.values:
+        raise RowUnreadable(
+            f"{SET_STATUS.name} settled {choice!r} for Game {game.pk} of "
+            f"library {actor.library.pk}, which is no status"
+        )
+    return PlayerGameStatus(choice)
 
 
 def set_status_one(
@@ -147,17 +170,12 @@ def set_status_one(
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
     with answered("game"):
-        if choice not in PlayerGameStatus.values:
-            #: Settled this request: ours, not theirs.
-            raise RowUnreadable(
-                f"{SET_STATUS.name} ran with choice {choice!r} for Game "
-                f"{game.pk} of library {actor.library.pk}, which is no status"
-            )
+        status = _stated(game, actor, choice)
     return RowOutcome.of(
         record_facts(
             actor,
             game,
-            status=PlayerGameStatus(choice),
+            status=status,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             source_metadata=_source(),
@@ -166,6 +184,21 @@ def set_status_one(
 
 
 # ── Backward ─────────────────────────────────────────────────────────────────
+
+
+def _stated_by(
+    library: UserLibrary, player_game_id: uuid.UUID, batch_id: uuid.UUID
+) -> str | None:
+    """The word the batch stated on the row."""
+    stated = (
+        batch_events(library, batch_id)
+        .filter(
+            aggregate_id=player_game_id,
+            event_type=PLAYERGAME_STATUS_CHANGED.event_type,
+        )
+        .last()
+    )
+    return None if stated is None else stated.payload["status"]
 
 
 def set_status_back(
@@ -189,17 +222,28 @@ def set_status_back(
                 f"{actor.library.pk}'s, so the batch's inverse has no row to "
                 "state a status on."
             )
-        if tracked.removed_at is not None:
-            raise CommandRejected(
-                f"PlayerGame {player_game_id} is removed",
-                sentence=GAME_REMOVED,
-            )
         before = status_before(actor.library, player_game_id, undoes)
         if before is None:
             raise CommandRejected(
                 f"batch {undoes} changed no status of PlayerGame {player_game_id}",
                 sentence=NOT_CHANGED_BY_THIS_BATCH,
             )
+        if tracked.status == before:
+            return RowOutcome.UNCHANGED
+        if tracked.removed_at is not None:
+            raise CommandRejected(
+                f"PlayerGame {player_game_id} is removed",
+                sentence=GAME_REMOVED,
+            )
+    if tracked.status != _stated_by(actor.library, player_game_id, undoes):
+        logger.info(
+            "[bulk]: %s Undo states %s over %s on game %s of library %s",
+            SET_STATUS.name,
+            before,
+            tracked.status,
+            tracked.game_id,
+            actor.library.pk,
+        )
     return RowOutcome.of(
         record_facts(
             actor,

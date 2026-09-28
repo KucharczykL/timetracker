@@ -400,6 +400,21 @@ def test_a_restated_endpoint_refuses_the_undo(
     assert CHANGED_SINCE in said(undone)
 
 
+def test_a_stream_with_no_creation_ends_the_undo_before_the_void(
+    client_in, owned_library
+):
+    """A projection row written by hand has no stream behind it."""
+    game = Game.objects.create(library=owned_library, name="Written by hand")
+    run = tracked_run(owned_library, game)
+    token, _ = _run(client_in, START_URL, run)
+
+    _undo(client_in, token)
+
+    run.refresh_from_db()
+    assert run.started is not None
+    assert _statused(game) == PlayerGameStatus.PLAYED
+
+
 def test_an_undo_pressed_twice_is_already_so(client_in, owned_library, game):
     run = tracked_run(owned_library, game)
     token, _ = _run(client_in, START_URL, run)

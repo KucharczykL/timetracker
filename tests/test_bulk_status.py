@@ -2,6 +2,7 @@
 
 import html as html_module
 import json
+import logging
 import uuid
 
 import pytest
@@ -279,13 +280,18 @@ def test_an_undo_pressed_twice_is_already_so(client_in, game):
     assert any("already" in sentence for sentence in said(again))
 
 
-def test_an_undo_states_the_earlier_word_over_a_later_one(client_in, owned_user, game):
+def test_an_undo_states_the_earlier_word_over_a_later_one(
+    client_in, owned_user, game, caplog, capture_games_logger
+):
     token, _ = _run(client_in, "completed", game)
     _stated(owned_user, game, PlayerGameStatus.ABANDONED)
 
-    _undo(client_in, token)
+    with capture_games_logger() as captured:
+        captured.set_level(logging.INFO, logger="games")
+        _undo(client_in, token)
 
     assert _status(game) == PlayerGameStatus.UNPLAYED
+    assert any("over abandoned" in record.getMessage() for record in caplog.records)
 
 
 def _inverse(user, game, undoes):
@@ -345,3 +351,75 @@ def test_a_stream_with_no_creation_is_a_defect(owned_user, owned_library):
 
     with pytest.raises(RowUnreadable):
         status_before(owned_library, _tracked(game).pk, batch)
+
+
+# ── Through the runner ───────────────────────────────────────────────────────
+
+
+def test_the_confirmation_asks_for_the_word(client_in, game, second_game):
+    confirmation = client_in.post(URL, {STATEMENT_FIELD: some(game, second_game)})
+
+    markup = html_module.unescape(confirmation.content.decode())
+    assert "Set the status of 2 games" in markup
+    for heading in ("Game", "Platform", "Status"):
+        assert f">{heading}<" in markup
+    assert f'name="{CHOICE_FIELD}"' in markup
+    assert "Now: Unplayed" in markup
+
+
+def test_one_row_is_named_as_one(client_in, game):
+    confirmation = client_in.post(URL, {STATEMENT_FIELD: some(game)})
+
+    assert "Set this game's status" in html_module.unescape(
+        confirmation.content.decode()
+    )
+
+
+def test_an_empty_word_asks_again_and_writes_nothing(client_in, game):
+    confirmation = client_in.post(URL, {STATEMENT_FIELD: some(game)})
+    fields = posted(confirmation)
+    fields[CHOICE_FIELD] = ""
+    events = LibraryEvent.objects.filter(event_type=STATUS_CHANGED).count()
+
+    again = client_in.post(URL, fields)
+
+    assert CHOOSE_A_STATUS in again.content.decode()
+    assert LibraryEvent.objects.filter(event_type=STATUS_CHANGED).count() == events
+
+
+def test_a_chunk_posted_twice_acts_once(client_in, owned_user, game):
+    confirmation = client_in.post(URL, {STATEMENT_FIELD: some(game)})
+    fields = posted(confirmation)
+    fields[CHOICE_FIELD] = "completed"
+    client_in.post(URL, fields)
+    _stated(owned_user, game, PlayerGameStatus.ABANDONED)
+    events = LibraryEvent.objects.filter(event_type=STATUS_CHANGED).count()
+
+    client_in.post(URL, fields)
+
+    assert LibraryEvent.objects.filter(event_type=STATUS_CHANGED).count() == events
+    assert _status(game) == PlayerGameStatus.ABANDONED
+
+
+def test_a_game_removed_after_the_confirmation_is_left_alone(
+    client_in, owned_user, game, second_game
+):
+    confirmation = client_in.post(URL, {STATEMENT_FIELD: some(game, second_game)})
+    fields = posted(confirmation)
+    fields[CHOICE_FIELD] = "completed"
+    remove_from_library(owned_user, game, correlation_id=new_correlation_id())
+
+    client_in.post(URL, fields)
+
+    assert _status(game) == PlayerGameStatus.UNPLAYED
+    assert _status(second_game) == PlayerGameStatus.COMPLETED
+
+
+def test_an_undo_answers_a_removed_game_already_so_when_it_holds_the_word(
+    client_in, owned_user, game
+):
+    token, _ = _run(client_in, "completed", game)
+    _stated(owned_user, game, PlayerGameStatus.UNPLAYED)
+    remove_from_library(owned_user, game, correlation_id=new_correlation_id())
+
+    assert _inverse(owned_user, game, uuid.UUID(token)) is RowOutcome.UNCHANGED

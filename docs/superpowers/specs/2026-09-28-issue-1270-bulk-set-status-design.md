@@ -23,8 +23,8 @@ The tray shows Set status, then Remove. The destructive act is last.
 The choice is one status word, through the plain `BulkChoice`. The form has
 one required field with the runner's field name and no prefix. Thus the
 confirmation and each progress POST use the same name. The widget is a
-`ChoiceSearchSelectWidget` and it has no "none" row. Its placeholder shows
-the word that the rows have now: "Now: Played", or "Now: mixed". An empty
+`ChoiceSearchSelectWidget` with no "none" row and no clear button. Its
+placeholder shows the word that the rows have now: "Now: Played", or "Now: mixed". An empty
 value or an unknown word gets the refusal "Choose a status." No rows: the
 confirmation asks nothing.
 
@@ -36,9 +36,9 @@ is not a word when the row runs is `RowUnreadable`, because the runner
 settled it in the same request.
 
 `record_facts` writes the same `status_changed` event as
-`SetPlayerGameStatus`, which has no caller; #1313 retires it. Its retry that
-tracks an untracked game cannot occur here, because each row comes from
-`tracked_by`. The command does not refuse a removed PlayerGame. A removal
+`SetPlayerGameStatus`, which no application code calls; #1313 retires it.
+Its retry that tracks an untracked game cannot occur here, because each row
+comes from `tracked_by`. The command does not refuse a removed PlayerGame. A removal
 between the chunk's resolve and the dispatch is an accepted race.
 
 ## The inverse
@@ -48,22 +48,21 @@ between the chunk's resolve and the dispatch is an accepted race.
 
 - No `status_changed` from the batch: `None`.
 - The latest earlier `status_changed`: its word.
-- Only the creation earlier: `UNPLAYED`.
-- No creation earlier: `RowUnreadable`.
+- The latest earlier event is the creation: `UNPLAYED`.
+- No earlier event: `RowUnreadable`.
 
-The inverse refuses `None` ("not changed by this batch") and a removed game
-("Restore it first"). Then it calls `record_facts` with the earlier word. It
-does not check for a later change, as the #1211 inverse. Thus a second Undo
-answers `Unchanged`. It does not use the #1256 gate, which refuses a second
-press ([#1284](https://github.com/KucharczykL/timetracker/issues/1284)).
+The inverse refuses `None` ("not changed by this batch"). A game that has
+the earlier word answers `Unchanged`; only then is a removed game refused.
+Then it calls `record_facts` with the earlier word. Like the #1211 inverse,
+it writes over a later change and logs it, so a second Undo answers
+`Unchanged`. The #1256 gate refuses a second press
+([#1284](https://github.com/KucharczykL/timetracker/issues/1284)).
 
-The #1256 Undo reads `status_before` too, inside `answered`. For it, `None`
-means "skip". A projection row that a test writes directly has no stream, so
-a test that undoes a status tracks its games through `track_game`.
+The #1256 Undo reads `status_before` too, before its void, so a defect
+leaves no half-undone row. There, `None` means "skip". A test that undoes a
+status tracks its games through `track_game`: a row written directly has no
+stream.
 
 ## Proof
 
-`tests/test_bulk_status.py` covers the resolve, the question, the forward
-act, each refusal of the inverse, a second Undo, and the reader.
-`e2e/test_bulk_game_status_e2e.py` sets Completed on two games and presses
-Undo.
+`tests/test_bulk_status.py` and `e2e/test_bulk_game_status_e2e.py`.

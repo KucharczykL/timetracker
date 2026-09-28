@@ -300,9 +300,10 @@ def _refuse_unless_this_batch_wrote_it(
         )
 
 
-def _status_before(run: Playthrough, batch_id: uuid.UUID) -> PlayerGameStatus | None:
-    """The word the game held before the batch; None where it changed none."""
-    return status_before(run.library, run.player_game_id, batch_id)
+def _word_before(run: Playthrough, batch_id: uuid.UUID) -> PlayerGameStatus | None:
+    """Read before the void: a defect leaves nothing half-undone."""
+    with answered("game"):
+        return status_before(run.library, run.player_game_id, batch_id)
 
 
 def _stated_since(run: Playthrough, batch_id: uuid.UUID, undoing: uuid.UUID) -> bool:
@@ -329,6 +330,7 @@ def _stated_since(run: Playthrough, batch_id: uuid.UUID, undoing: uuid.UUID) -> 
 def _put_the_status_back(
     actor: User,
     run: Playthrough,
+    before: PlayerGameStatus | None,
     *,
     undoes: uuid.UUID,
     idempotency_key: IdempotencyKey,
@@ -336,8 +338,6 @@ def _put_the_status_back(
     name: str,
 ) -> None:
     """State the word that stood before the batch."""
-    with answered("playthrough"):
-        before = _status_before(run, undoes)
     if before is None:
         return
     if _stated_since(run, undoes, correlation_id):
@@ -376,6 +376,7 @@ def void_start_one(
             _refuse_unless_this_batch_wrote_it(
                 run, undoes, _START_FAMILY, PLAYTHROUGH_STARTED.event_type
             )
+    before = _word_before(run, undoes)
     outcome = RowOutcome.of(
         void_start(
             actor,
@@ -388,6 +389,7 @@ def void_start_one(
     _put_the_status_back(
         actor,
         run,
+        before,
         undoes=undoes,
         idempotency_key=idempotency_key,
         correlation_id=correlation_id,
@@ -411,6 +413,7 @@ def void_completion_one(
             _refuse_unless_this_batch_wrote_it(
                 run, undoes, _COMPLETION_FAMILY, PLAYTHROUGH_COMPLETED.event_type
             )
+    before = _word_before(run, undoes)
     outcome = RowOutcome.of(
         void_completion(
             actor,
@@ -423,6 +426,7 @@ def void_completion_one(
     _put_the_status_back(
         actor,
         run,
+        before,
         undoes=undoes,
         idempotency_key=idempotency_key,
         correlation_id=correlation_id,
