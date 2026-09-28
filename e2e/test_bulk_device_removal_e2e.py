@@ -65,3 +65,14 @@ def test_the_row_menu_opens_edit(live_server, page: Page, e2e_library):
     expect(page.get_by_role("cell", name="Steam Deck OLED").first).to_be_visible()
     device.refresh_from_db()
     assert device.name == "Steam Deck OLED"
+
+
+def test_each_row_checkbox_names_its_device_once(live_server, page: Page, e2e_library):
+    for name in ("Steam Deck", "PC"):
+        create_device(e2e_library, name, Device.PC)
+    _login(page, live_server)
+
+    page.goto(f"{live_server.url}{reverse('games:list_devices')}")
+
+    for name in ("Steam Deck", "PC"):
+        expect(page.get_by_role("checkbox", name=name, exact=True)).to_have_count(1)

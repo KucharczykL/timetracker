@@ -4,7 +4,7 @@ from django.urls import reverse
 from playwright.sync_api import Page, expect
 from tracked_games import create_tracked_game
 
-from games.models import PlayerGame
+from games.models import Platform, PlayerGame
 
 
 def _login(page: Page, live_server) -> None:
@@ -50,3 +50,19 @@ def test_two_games_are_removed_and_the_undo_puts_them_back(
     assert not PlayerGame.objects.filter(
         library=e2e_library, removed_at__isnull=False
     ).exists()
+
+
+def test_each_row_checkbox_names_its_game_alone(live_server, page: Page, e2e_library):
+    platform = Platform.objects.create(
+        library=e2e_library, name="PC", icon="pc", group="PC"
+    )
+    create_tracked_game(
+        e2e_library, "The Witness", platform=platform, sort_name="Witness, The"
+    )
+    _login(page, live_server)
+
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+
+    expect(page.get_by_role("checkbox", name="The Witness", exact=True)).to_have_count(
+        1
+    )
