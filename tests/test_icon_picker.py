@@ -27,6 +27,15 @@ def test_every_platform_icon_is_a_named_snippet():
     assert all(label.strip() for label in PLATFORM_ICONS.values())
 
 
+def test_no_two_picker_icons_draw_one_glyph():
+    glyphs = [
+        re.sub(r"<title>.*?</title>", "", str(ICON_NODES[slug]))
+        for slug in PLATFORM_ICONS
+    ]
+
+    assert len(set(glyphs)) == len(glyphs)
+
+
 def test_every_icon_is_a_radio_named_for_a_person():
     html = _picker("steam")
 

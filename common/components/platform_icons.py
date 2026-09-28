@@ -9,7 +9,7 @@ type PlatformIcon = str  # "steam"
 #: A person's name for an icon.
 type IconLabel = str  # "Steam"
 
-#: Every icon a platform may name, in picker order.
+#: Every icon a platform may name, one per glyph, in picker order.
 PLATFORM_ICONS: Mapping[PlatformIcon, IconLabel] = MappingProxyType(
     {
         "unspecified": "Unspecified",
@@ -21,12 +21,9 @@ PLATFORM_ICONS: Mapping[PlatformIcon, IconLabel] = MappingProxyType(
         "itchio": "itch.io",
         "microsoft": "Microsoft Store",
         "nintendo": "Nintendo",
-        "nintendo-3ds": "Nintendo 3DS",
         "nintendo-switch": "Nintendo Switch",
         "physical": "Physical media",
-        "physical-media": "Physical media (disc)",
         "playstation": "PlayStation",
-        "ps1": "PlayStation 1",
         "ps3": "PlayStation 3",
         "ps4": "PlayStation 4",
         "ps5": "PlayStation 5",
