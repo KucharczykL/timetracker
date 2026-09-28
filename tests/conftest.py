@@ -6,6 +6,7 @@ from typing import NamedTuple
 import pytest
 from django.db.models.signals import post_save
 from django.utils import timezone
+from icon_names import unknown_icon_names_fail  # noqa: F401
 
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.models import (

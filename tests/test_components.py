@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 from uuid import UUID
 
 import django
+import pytest
 from django import forms
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, override_settings
@@ -687,6 +688,7 @@ class IconTest(unittest.TestCase):
         self.assertIn("<svg", result)
         self.assertIn("</svg>", result)
 
+    @pytest.mark.draws_unknown_icon
     def test_unavailable_icon_falls_back(self):
         result = str(components.Icon("zzz_nonexistent_platform"))
         self.assertIsInstance(result, SafeText)

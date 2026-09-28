@@ -9,7 +9,9 @@ written out in this module. Everything returns a :class:`Node`; string-built
 widgets return :class:`Safe`.
 """
 
+import functools
 import json
+import logging
 from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import (
@@ -2627,12 +2629,26 @@ def _row_menu_header_cell(
     ]
 
 
+#: Names an icon no snippet draws.
+icon_logger = logging.getLogger("games.icons")
+
+
+@functools.cache
+def _warn_unknown_icon(name: str) -> None:
+    """Once a name, so a table logs once."""
+    icon_logger.warning("No icon snippet is named %r; drawing unspecified.", name)
+
+
 def get_icon_node(name: str) -> Element:
     """Return the pre-built node tree for an icon. Falls back to 'unspecified'.
 
     The returned node is shared (module-level) and must be treated as read-only.
     """
-    return ICON_NODES.get(name) or ICON_NODES["unspecified"]
+    node = ICON_NODES.get(name)
+    if node is None:
+        _warn_unknown_icon(name)
+        return ICON_NODES["unspecified"]
+    return node
 
 
 # Classes applied to every icon, overriding whatever each snippet baked in — no

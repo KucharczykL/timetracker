@@ -106,3 +106,22 @@ def test_the_platform_form_saves_a_picked_icon(owned_library):
 
     assert form.is_valid(), form.errors
     assert form.save().icon == "gog"
+
+
+@pytest.mark.draws_unknown_icon
+def test_an_unknown_icon_name_warns_once_and_draws_unspecified():
+    from icon_names import Recorder
+
+    from common.components.primitives import get_icon_node, icon_logger
+
+    recorder = Recorder()
+    icon_logger.addHandler(recorder)
+    try:
+        drawn = [get_icon_node("no-such-icon") for _ in range(2)]
+    finally:
+        icon_logger.removeHandler(recorder)
+
+    assert drawn == [ICON_NODES["unspecified"]] * 2
+    assert recorder.messages == [
+        "No icon snippet is named 'no-such-icon'; drawing unspecified."
+    ]

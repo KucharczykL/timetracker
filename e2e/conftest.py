@@ -165,3 +165,6 @@ def browser_type_launch_args(browser_type_launch_args):
         }
     # Fallback to default Playwright behavior
     return browser_type_launch_args
+
+
+from icon_names import unknown_icon_names_fail  # noqa: F401
