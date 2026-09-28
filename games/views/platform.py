@@ -44,7 +44,6 @@ from games.models import Platform, UserLibrary
 from games.ownership import owned_or_404
 from games.reads.external_references import held_by, references_for
 from games.reference_form import ReferenceSetForm, submitted_or_form_error
-from games.removal import restore
 from games.sorting import (
     PLATFORM_DEFAULT_SORT,
     PLATFORM_SORTS,
@@ -59,6 +58,7 @@ from games.views.filtering import (
 from games.views.reference_section import references_area
 from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
+from games.writes.platform import restore_platform_by_hand
 
 PLATFORM_COLUMNS: list[Column] = [
     Column("Name", "name", key="name", hideable=False),
@@ -174,7 +174,7 @@ def restore_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
     )
     return restore_and_return(
         request,
-        action=partial(restore, platform),
+        action=partial(restore_platform_by_hand, platform),
         restored=f"{platform.name} restored to your library.",
         fallback="games:list_platforms",
     )
