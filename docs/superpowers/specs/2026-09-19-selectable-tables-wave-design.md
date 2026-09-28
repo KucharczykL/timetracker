@@ -518,7 +518,7 @@ on an editable quick bar, which is why both fields are facets. No stored
 state: the facet is the suggestion, and a row the person leaves is right
 where it is. The session bar holds seven facets and `max-w-7xl` fits four
 inline. An applied facet spills after every idle one, and Playthrough and
-Outside dates lead the idle row, as
+Outside dates follow Game and Day in the idle row, as
 [the quick bar's facet priority](2026-09-28-issue-1254-quick-bar-facet-priority-design.md)
 states.
 

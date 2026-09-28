@@ -255,7 +255,8 @@ function mountOverflow(
       applied.has(id) ? " data-quick-facet-applied" : ""
     }></drop-down>`;
   document.body.innerHTML = `
-    <quick-filter-bar apply-url="${LIST_URL}">
+    <quick-filter-bar apply-url="${LIST_URL}" overflow-label="More filters"
+        overflow-label-applied="More filters, some applied">
       <form>
         <div data-quick-row>
           ${leading}
@@ -338,7 +339,7 @@ describe("quick-filter-bar priority-plus overflow", () => {
     );
   });
 
-  it("spills rightmost facets into the overflow menu as the row narrows", () => {
+  it("spills rightmost idle facets into the overflow menu as the row narrows", () => {
     const fixture = mountOverflow();
     // reserved = group(80) + overflow(40); available = 300 - 120 = 180 → one
     // 100px facet fits.
@@ -396,8 +397,9 @@ describe("quick-filter-bar applied facets", () => {
   });
 
   it("keeps the declared order among the facets that stay", () => {
-    const fixture = mountOverflow({ applied: ["f1", "f3"] });
-    // 300 + 80 > 350, so not all fit; available = 350 - 120 = 230 → two.
+    const fixture = mountOverflow({ applied: ["f3"] });
+    // 300 + 80 > 350, so not all fit; available = 350 - 120 = 230 → two:
+    // f3 by priority, then f1.
     fixture.setRowWidth(350);
     fixture.bar.layoutOverflow();
     expect(ids(fixture.row)).toEqual(["f1", "f3"]);
@@ -428,6 +430,21 @@ describe("quick-filter-bar applied facets", () => {
     expect(ids(fixture.items)).toEqual(["f3"]);
   });
 
+  it("moves no node when the layout does not change", () => {
+    for (const width of [300, 150]) {
+      const fixture = mountOverflow({ applied: ["f3"] });
+      fixture.setRowWidth(width);
+      fixture.bar.layoutOverflow();
+      const observer = new MutationObserver(() => undefined);
+      observer.observe(fixture.row, { childList: true });
+      observer.observe(fixture.items, { childList: true });
+      fixture.bar.layoutOverflow();
+      // A moved facet would close a panel open inside it.
+      expect(observer.takeRecords()).toEqual([]);
+      observer.disconnect();
+    }
+  });
+
   it("marks the menu only while it holds an applied facet", () => {
     const fixture = mountOverflow({ applied: ["f3"] });
     fixture.setRowWidth(1000);
@@ -436,9 +453,10 @@ describe("quick-filter-bar applied facets", () => {
     fixture.setRowWidth(300);
     fixture.bar.layoutOverflow();
     expect(overflowMark(fixture)).toEqual({ shown: false, label: "More filters" });
-    // Nothing fits: the applied facet spills too.
+    // Nothing fits: the applied facet spills too, in declared order.
     fixture.setRowWidth(150);
     fixture.bar.layoutOverflow();
+    expect(ids(fixture.items)).toEqual(["f1", "f2", "f3"]);
     expect(overflowMark(fixture)).toEqual({
       shown: true,
       label: "More filters, some applied",

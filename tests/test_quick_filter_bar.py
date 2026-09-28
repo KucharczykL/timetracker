@@ -4,6 +4,7 @@ serializer output must reload as editable, never flip to "advanced")."""
 
 import json
 import re
+from collections.abc import Mapping
 from typing import ClassVar
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
@@ -20,8 +21,12 @@ from common.components import (
 from common.components import (
     QuickFilterBar as _QuickFilterBar,
 )
-from common.components.custom_elements import FILTER_MODE_MODELS, list_url_for
-from common.criteria import field_metadata
+from common.components.custom_elements import (
+    FILTER_MODE_MODELS,
+    FilterMode,
+    list_url_for,
+)
+from common.criteria import AttrName, field_metadata
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
@@ -601,7 +606,7 @@ class AppliedFacetMarkTest(TestCase):
 class FacetOrderTest(SimpleTestCase):
     """Each mode's facets in declared order."""
 
-    ORDERS: ClassVar[dict[str, list[str]]] = {
+    ORDERS: ClassVar[Mapping[FilterMode, list[AttrName]]] = {
         "sessions": [
             "game",
             "day",

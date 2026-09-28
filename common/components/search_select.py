@@ -1034,7 +1034,7 @@ def ComboboxDropdown(
     list-shaped content; content with an intrinsic width (a calendar) passes
     ``w-auto``.
 
-    ``applied`` marks the trigger. The label is its own span: the ghost
+    ``applied`` marks the trigger and its accessible name. The label is its own span: the ghost
     tone's ``text-heading`` outranks a color class on the button.
     """
     trigger_label: Node | str = label

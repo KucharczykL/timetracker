@@ -637,6 +637,8 @@ _UnsetField = custom_element_builder("unset-field")
 class QuickFilterBarProps(TypedDict):
     apply_url: str  # list URL a facet change navigates to (#197)
     per_page: str  # explicit override; "" means inherit
+    overflow_label: str  # the ⋯ trigger's name
+    overflow_label_applied: str  # its name while it holds an applied facet
 
 
 register_element("quick-filter-bar", "QuickFilterBar", QuickFilterBarProps)

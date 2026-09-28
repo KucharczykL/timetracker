@@ -26,12 +26,9 @@ import {
 } from "./priority-plus.js";
 
 // Applied facets spill after idle ones.
-interface PrioritizedFacet extends OverflowItem {
-  applied: boolean;
+interface SpillableFacet extends OverflowItem {
+  readonly applied: boolean;
 }
-
-const OVERFLOW_LABEL = "More filters";
-const OVERFLOW_LABEL_APPLIED = "More filters, some applied";
 
 // The preset picker's search-select change payload: `last` is
 // the picked row, whose data-filter attribute carries the preset's filter
@@ -45,7 +42,11 @@ interface PresetChangeDetail {
 class QuickFilterBarElement extends HTMLElement {
   private applyTarget = "";
   private perPage = "";
-  private facets: PrioritizedFacet[] = [];
+  private facets: SpillableFacet[] = [];
+  // Fit sequence: applied facets, then idle ones.
+  private priority: SpillableFacet[] = [];
+  private overflowLabel = "";
+  private overflowLabelApplied = "";
   private row: HTMLElement | null = null;
   private overflowHost: HTMLElement | null = null;
   private overflowItems: HTMLElement | null = null;
@@ -63,6 +64,8 @@ class QuickFilterBarElement extends HTMLElement {
     const props = readQuickFilterBarProps(this);
     this.applyTarget = props.applyUrl;
     this.perPage = props.perPage;
+    this.overflowLabel = props.overflowLabel;
+    this.overflowLabelApplied = props.overflowLabelApplied;
     // Wires the number/string modifier selects (presence disables inputs,
     // BETWEEN reveals the second) and the bool facets' deselectable radios.
     setupModifierToggles(this);
@@ -127,7 +130,19 @@ class QuickFilterBarElement extends HTMLElement {
       "[data-quick-overflow-trigger]",
     );
     this.overflowMark = this.querySelector<HTMLElement>("[data-quick-overflow-mark]");
-    if (!this.row || !this.overflowHost || !this.overflowItems) return;
+    if (!this.row) return;
+    if (!this.overflowHost || !this.overflowItems) {
+      reportClientError("quick-filter-bar", "overflow host or items missing", {
+        toast: false,
+      });
+      return;
+    }
+    // The collapse still works without the mark.
+    if (!this.overflowTrigger || !this.overflowMark) {
+      reportClientError("quick-filter-bar", "overflow trigger or mark missing", {
+        toast: false,
+      });
+    }
     const facetElements = Array.from(
       this.row.querySelectorAll<HTMLElement>(":scope > [data-quick-facet]"),
     );
@@ -141,6 +156,10 @@ class QuickFilterBarElement extends HTMLElement {
       width: element.offsetWidth,
       applied: element.hasAttribute("data-quick-facet-applied"),
     }));
+    this.priority = [
+      ...this.facets.filter((facet) => facet.applied),
+      ...this.facets.filter((facet) => !facet.applied),
+    ];
     this.overflowHost.classList.remove("hidden");
     this.overflowWidth = this.overflowHost.offsetWidth;
     this.overflowHost.classList.add("hidden");
@@ -182,23 +201,19 @@ class QuickFilterBarElement extends HTMLElement {
     if (!row || !overflowHost || !overflowItems || !this.facets.length) return;
 
     const rowWidth = row.clientWidth;
-    const priority = [
-      ...this.facets.filter((facet) => facet.applied),
-      ...this.facets.filter((facet) => !facet.applied),
-    ];
     // First try without the "⋯" reserve: if every facet fits alongside the
     // permanent furniture, nothing collapses.
-    const facetWidths = priority.map((facet) => facet.width);
+    const facetWidths = this.priority.map((facet) => facet.width);
     const totalFacetsWidth = priorityPlusTotalWidth(facetWidths, this.rowGap);
     const furnitureOnly = this.reservedWidth - this.rowGap - this.overflowWidth;
     let fitCount: number;
     if (totalFacetsWidth + Math.max(furnitureOnly, 0) <= rowWidth) {
-      fitCount = priority.length;
+      fitCount = this.priority.length;
     } else {
       const available = rowWidth - this.reservedWidth;
       fitCount = priorityPlusFitCount(facetWidths, available, this.rowGap);
     }
-    const kept = new Set(priority.slice(0, fitCount));
+    const kept = new Set(this.priority.slice(0, fitCount));
     const inRow = this.facets.filter((facet) => kept.has(facet));
     const spilled = this.facets.filter((facet) => !kept.has(facet));
 
@@ -224,7 +239,7 @@ class QuickFilterBarElement extends HTMLElement {
     this.overflowMark?.classList.toggle("invisible", !holdsApplied);
     this.overflowTrigger?.setAttribute(
       "aria-label",
-      holdsApplied ? OVERFLOW_LABEL_APPLIED : OVERFLOW_LABEL,
+      holdsApplied ? this.overflowLabelApplied : this.overflowLabel,
     );
   }
 

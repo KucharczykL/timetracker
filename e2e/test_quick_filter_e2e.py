@@ -113,7 +113,7 @@ def test_quick_scalar_facet_filters_sessions(
     page.set_viewport_size({"width": 2000, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
-    # The capped body fits four facets; Duration, the last, spills.
+    # Past the body cap, Duration is among the three that spill.
     open_facet(page, "duration_hours")
     duration = page.locator('quick-filter-bar [data-filter-widget][data-kind="number"]')
     duration.locator("select[data-number-modifier-select]").select_option(
@@ -305,12 +305,12 @@ def test_date_dropdown_facet_preset_flow(
 def test_priority_plus_overflow_collapses_and_restores(
     authenticated_page: Page, live_server, e2e_library
 ):
-    """Priority-plus: narrowing the viewport moves rightmost facets into
-    the "⋯" overflow menu (ResizeObserver, no breakpoints); facets keep
-    working from inside it; widening moves them back.
+    """Priority-plus: narrowing moves idle facets into "⋯", rightmost
+    first, and an applied facet spills last; facets keep working from
+    inside it.
 
-    The capped body fits four facets at every viewport: Game, Day,
-    Playthrough and Outside dates."""
+    Past the body cap, four facets fit: Game, Day, Playthrough and
+    Outside dates."""
     from datetime import datetime, timedelta
 
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")

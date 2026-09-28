@@ -75,6 +75,9 @@ class QuickFacet(NamedTuple):
 # sub-filter, which the predicate below rejects).
 QUICK_FACET_KINDS = frozenset({"set", "number", "date", "string", "bool"})
 
+OVERFLOW_LABEL = "More filters"
+OVERFLOW_LABEL_APPLIED = "More filters, some applied"
+
 
 # Facets per mode, in idle-row priority order.
 QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
@@ -340,6 +343,8 @@ class QuickFilterBar(BaseComponent):
             per_page=(
                 "" if self.per_page_override is None else str(self.per_page_override)
             ),
+            overflow_label=OVERFLOW_LABEL,
+            overflow_label_applied=OVERFLOW_LABEL_APPLIED,
         )[
             # A real <form> so Enter in any facet input applies; the element
             # intercepts submit and navigates.
@@ -377,7 +382,7 @@ class QuickFilterBar(BaseComponent):
         # propagates here; QuickFacet.label overrides only for compact wording.
         label = facet.label or _field_meta(filter_cls, facet.field)["label"]
         kind = _field_meta(filter_cls, facet.field)["kind"]
-        # Applied facets spill after idle ones.
+        # Stamped for the bar's spill order.
         applied = facet.field in self.existing
         config = {"data_quick_facet": ""}
         if applied:
@@ -435,14 +440,14 @@ class QuickFilterBar(BaseComponent):
         a facet dropdown inside it opens (ancestor check)."""
         trigger = EllipsisTrigger(
             [("data-quick-overflow-trigger", "")],
-            label="More filters",
+            label=OVERFLOW_LABEL,
             orientation="horizontal",
             haspopup="dialog",
         ).as_element()
         # Moved facets' dropdowns open fixed, unclipped.
         panel = DropdownPanel(
             role="dialog",
-            aria_label="More filters",
+            aria_label=OVERFLOW_LABEL,
             width="w-auto",
             content_attributes=[("data-quick-overflow-items", "")],
             content_class="flex flex-col items-stretch gap-1",
