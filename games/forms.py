@@ -2217,11 +2217,6 @@ ACCESS_CHOICES = [
     ("", "Held"),
     *((way.value, END_WAY_LABELS[way]) for way in DEVICE_WAYS),
 ]
-ACCESS_HELP = (
-    "Held takes back an end recorded by mistake. Getting a device back "
-    "cannot be recorded yet."
-)
-NO_WAY_FOR_A_DAY = "Choose how the device left before giving a day or a note."
 
 
 class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
@@ -2237,9 +2232,7 @@ class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
         widget=autofocus_input_widget,
     )
     type = forms.ChoiceField(choices=Device.DEVICE_TYPES, initial=Device.UNKNOWN)
-    access = forms.ChoiceField(
-        choices=ACCESS_CHOICES, required=False, label="Access", help_text=ACCESS_HELP
-    )
+    access = forms.ChoiceField(choices=ACCESS_CHOICES, required=False, label="Access")
     access_note = forms.CharField(
         required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Access note"
     )
@@ -2276,14 +2269,16 @@ class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
         if cleaned is None:
             return cleaned
         way = cleaned.get("access") or ""
-        when = cleaned.get("access_day")
-        note = (cleaned.get("access_note") or "").strip()
-        if not way:
-            if when is not None or note:
-                self.add_error("access", NO_WAY_FOR_A_DAY)
-            cleaned["access_end"] = None
-            return cleaned
-        cleaned["access_end"] = WayActStatement(when, EndWay(way), note)
+        #: Held states no end, so the day and note it shows go with it.
+        cleaned["access_end"] = (
+            WayActStatement(
+                cleaned.get("access_day"),
+                EndWay(way),
+                (cleaned.get("access_note") or "").strip(),
+            )
+            if way
+            else None
+        )
         return cleaned
 
     def submission_key(self) -> IdempotencyKey:

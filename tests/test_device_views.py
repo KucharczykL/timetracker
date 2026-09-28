@@ -208,14 +208,14 @@ def test_a_rename_and_an_end_share_one_correlation(logged_in, owned_library):
     assert renamed.correlation_id == ended.correlation_id
 
 
-def test_a_day_without_a_way_is_refused_on_the_field(logged_in, owned_library):
+def test_held_takes_the_day_and_note_it_shows_with_it(logged_in, owned_library):
     device = create_device(owned_library, "Deck", Device.HANDHELD)
+    _edit(logged_in, device, way="sold", year="2021", month="5", note="x")
 
-    response = _edit(logged_in, device, way="", note="sold it")
+    response = _edit(logged_in, device, way="", year="2021", month="5", note="x")
 
-    assert response.status_code == 200
-    assert "Choose how the device left" in response.content.decode()
-    assert _device_events(device) == ["library.device.created"]
+    assert response.status_code == 302
+    assert _device_events(device)[-1] == "library.device.access_end_voided"
 
 
 def test_adding_a_device_that_already_left(logged_in):
