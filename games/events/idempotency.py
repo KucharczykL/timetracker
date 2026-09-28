@@ -36,9 +36,9 @@ type TaggedValue = tuple[str, str | None]  # ("decimal", "11E-1")
 
 #: Bump when a deployed record's digest changes.
 #:
-#: No deployment has run 0024, so no record holds a fingerprint and every
-#: change to the canonical form is free until one does.
-FINGERPRINT_VERSION = 1
+#: A command's field set is part of its digest: 2 took the facts
+#: command's third field.
+FINGERPRINT_VERSION = 2
 
 
 class IdempotencyKeyMismatch(CommandConflict):

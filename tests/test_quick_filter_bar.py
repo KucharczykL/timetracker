@@ -406,6 +406,7 @@ class QuickFilterBarRenderingTest(TestCase):
         filter_json = json.dumps(
             {
                 "mastered": {"value": True, "modifier": "EQUALS"},
+                "excluded_from_unfinished": {"value": False, "modifier": "EQUALS"},
                 "session_count": {"value": 3, "modifier": "GREATER_THAN"},
                 "purchase_price_total": {
                     "value": 10,
@@ -646,6 +647,7 @@ class FacetOrderTest(SimpleTestCase):
             "purchase_count",
             "purchase_price_total",
             "name",
+            "excluded_from_unfinished",
         ],
         "playthroughs": [
             "activity",

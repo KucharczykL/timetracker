@@ -10,7 +10,7 @@ from django.urls import reverse
 
 from games.catalog_compat import mirror_legacy_columns
 from games.catalog_form import LAST_RELEASE, MOST_ROWS, TOO_MANY_ROWS
-from games.models import Edition, Game, Platform, Release
+from games.models import Edition, Game, LibraryEvent, Platform, PlayerGame, Release
 from games.views.catalog_section import _Name
 from timetracker.temporal import TemporalValue
 
@@ -753,3 +753,83 @@ def test_a_platform_name_is_trimmed_as_the_element_trims(
 def test_a_name_pattern_needs_its_slot():
     with pytest.raises(ValueError, match="no slot"):
         _Name("Remove the release", "platform")
+
+
+def _posted_with(plain_game, **extra: str) -> dict[str, str]:
+    """An edit submit stating only `extra`."""
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = edition.releases.get(is_default=True)
+    return {
+        "name": plain_game.name,
+        "status": "played",
+        "reference_wikidata": "",
+        "editions-count": "1",
+        "edition-0-edition_id": str(edition.pk),
+        "edition-0-name": edition.name,
+        "edition-0-releases-count": "1",
+        "edition-0-release-0-release_id": str(release.pk),
+        "edition-0-release-0-platform": "",
+        "in_library": "edition-0-release-0",
+        **extra,
+    }
+
+
+def _exclusion_box(body: str) -> str:
+    found = re.search(r'<input[^>]*name="excluded_from_unfinished"[^>]*>', body)
+    assert found is not None
+    return found[0]
+
+
+def test_the_box_reads_the_tracked_row(logged_in, plain_game):
+    assert "checked" not in _exclusion_box(page(logged_in, plain_game))
+    PlayerGame.objects.filter(game=plain_game).update(excluded_from_unfinished=True)
+
+    assert "checked" in _exclusion_box(page(logged_in, plain_game))
+
+
+def test_a_ticked_box_states_the_exclusion_once(logged_in, plain_game):
+    response = logged_in.post(
+        reverse("games:edit_game", args=[plain_game.pk]),
+        _posted_with(plain_game, excluded_from_unfinished="on"),
+    )
+
+    assert response.status_code == 302
+    assert PlayerGame.objects.get(game=plain_game).excluded_from_unfinished is True
+    assert (
+        LibraryEvent.objects.filter(
+            event_type="library.playergame.excluded_from_unfinished_changed"
+        ).count()
+        == 1
+    )
+
+
+def test_an_empty_box_includes_the_game_again(logged_in, plain_game):
+    PlayerGame.objects.filter(game=plain_game).update(excluded_from_unfinished=True)
+
+    logged_in.post(
+        reverse("games:edit_game", args=[plain_game.pk]), _posted_with(plain_game)
+    )
+
+    assert PlayerGame.objects.get(game=plain_game).excluded_from_unfinished is False
+
+
+def test_add_game_states_the_exclusion(logged_in, owned_library):
+    response = logged_in.post(
+        reverse("games:add_game"),
+        {
+            "name": "Endless Farm",
+            "sort_name": "",
+            "status": "played",
+            "excluded_from_unfinished": "on",
+            "reference_wikidata": "",
+            "editions-count": "1",
+            "edition-0-name": "",
+            "edition-0-releases-count": "1",
+            "edition-0-release-0-platform": "",
+            "in_library": "edition-0-release-0",
+        },
+    )
+
+    assert response.status_code == 302
+    game = Game.objects.get(library=owned_library, name="Endless Farm")
+    assert PlayerGame.objects.get(game=game).excluded_from_unfinished is True

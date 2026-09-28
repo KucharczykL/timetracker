@@ -30,6 +30,7 @@ from games.models import (
     Game,
     HistoricalPlaytime,
     Platform,
+    PlayerGame,
     PlayerGameStatus,
     PlayerSession,
     Playthrough,
@@ -388,6 +389,90 @@ def test_unfinished_matches_count(world):
         _count(stats_links.purchases_unfinished(YEAR), Purchase, world["library"])
         == stats["purchased_unfinished_count"]
     )
+
+
+@pytest.fixture
+def excluded(world):
+    """Purchases only the flag keeps out."""
+    library = world["library"]
+    endless = create_tracked_game(
+        library,
+        "Endless",
+        status=PlayerGameStatus.PLAYED,
+        excluded_from_unfinished=True,
+    )
+    left = create_tracked_game(
+        library,
+        "Left endless",
+        status=PlayerGameStatus.ABANDONED,
+        excluded_from_unfinished=True,
+    )
+    for month, games in ((5, [endless]), (6, [left])):
+        Purchase.objects.create(
+            library=library,
+            price_currency="CZK",
+            date_purchased=_dt(YEAR, month, 10),
+            type=Purchase.GAME,
+        ).games.set(games)
+    return [endless, left]
+
+
+def _figures_and_links(world, year):
+    stats = _stats(world, year)
+    library = world["library"]
+    link_year = year if year is not None else "Alltime"
+    return (
+        stats["purchased_unfinished_count"],
+        _count(stats_links.purchases_unfinished(link_year), Purchase, library),
+        stats["dropped_count"],
+        _count(stats_links.purchases_dropped(link_year), Purchase, library),
+    )
+
+
+@pytest.mark.parametrize("year", [YEAR, None])
+def test_an_excluded_game_leaves_unfinished_and_dropped(world, excluded, year):
+    #: The world's counts; flagged purchases add none.
+    assert _figures_and_links(world, year) == (1, 1, 2, 2)
+
+
+@pytest.mark.parametrize("year", [YEAR, None])
+def test_the_same_games_count_once_included(world, excluded, year):
+    PlayerGame.objects.filter(game__in=excluded).update(excluded_from_unfinished=False)
+
+    #: Endless is unfinished; Left endless is dropped.
+    assert _figures_and_links(world, year) == (2, 2, 3, 3)
+
+
+@pytest.mark.parametrize(
+    ("beside_status", "figure"),
+    [
+        (PlayerGameStatus.PLAYED, "purchased_unfinished_count"),
+        (PlayerGameStatus.ABANDONED, "dropped_count"),
+    ],
+)
+def test_a_bundle_holding_an_excluded_game_leaves_the_figure(
+    world, beside_status, figure
+):
+    """Figure only. TODO(#1337): link keeps bundles."""
+    library = world["library"]
+    before = _stats(world, YEAR)[figure]
+    bundled = create_tracked_game(
+        library,
+        "Bundled endless",
+        status=PlayerGameStatus.PLAYED,
+        excluded_from_unfinished=True,
+    )
+    beside = create_tracked_game(library, "Beside", status=beside_status)
+    Purchase.objects.create(
+        library=library,
+        price_currency="CZK",
+        date_purchased=_dt(YEAR, 7, 10),
+        type=Purchase.GAME,
+    ).games.set([bundled, beside])
+
+    assert _stats(world, YEAR)[figure] == before
+    PlayerGame.objects.filter(game=bundled).update(excluded_from_unfinished=False)
+    assert _stats(world, YEAR)[figure] == before + 1
 
 
 def test_the_all_time_link_reads_the_act():

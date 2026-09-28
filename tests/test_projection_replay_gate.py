@@ -28,7 +28,6 @@ from games.commands.playergame import (
     RecordPlayerGameFacts,
     RemovePlayerGame,
     RestorePlayerGame,
-    SetPlayerGameExcludedFromUnfinished,
     TrackGame,
 )
 from games.commands.playersession import (
@@ -163,21 +162,15 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         "mastered-second-off",
     )
     run(
-        SetPlayerGameExcludedFromUnfinished(
-            game_id=first.pk, excluded_from_unfinished=True
-        ),
+        RecordPlayerGameFacts(game_id=first.pk, excluded_from_unfinished=True),
         "excluded-first",
     )
     run(
-        SetPlayerGameExcludedFromUnfinished(
-            game_id=second.pk, excluded_from_unfinished=True
-        ),
+        RecordPlayerGameFacts(game_id=second.pk, excluded_from_unfinished=True),
         "excluded-second-on",
     )
     run(
-        SetPlayerGameExcludedFromUnfinished(
-            game_id=second.pk, excluded_from_unfinished=False
-        ),
+        RecordPlayerGameFacts(game_id=second.pk, excluded_from_unfinished=False),
         "excluded-second-off",
     )
     run(

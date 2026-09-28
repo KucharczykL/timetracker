@@ -83,9 +83,6 @@ class CommandName(CommandVocabulary):
     """
 
     PLAYERGAME_TRACK = "library.playergame.track"
-    PLAYERGAME_SET_EXCLUDED_FROM_UNFINISHED = (
-        "library.playergame.set_excluded_from_unfinished"
-    )
     PLAYERGAME_REMOVE = "library.playergame.remove"
     PLAYERGAME_RESTORE = "library.playergame.restore"
     PLAYERGAME_RECORD_FACTS = "library.playergame.record_facts"
@@ -271,6 +268,7 @@ RETIRED_COMMAND_NAMES: frozenset[CommandNameValue] = frozenset(
     {
         "library.playergame.set_status",
         "library.playergame.set_mastered",
+        "library.playergame.set_excluded_from_unfinished",
     }
 )
 

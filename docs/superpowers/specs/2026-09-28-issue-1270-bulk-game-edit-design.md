@@ -36,8 +36,8 @@ lists are two-answer pickers. Each placeholder states what the rows hold:
 
 ## Forward
 
-Status and mastered go through one `record_facts`, under the row's key.
-Excluded goes through `set_excluded_from_unfinished` under `<key>-excluded`.
+Status, mastered and excluded go through one `record_facts`, under the
+row's key, so one row cannot commit half.
 A game that has every stated fact answers `Unchanged`.
 
 ## The inverse
@@ -58,8 +58,6 @@ inverse does, and logs a fact it writes over. A second Undo answers
 
 The #1256 Undo reads the status through `status_change`, before its void, so
 a defect leaves no half-undone row.
-
-No unfinished list reads the excluded flag yet; #1315 gives it readers.
 
 ## Proof
 

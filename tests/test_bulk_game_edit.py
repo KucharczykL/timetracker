@@ -25,7 +25,14 @@ from games.events.dispatch import CommandRejected, RowUnreadable
 from games.events.playergame import (
     PLAYERGAME_STATUS_CHANGED,
 )
-from games.models import Game, LibraryEvent, Platform, PlayerGame, PlayerGameStatus
+from games.models import (
+    Game,
+    LibraryEvent,
+    LibraryIdempotencyRecord,
+    Platform,
+    PlayerGame,
+    PlayerGameStatus,
+)
 from games.reads.events import batch_aggregate_ids
 from games.reads.playergame_facts import (
     FactChange,
@@ -43,7 +50,6 @@ from games.writes.playergame import (
     new_correlation_id,
     record_facts,
     remove_from_library,
-    set_excluded_from_unfinished,
     track_game,
 )
 
@@ -375,8 +381,11 @@ def test_an_undo_states_every_fact_before_the_batch(
     client_in, owned_user, game, second_game
 ):
     _stated(owned_user, game, PlayerGameStatus.PLAYED)
-    set_excluded_from_unfinished(
-        owned_user, game, True, correlation_id=new_correlation_id()
+    record_facts(
+        owned_user,
+        game,
+        excluded_from_unfinished=True,
+        correlation_id=new_correlation_id(),
     )
     token, _ = _run(
         client_in,
@@ -483,7 +492,9 @@ def test_a_flag_starts_false(owned_user, owned_library, game, fact):
     if fact == "mastered":
         record_facts(owned_user, game, mastered=True, correlation_id=batch)
     else:
-        set_excluded_from_unfinished(owned_user, game, True, correlation_id=batch)
+        record_facts(
+            owned_user, game, excluded_from_unfinished=True, correlation_id=batch
+        )
 
     changes = batch_fact_changes(owned_library, _tracked(game).pk, batch)
 
@@ -514,8 +525,11 @@ def test_a_form_refusal_names_its_field(owned_library):
 def test_a_chunk_posted_twice_states_the_flag_once(client_in, owned_user, game):
     fields = _confirmed(client_in, game, **{STATUS: "completed", EXCLUDED: "True"})
     client_in.post(URL, fields)
-    set_excluded_from_unfinished(
-        owned_user, game, False, correlation_id=new_correlation_id()
+    record_facts(
+        owned_user,
+        game,
+        excluded_from_unfinished=False,
+        correlation_id=new_correlation_id(),
     )
     events = _events()
 
@@ -525,7 +539,22 @@ def test_a_chunk_posted_twice_states_the_flag_once(client_in, owned_user, game):
     assert _tracked(game).excluded_from_unfinished is False
 
 
-def test_a_row_moved_by_one_fact_of_two_counts_moved(owned_user, game):
+def test_a_row_states_every_fact_under_one_key(client_in, game, second_game):
+    before = LibraryIdempotencyRecord.objects.count()
+
+    _run(
+        client_in,
+        game,
+        second_game,
+        **{STATUS: "completed", MASTERED: "True", EXCLUDED: "True"},
+    )
+
+    #: One command, one record, per row.
+    assert LibraryIdempotencyRecord.objects.count() - before == 2
+    assert _tracked(game).excluded_from_unfinished is True
+
+
+def test_a_row_with_one_changed_fact_of_two_counts_moved(owned_user, game):
     _stated(owned_user, game, PlayerGameStatus.COMPLETED)
 
     outcome = EDIT.run(

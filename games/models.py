@@ -125,7 +125,7 @@ class GameQuerySet(RemovableLibraryQuerySet):
         """Register the aliases only; drop no row.
 
         A filter names `tracked__status`, which needs the alias and
-        nothing else. The two facts are selected by `tracked_by()`
+        nothing else. The facts are selected by `tracked_by()`
         after it filters, because an F() before the filter opens a
         second join Django cannot merge.
 

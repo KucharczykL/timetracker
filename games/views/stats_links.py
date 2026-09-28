@@ -24,6 +24,7 @@ from common.criteria import (
     DateCriterion,
     IntCriterion,
     Modifier,
+    RelationMatch,
     UUIDMultiCriterion,
 )
 from games.filters import (
@@ -228,6 +229,20 @@ def _abandoned_or_refunded() -> PurchaseFilter:
     return purchase_filter
 
 
+def _holding_no_excluded_game() -> PurchaseFilter:
+    """No game of the purchase is excluded.
+
+    NONE, not a leaf: a leaf asks ANY.
+    TODO(#1337): the shared join lets bundles pass.
+    """
+    return PurchaseFilter(
+        game_filter=GameFilter(
+            excluded_from_unfinished=BoolCriterion(value=True),
+            match=RelationMatch.NONE,
+        )
+    )
+
+
 def purchases_dropped(year) -> PurchaseFilter:
     purchase_filter = PurchaseFilter.where(
         infinite=False,
@@ -235,7 +250,7 @@ def purchases_dropped(year) -> PurchaseFilter:
         **_purchase_bounds(year),
     )
     purchase_filter.game_filter = _not_finished_game(year, list(DONE_STATUSES))
-    purchase_filter.AND = [_abandoned_or_refunded()]
+    purchase_filter.AND = [_abandoned_or_refunded(), _holding_no_excluded_game()]
     return purchase_filter
 
 
@@ -249,6 +264,7 @@ def purchases_unfinished(year) -> PurchaseFilter:
     purchase_filter.game_filter = _not_finished_game(
         year, [*DONE_STATUSES, PlayerGameStatus.ABANDONED]
     )
+    purchase_filter.AND = [_holding_no_excluded_game()]
     return purchase_filter
 
 

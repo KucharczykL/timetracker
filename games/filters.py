@@ -117,6 +117,7 @@ class GameFilter(OperatorFilter):
     platform_group: ChoiceCriterion | None = None  # platform__group (str)
     status: ChoiceCriterion | None = None  # selectable filter widget
     mastered: BoolCriterion | None = None
+    excluded_from_unfinished: BoolCriterion | None = None
     playtime_hours: IntCriterion | None = None  # converted to timedelta on to_q()
     created_at: DateCriterion | None = None  # compared via __date
     updated_at: DateCriterion | None = None  # compared via __date
@@ -166,6 +167,10 @@ class GameFilter(OperatorFilter):
         ),
         "mastered": FilterField(
             "tracked__mastered", metadata_lookup="player_games__mastered"
+        ),
+        "excluded_from_unfinished": FilterField(
+            "tracked__excluded_from_unfinished",
+            metadata_lookup="player_games__excluded_from_unfinished",
         ),
         "playtime_hours": FilterField(handler=duration_hours_handler("playtime")),
         "created_at": FilterField("created_at__date"),
