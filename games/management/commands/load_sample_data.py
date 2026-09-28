@@ -14,6 +14,7 @@ from django.core.serializers.base import DeserializationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 
+from common.platform_icons import canonical_icon
 from games.backfill.device import DeviceConversionRefused, convert_devices
 from games.conversion import _request_conversion_for_locked_state
 from games.events.rebuild import (
@@ -457,7 +458,7 @@ class Command(BaseCommand):
                         library=owner,
                         name=fields["name"],
                         group=fields.get("group", ""),
-                        icon=fields.get("icon", ""),
+                        icon=canonical_icon(fields.get("icon", "")),
                     )
                 except (IntegrityError, ValidationError) as error:
                     raise CommandError(
