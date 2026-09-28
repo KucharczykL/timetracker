@@ -553,8 +553,9 @@ inside a member says so in its body and closes with it.
 ## Cross-wave handoffs
 
 - **A Release on a session or a record** stays reserved `None`. The picker
-  this wave builds is the one #690 and #705 deferred; #1354 puts it on the session and record forms, with the rule that a session
-  names a Release only where the library holds an entry on it.
+  this wave builds is the one #690 and #705 deferred; #1354 puts it on the
+  session and record forms, with the rule that a session names a Release
+  only where the library holds an entry on it.
 - **Bulk end of access over entries** is #1355, beside #1345.
 - **#1344** copies `access_resumed`; **#1347** copies the opening
   endpoint. **#1346** decides where a sale price lives; this wave puts no
