@@ -70,11 +70,11 @@ about twelve test sites that read `inverse_aggregate` or
 
 ## The writes
 
-`games/writes/platform.py` has two functions for the runner. Both go
-through `_stamp` in `games/removal.py`, thus `_AFTER_STAMP` still takes
-the external references of the platform out and back in. `_stamp` gets
-a conditional form: it locks the row, reads the present state, and
-writes only when the state is the one that the caller expects.
+`games/writes/platform.py` has two functions for the runner. Each
+locks the row in one savepoint, reads its present state, and calls
+`remove()` or `restore()` only when the state is the one that it
+expects. Thus `_AFTER_STAMP` still takes the external references of
+the platform out and back in.
 
 - `remove_platform_in_batch`: a live row becomes removed, with this
   batch: moved. A live row that already names this batch: unchanged.
