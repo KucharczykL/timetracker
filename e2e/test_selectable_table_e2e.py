@@ -152,33 +152,144 @@ def _open(page: Page, live_server, url: str = "/test-selectable-table/") -> None
     page.wait_for_function("() => customElements.get('selectable-table')")
 
 
-def _select_mode(page: Page) -> None:
-    page.locator("[data-selection-bar] [data-selection-toggle]").click()
-
-
 def _checkboxes(page: Page):
-    return page.locator("tbody [data-selection-checkbox]:not(.invisible)")
-
-
-def _all_checkboxes(page: Page):
     return page.locator("tbody [data-selection-checkbox]")
 
 
-def test_the_mode_shows_and_hides_the_checkboxes(page: Page, live_server):
+def _line(page: Page):
+    return page.locator("[data-selection-line]")
+
+
+def _header_check_all(page: Page):
+    return page.locator("thead [data-selection-check-all]")
+
+
+def _line_check_all(page: Page):
+    return page.locator("[data-selection-line] [data-selection-check-all]")
+
+
+def _select_first(page: Page) -> None:
+    """One row marked, so the line shows."""
+    _checkboxes(page).nth(0).click()
+    expect(_line(page)).to_be_visible()
+
+
+def test_every_row_shows_its_checkbox_and_the_line_follows_the_count(
+    page: Page, live_server
+):
     _open(page, live_server)
-    assert _checkboxes(page).count() == 0
-    _select_mode(page)
-    assert _checkboxes(page).count() == ROW_COUNT
-    _select_mode(page)
-    assert _checkboxes(page).count() == 0
+    expect(_checkboxes(page)).to_have_count(ROW_COUNT)
+    for index in range(ROW_COUNT):
+        expect(_checkboxes(page).nth(index)).to_be_visible()
+    expect(_line(page)).to_be_hidden()
+    _checkboxes(page).nth(0).click()
+    expect(_line(page)).to_be_visible()
+    _checkboxes(page).nth(0).click()
+    expect(_line(page)).to_be_hidden()
 
 
-def test_the_mode_moves_no_row(page: Page, live_server):
-    """The checkboxes are built at connect, then only shown."""
+def test_a_selection_moves_no_row(page: Page, live_server):
+    """The line comes after the rows."""
     _open(page, live_server)
     at_rest = page.evaluate(ROW_GEOMETRY)
-    _select_mode(page)
+    _select_first(page)
     assert page.evaluate(ROW_GEOMETRY) == at_rest
+
+
+BOX_LEFTS = """
+() => [
+    'thead [data-selection-check-all]',
+    'tbody [data-selection-checkbox]',
+    '[data-selection-line] [data-selection-check-all]',
+].map((selector) => document.querySelector(selector).getBoundingClientRect().left)
+"""
+
+
+@pytest.mark.parametrize("width", [1280, 390])
+def test_the_three_boxes_share_one_column(page: Page, live_server, width):
+    page.set_viewport_size({"width": width, "height": 900})
+    _open(page, live_server)
+    page.wait_for_function(SETTLED)
+    _select_first(page)
+    header, row, line = page.evaluate(BOX_LEFTS)
+    assert abs(header - row) <= 1, f"header {header}, row {row}"
+    assert abs(line - row) <= 1, f"line {line}, row {row}"
+
+
+def test_both_check_alls_move_together(page: Page, live_server):
+    _open(page, live_server)
+    _header_check_all(page).click()
+    expect(_line(page)).to_be_visible()
+    expect(_line_check_all(page)).to_be_checked()
+    expect(_checkboxes(page).nth(ROW_COUNT - 1)).to_be_checked()
+    _line_check_all(page).click()
+    expect(_header_check_all(page)).not_to_be_checked()
+    expect(_line(page)).to_be_hidden()
+
+
+def test_a_tabbed_box_is_not_under_the_line(page: Page, live_server):
+    page.set_viewport_size({"width": 1280, "height": 600})
+    _open(page, live_server)
+    _select_first(page)
+    _checkboxes(page).nth(0).focus()
+    target = "12"
+    for _ in range(80):
+        page.keyboard.press("Tab")
+        focused = page.evaluate(
+            "() => document.activeElement.matches('[data-selection-checkbox]')"
+            " ? document.activeElement.closest('tr').dataset.selectionKey : null"
+        )
+        if focused == target:
+            break
+    assert focused == target
+    box_bottom, line_top = page.evaluate(
+        """() => [
+            document.activeElement.getBoundingClientRect().bottom,
+            document.querySelector('[data-selection-line]').getBoundingClientRect().top,
+        ]"""
+    )
+    assert box_bottom <= line_top + 1, f"box {box_bottom}, line {line_top}"
+
+
+def test_tabbing_into_the_line_does_not_scroll_the_page(page: Page, live_server):
+    """The sticky line is in view already."""
+    page.set_viewport_size({"width": 1280, "height": 600})
+    _open(page, live_server)
+    _select_first(page)
+    page.evaluate("() => window.scrollTo(0, 400)")
+    page.wait_for_timeout(100)
+    before = page.evaluate("() => window.scrollY")
+    page.locator("[data-selection-clear]").focus()
+    page.wait_for_timeout(100)
+    assert page.evaluate("() => window.scrollY") == before
+
+
+def test_clear_hands_focus_to_the_header_without_scrolling(page: Page, live_server):
+    page.set_viewport_size({"width": 1280, "height": 600})
+    _open(page, live_server)
+    _select_first(page)
+    page.evaluate("() => window.scrollTo(0, 400)")
+    page.wait_for_timeout(100)
+    before = page.evaluate("() => window.scrollY")
+    page.locator("[data-selection-clear]").click()
+    expect(_line(page)).to_be_hidden()
+    assert page.evaluate(
+        "() => document.activeElement === "
+        "document.querySelector('thead [data-selection-check-all]')"
+    )
+    assert page.evaluate("() => window.scrollY") == before
+
+
+def test_no_scripting_shows_no_checkbox_and_no_line(browser, live_server):
+    context = browser.new_context(java_script_enabled=False)
+    try:
+        page = context.new_page()
+        page.goto(live_server.url + "/test-selectable-table/")
+        expect(_header_check_all(page)).to_be_hidden()
+        expect(_checkboxes(page)).to_have_count(0)
+        expect(_line(page)).to_be_hidden()
+    finally:
+        context.close()
 
 
 def test_the_checkbox_leads_the_name_it_marks(page: Page, live_server):
@@ -188,7 +299,6 @@ def test_the_checkbox_leads_the_name_it_marks(page: Page, live_server):
     the cell would centre on both lines and sit below the name.
     """
     _open(page, live_server)
-    _select_mode(page)
     placed = page.evaluate(
         """() => {
             const identity = document.querySelector('tbody th [data-row-identity]');
@@ -222,7 +332,6 @@ def test_the_checkbox_leads_the_name_it_marks(page: Page, live_server):
 
 def test_shift_click_takes_the_range(page: Page, live_server):
     _open(page, live_server)
-    _select_mode(page)
     page.evaluate(STATEMENT_LOG)
     _checkboxes(page).nth(1).click()
     _checkboxes(page).nth(4).click(modifiers=["Shift"])
@@ -235,7 +344,6 @@ def test_shift_space_takes_the_same_range_and_marks_the_anchor_once(
 ):
     """The space must not toggle the anchor twice."""
     _open(page, live_server)
-    _select_mode(page)
     page.evaluate(STATEMENT_LOG)
     _checkboxes(page).nth(1).click()
     _checkboxes(page).nth(4).focus()
@@ -247,11 +355,11 @@ def test_shift_space_takes_the_same_range_and_marks_the_anchor_once(
 
 def test_check_all_reads_indeterminate_with_one_row_unchecked(page: Page, live_server):
     _open(page, live_server)
-    _select_mode(page)
-    page.locator("[data-selection-check-all]").click()
+    _header_check_all(page).click()
     _checkboxes(page).nth(3).click()
     assert page.evaluate(
-        "() => document.querySelector('[data-selection-check-all]').indeterminate"
+        "() => [...document.querySelectorAll('[data-selection-check-all]')]"
+        ".every((checkAll) => checkAll.indeterminate)"
     )
 
 
@@ -259,7 +367,7 @@ def test_all_matching_keeps_the_scope_and_records_the_exclusion(
     page: Page, live_server
 ):
     _open(page, live_server)
-    _select_mode(page)
+    _select_first(page)
     page.evaluate(STATEMENT_LOG)
     page.locator("[data-selection-all-matching]").click()
     _checkboxes(page).nth(2).click()
@@ -275,9 +383,10 @@ def test_all_matching_keeps_the_scope_and_records_the_exclusion(
 
 def test_a_whole_list_offers_no_wider_scope(page: Page, live_server):
     _open(page, live_server, "/test-selectable-table-whole/")
-    _select_mode(page)
+    _select_first(page)
     assert page.locator("[data-selection-all-matching]").count() == 0
-    assert page.locator("[data-selection-check-all]").is_visible()
+    expect(_header_check_all(page)).to_be_visible()
+    expect(_line_check_all(page)).to_be_visible()
 
 
 def test_the_region_speaks_at_a_change_of_scope_and_not_at_a_tick(
@@ -286,46 +395,45 @@ def test_the_region_speaks_at_a_change_of_scope_and_not_at_a_tick(
     _open(page, live_server)
     region = page.locator("[data-selection-announcement]")
     assert region.get_attribute("role") == "status"
-    _select_mode(page)
-    assert region.inner_text() == "Selecting rows."
+    appearing = "1 selected. Selection actions follow the table."
     _checkboxes(page).nth(0).click()
-    assert region.inner_text() == "Selecting rows."
+    assert region.text_content() == appearing
+    _checkboxes(page).nth(1).click()
+    assert region.text_content() == appearing
     page.locator("[data-selection-all-matching]").click()
-    assert "every row matching the filter" in region.inner_text()
+    assert "every row matching the filter" in (region.text_content() or "")
     page.locator("[data-selection-clear]").click()
-    assert region.inner_text() == "Selection cleared."
+    assert region.text_content() == "Selection cleared."
 
 
 def test_a_selection_survives_the_next_page(page: Page, live_server):
     """The statement waits in the tab for the list's other pages."""
     _open(page, live_server)
-    _select_mode(page)
     _checkboxes(page).nth(0).click()
     _checkboxes(page).nth(2).click()
 
     page.get_by_role("link", name="Next").click()
     page.wait_for_function("() => customElements.get('selectable-table')")
 
-    assert page.locator("selectable-table").get_attribute("data-selection-mode") == "on"
+    expect(_line(page)).to_be_visible()
     assert "2 selected" in page.locator("[data-selection-count]").inner_text()
 
 
 def test_clearing_forgets_a_selection_for_the_next_page(page: Page, live_server):
     _open(page, live_server)
-    _select_mode(page)
     _checkboxes(page).nth(0).click()
     page.locator("[data-selection-clear]").click()
 
     page.get_by_role("link", name="Next").click()
     page.wait_for_function("() => customElements.get('selectable-table')")
 
-    assert page.locator("selectable-table").get_attribute("data-selection-mode") is None
+    expect(_line(page)).to_be_hidden()
 
 
 def test_the_line_sticks_to_the_foot_of_the_window(page: Page, live_server):
     page.set_viewport_size({"width": 1280, "height": 600})
     _open(page, live_server)
-    _select_mode(page)
+    _select_first(page)
     # Mid-table, with the table still below the window.
     page.evaluate("() => window.scrollTo(0, 300)")
     page.wait_for_timeout(100)
@@ -337,7 +445,7 @@ def test_the_line_sticks_to_the_foot_of_the_window(page: Page, live_server):
 def test_the_line_stops_at_the_end_of_its_own_table(page: Page, live_server):
     page.set_viewport_size({"width": 1280, "height": 600})
     _open(page, live_server)
-    _select_mode(page)
+    _select_first(page)
     page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
     page.wait_for_timeout(100)
     bottom = page.evaluate(LINE_BOTTOM)
@@ -352,7 +460,7 @@ def test_the_line_stops_at_the_end_of_its_own_table(page: Page, live_server):
 
 def test_the_line_publishes_its_height(page: Page, live_server):
     _open(page, live_server)
-    _select_mode(page)
+    _select_first(page)
     published = page.evaluate(
         "() => getComputedStyle(document.documentElement)"
         ".getPropertyValue('--selection-line')"
@@ -363,7 +471,6 @@ def test_the_line_publishes_its_height(page: Page, live_server):
 
 def test_a_row_menu_opens_over_the_line_and_owns_escape(page: Page, live_server):
     _open(page, live_server)
-    _select_mode(page)
     _checkboxes(page).nth(0).click()
     page.get_by_role("button", name="Act 0").click()
     panel = page.locator("[role='menu']").first
@@ -377,11 +484,10 @@ def test_a_row_menu_opens_over_the_line_and_owns_escape(page: Page, live_server)
     expect(_checkboxes(page).nth(0)).not_to_be_checked()
 
 
-def test_the_name_keeps_its_floor_in_the_mode_at_a_phone_width(page: Page, live_server):
-    """The reserve is permanent, so the fit budgets it before any mode."""
+def test_the_name_keeps_its_floor_at_a_phone_width(page: Page, live_server):
+    """The fit budgets the checkbox beside the name."""
     page.set_viewport_size({"width": 390, "height": 844})
     _open(page, live_server)
-    _select_mode(page)
     page.wait_for_function(SETTLED)
     name_width = page.evaluate(
         "() => document.querySelector('tbody th').getBoundingClientRect().width"
@@ -391,10 +497,23 @@ def test_the_name_keeps_its_floor_in_the_mode_at_a_phone_width(page: Page, live_
     assert name_width >= 150, f"name squeezed to {name_width}px"
 
 
+def test_a_hidden_line_publishes_nothing(page: Page, live_server):
+    """No stale height pads the page or lifts the toasts."""
+    _open(page, live_server)
+    _select_first(page)
+    assert page.evaluate(PUBLISHED_HEIGHT) > 0
+    page.locator("[data-selection-clear]").click()
+    expect(_line(page)).to_be_hidden()
+    published = page.evaluate(
+        "() => document.documentElement.style.getPropertyValue('--selection-line')"
+    )
+    assert published == ""
+
+
 def test_the_published_height_follows_a_line_that_wraps(page: Page, live_server):
     page.set_viewport_size({"width": 1280, "height": 900})
     _open(page, live_server)
-    _select_mode(page)
+    _select_first(page)
     published = page.evaluate(PUBLISHED_HEIGHT)
     measured = page.evaluate(LINE_HEIGHT)
     assert abs(published - measured) <= 1, f"{published} against {measured}"
@@ -403,7 +522,6 @@ def test_the_published_height_follows_a_line_that_wraps(page: Page, live_server)
 def test_a_tooltip_answers_escape_before_the_selection(page: Page, live_server):
     """Every closer marks the press spent, not the menus alone."""
     _open(page, live_server)
-    _select_mode(page)
     _checkboxes(page).nth(0).click()
     page.locator("pop-over button").first.click()
     page.locator("[data-pop-over-panel]:not([hidden])").first.wait_for()

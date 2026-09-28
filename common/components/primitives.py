@@ -2941,9 +2941,12 @@ def _header_cell(
     """One ``<th>``: a static header for a non-sortable column, else a clickable
     sort link wrapped in ``<sort-header>`` with both navigation targets baked in.
 
-    ``selectable`` insets the label by the checkbox its column reserves, so the
-    label still stands over the names under it."""
-    padding = _HEADER_CONTROL_CELL_CLASS if trailing else _HEADER_CELL_CLASS
+    ``selectable`` leads the label with the page's check-all, in the column
+    the row checkboxes stand in."""
+    # A control's cell pads less; same height.
+    padding = (
+        _HEADER_CONTROL_CELL_CLASS if trailing or selectable else _HEADER_CELL_CLASS
+    )
     base_class = padding + (" text-right" if column.align == "right" else "")
     if column.class_:
         base_class = f"{base_class} {column.class_}"
@@ -2963,9 +2966,10 @@ def _header_cell(
             policy_attrs.append(("data-wrap", ""))
         if column.shrinkable:
             policy_attrs.append(("data-shrinkable", ""))
-    inset = _SELECTION_LABEL_INSET_CLASS if selectable else ""
     if column.sort_key is None:
-        label: Child = Div(class_=inset)[column.label] if inset else column.label
+        label: Child = (
+            _with_header_check_all(column.label) if selectable else column.label
+        )
         if trailing:
             label = Span(class_="inline-flex items-center gap-2")[label, trailing]
         return Th(policy_attrs, scope="col", class_=base_class)[label]
@@ -2991,7 +2995,7 @@ def _header_cell(
         class_=_SORT_HEADER_LINK_CLASS,
     )[column.label, indicator]
     header = _SortHeader()[link]
-    sorted_label: Child = Div(class_=inset)[header] if inset else header
+    sorted_label: Child = _with_header_check_all(header) if selectable else header
     if trailing:
         sorted_label = Span(class_="inline-flex items-center gap-2")[
             sorted_label, trailing
@@ -3030,14 +3034,10 @@ def PageSizeSelect(request, current: int) -> Node:
 
 
 # No scripting, no checkboxes, no line.
-_SELECTION_LINE_HIDE_CLASS = "[selectable-table:not(:defined)_&]:hidden"
+_UNDEFINED_HIDE_CLASS = "[selectable-table:not(:defined)_&]:hidden"
 
-# Sticky in the mode, under the menus.
-_SELECTION_LINE_STICKY_CLASS = (
-    "[[data-selection-mode=on]_&]:sticky "
-    "[[data-selection-mode=on]_&]:bottom-0 "
-    "[[data-selection-mode=on]_&]:z-10"
-)
+# Sticky while shown, under the menus.
+_SELECTION_LINE_STICKY_CLASS = "sticky bottom-0 z-10"
 
 # A checkbox is 24px, the touch target Checkbox() bakes no size for.
 SELECTION_CHECKBOX_CLASS = "w-6 h-6"
@@ -3052,38 +3052,51 @@ _SELECTION_INSET_CLASS = "px-2 sm:px-3 lg:px-6"
 #
 # ts/elements/responsive-table.ts states the same 32px as
 # SELECTION_CHECKBOX_COST_PX, because the fit budgets it below md. The header
-# label clears it with ms-8, and drops that while the element is undefined,
-# where no checkbox is built.
+# check-all takes the same 32px.
 SELECTION_RESERVE_PX = 32
-_SELECTION_LABEL_INSET_CLASS = "ms-8 [selectable-table:not(:defined)_&]:ms-0"
 
-# The element unhides these with the mode.
+# Focus in a row scrolls clear of the line.
+#
+# A margin on the rows, not padding on the document: document padding
+# also scrolls to reveal the sticky line itself, to its table's end.
+_ROWS_CLEAR_OF_LINE_CLASS = "[&_*]:scroll-mb-[var(--selection-line,0px)]"
+
+# The line's controls row.
 _SELECTION_CONTROLS_CLASS = "flex flex-wrap items-center gap-x-3 gap-y-2"
 
+_CHECK_ALL_NAME = "Select every row on this page"
 
-def SelectionToggle(*, pressed: bool = False) -> Node:
-    """The control that turns the selection mode on."""
-    return ControlButton(
+
+def _check_all(name: str, *, extra_class: str = "") -> Node:
+    """The page's check-all, header or line."""
+    return Input(
+        # A restored form state would stand beside no selection.
         [
-            ("data-selection-toggle", ""),
-            ("aria-pressed", "true" if pressed else "false"),
-            ("aria-label", "Select rows"),
+            ("data-selection-check-all", ""),
+            ("aria-label", name),
+            ("autocomplete", "off"),
         ],
-        variant="outline",
-        class_="ms-auto",
-    )[Icon("checkbox"), Span(class_="max-sm:sr-only")["Select"]]
+        type="checkbox",
+        class_=f"{CHECKBOX_LOOK_CLASS} {SELECTION_CHECKBOX_CLASS} {extra_class}".strip(),
+    )
 
 
-def SelectionBar() -> Node:
-    """The strip above the table, holding the toggle."""
-    return Div(
-        [("data-selection-bar", "")],
-        class_=(
-            f"flex items-center {_SELECTION_INSET_CLASS} py-1 "
-            f"bg-neutral-primary-soft border-b border-default-medium "
-            f"{_SELECTION_LINE_HIDE_CLASS}"
+def _with_header_check_all(label: Child) -> Node:
+    """The first header's label, led by check-all."""
+    return Span(class_="flex items-center")[
+        _check_all(
+            _CHECK_ALL_NAME,
+            extra_class=f"{SELECTION_CHECKBOX_GAP_CLASS} {_UNDEFINED_HIDE_CLASS}",
         ),
-    )[SelectionToggle()]
+        label,
+    ]
+
+
+def _selection_announcement() -> Node:
+    """The table's live region, outside the line."""
+    return Div(
+        [("data-selection-announcement", ""), ("role", "status")], class_="sr-only"
+    )
 
 
 def selection_scope(request, caption_key: str, caption: str) -> SelectionScope:
@@ -3202,14 +3215,7 @@ def SelectionLine(
 ) -> Node:
     """The selection region, above the pagination row."""
     controls: list[Node] = [
-        Label(class_="flex items-center gap-2 text-type-body text-heading")[
-            Input(
-                [("data-selection-check-all", "")],
-                type="checkbox",
-                class_=f"{CHECKBOX_LOOK_CLASS} {SELECTION_CHECKBOX_CLASS}",
-            ),
-            Span(class_="sr-only")["Select every row on this page"],
-        ],
+        _check_all(f"{_CHECK_ALL_NAME}, from the tray"),
         Span(
             [("data-selection-count", "")],
             class_="text-type-body text-heading whitespace-nowrap",
@@ -3255,21 +3261,13 @@ def SelectionLine(
             f"flex flex-wrap items-center gap-x-3 gap-y-2 "
             f"{_SELECTION_INSET_CLASS} py-3 "
             f"bg-neutral-primary-soft border-t border-default-medium "
-            f"{_SELECTION_LINE_STICKY_CLASS} {_SELECTION_LINE_HIDE_CLASS}"
+            f"{_SELECTION_LINE_STICKY_CLASS} {_UNDEFINED_HIDE_CLASS}"
         ),
     )[
         Div(
             [("data-selection-controls", "")],
             class_=_SELECTION_CONTROLS_CLASS,
         )[*controls],
-        SelectionToggle(pressed=True),
-        # Two regions: the count ticks, this announces.
-        #
-        # One region would speak every tick, over the checkbox that already
-        # reports itself; this one is written at a change of scope alone.
-        Div(
-            [("data-selection-announcement", ""), ("role", "status")], class_="sr-only"
-        ),
         checkbox_template,
     ]
 
@@ -3478,6 +3476,8 @@ def StyledTable(
     )
     if align_rules:
         tbody_class = f"{tbody_class} {align_rules}"
+    if selection is not None:
+        tbody_class = f"{tbody_class} {_ROWS_CLEAR_OF_LINE_CLASS}"
     table_children.append(
         Tbody(class_=tbody_class)[
             [
@@ -3548,8 +3548,12 @@ def StyledTable(
         if paginated
         else footer
     )
+    if selection is not None and not show_header:
+        raise ValueError(
+            "A selectable table shows its header: the header holds the "
+            "check-all a table with nothing selected offers."
+        )
     if selection is not None:
-        inner_children.insert(0, SelectionBar())
         # A named region, not the general slot.
         inner_children.append(
             SelectionLine(
@@ -3571,7 +3575,14 @@ def StyledTable(
                 filter=selection["filter"],
                 count=str(page_obj.paginator.count if paginated else 0),
                 scope=selection_scope(request, caption_key, caption),
-            )[*inner_children]
+            )[
+                *inner_children,
+                # Outside the line: hidden regions never speak.
+                #
+                # The count ticks silently; this speaks at a change of
+                # scope alone, so a tick is not said twice.
+                _selection_announcement(),
+            ]
         ]
 
     # The shell owns the radius and clips.

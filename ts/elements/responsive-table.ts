@@ -93,7 +93,7 @@ export function computeHiddenColumns(
  * costs at most the cap. Below md the shrinkable first column is being
  * squeezed by the max-md greed, so its natural width is not what it will
  * render at — it costs the flat floor the fit must preserve for it, raised by
- * the checkbox a selectable table reserves in every row.
+ * each row's selection checkbox.
  */
 export function columnCosts(
   policies: ColumnPolicy[],
@@ -224,14 +224,7 @@ export class ResponsiveTableElement extends HTMLElement {
     return widths;
   }
 
-  /** Whether the host table reserves a checkbox in every row.
-   *
-   * The reserve is permanent, not the mode's: a checkbox is built when
-   * <selectable-table> connects and only shown with the mode, so the fit must
-   * budget it at every moment. Reading the mode instead would budget it at no
-   * moment, because a mode change mutates attributes alone and this element
-   * deliberately observes none.
-   */
+  /** Whether the host table holds a checkbox in every row. */
   isSelectable(): boolean {
     return this.closest("selectable-table") !== null;
   }

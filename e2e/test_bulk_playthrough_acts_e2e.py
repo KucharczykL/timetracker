@@ -36,7 +36,6 @@ def _two_tracked_runs(user) -> tuple[Playthrough, Playthrough]:
 
 
 def _select_rows(page: Page, *indexes: int) -> None:
-    page.get_by_role("button", name="Select rows").first.click()
     boxes = page.locator("tbody [data-selection-checkbox]")
     for index in indexes:
         boxes.nth(index).click()

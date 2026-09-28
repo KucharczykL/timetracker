@@ -26,7 +26,6 @@ def test_two_devices_are_removed_and_the_undo_puts_them_back(
 
     listed = f"{live_server.url}{reverse('games:list_devices')}"
     page.goto(listed)
-    page.get_by_role("button", name="Select rows").first.click()
     boxes = page.locator("tbody [data-selection-checkbox]")
     boxes.nth(0).click()
     boxes.nth(1).click()

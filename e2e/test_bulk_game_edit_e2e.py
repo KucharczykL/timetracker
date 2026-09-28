@@ -41,7 +41,6 @@ def test_two_games_are_edited_and_the_undo_puts_theirs_back(
 
     listed = f"{live_server.url}{reverse('games:list_games')}"
     page.goto(listed)
-    page.get_by_role("button", name="Select rows").first.click()
     boxes = page.locator("tbody [data-selection-checkbox]")
     boxes.nth(0).click()
     boxes.nth(1).click()

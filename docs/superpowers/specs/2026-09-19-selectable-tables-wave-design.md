@@ -112,34 +112,26 @@ dropping. The charter's rules hold, and this wave settles the shape:
   stays the row's `<th scope="row">` and its pinning and shadow above the
   `md` breakpoint hold. The element builds it: the server renders one
   `data-selection-key` attribute on each `<tr>`, through `make_row`'s
-  attributes, and `<selectable-table>` inserts the checkbox when the mode
-  turns on and takes it out when the mode turns off, so `TableRow` renders
-  the first cell's content verbatim and the view's row builder does not
-  know the checkbox exists. A row swapped into the live `tbody` while the
-  mode is on arrives bare, so the element observes the `tbody` and
+  attributes, and `<selectable-table>` inserts the checkbox when it
+  connects, so `TableRow` renders the first cell's content verbatim and
+  the view's row builder does not know the checkbox exists. A row swapped
+  into the live `tbody` arrives bare, so the element observes the `tbody` and
   decorates the new row, checked when its key was checked before the swap.
   Only the checkbox selects; the row's links and immediate controls keep
   their meaning. The checkbox is not a column and does not count against
   `MAX_DATA_TABLE_COLUMNS`.
-- Selection is a mode. A Select toggle turns it on: one ends a slim strip
-  above the table, always visible, and one ends the footer's selection
-  line, visible with the mode, so the control sits at an edge whichever end
-  of a long table the person is at. Every checkbox is built when the
-  element connects and shown only with the mode, so turning the mode on
-  moves no row; the column is reserved on a selectable table always, which
-  the header label clears and the name floor below `md` budgets. The
-  reserve stands empty while the mode is off, which the user finds
-  awkward on the shipped list; #1212 decides whether it collapses while
-  the mode is off, before #718 judges the finished pages. The mode
-  is off on a page load unless the list holds a selection, which the
-  element restores from session storage together with the mode. There is
-  no header checkbox. Check-all for the page, "Select all N matching" with N read
-  from the paginator, the count, Clear and the actions all live in the
-  footer's selection line, which the toggle opens above the pagination
-  row. Without a paginator there is no "all matching": the page is the
-  matching set, on Game detail's tables and on a list shown whole. Prior art, settled by the user: PatternFly, Carbon, Polaris, Helios
-  and SABnzbd's Glitter queue, whose check-all also lives in its multi-edit
-  bar and whose rows also do not toggle on click.
+- Selection is not a mode (#1316, which overturned #711's mode and #1212's
+  question with it). Every row shows its checkbox at all times, in the
+  column the name floor below `md` budgets, so no row moves. The first
+  header cell and the footer's selection line each hold a check-all for
+  the page, in the checkbox column, showing one state. The line shows
+  while one row or more is selected; it holds the count, "Select all N
+  matching" with N read from the paginator, Clear and the actions, above
+  the pagination row. Without a paginator there is no "all matching": the
+  page is the matching set, on Game detail's tables and on a list shown
+  whole. Rows do not toggle on click. Prior art: Gmail and GitHub's issue
+  list; the mode had followed PatternFly, Carbon, Polaris, Helios and
+  SABnzbd's Glitter.
 - A selection outlives the page. The element keeps the statement, never
   the rows: the keys a person clicked, or the scope and its exclusions,
   in session storage keyed on the library, the table's caption and the
@@ -147,10 +139,10 @@ dropping. The charter's rules hold, and this wave settles the shape:
   keeps it, a filter that does not match restores nothing and keeps the
   value for a person who goes back, two tables on one page keep two, and a
   second person signing in at the same browser inherits none, since session
-  storage outlives a logout. Clear, the mode turned off and the submit of a bulk action forget
+  storage outlives a logout. Clear, the last row unmarked and the submit of a bulk action forget
   it, so a statement acted on is never restored over the rows it changed:
   the element answers a `submit` in the actions slot itself, and a tray
-  that posts without a form calls its public `forgetAndClose()`. That
+  that posts without a form calls its public `forget()`. That
   answer runs inside the submit, before the form's entry list is built,
   and dispatches `selectable-table:change` with an empty statement, so
   the slot's form carries the statement it latched at the press and
@@ -164,23 +156,23 @@ dropping. The charter's rules hold, and this wave settles the shape:
   statement the POST carries and nothing else, so what the element keeps
   changes nothing in the runner; a count that no longer matches is the
   confirmation's to say, not the tray's to refuse.
-  The cost of the mode: after #718 a multi-row act is Select, the
-  checkboxes, the action; a single row's act is two presses, the ⋯ menu
-  and the item, because the menu carries every act valid for one row.
+  A multi-row act is the checkboxes, then the action; a single row's act
+  is two presses, the ⋯ menu and the item, because the menu carries every
+  act valid for one row.
 - Below `md` the identity cell is today a shrinkable, single-line name cell,
   and nothing stacks. #711 builds the stacked cell: the checkbox beside the
   row's essential summary on two lines, while lower-priority columns keep
   dropping as `<responsive-table>` decides. This is #716's whole substance:
   the mobile organizer is the table's own personality, not a second screen.
 - Keyboard: Space toggles the focused checkbox, Shift+Space extends from the
-  last toggled row, Shift+click on a checkbox takes a range, the footer's
-  check-all is a tri-state control, and the
+  last toggled row, Shift+click on a checkbox takes a range, the two
+  check-alls, header and line, are one tri-state control, and the
   element announces the count through one live region it owns, because it
   owns the selection; the tray shows the same count and announces nothing.
   The contract is verified with Orca in #718, on the finished pages.
-- Selection needs scripting. The server renders no checkbox and the footer
-  renders its selection line hidden until the element connects, so a page
-  with scripting off shows the table it shows today. The runner reads one shape, the selection
+- Selection needs scripting. The server renders no row checkbox; the
+  header check-all hides until the element is defined, and the line until
+  a row is selected, so a page with scripting off shows a plain table. The runner reads one shape, the selection
   statement below; a second, one-field-per-row shape for scripting off was
   rejected, because it doubles the runner's grammar for a reader that also
   never sees the selection line. After #718 such a reader has no per-row act either,
@@ -205,7 +197,7 @@ count and gets acted on unseen, and the act stops meaning "these rows".
 ## The tray
 
 The tray is the footer's selection line, not a surface of its own. While
-the mode is on the line is sticky to the viewport's bottom inside the
+it shows the line is sticky to the viewport's bottom inside the
 table's shell, so it takes its own height in the flow and nothing reserves
 for it, and it stops sticking once the table has scrolled past. The shell's
 `overflow-hidden` would make the shell the sticky containing block, so it
@@ -213,7 +205,7 @@ becomes `overflow-clip`, which clips the corners the same and is no scroll
 container. The line sits under the menu stratum (`z-20`), so an actions
 menu opens over it, and under the toasts (`z-50`). The toast stack is
 fixed to the same bottom edge, so the element publishes the line's height
-as `--selection-line` on the root while the mode is on, the tallest line
+as `--selection-line` on the root while it shows, the tallest line
 any connected table shows, and the stack reads it in its own classes for
 its bottom offset. The version stamp is a
 `<footer>` in the flow on every page's last line, moved out of the fixed
@@ -250,7 +242,7 @@ view. Nothing about it knows sessions. Since #718 the line lays its acts
 out as a priority-plus row on `ts/elements/priority-plus.ts`, the engine
 the quick bar reads: the acts that no longer fit move into one
 horizontal `EllipsisTrigger` at the end, rightmost first, measured off
-the line itself when the mode first turns on. Declaration order is
+the line itself when it first shows. Declaration order is
 priority order, so a view states the act reached for most often first
 and the destructive act last, which is the one to overflow first and
 never sits between two benign ones; #1211 and #1256 place their acts by
@@ -638,12 +630,12 @@ row builders read for the stacked summary too. The picker is an
 `IconTrigger` in the table's last header cell, the row-menu slot where
 the rows carry a menu and the Actions header otherwise, so it follows
 the slot by itself as #1134–#1136 and #1266 retire their columns; the
-checkbox reserve is no column and stays out of it. A preset carrying
+row checkbox is no column and stays out of it. A preset carrying
 its columns is #1261's, the choice without scripting #1262's, and the
 quick bar's own grouping #1267's.
 
 The cost: a single row's act is two presses, the menu and the item, as
-an icon row cost; a multi-row act is Select, the checkboxes and the
+an icon row cost; a multi-row act is the checkboxes, then the
 action. The charter's "a single-row bulk act is three presses" describes
 a path nobody has to take. The Orca pass in #718 is one transcript on
 the Playtime session list, selection, the live count, a tray act, then a
@@ -651,7 +643,7 @@ row's ⋯ and its items; the other four tables are Playwright only.
 
 ## Delivery order
 
-1. **#711** TABLE-01 — `<selectable-table>`: the Select toggle, the footer
+1. **#711** TABLE-01 — `<selectable-table>`: the footer
    composite with the selection line's count, check-all, all-matching and
    Clear beside the pagination row, the checkbox in the identity cell, the
    selection statement, the keyboard contract, the stacked identity cell
@@ -685,8 +677,9 @@ row's ⋯ and its items; the other four tables are Playwright only.
    a textual overlap, #718 rebasing over it.
 6. **#717** ORG-04 — `outside_playthrough_dates` and `playthrough_kind`,
    the Library page's three cards and their links.
-7. **#1212** TABLE-05 — the checkbox reserve while the mode is off,
-   decided before the pages are judged.
+7. **#1316** TABLE-05 — no mode: checkboxes always shown, check-all in
+   the header and the line, the line shown with a selection. Supersedes
+   #1212.
 8. **#718** ORG-05 — the five Actions columns retired into the tray's
    acts (Finish declared here, with its inverse) and the row's ⋯ menu
    holding every single-row act, a trailing slot no view declares,
@@ -704,8 +697,8 @@ row's ⋯ and its items; the other four tables are Playwright only.
     #1268; #1261, #1262 and #1267 follow it, #1266 the Purchases wave.
 
 `#711 → #713 → #712 → #714 → #715 → #717 → #718 → #1256 → #1245 → #1211`.
-#1212 and #1254 are parked by the user's decision on 2026-09-22, so #718
-landed with the checkbox reserve as it stands. Delivered through #1245
+#1212 and #1254 were parked by the user's decision on 2026-09-22, so #718
+landed with the checkbox reserve as it stood; #1316 replaced #1212 after it. Delivered through #1245
 as of 2026-09-22; #1211 and the four lists remain. #713 needs no table, so it
 runs beside #711. One prerequisite lies outside the wave: #1080, in the
 Session wave, landed before #714 as stack #1226–#1228 (`main` at
@@ -832,7 +825,8 @@ at connect. Measured after #712 shipped: the confirmation lists only the
 refusals the resolve owns, a command's rule is read at the press, and the
 forecast of it is #1209, parked with the numbers. Overturned by the user
 on the shipped tray: no `one` cardinality; bulk Edit (#1211) and Finish
-are tray acts, and the empty checkbox reserve was #1212's, since parked.
+are tray acts, and the empty checkbox reserve was #1212's, which #1316
+removed with the mode.
 Overturned again by the user on 2026-09-22, over the five tables'
 inventory: no residue; the tray offers every act and the row's ⋯ menu
 every act valid for one row, two complete lists.

@@ -83,7 +83,7 @@ function mountTray(): TrayFixture {
 //: The line's width is the room the acts lay out in. The controls row is a
 //: flex item, so its own width follows its content: measuring there shrinks
 //: as acts leave and every act ends up behind the trigger.
-/** What the table does when the mode turns on. */
+/** What the table does at a first selection. */
 function reveal(fixture: TrayFixture, width: number): void {
   fixture.line.removeAttribute("hidden");
   fixture.setRowWidth(width);

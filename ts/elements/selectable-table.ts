@@ -1,4 +1,4 @@
-/** <selectable-table> — a data table's selection mode. */
+/** <selectable-table> — a data table's rows, selectable. */
 
 import {
   readSelectableTableProps,
@@ -16,6 +16,7 @@ import {
   emptySelection,
   forgetKeys,
   isMarked,
+  normalised,
   rangeKeys,
   selectAllMatching,
   SelectionStatement,
@@ -31,7 +32,6 @@ const IDENTITY_SELECTOR = "[data-row-identity]";
 // Every connected table, so the published height is the tallest line rather
 // than whichever table wrote last.
 const connected = new Set<SelectableTableElement>();
-const HIDDEN_CHECKBOX_CLASS = "invisible";
 const ROW_SELECTOR = "tbody tr[data-selection-key]";
 const LINE_HEIGHT_PROPERTY = "--selection-line";
 
@@ -39,10 +39,8 @@ export class SelectableTableElement extends HTMLElement {
   private props!: SelectableTableProps;
   private state: SelectionState = emptySelection();
   private anchorKey: string | null = null;
-  private mode = false;
   private line: HTMLElement | null = null;
-  private toggles: HTMLElement[] = [];
-  private checkAll: HTMLInputElement | null = null;
+  private checkAlls: HTMLInputElement[] = [];
   private countText: HTMLElement | null = null;
   private announcement: HTMLElement | null = null;
   private checkboxTemplate: HTMLTemplateElement | null = null;
@@ -54,21 +52,24 @@ export class SelectableTableElement extends HTMLElement {
     this.props = readSelectableTableProps(this);
     connected.add(this);
     this.line = this.querySelector("[data-selection-line]");
-    this.toggles = Array.from(
-      this.querySelectorAll<HTMLElement>("[data-selection-toggle]"),
+    this.checkAlls = Array.from(
+      this.querySelectorAll<HTMLInputElement>("[data-selection-check-all]"),
     );
-    this.checkAll = this.querySelector("[data-selection-check-all]");
     this.countText = this.querySelector("[data-selection-count]");
     this.announcement = this.querySelector("[data-selection-announcement]");
     this.checkboxTemplate = this.querySelector(
       "template[data-selection-checkbox-template]",
     );
-    if (!this.line || !this.toggles.length) return;
-
-    for (const toggle of this.toggles) {
-      toggle.addEventListener("click", () => this.setMode(!this.mode));
+    if (!this.line) {
+      // A server defect: no line, no selection.
+      console.error("<selectable-table> has no [data-selection-line]", this);
+      for (const checkAll of this.checkAlls) checkAll.hidden = true;
+      return;
     }
-    this.checkAll?.addEventListener("change", () => this.onCheckAll());
+
+    for (const checkAll of this.checkAlls) {
+      checkAll.addEventListener("change", () => this.onCheckAll(checkAll));
+    }
     this.querySelector("[data-selection-all-matching]")?.addEventListener(
       "click",
       () => this.onAllMatching(),
@@ -82,12 +83,11 @@ export class SelectableTableElement extends HTMLElement {
     // here, where the statement is kept.
     this.querySelector("[data-selection-actions]")?.addEventListener(
       "submit",
-      () => this.forgetAndClose(),
+      () => this.forget(),
     );
     this.addEventListener("click", (event) => this.onBodyClick(event));
     this.addEventListener("keydown", (event) => this.onKeyDown(event));
 
-    // Built at connect, hidden until the mode.
     this.decorateRows();
     this.knownKeys = new Set(this.pageKeys());
 
@@ -99,10 +99,16 @@ export class SelectableTableElement extends HTMLElement {
       // so the set it would claim is not the set that was chosen.
       forgetSelection(this.storageKey);
     } else if (stored) {
-      this.state = stored;
+      this.setState(stored);
       // Nothing changed for the reader: the page arrived this way.
-      this.setMode(true, false);
+      if (this.count()) this.render();
+      else forgetSelection(this.storageKey);
     }
+    // No render otherwise: it would forget storage.
+    //
+    // An empty render forgets the path's stored value, which another
+    // filter of this list may still hold. The server renders the empty
+    // state already.
 
     const body = this.querySelector("tbody");
     if (body && typeof MutationObserver !== "undefined") {
@@ -127,29 +133,17 @@ export class SelectableTableElement extends HTMLElement {
     return this.rows().map((row) => row.getAttribute("data-selection-key") ?? "");
   }
 
-  /** The mode, and with it every checkbox. */
-  setMode(on: boolean, announce = true): void {
-    this.mode = on;
-    this.toggleAttribute("data-selection-mode", false);
-    if (on) this.setAttribute("data-selection-mode", "on");
-    for (const toggle of this.toggles) {
-      toggle.setAttribute("aria-pressed", String(on));
-    }
-    if (this.line) this.line.hidden = !on;
-    if (!on) {
-      this.state = emptySelection();
-      this.anchorKey = null;
-      if (this.storageKey) forgetSelection(this.storageKey);
-    }
-    this.showCheckboxes(on);
-    publishLineHeight();
-    if (announce) this.announce(on ? "Selecting rows." : "Selection off.");
-    this.render();
+  /** Every change; zero rows is empty. */
+  private setState(next: SelectionState): void {
+    this.state = normalised(next, this.props.count);
   }
 
   private decorateRows(): void {
     const template = this.checkboxTemplate;
-    if (!template) return;
+    if (!template) {
+      console.error("<selectable-table> has no checkbox template", this);
+      return;
+    }
     for (const row of this.rows()) {
       const cell = row.querySelector<HTMLElement>('th[scope="row"]');
       if (!cell || cell.querySelector(CHECKBOX_SELECTOR)) continue;
@@ -158,20 +152,12 @@ export class SelectableTableElement extends HTMLElement {
       ) as HTMLInputElement | null;
       if (!checkbox) continue;
       checkbox.setAttribute("aria-label", identityName(cell));
-      checkbox.classList.toggle(HIDDEN_CHECKBOX_CLASS, !this.mode);
       // The row a selectable cell states for it: the name's own line,
       // so the box centres on the name rather than on the summary
       // under it. A cell that states none takes the box itself.
       const identity = cell.querySelector<HTMLElement>(IDENTITY_SELECTOR) ?? cell;
       identity.insertBefore(checkbox, identity.firstChild);
     }
-  }
-
-  /** Visibility, never presence, so no row moves. */
-  private showCheckboxes(on: boolean): void {
-    this.querySelectorAll(CHECKBOX_SELECTOR).forEach((checkbox) =>
-      checkbox.classList.toggle(HIDDEN_CHECKBOX_CLASS, !on),
-    );
   }
 
   private keyOf(target: EventTarget | null): string | null {
@@ -185,18 +171,20 @@ export class SelectableTableElement extends HTMLElement {
     if (key === null) return;
     const checkbox = event.target as HTMLInputElement;
     const mouse = event as MouseEvent;
+    const before = this.count();
     if (mouse.shiftKey && this.anchorKey) {
       this.applyRange(this.anchorKey, key, checkbox.checked);
     } else {
-      this.state = toggleKey(this.state, key);
+      this.setState(toggleKey(this.state, key));
       this.anchorKey = key;
     }
     this.render();
+    this.announceAppearing(before);
   }
 
   private onKeyDown(event: KeyboardEvent): void {
     if (event.key === "Escape") {
-      if (!this.mode) return;
+      if (!this.count()) return;
       // Read after the press, not during it.
       //
       // An overlay that closes marks the press spent, but not always before
@@ -205,7 +193,7 @@ export class SelectableTableElement extends HTMLElement {
       // microtask is drained between listeners and would still read false, so
       // the decision waits for the task after the dispatch.
       setTimeout(() => {
-        if (!event.defaultPrevented && this.mode) this.onClear();
+        if (!event.defaultPrevented && this.count()) this.onClear();
       });
       return;
     }
@@ -218,34 +206,38 @@ export class SelectableTableElement extends HTMLElement {
     // the row the range starts from ends the press unmarked.
     event.preventDefault();
     const checkbox = event.target as HTMLInputElement;
+    const before = this.count();
     this.applyRange(this.anchorKey, key, !checkbox.checked);
     this.render();
+    this.announceAppearing(before);
   }
 
   private applyRange(anchorKey: string, targetKey: string, checked: boolean): void {
     const keys = rangeKeys(this.pageKeys(), anchorKey, targetKey);
-    this.state = setPage(this.state, keys, checked);
+    this.setState(setPage(this.state, keys, checked));
     this.anchorKey = targetKey;
   }
 
-  private onCheckAll(): void {
-    const checked = this.checkAll?.checked ?? false;
-    this.state = setPage(this.state, this.pageKeys(), checked);
+  private onCheckAll(source: HTMLInputElement): void {
+    const before = this.count();
+    this.setState(setPage(this.state, this.pageKeys(), source.checked));
     this.anchorKey = null;
     this.render();
-    this.announce(this.countSentence());
+    if (!this.announceAppearing(before)) this.announce(this.countSentence());
   }
 
   private onAllMatching(): void {
-    this.state = selectAllMatching();
+    this.setState(selectAllMatching());
     this.anchorKey = null;
     this.render();
     this.announce(`${this.count()} selected, every row matching the filter.`);
   }
 
-  /** What an act on the selection leaves behind: nothing kept, mode off. */
-  forgetAndClose(): void {
-    this.setMode(false);
+  /** An act on the selection empties it. */
+  forget(): void {
+    this.setState(emptySelection());
+    this.anchorKey = null;
+    this.render();
   }
 
   /** The statement this table stands on, asked for.
@@ -261,11 +253,20 @@ export class SelectableTableElement extends HTMLElement {
   }
 
   private onClear(): void {
-    this.state = emptySelection();
+    this.setState(emptySelection());
     this.anchorKey = null;
-    if (this.storageKey) forgetSelection(this.storageKey);
     this.render();
     this.announce("Selection cleared.");
+  }
+
+  /** Focus target when the line hides. */
+  private focusTarget(): HTMLInputElement | null {
+    const header = this.checkAlls.find(
+      (checkAll) => checkAll.closest("thead") && isShown(checkAll),
+    );
+    if (header) return header;
+    const rowBox = this.querySelector<HTMLInputElement>(CHECKBOX_SELECTOR);
+    return rowBox && isShown(rowBox) ? rowBox : null;
   }
 
   private onRowsChanged(): void {
@@ -277,11 +278,11 @@ export class SelectableTableElement extends HTMLElement {
     const present = new Set(this.pageKeys());
     const gone = [...this.knownKeys].filter((key) => !present.has(key));
     this.knownKeys = present;
-    if (!gone.length) {
-      if (this.mode) this.render();
-      return;
-    }
-    this.state = forgetKeys(this.state, gone);
+    // Nothing selected: no render, storage kept.
+    //
+    // An empty render forgets the value another filter keeps.
+    if (!this.count()) return;
+    if (gone.length) this.setState(forgetKeys(this.state, gone));
     this.render();
   }
 
@@ -303,11 +304,13 @@ export class SelectableTableElement extends HTMLElement {
       checkbox.checked = isMarked(this.state, key);
     }
     const all: CheckAllState = checkAllState(this.state, pageKeys);
-    if (this.checkAll) {
-      this.checkAll.checked = all === "checked";
-      this.checkAll.indeterminate = all === "indeterminate";
+    for (const checkAll of this.checkAlls) {
+      checkAll.checked = all === "checked";
+      checkAll.indeterminate = all === "indeterminate";
     }
     if (this.countText) this.countText.textContent = this.countSentence();
+    this.showLine(this.count() > 0);
+    publishLineHeight();
     if (this.storageKey) {
       writeSelection(this.storageKey, this.props.filter, this.state);
     }
@@ -319,13 +322,29 @@ export class SelectableTableElement extends HTMLElement {
     );
   }
 
+  /** A line that hides hands its focus on. */
+  private showLine(shown: boolean): void {
+    if (!this.line || this.line.hidden === !shown) return;
+    // Read before hiding: focus leaves a hidden element lazily.
+    const hadFocus = this.line.contains(document.activeElement);
+    this.line.hidden = !shown;
+    if (hadFocus && !shown) this.focusTarget()?.focus({ preventScroll: true });
+  }
+
   private announce(sentence: string): void {
     if (this.announcement) this.announcement.textContent = sentence;
   }
 
-  /** The line's height while the mode is on, 0 otherwise. */
+  /** Says the line appeared, from zero. */
+  private announceAppearing(before: number): boolean {
+    if (before || !this.count()) return false;
+    this.announce(`${this.countSentence()}. Selection actions follow the table.`);
+    return true;
+  }
+
+  /** The line's height while it shows, 0 otherwise. */
   lineHeight(): number {
-    if (!this.mode || !this.line) return 0;
+    if (!this.line || this.line.hidden) return 0;
     return this.line.getBoundingClientRect().height;
   }
 
@@ -333,6 +352,15 @@ export class SelectableTableElement extends HTMLElement {
   publishLineHeight(): void {
     publishLineHeight();
   }
+}
+
+/** Rendered, so focus can land on it. */
+function isShown(element: HTMLElement): boolean {
+  if (!element.isConnected) return false;
+  if (typeof element.checkVisibility === "function") {
+    return element.checkVisibility();
+  }
+  return !element.closest("[hidden]");
 }
 
 /** The row's name, without its summary line. */
@@ -343,9 +371,7 @@ function identityName(cell: HTMLElement): string {
   return clone.textContent?.trim() ?? "";
 }
 
-/** The tallest line any table is showing, for the chrome that shares the
- * corner with it. One page may hold two selectable tables; the toasts stand
- * off whichever of them is open. */
+/** The tallest showing line, for the toasts. */
 function publishLineHeight(): void {
   const style = document.documentElement.style;
   let tallest = 0;

@@ -40,7 +40,8 @@ def _state_the_whole_review(page: Page, live_server, count: int) -> str:
     """
     listed = f"{live_server.url}{review_url()}"
     page.goto(listed)
-    page.get_by_role("button", name="Select rows").first.click()
+    # A first tick shows the line that offers the wider scope.
+    page.locator("tbody [data-selection-checkbox]").first.click()
     page.get_by_role("button", name=f"Select all {count} matching").click()
     return listed
 

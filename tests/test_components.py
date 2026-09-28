@@ -3645,9 +3645,18 @@ class SelectionLineTest(SimpleTestCase):
         html = self._paginated(selection={"filter": ""})
         self.assertIn('role="status"', html)
 
-    def test_the_toggle_starts_unpressed(self):
+    def test_the_announcement_stands_outside_the_line_that_hides(self):
+        """A hidden live region is never spoken."""
         html = self._paginated(selection={"filter": ""})
-        self.assertIn('aria-pressed="false"', html)
+        line = html.split("data-selection-line")[1].split("</template></div>")[0]
+        self.assertNotIn("data-selection-announcement", line)
+        self.assertIn("data-selection-announcement", html)
+
+    def test_no_toggle_and_no_bar(self):
+        html = self._paginated(selection={"filter": ""})
+        self.assertNotIn("data-selection-toggle", html)
+        self.assertNotIn("data-selection-bar", html)
+        self.assertNotIn("aria-pressed", html)
 
     def test_every_button_variant_spaces_an_icon_from_its_label(self):
         """Every variant spaces an icon from its label."""
@@ -3656,29 +3665,107 @@ class SelectionLineTest(SimpleTestCase):
         for variant in ("filled", "ghost", "outline"):
             self.assertIn("gap-2", control_button_class(variant=variant), variant)
 
-    def test_the_toggle_carries_an_icon(self):
-        html = self._paginated(selection={"filter": ""})
-        toggle = html.split("data-selection-toggle")[1].split("</button>")[0]
-        self.assertIn("<svg", toggle)
-
     def test_shell_clips_instead_of_hiding(self):
         """A sticky child needs a shell that is not a scroll container."""
         html = self._paginated(selection={"filter": ""})
         self.assertIn("overflow-clip", html)
         self.assertNotIn("overflow-hidden", html.split("<table")[0])
 
-    def test_the_header_label_clears_the_reserved_column(self):
-        html = self._paginated(selection={"filter": ""})
+    @staticmethod
+    def _two_columns(**kwargs):
+        return str(
+            components.StyledTable(
+                columns=[components.Column("Name"), components.Column("Year")],
+                rows=[components.make_row("Game", "2025", key="1")],
+                data_table=True,
+                caption="Games",
+                **kwargs,
+            )
+        )
+
+    def test_the_first_header_leads_with_the_check_all(self):
+        html = self._two_columns(selection={"filter": ""})
         first_header = html.split("<thead")[1].split("</th>")[0]
         second_header = html.split("<thead")[1].split("</th>")[1]
-        self.assertIn("ms-8", first_header)
-        self.assertNotIn("ms-8", second_header)
+        self.assertIn("data-selection-check-all", first_header)
+        self.assertLess(
+            first_header.index("data-selection-check-all"), first_header.index("Name")
+        )
+        self.assertNotIn("data-selection-check-all", second_header)
+        self.assertIn('aria-label="Select every row on this page"', first_header)
 
-    def test_the_header_label_drops_the_inset_with_no_scripting(self):
-        """No element, no checkbox: the label stands over the names again."""
-        html = self._paginated(selection={"filter": ""})
+    def test_the_header_check_all_keeps_the_header_height(self):
+        """py-2 and a 24px box make the 40px py-3 and a label make."""
+        html = self._two_columns(selection={"filter": ""})
         first_header = html.split("<thead")[1].split("</th>")[0]
-        self.assertIn("[selectable-table:not(:defined)_&amp;]:ms-0", first_header)
+        second_header = html.split("<thead")[1].split("</th>")[1]
+        self.assertIn("py-2", first_header)
+        self.assertIn("py-3", second_header)
+
+    def test_the_header_check_all_hides_with_no_scripting(self):
+        """No element, no header checkbox."""
+        html = self._two_columns(selection={"filter": ""})
+        box = html.split("<thead")[1].split("data-selection-check-all")[1].split(">")[0]
+        self.assertIn("[selectable-table:not(:defined)_&amp;]:hidden", box)
+
+    def test_the_header_check_all_sits_outside_the_sort_link(self):
+        from django.test import RequestFactory
+
+        html = str(
+            components.StyledTable(
+                columns=[components.Column("Name", sort_key="name")],
+                rows=[components.make_row("Game", key="1")],
+                data_table=True,
+                caption="Games",
+                request=RequestFactory().get("/"),
+                selection={"filter": ""},
+            )
+        )
+        header = html.split("<thead")[1].split("</th>")[0]
+        self.assertLess(
+            header.index("data-selection-check-all"), header.index("<sort-header")
+        )
+        sort_header = header.split("<sort-header")[1].split("</sort-header>")[0]
+        self.assertNotIn("data-selection-check-all", sort_header)
+
+    def test_the_picker_shares_a_sole_column_with_the_check_all(self):
+        html = self._paginated(
+            selection={"filter": ""}, column_picker=components.Span()["picker"]
+        )
+        header = html.split("<thead")[1].split("</th>")[0]
+        self.assertLess(header.index("data-selection-check-all"), header.index("Name"))
+        self.assertLess(header.index("Name"), header.index("picker"))
+
+    def test_a_selectable_table_without_a_header_is_refused(self):
+        """The header holds the only check-all shown before a tick."""
+        with self.assertRaises(ValueError):
+            self._two_columns(selection={"filter": ""}, show_header=False)
+
+    def test_rows_scroll_clear_of_the_line(self):
+        html = self._paginated(selection={"filter": ""})
+        tbody = html.split("<tbody")[1].split(">")[0]
+        self.assertIn("[&amp;_*]:scroll-mb-[var(--selection-line,0px)]", tbody)
+        self.assertNotIn("scroll-mb", self._paginated().split("<tbody")[1][:400])
+
+    def test_check_alls_restore_no_form_state(self):
+        html = self._paginated(selection={"filter": ""})
+        for checkbox in html.split("data-selection-check-all")[1:]:
+            self.assertIn('autocomplete="off"', checkbox.split(">")[0])
+
+    def test_a_table_with_no_selection_has_no_header_check_all(self):
+        self.assertNotIn("data-selection-check-all", self._two_columns())
+
+    def test_the_line_holds_the_second_check_all(self):
+        html = self._paginated(selection={"filter": ""})
+        line = html.split("data-selection-line")[1]
+        self.assertIn('aria-label="Select every row on this page, from the tray"', line)
+        self.assertEqual(html.count("data-selection-check-all"), 2)
+
+    def test_the_line_sticks_without_a_mode(self):
+        html = self._paginated(selection={"filter": ""})
+        line = html.split("data-selection-line")[1].split(">")[0]
+        self.assertIn("sticky bottom-0 z-10", line)
+        self.assertNotIn("data-selection-mode", html)
 
     def test_the_line_states_no_filter_of_its_own(self):
         """The element carries it; two copies would drift."""
@@ -3690,16 +3777,21 @@ class SelectionLineTest(SimpleTestCase):
         from common.components.primitives import CHECKBOX_LOOK_CLASS
 
         html = self._paginated(selection={"filter": ""})
-        for marker in ("data-selection-check-all", 'data-selection-checkbox="'):
-            checkbox = html.split(marker)[1].split(">")[0]
+        checkboxes = [
+            *html.split("data-selection-check-all")[1:],
+            html.split('data-selection-checkbox="')[1],
+        ]
+        for checkbox in checkboxes:
+            attributes = checkbox.split(">")[0]
             for token in CHECKBOX_LOOK_CLASS.split():
-                self.assertIn(token, checkbox, marker)
+                self.assertIn(token, attributes)
 
-    def test_the_check_all_checkbox_meets_the_touch_target(self):
+    def test_both_check_alls_meet_the_touch_target(self):
         html = self._paginated(selection={"filter": ""})
-        checkbox = html.split("data-selection-check-all")[1].split(">")[0]
-        self.assertIn("w-6", checkbox)
-        self.assertIn("h-6", checkbox)
+        for checkbox in html.split("data-selection-check-all")[1:]:
+            attributes = checkbox.split(">")[0]
+            self.assertIn("w-6", attributes)
+            self.assertIn("h-6", attributes)
 
 
 class SelectableTableMountTest(SimpleTestCase):

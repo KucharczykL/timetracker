@@ -5,6 +5,7 @@ import {
   forgetKeys,
   isMarked,
   markedKeys,
+  normalised,
   rangeKeys,
   selectAllMatching,
   selectionCount,
@@ -132,6 +133,18 @@ describe("selectionCount", () => {
 
   it("counts nothing where the page states no count", () => {
     expect(selectionCount(selectAllMatching(), Number.NaN)).toBe(0);
+  });
+});
+
+describe("normalised", () => {
+  it("makes a scope with every row excepted empty", () => {
+    const state = setPage(selectAllMatching(), ["a", "b"], false);
+    expect(normalised(state, 2)).toEqual(emptySelection());
+  });
+
+  it("keeps a selection that holds a row", () => {
+    const state = toggleKey(emptySelection(), "a");
+    expect(normalised(state, 50)).toBe(state);
   });
 });
 
