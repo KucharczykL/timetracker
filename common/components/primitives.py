@@ -1462,7 +1462,10 @@ def Checkbox(
         return input_el
 
     return Label(
-        class_="flex items-center gap-2 text-type-body text-heading cursor-pointer"
+        class_=(
+            "flex items-center gap-2 text-type-body text-heading cursor-pointer "
+            f"{DISABLED_WITHIN_CLASS}"
+        )
     )[input_el, label]
 
 

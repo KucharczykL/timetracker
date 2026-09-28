@@ -105,6 +105,18 @@ function setEndpointOpen(host: HTMLElement, endpoint: Endpoint, open: boolean): 
     box.disabled = open;
   });
   show(host.querySelector(`[data-temporal-segments="${endpoint}"]`), !open);
+  paintQualifiers(host, endpoint);
+}
+
+/** A qualifier modifies a date, so none stands alone. */
+function paintQualifiers(host: HTMLElement, endpoint: Endpoint): void {
+  const dated = endpointHasValue(host, endpoint);
+  (["approximate", "uncertain"] as const).forEach((qualifier) => {
+    const box = namedInput(host, `${endpoint}_${qualifier}`);
+    if (!(box instanceof HTMLInputElement)) return;
+    if (!dated) box.checked = false;
+    box.disabled = !dated;
+  });
 }
 
 function endShapeBoxes(host: HTMLElement): HTMLInputElement[] {
@@ -298,6 +310,7 @@ export function commitEndpoint(host: HTMLElement, endpoint: Endpoint): void {
     if (isToggled(host, `whole_decade_${each}`)) snapYearToDecade(host, each);
     syncScratch(host, each);
     writeNamedParts(host, each);
+    paintQualifiers(host, each);
   });
   setNamed(host, "kind", currentKind(host));
   announce(host);
@@ -618,6 +631,7 @@ function initField(host: HTMLElement): void {
   bindEngine(host);
   bindControls(host);
   adoptDraft(host, readDraft(host));
+  ENDPOINTS.forEach((endpoint) => paintQualifiers(host, endpoint));
   initCopyControl(host);
   // A field nobody has touched announces nothing.
   const region = host.querySelector("[data-temporal-announcement]");

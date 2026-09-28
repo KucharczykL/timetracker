@@ -409,6 +409,33 @@ describe("temporal-field", () => {
     expect(named(host, "kind").value).toBe("unknown");
   });
 
+  it("offers the qualifiers only beside a date", () => {
+    const host = mount();
+    const qualifiers = () => [named(host, "start_approximate"), named(host, "start_uncertain")];
+
+    expect(qualifiers().map((box) => box.disabled)).toEqual([true, true]);
+
+    type(host, "start", "year", "1984");
+    expect(qualifiers().map((box) => box.disabled)).toEqual([false, false]);
+    named(host, "start_uncertain").checked = true;
+
+    segment(host, "start", "year").focus();
+    document.activeElement!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }),
+    );
+    expect(qualifiers().map((box) => [box.disabled, box.checked])).toEqual([
+      [true, false],
+      [true, false],
+    ]);
+  });
+
+  it("offers a stored date's qualifiers from the start", () => {
+    const host = mountDraft({ kind: "date", start_year: "1997", start_uncertain: "on" });
+
+    expect(named(host, "start_uncertain").disabled).toBe(false);
+    expect(named(host, "start_uncertain").checked).toBe(true);
+  });
+
   it("keeps committing after the decade snap", () => {
     const host = mount("true");
 
@@ -707,6 +734,9 @@ describe("temporal-field", () => {
 
     expect(toggle(host, "end_none").disabled).toBe(false);
     expect(toggle(host, "end_date").checked).toBe(true);
+    //: Reopened but still undated: nothing to qualify yet.
+    expect(named(host, "start_approximate").disabled).toBe(true);
+    type(host, "start", "year", "1984");
     expect(named(host, "start_approximate").disabled).toBe(false);
   });
 
