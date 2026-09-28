@@ -235,6 +235,12 @@ def game_list_columns(playtime_label: str) -> list[Column]:
         Column("Status", "status", priority=3, key="status"),
         Column("Wikidata", "wikidata", key="wikidata", hidden_by_default=True),
         Column("Created", "created", key="created", hidden_by_default=True),
+        Column(
+            "Unfinished lists",
+            "unfinished_lists",
+            key="unfinished_lists",
+            hidden_by_default=True,
+        ),
     ]
 
 
@@ -282,6 +288,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                 ),
                 _wikidata_cell(game.wikidata),
                 presentation.format(game.created_at, "date"),
+                "Excluded" if game.tracked_excluded_from_unfinished else "",
             ]
             for game in page_games
         ],

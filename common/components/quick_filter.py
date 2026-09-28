@@ -115,6 +115,7 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
             step="0.01",
         ),
         QuickFacet("name", placeholder="e.g. Zelda"),
+        QuickFacet("excluded_from_unfinished", "Excluded from unfinished"),
     ],
     "sessions": [
         QuickFacet("game"),
