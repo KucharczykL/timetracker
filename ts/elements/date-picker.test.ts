@@ -26,30 +26,14 @@ function segment(part: string, width: number, placeholder: string): string {
   );
 }
 
-// A minimal stand-in for the real <drop-down> element (its own behavior is
-// covered by menu-behavior.test.ts): open()/close() just toggle the `hidden`
-// attribute attachMenu itself would toggle, and close() fires the
-// dropdown:hide bubble date-picker.ts listens for to resync aria-expanded.
-class FakeDropDown extends HTMLElement {
-  open(): void {
-    this.querySelector("[data-menu]")?.removeAttribute("hidden");
-  }
-  close(): void {
-    const menu = this.querySelector("[data-menu]");
-    if (!menu || menu.hasAttribute("hidden")) return;
-    menu.setAttribute("hidden", "");
-    this.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
-  }
-}
-if (!customElements.get("drop-down")) customElements.define("drop-down", FakeDropDown);
-
 function mount(): HTMLElement {
   document.body.replaceChildren();
   const dropdown = document.createElement("drop-down");
+  dropdown.setAttribute("behavior", "date-calendar");
   const picker = document.createElement("date-picker");
   picker.innerHTML = `
     <input type="hidden" data-date-picker-hidden />
-    <div data-date-picker-field>
+    <div data-date-picker-field data-toggle>
       ${segment("year", 4, "YYYY")}${segment("month", 2, "MM")}${segment("day", 2, "DD")}
       <button data-date-picker-calendar-toggle></button>
     </div>

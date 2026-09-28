@@ -23,7 +23,7 @@ function ownChild(host: HTMLElement, selector: string): HTMLElement | null {
 // controller (the modal sheet does); otherwise attachMenu owns the usual
 // open/close/position/keyboard behavior. The element reads no type-specific
 // attribute.
-class DropdownElement extends HTMLElement {
+export class DropdownElement extends HTMLElement {
   private controller?: MenuController;
   private unbindDocument?: () => void;
 
@@ -94,3 +94,9 @@ class DropdownElement extends HTMLElement {
 }
 
 customElements.define("drop-down", DropdownElement);
+
+declare global {
+  interface HTMLElementTagNameMap {
+    "drop-down": DropdownElement;
+  }
+}

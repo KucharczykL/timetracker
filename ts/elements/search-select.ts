@@ -37,6 +37,8 @@ import { bindPopupDismiss } from "../utils.js";
 import { reportClientError } from "../client-errors.js";
 import { readSearchSelectProps } from "../generated/props.js";
 import { followPointer } from "../pointer-follow.js";
+// The host a delegated widget opens: defined before this module runs.
+import "./drop-down.js";
 
 //: Every row a person can highlight and pick.
 const NAVIGABLE_ROWS =
@@ -250,9 +252,7 @@ const initWidget = (containerElement: Element) => {
   // positioning/dismiss through attachMenu. When hosted, this widget delegates
   // showPanel/hidePanel to the host. No host (the bare field picker, bare test
   // mounts) → the widget toggles its own panel.
-  const dropdownHost = container.closest<HTMLElement & { open(): void; close(): void }>(
-    "drop-down"
-  );
+  const dropdownHost = container.closest("drop-down");
   const delegated = dropdownHost !== null;
 
   const noResults = options.querySelector<HTMLElement>("[data-search-select-no-results]");
@@ -1454,8 +1454,7 @@ const initWidget = (containerElement: Element) => {
   // Native `autofocus` on the search input fires its focus event during HTML
   // parse — before connectedCallback binds the listener above — so the panel and
   // prefetch never open. Re-run the focus flow once wired so an autofocused
-  // combobox seeds and opens on load like a real focus does. rAF lets a delegated
-  // <drop-down> host finish upgrading first.
+  // combobox seeds and opens on load like a real focus does.
   // A field source is a dependency: the hosting form is where both a native
   // control's `change` and another combobox's own event arrive.
   if (dependencyFields.length) {

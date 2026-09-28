@@ -12,6 +12,8 @@
  * while a person typed would take the focus and scroll with every pause.
  */
 import { onReady } from "../utils.js";
+// The menu a picked mode closes: defined before this module runs.
+import "./drop-down.js";
 
 const MODE_ITEM = "[data-match-mode]";
 
@@ -62,7 +64,7 @@ class SearchFieldElement extends HTMLElement {
     // for other roles. A radio is one choice of six, so the panel would
     // otherwise stay open over the box a person types in next.
     chosen
-      .closest<HTMLElement & { close(): void }>("drop-down")
+      .closest("drop-down")
       ?.close();
   }
 }

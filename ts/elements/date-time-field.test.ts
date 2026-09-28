@@ -55,21 +55,6 @@ function segment(
   );
 }
 
-// A minimal stand-in for the real <drop-down> element (its own behavior is
-// covered by menu-behavior.test.ts).
-class FakeDropDown extends HTMLElement {
-  open(): void {
-    this.querySelector("[data-menu]")?.removeAttribute("hidden");
-  }
-  close(): void {
-    const menu = this.querySelector("[data-menu]");
-    if (!menu || menu.hasAttribute("hidden")) return;
-    menu.setAttribute("hidden", "");
-    this.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
-  }
-}
-if (!customElements.get("drop-down")) customElements.define("drop-down", FakeDropDown);
-
 function markup(
   fieldName: string,
   copyTo: string,
@@ -78,9 +63,9 @@ function markup(
 ): string {
   const shown = renderedSegments(value);
   return `
-    <drop-down>
+    <drop-down behavior="date-calendar">
       <date-time-field field-name="${fieldName}" zone-field-name="${zoneFieldName}">
-        <div data-date-picker-field>
+        <div data-date-picker-field data-toggle>
           <input type="hidden" name="${fieldName}" value="${value}" data-date-time-hidden />
           ${segment("year", 4, "YYYY", shown.year)}${segment("month", 2, "MM", shown.month)}${segment("day", 2, "DD", shown.day)}
           ${segment("hour", 2, "HH", shown.hour)}${segment("minute", 2, "mm", shown.minute)}

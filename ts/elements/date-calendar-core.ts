@@ -24,6 +24,8 @@ import {
 } from "../generated/calendar-classes.js";
 import { calendarWeekdayLabels, formatCalendarMonthYear } from "../date-time-presentation.js";
 import { addDays, isoFromDate, todayInDisplayZone } from "./date-field-core.js";
+// The host a calendar opens: defined before this module runs.
+import "./drop-down.js";
 
 // Day-cell looks are GENERATED from Python (common/components/date_range_picker.py
 // composes them out of ControlButton). Nothing here hand-writes a class string:
@@ -182,7 +184,7 @@ export function bindCalendarPopupHost(options: {
 }): CalendarPopupHost {
   const dropdownHost = options.staticAlways
     ? null
-    : options.picker.closest<HTMLElement & { open(): void; close(): void }>("drop-down");
+    : options.picker.closest("drop-down");
 
   if (options.toggleButton) {
     calendarIdCounter += 1;
