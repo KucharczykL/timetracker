@@ -393,7 +393,7 @@ def test_unfinished_matches_count(world):
 
 @pytest.fixture
 def excluded(world):
-    """Purchases each figure would count but for the flag."""
+    """Purchases only the flag keeps out."""
     library = world["library"]
     endless = create_tracked_game(
         library,
@@ -431,7 +431,7 @@ def _figures_and_links(world, year):
 
 @pytest.mark.parametrize("year", [YEAR, None])
 def test_an_excluded_game_leaves_unfinished_and_dropped(world, excluded, year):
-    #: The world's own counts: the flagged purchases add nothing.
+    #: The world's counts; flagged purchases add none.
     assert _figures_and_links(world, year) == (1, 1, 2, 2)
 
 
@@ -444,7 +444,7 @@ def test_the_same_games_count_once_included(world, excluded, year):
 
 
 def test_a_bundle_holding_an_excluded_game_leaves_the_figure(world):
-    """The figure only. TODO(#1337): the link keeps the bundle."""
+    """Figure only. TODO(#1337): link keeps bundles."""
     library = world["library"]
     bundled = create_tracked_game(
         library,

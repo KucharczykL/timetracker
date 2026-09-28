@@ -565,7 +565,7 @@ def test_a_row_added_after_a_bin_names_its_own_platform(
 def test_an_excluded_game_leaves_the_unfinished_list(
     signed_in, live_server, game, e2e_library
 ):
-    """Tick the box; the detail names it and the stats count drops it."""
+    """Ticked: detail names it, stats drop it."""
     page = signed_in
     Purchase.objects.create(
         library=e2e_library,

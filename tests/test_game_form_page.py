@@ -756,7 +756,7 @@ def test_a_name_pattern_needs_its_slot():
 
 
 def _posted_with(plain_game, **extra: str) -> dict[str, str]:
-    """An edit submit that changes nothing but what `extra` states."""
+    """An edit submit stating only `extra`."""
     edition = Edition.objects.get(game=plain_game, is_default=True)
     release = edition.releases.get(is_default=True)
     return {

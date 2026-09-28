@@ -549,7 +549,7 @@ def test_a_row_states_every_fact_under_one_key(client_in, game, second_game):
         **{STATUS: "completed", MASTERED: "True", EXCLUDED: "True"},
     )
 
-    #: One command per row, so one record per row.
+    #: One command, one record, per row.
     assert LibraryIdempotencyRecord.objects.count() - before == 2
     assert _tracked(game).excluded_from_unfinished is True
 

@@ -268,7 +268,7 @@ def _state(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """One dispatch, so a row cannot commit half."""
+    """One dispatch: a row never commits half."""
     return RowOutcome.of(
         record_facts(
             actor,

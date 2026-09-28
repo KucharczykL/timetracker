@@ -159,12 +159,9 @@ class RestorePlayerGame(Command):
 
 @dataclass(frozen=True, slots=True)
 class RecordPlayerGameFacts(Command):
-    """State a status, a mastery, an exclusion, or several.
+    """State status, mastery, exclusion, or several.
 
-    The one command that states any of them. The game form states all
-    three at every save, so they travel as one command. build() decides
-    which already holds, under the lock, where a form's stale initial
-    cannot reach it.
+    build() skips a held fact, under the lock.
     """
 
     command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_RECORD_FACTS

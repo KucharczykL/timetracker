@@ -232,9 +232,8 @@ def _abandoned_or_refunded() -> PurchaseFilter:
 def _holding_no_excluded_game() -> PurchaseFilter:
     """No game of the purchase is excluded.
 
-    NONE, not a leaf in the game filter, which asks whether some game
-    is included. TODO(#1337): beside the ANY game filter the NONE shares
-    its join, so a bundle still passes.
+    NONE, not a leaf: a leaf asks ANY.
+    TODO(#1337): the shared join lets bundles pass.
     """
     return PurchaseFilter(
         game_filter=GameFilter(

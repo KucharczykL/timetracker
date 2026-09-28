@@ -219,7 +219,7 @@ def _games_at_status(library: UserLibrary, *statuses: PlayerGameStatus):
 
 
 def _games_excluded_from_unfinished(library: UserLibrary):
-    """The library's tracked games that unfinished lists leave out."""
+    """Tracked games unfinished lists leave out."""
     return Game.objects.tracked_by(library, tracked__excluded_from_unfinished=True)
 
 
@@ -299,7 +299,7 @@ def _compute_stats_from_scoped_querysets(
 
     # ── Purchase breakdown ───────────────────────────────────────────────────
     only_games_and_dlc = Q(type=Purchase.GAME) | Q(type=Purchase.DLC)
-    #: Any excluded game leaves the purchase out, as abandoned does.
+    #: One excluded game drops the purchase.
     not_excluded_q = ~Q(games__in=_games_excluded_from_unfinished(library))
     unfinished = (
         without_refunded.filter(not_finished_q)

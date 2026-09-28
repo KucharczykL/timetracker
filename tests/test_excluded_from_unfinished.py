@@ -1,4 +1,4 @@
-"""A game left out of unfinished lists: found, listed, stated, shown."""
+"""Excluded games: found, listed, shown."""
 
 import json
 
@@ -89,7 +89,7 @@ def test_the_column_sorts_without_warning(logged_in, games):
 
 
 def _status_row(body: str) -> str:
-    """From the Status label to the next row's label."""
+    """Status label to the next label."""
     return body.split(">Status<", 1)[1].split('class="uppercase"', 1)[0]
 
 
