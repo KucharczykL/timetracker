@@ -41,41 +41,58 @@ interface icons share.
   spelling states no icon.
 - `save()` derives nothing from the name. A new platform, from the
   form, the API or a picker's create row, starts at Unspecified.
-- `clean()` refuses a slug outside `PLATFORM_ICONS`. `save()` calls
+- `clean()` refuses a slug outside `PLATFORM_ICONS`, on the `icon`
+  field, so a form shows it beside the picker. `save()` calls
   `clean()`, so every save path is held, and the rule reads the live
-  set, so a new icon needs no migration. A bulk `UPDATE` does not call
-  it; the bulk Edit's statement refuses such a slug already.
+  set, so a new icon needs no migration. An `UPDATE` does not call it:
+  the bulk Edit's statement refuses such a slug, and its Undo writes
+  back only what the ledger recorded, which the migration makes
+  canonical.
 
 ## The migration
 
 One migration alters the field and rewrites every row whose icon is
 not in its set: an alias to its glyph, any other value to
-`unspecified`. It holds its own literal copy of the aliases and of the
-19 slugs, and imports no application code, so its meaning does not
-move when the vocabulary does. On the 2026-09-19 dump it changes 8
+`unspecified`. It does the same to the `earlier` and `stated` of each
+`BatchChange` row that records a platform's `icon`, so an Undo never
+writes a retired slug back. It holds its own literal copy of the
+aliases and of the 19 slugs, and imports no application code, so its
+meaning does not move when the vocabulary does. On the 2026-09-19 dump it changes 8
 rows. `make verify-dump` rehearses it.
 
 ## The callers
 
-- `PlatformForm.icon` is a required choice over `PLATFORM_ICONS`. The
-  branch that kept an older slug pickable goes: no older slug remains.
+- `PlatformForm.icon` is a choice over `PLATFORM_ICONS`; an empty or
+  omitted value states `unspecified`, so the API's name-only create
+  (`created_by_form`) keeps working. The branch that kept an older
+  slug pickable goes: no older slug remains.
 - `load_sample_data` passes each fixture icon through
   `canonical_icon`, because `sample.yaml.gz` still names aliases and
   is generated, not edited.
 - `games/fixtures/platforms.yaml` states each icon: Steam `steam`,
   Xbox Gamepass `xbox-gamepass`, Epic Games Store `egs`, Playstation 5
   `ps5`, Playstation 4 `ps4`, Nintendo Switch `nintendo-switch`,
-  Nintendo 3DS `nintendo`. `loaddata` calls no `save()`, so the file
-  states what the model would refuse to leave out.
+  Nintendo 3DS `nintendo`. Without them `loadplatforms` would give
+  each row `unspecified`. Its help text stops promising a slug from
+  the name.
+- A saved filter naming a retired slug in `PlatformFilter.icon` is
+  left alone: it matches no row, as it would for any other text.
 
 ## Tests
 
+About 100 test platforms in 53 files name a slug no snippet has
+(`"pc"`, `"test"`, `"dark"`). Each takes a real slug, or none where the
+test reads no icon. `tests/test_loadplatforms.py` stops expecting a
+slug from the name.
+
 - No two snippets in `games/templates/icons/` draw one glyph, title
-  ignored. This replaces the #1136 test over `PLATFORM_ICONS`.
-- The migration maps an alias, a blank value and an unknown value, and
-  leaves a known slug.
-- `clean()` refuses an unknown slug; a platform saved with no icon
-  holds `unspecified`.
+  ignored. This replaces `test_no_two_picker_icons_draw_one_glyph`;
+  `test_an_older_slug_stays_pickable` goes.
+- The migration maps an alias, a blank value and an unknown value,
+  leaves a known slug, and maps a ledger row's two values.
+- `clean()` refuses an unknown slug on the `icon` field; a platform
+  saved with no icon holds `unspecified`; the form and the API's
+  name-only create give `unspecified`.
 - `canonical_icon` answers each of its three cases.
 - `loadplatforms` and `load_sample_data` leave only slugs in
   `PLATFORM_ICONS`.
