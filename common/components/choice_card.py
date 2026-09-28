@@ -52,8 +52,7 @@ class ChoiceCardGroup(BaseComponent):
 
     ``attributes`` is the group's own hook, for whatever script picks the
     page up: children arrive through ``[]``, so a runtime-built attribute
-    has nowhere else to go. ``legend_attributes`` is the same hook on
-    the legend that names the group.
+    has nowhere else to go. ``legend_attributes``: the legend's own hook.
     """
 
     def __init__(
@@ -103,7 +102,7 @@ class ChoiceCard(BaseComponent):
     """One option: its mark, then whatever the caller puts in it.
 
     ``attributes`` is the card's own hook, as it is the group's.
-    ``label_attributes`` is the hook on the text that names the mark.
+    ``label_attributes``: the mark text's own hook.
     """
 
     def __init__(
@@ -150,8 +149,7 @@ class ChoiceCard(BaseComponent):
                 value=self.value,
                 checked=self.checked,
             ),
-            # Names the radio at every width: seen narrow, sr-only wide.
-            # An aria-label would outrank it.
+            # Names the radio; an aria-label would outrank.
             Span(self.label_attributes, class_="@2xl/edition:sr-only")[self.label],
         ]
         return Div(

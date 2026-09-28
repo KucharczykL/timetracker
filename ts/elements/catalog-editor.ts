@@ -12,9 +12,7 @@
  * one miss silently writes the wrong row. A re-render numbers afresh; the
  * browser only ever appends.
  *
- * A row's names follow its value. The server stamps each named node with
- * its sentence; the element fills the slot on input and on arrival, as
- * the server cannot know a cloned row's value or one the browser restores.
+ * A row's names follow its value.
  */
 
 // Where a clone learns its own number. Mirrors the placeholders in
@@ -56,18 +54,16 @@ function isGoing(mark: HTMLElement): boolean {
   );
 }
 
-// Where a name takes its row's value. Mirrors NAME_SLOT in
-// games/views/catalog_section.py.
+// The value's slot; mirrored in catalog_section.py.
 const NAME_SLOT = "{}";
 
-/** A name with the row's value in its slot. Split, not `replace`,
- *  thus a `$` in the value stays literal. */
+/** Split, not `replace`, so `$` stays literal. */
 export function filled(pattern: string, value: string, empty?: string): string {
   if (value === "" && empty !== undefined) return empty;
   return pattern.split(NAME_SLOT).join(value);
 }
 
-// The control each kind of name follows, and the row it names.
+// Each name kind's control and row.
 const FOLLOWED = {
   platform: { control: 'select[name$="-platform"]', row: "[data-catalog-release]" },
   name: { control: 'input[name$="-name"]', row: "[data-catalog-edition]" },
@@ -77,7 +73,7 @@ type Followed = keyof typeof FOLLOWED;
 
 const KINDS = Object.keys(FOLLOWED) as Followed[];
 
-/** What the control shows: an option's own text, or the typed value. */
+/** Option text, or the typed value. */
 function shown(control: HTMLInputElement | HTMLSelectElement): string {
   const text =
     control instanceof HTMLSelectElement
@@ -95,11 +91,11 @@ class CatalogEditorElement extends HTMLElement {
     this.wired = true;
     // One delegated listener, so a cloned row needs no wiring of its own.
     this.addEventListener("click", this.onClick);
-    // A select and a text field both fire `input`, a clone's too.
+    // Selects and text fields both fire `input`.
     this.addEventListener("input", this.onInput);
     // A refused page comes back with the rows the person left, bins and
     // all. The mark is repaired on arrival too, not only on a click.
-    // The deferred script runs after the browser restores form values.
+    // Deferred script: runs after form restore.
     this.restateNames();
     this.restateMark();
   }
@@ -113,7 +109,7 @@ class CatalogEditorElement extends HTMLElement {
     }
   };
 
-  /** Every row's names, from the values the page holds now. */
+  /** Every row's names, from current values. */
   private restateNames(): void {
     for (const kind of KINDS) {
       for (const row of this.querySelectorAll<HTMLElement>(FOLLOWED[kind].row)) {
@@ -122,8 +118,7 @@ class CatalogEditorElement extends HTMLElement {
     }
   }
 
-  /** One row's names of one kind. An Edition's `name` nodes are its
-   *  own; its Releases' nodes follow `platform`. */
+  /** One row's names of one kind. */
   private restateRow(row: HTMLElement, kind: Followed): void {
     const control = row.querySelector<HTMLInputElement | HTMLSelectElement>(
       FOLLOWED[kind].control,

@@ -90,8 +90,7 @@ _OUT_OF_SIGHT: Final[list[tuple[str, str]]] = [
     ("style", "display:none"),
 ]
 
-#: Where `<catalog-editor>` puts a row's current value. Mirrors
-#: `NAME_SLOT` in `ts/elements/catalog-editor.ts`.
+#: The value's slot; mirrored in catalog-editor.ts.
 NAME_SLOT: Final[str] = "{}"
 
 _MARK_NAME: Final[str] = "Show the {} release in the library"
@@ -105,7 +104,7 @@ _EDITION_BIN_NAME_EMPTY: Final[str] = "Remove the unnamed edition"
 def _named(
     pattern: str, follows: str, empty: str | None = None
 ) -> list[tuple[str, str]]:
-    """The hooks `<catalog-editor>` restates a name through."""
+    """Hooks `<catalog-editor>` restates a name through."""
     hooks = [("data-catalog-name", pattern), ("data-catalog-name-of", follows)]
     if empty is not None:
         hooks.append(("data-catalog-name-empty", empty))
@@ -113,7 +112,7 @@ def _named(
 
 
 def _filled(pattern: str, value: str, empty: str | None = None) -> str:
-    """One name, as the element states it for ``value``."""
+    """One name, filled as the element does."""
     if not value and empty is not None:
         return empty
     return pattern.replace(NAME_SLOT, value)
@@ -207,11 +206,7 @@ def _field_cell(field: BoundField, placement: str) -> Node:
 
 
 def _platform_name(row: ReleaseRowForm, platforms: Mapping[str, str]) -> str:
-    """The option the row's select shows, worded as the select words it.
-
-    The bound value, not the stored Release: a refused page shows what
-    was posted. A key the select does not offer shows the empty option.
-    """
+    """Option text of the bound value."""
     empty = cast(forms.ModelChoiceField, row.fields["platform"]).empty_label
     return platforms.get(str(row["platform"].value()), str(empty))
 

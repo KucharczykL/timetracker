@@ -205,8 +205,7 @@ describe("filled", () => {
   });
 });
 
-// One named Edition holding one Release on Amiga, hooks as the server
-// stamps them.
+// Hooks as the server stamps them.
 const NAMED = `
 <catalog-editor>
   <fieldset data-catalog-edition="0">
@@ -292,7 +291,7 @@ describe("names", () => {
   });
 
   it("corrects a stale name on arrival", () => {
-    // A browser that restores a changed select arrives with this page.
+    // As a browser restores a changed select.
     document.body.innerHTML = NAMED.replace(
       '<option value="a" selected>Amiga</option>',
       '<option value="a">Amiga</option>',

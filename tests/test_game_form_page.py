@@ -595,7 +595,7 @@ def test_a_row_names_its_stored_platform(logged_in, owned_library, plain_game):
 def test_a_refused_page_names_what_the_person_posted(
     logged_in, owned_library, plain_game
 ):
-    """The stored Amiga is what the person just stopped the row being."""
+    """Not the stored Amiga the person replaced."""
     amiga = Platform.objects.create(library=owned_library, name="Amiga")
     dos = Platform.objects.create(library=owned_library, name="DOS")
     edition = Edition.objects.get(game=plain_game, is_default=True)
@@ -614,7 +614,7 @@ def test_a_refused_page_names_what_the_person_posted(
             "edition-0-releases-count": "2",
             "edition-0-release-0-release_id": str(release.pk),
             "edition-0-release-0-platform": str(dos.pk),
-            # A key the library does not offer refuses the page.
+            # An unoffered key refuses the page.
             "edition-0-release-1-platform": str(uuid.uuid4()),
             "in_library": "edition-0-release-0",
         },
@@ -631,7 +631,7 @@ def test_a_refused_page_names_what_the_person_posted(
 
 
 def test_a_blank_edition_name_is_unnamed(logged_in, plain_game):
-    """Whitespace is no name; the form strips it on write too."""
+    """Whitespace is no name."""
     response = logged_in.post(
         edit_url(plain_game),
         {
@@ -671,7 +671,7 @@ def test_the_cloned_rows_carry_their_name_patterns(logged_in, plain_game):
 
 
 def test_naming_the_rows_reads_no_more_per_row(logged_in, owned_library, plain_game):
-    """One read of the Platforms serves every row on the page."""
+    """One Platform read serves every row."""
     amiga = Platform.objects.create(library=owned_library, name="Amiga")
     edition = Edition.objects.get(game=plain_game, is_default=True)
     Release.objects.filter(edition=edition).update(platform=amiga)

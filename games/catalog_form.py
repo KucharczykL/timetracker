@@ -422,10 +422,7 @@ class CatalogGraphForm:
         )
 
     def platform_names(self) -> dict[str, str]:
-        """Each Platform a row offers, keyed and worded as its select is.
-
-        One read for the whole page; each row looks its own name up.
-        """
+        """Each offered Platform's key and option text."""
         field = cast(forms.ModelChoiceField, self.blank_row().fields["platform"])
         choices = cast(ModelChoiceIterator, field.choices)
         return {str(key): str(label) for key, label in choices if key != ""}

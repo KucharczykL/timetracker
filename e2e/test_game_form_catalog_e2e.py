@@ -411,12 +411,12 @@ def test_the_button_wakes_when_the_original_release_fills(signed_in, live_server
 
 
 def mark_text(card: Locator) -> Locator:
-    """The label text that names a row's mark."""
+    """The text naming a row's mark."""
     return card.locator("label [data-catalog-name-of='platform']")
 
 
 def test_a_changed_row_names_its_new_platform(signed_in, live_server, game, dos):
-    """Narrow, the name is visible text; wide, it names the radio."""
+    """Narrow: visible text. Wide: the radio's name."""
     page = signed_in
     page.set_viewport_size({"width": 390, "height": 900})
     open_form(page, live_server, game)

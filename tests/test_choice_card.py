@@ -27,7 +27,7 @@ def test_a_card_puts_its_mark_first():
 
 
 def test_a_card_names_its_mark_by_its_label_text():
-    """An aria-label would outrank the label, and hide a stale one."""
+    """An aria-label would outrank the label."""
     rendered = str(
         ChoiceCard(name="in_library", value="row-0", label="Show the Wii release")[""]
     )
