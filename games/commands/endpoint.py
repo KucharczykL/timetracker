@@ -103,7 +103,6 @@ def state_endpoint(
     before_event: BeforeEvent = _nothing,
 ) -> Sequence[NewEvent] | Unchanged:
     """The act; a repeat unchanged, another refused."""
-    payload = _payload(endpoint, statement)
     if stated(row, endpoint) is not None:
         if _states_it(row, endpoint, statement):
             return Unchanged(sentences.same_statement)
@@ -126,8 +125,8 @@ def correct_endpoint(
 ) -> Sequence[NewEvent] | Unchanged:
     """A better statement of a stated act.
 
-    Unstated is refused before comparing: without ways it
-    holds the values a correction to no day states.
+    Unstated is refused before comparing: it holds the
+    values a correction to no day states.
     """
     payload = _payload(endpoint, statement)
     if stated(row, endpoint) is None:

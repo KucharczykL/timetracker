@@ -235,13 +235,13 @@ class PrimitiveWidgetsMixin:
 
 
 class DeviceChoiceField(forms.ModelChoiceField):
-    """A device named with how it left, where it has."""
+    """A device, and how it left."""
 
     def label_from_instance(self, obj) -> str:
         device = cast(Device, obj)
         option = device_option(device)
         hint = option.get("hint")
-        return device.name if hint is None else f"{device.name} · {hint}"
+        return str(device) if hint is None else f"{device} · {hint}"
 
 
 class LibraryPreferencesForm(PrimitiveWidgetsMixin, forms.Form):
@@ -260,11 +260,7 @@ class LibraryPreferencesForm(PrimitiveWidgetsMixin, forms.Form):
         devices: QuerySet[Device],
         default_device: Device | None,
     ) -> None:
-        """Offer held devices, and the stored default whatever its access.
-
-        An ended default stays the shown value, so opening the page
-        never reads as a choice of no device.
-        """
+        """Held devices, and the stored default."""
         super().__init__()
         default_device_field = cast(
             forms.ModelChoiceField, self.fields["default_device"]
@@ -314,7 +310,7 @@ def _game_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
 
 
 def device_option(device: Device) -> SearchSelectOption:
-    """One device as a picker row: an ended one says how it left."""
+    """One device as a picker row."""
     option: SearchSelectOption = {
         "value": str(device.id),
         "label": device.name,
@@ -2212,7 +2208,7 @@ class PlatformForm(
         }
 
 
-#: "Held" first: a device the library still has states no end.
+#: "Held" first: no end stated.
 ACCESS_CHOICES = [
     ("", "Held"),
     *((way.value, END_WAY_LABELS[way]) for way in DEVICE_WAYS),
@@ -2222,9 +2218,8 @@ ACCESS_CHOICES = [
 class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
     """One device, stated as commands.
 
-    Every access field is optional, so a create that names only a
-    name and a type -- the picker's create row -- states a held
-    device.
+    Access fields are optional: the picker's create row
+    posts a name alone.
     """
 
     name = forms.CharField(
@@ -2269,7 +2264,7 @@ class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
         if cleaned is None:
             return cleaned
         way = cleaned.get("access") or ""
-        #: Held states no end, so the day and note it shows go with it.
+        #: Held drops the day and note.
         cleaned["access_end"] = (
             WayActStatement(
                 cleaned.get("access_day"),

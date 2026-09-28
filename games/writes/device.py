@@ -59,7 +59,7 @@ def create_device(
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
 ) -> Device:
-    """State a new device, and how it left if it has; answer its row."""
+    """State a device; answer its row."""
     with answered(SUBJECT):
         result = _dispatch(
             CreateDevice(name=name, type=device_type, access_end=access_end),
@@ -80,12 +80,7 @@ def restate_device(
     access_end: WayActStatement | None,
     correlation_id: uuid.UUID,
 ) -> None:
-    """State name, type and the end of access a form shows.
-
-    One act per differing fact, under one correlation. The end's
-    act is chosen before dispatch's lock from presence alone; the
-    command compares values under it.
-    """
+    """Describe, then move the end, one correlation."""
     with answered(SUBJECT):
         _dispatch(
             DescribeDevice(device_id=device.pk, name=name, type=device_type),

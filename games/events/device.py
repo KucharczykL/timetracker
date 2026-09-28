@@ -106,17 +106,13 @@ def device_restored(device_id: uuid.UUID) -> NewEvent:
     return DEVICE_RESTORED.new(aggregate_id=device_id, payload={})
 
 
-#: Recorded spelling of the ways a device's access ends. A bare
-#: Literal: the vocabulary stays this module's, whatever EndWay adds.
+#: Recorded ways; a Literal, not EndWay.
 type DeviceWayValue = Literal["sold", "lost", "given_away", "broken", "stolen"]
 
 
 @with_config(STRICT_SCHEMA)
 class DeviceAccessEndPayload(TypedDict):
-    """How the library's access to the device ended, and its note.
-
-    The day is `effective_time`. No note is the empty string.
-    """
+    """How access ended; day is effective_time."""
 
     way: DeviceWayValue
     note: str

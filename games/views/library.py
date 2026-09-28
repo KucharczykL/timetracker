@@ -64,7 +64,7 @@ DEFAULT_DEVICE_HELP = "Preselected when logging a game."
 
 
 def default_device_help(stored: Device | None) -> str:
-    """What the default does, or why an ended one no longer does it."""
+    """The default's help, or why it lapsed."""
     ended = None if stored is None else stated(stored, DEVICE_ACCESS_END)
     if ended is None or ended.way is None:
         return DEFAULT_DEVICE_HELP

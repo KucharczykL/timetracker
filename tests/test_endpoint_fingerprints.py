@@ -1,10 +1,4 @@
-"""Endpoint commands keep their idempotency fingerprints.
-
-A fingerprint is taken over a command's fields. A retry that reaches
-a deployment whose command spells its fields differently is refused
-as a reused key, so each value below is the one recorded before the
-endpoint commands were built over one skeleton.
-"""
+"""Endpoint commands keep their recorded fingerprints."""
 
 import uuid
 

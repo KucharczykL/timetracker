@@ -301,7 +301,7 @@ class PickerOption(Schema):  # mirrors SearchSelectOption
     label: str
     #: What the element reads: `SearchSelectOption.data` is text.
     data: dict[str, str]
-    #: Muted text after the label; absent where a row states none.
+    #: Muted after the label; absent when none.
     hint: str | None = Field(default=None, exclude_if=lambda hint: hint is None)
 
 
@@ -538,7 +538,7 @@ def remove_playthrough(request, playthrough_id: UUIDv7):
 @device_router.get("/search", response=list[PickerOption])
 def search_devices(request, q: str = "", limit: int = 10):
     library = cast(User, request.user).library
-    #: Held devices lead; an ended one is still offered, for a past session.
+    #: Held first; ended ones serve past sessions.
     qs = Device.objects.for_library(library).annotate(
         ended=Case(When(access_end_recorded_at__isnull=True, then=0), default=1)
     )

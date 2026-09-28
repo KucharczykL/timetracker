@@ -428,8 +428,8 @@ class Command(BaseCommand):
             ),
         }
 
-        #: One offset per device a dated fact names, drawn only for those,
-        #: so a library whose devices state no day draws as before.
+        #: Drawn only for dated devices.
+        #: Another draw shifts every later seeded value.
         dated_devices = (
             LibraryEvent.objects.filter(
                 event_type__startswith="library.device.",

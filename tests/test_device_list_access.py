@@ -87,7 +87,7 @@ def test_devices_with_no_day_sort_last_both_ways(
 ):
     body = _list(logged_in, sort=direction)
 
-    #: No day to sort by: a held device, and one that left on no known day.
+    #: No day: held, or left undated.
     dated = Device.objects.get(library=owned_library, name="Switch")
     for name in ("Deck", "Phone"):
         undated = Device.objects.get(library=owned_library, name=name)

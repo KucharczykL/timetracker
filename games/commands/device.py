@@ -68,10 +68,10 @@ def check_type(device_type: str) -> DeviceTypeValue:
 
 
 def check_way(way: str) -> EndWay:
-    """The device way stated, or a refusal.
+    """The stated way, or a refusal.
 
-    Ahead of the payload's own validation, which would answer
-    a way outside the device's with a defect, not a sentence.
+    Ahead of the payload's validation, which answers a
+    foreign way with a defect rather than a sentence.
     """
     if way not in DEVICE_WAYS:
         raise CommandRejected(
@@ -81,7 +81,7 @@ def check_way(way: str) -> EndWay:
 
 
 def normalized(statement: WayActStatement) -> WayActStatement:
-    """One spelling of no day and no note, so restatements fingerprint alike."""
+    """One spelling, so restatements fingerprint alike."""
     return WayActStatement(
         stated_date(statement.when), statement.way, statement.note.strip()
     )
@@ -131,7 +131,7 @@ class CreateDevice(Command):
     command_name: ClassVar[CommandName] = CommandName.DEVICE_CREATE
     name: str
     type: str
-    #: A device recorded after the library parted with it.
+    #: A device recorded after it left.
     access_end: WayActStatement | None = None
 
     def __post_init__(self) -> None:
@@ -241,7 +241,7 @@ class EndDeviceAccess(Command):
 
 @dataclass(frozen=True, slots=True)
 class CorrectDeviceAccessEnd(Command):
-    """State a better day, way or note for an end already stated."""
+    """Restate an end already stated."""
 
     command_name: ClassVar[CommandName] = CommandName.DEVICE_CORRECT_ACCESS_END
     device_id: uuid.UUID

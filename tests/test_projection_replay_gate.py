@@ -298,7 +298,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     run(RemoveDevice(device_id=retired.pk), "remove-tower")
     run(RestoreDevice(device_id=retired.pk), "restore-tower")
     run(RemoveDevice(device_id=retired.pk), "remove-tower-again")
-    #: Every act on an end, left stated so the columns reach snapshot.
+    #: Every end act; left stated for snapshot.
     sold = WayActStatement(TemporalValue.parse("2023-11"), EndWay.SOLD, "to a friend")
     run(EndDeviceAccess(device_id=device.pk, statement=sold), "end-deck")
     run(VoidDeviceAccessEnd(device_id=device.pk), "void-deck-end")

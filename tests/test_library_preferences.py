@@ -163,8 +163,8 @@ def test_the_settings_page_shows_an_ended_default_and_offers_held_devices(client
 
     body = client.get(reverse("games:library")).content.decode()
 
-    assert f'<option value="{kept.pk}" selected>Deck · Lost</option>' in body
-    assert f'<option value="{phone.pk}">Phone</option>' in body
+    assert f'<option value="{kept.pk}" selected>Deck (Unknown) · Lost</option>' in body
+    assert f'<option value="{phone.pk}">Phone (Unknown)</option>' in body
     assert (
         "Old laptop" not in body.split('name="default_device"')[1].split("</select>")[0]
     )

@@ -1,4 +1,4 @@
-"""A device's access ends on its form, shows on the list, and is taken back."""
+"""Ending a device's access, end to end."""
 
 import pytest
 from devices import create_device

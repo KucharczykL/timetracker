@@ -38,8 +38,9 @@ type EndpointName = str  # e.g. "access_end"; names its constraints
 class EndpointColumns:
     """One endpoint's columns; no events, for Meta."""
 
-    name: EndpointName
-    #: A label: models import this module.
+    #: Names the endpoint's constraints; unique per model.
+    name: str
+    #: A label: models read this value.
     model_label: ModelLabel
     #: The stated day; null is unknown.
     when: ColumnName

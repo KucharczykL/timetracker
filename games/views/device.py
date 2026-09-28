@@ -76,7 +76,7 @@ DEVICE_COLUMNS: list[Column] = [
 
 
 def access_cell(device: Device, presentation: DateTimePresentation) -> str:
-    """Held, or how the device left and when, at the day's precision."""
+    """Held, or the way and its day."""
     ended = stated(device, DEVICE_ACCESS_END)
     if ended is None or ended.way is None:
         return "Held"

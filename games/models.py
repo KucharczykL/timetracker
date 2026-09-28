@@ -1522,7 +1522,7 @@ class Device(ProjectionModel, ReferencedRow):
     removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
-    #: The day the library's access ended; null is a day nobody knows.
+    #: The day access ended; null unknown.
     access_ended = endpoint_when()
     access_ended_lower = endpoint_bound("access_ended", "lower")
     access_ended_upper = endpoint_bound("access_ended", "upper")
@@ -2170,10 +2170,7 @@ class UserLibraryPreferences(models.Model):
 
     @property
     def default_device(self) -> Device | None:
-        """The default a new session names: live and still held, or none.
-
-        An ended default keeps its key, so voiding the end brings it back.
-        """
+        """The held default; an ended one keeps its key."""
         stored = self.stored_default_device
         if stored is None or stored.access_end_recorded_at is not None:
             return None

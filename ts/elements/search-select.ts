@@ -54,7 +54,7 @@ export interface SearchSelectOption {
   value: string;
   label: string;
   data: Record<string, string>;
-  //: Muted text after the label; no search reads it.
+  //: Muted after the label; never searched.
   hint?: string;
 }
 

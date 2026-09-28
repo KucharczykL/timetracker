@@ -606,7 +606,7 @@ class PurchaseFilter(OperatorFilter):
 class EndpointFilterFields(NamedTuple):
     """The leaves one stated endpoint offers a filter."""
 
-    #: The stated day, as the interval its bounds state.
+    #: The stated day, as an interval.
     interval: FilterField
     #: Whether the act happened at all.
     stated: FilterField
@@ -621,7 +621,7 @@ def endpoint_filter_fields(
     interval_label: str | None = None,
     way_label: str | None = None,
 ) -> EndpointFilterFields:
-    """An endpoint's leaves; each filter places them in its own order."""
+    """An endpoint's leaves, placed by each filter."""
     return EndpointFilterFields(
         interval=FilterField(
             handler=temporal_interval_handler(

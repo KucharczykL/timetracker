@@ -114,7 +114,7 @@ class SearchSelectOption(TypedDict):
     # Becomes data-* attrs on the row / pill. Values are str only, matching the
     # TS SearchSelectOption's Record<string, string> — producers stringify ids.
     data: dict[str, str]
-    #: Muted text after the label; no search reads it.
+    #: Muted after the label; never searched.
     hint: NotRequired[str]
 
 
@@ -371,7 +371,7 @@ def _option_row(
         ]
         if hint:
             attributes.append(("data-hint", hint))
-        #: Every option row carries the slot, so the template's clone does.
+        #: Always present, so template clones carry it.
         label = Fragment(
             _label_slot(
                 option["label"], extra_class="truncate min-w-0" if actions else ""
