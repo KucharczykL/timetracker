@@ -121,7 +121,6 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
     data: TableData = {
         "caption": "Platforms",
         "columns": kept_columns,
-        #: Every row carries its menu.
         "menu_slot": True,
         "sort_terms": sort.terms,
         "rows": [

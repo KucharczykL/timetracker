@@ -81,3 +81,11 @@ def test_another_library_reads_nothing(owned_library, django_user_model, amiga):
     assert batch_rows(stranger, batch, Platform) == []
     assert batch_act(stranger, batch) is None
     assert not recorded(stranger, batch=batch, row=amiga, field="group")
+
+
+def test_an_unreadable_instant_is_a_defect(owned_library, amiga):
+    batch = uuid.uuid7()
+    _record(owned_library, batch, amiga, field="removed_at", earlier=None, stated="x")
+
+    with pytest.raises(ValueError, match="no instant"):
+        row_changes(owned_library, batch, amiga)

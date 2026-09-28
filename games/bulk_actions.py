@@ -274,7 +274,7 @@ class EventRows:
 
     @property
     def aggregate(self) -> AggregateType:
-        """The model's own aggregate: one fact."""
+        """Aggregate named after the model."""
         return str(self.model._meta.model_name)
 
     def rows(self, library: UserLibrary, batch: uuid.UUID) -> list[uuid.UUID]:

@@ -60,6 +60,7 @@ _KEYS = frozenset(PlatformEditJson.__annotations__)
 
 NOTHING_STATED = "Choose a group, no group, or an icon."
 NO_GROUP = "No group"
+GROUP_LENGTH = Platform._meta.get_field("group").max_length or 255
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +74,11 @@ class PlatformEditStatement:
     icon: str | None
 
     def __post_init__(self) -> None:
+        if self.group is not None:
+            #: One rule for form and carried statement.
+            object.__setattr__(self, "group", self.group.strip())
+            if len(self.group) > GROUP_LENGTH:
+                raise ValueError(f"A group is {GROUP_LENGTH} characters at most.")
         if self.group is None and self.icon is None:
             raise ValueError("An edit states a group or an icon.")
         if self.icon is not None and self.icon not in PLATFORM_ICONS:
@@ -90,8 +96,8 @@ class PlatformEditStatement:
     def decode(cls, raw: ChoiceValue) -> PlatformEditStatement:
         """An earlier settle's answer, or a refusal."""
         stated = stated_object(raw, _KEYS)
-        for key in _KEYS & set(stated):
-            if not isinstance(stated[key], str):
+        for key, value in stated.items():
+            if not isinstance(value, str):
                 raise statement_unreadable(f"{raw!r} states a {key} that is no text")
         try:
             return cls(stated.get("group"), stated.get("icon"))
@@ -121,7 +127,7 @@ class BulkPlatformEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
     group = forms.CharField(
         label="Group",
         required=False,
-        max_length=Platform._meta.get_field("group").max_length,
+        max_length=GROUP_LENGTH,
         widget=UnsetWidget(DatalistTextInput(), none_label=NO_GROUP),
     )
     icon = forms.ChoiceField(
@@ -160,7 +166,7 @@ class BulkPlatformEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
         """The valid form, as one statement."""
         group = self.cleaned_data["group"]
         return PlatformEditStatement(
-            None if group is KEEP else group.strip(),
+            None if group is KEEP else group,
             self.cleaned_data["icon"] or None,
         )
 
@@ -218,6 +224,9 @@ def edit_one(
     )
 
 
+#: One name for the act and its Undo.
+EDIT_NAME = "platform.edit"
+
 EDIT_PREVIEW: tuple[PreviewColumn[Platform], ...] = (
     PreviewColumn("Platform", lambda row, _: row.name),
     PreviewColumn("Group", lambda row, _: _group_shown(row.group)),
@@ -225,7 +234,7 @@ EDIT_PREVIEW: tuple[PreviewColumn[Platform], ...] = (
 )
 
 EDIT_PLATFORMS = BulkAction(
-    name="platform.edit",
+    name=EDIT_NAME,
     label="Edit…",
     title=ActTitle(one="Edit this platform", many="Edit {count} platforms"),
     confirm_label="Save",
@@ -236,7 +245,7 @@ EDIT_PLATFORMS = BulkAction(
     scope=platform_scope,
     resolve=platform_resolution,
     run=edit_one,
-    inverse=undoing("platform.edit"),
+    inverse=undoing(EDIT_NAME),
     preview=EDIT_PREVIEW,
     choice=BulkChoice(offer=offer_edit, settle=settle_edit),
 )

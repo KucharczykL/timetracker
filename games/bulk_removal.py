@@ -75,7 +75,6 @@ RECORD_SUBJECT: SubjectNoun = "historical playtime"
 
 RECORD_GONE = "One of the records is no longer available, so it was left as it is."
 DEVICE_GONE = "One of the devices is no longer available, so it was left as it is."
-PLATFORM_GONE = "One of the platforms is no longer available, so it was left as it is."
 
 
 def _removed_row[RowT: Model](
@@ -527,6 +526,9 @@ def _source(name: str) -> dict[str, object]:
     return {"bulk": {"action": name}}
 
 
+#: One name for the act and its Undo.
+REMOVE_PLATFORM_NAME = "platform.remove"
+
 REMOVE_SESSION = BulkAction(
     name="session.remove",
     label="Remove",
@@ -610,7 +612,7 @@ REMOVE_DEVICE = BulkAction(
 )
 
 REMOVE_PLATFORM = BulkAction(
-    name="platform.remove",
+    name=REMOVE_PLATFORM_NAME,
     label="Remove",
     title=ActTitle(one="Remove this platform", many="Remove {count} platforms"),
     confirm_label="Remove",
@@ -621,6 +623,6 @@ REMOVE_PLATFORM = BulkAction(
     scope=platform_scope,
     resolve=removal_resolution,
     run=remove_one_platform,
-    inverse=undoing("platform.remove"),
+    inverse=undoing(REMOVE_PLATFORM_NAME),
     preview=PLATFORM_PREVIEW,
 )

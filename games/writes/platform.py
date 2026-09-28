@@ -5,6 +5,7 @@ before it in the batch ledger, in the same transaction.
 """
 
 import uuid
+from collections.abc import Callable
 
 from django.db import IntegrityError, transaction
 from django.db.models import Q
@@ -82,7 +83,7 @@ def _constraint_of(collision: IntegrityError) -> str | None:
     return None if diagnostic is None else diagnostic.constraint_name
 
 
-def _refusing_a_taken_name(write, sentence: str) -> None:
+def _refusing_a_taken_name(write: Callable[[], object], sentence: str) -> None:
     """Run the write; a name constraint is a taken name.
 
     Such a constraint is an insert racing the check; any other rises
@@ -167,6 +168,9 @@ def edit_platform_in_batch(
     """
     with transaction.atomic():
         row, library = _locked(platform)
+        if row.removed_at is not None:
+            #: Removed since the confirmation.
+            raise CommandFailed(PLATFORM_REMOVED, CONFLICT_STATUS)
         wanted = {
             field: value
             for field, value in ((GROUP, group), (ICON, icon))
@@ -208,8 +212,11 @@ def undo_platform_batch(
         }
         if not restating:
             return False
-        fields = {field: str(change.before) for field, change in restating.items()}
-        fields.pop(REMOVED_AT, None)
+        fields = {
+            field: str(change.before)
+            for field, change in restating.items()
+            if field != REMOVED_AT
+        }
         if fields and row.removed_at is not None and REMOVED_AT not in restating:
             raise CommandFailed(PLATFORM_REMOVED, CONFLICT_STATUS)
         held = {field: getattr(row, field) for field in restating}

@@ -8,7 +8,6 @@ from games.models import Platform
 
 
 def platform_row_menu(platform: Platform, origin: OriginUrl | None) -> Node:
-    """Edit and Remove."""
     return RowActionMenu(
         [
             DropdownLinkItem(

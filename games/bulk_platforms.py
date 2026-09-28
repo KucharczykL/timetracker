@@ -36,15 +36,14 @@ def platform_scope(library: UserLibrary, filter_json: FilterJson) -> QuerySet[Pl
 def platform_resolution(
     library: UserLibrary,
     keys: Sequence[uuid.UUID],
-    annotating: Annotating = lambda rows, _: rows,
+    annotating: Annotating | None = None,
 ) -> Resolution[Platform]:
     """Keys to live private platforms, name order."""
     wanted = list(dict.fromkeys(keys))
-    rows = tuple(
-        annotating(
-            Platform.objects.for_library(library).filter(pk__in=wanted), library
-        ).order_by("name", "id")
-    )
+    found = Platform.objects.for_library(library).filter(pk__in=wanted)
+    if annotating is not None:
+        found = annotating(found, library)
+    rows = tuple(found.order_by("name", "id"))
     return Resolution(
         rows, tuple(lost(wanted, {row.pk for row in rows}, PLATFORM_GONE))
     )

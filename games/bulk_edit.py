@@ -30,8 +30,10 @@ type StatementKey = str  # "status"
 STATEMENT_UNREADABLE = "What to change could not be read. Choose it again."
 
 
-def keeping[RowT](
-    rows: Sequence[RowT], value: Callable[[RowT], object], shown: Callable[..., str]
+def keeping[RowT, ValueT](
+    rows: Sequence[RowT],
+    value: Callable[[RowT], ValueT],
+    shown: Callable[[ValueT], str],
 ) -> Keeping:
     """What the rows hold; differing, "mixed"."""
     held = {value(row) for row in rows}

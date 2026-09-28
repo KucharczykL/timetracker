@@ -1,5 +1,6 @@
 """Edit many platforms' group and icon; undo the batch."""
 
+import json
 import uuid
 
 import pytest
@@ -19,9 +20,15 @@ from games.bulk_platform_edit import (
     PlatformEditStatement,
 )
 from games.events.dispatch import CommandRejected
-from games.models import Platform, UserLibrary
+from games.models import BatchChange, Platform, UserLibrary
 from games.removal import remove
-from games.views.bulk import CHOICE_FIELD, STATEMENT_FIELD, TOKEN_FIELD, _act_of
+from games.views.bulk import (
+    CHOICE_FIELD,
+    STATEMENT_FIELD,
+    TOKEN_FIELD,
+    UNKNOWN_ACT,
+    _act_of,
+)
 from games.writes.platform import PLATFORM_REMOVED
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
@@ -105,6 +112,12 @@ def test_an_unreadable_statement_is_refused(raw):
         PlatformEditStatement.decode(raw)
 
     assert refusal.value.sentence == STATEMENT_UNREADABLE
+
+
+def test_a_carried_group_is_stripped_and_bounded():
+    assert PlatformEditStatement.decode('{"group": "  Home "}').group == "Home"
+    with pytest.raises(CommandRejected):
+        PlatformEditStatement.decode(json.dumps({"group": "x" * 256}))
 
 
 # ── The form ─────────────────────────────────────────────────────────────────
@@ -202,6 +215,21 @@ def test_the_undo_refuses_a_platform_removed_since(logged_in, amiga, dos):
     assert _held(amiga)[0] == "Home"
     assert _held(dos)[0] == "PC"
     assert PLATFORM_REMOVED in response.content.decode()
+
+
+def test_an_undo_batch_offers_no_undo(logged_in, amiga):
+    batch = _press(logged_in, amiga, group="Home")
+    undo_page = _undo(logged_in, batch)
+    assert undo_page.status_code in (200, 302)
+    undo_batch = (
+        BatchChange.objects.exclude(batch=batch).values_list("batch", flat=True).first()
+    )
+
+    response = logged_in.post(reverse("games:undo_bulk_action", args=[undo_batch]))
+
+    assert response.status_code == 400
+    assert UNKNOWN_ACT in response.content.decode()
+    assert _held(amiga)[0] == "Commodore"
 
 
 # ── The list ─────────────────────────────────────────────────────────────────

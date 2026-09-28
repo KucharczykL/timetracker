@@ -9,7 +9,7 @@ from django.db import IntegrityError
 from django.urls import reverse
 
 from games.batch_ledger import row_changes
-from games.models import ExternalReference, Platform
+from games.models import BatchChange, ExternalReference, Platform
 from games.removal import remove, restore
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from games.writes.platform import (
@@ -302,3 +302,41 @@ def test_the_route_answers_a_taken_name_on_the_page(client, owned_user, amiga):
         message.message for message in get_messages(response.wsgi_request)
     ]
     assert _reread(amiga).removed_at is not None
+
+
+# ── Refusals write and record nothing ────────────────────────────────────────
+
+
+def test_a_refused_edit_writes_and_records_nothing(owned_library, amiga):
+    Platform.objects.create(library=owned_library, name="Amiga", group="Home")
+    batch = uuid.uuid7()
+
+    with pytest.raises(CommandFailed):
+        edit_platform_in_batch(
+            amiga, group="Home", icon="physical", batch=batch, act=EDIT
+        )
+
+    assert (_reread(amiga).group, _reread(amiga).icon) == ("Commodore", "unspecified")
+    assert not BatchChange.objects.filter(batch=batch).exists()
+
+
+def test_an_edit_of_a_platform_removed_since_is_refused(amiga):
+    remove(amiga)
+
+    with pytest.raises(CommandFailed) as refusal:
+        _edited(amiga, group="Home")
+
+    assert refusal.value.message == PLATFORM_REMOVED
+
+
+def test_the_undo_of_an_edit_refuses_an_earlier_group_now_taken(owned_library, amiga):
+    batch = _edited(amiga, group="Home", icon="physical")
+    Platform.objects.create(library=owned_library, name="Amiga", group="Commodore")
+    undo = uuid.uuid7()
+
+    with pytest.raises(CommandFailed) as refusal:
+        undo_platform_batch(amiga, undoes=batch, batch=undo, act=EDIT)
+
+    assert refusal.value.message == group_taken_sentence(_reread(amiga), "Commodore")
+    assert (_reread(amiga).group, _reread(amiga).icon) == ("Home", "physical")
+    assert not BatchChange.objects.filter(batch=undo).exists()

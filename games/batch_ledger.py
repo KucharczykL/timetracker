@@ -28,7 +28,13 @@ type Decoder = Callable[[object], object]
 
 
 def _datetime(value: object) -> object:
-    return None if value is None else parse_datetime(str(value))
+    """None stays none; unreadable text is a defect."""
+    if value is None:
+        return None
+    parsed = parse_datetime(str(value))
+    if parsed is None:
+        raise ValueError(f"The ledger holds {value!r}, which is no instant.")
+    return parsed
 
 
 def _text(value: object) -> object:
@@ -44,7 +50,7 @@ FIELD_DECODERS: Mapping[FieldName, Decoder] = {
 
 
 def _stored(value: object) -> object:
-    """Full precision: the JSON encoder drops microseconds."""
+    """Instants as ISO text; JSON holds no datetime."""
     return value.isoformat() if isinstance(value, datetime) else value
 
 
@@ -66,12 +72,12 @@ def record(
     if field not in FIELD_DECODERS:
         raise ValueError(f"The ledger reads no {field!r}; add its decoder.")
     BatchChange.objects.get_or_create(
+        library=library,
         batch=batch,
         model_label=label_of(type(row)),
         row_id=row.pk,
         field=field,
         defaults={
-            "library": library,
             "act": act,
             "earlier": _stored(earlier),
             "stated": _stored(stated),

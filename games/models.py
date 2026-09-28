@@ -1331,7 +1331,7 @@ class BatchChange(models.Model):
     class Meta:
         constraints = (
             models.UniqueConstraint(
-                fields=("batch", "model_label", "row_id", "field"),
+                fields=("library", "batch", "model_label", "row_id", "field"),
                 name="unique_batch_change_per_field",
             ),
         )
@@ -1343,7 +1343,7 @@ class BatchChange(models.Model):
     )
     #: The batch's correlation id.
     batch = models.UUIDField()
-    #: The act's declared name.
+    #: An act's declared name, or its Undo's.
     act = models.CharField(max_length=100)
     #: `app_label.model_name` of the row.
     model_label = models.CharField(max_length=100)

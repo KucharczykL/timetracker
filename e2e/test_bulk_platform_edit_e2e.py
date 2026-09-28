@@ -1,4 +1,4 @@
-"""A person edits two platforms and takes it back."""
+"""A person edits two platforms and takes them back."""
 
 from django.urls import reverse
 from playwright.sync_api import Page, expect
