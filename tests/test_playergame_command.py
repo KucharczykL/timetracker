@@ -1,6 +1,7 @@
-"""Dispatching the command that tracks a game."""
+"""Dispatching the playergame commands."""
 
 import uuid
+from typing import Any, NamedTuple
 
 import pytest
 from django.utils import timezone
@@ -11,8 +12,6 @@ from games.commands.playergame import (
     RemovePlayerGame,
     RestorePlayerGame,
     SetPlayerGameExcludedFromUnfinished,
-    SetPlayerGameMastered,
-    SetPlayerGameStatus,
     TrackGame,
 )
 from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
@@ -196,45 +195,163 @@ def track(actor, library, game):
     )
 
 
+class StatedFact(NamedTuple):
+    """One fact RecordPlayerGameFacts states alone."""
+
+    stated: dict[str, Any]
+    #: What a freshly tracked row already holds.
+    held: dict[str, Any]
+    #: Other fact, moved off its default.
+    other: dict[str, Any]
+    event_type: str
+    payload: dict[str, Any]
+    column: str
+
+    @property
+    def value(self) -> Any:
+        return self.stated[self.column]
+
+    @property
+    def default(self) -> Any:
+        return self.held[self.column]
+
+
+FACTS = [
+    pytest.param(
+        StatedFact(
+            stated={"status": PlayerGameStatus.COMPLETED, "mastered": None},
+            held={"status": PlayerGameStatus.UNPLAYED, "mastered": None},
+            other={"status": None, "mastered": True},
+            event_type="library.playergame.status_changed",
+            payload={"status": "completed"},
+            column="status",
+        ),
+        id="status",
+    ),
+    pytest.param(
+        StatedFact(
+            stated={"status": None, "mastered": True},
+            held={"status": None, "mastered": False},
+            other={"status": PlayerGameStatus.COMPLETED, "mastered": None},
+            event_type="library.playergame.mastered_changed",
+            payload={"mastered": True},
+            column="mastered",
+        ),
+        id="mastery",
+    ),
+]
+
+
+def state(actor, library, game, facts, key):
+    """RecordPlayerGameFacts through dispatch, which tracks nothing."""
+    return dispatch(
+        RecordPlayerGameFacts(game_id=game.pk, **facts),
+        actor=actor,
+        library=library,
+        idempotency_key=key,
+    )
+
+
 @pytest.mark.django_db(transaction=True)
-def test_setting_a_status_records_it_and_projects_it(owned_user, owned_library):
+@pytest.mark.parametrize("fact", FACTS)
+def test_a_stated_fact_records_it_and_projects_it(owned_user, owned_library, fact):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 
-    dispatch(
-        SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.COMPLETED),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key="complete-outer-wilds",
-    )
+    state(owned_user, owned_library, game, fact.stated, "state")
 
-    event = LibraryEvent.objects.get(event_type="library.playergame.status_changed")
-    assert event.payload == {"status": "completed"}
+    event = LibraryEvent.objects.get(event_type=fact.event_type)
+    assert event.payload == fact.payload
     row = PlayerGame.objects.get()
     assert event.aggregate_id == row.pk
-    assert row.status == PlayerGameStatus.COMPLETED
+    assert getattr(row, fact.column) == fact.value
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_live_status_change_states_the_day_it_happened(owned_user, owned_library):
+@pytest.mark.parametrize("fact", FACTS)
+def test_a_stated_fact_leaves_the_rest_of_the_row_alone(
+    owned_user, owned_library, fact
+):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    state(owned_user, owned_library, game, fact.other, "other")
+    untouched = [
+        column
+        for column in (
+            "pk",
+            "game_id",
+            "tracked_at",
+            "status",
+            "mastered",
+            "excluded_from_unfinished",
+        )
+        if column != fact.column
+    ]
+    before = PlayerGame.objects.get()
+
+    state(owned_user, owned_library, game, fact.stated, "state")
+
+    after = PlayerGame.objects.get()
+    assert [getattr(after, c) for c in untouched] == [
+        getattr(before, c) for c in untouched
+    ]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("fact", FACTS)
+def test_a_fact_for_an_untracked_game_is_refused(owned_user, owned_library, fact):
+    game = Game.objects.create(library=owned_library, name="Untracked")
+
+    with pytest.raises(CommandRejected, match="tracks no game"):
+        state(owned_user, owned_library, game, fact.stated, "state")
+
+    assert not LibraryEvent.objects.filter(event_type=fact.event_type).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("fact", FACTS)
+def test_a_fact_for_a_game_another_library_tracks_is_refused(
+    owned_user, owned_library, other_user, other_library, shared_game, fact
+):
+    track(other_user, other_library, shared_game)
+
+    with pytest.raises(CommandRejected, match="tracks no game"):
+        state(owned_user, owned_library, shared_game, fact.stated, "state")
+
+    assert getattr(PlayerGame.objects.get(), fact.column) == fact.default
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("fact", FACTS)
+def test_a_fact_that_already_holds_changes_nothing(owned_user, owned_library, fact):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 
-    dispatch(
-        SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.COMPLETED),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key="complete-outer-wilds",
-    )
+    result = state(owned_user, owned_library, game, fact.held, "hold")
 
-    event = LibraryEvent.objects.get(event_type="library.playergame.status_changed")
-    #: None would mean nobody knows when.
-    assert event.effective_time == TemporalValue.from_day(timezone.localdate())
+    assert result.outcome is CommandOutcome.UNCHANGED
+    assert "already records" in result.reason
+    assert not LibraryEvent.objects.filter(event_type=fact.event_type).exists()
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_recorded_status_fact_states_the_day_too(owned_user, owned_library):
-    #: The game form dispatches this one.
+@pytest.mark.parametrize("fact", FACTS)
+def test_one_idempotency_key_records_one_fact_change(owned_user, owned_library, fact):
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+
+    first = state(owned_user, owned_library, game, fact.stated, "state")
+    second = state(owned_user, owned_library, game, fact.stated, "state")
+
+    assert (first.outcome, second.outcome) == (
+        CommandOutcome.APPENDED,
+        CommandOutcome.REPLAYED,
+    )
+    assert LibraryEvent.objects.filter(event_type=fact.event_type).count() == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_recorded_status_fact_states_the_day(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 
@@ -252,7 +369,7 @@ def test_a_recorded_status_fact_states_the_day_too(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_mastery_fact_still_states_no_time(owned_user, owned_library):
+def test_a_mastery_fact_states_no_time(owned_user, owned_library):
     #: Only the status event states a time.
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
@@ -266,230 +383,6 @@ def test_a_mastery_fact_still_states_no_time(owned_user, owned_library):
 
     event = LibraryEvent.objects.get(event_type="library.playergame.mastered_changed")
     assert event.effective_time is None
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_status_leaves_the_rest_of_the_row_alone(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    track(owned_user, owned_library, game)
-    before = PlayerGame.objects.get()
-
-    dispatch(
-        SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.PLAYED),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key="play-outer-wilds",
-    )
-
-    after = PlayerGame.objects.get()
-    assert (after.pk, after.game_id, after.tracked_at) == (
-        before.pk,
-        before.game_id,
-        before.tracked_at,
-    )
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_status_for_an_untracked_game_is_refused(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Untracked")
-
-    with pytest.raises(CommandRejected, match="tracks no game"):
-        dispatch(
-            SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.PLAYED),
-            actor=owned_user,
-            library=owned_library,
-            idempotency_key="play-untracked",
-        )
-
-    assert not LibraryEvent.objects.filter(
-        event_type="library.playergame.status_changed"
-    ).exists()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_a_status_for_a_game_another_library_tracks_is_refused(
-    owned_user, owned_library, other_user, other_library, shared_game
-):
-    track(other_user, other_library, shared_game)
-
-    with pytest.raises(CommandRejected, match="tracks no game"):
-        dispatch(
-            SetPlayerGameStatus(game_id=shared_game.pk, status=PlayerGameStatus.PLAYED),
-            actor=owned_user,
-            library=owned_library,
-            idempotency_key="play-theirs",
-        )
-
-    assert PlayerGame.objects.get().status == PlayerGameStatus.UNPLAYED
-
-
-@pytest.mark.django_db(transaction=True)
-def test_the_status_a_game_already_has_changes_nothing(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    track(owned_user, owned_library, game)
-
-    result = dispatch(
-        SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.UNPLAYED),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key="unplay-outer-wilds",
-    )
-
-    assert result.outcome is CommandOutcome.UNCHANGED
-    assert "already gives" in result.reason
-    assert not LibraryEvent.objects.filter(
-        event_type="library.playergame.status_changed"
-    ).exists()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_one_idempotency_key_records_one_status_change(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    track(owned_user, owned_library, game)
-    command = SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.COMPLETED)
-
-    first = dispatch(
-        command, actor=owned_user, library=owned_library, idempotency_key="complete"
-    )
-    second = dispatch(
-        command, actor=owned_user, library=owned_library, idempotency_key="complete"
-    )
-
-    assert (first.outcome, second.outcome) == (
-        CommandOutcome.APPENDED,
-        CommandOutcome.REPLAYED,
-    )
-    assert (
-        LibraryEvent.objects.filter(
-            event_type="library.playergame.status_changed"
-        ).count()
-        == 1
-    )
-
-
-@pytest.mark.django_db(transaction=True)
-def test_mastering_a_game_records_it_and_projects_it(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    track(owned_user, owned_library, game)
-
-    dispatch(
-        SetPlayerGameMastered(game_id=game.pk, mastered=True),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key="master-outer-wilds",
-    )
-
-    event = LibraryEvent.objects.get(event_type="library.playergame.mastered_changed")
-    assert event.payload == {"mastered": True}
-    row = PlayerGame.objects.get()
-    assert event.aggregate_id == row.pk
-    assert row.mastered is True
-
-
-@pytest.mark.django_db(transaction=True)
-def test_mastery_leaves_the_rest_of_the_row_alone(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    track(owned_user, owned_library, game)
-    dispatch(
-        SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.COMPLETED),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key="complete-outer-wilds",
-    )
-    before = PlayerGame.objects.get()
-
-    dispatch(
-        SetPlayerGameMastered(game_id=game.pk, mastered=True),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key="master-outer-wilds",
-    )
-
-    after = PlayerGame.objects.get()
-    assert (after.pk, after.game_id, after.tracked_at, after.status) == (
-        before.pk,
-        before.game_id,
-        before.tracked_at,
-        PlayerGameStatus.COMPLETED,
-    )
-
-
-@pytest.mark.django_db(transaction=True)
-def test_mastery_of_an_untracked_game_is_refused(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Untracked")
-
-    with pytest.raises(CommandRejected, match="tracks no game"):
-        dispatch(
-            SetPlayerGameMastered(game_id=game.pk, mastered=True),
-            actor=owned_user,
-            library=owned_library,
-            idempotency_key="master-untracked",
-        )
-
-    assert not LibraryEvent.objects.filter(
-        event_type="library.playergame.mastered_changed"
-    ).exists()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_mastery_of_a_game_another_library_tracks_is_refused(
-    owned_user, owned_library, other_user, other_library, shared_game
-):
-    track(other_user, other_library, shared_game)
-
-    with pytest.raises(CommandRejected, match="tracks no game"):
-        dispatch(
-            SetPlayerGameMastered(game_id=shared_game.pk, mastered=True),
-            actor=owned_user,
-            library=owned_library,
-            idempotency_key="master-theirs",
-        )
-
-    assert PlayerGame.objects.get().mastered is False
-
-
-@pytest.mark.django_db(transaction=True)
-def test_the_mastery_a_game_already_records_changes_nothing(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    track(owned_user, owned_library, game)
-
-    result = dispatch(
-        SetPlayerGameMastered(game_id=game.pk, mastered=False),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key="unmaster-outer-wilds",
-    )
-
-    assert result.outcome is CommandOutcome.UNCHANGED
-    assert "not mastered" in result.reason
-    assert not LibraryEvent.objects.filter(
-        event_type="library.playergame.mastered_changed"
-    ).exists()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_one_idempotency_key_records_one_mastery_change(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    track(owned_user, owned_library, game)
-    command = SetPlayerGameMastered(game_id=game.pk, mastered=True)
-
-    first = dispatch(
-        command, actor=owned_user, library=owned_library, idempotency_key="master"
-    )
-    second = dispatch(
-        command, actor=owned_user, library=owned_library, idempotency_key="master"
-    )
-
-    assert (first.outcome, second.outcome) == (
-        CommandOutcome.APPENDED,
-        CommandOutcome.REPLAYED,
-    )
-    assert (
-        LibraryEvent.objects.filter(
-            event_type="library.playergame.mastered_changed"
-        ).count()
-        == 1
-    )
 
 
 @pytest.mark.django_db(transaction=True)
@@ -519,12 +412,7 @@ def test_excluding_a_game_records_it_and_projects_it(owned_user, owned_library):
 def test_an_exclusion_leaves_the_rest_of_the_row_alone(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
-    dispatch(
-        SetPlayerGameMastered(game_id=game.pk, mastered=True),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key="master-outer-wilds",
-    )
+    state(owned_user, owned_library, game, {"status": None, "mastered": True}, "master")
     before = PlayerGame.objects.get()
 
     dispatch(
@@ -680,17 +568,12 @@ def test_removing_a_game_leaves_the_rest_of_the_row_alone(owned_user, owned_libr
     """A restore gives back the game the library had."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
-    dispatch(
-        SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.PLAYED),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key="play-outer-wilds",
-    )
-    dispatch(
-        SetPlayerGameMastered(game_id=game.pk, mastered=True),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key="master-outer-wilds",
+    state(
+        owned_user,
+        owned_library,
+        game,
+        {"status": PlayerGameStatus.PLAYED, "mastered": True},
+        "play-and-master",
     )
     before = PlayerGame.objects.get()
 

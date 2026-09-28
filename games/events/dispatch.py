@@ -78,11 +78,11 @@ class CommandName(CommandVocabulary):
 
     The readable inventory: one grep, and no entry that is not a thing the
     system does. A test double names itself from its own vocabulary.
+
+    Retired values move to RETIRED_COMMAND_NAMES.
     """
 
     PLAYERGAME_TRACK = "library.playergame.track"
-    PLAYERGAME_SET_STATUS = "library.playergame.set_status"
-    PLAYERGAME_SET_MASTERED = "library.playergame.set_mastered"
     PLAYERGAME_SET_EXCLUDED_FROM_UNFINISHED = (
         "library.playergame.set_excluded_from_unfinished"
     )
@@ -263,6 +263,17 @@ def validate_idempotency_key(key: IdempotencyKey) -> None:
 
 _COMMAND_REGISTRY: dict[CommandNameValue, DefinitionSite] = {}
 
+#: Retired command names: never reused.
+#:
+#: An equal name over equal fields is an equal digest,
+#: so an old key would replay as the new command.
+RETIRED_COMMAND_NAMES: frozenset[CommandNameValue] = frozenset(
+    {
+        "library.playergame.set_status",
+        "library.playergame.set_mastered",
+    }
+)
+
 
 class Command(ABC):
     """One intent, expressed as a value.
@@ -289,6 +300,11 @@ class Command(ABC):
             raise TypeError(
                 f"{cls.__qualname__} declares no command_name. Every concrete "
                 "command names itself with a member of a CommandVocabulary."
+            )
+        if name.value in RETIRED_COMMAND_NAMES:
+            raise TypeError(
+                f"{cls.__qualname__} claims {name.value!r}, a retired command "
+                "name. A retired name is never reused."
             )
 
         #: The rebuilt class carries a bare __qualname__.
