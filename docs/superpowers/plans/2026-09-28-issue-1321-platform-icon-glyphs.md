@@ -150,9 +150,9 @@ loaded with `importlib.import_module`; seed values through
 - a `BatchChange` with `earlier="ps1"`, `stated="steam"` → `earlier`
   `"playstation"`, `stated` untouched; a `BatchChange` on `group` is
   untouched.
-- the migration's `KNOWN_ICONS` equals `set(PLATFORM_ICONS)` today
-  (catches a copy error; it may diverge in later migrations, so the
-  test pins this migration's module, not the live set's future).
+- every slug the migration writes is a key of `PLATFORM_ICONS` (its
+  `KNOWN_ICONS` and `RETIRED_ICONS` values ⊆ the live set). A subset,
+  not equality, so #1325 adding icons keeps it green.
 
 Rehearse: `make verify-dump` on the newest dump; expect 8 platform
 rows rewritten. Record the count in the PR body.
