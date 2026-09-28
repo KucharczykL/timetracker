@@ -83,3 +83,5 @@ older slug pickable.
 
 - A picker that accepts a removed platform (#979).
 - The ledger for other removable models.
+- Icons keyed on glyphs rather than platform names (#1321); the picker
+  offers each glyph once meanwhile.
