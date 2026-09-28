@@ -27,18 +27,16 @@ columns back to their values before the act.
   The caller spells each type.
 - `Projector.project_stated`, `project_corrected`, `project_voided`.
 - `games/commands/endpoint.py`: `state_endpoint`, `correct_endpoint`,
-  `void_endpoint`. Each takes one statement: `ActStatement`, or
-  `WayActStatement` for an endpoint with ways. Each command keeps its own
-  fields, so its fingerprint does not change. A `before_event` hook holds
-  the aggregate's own rules.
+  `void_endpoint` take one statement: `ActStatement`, or
+  `WayActStatement` with ways. Each command keeps its own fields, thus its
+  fingerprint. A `before_event` hook holds the aggregate's rules.
 - `games/writes/endpoint.py`: `endpoint_move` answers `Act`, `Correct`,
   `Void` or `Nothing` from presence only, and carries the statement. The
   command compares values under the lock.
-- `endpoint_filter_fields` gives the interval and the act;
-  `way_filter_field` gives the way.
+- `games/filters.py`: `endpoint_filter_fields` gives the interval and
+  the act, or its absence; `way_filter_field` gives the way.
 
-The playthrough start and completion use this primitive, with their own
-event types, command names, fields, columns and filter keys.
+The playthrough start and completion use this primitive.
 
 ## Device access end
 
@@ -56,25 +54,27 @@ The way is `sold`, `lost`, `given_away`, `broken` or `stolen`. The day is
 ways, and a way exactly where the marker is set.
 
 `EndDeviceAccess`, `CorrectDeviceAccessEnd` and `VoidDeviceAccessEnd`
-answer `Unchanged` first, then refuse a removed device. `CreateDevice` can
+answer `Unchanged` before they refuse a removed device. `CreateDevice` can
 state an end in the same build.
 
 ## Screens
 
 - The Device form has Access, the day and a note. On an ended device,
   "Held" takes back the end with its day and note. On a held device, a
-  day or note without a way is refused. The save sends the end first and
-  the description second, so a refused end saves nothing.
+  day or note without a way is refused. "Held" refuses to take back an
+  end the page did not show. The save sends the end first and the
+  description second, so a refused end leaves the description unsent.
 - Session and record pickers offer an ended device after the held
   devices, with the way as a hint.
 - `default_device` is none for an ended device. The key stays. The
   library page shows the ended default with a reason. The API refuses an
   ended device as the default.
-- The Devices list has an Access column, two facets, and a sort by day.
+- The Devices list has an Access column, the facets Owned and Status,
+  and a sort by day.
 
 ## Limits
 
 - The library cannot state that it got a device back. A void says that
   the end did not occur.
 - A session after the end is not refused.
-- #1157 counts each session on its own day.
+- A session after the end still counts on its own day.

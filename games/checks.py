@@ -429,6 +429,10 @@ def check_endpoints(**kwargs: Any) -> list[CheckMessage]:
     errors: list[CheckMessage] = []
     seen: set[tuple[str, str]] = set()
     for endpoint in ENDPOINTS:
+        key = (endpoint.model_label, endpoint.name)
+        if key in seen:
+            errors.append(_endpoint_error(endpoint, "another endpoint has its name"))
+        seen.add(key)
         try:
             model = endpoint.model
         except LookupError:

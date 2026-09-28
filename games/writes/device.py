@@ -1,6 +1,7 @@
 """Device writes; refusals become answers."""
 
 import uuid
+from typing import assert_never
 
 from django.contrib.auth.models import User
 
@@ -81,8 +82,8 @@ def restate_device(
 ) -> None:
     """Move the end, then describe; one correlation.
 
-    The end goes first: a racer can refuse it, and the
-    description then stays unsent rather than half-saved.
+    The end goes first: a racer can refuse it,
+    and the description then stays unsent.
     """
     command = _access_end_command(device, access_end)
     if command is not None:
@@ -116,6 +117,8 @@ def _access_end_command(
             return VoidDeviceAccessEnd(device_id=device.pk)
         case Nothing():
             return None
+        case unhandled:
+            assert_never(unhandled)
 
 
 def remove_device(

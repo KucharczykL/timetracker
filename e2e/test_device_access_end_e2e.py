@@ -34,11 +34,15 @@ def test_selling_a_device_shows_on_the_list_and_in_the_picker(
     page.keyboard.type("2021")
     page.click("[data-date-part='month'][data-date-side='start']")
     page.keyboard.type("05")
+    page.locator("[data-temporal-disclosure]").first.click()
+    page.locator('input[name="access_day-uncertain"]').check()
     page.fill('textarea[name="access_note"]', "to a friend")
     page.get_by_role("button", name="Submit", exact=True).click()
 
     page.wait_for_url(f"{live_server.url}{reverse('games:list_devices')}**")
     expect(_row(page, "Deck")).to_contain_text("Sold · May 2021")
+    deck.refresh_from_db()
+    assert deck.access_ended.canonical == "2021-05?"
     expect(_row(page, "Desk PC")).to_contain_text("Held")
 
     page.goto(f"{live_server.url}{reverse('games:add_session')}")

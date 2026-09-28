@@ -106,7 +106,7 @@ def device_restored(device_id: uuid.UUID) -> NewEvent:
     return DEVICE_RESTORED.new(aggregate_id=device_id, payload={})
 
 
-#: Recorded ways; a Literal, not EndWay.
+#: Recorded spelling; frozen apart from EndWay.
 type DeviceWayValue = Literal["sold", "lost", "given_away", "broken", "stolen"]
 
 

@@ -23,7 +23,7 @@ class Endpoint(EndpointColumns):
     events: EndpointEvents[Any]
 
     @classmethod
-    def over(cls, columns: EndpointColumns, events: EndpointEvents) -> Endpoint:
+    def over(cls, columns: EndpointColumns, events: EndpointEvents[Any]) -> Endpoint:
         """Columns joined with their events."""
         return cls(
             **{field.name: getattr(columns, field.name) for field in fields(columns)},

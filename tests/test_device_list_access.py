@@ -1,12 +1,16 @@
 """The Devices list states each device's access."""
 
 import json
+import uuid
 
 import pytest
 from devices import create_device, end_device_access
+from django.db import transaction
 from django.urls import reverse
 
+from games.commands.device import VoidDeviceAccessEnd
 from games.end_ways import EndWay
+from games.events.dispatch import append_command
 from games.filters import DeviceFilter, filter_query_context_for_library
 from games.models import Device
 from timetracker.temporal import TemporalValue
@@ -69,6 +73,29 @@ def test_the_facets_narrow_by_the_act_and_by_the_way(owned_library, devices):
     sold = matched(owned_library, DeviceFilter.where(access_end_way=["sold"]))
 
     assert (ended, held, sold) == ({"Switch", "Phone", "Wii"}, {"Deck"}, {"Switch"})
+
+
+def test_excluding_a_status_keeps_held_devices(owned_library, devices):
+    kept = matched(owned_library, DeviceFilter.where(access_end_way__exclude=["sold"]))
+
+    assert kept == {"Deck", "Phone", "Wii"}
+
+
+def test_a_voided_end_reads_as_owned(owned_library, devices):
+    phone = Device.objects.get(library=owned_library, name="Phone")
+    with transaction.atomic():
+        append_command(
+            VoidDeviceAccessEnd(device_id=phone.pk),
+            actor=owned_library.user,
+            library=owned_library,
+            idempotency_key=str(uuid.uuid7()),
+            correlation_id=uuid.uuid7(),
+        )
+
+    assert matched(owned_library, DeviceFilter.where(is_owned=True)) == {
+        "Deck",
+        "Phone",
+    }
 
 
 def test_the_end_filters_as_the_interval_its_day_states(owned_library, devices):

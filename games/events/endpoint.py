@@ -49,7 +49,7 @@ def endpoint_events[PayloadT](
     voided: EventType,
     payload: type[PayloadT],
     voided_payload: type,
-) -> EndpointEvents:
+) -> EndpointEvents[PayloadT]:
     """Register three specs; callers spell every type."""
     events = EndpointEvents(
         stated=EventSpec(stated, aggregate_type=aggregate_type, payload=payload),

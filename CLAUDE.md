@@ -223,8 +223,8 @@ docs/           — Additional documentation
   `TemporalValueField` with generated lower- and upper-bound columns beside each,
   plus marker naming the act (`start_recorded_at`, `completion_recorded_at`) and
   note of their own: null date is only unknown day, so marker's null is act that
-  never happened, and `games/reads/playthrough_endpoints.py` reads pair as one
-  `StatedEndpoint`. #681 states both with
+  never happened, and `games/reads/playthrough_endpoints.py` reads each as a
+  `StatedEndpoint` (`games/reads/endpoints.py`). #681 states both with
   `StartPlaythrough`/`CompletePlaythrough` in `games/commands/playthrough.py`,
   which refuse second statement of stated endpoint and completion that certainly
   precedes start. #1010 adds three commands beside them:
@@ -527,7 +527,8 @@ corrected, voided); the model declares the columns through
 `games/endpoint_fields.py`, and `games.E014` holds the two together.
 Commands decide through `games/commands/endpoint.py`, projectors write
 through `project_stated`/`_corrected`/`_voided`, writes choose the act
-with `endpoint_move`, filters take `endpoint_filter_fields`. Playthrough
+with `endpoint_move`, filters take `endpoint_filter_fields` and
+`way_filter_field` (`games/filters.py`). Playthrough
 start and completion and a device's end of access are its three.
 
 **Nothing user removes is destroyed** (#944). Six removable models — Game,

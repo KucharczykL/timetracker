@@ -1,9 +1,14 @@
 """Device pages: add, edit, remove, restore."""
 
+import uuid
+
 import pytest
 from devices import create_device, end_device_access, remove_device
+from django.db import transaction
 from django.urls import reverse
 
+from games.commands.device import VoidDeviceAccessEnd
+from games.events.dispatch import append_command
 from games.models import Device, LibraryEvent
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from timetracker.temporal import temporal_input_name
@@ -135,10 +140,22 @@ def _access(way: str, *, year: str = "", month: str = "", note: str = "") -> dic
     return posted
 
 
+def _seen(device: Device) -> str:
+    """The end the edit page would render."""
+    device.refresh_from_db()
+    marker = device.access_end_recorded_at
+    return "" if marker is None else marker.isoformat()
+
+
 def _edit(client, device: Device, **access):
     return client.post(
         reverse("games:edit_device", args=[device.pk]),
-        {"name": device.name, "type": device.type, **_access(**access)},
+        {
+            "name": device.name,
+            "type": device.type,
+            "access_end_seen": _seen(device),
+            **_access(**access),
+        },
     )
 
 
@@ -277,3 +294,55 @@ def test_adding_a_device_that_already_left(logged_in):
         "library.device.access_ended",
     ]
     assert device.access_ended.canonical == "2015"
+
+
+def test_held_refuses_to_void_an_end_the_page_never_showed(logged_in, owned_library):
+    device = create_device(owned_library, "Deck", Device.HANDHELD)
+    #: Rendered held; another tab then ends access.
+    seen = _seen(device)
+    end_device_access(device)
+
+    response = logged_in.post(
+        reverse("games:edit_device", args=[device.pk]),
+        {"name": "Deck", "type": device.type, "access_end_seen": seen, **_access("")},
+    )
+
+    assert response.status_code == 200
+    assert "changed since you opened this page" in response.content.decode()
+    assert _device_events(device)[-1] == "library.device.access_ended"
+
+
+def test_a_stale_correction_sends_no_rename(logged_in, owned_library, monkeypatch):
+    device = end_device_access(create_device(owned_library, "Deck", Device.HANDHELD))
+    seen = _seen(device)
+    #: A racer voids between the page's read and the save.
+    monkeypatch.setattr(
+        "games.writes.device.stated", lambda row, endpoint: object(), raising=True
+    )
+    _void(device)
+
+    response = logged_in.post(
+        reverse("games:edit_device", args=[device.pk]),
+        {
+            "name": "Steam Deck",
+            "type": device.type,
+            "access_end_seen": seen,
+            **_access("lost"),
+        },
+    )
+
+    assert response.status_code == CONFLICT_STATUS
+    assert "no end to correct" in response.content.decode()
+    device.refresh_from_db()
+    assert device.name == "Deck"
+
+
+def _void(device: Device) -> None:
+    with transaction.atomic():
+        append_command(
+            VoidDeviceAccessEnd(device_id=device.pk),
+            actor=device.library.user,
+            library=device.library,
+            idempotency_key=str(uuid.uuid7()),
+            correlation_id=uuid.uuid7(),
+        )

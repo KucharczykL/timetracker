@@ -369,14 +369,14 @@ def _option_row(
             ("data-value", str(option["value"])),
             ("data-label", option["label"]),
         ]
-        if hint is not None:
+        if hint:
             attributes.append(("data-hint", hint))
         #: Always present, so template clones carry it.
         label = Fragment(
             _label_slot(
                 option["label"], extra_class="truncate min-w-0" if actions else ""
             ),
-            Span(data_search_select_hint="", hidden=hint is None, class_=_HINT_CLASS)[
+            Span(data_search_select_hint="", hidden=not hint, class_=_HINT_CLASS)[
                 hint or ""
             ],
         )

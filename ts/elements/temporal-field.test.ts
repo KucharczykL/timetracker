@@ -429,6 +429,23 @@ describe("temporal-field", () => {
     ]);
   });
 
+  it.each([
+    ["a range's end", { kind: "range", start_year: "1990", end_year: "1995", end_uncertain: "on" }, "end_uncertain"],
+    ["an until's end", { kind: "until", end_year: "2000", end_approximate: "on" }, "end_approximate"],
+    ["a whole decade", { kind: "date", start_decade: "1990", start_uncertain: "on" }, "start_uncertain"],
+  ])("keeps the qualifier of %s", (_shape, stored, key) => {
+    const host = mountDraft(stored);
+
+    expect([named(host, key).checked, named(host, key).disabled]).toEqual([true, false]);
+  });
+
+  it("keeps an until's start undated and unqualified", () => {
+    const host = mountDraft({ kind: "until", end_year: "2000", end_approximate: "on" });
+
+    expect(named(host, "start_approximate").disabled).toBe(true);
+    expect(named(host, "start_uncertain").disabled).toBe(true);
+  });
+
   it("offers a stored date's qualifiers from the start", () => {
     const host = mountDraft({ kind: "date", start_year: "1997", start_uncertain: "on" });
 
@@ -886,6 +903,19 @@ describe("temporal-field copy", () => {
       normalized({ kind: "date", start_year: "1997", start_month: "3", start_day: "15" }),
     );
     expect(named(target, "kind").value).toBe("date");
+  });
+
+  it("copies a date's qualifier", () => {
+    const { source, target } = mountPair({
+      kind: "date",
+      start_year: "1997",
+      start_uncertain: "on",
+    });
+
+    copyTemporalDraft(source, target);
+
+    expect(named(target, "start_uncertain").checked).toBe(true);
+    expect(named(target, "start_uncertain").disabled).toBe(false);
   });
 
   it("copies a range onto both ends", () => {

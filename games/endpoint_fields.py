@@ -27,7 +27,8 @@ class WayColumn(NamedTuple):
     """A way column and the ways it admits."""
 
     column: ColumnName
-    ways: tuple[EndWay, ...]
+    #: At least one; none would refuse every act.
+    ways: tuple[EndWay, *tuple[EndWay, ...]]
 
 
 type EndpointName = str  # e.g. "access_end"; names its constraints

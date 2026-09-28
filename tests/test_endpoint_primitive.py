@@ -295,3 +295,11 @@ def test_the_device_way_literal_spells_every_device_way() -> None:
 def test_a_wayless_endpoint_has_no_way_leaf() -> None:
     with pytest.raises(TypeError, match="states no way"):
         way_filter_field(PLAYTHROUGH_START, label="Way")
+
+
+def test_the_check_refuses_two_endpoints_sharing_a_name() -> None:
+    from games.checks import check_endpoints
+
+    with patch("games.checks.ENDPOINTS", (*ENDPOINTS, PLAYTHROUGH_START)):
+        messages = [error.msg for error in check_endpoints()]
+    assert any("another endpoint has its name" in message for message in messages)

@@ -1820,14 +1820,14 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         devices = Device.objects.for_library(library)
         held = record if record is not None else session
         if held is not None and held.device_id is not None:
-            #: A held device stays, removed or not.
+            #: The row's own device stays, removed or not.
             devices = devices | Device.objects.filter(
                 library=library, pk=held.device_id
             )
         device_field = cast(forms.ModelChoiceField, self.fields["device"])
         device_field.queryset = devices.order_by("name")
         device_field.widget.options_resolver = partial(
-            _held_device_options, devices=devices
+            _named_device_options, devices=devices
         )
 
     def clean_note(self) -> str:
@@ -1885,7 +1885,7 @@ def _parsed_ids(values) -> list[uuid.UUID]:
     return parsed
 
 
-def _held_device_options(
+def _named_device_options(
     values, *, devices: QuerySet[Device]
 ) -> list[SearchSelectOption]:
     return [
@@ -2216,6 +2216,9 @@ ACCESS_CHOICES = [
 
 
 NO_WAY_FOR_A_DAY = "Choose how the device left, or clear the day and note."
+CHANGED_SINCE_OPENED = (
+    "This device changed since you opened this page. Reload it and save again."
+)
 
 
 class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
@@ -2234,6 +2237,8 @@ class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
     access_note = forms.CharField(
         required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Access note"
     )
+    #: The end this page showed; a void takes back only it.
+    access_end_seen = forms.CharField(required=False, widget=forms.HiddenInput)
     #: One key per page; resubmits replay.
     submission = forms.UUIDField(widget=forms.HiddenInput, initial=uuid.uuid7)
 
@@ -2277,6 +2282,8 @@ class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
         ended = self.device is not None and stated(self.device, DEVICE_ACCESS_END)
         if not ended and (when is not None or note):
             self.add_error("access", NO_WAY_FOR_A_DAY)
+        if ended and cleaned.get("access_end_seen") != _end_seen(self.device):
+            self.add_error(None, CHANGED_SINCE_OPENED)
         return cleaned
 
     def submission_key(self) -> IdempotencyKey:
@@ -2284,8 +2291,18 @@ class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
         return f"device-create-{self.cleaned_data['submission']}"
 
 
+def _end_seen(device: Device | None) -> str:
+    """The rendered end's marker, or empty while held."""
+    marker = None if device is None else device.access_end_recorded_at
+    return "" if marker is None else marker.isoformat()
+
+
 def _device_initial(device: Device) -> dict[str, Any]:
-    initial: dict[str, Any] = {"name": device.name, "type": device.type}
+    initial: dict[str, Any] = {
+        "name": device.name,
+        "type": device.type,
+        "access_end_seen": _end_seen(device),
+    }
     ended = stated(device, DEVICE_ACCESS_END)
     if ended is not None:
         initial |= {

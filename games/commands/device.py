@@ -67,7 +67,7 @@ def check_type(device_type: str) -> DeviceTypeValue:
     return cast(DeviceTypeValue, device_type)
 
 
-def check_way(way: str) -> EndWay:
+def check_way(way: str) -> DeviceWayValue:
     """The stated way, or a refusal.
 
     Ahead of the payload's validation, which answers a
@@ -77,7 +77,7 @@ def check_way(way: str) -> EndWay:
         raise CommandRejected(
             f"{way!r} is not a way a device's access ends.", sentence=UNKNOWN_WAY
         )
-    return EndWay(way)
+    return cast(DeviceWayValue, EndWay(way).value)
 
 
 def normalized(statement: WayActStatement) -> WayActStatement:
@@ -146,7 +146,7 @@ class CreateDevice(Command):
             device_access_ended(
                 device_id,
                 when=self.access_end.when,
-                way=cast(DeviceWayValue, way.value),
+                way=way,
                 note=self.access_end.note,
             ),
         ]
@@ -226,7 +226,7 @@ class EndDeviceAccess(Command):
         return state_endpoint(
             device,
             DEVICE_ACCESS_END,
-            self.statement._replace(way=way),
+            self.statement._replace(way=EndWay(way)),
             sentences=_access_end_sentences(device.pk),
             before_event=partial(_refuse_a_removed_device, device),
         )
@@ -249,7 +249,7 @@ class CorrectDeviceAccessEnd(Command):
         return correct_endpoint(
             device,
             DEVICE_ACCESS_END,
-            self.statement._replace(way=way),
+            self.statement._replace(way=EndWay(way)),
             sentences=_access_end_sentences(device.pk),
             before_event=partial(_refuse_a_removed_device, device),
         )

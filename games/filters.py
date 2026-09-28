@@ -617,8 +617,13 @@ def endpoint_filter_fields(
     *,
     stated_label: str,
     interval_label: str | None = None,
+    stated_when_absent: bool = False,
 ) -> EndpointFilterFields:
-    """An endpoint's leaves, placed by each filter."""
+    """An endpoint's leaves, placed by each filter.
+
+    `stated_when_absent` asks the other way round: true
+    where no act is stated.
+    """
     return EndpointFilterFields(
         interval=FilterField(
             handler=temporal_interval_handler(
@@ -628,7 +633,7 @@ def endpoint_filter_fields(
             label=interval_label,
         ),
         stated=FilterField(
-            handler=bool_isnull_handler(endpoint.marker, invert=True),
+            handler=bool_isnull_handler(endpoint.marker, invert=not stated_when_absent),
             label=stated_label,
         ),
     )
@@ -646,7 +651,10 @@ _COMPLETION_FIELDS = endpoint_filter_fields(
     PLAYTHROUGH_COMPLETION, stated_label="Has a completion"
 )
 _ACCESS_END_FIELDS = endpoint_filter_fields(
-    DEVICE_ACCESS_END, interval_label="Day access ended", stated_label="Access ended"
+    DEVICE_ACCESS_END,
+    interval_label="Day access ended",
+    stated_label="Owned",
+    stated_when_absent=True,
 )
 
 
@@ -678,9 +686,7 @@ class DeviceFilter(OperatorFilter):
         "type": FilterField(),
         "created_at": FilterField("created_at__date"),
         "access_ended": _ACCESS_END_FIELDS.interval,
-        "is_owned": FilterField(
-            handler=bool_isnull_handler(DEVICE_ACCESS_END.marker), label="Owned"
-        ),
+        "is_owned": _ACCESS_END_FIELDS.stated,
         "access_end_way": way_filter_field(DEVICE_ACCESS_END, label="Status"),
     }
 

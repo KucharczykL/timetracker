@@ -1467,7 +1467,7 @@ def library_identity_constraint() -> models.UniqueConstraint:
 
 
 #: How a device leaves the library's hands.
-DEVICE_WAYS: tuple[EndWay, ...] = (
+DEVICE_WAYS: tuple[EndWay, *tuple[EndWay, ...]] = (
     EndWay.SOLD,
     EndWay.LOST,
     EndWay.GIVEN_AWAY,
