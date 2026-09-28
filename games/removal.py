@@ -133,8 +133,7 @@ def _stamp(
 def remove(instance: Model, *, batch: uuid.UUID | None = None) -> None:
     """Take the row out of the library.
 
-    Outside a batch, a model naming batches writes none: an earlier
-    batch's Undo must not claim a row a later act removed.
+    Outside a batch, NULL: no earlier Undo claims it.
     """
     model = type(instance)
     if not names_its_batch(model):

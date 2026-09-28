@@ -838,10 +838,7 @@ def _act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkAction[Any] 
 
 
 def _stamped_act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkAction[Any]:
-    """The act whose rows' stamps name this batch.
-
-    Such an act writes no event, so nothing else names it.
-    """
+    """The act whose stamps name this batch."""
     for declared in BULK_ACTIONS.values():
         if isinstance(declared.undo_rows, StampedRows) and declared.undo_rows.rows(
             library, correlation_id

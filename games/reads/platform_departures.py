@@ -1,8 +1,4 @@
-"""What still names a platform the library takes out.
-
-Each count is a correlated subquery scoped on the library, live rows
-only, as the game's departures are.
-"""
+"""What still names a departing platform."""
 
 from typing import NamedTuple
 
@@ -18,7 +14,7 @@ PURCHASES = "naming_purchases"
 
 
 class PlatformDepartures(NamedTuple):
-    """One platform's counts, as its confirmation states them."""
+    """One platform's counts."""
 
     games: int
     releases: int
@@ -54,7 +50,7 @@ def departures_of(platform: Platform) -> PlatformDepartures:
 
 
 def platform_departures(library: UserLibrary, platform: Platform) -> PlatformDepartures:
-    """One platform's counts, read the way the batch reads them."""
+    """One platform's counts, as the batch reads."""
     return departures_of(
         with_departures(Platform.objects.filter(pk=platform.pk), library).get()
     )

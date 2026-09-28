@@ -1,9 +1,4 @@
-"""A platform taken out and put back, by a batch or by hand.
-
-A platform writes no event, so its removal stamp names the batch
-that removed it. Each write locks the row and acts only on the state
-it expects; a row in any other state is left as it is.
-"""
+"""A platform removed and restored, locked first."""
 
 import uuid
 
@@ -57,7 +52,7 @@ def _restore(platform: Platform) -> None:
     """Put it back, or refuse with a sentence."""
     _refuse_a_taken_name(platform)
     try:
-        #: A savepoint: a concurrent insert leaves the batch going.
+        #: A savepoint: the batch continues.
         with transaction.atomic():
             restore(platform)
     except IntegrityError as collision:

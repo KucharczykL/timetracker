@@ -180,7 +180,7 @@ def restore_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
 
 
 def _still_naming(library: UserLibrary, platform: Platform) -> Node:
-    """The live rows naming it, as the batch counts them."""
+    """Live rows naming it, as the batch counts."""
     naming = platform_departures(library, platform)
     return Ul()[
         Li()[

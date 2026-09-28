@@ -517,7 +517,7 @@ def remove_one_platform(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """The stamp is the record: no key is kept."""
+    """The stamp is the record, not the key."""
     return _moved(remove_platform_in_batch(platform, batch=correlation_id))
 
 

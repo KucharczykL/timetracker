@@ -268,10 +268,7 @@ class EventRows:
 
 @dataclass(frozen=True, slots=True)
 class StampedRows:
-    """An Undo reading the rows whose stamp names the batch.
-
-    For a conventional row, which writes no event.
-    """
+    """An Undo reading stamps: a conventional row."""
 
     model: type[Model]
 
@@ -283,7 +280,7 @@ class StampedRows:
         )
 
 
-#: Where a batch's Undo reads the rows it takes back.
+#: Where a batch's Undo reads its rows.
 type UndoRows = EventRows | StampedRows
 
 
@@ -305,7 +302,7 @@ class BulkAction[RowT: Model]:
     subject: SubjectNoun
     #: What the act does to a row, in the button's colours.
     color: ButtonColor
-    #: Where its Undo reads the rows, and which model they are.
+    #: Where its Undo reads its rows.
     undo_rows: UndoRows
     #: Where the act returns without an origin.
     fallback: UrlName
@@ -356,7 +353,7 @@ class BulkAction[RowT: Model]:
     def _refuse_an_unread_aggregate(
         self, aggregate: AggregateType, model: type[Model]
     ) -> None:
-        """An Undo must read rows its inverse can take."""
+        """Rows its inverse can take."""
         if not DEFAULT_EVENT_TYPES.event_types_for(aggregate):
             raise ValueError(
                 f"{self.name!r} names {aggregate!r} as the "
