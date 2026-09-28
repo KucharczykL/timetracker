@@ -232,10 +232,37 @@ def test_committed_sample_load_states_listed_icons(owner):
     output = StringIO()
     call_command("load_sample_data", "--user", owner.username, stdout=output)
 
-    assert "named an unlisted icon" in output.getvalue()
+    assert "named an unlisted icon" not in output.getvalue()
     icons = set(Platform.objects.values_list("icon", flat=True))
     assert icons <= set(PLATFORM_ICONS)
     assert "nintendo" in icons
+
+
+@pytest.mark.django_db
+def test_sample_load_canonicalises_an_unlisted_icon(owner, monkeypatch, tmp_path):
+    from games.management.commands import load_sample_data
+
+    fixture = tmp_path / "sample.yaml"
+    fixture.write_text(
+        """- model: games.platform
+  pk: 00000000-0000-7000-8000-000000000301
+  fields:
+    library: __target_library__
+    name: PlayStation
+    group: Console
+    icon: ps1
+    created_at: 2025-01-01 00:00:00+00:00
+    removed_at: null
+"""
+    )
+    monkeypatch.setattr(load_sample_data, "FIXTURE_PATH", fixture)
+    output = StringIO()
+
+    call_command("load_sample_data", "--user", owner.username, stdout=output)
+
+    assert "1 sample platform(s) named an unlisted icon" in output.getvalue()
+    platform = Platform.objects.get(name="PlayStation", library=owner.library)
+    assert platform.icon == "playstation"
 
 
 def test_committed_sample_stores_promoted_uuid_identities_as_primary_keys():
@@ -246,16 +273,24 @@ def test_committed_sample_stores_promoted_uuid_identities_as_primary_keys():
 
     promoted = {
         model: [record for record in records if record["model"] == model]
-        for model in ("games.device", "games.filterpreset", "games.purchase")
+        for model in ("games.filterpreset", "games.purchase")
     }
-    assert promoted["games.device"]
+    #: A device travels as its events, never as a row.
+    assert not any(record["model"] == "games.device" for record in records)
     assert promoted["games.purchase"]
     for model_records in promoted.values():
         assert all(isinstance(record["pk"], str) for record in model_records)
         assert all(UUID(record["pk"]).version == 7 for record in model_records)
         assert all("uuid" not in record["fields"] for record in model_records)
 
-    device_ids = {record["pk"] for record in promoted["games.device"]}
+    device_ids = {
+        record["fields"]["aggregate_id"]
+        for record in records
+        if record["model"] == "games.libraryevent"
+        and record["fields"]["event_type"] == "library.device.created"
+    }
+    assert device_ids
+    assert all(UUID(device_id).version == 7 for device_id in device_ids)
     session_devices = {
         record["fields"]["payload"]["device"]["id"]
         for record in records
