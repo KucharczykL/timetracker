@@ -123,6 +123,22 @@ describe("the tray", () => {
     expect(checkboxes(element)[0].getAttribute("aria-label")).toBe("Game a");
   });
 
+  it("names a clipped row once, not by its tooltip's copy", async () => {
+    const row = document.createElement("tr");
+    row.setAttribute("data-selection-key", "z");
+    row.innerHTML =
+      '<th scope="row"><div data-row-identity><truncated-text>' +
+      "<span data-truncated-clip>Steam Deck</span>" +
+      '<div data-pop-over-panel aria-hidden="true" hidden>Steam Deck</div>' +
+      "</truncated-text></div></th>";
+    element.querySelector("tbody")!.appendChild(row);
+    await Promise.resolve();
+
+    expect(
+      row.querySelector("[data-selection-checkbox]")?.getAttribute("aria-label"),
+    ).toBe("Steam Deck");
+  });
+
   it("hides the line while nothing is selected", () => {
     expect(line(element).hidden).toBe(true);
     tick(element, 0);

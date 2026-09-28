@@ -363,11 +363,13 @@ function isShown(element: HTMLElement): boolean {
   return !element.closest("[hidden]");
 }
 
-/** The row's name, without its summary line. */
+// A clipped name's tooltip repeats it.
+const UNREAD_SELECTOR = `${CHECKBOX_SELECTOR}, [data-row-summary], [hidden], [aria-hidden="true"]`;
+
+/** The row's name, once, without summary. */
 function identityName(cell: HTMLElement): string {
   const clone = cell.cloneNode(true) as HTMLElement;
-  clone.querySelectorAll(CHECKBOX_SELECTOR).forEach((node) => node.remove());
-  clone.querySelectorAll("[data-row-summary]").forEach((node) => node.remove());
+  clone.querySelectorAll(UNREAD_SELECTOR).forEach((node) => node.remove());
   return clone.textContent?.trim() ?? "";
 }
 
