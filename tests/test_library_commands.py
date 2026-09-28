@@ -387,7 +387,7 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
 
 @pytest.mark.django_db
 def test_sample_load_refuses_a_device_stated_as_a_row(owner, monkeypatch, tmp_path):
-    """A device travels as its events; a row would vanish at the rebuild."""
+    """A device row vanishes at the rebuild."""
     from games.management.commands import load_sample_data
 
     fixture = tmp_path / "sample.yaml"
@@ -417,7 +417,7 @@ def test_sample_load_refuses_a_device_stated_as_a_row(owner, monkeypatch, tmp_pa
 def test_sample_load_refuses_a_reference_naming_a_device_no_event_created(
     owner, monkeypatch, tmp_path
 ):
-    """The device must be in the fixture as its creation event."""
+    """A referenced device needs its creation event."""
     from games.management.commands import load_sample_data
 
     fixture = tmp_path / "sample.yaml"
@@ -433,7 +433,7 @@ def test_sample_load_refuses_a_reference_naming_a_device_no_event_created(
                     "fields": {"library": "__target_library__", "current_sequence": 1},
                 },
                 {
-                    #: An event creating another device: the named one has none.
+                    #: The named device has no creation event.
                     "model": "games.libraryevent",
                     "pk": event_id,
                     "fields": {

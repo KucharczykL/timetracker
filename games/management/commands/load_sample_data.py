@@ -152,8 +152,7 @@ class Command(BaseCommand):
                     state.requested_currency,
                 )
 
-            #: The fixture carries the events; replay them as
-            #: make verify-replay-parity does.
+            #: Replay the fixture's events into projections.
             try:
                 report = rebuild_projections(user.library, mode=RebuildMode.REBUILD)
             except (
@@ -348,7 +347,7 @@ class Command(BaseCommand):
 
         def held(kind_name, referenced_id, model):
             kind = kinds.kind_for(kind_name)
-            #: A projected row travels as its creation event, never as a row.
+            #: Projected rows travel as creation events only.
             if kind.resolution is Resolution.PROJECTED:
                 return (kind.created_by, str(referenced_id)) in created
             return (model._meta.label_lower, str(referenced_id)) in record_keys

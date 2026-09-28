@@ -38,12 +38,12 @@ WHERE app = 'games'
 
 ## The third squash, 2026-09-28
 
-`make squash-migrations ARGS="games 0007 0018"`, output committed as the
-tool wrote it plus `ruff` formatting, on the day the deployment reached
-`0018`. It replaced the twelve files from `0007` on and depends on the
-`0001` baseline, which it does not touch. Three data passes were elided:
-`0015`, written `elidable=True`, and `0011` and `0018`, which were not and
-took the flag on the day. The flag is read by the optimizer alone, so
+`make squash-migrations ARGS="games 0007 0018"` ran on the day the
+deployment reached `0018`. The output is committed as the tool wrote it,
+plus `ruff` formatting. It replaced the twelve files from `0007` on. It
+depends on the `0001` baseline and does not touch it. Three data passes
+were elided. `0015` was written `elidable=True`. `0011` and `0018` were
+not, and took the flag on the day. The optimizer alone reads the flag, so
 marking an applied migration changes nothing a deployment does. The two
 `RunSQL` operations in `0014` and `0016` are barriers and survive in the
 squashed file, as the four in `0001` do. Twenty-eight operations, no
@@ -93,11 +93,11 @@ WHERE app = 'games'
 ```
 
 Run the `DELETE` only once the step-two image is up. Django marks a
-squash applied only while every migration it `replaces` is recorded, so
-on the step-one image, which still carries `replaces`, the deleted rows
-turn the squash unapplied and startup `migrate` applies it for real
-against tables that exist. The same holds for a rollback to that image
-after the `DELETE`: put the twelve rows back first. `django_migrations`
+squash applied only while every migration it `replaces` is recorded. The
+step-one image still carries `replaces`, so there the deleted rows turn
+the squash unapplied, and startup `migrate` applies it for real against
+tables that exist. A rollback to that image after the `DELETE` has the
+same result. Put the twelve rows back first. `django_migrations`
 has no unique key on `(app, name)`, so guard the insert yourself, for
 each name above:
 
