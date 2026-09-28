@@ -59,8 +59,6 @@ inverse does, and logs a fact it writes over. A second Undo answers
 The #1256 Undo reads the status through `status_change`, before its void, so
 a defect leaves no half-undone row.
 
-No unfinished list reads the excluded flag yet; #1315 gives it readers.
-
 ## Proof
 
 `tests/test_bulk_game_edit.py` and `e2e/test_bulk_game_edit_e2e.py`.

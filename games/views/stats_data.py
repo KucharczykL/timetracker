@@ -299,7 +299,7 @@ def _compute_stats_from_scoped_querysets(
 
     # ── Purchase breakdown ───────────────────────────────────────────────────
     only_games_and_dlc = Q(type=Purchase.GAME) | Q(type=Purchase.DLC)
-    #: One excluded game drops the purchase.
+    #: One excluded game leaves the purchase out.
     not_excluded_q = ~Q(games__in=_games_excluded_from_unfinished(library))
     unfinished = (
         without_refunded.filter(not_finished_q)

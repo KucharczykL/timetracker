@@ -157,7 +157,7 @@ class RestorePlayerGame(Command):
         return [PLAYERGAME_RESTORED.new(aggregate_id=tracked.pk, payload={})]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class RecordPlayerGameFacts(Command):
     """State status, mastery, exclusion, or several.
 

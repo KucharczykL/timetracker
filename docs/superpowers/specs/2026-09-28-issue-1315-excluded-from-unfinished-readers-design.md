@@ -14,14 +14,15 @@ nothing. A command that states no fact is refused at construction.
 status, mastered, exclusion. If no fact differs, the answer is `Unchanged`.
 
 `record_facts` and `record_facts_for_request` take the three facts. The Game form
-and the bulk Edit each send one command for each game, under one key. Thus a
-save cannot commit half.
+and the bulk Edit each send one fact command for each game, under one key.
+Because of this, a save cannot commit half.
 
 `library.playergame.set_excluded_from_unfinished` is in `RETIRED_COMMAND_NAMES`.
 Do not use this name again.
 
-The idempotency fingerprint includes each field. A key used before this change
-and sent again after it answers `IdempotencyKeyMismatch`.
+The idempotency fingerprint includes each field. The third field changes each
+digest, so `FINGERPRINT_VERSION` is 2. A key recorded at version 1 replays
+without a digest check.
 
 ## The statistics
 
@@ -43,7 +44,7 @@ A separate flag for the dropped figures is #1334.
 
 `GameFilter.excluded_from_unfinished` is a `BoolCriterion`, as `mastered` is. The
 Games quick bar shows it last. The Games list has a column "Unfinished lists".
-The column is hidden by default and can be sorted. Its cell shows `Excluded` or
+The column is hidden by default. You can sort it. Its cell shows `Excluded` or
 nothing.
 
 ## One game

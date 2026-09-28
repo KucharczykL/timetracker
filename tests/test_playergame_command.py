@@ -14,7 +14,14 @@ from games.commands.playergame import (
     TrackGame,
 )
 from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
-from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus
+from games.events.idempotency import fingerprint_command_input
+from games.models import (
+    Game,
+    LibraryEvent,
+    LibraryIdempotencyRecord,
+    PlayerGame,
+    PlayerGameStatus,
+)
 from games.removal import remove
 from games.retention import purging_library
 from timetracker.temporal import TemporalValue
@@ -430,11 +437,6 @@ def test_one_command_states_three_facts_in_order(owned_user, owned_library):
     )
 
 
-def test_a_command_stating_no_fact_is_refused_at_construction():
-    with pytest.raises(ValueError, match="states no fact"):
-        RecordPlayerGameFacts(game_id=uuid.uuid7())
-
-
 @pytest.mark.django_db(transaction=True)
 def test_removing_a_game_records_it_and_projects_it(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
@@ -801,7 +803,37 @@ def test_recording_facts_that_already_hold_is_unchanged(owned_user, owned_librar
 
 def test_a_command_that_states_no_fact_cannot_be_built():
     with pytest.raises(ValueError, match="states no fact"):
-        RecordPlayerGameFacts(game_id=uuid.uuid7(), status=None, mastered=None)
+        RecordPlayerGameFacts(
+            game_id=uuid.uuid7(),
+            status=None,
+            mastered=None,
+            excluded_from_unfinished=None,
+        )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_key_recorded_before_the_third_fact_replays(owned_user, owned_library):
+    """A digest from the two-field command."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    stated = {"status": PlayerGameStatus.PLAYED, "mastered": None}
+    first = state(owned_user, owned_library, game, stated, "before-deploy")
+    old_digest = fingerprint_command_input(
+        {
+            "command": "library.playergame.record_facts",
+            "fields": {"game_id": game.pk, **stated},
+        }
+    )
+    LibraryIdempotencyRecord.objects.filter(idempotency_key="before-deploy").update(
+        request_fingerprint=old_digest, fingerprint_version=1
+    )
+
+    again = state(owned_user, owned_library, game, stated, "before-deploy")
+
+    assert (first.outcome, again.outcome) == (
+        CommandOutcome.APPENDED,
+        CommandOutcome.REPLAYED,
+    )
 
 
 @pytest.mark.django_db(transaction=True)

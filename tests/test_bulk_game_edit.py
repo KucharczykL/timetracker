@@ -554,7 +554,7 @@ def test_a_row_states_every_fact_under_one_key(client_in, game, second_game):
     assert _tracked(game).excluded_from_unfinished is True
 
 
-def test_a_row_moved_by_one_fact_of_two_counts_moved(owned_user, game):
+def test_a_row_with_one_changed_fact_of_two_counts_moved(owned_user, game):
     _stated(owned_user, game, PlayerGameStatus.COMPLETED)
 
     outcome = EDIT.run(

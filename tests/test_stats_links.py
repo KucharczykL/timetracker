@@ -443,25 +443,36 @@ def test_the_same_games_count_once_included(world, excluded, year):
     assert _figures_and_links(world, year) == (2, 2, 3, 3)
 
 
-def test_a_bundle_holding_an_excluded_game_leaves_the_figure(world):
+@pytest.mark.parametrize(
+    ("beside_status", "figure"),
+    [
+        (PlayerGameStatus.PLAYED, "purchased_unfinished_count"),
+        (PlayerGameStatus.ABANDONED, "dropped_count"),
+    ],
+)
+def test_a_bundle_holding_an_excluded_game_leaves_the_figure(
+    world, beside_status, figure
+):
     """Figure only. TODO(#1337): link keeps bundles."""
     library = world["library"]
+    before = _stats(world, YEAR)[figure]
     bundled = create_tracked_game(
         library,
         "Bundled endless",
         status=PlayerGameStatus.PLAYED,
         excluded_from_unfinished=True,
     )
-    beside = create_tracked_game(library, "Beside", status=PlayerGameStatus.PLAYED)
-    bundle = Purchase.objects.create(
+    beside = create_tracked_game(library, "Beside", status=beside_status)
+    Purchase.objects.create(
         library=library,
         price_currency="CZK",
         date_purchased=_dt(YEAR, 7, 10),
         type=Purchase.GAME,
-    )
-    bundle.games.set([bundled, beside])
+    ).games.set([bundled, beside])
 
-    assert bundle not in _stats(world, YEAR)["purchased_unfinished"]
+    assert _stats(world, YEAR)[figure] == before
+    PlayerGame.objects.filter(game=bundled).update(excluded_from_unfinished=False)
+    assert _stats(world, YEAR)[figure] == before + 1
 
 
 def test_the_all_time_link_reads_the_act():
