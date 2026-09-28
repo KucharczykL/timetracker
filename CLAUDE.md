@@ -175,7 +175,7 @@ docs/           — Additional documentation
 ### Models (in `games/models.py`)
 
 - **Game** — catalog row: `name`, `platform` (FK), `year_released`, `sort_name`, `wikidata`. Holds no status and no mastered flag: both live on `PlayerGame`
-- **Platform** — `name`, `group`, `icon` (slug, auto-generated from name)
+- **Platform** — `name`, `group`, `icon` (a `PLATFORM_ICONS` slug, `unspecified` by default; `clean()` refuses any other)
 - **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor `game.addon_purchases`)
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown). A
   projection since #1274: a device is owned — bought, renamed, sold, lost,
@@ -1282,10 +1282,13 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   input); wrapper fades itself via `DISABLED_WITHIN_CLASS`.
 - **Platform icons** are SVG snippets in `games/templates/icons/<slug>.html`,
   compiled to `Element` node trees by `make gen-icons` (committed
-  `common/components/icons_generated.py`; drift-guarded in `make check`). Add/edit
-  snippet, run `make gen-icons`, reference by slug in `Platform.icon`. `Icon(name,
-  attributes=...)` returns node: `class` merges onto svg, `title` becomes `<title>`
-  child. Never edit `icons_generated.py` by hand.
+  `common/components/icons_generated.py`; drift-guarded in `make check`). A
+  snippet is named for the glyph it draws, and no two draw one (a test holds
+  it). Add/edit snippet, run `make gen-icons`, list a platform glyph in
+  `PLATFORM_ICONS` (`common/platform_icons.py`), whose `canonical_icon` maps a
+  retired slug (`RETIRED_ICONS`). `Icon(name, attributes=...)` returns node:
+  `class` merges onto svg, `title` becomes `<title>` child. Never edit
+  `icons_generated.py` by hand.
 - **Inline Alpine.js** remains only as three `x-mask` inputs
   (`games/forms.py`, `games/settings_forms.py`), each with the empty `x-data`
   scope the plugin needs. New
