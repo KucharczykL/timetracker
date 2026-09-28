@@ -111,7 +111,7 @@ def test_game_detail_states_no_split_without_a_record(client, owned_user):
 def test_the_stats_page_states_the_split_on_every_playtime_row(client, owned_user):
     """Hours, the month rows and the platform rows all name both sources."""
     library = owned_user.library
-    platform = Platform.objects.create(name="PC", icon="pc")
+    platform = Platform.objects.create(name="PC", icon="steam")
     played = Game.objects.create(library=library, name="Played")
     recorded = Game.objects.create(library=library, name="Recorded", platform=platform)
     start = datetime(2022, 3, 1, 10, tzinfo=UTC)
@@ -141,7 +141,7 @@ def test_the_stats_page_states_the_split_on_every_playtime_row(client, owned_use
 @pytest.mark.django_db
 def test_the_stats_page_renders_the_composed_figures(client, owned_user):
     library = owned_user.library
-    platform = Platform.objects.create(name="PC", icon="pc")
+    platform = Platform.objects.create(name="PC", icon="steam")
     played = Game.objects.create(library=library, name="Played")
     recorded = Game.objects.create(library=library, name="Recorded", platform=platform)
     start = datetime(2022, 3, 1, 10, tzinfo=UTC)

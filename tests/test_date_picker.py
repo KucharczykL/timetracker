@@ -286,7 +286,7 @@ class DatePickerWidgetFormTest(TestCase):
 
         self.user = get_user_model().objects.create_user(username="date-picker")
         self.library = self.user.library
-        self.platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+        self.platform = Platform.objects.create(name="PC", icon="steam", group="PC")
 
     def _form(self, presentation=DEFAULT_PRESENTATION, **kwargs):
         from games.forms import PurchaseForm

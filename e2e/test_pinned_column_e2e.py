@@ -55,7 +55,7 @@ REGION = '[role="region"][tabindex="0"]'
 @pytest.fixture
 def populated(e2e_library) -> None:
     platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="pc", group="PC"
+        library=e2e_library, name="PC", icon="steam", group="PC"
     )
     device = create_device(
         library=e2e_library, name="A Desktop Computer Of Some Kind", type="PC"

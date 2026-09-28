@@ -11,8 +11,8 @@ from django.contrib.auth.models import User
 from django.http import QueryDict
 
 from common.components import Icon
-from common.components.platform_icons import PLATFORM_ICONS
 from common.components.primitives import FormFields
+from common.platform_icons import PLATFORM_ICONS
 from games.bulk_actions import (
     ActTitle,
     AsksNothing,

@@ -39,7 +39,7 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
 
 def _make_running_session(library) -> PlayerSession:
     platform = Platform.objects.create(
-        library=library, name="PC", icon="pc", group="PC"
+        library=library, name="PC", icon="steam", group="PC"
     )
     game = Game.objects.create(library=library, name="Reset Game", platform=platform)
     return _row(game, started_at=STARTED_AT)

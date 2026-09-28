@@ -7,7 +7,7 @@ import pytest
 
 from common.components.icon_picker import IconChoice, IconPicker
 from common.components.icons_generated import ICON_NODES
-from common.components.platform_icons import (
+from common.platform_icons import (
     PLATFORM_ICONS,
     RETIRED_ICONS,
     canonical_icon,
@@ -95,19 +95,6 @@ def test_the_platform_form_starts_on_the_current_icon(owned_library):
     html = str(PlatformForm(instance=platform, library=owned_library)["icon"])
 
     assert ">Physical media<" in html
-
-
-def test_an_older_slug_stays_pickable(owned_library):
-    platform = Platform.objects.create(
-        library=owned_library, name="Amiga", icon="amiga"
-    )
-    form = PlatformForm(
-        {"name": "Amiga", "icon": "amiga", "group": ""},
-        instance=platform,
-        library=owned_library,
-    )
-
-    assert form.is_valid(), form.errors
 
 
 def test_the_platform_form_saves_a_picked_icon(owned_library):

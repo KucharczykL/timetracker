@@ -28,7 +28,7 @@ interface icons share.
 
 ## The vocabulary
 
-`common/components/platform_icons.py` owns it:
+`common/platform_icons.py` owns it:
 
 - `PLATFORM_ICONS`, unchanged: every icon a platform may name.
 - `RETIRED_ICONS`: each alias and the glyph that replaces it.

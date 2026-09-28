@@ -110,7 +110,7 @@ class ActionsColumnPriorityTest(TestCase):
         user = User.objects.create_superuser(username="tester", password="secret")
         self.client.force_login(user)
         library = user.library
-        platform = Platform.objects.create(library=library, name="PC", icon="pc")
+        platform = Platform.objects.create(library=library, name="PC", icon="steam")
         self.game = Game.objects.create(
             library=library, name="A Game", platform=platform
         )

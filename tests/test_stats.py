@@ -57,7 +57,7 @@ class DaysPlayedPercentTest(TestCase):
 class ComputeStatsTest(TestCase):
     def setUp(self):
         self.library = get_user_model().objects.create_user(username="stats").library
-        self.platform = Platform.objects.create(name="PC", icon="pc")
+        self.platform = Platform.objects.create(name="PC", icon="steam")
         self.game_a = Game.objects.create(
             library=self.library,
             name="Game A",
@@ -267,7 +267,7 @@ def _day_figures(stats: StatsData) -> dict[str, object]:
 
 @pytest.fixture
 def played_and_recorded(owned_library):
-    platform = Platform.objects.create(name="PC", icon="pc")
+    platform = Platform.objects.create(name="PC", icon="steam")
     played = Game.objects.create(library=owned_library, name="Played")
     recorded = Game.objects.create(
         library=owned_library, name="Recorded", platform=platform

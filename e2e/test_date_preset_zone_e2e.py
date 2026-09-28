@@ -40,7 +40,7 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
 def test_today_preset_uses_the_display_zone(
     authenticated_page: Page, live_server, e2e_library
 ):
-    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="steam")
     game = Game.objects.create(library=e2e_library, name="Doom", platform=platform)
     now = dt.datetime.now(dt.UTC)
     session = session_row(

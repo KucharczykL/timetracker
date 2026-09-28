@@ -11,8 +11,7 @@ FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "platforms.yam
 class Command(BaseCommand):
     help = (
         "Load the platform fixture idempotently: platforms whose name already "
-        "exists are skipped, new ones are saved through Platform.save() so a "
-        "blank icon is slugified from the name."
+        "exists are skipped, new ones are saved through Platform.save()."
     )
 
     def handle(self, *args, **options):

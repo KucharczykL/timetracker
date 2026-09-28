@@ -131,7 +131,7 @@ def test_add_purchase_per_game_toggle_reveals_inputs(
     (Server-side creation of N purchases is covered by the unit tests.)"""
     page = authenticated_page
     platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="pc", group="PC"
+        library=e2e_library, name="PC", icon="steam", group="PC"
     )
     Game.objects.create(library=e2e_library, name="Alpha Game", platform=platform)
     Game.objects.create(library=e2e_library, name="Beta Game", platform=platform)
@@ -154,10 +154,10 @@ def test_add_purchase_per_game_toggle_reveals_inputs(
 
 def _platform_autofill_page(page: Page, live_server, library):
     personal_computer = Platform.objects.create(
-        library=library, name="PC", icon="pc", group="PC"
+        library=library, name="PC", icon="steam", group="PC"
     )
     switch = Platform.objects.create(
-        library=library, name="Switch", icon="switch", group="Nintendo"
+        library=library, name="Switch", icon="gog", group="Nintendo"
     )
     Game.objects.create(library=library, name="Alpha Game", platform=personal_computer)
     Game.objects.create(library=library, name="Beta Game", platform=switch)
@@ -237,7 +237,7 @@ def test_a_keystroke_leaves_the_platform_to_autofill(
 def test_split_purchase_action(authenticated_page: Page, live_server, e2e_library):
     page = authenticated_page
     platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="pc", group="PC"
+        library=e2e_library, name="PC", icon="steam", group="PC"
     )
     game_a = Game.objects.create(
         library=e2e_library, name="Alpha Game", platform=platform
@@ -280,7 +280,7 @@ def test_refund_confirms_on_a_page_and_returns_to_the_list(
     """Refund confirms on a page, returns to list."""
     page = authenticated_page
     platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="pc", group="PC"
+        library=e2e_library, name="PC", icon="steam", group="PC"
     )
     game = Game.objects.create(
         library=e2e_library, name="Alpha Game", platform=platform
@@ -341,7 +341,7 @@ def test_name_popover_shows_on_hover(
     hover, so the hover surface is the visible name, not a glyph (#445 M1)."""
     page = authenticated_page
     platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="pc", group="PC"
+        library=e2e_library, name="PC", icon="steam", group="PC"
     )
     Game.objects.create(
         library=e2e_library,
@@ -372,7 +372,7 @@ def test_name_popover_taps_open_on_touch(touch_page: Page, live_server, e2e_libr
     path never fights the link's own navigation."""
     page = touch_page
     platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="pc", group="PC"
+        library=e2e_library, name="PC", icon="steam", group="PC"
     )
     Game.objects.create(
         library=e2e_library,

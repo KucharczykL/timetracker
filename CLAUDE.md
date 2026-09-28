@@ -764,7 +764,7 @@ Submodules re-exported via `common/components/__init__.py`:
 - **`icon_picker.py`** — `IconPicker()`, a `<drop-down behavior="choice-grid">`
   whose panel is a grid of icon radios (`ts/elements/behaviors/choice-grid.ts`);
   `IconPickerWidget` in `games/forms.py` hosts it for a `ChoiceField`, and
-  `PLATFORM_ICONS` (`common/components/platform_icons.py`) names the icons
+  `PLATFORM_ICONS` (`common/platform_icons.py`) names the icons
 - **`unset_field.py`** — `UnsetField()`, one field joined to a ⊘ toggle
   (`ts/elements/unset-field.ts`) whose checkbox posts `<name>-unset`: a bulk
   form's "none" apart from "keep", which an empty field states. Forms reach it

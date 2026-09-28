@@ -45,7 +45,7 @@ def test_finish_session_reloads_the_list_with_the_session_closed(
 ):
     page = authenticated_page
     platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="pc", group="PC"
+        library=e2e_library, name="PC", icon="steam", group="PC"
     )
     game = Game.objects.create(library=e2e_library, name="Tunic", platform=platform)
     device = create_device(library=e2e_library, name="Desktop")
@@ -79,7 +79,7 @@ def test_finish_stamps_the_browser_zone_not_the_account_zone(
     preferences.save(update_fields=["display_time_zone"])
     assert resolve_for_user(e2e_user, "DISPLAY_TIME_ZONE") == "Europe/Prague"
     platform = Platform.objects.create(
-        library=e2e_user.library, name="PC", icon="pc", group="PC"
+        library=e2e_user.library, name="PC", icon="steam", group="PC"
     )
     game = Game.objects.create(
         library=e2e_user.library, name="Tunic", platform=platform

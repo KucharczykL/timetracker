@@ -44,7 +44,6 @@ from common.components import (
 from common.components.core import Node
 from common.components.elements import Fieldset
 from common.components.icon_picker import IconChoice, IconPicker
-from common.components.platform_icons import PLATFORM_ICONS
 from common.components.primitives import (
     SHAPE_CLASSES,
     ButtonShape,
@@ -56,6 +55,7 @@ from common.components.primitives import (
     field_label_id,
 )
 from common.date_time_presentation import DateTimePresentation, zone_or_none
+from common.platform_icons import PLATFORM_ICONS, UNSPECIFIED_ICON
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
     when_sentence,
@@ -2119,14 +2119,13 @@ class PlatformForm(
         super().__init__(*args, **kwargs)
         self.library = library
         self.instance.library = library
-        held = self.instance.icon
-        icons = dict(PLATFORM_ICONS)
-        if held and held not in icons:
-            #: An older slug stays pickable.
-            icons[held] = held
         field = cast(forms.ChoiceField, self.fields["icon"])
-        field.choices = list(icons.items())
-        field.initial = held or "unspecified"
+        field.choices = list(PLATFORM_ICONS.items())
+        field.initial = self.instance.icon or UNSPECIFIED_ICON
+
+    def clean_icon(self) -> str:
+        """No icon stated is Unspecified."""
+        return self.cleaned_data["icon"] or UNSPECIFIED_ICON
 
     class Meta:
         model = Platform

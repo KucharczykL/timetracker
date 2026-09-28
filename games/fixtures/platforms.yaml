@@ -2,27 +2,34 @@
   fields:
     name: Steam
     group: PC
+    icon: steam
 - model: games.Platform
   fields:
     name: Xbox Gamepass
     group: PC
+    icon: xbox-gamepass
 - model: games.Platform
   fields:
     name: Epic Games Store
     group: PC
+    icon: egs
 - model: games.Platform
   fields:
     name: Playstation 5
     group: Playstation
+    icon: ps5
 - model: games.Platform
   fields:
     name: Playstation 4
     group: Playstation
+    icon: ps4
 - model: games.Platform
   fields:
     name: Nintendo Switch
     group: Nintendo
+    icon: nintendo-switch
 - model: games.Platform
   fields:
     name: Nintendo 3DS
     group: Nintendo
+    icon: nintendo

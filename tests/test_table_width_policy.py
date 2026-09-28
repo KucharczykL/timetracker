@@ -72,7 +72,7 @@ class DataTableGateTest(TestCase):
         cls.user = User.objects.create_user(username="tester", password="pw")
         library = cls.user.library
         platform = Platform.objects.create(
-            library=library, name="PC", icon="pc", group="PC"
+            library=library, name="PC", icon="steam", group="PC"
         )
         device = create_device(library=library, name="Desktop", type="PC")
         game = Game.objects.create(library=library, name="A Game", platform=platform)

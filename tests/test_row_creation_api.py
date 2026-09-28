@@ -43,12 +43,12 @@ def test_a_platform_is_created_private_to_the_library(client, user):
     assert response.json() == {"value": str(platform.pk), "label": "Arcade"}
 
 
-def test_a_created_platform_takes_its_icon_from_its_name(client, user):
+def test_a_created_platform_starts_unspecified(client, user):
     client.force_login(user)
 
-    _create(client, "/api/platforms/", "Neo Geo")
+    _create(client, "/api/platforms/", "Playstation 5")
 
-    assert Platform.objects.get(name="Neo Geo").icon == "neo-geo"
+    assert Platform.objects.get(name="Playstation 5").icon == "unspecified"
 
 
 def test_a_platform_shadowing_a_shared_row_is_refused(client, user):

@@ -9,8 +9,8 @@ from django.http import QueryDict
 from django.urls import reverse
 
 from common.components.icons_generated import ICON_NODES
-from common.components.platform_icons import PLATFORM_ICONS
 from common.components.unset_field import unset_input_name
+from common.platform_icons import PLATFORM_ICONS
 from games.bulk_actions import BULK_ACTIONS, LedgerRows
 from games.bulk_edit import STATEMENT_UNREADABLE
 from games.bulk_platform_edit import (

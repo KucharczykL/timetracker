@@ -24,6 +24,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from common.naming import name_key
+from common.platform_icons import PLATFORM_ICONS, UNSPECIFIED_ICON
 from common.utils import label_with_details
 from games.external_references import external_reference_url, normalize_provider_key
 from timetracker.settings_registry import THEME_CHOICES, SettingKey
@@ -431,6 +432,10 @@ class Game(ReferencedRow):
         )
 
 
+#: Refuses an icon no snippet draws.
+ICON_UNLISTED = "Pick one of the listed icons."
+
+
 class PlatformQuerySet(RemovableLibraryQuerySet):
     def visible_to(self, library):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
@@ -468,7 +473,7 @@ class Platform(ReferencedRow):
     id = UUIDv7Field(primary_key=True, editable=False)
     name = models.CharField(max_length=255)
     group = models.CharField(max_length=255, blank=True, default="")
-    icon = models.SlugField(blank=True)
+    icon = models.SlugField(default=UNSPECIFIED_ICON)
     created_at = models.DateTimeField(auto_now_add=True)
     #: Set instead of destroying the row.
     removed_at = models.DateTimeField(
@@ -485,6 +490,8 @@ class Platform(ReferencedRow):
 
     def clean(self):
         super().clean()
+        if self.icon not in PLATFORM_ICONS:
+            raise ValidationError({"icon": ICON_UNLISTED})
         duplicates = (
             #: A removed Platform shadows nothing.
             Platform.objects.alive()
@@ -506,8 +513,6 @@ class Platform(ReferencedRow):
             raise ValidationError("A private Platform cannot shadow a shared Platform.")
 
     def save(self, *args, **kwargs):
-        if not self.icon:
-            self.icon = slugify(self.name)
         self.clean()
         super().save(*args, **kwargs)
 

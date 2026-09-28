@@ -25,7 +25,7 @@ at `5f04542f`. Rebase onto `origin/main` before Task 1.
 
 ### Task 1: The vocabulary
 
-**Files:** `common/components/platform_icons.py`,
+**Files:** `common/platform_icons.py`,
 `tests/test_icon_picker.py`.
 
 **Produces:**
