@@ -4,6 +4,7 @@ serializer output must reload as editable, never flip to "advanced")."""
 
 import json
 import re
+from typing import ClassVar
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
@@ -604,7 +605,7 @@ class FacetOrderTest(SimpleTestCase):
     order are in the quick bar facet priority spec.
     """
 
-    ORDERS = {
+    ORDERS: ClassVar[dict[str, list[str]]] = {
         "sessions": [
             "game",
             "day",
