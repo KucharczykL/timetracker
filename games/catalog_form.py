@@ -422,10 +422,10 @@ class CatalogGraphForm:
         )
 
     def platform_names(self) -> dict[str, str]:
-        """Each offered Platform's key and option text."""
+        """Trimmed option text by key; "" is empty."""
         field = cast(forms.ModelChoiceField, self.blank_row().fields["platform"])
         choices = cast(ModelChoiceIterator, field.choices)
-        return {str(key): str(label) for key, label in choices if key != ""}
+        return {str(key): str(label).strip() for key, label in choices}
 
     def marked(self) -> tuple[EditionBlock, ReleaseRowForm] | None:
         """The surviving row the mark names, if it names one."""

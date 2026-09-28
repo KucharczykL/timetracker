@@ -11,6 +11,7 @@ from django.urls import reverse
 from games.catalog_compat import mirror_legacy_columns
 from games.catalog_form import LAST_RELEASE, MOST_ROWS, TOO_MANY_ROWS
 from games.models import Edition, Game, Platform, Release
+from games.views.catalog_section import _Name
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -688,3 +689,67 @@ def test_naming_the_rows_reads_no_more_per_row(logged_in, owned_library, plain_g
         )
 
     assert queries() == one
+
+
+def _tag(pattern: str, body: str) -> str:
+    found = re.search(pattern, body)
+    assert found, pattern
+    return found.group(0)
+
+
+def test_a_live_row_carries_every_name_hook(logged_in, plain_game):
+    """The element reads these on live rows."""
+    body = live(page(logged_in, plain_game))
+
+    mark = _tag(r'<span[^>]*data-catalog-name="Show the \{\} release[^>]*>', body)
+    assert 'data-catalog-name-of="platform"' in mark
+    assert "data-catalog-name-empty" not in mark
+
+    legend = _tag(r"<legend[^>]*data-catalog-name=[^>]*>", body)
+    assert 'data-catalog-name="{}"' in legend
+    assert 'data-catalog-name-of="name"' in legend
+    assert 'data-catalog-name-empty="Unnamed edition"' in legend
+
+    release_bin = _tag(
+        r'<button[^>]*data-catalog-name="Remove the \{\} release"[^>]*>', body
+    )
+    assert 'data-catalog-name-of="platform"' in release_bin
+    assert 'aria-label="Remove the Unspecified release"' in release_bin
+    assert 'title="Remove the Unspecified release"' in release_bin
+
+    edition_bin = _tag(
+        r'<button[^>]*data-catalog-name="Remove the \{\} edition"[^>]*>', body
+    )
+    assert 'data-catalog-name-of="name"' in edition_bin
+    assert 'data-catalog-name-empty="Remove the unnamed edition"' in edition_bin
+    assert 'aria-label="Remove the unnamed edition"' in edition_bin
+
+
+def test_a_platform_the_library_cannot_see_is_unspecified(
+    logged_in, plain_game, django_user_model
+):
+    """Its select shows the empty option too."""
+    other = django_user_model.objects.create_user(username="other", password="p")
+    hidden = Platform.objects.create(library=other.library, name="Hidden")
+    Release.objects.filter(edition__game=plain_game).update(platform=hidden)
+
+    body = live(page(logged_in, plain_game))
+
+    assert ">Show the Unspecified release in the library</span>" in body
+    assert "Hidden" not in body
+
+
+def test_a_platform_name_is_trimmed_as_the_element_trims(
+    logged_in, owned_library, plain_game
+):
+    amiga = Platform.objects.create(library=owned_library, name="  Amiga ")
+    Release.objects.filter(edition__game=plain_game).update(platform=amiga)
+
+    body = live(page(logged_in, plain_game))
+
+    assert ">Show the Amiga release in the library</span>" in body
+
+
+def test_a_name_pattern_needs_its_slot():
+    with pytest.raises(ValueError, match="no slot"):
+        _Name("Remove the release", "platform")

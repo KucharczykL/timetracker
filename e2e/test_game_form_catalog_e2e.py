@@ -492,3 +492,70 @@ def test_a_cloned_edition_names_what_is_typed_in_it(
             "radio", name="Show the Amiga release in the library", exact=True
         )
     ).to_be_visible()
+
+
+def radio_named(scope: Locator, platform: str) -> Locator:
+    return scope.get_by_role(
+        "radio", name=f"Show the {platform} release in the library", exact=True
+    )
+
+
+def test_a_restored_value_is_named_on_arrival(signed_in, live_server, game, dos):
+    """Back: the browser restores; the element renames."""
+    page = signed_in
+    open_form(page, live_server, game)
+    choose_platform(release_card(page, 0, 0), "DOS")
+    page.fill("input[name='edition-0-name']", "Gold")
+
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    page.go_back()
+    _upgraded(page)
+
+    card = release_card(page, 0, 0)
+    assert (
+        page.evaluate("performance.getEntriesByType('navigation')[0].type")
+        == "back_forward"
+    )
+    expect(card.locator("select[name$='-platform']")).to_have_value(str(dos.pk))
+    expect(radio_named(card, "DOS")).to_be_visible()
+    expect(
+        card.get_by_role("button", name="Remove the DOS release", exact=True)
+    ).to_be_visible()
+    expect(page.locator("[data-catalog-edition='0']")).to_have_accessible_name("Gold")
+
+
+def test_a_refused_page_names_the_posted_platform(signed_in, live_server, game, dos):
+    """Two unnamed editions refuse the page."""
+    page = signed_in
+    open_form(page, live_server, game)
+    choose_platform(release_card(page, 0, 0), "DOS")
+    page.click("[data-catalog-add='edition']")
+
+    page.click(SUBMIT)
+    expect(page.get_by_text("Name this edition.").first).to_be_visible()
+    _upgraded(page)
+
+    card = release_card(page, 0, 0)
+    expect(radio_named(card, "DOS")).to_be_visible()
+    expect(
+        card.get_by_role("button", name="Remove the DOS release", exact=True)
+    ).to_be_visible()
+
+
+def test_a_row_added_after_a_bin_names_its_own_platform(
+    signed_in, live_server, game, dos
+):
+    page = signed_in
+    open_form(page, live_server, game)
+    add = "[data-catalog-edition='0'] [data-catalog-add='release']"
+    page.click(add)
+    release_card(page, 0, 1).get_by_role(
+        "button", name="Remove the Unspecified release", exact=True
+    ).click()
+    page.click(add)
+
+    added = release_card(page, 0, 2)
+    choose_platform(added, "DOS")
+
+    expect(radio_named(added, "DOS")).to_be_visible()
+    expect(radio_named(release_card(page, 0, 0), "Amiga")).to_be_visible()

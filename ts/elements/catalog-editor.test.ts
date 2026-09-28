@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { filled, renumbered } from "./catalog-editor.js";
 import "./catalog-editor.js";
@@ -225,6 +225,7 @@ const NAMED = `
       <button type="button" data-catalog-remove
         aria-label="Remove the Amiga release" title="Remove the Amiga release"
         data-catalog-name="Remove the {} release" data-catalog-name-of="platform"></button>
+      <input name="edition-0-release-0-release_date-year" value="1984">
       <select name="edition-0-release-0-platform">
         <option value="">Unspecified</option>
         <option value="a" selected>Amiga</option>
@@ -279,6 +280,7 @@ describe("names", () => {
     typeName("Silver");
     expect(document.querySelector(`${edition} > legend`)!.textContent).toBe("Silver");
     expect(bin(edition).getAttribute("aria-label")).toBe("Remove the Silver edition");
+    expect(bin(edition).title).toBe("Remove the Silver edition");
     expect(markText()).toBe("Show the Amiga release in the library");
   });
 
@@ -288,6 +290,47 @@ describe("names", () => {
       "Unnamed edition",
     );
     expect(bin(edition).title).toBe("Remove the unnamed edition");
+  });
+
+  it("ignores input on a row's other fields", () => {
+    const year = document.querySelector<HTMLInputElement>(
+      'input[name="edition-0-release-0-release_date-year"]',
+    )!;
+    year.value = "Silver";
+    year.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(markText()).toBe("Show the Amiga release in the library");
+    expect(document.querySelector(`${edition} > legend`)!.textContent).toBe("Gold");
+  });
+
+  describe("drift", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    afterEach(() => error.mockClear());
+
+    it("leaves a hook without a pattern alone, and says so", () => {
+      document.body.innerHTML = NAMED.replace(
+        ' data-catalog-name="Remove the {} release"',
+        "",
+      );
+      choose("d");
+      expect(bin(release).getAttribute("aria-label")).toBe("Remove the Amiga release");
+      expect(error).toHaveBeenCalled();
+    });
+
+    it("says so when a named row has no control", () => {
+      document.body.innerHTML = NAMED.replace(
+        'name="edition-0-release-0-platform"',
+        'name="edition-0-release-0-shape"',
+      );
+      expect(markText()).toBe("Show the Amiga release in the library");
+      expect(error).toHaveBeenCalled();
+    });
+  });
+
+  it("renames after a late restore, on pageshow", () => {
+    // Chromium restores late, firing no input.
+    document.querySelector<HTMLSelectElement>(`${release} select`)!.value = "d";
+    window.dispatchEvent(new Event("pageshow"));
+    expect(markText()).toBe("Show the DOS release in the library");
   });
 
   it("corrects a stale name on arrival", () => {

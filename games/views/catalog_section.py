@@ -12,9 +12,9 @@ separate grids, thus both declare `EDITION_COLUMNS`.
 """
 
 from collections.abc import Mapping
-from typing import Final, cast
+from dataclasses import dataclass
+from typing import Final, Literal, get_args
 
-from django import forms
 from django.forms import BoundField
 from django.forms.forms import BaseForm
 
@@ -90,32 +90,51 @@ _OUT_OF_SIGHT: Final[list[tuple[str, str]]] = [
     ("style", "display:none"),
 ]
 
-#: The value's slot; mirrored in catalog-editor.ts.
+#: The value's slot; generated into catalog-names.ts.
 NAME_SLOT: Final[str] = "{}"
 
-_MARK_NAME: Final[str] = "Show the {} release in the library"
-_RELEASE_BIN_NAME: Final[str] = "Remove the {} release"
-_EDITION_NAME: Final[str] = "{}"
-_EDITION_NAME_EMPTY: Final[str] = "Unnamed edition"
-_EDITION_BIN_NAME: Final[str] = "Remove the {} edition"
-_EDITION_BIN_NAME_EMPTY: Final[str] = "Remove the unnamed edition"
+#: Values a name follows; generated too.
+type CatalogNameKind = Literal["platform", "name"]
+CATALOG_NAME_KINDS: Final[tuple[CatalogNameKind, ...]] = get_args(
+    CatalogNameKind.__value__
+)
 
 
-def _named(
-    pattern: str, follows: str, empty: str | None = None
-) -> list[tuple[str, str]]:
-    """Hooks `<catalog-editor>` restates a name through."""
-    hooks = [("data-catalog-name", pattern), ("data-catalog-name-of", follows)]
-    if empty is not None:
-        hooks.append(("data-catalog-name-empty", empty))
-    return hooks
+@dataclass(frozen=True)
+class _Name:
+    """One name pattern, and what it follows."""
+
+    pattern: str
+    follows: CatalogNameKind
+    empty: str | None = None
+
+    def __post_init__(self) -> None:
+        if NAME_SLOT not in self.pattern:
+            raise ValueError(f"name pattern has no slot: {self.pattern!r}")
+
+    def text(self, value: str) -> str:
+        """Filled as the element fills it."""
+        if not value and self.empty is not None:
+            return self.empty
+        return self.pattern.replace(NAME_SLOT, value)
+
+    def hooks(self) -> list[tuple[str, str]]:
+        """What `<catalog-editor>` restates it through."""
+        hooks = [
+            ("data-catalog-name", self.pattern),
+            ("data-catalog-name-of", self.follows),
+        ]
+        if self.empty is not None:
+            hooks.append(("data-catalog-name-empty", self.empty))
+        return hooks
 
 
-def _filled(pattern: str, value: str, empty: str | None = None) -> str:
-    """One name, filled as the element does."""
-    if not value and empty is not None:
-        return empty
-    return pattern.replace(NAME_SLOT, value)
+_MARK_NAME: Final = _Name("Show the {} release in the library", "platform")
+_RELEASE_BIN_NAME: Final = _Name("Remove the {} release", "platform")
+_EDITION_NAME: Final = _Name("{}", "name", "Unnamed edition")
+_EDITION_BIN_NAME: Final = _Name(
+    "Remove the {} edition", "name", "Remove the unnamed edition"
+)
 
 
 def _row_hooks(
@@ -206,9 +225,8 @@ def _field_cell(field: BoundField, placement: str) -> Node:
 
 
 def _platform_name(row: ReleaseRowForm, platforms: Mapping[str, str]) -> str:
-    """Option text of the bound value."""
-    empty = cast(forms.ModelChoiceField, row.fields["platform"]).empty_label
-    return platforms.get(str(row["platform"].value()), str(empty))
+    """Bound value's option text, else empty option's."""
+    return platforms.get(str(row["platform"].value() or ""), platforms[""])
 
 
 def _edition_name(block: EditionBlock) -> str:
@@ -227,8 +245,8 @@ def _release_card(
     return ChoiceCard(
         name=MARK_FIELD,
         value=value,
-        label=_filled(_MARK_NAME, platform),
-        label_attributes=_named(_MARK_NAME, "platform"),
+        label=_MARK_NAME.text(platform),
+        label_attributes=_MARK_NAME.hooks(),
         checked=chosen,
         columns=EDITION_COLUMNS,
         attributes=_row_hooks(row, "data-catalog-release", index),
@@ -237,8 +255,7 @@ def _release_card(
             *_hidden_fields(row),
             Div(class_=_BIN_CELL_CLASS)[
                 _remove_button(
-                    _filled(_RELEASE_BIN_NAME, platform),
-                    _named(_RELEASE_BIN_NAME, "platform"),
+                    _RELEASE_BIN_NAME.text(platform), _RELEASE_BIN_NAME.hooks()
                 )
             ],
             _field_cell(row["platform"], _PLATFORM_PLACEMENT),
@@ -262,14 +279,11 @@ def _headings() -> Node:
 def _name_row(block: EditionBlock) -> Node:
     """The Edition's own name, which no header row stands over."""
     name = block.form["name"]
-    title = _filled(_EDITION_BIN_NAME, _edition_name(block), _EDITION_BIN_NAME_EMPTY)
+    title = _EDITION_BIN_NAME.text(_edition_name(block))
     return Div(class_="flex items-end gap-3")[
         _labelled(name, "grow flex flex-col", FORM_LABEL_CLASS),
         Div(class_="flex min-h-control items-center")[
-            _remove_button(
-                title,
-                _named(_EDITION_BIN_NAME, "name", _EDITION_BIN_NAME_EMPTY),
-            )
+            _remove_button(title, _EDITION_BIN_NAME.hooks())
         ],
     ]
 
@@ -292,8 +306,8 @@ def _edition_block(
     ]
     return ChoiceCardGroup(
         name=MARK_FIELD,
-        legend=_filled(_EDITION_NAME, _edition_name(block), _EDITION_NAME_EMPTY),
-        legend_attributes=_named(_EDITION_NAME, "name", _EDITION_NAME_EMPTY),
+        legend=_EDITION_NAME.text(_edition_name(block)),
+        legend_attributes=_EDITION_NAME.hooks(),
         class_=BLOCK_CLASS,
         attributes=_row_hooks(block.form, "data-catalog-edition", index),
     )[

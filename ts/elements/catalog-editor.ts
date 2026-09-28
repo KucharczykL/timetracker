@@ -12,8 +12,14 @@
  * one miss silently writes the wrong row. A re-render numbers afresh; the
  * browser only ever appends.
  *
- * A row's names follow its value.
+ * A row's accessible names follow its value.
  */
+
+import {
+  CATALOG_NAME_KINDS,
+  CATALOG_NAME_SLOT,
+  type CatalogNameKind,
+} from "../generated/catalog-names.js";
 
 // Where a clone learns its own number. Mirrors the placeholders in
 // games/catalog_form.py, which the templates are rendered with.
@@ -54,24 +60,17 @@ function isGoing(mark: HTMLElement): boolean {
   );
 }
 
-// The value's slot; mirrored in catalog_section.py.
-const NAME_SLOT = "{}";
-
 /** Split, not `replace`, so `$` stays literal. */
 export function filled(pattern: string, value: string, empty?: string): string {
   if (value === "" && empty !== undefined) return empty;
-  return pattern.split(NAME_SLOT).join(value);
+  return pattern.split(CATALOG_NAME_SLOT).join(value);
 }
 
 // Each name kind's control and row.
 const FOLLOWED = {
   platform: { control: 'select[name$="-platform"]', row: "[data-catalog-release]" },
   name: { control: 'input[name$="-name"]', row: "[data-catalog-edition]" },
-} as const;
-
-type Followed = keyof typeof FOLLOWED;
-
-const KINDS = Object.keys(FOLLOWED) as Followed[];
+} as const satisfies Record<CatalogNameKind, { control: string; row: string }>;
 
 /** Option text, or the typed value. */
 function shown(control: HTMLInputElement | HTMLSelectElement): string {
@@ -93,16 +92,19 @@ class CatalogEditorElement extends HTMLElement {
     this.addEventListener("click", this.onClick);
     // Selects and text fields both fire `input`.
     this.addEventListener("input", this.onInput);
+    this.restateNames();
+    // Chromium restores form values after upgrade.
+    window.addEventListener("pageshow", this.onPageShow);
     // A refused page comes back with the rows the person left, bins and
     // all. The mark is repaired on arrival too, not only on a click.
-    // Deferred script: runs after form restore.
-    this.restateNames();
     this.restateMark();
   }
 
+  private onPageShow = (): void => this.restateNames();
+
   private onInput = (event: Event): void => {
     const target = event.target as HTMLElement;
-    for (const kind of KINDS) {
+    for (const kind of CATALOG_NAME_KINDS) {
       if (!target.matches(FOLLOWED[kind].control)) continue;
       const row = target.closest<HTMLElement>(FOLLOWED[kind].row);
       if (row && this.contains(row)) this.restateRow(row, kind);
@@ -111,7 +113,7 @@ class CatalogEditorElement extends HTMLElement {
 
   /** Every row's names, from current values. */
   private restateNames(): void {
-    for (const kind of KINDS) {
+    for (const kind of CATALOG_NAME_KINDS) {
       for (const row of this.querySelectorAll<HTMLElement>(FOLLOWED[kind].row)) {
         this.restateRow(row, kind);
       }
@@ -119,16 +121,25 @@ class CatalogEditorElement extends HTMLElement {
   }
 
   /** One row's names of one kind. */
-  private restateRow(row: HTMLElement, kind: Followed): void {
+  private restateRow(row: HTMLElement, kind: CatalogNameKind): void {
+    const nodes = row.querySelectorAll<HTMLElement>(`[data-catalog-name-of="${kind}"]`);
+    if (nodes.length === 0) return;
     const control = row.querySelector<HTMLInputElement | HTMLSelectElement>(
       FOLLOWED[kind].control,
     );
-    if (!control) return;
+    if (!control) {
+      console.error(`<catalog-editor> row has no ${kind} control`, row);
+      return;
+    }
     const value = shown(control);
-    for (const node of row.querySelectorAll<HTMLElement>(
-      `[data-catalog-name-of="${kind}"]`,
-    )) {
-      const name = filled(node.dataset.catalogName ?? "", value, node.dataset.catalogNameEmpty);
+    for (const node of nodes) {
+      const pattern = node.dataset.catalogName;
+      if (pattern === undefined) {
+        console.error("<catalog-editor> name hook has no pattern", node);
+        continue;
+      }
+      const name = filled(pattern, value, node.dataset.catalogNameEmpty);
+      // Labelled controls keep children; others hold text.
       if (node.hasAttribute("aria-label")) {
         node.setAttribute("aria-label", name);
         if (node.hasAttribute("title")) node.title = name;

@@ -149,7 +149,7 @@ class ChoiceCard(BaseComponent):
                 value=self.value,
                 checked=self.checked,
             ),
-            # Names the radio; an aria-label would outrank.
+            # Label text names it; aria-label goes stale.
             Span(self.label_attributes, class_="@2xl/edition:sr-only")[self.label],
         ]
         return Div(
