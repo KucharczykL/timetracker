@@ -3,26 +3,34 @@
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from unittest.mock import patch
 
 import pytest
 
 from games.checks import endpoint_errors
 from games.commands.endpoint import (
+    ActStatement,
     EndpointSentences,
     Rejection,
+    WayActStatement,
     correct_endpoint,
     state_endpoint,
     void_endpoint,
 )
 from games.end_ways import EndWay
-from games.endpoint_fields import EndpointColumns, endpoint_constraints
-from games.endpoints import ENDPOINTS, PLAYTHROUGH_COMPLETION, PLAYTHROUGH_START
+from games.endpoint_fields import EndpointColumns, WayColumn, endpoint_constraints
+from games.endpoints import (
+    ENDPOINTS,
+    PLAYTHROUGH_COMPLETION,
+    PLAYTHROUGH_START,
+    Endpoint,
+)
 from games.events.dispatch import CommandRejected
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, NewEvent, Unchanged
-from games.filters import PlaythroughFilter
+from games.filters import PlaythroughFilter, way_filter_field
 from games.models import Playthrough
 from games.reads.endpoints import StatedEndpoint
-from games.writes.endpoint import EndpointMove, endpoint_move
+from games.writes.endpoint import Act, Correct, Nothing, Void, endpoint_move
 from timetracker.temporal import TemporalValue
 
 
@@ -48,20 +56,6 @@ def test_every_endpoint_event_is_registered(endpoint) -> None:
 def test_an_endpoint_without_ways_needs_no_constraint() -> None:
     assert endpoint_constraints(PLAYTHROUGH_START) == ()
     assert endpoint_constraints(PLAYTHROUGH_COMPLETION) == ()
-
-
-def test_a_way_column_comes_with_ways() -> None:
-    with pytest.raises(ValueError, match="exactly when"):
-        EndpointColumns(
-            name="broken",
-            model_label="games.Playthrough",
-            when="started",
-            lower="started_lower",
-            upper="started_upper",
-            marker="start_recorded_at",
-            note="start_note",
-            way="start_way",
-        )
 
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS, ids=lambda endpoint: endpoint.name)
@@ -99,7 +93,7 @@ def test_the_check_refuses_a_plain_column_as_a_bound() -> None:
 
 
 def test_the_check_refuses_a_way_endpoint_without_its_constraints() -> None:
-    columns = _start(way="name", ways=(EndWay.SOLD,))
+    columns = _start(way=WayColumn("name", (EndWay.SOLD,)))
     messages = [error.msg for error in endpoint_errors(columns, Playthrough)]
     assert any("way_known" in message for message in messages)
     assert any("way_with_marker" in message for message in messages)
@@ -107,6 +101,7 @@ def test_the_check_refuses_a_way_endpoint_without_its_constraints() -> None:
 
 MAY = TemporalValue.parse("2021-05")
 RECORDED = datetime(2026, 9, 28, tzinfo=UTC)
+SOLD = WayActStatement(MAY, EndWay.SOLD, "")
 SENTENCES = EndpointSentences(
     already_stated=Rejection("stated twice", "Correct it."),
     nothing_to_correct=Rejection("nothing stated", "State it first."),
@@ -139,7 +134,7 @@ def test_state_on_an_unstated_endpoint_is_the_act() -> None:
     run = _unstated_run()
     (event,) = _events(
         state_endpoint(
-            run, PLAYTHROUGH_START, when=MAY, note="began", sentences=SENTENCES
+            run, PLAYTHROUGH_START, ActStatement(MAY, "began"), sentences=SENTENCES
         )
     )
     assert event.spec is PLAYTHROUGH_START.events.stated
@@ -151,8 +146,7 @@ def test_the_same_statement_again_is_unchanged_before_the_hook() -> None:
     answer = state_endpoint(
         _started_run(),
         PLAYTHROUGH_START,
-        when=MAY,
-        note="",
+        ActStatement(MAY, ""),
         sentences=SENTENCES,
         before_event=_refuse,
     )
@@ -164,8 +158,7 @@ def test_another_statement_is_refused_before_the_hook() -> None:
         state_endpoint(
             _started_run(),
             PLAYTHROUGH_START,
-            when=None,
-            note="",
+            ActStatement(None, ""),
             sentences=SENTENCES,
             before_event=_refuse,
         )
@@ -177,8 +170,7 @@ def test_the_hook_runs_before_the_event() -> None:
         state_endpoint(
             _unstated_run(),
             PLAYTHROUGH_START,
-            when=MAY,
-            note="",
+            ActStatement(MAY, ""),
             sentences=SENTENCES,
             before_event=_refuse,
         )
@@ -189,8 +181,7 @@ def test_a_correction_of_nothing_is_refused_ahead_of_the_comparison() -> None:
         correct_endpoint(
             _unstated_run(),
             PLAYTHROUGH_START,
-            when=None,
-            note="",
+            ActStatement(None, ""),
             sentences=SENTENCES,
         )
     assert refused.value.sentence == "State it first."
@@ -200,8 +191,7 @@ def test_a_correction_to_what_is_stated_is_unchanged() -> None:
     answer = correct_endpoint(
         _started_run("x"),
         PLAYTHROUGH_START,
-        when=MAY,
-        note="x",
+        ActStatement(MAY, "x"),
         sentences=SENTENCES,
         before_event=_refuse,
     )
@@ -211,7 +201,10 @@ def test_a_correction_to_what_is_stated_is_unchanged() -> None:
 def test_a_correction_states_the_corrected_event() -> None:
     (event,) = _events(
         correct_endpoint(
-            _started_run(), PLAYTHROUGH_START, when=None, note="", sentences=SENTENCES
+            _started_run(),
+            PLAYTHROUGH_START,
+            ActStatement(None, ""),
+            sentences=SENTENCES,
         )
     )
     assert event.spec is PLAYTHROUGH_START.events.corrected
@@ -239,15 +232,16 @@ def test_a_void_runs_the_hook_then_voids() -> None:
 @pytest.mark.parametrize(
     ("held", "wanted", "move"),
     [
-        (None, None, EndpointMove.NOTHING),
-        (None, MAY, EndpointMove.ACT),
-        ("stated", None, EndpointMove.VOID),
-        ("stated", MAY, EndpointMove.CORRECT),
+        (None, None, Nothing()),
+        (None, SOLD, Act(SOLD)),
+        ("stated", None, Void()),
+        #: Equal values still correct; the command compares.
+        ("stated", SOLD, Correct(SOLD)),
     ],
 )
 def test_the_move_reads_presence_alone(held, wanted, move) -> None:
     stated_endpoint = None if held is None else StatedEndpoint(RECORDED, MAY, "")
-    assert endpoint_move(stated_endpoint, wanted) is move
+    assert endpoint_move(stated_endpoint, wanted) == move
 
 
 def test_playthrough_filter_keeps_its_endpoint_leaves() -> None:
@@ -258,3 +252,40 @@ def test_playthrough_filter_keeps_its_endpoint_leaves() -> None:
     assert fields["is_started"].label == "Has a start"
     assert fields["is_completed"].label == "Has a completion"
     assert fields["started"].label is None
+
+
+def test_a_statement_of_the_wrong_shape_is_a_defect() -> None:
+    with pytest.raises(TypeError, match="takes a ActStatement"):
+        state_endpoint(_unstated_run(), PLAYTHROUGH_START, SOLD, sentences=SENTENCES)
+
+
+def test_the_check_reports_a_label_naming_no_model() -> None:
+    from games.checks import check_endpoints
+    from games.endpoints import ENDPOINTS
+
+    broken = Endpoint.over(
+        _start(model_label="games.Nowhere"), PLAYTHROUGH_START.events
+    )
+    with patch("games.checks.ENDPOINTS", (*ENDPOINTS, broken)):
+        (error,) = check_endpoints()
+    assert "names no model" in error.msg
+
+
+def test_the_check_refuses_an_endpoint_on_a_conventional_model() -> None:
+    from games.models import Platform
+
+    messages = [error.msg for error in endpoint_errors(_start(), Platform)]
+    assert any("no projection" in message for message in messages)
+
+
+def test_a_wayless_endpoint_has_no_way_leaf() -> None:
+    with pytest.raises(TypeError, match="states no way"):
+        way_filter_field(PLAYTHROUGH_START, label="Way")
+
+
+def test_the_check_refuses_two_endpoints_sharing_a_name() -> None:
+    from games.checks import check_endpoints
+
+    with patch("games.checks.ENDPOINTS", (*ENDPOINTS, PLAYTHROUGH_START)):
+        messages = [error.msg for error in check_endpoints()]
+    assert any("another endpoint has its name" in message for message in messages)

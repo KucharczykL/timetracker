@@ -5,12 +5,7 @@ from enum import StrEnum
 
 
 class EndWay(StrEnum):
-    """How an act that has ways happened.
-
-    Every way any endpoint admits. An endpoint's own payload names
-    its subset as a Literal, so widening this enum widens no
-    recorded vocabulary.
-    """
+    """Every way any endpoint admits."""
 
     SOLD = "sold"
     LOST = "lost"

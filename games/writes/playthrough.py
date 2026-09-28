@@ -44,7 +44,7 @@ from games.reads.playthrough_endpoints import (
 )
 from games.reads.playthrough_runs import live_ordinary_runs, run_to_adopt
 from games.writes.answers import answered
-from games.writes.endpoint import EndpointMove, endpoint_move
+from games.writes.endpoint import Act, endpoint_move
 from games.writes.playergame import track_game
 from timetracker.temporal import TemporalValue
 
@@ -157,7 +157,7 @@ def _state_endpoint(
         return
     stated = endpoint.reads(run)
     move = endpoint_move(stated, act)
-    command_class = endpoint.first if move is EndpointMove.ACT else endpoint.correction
+    command_class = endpoint.first if isinstance(move, Act) else endpoint.correction
     note = "" if stated is None else stated.note
     _dispatch(
         command_class(playthrough_id=run.pk, when=act.when, note=note),

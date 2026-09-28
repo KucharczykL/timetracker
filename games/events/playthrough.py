@@ -126,11 +126,6 @@ class PlaythroughCompletionVoidedPayload(TypedDict):
     """The library takes back the record of a completion."""
 
 
-#: One type for both endpoints' acts. Each is its own EventSpec, so an
-#: issue that gives one of them a field gives it a type of its own, and
-#: the rows already written keep reading back.
-PlaythroughEndpointPayload = EndpointPayload
-
 PLAYTHROUGH_START_EVENTS = endpoint_events(
     "playthrough",
     stated="library.playthrough.started",
@@ -176,7 +171,7 @@ class PlaythroughNamePayload(TypedDict):
 class PlaythroughNotePayload(TypedDict):
     """The note of the whole run.
 
-    Not `PlaythroughEndpointPayload`, though the shape is the same:
+    Not `EndpointPayload`, though the shape is the same:
     that note belongs to an act, and its day is the effective_time.
     This one describes a run and has no day.
     """

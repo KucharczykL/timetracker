@@ -733,12 +733,10 @@ ACTIVITY_CHOICES: Final[tuple[ChoiceMeta, ...]] = tuple(
 class EndpointFilterFields(NamedTuple):
     """The leaves one stated endpoint offers a filter."""
 
-    #: The stated day, as the interval its bounds state.
+    #: The stated day, as an interval.
     interval: FilterField
     #: Whether the act happened at all.
     stated: FilterField
-    #: How it happened; none without ways.
-    way: FilterField | None
 
 
 def endpoint_filter_fields(
@@ -746,9 +744,13 @@ def endpoint_filter_fields(
     *,
     stated_label: str,
     interval_label: str | None = None,
-    way_label: str | None = None,
+    stated_when_absent: bool = False,
 ) -> EndpointFilterFields:
-    """An endpoint's leaves; each filter places them in its own order."""
+    """An endpoint's leaves, placed by each filter.
+
+    `stated_when_absent` asks the other way round: true
+    where no act is stated.
+    """
     return EndpointFilterFields(
         interval=FilterField(
             handler=temporal_interval_handler(
@@ -758,11 +760,17 @@ def endpoint_filter_fields(
             label=interval_label,
         ),
         stated=FilterField(
-            handler=bool_isnull_handler(endpoint.marker, invert=True),
+            handler=bool_isnull_handler(endpoint.marker, invert=not stated_when_absent),
             label=stated_label,
         ),
-        way=None if endpoint.way is None else FilterField(label=way_label),
     )
+
+
+def way_filter_field(endpoint: EndpointColumns, *, label: str) -> FilterField:
+    """A way endpoint's way, as a choice."""
+    if endpoint.way is None:
+        raise TypeError(f"Endpoint {endpoint.name!r} states no way.")
+    return FilterField(endpoint.way.column, label=label)
 
 
 _START_FIELDS = endpoint_filter_fields(PLAYTHROUGH_START, stated_label="Has a start")

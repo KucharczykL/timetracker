@@ -391,7 +391,7 @@ class Projector(ABC):
         )
 
     def project_stated(self, endpoint: EndpointColumns, event: RecordedEvent) -> None:
-        """An endpoint's act, as the event states it."""
+        """The act; every value off the event."""
         self.amend(
             _endpoint_model(endpoint),
             event,
@@ -402,11 +402,11 @@ class Projector(ABC):
     def project_corrected(
         self, endpoint: EndpointColumns, event: RecordedEvent
     ) -> None:
-        """A better statement; the marker keeps the first act's instant."""
+        """A restatement; the marker stays."""
         self.amend(_endpoint_model(endpoint), event, **_stated_values(endpoint, event))
 
     def project_voided(self, endpoint: EndpointColumns, event: RecordedEvent) -> None:
-        """The record taken back: what a row holds before any act."""
+        """The record taken back."""
         self.amend(_endpoint_model(endpoint), event, **endpoint.unstated_columns())
 
     def __init_subclass__(
@@ -435,5 +435,5 @@ def _stated_values(endpoint: EndpointColumns, event: RecordedEvent) -> dict[str,
         endpoint.note: event.payload["note"],
     }
     if endpoint.way is not None:
-        values[endpoint.way] = event.payload["way"]
+        values[endpoint.way.column] = event.payload["way"]
     return values

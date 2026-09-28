@@ -1,9 +1,4 @@
-"""The three acts on a stated endpoint, over any row.
-
-Each aggregate keeps its own command classes, fields and resolve, so
-a command's fingerprint stays its own; these functions decide, in one
-order, what the resolved row answers to a statement.
-"""
+"""State, correct and void any endpoint."""
 
 from collections.abc import Callable, Sequence
 from typing import Any, NamedTuple
@@ -22,7 +17,7 @@ class ActStatement(NamedTuple):
     """An act that happened, and its note.
 
     The act is this object's existence, so the day inside
-    never carries it: a run that never reached the endpoint
+    never carries it: a row that never reached the endpoint
     states no ActStatement at all.
 
     A NamedTuple, so the idempotency fingerprint encodes it
@@ -36,11 +31,10 @@ class ActStatement(NamedTuple):
 
 
 class WayActStatement(NamedTuple):
-    """An act that happened in one way, and its note.
+    """An act in one way, and its note.
 
-    Not ActStatement with a third field: a NamedTuple encodes as an
-    array, so one more field would move the fingerprint of every
-    command carrying an ActStatement.
+    Not a third ActStatement field: a NamedTuple encodes as
+    an array, so that field would move every fingerprint.
     """
 
     when: TemporalValue | None
@@ -76,54 +70,48 @@ def _nothing() -> None:
     return None
 
 
-def _payload(endpoint: Endpoint, note: str, way: EndWay | None) -> dict[str, Any]:
-    if endpoint.way is None:
-        return {"note": note}
-    if way is None:
-        raise TypeError(f"Endpoint {endpoint.name!r} states every act in a way.")
-    return {"way": way.value, "note": note}
+type Statement = ActStatement | WayActStatement
 
 
-def _states_it(
-    row: models.Model,
-    endpoint: Endpoint,
-    when: TemporalValue | None,
-    note: str,
-    way: EndWay | None,
-) -> bool:
-    held = stated(row, endpoint)
-    return held is not None and (held.when, held.note, held.way) == (
-        when,
-        note,
-        way,
+def _payload(endpoint: Endpoint, statement: Statement) -> dict[str, Any]:
+    """The payload; its shape must match."""
+    match statement:
+        case WayActStatement() if endpoint.way is not None:
+            return {"way": statement.way.value, "note": statement.note}
+        case ActStatement() if endpoint.way is None:
+            return {"note": statement.note}
+    raise TypeError(
+        f"Endpoint {endpoint.name!r} takes a "
+        f"{'WayActStatement' if endpoint.way else 'ActStatement'}."
     )
+
+
+def _states_it(row: models.Model, endpoint: Endpoint, statement: Statement) -> bool:
+    held = stated(row, endpoint)
+    if held is None:
+        return False
+    way = statement.way if isinstance(statement, WayActStatement) else None
+    return (held.when, held.note, held.way) == (statement.when, statement.note, way)
 
 
 def state_endpoint(
     row: models.Model,
     endpoint: Endpoint,
+    statement: Statement,
     *,
-    when: TemporalValue | None,
-    note: str,
-    way: EndWay | None = None,
     sentences: EndpointSentences,
     before_event: BeforeEvent = _nothing,
 ) -> Sequence[NewEvent] | Unchanged:
-    """The act, where the row states none.
-
-    The same statement again is a repeat; another is refused,
-    because a second act would say it happened twice.
-    """
+    """The act; a repeat unchanged, another refused."""
+    payload = _payload(endpoint, statement)
     if stated(row, endpoint) is not None:
-        if _states_it(row, endpoint, when, note, way):
+        if _states_it(row, endpoint, statement):
             return Unchanged(sentences.same_statement)
         raise sentences.already_stated.raised()
     before_event()
     return [
         endpoint.events.stated.new(
-            aggregate_id=row.pk,
-            effective_time=when,
-            payload=_payload(endpoint, note, way),
+            aggregate_id=row.pk, effective_time=statement.when, payload=payload
         )
     ]
 
@@ -131,28 +119,25 @@ def state_endpoint(
 def correct_endpoint(
     row: models.Model,
     endpoint: Endpoint,
+    statement: Statement,
     *,
-    when: TemporalValue | None,
-    note: str,
-    way: EndWay | None = None,
     sentences: EndpointSentences,
     before_event: BeforeEvent = _nothing,
 ) -> Sequence[NewEvent] | Unchanged:
-    """A better statement of an act the row states.
+    """A better statement of a stated act.
 
-    The unstated endpoint is refused ahead of the comparison: it
-    holds the very values a correction to no day and no note states.
+    Unstated is refused before comparing: without ways it
+    holds the values a correction to no day states.
     """
+    payload = _payload(endpoint, statement)
     if stated(row, endpoint) is None:
         raise sentences.nothing_to_correct.raised()
-    if _states_it(row, endpoint, when, note, way):
+    if _states_it(row, endpoint, statement):
         return Unchanged(sentences.same_correction)
     before_event()
     return [
         endpoint.events.corrected.new(
-            aggregate_id=row.pk,
-            effective_time=when,
-            payload=_payload(endpoint, note, way),
+            aggregate_id=row.pk, effective_time=statement.when, payload=payload
         )
     ]
 
@@ -164,10 +149,7 @@ def void_endpoint(
     sentences: EndpointSentences,
     before_event: BeforeEvent = _nothing,
 ) -> Sequence[NewEvent] | Unchanged:
-    """The record taken back.
-
-    The repeat first, so it succeeds whatever `before_event` refuses.
-    """
+    """The record taken back; repeats answer first."""
     if stated(row, endpoint) is None:
         return Unchanged(sentences.nothing_to_void)
     before_event()

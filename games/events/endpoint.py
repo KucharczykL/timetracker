@@ -15,22 +15,20 @@ from games.events.vocabulary import (
 
 @with_config(STRICT_SCHEMA)
 class EndpointPayload(TypedDict):
-    """The note of one endpoint, and only that.
+    """The note of an endpoint without ways.
 
-    The date is `effective_time`, which is where the charter puts what
-    a player says happened. No note is the empty string: an optional
-    key would ask a reader whether a value is absent or empty, and
-    here the two mean one thing.
+    No note is the empty string: an optional key would ask
+    whether absent and empty differ, and here they do not.
     """
 
     note: str
 
 
-class EndpointEvents(NamedTuple):
+class EndpointEvents[PayloadT](NamedTuple):
     """The three acts on one endpoint."""
 
-    stated: EventSpec[Any]
-    corrected: EventSpec[Any]
+    stated: EventSpec[PayloadT]
+    corrected: EventSpec[PayloadT]
     voided: EventSpec[Any]
 
     @property
@@ -43,20 +41,16 @@ class EndpointEvents(NamedTuple):
         )
 
 
-def endpoint_events(
+def endpoint_events[PayloadT](
     aggregate_type: AggregateType,
     *,
     stated: EventType,
     corrected: EventType,
     voided: EventType,
-    payload: type,
+    payload: type[PayloadT],
     voided_payload: type,
-) -> EndpointEvents:
-    """Declare and register one endpoint's three specs.
-
-    Every type is spelled by the caller: a recorded type never
-    moves, so none is derived from a stem.
-    """
+) -> EndpointEvents[PayloadT]:
+    """Register three specs; callers spell every type."""
     events = EndpointEvents(
         stated=EventSpec(stated, aggregate_type=aggregate_type, payload=payload),
         corrected=EventSpec(corrected, aggregate_type=aggregate_type, payload=payload),

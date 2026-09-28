@@ -1,12 +1,7 @@
-"""Every stated endpoint, and the columns and events each names.
-
-An endpoint is one act a projection row states at most once at a
-time: that it happened, on a day or on none, with a note, and for
-an endpoint with ways, in one way. The act is stated, corrected,
-and voided; the descriptor names what each touches.
-"""
+"""Every stated endpoint: its columns and events."""
 
 from dataclasses import dataclass, fields
+from typing import Any
 
 from django.apps import apps
 from django.db import models
@@ -23,11 +18,11 @@ from games.events.playthrough import (
 class Endpoint(EndpointColumns):
     """One endpoint's columns and its three events."""
 
-    events: EndpointEvents
+    events: EndpointEvents[Any]
 
     @classmethod
-    def over(cls, columns: EndpointColumns, events: EndpointEvents) -> Endpoint:
-        """The endpoint a model's columns and a module's events make."""
+    def over(cls, columns: EndpointColumns, events: EndpointEvents[Any]) -> Endpoint:
+        """Columns joined with their events."""
         return cls(
             **{field.name: getattr(columns, field.name) for field in fields(columns)},
             events=events,
@@ -60,4 +55,8 @@ PLAYTHROUGH_COMPLETION = Endpoint(
     events=PLAYTHROUGH_COMPLETION_EVENTS,
 )
 
-ENDPOINTS: tuple[Endpoint, ...] = (PLAYTHROUGH_START, PLAYTHROUGH_COMPLETION)
+
+ENDPOINTS: tuple[Endpoint, ...] = (
+    PLAYTHROUGH_START,
+    PLAYTHROUGH_COMPLETION,
+)

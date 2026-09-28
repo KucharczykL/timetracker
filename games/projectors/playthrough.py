@@ -37,7 +37,6 @@ class Playthroughs(Projector):
         )
 
     def _started(self, event: RecordedEvent) -> None:
-        #: Every value off the event, so a replay agrees.
         self.project_stated(PLAYTHROUGH_START, event)
 
     def _completed(self, event: RecordedEvent) -> None:

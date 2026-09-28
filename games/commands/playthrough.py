@@ -334,8 +334,7 @@ class StartPlaythrough(Command):
         return state_endpoint(
             run,
             PLAYTHROUGH_START,
-            when=self.when,
-            note=self.note,
+            ActStatement(self.when, self.note),
             sentences=_start_sentences(run.pk),
             before_event=partial(
                 _refuse_a_start_after_the_completion, run, started=self.when
@@ -364,8 +363,7 @@ class CompletePlaythrough(Command):
         return state_endpoint(
             run,
             PLAYTHROUGH_COMPLETION,
-            when=self.when,
-            note=self.note,
+            ActStatement(self.when, self.note),
             sentences=_completion_sentences(run.pk),
             before_event=partial(
                 _refuse_a_completion_before_the_start, run, completed=self.when
@@ -442,8 +440,7 @@ class CorrectPlaythroughStart(Command):
         return correct_endpoint(
             run,
             PLAYTHROUGH_START,
-            when=self.when,
-            note=self.note,
+            ActStatement(self.when, self.note),
             sentences=_start_sentences(run.pk),
             before_event=partial(
                 _refuse_a_start_after_the_completion, run, started=self.when
@@ -473,8 +470,7 @@ class CorrectPlaythroughCompletion(Command):
         return correct_endpoint(
             run,
             PLAYTHROUGH_COMPLETION,
-            when=self.when,
-            note=self.note,
+            ActStatement(self.when, self.note),
             sentences=_completion_sentences(run.pk),
             before_event=partial(
                 _refuse_a_completion_before_the_start, run, completed=self.when
@@ -589,7 +585,7 @@ def _refuse_a_completion_before_the_start(
 
 
 def _refuse_under_a_removed_parent(run: Playthrough) -> None:
-    """The game's mark first, then the run's, as every act reads them."""
+    """Game's mark first, then the run's."""
     _refuse_under_a_removed_game(run)
     _refuse_a_removed_run(run)
 

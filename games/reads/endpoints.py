@@ -26,6 +26,13 @@ class StatedEndpoint:
     way: EndWay | None = None
 
 
+def way_of(ended: StatedEndpoint) -> EndWay:
+    """The way a way endpoint's act states."""
+    if ended.way is None:
+        raise TypeError("An endpoint without ways states no way.")
+    return ended.way
+
+
 def stated(row: models.Model, endpoint: EndpointColumns) -> StatedEndpoint | None:
     """What the row states about the endpoint, or nothing."""
     recorded_at = getattr(row, endpoint.marker)
@@ -35,5 +42,5 @@ def stated(row: models.Model, endpoint: EndpointColumns) -> StatedEndpoint | Non
         recorded_at,
         getattr(row, endpoint.when),
         getattr(row, endpoint.note),
-        None if endpoint.way is None else EndWay(getattr(row, endpoint.way)),
+        None if endpoint.way is None else EndWay(getattr(row, endpoint.way.column)),
     )

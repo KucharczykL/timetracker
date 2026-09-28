@@ -1,14 +1,8 @@
-"""The columns and constraints of a stated endpoint.
-
-Each model spells an endpoint's columns in its own class body
-through these factories, so type checkers and the migration
-autodetector see every field. `games.E014` holds a registered
-endpoint against the fields and constraints its model declares.
-"""
+"""A stated endpoint's columns and constraints."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 from django.db import models
 from django.db.models import Q
@@ -29,34 +23,32 @@ type ColumnName = str  # e.g. "started"
 type ModelLabel = str  # e.g. "games.Playthrough"
 
 
+class WayColumn(NamedTuple):
+    """A way column and the ways it admits."""
+
+    column: ColumnName
+    #: At least one; none would refuse every act.
+    ways: tuple[EndWay, *tuple[EndWay, ...]]
+
+
+type EndpointName = str  # e.g. "access_end"; names its constraints
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class EndpointColumns:
-    """The columns one endpoint writes on one projection model.
+    """One endpoint's columns; no events, for Meta."""
 
-    Free of events, so a model's `Meta` can read it.
-    """
-
-    #: Names the endpoint's constraints; unique per model.
-    name: str
-    #: A label, not the class: the model reads this value.
+    name: EndpointName
+    #: A label: models import this module.
     model_label: ModelLabel
-    #: The stated day; null is a day nobody knows.
+    #: The stated day; null is unknown.
     when: ColumnName
     lower: ColumnName
     upper: ColumnName
-    #: The instant the act was first recorded; null is no act.
+    #: First recorded; null is no act.
     marker: ColumnName
     note: ColumnName
-    #: Both empty for an endpoint without ways.
-    way: ColumnName | None = None
-    ways: tuple[EndWay, ...] = ()
-
-    def __post_init__(self) -> None:
-        if (self.way is None) != (not self.ways):
-            raise ValueError(
-                f"Endpoint {self.name!r} names a way column exactly when it "
-                "admits ways."
-            )
+    way: WayColumn | None = None
 
     def unstated_columns(self) -> dict[ColumnName, Any]:
         """What a row holds before any act."""
@@ -66,7 +58,7 @@ class EndpointColumns:
             self.note: "",
         }
         if self.way is not None:
-            columns[self.way] = ""
+            columns[self.way.column] = ""
         return columns
 
 
@@ -82,7 +74,7 @@ def endpoint_when() -> TemporalValueField:
 
 
 def endpoint_bound(when: str, side: BoundSide) -> models.GeneratedField:
-    """One bound of the stated day, as the database computes it."""
+    """One bound of the stated day."""
     return models.GeneratedField(
         expression=_BOUND_EXPRESSIONS[side](when),
         output_field=models.DateField(null=True),
@@ -94,7 +86,7 @@ def endpoint_bound(when: str, side: BoundSide) -> models.GeneratedField:
 
 
 def endpoint_marker() -> models.DateTimeField:
-    """When the act was first recorded; null is no act."""
+    """First recorded; null is no act."""
     return models.DateTimeField(null=True, default=None, editable=False)
 
 
@@ -104,7 +96,7 @@ def endpoint_note() -> models.TextField:
 
 
 def endpoint_way(ways: Sequence[EndWay]) -> models.CharField:
-    """How the act happened; the empty string is no act."""
+    """How it happened; empty is no act."""
     return models.CharField(
         max_length=WAY_MAX_LENGTH,
         blank=True,
@@ -116,16 +108,12 @@ def endpoint_way(ways: Sequence[EndWay]) -> models.CharField:
 def endpoint_constraints(
     endpoint: EndpointColumns,
 ) -> tuple[models.CheckConstraint, ...]:
-    """The CHECKs a way endpoint needs; none without ways.
-
-    Each admits every row a command can state, so neither refuses
-    in a command's place.
-    """
+    """A way endpoint's CHECKs; none without ways."""
     if endpoint.way is None:
         return ()
-    way = endpoint.way
+    way = endpoint.way.column
     stem = endpoint.model_label.replace(".", "_").lower() + "_" + endpoint.name
-    known = [option.value for option in endpoint.ways]
+    known = [option.value for option in endpoint.way.ways]
     return (
         models.CheckConstraint(
             condition=Q(**{f"{way}__in": [*known, ""]}),

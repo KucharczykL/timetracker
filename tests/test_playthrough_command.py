@@ -27,6 +27,8 @@ from games.commands.playthrough import (
     RemovePlaythrough,
     RestorePlaythrough,
     StartPlaythrough,
+    VoidPlaythroughCompletion,
+    VoidPlaythroughStart,
     endpoints_certainly_reversed,
 )
 from games.events.append import lock_stream
@@ -2315,3 +2317,29 @@ def test_a_creation_appends_the_creation_alone(owned_user, owned_library, game):
 
     appended = LibraryEvent.objects.order_by("sequence")[before:]
     assert [event.event_type for event in appended] == ["library.playthrough.created"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_each_endpoint_repeat_answers_in_its_own_words(owned_user, owned_library, game):
+    when = TemporalValue.from_year(2023)
+    _track(owned_user, owned_library, game)
+    run = Playthrough.objects.get()
+
+    def void(command, key):
+        return dispatch(
+            command, actor=owned_user, library=owned_library, idempotency_key=key
+        )
+
+    no_start = void(VoidPlaythroughStart(playthrough_id=run.pk), "void-start")
+    no_end = void(VoidPlaythroughCompletion(playthrough_id=run.pk), "void-done")
+    _start(owned_user, owned_library, run, when=when)
+    _complete(owned_user, owned_library, run, when=when)
+    started = _start(owned_user, owned_library, run, when=when, key="again")
+    completed = _complete(owned_user, owned_library, run, when=when, key="again-done")
+
+    assert [result.reason for result in (started, completed, no_start, no_end)] == [
+        "This run already states that start.",
+        "This run already states that completion.",
+        f"Playthrough {run.pk} states no start to take back.",
+        f"Playthrough {run.pk} states no completion to take back.",
+    ]
