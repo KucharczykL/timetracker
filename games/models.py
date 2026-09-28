@@ -24,7 +24,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from common.naming import name_key
-from common.platform_icons import PLATFORM_ICONS, UNSPECIFIED_ICON
+from common.platform_icons import UNSPECIFIED_ICON, require_platform_icon
 from common.utils import label_with_details
 from games.external_references import external_reference_url, normalize_provider_key
 from timetracker.settings_registry import THEME_CHOICES, SettingKey
@@ -432,10 +432,6 @@ class Game(ReferencedRow):
         )
 
 
-#: Refuses an unlisted icon.
-ICON_UNLISTED = "Pick one of the listed icons."
-
-
 class PlatformQuerySet(RemovableLibraryQuerySet):
     def visible_to(self, library):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
@@ -490,8 +486,10 @@ class Platform(ReferencedRow):
 
     def clean(self):
         super().clean()
-        if self.icon not in PLATFORM_ICONS:
-            raise ValidationError({"icon": ICON_UNLISTED})
+        try:
+            require_platform_icon(self.icon)
+        except ValueError as refusal:
+            raise ValidationError({"icon": str(refusal)}) from refusal
         duplicates = (
             #: A removed Platform shadows nothing.
             Platform.objects.alive()

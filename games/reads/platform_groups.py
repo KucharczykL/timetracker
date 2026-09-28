@@ -5,6 +5,9 @@ from games.models import Platform, UserLibrary
 #: A group a platform names.
 type PlatformGroup = str  # "Nintendo"
 
+#: The most characters a group holds.
+GROUP_LENGTH = Platform._meta.get_field("group").max_length or 255
+
 
 def platform_groups(library: UserLibrary) -> list[PlatformGroup]:
     """Every group a live platform the library sees holds."""

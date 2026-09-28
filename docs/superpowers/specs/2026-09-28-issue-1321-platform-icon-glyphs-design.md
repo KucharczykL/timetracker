@@ -32,9 +32,10 @@ vocabulary.
 - `clean()` refuses a slug outside `PLATFORM_ICONS`, on the `icon`
   field. `save()` calls `clean()`. The rule reads the live set, so a
   new icon needs no migration.
-- An `UPDATE` does not call `clean()`. The bulk Edit's statement
-  refuses an unlisted slug, and its Undo writes back only what the
-  ledger recorded.
+- An `UPDATE` does not call `clean()`, so the write behind the bulk
+  Edit and its Undo refuses an unlisted slug itself. All three raise
+  sites call `require_platform_icon`. `games.E013` refuses a listed icon
+  no snippet draws.
 
 ## The migration
 

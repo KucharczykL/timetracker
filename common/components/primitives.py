@@ -2636,11 +2636,14 @@ icon_logger = logging.getLogger("games.icons")
 @functools.cache
 def _warn_unknown_icon(name: str) -> None:
     """Once a name, so a table logs once."""
-    icon_logger.warning("No icon snippet is named %r; drawing unspecified.", name)
+    icon_logger.warning(
+        "No icon snippet is named %r, a defect; drawing unspecified.", name
+    )
 
 
 def get_icon_node(name: str) -> Element:
-    """Return the pre-built node tree for an icon. Falls back to 'unspecified'.
+    """Return the pre-built node tree for an icon. Falls back to 'unspecified'
+    and warns once per name.
 
     The returned node is shared (module-level) and must be treated as read-only.
     """

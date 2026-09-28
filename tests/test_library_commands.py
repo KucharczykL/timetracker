@@ -229,8 +229,10 @@ def test_committed_sample_load_owns_private_rows_and_reuses_shared_platform(owne
 
 @pytest.mark.django_db(transaction=True)
 def test_committed_sample_load_states_listed_icons(owner):
-    call_command("load_sample_data", "--user", owner.username, verbosity=0)
+    output = StringIO()
+    call_command("load_sample_data", "--user", owner.username, stdout=output)
 
+    assert "named an unlisted icon" in output.getvalue()
     icons = set(Platform.objects.values_list("icon", flat=True))
     assert icons <= set(PLATFORM_ICONS)
     assert "nintendo" in icons

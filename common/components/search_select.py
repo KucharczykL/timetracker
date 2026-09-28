@@ -50,7 +50,7 @@ import json
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Literal, NamedTuple, TypedDict, cast
+from typing import Literal, NamedTuple, TypedDict
 
 from common.components.core import (
     Attributes,
@@ -258,7 +258,7 @@ class PostCreate:
     """The create row posts to ``url`` and holds the answer."""
 
     url: str
-    verb: str = ""
+    verb: str = "Create"
 
     def __post_init__(self) -> None:
         if not self.url:
@@ -276,7 +276,7 @@ class SelectTyped:
 class EmitCreate:
     """The create row emits ``search-select:create``."""
 
-    verb: str = ""
+    verb: str = "Create"
     #: Offered for a name a row holds exactly.
     replace_verb: str = ""
 
@@ -293,19 +293,20 @@ class _CreateProps(TypedDict, total=False):
 
 
 def _create_props(create: CreateRow | None) -> _CreateProps:
-    """The element props one ``CreateRow`` states; blanks stay off."""
+    """The element props one ``CreateRow`` states."""
     match create:
         case PostCreate(url=url, verb=verb):
-            props = _CreateProps(create="post", create_url=url, create_verb=verb)
+            return _CreateProps(create="post", create_url=url, create_verb=verb)
         case SelectTyped(verb=verb):
-            props = _CreateProps(create="select", create_verb=verb)
+            return _CreateProps(create="select", create_verb=verb)
+        case EmitCreate(verb=verb, replace_verb=""):
+            return _CreateProps(create="event", create_verb=verb)
         case EmitCreate(verb=verb, replace_verb=replace_verb):
-            props = _CreateProps(
+            return _CreateProps(
                 create="event", create_verb=verb, replace_verb=replace_verb
             )
         case None:
             return _CreateProps()
-    return cast(_CreateProps, {key: value for key, value in props.items() if value})
 
 
 class RowKind(Enum):

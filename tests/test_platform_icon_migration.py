@@ -1,5 +1,6 @@
 """The migration naming each stored icon's glyph."""
 
+import logging
 import uuid
 from importlib import import_module
 
@@ -66,6 +67,20 @@ def test_a_ledger_row_names_its_glyphs(owned_library):
         for change in BatchChange.objects.filter(batch=batch)
     }
     assert changes == {"icon": ("playstation", None), "group": ("ps1", "")}
+
+
+def test_it_logs_each_platform_it_renames(owned_library):
+    from icon_names import Recorder
+
+    _stored(owned_library, "Amiga", "ps1")
+    recorder = Recorder(logging.INFO)
+    migration.logger.addHandler(recorder)
+    try:
+        migration.name_glyphs(apps, None)
+    finally:
+        migration.logger.removeHandler(recorder)
+
+    assert any("'ps1' becomes 'playstation'" in line for line in recorder.messages)
 
 
 def test_every_slug_it_writes_is_listed_or_retired():

@@ -3,8 +3,9 @@
 import pytest
 from django.core.exceptions import ValidationError
 
+from common.platform_icons import ICON_UNLISTED
 from games.forms import PlatformForm
-from games.models import ICON_UNLISTED, Platform
+from games.models import Platform
 
 pytestmark = pytest.mark.django_db
 
@@ -83,3 +84,13 @@ def test_a_posting_create_row_names_its_endpoint():
 
     with pytest.raises(ValueError):
         PostCreate("")
+
+
+def test_a_listed_icon_no_snippet_draws_fails_the_check():
+    from games.checks import unsnipped_platform_icons
+
+    refusals = unsnipped_platform_icons(["steam", "gone"], ["steam"])
+
+    assert [refusal.id for refusal in refusals] == ["games.E013"]
+    assert "gone" in refusals[0].msg
+    assert unsnipped_platform_icons(["steam"], ["steam", "edit"]) == []

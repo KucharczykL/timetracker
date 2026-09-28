@@ -41,3 +41,23 @@ class LoadPlatformsTest(TestCase):
         existing.refresh_from_db()
         self.assertEqual(existing.group, "Custom group")
         self.assertEqual(existing.icon, "gog")
+
+    def test_an_unlisted_fixture_icon_names_its_platform(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from unittest import mock
+
+        from django.core.management.base import CommandError
+
+        with TemporaryDirectory() as directory:
+            fixture = Path(directory) / "platforms.yaml"
+            fixture.write_text(
+                "- model: games.Platform\n  fields:\n    name: Amiga\n    icon: amiga\n"
+            )
+            with (
+                mock.patch(
+                    "games.management.commands.loadplatforms.FIXTURE_PATH", fixture
+                ),
+                self.assertRaisesMessage(CommandError, "Fixture platform 'Amiga'"),
+            ):
+                call_command("loadplatforms")

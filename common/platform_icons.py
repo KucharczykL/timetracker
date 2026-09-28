@@ -47,8 +47,26 @@ RETIRED_ICONS: Mapping[PlatformIcon, PlatformIcon] = MappingProxyType(
 )
 
 
+if UNSPECIFIED_ICON not in PLATFORM_ICONS:
+    raise RuntimeError(f"{UNSPECIFIED_ICON!r} is no listed icon")
+if _listed_and_retired := set(RETIRED_ICONS) & set(PLATFORM_ICONS):
+    raise RuntimeError(f"Listed and retired at once: {sorted(_listed_and_retired)}")
+if _unlisted_glyphs := set(RETIRED_ICONS.values()) - set(PLATFORM_ICONS):
+    raise RuntimeError(f"Retired onto unlisted icons: {sorted(_unlisted_glyphs)}")
+
+#: Refuses an unlisted icon.
+ICON_UNLISTED = "Pick one of the listed icons."
+
+
+def require_platform_icon(slug: str) -> PlatformIcon:
+    """The slug, if listed; else ``ValueError``."""
+    if slug not in PLATFORM_ICONS:
+        raise ValueError(ICON_UNLISTED)
+    return slug
+
+
 def canonical_icon(slug: str) -> PlatformIcon:
-    """For importers: an unknown slug is Unspecified."""
+    """Any stored text: listed, its glyph, else unspecified."""
     if slug in PLATFORM_ICONS:
         return slug
     return RETIRED_ICONS.get(slug, UNSPECIFIED_ICON)

@@ -123,5 +123,5 @@ def test_an_unknown_icon_name_warns_once_and_draws_unspecified():
 
     assert drawn == [ICON_NODES["unspecified"]] * 2
     assert recorder.messages == [
-        "No icon snippet is named 'no-such-icon'; drawing unspecified."
+        "No icon snippet is named 'no-such-icon', a defect; drawing unspecified."
     ]

@@ -8,10 +8,10 @@ from common.components.primitives import _warn_unknown_icon, icon_logger
 
 
 class Recorder(logging.Handler):
-    """Keeps each warning it hears."""
+    """Keeps each record it hears."""
 
-    def __init__(self) -> None:
-        super().__init__(logging.WARNING)
+    def __init__(self, level: int = logging.WARNING) -> None:
+        super().__init__(level)
         self.messages: list[str] = []
 
     def emit(self, record: logging.LogRecord) -> None:

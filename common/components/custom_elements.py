@@ -160,7 +160,7 @@ def _ts_type(python_type: object) -> str:
 
 
 def _named_role(python_type: object) -> type:
-    """The type a PEP 695 alias names.
+    """The type a PEP 695 alias names; a ``Literal`` never reaches here.
 
     ``get_type_hints`` leaves an alias as itself, so a prop annotated with a
     named role (``type SelectionKey = str``) would miss the type map — which

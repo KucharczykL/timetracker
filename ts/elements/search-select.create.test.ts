@@ -438,6 +438,37 @@ describe("<search-select> create row that selects the typed text", () => {
     expect(formData.get("playthrough")).toBe("Retro");
   });
 
+  function submitted(host: HTMLElement): FormData {
+    //: jsdom builds a FormData without firing `formdata`.
+    const formData = new FormData();
+    host
+      .closest("form")!
+      .dispatchEvent(Object.assign(new Event("formdata"), { formData }));
+    return formData;
+  }
+
+  it("leaves a held pick alone when the box is untouched", async () => {
+    stubEndpoints([]);
+    const host = mount(bySelect);
+    await type(host, "Retro");
+    pressEnter(host);
+
+    expect(submitted(host).get("playthrough")).toBeNull();
+    expect(held(host)).toBe("Retro");
+  });
+
+  it("commits nothing for a box typed into and emptied", async () => {
+    stubEndpoints([]);
+    const host = mount(bySelect);
+    await type(host, "Retro");
+    pressEnter(host);
+
+    await type(host, "");
+
+    expect(submitted(host).get("playthrough")).toBeNull();
+    expect(held(host)).toBeUndefined();
+  });
+
   it("replaces a held text with a new one", async () => {
     stubEndpoints([]);
     const host = mount(bySelect);
@@ -489,6 +520,30 @@ describe("<search-select> refetch", () => {
 });
 
 describe("<search-select> create modes", () => {
+  it("refuses a select row outside a form", () => {
+    const errors: unknown[] = [];
+    const listener = (event: ErrorEvent) => {
+      errors.push(event.error);
+      event.preventDefault();
+    };
+    window.addEventListener("error", listener);
+    const markup = mount({ create: "select" }).innerHTML;
+    document.body.replaceChildren();
+    const host = document.createElement("search-select");
+    host.setAttribute("name", "group");
+    host.setAttribute("create", "select");
+    host.innerHTML = markup;
+    try {
+      document.body.appendChild(host);
+    } catch (error) {
+      errors.push(error);
+    } finally {
+      window.removeEventListener("error", listener);
+    }
+
+    expect(String(errors.at(-1))).toContain('create="select" outside a form');
+  });
+
   it("refuses a post with no endpoint", () => {
     const errors: unknown[] = [];
     const listener = (event: ErrorEvent) => {

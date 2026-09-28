@@ -1502,7 +1502,12 @@ const initWidget = (containerElement: Element) => {
 
   // Typed text is the value; submitting commits the draft.
   if (create === "select") {
-    container.closest("form")?.addEventListener("formdata", event => {
+    const hostingForm = container.closest("form");
+    if (!hostingForm) {
+      //: Only a form submit commits a typed draft.
+      throw new Error(`search-select[${props.name}]: create="select" outside a form`);
+    }
+    hostingForm.addEventListener("formdata", event => {
       const draft = search.value.trim();
       if (container._searchSelectDirty && draft) event.formData.set(props.name, draft);
     });

@@ -8,9 +8,7 @@ from bulk_posts import act_url, posted, selection
 from django.http import QueryDict
 from django.urls import reverse
 
-from common.components.icons_generated import ICON_NODES
 from common.components.unset_field import unset_input_name
-from common.platform_icons import PLATFORM_ICONS
 from games.bulk_actions import BULK_ACTIONS, LedgerRows
 from games.bulk_edit import STATEMENT_UNREADABLE
 from games.bulk_platform_edit import (
@@ -82,10 +80,6 @@ def _undo(client, batch: uuid.UUID):
 def test_the_act_is_declared():
     assert BULK_ACTIONS["platform.edit"] is EDIT_PLATFORMS
     assert EDIT_PLATFORMS.undo_rows == LedgerRows(Platform)
-
-
-def test_every_platform_icon_is_a_snippet():
-    assert set(PLATFORM_ICONS) <= set(ICON_NODES)
 
 
 # ── The statement ────────────────────────────────────────────────────────────

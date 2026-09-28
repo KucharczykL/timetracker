@@ -145,3 +145,23 @@ def test_a_typed_group_is_saved_without_picking_it(
 
     page.wait_for_url(f"{live_server.url}{reverse('games:list_platforms')}**")
     assert Platform.objects.get(pk=platform.pk).group == "Retro"
+
+
+def test_a_group_typed_in_bulk_is_saved_without_picking_it(
+    live_server, page: Page, e2e_library
+):
+    platforms = [
+        Platform.objects.create(library=e2e_library, name=name, group="PC")
+        for name in ("Amiga", "DOS")
+    ]
+    _login(page, live_server)
+    listed = f"{live_server.url}{reverse('games:list_platforms')}"
+
+    _edit_selected(page, listed)
+    page.locator("search-select[name='choice-group'] [data-search-select-search]").fill(
+        "Retro"
+    )
+    page.get_by_role("button", name="Save", exact=True).click()
+
+    page.wait_for_url(listed)
+    assert [_held(platform)[0] for platform in platforms] == ["Retro", "Retro"]
