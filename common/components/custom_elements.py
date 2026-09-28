@@ -821,7 +821,9 @@ _DROPDOWN_PANEL_CLASS = (
     f"border border-default-medium shadow-sm {OVERLAY_SURFACE_CLASS}"
 )
 #: The one child that scrolls the content.
-_DROPDOWN_SCROLL_CLASS = "min-h-0 overflow-y-auto overflow-x-hidden"
+#: The inset gives an edge child's focus ring room; the margin cancels
+#: it, so content sits where the panel's padding puts it.
+_DROPDOWN_SCROLL_CLASS = "min-h-0 overflow-y-auto overflow-x-hidden -m-0.5 p-0.5"
 
 
 class DropdownPanel:
