@@ -53,25 +53,53 @@ value, `undo_rows`:
   `batch_aggregate_ids`. Every act before this issue uses it.
   `__post_init__` keeps its two checks on it.
 - `StampedRows(model)` — the Undo reads
-  `model.objects.filter(library=library, removed_in_batch=batch)`.
+  `model.objects.filter(library=library, removed_in_batch=batch)`,
+  ordered by key.
   `__post_init__` refuses a model without `removed_in_batch`.
 
 `_act_of` reads the events first. If the batch has no events, it asks
 each `StampedRows` act for a row of the library with that batch. It
-answers 404 if no row has it. A batch that the person restored by hand
-still has its rows, thus its Undo runs and each row is "already so".
+answers 404 if no row has it. That is also the answer when a later act
+removed every row of the batch again, because the column then names
+the later act. A batch that the person restored by hand still has its
+rows, thus its Undo runs and each row is "already so".
+
+The change touches eleven declarations and `undo_bulk_action`, and
+about twelve test sites that read `inverse_aggregate` or
+`inverse_model`. Nothing else reads either field.
 
 ## The writes
 
-`games/writes/platform.py` has two functions for the runner:
+`games/writes/platform.py` has two functions for the runner. Both go
+through `_stamp` in `games/removal.py`, thus `_AFTER_STAMP` still takes
+the external references of the platform out and back in. `_stamp` gets
+a conditional form: it locks the row, reads the present state, and
+writes only when the state is the one that the caller expects.
 
-- `remove_platform_in_batch` makes one conditional `UPDATE`. A live row
-  becomes removed: moved. A row that already has this batch: moved,
-  because a posted chunk can come again. A row removed by another act:
-  unchanged.
-- `restore_platform_from_batch` clears `removed_at` on a row of this
-  batch: moved. A live row: unchanged. If a live platform of the library
-  has the same name and group, it refuses with 409 and a sentence.
+- `remove_platform_in_batch`: a live row becomes removed, with this
+  batch: moved. A live row that already names this batch: unchanged.
+  This batch removed it, and a person restored it since. A chunk that
+  comes again must not remove it a second time. The kept column gives
+  the stamp writes the idempotency that the event acts get from their
+  key.
+- `restore_platform_from_batch`: a removed row of this batch becomes
+  live: moved. A live row: unchanged.
+
+The runner resolves each key again for each chunk, through the read of
+the list. Thus a row that an earlier post of the same chunk removed is
+lost, as on the Devices list.
+
+A restore refuses with 409 and a sentence if a live platform has the
+same normalised name and group, and one of these is true:
+
+- the live platform is in the same library;
+- the live platform is shared. `Platform.clean()` refuses a private
+  platform that shadows a shared one. `_stamp` does not call `clean()`.
+
+The check and the `UPDATE` are in one savepoint. An `IntegrityError`
+from a concurrent insert gives the same 409, not a defect that stops
+the batch. `answered_constraint` in `games/catalog_submit.py` is the
+precedent.
 
 The per-row `restore_platform` route uses the same refusal. Today it
 answers 500, because `restore_and_return` catches only `CommandFailed`
@@ -96,11 +124,12 @@ sentence `PLATFORM_GONE`.
 
 ## The confirmation
 
-The preview shows Platform, Group, Games and Purchases.
-`games/reads/platform_departures.py` counts the live games and the live
-purchases of the library that name the platform, with one subquery
-each. The page for one row shows the same numbers. Today that page
-counts removed rows too.
+The preview shows Platform, Group, Games, Releases and Purchases.
+`games/reads/platform_departures.py` counts the live games, the live
+releases and the live purchases of the library that name the platform,
+with one subquery each. A platform that only releases name must not
+show zero everywhere. The page for one row shows the same numbers.
+Today that page counts removed rows too.
 
 ## The row menu
 
@@ -129,10 +158,13 @@ be hidden.
 ## Proof
 
 - `tests/test_bulk_platform_removal.py`: remove and Undo; a chunk that
-  comes again; Undo after a restore by hand; a later removal for one
-  row takes the row out of the earlier Undo; the name collision on the
-  batch and on the route; `_act_of` for a stamped batch and for an
-  unknown batch; the refused declaration; a shared platform outside the
+  comes again gives lost; a chunk that comes again after a restore by
+  hand does not remove the row; Undo after a restore by hand; the
+  external references come back with the Undo; a later removal for one
+  row takes the row out of the earlier Undo; the name collision with a
+  private and with a shared platform, on the batch and on the route; an
+  `IntegrityError` in the savepoint gives 409; `_act_of` for a stamped
+  batch and for an unknown batch; the refused declaration; a shared platform outside the
   scope.
 - `e2e/test_bulk_platform_removal_e2e.py` removes two platforms and
   undoes the batch.
