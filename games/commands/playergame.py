@@ -121,59 +121,6 @@ class TrackGame(Command):
 
 
 @dataclass(frozen=True, slots=True)
-class SetPlayerGameStatus(Command):
-    """Set the status of a tracked game."""
-
-    command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_SET_STATUS
-    #: A UUID, because Command fingerprints its fields.
-    game_id: uuid.UUID
-    #: A TextChoices member is a str.
-    status: PlayerGameStatus
-
-    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        tracked = tracked_game(context, self.game_id)
-        #: Under dispatch's lock: no concurrent duplicate.
-        if tracked.status == self.status:
-            return Unchanged(
-                f"This library already gives game {self.game_id} the status "
-                f"{self.status.value!r}."
-            )
-        return [
-            PLAYERGAME_STATUS_CHANGED.new(
-                aggregate_id=tracked.pk,
-                #: A test pins Literal and choices equal.
-                payload={"status": cast("StatusValue", self.status.value)},
-                effective_time=_stated_now(context),
-            )
-        ]
-
-
-@dataclass(frozen=True, slots=True)
-class SetPlayerGameMastered(Command):
-    """State whether this library mastered a tracked game."""
-
-    command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_SET_MASTERED
-    #: A UUID, because Command fingerprints its fields.
-    game_id: uuid.UUID
-    mastered: bool
-
-    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        tracked = tracked_game(context, self.game_id)
-        #: Under dispatch's lock: no concurrent duplicate.
-        if tracked.mastered == self.mastered:
-            recorded = "mastered" if self.mastered else "not mastered"
-            return Unchanged(
-                f"This library already records game {self.game_id} as {recorded}."
-            )
-        return [
-            PLAYERGAME_MASTERED_CHANGED.new(
-                aggregate_id=tracked.pk,
-                payload={"mastered": self.mastered},
-            )
-        ]
-
-
-@dataclass(frozen=True, slots=True)
 class SetPlayerGameExcludedFromUnfinished(Command):
     """State whether unfinished lists omit a game."""
 
@@ -244,9 +191,10 @@ class RestorePlayerGame(Command):
 class RecordPlayerGameFacts(Command):
     """State a status, a mastery, or both.
 
-    The game form states both facts at every save, so the two travel as
-    one command. build() decides which already holds, under the lock,
-    where a form's stale initial cannot reach it.
+    The one command that states either fact. The game form states both
+    at every save, so the two travel as one command. build() decides
+    which already holds, under the lock, where a form's stale initial
+    cannot reach it.
     """
 
     command_name: ClassVar[CommandName] = CommandName.PLAYERGAME_RECORD_FACTS

@@ -10,6 +10,7 @@ from test_event_retry import wrapped
 
 from games.events import dispatch as dispatch_module
 from games.events.dispatch import (
+    RETIRED_COMMAND_NAMES,
     Command,
     CommandContext,
     CommandName,
@@ -701,6 +702,25 @@ def test_the_allowlist_holds_real_commands_only():
         f"CommandName holds {[name.value for name in CommandName]}. Names only "
         "a test uses belong in that test's own CommandVocabulary."
     )
+
+
+def test_the_allowlist_holds_no_retired_name():
+    #: A member no command claims never reaches __init_subclass__.
+    assert not {name.value for name in CommandName} & RETIRED_COMMAND_NAMES
+
+
+@pytest.mark.parametrize("retired", sorted(RETIRED_COMMAND_NAMES))
+def test_a_command_cannot_claim_a_retired_name(retired):
+    Revived = CommandVocabulary("Revived", {"ONLY": retired})
+
+    with pytest.raises(TypeError, match="retired"):
+
+        @dataclass(frozen=True, slots=True)
+        class Reviver(Command):
+            command_name: ClassVar[CommandVocabulary] = Revived.ONLY
+
+            def build(self, context: CommandContext) -> Sequence[NewEvent]:
+                return []
 
 
 def test_two_vocabularies_cannot_claim_one_name():
