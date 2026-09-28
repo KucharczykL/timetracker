@@ -50,10 +50,6 @@ RUN_STATED = (PLAYERSESSION_CREATED.event_type, PLAYERSESSION_MOVED.event_type)
 NOT_MOVED_BY_THIS_BATCH = (
     "That session was not moved by this batch, so its playthrough was left as it is."
 )
-NO_EARLIER_RUN = (
-    "Where that session was before cannot be read, so its playthrough was "
-    "left as it is."
-)
 SOURCE_TAKEN_AWAY = (
     "The playthrough that session came from was removed after this batch, so "
     "its playthrough was left as it is. Put that playthrough back first."
@@ -239,6 +235,7 @@ def _put_back_the_run(
     actor: User,
     act: ActName,
     batch_id: uuid.UUID,
+    session_id: uuid.UUID,
     run_id: uuid.UUID,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
@@ -256,9 +253,10 @@ def _put_back_the_run(
     with answered("session"):
         run = Playthrough.objects.filter(library=actor.library, pk=run_id).first()
         if run is None:
-            raise CommandRejected(
-                f"playthrough {run_id} is not library {actor.library.pk}'s",
-                sentence=NO_EARLIER_RUN,
+            raise RowUnreadable(
+                f"session {session_id} of library {actor.library.pk} sat on "
+                f"playthrough {run_id} before batch {batch_id}, which this "
+                "library does not hold"
             )
         ours = (
             batch_events(actor.library, batch_id)
@@ -293,7 +291,9 @@ def move_back_row(
     """One session back to its earlier run."""
     with answered("session"):
         earlier = run_before(actor.library, session_id, undoes)
-    _put_back_the_run(actor, act, undoes, earlier, idempotency_key, correlation_id)
+    _put_back_the_run(
+        actor, act, undoes, session_id, earlier, idempotency_key, correlation_id
+    )
     return RowOutcome.of(
         move_session(
             actor,

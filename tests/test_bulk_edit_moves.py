@@ -813,6 +813,38 @@ def test_a_move_out_of_a_bucket_with_no_creation_is_a_defect(
     assert bucket.removed_at is None
 
 
+def test_a_move_back_to_a_run_another_library_holds_is_a_defect(
+    owned_user, owned_library, game, django_user_model
+):
+    """No command moves a run; the row drifted."""
+    target = tracked_run(owned_library, game)
+    earlier = a_run(owned_library, game, name="Second run")
+    session = a_recorded_session(owned_user, earlier)
+    batch = uuid.uuid7()
+    edit_one(
+        owned_user,
+        session,
+        choice=_to(target),
+        idempotency_key="one-move",
+        correlation_id=batch,
+    )
+    stranger = django_user_model.objects.create_user(
+        username="second-owner", password="p"
+    ).library
+    Playthrough.objects.filter(pk=earlier.pk).update(library=stranger)
+
+    with pytest.raises(CommandFailed) as failed:
+        edit_back(
+            owned_user,
+            session.pk,
+            undoes=batch,
+            idempotency_key=str(uuid.uuid7()),
+            correlation_id=uuid.uuid7(),
+        )
+
+    assert failed.value.status_code == DEFECT_STATUS
+
+
 def test_an_undo_refuses_a_run_removed_by_hand_after_the_batch(
     client_in, owned_user, owned_library, game
 ):
