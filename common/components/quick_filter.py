@@ -177,6 +177,8 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "devices": [
         QuickFacet("name", placeholder="e.g. Steam Deck"),
         QuickFacet("type"),
+        QuickFacet("is_access_ended", "Access ended"),
+        QuickFacet("access_end_way", "Way"),
         QuickFacet("created_at", "Created"),
     ],
     "platforms": [

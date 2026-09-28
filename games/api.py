@@ -301,8 +301,8 @@ class PickerOption(Schema):  # mirrors SearchSelectOption
     label: str
     #: What the element reads: `SearchSelectOption.data` is text.
     data: dict[str, str]
-    #: Muted text after the label, where a row states one.
-    hint: str | None = None
+    #: Muted text after the label; absent where a row states none.
+    hint: str | None = Field(default=None, exclude_if=lambda hint: hint is None)
 
 
 class StringOption(Schema):  # SearchSelectOption with a string value (e.g. group names)

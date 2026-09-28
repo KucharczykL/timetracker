@@ -12,7 +12,7 @@ with AND/OR/NOT composition and typed criterion fields.
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields
 from functools import cache
-from typing import TYPE_CHECKING, Any, ClassVar, Final, NamedTuple
+from typing import TYPE_CHECKING, Any, ClassVar, Final, NamedTuple, cast
 
 if TYPE_CHECKING:
     from games.models import (
@@ -64,7 +64,11 @@ from common.criteria import (
     temporal_interval_handler,
 )
 from games.endpoint_fields import EndpointColumns
-from games.endpoints import PLAYTHROUGH_COMPLETION, PLAYTHROUGH_START
+from games.endpoints import (
+    DEVICE_ACCESS_END,
+    PLAYTHROUGH_COMPLETION,
+    PLAYTHROUGH_START,
+)
 from games.models import PlayerSessionTimingMode
 from games.reads.playthrough_activity import RunActivity
 from timetracker.settings_registry import DEFAULT_PAGE_SIZE
@@ -599,6 +603,53 @@ class PurchaseFilter(OperatorFilter):
 # ── DeviceFilter ───────────────────────────────────────────────────────────
 
 
+class EndpointFilterFields(NamedTuple):
+    """The leaves one stated endpoint offers a filter."""
+
+    #: The stated day, as the interval its bounds state.
+    interval: FilterField
+    #: Whether the act happened at all.
+    stated: FilterField
+    #: How it happened; none without ways.
+    way: FilterField | None
+
+
+def endpoint_filter_fields(
+    endpoint: EndpointColumns,
+    *,
+    stated_label: str,
+    interval_label: str | None = None,
+    way_label: str | None = None,
+) -> EndpointFilterFields:
+    """An endpoint's leaves; each filter places them in its own order."""
+    return EndpointFilterFields(
+        interval=FilterField(
+            handler=temporal_interval_handler(
+                endpoint.when, endpoint.lower, endpoint.upper
+            ),
+            metadata_lookup=endpoint.lower,
+            label=interval_label,
+        ),
+        stated=FilterField(
+            handler=bool_isnull_handler(endpoint.marker, invert=True),
+            label=stated_label,
+        ),
+        way=None if endpoint.way is None else FilterField(label=way_label),
+    )
+
+
+_START_FIELDS = endpoint_filter_fields(PLAYTHROUGH_START, stated_label="Has a start")
+_COMPLETION_FIELDS = endpoint_filter_fields(
+    PLAYTHROUGH_COMPLETION, stated_label="Has a completion"
+)
+_ACCESS_END_FIELDS = endpoint_filter_fields(
+    DEVICE_ACCESS_END,
+    interval_label="Access ended",
+    stated_label="Access ended",
+    way_label="Way",
+)
+
+
 @dataclass
 class DeviceFilter(OperatorFilter):
     """Filter for the Device model."""
@@ -610,6 +661,9 @@ class DeviceFilter(OperatorFilter):
     name: StringCriterion | None = None
     type: ChoiceCriterion | None = None
     created_at: DateCriterion | None = None  # compared via __date
+    access_ended: DateCriterion | None = None  # the interval the end states
+    is_access_ended: BoolCriterion | None = None  # the act, day or no day
+    access_end_way: ChoiceCriterion | None = None
 
     # Free-text search
     search: StringCriterion | None = None
@@ -623,6 +677,9 @@ class DeviceFilter(OperatorFilter):
         "name": FilterField(),
         "type": FilterField(),
         "created_at": FilterField("created_at__date"),
+        "access_ended": _ACCESS_END_FIELDS.interval,
+        "is_access_ended": _ACCESS_END_FIELDS.stated,
+        "access_end_way": cast(FilterField, _ACCESS_END_FIELDS.way),
     }
 
     @classmethod
@@ -727,55 +784,6 @@ class PlatformFilter(OperatorFilter):
 ACTIVITY_CHOICES: Final[tuple[ChoiceMeta, ...]] = tuple(
     ChoiceMeta(value=str(value), label=str(label))
     for value, label in RunActivity.choices
-)
-
-
-class EndpointFilterFields(NamedTuple):
-    """The leaves one stated endpoint offers a filter."""
-
-    #: The stated day, as an interval.
-    interval: FilterField
-    #: Whether the act happened at all.
-    stated: FilterField
-
-
-def endpoint_filter_fields(
-    endpoint: EndpointColumns,
-    *,
-    stated_label: str,
-    interval_label: str | None = None,
-    stated_when_absent: bool = False,
-) -> EndpointFilterFields:
-    """An endpoint's leaves, placed by each filter.
-
-    `stated_when_absent` asks the other way round: true
-    where no act is stated.
-    """
-    return EndpointFilterFields(
-        interval=FilterField(
-            handler=temporal_interval_handler(
-                endpoint.when, endpoint.lower, endpoint.upper
-            ),
-            metadata_lookup=endpoint.lower,
-            label=interval_label,
-        ),
-        stated=FilterField(
-            handler=bool_isnull_handler(endpoint.marker, invert=not stated_when_absent),
-            label=stated_label,
-        ),
-    )
-
-
-def way_filter_field(endpoint: EndpointColumns, *, label: str) -> FilterField:
-    """A way endpoint's way, as a choice."""
-    if endpoint.way is None:
-        raise TypeError(f"Endpoint {endpoint.name!r} states no way.")
-    return FilterField(endpoint.way.column, label=label)
-
-
-_START_FIELDS = endpoint_filter_fields(PLAYTHROUGH_START, stated_label="Has a start")
-_COMPLETION_FIELDS = endpoint_filter_fields(
-    PLAYTHROUGH_COMPLETION, stated_label="Has a completion"
 )
 
 

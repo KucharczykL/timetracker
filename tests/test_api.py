@@ -151,7 +151,7 @@ def test_device_search_offers_ended_devices_after_held_ones(auth_client):
 
     rows = auth_client.get("/api/devices/search", {"limit": 10}).json()
 
-    assert [(row["value"], row["hint"]) for row in rows] == [
+    assert [(row["value"], row.get("hint")) for row in rows] == [
         (str(held.id), None),
         (str(sold.id), "Sold"),
     ]
