@@ -70,9 +70,9 @@ from common.temporal_presentation import (
     present_temporal_value,
 )
 from common.utils import paginate, safe_division
+from games.bulk_game_edit import EDIT as EDIT_GAMES
 from games.bulk_playthrough_acts import COMPLETE_RUNS, START_RUNS
 from games.bulk_removal import REMOVE_GAME, REMOVE_RECORD, REMOVE_RUN
-from games.bulk_status import SET_STATUS
 from games.bulk_tray import tray_actions
 from games.catalog_form import CatalogGraphForm
 from games.catalog_submit import submitted_game_or_form_error
@@ -301,7 +301,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
         "selection": {
             "filter": filter_json,
             "csrf_token": csrf_token,
-            "actions": tray_actions(SET_STATUS.name, REMOVE_GAME.name, origin=origin),
+            "actions": tray_actions(EDIT_GAMES.name, REMOVE_GAME.name, origin=origin),
         },
     }
     content = paginated_table_content(

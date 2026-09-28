@@ -1,4 +1,4 @@
-"""A person sets one status on two games and takes it back."""
+"""A person edits two games' facts and takes it back."""
 
 import pytest
 from django.urls import reverse
@@ -23,7 +23,7 @@ def _status(game: Game) -> PlayerGameStatus:
     return PlayerGameStatus(PlayerGame.objects.get(game=game).status)
 
 
-def test_two_games_take_one_status_and_the_undo_puts_theirs_back(
+def test_two_games_are_edited_and_the_undo_puts_theirs_back(
     live_server, page: Page, e2e_user, e2e_library
 ):
     games = []
@@ -45,24 +45,26 @@ def test_two_games_take_one_status_and_the_undo_puts_theirs_back(
     boxes = page.locator("tbody [data-selection-checkbox]")
     boxes.nth(0).click()
     boxes.nth(1).click()
-    page.get_by_role("button", name="Set status…").first.click()
+    page.get_by_role("button", name="Edit…").first.click()
     #: The picker's host is defined by a module script.
     page.wait_for_load_state()
 
-    expect(
-        page.get_by_role("heading", name="Set the status of 2 games")
-    ).to_be_visible()
+    expect(page.get_by_role("heading", name="Edit 2 games")).to_be_visible()
     expect(page.locator("[data-bulk-sample-row]")).to_have_count(2)
-    picker = page.locator("search-select[name='choice']")
-    expect(picker.locator("[data-search-select-search]")).to_have_attribute(
-        "placeholder", "Now: mixed"
+    status = page.locator("search-select[name='choice-status']")
+    expect(status.locator("[data-search-select-search]")).to_have_attribute(
+        "placeholder", "Keep: mixed"
     )
-    picker.locator("[data-search-select-search]").click()
-    picker.get_by_role("option", name="Completed").click()
+    status.locator("[data-search-select-search]").click()
+    status.get_by_role("option", name="Completed").click()
+    mastered = page.locator("search-select[name='choice-mastered']")
+    mastered.locator("[data-search-select-search]").click()
+    mastered.get_by_role("option", name="Mastered", exact=True).click()
     page.get_by_role("button", name="Save", exact=True).click()
 
     page.wait_for_url(listed)
     assert [_status(game) for game in games] == [PlayerGameStatus.COMPLETED] * 2
+    assert all(PlayerGame.objects.get(game=game).mastered for game in games)
 
     with page.expect_navigation():
         page.get_by_role("button", name="Undo").click()
@@ -73,3 +75,4 @@ def test_two_games_take_one_status_and_the_undo_puts_theirs_back(
         PlayerGameStatus.PLAYED,
         PlayerGameStatus.UNPLAYED,
     ]
+    assert not any(PlayerGame.objects.get(game=game).mastered for game in games)

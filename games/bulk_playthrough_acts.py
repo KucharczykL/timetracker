@@ -37,7 +37,7 @@ from games.events.playthrough import (
 from games.models import PlayerGameStatus, Playthrough, UserLibrary
 from games.reads.calendar import calendar_today
 from games.reads.events import aggregate_events
-from games.reads.playergame_status import status_before
+from games.reads.playergame_facts import fact_change
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 from games.writes.answers import answered
 from games.writes.playergame import record_facts
@@ -303,7 +303,10 @@ def _refuse_unless_this_batch_wrote_it(
 def _word_before(run: Playthrough, batch_id: uuid.UUID) -> PlayerGameStatus | None:
     """Read before the void: a defect leaves nothing half-undone."""
     with answered("game"):
-        return status_before(run.library, run.player_game_id, batch_id)
+        change = fact_change(
+            run.library, run.player_game_id, batch_id, PLAYERGAME_STATUS_CHANGED
+        )
+    return None if change is None else PlayerGameStatus(str(change.before))
 
 
 def _stated_since(run: Playthrough, batch_id: uuid.UUID, undoing: uuid.UUID) -> bool:

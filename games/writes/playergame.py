@@ -17,6 +17,7 @@ from games.commands.playergame import (
     RecordPlayerGameFacts,
     RemovePlayerGame,
     RestorePlayerGame,
+    SetPlayerGameExcludedFromUnfinished,
     TrackGame,
 )
 from games.events.append import SourceMetadata
@@ -353,3 +354,26 @@ def record_facts(
             #: A restored dump reaches here too.
             track_game(actor, game, correlation_id=correlation_id)
             return state()
+
+
+def set_excluded_from_unfinished(
+    actor: User,
+    game: Game,
+    excluded: bool,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
+    """State whether unfinished lists leave the game out."""
+    with answered("game"):
+        return _dispatch(
+            SetPlayerGameExcludedFromUnfinished(
+                game_id=game.pk, excluded_from_unfinished=excluded
+            ),
+            actor=actor,
+            library=actor.library,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
+        )

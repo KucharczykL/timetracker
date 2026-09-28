@@ -59,3 +59,7 @@ The #1256 Undo reads the status through `facts_before`, before its void, so
 a defect leaves no half-undone row.
 
 Nothing reads the excluded flag yet; #1315 gives it readers.
+
+## Proof
+
+`tests/test_bulk_game_edit.py` and `e2e/test_bulk_game_edit_e2e.py`.

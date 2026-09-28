@@ -590,11 +590,11 @@ fact from the row's events. #1310 adds the run: the move of one row
 ([Bulk Edit states the playthrough](docs/superpowers/specs/2026-09-27-issue-1310-bulk-edit-moves-design.md)). Every act's heading counts its rows
 (`ActTitle.many` holds `{count}`). Contract is
 [Set one device across many sessions](docs/superpowers/specs/2026-09-25-issue-1211-bulk-edit-design.md).
-#1270's `playergame.set_status` states one of the six words on selected
-games through `record_facts`; its Undo states the word before the batch,
-read by `status_before` in `games/reads/playergame_status.py`, which
-#1256's Undo reads too. Contract is
-[Set status on many games](docs/superpowers/specs/2026-09-28-issue-1270-bulk-set-status-design.md).
+#1270's `playergame.edit` is the Games list's Edit: status, mastered and
+excluded from unfinished lists on selected games, an empty field keeping;
+its Undo states each fact before the batch, read by `fact_change` in
+`games/reads/playergame_facts.py`, which #1256's Undo reads too. Contract is
+[Edit many games](docs/superpowers/specs/2026-09-28-issue-1270-bulk-game-edit-design.md).
 
 **Multi-game Purchase is *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. Humble Bundle). Independently-refundable multi-item orders (e.g.
