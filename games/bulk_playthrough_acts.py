@@ -37,6 +37,7 @@ from games.events.playthrough import (
 from games.models import PlayerGameStatus, Playthrough, UserLibrary
 from games.reads.calendar import calendar_today
 from games.reads.events import aggregate_events
+from games.reads.playergame_facts import status_change
 from games.reads.playthrough_endpoints import stated_completion, stated_start
 from games.writes.answers import answered
 from games.writes.playergame import record_facts
@@ -299,24 +300,11 @@ def _refuse_unless_this_batch_wrote_it(
         )
 
 
-def _status_before(run: Playthrough, batch_id: uuid.UUID) -> PlayerGameStatus | None:
-    """The word the game held before the batch.
-
-    None where the batch changed none. Unplayed where the stream states
-    no earlier word, which is what a tracked row holds.
-    """
-    events = [
-        event
-        for event in aggregate_events(run.library, run.player_game_id)
-        if event.event_type == PLAYERGAME_STATUS_CHANGED.event_type
-    ]
-    ours = next((event for event in events if event.correlation_id == batch_id), None)
-    if ours is None:
-        return None
-    earlier = [event for event in events if event.sequence < ours.sequence]
-    if not earlier:
-        return PlayerGameStatus.UNPLAYED
-    return PlayerGameStatus(earlier[-1].payload["status"])
+def _word_before(run: Playthrough, batch_id: uuid.UUID) -> PlayerGameStatus | None:
+    """Read before the void: a defect leaves nothing half-undone."""
+    with answered("game"):
+        change = status_change(run.library, run.player_game_id, batch_id)
+    return None if change is None else change.before
 
 
 def _stated_since(run: Playthrough, batch_id: uuid.UUID, undoing: uuid.UUID) -> bool:
@@ -343,6 +331,7 @@ def _stated_since(run: Playthrough, batch_id: uuid.UUID, undoing: uuid.UUID) -> 
 def _put_the_status_back(
     actor: User,
     run: Playthrough,
+    before: PlayerGameStatus | None,
     *,
     undoes: uuid.UUID,
     idempotency_key: IdempotencyKey,
@@ -350,7 +339,6 @@ def _put_the_status_back(
     name: str,
 ) -> None:
     """State the word that stood before the batch."""
-    before = _status_before(run, undoes)
     if before is None:
         return
     if _stated_since(run, undoes, correlation_id):
@@ -389,6 +377,7 @@ def void_start_one(
             _refuse_unless_this_batch_wrote_it(
                 run, undoes, _START_FAMILY, PLAYTHROUGH_STARTED.event_type
             )
+    before = _word_before(run, undoes)
     outcome = RowOutcome.of(
         void_start(
             actor,
@@ -401,6 +390,7 @@ def void_start_one(
     _put_the_status_back(
         actor,
         run,
+        before,
         undoes=undoes,
         idempotency_key=idempotency_key,
         correlation_id=correlation_id,
@@ -424,6 +414,7 @@ def void_completion_one(
             _refuse_unless_this_batch_wrote_it(
                 run, undoes, _COMPLETION_FAMILY, PLAYTHROUGH_COMPLETED.event_type
             )
+    before = _word_before(run, undoes)
     outcome = RowOutcome.of(
         void_completion(
             actor,
@@ -436,6 +427,7 @@ def void_completion_one(
     _put_the_status_back(
         actor,
         run,
+        before,
         undoes=undoes,
         idempotency_key=idempotency_key,
         correlation_id=correlation_id,

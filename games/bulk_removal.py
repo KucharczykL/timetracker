@@ -23,6 +23,7 @@ from games.bulk_actions import (
     Resolution,
     RowOutcome,
 )
+from games.bulk_games import GAME_GONE, game_scope
 from games.bulk_narrowing import narrowed
 from games.bulk_runs import RUN_PREVIEW, run_resolution, run_scope
 from games.bulk_sessions import lost, session_resolution, session_scope
@@ -30,7 +31,6 @@ from games.events.dispatch import RowNotHeld
 from games.events.idempotency import IdempotencyKey
 from games.filters import (
     parse_device_filter,
-    parse_game_filter,
     parse_historical_playtime_filter,
 )
 from games.models import (
@@ -59,7 +59,6 @@ from games.writes.playthrough import remove_run, restore_run
 RECORD_SUBJECT: SubjectNoun = "historical playtime"
 
 RECORD_GONE = "One of the records is no longer available, so it was left as it is."
-GAME_GONE = "One of the games is no longer available, so it was left as it is."
 DEVICE_GONE = "One of the devices is no longer available, so it was left as it is."
 
 
@@ -266,13 +265,6 @@ RECORD_PREVIEW: tuple[PreviewColumn[HistoricalPlaytime], ...] = (
 
 
 # ── Games ────────────────────────────────────────────────────────────────────
-
-
-def game_scope(library: UserLibrary, filter_json: FilterJson) -> QuerySet[Game]:
-    """The list's own read: shared catalog games it tracks included."""
-    return narrowed(
-        Game.objects.tracked_by(library), library, filter_json, parse_game_filter
-    )
 
 
 def _partly_removed(

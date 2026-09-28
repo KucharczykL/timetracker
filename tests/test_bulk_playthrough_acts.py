@@ -40,7 +40,7 @@ from games.views.bulk import (
     STATEMENT_FIELD,
     TOKEN_FIELD,
 )
-from games.writes.playergame import new_correlation_id, record_facts
+from games.writes.playergame import new_correlation_id, record_facts, track_game
 from timetracker.temporal import TemporalValue
 
 pytestmark = [pytest.mark.untracked_games, pytest.mark.django_db(transaction=True)]
@@ -58,14 +58,21 @@ def client_in(client, owned_user):
     return client
 
 
-@pytest.fixture
-def game(owned_library):
-    return Game.objects.create(library=owned_library, name="Outer Wilds")
+def _tracked(user, name) -> Game:
+    """Through the command: an Undo reads the stream."""
+    game = Game.objects.create(library=user.library, name=name)
+    track_game(user, game, correlation_id=new_correlation_id())
+    return game
 
 
 @pytest.fixture
-def second_game(owned_library):
-    return Game.objects.create(library=owned_library, name="Tunic")
+def game(owned_user):
+    return _tracked(owned_user, "Outer Wilds")
+
+
+@pytest.fixture
+def second_game(owned_user):
+    return _tracked(owned_user, "Tunic")
 
 
 def some(*runs) -> str:
@@ -391,6 +398,21 @@ def test_a_restated_endpoint_refuses_the_undo(
     run.refresh_from_db()
     assert run.started == OTHER_DAY
     assert CHANGED_SINCE in said(undone)
+
+
+def test_a_stream_with_no_creation_ends_the_undo_before_the_void(
+    client_in, owned_library
+):
+    """A projection row written by hand has no stream behind it."""
+    game = Game.objects.create(library=owned_library, name="Written by hand")
+    run = tracked_run(owned_library, game)
+    token, _ = _run(client_in, START_URL, run)
+
+    _undo(client_in, token)
+
+    run.refresh_from_db()
+    assert run.started is not None
+    assert _statused(game) == PlayerGameStatus.PLAYED
 
 
 def test_an_undo_pressed_twice_is_already_so(client_in, owned_library, game):

@@ -188,6 +188,7 @@ class GameQuerySet(RemovableLibraryQuerySet):
             .annotate(
                 tracked_status=F("tracked__status"),
                 tracked_mastered=F("tracked__mastered"),
+                tracked_excluded_from_unfinished=F("tracked__excluded_from_unfinished"),
             )
         )
 
@@ -244,10 +245,11 @@ def _validate_related_library(
 class Game(ReferencedRow):
     if TYPE_CHECKING:
         #: Annotations, not columns: GameQuerySet.tracked_by() puts the
-        #: library's two projection facts here, and only a queryset from
+        #: library's three projection facts here, and only a queryset from
         #: it carries them.
         tracked_status: str
         tracked_mastered: bool
+        tracked_excluded_from_unfinished: bool
 
     #: Columns gone, refused by name in comparisons.
     RETIRED_COMPARISON_COLUMNS: ClassVar[dict[str, str]] = {
@@ -1499,7 +1501,6 @@ class PlayerGame(ProjectionModel):
         choices=PlayerGameStatus,
         default=PlayerGameStatus.UNPLAYED,
     )
-    #: No event states it: a constant default.
     mastered = models.BooleanField(default=False)
     #: An explicit preference, never inferred from status.
     excluded_from_unfinished = models.BooleanField(default=False)

@@ -27,8 +27,9 @@ def tray_actions(
     """Each named act, as the line renders it.
 
     Declaration order is priority order: the line lays the acts out in
-    the order stated here and overflows the rightmost first. State them
-    in the order the row's menu states them, so one act keeps one place.
+    the order stated here and overflows the rightmost first. State the
+    acts the row's menu also offers in its order, so one act keeps one
+    place.
 
     A name no act declares is a defect, not a quiet omission.
     """
