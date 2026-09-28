@@ -55,7 +55,7 @@ refused. It restates each changed fact, over a later change, as #1211's
 inverse does, and logs a fact it writes over. A second Undo answers
 `Unchanged`.
 
-The #1256 Undo reads the status through `facts_before`, before its void, so
+The #1256 Undo reads the status through `fact_change`, before its void, so
 a defect leaves no half-undone row.
 
 Nothing reads the excluded flag yet; #1315 gives it readers.
