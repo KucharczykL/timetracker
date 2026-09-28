@@ -25,11 +25,10 @@ from games.commands.historical_playtime import (
     RestoreHistoricalPlaytime,
 )
 from games.commands.playergame import (
+    RecordPlayerGameFacts,
     RemovePlayerGame,
     RestorePlayerGame,
     SetPlayerGameExcludedFromUnfinished,
-    SetPlayerGameMastered,
-    SetPlayerGameStatus,
     TrackGame,
 )
 from games.commands.playersession import (
@@ -138,18 +137,31 @@ def build_stream(user, library) -> list[DispatchedCommand]:
 
     first_run = Playthrough.objects.get(player_game__game=first)
     run(
-        SetPlayerGameStatus(game_id=first.pk, status=PlayerGameStatus.PLAYED),
+        RecordPlayerGameFacts(
+            game_id=first.pk, status=PlayerGameStatus.PLAYED, mastered=None
+        ),
         "status-first",
     )
     #: A second word, so the column is no constant.
     run(
-        SetPlayerGameStatus(game_id=second.pk, status=PlayerGameStatus.ABANDONED),
+        RecordPlayerGameFacts(
+            game_id=second.pk, status=PlayerGameStatus.ABANDONED, mastered=None
+        ),
         "status-second",
     )
-    run(SetPlayerGameMastered(game_id=first.pk, mastered=True), "mastered-first")
+    run(
+        RecordPlayerGameFacts(game_id=first.pk, status=None, mastered=True),
+        "mastered-first",
+    )
     #: On, then off: the false is stated, not defaulted.
-    run(SetPlayerGameMastered(game_id=second.pk, mastered=True), "mastered-second-on")
-    run(SetPlayerGameMastered(game_id=second.pk, mastered=False), "mastered-second-off")
+    run(
+        RecordPlayerGameFacts(game_id=second.pk, status=None, mastered=True),
+        "mastered-second-on",
+    )
+    run(
+        RecordPlayerGameFacts(game_id=second.pk, status=None, mastered=False),
+        "mastered-second-off",
+    )
     run(
         SetPlayerGameExcludedFromUnfinished(
             game_id=first.pk, excluded_from_unfinished=True
@@ -531,7 +543,9 @@ def build_neighbour(user, library) -> None:
     for command, key in (
         (TrackGame(game_id=game.pk), "neighbour-track"),
         (
-            SetPlayerGameStatus(game_id=game.pk, status=PlayerGameStatus.COMPLETED),
+            RecordPlayerGameFacts(
+                game_id=game.pk, status=PlayerGameStatus.COMPLETED, mastered=None
+            ),
             "neighbour-status",
         ),
     ):
