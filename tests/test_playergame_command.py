@@ -201,7 +201,7 @@ class StatedFact(NamedTuple):
     stated: dict[str, Any]
     #: What a freshly tracked row already holds.
     held: dict[str, Any]
-    #: The other fact, changed first so it is no default.
+    #: Set first, so it is no default.
     other: dict[str, Any]
     event_type: str
     payload: dict[str, Any]

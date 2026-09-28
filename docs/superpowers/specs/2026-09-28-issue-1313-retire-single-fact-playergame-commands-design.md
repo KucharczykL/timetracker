@@ -3,73 +3,67 @@
 Issue [#1313](https://github.com/KucharczykL/timetracker/issues/1313). The code
 is in `games/commands/playergame.py` and `games/events/dispatch.py`.
 
+## The command
+
 `RecordPlayerGameFacts` is the one command that appends
 `library.playergame.status_changed` and `library.playergame.mastered_changed`.
-Every caller reaches it through `record_facts` in `games/writes/playergame.py`.
+Each caller reaches it through `record_facts` in `games/writes/playergame.py`.
 
-## Retired commands
-
-`SetPlayerGameStatus` and `SetPlayerGameMastered` are removed, with their
-`CommandName` members `PLAYERGAME_SET_STATUS` and `PLAYERGAME_SET_MASTERED`.
-No production code dispatched them.
-
-Two single-fact commands were the alternative. They are refused: the game form
-states both facts at each save, and two commands would need two idempotency
-keys, so one save could commit half. One command also gives one place to a rule
-about status, such as the walk-back rule of #1034.
-
-## Idempotency records
-
-A `LibraryIdempotencyRecord` keeps a SHA-256 digest of the canonical input, not
-the command name. Nothing reads a name back. A key issued under a retired name
-replays by key and digest, as before.
+The command states a status, a mastery, or both. The game form states both
+facts at each save. One command gives one idempotency key to one save, so a
+save cannot commit half. A rule about status has one place: the `build()`
+method of this command.
 
 ## Retired names
 
-A retired name is never used again. A new command with a retired name and equal
-fields would give an equal digest, and an old key would replay as the new
-command. No stored record holds either retired name, because no production code
-dispatched them: the guard is a precaution for the next retirement.
+`library.playergame.set_status` and `library.playergame.set_mastered` are
+retired. `CommandName` does not hold them.
 
-`RETIRED_COMMAND_NAMES` in `games/events/dispatch.py` holds
-`library.playergame.set_status` and `library.playergame.set_mastered`.
-`Command.__init_subclass__` refuses a command whose name is in the set. The
-check comes after the vocabulary check, so the name has a value, and before the
-registry check, so a refused class does not register. It covers each
-vocabulary, including the ones tests declare. A test in
-`tests/test_command_dispatch.py` keeps each `CommandName` member out of the set,
-because a member that no command claims does not reach `__init_subclass__`.
+A retired name is never used again. The idempotency fingerprint is a SHA-256
+digest of the command name and its fields. A new command with a retired name
+and equal fields gives an equal digest. An old key then replays as the new
+command.
 
-A name is removed from `CommandName` and added to the set. It is not renamed
-and not reused.
+`RETIRED_COMMAND_NAMES` in `games/events/dispatch.py` holds the retired names.
+`Command.__init_subclass__` refuses a command with a name in this set. The check
+is after the vocabulary check, so the name has a value. The check is before the
+registry check, so a refused class does not register. The check applies to each
+vocabulary, also to the vocabularies that tests declare.
+
+A member of `CommandName` that no command claims does not go through
+`__init_subclass__`. A test in `tests/test_command_dispatch.py` therefore keeps
+each `CommandName` value out of the set.
+
+To retire a command, remove its member from `CommandName` and add its value to
+`RETIRED_COMMAND_NAMES`. Do not rename a member.
+
+## Idempotency records
+
+A `LibraryIdempotencyRecord` keeps the digest, not the command name. No code
+reads a command name back. A key replays by key and digest.
 
 ## Tests
 
-The status and mastery tests of `tests/test_playergame_command.py` were twins.
-Six tests take a `fact` parameter with the cases `status` and `mastery`, and
-dispatch `RecordPlayerGameFacts` with the other fact `None`:
+`tests/test_playergame_command.py` has one set of fact tests. Each test has the
+cases `status` and `mastery`. Each case states one fact and sets the other fact
+to `None`. The tests examine these rules:
 
-- a fact records its event and projects it;
-- a fact leaves the rest of the row alone;
-- a fact for an untracked game is refused, and no event is appended;
-- a fact for a game another library tracks is refused;
-- a fact that already holds is `Unchanged`, and no event is appended;
-- one idempotency key records one change.
+- A fact appends its event and projects it.
+- A fact does not change the other columns of the row.
+- A fact for an untracked game is refused. No event is appended.
+- A fact for a game that another library tracks is refused.
+- A fact that already holds is `Unchanged`. No event is appended.
+- One idempotency key records one change.
 
-The tests use `dispatch`, not `record_facts`, because `record_facts` tracks an
-untracked game and a refusal test would pass for the wrong reason. Each case
-gives its event type, payload, row attribute and values as data. The status
-day and the mastery event without a time keep their existing tests.
+The tests use `dispatch`. They do not use `record_facts`, because
+`record_facts` tracks an untracked game. A refusal test through `record_facts`
+passes for the wrong reason.
 
-The setup dispatches in the mastery, exclusion and removal tests also use
-`RecordPlayerGameFacts`. The removal test states both facts in one dispatch.
+`tests/test_projection_replay_gate.py` states each fact through
+`RecordPlayerGameFacts`. The gate asserts the set of event types, so it shows
+that both events are appended.
 
-`tests/test_projection_replay_gate.py` dispatches `RecordPlayerGameFacts` with
-the other fact `None`, in `build_stream` and in `build_neighbour`. The keys and
-the order do not change, and a `False` mastery is still stated. The gate asserts
-the set of event types, so it proves that both events are still appended.
+## Limits
 
-## Out of scope
-
-The walk-back rule stays in #1034. `SetPlayerGameExcludedFromUnfinished` has a
-production caller and stays. Earlier specs keep the old names as history.
+`SetPlayerGameExcludedFromUnfinished` states a different fact and stays. The
+walk-back rule of #1034 goes into `RecordPlayerGameFacts.build()`.

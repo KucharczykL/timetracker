@@ -79,8 +79,7 @@ class CommandName(CommandVocabulary):
     The readable inventory: one grep, and no entry that is not a thing the
     system does. A test double names itself from its own vocabulary.
 
-    A retired member is deleted and its value joins RETIRED_COMMAND_NAMES:
-    it is never renamed or reused.
+    Retired values move to RETIRED_COMMAND_NAMES.
     """
 
     PLAYERGAME_TRACK = "library.playergame.track"
@@ -264,9 +263,10 @@ def validate_idempotency_key(key: IdempotencyKey) -> None:
 
 _COMMAND_REGISTRY: dict[CommandNameValue, DefinitionSite] = {}
 
-#: Removed from CommandName, never reused: an equal name over equal
-#: fields is an equal digest, so an old key would replay as the new
-#: command.
+#: Retired command names: never reused.
+#:
+#: An equal name over equal fields is an equal digest,
+#: so an old key would replay as the new command.
 RETIRED_COMMAND_NAMES: frozenset[CommandNameValue] = frozenset(
     {
         "library.playergame.set_status",

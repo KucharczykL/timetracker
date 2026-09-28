@@ -705,7 +705,7 @@ def test_the_allowlist_holds_real_commands_only():
 
 
 def test_the_allowlist_holds_no_retired_name():
-    #: A member no command claims never reaches __init_subclass__.
+    #: Unclaimed members skip __init_subclass__.
     assert not {name.value for name in CommandName} & RETIRED_COMMAND_NAMES
 
 
