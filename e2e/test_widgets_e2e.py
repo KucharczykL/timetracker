@@ -568,7 +568,7 @@ def test_quick_bar_preset_pick_navigates_to_filtered_list(
     list URL carrying ?filter= — the bar consumer's pick semantics."""
     from games.models import FilterPreset
 
-    platform = Platform.objects.create(name="PC", icon="pc", library=e2e_library)
+    platform = Platform.objects.create(name="PC", icon="steam", library=e2e_library)
     Game.objects.create(name="Halo", platform=platform, library=e2e_library)
     Game.objects.create(name="Doom", platform=platform, library=e2e_library)
     stored_filter = {"name": {"modifier": "INCLUDES", "value": "halo"}}

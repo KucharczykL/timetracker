@@ -44,7 +44,7 @@ CHECKBOX_PLACEMENT = """
 def one_game_played(e2e_library):
     """One game, two sessions, one of them on a device."""
     platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="pc", group="PC"
+        library=e2e_library, name="PC", icon="steam", group="PC"
     )
     game = Game.objects.create(library=e2e_library, name="Tunic", platform=platform)
     device = create_device(library=e2e_library, name="Steam Deck")

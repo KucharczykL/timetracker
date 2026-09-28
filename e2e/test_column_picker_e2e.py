@@ -16,7 +16,7 @@ STARTED_AT = dt.datetime(2026, 3, 5, 10, tzinfo=dt.UTC)
 @pytest.fixture
 def one_session(e2e_library):
     platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="pc", group="PC"
+        library=e2e_library, name="PC", icon="steam", group="PC"
     )
     game = Game.objects.create(library=e2e_library, name="Tunic", platform=platform)
     device = create_device(library=e2e_library, name="Steam Deck")

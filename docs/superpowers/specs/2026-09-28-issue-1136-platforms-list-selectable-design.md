@@ -65,8 +65,9 @@ filter.
 - Remove previews the games, releases and purchases that name each
   platform (`games/reads/platform_departures.py`); the per-row
   confirmation shows the same numbers.
-- Edit previews Platform, Group and Icon. Group is a text box with the
-  groups the library sees as a `<datalist>`, and ⊘ for no group.
+- Edit previews Platform, Group and Icon. Group is a search-select over
+  the groups the library sees, which takes a typed group too, and ⊘
+  for no group.
 
 ## The icon picker
 
@@ -76,8 +77,7 @@ panel is a grid of native radios, one tile an icon, named for screen
 readers and on hover. The `choice-grid` behavior focuses the checked
 tile on open, reflects the arrow keys' choice on the trigger, and
 closes on a click, Enter or Space. The bulk Edit leads with a Keep
-tile; the Platform form starts on the platform's icon and keeps an
-older slug pickable.
+tile; the Platform form starts on the platform's icon.
 
 ## Not in this issue
 

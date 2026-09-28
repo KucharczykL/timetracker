@@ -12,7 +12,7 @@ class PurchaseRelatedGameTest(TestCase):
         self.library = (
             get_user_model().objects.create_user(username="purchase-related").library
         )
-        self.platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+        self.platform = Platform.objects.create(name="PC", icon="steam", group="PC")
         self.base_game = Game.objects.create(
             library=self.library, name="Base Game", platform=self.platform
         )

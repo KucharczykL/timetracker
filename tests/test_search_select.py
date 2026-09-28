@@ -956,7 +956,7 @@ class PresetsMemberTest(unittest.TestCase):
     def test_one_box_filters_and_names_a_save(self):
         """The preset box's create row is the save; no second box."""
         widget = _tag_around(self.html, 'name="preset"')
-        self.assertIn('create-event="true"', widget)
+        self.assertIn('create="event"', widget)
         self.assertIn(f'create-verb="{SAVE_PRESET_VERB}"', widget)
         self.assertIn(f'replace-verb="{OVERWRITE_PRESET_VERB}"', widget)
         self.assertNotIn("create-url=", widget)

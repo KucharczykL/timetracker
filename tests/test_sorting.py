@@ -101,7 +101,7 @@ def _find(sort=None):
 
 @pytest.fixture
 def two_games(owned_library):
-    platform = Platform.objects.create(name="P", icon="p")
+    platform = Platform.objects.create(name="P", icon="steam")
     alpha = Game.objects.create(
         library=owned_library, name="Alpha", sort_name="Alpha", platform=platform
     )
@@ -132,7 +132,7 @@ class TestApplySortGames:
         self, owned_library
     ):
         """Changing explicit NULLS LAST ordering would break this contract."""
-        platform = Platform.objects.create(name="P", icon="p")
+        platform = Platform.objects.create(name="P", icon="steam")
         unknown = Game.objects.create(
             library=owned_library, name="Unknown", platform=platform
         )
@@ -155,7 +155,7 @@ class TestApplySortGames:
 
     def test_equal_sort_values_use_primary_key_tiebreaker(self, owned_library):
         """Removing the stable secondary ordering would break this contract."""
-        platform = Platform.objects.create(name="P", icon="p")
+        platform = Platform.objects.create(name="P", icon="steam")
         first = Game.objects.create(
             library=owned_library, name="First", platform=platform
         )
@@ -177,7 +177,7 @@ class TestApplySortGames:
         self, owned_library
     ):
         """Changing aggregate NULL ordering would break this contract."""
-        platform = Platform.objects.create(name="P", icon="p")
+        platform = Platform.objects.create(name="P", icon="steam")
         unfinished = Game.objects.create(
             library=owned_library, name="Unfinished", platform=platform
         )
@@ -1008,7 +1008,7 @@ def two_devices(owned_library):
 @pytest.fixture
 def two_platforms(owned_library):
     switch = Platform.objects.create(
-        library=owned_library, name="Switch", icon="switch", group="Nintendo"
+        library=owned_library, name="Switch", icon="gog", group="Nintendo"
     )
     playstation = Platform.objects.create(
         library=owned_library, name="PS5", icon="ps5", group="Sony"

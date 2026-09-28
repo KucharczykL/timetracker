@@ -92,7 +92,7 @@ from common.components.domain import (
     SessionDeviceSelector,
     _resolve_name_with_icon,
 )
-from common.components.elements import Datalist, Footer, LinkTag
+from common.components.elements import Footer, LinkTag
 from common.components.filters import (
     FilterFieldPicker,
     NumberFilter,
@@ -247,15 +247,19 @@ from common.components.search_field import (
 from common.components.search_select import (
     DEFAULT_PREFETCH,
     ComboboxDropdown,
+    CreateRow,
+    EmitCreate,
     FilterSelect,
     FilterSelectLayout,
     LabeledOption,
     NoneLabel,
     OptionGroup,
+    PostCreate,
     PresetPanel,
     PresetSelect,
     SearchSelect,
     SearchSelectOption,
+    SelectTyped,
     searchselect_selected,
 )
 from common.components.sectioned_page import (
@@ -357,8 +361,8 @@ __all__ = [
     "ControlLink",
     "CopyControl",
     "CopyableFactValue",
+    "CreateRow",
     "CsrfInput",
-    "Datalist",
     "DatePicker",
     "DatePickerCalendar",
     "DatePickerField",
@@ -389,6 +393,7 @@ __all__ = [
     "Element",
     "EllipsisOrientation",
     "EllipsisTrigger",
+    "EmitCreate",
     "EmptyState",
     "ExternalReferenceLinks",
     "ExternalScript",
@@ -453,6 +458,7 @@ __all__ = [
     "Popover",
     "PopoverIf",
     "PopupKind",
+    "PostCreate",
     "PostedName",
     "PresetPanel",
     "PresetSelect",
@@ -476,6 +482,7 @@ __all__ = [
     "SegmentedField",
     "Select",
     "SelectDropdown",
+    "SelectTyped",
     "SelectionAction",
     "SelectionDeclaration",
     "SelectionFields",

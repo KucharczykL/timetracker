@@ -23,7 +23,7 @@ STARTED_ON = dt.date(2026, 3, 5)
 def one_run(e2e_library) -> Playthrough:
     """One game, one started run."""
     platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="pc", group="PC"
+        library=e2e_library, name="PC", icon="steam", group="PC"
     )
     game = Game.objects.create(library=e2e_library, name="Tunic", platform=platform)
     run = tracked_run(e2e_library, game)

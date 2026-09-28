@@ -46,7 +46,7 @@ class RowSelectionNameTest(TestCase):
 
     def test_a_game_row_clips_its_name_apart_from_icon_and_tooltip(self) -> None:
         platform = Platform.objects.create(
-            library=self.user.library, name="PC", icon="pc", group="PC"
+            library=self.user.library, name="PC", icon="steam", group="PC"
         )
         create_tracked_game(
             self.user.library,

@@ -14,6 +14,7 @@ from django.core.serializers.base import DeserializationError
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 
+from common.platform_icons import canonical_icon
 from games.backfill.device import DeviceConversionRefused, convert_devices
 from games.conversion import _request_conversion_for_locked_state
 from games.events.rebuild import (
@@ -424,8 +425,7 @@ class Command(BaseCommand):
                     f"{current_sequence}, but holds {len(sequences)} event(s)."
                 )
 
-    @staticmethod
-    def _load_platforms(records, library):
+    def _load_platforms(self, records, library):
         """Create or reuse each fixture platform, returning fixture id → real id.
 
         Both platform references in the fixture name the target's primary key,
@@ -441,10 +441,14 @@ class Command(BaseCommand):
         `yaml.safe_dump` before deserialization, which cannot represent a UUID.
         """
         platform_uuids = {}
+        renamed_icons = 0
         for record in records:
             if record["model"] != "games.platform":
                 continue
             fields = record["fields"]
+            stated_icon = fields.get("icon", "")
+            icon = canonical_icon(stated_icon)
+            renamed_icons += icon != stated_icon
             owner = None if fields.get("library") is None else library
             platform = Platform.objects.filter(
                 library=owner,
@@ -457,7 +461,7 @@ class Command(BaseCommand):
                         library=owner,
                         name=fields["name"],
                         group=fields.get("group", ""),
-                        icon=fields.get("icon", ""),
+                        icon=icon,
                     )
                 except (IntegrityError, ValidationError) as error:
                     raise CommandError(
@@ -470,6 +474,13 @@ class Command(BaseCommand):
             fixture_identity = record.get("pk")
             if fixture_identity is not None:
                 platform_uuids[str(fixture_identity)] = str(platform.pk)
+        if renamed_icons:
+            self.stdout.write(
+                self.style.WARNING(
+                    f"{renamed_icons} sample platform(s) named an unlisted icon; "
+                    "each took its glyph or unspecified."
+                )
+            )
         return platform_uuids
 
     @staticmethod

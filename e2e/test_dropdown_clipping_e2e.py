@@ -32,7 +32,7 @@ def test_device_dropdown_not_clipped_on_short_table(
     page = authenticated_page
     page.set_viewport_size({"width": 1280, "height": 800})
     platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="pc", group="PC"
+        library=e2e_library, name="PC", icon="steam", group="PC"
     )
     game = Game.objects.create(library=e2e_library, name="Tunic")
     game.platform = platform
@@ -89,7 +89,7 @@ def test_device_dropdown_flips_up_near_viewport_bottom(
     page = authenticated_page
     page.set_viewport_size({"width": 1280, "height": 760})
     platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="pc", group="PC"
+        library=e2e_library, name="PC", icon="steam", group="PC"
     )
     game = Game.objects.create(library=e2e_library, name="Tunic")
     game.platform = platform

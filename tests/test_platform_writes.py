@@ -143,6 +143,23 @@ def test_a_group_whose_name_is_taken_refuses(owned_library, amiga):
     assert _reread(amiga).group == "Commodore"
 
 
+def test_an_unlisted_icon_is_a_defect_not_a_write(amiga):
+    with pytest.raises(ValueError):
+        _edited(amiga, icon="ps1")
+
+    assert _reread(amiga).icon == "unspecified"
+
+
+def test_an_undo_writing_an_unlisted_icon_is_a_defect(owned_library, amiga):
+    batch = _edited(amiga, icon="physical")
+    BatchChange.objects.filter(batch=batch, field="icon").update(earlier="ps1")
+
+    with pytest.raises(ValueError):
+        _undo(amiga, batch, EDIT)
+
+    assert _reread(amiga).icon == "physical"
+
+
 # ── Undo ─────────────────────────────────────────────────────────────────────
 
 

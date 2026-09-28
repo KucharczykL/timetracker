@@ -37,7 +37,7 @@ def test_device_patch_passes_csrf(authenticated_page: Page, live_server, e2e_lib
     from games.models import Game, Platform
 
     platform = Platform.objects.create(
-        library=e2e_library, name="TestPlatform", icon="pc"
+        library=e2e_library, name="TestPlatform", icon="steam"
     )
     game = Game.objects.create(library=e2e_library, name="Test Game", platform=platform)
     desktop = create_device(library=e2e_library, name="Desktop")

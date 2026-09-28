@@ -101,7 +101,7 @@ def test_desktop_overflow_hover_focus_and_short_name_noop(
 ):
     page = authenticated_page
     platform = Platform.objects.create(
-        name="PC", icon="pc", group="PC", library=e2e_library
+        name="PC", icon="steam", group="PC", library=e2e_library
     )
     Game.objects.create(name=LONG_NAME, platform=platform, library=e2e_library)
     Game.objects.create(name="Short", platform=platform, library=e2e_library)
@@ -151,7 +151,7 @@ def test_different_sort_name_moves_into_the_name_tooltip(
 ):
     page = touch_page
     platform = Platform.objects.create(
-        name="PC", icon="pc", group="PC", library=e2e_library
+        name="PC", icon="steam", group="PC", library=e2e_library
     )
     display_name = "Short Display Name"
     sort_name = "Display Name, Short"
@@ -233,7 +233,7 @@ def test_table_constraints_hold_at_mobile_and_intermediate_widths(
 ):
     page = authenticated_page
     platform = Platform.objects.create(
-        name="PC", icon="pc", group="PC", library=e2e_library
+        name="PC", icon="steam", group="PC", library=e2e_library
     )
     Game.objects.create(name=LONG_NAME, platform=platform, library=e2e_library)
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
@@ -296,7 +296,7 @@ def test_desktop_name_column_does_not_absorb_the_tables_slack(
     """
     page = authenticated_page
     platform = Platform.objects.create(
-        name="PC", icon="pc", group="PC", library=e2e_library
+        name="PC", icon="steam", group="PC", library=e2e_library
     )
     Game.objects.create(name=LONG_NAME, platform=platform, library=e2e_library)
     Game.objects.create(name="Short", platform=platform, library=e2e_library)
@@ -316,7 +316,7 @@ def test_touch_resize_closes_open_panel_when_text_starts_fitting(
 ):
     page = touch_page
     platform = Platform.objects.create(
-        name="PC", icon="pc", group="PC", library=e2e_library
+        name="PC", icon="steam", group="PC", library=e2e_library
     )
     name = "Medium Length Name For Resize"
     Game.objects.create(name=name, platform=platform, library=e2e_library)
@@ -352,7 +352,7 @@ def test_multi_game_purchase_has_one_always_available_informational_tooltip(
 ):
     page = touch_page
     platform = Platform.objects.create(
-        name="PC", icon="pc", group="PC", library=e2e_library
+        name="PC", icon="steam", group="PC", library=e2e_library
     )
     first = Game.objects.create(
         name="Bundle Game One", platform=platform, library=e2e_library
@@ -396,7 +396,7 @@ def test_informative_reveal_is_visible_and_clear_of_the_name_on_desktop(
     paints underneath it."""
     page = authenticated_page
     platform = Platform.objects.create(
-        name="PC", icon="pc", group="PC", library=e2e_library
+        name="PC", icon="steam", group="PC", library=e2e_library
     )
     Game.objects.create(
         name=LONG_NAME,
@@ -422,7 +422,7 @@ def test_fallback_font_is_measured_when_webfonts_are_blocked(
         username="fallback-font", password="secret123"
     )
     platform = Platform.objects.create(
-        name="PC", icon="pc", group="PC", library=fallback_user.library
+        name="PC", icon="steam", group="PC", library=fallback_user.library
     )
     Game.objects.create(
         name=LONG_NAME, platform=platform, library=fallback_user.library
@@ -458,7 +458,7 @@ def test_navbar_menu_name_is_hover_only_and_has_no_nested_button(
 ):
     page = authenticated_page
     platform = Platform.objects.create(
-        name="PC", icon="pc", group="PC", library=e2e_library
+        name="PC", icon="steam", group="PC", library=e2e_library
     )
     game = Game.objects.create(name=LONG_NAME, platform=platform, library=e2e_library)
     session_row(game, started_at=timezone.now())

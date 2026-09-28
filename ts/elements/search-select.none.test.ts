@@ -70,7 +70,10 @@ function build(options: MountOptions = {}): NoneHost {
   host.setAttribute("multi", "false");
   const noneLabel = options.noneLabel ?? "No device";
   if (noneLabel) host.setAttribute("none-label", noneLabel);
-  if (options.createRow) host.setAttribute("create-url", "/api/devices/");
+  if (options.createRow) {
+    host.setAttribute("create", "post");
+    host.setAttribute("create-url", "/api/devices/");
+  }
   for (const [attribute, value] of Object.entries(options.attributes ?? {})) {
     host.setAttribute(attribute, value);
   }

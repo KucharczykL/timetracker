@@ -18,6 +18,7 @@ from django.core.management.base import CommandError
 from django.utils import timezone
 from session_rows import timed_row, tracked_run
 
+from common.platform_icons import PLATFORM_ICONS
 from games.models import (
     Device,
     ExchangeRate,
@@ -224,6 +225,17 @@ def test_committed_sample_load_owns_private_rows_and_reuses_shared_platform(owne
     assert PlayerSession.objects.filter(library=owner.library).exists()
     assert not PlayerSession.objects.exclude(library=owner.library).exists()
     assert LibraryCalendar.objects.filter(library=owner.library).exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_committed_sample_load_states_listed_icons(owner):
+    output = StringIO()
+    call_command("load_sample_data", "--user", owner.username, stdout=output)
+
+    assert "named an unlisted icon" in output.getvalue()
+    icons = set(Platform.objects.values_list("icon", flat=True))
+    assert icons <= set(PLATFORM_ICONS)
+    assert "nintendo" in icons
 
 
 def test_committed_sample_stores_promoted_uuid_identities_as_primary_keys():

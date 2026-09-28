@@ -344,7 +344,7 @@ describe("<search-select> clear ×: what a search answered", () => {
         }),
     ) as unknown as typeof window.fetchWithEvents;
     const host = mount([], {
-      attributes: { "search-url": "/api/devices/search", "create-url": "/api/devices/" },
+      attributes: { "search-url": "/api/devices/search", "create-url": "/api/devices/", create: "post" },
       staticRows: false,
       createRow: true,
     });

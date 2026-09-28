@@ -49,7 +49,7 @@ def test_add_purchase_date_field_iso_order_and_persists(
     persisted date matches what was typed."""
     page, user = authenticated_page
     platform = Platform.objects.create(
-        library=user.library, name="PC", icon="pc", group="PC"
+        library=user.library, name="PC", icon="steam", group="PC"
     )
     Game.objects.create(library=user.library, name="Alpha Game", platform=platform)
 
@@ -81,7 +81,7 @@ def test_add_purchase_date_field_mdy_order_persists_same_iso_date(
     preferences.datetime_format = "mdy_12h"
     preferences.save(update_fields=["datetime_format"])
     platform = Platform.objects.create(
-        library=user.library, name="PC", icon="pc", group="PC"
+        library=user.library, name="PC", icon="steam", group="PC"
     )
     Game.objects.create(library=user.library, name="Alpha Game", platform=platform)
 
@@ -106,7 +106,7 @@ def test_edit_purchase_date_field_prefills_from_instance(
 ):
     page, user = authenticated_page
     platform = Platform.objects.create(
-        library=user.library, name="PC", icon="pc", group="PC"
+        library=user.library, name="PC", icon="steam", group="PC"
     )
     game = Game.objects.create(
         library=user.library, name="Alpha Game", platform=platform
@@ -162,7 +162,7 @@ def test_add_playthrough_date_fields_follow_iso_profile_and_persist(
 
     page, user = authenticated_page
     platform = Platform.objects.create(
-        library=user.library, name="PC", icon="pc", group="PC"
+        library=user.library, name="PC", icon="steam", group="PC"
     )
     game = Game.objects.create(
         library=user.library, name="Alpha Game", platform=platform
@@ -189,7 +189,7 @@ def test_add_playthrough_date_fields_follow_iso_profile_and_persist(
 def test_calendar_pick_commits_value_and_closes(authenticated_page, live_server):
     page, user = authenticated_page
     platform = Platform.objects.create(
-        library=user.library, name="PC", icon="pc", group="PC"
+        library=user.library, name="PC", icon="steam", group="PC"
     )
     Game.objects.create(library=user.library, name="Alpha Game", platform=platform)
 

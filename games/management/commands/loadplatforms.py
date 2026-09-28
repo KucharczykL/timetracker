@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from django.core import serializers
+from django.core.exceptions import ValidationError
 from django.core.management.base import BaseCommand, CommandError
 
 from games.models import Platform
@@ -11,8 +12,7 @@ FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "platforms.yam
 class Command(BaseCommand):
     help = (
         "Load the platform fixture idempotently: platforms whose name already "
-        "exists are skipped, new ones are saved through Platform.save() so a "
-        "blank icon is slugified from the name."
+        "exists are skipped, new ones are saved through Platform.save(), which refuses an unlisted icon."
     )
 
     def handle(self, *args, **options):
@@ -28,7 +28,12 @@ class Command(BaseCommand):
                 if Platform.objects.filter(name=platform.name).exists():
                     skipped_count += 1
                     continue
-                platform.save()
+                try:
+                    platform.save()
+                except ValidationError as refusal:
+                    raise CommandError(
+                        f"Fixture platform {platform.name!r}: {refusal.messages[0]}"
+                    ) from refusal
                 created_count += 1
         self.stdout.write(
             self.style.SUCCESS(

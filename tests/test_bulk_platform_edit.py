@@ -8,8 +8,6 @@ from bulk_posts import act_url, posted, selection
 from django.http import QueryDict
 from django.urls import reverse
 
-from common.components.icons_generated import ICON_NODES
-from common.components.platform_icons import PLATFORM_ICONS
 from common.components.unset_field import unset_input_name
 from games.bulk_actions import BULK_ACTIONS, LedgerRows
 from games.bulk_edit import STATEMENT_UNREADABLE
@@ -84,10 +82,6 @@ def test_the_act_is_declared():
     assert EDIT_PLATFORMS.undo_rows == LedgerRows(Platform)
 
 
-def test_every_platform_icon_is_a_snippet():
-    assert set(PLATFORM_ICONS) <= set(ICON_NODES)
-
-
 # ── The statement ────────────────────────────────────────────────────────────
 
 
@@ -160,7 +154,10 @@ def test_the_placeholders_say_what_the_rows_hold(owned_library, amiga, dos):
     )
 
     assert "Keep: mixed" in html
-    assert '<option value="Commodore">' in html
+    assert 'data-value="Commodore"' in html
+    assert 'create="select"' in html
+    assert "<datalist" not in html
+    assert 'maxlength="255"' in html
 
 
 # ── A batch and its Undo ─────────────────────────────────────────────────────

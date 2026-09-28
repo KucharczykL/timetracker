@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 from uuid import UUID
 
 import django
+import pytest
 from django import forms
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, override_settings
@@ -687,6 +688,7 @@ class IconTest(unittest.TestCase):
         self.assertIn("<svg", result)
         self.assertIn("</svg>", result)
 
+    @pytest.mark.draws_unknown_icon
     def test_unavailable_icon_falls_back(self):
         result = str(components.Icon("zzz_nonexistent_platform"))
         self.assertIsInstance(result, SafeText)
@@ -3902,6 +3904,20 @@ class SelectableTableMountTest(SimpleTestCase):
         self.assertIn("filter: string;", emitted)
         self.assertIn("scope: string;", emitted)
         self.assertIn("count: number;", emitted)
+
+    def test_a_literal_prop_emits_a_string_union(self):
+        from typing import Literal, TypedDict
+
+        from common.components.custom_elements import ElementSpec, _ts_for_spec
+
+        type Mode = Literal["", "post"]
+
+        class ModeProps(TypedDict):
+            mode: Mode
+
+        emitted = _ts_for_spec(ElementSpec("mode-box", "ModeBox", ModeProps))
+        self.assertIn('mode: "" | "post";', emitted)
+        self.assertIn('mode: oneOf(el, "mode", ["", "post"] as const),', emitted)
 
     def test_the_element_scopes_a_kept_selection(self):
         """The library and the table name it: neither the next person at this

@@ -51,7 +51,7 @@ def test_quick_facet_apply_filters_the_list(
 ):
     """Picking a status in the quick bar and hitting Apply navigates with a
     flat facet-only ?filter= and the list is filtered."""
-    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="steam")
     create_tracked_game(
         e2e_library,
         "Finished Game",
@@ -97,7 +97,7 @@ def test_quick_scalar_facet_filters_sessions(
     numeric criterion on Apply and the list is filtered by it."""
     from datetime import datetime, timedelta
 
-    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="steam")
     game = Game.objects.create(
         library=e2e_library, name="Timed Game", platform=platform
     )
@@ -168,7 +168,7 @@ def test_dropdown_facet_full_flow(authenticated_page: Page, live_server, e2e_lib
     pill inside the reopened panel."""
     from datetime import datetime, timedelta
 
-    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="steam")
     picked = Game.objects.create(
         library=e2e_library, name="Picked Game", platform=platform
     )
@@ -243,7 +243,7 @@ def test_date_dropdown_facet_preset_flow(
     picking the Today preset and applying serializes a BETWEEN criterion."""
     from datetime import datetime, timedelta
 
-    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="steam")
     game = Game.objects.create(library=e2e_library, name="Doom", platform=platform)
     #: Noon UTC: near-UTC zones read one day.
     #:
@@ -312,7 +312,7 @@ def test_priority_plus_overflow_collapses_and_restores(
     Past the body cap, six facets fit: all but Duration."""
     from datetime import datetime, timedelta
 
-    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="steam")
     game = Game.objects.create(library=e2e_library, name="Doom", platform=platform)
     start = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
     long_session = session_row(
@@ -616,7 +616,7 @@ def test_a_preset_saves_the_unapplied_bar_and_loads_back(
 ):
     """One box names the save; Save stores what the bar states, applied or
     not, and never applies the bar's form."""
-    platform = Platform.objects.create(name="PC", icon="pc", library=e2e_library)
+    platform = Platform.objects.create(name="PC", icon="gog", library=e2e_library)
     Game.objects.create(name="Halo", platform=platform, library=e2e_library)
     Game.objects.create(name="Doom", platform=platform, library=e2e_library)
     page = authenticated_page

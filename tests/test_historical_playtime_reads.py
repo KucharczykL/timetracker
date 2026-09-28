@@ -199,7 +199,7 @@ def test_one_query_sums_every_window(owned_library, run, django_assert_num_queri
 
 @pytest.mark.django_db
 def test_a_record_reaches_its_platform_through_the_game(owned_library):
-    platform = Platform.objects.create(name="PC", icon="pc")
+    platform = Platform.objects.create(name="PC", icon="steam")
     played = Game.objects.create(library=owned_library, name="Tunic", platform=platform)
     unplaced = Game.objects.create(library=owned_library, name="Outer Wilds")
     record_row([tracked_run(owned_library, played)], duration=HOUR, when="2022")

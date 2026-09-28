@@ -221,7 +221,6 @@ def test_an_empty_sessions_section_offers_no_organizer(owned_library, rf, owned_
 
 
 def test_the_organizer_icon_is_its_own_glyph():
-    """`get_icon_node` answers `unspecified` for a typo, silently."""
     from common.components.icons_generated import ICON_NODES
     from common.components.primitives import get_icon_node
 

@@ -3,7 +3,7 @@
 import datetime
 import time
 import uuid
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from typing import Any
 
 from django.apps import AppConfig
@@ -14,7 +14,9 @@ from django.core.checks import CheckMessage, Error, Tags, register
 from django.db import models
 from django.utils import timezone
 
+from common.components.icons_generated import ICON_NODES
 from common.criteria import FilterError, declared_through_paths, resolve_through_path
+from common.platform_icons import PLATFORM_ICONS, PlatformIcon
 from games.models import ProjectionModel
 from games.projections import (
     stale_projection_references,
@@ -43,6 +45,28 @@ _CLOCK_FACTORIES = frozenset(
 
 #: Argless builtins returning one value every call.
 _CONSTANT_FACTORIES = frozenset({dict, list, set, tuple, frozenset, str, int, float})
+
+
+def unsnipped_platform_icons(
+    listed: Collection[PlatformIcon], drawn: Collection[str]
+) -> list[CheckMessage]:
+    """A listed icon no snippet draws."""
+    missing = sorted(set(listed) - set(drawn))
+    if not missing:
+        return []
+    return [
+        Error(
+            f"Platform icons no snippet draws: {missing}.",
+            hint="Add games/templates/icons/<slug>.html and run make gen-icons.",
+            id="games.E013",
+        )
+    ]
+
+
+@register()
+def check_platform_icons(**kwargs: Any) -> list[CheckMessage]:
+    """Every listed platform icon has a snippet."""
+    return unsnipped_platform_icons(PLATFORM_ICONS, ICON_NODES)
 
 
 @register(Tags.models)

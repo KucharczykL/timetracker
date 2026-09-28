@@ -22,7 +22,7 @@ def test_game_status_selector_opens_and_patches(
 ):
     from games.models import Game, Platform
 
-    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="steam")
     game = Game.objects.create(library=e2e_library, name="Test Game", platform=platform)
 
     page = authenticated_page
@@ -74,7 +74,7 @@ def test_session_device_selector_patches(
 ):
     from games.models import Game, Platform
 
-    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="steam")
     game = Game.objects.create(library=e2e_library, name="Test Game", platform=platform)
     desktop = create_device(library=e2e_library, name="Desktop")
     deck = create_device(library=e2e_library, name="Deck")
@@ -120,7 +120,7 @@ def test_status_selector_reverts_on_failed_patch(
     and surfaces an error toast — the server value never silently diverges."""
     from games.models import Game, Platform, PlayerGame, PlayerGameStatus
 
-    platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
+    platform = Platform.objects.create(library=e2e_library, name="PC", icon="steam")
     game = Game.objects.create(library=e2e_library, name="Test Game", platform=platform)
 
     page = authenticated_page

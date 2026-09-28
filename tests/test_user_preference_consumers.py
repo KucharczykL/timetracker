@@ -27,7 +27,7 @@ def auth_client(user):
 
 @pytest.fixture
 def game(db, user):
-    platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+    platform = Platform.objects.create(name="PC", icon="steam", group="PC")
     return Game.objects.create(library=user.library, name="Hades", platform=platform)
 
 

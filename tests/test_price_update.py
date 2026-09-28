@@ -10,7 +10,7 @@ from games.tasks import convert_library_prices
 class PurchaseNeedsPriceUpdateTest(TestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username="price-update")
-        self.platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+        self.platform = Platform.objects.create(name="PC", icon="steam", group="PC")
         self.game = Game.objects.create(
             library=self.user.library, name="Test Game", platform=self.platform
         )
