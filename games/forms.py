@@ -234,10 +234,20 @@ class PrimitiveWidgetsMixin:
         apply_primitive_widget_classes(self.fields)
 
 
+class DeviceChoiceField(forms.ModelChoiceField):
+    """A device named with how it left, where it has."""
+
+    def label_from_instance(self, obj) -> str:
+        device = cast(Device, obj)
+        option = device_option(device)
+        hint = option.get("hint")
+        return device.name if hint is None else f"{device.name} · {hint}"
+
+
 class LibraryPreferencesForm(PrimitiveWidgetsMixin, forms.Form):
     """Library-owned preferences rendered through the shared settings field kit."""
 
-    default_device = forms.ModelChoiceField(
+    default_device = DeviceChoiceField(
         queryset=Device.objects.none(),
         label="Default device",
         required=False,
@@ -250,11 +260,19 @@ class LibraryPreferencesForm(PrimitiveWidgetsMixin, forms.Form):
         devices: QuerySet[Device],
         default_device: Device | None,
     ) -> None:
+        """Offer held devices, and the stored default whatever its access.
+
+        An ended default stays the shown value, so opening the page
+        never reads as a choice of no device.
+        """
         super().__init__()
         default_device_field = cast(
             forms.ModelChoiceField, self.fields["default_device"]
         )
-        default_device_field.queryset = devices
+        offered = devices.filter(access_end_recorded_at__isnull=True)
+        if default_device is not None:
+            offered = offered | devices.filter(pk=default_device.pk)
+        default_device_field.queryset = offered
         self.initial["default_device"] = default_device
 
 

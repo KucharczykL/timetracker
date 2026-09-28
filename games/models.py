@@ -2170,7 +2170,18 @@ class UserLibraryPreferences(models.Model):
 
     @property
     def default_device(self) -> Device | None:
-        """The live default device, or none."""
+        """The default a new session names: live and still held, or none.
+
+        An ended default keeps its key, so voiding the end brings it back.
+        """
+        stored = self.stored_default_device
+        if stored is None or stored.access_end_recorded_at is not None:
+            return None
+        return stored
+
+    @property
+    def stored_default_device(self) -> Device | None:
+        """The live device the preference names, held or not."""
         if self.default_device_id is None:
             return None
         return (

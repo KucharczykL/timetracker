@@ -1609,6 +1609,11 @@ def update_user_setting(
     )
 
 
+ENDED_DEFAULT_DEVICE = (
+    "That device has left your library's hands. Choose one you still have."
+)
+
+
 @library_router.patch("/default-device", response=DefaultDeviceOut)
 def update_library_default_device(request, payload: DefaultDeviceIn):
     """Set the current library's default Device, or clear it with null.
@@ -1623,6 +1628,11 @@ def update_library_default_device(request, payload: DefaultDeviceIn):
         device = Device.objects.for_library(library).filter(pk=payload.value).first()
         if device is None:
             raise HttpError(404, "Device not found.")
+        if (
+            device.access_end_recorded_at is not None
+            and device.pk != library.preferences.default_device_id
+        ):
+            raise RowRefused(ENDED_DEFAULT_DEVICE)
     change_library_default_device(library, device)
     messages.success(request, "Default device saved")
     return {

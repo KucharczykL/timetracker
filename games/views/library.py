@@ -30,6 +30,8 @@ from common.date_time_presentation import date_time_presentation_for_request
 from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
 from common.returns import OriginUrl, UrlName, action_url
+from games.end_ways import END_WAY_LABELS
+from games.endpoints import DEVICE_ACCESS_END
 from games.filters import PurchaseFilter, filter_url
 from games.forms import LibraryPreferencesForm
 from games.models import (
@@ -39,6 +41,7 @@ from games.models import (
     Purchase,
     PurchaseConversionState,
 )
+from games.reads.endpoints import stated
 from games.reads.playtime import total_playtime
 from games.views import stats_links
 from games.views.session_reclassification import (
@@ -54,6 +57,19 @@ def _actions(
     return (
         SummaryAction("Browse", reverse(list_name)),
         SummaryAction("Add", action_url(add_name, origin=origin)),
+    )
+
+
+DEFAULT_DEVICE_HELP = "Preselected when logging a game."
+
+
+def default_device_help(stored: Device | None) -> str:
+    """What the default does, or why an ended one no longer does it."""
+    ended = None if stored is None else stated(stored, DEVICE_ACCESS_END)
+    if ended is None or ended.way is None:
+        return DEFAULT_DEVICE_HELP
+    return (
+        f"{END_WAY_LABELS[ended.way]}, so new sessions name no device. Choose another."
     )
 
 
@@ -107,17 +123,17 @@ def library(request: HttpRequest) -> HttpResponse:
             StatisticCard("Devices", device_count, href=reverse("games:list_devices")),
         ),
     )
+    stored_default = library.preferences.stored_default_device
     default_device_control = LiveSettingFields(
         LibraryPreferencesForm(
-            devices=devices.order_by("name"),
-            default_device=library.preferences.default_device,
+            devices=devices.order_by("name"), default_device=stored_default
         ),
         states={
             "default_device": SettingFieldState(
                 key="default-device",
                 source=default_device_source,
                 show_source=default_device_source != default_device_normal_source,
-                help_text="Preselected when logging a game.",
+                help_text=default_device_help(stored_default),
             )
         },
         patch_url_template="/api/library/__key__",

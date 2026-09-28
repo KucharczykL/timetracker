@@ -159,7 +159,7 @@ def test_device_search_offers_ended_devices_after_held_ones(auth_client):
 
 def test_device_search_by_name_keeps_held_devices_first(auth_client):
     end_device_access(_owned_device(name="Alpha"))
-    alpine = _owned_device(name="Alpine")
+    _owned_device(name="Alpine")
 
     rows = auth_client.get("/api/devices/search", {"q": "Al", "limit": 10}).json()
 
