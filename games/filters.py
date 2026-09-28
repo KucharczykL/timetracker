@@ -662,7 +662,7 @@ class DeviceFilter(OperatorFilter):
     type: ChoiceCriterion | None = None
     created_at: DateCriterion | None = None  # compared via __date
     access_ended: DateCriterion | None = None  # the interval the end states
-    is_access_ended: BoolCriterion | None = None  # the act, day or no day
+    is_owned: BoolCriterion | None = None  # no end of access stated
     access_end_way: ChoiceCriterion | None = None
 
     # Free-text search
@@ -678,8 +678,10 @@ class DeviceFilter(OperatorFilter):
         "type": FilterField(),
         "created_at": FilterField("created_at__date"),
         "access_ended": _ACCESS_END_FIELDS.interval,
-        "is_access_ended": _ACCESS_END_FIELDS.stated,
-        "access_end_way": way_filter_field(DEVICE_ACCESS_END, label="Way"),
+        "is_owned": FilterField(
+            handler=bool_isnull_handler(DEVICE_ACCESS_END.marker), label="Owned"
+        ),
+        "access_end_way": way_filter_field(DEVICE_ACCESS_END, label="Status"),
     }
 
     @classmethod

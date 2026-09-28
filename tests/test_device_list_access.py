@@ -64,8 +64,8 @@ def test_the_access_column_reads_held_or_the_way_and_its_day(logged_in, devices)
 
 
 def test_the_facets_narrow_by_the_act_and_by_the_way(owned_library, devices):
-    ended = matched(owned_library, DeviceFilter.where(is_access_ended=True))
-    held = matched(owned_library, DeviceFilter.where(is_access_ended=False))
+    ended = matched(owned_library, DeviceFilter.where(is_owned=False))
+    held = matched(owned_library, DeviceFilter.where(is_owned=True))
     sold = matched(owned_library, DeviceFilter.where(access_end_way=["sold"]))
 
     assert (ended, held, sold) == ({"Switch", "Phone", "Wii"}, {"Deck"}, {"Switch"})
@@ -80,7 +80,7 @@ def test_the_end_filters_as_the_interval_its_day_states(owned_library, devices):
 def test_the_facets_keep_the_bar_editable(logged_in, devices):
     applied = json.dumps(
         {
-            "is_access_ended": {"value": True, "modifier": "EQUALS"},
+            "is_owned": {"value": False, "modifier": "EQUALS"},
             "access_end_way": {"value": ["sold"], "modifier": "INCLUDES"},
         }
     )
@@ -114,4 +114,4 @@ def test_the_builder_offers_the_access_leaves(logged_in):
     ).content.decode()
 
     assert "access_end_way" in body
-    assert "is_access_ended" in body
+    assert "is_owned" in body
