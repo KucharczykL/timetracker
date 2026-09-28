@@ -36,11 +36,33 @@ interface SpillableFacet extends OverflowItem {
   readonly applied: boolean;
 }
 
+// What a save states: the facets, or the degraded pill's page filter.
+type StatedFilter =
+  | { readonly kind: "facets" }
+  | { readonly kind: "page"; readonly filter: Record<string, unknown> }
+  | { readonly kind: "unreadable" };
+
+const UNREADABLE_FILTER_REFUSAL = "The filter could not be read — reload the page.";
+
+function readStatedFilter(raw: string): StatedFilter {
+  if (!raw) return { kind: "facets" };
+  try {
+    const filter: unknown = JSON.parse(raw);
+    if (typeof filter === "object" && filter !== null && !Array.isArray(filter)) {
+      return { kind: "page", filter: filter as Record<string, unknown> };
+    }
+  } catch {
+    // Reported below.
+  }
+  reportClientError("quick-filter-bar[filter]", raw, { toast: false });
+  return { kind: "unreadable" };
+}
+
 class QuickFilterBarElement extends HTMLElement {
   private applyTarget = "";
   private perPage = "";
   // The degraded pill's filter; the facets state it otherwise.
-  private statedFilter: Record<string, unknown> | null = null;
+  private statedFilter: StatedFilter = { kind: "facets" };
   private facets: SpillableFacet[] = [];
   // Fit sequence: applied facets, then idle ones.
   private priority: SpillableFacet[] = [];
@@ -64,9 +86,7 @@ class QuickFilterBarElement extends HTMLElement {
     this.perPage = props.perPage;
     this.overflowLabel = props.overflowLabel;
     this.overflowLabelApplied = props.overflowLabelApplied;
-    this.statedFilter = props.filter
-      ? readJSONProp<Record<string, unknown>>(this, "filter", {})
-      : null;
+    this.statedFilter = readStatedFilter(props.filter);
     // Wires the number/string modifier selects (presence disables inputs,
     // BETWEEN reveals the second) and the bool facets' deselectable radios.
     setupModifierToggles(this);
@@ -87,18 +107,28 @@ class QuickFilterBarElement extends HTMLElement {
 
   // A loaded preset replaces the live URL state.
   private onPresetLoad = (event: Event): void => {
+    event.preventDefault();
     const preset = (event as CustomEvent<PresetState>).detail;
     this.navigate(applyUrl(this.applyTarget, preset.filter, preset.sort, preset.perPage));
   };
 
-  // Applied or not.
+  // The facets as they stand, applied or not.
   private onPresetSave = (event: Event): void => {
     event.stopPropagation();
-    (event as CustomEvent<PresetSaveRequest>).detail.state = {
-      filter: this.statedFilter ?? this.serialize(),
-      sort: this.currentSort(),
-      perPage: this.perPage,
-    };
+    const request = (event as CustomEvent<PresetSaveRequest>).detail;
+    const stated = this.statedFilter;
+    if (stated.kind === "unreadable") {
+      request.answerWith({ kind: "refused", sentence: UNREADABLE_FILTER_REFUSAL });
+      return;
+    }
+    request.answerWith({
+      kind: "state",
+      state: {
+        filter: stated.kind === "page" ? stated.filter : this.serialize(),
+        sort: this.currentSort(),
+        perPage: this.perPage,
+      },
+    });
   };
 
   // ── Priority-plus facet collapsing ────────────────────────────────
@@ -243,7 +273,7 @@ class QuickFilterBarElement extends HTMLElement {
     );
   };
 
-  // Page size is server-normalized; the raw URL may be invalid.
+  // Sort from the URL; per-page from the prop, the URL's may be invalid.
   private currentSort(): string {
     return new URLSearchParams(window.location.search).get("sort") ?? "";
   }

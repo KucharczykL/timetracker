@@ -5,6 +5,7 @@ import { applyUrl } from "./filter-url.js";
 import {
   PRESET_LOAD_EVENT,
   PRESET_SAVE_EVENT,
+  PresetSaveAnswer,
   PresetSaveRequest,
   PresetState,
 } from "./presets.js";
@@ -494,10 +495,10 @@ function load(panel: HTMLElement, preset: PresetState): void {
   panel.dispatchEvent(new CustomEvent(PRESET_LOAD_EVENT, { bubbles: true, detail: preset }));
 }
 
-function requestSave(panel: HTMLElement): PresetSaveRequest {
-  const request: PresetSaveRequest = { state: null, refusal: null };
+function requestSave(panel: HTMLElement): PresetSaveAnswer | null {
+  const request = new PresetSaveRequest();
   panel.dispatchEvent(new CustomEvent(PRESET_SAVE_EVENT, { bubbles: true, detail: request }));
-  return request;
+  return request.answer;
 }
 
 describe("quick-filter-bar hosts the Presets panel", () => {
@@ -521,6 +522,7 @@ describe("quick-filter-bar hosts the Presets panel", () => {
     window.history.replaceState({}, "", "/tracker/session/list?sort=-day");
     const { panel, navigate } = mountHost(setFacet("game", includePill("1", "X")));
     expect(requestSave(panel)).toEqual({
+      kind: "state",
       state: {
         filter: {
           game: { value: [{ id: "1", label: "X" }], excludes: [], modifier: "INCLUDES" },
@@ -528,7 +530,6 @@ describe("quick-filter-bar hosts the Presets panel", () => {
         sort: "-day",
         perPage: "50",
       },
-      refusal: null,
     });
     expect(navigate).not.toHaveBeenCalled();
   });
@@ -536,7 +537,31 @@ describe("quick-filter-bar hosts the Presets panel", () => {
   it("the degraded bar saves the page's filter", () => {
     const stated = { OR: [{ note: { value: "x", modifier: "INCLUDES" } }] };
     const { panel } = mountHost("", JSON.stringify(stated));
-    expect(requestSave(panel).state?.filter).toEqual(stated);
+    expect(requestSave(panel)).toMatchObject({ kind: "state", state: { filter: stated } });
+  });
+
+  it("an unreadable page filter refuses the save rather than saving everything", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { panel } = mountHost("", "{not json");
+    expect(requestSave(panel)?.kind).toBe("refused");
+  });
+
+  it("the degraded bar mounts with no row and reports nothing", () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { panel } = mountHost("", JSON.stringify({ OR: [] }));
+    expect(panel).toBeTruthy();
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it("a load is marked handled", () => {
+    const { panel } = mountHost();
+    const event = new CustomEvent(PRESET_LOAD_EVENT, {
+      bubbles: true,
+      cancelable: true,
+      detail: { filter: {}, sort: "", perPage: "" },
+    });
+    panel.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it("the save request stops at the bar", () => {

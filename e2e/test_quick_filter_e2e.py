@@ -425,7 +425,7 @@ def test_an_applied_facet_stays_inline_and_marked(
 def test_preset_pick_on_builderless_mode(
     authenticated_page: Page, live_server, django_user_model, e2e_library
 ):
-    """The quick bar's Load-preset picker works on a builderless mode
+    """The quick bar's Presets panel loads on a builderless mode
     (devices): picking navigates with the preset's ?filter=; Enter inside the
     picker's search box never applies the facet form."""
     from games.models import FilterPreset
@@ -630,7 +630,15 @@ def test_a_preset_saves_the_unapplied_bar_and_loads_back(
     name_box.press("Enter")
     expect(name_box).to_have_value("")
     expect(page).to_have_url(list_url)
-    assert _saved_filter(e2e_library, "Halo search")["search"]["value"] == "halo"
+    assert _saved_filter(e2e_library, "Halo search") == {
+        "search": {"value": "halo", "modifier": "INCLUDES"}
+    }
+
+    # A click saves too, and never applies the bar's form.
+    name_box.fill("Halo again")
+    presets.locator("[data-save-preset]").click()
+    expect(name_box).to_have_value("")
+    expect(page).to_have_url(list_url)
 
     page.reload()
     presets.locator("[data-toggle]").click()

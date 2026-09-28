@@ -14,6 +14,7 @@ import {
 
 // Must match SAVE_PRESET_LABEL in common/components/search_select.py.
 const SAVE_LABEL = "Save";
+const UNANSWERED = "Presets are unavailable here — reload the page.";
 const OVERWRITE_LABEL = "Overwrite";
 
 interface PresetChangeDetail {
@@ -38,7 +39,7 @@ export class PresetPanelElement extends HTMLElement {
 
   connectedCallback(): void {
     const props = readPresetPanelProps(this);
-    this.apiUrl = props.apiUrl;
+    this.apiUrl = props.presetApiUrl;
     this.mode = props.mode;
     this.addEventListener("search-select:change", this.onPick);
     this.addEventListener("click", this.onClick);
@@ -66,27 +67,38 @@ export class PresetPanelElement extends HTMLElement {
     return this.querySelector<HTMLInputElement>("[data-preset-name]");
   }
 
-  // A kept selection would pin a stale row.
   private onPick = (event: Event): void => {
     const detail = (event as CustomEvent<PresetChangeDetail>).detail;
     if (!detail?.last) return;
     try {
       const raw = detail.last.data.filter ?? "";
+      const filter: unknown = raw ? JSON.parse(raw) : {};
+      if (!isPlainObject(filter)) throw new TypeError(`not an object: ${raw}`);
       const state: PresetState = {
-        filter: raw ? (JSON.parse(raw) as Record<string, unknown>) : {},
+        filter,
         // Missing values restore inherited defaults.
         sort: detail.last.data.sort ?? "",
         perPage: detail.last.data.per_page ?? "",
       };
-      this.dispatchEvent(
-        new CustomEvent<PresetState>(PRESET_LOAD_EVENT, { bubbles: true, detail: state }),
+      // A host cancels the event to say it loaded the preset.
+      const unanswered = this.dispatchEvent(
+        new CustomEvent<PresetState>(PRESET_LOAD_EVENT, {
+          bubbles: true,
+          cancelable: true,
+          detail: state,
+        }),
       );
+      if (unanswered) {
+        reportClientError("preset-panel[load]", "no host answered", { toast: false });
+        window.toast(UNANSWERED, "error");
+      }
     } catch (error) {
       reportClientError("preset-panel[load]", String(error), { toast: false });
       // Keep the "preset load failed" console substring (e2e crash guard).
       console.error("preset-panel: preset load failed", error);
       window.toast("Preset is not a valid filter.", "error");
     }
+    // A kept selection would pin a stale row.
     this.widget()?.clearSelection?.();
     this.closest<ClosableHost>("drop-down")?.close?.();
   };
@@ -106,7 +118,8 @@ export class PresetPanelElement extends HTMLElement {
   private onFocusIn = (event: Event): void => {
     if (!(event.target as HTMLElement).closest("[data-preset-name]")) return;
     void fetchPresetNames(this.apiUrl, this.mode).then((names) => {
-      this.presetNames = names;
+      // Merged: a fetch may answer after a save added a name.
+      names.forEach((name) => this.presetNames.add(name));
       this.updateOverwriteHint();
     });
   };
@@ -139,22 +152,24 @@ export class PresetPanelElement extends HTMLElement {
       window.toast("Preset name is required.", "error");
       return;
     }
-    const request: PresetSaveRequest = { state: null, refusal: null };
+    const request = new PresetSaveRequest();
     this.dispatchEvent(
       new CustomEvent<PresetSaveRequest>(PRESET_SAVE_EVENT, {
         bubbles: true,
         detail: request,
       }),
     );
-    if (request.refusal) {
-      window.toast(request.refusal, "error");
+    const answer = request.answer;
+    if (answer?.kind === "refused") {
+      window.toast(answer.sentence, "error");
       return;
     }
-    const state = request.state;
-    if (!state) {
-      reportClientError("preset-panel[save]", "no host answered the save");
+    if (!answer) {
+      reportClientError("preset-panel[save]", "no host answered", { toast: false });
+      window.toast(UNANSWERED, "error");
       return;
     }
+    const { state } = answer;
     void savePreset(this.apiUrl, {
       name,
       mode: this.mode,
@@ -170,6 +185,10 @@ export class PresetPanelElement extends HTMLElement {
       this.widget()?.refetchOptions?.();
     });
   }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 customElements.define("preset-panel", PresetPanelElement);

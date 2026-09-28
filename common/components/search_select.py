@@ -63,6 +63,7 @@ from common.components.custom_elements import (
     DROPDOWN_ITEM_SHAPE,
     Dropdown,
     DropdownPanel,
+    FilterMode,
     _as_dialog_trigger,
     _Dropdown,
     _PresetPanelElement,
@@ -982,13 +983,12 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
     """The preset-picker personality of the combobox shell (issue #297).
 
     An always-visible single-select whose options are fetched from the preset
-    API (``?mode=`` scoped) on every open — the hosting dropdown's ``combobox``
+    API (``?mode=`` scoped) on every open — the hosting dropdown's ``presets``
     behavior calls ``refetchOptions()`` on ``dropdown:show``, so the list is
     server-fresh after saves and deletes with no refresh plumbing. A pick emits
     the standard ``search-select:change`` whose ``last.data.filter`` carries the
-    preset's filter JSON; the consumer decides what a pick means (the builder
-    loads it into the tree, the filter bar navigates). The pick is transient —
-    consumers call ``clearSelection()`` after handling it.
+    preset's filter JSON; ``<preset-panel>`` clears the pick and re-emits it as
+    ``preset-panel:load``.
     """
     search_attributes: list[HTMLAttribute] = [
         ("data-search-select-search", ""),
@@ -1089,12 +1089,14 @@ _PRESET_NAME_CLASS = (
 )
 
 
-def PresetPanel(*, api_url: str, mode: str) -> Node:
+def PresetPanel(*, api_url: str, mode: FilterMode) -> Node:
     """Saved presets above a name box and Save.
 
     ``data-preset-picker`` is the removal wiring's hook.
     """
-    return _PresetPanelElement(api_url=api_url, mode=mode, data_preset_picker="")[
+    return _PresetPanelElement(
+        preset_api_url=api_url, mode=mode, data_preset_picker=""
+    )[
         PresetSelect(api_url=api_url, mode=mode),
         Div(class_="flex flex-col gap-2 border-t border-default-medium p-2")[
             Div(class_="flex items-center gap-2")[
@@ -1119,7 +1121,7 @@ def PresetPanel(*, api_url: str, mode: str) -> Node:
     ]
 
 
-def presets_member(*, api_url: str, mode: str, id: str) -> ButtonGroupMember:
+def presets_member(*, api_url: str, mode: FilterMode, id: str) -> ButtonGroupMember:
     """The Presets segment, opening the panel."""
 
     def opens(trigger: Element) -> Node:

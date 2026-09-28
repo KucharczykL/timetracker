@@ -289,7 +289,7 @@ def test_prefill_apply_roundtrip_carries_filter(
 def test_empty_preset_dropdown_shows_readable_placeholder(
     authenticated_page: Page, live_server
 ) -> None:
-    """With zero saved presets, the Load-preset dropdown must show a readable
+    """With zero saved presets, the Presets panel must show a readable
     "No saved presets" row (issue #295).
 
     The row was present in the DOM but invisible: the dropdown panel used
@@ -394,7 +394,7 @@ def test_load_set_field_preset_reflects_field_without_crash(
         "Counting…", timeout=10_000
     )
 
-    # Open the Load-preset combobox dialog.
+    # Open the Presets panel.
     page.locator("filter-builder drop-down[behavior='presets'] [data-toggle]").click()
 
     # Wait for the fetch-on-open to populate the preset row.
@@ -411,13 +411,8 @@ def test_load_set_field_preset_reflects_field_without_crash(
     expect(criterion_row).to_be_attached(timeout=5_000)
 
     # -- Assertion 1: no crash --
-    # The Fix-C crash was logged as a ``console.error`` by the catch block in
-    # ``onPresetPicked``: "filter-builder: preset load failed".  Assert that
-    # exact string is absent.  (A generic "TypeError: Failed to fetch" from
-    # filter-bar's auto-load on connect is unrelated and ignored here.)
-    # The builder page has no <filter-bar> and <filter-builder> does not
-    # auto-fetch on connect (only on Load-preset click).  This check simply
-    # guards that loading the preset produced no error/crash.
+    # A failed load logs "preset-panel: preset load failed"; assert it is
+    # absent.  Presets fetch only when the Presets panel opens.
     crash_messages = [text for text in console_messages if "preset load failed" in text]
     assert not crash_messages, (
         f"Unexpected crash in console after preset load: {crash_messages}"

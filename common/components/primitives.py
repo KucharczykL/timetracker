@@ -1208,6 +1208,10 @@ class ControlButton(BaseComponent):
         return Button([("type", self._type), *self._merged_attributes])[*self._children]
 
 
+#: Wraps a shaped segment in the popup it opens.
+type PopupWrapper = Callable[[Element], Node]
+
+
 class ButtonGroupMember(TypedDict, total=False):
     slot: Child
     href: str
@@ -1220,12 +1224,11 @@ class ButtonGroupMember(TypedDict, total=False):
     button_attributes: list[HTMLAttribute]
     # The <button type>: "submit" makes a bare-button member submit its
     # ancestor form (the quick bar's Apply). Only meaningful with
-    # button_attributes; defaults to "button".
+    # button_attributes or opens; defaults to "button".
     type: str
     # An icon-only member's accessible name.
     aria_label: str
-    # Wraps the shaped button in its popup.
-    opens: Callable[[Element], Node]
+    opens: PopupWrapper
 
 
 def shaped[T](members: Sequence[T]) -> Iterator[tuple[ButtonShape, T]]:
@@ -1260,14 +1263,16 @@ def ButtonGroup(
 ) -> Element:
     """Generate a button group div of segmented :class:`ControlButton` members.
 
-    Each member dict accepts: slot (required), href, color, title, and — for a
+    Each member dict accepts: slot (required), href, color, title, aria_label,
+    and — for a
     state-changing member — method ("post"),
     action (URL), csrf_token. A ``method="post"`` member renders as a no-JS
     ``<form>`` submit button instead of a link; a member with
     ``button_attributes`` renders as a bare ``<button type="button">`` carrying
     those attributes (a JS-driven action with no navigation). A member with
     ``opens`` is a plain button handed, shaped, to that function, which
-    returns the popup around it.
+    returns the popup around it; neither kind takes href or method.
+    ``class_`` accumulates on the group's shell; ``aria_label`` names it.
     Empty dicts (no slot) are silently skipped — matching the template behavior
     for conditional buttons (e.g., end-session only when session is active).
     Every member is the one button size; no member resizes at any width.
@@ -1287,6 +1292,10 @@ def ButtonGroup(
         button_attributes = member.get("button_attributes")
         opens = member.get("opens")
         is_plain_button = button_attributes is not None or opens is not None
+        if is_plain_button and (member.get("href") or member.get("method")):
+            raise TypeError(
+                f"ButtonGroup member {slot!r}: a button takes no href/method"
+            )
         if button_attributes:
             member_attributes.extend(button_attributes)
         button = ControlButton(

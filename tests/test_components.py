@@ -1286,6 +1286,14 @@ class ControlButtonTest(SimpleTestCase):
         self.assertIn('aria-label="More"', button_tag)
         self.assertNotIn("<a ", html)
 
+    def test_a_button_member_refuses_a_link_or_form(self):
+        for member in (
+            {"slot": "X", "opens": lambda trigger: trigger, "href": "/a"},
+            {"slot": "X", "button_attributes": [], "method": "post"},
+        ):
+            with self.subTest(member=sorted(member)), self.assertRaises(TypeError):
+                str(components.ButtonGroup([member]))
+
     def test_the_group_states_its_own_name_and_class(self):
         """A member's name never becomes the group's."""
         html = str(

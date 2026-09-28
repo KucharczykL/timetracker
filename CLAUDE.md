@@ -745,10 +745,10 @@ Submodules re-exported via `common/components/__init__.py`:
   `FilterSelect()` (include/exclude
   with pinned Any/None modifiers; `layout="panel"` is GitHub-label-picker
   personality for hosting inside dropdown dialog, #315), `ComboboxDropdown()`
-  (generic "Label ▾" trigger + dialog), `PresetSelect()` (fetch-on-open preset
-  list, #297) inside `PresetPanel()`, the `<preset-panel>` that loads and
-  saves presets for any host answering `preset-panel:load`/`:save` (#1267),
-  opened by `presets_member()`, `SearchSelectOption`. Every picker
+  (generic "Label ▾" trigger + dialog), `SearchSelectOption`, and `PresetSelect()`
+  (fetch-on-open preset list, #297) inside `PresetPanel()`: the
+  `<preset-panel>` that loads and saves presets for any host answering
+  `preset-panel:load`/`:save`, opened by `presets_member()` (#1267). Every picker
   builds rows through one `_option_row(option, kind, *, actions)` in the menu
   item's look (`DROPDOWN_ITEM_SHAPE`/`DROPDOWN_ITEM_ACTIVE`), pills through
   `Pill(kind=…)` inside the field box, and its list is a `DropdownPanel`; the
@@ -872,7 +872,7 @@ structured filtering.
     the same element, whose `filter` prop is what its Presets saves. Bar's
     serializer emits only flat facet criteria, so its own output always
     round-trips back to editable. Anything facets can't express lives in nested
-    builder, reached via "Advanced filter…" — every filterable mode has builder
+    builder, reached via the Advanced filter segment — every filterable mode has builder
     page, including devices/platforms (#336).
 
 **Views** (`games/views/`): function-based, decorated with `@login_required`,
@@ -895,8 +895,9 @@ organized by domain entity:
   parity-tested so each builder's queryset count equals stat it links from
 - `auth.py` — custom `LoginView`, renders via `render_page()`
 
-Filter presets have no classic views — they live on Ninja API; picker UI is shared
-combobox dropdown (#297).
+Filter presets have no classic views — they live on Ninja API; the UI is
+`<preset-panel>` behind the acts group's Presets segment, which loads and saves
+(#297, #1267).
 
 **Signals** (`games/signals.py`):
 - `pre_save` on Purchase: snapshots old price/currency for change detection

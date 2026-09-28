@@ -4,6 +4,7 @@ import "./preset-panel.js";
 import {
   PRESET_LOAD_EVENT,
   PRESET_SAVE_EVENT,
+  PresetSaveAnswer,
   PresetSaveRequest,
   PresetState,
 } from "./presets.js";
@@ -24,11 +25,14 @@ interface WidgetStub extends HTMLElement {
 // The panel as PresetPanel renders it, inside a <drop-down> stand-in and a
 // host that answers the save with `answer`. The widget is a stub: this suite
 // never imports search-select.js.
-function mount(answer: Partial<PresetSaveRequest> | null = { state: HOST_STATE }) {
+function mount(
+  answer: PresetSaveAnswer | null = { kind: "state", state: HOST_STATE },
+  answersLoad = true,
+) {
   document.body.innerHTML = `
     <form id="host">
       <drop-down>
-        <preset-panel api-url="${API_URL}" mode="games" data-preset-picker>
+        <preset-panel preset-api-url="${API_URL}" mode="games" data-preset-picker>
           <search-select name="preset"></search-select>
           <input type="text" data-preset-name>
           <button type="button" data-save-preset>Save</button>
@@ -39,9 +43,10 @@ function mount(answer: Partial<PresetSaveRequest> | null = { state: HOST_STATE }
   const host = document.getElementById("host") as HTMLFormElement;
   if (answer) {
     host.addEventListener(PRESET_SAVE_EVENT, (event) => {
-      Object.assign((event as CustomEvent<PresetSaveRequest>).detail, answer);
+      (event as CustomEvent<PresetSaveRequest>).detail.answerWith(answer);
     });
   }
+  if (answersLoad) host.addEventListener(PRESET_LOAD_EVENT, (event) => event.preventDefault());
   const dropDown = host.querySelector("drop-down") as HTMLElement & {
     close: ReturnType<typeof vi.fn>;
   };
@@ -169,7 +174,7 @@ describe("<preset-panel>", () => {
   });
 
   it("a host's refusal is shown and nothing posts", () => {
-    const { nameInput, saveButton } = mount({ refusal: "Finish it first." });
+    const { nameInput, saveButton } = mount({ kind: "refused", sentence: "Finish it first." });
     vi.stubGlobal("toast", vi.fn());
     const fetchStub = stubFetch(() => new Response());
     nameInput.value = "Half";
@@ -188,6 +193,39 @@ describe("<preset-panel>", () => {
     saveButton.click();
     const presetPosts = fetchStub.mock.calls.filter((call) => call[0] === API_URL);
     expect(presetPosts).toEqual([]);
+    expect(window.toast).toHaveBeenCalledWith(expect.stringContaining("reload"), "error");
+  });
+
+  it("an unanswered load says so", () => {
+    const { widget } = mount(undefined, false);
+    vi.stubGlobal("toast", vi.fn());
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    pick(widget, { filter: "{}" });
+    expect(window.toast).toHaveBeenCalledWith(expect.stringContaining("reload"), "error");
+  });
+
+  it("a preset that is not an object is not a valid filter", () => {
+    const { host, widget } = mount();
+    const loaded = vi.fn();
+    host.addEventListener(PRESET_LOAD_EVENT, loaded);
+    vi.stubGlobal("toast", vi.fn());
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    pick(widget, { filter: "null" });
+    expect(loaded).not.toHaveBeenCalled();
+    expect(window.toast).toHaveBeenCalledWith("Preset is not a valid filter.", "error");
+  });
+
+  it("a rejected save keeps the typed name and the list", async () => {
+    const { widget, nameInput, saveButton } = mount();
+    vi.stubGlobal("toast", vi.fn());
+    stubFetch(() => new Response(JSON.stringify({ detail: [{ msg: "bad" }] }), { status: 422 }));
+    nameInput.value = "Mine";
+    saveButton.click();
+    await vi.waitFor(() =>
+      expect(window.toast).toHaveBeenCalledWith("Failed to save preset.", "error"),
+    );
+    expect(nameInput.value).toBe("Mine");
+    expect(widget.refetchOptions).not.toHaveBeenCalled();
   });
 
   it("a saved preset empties the name box and refetches the list", async () => {

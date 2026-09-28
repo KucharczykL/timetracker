@@ -1,3 +1,4 @@
+import { reportClientError } from "../client-errors.js";
 import { readFilterBuilderProps } from "../generated/props.js";
 import { FILTER_TREE_CHANGE_EVENT, FilterGroupElement } from "./filter-group.js";
 import {
@@ -13,6 +14,7 @@ import { applyUrl } from "./filter-url.js";
 // Refuses a save by the rule that disables Apply.
 export const INCOMPLETE_SAVE_REFUSAL =
   "Finish or remove the incomplete conditions before saving.";
+const UNREADABLE_SAVE_REFUSAL = "The filter could not be read — reload the page.";
 
 function isFilterGroup(element: Element | null): element is FilterGroupElement {
   return (
@@ -23,7 +25,6 @@ function isFilterGroup(element: Element | null): element is FilterGroupElement {
 }
 
 export class FilterBuilderElement extends HTMLElement {
-  private mode = "";
   private applyTarget = "";
   // Apply and Save preserve list state; loading a preset replaces it.
   private sort = "";
@@ -46,7 +47,6 @@ export class FilterBuilderElement extends HTMLElement {
 
   connectedCallback(): void {
     const props = readFilterBuilderProps(this);
-    this.mode = props.mode;
     this.applyTarget = props.applyUrl;
     this.sort = props.sort;
     this.perPage = props.perPage;
@@ -116,27 +116,31 @@ export class FilterBuilderElement extends HTMLElement {
 
   // A loaded preset fills the tree.
   private onPresetLoad = (event: Event): void => {
+    event.preventDefault();
     const preset = (event as CustomEvent<PresetState>).detail;
     this.group()?.loadFilter(preset.filter);
     this.sort = preset.sort;
     this.perPage = preset.perPage;
   };
 
-  // serialize() misses live widget values.
   private onPresetSave = (event: Event): void => {
     event.stopPropagation();
     const request = (event as CustomEvent<PresetSaveRequest>).detail;
     const group = this.group();
-    if (!group) return;
-    if (this.holdsIncomplete()) {
-      request.refusal = INCOMPLETE_SAVE_REFUSAL;
+    if (!group) {
+      reportClientError("filter-builder[save]", "no <filter-group>", { toast: false });
+      request.answerWith({ kind: "refused", sentence: UNREADABLE_SAVE_REFUSAL });
       return;
     }
-    request.state = {
-      filter: group.serializeForQuery(),
-      sort: this.sort,
-      perPage: this.perPage,
-    };
+    if (this.holdsIncomplete()) {
+      request.answerWith({ kind: "refused", sentence: INCOMPLETE_SAVE_REFUSAL });
+      return;
+    }
+    // serialize() misses live widget values.
+    request.answerWith({
+      kind: "state",
+      state: { filter: group.serializeForQuery(), sort: this.sort, perPage: this.perPage },
+    });
   };
 
   private onApply(): void {

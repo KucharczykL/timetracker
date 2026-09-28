@@ -16,22 +16,35 @@ import type { SearchSelectOption } from "./search-select.js";
 
 export { getCsrfToken };
 
-/** A picked preset; the host decides what loading it means. */
+/** A picked preset; the host loads it and calls preventDefault. */
 export const PRESET_LOAD_EVENT = "preset-panel:load";
 /** Asks the nearest host for the state to save, during dispatch. */
 export const PRESET_SAVE_EVENT = "preset-panel:save";
 
 /** What a preset states beside its name. Empty sort or per-page inherits. */
 export interface PresetState {
-  filter: Record<string, unknown>;
-  sort: string;
-  perPage: string;
+  readonly filter: Record<string, unknown>;
+  readonly sort: string;
+  readonly perPage: string;
 }
 
-/** The host writes `state` or `refusal`, and stops propagation. */
-export interface PresetSaveRequest {
-  state: PresetState | null;
-  refusal: string | null;
+/** A host's answer: the state to save, or why not. */
+export type PresetSaveAnswer =
+  | { readonly kind: "state"; readonly state: PresetState }
+  | { readonly kind: "refused"; readonly sentence: string };
+
+/** The save event's detail; the host answers once, then stops propagation. */
+export class PresetSaveRequest {
+  #answer: PresetSaveAnswer | null = null;
+
+  get answer(): PresetSaveAnswer | null {
+    return this.#answer;
+  }
+
+  answerWith(answer: PresetSaveAnswer): void {
+    if (this.#answer) throw new Error("preset save answered twice");
+    this.#answer = answer;
+  }
 }
 
 // The /api/presets/ list item (value/label/data, including a UUID string value).
@@ -82,11 +95,13 @@ export function savePreset(
         const verb = response.status === 201 ? "saved" : "updated";
         window.toast(`Filter preset "${request.name}" ${verb}.`, "success");
       } else {
-        const detail = await response
+        const detail: unknown = await response
           .json()
-          .then((body: { detail?: string }) => body?.detail)
+          .then((body: { detail?: unknown }) => body?.detail)
           .catch(() => undefined);
-        window.toast(detail || "Failed to save preset.", "error");
+        // A 422 answers a list of errors, which no toast can print.
+        const sentence = typeof detail === "string" && detail ? detail : "Failed to save preset.";
+        window.toast(sentence, "error");
       }
       return response;
     })
@@ -190,6 +205,7 @@ export function fetchPresetNames(
     )
     .catch((error: unknown) => {
       console.error("presets: failed to load preset names", error);
+      reportClientError("presets[names]", String(error), { toast: false });
       return new Set<string>();
     });
 }

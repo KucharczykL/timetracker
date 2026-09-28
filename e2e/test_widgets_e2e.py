@@ -564,7 +564,7 @@ def test_add_purchase_related_game_edit_clears_autofill(
 def test_quick_bar_preset_pick_navigates_to_filtered_list(
     authenticated_page: Page, live_server, e2e_library
 ):
-    """Picking a preset in the quick bar's Load-preset combobox navigates to the
+    """Picking a preset in the quick bar's Presets panel navigates to the
     list URL carrying ?filter= — the bar consumer's pick semantics."""
     from games.models import FilterPreset
 

@@ -8,6 +8,7 @@ import type { FilterGroupElement } from "./filter-group.js";
 import {
   PRESET_LOAD_EVENT,
   PRESET_SAVE_EVENT,
+  PresetSaveAnswer,
   PresetSaveRequest,
   PresetState,
 } from "./presets.js";
@@ -40,9 +41,7 @@ function mount(sort = "", perPage = ""): {
   document.body.innerHTML = "";
   const builder = document.createElement("filter-builder");
   builder.setAttribute("model", "game");
-  builder.setAttribute("mode", "games");
   builder.setAttribute("apply-url", "/tracker/game/list");
-  builder.setAttribute("preset-api-url", "/api/presets/");
   // Set before append so connectedCallback reads it (attrs aren't re-read).
   if (sort) builder.setAttribute("sort", sort);
   if (perPage) builder.setAttribute("per-page", perPage);
@@ -61,10 +60,10 @@ function load(panel: HTMLElement, preset: PresetState): void {
   panel.dispatchEvent(new CustomEvent(PRESET_LOAD_EVENT, { bubbles: true, detail: preset }));
 }
 
-function requestSave(panel: HTMLElement): PresetSaveRequest {
-  const request: PresetSaveRequest = { state: null, refusal: null };
+function requestSave(panel: HTMLElement): PresetSaveAnswer | null {
+  const request = new PresetSaveRequest();
   panel.dispatchEvent(new CustomEvent(PRESET_SAVE_EVENT, { bubbles: true, detail: request }));
-  return request;
+  return request.answer;
 }
 
 function stubNavigate(builder: HTMLElement): ReturnType<typeof vi.fn> {
@@ -147,8 +146,8 @@ describe("<filter-builder>", () => {
     group.serialize = () => ({ AND: [{ status: {} }] });
     group.serializeForQuery = () => live;
     expect(requestSave(panel)).toEqual({
+      kind: "state",
       state: { filter: live, sort: "-playtime", perPage: "100" },
-      refusal: null,
     });
   });
 
@@ -156,14 +155,41 @@ describe("<filter-builder>", () => {
     const { group, panel } = mount();
     group.serializeForQuery = () => ({ AND: [{ status: {} }] });
     markIncomplete();
-    expect(requestSave(panel)).toEqual({ state: null, refusal: INCOMPLETE_SAVE_REFUSAL });
+    expect(requestSave(panel)).toEqual({ kind: "refused", sentence: INCOMPLETE_SAVE_REFUSAL });
   });
 
   it("a save of an all-blank tree states the empty filter", () => {
     const { group, panel } = mount();
     group.serializeForQuery = () => ({});
     markIncomplete();
-    expect(requestSave(panel).state?.filter).toEqual({});
+    expect(requestSave(panel)).toMatchObject({ kind: "state", state: { filter: {} } });
+  });
+
+  it("a save request stops at the builder", () => {
+    const { panel } = mount();
+    const outer = vi.fn();
+    document.body.addEventListener(PRESET_SAVE_EVENT, outer);
+    requestSave(panel);
+    document.body.removeEventListener(PRESET_SAVE_EVENT, outer);
+    expect(outer).not.toHaveBeenCalled();
+  });
+
+  it("with no filter group a save is refused, not left unanswered", () => {
+    const { group, panel } = mount();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    group.remove();
+    expect(requestSave(panel)?.kind).toBe("refused");
+  });
+
+  it("a load is marked handled", () => {
+    const { panel } = mount();
+    const event = new CustomEvent(PRESET_LOAD_EVENT, {
+      bubbles: true,
+      cancelable: true,
+      detail: { filter: {}, sort: "", perPage: "" },
+    });
+    panel.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it("Apply disabled when an incomplete leaf coexists with a non-empty filter", () => {

@@ -7,7 +7,7 @@ import { DropdownBehavior, registerBehavior } from "../dropdown-behaviors.js";
 // - opts out of attachMenu's roving item navigation via a match-nothing
 //   itemSelector (with zero items the menu keydown handler also stops swallowing
 //   arrow/Home/End, so the caret works inside the search input; Escape and Tab
-//   still close the dropdown from attachMenu),
+//   still close the dropdown from attachMenu, except that `presets` keeps Tab),
 // - on every open (the dropdown:show lifecycle event — the #94 plug point)
 //   refetches
 //   the widget's options and focuses the search input, so the list is always

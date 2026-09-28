@@ -419,9 +419,7 @@ def FilterSummary(*, model: str, model_label: str, models: str) -> Node:
 
 class FilterBuilderProps(TypedDict):
     model: str  # root model key
-    mode: str  # preset/list mode (plural), e.g. "games"
     apply_url: str  # list URL to navigate to on Apply
-    preset_api_url: str  # /api/presets/ collection URL (GET/POST; DELETE at +id)
     sort: str  # active sort; "" means none
     per_page: str  # explicit override; "" means inherit
 
@@ -448,15 +446,12 @@ def FilterBuilder(
     Apply and Save preserve ``sort`` and ``per_page``; loading a preset replaces
     both. Empty ``per_page`` means inherit.
     """
-    # Function-local import: search_select imports this module (for _SearchSelect
-    # and the panel constant), so a top-level import here would be a cycle.
+    # Function-local: search_select imports this module's element builders.
     from common.components.search_select import presets_member
 
     return _FilterBuilder(
         model=model,
-        mode=mode,
         apply_url=list_url_for(mode),
-        preset_api_url=preset_api_url,
         sort=sort,
         per_page=per_page,
     )[
@@ -636,8 +631,8 @@ register_element("quick-filter-bar", "QuickFilterBar", QuickFilterBarProps)
 
 
 class PresetPanelProps(TypedDict):
-    api_url: str  # /api/presets/ collection URL (GET/POST; DELETE at +id)
-    mode: str  # preset/list mode (plural), e.g. "games"
+    preset_api_url: str  # /api/presets/ collection URL (GET/POST; DELETE at +id)
+    mode: FilterMode
 
 
 register_element("preset-panel", "PresetPanel", PresetPanelProps)

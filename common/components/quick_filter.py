@@ -10,7 +10,7 @@ builder, reachable from the acts group's Advanced filter segment.
 
 Row anatomy: the statements — the free-text field, the facets (collapsible)
 and the "⋯" priority-plus overflow menu — then the acts, one Apply | Clear |
-Presets [| Advanced filter] ButtonGroup pushed to the row's end. Everything
+[| Presets] [| Advanced filter] ButtonGroup pushed to the row's end. Everything
 that is not a facet is non-collapsible row furniture — the layout reserves
 its width and moves only facets, so the field never enters the overflow.
 
@@ -25,7 +25,7 @@ import json
 from collections.abc import Collection
 from typing import NamedTuple, cast
 
-from common.components.core import BaseComponent, Node
+from common.components.core import BaseComponent, Element, Node
 from common.components.custom_elements import (
     CLEAR_FILTER_LABEL,
     FILTER_ACTS_LABEL,
@@ -47,6 +47,7 @@ from common.components.primitives import (
     ButtonGroupMember,
     Div,
     EllipsisTrigger,
+    FilterJson,
     Form,
     Icon,
     Span,
@@ -334,6 +335,14 @@ class QuickFilterBar(BaseComponent):
                 aria_label=FILTER_ACTS_LABEL,
             )
         )
+        return self._element(stated_filter="")[
+            # A real <form> so Enter in any facet input applies; the element
+            # intercepts submit and navigates.
+            Form()[Div(class_=_QUICK_BAR_ROW_CLASS, data_quick_row="")[row_children]]
+        ]
+
+    def _element(self, *, stated_filter: FilterJson) -> Element:
+        """``stated_filter`` is empty where the facets state the filter."""
         return _QuickFilterBarElement(
             apply_url=self._list_url(),
             per_page=(
@@ -341,12 +350,8 @@ class QuickFilterBar(BaseComponent):
             ),
             overflow_label=OVERFLOW_LABEL,
             overflow_label_applied=OVERFLOW_LABEL_APPLIED,
-            filter="",
-        )[
-            # A real <form> so Enter in any facet input applies; the element
-            # intercepts submit and navigates.
-            Form()[Div(class_=_QUICK_BAR_ROW_CLASS, data_quick_row="")[row_children]]
-        ]
+            filter=stated_filter,
+        )
 
     def _search_field(self) -> Node:
         stated = self.existing.get("search")
@@ -488,15 +493,7 @@ class QuickFilterBar(BaseComponent):
 
     def _degraded(self) -> Node:
         # No ``data-quick-row``: the overflow layout stays off.
-        return _QuickFilterBarElement(
-            apply_url=self._list_url(),
-            per_page=(
-                "" if self.per_page_override is None else str(self.per_page_override)
-            ),
-            overflow_label=OVERFLOW_LABEL,
-            overflow_label_applied=OVERFLOW_LABEL_APPLIED,
-            filter=json.dumps(self.existing),
-        )[
+        return self._element(stated_filter=json.dumps(self.existing))[
             Div(class_=_QUICK_PILL_CLASS)[
                 Span(class_="text-body")["Advanced filter active"],
                 ButtonGroup(

@@ -3,6 +3,7 @@ the search API endpoint, and the shared Game.search_label."""
 
 import re
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 import django.test
@@ -21,7 +22,11 @@ from common.components import (
     searchselect_selected,
 )
 from common.components.core import collect_media
-from common.components.search_select import presets_member
+from common.components.search_select import SAVE_PRESET_LABEL, presets_member
+
+_PRESET_PANEL_TS = (
+    Path(__file__).resolve().parent.parent / "ts" / "elements" / "preset-panel.ts"
+)
 from games.models import Game, Platform
 
 # These components are lazy nodes; the tests below assert on rendered HTML, so
@@ -945,8 +950,20 @@ class PresetsMemberTest(unittest.TestCase):
         panel = _tag_around(self.html, "api-url=")
         self.assertTrue(panel.startswith("<preset-panel"))
         self.assertIn("data-preset-picker", panel)
-        self.assertIn('api-url="/api/presets/"', panel)
+        self.assertIn('preset-api-url="/api/presets/"', panel)
         self.assertIn('mode="games"', panel)
+
+    def test_save_is_a_plain_button_with_the_label_the_panel_restores(self):
+        """Inside the quick bar's form a submit would also apply the bar."""
+        save_tag = _tag_around(self.html, "data-save-preset")
+        self.assertIn('type="button"', save_tag)
+        after = self.html[self.html.index("data-save-preset") :]
+        self.assertEqual(
+            after[after.index(">") + 1 : after.index("<")], SAVE_PRESET_LABEL
+        )
+        label = re.search(r'const SAVE_LABEL = "([^"]*)"', _PRESET_PANEL_TS.read_text())
+        assert label is not None
+        self.assertEqual(label.group(1), SAVE_PRESET_LABEL)
 
     def test_name_box_is_no_search_box(self):
         name_tag = _tag_around(self.html, "data-preset-name=")
