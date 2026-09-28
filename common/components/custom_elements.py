@@ -8,6 +8,7 @@ is the single source of truth for the server<->client contract;
 reader so drift fails ``tsc``.
 """
 
+import json
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -16,6 +17,8 @@ from typing import (
     Literal,
     NamedTuple,
     TypedDict,
+    get_args,
+    get_origin,
     get_type_hints,
     is_typeddict,
 )
@@ -135,6 +138,21 @@ def _camel(name: str) -> str:
     return head + "".join(part.title() for part in tail)
 
 
+def _string_union(python_type: object) -> str | None:
+    """A ``Literal`` of strings, as a TypeScript union."""
+    unwrapped = getattr(python_type, "__value__", python_type)
+    if get_origin(unwrapped) is not Literal:
+        return None
+    members = get_args(unwrapped)
+    if not all(isinstance(member, str) for member in members):
+        raise TypeError(f"element prop Literal holds a non-string: {members!r}")
+    return " | ".join(json.dumps(member) for member in members)
+
+
+def _ts_type(python_type: object) -> str:
+    return _string_union(python_type) or _TYPE_MAP[_named_role(python_type)]
+
+
 def _named_role(python_type: object) -> type:
     """The type a PEP 695 alias names.
 
@@ -150,8 +168,10 @@ def _named_role(python_type: object) -> type:
 
 
 def _reader_expr(name: str, python_type: object) -> str:
-    python_type = _named_role(python_type)
     attr = _kebab(name)
+    if union := _string_union(python_type):
+        return f'(el.getAttribute("{attr}") ?? "") as {union}'
+    python_type = _named_role(python_type)
     if python_type in (int, float):
         return f'Number(el.getAttribute("{attr}"))'
     if python_type is bool:
@@ -162,7 +182,7 @@ def _reader_expr(name: str, python_type: object) -> str:
 def _ts_for_spec(spec: ElementSpec) -> str:
     hints = get_type_hints(spec.props)
     interface_lines = "\n".join(
-        f"  {_camel(name)}: {_TYPE_MAP[_named_role(python_type)]};"
+        f"  {_camel(name)}: {_ts_type(python_type)};"
         for name, python_type in hints.items()
     )
     reader_lines = "\n".join(
@@ -584,15 +604,19 @@ register_element("selection-actions", "SelectionActions", SelectionActionsProps)
 type SearchSelectParams = str  # {"game_id": {"field": "game"}}
 
 
+#: ``post`` a row, emit an ``event``, or ``select`` the typed text.
+type SearchSelectCreate = Literal["", "post", "event", "select"]
+
+
 class SearchSelectProps(TypedDict):
     name: str
     search_url: str
     #: Ride the search query and the create POST alike.
     params: SearchSelectParams
-    #: The endpoint the create row posts to; blank offers no row.
+    #: How the create row commits; blank offers none.
+    create: SearchSelectCreate
+    #: The endpoint a ``post`` create row posts to.
     create_url: str
-    #: The create row emits ``search-select:create`` and posts nothing.
-    create_event: bool
     #: The create row's verb; blank reads "Create".
     create_verb: str
     #: Offered for a name a row holds exactly; blank hides the row.

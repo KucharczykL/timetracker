@@ -3905,6 +3905,20 @@ class SelectableTableMountTest(SimpleTestCase):
         self.assertIn("scope: string;", emitted)
         self.assertIn("count: number;", emitted)
 
+    def test_a_literal_prop_emits_a_string_union(self):
+        from typing import Literal, TypedDict
+
+        from common.components.custom_elements import ElementSpec, _ts_for_spec
+
+        type Mode = Literal["", "post"]
+
+        class ModeProps(TypedDict):
+            mode: Mode
+
+        emitted = _ts_for_spec(ElementSpec("mode-box", "ModeBox", ModeProps))
+        self.assertIn('mode: "" | "post";', emitted)
+        self.assertIn('mode: (el.getAttribute("mode") ?? "") as "" | "post",', emitted)
+
     def test_the_element_scopes_a_kept_selection(self):
         """The library and the table name it: neither the next person at this
         browser nor the table beside it inherits the selection."""
