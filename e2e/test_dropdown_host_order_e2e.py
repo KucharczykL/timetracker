@@ -19,11 +19,6 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
     return page
 
 
-def _delay_host(route: Route) -> None:
-    response = route.fetch()
-    route.fulfill(response=response, body=HOST_DELAY + response.text())
-
-
 def test_autofocused_picker_opens_after_a_slow_host(
     authenticated_page: Page, live_server, e2e_library
 ):
@@ -37,9 +32,17 @@ def test_autofocused_picker_opens_after_a_slow_host(
             errors.append(message.text) if message.type == "error" else None
         ),
     )
+    page.on("pageerror", lambda error: errors.append(str(error)))
+    delayed: list[int] = []
+
+    def delay_host(route: Route) -> None:
+        response = route.fetch()
+        delayed.append(response.status)
+        route.fulfill(response=response, body=HOST_DELAY + response.text())
+
     game = create_tracked_game(e2e_library, "Outer Wilds")
     create_device(e2e_library, "Steam Deck")
-    page.route("**/elements/drop-down.js", _delay_host)
+    page.route("**/elements/drop-down*.js", delay_host)
 
     page.goto(
         f"{live_server.url}{reverse('games:add_session_for_game', args=[game.pk])}"
@@ -48,4 +51,6 @@ def test_autofocused_picker_opens_after_a_slow_host(
     picker = page.locator("search-select[name='device']")
     expect(picker.locator("[data-search-select-search]")).to_be_focused()
     expect(picker.locator("[data-search-select-options]")).to_be_visible()
+    # Hashed or moved files skip the delay.
+    assert delayed == [200]
     assert errors == []

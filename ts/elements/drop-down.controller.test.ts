@@ -4,11 +4,6 @@ import { registerBehavior } from "./dropdown-behaviors.js";
 import type { MenuController } from "./menu-behavior.js";
 import "./drop-down.js";
 
-interface DropdownHost extends HTMLElement {
-  open(): void;
-  close(): void;
-}
-
 afterEach(() => {
   document.body.replaceChildren();
   vi.restoreAllMocks();
@@ -32,7 +27,7 @@ describe("<drop-down> behavior-owned controller plug point", () => {
     const wire = vi.fn();
     registerBehavior("test-controller", { createController, wire });
 
-    const host = document.createElement("drop-down") as DropdownHost;
+    const host = document.createElement("drop-down");
     host.setAttribute("behavior", "test-controller");
     host.setAttribute("placement", "bottom-start");
     host.setAttribute("submenu", "false");
@@ -59,5 +54,15 @@ describe("<drop-down> behavior-owned controller plug point", () => {
     document.body.appendChild(host);
     expect(createController).toHaveBeenCalledTimes(1);
     expect(bindDocument).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports a host with no toggle", () => {
+    const report = vi.spyOn(console, "error").mockImplementation(() => {});
+    const host = document.createElement("drop-down");
+    host.innerHTML = "<div data-menu hidden>Panel</div>";
+
+    document.body.appendChild(host);
+
+    expect(report).toHaveBeenCalledWith(expect.stringContaining("[data-toggle]"));
   });
 });

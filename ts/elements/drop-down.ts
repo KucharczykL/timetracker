@@ -39,7 +39,13 @@ export class DropdownElement extends HTMLElement {
     const props = readDropdownProps(this);
     const toggle = ownChild(this, "[data-toggle]");
     const menu = ownChild(this, "[data-menu]");
-    if (!toggle || !menu) return;
+    if (!toggle || !menu) {
+      // Unwired, open() and close() would do nothing.
+      console.error(
+        `<drop-down> has no own ${toggle ? "[data-menu]" : "[data-toggle]"}; it stays unwired.`,
+      );
+      return;
+    }
 
     const behavior = getBehavior(props.behavior);
     if (props.behavior && !behavior) {
@@ -69,16 +75,12 @@ export class DropdownElement extends HTMLElement {
     behavior?.wire?.({ host: this, toggle, menu, controller });
   }
 
-  /** Open the dropdown programmatically. The inline-combobox host calls this
-   *  from its widget's focus/typing handlers (the input is the trigger, not a
-   *  toggle click). Idempotent — attachMenu's open() no-ops if already open.
-   *  Safe to call before connect/upgrade — no-op. */
+  /** Opens without a toggle click; idempotent. */
   open(): void {
     this.controller?.open();
   }
 
-  /** Close the dropdown programmatically (e.g. after a consumer handles a
-   *  pick inside the panel). Safe to call before connect/upgrade — no-op. */
+  /** Closes without a toggle click; idempotent. */
   close(): void {
     this.controller?.close();
   }

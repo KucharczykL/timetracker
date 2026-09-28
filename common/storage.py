@@ -23,9 +23,9 @@ class HashedStaticStorage(ManifestStaticFilesStorage):
     # Django rewrites in repeated passes and gives up after
     # max_post_process_passes (5 by default). A module can only take its final
     # hash once every module it imports has one, so a chain of N imports costs
-    # up to N passes plus one that changes nothing — and the dist graph is 9
+    # up to N passes plus one that changes nothing — and the dist graph is 10
     # deep (filter-summary → filter-group → filter-widgets → date-range-picker
-    # → … → csrf.js). What it actually costs depends on the order collectstatic
+    # → … → drop-down → … → anchored-position.js). What it actually costs depends on the order collectstatic
     # happens to walk the tree: reach a dependency first and its dependents
     # settle in the same pass. That order is the filesystem's, so the default
     # cap sat right at the edge — the same image collected fine on one machine

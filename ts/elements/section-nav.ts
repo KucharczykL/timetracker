@@ -1,22 +1,21 @@
 /** Responsive section navigation.
  *
  * The server renders one complete inline list as the no-JavaScript fallback.
- * After <drop-down> upgrades, narrow containers move that exact <ul> into a
+ * Narrow containers move that exact <ul> into a
  * modal bottom sheet; the @4xl sentinel restores it to the sticky desktop rail.
  * No links are cloned and no ARIA-menu semantics are introduced.
  */
 import { readSectionNavProps } from "../generated/props.js";
-
-interface SheetDropdown extends HTMLElement {
-  close?: () => void;
-}
+import type { DropdownElement } from "./drop-down.js";
+// Defines the sheet host it closes.
+import "./drop-down.js";
 
 class SectionNavElement extends HTMLElement {
   private rail: HTMLElement | null = null;
   private list: HTMLElement | null = null;
   private sheetHost: HTMLElement | null = null;
   private sheetDestination: HTMLElement | null = null;
-  private sheetDropdown: SheetDropdown | null = null;
+  private sheetDropdown: DropdownElement | null = null;
   private wideSentinel: HTMLElement | null = null;
   private observer: ResizeObserver | null = null;
   private layoutQueued = false;
@@ -32,7 +31,7 @@ class SectionNavElement extends HTMLElement {
     this.sheetDestination = this.querySelector<HTMLElement>(
       "[data-section-nav-sheet-destination]",
     );
-    this.sheetDropdown = this.sheetHost?.querySelector<SheetDropdown>("drop-down") ?? null;
+    this.sheetDropdown = this.sheetHost?.querySelector("drop-down") ?? null;
     this.wideSentinel = this.querySelector<HTMLElement>("[data-section-nav-wide]");
     if (
       !this.rail ||
@@ -45,16 +44,14 @@ class SectionNavElement extends HTMLElement {
       return;
     }
 
-    void customElements.whenDefined("drop-down").then(() => {
-      if (!this.isConnected || this.enhanced) return;
-      this.enhanced = true;
-      this.setAttribute("data-section-nav-enhanced", "");
-      if (typeof ResizeObserver !== "undefined") {
-        this.observer = new ResizeObserver(() => this.queueLayout());
-        this.observer.observe(this);
-      }
-      this.syncLayout();
-    });
+    if (this.enhanced) return;
+    this.enhanced = true;
+    this.setAttribute("data-section-nav-enhanced", "");
+    if (typeof ResizeObserver !== "undefined") {
+      this.observer = new ResizeObserver(() => this.queueLayout());
+      this.observer.observe(this);
+    }
+    this.syncLayout();
   }
 
   disconnectedCallback(): void {
@@ -62,7 +59,7 @@ class SectionNavElement extends HTMLElement {
     this.observer = null;
     this.layoutQueued = false;
     this.waitingForClose = false;
-    this.sheetDropdown?.close?.();
+    this.sheetDropdown?.close();
     this.restoreRail();
     this.sheetHost?.setAttribute("hidden", "");
     this.rail?.removeAttribute("hidden");
@@ -130,7 +127,7 @@ class SectionNavElement extends HTMLElement {
         },
         { once: true },
       );
-      this.sheetDropdown?.close?.();
+      this.sheetDropdown?.close();
       return;
     }
     this.showWide();
