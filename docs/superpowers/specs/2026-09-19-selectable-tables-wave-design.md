@@ -719,8 +719,9 @@ Remove, in #712.
 ## Cross-wave handoffs
 
 - **The lists that stay** — Games (#1134), Devices (#1135) and Platforms
-  (#1136) each inherit the personality and the retirement of their column
-  after #718, and #1245's picker moves into their row-menu slot by
+  (#1136, whose Undo reads the removal stamp, because a platform writes
+  no event) each inherit the personality and the retirement of their
+  column after #718, and #1245's picker moves into their row-menu slot by
   itself; Purchases' table is #725–#736's, then #1266's. The Games list's
   bulk Edit is #1270's
   ([spec](2026-09-28-issue-1270-bulk-game-edit-design.md)): one Edit per

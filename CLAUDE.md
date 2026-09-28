@@ -581,6 +581,14 @@ aggregate, its row menu `device_row_menu` (Edit, Remove), its preview's
 Sessions count `games/reads/device_departures.py`, which the per-row
 confirmation reads too. Contract is
 [Select devices and remove them in bulk](docs/superpowers/specs/2026-09-24-issue-1135-devices-list-selectable-design.md).
+#1136's `platform.remove` does the same on the Platforms list over a
+conventional row: a platform writes no event, so `remove(row, batch=)`
+stamps `Platform.removed_in_batch` and the act's `undo_rows` is
+`StampedRows`, where every other act states `EventRows`; `_act_of` falls
+back to the stamped acts for a batch with no events. `games/writes/platform.py`
+refuses a restore whose name a live private or shared platform holds, at
+409, on the per-row route too. Contract is
+[Select platforms and remove them in bulk](docs/superpowers/specs/2026-09-28-issue-1136-platforms-list-selectable-design.md).
 #1211's `session.edit` sets a device, emulated, a note, or several on
 selected sessions through `DescribeSession`; its Undo restates each changed
 fact from the row's events. #1310 adds the run: the move of one row
