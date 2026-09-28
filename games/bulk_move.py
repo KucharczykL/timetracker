@@ -8,11 +8,12 @@ from django.http import Http404
 
 from games.bulk_actions import RowOutcome
 from games.bulk_sessions import session_of
-from games.events.dispatch import CommandRejected
+from games.events.dispatch import CommandRejected, RowUnreadable
 from games.events.idempotency import IdempotencyKey
 from games.events.playersession import PLAYERSESSION_CREATED, PLAYERSESSION_MOVED
 from games.events.playthrough import PLAYTHROUGH_REMOVED
 from games.models import (
+    LibraryEvent,
     PlayerSession,
     Playthrough,
     PlaythroughKind,
@@ -126,18 +127,18 @@ def _remove_the_emptied_bucket(
     would remove a row its own inverse never puts back.
 
     Read from the batch's own events, because a chunk posted
-    twice answers `Unchanged` for the move and the row then
-    names the target already.
+    twice replays the move as moved, and the row then names
+    the target already.
 
-    The answer is swallowed. A refusal would count a moved
-    row refused; a defect still ends the batch, as it does
-    everywhere else.
+    A batch that moved no such row removes nothing. A
+    broken stream is a defect and ends the batch.
     """
-    try:
-        emptied = run_before(actor.library, session_id, correlation_id)
-    except CommandRejected:
-        #: This batch moved no such row.
-        return
+    with answered("session"):
+        try:
+            emptied = run_before(actor.library, session_id, correlation_id)
+        except CommandRejected:
+            #: This batch moved no such row.
+            return
     bucket = Playthrough.objects.filter(
         library=actor.library,
         pk=emptied,
@@ -215,11 +216,23 @@ def run_before(
         if event.sequence < moved.sequence and event.event_type in RUN_STATED
     ]
     if not earlier:
-        raise CommandRejected(
-            f"session {session_id} states no run before sequence {moved.sequence}",
-            sentence=NO_EARLIER_RUN,
+        raise RowUnreadable(
+            f"session {session_id} of library {library.pk} states "
+            f"{moved.event_type} at sequence {moved.sequence} and no run "
+            "before it"
         )
-    return uuid.UUID(earlier[-1].payload["playthrough"])
+    return _run_of(earlier[-1])
+
+
+def _run_of(event: LibraryEvent) -> uuid.UUID:
+    """The run a created or moved payload states."""
+    run = event.payload.get("playthrough")
+    if not isinstance(run, str):
+        raise RowUnreadable(f"event {event.pk} states playthrough {run!r}")
+    try:
+        return uuid.UUID(run)
+    except ValueError as error:
+        raise RowUnreadable(f"event {event.pk} states playthrough {run!r}") from error
 
 
 def _put_back_the_run(

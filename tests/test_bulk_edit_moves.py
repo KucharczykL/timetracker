@@ -24,6 +24,7 @@ from games.bulk_session_edit import (
     NOTHING_STATED,
     SEVERAL_GAMES,
     EditStatement,
+    edit_back,
     edit_one,
     offer_edit,
     settle_edit,
@@ -34,7 +35,7 @@ from games.bulk_sessions import (
     session_scope,
 )
 from games.commands.playersession import CreateSession, DurationOnlyTiming
-from games.events.dispatch import CommandRejected, dispatch
+from games.events.dispatch import CommandRejected, RowUnreadable, dispatch
 from games.models import (
     Game,
     HistoricalPlaytimeRun,
@@ -52,7 +53,7 @@ from games.views.bulk import (
     STATEMENT_FIELD,
     TOKEN_FIELD,
 )
-from games.writes.answers import CommandFailed
+from games.writes.answers import DEFECT_STATUS, CommandFailed
 from games.writes.playersession import move_session
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -328,7 +329,7 @@ def test_a_bucket_refuses(owned_library, game):
 def test_a_row_moves(owned_user, owned_library, game):
     target = tracked_run(owned_library, game)
     bucket = a_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
-    session = a_session(bucket)
+    session = a_bucket_session(owned_user, target, bucket)
 
     outcome = edit_one(
         owned_user,
@@ -748,6 +749,68 @@ def test_a_key_that_is_not_this_batchs_is_refused(owned_user, owned_library, gam
         run_before(owned_library, session.pk, uuid.uuid7())
 
     assert refusal.value.sentence == NOT_MOVED_BY_THIS_BATCH
+
+
+def _moved_without_a_creation(owned_user, owned_library, game):
+    """A hand-written row, then one move."""
+    session = a_session(tracked_run(owned_library, game))
+    batch = uuid.uuid7()
+    move_session(
+        owned_user,
+        session,
+        a_run(owned_library, game, name="Second run").pk,
+        correlation_id=batch,
+    )
+    return session, batch
+
+
+def test_a_move_with_no_run_before_it_is_a_defect(owned_user, owned_library, game):
+    """A stream that states no creation: the row is wrong."""
+    session, batch = _moved_without_a_creation(owned_user, owned_library, game)
+
+    with pytest.raises(RowUnreadable):
+        run_before(owned_library, session.pk, batch)
+
+
+def test_the_undo_of_a_move_with_no_run_before_it_is_a_defect(
+    owned_user, owned_library, game
+):
+    session, batch = _moved_without_a_creation(owned_user, owned_library, game)
+
+    with pytest.raises(CommandFailed) as failed:
+        edit_back(
+            owned_user,
+            session.pk,
+            undoes=batch,
+            idempotency_key=str(uuid.uuid7()),
+            correlation_id=uuid.uuid7(),
+        )
+
+    assert failed.value.status_code == DEFECT_STATUS
+
+
+def test_a_move_out_of_a_bucket_with_no_creation_is_a_defect(
+    owned_user, owned_library, game
+):
+    """The move is written; the bucket is left."""
+    target = tracked_run(owned_library, game)
+    bucket = a_run(owned_library, game, kind=PlaythroughKind.IMPORTED_HISTORY)
+    session = a_session(bucket)
+
+    with pytest.raises(CommandFailed) as failed:
+        edit_one(
+            owned_user,
+            session,
+            choice=_to(target),
+            idempotency_key="one-move",
+            correlation_id=uuid.uuid7(),
+        )
+
+    assert failed.value.status_code == DEFECT_STATUS
+    session.refresh_from_db()
+    bucket.refresh_from_db()
+    assert session.playthrough_id == target.pk
+    assert bucket.removed_at is None
 
 
 def test_an_undo_refuses_a_run_removed_by_hand_after_the_batch(
