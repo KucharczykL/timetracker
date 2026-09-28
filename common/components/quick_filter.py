@@ -39,6 +39,7 @@ from common.components.filters import (
     parse_filter_dict,
 )
 from common.components.primitives import (
+    AppliedDot,
     ButtonGroup,
     ButtonGroupMember,
     Div,
@@ -74,16 +75,15 @@ class QuickFacet(NamedTuple):
 # sub-filter, which the predicate below rejects).
 QUICK_FACET_KINDS = frozenset({"set", "number", "date", "string", "bool"})
 
+OVERFLOW_LABEL = "More filters"
+OVERFLOW_LABEL_APPLIED = "More filters, some applied"
 
-# One facet row per list mode: a few leaf keys mirroring the
-# list's displayed columns, each rendered via field_widget (set → FilterSelect,
-# number → NumberFilter, date → DateRangePicker, …). Contract-tested in
-# tests/test_quick_filter_bar.py.
+
+# Facets per mode, in idle-row priority order.
 QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "games": [
         QuickFacet("status"),
         QuickFacet("platform"),
-        QuickFacet("name", placeholder="e.g. Zelda"),
         QuickFacet(
             "year_released", "Year", placeholder="e.g. 2020", placeholder2="e.g. 2024"
         ),
@@ -107,11 +107,14 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
             placeholder2="e.g. 100",
             step="0.01",
         ),
+        QuickFacet("name", placeholder="e.g. Zelda"),
     ],
     "sessions": [
         QuickFacet("game"),
-        QuickFacet("device"),
         QuickFacet("day", "Day"),
+        QuickFacet("playthrough_kind", "Playthrough"),
+        QuickFacet("outside_playthrough_dates", "Outside dates"),
+        QuickFacet("device"),
         QuickFacet("timing_mode", "Timing"),
         QuickFacet(
             "duration_hours",
@@ -119,14 +122,12 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
             placeholder="e.g. 1",
             placeholder2="e.g. 10",
         ),
-        #: The run's facts, after the session's.
-        QuickFacet("playthrough_kind", "Playthrough"),
-        QuickFacet("outside_playthrough_dates", "Outside dates"),
     ],
     "purchases": [
         QuickFacet("type"),
+        QuickFacet("date_purchased", "Purchased"),
+        QuickFacet("is_refunded", "Refunded"),
         QuickFacet("ownership_type", "Ownership"),
-        QuickFacet("name", placeholder="e.g. Humble Bundle"),
         QuickFacet(
             "converted_price",
             "Price",
@@ -135,9 +136,8 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
             step="0.01",
         ),
         QuickFacet("infinite"),
-        QuickFacet("date_purchased", "Purchased"),
-        QuickFacet("is_refunded", "Refunded"),
         QuickFacet("created_at", "Created"),
+        QuickFacet("name", placeholder="e.g. Humble Bundle"),
     ],
     "playthroughs": [
         QuickFacet("activity", "Activity"),
@@ -150,20 +150,20 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
             placeholder="e.g. 1",
             placeholder2="e.g. 30",
         ),
-        QuickFacet("note", placeholder="e.g. second run"),
         QuickFacet("created_at", "Created"),
+        QuickFacet("note", placeholder="e.g. second run"),
     ],
     "historical_playtime": [
+        QuickFacet("game"),
+        QuickFacet("when", "When"),
         QuickFacet("provenance", "Provenance"),
+        QuickFacet("device"),
         QuickFacet(
             "duration_hours",
             "Duration (hrs)",
             placeholder="e.g. 1",
             placeholder2="e.g. 100",
         ),
-        QuickFacet("game"),
-        QuickFacet("device"),
-        QuickFacet("when", "When"),
         QuickFacet("created_at", "Created"),
     ],
     "devices": [
@@ -343,6 +343,8 @@ class QuickFilterBar(BaseComponent):
             per_page=(
                 "" if self.per_page_override is None else str(self.per_page_override)
             ),
+            overflow_label=OVERFLOW_LABEL,
+            overflow_label_applied=OVERFLOW_LABEL_APPLIED,
         )[
             # A real <form> so Enter in any facet input applies; the element
             # intercepts submit and navigates.
@@ -380,6 +382,11 @@ class QuickFilterBar(BaseComponent):
         # propagates here; QuickFacet.label overrides only for compact wording.
         label = facet.label or _field_meta(filter_cls, facet.field)["label"]
         kind = _field_meta(filter_cls, facet.field)["kind"]
+        # Stamped for the bar's spill order.
+        applied = facet.field in self.existing
+        config = {"data_quick_facet": ""}
+        if applied:
+            config["data_quick_facet_applied"] = ""
         return ComboboxDropdown(
             label=label,
             content=field_widget(
@@ -403,7 +410,8 @@ class QuickFilterBar(BaseComponent):
             # The priority-plus hook: the bar's TS moves overfull facets
             # (whole <drop-down> nodes, widget state intact) into the "⋯"
             # overflow menu as the row narrows.
-            config={"data_quick_facet": ""},
+            config=config,
+            applied=applied,
         )
 
     def _action_group_members(self) -> list[ButtonGroupMember]:
@@ -431,24 +439,28 @@ class QuickFilterBar(BaseComponent):
         elements, and the single-open coordination keeps this menu open when
         a facet dropdown inside it opens (ancestor check)."""
         trigger = EllipsisTrigger(
-            label="More filters",
+            [("data-quick-overflow-trigger", "")],
+            label=OVERFLOW_LABEL,
             orientation="horizontal",
             haspopup="dialog",
         ).as_element()
         # Moved facets' dropdowns open fixed, unclipped.
         panel = DropdownPanel(
             role="dialog",
-            aria_label="More filters",
+            aria_label=OVERFLOW_LABEL,
             width="w-auto",
             content_attributes=[("data-quick-overflow-items", "")],
             content_class="flex flex-col items-stretch gap-1",
         )[()]
         return Div(class_="hidden", data_quick_overflow="")[
-            Dropdown(
-                trigger_element=trigger,
-                target_element=panel,
-                id=f"quick-{self.mode}-overflow",
-            )
+            Div(class_="relative")[
+                Dropdown(
+                    trigger_element=trigger,
+                    target_element=panel,
+                    id=f"quick-{self.mode}-overflow",
+                ),
+                AppliedDot([("data-quick-overflow-mark", ""), ("class", "invisible")]),
+            ]
         ]
 
     def _degraded(self) -> Node:

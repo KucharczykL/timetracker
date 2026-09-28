@@ -4,6 +4,7 @@ sessions list), and the degraded "Advanced filter active" pill for a filter
 the bar cannot round-trip."""
 
 import json
+import re
 import urllib.parse
 from datetime import UTC
 
@@ -13,6 +14,7 @@ from django.urls import reverse
 from playwright.sync_api import ConsoleMessage, Page, expect
 from session_rows import session_row
 
+from e2e.helpers import open_facet
 from e2e.tracked_games import create_tracked_game
 from games.models import Game, Platform, PlayerGameStatus
 from games.reads.calendar import calendar_day_zone
@@ -111,9 +113,8 @@ def test_quick_scalar_facet_filters_sessions(
     page.set_viewport_size({"width": 2000, "height": 900})
     page.goto(f"{live_server.url}{reverse('games:list_sessions')}")
 
-    # The capped body fits four facets; Duration spills.
-    page.locator("#quick-sessions-overflowLink").click()
-    page.locator("#quick-duration_hours-dropdownLink").click()
+    # Past the body cap, Duration is among the three that spill.
+    open_facet(page, "duration_hours")
     duration = page.locator('quick-filter-bar [data-filter-widget][data-kind="number"]')
     duration.locator("select[data-number-modifier-select]").select_option(
         "GREATER_THAN"
@@ -304,11 +305,12 @@ def test_date_dropdown_facet_preset_flow(
 def test_priority_plus_overflow_collapses_and_restores(
     authenticated_page: Page, live_server, e2e_library
 ):
-    """Priority-plus: narrowing the viewport moves rightmost facets into
-    the "⋯" overflow menu (ResizeObserver, no breakpoints); facets keep
-    working from inside it; widening moves them back.
+    """Priority-plus: narrowing moves idle facets into "⋯", rightmost
+    first, and an applied facet spills last; facets keep working from
+    inside it.
 
-    The capped body fits four facets at every viewport."""
+    Past the body cap, four facets fit: Game, Day, Playthrough and
+    Outside dates."""
     from datetime import datetime, timedelta
 
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
@@ -336,6 +338,11 @@ def test_priority_plus_overflow_collapses_and_restores(
     expect(overflow_items.locator("[data-quick-facet]")).to_have_count(3)
     expect(
         overflow_items.locator(":scope > drop-down:has(#quick-timing_mode-dropdown)")
+    ).to_have_count(1)
+    expect(
+        overflow_items.locator(
+            ":scope > drop-down:has(#quick-outside_playthrough_dates-dropdown)"
+        )
     ).to_have_count(0)
 
     # Narrow: every facet spills.
@@ -363,16 +370,60 @@ def test_priority_plus_overflow_collapses_and_restores(
     expect(page.locator(f"#session-row-{long_session.pk}")).to_be_visible()
     expect(page.locator(f"#session-row-{short_session.pk}")).to_have_count(0)
 
-    # Widen: the facets return in order.
+    # Widen: applied Duration outranks idle facets.
     page.set_viewport_size({"width": 2000, "height": 900})
-    expect(
-        page.locator("[data-quick-overflow-items] [data-quick-facet]")
-    ).to_have_count(3)
+    row_triggers = page.locator("[data-quick-row] > [data-quick-facet] > [data-toggle]")
+    expect(row_triggers).to_have_count(4)
+    assert [trigger.get_attribute("id") for trigger in row_triggers.all()] == [
+        "quick-game-dropdownLink",
+        "quick-day-dropdownLink",
+        "quick-playthrough_kind-dropdownLink",
+        "quick-duration_hours-dropdownLink",
+    ]
+    menu_triggers = page.locator(
+        "[data-quick-overflow-items] > [data-quick-facet] > [data-toggle]"
+    )
+    assert [trigger.get_attribute("id") for trigger in menu_triggers.all()] == [
+        "quick-outside_playthrough_dates-dropdownLink",
+        "quick-device-dropdownLink",
+        "quick-timing_mode-dropdownLink",
+    ]
+
+
+def test_an_applied_facet_stays_inline_and_marked(
+    authenticated_page: Page, live_server
+):
+    """An applied facet stays inline, marked."""
+    page = authenticated_page
+    page.set_viewport_size({"width": 2000, "height": 900})
+    stated = json.dumps({"outside_playthrough_dates": {"value": True}})
+    page.goto(
+        f"{live_server.url}{reverse('games:list_sessions')}"
+        f"?filter={urllib.parse.quote(stated)}"
+    )
+
+    facet = page.locator(
+        "[data-quick-row] > drop-down:has(#quick-outside_playthrough_dates-dropdown)"
+    )
+    expect(facet).to_have_attribute("data-quick-facet-applied", "")
+    trigger = page.locator("#quick-outside_playthrough_dates-dropdownLink")
+    expect(trigger).to_have_accessible_name("Outside dates (applied)")
+    overflow_trigger = page.locator("[data-quick-overflow-trigger]")
+    expect(overflow_trigger).to_have_attribute("aria-label", "More filters")
+
+    page.set_viewport_size({"width": 520, "height": 900})
     expect(
         page.locator(
-            "[data-quick-overflow-items] > drop-down:has(#quick-timing_mode-dropdown)"
+            "[data-quick-overflow-items] > "
+            "drop-down:has(#quick-outside_playthrough_dates-dropdown)"
         )
-    ).to_have_count(0)
+    ).to_have_count(1)
+    expect(overflow_trigger).to_have_attribute(
+        "aria-label", "More filters, some applied"
+    )
+    expect(page.locator("[data-quick-overflow-mark]")).not_to_have_class(
+        re.compile(r"\binvisible\b")
+    )
 
 
 def test_preset_pick_on_builderless_mode(

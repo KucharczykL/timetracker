@@ -822,7 +822,11 @@ structured filtering.
     inside form whose Apply button (or Enter in inline input) serializes them and
     navigates. Clear is plain link to bare list URL. Set → panel `FilterSelect`;
     date → `DateRangePanel`; number/string/bool → stacked widget embedded as-is.
-    Per-mode facet lists live in `QUICK_FACETS`.
+    Per-mode facet lists live in `QUICK_FACETS`, in idle-row priority order.
+  - A facet the filter names is applied: a brand dot in its trigger's corner, and it
+    spills into "⋯" only after every idle facet; `⋯` marks itself while it
+    holds one. Row and menu keep declared order
+    ([Facet priority](docs/superpowers/specs/2026-09-28-issue-1254-quick-bar-facet-priority-design.md)).
   - Row anatomy: collapsible facets, then "⋯" priority-plus overflow menu
     (ResizeObserver-driven, continuous, no breakpoints — facets that don't fit are
     MOVED into it, same DOM nodes so widget state survives), then non-collapsible

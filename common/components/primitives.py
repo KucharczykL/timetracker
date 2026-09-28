@@ -2689,6 +2689,15 @@ _ELLIPSIS_GLYPHS: Mapping[EllipsisOrientation, str] = {
 }
 
 
+def AppliedDot(attrs: AttrsArg | None = None, /) -> Node:
+    """Brand dot in a relative parent's corner."""
+    return Span(
+        attrs,
+        class_="absolute top-1 right-1 size-1.5 rounded-full bg-brand",
+        aria_hidden="true",
+    )
+
+
 def IconTrigger(
     attrs: AttrsArg | None = None,
     /,

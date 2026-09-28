@@ -25,6 +25,11 @@ import {
   priorityPlusTotalWidth,
 } from "./priority-plus.js";
 
+// Applied facets spill after idle ones.
+interface SpillableFacet extends OverflowItem {
+  readonly applied: boolean;
+}
+
 // The preset picker's search-select change payload: `last` is
 // the picked row, whose data-filter attribute carries the preset's filter
 // JSON.
@@ -37,10 +42,16 @@ interface PresetChangeDetail {
 class QuickFilterBarElement extends HTMLElement {
   private applyTarget = "";
   private perPage = "";
-  private facets: OverflowItem[] = [];
+  private facets: SpillableFacet[] = [];
+  // Fit sequence: applied facets, then idle ones.
+  private priority: SpillableFacet[] = [];
+  private overflowLabel = "";
+  private overflowLabelApplied = "";
   private row: HTMLElement | null = null;
   private overflowHost: HTMLElement | null = null;
   private overflowItems: HTMLElement | null = null;
+  private overflowTrigger: HTMLElement | null = null;
+  private overflowMark: HTMLElement | null = null;
   private rowGap = 0;
   private reservedWidth = 0;
   // Measured unhidden; re-reading it while hidden answers 0.
@@ -53,6 +64,8 @@ class QuickFilterBarElement extends HTMLElement {
     const props = readQuickFilterBarProps(this);
     this.applyTarget = props.applyUrl;
     this.perPage = props.perPage;
+    this.overflowLabel = props.overflowLabel;
+    this.overflowLabelApplied = props.overflowLabelApplied;
     // Wires the number/string modifier selects (presence disables inputs,
     // BETWEEN reveals the second) and the bool facets' deselectable radios.
     setupModifierToggles(this);
@@ -104,8 +117,8 @@ class QuickFilterBarElement extends HTMLElement {
   // GitHub-style continuous collapse: no breakpoints. The row is watched by a
   // ResizeObserver; on every width change the facets that no longer fit are
   // MOVED (same DOM nodes — widget state, listeners and serializer scope all
-  // survive) into the "⋯" overflow dropdown, rightmost first, and moved back
-  // as the row widens.
+  // survive) into the "⋯" overflow dropdown and moved back as the row widens.
+  // Row and menu keep declared order.
 
   private setupOverflow(): void {
     this.row = this.querySelector<HTMLElement>("[data-quick-row]");
@@ -113,7 +126,23 @@ class QuickFilterBarElement extends HTMLElement {
     this.overflowItems = this.querySelector<HTMLElement>(
       "[data-quick-overflow-items]",
     );
-    if (!this.row || !this.overflowHost || !this.overflowItems) return;
+    this.overflowTrigger = this.querySelector<HTMLElement>(
+      "[data-quick-overflow-trigger]",
+    );
+    this.overflowMark = this.querySelector<HTMLElement>("[data-quick-overflow-mark]");
+    if (!this.row) return;
+    if (!this.overflowHost || !this.overflowItems) {
+      reportClientError("quick-filter-bar", "overflow host or items missing", {
+        toast: false,
+      });
+      return;
+    }
+    // The collapse still works without the mark.
+    if (!this.overflowTrigger || !this.overflowMark) {
+      reportClientError("quick-filter-bar", "overflow trigger or mark missing", {
+        toast: false,
+      });
+    }
     const facetElements = Array.from(
       this.row.querySelectorAll<HTMLElement>(":scope > [data-quick-facet]"),
     );
@@ -125,7 +154,12 @@ class QuickFilterBarElement extends HTMLElement {
     this.facets = facetElements.map((element) => ({
       element,
       width: element.offsetWidth,
+      applied: element.hasAttribute("data-quick-facet-applied"),
     }));
+    this.priority = [
+      ...this.facets.filter((facet) => facet.applied),
+      ...this.facets.filter((facet) => !facet.applied),
+    ];
     this.overflowHost.classList.remove("hidden");
     this.overflowWidth = this.overflowHost.offsetWidth;
     this.overflowHost.classList.add("hidden");
@@ -169,38 +203,44 @@ class QuickFilterBarElement extends HTMLElement {
     const rowWidth = row.clientWidth;
     // First try without the "⋯" reserve: if every facet fits alongside the
     // permanent furniture, nothing collapses.
-    const facetWidths = this.facets.map((facet) => facet.width);
+    const facetWidths = this.priority.map((facet) => facet.width);
     const totalFacetsWidth = priorityPlusTotalWidth(facetWidths, this.rowGap);
     const furnitureOnly = this.reservedWidth - this.rowGap - this.overflowWidth;
     let fitCount: number;
     if (totalFacetsWidth + Math.max(furnitureOnly, 0) <= rowWidth) {
-      fitCount = this.facets.length;
+      fitCount = this.priority.length;
     } else {
       const available = rowWidth - this.reservedWidth;
       fitCount = priorityPlusFitCount(facetWidths, available, this.rowGap);
     }
+    const kept = new Set(this.priority.slice(0, fitCount));
+    const inRow = this.facets.filter((facet) => kept.has(facet));
+    const spilled = this.facets.filter((facet) => !kept.has(facet));
 
-    this.facets.forEach((facet, index) => {
-      if (index < fitCount) {
-        if (facet.element.parentElement !== row) {
-          row.insertBefore(facet.element, overflowHost);
-        }
-      } else if (facet.element.parentElement !== overflowItems) {
-        overflowItems.appendChild(facet.element);
+    // Moves only misplaced facets.
+    let successor: Element = overflowHost;
+    for (const facet of [...inRow].reverse()) {
+      if (facet.element.nextElementSibling !== successor) {
+        row.insertBefore(facet.element, successor);
       }
-    });
-    // Order inside the row: re-inserting fit facets before the overflow host
-    // in facet order keeps the original sequence stable even after round
-    // trips through the overflow panel.
-    for (let index = fitCount - 1; index >= 0; index--) {
-      const element = this.facets[index].element;
-      const successor =
-        index + 1 < fitCount ? this.facets[index + 1].element : overflowHost;
-      if (element.nextElementSibling !== successor) {
-        row.insertBefore(element, successor);
-      }
+      successor = facet.element;
     }
-    overflowHost.classList.toggle("hidden", fitCount === this.facets.length);
+    // Unchanged menu stays put: keeps open panels.
+    const menuOrder = Array.from(overflowItems.children);
+    const menuInOrder =
+      menuOrder.length === spilled.length &&
+      spilled.every((facet, index) => menuOrder[index] === facet.element);
+    if (!menuInOrder) {
+      for (const facet of spilled) overflowItems.appendChild(facet.element);
+    }
+
+    overflowHost.classList.toggle("hidden", spilled.length === 0);
+    const holdsApplied = spilled.some((facet) => facet.applied);
+    this.overflowMark?.classList.toggle("invisible", !holdsApplied);
+    this.overflowTrigger?.setAttribute(
+      "aria-label",
+      holdsApplied ? this.overflowLabelApplied : this.overflowLabel,
+    );
   }
 
   // Overridable so tests can assert the target without a real navigation.

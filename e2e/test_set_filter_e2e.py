@@ -24,6 +24,7 @@ from django.urls import path
 
 from common.components import QuickFilterBar
 from common.date_time_presentation import date_time_presentation_for_request
+from e2e.helpers import open_facet
 
 _PAGE_TEMPLATE = """<!DOCTYPE html>
 <html>
@@ -156,7 +157,7 @@ def test_set_filter_include_and_exclude(live_server, page):
 @override_settings(ROOT_URLCONF="e2e.test_set_filter_e2e")
 def test_set_filter_presence_is_null(live_server, page):
     page.goto(live_server.url + "/test-set-filter-sessions/")
-    page.locator("#quick-device-dropdownLink").click()
+    open_facet(page, "device")
     page.locator('search-select[name="device"]').locator(
         '[data-search-select-modifier-option="IS_NULL"]'
     ).click()
