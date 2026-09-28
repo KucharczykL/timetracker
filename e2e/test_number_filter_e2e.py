@@ -18,6 +18,7 @@ from django.urls import path
 
 from common.components import QuickFilterBar
 from common.date_time_presentation import date_time_presentation_for_request
+from e2e.helpers import open_facet
 
 _PAGE_TEMPLATE = """<!DOCTYPE html>
 <html>
@@ -83,18 +84,6 @@ def _filter_from_url(url: str) -> dict:
     return json.loads(raw) if raw else {}
 
 
-def _open_facet(page, field: str):
-    """Open one facet's panel, wherever the row put it.
-
-    The leading field takes width, so a facet may sit in the "⋯" menu. Opening
-    it is what a person does, and keeps these tests about the widget.
-    """
-    trigger = page.locator(f"#quick-{field}-dropdownLink")
-    if not trigger.is_visible():
-        page.locator("[data-quick-overflow] [data-toggle]").first.click()
-    trigger.click()
-
-
 def _submit(page):
     with page.expect_navigation():
         page.locator('quick-filter-bar button[type="submit"]').click()
@@ -104,7 +93,7 @@ def _submit(page):
 @override_settings(ROOT_URLCONF="e2e.test_number_filter_e2e")
 def test_number_filter_defaults_and_greater_than(live_server, page):
     page.goto(live_server.url + "/test-number-filter-empty/")
-    _open_facet(page, "year_released")
+    open_facet(page, "year_released")
 
     value_input = page.locator('input[name="quick-year_released"]')
     value2_input = page.locator('input[name="quick-year_released-value2"]')
@@ -130,7 +119,7 @@ def test_number_filter_defaults_and_greater_than(live_server, page):
 @override_settings(ROOT_URLCONF="e2e.test_number_filter_e2e")
 def test_number_filter_between_reveals_and_serializes(live_server, page):
     page.goto(live_server.url + "/test-number-filter-empty/")
-    _open_facet(page, "year_released")
+    open_facet(page, "year_released")
 
     value2_input = page.locator('input[name="quick-year_released-value2"]')
     assert value2_input.is_hidden()
@@ -154,7 +143,7 @@ def test_number_filter_between_reveals_and_serializes(live_server, page):
 @override_settings(ROOT_URLCONF="e2e.test_number_filter_e2e")
 def test_number_filter_null_states(live_server, page):
     page.goto(live_server.url + "/test-number-filter-empty/")
-    _open_facet(page, "year_released")
+    open_facet(page, "year_released")
 
     value_input = page.locator('input[name="quick-year_released"]')
     value_input.fill("1999")
@@ -177,7 +166,7 @@ def test_number_filter_prefilled_states(live_server, page):
 
     # year_released: BETWEEN with both bounds, second input visible in the
     # opened panel.
-    _open_facet(page, "year_released")
+    open_facet(page, "year_released")
     assert page.locator('input[name="quick-year_released"]').input_value() == "2000"
     assert (
         page.locator('input[name="quick-year_released-value2"]').input_value() == "2010"
@@ -189,7 +178,7 @@ def test_number_filter_prefilled_states(live_server, page):
     )
 
     # session_count: GREATER_THAN 5 — value prefilled, input enabled.
-    _open_facet(page, "session_count")
+    open_facet(page, "session_count")
     session_input = page.locator('input[name="quick-session_count"]')
     assert session_input.is_enabled()
     assert session_input.input_value() == "5"

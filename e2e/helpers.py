@@ -1,4 +1,4 @@
-"""Shared waits for e2e tests that measure rendered layout."""
+"""Shared waits and steps for e2e tests."""
 
 from playwright.sync_api import Page
 
@@ -36,3 +36,15 @@ def open_row_menu(page: Page, menu_id: str) -> None:
     """
     page.wait_for_function("() => !!customElements.get('drop-down')")
     page.locator(f"#{menu_id}Link").click()
+
+
+def open_facet(page: Page, field: str) -> None:
+    """Open one quick facet's panel, wherever the row put it.
+
+    A facet may sit in the "⋯" menu at the page's width; opening it from
+    there is what a person does.
+    """
+    trigger = page.locator(f"#quick-{field}-dropdownLink")
+    if not trigger.is_visible():
+        page.locator("[data-quick-overflow] [data-toggle]").first.click()
+    trigger.click()

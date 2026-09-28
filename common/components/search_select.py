@@ -61,9 +61,9 @@ from common.components.custom_elements import (
 )
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
-    AppliedDot,
     MICRO_LABEL_CLASS,
     SHAPE_CLASSES,
+    AppliedDot,
     ButtonColor,
     ButtonShape,
     ControlButton,

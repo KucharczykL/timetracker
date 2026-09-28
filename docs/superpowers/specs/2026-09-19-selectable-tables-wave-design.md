@@ -516,9 +516,11 @@ page's Playtime section draws three linked cards, To review, Imported
 history and Outside dates, a card with no rows not drawn; each link lands
 on an editable quick bar, which is why both fields are facets. No stored
 state: the facet is the suggestion, and a row the person leaves is right
-where it is. The session bar now holds seven facets and `max-w-7xl` fits
-four inline, so Duration, Playthrough and Outside dates ride the overflow
-at every width; which facets ride inline is #1254's.
+where it is. The session bar holds seven facets and `max-w-7xl` fits four
+inline. An applied facet spills after every idle one, and Playthrough and
+Outside dates lead the idle row, as
+[the quick bar's facet priority](2026-09-28-issue-1254-quick-bar-facet-priority-design.md)
+states.
 
 ## Reclassification, rebuilt
 

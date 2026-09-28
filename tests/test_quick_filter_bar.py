@@ -11,8 +11,8 @@ from django.test import SimpleTestCase, TestCase
 
 from common.components import (
     QUICK_FACET_KINDS,
-    Span,
     QUICK_FACETS,
+    Span,
     is_quick_editable,
     parse_filter_dict,
 )
@@ -573,7 +573,9 @@ class AppliedFacetMarkTest(TestCase):
         cases = {
             "games": {"status": {"value": [{"id": "f", "label": "Finished"}]}},
             "sessions": {"duration_hours": {"value": 2, "modifier": "GREATER_THAN"}},
-            "purchases": {"date_purchased": {"value": "2026-01-01", "modifier": "EQUALS"}},
+            "purchases": {
+                "date_purchased": {"value": "2026-01-01", "modifier": "EQUALS"}
+            },
             "devices": {"name": {"value": "Deck", "modifier": "INCLUDES"}},
             "playthroughs": {"note": {"value": "", "modifier": "EQUALS"}},
         }
@@ -593,6 +595,72 @@ class AppliedFacetMarkTest(TestCase):
         assert mark is not None
         self.assertIn("invisible", mark.group(0))
         self.assertIn("bg-brand", mark.group(0))
+
+
+class FacetOrderTest(SimpleTestCase):
+    """Each list's facets in the order its idle row keeps them.
+
+    A search-duplicating string facet stands last; the reasons for each
+    order are in the quick bar facet priority spec.
+    """
+
+    ORDERS = {
+        "sessions": [
+            "game",
+            "day",
+            "playthrough_kind",
+            "outside_playthrough_dates",
+            "device",
+            "timing_mode",
+            "duration_hours",
+        ],
+        "purchases": [
+            "type",
+            "date_purchased",
+            "is_refunded",
+            "ownership_type",
+            "converted_price",
+            "infinite",
+            "created_at",
+            "name",
+        ],
+        "historical_playtime": [
+            "game",
+            "when",
+            "provenance",
+            "device",
+            "duration_hours",
+            "created_at",
+        ],
+        "games": [
+            "status",
+            "platform",
+            "year_released",
+            "playtime_hours",
+            "mastered",
+            "session_count",
+            "purchase_count",
+            "purchase_price_total",
+            "name",
+        ],
+        "playthroughs": [
+            "activity",
+            "game",
+            "started",
+            "completed",
+            "days_to_finish",
+            "created_at",
+            "note",
+        ],
+        "devices": ["name", "type", "created_at"],
+        "platforms": ["name", "group", "created_at"],
+    }
+
+    def test_every_mode_states_its_order(self):
+        self.assertEqual(set(self.ORDERS), set(QUICK_FACETS))
+        for mode, order in self.ORDERS.items():
+            with self.subTest(mode=mode):
+                self.assertEqual([facet.field for facet in QUICK_FACETS[mode]], order)
 
 
 class QuickFacetsContractTest(TestCase):

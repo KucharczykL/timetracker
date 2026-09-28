@@ -76,15 +76,15 @@ class QuickFacet(NamedTuple):
 QUICK_FACET_KINDS = frozenset({"set", "number", "date", "string", "bool"})
 
 
-# One facet row per list mode: a few leaf keys mirroring the
-# list's displayed columns, each rendered via field_widget (set → FilterSelect,
-# number → NumberFilter, date → DateRangePicker, …). Contract-tested in
+# One facet row per list mode, each rendered via field_widget (set →
+# FilterSelect, number → NumberFilter, date → DateRangePicker, …). The order
+# is the idle row's priority: the leading facets stay inline, and a facet the
+# search field already covers stands last. Contract-tested in
 # tests/test_quick_filter_bar.py.
 QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "games": [
         QuickFacet("status"),
         QuickFacet("platform"),
-        QuickFacet("name", placeholder="e.g. Zelda"),
         QuickFacet(
             "year_released", "Year", placeholder="e.g. 2020", placeholder2="e.g. 2024"
         ),
@@ -108,11 +108,14 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
             placeholder2="e.g. 100",
             step="0.01",
         ),
+        QuickFacet("name", placeholder="e.g. Zelda"),
     ],
     "sessions": [
         QuickFacet("game"),
-        QuickFacet("device"),
         QuickFacet("day", "Day"),
+        QuickFacet("playthrough_kind", "Playthrough"),
+        QuickFacet("outside_playthrough_dates", "Outside dates"),
+        QuickFacet("device"),
         QuickFacet("timing_mode", "Timing"),
         QuickFacet(
             "duration_hours",
@@ -120,14 +123,12 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
             placeholder="e.g. 1",
             placeholder2="e.g. 10",
         ),
-        #: The run's facts, after the session's.
-        QuickFacet("playthrough_kind", "Playthrough"),
-        QuickFacet("outside_playthrough_dates", "Outside dates"),
     ],
     "purchases": [
         QuickFacet("type"),
+        QuickFacet("date_purchased", "Purchased"),
+        QuickFacet("is_refunded", "Refunded"),
         QuickFacet("ownership_type", "Ownership"),
-        QuickFacet("name", placeholder="e.g. Humble Bundle"),
         QuickFacet(
             "converted_price",
             "Price",
@@ -136,9 +137,8 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
             step="0.01",
         ),
         QuickFacet("infinite"),
-        QuickFacet("date_purchased", "Purchased"),
-        QuickFacet("is_refunded", "Refunded"),
         QuickFacet("created_at", "Created"),
+        QuickFacet("name", placeholder="e.g. Humble Bundle"),
     ],
     "playthroughs": [
         QuickFacet("activity", "Activity"),
@@ -151,20 +151,20 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
             placeholder="e.g. 1",
             placeholder2="e.g. 30",
         ),
-        QuickFacet("note", placeholder="e.g. second run"),
         QuickFacet("created_at", "Created"),
+        QuickFacet("note", placeholder="e.g. second run"),
     ],
     "historical_playtime": [
+        QuickFacet("game"),
+        QuickFacet("when", "When"),
         QuickFacet("provenance", "Provenance"),
+        QuickFacet("device"),
         QuickFacet(
             "duration_hours",
             "Duration (hrs)",
             placeholder="e.g. 1",
             placeholder2="e.g. 100",
         ),
-        QuickFacet("game"),
-        QuickFacet("device"),
-        QuickFacet("when", "When"),
         QuickFacet("created_at", "Created"),
     ],
     "devices": [
