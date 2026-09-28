@@ -2103,6 +2103,9 @@ class GameForm(
             if tracked is not None:
                 self.initial.setdefault("status", tracked.status)
                 self.initial.setdefault("mastered", tracked.mastered)
+                self.initial.setdefault(
+                    "excluded_from_unfinished", tracked.excluded_from_unfinished
+                )
 
     #: Plain fields: this form writes no column.
     #: The initial is what tracking would create.
@@ -2112,6 +2115,9 @@ class GameForm(
         initial=PlayerGameStatus.UNPLAYED,
     )
     mastered = forms.BooleanField(required=False)
+    excluded_from_unfinished = forms.BooleanField(
+        required=False, label="Excluded from unfinished lists"
+    )
 
     #: Declared fields otherwise sink below model fields.
     field_order = (
@@ -2120,6 +2126,7 @@ class GameForm(
         "original_release_date",
         "status",
         "mastered",
+        "excluded_from_unfinished",
     )
 
     def save(self, commit=True):

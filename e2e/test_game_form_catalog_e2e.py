@@ -12,12 +12,13 @@ waits for the page the redirect lands on first.
 
 import pytest
 from django.urls import reverse
+from django.utils import timezone
 from playwright.sync_api import Locator, Page, expect
 
 from games.catalog_compat import mirror_legacy_columns
 from games.catalog_form import DUPLICATE_RELEASE_IN_FORM
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
-from games.models import Edition, Game, Platform, Release
+from games.models import Edition, Game, Platform, PlayerGame, Purchase, Release
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -559,3 +560,29 @@ def test_a_row_added_after_a_bin_names_its_own_platform(
 
     expect(radio_named(added, "DOS")).to_be_visible()
     expect(radio_named(release_card(page, 0, 0), "Amiga")).to_be_visible()
+
+
+def test_an_excluded_game_leaves_the_unfinished_list(
+    signed_in, live_server, game, e2e_library
+):
+    """Tick the box; the detail names it and the stats count drops it."""
+    page = signed_in
+    Purchase.objects.create(
+        library=e2e_library,
+        date_purchased=timezone.now(),
+        price_currency="USD",
+        type=Purchase.GAME,
+    ).games.set([game])
+    stats = f"{live_server.url}{reverse('games:stats_alltime')}"
+    page.goto(stats)
+    expect(page.get_by_role("row", name="Unfinished 1 (100%)")).to_be_visible()
+
+    open_form(page, live_server, game)
+    page.get_by_label("Excluded from unfinished lists").check()
+    saved(page, live_server)
+
+    page.goto(f"{live_server.url}{game.get_absolute_url()}")
+    expect(page.get_by_text("Excluded from unfinished lists")).to_be_visible()
+    page.goto(stats)
+    expect(page.get_by_role("row", name="Unfinished 0 (0%)")).to_be_visible()
+    assert PlayerGame.objects.get(game=game).excluded_from_unfinished is True

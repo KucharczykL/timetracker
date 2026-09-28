@@ -372,6 +372,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
                 game,
                 status=form.cleaned_data["status"],
                 mastered=form.cleaned_data["mastered"],
+                excluded_from_unfinished=form.cleaned_data["excluded_from_unfinished"],
                 correlation_id=correlation_id,
             )
             if not recorded:
@@ -495,6 +496,7 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
                 written,
                 status=form.cleaned_data["status"],
                 mastered=form.cleaned_data["mastered"],
+                excluded_from_unfinished=form.cleaned_data["excluded_from_unfinished"],
                 correlation_id=new_correlation_id(),
             )
             if answer.refusal is None:
@@ -986,7 +988,12 @@ def _game_header(
                     current=game.tracked_status,
                 )
             ],
-            "👑" if game.tracked_mastered else "",
+            Fragment(
+                "👑" if game.tracked_mastered else "",
+                Span(class_="text-body")["Excluded from unfinished lists"]
+                if game.tracked_excluded_from_unfinished
+                else "",
+            ),
         ),
         _played_row(game, origin, played),
         *_plain_release_rows(entries, presentation),

@@ -86,3 +86,19 @@ def test_the_column_sorts_without_warning(logged_in, games):
 
     assert answer.status_code == 200
     assert "Unknown sort" not in answer.content.decode()
+
+
+def _status_row(body: str) -> str:
+    """From the Status label to the next row's label."""
+    return body.split(">Status<", 1)[1].split('class="uppercase"', 1)[0]
+
+
+def test_detail_names_the_exclusion(logged_in, games):
+    flagged, plain = games
+
+    assert "Excluded from unfinished lists" in _status_row(
+        logged_in.get(flagged.get_absolute_url()).content.decode()
+    )
+    assert "Excluded from unfinished lists" not in _status_row(
+        logged_in.get(plain.get_absolute_url()).content.decode()
+    )
