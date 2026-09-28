@@ -19,7 +19,10 @@ from games.endpoint_fields import EndpointColumns, endpoint_constraints
 from games.endpoints import ENDPOINTS, PLAYTHROUGH_COMPLETION, PLAYTHROUGH_START
 from games.events.dispatch import CommandRejected
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, NewEvent, Unchanged
+from games.filters import PlaythroughFilter
 from games.models import Playthrough
+from games.reads.endpoints import StatedEndpoint
+from games.writes.endpoint import EndpointMove, endpoint_move
 from timetracker.temporal import TemporalValue
 
 
@@ -231,3 +234,27 @@ def test_a_void_runs_the_hook_then_voids() -> None:
         void_endpoint(_started_run(), PLAYTHROUGH_START, sentences=SENTENCES)
     )
     assert (event.spec, event.payload) == (PLAYTHROUGH_START.events.voided, {})
+
+
+@pytest.mark.parametrize(
+    ("held", "wanted", "move"),
+    [
+        (None, None, EndpointMove.NOTHING),
+        (None, MAY, EndpointMove.ACT),
+        ("stated", None, EndpointMove.VOID),
+        ("stated", MAY, EndpointMove.CORRECT),
+    ],
+)
+def test_the_move_reads_presence_alone(held, wanted, move) -> None:
+    stated_endpoint = None if held is None else StatedEndpoint(RECORDED, MAY, "")
+    assert endpoint_move(stated_endpoint, wanted) is move
+
+
+def test_playthrough_filter_keeps_its_endpoint_leaves() -> None:
+    fields = PlaythroughFilter.fields
+    assert list(fields)[2:6] == ["started", "completed", "is_started", "is_completed"]
+    assert fields["started"].metadata_lookup == "started_lower"
+    assert fields["completed"].metadata_lookup == "completed_lower"
+    assert fields["is_started"].label == "Has a start"
+    assert fields["is_completed"].label == "Has a completion"
+    assert fields["started"].label is None

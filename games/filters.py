@@ -63,6 +63,8 @@ from common.criteria import (
     search_q,
     temporal_interval_handler,
 )
+from games.endpoint_fields import EndpointColumns
+from games.endpoints import PLAYTHROUGH_COMPLETION, PLAYTHROUGH_START
 from games.models import PlayerSessionTimingMode
 from games.reads.playthrough_activity import RunActivity
 from timetracker.settings_registry import DEFAULT_PAGE_SIZE
@@ -728,6 +730,47 @@ ACTIVITY_CHOICES: Final[tuple[ChoiceMeta, ...]] = tuple(
 )
 
 
+class EndpointFilterFields(NamedTuple):
+    """The leaves one stated endpoint offers a filter."""
+
+    #: The stated day, as the interval its bounds state.
+    interval: FilterField
+    #: Whether the act happened at all.
+    stated: FilterField
+    #: How it happened; none without ways.
+    way: FilterField | None
+
+
+def endpoint_filter_fields(
+    endpoint: EndpointColumns,
+    *,
+    stated_label: str,
+    interval_label: str | None = None,
+    way_label: str | None = None,
+) -> EndpointFilterFields:
+    """An endpoint's leaves; each filter places them in its own order."""
+    return EndpointFilterFields(
+        interval=FilterField(
+            handler=temporal_interval_handler(
+                endpoint.when, endpoint.lower, endpoint.upper
+            ),
+            metadata_lookup=endpoint.lower,
+            label=interval_label,
+        ),
+        stated=FilterField(
+            handler=bool_isnull_handler(endpoint.marker, invert=True),
+            label=stated_label,
+        ),
+        way=None if endpoint.way is None else FilterField(label=way_label),
+    )
+
+
+_START_FIELDS = endpoint_filter_fields(PLAYTHROUGH_START, stated_label="Has a start")
+_COMPLETION_FIELDS = endpoint_filter_fields(
+    PLAYTHROUGH_COMPLETION, stated_label="Has a completion"
+)
+
+
 @dataclass
 class PlaythroughFilter(OperatorFilter):
     """Filter for the Playthrough projection."""
@@ -762,26 +805,10 @@ class PlaythroughFilter(OperatorFilter):
     fields: ClassVar[dict[str, FilterField]] = {
         "game": FilterField("player_game__game__id", search_url="/api/games/search"),
         "name": FilterField(),
-        "started": FilterField(
-            handler=temporal_interval_handler(
-                "started", "started_lower", "started_upper"
-            ),
-            metadata_lookup="started_lower",
-        ),
-        "completed": FilterField(
-            handler=temporal_interval_handler(
-                "completed", "completed_lower", "completed_upper"
-            ),
-            metadata_lookup="completed_lower",
-        ),
-        "is_started": FilterField(
-            handler=bool_isnull_handler("start_recorded_at", invert=True),
-            label="Has a start",
-        ),
-        "is_completed": FilterField(
-            handler=bool_isnull_handler("completion_recorded_at", invert=True),
-            label="Has a completion",
-        ),
+        "started": _START_FIELDS.interval,
+        "completed": _COMPLETION_FIELDS.interval,
+        "is_started": _START_FIELDS.stated,
+        "is_completed": _COMPLETION_FIELDS.stated,
         "days_to_finish": FilterField(
             handler=days_touched_handler("started_lower", "completed_upper"),
             label="Days to finish",
