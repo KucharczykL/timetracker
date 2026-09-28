@@ -1287,8 +1287,10 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   it). Add/edit snippet, run `make gen-icons`, list a platform glyph in
   `PLATFORM_ICONS` (`common/platform_icons.py`); `canonical_icon` there maps a
   retired slug (`RETIRED_ICONS`). `Icon(name, attributes=...)` returns node:
-  `class` merges onto svg, `title` becomes `<title>` child. Never edit
-  `icons_generated.py` by hand.
+  `class` merges onto svg, `title` becomes `<title>` child. An unknown name
+  draws `unspecified` and logs a WARNING on `games.icons`; a test that draws
+  one fails unless marked `draws_unknown_icon` (`tests/icon_names.py`). Never
+  edit `icons_generated.py` by hand.
 - **Inline Alpine.js** remains only as three `x-mask` inputs
   (`games/forms.py`, `games/settings_forms.py`), each with the empty `x-data`
   scope the plugin needs. New
