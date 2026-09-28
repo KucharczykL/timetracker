@@ -9,6 +9,7 @@ from typing import Any, TypedDict, cast
 
 from django import forms
 from django.contrib.auth.models import User
+from django.core.exceptions import NON_FIELD_ERRORS
 from django.http import QueryDict
 
 from common.components.primitives import FormFields
@@ -30,9 +31,9 @@ from games.bulk_sessions import lost
 from games.events.append import SourceMetadata
 from games.events.dispatch import CommandRejected, RowNotHeld, RowUnreadable
 from games.events.idempotency import IdempotencyKey
-from games.forms import ChoiceSearchSelectWidget, PrimitiveWidgetsMixin
+from games.forms import ChoiceSearchSelectWidget, LabeledChoice, PrimitiveWidgetsMixin
 from games.models import Game, PlayerGame, PlayerGameStatus, UserLibrary
-from games.reads.playergame_facts import FactChange, facts_before
+from games.reads.playergame_facts import FactChange, batch_fact_changes
 from games.writes.answers import answered
 from games.writes.playergame import record_facts, set_excluded_from_unfinished
 
@@ -83,6 +84,11 @@ class GameEditStatement:
         ):
             raise ValueError("An edit states a status, mastered or the flag.")
 
+    @property
+    def records_facts(self) -> bool:
+        """Whether `record_facts` has work."""
+        return self.status is not None or self.mastered is not None
+
     def encode(self) -> ChoiceValue:
         stated: GameEditJson = {}
         if self.status is not None:
@@ -108,20 +114,24 @@ class GameEditStatement:
         status = stated.get("status")
         if "status" in stated and status not in PlayerGameStatus.values:
             raise _unreadable(f"{raw!r} states a status that is no word")
-        flags: dict[str, bool | None] = {}
-        for key in ("mastered", "excluded_from_unfinished"):
-            flag = stated.get(key)
-            #: Present means stated: null is no bool.
-            if key in stated and not isinstance(flag, bool):
-                raise _unreadable(f"{raw!r} states a {key} that is no bool")
-            flags[key] = flag
-        if status is None and all(flag is None for flag in flags.values()):
-            raise _unreadable(f"{raw!r} states nothing")
-        return cls(
-            None if status is None else PlayerGameStatus(status),
-            flags["mastered"],
-            flags["excluded_from_unfinished"],
-        )
+        mastered = _stated_flag(stated, "mastered", raw)
+        excluded = _stated_flag(stated, "excluded_from_unfinished", raw)
+        try:
+            return cls(
+                None if status is None else PlayerGameStatus(status),
+                mastered,
+                excluded,
+            )
+        except ValueError as empty:
+            raise _unreadable(f"{raw!r} states nothing") from empty
+
+
+def _stated_flag(stated: dict[str, object], key: str, raw: ChoiceValue) -> bool | None:
+    flag = stated.get(key)
+    #: Present means stated: null is no bool.
+    if key in stated and not isinstance(flag, bool):
+        raise _unreadable(f"{raw!r} states a {key} that is no bool")
+    return flag if isinstance(flag, bool) else None
 
 
 def _unreadable(message: str) -> CommandRejected:
@@ -167,14 +177,17 @@ def _keeping[T](
     return f"Keep: {shown(held.pop())}"
 
 
-_MASTERED_CHOICES = (("True", "Mastered"), ("False", "Not mastered"))
-_EXCLUDED_CHOICES = (
+#: A flag's two answers; empty keeps.
+type FlagChoices = tuple[LabeledChoice, ...]
+
+_MASTERED_CHOICES: FlagChoices = (("True", "Mastered"), ("False", "Not mastered"))
+_EXCLUDED_CHOICES: FlagChoices = (
     ("True", "Excluded from unfinished lists"),
     ("False", "Included in unfinished lists"),
 )
 
 
-def _flag(choices: tuple[tuple[str, str], ...], label: str) -> forms.TypedChoiceField:
+def _flag(choices: FlagChoices, label: str) -> forms.TypedChoiceField:
     return forms.TypedChoiceField(
         label=label,
         choices=choices,
@@ -244,7 +257,7 @@ def offer_edit(
 ) -> Offered:
     """Every field is prefixed `field_name`."""
     if not rows:
-        #: The confirmation says so itself.
+        #: The confirmation states there are no rows.
         return AsksNothing()
     return Control(FormFields(BulkGameEditForm(prefix=field_name, rows=rows)))
 
@@ -260,12 +273,21 @@ def settle_edit(library: UserLibrary, post: QueryDict) -> ChoiceValue:
     form = BulkGameEditForm(post, prefix=CHOICE_FIELD)
     if not form.is_valid():
         sentences = [
-            str(message) for messages in form.errors.values() for message in messages
+            _named(form, name, str(message))
+            for name, messages in form.errors.items()
+            for message in messages
         ]
         raise CommandRejected(
             f"the edit form refuses: {sentences}", sentence=sentences[0]
         )
     return form.statement().encode()
+
+
+def _named(form: forms.Form, name: str, message: str) -> str:
+    """A field's message, led by its label."""
+    if name == NON_FIELD_ERRORS:
+        return message
+    return f"{form.fields[name].label}: {message}"
 
 
 EDIT_CHOICE: BulkChoice[Game] = BulkChoice(offer=offer_edit, settle=settle_edit)
@@ -288,7 +310,7 @@ def _state(
 ) -> RowOutcome:
     """Up to two dispatches; moved when either wrote."""
     outcomes: list[RowOutcome] = []
-    if statement.status is not None or statement.mastered is not None:
+    if statement.records_facts:
         outcomes.append(
             RowOutcome.of(
                 record_facts(
@@ -352,23 +374,28 @@ def edit_one(
 # ── Backward ─────────────────────────────────────────────────────────────────
 
 
-def _restated(
-    change: FactChange | None, held: object, fact: str, tracked: PlayerGame
-) -> Any:
+def _restated[T](change: FactChange[T] | None, held: T) -> T | None:
     """The earlier value, where the row differs."""
     if change is None or held == change.before:
         return None
-    if held != change.stated:
-        logger.info(
-            "[bulk]: %s Undo states %s %s over %s on game %s of library %s",
-            EDIT.name,
-            fact,
-            change.before,
-            held,
-            tracked.game_id,
-            tracked.library_id,
-        )
     return change.before
+
+
+def _log_overwrite[T](
+    change: FactChange[T] | None, held: T, fact: str, tracked: PlayerGame
+) -> None:
+    """A later value the Undo writes over."""
+    if change is None or held in (change.before, change.stated):
+        return
+    logger.info(
+        "[bulk]: %s Undo states %s %s over %s on game %s of library %s",
+        EDIT.name,
+        fact,
+        change.before,
+        held,
+        tracked.game_id,
+        tracked.library_id,
+    )
 
 
 def edit_back(
@@ -392,32 +419,40 @@ def edit_back(
                 f"{actor.library.pk}'s, so the batch's inverse has no row to "
                 "state a fact on."
             )
-        before = facts_before(actor.library, player_game_id, undoes)
-        if not before.changed_any:
+        changes = batch_fact_changes(actor.library, player_game_id, undoes)
+        if not changes.changed_any:
             raise CommandRejected(
                 f"batch {undoes} changed no fact of PlayerGame {player_game_id}",
                 sentence=NOT_EDITED_BY_THIS_BATCH,
             )
-        status = _restated(before.status, tracked.status, "status", tracked)
-        mastered = _restated(before.mastered, tracked.mastered, "mastered", tracked)
-        excluded = _restated(
-            before.excluded_from_unfinished,
-            tracked.excluded_from_unfinished,
-            "excluded_from_unfinished",
-            tracked,
-        )
-        if status is None and mastered is None and excluded is None:
+        held_status = PlayerGameStatus(tracked.status)
+        try:
+            restatement = GameEditStatement(
+                _restated(changes.status, held_status),
+                _restated(changes.mastered, tracked.mastered),
+                _restated(
+                    changes.excluded_from_unfinished, tracked.excluded_from_unfinished
+                ),
+            )
+        except ValueError:
+            #: Every changed fact is back already.
             return RowOutcome.UNCHANGED
         if tracked.removed_at is not None:
             raise CommandRejected(
                 f"PlayerGame {player_game_id} is removed", sentence=GAME_REMOVED
             )
+    _log_overwrite(changes.status, held_status, "status", tracked)
+    _log_overwrite(changes.mastered, tracked.mastered, "mastered", tracked)
+    _log_overwrite(
+        changes.excluded_from_unfinished,
+        tracked.excluded_from_unfinished,
+        "excluded_from_unfinished",
+        tracked,
+    )
     return _state(
         actor,
         tracked.game,
-        GameEditStatement(
-            None if status is None else PlayerGameStatus(status), mastered, excluded
-        ),
+        restatement,
         idempotency_key=idempotency_key,
         correlation_id=correlation_id,
     )

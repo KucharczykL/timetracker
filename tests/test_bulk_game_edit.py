@@ -7,7 +7,7 @@ import uuid
 
 import pytest
 from django.contrib.messages import get_messages
-from django.http import QueryDict
+from django.http import Http404, QueryDict
 from django.urls import reverse
 from session_rows import tracked_run
 
@@ -23,13 +23,15 @@ from games.bulk_game_edit import (
 from games.bulk_games import GAME_GONE
 from games.events.dispatch import CommandRejected, RowUnreadable
 from games.events.playergame import (
-    PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
-    PLAYERGAME_MASTERED_CHANGED,
     PLAYERGAME_STATUS_CHANGED,
 )
 from games.models import Game, LibraryEvent, Platform, PlayerGame, PlayerGameStatus
 from games.reads.events import batch_aggregate_ids
-from games.reads.playergame_facts import FactChange, fact_change
+from games.reads.playergame_facts import (
+    FactChange,
+    batch_fact_changes,
+    status_change,
+)
 from games.views.bulk import (
     CHOICE_FIELD,
     PROGRESS_FIELD,
@@ -246,6 +248,8 @@ def test_settling_reads_a_carried_statement(owned_library):
         '{"status": "finished"}',
         '{"mastered": "yes"}',
         '{"note": "x"}',
+        '{"mastered": null}',
+        '{"status": null}',
         "{}",
         "[]",
         "not json",
@@ -389,7 +393,7 @@ def test_an_undo_states_every_fact_before_the_batch(
         False,
         True,
     )
-    #: A creation states the defaults; excluded was never changed.
+    #: Creation leaves the defaults; excluded never changed.
     assert (second.status, second.mastered, second.excluded_from_unfinished) == (
         PlayerGameStatus.UNPLAYED,
         False,
@@ -456,12 +460,7 @@ def test_an_undo_refuses_a_game_the_batch_did_not_change(owned_user, game):
 def test_the_reader_answers_none_for_another_batch(owned_user, owned_library, game):
     _stated(owned_user, game, PlayerGameStatus.PLAYED)
 
-    assert (
-        fact_change(
-            owned_library, _tracked(game).pk, uuid.uuid7(), PLAYERGAME_STATUS_CHANGED
-        )
-        is None
-    )
+    assert status_change(owned_library, _tracked(game).pk, uuid.uuid7()) is None
 
 
 def test_the_reader_reads_the_batch_it_is_asked(owned_user, owned_library, game):
@@ -472,28 +471,23 @@ def test_the_reader_reads_the_batch_it_is_asked(owned_user, owned_library, game)
     )
 
     key = _tracked(game).pk
-    assert fact_change(
-        owned_library, key, first, PLAYERGAME_STATUS_CHANGED
-    ) == FactChange("unplayed", "played")
-    assert fact_change(
-        owned_library, key, second, PLAYERGAME_STATUS_CHANGED
-    ) == FactChange("played", "completed")
+    assert status_change(owned_library, key, first) == FactChange("unplayed", "played")
+    assert status_change(owned_library, key, second) == FactChange(
+        "played", "completed"
+    )
 
 
-@pytest.mark.parametrize(
-    "changed",
-    [PLAYERGAME_MASTERED_CHANGED, PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED],
-)
-def test_a_flag_starts_false(owned_user, owned_library, game, changed):
+@pytest.mark.parametrize("fact", ["mastered", "excluded_from_unfinished"])
+def test_a_flag_starts_false(owned_user, owned_library, game, fact):
     batch = new_correlation_id()
-    if changed is PLAYERGAME_MASTERED_CHANGED:
+    if fact == "mastered":
         record_facts(owned_user, game, mastered=True, correlation_id=batch)
     else:
         set_excluded_from_unfinished(owned_user, game, True, correlation_id=batch)
 
-    assert fact_change(owned_library, _tracked(game).pk, batch, changed) == (
-        FactChange(False, True)
-    )
+    changes = batch_fact_changes(owned_library, _tracked(game).pk, batch)
+
+    assert getattr(changes, fact) == FactChange(False, True)
 
 
 def test_a_stream_with_no_creation_is_a_defect(owned_user, owned_library):
@@ -504,4 +498,70 @@ def test_a_stream_with_no_creation_is_a_defect(owned_user, owned_library):
     record_facts(owned_user, game, status=PlayerGameStatus.PLAYED, correlation_id=batch)
 
     with pytest.raises(RowUnreadable):
-        fact_change(owned_library, _tracked(game).pk, batch, PLAYERGAME_STATUS_CHANGED)
+        status_change(owned_library, _tracked(game).pk, batch)
+
+
+# ── Review gaps ──────────────────────────────────────────────────────────────
+
+
+def test_a_form_refusal_names_its_field(owned_library):
+    with pytest.raises(CommandRejected) as refused:
+        EDIT.choice.settle(owned_library, _post(**{MASTERED: "maybe"}))
+
+    assert refused.value.sentence.startswith("Mastered: ")
+
+
+def test_a_chunk_posted_twice_states_the_flag_once(client_in, owned_user, game):
+    fields = _confirmed(client_in, game, **{STATUS: "completed", EXCLUDED: "True"})
+    client_in.post(URL, fields)
+    set_excluded_from_unfinished(
+        owned_user, game, False, correlation_id=new_correlation_id()
+    )
+    events = _events()
+
+    client_in.post(URL, fields)
+
+    assert _events() == events
+    assert _tracked(game).excluded_from_unfinished is False
+
+
+def test_a_row_moved_by_one_fact_of_two_counts_moved(owned_user, game):
+    _stated(owned_user, game, PlayerGameStatus.COMPLETED)
+
+    outcome = EDIT.run(
+        owned_user,
+        game,
+        choice=GameEditStatement(PlayerGameStatus.COMPLETED, None, True).encode(),
+        idempotency_key=str(uuid.uuid7()),
+        correlation_id=uuid.uuid7(),
+    )
+
+    assert outcome is RowOutcome.MOVED
+
+
+def test_an_undo_restates_only_the_facts_still_changed(client_in, owned_user, game):
+    token, _ = _run(client_in, game, **{STATUS: "completed", MASTERED: "True"})
+    _stated(owned_user, game, PlayerGameStatus.UNPLAYED)
+    events = LibraryEvent.objects.filter(
+        event_type=PLAYERGAME_STATUS_CHANGED.event_type
+    ).count()
+
+    assert _inverse(owned_user, game, uuid.UUID(token)) is RowOutcome.MOVED
+
+    assert _tracked(game).mastered is False
+    assert (
+        LibraryEvent.objects.filter(
+            event_type=PLAYERGAME_STATUS_CHANGED.event_type
+        ).count()
+        == events
+    )
+
+
+def test_an_undo_of_another_librarys_game_is_absent(client_in, game, django_user_model):
+    token, _ = _run(client_in, game, **{STATUS: "completed"})
+    stranger = django_user_model.objects.create_user("stranger", password="p")
+
+    with pytest.raises(Http404):
+        _inverse(stranger, game, uuid.UUID(token))
+
+    assert _status(game) == PlayerGameStatus.COMPLETED

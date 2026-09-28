@@ -1501,7 +1501,6 @@ class PlayerGame(ProjectionModel):
         choices=PlayerGameStatus,
         default=PlayerGameStatus.UNPLAYED,
     )
-    #: No event states it: a constant default.
     mastered = models.BooleanField(default=False)
     #: An explicit preference, never inferred from status.
     excluded_from_unfinished = models.BooleanField(default=False)

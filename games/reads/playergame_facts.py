@@ -1,6 +1,7 @@
 """A game's facts before a batch changed them."""
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -12,62 +13,77 @@ from games.events.playergame import (
     PLAYERGAME_STATUS_CHANGED,
 )
 from games.events.vocabulary import EventSpec
-from games.models import PlayerGameStatus, UserLibrary
+from games.models import LibraryEvent, PlayerGameStatus, UserLibrary
 from games.reads.events import aggregate_events
 
-#: A fact's value on the wire: a status word or a flag.
-type FactValue = str | bool
+#: A payload's key for one fact.
+type PayloadKey = str  # "status"
 
 
 @dataclass(frozen=True, slots=True)
-class _Fact:
-    """Where a fact lives in its payload, and its start."""
-
-    key: str
-    initial: FactValue
-
-
-_FACTS: dict[str, _Fact] = {
-    PLAYERGAME_STATUS_CHANGED.event_type: _Fact(
-        "status", PlayerGameStatus.UNPLAYED.value
-    ),
-    PLAYERGAME_MASTERED_CHANGED.event_type: _Fact("mastered", False),
-    PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.event_type: _Fact(
-        "excluded_from_unfinished", False
-    ),
-}
-
-
-@dataclass(frozen=True, slots=True)
-class FactChange:
+class FactChange[T]:
     """One fact, before a batch and as it stated."""
 
-    before: FactValue
-    stated: FactValue
+    before: T
+    stated: T
 
 
-def fact_change(
+@dataclass(frozen=True, slots=True)
+class _Fact[T]:
+    """One fact's event, payload key, value at creation, and reading."""
+
+    changed: EventSpec[Any]
+    key: PayloadKey
+    initial: T
+    read: Callable[[object], T | None]
+
+
+def _status(value: object) -> PlayerGameStatus | None:
+    return PlayerGameStatus(value) if value in PlayerGameStatus.values else None
+
+
+def _flag(value: object) -> bool | None:
+    return value if isinstance(value, bool) else None
+
+
+_STATUS = _Fact(PLAYERGAME_STATUS_CHANGED, "status", PlayerGameStatus.UNPLAYED, _status)
+_MASTERED = _Fact(PLAYERGAME_MASTERED_CHANGED, "mastered", False, _flag)
+_EXCLUDED = _Fact(
+    PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
+    "excluded_from_unfinished",
+    False,
+    _flag,
+)
+
+
+def _value[T](fact: _Fact[T], event: LibraryEvent) -> T:
+    value = fact.read(event.payload.get(fact.key))
+    if value is None:
+        raise RowUnreadable(
+            f"event {event.pk} at sequence {event.sequence} of library "
+            f"{event.library_id} states {fact.key} {event.payload.get(fact.key)!r}"
+        )
+    return value
+
+
+def _change[T](
+    fact: _Fact[T],
     library: UserLibrary,
     player_game_id: uuid.UUID,
     batch_id: uuid.UUID,
-    changed: EventSpec[Any],
-) -> FactChange | None:
-    """None where the batch stated no such fact.
-
-    Raises `RowUnreadable` for a stream with no creation.
-    """
-    fact = _FACTS[changed.event_type]
+) -> FactChange[T] | None:
+    """None where the batch stated no such fact."""
+    changed = fact.changed.event_type
     events = list(
         aggregate_events(library, player_game_id).filter(
-            event_type__in=(PLAYERGAME_CREATED.event_type, changed.event_type)
+            event_type__in=(PLAYERGAME_CREATED.event_type, changed)
         )
     )
     ours = next(
         (
             event
             for event in events
-            if event.correlation_id == batch_id
-            and event.event_type == changed.event_type
+            if event.correlation_id == batch_id and event.event_type == changed
         ),
         None,
     )
@@ -77,25 +93,34 @@ def fact_change(
     if not earlier:
         raise RowUnreadable(
             f"PlayerGame {player_game_id} of library {library.pk} states "
-            f"{changed.event_type} at sequence {ours.sequence} and no creation "
-            "before it"
+            f"{changed} at sequence {ours.sequence} and nothing before it"
         )
     latest = earlier[-1]
     before = (
         fact.initial
         if latest.event_type == PLAYERGAME_CREATED.event_type
-        else latest.payload[fact.key]
+        else _value(fact, latest)
     )
-    return FactChange(before=before, stated=ours.payload[fact.key])
+    return FactChange(before=before, stated=_value(fact, ours))
+
+
+def status_change(
+    library: UserLibrary, player_game_id: uuid.UUID, batch_id: uuid.UUID
+) -> FactChange[PlayerGameStatus] | None:
+    """Else the word before and the one stated.
+
+    `RowUnreadable` where nothing precedes the batch's event.
+    """
+    return _change(_STATUS, library, player_game_id, batch_id)
 
 
 @dataclass(frozen=True, slots=True)
-class FactsBefore:
+class BatchFactChanges:
     """Each fact a batch changed, else None."""
 
-    status: FactChange | None
-    mastered: FactChange | None
-    excluded_from_unfinished: FactChange | None
+    status: FactChange[PlayerGameStatus] | None
+    mastered: FactChange[bool] | None
+    excluded_from_unfinished: FactChange[bool] | None
 
     @property
     def changed_any(self) -> bool:
@@ -106,20 +131,11 @@ class FactsBefore:
         )
 
 
-def facts_before(
+def batch_fact_changes(
     library: UserLibrary, player_game_id: uuid.UUID, batch_id: uuid.UUID
-) -> FactsBefore:
-    return FactsBefore(
-        status=fact_change(
-            library, player_game_id, batch_id, PLAYERGAME_STATUS_CHANGED
-        ),
-        mastered=fact_change(
-            library, player_game_id, batch_id, PLAYERGAME_MASTERED_CHANGED
-        ),
-        excluded_from_unfinished=fact_change(
-            library,
-            player_game_id,
-            batch_id,
-            PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
-        ),
+) -> BatchFactChanges:
+    return BatchFactChanges(
+        status=status_change(library, player_game_id, batch_id),
+        mastered=_change(_MASTERED, library, player_game_id, batch_id),
+        excluded_from_unfinished=_change(_EXCLUDED, library, player_game_id, batch_id),
     )

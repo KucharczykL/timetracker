@@ -14,12 +14,13 @@ unfinished lists. An empty field keeps. The act runs through the runner of
 
 `games/bulk_game_edit.py` declares `playergame.edit`. Its scope is
 `game_scope` in `games/bulk_games.py`, the list's own read through
-`tracked_by`. The resolve reads the same rows with the excluded flag, and
-gives a key it does not find as lost, with `GAME_GONE`. The preview shows
+`tracked_by`, which carries the three facts. The resolve reads the same rows
+by key, and gives a key it does not find as lost, with `GAME_GONE`. The preview shows
 Game, Platform, Status, Mastered and Unfinished lists. The Undo takes
 `PlayerGame` keys, because the events go on the PlayerGame's stream.
 
-The tray shows Edit…, then Remove. The destructive act is last.
+The tray shows Edit…, then Remove. The destructive act is last. The tray's
+Edit… states the library's facts; the row menu's Edit opens Edit Game.
 
 ## The statement
 
@@ -41,13 +42,13 @@ A game that has every stated fact answers `Unchanged`.
 
 ## The inverse
 
-`fact_change(library, player_game_id, batch_id, event)` in
-`games/reads/playergame_facts.py` reads the stream for one fact: `None`
-where the batch stated none; otherwise the value before the batch's event
-and the value the batch stated. The value before is the latest earlier
-event of the fact, or the creation's default (Unplayed, not mastered,
-included). No earlier event is `RowUnreadable`. `facts_before` reads all
-three.
+`batch_fact_changes(library, player_game_id, batch_id)` in
+`games/reads/playergame_facts.py` reads the stream, one typed
+`FactChange[T]` per fact: `None` where the batch stated none; otherwise the
+value before the batch's event and the value the batch stated. The value
+before is the latest earlier event of the fact, or the model default at
+creation (Unplayed, not mastered, included). No earlier event, or a payload
+that does not state the fact, is `RowUnreadable`.
 
 The inverse refuses a game the batch changed nothing on. A game that has
 every earlier fact answers `Unchanged`; only then is a removed game
@@ -55,10 +56,10 @@ refused. It restates each changed fact, over a later change, as #1211's
 inverse does, and logs a fact it writes over. A second Undo answers
 `Unchanged`.
 
-The #1256 Undo reads the status through `fact_change`, before its void, so
+The #1256 Undo reads the status through `status_change`, before its void, so
 a defect leaves no half-undone row.
 
-Nothing reads the excluded flag yet; #1315 gives it readers.
+No unfinished list reads the excluded flag yet; #1315 gives it readers.
 
 ## Proof
 
