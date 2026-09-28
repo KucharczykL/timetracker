@@ -1,6 +1,6 @@
 """Rows taken out of the lists, in bulk.
 
-Five acts, one for each row a selectable table holds. Each states the
+Six acts, one for each row a selectable table holds. Each states the
 list's own read as its base, and refuses nothing of its own: every rule
 is the command's, so one row's refusal is a sentence and the batch goes
 on.
@@ -23,6 +23,7 @@ from games.bulk_actions import (
     Refused,
     Resolution,
     RowOutcome,
+    StampedRows,
 )
 from games.bulk_games import GAME_GONE, game_scope
 from games.bulk_narrowing import narrowed
@@ -33,11 +34,13 @@ from games.events.idempotency import IdempotencyKey
 from games.filters import (
     parse_device_filter,
     parse_historical_playtime_filter,
+    parse_platform_filter,
 )
 from games.models import (
     Device,
     Game,
     HistoricalPlaytime,
+    Platform,
     PlayerGame,
     PlayerSession,
     Playthrough,
@@ -46,11 +49,21 @@ from games.models import (
 from games.reads.device_departures import naming_sessions_of, with_naming_sessions
 from games.reads.game_departures import departures_of, with_departures
 from games.reads.historical_playtime_records import library_records
+from games.reads.platform_departures import (
+    departures_of as platform_departures_of,
+)
+from games.reads.platform_departures import (
+    with_departures as with_platform_departures,
+)
 from games.writes.answers import SubjectNoun, answered
 from games.writes.device import remove_device, restore_device
 from games.writes.historical_playtime import (
     remove_historical_playtime,
     restore_historical_playtime,
+)
+from games.writes.platform import (
+    remove_platform_in_batch,
+    restore_platform_from_batch,
 )
 from games.writes.playergame import remove_from_library, restore_to_library
 from games.writes.playersession import remove_session, restore_session
@@ -61,6 +74,7 @@ RECORD_SUBJECT: SubjectNoun = "historical playtime"
 
 RECORD_GONE = "One of the records is no longer available, so it was left as it is."
 DEVICE_GONE = "One of the devices is no longer available, so it was left as it is."
+PLATFORM_GONE = "One of the platforms is no longer available, so it was left as it is."
 
 
 def _removed_row[RowT: Model](
@@ -463,6 +477,83 @@ DEVICE_PREVIEW: tuple[PreviewColumn[Device], ...] = (
 )
 
 
+# ── Platforms ────────────────────────────────────────────────────────────────
+
+
+def platform_scope(library: UserLibrary, filter_json: FilterJson) -> QuerySet[Platform]:
+    """The list's own read: private, live."""
+    return narrowed(
+        Platform.objects.for_library(library),
+        library,
+        filter_json,
+        parse_platform_filter,
+    )
+
+
+def platform_resolution(
+    library: UserLibrary, keys: Sequence[uuid.UUID]
+) -> Resolution[Platform]:
+    """Keys to platforms, with what names each."""
+    wanted = list(dict.fromkeys(keys))
+    rows = tuple(
+        with_platform_departures(
+            Platform.objects.for_library(library).filter(pk__in=wanted), library
+        ).order_by("name", "id")
+    )
+    return Resolution(
+        rows, tuple(lost(wanted, {row.pk for row in rows}, PLATFORM_GONE))
+    )
+
+
+def _moved(changed: bool) -> RowOutcome:
+    return RowOutcome.MOVED if changed else RowOutcome.UNCHANGED
+
+
+def remove_one_platform(
+    actor: User,
+    platform: Platform,
+    *,
+    choice: ChoiceValue | None,
+    idempotency_key: IdempotencyKey,
+    correlation_id: uuid.UUID,
+) -> RowOutcome:
+    """The stamp is the record: no key is kept."""
+    return _moved(remove_platform_in_batch(platform, batch=correlation_id))
+
+
+def restore_one_platform(
+    actor: User,
+    platform_id: uuid.UUID,
+    *,
+    undoes: uuid.UUID,
+    idempotency_key: IdempotencyKey,
+    correlation_id: uuid.UUID,
+) -> RowOutcome:
+    return _moved(
+        restore_platform_from_batch(
+            _removed_row(Platform.objects.all(), actor, platform_id, "platform"),
+            batch=undoes,
+        )
+    )
+
+
+def _departing(heading: str, field: str) -> PreviewColumn[Platform]:
+    return PreviewColumn(
+        heading,
+        lambda row, _: str(getattr(platform_departures_of(row), field)),
+        align="right",
+    )
+
+
+PLATFORM_PREVIEW: tuple[PreviewColumn[Platform], ...] = (
+    PreviewColumn("Platform", lambda row, _: row.name),
+    PreviewColumn("Group", lambda row, _: row.group),
+    _departing("Games", "games"),
+    _departing("Releases", "releases"),
+    _departing("Purchases", "purchases"),
+)
+
+
 def _source(name: str) -> dict[str, object]:
     return {"bulk": {"action": name}}
 
@@ -547,4 +638,20 @@ REMOVE_DEVICE = BulkAction(
     run=remove_one_device,
     inverse=restore_one_device,
     preview=DEVICE_PREVIEW,
+)
+
+REMOVE_PLATFORM = BulkAction(
+    name="platform.remove",
+    label="Remove",
+    title=ActTitle(one="Remove this platform", many="Remove {count} platforms"),
+    confirm_label="Remove",
+    subject="platform",
+    color="red",
+    undo_rows=StampedRows(Platform),
+    fallback="games:list_platforms",
+    scope=platform_scope,
+    resolve=platform_resolution,
+    run=remove_one_platform,
+    inverse=restore_one_platform,
+    preview=PLATFORM_PREVIEW,
 )
