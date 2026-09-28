@@ -11,6 +11,10 @@
  * rewrite every later row's names, ids, labels and the mark's value, and
  * one miss silently writes the wrong row. A re-render numbers afresh; the
  * browser only ever appends.
+ *
+ * A row's names follow its value. The server stamps each named node with
+ * its sentence; the element fills the slot on input and on arrival, as
+ * the server cannot know a cloned row's value or one the browser restores.
  */
 
 // Where a clone learns its own number. Mirrors the placeholders in
@@ -52,6 +56,36 @@ function isGoing(mark: HTMLElement): boolean {
   );
 }
 
+// Where a name takes its row's value. Mirrors NAME_SLOT in
+// games/views/catalog_section.py.
+const NAME_SLOT = "{}";
+
+/** A name with the row's value in its slot. Split, not `replace`,
+ *  thus a `$` in the value stays literal. */
+export function filled(pattern: string, value: string, empty?: string): string {
+  if (value === "" && empty !== undefined) return empty;
+  return pattern.split(NAME_SLOT).join(value);
+}
+
+// The control each kind of name follows, and the row it names.
+const FOLLOWED = {
+  platform: { control: 'select[name$="-platform"]', row: "[data-catalog-release]" },
+  name: { control: 'input[name$="-name"]', row: "[data-catalog-edition]" },
+} as const;
+
+type Followed = keyof typeof FOLLOWED;
+
+const KINDS = Object.keys(FOLLOWED) as Followed[];
+
+/** What the control shows: an option's own text, or the typed value. */
+function shown(control: HTMLInputElement | HTMLSelectElement): string {
+  const text =
+    control instanceof HTMLSelectElement
+      ? (control.selectedOptions[0]?.textContent ?? "")
+      : control.value;
+  return text.trim();
+}
+
 class CatalogEditorElement extends HTMLElement {
   // A DOM move reconnects this node, and a second connect must not bind twice.
   private wired = false;
@@ -61,9 +95,52 @@ class CatalogEditorElement extends HTMLElement {
     this.wired = true;
     // One delegated listener, so a cloned row needs no wiring of its own.
     this.addEventListener("click", this.onClick);
+    // A select and a text field both fire `input`, a clone's too.
+    this.addEventListener("input", this.onInput);
     // A refused page comes back with the rows the person left, bins and
     // all. The mark is repaired on arrival too, not only on a click.
+    // The deferred script runs after the browser restores form values.
+    this.restateNames();
     this.restateMark();
+  }
+
+  private onInput = (event: Event): void => {
+    const target = event.target as HTMLElement;
+    for (const kind of KINDS) {
+      if (!target.matches(FOLLOWED[kind].control)) continue;
+      const row = target.closest<HTMLElement>(FOLLOWED[kind].row);
+      if (row && this.contains(row)) this.restateRow(row, kind);
+    }
+  };
+
+  /** Every row's names, from the values the page holds now. */
+  private restateNames(): void {
+    for (const kind of KINDS) {
+      for (const row of this.querySelectorAll<HTMLElement>(FOLLOWED[kind].row)) {
+        this.restateRow(row, kind);
+      }
+    }
+  }
+
+  /** One row's names of one kind. An Edition's `name` nodes are its
+   *  own; its Releases' nodes follow `platform`. */
+  private restateRow(row: HTMLElement, kind: Followed): void {
+    const control = row.querySelector<HTMLInputElement | HTMLSelectElement>(
+      FOLLOWED[kind].control,
+    );
+    if (!control) return;
+    const value = shown(control);
+    for (const node of row.querySelectorAll<HTMLElement>(
+      `[data-catalog-name-of="${kind}"]`,
+    )) {
+      const name = filled(node.dataset.catalogName ?? "", value, node.dataset.catalogNameEmpty);
+      if (node.hasAttribute("aria-label")) {
+        node.setAttribute("aria-label", name);
+        if (node.hasAttribute("title")) node.title = name;
+      } else {
+        node.textContent = name;
+      }
+    }
   }
 
   private onClick = (event: Event): void => {
