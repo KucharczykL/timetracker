@@ -202,7 +202,7 @@ def test_a_rename_and_an_end_share_one_correlation(logged_in, owned_library):
     events = list(
         LibraryEvent.objects.filter(aggregate_id=device.pk).order_by("sequence")
     )
-    #: The end first: a refusal of it leaves no rename.
+    #: End first; its refusal leaves no rename.
     assert [event.event_type for event in events] == [
         "library.device.created",
         "library.device.access_ended",
@@ -213,7 +213,7 @@ def test_a_rename_and_an_end_share_one_correlation(logged_in, owned_library):
 
 def test_a_refused_end_sends_no_rename(logged_in, owned_library, monkeypatch):
     device = create_device(owned_library, "Deck", Device.HANDHELD)
-    #: A racer ends access between the page's read and the save.
+    #: A racer ends access first.
     monkeypatch.setattr(
         "games.writes.device.stated", lambda row, endpoint: None, raising=True
     )

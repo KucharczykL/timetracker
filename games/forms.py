@@ -2273,7 +2273,7 @@ class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
             cleaned["access_end"] = WayActStatement(when, EndWay(way), note)
             return cleaned
         cleaned["access_end"] = None
-        #: Held on an ended device takes both back.
+        #: Held on an ended device voids.
         ended = self.device is not None and stated(self.device, DEVICE_ACCESS_END)
         if not ended and (when is not None or note):
             self.add_error("access", NO_WAY_FOR_A_DAY)

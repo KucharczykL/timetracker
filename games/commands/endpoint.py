@@ -74,7 +74,7 @@ type Statement = ActStatement | WayActStatement
 
 
 def _payload(endpoint: Endpoint, statement: Statement) -> dict[str, Any]:
-    """The payload; a statement's shape must match its endpoint."""
+    """The payload; its shape must match."""
     match statement:
         case WayActStatement() if endpoint.way is not None:
             return {"way": statement.way.value, "note": statement.note}

@@ -108,7 +108,7 @@ function setEndpointOpen(host: HTMLElement, endpoint: Endpoint, open: boolean): 
   paintQualifiers(host, endpoint);
 }
 
-/** A qualifier modifies a date, so none stands alone. */
+/** A qualifier needs a date beside it. */
 function paintQualifiers(host: HTMLElement, endpoint: Endpoint): void {
   const dated = endpointHasValue(host, endpoint);
   (["approximate", "uncertain"] as const).forEach((qualifier) => {

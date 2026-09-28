@@ -734,7 +734,7 @@ describe("temporal-field", () => {
 
     expect(toggle(host, "end_none").disabled).toBe(false);
     expect(toggle(host, "end_date").checked).toBe(true);
-    //: Reopened but still undated: nothing to qualify yet.
+    //: Reopened, undated: nothing to qualify.
     expect(named(host, "start_approximate").disabled).toBe(true);
     type(host, "start", "year", "1984");
     expect(named(host, "start_approximate").disabled).toBe(false);

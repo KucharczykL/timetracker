@@ -38,7 +38,7 @@ class EndpointColumns:
     """One endpoint's columns; no events, for Meta."""
 
     name: EndpointName
-    #: A label, not a class: models import this.
+    #: A label: models import this module.
     model_label: ModelLabel
     #: The stated day; null is unknown.
     when: ColumnName

@@ -229,7 +229,7 @@ def test_every_access_end_event_replays_to_the_same_rows(owned_library):
     [
         #: A way without the marker.
         {"access_end_way": "sold"},
-        #: The marker and a way no device takes.
+        #: A marker beside a foreign way.
         {"access_end_way": "refunded", "access_end_recorded_at": RECORDED},
     ],
 )
