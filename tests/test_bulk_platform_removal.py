@@ -12,7 +12,7 @@ from django.urls import reverse
 from games.bulk_actions import BULK_ACTIONS, StampedRows
 from games.bulk_removal import PLATFORM_GONE, REMOVE_PLATFORM
 from games.models import Game, Platform, Purchase, UserLibrary
-from games.reads.platform_departures import departures_of
+from games.reads.platform_departures import platform_departures_of
 from games.removal import remove, restore
 from games.views.bulk import STATEMENT_FIELD, TOKEN_FIELD, _act_of
 from games.views.platform_menu import platform_row_menu
@@ -114,7 +114,7 @@ def test_the_counts_are_the_live_rows_naming_each(
     rows = REMOVE_PLATFORM.resolve(owned_library, [amiga.pk, dos.pk]).rows
 
     #: Name order.
-    assert [(row.name, departures_of(row)) for row in rows] == [
+    assert [(row.name, platform_departures_of(row)) for row in rows] == [
         ("Amiga", (1, 1, 1)),
         ("DOS", (0, 0, 0)),
     ]
@@ -204,6 +204,21 @@ def test_a_stamped_batch_names_its_act(logged_in, owned_library, amiga):
     batch = _press(logged_in, amiga)
 
     assert _act_of(owned_library, batch) is REMOVE_PLATFORM
+
+
+def test_another_librarys_stamped_batch_is_not_found(
+    logged_in, client, owned_library, django_user_model, amiga
+):
+    batch = _press(logged_in, amiga)
+    stranger = django_user_model.objects.create_user("stranger", password="p")
+
+    with pytest.raises(Http404):
+        _act_of(stranger.library, batch)
+    client.force_login(stranger)
+    response = client.post(reverse("games:undo_bulk_action", args=[batch]))
+
+    assert response.status_code == 404
+    assert Platform.objects.get(pk=amiga.pk).removed_at is not None
 
 
 def test_an_unknown_batch_is_not_found(owned_library):

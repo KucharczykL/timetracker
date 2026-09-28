@@ -9,8 +9,6 @@ from games.models import Platform
 
 def platform_row_menu(platform: Platform, origin: OriginUrl | None) -> Node:
     """Edit and Remove."""
-    #: Names may repeat across groups.
-    named = f"{platform.name} ({platform.group})" if platform.group else platform.name
     return RowActionMenu(
         [
             DropdownLinkItem(
@@ -25,6 +23,7 @@ def platform_row_menu(platform: Platform, origin: OriginUrl | None) -> Node:
                 danger=True,
             ),
         ],
-        label=f"{named} actions",
+        #: Names may repeat across groups.
+        label=f"{platform.named_with_group} actions",
         id=f"platform-menu-{platform.pk}",
     )

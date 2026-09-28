@@ -15,21 +15,37 @@ from games.writes.answers import CONFLICT_STATUS, CommandFailed
 type Moved = bool
 
 
+#: The constraints a restore answers as a taken name.
+NAME_CONSTRAINTS = frozenset(
+    {
+        "unique_private_platform_normalized_name_group",
+        "unique_shared_platform_normalized_name_group",
+    }
+)
+
+
 def taken_sentence(platform: Platform) -> str:
     """Why this platform cannot come back."""
-    named = f"{platform.name} ({platform.group})" if platform.group else platform.name
     return (
-        f"{named} cannot come back: another platform with that name is in "
-        "your library now. Rename or remove that one first."
+        f"{platform.named_with_group} cannot come back: another platform "
+        "with that name is in your library now. Rename or remove that one "
+        "first."
+    )
+
+
+def removed_again_sentence(platform: Platform) -> str:
+    """Why a batch's Undo leaves it removed."""
+    return (
+        f"{platform.named_with_group} was removed again since, so it was left as it is."
     )
 
 
 def _refuse_a_taken_name(platform: Platform) -> None:
     """A live platform, private or shared, holding its name.
 
-    The unique constraints cover private beside private only;
-    `Platform.clean()` refuses shadowing a shared one, and a stamp
-    calls no `clean()`.
+    The constraints compare private with private and shared with
+    shared; `clean()` refuses a private row shadowing a shared one,
+    and a stamp calls no `clean()`.
     """
     taken = (
         Platform.objects.alive()
@@ -48,14 +64,23 @@ def _refuse_a_taken_name(platform: Platform) -> None:
         raise CommandFailed(taken_sentence(platform), CONFLICT_STATUS)
 
 
+def _constraint_of(collision: IntegrityError) -> str | None:
+    diagnostic = getattr(collision.__cause__, "diag", None)
+    return None if diagnostic is None else diagnostic.constraint_name
+
+
 def _restore(platform: Platform) -> None:
-    """Put it back, or refuse with a sentence."""
+    """Put it back, or refuse with a sentence.
+
+    A name constraint here is an insert racing the check; any other
+    rises as itself, a defect.
+    """
     _refuse_a_taken_name(platform)
     try:
-        #: A savepoint: the batch continues.
-        with transaction.atomic():
-            restore(platform)
+        restore(platform)
     except IntegrityError as collision:
+        if _constraint_of(collision) not in NAME_CONSTRAINTS:
+            raise
         raise CommandFailed(taken_sentence(platform), CONFLICT_STATUS) from collision
 
 
@@ -78,11 +103,16 @@ def remove_platform_in_batch(platform: Platform, *, batch: uuid.UUID) -> Moved:
 
 
 def restore_platform_from_batch(platform: Platform, *, batch: uuid.UUID) -> Moved:
-    """Put back a row this batch removed."""
+    """Put back a row this batch removed.
+
+    A row another act removed since stays removed, and says so.
+    """
     with transaction.atomic():
         row = _locked(platform)
-        if row.removed_at is None or row.removed_in_batch != batch:
+        if row.removed_at is None:
             return False
+        if row.removed_in_batch != batch:
+            raise CommandFailed(removed_again_sentence(row), CONFLICT_STATUS)
         _restore(row)
         return True
 

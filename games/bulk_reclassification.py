@@ -185,7 +185,7 @@ RECLASSIFY = BulkAction(
     subject="session",
     #: A move, not a removal: the hours stay.
     color="blue",
-    undo_rows=EventRows("playersession", PlayerSession),
+    undo_rows=EventRows(PlayerSession),
     fallback="games:list_sessions",
     scope=review_scope,
     resolve=review_resolution,

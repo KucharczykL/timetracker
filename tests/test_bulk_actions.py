@@ -101,77 +101,17 @@ def a_bucket_session(library, actor, game):
 
 
 def test_the_table_holds_the_reclassification(reclassify):
-    assert reclassify.undo_rows == EventRows("playersession", PlayerSession)
+    assert reclassify.undo_rows == EventRows(PlayerSession)
 
 
-def test_an_aggregate_no_event_declares_is_refused(reclassify):
-    with pytest.raises(ValueError, match="playersesion"):
-        BulkAction(
-            name="session.typo",
-            label=reclassify.label,
-            title=reclassify.title,
-            confirm_label=reclassify.confirm_label,
-            subject=reclassify.subject,
-            color=reclassify.color,
-            undo_rows=EventRows("playersesion", PlayerSession),
-            fallback=reclassify.fallback,
-            scope=reclassify.scope,
-            resolve=reclassify.resolve,
-            run=reclassify.run,
-            inverse=reclassify.inverse,
-            preview=reclassify.preview,
-        )
+def test_a_model_no_event_speaks_about_is_refused():
+    with pytest.raises(ValueError, match="'game'"):
+        EventRows(Game)
 
 
-def test_a_model_that_is_not_the_inverses_aggregate_is_refused(reclassify):
-    """One model's key handed to a read of another is a 404 a row.
-
-    Every act but `playergame.remove` lists and undoes one model, so
-    the pair held by coincidence of naming until one act parted them.
-    """
-    with pytest.raises(ValueError, match="playthrough"):
-        BulkAction(
-            name="session.mismatched",
-            label=reclassify.label,
-            title=reclassify.title,
-            confirm_label=reclassify.confirm_label,
-            subject=reclassify.subject,
-            color=reclassify.color,
-            undo_rows=EventRows("playersession", Playthrough),
-            fallback=reclassify.fallback,
-            scope=reclassify.scope,
-            resolve=reclassify.resolve,
-            run=reclassify.run,
-            inverse=reclassify.inverse,
-            preview=reclassify.preview,
-        )
-
-
-def test_every_act_names_the_model_its_inverse_reads():
-    """The act that parts them says so, and the rest agree."""
-    for action in BULK_ACTIONS.values():
-        if isinstance(action.undo_rows, EventRows):
-            model_name = action.undo_rows.model._meta.model_name
-            assert model_name == action.undo_rows.aggregate
-
-
-def test_a_stamp_that_names_no_batch_is_refused(reclassify):
+def test_a_stamp_that_names_no_batch_is_refused():
     with pytest.raises(ValueError, match="names no batch"):
-        BulkAction(
-            name="game.stamped",
-            label=reclassify.label,
-            title=reclassify.title,
-            confirm_label=reclassify.confirm_label,
-            subject=reclassify.subject,
-            color=reclassify.color,
-            undo_rows=StampedRows(Game),
-            fallback=reclassify.fallback,
-            scope=reclassify.scope,
-            resolve=reclassify.resolve,
-            run=reclassify.run,
-            inverse=reclassify.inverse,
-            preview=reclassify.preview,
-        )
+        StampedRows(Game)
 
 
 def test_a_name_the_table_already_holds_is_refused(reclassify):

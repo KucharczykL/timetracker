@@ -136,12 +136,10 @@ def remove(instance: Model, *, batch: uuid.UUID | None = None) -> None:
     Outside a batch, NULL: no earlier Undo claims it.
     """
     model = type(instance)
-    if not names_its_batch(model):
-        if batch is not None:
-            raise TypeError(f"{model.__name__} names no batch that removed it.")
-        _stamp(instance, now())
-        return
-    _stamp(instance, now(), {BATCH_COLUMN: batch})
+    batched = names_its_batch(model)
+    if batch is not None and not batched:
+        raise TypeError(f"{model.__name__} names no batch that removed it.")
+    _stamp(instance, now(), {BATCH_COLUMN: batch} if batched else None)
 
 
 def restore(instance: Model) -> None:

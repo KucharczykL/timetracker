@@ -2,12 +2,12 @@
 
 Six acts, one for each row a selectable table holds. Each states the
 list's own read as its base, and refuses nothing of its own: every rule
-is the command's, so one row's refusal is a sentence and the batch goes
+is the command's or the write's, so one row's refusal is a sentence and the batch goes
 on.
 """
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from django.contrib.auth.models import User
 from django.db.models import Exists, Model, OuterRef, QuerySet
@@ -50,10 +50,9 @@ from games.reads.device_departures import naming_sessions_of, with_naming_sessio
 from games.reads.game_departures import departures_of, with_departures
 from games.reads.historical_playtime_records import library_records
 from games.reads.platform_departures import (
-    departures_of as platform_departures_of,
-)
-from games.reads.platform_departures import (
-    with_departures as with_platform_departures,
+    PlatformDepartures,
+    platform_departures_of,
+    with_platform_departures,
 )
 from games.writes.answers import SubjectNoun, answered
 from games.writes.device import remove_device, restore_device
@@ -62,6 +61,7 @@ from games.writes.historical_playtime import (
     restore_historical_playtime,
 )
 from games.writes.platform import (
+    Moved,
     remove_platform_in_batch,
     restore_platform_from_batch,
 )
@@ -505,8 +505,8 @@ def platform_resolution(
     )
 
 
-def _moved(changed: bool) -> RowOutcome:
-    return RowOutcome.MOVED if changed else RowOutcome.UNCHANGED
+def _outcome(moved: Moved) -> RowOutcome:
+    return RowOutcome.MOVED if moved else RowOutcome.UNCHANGED
 
 
 def remove_one_platform(
@@ -517,8 +517,8 @@ def remove_one_platform(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """The stamp is the record, not the key."""
-    return _moved(remove_platform_in_batch(platform, batch=correlation_id))
+    """The stamp, not the key, makes a repeat harmless."""
+    return _outcome(remove_platform_in_batch(platform, batch=correlation_id))
 
 
 def restore_one_platform(
@@ -529,7 +529,7 @@ def restore_one_platform(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    return _moved(
+    return _outcome(
         restore_platform_from_batch(
             _removed_row(Platform.objects.all(), actor, platform_id, "platform"),
             batch=undoes,
@@ -537,10 +537,12 @@ def restore_one_platform(
     )
 
 
-def _departing(heading: str, field: str) -> PreviewColumn[Platform]:
+def _departing(
+    heading: str, count: Callable[[PlatformDepartures], int]
+) -> PreviewColumn[Platform]:
     return PreviewColumn(
         heading,
-        lambda row, _: str(getattr(platform_departures_of(row), field)),
+        lambda row, _: str(count(platform_departures_of(row))),
         align="right",
     )
 
@@ -548,9 +550,9 @@ def _departing(heading: str, field: str) -> PreviewColumn[Platform]:
 PLATFORM_PREVIEW: tuple[PreviewColumn[Platform], ...] = (
     PreviewColumn("Platform", lambda row, _: row.name),
     PreviewColumn("Group", lambda row, _: row.group),
-    _departing("Games", "games"),
-    _departing("Releases", "releases"),
-    _departing("Purchases", "purchases"),
+    _departing("Games", lambda counts: counts.games),
+    _departing("Releases", lambda counts: counts.releases),
+    _departing("Purchases", lambda counts: counts.purchases),
 )
 
 
@@ -565,7 +567,7 @@ REMOVE_SESSION = BulkAction(
     confirm_label="Remove",
     subject="session",
     color="red",
-    undo_rows=EventRows("playersession", PlayerSession),
+    undo_rows=EventRows(PlayerSession),
     fallback="games:list_sessions",
     scope=session_scope,
     resolve=session_resolution,
@@ -581,7 +583,7 @@ REMOVE_RUN = BulkAction(
     confirm_label="Remove",
     subject="playthrough",
     color="red",
-    undo_rows=EventRows("playthrough", Playthrough),
+    undo_rows=EventRows(Playthrough),
     fallback="games:list_playthroughs",
     scope=run_scope,
     resolve=run_resolution,
@@ -599,7 +601,7 @@ REMOVE_RECORD = BulkAction(
     #: "historical playtimes" is nobody's sentence.
     subject="record",
     color="red",
-    undo_rows=EventRows("historicalplaytime", HistoricalPlaytime),
+    undo_rows=EventRows(HistoricalPlaytime),
     fallback="games:list_historical_playtime",
     scope=record_scope,
     resolve=record_resolution,
@@ -615,7 +617,7 @@ REMOVE_GAME = BulkAction(
     confirm_label="Remove",
     subject="game",
     color="red",
-    undo_rows=EventRows("playergame", PlayerGame),
+    undo_rows=EventRows(PlayerGame),
     fallback="games:list_games",
     scope=game_scope,
     resolve=game_resolution,
@@ -631,7 +633,7 @@ REMOVE_DEVICE = BulkAction(
     confirm_label="Remove",
     subject="device",
     color="red",
-    undo_rows=EventRows("device", Device),
+    undo_rows=EventRows(Device),
     fallback="games:list_devices",
     scope=device_scope,
     resolve=device_resolution,

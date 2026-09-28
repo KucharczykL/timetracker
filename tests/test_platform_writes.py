@@ -13,6 +13,7 @@ from games.removal import remove, restore
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from games.writes.platform import (
     remove_platform_in_batch,
+    removed_again_sentence,
     restore_platform_by_hand,
     restore_platform_from_batch,
     taken_sentence,
@@ -86,12 +87,16 @@ def test_a_live_row_is_already_back(amiga):
     assert restore_platform_from_batch(amiga, batch=batch) is False
 
 
-def test_a_row_another_act_removed_stays_removed(amiga):
-    remove_platform_in_batch(amiga, batch=uuid.uuid7())
+def test_a_row_another_act_removed_since_is_refused(amiga):
+    batch = uuid.uuid7()
+    remove_platform_in_batch(amiga, batch=batch)
     restore(amiga)
     remove(amiga)
 
-    assert restore_platform_from_batch(amiga, batch=uuid.uuid7()) is False
+    with pytest.raises(CommandFailed) as refusal:
+        restore_platform_from_batch(amiga, batch=batch)
+
+    assert refusal.value.message == removed_again_sentence(amiga)
     assert _reread(amiga).removed_at is not None
 
 
@@ -141,17 +146,39 @@ def test_another_librarys_platform_takes_no_name(amiga, other_library):
     assert restore_platform_from_batch(amiga, batch=batch) is True
 
 
+def _collision(constraint: str) -> IntegrityError:
+    """What the driver raises, as Django wraps it."""
+    cause = Exception(constraint)
+    cause.diag = mock.Mock(constraint_name=constraint)  # type: ignore[attr-defined]
+    collision = IntegrityError(constraint)
+    collision.__cause__ = cause
+    return collision
+
+
 def test_a_concurrent_insert_is_refused_not_a_defect(amiga):
     batch = uuid.uuid7()
     remove_platform_in_batch(amiga, batch=batch)
+    racing = _collision("unique_private_platform_normalized_name_group")
 
     with (
-        mock.patch("games.writes.platform.restore", side_effect=IntegrityError),
+        mock.patch("games.writes.platform.restore", side_effect=racing),
         pytest.raises(CommandFailed) as refusal,
     ):
         restore_platform_from_batch(amiga, batch=batch)
 
     assert refusal.value.status_code == CONFLICT_STATUS
+
+
+def test_another_constraint_rises_as_itself(amiga):
+    batch = uuid.uuid7()
+    remove_platform_in_batch(amiga, batch=batch)
+    defect = _collision("some_other_constraint")
+
+    with (
+        mock.patch("games.writes.platform.restore", side_effect=defect),
+        pytest.raises(IntegrityError),
+    ):
+        restore_platform_from_batch(amiga, batch=batch)
 
 
 def test_by_hand_a_live_row_is_left_alone(amiga):

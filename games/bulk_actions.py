@@ -30,7 +30,7 @@ from games.events.idempotency import IdempotencyKey
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, AggregateType
 from games.models import UserLibrary
 from games.reads.events import batch_aggregate_ids
-from games.removal import names_its_batch
+from games.removal import BATCH_COLUMN, names_its_batch
 from games.writes.answers import SubjectNoun
 
 #: An act's name, and its route segment.
@@ -251,16 +251,26 @@ class BulkChoice[RowT: Model]:
 
 @dataclass(frozen=True, slots=True)
 class EventRows:
-    """An Undo reading the batch's events.
+    """An Undo reading the batch's events, keyed on `model`.
 
-    `model` is the one whose keys the inverse is handed. Usually the
-    act's own rows, and for `playergame.remove` not: it lists Games
-    and undoes PlayerGames, because the event is appended under the
-    PlayerGame's key.
+    Usually the act's own rows, and for `playergame.remove` not: it
+    lists Games and undoes PlayerGames, because the event is appended
+    under the PlayerGame's key.
     """
 
-    aggregate: AggregateType
     model: type[Model]
+
+    def __post_init__(self) -> None:
+        if not DEFAULT_EVENT_TYPES.event_types_for(self.aggregate):
+            raise ValueError(
+                f"No event type speaks about {self.aggregate!r}, so an Undo "
+                f"keyed on {self.model.__name__} would read an empty batch."
+            )
+
+    @property
+    def aggregate(self) -> AggregateType:
+        """The model's own aggregate: one fact."""
+        return str(self.model._meta.model_name)
 
     def rows(self, library: UserLibrary, batch: uuid.UUID) -> list[uuid.UUID]:
         return batch_aggregate_ids(library, batch, self.aggregate)
@@ -272,9 +282,16 @@ class StampedRows:
 
     model: type[Model]
 
+    def __post_init__(self) -> None:
+        if not names_its_batch(self.model):
+            raise ValueError(
+                f"{self.model.__name__}'s removal stamp names no batch, so "
+                "an Undo reading it would read an empty batch."
+            )
+
     def rows(self, library: UserLibrary, batch: uuid.UUID) -> list[uuid.UUID]:
         return list(
-            self.model._default_manager.filter(library=library, removed_in_batch=batch)
+            self.model._default_manager.filter(library=library, **{BATCH_COLUMN: batch})
             .order_by("pk")
             .values_list("pk", flat=True)
         )
@@ -338,38 +355,7 @@ class BulkAction[RowT: Model]:
                         "by position. Two of the three facts are text, so "
                         "position cannot tell them apart."
                     )
-        match self.undo_rows:
-            case EventRows(aggregate=aggregate, model=model):
-                self._refuse_an_unread_aggregate(aggregate, model)
-            case StampedRows(model=model):
-                if not names_its_batch(model):
-                    raise ValueError(
-                        f"{self.name!r} reads its Undo off {model.__name__}'s "
-                        "removal stamp, and that stamp names no batch. Its "
-                        "Undo would read an empty batch."
-                    )
         _TABLE[self.name] = self
-
-    def _refuse_an_unread_aggregate(
-        self, aggregate: AggregateType, model: type[Model]
-    ) -> None:
-        """Rows its inverse can take."""
-        if not DEFAULT_EVENT_TYPES.event_types_for(aggregate):
-            raise ValueError(
-                f"{self.name!r} names {aggregate!r} as the "
-                "aggregate its inverse takes, and no event type speaks about "
-                "it. Its Undo would read an empty batch."
-            )
-        stated_model = model._meta.model_name
-        if stated_model != aggregate:
-            raise ValueError(
-                f"{self.name!r} names {aggregate!r} as the "
-                "aggregate its inverse takes, and "
-                f"{model.__name__} as the model it reads those "
-                f"keys off ({stated_model!r}). An Undo would hand one "
-                "model's key to a read of another, and answer 404 on every "
-                "row of its own batch."
-            )
 
 
 def bulk_action(name: BulkActionName) -> BulkAction[Any] | None:

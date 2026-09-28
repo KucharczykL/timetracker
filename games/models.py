@@ -474,13 +474,18 @@ class Platform(ReferencedRow):
     removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
-    #: The batch that last removed it.
+    #: The last removal's batch; NULL outside one.
     removed_in_batch = models.UUIDField(
         null=True, blank=True, default=None, editable=False
     )
 
     def __str__(self):
         return self.name
+
+    @property
+    def named_with_group(self) -> str:
+        """Its name, and its group where stated."""
+        return f"{self.name} ({self.group})" if self.group else self.name
 
     def clean(self):
         super().clean()

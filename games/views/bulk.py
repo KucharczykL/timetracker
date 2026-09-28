@@ -824,7 +824,8 @@ def _act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkAction[Any] 
 
     A correlation nothing wrote, and one that is no batch, are not
     found. A name the table no longer holds answers None: that batch
-    is real, and it is its Undo that is gone.
+    is real, and it is its Undo that is gone. Without events, the
+    stamps name it.
     """
     first = batch_events(library, correlation_id).first()
     if first is None:
@@ -844,6 +845,7 @@ def _stamped_act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkActi
             library, correlation_id
         ):
             return declared
+    logger.warning("[bulk]: %s names no event and no stamp", correlation_id)
     raise Http404("No such batch.")
 
 

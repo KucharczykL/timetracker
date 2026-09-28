@@ -546,9 +546,10 @@ Contract is [Undo a removal](docs/superpowers/specs/2026-09-16-issue-695-undo-re
 
 **One act on many rows is declared, not routed** (#713). An act is a value in
 `games/bulk_actions.py`, and making the value declares it: `__post_init__`
-refuses a name twice declared and an `inverse_aggregate` no `EventSpec` speaks
-about. It states scope, resolve, run and inverse, beside the aggregate the
-inverse takes -- one act may write two, as the reclassification writes a
+refuses a name twice declared, `EventRows` refuses a model no `EventSpec`
+speaks about, and `StampedRows` one whose stamp names no batch. It states
+scope, resolve, run and inverse, beside `undo_rows`, where its Undo reads
+the rows it takes back -- one act may write two, as the reclassification writes a
 created record beside the reclassified session, and an Undo reading both would
 hand a record's key to a command that reads sessions. Each act's own half lives
 beside it (`games/bulk_reclassification.py`), imported at the foot of the
@@ -562,9 +563,10 @@ gone since the confirmation. A defect ends the batch; the rows done stay done
 and keep their Undo. The log names every row left alone, the ones a Stop or a
 defect never reached included. `<continuing-batch>` posts the waypoint's form
 on connect, so only Stop is pressed. The Undo reads the act's name out of the
-batch's `source_metadata` and its rows out of `batch_aggregate_ids` in
-`games/reads/events.py`, one of the two reads that answer from events rather
-than a projection, and runs as a batch of its own. An act's scope is its own
+batch's `source_metadata` and its rows through `undo_rows` -- for
+`EventRows`, `batch_aggregate_ids` in `games/reads/events.py`, one of the
+two reads that answer from events rather than a projection -- and runs as a
+batch of its own. An act's scope is its own
 base narrowed by the statement's filter, never the filter alone, and an
 unreadable filter refuses rather than widening the act --
 `apply_structured_filter` fails open, which a list may do and an act may not.
@@ -586,7 +588,8 @@ conventional row: a platform writes no event, so `remove(row, batch=)`
 stamps `Platform.removed_in_batch` and the act's `undo_rows` is
 `StampedRows`, where every other act states `EventRows`; `_act_of` falls
 back to the stamped acts for a batch with no events. `games/writes/platform.py`
-refuses a restore whose name a live private or shared platform holds, at
+refuses a restore whose name and group a live private or shared platform
+holds, or a row another act removed since, at
 409, on the per-row route too. Contract is
 [Select platforms and remove them in bulk](docs/superpowers/specs/2026-09-28-issue-1136-platforms-list-selectable-design.md).
 #1211's `session.edit` sets a device, emulated, a note, or several on

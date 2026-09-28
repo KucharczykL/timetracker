@@ -47,7 +47,7 @@ def _session_on(library, device, *, day=date(2026, 3, 5)) -> PlayerSession:
 
 def test_the_act_is_declared():
     assert BULK_ACTIONS["device.remove"] is REMOVE_DEVICE
-    assert REMOVE_DEVICE.undo_rows == EventRows("device", Device)
+    assert REMOVE_DEVICE.undo_rows == EventRows(Device)
 
 
 # ── The rows ─────────────────────────────────────────────────────────────────
