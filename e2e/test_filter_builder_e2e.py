@@ -309,8 +309,8 @@ def test_empty_preset_dropdown_shows_readable_placeholder(
     # unhides the widget's no-results row. The dark-mode toggle only flips a
     # class on <html>; the already-open panel restyles in place. The no-results
     # node is stable (refetches replace only option rows), so no detach race.
-    page.locator("filter-builder drop-down[behavior='presets'] [data-toggle]").click()
-    panel = page.locator("filter-builder drop-down[behavior='presets'] [data-menu]")
+    page.locator("filter-builder drop-down:has(preset-panel) [data-toggle]").click()
+    panel = page.locator("filter-builder drop-down:has(preset-panel) [data-menu]")
     placeholder = panel.locator("[data-search-select-no-results]")
     expect(placeholder).to_have_text("No saved presets", timeout=5_000)
 
@@ -395,11 +395,11 @@ def test_load_set_field_preset_reflects_field_without_crash(
     )
 
     # Open the Presets panel.
-    page.locator("filter-builder drop-down[behavior='presets'] [data-toggle]").click()
+    page.locator("filter-builder drop-down:has(preset-panel) [data-toggle]").click()
 
     # Wait for the fetch-on-open to populate the preset row.
     preset_row = page.locator(
-        "filter-builder drop-down[behavior='presets'] [data-search-select-option]"
+        "filter-builder drop-down:has(preset-panel) [data-search-select-option]"
     ).filter(has_text="setpreset")
     expect(preset_row).to_be_visible(timeout=5_000)
 
@@ -991,8 +991,8 @@ def test_preset_removal_flow_takes_the_row_out(
     page.on("dialog", lambda dialog: dialog.accept())
     page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['game'])}")
 
-    page.locator("filter-builder drop-down[behavior='presets'] [data-toggle]").click()
-    picker = page.locator("filter-builder drop-down[behavior='presets']")
+    page.locator("filter-builder drop-down:has(preset-panel) [data-toggle]").click()
+    picker = page.locator("filter-builder drop-down:has(preset-panel)")
     doomed_row = picker.locator("[data-search-select-option]").filter(
         has_text="deleteme"
     )
@@ -1031,7 +1031,7 @@ def test_removing_the_last_picked_preset_does_not_bring_it_back(
     page.on("dialog", lambda dialog: dialog.accept())
     page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['game'])}")
 
-    picker = page.locator("filter-builder drop-down[behavior='presets']")
+    picker = page.locator("filter-builder drop-down:has(preset-panel)")
     toggle = picker.locator("[data-toggle]")
 
     # Pick it (loads into the tree and closes the dialog).
@@ -1062,9 +1062,8 @@ def test_preset_keyboard_pick_and_empty_enter(
     authenticated_page: Page, live_server, django_user_model
 ) -> None:
     """Keyboard path: Enter on the toggle opens the dialog with focus in the
-    search box; ArrowDown + Enter picks the preset into the tree. With no
-    options (a non-matching query), Enter neither submits nor navigates —
-    free win #297 promised, plus the form-safety guard."""
+    search box; Enter on a held name picks the preset into the tree. A
+    non-matching query offers Save, and Enter saves without navigating."""
     user = django_user_model.objects.get(username="tester")
     FilterPreset.objects.create(
         library=user.library,
@@ -1077,7 +1076,7 @@ def test_preset_keyboard_pick_and_empty_enter(
     page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['game'])}")
     url_before = page.url
 
-    picker = page.locator("filter-builder drop-down[behavior='presets']")
+    picker = page.locator("filter-builder drop-down:has(preset-panel)")
     picker.locator("[data-toggle]").focus()
     page.keyboard.press("Enter")
 
@@ -1087,18 +1086,18 @@ def test_preset_keyboard_pick_and_empty_enter(
         picker.locator("[data-search-select-option]").filter(has_text="kbpreset")
     ).to_be_visible(timeout=5_000)
 
-    # A non-matching query: Enter must be inert (no submit, no navigation).
+    # A non-matching query names a save: Enter saves, never navigates.
     search_box.fill("zzz-no-match")
-    expect(picker.locator("[data-search-select-no-results]")).to_be_visible()
+    expect(picker.locator("[data-search-select-create]")).to_be_visible()
     page.keyboard.press("Enter")
+    expect(search_box).to_have_value("")
     assert page.url == url_before
 
-    # Clear the query, pick via keyboard.
-    search_box.fill("")
+    # A held name highlights its row first, so Enter picks it.
+    search_box.fill("kbpreset")
     expect(
         picker.locator("[data-search-select-option]").filter(has_text="kbpreset")
     ).to_be_visible(timeout=5_000)
-    page.keyboard.press("ArrowDown")
     page.keyboard.press("Enter")
 
     expect(page.locator("[data-node-kind='criterion']")).to_be_attached(timeout=5_000)
@@ -1172,12 +1171,12 @@ def test_a_saved_preset_states_the_edited_leaf(
     ).first
     value_box.fill("new")
 
-    presets = page.locator("filter-builder drop-down[behavior='presets']")
+    presets = page.locator("filter-builder drop-down:has(preset-panel)")
     presets.locator("[data-toggle]").click()
-    name_box = presets.locator("[data-preset-name]")
-    name_box.fill("Edited")
-    presets.locator("[data-save-preset]").click()
-    expect(name_box).to_have_value("")
+    box = presets.locator("[data-search-select-search]")
+    box.fill("Edited")
+    presets.locator("[data-search-select-create]").click()
+    expect(box).to_have_value("")
 
     saved = json.dumps(
         FilterPreset.objects.for_library(user.library).get(name="Edited").object_filter

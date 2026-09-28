@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchPresetNames, getCsrfToken, savePreset, wirePresetDelete } from "./presets.js";
+import { getCsrfToken, savePreset, wirePresetDelete } from "./presets.js";
 
 const API_URL = "/api/presets/";
 const PRESET_UUID = "018f5e66-e800-7000-8000-000000000001";
@@ -297,39 +297,5 @@ describe("savePreset", () => {
 
     expect(response).toBeNull();
     expect(toastStub).toHaveBeenCalledWith("Failed to save preset.", "error");
-  });
-});
-
-describe("fetchPresetNames", () => {
-  it("fetches unbounded (limit=0) for the mode and returns trimmed labels", async () => {
-    const fetchStub = vi.fn(() =>
-      Promise.resolve(
-        new Response(
-          JSON.stringify([
-            { value: PRESET_UUID, label: " Backlog ", data: { filter: "{}" } },
-            { value: OTHER_PRESET_UUID, label: "Finished", data: { filter: "{}" } },
-          ]),
-        ),
-      ),
-    );
-    vi.stubGlobal("fetch", fetchStub);
-
-    const names = await fetchPresetNames(API_URL, "sessions");
-
-    const requested = new URL(
-      (fetchStub.mock.calls[0] as unknown as [string])[0],
-      "http://localhost",
-    );
-    expect(requested.pathname).toBe(API_URL);
-    expect(requested.searchParams.get("mode")).toBe("sessions");
-    expect(requested.searchParams.get("limit")).toBe("0"); // never truncate — #212
-    expect(names).toEqual(new Set(["Backlog", "Finished"]));
-  });
-
-  it("degrades to an empty set on failure", async () => {
-    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("network down"))));
-    vi.spyOn(console, "error").mockImplementation(() => {});
-
-    expect(await fetchPresetNames(API_URL, "games")).toEqual(new Set());
   });
 });

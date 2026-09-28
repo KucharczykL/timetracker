@@ -444,18 +444,19 @@ def test_preset_pick_on_builderless_mode(
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_devices')}")
 
-    picker = page.locator("quick-filter-bar drop-down[behavior='presets']")
+    picker = page.locator("quick-filter-bar drop-down:has(preset-panel)")
     picker.locator("[data-toggle]").click()
     search = picker.locator("[data-search-select-search]")
     expect(search).to_be_focused()
 
-    # Enter in the picker's search box must not submit the facet form. Type a
-    # no-match query first so no preset row can be auto-highlighted — with a
-    # highlight, Enter legitimately PICKS the row.
+    # Enter on a name no preset holds saves it and never submits the facet
+    # form; with a matching row highlighted, Enter picks the row instead.
     search.fill("zzz-no-such-preset")
-    expect(picker.locator("[data-search-select-no-results]")).to_be_visible()
+    expect(picker.locator("[data-search-select-create]")).to_be_visible()
     search.press("Enter")
+    expect(search).to_have_value("")
     expect(page).to_have_url(f"{live_server.url}{reverse('games:list_devices')}")
+    assert FilterPreset.objects.filter(name="zzz-no-such-preset").exists()
 
     search.fill("")
     row = picker.locator("[data-search-select-option]").filter(has_text="DeckOnly")
@@ -601,7 +602,7 @@ def test_the_bar_logs_no_console_error(
 
 
 def _presets(page: Page) -> Locator:
-    return page.locator("quick-filter-bar drop-down[behavior='presets']")
+    return page.locator("quick-filter-bar drop-down:has(preset-panel)")
 
 
 def _saved_filter(library, name: str) -> dict:
@@ -613,8 +614,8 @@ def _saved_filter(library, name: str) -> dict:
 def test_a_preset_saves_the_unapplied_bar_and_loads_back(
     authenticated_page: Page, live_server, e2e_library
 ):
-    """Save stores what the bar states, applied or not; Enter in the name box
-    saves and never applies the bar's form."""
+    """One box names the save; Save stores what the bar states, applied or
+    not, and never applies the bar's form."""
     platform = Platform.objects.create(name="PC", icon="pc", library=e2e_library)
     Game.objects.create(name="Halo", platform=platform, library=e2e_library)
     Game.objects.create(name="Doom", platform=platform, library=e2e_library)
@@ -625,20 +626,29 @@ def test_a_preset_saves_the_unapplied_bar_and_loads_back(
     page.locator('input[name="quick-games-search"]').fill("halo")
     presets = _presets(page)
     presets.locator("[data-toggle]").click()
-    name_box = presets.locator("[data-preset-name]")
-    name_box.fill("Halo search")
-    name_box.press("Enter")
-    expect(name_box).to_have_value("")
+    box = presets.locator("[data-search-select-search]")
+    save_row = presets.locator("[data-search-select-create]")
+    box.fill("Halo search")
+    expect(save_row).to_have_text("Save \u201cHalo search\u201d")
+    box.press("Enter")
+    expect(box).to_have_value("")
     expect(page).to_have_url(list_url)
     assert _saved_filter(e2e_library, "Halo search") == {
         "search": {"value": "halo", "modifier": "INCLUDES"}
     }
 
-    # A click saves too, and never applies the bar's form.
-    name_box.fill("Halo again")
-    presets.locator("[data-save-preset]").click()
-    expect(name_box).to_have_value("")
+    # A held name offers Overwrite, which a click takes.
+    bar_search = page.locator('input[name="quick-games-search"]')
+    bar_search.click()
+    expect(box).to_be_hidden()
+    bar_search.fill("doom")
+    presets.locator("[data-toggle]").click()
+    box.fill("Halo search")
+    expect(save_row).to_have_text("Overwrite \u201cHalo search\u201d")
+    save_row.click()
+    expect(box).to_have_value("")
     expect(page).to_have_url(list_url)
+    assert _saved_filter(e2e_library, "Halo search")["search"]["value"] == "doom"
 
     page.reload()
     presets.locator("[data-toggle]").click()
@@ -646,25 +656,8 @@ def test_a_preset_saves_the_unapplied_bar_and_loads_back(
     expect(row).to_be_visible(timeout=5_000)
     with page.expect_navigation():
         row.click()
-    assert _filter_from_url(page.url)["search"]["value"] == "halo"
-    expect(page.locator("table")).not_to_contain_text("Doom")
-
-
-def test_tab_reaches_the_name_box_without_closing_the_panel(
-    authenticated_page: Page, live_server
-):
-    page = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:list_games')}")
-    presets = _presets(page)
-    presets.locator("[data-toggle]").click()
-    expect(presets.locator("[data-search-select-search]")).to_be_focused()
-    name_box = presets.locator("[data-preset-name]")
-    for _ in range(6):
-        if name_box.evaluate("box => box === document.activeElement"):
-            break
-        page.keyboard.press("Tab")
-        expect(presets.locator("[data-menu]")).to_be_visible()
-    expect(name_box).to_be_focused()
+    assert _filter_from_url(page.url)["search"]["value"] == "doom"
+    expect(page.locator("table")).not_to_contain_text("Halo")
 
 
 def test_the_degraded_pill_saves_the_pages_filter(
@@ -682,8 +675,8 @@ def test_the_degraded_pill_saves_the_pages_filter(
 
     presets = _presets(page)
     presets.locator("[data-toggle]").click()
-    name_box = presets.locator("[data-preset-name]")
-    name_box.fill("Completed")
-    presets.locator("[data-save-preset]").click()
-    expect(name_box).to_have_value("")
+    box = presets.locator("[data-search-select-search]")
+    box.fill("Completed")
+    presets.locator("[data-search-select-create]").click()
+    expect(box).to_have_value("")
     assert _saved_filter(e2e_library, "Completed") == stated

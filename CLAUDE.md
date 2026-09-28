@@ -737,6 +737,9 @@ Submodules re-exported via `common/components/__init__.py`:
   and upserts the answered `{value, label}` on its key, and `params` is one JSON
   mapping — a literal or a sibling field — read by that POST and by the search
   query alike, a field source being a dependency that re-searches, #1080;
+  `create_event` posts nothing and emits `search-select:create` `{name,
+  replaces}` for the consumer, `create_verb` names the row and
+  `replace_verb` offers it for a name a row holds exactly, #1328;
   a trailing × empties query and value in one press and emits
   `search-select:clear` after any `search-select:change`; on by default,
   `clearable=False` opts out, #1287; `none_label` pins a row that holds

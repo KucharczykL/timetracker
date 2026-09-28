@@ -34,9 +34,6 @@ function mount(
       <drop-down>
         <preset-panel preset-api-url="${API_URL}" mode="games" data-preset-picker>
           <search-select name="preset"></search-select>
-          <input type="text" data-preset-name>
-          <button type="button" data-save-preset>Save</button>
-          <p data-preset-name-warning hidden></p>
         </preset-panel>
       </drop-down>
     </form>`;
@@ -54,14 +51,14 @@ function mount(
   const widget = host.querySelector("search-select") as WidgetStub;
   widget.refetchOptions = vi.fn();
   widget.clearSelection = vi.fn();
-  return {
-    host,
-    dropDown,
-    widget,
-    nameInput: host.querySelector<HTMLInputElement>("[data-preset-name]")!,
-    saveButton: host.querySelector<HTMLButtonElement>("[data-save-preset]")!,
-    hint: host.querySelector<HTMLElement>("[data-preset-name-warning]")!,
-  };
+  return { host, dropDown, widget };
+}
+
+// The widget's create row, as a search-select with create-event emits it.
+function create(widget: HTMLElement, name: string, replaces = false): void {
+  widget.dispatchEvent(
+    new CustomEvent("search-select:create", { bubbles: true, detail: { name, replaces } }),
+  );
 }
 
 function pick(widget: HTMLElement, data: Record<string, string>): void {
@@ -128,13 +125,12 @@ describe("<preset-panel>", () => {
     expect(dropDown.close).toHaveBeenCalledOnce();
   });
 
-  it("Save posts the host's state with X-CSRFToken", () => {
-    const { nameInput, saveButton } = mount();
+  it("a create posts the host's state under the typed name", () => {
+    const { widget } = mount();
     document.cookie = "csrftoken=testtoken";
     vi.stubGlobal("toast", vi.fn());
     const fetchStub = stubFetch(() => new Response(null, { status: 201 }));
-    nameInput.value = " My preset ";
-    saveButton.click();
+    create(widget, "My preset");
     const [url, options] = fetchStub.mock.calls[0] as unknown as [
       string,
       RequestInit & { headers: Record<string, string> },
@@ -151,46 +147,41 @@ describe("<preset-panel>", () => {
     });
   });
 
-  it("Enter in the name box saves and does not submit the host form", () => {
-    const { host, nameInput } = mount();
+  it("an overwrite posts the same way; the API updates the named preset", () => {
+    const { widget } = mount();
     vi.stubGlobal("toast", vi.fn());
-    const fetchStub = stubFetch(() => new Response(null, { status: 201 }));
-    const submitted = vi.fn();
-    host.addEventListener("submit", submitted);
-    nameInput.value = "Keyed";
-    const enter = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
-    nameInput.dispatchEvent(enter);
-    expect(enter.defaultPrevented).toBe(true);
-    expect(fetchStub).toHaveBeenCalledOnce();
+    const fetchStub = stubFetch(() => new Response(null, { status: 200 }));
+    create(widget, "Finished", true);
+    expect(postedBody(fetchStub).name).toBe("Finished");
   });
 
-  it("a blank name does not post", () => {
-    const { saveButton } = mount();
+  it("the create event stops at the panel", () => {
+    const { widget } = mount();
     vi.stubGlobal("toast", vi.fn());
-    const fetchStub = stubFetch(() => new Response());
-    saveButton.click();
-    expect(fetchStub).not.toHaveBeenCalled();
-    expect(window.toast).toHaveBeenCalledWith("Preset name is required.", "error");
+    stubFetch(() => new Response(null, { status: 201 }));
+    const outer = vi.fn();
+    document.body.addEventListener("search-select:create", outer);
+    create(widget, "Mine");
+    document.body.removeEventListener("search-select:create", outer);
+    expect(outer).not.toHaveBeenCalled();
   });
 
   it("a host's refusal is shown and nothing posts", () => {
-    const { nameInput, saveButton } = mount({ kind: "refused", sentence: "Finish it first." });
+    const { widget } = mount({ kind: "refused", sentence: "Finish it first." });
     vi.stubGlobal("toast", vi.fn());
     const fetchStub = stubFetch(() => new Response());
-    nameInput.value = "Half";
-    saveButton.click();
+    create(widget, "Half");
     expect(fetchStub).not.toHaveBeenCalled();
     expect(window.toast).toHaveBeenCalledWith("Finish it first.", "error");
   });
 
   it("no host answering saves nothing", () => {
-    const { nameInput, saveButton } = mount(null);
+    const { widget } = mount(null);
     vi.stubGlobal("toast", vi.fn());
     vi.spyOn(console, "error").mockImplementation(() => {});
     // The client-error report posts on its own; no preset post may follow.
     const fetchStub = stubFetch(() => new Response());
-    nameInput.value = "Orphan";
-    saveButton.click();
+    create(widget, "Orphan");
     const presetPosts = fetchStub.mock.calls.filter((call) => call[0] === API_URL);
     expect(presetPosts).toEqual([]);
     expect(window.toast).toHaveBeenCalledWith(expect.stringContaining("reload"), "error");
@@ -215,50 +206,23 @@ describe("<preset-panel>", () => {
     expect(window.toast).toHaveBeenCalledWith("Preset is not a valid filter.", "error");
   });
 
-  it("a rejected save keeps the typed name and the list", async () => {
-    const { widget, nameInput, saveButton } = mount();
+  it("a saved preset refetches the list, which empties the box", async () => {
+    const { widget } = mount();
+    vi.stubGlobal("toast", vi.fn());
+    stubFetch(() => new Response(null, { status: 201 }));
+    create(widget, "Mine");
+    await vi.waitFor(() => expect(widget.refetchOptions).toHaveBeenCalledOnce());
+  });
+
+  it("a rejected save keeps the box and the list", async () => {
+    const { widget } = mount();
     vi.stubGlobal("toast", vi.fn());
     stubFetch(() => new Response(JSON.stringify({ detail: [{ msg: "bad" }] }), { status: 422 }));
-    nameInput.value = "Mine";
-    saveButton.click();
+    create(widget, "Mine");
     await vi.waitFor(() =>
       expect(window.toast).toHaveBeenCalledWith("Failed to save preset.", "error"),
     );
-    expect(nameInput.value).toBe("Mine");
     expect(widget.refetchOptions).not.toHaveBeenCalled();
-  });
-
-  it("a saved preset empties the name box and refetches the list", async () => {
-    const { widget, nameInput, saveButton, hint } = mount();
-    vi.stubGlobal("toast", vi.fn());
-    stubFetch(() => new Response(null, { status: 201 }));
-    nameInput.value = "Mine";
-    saveButton.click();
-    await vi.waitFor(() => expect(nameInput.value).toBe(""));
-    expect(widget.refetchOptions).toHaveBeenCalledOnce();
-    // The name is remembered, so re-typing it warns without a refetch.
-    nameInput.value = "Mine";
-    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(hint.hidden).toBe(false);
-  });
-
-  it("a taken name relabels Save to Overwrite and shows the hint", async () => {
-    const { nameInput, saveButton, hint } = mount();
-    stubFetch(
-      () =>
-        new Response(JSON.stringify([{ value: PRESET_UUID, label: "Finished", data: {} }]), {
-          status: 200,
-        }),
-    );
-    nameInput.value = "Finished";
-    nameInput.dispatchEvent(new Event("focusin", { bubbles: true }));
-    await vi.waitFor(() => expect(hint.hidden).toBe(false));
-    expect(hint.textContent).toContain("already exists");
-    expect(saveButton.textContent).toBe("Overwrite");
-    nameInput.value = "Fresh";
-    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(hint.hidden).toBe(true);
-    expect(saveButton.textContent).toBe("Save");
   });
 
   it("the remove action confirms, removes and refetches", async () => {

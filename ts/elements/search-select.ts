@@ -66,6 +66,13 @@ export interface SearchSelectClearDetail {
   name: string;
 }
 
+// The "search-select:create" CustomEvent of a row its consumer commits.
+export interface SearchSelectCreateDetail {
+  name: string;
+  //: A row holds this name exactly; the row read the replace verb.
+  replaces: boolean;
+}
+
 // The "search-select:action" CustomEvent: a click on a
 // [data-search-select-action] button in a form-mode row (the preset delete ×),
 // for an external consumer. Filter +/− are the widget's own state, handled
@@ -227,6 +234,10 @@ const initWidget = (containerElement: Element) => {
   //: A filter panel states a criterion and a free-text panel is the
   //: typed text itself; neither holds a row to create.
   const createUrl = isFilter || freeText ? "" : props.createUrl;
+  //: The consumer commits the row; nothing is posted.
+  const createsByEvent = !isFilter && !freeText && props.createEvent;
+  const createVerb = props.createVerb || "Create";
+  const replaceVerb = props.replaceVerb;
   //: A required field whose list usually holds one row commits it, so
   //: a submit with no pick still posts one.
   const commitSoleOption = props.commitSoleOption;
@@ -661,11 +672,18 @@ const initWidget = (containerElement: Element) => {
   // beside `PlayStation 4` matches that filter, and a rule built on it
   // would refuse to create any name a longer one holds.
   const createRowOffered = (query: string): boolean => {
-    if (!createUrl || !createRow) return false;
+    if ((!createUrl && !createsByEvent) || !createRow) return false;
     const wanted = query.trim().toLowerCase();
     if (!wanted) return false;
-    return !loadedLabels().includes(wanted);
+    return Boolean(replaceVerb) || !loadedLabels().includes(wanted);
   };
+
+  //: Exact, case kept: `halo` beside `Halo` is another name.
+  const replacesARow = (query: string): boolean =>
+    Boolean(replaceVerb) &&
+    Array.from(options.querySelectorAll<HTMLElement>("[data-search-select-option]")).some(
+      row => (row.getAttribute("data-label") ?? "").trim() === query.trim()
+    );
 
   // Shown once an answer decides, as the no-results node is: a row
   // judged on the loaded window alone flashes on every keystroke.
@@ -675,7 +693,8 @@ const initWidget = (containerElement: Element) => {
     createRow.hidden = !offered;
     if (offered) {
       const label = createRow.querySelector<HTMLElement>("[data-label]") ?? createRow;
-      label.textContent = `Create \u201c${query.trim()}\u201d`;
+      const verb = replacesARow(query) ? replaceVerb : createVerb;
+      label.textContent = `${verb} \u201c${query.trim()}\u201d`;
       //: It replaces the empty-state message rather than standing beside it.
       noResults?.classList.add("hidden");
     }
@@ -702,6 +721,15 @@ const initWidget = (containerElement: Element) => {
     if (creating || !createRow || createRow.hidden) return;
     const name = search.value.trim();
     if (!name) return;
+    if (createsByEvent) {
+      container.dispatchEvent(
+        new CustomEvent<SearchSelectCreateDetail>("search-select:create", {
+          bubbles: true,
+          detail: { name, replaces: replacesARow(name) },
+        })
+      );
+      return;
+    }
     creating = true;
     createRow.setAttribute("aria-disabled", "true");
     const body = { name, ...resolveParams(container, params) };

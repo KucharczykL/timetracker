@@ -3,10 +3,10 @@
  * (<quick-filter-bar>, <filter-builder>) answer.
  *
  * The dropdown lifecycle (fetch-on-open, rendering, keyboard nav) lives in
- * the shared combobox primitives (search-select + the presets drop-down
+ * the shared combobox primitives (search-select + the combobox drop-down
  * behavior); this module owns the API calls: save (POST), per-row removal
- * (the search-select:action listener → confirm → DELETE → refetch), the
- * collision-check name fetch, and the CSRF token read. All endpoints are the
+ * (the search-select:action listener → confirm → DELETE → refetch), and
+ * the CSRF token read. All endpoints are the
  * /api/presets/ collection URL; DELETE appends the preset id.
  */
 
@@ -188,32 +188,4 @@ export function wirePresetDelete(root: HTMLElement, presetApiUrl: string): () =>
   };
   root.addEventListener("search-select:action", onAction);
   return () => root.removeEventListener("search-select:action", onAction);
-}
-
-/**
- * The current user's preset names for `mode`, for the save-overwrite collision
- * warning (#212). Unbounded (`limit=0`) so a large collection can never hide a
- * collision. Resolves to an empty set on failure — the warning silently
- * degrades rather than blocking the save.
- */
-export function fetchPresetNames(
-  presetApiUrl: string,
-  mode: string,
-): Promise<Set<string>> {
-  const url = new URL(presetApiUrl, window.location.origin);
-  url.searchParams.set("mode", mode);
-  url.searchParams.set("limit", "0");
-  return fetch(url.toString(), { credentials: "same-origin" })
-    .then((response) => {
-      if (!response.ok) throw new Error(`preset list failed (${response.status})`);
-      return response.json();
-    })
-    .then(
-      (options: PresetOption[]) => new Set(options.map((option) => option.label.trim())),
-    )
-    .catch((error: unknown) => {
-      console.error("presets: failed to load preset names", error);
-      reportClientError("presets[names]", String(error), { toast: false });
-      return new Set<string>();
-    });
 }

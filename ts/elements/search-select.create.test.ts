@@ -331,3 +331,72 @@ describe("<search-select> create row (#1080)", () => {
     expect(panel.hidden).toBe(false);
   });
 });
+
+describe("<search-select> create row its consumer commits", () => {
+  beforeEach(() => document.body.replaceChildren());
+  afterEach(() => vi.unstubAllGlobals());
+
+  const byEvent = {
+    "create-url": "",
+    "create-event": "true",
+    "create-verb": "Save",
+    "replace-verb": "Overwrite",
+  };
+
+  function created(host: HTMLElement) {
+    const heard = vi.fn();
+    host.addEventListener("search-select:create", event =>
+      heard((event as CustomEvent).detail)
+    );
+    return heard;
+  }
+
+  it("reads the consumer's verb and emits the name, posting nothing", async () => {
+    const { createMock } = stubEndpoints([]);
+    const host = mount(byEvent);
+    const heard = created(host);
+
+    await type(host, "Backlog");
+    expect(createRow(host).textContent).toContain("Save “Backlog”");
+    pressEnter(host);
+
+    expect(heard).toHaveBeenCalledWith({ name: "Backlog", replaces: false });
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it("reads the replace verb for a name a row holds exactly", async () => {
+    stubEndpoints([{ value: "b", label: "Backlog", data: {} }]);
+    const host = mount(byEvent);
+    const heard = created(host);
+
+    await type(host, "Backlog");
+    expect(createRow(host).hidden).toBe(false);
+    expect(createRow(host).textContent).toContain("Overwrite “Backlog”");
+    createRow(host).click();
+
+    expect(heard).toHaveBeenCalledWith({ name: "Backlog", replaces: true });
+  });
+
+  it("keeps case: a name differing in case is another name", async () => {
+    stubEndpoints([{ value: "b", label: "Backlog", data: {} }]);
+    const host = mount(byEvent);
+
+    await type(host, "backlog");
+
+    expect(createRow(host).textContent).toContain("Save “backlog”");
+  });
+
+  it("Enter picks a matching row before it saves", async () => {
+    stubEndpoints([{ value: "b", label: "Backlog", data: {} }]);
+    const host = mount(byEvent);
+    const heard = created(host);
+    const picked = vi.fn();
+    host.addEventListener("search-select:change", picked);
+
+    await type(host, "Backlog");
+    pressEnter(host);
+
+    expect(picked).toHaveBeenCalled();
+    expect(heard).not.toHaveBeenCalled();
+  });
+});

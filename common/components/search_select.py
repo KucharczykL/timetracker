@@ -82,7 +82,6 @@ from common.components.primitives import (
     FilterWidgetPath,
     Icon,
     Input,
-    P,
     Pill,
     Span,
     Template,
@@ -980,19 +979,19 @@ def _preset_option_row(option: SearchSelectOption) -> Node:
 
 
 def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
-    """The preset-picker personality of the combobox shell (issue #297).
+    """The preset list, and the name a save states.
 
-    An always-visible single-select whose options are fetched from the preset
-    API (``?mode=`` scoped) on every open — the hosting dropdown's ``presets``
-    behavior calls ``refetchOptions()`` on ``dropdown:show``, so the list is
-    server-fresh after saves and deletes with no refresh plumbing. A pick emits
-    the standard ``search-select:change`` whose ``last.data.filter`` carries the
-    preset's filter JSON; ``<preset-panel>`` clears the pick and re-emits it as
+    One box filters the saved presets and names the preset to save: its
+    create row reads ``Save “…”``, or ``Overwrite “…”`` for a name a
+    preset holds, and emits ``search-select:create``. Options are fetched
+    on every open, so the list is fresh after saves and removals.
+    ``<preset-panel>`` clears a pick and re-emits it as
     ``preset-panel:load``.
     """
     search_attributes: list[HTMLAttribute] = [
         ("data-search-select-search", ""),
-        ("placeholder", "Filter presets…"),
+        ("placeholder", PRESET_SEARCH_PLACEHOLDER),
+        ("aria-label", PRESET_SEARCH_PLACEHOLDER),
         ("autocomplete", "off"),
         ("class", _SEARCH_CLASS),
     ]
@@ -1008,6 +1007,7 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         templates=templates,
         layout=_DIALOG_LAYOUT,
         no_results_text="No saved presets",
+        create_row=_option_row(_BLANK_OPTION, RowKind.CREATE),
     )
     return _SearchSelect(
         name="preset",
@@ -1018,6 +1018,9 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         always_visible="true",
         prefetch=_PRESET_PREFETCH,
         sync_url="false",
+        create_event="true",
+        create_verb=SAVE_PRESET_VERB,
+        replace_verb=OVERWRITE_PRESET_VERB,
         class_=_DIALOG_LAYOUT.container_class,
     )[*children]
 
@@ -1078,47 +1081,18 @@ def ComboboxDropdown(
 #: The Presets segment's and panel's name.
 PRESETS_LABEL = "Presets"
 
-#: Save's resting label; ``preset-panel.ts`` restores it.
-SAVE_PRESET_LABEL = "Save"
-
-_PRESET_NAME_CLASS = (
-    "min-w-0 flex-1 px-3 min-h-control text-type-input rounded-base "
-    "border border-default-medium bg-neutral-secondary-medium "
-    "text-heading shadow-xs placeholder:text-body "
-    "focus:ring-brand focus:border-brand"
-)
+#: The preset box's placeholder and name.
+PRESET_SEARCH_PLACEHOLDER = "Find or name a preset"
+#: The create row's verbs.
+SAVE_PRESET_VERB = "Save"
+OVERWRITE_PRESET_VERB = "Overwrite"
 
 
 def PresetPanel(*, api_url: str, mode: FilterMode) -> Node:
-    """Saved presets above a name box and Save.
-
-    ``data-preset-picker`` is the removal wiring's hook.
-    """
+    """The preset list; ``data-preset-picker`` is the removal hook."""
     return _PresetPanelElement(
         preset_api_url=api_url, mode=mode, data_preset_picker=""
-    )[
-        PresetSelect(api_url=api_url, mode=mode),
-        Div(class_="mt-2 flex flex-col gap-2 border-t border-default-medium pt-2")[
-            Div(class_="flex items-center gap-2")[
-                Input(
-                    type="text",
-                    data_preset_name="",
-                    placeholder="Preset name",
-                    aria_label="Preset name",
-                    autocomplete="off",
-                    class_=_PRESET_NAME_CLASS,
-                ),
-                ControlButton(color="gray", data_save_preset="")[SAVE_PRESET_LABEL],
-            ],
-            P(
-                data_preset_name_warning="",
-                hidden=True,
-                role="status",
-                aria_live="polite",
-                class_="text-type-body text-amber-700 dark:text-amber-400",
-            ),
-        ],
-    ]
+    )[PresetSelect(api_url=api_url, mode=mode)]
 
 
 def presets_member(*, api_url: str, mode: FilterMode, id: str) -> ButtonGroupMember:
@@ -1133,7 +1107,7 @@ def presets_member(*, api_url: str, mode: FilterMode, id: str) -> ButtonGroupMem
             target_element=panel,
             id=id,
             placement="bottom-end",
-            behavior="presets",
+            behavior="combobox",
         )
 
     return {

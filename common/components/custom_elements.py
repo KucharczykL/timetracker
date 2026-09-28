@@ -591,6 +591,12 @@ class SearchSelectProps(TypedDict):
     params: SearchSelectParams
     #: The endpoint the create row posts to; blank offers no row.
     create_url: str
+    #: The create row emits ``search-select:create`` and posts nothing.
+    create_event: bool
+    #: The create row's verb; blank reads "Create".
+    create_verb: str
+    #: Offered for a name a row holds exactly; blank hides the row.
+    replace_verb: str
     #: For a create row outside a form; a hosted row reads the form's.
     csrf: str
     #: Commit the one option a search answers, where nothing is held.
@@ -1109,7 +1115,6 @@ type DropdownBehaviorName = Literal[
     "sheet",
     "column-picker",
     "choice-grid",
-    "presets",
 ]
 
 

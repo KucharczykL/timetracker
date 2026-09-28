@@ -31,17 +31,17 @@ facet applies from inside the menu.
 A `ButtonGroup` member with `opens` is a button, and takes no `href` or
 `method`. The group shapes it for
 its place and gives it to `opens`, which returns the popup around it.
-`presets_member` returns the Presets member. Its dropdown opens with
-`placement="bottom-end"` and the `presets` behavior: the combobox
-behavior, with Tab kept inside the panel so that the name box and Save are
-reachable.
+`presets_member` returns the Presets member. Its combobox dropdown opens
+with `placement="bottom-end"`.
 
 ## The presets panel
 
-`<preset-panel>` holds the saved presets, a name box and Save. When the
-typed name is taken, Save says "Overwrite" and a hint says that saving
-replaces the preset. Enter in the name box saves and does not submit the
-host's form. The panel makes every preset API call.
+`<preset-panel>` holds one box. It filters the saved presets and names
+the preset to save: the search-select's create row (#1328) reads
+`Save “…”`, or `Overwrite “…”` for a name a preset holds exactly, and the
+panel commits it. A matching row is highlighted first, so Enter loads
+it; with no match, Enter saves. The panel makes every
+preset API call.
 
 The panel does not know its page. It speaks to its host through two events
 that bubble:

@@ -1,4 +1,4 @@
-import { DropdownBehavior, registerBehavior } from "../dropdown-behaviors.js";
+import { registerBehavior } from "../dropdown-behaviors.js";
 
 // Combobox-hosting dropdown (issue #297): the [data-menu] panel is a dialog
 // containing a <search-select> widget, which owns its own keyboard navigation
@@ -7,7 +7,7 @@ import { DropdownBehavior, registerBehavior } from "../dropdown-behaviors.js";
 // - opts out of attachMenu's roving item navigation via a match-nothing
 //   itemSelector (with zero items the menu keydown handler also stops swallowing
 //   arrow/Home/End, so the caret works inside the search input; Escape and Tab
-//   still close the dropdown from attachMenu, except that `presets` keeps Tab),
+//   still close the dropdown from attachMenu),
 // - on every open (the dropdown:show lifecycle event — the #94 plug point)
 //   refetches
 //   the widget's options and focuses the search input, so the list is always
@@ -23,39 +23,28 @@ interface ComboboxWidget extends HTMLElement {
   refetchOptions?: () => void;
 }
 
-const wireCombobox: DropdownBehavior["wire"] = ({ host, menu }) => {
-  const searchInput = menu.querySelector<HTMLInputElement>(
-    "[data-search-select-search]",
-  );
-  const onShow = () => {
-    // Refetch first: it resets the query and marks the widget prefetched, so
-    // the focus below cannot trigger a second (stale-query) fetch.
-    menu.querySelector<ComboboxWidget>("search-select")?.refetchOptions?.();
-    searchInput?.focus();
-  };
-  const onSearchKeydown = (event: KeyboardEvent) => {
-    if (event.key === "Enter") event.preventDefault();
-  };
-  host.addEventListener("dropdown:show", onShow);
-  searchInput?.addEventListener("keydown", onSearchKeydown);
-  return () => {
-    host.removeEventListener("dropdown:show", onShow);
-    searchInput?.removeEventListener("keydown", onSearchKeydown);
-  };
-};
-
 registerBehavior("combobox", {
   menuOptions: () => ({
     itemSelector: "[data-combobox-no-items]",
   }),
-  wire: wireCombobox,
-});
-
-// Tab stays inside, reaching the name box and Save.
-registerBehavior("presets", {
-  menuOptions: () => ({
-    itemSelector: "[data-combobox-no-items]",
-    keepOpenOnTab: true,
-  }),
-  wire: wireCombobox,
+  wire: ({ host, menu }) => {
+    const searchInput = menu.querySelector<HTMLInputElement>(
+      "[data-search-select-search]",
+    );
+    const onShow = () => {
+      // Refetch first: it resets the query and marks the widget prefetched, so
+      // the focus below cannot trigger a second (stale-query) fetch.
+      menu.querySelector<ComboboxWidget>("search-select")?.refetchOptions?.();
+      searchInput?.focus();
+    };
+    const onSearchKeydown = (event: KeyboardEvent) => {
+      if (event.key === "Enter") event.preventDefault();
+    };
+    host.addEventListener("dropdown:show", onShow);
+    searchInput?.addEventListener("keydown", onSearchKeydown);
+    return () => {
+      host.removeEventListener("dropdown:show", onShow);
+      searchInput?.removeEventListener("keydown", onSearchKeydown);
+    };
+  },
 });
