@@ -253,10 +253,10 @@ def test_the_line_keeps_green_and_red_and_greys_the_rest():
     """Blue is the page's primary colour, and a line of four primaries
     names none of them. Only the act that adds and the act that takes
     away keep a colour; the rest read as ordinary."""
-    from games.bulk_edit import EDIT
     from games.bulk_finish import FINISH_SESSION
     from games.bulk_reclassification import RECLASSIFY
     from games.bulk_removal import REMOVE_SESSION
+    from games.bulk_session_edit import EDIT
     from games.bulk_tray import tray_actions
 
     offered = tray_actions(
@@ -272,6 +272,6 @@ def test_the_line_keeps_green_and_red_and_greys_the_rest():
 
 def test_an_act_keeps_its_own_colour_on_its_confirmation():
     """One page, one primary press: the act's blue belongs there."""
-    from games.bulk_edit import EDIT
+    from games.bulk_session_edit import EDIT
 
     assert EDIT.color == "blue"

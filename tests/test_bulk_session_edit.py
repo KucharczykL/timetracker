@@ -15,12 +15,12 @@ from session_rows import duration_only_row, tracked_run
 
 from common.components.unset_field import unset_input_name
 from games.bulk_actions import AsksNothing, Control
-from games.bulk_edit import (
+from games.bulk_edit import STATEMENT_UNREADABLE
+from games.bulk_session_edit import (
     DEVICE_GONE,
     EDIT,
     NOT_EDITED_BY_THIS_BATCH,
     NOTHING_STATED,
-    STATEMENT_UNREADABLE,
     EditStatement,
     edit_back,
     edit_one,

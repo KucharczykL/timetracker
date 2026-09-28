@@ -21,6 +21,8 @@ ALLOWED = {
     ("common/components/filters.py", "chip_templates"),
     ("common/components/navigation.py", "AvatarButton"),
     ("common/components/temporal_field.py", "_disclosure"),
+    #: A field that opens a grid, not a box button.
+    ("common/components/icon_picker.py", "IconPicker"),
 }
 
 

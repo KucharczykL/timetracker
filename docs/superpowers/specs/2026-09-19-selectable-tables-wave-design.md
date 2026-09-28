@@ -373,7 +373,7 @@ inverse that reads a row's earlier events inherits, both found by
 #1211's review: a stream with no creation before the batch's event, or a
 payload of the wrong shape, is the row's fault and raises
 `RowUnreadable`, a defect that ends the batch, never a sentence the
-person cannot act on (`games/bulk_edit.py` does; move's `run_before`
+person cannot act on (`games/bulk_session_edit.py` does; move's `run_before`
 still refuses, #1283); and a second press of Undo runs under a fresh
 correlation id, so a gate that asks whether the batch's own event is the
 latest of its family reads the first Undo as a later change and refuses
@@ -719,8 +719,9 @@ Remove, in #712.
 ## Cross-wave handoffs
 
 - **The lists that stay** — Games (#1134), Devices (#1135) and Platforms
-  (#1136) each inherit the personality and the retirement of their column
-  after #718, and #1245's picker moves into their row-menu slot by
+  (#1136, whose Remove and Edit Undos read a batch ledger, because a
+  platform writes no event) each inherit the personality and the retirement of their
+  column after #718, and #1245's picker moves into their row-menu slot by
   itself; Purchases' table is #725–#736's, then #1266's. The Games list's
   bulk Edit is #1270's
   ([spec](2026-09-28-issue-1270-bulk-game-edit-design.md)): one Edit per

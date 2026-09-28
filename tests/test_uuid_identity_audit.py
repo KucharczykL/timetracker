@@ -30,6 +30,7 @@ pytestmark = [pytest.mark.django_db, pytest.mark.untracked_games]
 # Pinned rather than re-derived: a test that recomputes the expectation the same
 # way the code does cannot fail when the derivation itself is wrong.
 EXPECTED_RELATION_COLUMNS = {
+    ("games_batchchange", "library_id"),
     ("games_device", "library_id"),
     ("games_edition", "game_id"),
     ("games_externalreference", "edition_id"),
@@ -251,6 +252,7 @@ def test_command_fails_when_the_inventory_drifts(monkeypatch):
 # --- Identity columns, ordering, referential agreement -----------------------
 
 EXPECTED_IDENTITY_TABLES = {
+    "games_batchchange",
     "games_device",
     "games_edition",
     "games_externalreference",

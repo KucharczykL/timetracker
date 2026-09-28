@@ -821,7 +821,9 @@ _DROPDOWN_PANEL_CLASS = (
     f"border border-default-medium shadow-sm {OVERLAY_SURFACE_CLASS}"
 )
 #: The one child that scrolls the content.
-_DROPDOWN_SCROLL_CLASS = "min-h-0 overflow-y-auto overflow-x-hidden"
+#: The inset gives an edge child's focus ring room; the margin cancels
+#: it, so content sits where the panel's padding puts it.
+_DROPDOWN_SCROLL_CLASS = "min-h-0 overflow-y-auto overflow-x-hidden -m-0.5 p-0.5"
 
 
 class DropdownPanel:
@@ -1111,6 +1113,7 @@ type DropdownBehaviorName = Literal[
     "date-calendar",
     "sheet",
     "column-picker",
+    "choice-grid",
 ]
 
 
@@ -1155,11 +1158,12 @@ def Dropdown(
     placement: str = "bottom-start",
     behavior: DropdownBehaviorName = "menu",
     config: dict[str, str] | None = None,
+    full_width: bool = False,
 ) -> Node:
     """Attach a popup (target_element) to a trigger_element. Generic primitive:
     stamps the JS/ARIA contract, wires the <drop-down> element, and tags it with a
     client `behavior` (menu by default). Menu semantics live in the menu preset/
-    wrappers, not here."""
+    wrappers, not here. ``full_width`` makes it fill a form row."""
     return _assemble(
         trigger_element,
         target_element,
@@ -1171,7 +1175,7 @@ def Dropdown(
         # SplitButtonDropdown group). Visually identical for a standalone dropdown.
         # FRICTION POINT: imposes flex on every wrapper; `display: contents` is the
         # cleaner-but-broader fallback if it ever fights a layout.
-        wrapper_class="relative inline-flex",
+        wrapper_class="relative flex w-full" if full_width else "relative inline-flex",
         behavior=behavior,
         config=config,
     )

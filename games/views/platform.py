@@ -5,13 +5,13 @@ from uuid import UUID
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
 from django.http import HttpRequest, HttpResponse
+from django.middleware.csrf import get_token
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from common.components import (
     AddForm,
-    ButtonGroup,
     Column,
     ContentContainer,
     ExternalReferenceLinks,
@@ -28,11 +28,14 @@ from common.components import (
     paginated_table_content,
     parse_filter_dict,
 )
+from common.components.core import Node
 from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
-from common.returns import action_url
 from common.utils import paginate
+from games.bulk_platform_edit import EDIT_PLATFORMS
+from games.bulk_removal import REMOVE_PLATFORM
+from games.bulk_tray import tray_actions
 from games.filters import (
     PlatformFilter,
     filter_query_context_for_library,
@@ -43,8 +46,8 @@ from games.list_columns import column_choice
 from games.models import Platform, UserLibrary
 from games.ownership import owned_or_404
 from games.reads.external_references import held_by, references_for
+from games.reads.platform_departures import platform_departures
 from games.reference_form import ReferenceSetForm, submitted_or_form_error
-from games.removal import restore
 from games.sorting import (
     PLATFORM_DEFAULT_SORT,
     PLATFORM_SORTS,
@@ -56,9 +59,11 @@ from games.views.filtering import (
     builder_url_for,
     warn_unknown_sort,
 )
+from games.views.platform_menu import platform_row_menu
 from games.views.reference_section import references_area
 from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
+from games.writes.platform import restore_platform_by_hand
 
 PLATFORM_COLUMNS: list[Column] = [
     Column("Name", "name", key="name", hideable=False),
@@ -66,7 +71,6 @@ PLATFORM_COLUMNS: list[Column] = [
     Column("Group", "group", priority=2, key="group"),
     Column("References", priority=2, key="references", hidden_by_default=True),
     Column("Created", "created", key="created", hidden_by_default=True),
-    Column("Actions", align="right", priority=3, key="actions", hideable=False),
 ]
 
 
@@ -95,7 +99,9 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
     platforms = sort.queryset
     warn_unknown_sort(request, sort.unknown, entity="platform")
     platforms, page_obj, elided_page_range = paginate(platforms, find)
-    references = references_for(list(platforms))
+    #: One read serves cells, rows and references.
+    page_platforms = list(platforms)
+    references = references_for(page_platforms)
 
     hidden, picker = column_choice(request, "platforms", PLATFORM_COLUMNS)
     kept_columns, kept_cells = drop_columns(
@@ -107,35 +113,30 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
                 platform.group,
                 ExternalReferenceLinks(held_by(references, platform.pk)),
                 presentation.format(platform.created_at, "date"),
-                ButtonGroup(
-                    [
-                        {
-                            "href": action_url(
-                                "games:edit_platform", platform.pk, origin=origin
-                            ),
-                            "slot": Icon("edit"),
-                            "color": "gray",
-                        },
-                        {
-                            "href": action_url(
-                                "games:remove_platform", platform.pk, origin=origin
-                            ),
-                            "slot": Icon("delete"),
-                            "color": "red",
-                        },
-                    ]
-                ),
             ]
-            for platform in platforms
+            for platform in page_platforms
         ],
         hidden,
     )
     data: TableData = {
         "caption": "Platforms",
         "columns": kept_columns,
+        "menu_slot": True,
         "sort_terms": sort.terms,
-        "rows": [make_row(*cells) for cells in kept_cells],
+        "rows": [
+            make_row(
+                *cells, key=str(platform.pk), menu=platform_row_menu(platform, origin)
+            )
+            for platform, cells in zip(page_platforms, kept_cells, strict=True)
+        ],
         "column_picker": picker,
+        "selection": {
+            "filter": filter_json,
+            "csrf_token": get_token(request),
+            "actions": tray_actions(
+                EDIT_PLATFORMS.name, REMOVE_PLATFORM.name, origin=origin
+            ),
+        },
     }
     content = paginated_table_content(
         data,
@@ -174,10 +175,21 @@ def restore_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
     )
     return restore_and_return(
         request,
-        action=partial(restore, platform),
+        action=partial(restore_platform_by_hand, platform),
         restored=f"{platform.name} restored to your library.",
         fallback="games:list_platforms",
     )
+
+
+def _still_naming(library: UserLibrary, platform: Platform) -> Node:
+    """Live rows naming it, as the batch counts."""
+    naming = platform_departures(library, platform)
+    return Ul()[
+        Li()[
+            f"{naming.games} game(s), {naming.releases} release(s) and "
+            f"{naming.purchases} purchase(s) still name it"
+        ]
+    ]
 
 
 @login_required
@@ -191,12 +203,7 @@ def remove_platform(request: HttpRequest, platform_id: UUID) -> HttpResponse:
         platform,
         title="Remove platform",
         message=f"Remove {platform.name} from your library?",
-        details=Ul()[
-            Li()[
-                f"{platform.game_set.count()} game(s) and "
-                f"{platform.purchase_set.count()} purchase(s) still name it"
-            ]
-        ],
+        details=_still_naming(library, platform),
         fallback="games:list_platforms",
         removed=f"{platform.name} removed from your library.",
         undo="games:restore_platform",

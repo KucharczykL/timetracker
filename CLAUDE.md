@@ -546,9 +546,10 @@ Contract is [Undo a removal](docs/superpowers/specs/2026-09-16-issue-695-undo-re
 
 **One act on many rows is declared, not routed** (#713). An act is a value in
 `games/bulk_actions.py`, and making the value declares it: `__post_init__`
-refuses a name twice declared and an `inverse_aggregate` no `EventSpec` speaks
-about. It states scope, resolve, run and inverse, beside the aggregate the
-inverse takes -- one act may write two, as the reclassification writes a
+refuses a name twice declared, `EventRows` refuses a model no `EventSpec`
+speaks about, and `LedgerRows` a projection. It states
+scope, resolve, run and inverse, beside `undo_rows`, where its Undo reads
+the rows it takes back -- one act may write two, as the reclassification writes a
 created record beside the reclassified session, and an Undo reading both would
 hand a record's key to a command that reads sessions. Each act's own half lives
 beside it (`games/bulk_reclassification.py`), imported at the foot of the
@@ -562,9 +563,10 @@ gone since the confirmation. A defect ends the batch; the rows done stay done
 and keep their Undo. The log names every row left alone, the ones a Stop or a
 defect never reached included. `<continuing-batch>` posts the waypoint's form
 on connect, so only Stop is pressed. The Undo reads the act's name out of the
-batch's `source_metadata` and its rows out of `batch_aggregate_ids` in
-`games/reads/events.py`, one of the two reads that answer from events rather
-than a projection, and runs as a batch of its own. An act's scope is its own
+batch's `source_metadata` and its rows through `undo_rows` -- for
+`EventRows`, `batch_aggregate_ids` in `games/reads/events.py`, one of the
+two reads that answer from events rather than a projection -- and runs as a
+batch of its own. An act's scope is its own
 base narrowed by the statement's filter, never the filter alone, and an
 unreadable filter refuses rather than widening the act --
 `apply_structured_filter` fails open, which a list may do and an act may not.
@@ -581,6 +583,17 @@ aggregate, its row menu `device_row_menu` (Edit, Remove), its preview's
 Sessions count `games/reads/device_departures.py`, which the per-row
 confirmation reads too. Contract is
 [Select devices and remove them in bulk](docs/superpowers/specs/2026-09-24-issue-1135-devices-list-selectable-design.md).
+#1136's `platform.remove` and `platform.edit` (group, icon from
+`PLATFORM_ICONS`) do the same on the Platforms list over a conventional
+row: a platform writes no event, so `games/writes/platform.py` records
+each field it changes in the `BatchChange` ledger (`games/batch_ledger.py`),
+the acts' `undo_rows` is `LedgerRows`, and `_act_of` reads the ledger's
+act for a batch with no events. One inverse writes every recorded field
+back, over a later change too, and records its own writes so a repeat
+skips them. A write refuses at 409 where name and group would match a
+live private or shared platform, on the per-row restore route too.
+Contract is
+[Select platforms, then edit or remove them in bulk](docs/superpowers/specs/2026-09-28-issue-1136-platforms-list-selectable-design.md).
 #1211's `session.edit` sets a device, emulated, a note, or several on
 selected sessions through `DescribeSession`; its Undo restates each changed
 fact from the row's events. #1310 adds the run: the move of one row
@@ -596,6 +609,11 @@ its Undo states each changed fact's earlier value, read by
 `batch_fact_changes` in
 `games/reads/playergame_facts.py`; #1256's Undo reads `status_change`. Contract is
 [Edit many games](docs/superpowers/specs/2026-09-28-issue-1270-bulk-game-edit-design.md).
+The Edit acts live in `bulk_session_edit.py`, `bulk_game_edit.py` and
+`bulk_platform_edit.py`; what they share (the "Keep:" placeholder, the
+carried statement's decode, the settled-choice guard, the form refusal,
+the Undo's restate and overwrite log) is `games/bulk_edit.py`, which
+imports no act, and `FactChange` is `games/reads/fact_change.py`.
 
 **Multi-game Purchase is *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. Humble Bundle). Independently-refundable multi-item orders (e.g.
@@ -738,6 +756,10 @@ Submodules re-exported via `common/components/__init__.py`:
   choice is the none row, a required field's is dropped; a widget set, or
   `required` changed, after the field is built goes through `host_choices`,
   #1301
+- **`icon_picker.py`** — `IconPicker()`, a `<drop-down behavior="choice-grid">`
+  whose panel is a grid of icon radios (`ts/elements/behaviors/choice-grid.ts`);
+  `IconPickerWidget` in `games/forms.py` hosts it for a `ChoiceField`, and
+  `PLATFORM_ICONS` (`common/components/platform_icons.py`) names the icons
 - **`unset_field.py`** — `UnsetField()`, one field joined to a ⊘ toggle
   (`ts/elements/unset-field.ts`) whose checkbox posts `<name>-unset`: a bulk
   form's "none" apart from "keep", which an empty field states. Forms reach it

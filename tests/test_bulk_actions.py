@@ -12,6 +12,8 @@ from games.bulk_actions import (
     BULK_ACTIONS,
     ActTitle,
     BulkAction,
+    EventRows,
+    LedgerRows,
     Presentations,
     PreviewColumn,
     RowOutcome,
@@ -99,58 +101,17 @@ def a_bucket_session(library, actor, game):
 
 
 def test_the_table_holds_the_reclassification(reclassify):
-    assert reclassify.inverse_aggregate == "playersession"
+    assert reclassify.undo_rows == EventRows(PlayerSession)
 
 
-def test_an_aggregate_no_event_declares_is_refused(reclassify):
-    with pytest.raises(ValueError, match="playersesion"):
-        BulkAction(
-            name="session.typo",
-            label=reclassify.label,
-            title=reclassify.title,
-            confirm_label=reclassify.confirm_label,
-            subject=reclassify.subject,
-            color=reclassify.color,
-            inverse_aggregate="playersesion",
-            inverse_model=reclassify.inverse_model,
-            fallback=reclassify.fallback,
-            scope=reclassify.scope,
-            resolve=reclassify.resolve,
-            run=reclassify.run,
-            inverse=reclassify.inverse,
-            preview=reclassify.preview,
-        )
+def test_a_model_no_event_speaks_about_is_refused():
+    with pytest.raises(ValueError, match="'game'"):
+        EventRows(Game)
 
 
-def test_a_model_that_is_not_the_inverses_aggregate_is_refused(reclassify):
-    """One model's key handed to a read of another is a 404 a row.
-
-    Every act but `playergame.remove` lists and undoes one model, so
-    the pair held by coincidence of naming until one act parted them.
-    """
-    with pytest.raises(ValueError, match="playthrough"):
-        BulkAction(
-            name="session.mismatched",
-            label=reclassify.label,
-            title=reclassify.title,
-            confirm_label=reclassify.confirm_label,
-            subject=reclassify.subject,
-            color=reclassify.color,
-            inverse_aggregate="playersession",
-            inverse_model=Playthrough,
-            fallback=reclassify.fallback,
-            scope=reclassify.scope,
-            resolve=reclassify.resolve,
-            run=reclassify.run,
-            inverse=reclassify.inverse,
-            preview=reclassify.preview,
-        )
-
-
-def test_every_act_names_the_model_its_inverse_reads():
-    """The act that parts them says so, and the rest agree."""
-    for action in BULK_ACTIONS.values():
-        assert action.inverse_model._meta.model_name == action.inverse_aggregate
+def test_a_ledger_over_a_projection_is_refused():
+    with pytest.raises(TypeError, match="projection"):
+        LedgerRows(PlayerSession)
 
 
 def test_a_name_the_table_already_holds_is_refused(reclassify):
@@ -162,8 +123,7 @@ def test_a_name_the_table_already_holds_is_refused(reclassify):
             confirm_label=reclassify.confirm_label,
             subject=reclassify.subject,
             color=reclassify.color,
-            inverse_aggregate="playersession",
-            inverse_model=reclassify.inverse_model,
+            undo_rows=reclassify.undo_rows,
             fallback=reclassify.fallback,
             scope=reclassify.scope,
             resolve=reclassify.resolve,
@@ -188,8 +148,7 @@ def test_making_the_value_declares_it(reclassify):
             confirm_label=reclassify.confirm_label,
             subject=reclassify.subject,
             color=reclassify.color,
-            inverse_aggregate="playersession",
-            inverse_model=reclassify.inverse_model,
+            undo_rows=reclassify.undo_rows,
             fallback=reclassify.fallback,
             scope=reclassify.scope,
             resolve=reclassify.resolve,
@@ -443,8 +402,7 @@ def _spare(reclassify: BulkAction, name: str, preview) -> BulkAction:
         confirm_label=reclassify.confirm_label,
         subject="record",
         color=reclassify.color,
-        inverse_aggregate="playersession",
-        inverse_model=reclassify.inverse_model,
+        undo_rows=reclassify.undo_rows,
         fallback=reclassify.fallback,
         scope=reclassify.scope,
         resolve=reclassify.resolve,
@@ -637,8 +595,7 @@ def test_an_act_whose_run_takes_a_fact_by_position_is_refused(reclassify):
             confirm_label=reclassify.confirm_label,
             subject=reclassify.subject,
             color=reclassify.color,
-            inverse_aggregate=reclassify.inverse_aggregate,
-            inverse_model=reclassify.inverse_model,
+            undo_rows=reclassify.undo_rows,
             fallback=reclassify.fallback,
             scope=reclassify.scope,
             resolve=reclassify.resolve,
@@ -662,8 +619,7 @@ def test_an_inverse_that_takes_no_batch_is_refused(reclassify):
             confirm_label=reclassify.confirm_label,
             subject=reclassify.subject,
             color=reclassify.color,
-            inverse_aggregate=reclassify.inverse_aggregate,
-            inverse_model=reclassify.inverse_model,
+            undo_rows=reclassify.undo_rows,
             fallback=reclassify.fallback,
             scope=reclassify.scope,
             resolve=reclassify.resolve,

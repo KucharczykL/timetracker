@@ -1,219 +1,39 @@
-"""Device, emulated or note, set on many sessions."""
+"""What every bulk Edit act shares.
+
+Imports no act and not the act table: the table's foot imports the
+acts, and an act importing this module first would find the table
+half built.
+"""
 
 import json
-import uuid
+import logging
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
-from functools import partial
-from typing import Any, TypedDict, cast
+from typing import Any
 
 from django import forms
-from django.contrib.auth.models import User
-from django.http import QueryDict
+from django.core.exceptions import NON_FIELD_ERRORS
 
-from common.components.core import Fragment
-from common.components.primitives import FORM_LABEL_CLASS, Div, FormFields, P
-from common.utils import truncate
-from games.bulk_actions import (
-    ActTitle,
-    AsksNothing,
-    BulkAction,
-    BulkChoice,
-    ChoiceValue,
-    Control,
-    FieldName,
-    Offered,
-    PreviewColumn,
-    RowOutcome,
-)
-from games.bulk_move import (
-    TARGET_GONE,
-    move_back_row,
-    move_row,
-    moved_by,
-    refuse_another_game,
-    target_run,
-)
-from games.bulk_sessions import (
-    device_cell,
-    labelled_session_resolution,
-    run_label,
-    run_label_cell,
-    session_of,
-    session_scope,
-)
-from games.commands.playersession import StatedDevice, check_note
 from games.events.dispatch import CommandRejected, RowUnreadable
-from games.events.idempotency import IdempotencyKey
-from games.events.playersession import (
-    PLAYERSESSION_CREATED,
-    PLAYERSESSION_DEVICE_CHANGED,
-    PLAYERSESSION_EMULATED_CHANGED,
-    PLAYERSESSION_NOTE_CHANGED,
-)
-from games.events.vocabulary import EventType
-from games.forms import (
-    DEVICE_CREATE_URL,
-    DEVICE_SEARCH_URL,
-    KEEP,
-    PLAYTHROUGH_CREATE_URL,
-    PLAYTHROUGH_SEARCH_URL,
-    ChoiceSearchSelectWidget,
-    Keep,
-    PrimitiveWidgetsMixin,
-    SearchSelectWidget,
-    UnsetFieldsForm,
-    UnsetWidget,
-    device_options,
-    run_options,
-)
-from games.models import Device, LibraryEvent, PlayerSession, Playthrough, UserLibrary
-from games.reads.events import aggregate_events
-from games.reads.playthrough_runs import library_runs
-from games.writes.answers import answered
-from games.writes.playersession import describe_session
+from games.reads.fact_change import FactChange
 
-
-class EditJson(TypedDict, total=False):
-    """A statement on the wire; absent is unstated."""
-
-    device: str | None
-    emulated: bool
-    note: str
-    playthrough: str
-
-
-#: What a statement's JSON may name.
-_KEYS = frozenset(EditJson.__annotations__)
-
-#: What settling refuses.
-NOTHING_STATED = (
-    "Choose a playthrough, a device, whether the sessions were emulated, or a note."
-)
-DEVICE_UNREADABLE = "That device could not be read. Choose one again."
-PLAYTHROUGH_UNREADABLE = "That playthrough could not be read. Choose one again."
-SEVERAL_GAMES = (
-    "These sessions are at {count} games. Narrow the list by game to change "
-    "the playthrough."
-)
-DEVICE_GONE = (
-    "That device is no longer available. Choose another one, or restore it first."
-)
-STATEMENT_UNREADABLE = "What to change could not be read. Choose it again."
-
-#: What an Undo refuses.
-NOT_EDITED_BY_THIS_BATCH = (
-    "That session was not changed by this batch, so it was left as it is."
-)
-
-#: The field's label.
-PLAYTHROUGH_LABEL = "Playthrough"
+logger = logging.getLogger("games")
 
 #: A placeholder: what "leave as it is" keeps.
-type Keeping = str  # "Keep: Steam Deck"
+type Keeping = str  # "Keep: Played"
 
-#: How long a kept note reads.
-_KEPT_NOTE_LENGTH = 40
+#: A statement as the runner carries it.
+type CarriedStatement = str  # '{"status": "played"}'
 
+#: One statement key.
+type StatementKey = str  # "status"
 
-@dataclass(frozen=True, slots=True)
-class EditStatement:
-    """What one batch states; None leaves alone."""
-
-    device: StatedDevice | None
-    emulated: bool | None
-    note: str | None = None
-    playthrough: uuid.UUID | None = None
-
-    def __post_init__(self) -> None:
-        if self.playthrough is None and not self.describes:
-            raise ValueError("An edit states a run, a device, emulated or a note.")
-
-    @property
-    def describes(self) -> bool:
-        """Whether `DescribeSession` has work."""
-        return not (self.device is None and self.emulated is None and self.note is None)
-
-    def encode(self) -> ChoiceValue:
-        stated: EditJson = {}
-        if self.device is not None:
-            device_id = self.device.device_id
-            stated["device"] = None if device_id is None else str(device_id)
-        if self.emulated is not None:
-            stated["emulated"] = self.emulated
-        if self.note is not None:
-            stated["note"] = self.note
-        if self.playthrough is not None:
-            stated["playthrough"] = str(self.playthrough)
-        return json.dumps(stated, sort_keys=True)
-
-    @classmethod
-    def decode(cls, raw: ChoiceValue) -> EditStatement:
-        """An earlier settle's answer, or a refusal."""
-        try:
-            stated = json.loads(raw)
-        except ValueError as unreadable:
-            raise _unreadable(f"{raw!r} is no JSON: {unreadable}") from unreadable
-        if not isinstance(stated, dict):
-            raise _unreadable(f"{raw!r} is no object")
-        unknown = set(stated) - _KEYS
-        if unknown:
-            raise _unreadable(f"{raw!r} names {sorted(unknown)}")
-        device: StatedDevice | None = None
-        if "device" in stated:
-            key = stated["device"]
-            if key is not None and not isinstance(key, str):
-                raise _unreadable(f"{raw!r} states a device that is no key")
-            device = StatedDevice(None if key is None else _device_key(key))
-        emulated = stated.get("emulated")
-        #: Present means stated: null is no bool.
-        if "emulated" in stated and not isinstance(emulated, bool):
-            raise _unreadable(f"{raw!r} states an emulated that is no bool")
-        note = stated.get("note")
-        if "note" in stated and not isinstance(note, str):
-            raise _unreadable(f"{raw!r} states a note that is no text")
-        if note is not None:
-            check_note(note)
-        playthrough: uuid.UUID | None = None
-        if "playthrough" in stated:
-            run = stated["playthrough"]
-            if not isinstance(run, str):
-                raise _unreadable(f"{raw!r} states a playthrough that is no key")
-            playthrough = _run_key(run)
-        if device is None and emulated is None and note is None and playthrough is None:
-            raise _unreadable(f"{raw!r} states nothing")
-        return cls(device, emulated, note, playthrough)
+STATEMENT_UNREADABLE = "What to change could not be read. Choose it again."
 
 
-def _unreadable(message: str) -> CommandRejected:
-    return CommandRejected(message, sentence=STATEMENT_UNREADABLE)
-
-
-def _run_key(stated: str) -> uuid.UUID:
-    try:
-        return uuid.UUID(stated)
-    except ValueError as unreadable:
-        raise CommandRejected(
-            f"{stated!r} is no uuid: {unreadable}", sentence=PLAYTHROUGH_UNREADABLE
-        ) from unreadable
-
-
-def _device_key(stated: str) -> uuid.UUID:
-    try:
-        return uuid.UUID(stated)
-    except ValueError as unreadable:
-        raise CommandRejected(
-            f"{stated!r} is no uuid: {unreadable}", sentence=DEVICE_UNREADABLE
-        ) from unreadable
-
-
-# ── The question ─────────────────────────────────────────────────────────────
-
-
-def _keeping[T](
-    rows: Sequence[PlayerSession],
-    value: Callable[[PlayerSession], T],
-    shown: Callable[[T], str],
+def keeping[RowT, ValueT](
+    rows: Sequence[RowT],
+    value: Callable[[RowT], ValueT],
+    shown: Callable[[ValueT], str],
 ) -> Keeping:
     """What the rows hold; differing, "mixed"."""
     held = {value(row) for row in rows}
@@ -222,425 +42,91 @@ def _keeping[T](
     return f"Keep: {shown(held.pop())}"
 
 
-def _keeping_run(rows: Sequence[PlayerSession]) -> Keeping:
-    """By key: two games' runs share labels."""
-    if len({row.playthrough_id for row in rows}) != 1:
-        return "Keep: mixed"
-    return f"Keep: {run_label(rows[0])}"
+def statement_unreadable(message: str) -> CommandRejected:
+    return CommandRejected(message, sentence=STATEMENT_UNREADABLE)
 
 
-def _device_name(row: PlayerSession) -> str:
-    return "no device" if row.device is None else row.device.name
+def stated_object(
+    raw: CarriedStatement, keys: frozenset[StatementKey]
+) -> dict[StatementKey, Any]:
+    """A carried statement's JSON object, every key known."""
+    try:
+        stated = json.loads(raw)
+    except ValueError as unreadable:
+        raise statement_unreadable(f"{raw!r} is no JSON: {unreadable}") from unreadable
+    if not isinstance(stated, dict):
+        raise statement_unreadable(f"{raw!r} is no object")
+    unknown = set(stated) - keys
+    if unknown:
+        raise statement_unreadable(f"{raw!r} names {sorted(unknown)}")
+    return stated
 
 
-def _note_shown(note: str) -> str:
-    return truncate(note, _KEPT_NOTE_LENGTH) if note else "no note"
-
-
-#: Emulated's two answers; empty keeps.
-_EMULATED_CHOICES = (("True", "Emulated"), ("False", "Not emulated"))
-
-
-def _emulated_shown(emulated: bool) -> str:
-    return "emulated" if emulated else "not emulated"
-
-
-class BulkEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
-    """An empty field keeps; ⊘ states none."""
-
-    playthrough = forms.ModelChoiceField(
-        queryset=Playthrough.objects.none(),
-        required=False,
-        error_messages={"invalid_choice": TARGET_GONE},
-        widget=SearchSelectWidget(
-            search_url=PLAYTHROUGH_SEARCH_URL,
-            options_resolver=run_options,
-            create_url=PLAYTHROUGH_CREATE_URL,
-        ),
-    )
-    device = forms.ModelChoiceField(
-        queryset=Device.objects.none(),
-        required=False,
-        error_messages={"invalid_choice": DEVICE_GONE},
-        widget=UnsetWidget(
-            SearchSelectWidget(
-                search_url=DEVICE_SEARCH_URL,
-                options_resolver=device_options,
-                create_url=DEVICE_CREATE_URL,
-            ),
-            none_label="No device",
-        ),
-    )
-    emulated = forms.TypedChoiceField(
-        choices=_EMULATED_CHOICES,
-        coerce=lambda value: value == "True",
-        empty_value=None,
-        required=False,
-        widget=ChoiceSearchSelectWidget(),
-    )
-    note = forms.CharField(
-        required=False,
-        widget=UnsetWidget(forms.Textarea(attrs={"rows": 2}), none_label="No note"),
-    )
-
-    def __init__(
-        self,
-        data: QueryDict | None = None,
-        *,
-        library: UserLibrary,
-        prefix: FieldName,
-        rows: Sequence[PlayerSession] = (),
-    ) -> None:
-        super().__init__(data, prefix=prefix)
-        run = cast(forms.ModelChoiceField, self.fields["playthrough"])
-        run.queryset = library_runs(library)
-        runs = cast(SearchSelectWidget, run.widget)
-        runs.options_resolver = partial(run_options, library=library)
-        games = {row.playthrough.player_game.game_id for row in rows}
-        if len(games) == 1:
-            #: One mapping feeds search and create.
-            runs.params = {"game_id": {"value": str(games.pop())}}
-        device = cast(forms.ModelChoiceField, self.fields["device"])
-        device.queryset = Device.objects.for_library(library)
-        picker = cast(SearchSelectWidget, cast(UnsetWidget, device.widget).widget)
-        picker.options_resolver = partial(device_options, library=library)
-        if rows:
-            runs.placeholder = _keeping_run(rows)
-            picker.placeholder = _keeping(rows, _device_name, str)
-            cast(
-                ChoiceSearchSelectWidget, self.fields["emulated"].widget
-            ).placeholder = _keeping(rows, lambda row: row.emulated, _emulated_shown)
-            note = cast(UnsetWidget, self.fields["note"].widget).widget
-            note.attrs["placeholder"] = _keeping(
-                rows, lambda row: row.note, _note_shown
-            )
-
-    def clean_note(self) -> str:
-        note = self.cleaned_data["note"]
-        if note:
-            try:
-                check_note(note)
-            except CommandRejected as refused:
-                raise forms.ValidationError(refused.sentence or "") from refused
-        return note
-
-    def clean(self) -> dict[str, Any]:
-        cleaned = super().clean()
-        if (
-            cleaned.get("playthrough") is None
-            and cleaned.get("device") is KEEP
-            and cleaned.get("emulated") is None
-            and cleaned.get("note") is KEEP
-        ):
-            raise forms.ValidationError(NOTHING_STATED)
-        return cleaned
-
-    def statement(self) -> EditStatement:
-        """The valid form, as one statement."""
-        device: Device | None | Keep = self.cleaned_data["device"]
-        note: str | Keep = self.cleaned_data["note"]
-        run: Playthrough | None = self.cleaned_data["playthrough"]
-        return EditStatement(
-            None
-            if device is KEEP
-            else StatedDevice(None if device is None else device.pk),
-            self.cleaned_data["emulated"],
-            None if note is KEEP else note,
-            None if run is None else run.pk,
-        )
-
-
-def offer_edit(
-    library: UserLibrary, rows: Sequence[PlayerSession], field_name: FieldName
-) -> Offered:
-    """Every field is prefixed `field_name`."""
-    if not rows:
-        #: The confirmation says so itself.
-        return AsksNothing()
-    form = BulkEditForm(library=library, prefix=field_name, rows=rows)
-    games = {row.playthrough.player_game_id for row in rows}
-    if len(games) == 1:
-        return Control(FormFields(form))
-    #: Shown only: the settle form keeps it.
-    del form.fields["playthrough"]
-    return Control(
-        Fragment(
-            Div(data_field_row="playthrough")[
-                P(class_=FORM_LABEL_CLASS)[PLAYTHROUGH_LABEL],
-                P(class_="text-type-body text-body")[
-                    SEVERAL_GAMES.format(count=len(games))
-                ],
-            ],
-            FormFields(form),
-        )
-    )
-
-
-def settle_edit(library: UserLibrary, post: QueryDict) -> ChoiceValue:
-    """Carried statement, else the form's; checked."""
-    #: Local: the act table imports this module.
-    from games.views.bulk import CHOICE_FIELD
-
-    carried = post.get(CHOICE_FIELD, "")
-    statement = EditStatement.decode(carried) if carried else _composed(library, post)
-    if statement.playthrough is not None:
-        target_run(library, statement.playthrough)
-    device = statement.device
-    if device is not None and device.device_id is not None:
-        held = Device.objects.for_library(library).filter(pk=device.device_id)
-        if not held.exists():
-            raise CommandRejected(
-                f"device {device.device_id} is no live device of library {library.pk}",
-                sentence=DEVICE_GONE,
-            )
-    return statement.encode()
-
-
-def _composed(library: UserLibrary, post: QueryDict) -> EditStatement:
-    from games.views.bulk import CHOICE_FIELD
-
-    form = BulkEditForm(post, library=library, prefix=CHOICE_FIELD)
-    if not form.is_valid():
-        sentences = [
-            str(message) for messages in form.errors.values() for message in messages
-        ]
-        raise CommandRejected(
-            f"the edit form refuses: {sentences}", sentence=sentences[0]
-        )
-    return form.statement()
-
-
-EDIT_CHOICE: BulkChoice[PlayerSession] = BulkChoice(
-    offer=offer_edit, settle=settle_edit
-)
-
-
-# ── Forward ──────────────────────────────────────────────────────────────────
-
-
-def _source() -> dict[str, object]:
-    return {"bulk": {"action": EDIT.name}}
-
-
-def edit_one(
-    actor: User,
-    session: PlayerSession,
+def settled[StatementT](
+    choice: CarriedStatement | None,
+    decode: Callable[[CarriedStatement], StatementT],
     *,
-    choice: ChoiceValue | None,
-    idempotency_key: IdempotencyKey,
-    correlation_id: uuid.UUID,
-) -> RowOutcome:
-    with answered("session"):
-        if choice is None:
-            raise RowUnreadable(
-                f"{EDIT.name} ran with no statement for PlayerSession "
-                f"{session.pk} of library {actor.library.pk}. The act "
-                "declares a choice, so the runner settles one before a row."
-            )
-        try:
-            statement = EditStatement.decode(choice)
-        except CommandRejected as drift:
-            #: Settled this request: ours, not theirs.
-            raise RowUnreadable(
-                f"{EDIT.name} settled {choice!r} and cannot read it back: {drift}"
-            ) from drift
-        target = None
-        if statement.playthrough is not None:
-            target = target_run(actor.library, statement.playthrough)
-            #: Before any write: nothing half-done.
-            refuse_another_game(session, target)
-    outcomes: list[RowOutcome] = []
-    if target is not None:
-        outcomes.append(
-            move_row(
-                actor,
-                session,
-                target,
-                act=EDIT.name,
-                idempotency_key=idempotency_key,
-                correlation_id=correlation_id,
-            )
-        )
-    if statement.describes:
-        outcomes.append(
-            RowOutcome.of(
-                describe_session(
-                    actor,
-                    session,
-                    device=statement.device,
-                    emulated=statement.emulated,
-                    note=statement.note,
-                    idempotency_key=idempotency_key,
-                    correlation_id=correlation_id,
-                    source_metadata=_source(),
-                )
-            )
-        )
-    return _either(outcomes)
+    act_name: str,
+    row_description: str,
+) -> StatementT:
+    """The statement this request settled; its absence is ours.
 
-
-def _either(outcomes: Sequence[RowOutcome]) -> RowOutcome:
-    """Moved when any write changed it."""
-    return RowOutcome.MOVED if RowOutcome.MOVED in outcomes else RowOutcome.UNCHANGED
-
-
-# ── Backward ─────────────────────────────────────────────────────────────────
-
-
-def _earlier(
-    events: Sequence[LibraryEvent], batch_id: uuid.UUID, changed: EventType
-) -> LibraryEvent | None:
-    """The fact's event before the batch's; none unchanged."""
-    ours = next(
-        (
-            event
-            for event in events
-            if event.correlation_id == batch_id and event.event_type == changed
-        ),
-        None,
-    )
-    if ours is None:
-        return None
-    family = (PLAYERSESSION_CREATED.event_type, changed)
-    earlier = [
-        event
-        for event in events
-        if event.sequence < ours.sequence and event.event_type in family
-    ]
-    if not earlier:
+    The act declares a choice, so the runner settles one before any
+    row: a missing or unreadable one is a defect, not a refusal.
+    """
+    if choice is None:
         raise RowUnreadable(
-            f"session {ours.aggregate_id} of library {ours.library_id} states "
-            f"{changed} at sequence {ours.sequence} and no creation before it"
+            f"{act_name} ran with no statement for {row_description}. The act "
+            "declares a choice, so the runner settles one before a row."
         )
-    return earlier[-1]
+    try:
+        return decode(choice)
+    except CommandRejected as drift:
+        raise RowUnreadable(
+            f"{act_name} settled {choice!r} and cannot read it back: {drift}"
+        ) from drift
 
 
-def _device_of(event: LibraryEvent) -> StatedDevice:
-    """The device a created or device_changed payload states."""
-    #: Both payloads name it `device`.
-    if "device" not in event.payload:
-        raise RowUnreadable(f"event {event.pk} states no device")
-    device = event.payload["device"]
-    if device is None:
-        return StatedDevice(None)
-    if not isinstance(device, dict) or "id" not in device:
-        raise RowUnreadable(f"event {event.pk} states device {device!r}")
-    return StatedDevice(uuid.UUID(device["id"]))
+def form_refusal(form: forms.Form, *, labelled: bool) -> CommandRejected:
+    """A refused form's first error, as the confirmation shows it."""
+    sentences = [
+        _named(form, name, str(message)) if labelled else str(message)
+        for name, messages in form.errors.items()
+        for message in messages
+    ]
+    return CommandRejected(f"the edit form refuses: {sentences}", sentence=sentences[0])
 
 
-def _note_of(event: LibraryEvent) -> str:
-    """The note a created or note_changed payload states."""
-    note = event.payload.get("note")
-    if not isinstance(note, str):
-        raise RowUnreadable(f"event {event.pk} states note {note!r}")
-    return note
+def _named(form: forms.Form, name: str, message: str) -> str:
+    """A field's message, led by its label."""
+    if name == NON_FIELD_ERRORS:
+        return message
+    return f"{form.fields[name].label}: {message}"
 
 
-def _emulated_of(event: LibraryEvent) -> bool:
-    """The flag a created or emulated_changed payload states."""
-    emulated = event.payload.get("emulated")
-    if not isinstance(emulated, bool):
-        raise RowUnreadable(f"event {event.pk} states emulated {emulated!r}")
-    return emulated
-
-
-def values_before(
-    library: UserLibrary, session_id: uuid.UUID, batch_id: uuid.UUID
-) -> EditStatement | None:
-    """Described facts before the batch, or None."""
-    events = list(aggregate_events(library, session_id))
-    device = _earlier(events, batch_id, PLAYERSESSION_DEVICE_CHANGED.event_type)
-    emulated = _earlier(events, batch_id, PLAYERSESSION_EMULATED_CHANGED.event_type)
-    note = _earlier(events, batch_id, PLAYERSESSION_NOTE_CHANGED.event_type)
-    if device is None and emulated is None and note is None:
+def restated[T](change: FactChange[T] | None, held: T) -> T | None:
+    """The earlier value, where the row differs."""
+    if change is None or held == change.before:
         return None
-    return EditStatement(
-        None if device is None else _device_of(device),
-        None if emulated is None else _emulated_of(emulated),
-        None if note is None else _note_of(note),
-    )
+    return change.before
 
 
-def edit_back(
-    actor: User,
-    session_id: uuid.UUID,
+def log_overwrite(
+    change: FactChange[Any] | None,
+    held: object,
     *,
-    undoes: uuid.UUID,
-    idempotency_key: IdempotencyKey,
-    correlation_id: uuid.UUID,
-) -> RowOutcome:
-    """Facts restated first, then the run."""
-    with answered("session"):
-        before = values_before(actor.library, session_id, undoes)
-        moved = moved_by(actor.library, session_id, undoes)
-        if before is None and not moved:
-            raise CommandRejected(
-                f"batch {undoes} changed no fact of session {session_id}",
-                sentence=NOT_EDITED_BY_THIS_BATCH,
-            )
-    outcomes: list[RowOutcome] = []
-    if before is not None:
-        outcomes.append(
-            RowOutcome.of(
-                describe_session(
-                    actor,
-                    session_of(actor, session_id),
-                    device=before.device,
-                    emulated=before.emulated,
-                    note=before.note,
-                    idempotency_key=idempotency_key,
-                    correlation_id=correlation_id,
-                    source_metadata=_source(),
-                )
-            )
-        )
-    if moved:
-        outcomes.append(
-            move_back_row(
-                actor,
-                session_id,
-                act=EDIT.name,
-                undoes=undoes,
-                idempotency_key=idempotency_key,
-                correlation_id=correlation_id,
-            )
-        )
-    return _either(outcomes)
-
-
-# ── The confirmation ─────────────────────────────────────────────────────────
-
-
-EDIT_PREVIEW: tuple[PreviewColumn[PlayerSession], ...] = (
-    PreviewColumn("Game", lambda row, _: row.playthrough.player_game.game.name),
-    PreviewColumn(PLAYTHROUGH_LABEL, run_label_cell),
-    PreviewColumn("Day", lambda row, _: str(row.effective_day)),
-    PreviewColumn(
-        "Duration",
-        lambda row, presentations: presentations.durations.format(
-            row.effective_duration
-        ),
-        align="right",
-    ),
-    PreviewColumn("Device", device_cell),
-    PreviewColumn("Emulated", lambda row, _: "Yes" if row.emulated else "No"),
-    PreviewColumn("Note", lambda row, _: row.note),
-)
-
-EDIT = BulkAction(
-    name="session.edit",
-    label="Edit…",
-    title=ActTitle(one="Edit this session", many="Edit {count} sessions"),
-    confirm_label="Save",
-    subject="session",
-    color="blue",
-    inverse_aggregate="playersession",
-    inverse_model=PlayerSession,
-    fallback="games:list_sessions",
-    scope=session_scope,
-    resolve=labelled_session_resolution,
-    run=edit_one,
-    inverse=edit_back,
-    preview=EDIT_PREVIEW,
-    choice=EDIT_CHOICE,
-)
+    act_name: str,
+    fact: str,
+    row_description: str,
+) -> None:
+    """A later value the Undo writes over."""
+    if change is None or held in (change.before, change.stated):
+        return
+    logger.info(
+        "[bulk]: %s Undo states %s %s over %s on %s",
+        act_name,
+        fact,
+        change.before,
+        held,
+        row_description,
+    )

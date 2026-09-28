@@ -14,19 +14,19 @@ from django.utils import timezone
 from session_rows import duration_only_row, tracked_run
 
 from games.bulk_actions import AsksNothing, Control
-from games.bulk_edit import (
+from games.bulk_move import (
+    ANOTHER_GAME,
+    NOT_MOVED_BY_THIS_BATCH,
+    TARGET_GONE,
+    run_before,
+)
+from games.bulk_session_edit import (
     NOTHING_STATED,
     SEVERAL_GAMES,
     EditStatement,
     edit_one,
     offer_edit,
     settle_edit,
-)
-from games.bulk_move import (
-    ANOTHER_GAME,
-    NOT_MOVED_BY_THIS_BATCH,
-    TARGET_GONE,
-    run_before,
 )
 from games.bulk_sessions import (
     RUN_LABEL_ATTRIBUTE,

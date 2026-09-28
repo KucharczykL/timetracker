@@ -15,17 +15,10 @@ from games.events.playergame import (
 from games.events.vocabulary import EventSpec
 from games.models import LibraryEvent, PlayerGameStatus, UserLibrary
 from games.reads.events import aggregate_events
+from games.reads.fact_change import FactChange
 
 #: A payload's key for one fact.
 type PayloadKey = str  # "status"
-
-
-@dataclass(frozen=True, slots=True)
-class FactChange[T]:
-    """One fact, before a batch and as it stated."""
-
-    before: T
-    stated: T
 
 
 @dataclass(frozen=True, slots=True)

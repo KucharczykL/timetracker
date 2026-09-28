@@ -1,13 +1,13 @@
 """Rows taken out of the lists, in bulk.
 
-Five acts, one for each row a selectable table holds. Each states the
+Six acts, one for each row a selectable table holds. Each states the
 list's own read as its base, and refuses nothing of its own: every rule
-is the command's, so one row's refusal is a sentence and the batch goes
+is the command's or the write's, so one row's refusal is a sentence and the batch goes
 on.
 """
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 
 from django.contrib.auth.models import User
 from django.db.models import Exists, Model, OuterRef, QuerySet
@@ -17,7 +17,9 @@ from games.bulk_actions import (
     ActTitle,
     BulkAction,
     ChoiceValue,
+    EventRows,
     FilterJson,
+    LedgerRows,
     PreviewColumn,
     Refused,
     Resolution,
@@ -25,6 +27,12 @@ from games.bulk_actions import (
 )
 from games.bulk_games import GAME_GONE, game_scope
 from games.bulk_narrowing import narrowed
+from games.bulk_platforms import (
+    outcome,
+    platform_resolution,
+    platform_scope,
+    undoing,
+)
 from games.bulk_runs import RUN_PREVIEW, run_resolution, run_scope
 from games.bulk_sessions import lost, session_resolution, session_scope
 from games.events.dispatch import RowNotHeld
@@ -37,6 +45,7 @@ from games.models import (
     Device,
     Game,
     HistoricalPlaytime,
+    Platform,
     PlayerGame,
     PlayerSession,
     Playthrough,
@@ -45,12 +54,18 @@ from games.models import (
 from games.reads.device_departures import naming_sessions_of, with_naming_sessions
 from games.reads.game_departures import departures_of, with_departures
 from games.reads.historical_playtime_records import library_records
+from games.reads.platform_departures import (
+    PlatformDepartures,
+    platform_departures_of,
+    with_platform_departures,
+)
 from games.writes.answers import SubjectNoun, answered
 from games.writes.device import remove_device, restore_device
 from games.writes.historical_playtime import (
     remove_historical_playtime,
     restore_historical_playtime,
 )
+from games.writes.platform import remove_platform_in_batch
 from games.writes.playergame import remove_from_library, restore_to_library
 from games.writes.playersession import remove_session, restore_session
 from games.writes.playthrough import remove_run, restore_run
@@ -462,9 +477,57 @@ DEVICE_PREVIEW: tuple[PreviewColumn[Device], ...] = (
 )
 
 
+# ── Platforms ────────────────────────────────────────────────────────────────
+
+
+def removal_resolution(
+    library: UserLibrary, keys: Sequence[uuid.UUID]
+) -> Resolution[Platform]:
+    """Keys to platforms, with what names each."""
+    return platform_resolution(library, keys, with_platform_departures)
+
+
+def remove_one_platform(
+    actor: User,
+    platform: Platform,
+    *,
+    choice: ChoiceValue | None,
+    idempotency_key: IdempotencyKey,
+    correlation_id: uuid.UUID,
+) -> RowOutcome:
+    """The ledger, not the key, makes a repeat harmless."""
+    return outcome(
+        remove_platform_in_batch(
+            platform, batch=correlation_id, act=REMOVE_PLATFORM.name
+        )
+    )
+
+
+def _departing(
+    heading: str, count: Callable[[PlatformDepartures], int]
+) -> PreviewColumn[Platform]:
+    return PreviewColumn(
+        heading,
+        lambda row, _: str(count(platform_departures_of(row))),
+        align="right",
+    )
+
+
+PLATFORM_PREVIEW: tuple[PreviewColumn[Platform], ...] = (
+    PreviewColumn("Platform", lambda row, _: row.name),
+    PreviewColumn("Group", lambda row, _: row.group),
+    _departing("Games", lambda counts: counts.games),
+    _departing("Releases", lambda counts: counts.releases),
+    _departing("Purchases", lambda counts: counts.purchases),
+)
+
+
 def _source(name: str) -> dict[str, object]:
     return {"bulk": {"action": name}}
 
+
+#: One name for the act and its Undo.
+REMOVE_PLATFORM_NAME = "platform.remove"
 
 REMOVE_SESSION = BulkAction(
     name="session.remove",
@@ -473,8 +536,7 @@ REMOVE_SESSION = BulkAction(
     confirm_label="Remove",
     subject="session",
     color="red",
-    inverse_aggregate="playersession",
-    inverse_model=PlayerSession,
+    undo_rows=EventRows(PlayerSession),
     fallback="games:list_sessions",
     scope=session_scope,
     resolve=session_resolution,
@@ -490,8 +552,7 @@ REMOVE_RUN = BulkAction(
     confirm_label="Remove",
     subject="playthrough",
     color="red",
-    inverse_aggregate="playthrough",
-    inverse_model=Playthrough,
+    undo_rows=EventRows(Playthrough),
     fallback="games:list_playthroughs",
     scope=run_scope,
     resolve=run_resolution,
@@ -509,8 +570,7 @@ REMOVE_RECORD = BulkAction(
     #: "historical playtimes" is nobody's sentence.
     subject="record",
     color="red",
-    inverse_aggregate="historicalplaytime",
-    inverse_model=HistoricalPlaytime,
+    undo_rows=EventRows(HistoricalPlaytime),
     fallback="games:list_historical_playtime",
     scope=record_scope,
     resolve=record_resolution,
@@ -526,8 +586,7 @@ REMOVE_GAME = BulkAction(
     confirm_label="Remove",
     subject="game",
     color="red",
-    inverse_aggregate="playergame",
-    inverse_model=PlayerGame,
+    undo_rows=EventRows(PlayerGame),
     fallback="games:list_games",
     scope=game_scope,
     resolve=game_resolution,
@@ -543,12 +602,27 @@ REMOVE_DEVICE = BulkAction(
     confirm_label="Remove",
     subject="device",
     color="red",
-    inverse_aggregate="device",
-    inverse_model=Device,
+    undo_rows=EventRows(Device),
     fallback="games:list_devices",
     scope=device_scope,
     resolve=device_resolution,
     run=remove_one_device,
     inverse=restore_one_device,
     preview=DEVICE_PREVIEW,
+)
+
+REMOVE_PLATFORM = BulkAction(
+    name=REMOVE_PLATFORM_NAME,
+    label="Remove",
+    title=ActTitle(one="Remove this platform", many="Remove {count} platforms"),
+    confirm_label="Remove",
+    subject="platform",
+    color="red",
+    undo_rows=LedgerRows(Platform),
+    fallback="games:list_platforms",
+    scope=platform_scope,
+    resolve=removal_resolution,
+    run=remove_one_platform,
+    inverse=undoing(REMOVE_PLATFORM_NAME),
+    preview=PLATFORM_PREVIEW,
 )

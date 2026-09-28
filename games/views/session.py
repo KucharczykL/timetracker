@@ -45,10 +45,10 @@ from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.returns import OriginUrl
 from common.utils import paginate
-from games.bulk_edit import EDIT
 from games.bulk_finish import FINISH_SESSION
 from games.bulk_reclassification import RECLASSIFY
 from games.bulk_removal import REMOVE_SESSION
+from games.bulk_session_edit import EDIT
 from games.bulk_tray import tray_actions
 from games.formatting import session_time_range
 from games.forms import SESSION_TIMEZONE_EMBEDS, SessionForm

@@ -27,6 +27,7 @@ from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
 from common.notices import Undo, notify
 from common.returns import UrlName
+from games.batch_ledger import batch_act
 from games.bulk_actions import (
     BoundRow,
     BulkAction,
@@ -42,7 +43,7 @@ from games.bulk_actions import (
 )
 from games.events.dispatch import CommandRejected
 from games.models import UserLibrary
-from games.reads.events import batch_aggregate_ids, batch_events
+from games.reads.events import batch_events
 from games.views.bulk_pages import (
     ConfirmBatch,
     ProgressBatch,
@@ -822,16 +823,31 @@ def _act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkAction[Any] 
 
     A correlation nothing wrote, and one that is no batch, are not
     found. A name the table no longer holds answers None: that batch
-    is real, and it is its Undo that is gone.
+    is real, and it is its Undo that is gone. Without events, the
+    ledger names it.
     """
     first = batch_events(library, correlation_id).first()
     if first is None:
-        raise Http404("No such batch.")
+        return _ledger_act_of(library, correlation_id)
     stated = first.source_metadata.get("bulk", {})
     name = stated.get("action") if isinstance(stated, dict) else None
     if not isinstance(name, str):
         raise Http404("That act is no batch.")
     #: Nothing validates the name at the append.
+    return bulk_action(name)
+
+
+def _ledger_act_of(
+    library: UserLibrary, correlation_id: uuid.UUID
+) -> BulkAction[Any] | None:
+    """The act the ledger names for this batch.
+
+    Such an act writes no event, so nothing else names it.
+    """
+    name = batch_act(library, correlation_id)
+    if name is None:
+        logger.warning("[bulk]: %s names no event and no ledger row", correlation_id)
+        raise Http404("No such batch.")
     return bulk_action(name)
 
 
@@ -855,7 +871,7 @@ def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpRes
         )
 
     #: Read once a request: this is it.
-    rows = batch_aggregate_ids(user.library, correlation_id, declared.inverse_aggregate)
+    rows = declared.undo_rows.rows(user.library, correlation_id)
 
     token = request.POST.get(TOKEN_FIELD, "")
     if token:
