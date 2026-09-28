@@ -89,6 +89,21 @@ describe("<search-select> params (#1080)", () => {
     );
   });
 
+  it("keeps an unfocused picker closed when a dependency answers", async () => {
+    const { picker, gameField, fetchMock } = mountDependentPicker(
+      JSON.stringify({ game: { field: "game" } })
+    );
+    const panel = picker.querySelector<HTMLElement>("[data-search-select-options]")!;
+    panel.hidden = true;
+
+    gameField.value = "g2";
+    gameField.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    expect(panel.hidden).toBe(true);
+  });
+
   it("drops the held selection when a depended-on field changes", async () => {
     const { picker, gameField, fetchMock } = mountDependentPicker(
       JSON.stringify({ game: { field: "game" } })

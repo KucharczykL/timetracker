@@ -6,21 +6,6 @@ import {
   visibleYears,
 } from "./year-picker.js";
 
-class FakeDropDown extends HTMLElement {
-  open(): void {
-    this.querySelector("[data-menu]")?.removeAttribute("hidden");
-  }
-
-  close(): void {
-    const menu = this.querySelector("[data-menu]");
-    if (!menu || menu.hasAttribute("hidden")) return;
-    menu.setAttribute("hidden", "");
-    this.dispatchEvent(new CustomEvent("dropdown:hide", { bubbles: true }));
-  }
-}
-
-if (!customElements.get("drop-down")) customElements.define("drop-down", FakeDropDown);
-
 function mount(options: {
   selectedYear?: string;
   availableYears?: string;
@@ -28,6 +13,7 @@ function mount(options: {
 } = {}): HTMLElement {
   document.body.replaceChildren();
   const dropdown = document.createElement("drop-down");
+  dropdown.setAttribute("behavior", "date-calendar");
   const picker = document.createElement("year-picker");
   picker.setAttribute("selected-year", options.selectedYear ?? "2024");
   picker.setAttribute("available-years", options.availableYears ?? "2023,2024,2025");

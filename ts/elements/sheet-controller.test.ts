@@ -1,18 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { DropdownElement } from "./drop-down.js";
 import "./drop-down.js";
-
-interface DropdownHost extends HTMLElement {
-  open(): void;
-  close(): void;
-}
 
 let reducedMotion = true;
 let previousShowModal: typeof HTMLDialogElement.prototype.showModal;
 let previousClose: typeof HTMLDialogElement.prototype.close;
 
 function mountSheet(): {
-  host: DropdownHost;
+  host: DropdownElement;
   toggle: HTMLButtonElement;
   dialog: HTMLDialogElement;
   panel: HTMLElement;
@@ -34,7 +30,7 @@ function mountSheet(): {
     <section id="privacy">
       <h2 data-sectioned-page-section-heading tabindex="-1">Privacy</h2>
     </section>`;
-  const host = document.querySelector("drop-down") as DropdownHost;
+  const host = document.querySelector("drop-down")!;
   const toggle = host.querySelector<HTMLButtonElement>("[data-toggle]")!;
   const dialog = host.querySelector<HTMLDialogElement>("dialog")!;
   const panel = dialog.querySelector<HTMLElement>("[data-sheet-panel]")!;
@@ -47,7 +43,7 @@ function mountSheet(): {
 }
 
 function mountTwoSheets(): {
-  hosts: DropdownHost[];
+  hosts: DropdownElement[];
   toggles: HTMLButtonElement[];
   dialogs: HTMLDialogElement[];
 } {
@@ -65,7 +61,7 @@ function mountTwoSheets(): {
     )
     .join("");
   return {
-    hosts: Array.from(document.querySelectorAll("drop-down")) as DropdownHost[],
+    hosts: Array.from(document.querySelectorAll("drop-down")),
     toggles: Array.from(document.querySelectorAll("[data-toggle]")),
     dialogs: Array.from(document.querySelectorAll("dialog")),
   };

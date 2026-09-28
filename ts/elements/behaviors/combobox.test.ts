@@ -5,20 +5,17 @@
 // itemSelector + the empty-items keydown guard), so caret keys work inside the
 // input while Escape still closes; Enter never implicitly submits a form.
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import type { DropdownElement } from "../drop-down.js";
 import "../drop-down.js"; // registers <drop-down> + the built-in behaviors
 import "../search-select.js";
 
 Element.prototype.scrollIntoView = () => {};
 
-interface DropdownHost extends HTMLElement {
-  close(): void;
-}
-
-function mountComboboxDropdown(): DropdownHost {
+function mountComboboxDropdown(): DropdownElement {
   vi.stubGlobal("fetch", () =>
     Promise.resolve({ json: () => Promise.resolve([]) }),
   );
-  const host = document.createElement("drop-down") as DropdownHost;
+  const host = document.createElement("drop-down");
   host.setAttribute("behavior", "combobox");
   host.setAttribute("placement", "bottom-start");
   host.setAttribute("submenu", "false");
@@ -107,7 +104,7 @@ describe("combobox dropdown behavior (#297)", () => {
     host.close();
     expect(menuOf(host).hidden).toBe(true);
 
-    const detached = document.createElement("drop-down") as DropdownHost;
+    const detached = document.createElement("drop-down");
     expect(() => detached.close()).not.toThrow();
   });
 });

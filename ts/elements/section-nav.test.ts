@@ -49,10 +49,6 @@ async function mountNav(): Promise<NavFixture> {
   sentinel.getClientRects = () =>
     (wide ? ([{}] as unknown as DOMRectList) : ([] as unknown as DOMRectList));
 
-  // connectedCallback waits until the already-imported <drop-down> definition
-  // is available before replacing the visible no-JS fallback.
-  await customElements.whenDefined("drop-down");
-  await Promise.resolve();
   nav.syncLayout();
   return {
     nav,
