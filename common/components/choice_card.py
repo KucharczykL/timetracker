@@ -52,7 +52,8 @@ class ChoiceCardGroup(BaseComponent):
 
     ``attributes`` is the group's own hook, for whatever script picks the
     page up: children arrive through ``[]``, so a runtime-built attribute
-    has nowhere else to go.
+    has nowhere else to go. ``legend_attributes`` is the same hook on
+    the legend that names the group.
     """
 
     def __init__(
@@ -63,6 +64,7 @@ class ChoiceCardGroup(BaseComponent):
         columns: str = "",
         class_: str = "",
         attributes: Attributes | None = None,
+        legend_attributes: Attributes | None = None,
         _children: Children = None,
     ) -> None:
         self.name = name
@@ -70,6 +72,7 @@ class ChoiceCardGroup(BaseComponent):
         self.columns = columns
         self.class_ = class_
         self.attributes = attributes
+        self.legend_attributes = legend_attributes
         self._children = as_children(_children)
 
     def __getitem__(self, children: Children) -> ChoiceCardGroup:
@@ -79,6 +82,7 @@ class ChoiceCardGroup(BaseComponent):
             columns=self.columns,
             class_=self.class_,
             attributes=self.attributes,
+            legend_attributes=self.legend_attributes,
             _children=children,
         )
 
@@ -89,13 +93,17 @@ class ChoiceCardGroup(BaseComponent):
                 part for part in (_GROUP_CLASS, self.columns, self.class_) if part
             ),
             data_choice_card_group=self.name,
-        )[Legend(class_="sr-only")[self.legend], *self._children]
+        )[
+            Legend(self.legend_attributes, class_="sr-only")[self.legend],
+            *self._children,
+        ]
 
 
 class ChoiceCard(BaseComponent):
     """One option: its mark, then whatever the caller puts in it.
 
     ``attributes`` is the card's own hook, as it is the group's.
+    ``label_attributes`` is the hook on the text that names the mark.
     """
 
     def __init__(
@@ -108,6 +116,7 @@ class ChoiceCard(BaseComponent):
         columns: str = "",
         class_: str = "",
         attributes: Attributes | None = None,
+        label_attributes: Attributes | None = None,
         _children: Children = None,
     ) -> None:
         self.name = name
@@ -117,6 +126,7 @@ class ChoiceCard(BaseComponent):
         self.columns = columns
         self.class_ = class_
         self.attributes = attributes
+        self.label_attributes = label_attributes
         self._children = as_children(_children)
 
     def __getitem__(self, children: Children) -> ChoiceCard:
@@ -128,6 +138,7 @@ class ChoiceCard(BaseComponent):
             columns=self.columns,
             class_=self.class_,
             attributes=self.attributes,
+            label_attributes=self.label_attributes,
             _children=children,
         )
 
@@ -138,11 +149,10 @@ class ChoiceCard(BaseComponent):
                 name=self.name,
                 value=self.value,
                 checked=self.checked,
-                aria_label=self.label,
             ),
-            # Redundant beside the aria-label above the breakpoint, and the
-            # only thing naming the mark below it.
-            Span(class_="@2xl/edition:sr-only")[self.label],
+            # Names the radio at every width: seen narrow, sr-only wide.
+            # An aria-label would outrank it.
+            Span(self.label_attributes, class_="@2xl/edition:sr-only")[self.label],
         ]
         return Div(
             self.attributes,

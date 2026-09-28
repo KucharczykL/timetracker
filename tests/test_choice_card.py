@@ -1,5 +1,7 @@
 """A whole row is one radio option."""
 
+import re
+
 from common.components import ChoiceCard, ChoiceCardGroup
 
 COLUMNS = "@2xl/edition:grid-cols-[5.5rem_minmax(0,1fr)_auto]"
@@ -24,12 +26,41 @@ def test_a_card_puts_its_mark_first():
     assert rendered.index("<input") < rendered.index("controls")
 
 
-def test_a_card_names_its_mark_for_a_screen_reader():
+def test_a_card_names_its_mark_by_its_label_text():
+    """An aria-label would outrank the label, and hide a stale one."""
     rendered = str(
         ChoiceCard(name="in_library", value="row-0", label="Show the Wii release")[""]
     )
 
-    assert 'aria-label="Show the Wii release"' in rendered
+    assert "aria-label" not in rendered
+    assert (
+        rendered.index("<label")
+        < rendered.index("Show the Wii release")
+        < rendered.index("</label>")
+    )
+
+
+def test_a_card_hooks_its_label_text():
+    rendered = str(
+        ChoiceCard(
+            name="in_library",
+            value="row-0",
+            label="Wii",
+            label_attributes=[("data-x", "1")],
+        )[""]
+    )
+
+    assert re.search(r'<span[^>]*data-x="1"[^>]*>Wii</span>', rendered)
+
+
+def test_a_group_hooks_its_legend():
+    rendered = str(
+        ChoiceCardGroup(
+            name="in_library", legend="Gold", legend_attributes=[("data-x", "1")]
+        )[""]
+    )
+
+    assert re.search(r'<legend[^>]*data-x="1"[^>]*>Gold</legend>', rendered)
 
 
 def test_the_checked_hook_is_scoped_to_the_card_s_own_mark():
