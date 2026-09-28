@@ -424,6 +424,36 @@ describe("<search-select> create row that selects the typed text", () => {
     expect(createMock).not.toHaveBeenCalled();
   });
 
+  it("commits a typed draft when the form submits", async () => {
+    stubEndpoints([]);
+    const host = mount(bySelect);
+
+    await type(host, "  Retro  ");
+    //: jsdom builds a FormData without firing `formdata`.
+    const formData = new FormData();
+    host
+      .closest("form")!
+      .dispatchEvent(Object.assign(new Event("formdata"), { formData }));
+
+    expect(formData.get("playthrough")).toBe("Retro");
+  });
+
+  it("replaces a held text with a new one", async () => {
+    stubEndpoints([]);
+    const host = mount(bySelect);
+    await type(host, "Retro");
+    pressEnter(host);
+    const changed = vi.fn();
+    host.addEventListener("search-select:change", changed);
+
+    await type(host, "Home");
+    pressEnter(host);
+
+    expect(host.querySelectorAll('input[type="hidden"][name="playthrough"]')).toHaveLength(1);
+    expect(held(host)).toBe("Home");
+    expect(changed).toHaveBeenCalled();
+  });
+
   it("offers no row for a text a row holds, case ignored", async () => {
     stubEndpoints([{ value: "Retro", label: "Retro", data: {} }]);
     const host = mount(bySelect);
@@ -455,5 +485,25 @@ describe("<search-select> refetch", () => {
     );
     expect(queries).not.toContain("stale");
     expect(box.value).toBe("");
+  });
+});
+
+describe("<search-select> create modes", () => {
+  it("refuses a post with no endpoint", () => {
+    const errors: unknown[] = [];
+    const listener = (event: ErrorEvent) => {
+      errors.push(event.error);
+      event.preventDefault();
+    };
+    window.addEventListener("error", listener);
+    try {
+      mount({ create: "post", "create-url": "" });
+    } catch (error) {
+      errors.push(error);
+    } finally {
+      window.removeEventListener("error", listener);
+    }
+
+    expect(String(errors[0])).toContain('create="post" names no create-url');
   });
 });

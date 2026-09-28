@@ -737,11 +737,12 @@ Submodules re-exported via `common/components/__init__.py`:
   and upserts the answered `{value, label}` on its key, and `params` is one JSON
   mapping — a literal or a sibling field — read by that POST and by the search
   query alike, a field source being a dependency that re-searches, #1080;
-  the `create` prop names how that row commits — `post`, `event` (posts
-  nothing and emits `search-select:create` `{name, replaces}` for the
-  consumer) or `select` (holds the typed text as value and label,
-  `create_selects=True`); `create_verb` names the row and `replace_verb`
-  offers it for a name a row holds exactly, #1328;
+  `create_selects=True` instead makes that row hold the typed text as value
+  and label, and a form submit commits a typed draft; `PresetSelect`'s row
+  posts nothing and emits `search-select:create` `{name, replaces}` for the
+  consumer (element prop `create`: `post`, `event` or `select`);
+  `create_verb` names the row and `replace_verb` offers it for a name a row
+  holds exactly, #1328;
   a trailing × empties query and value in one press and emits
   `search-select:clear` after any `search-select:change`; on by default,
   `clearable=False` opts out, #1287; `none_label` pins a row that holds
@@ -763,8 +764,7 @@ Submodules re-exported via `common/components/__init__.py`:
   choice is the none row, a required field's is dropped; a widget set, or
   `required` changed, after the field is built goes through `host_choices`,
   #1301; `TextSearchSelectWidget` hosts a text field over suggestions, its
-  create row reading `Use “…”`. An element prop typed as a `Literal` of
-  strings reaches TypeScript as a union
+  create row reading `Use “…”`
 - **`icon_picker.py`** — `IconPicker()`, a `<drop-down behavior="choice-grid">`
   whose panel is a grid of icon radios (`ts/elements/behaviors/choice-grid.ts`);
   `IconPickerWidget` in `games/forms.py` hosts it for a `ChoiceField`, and
@@ -1022,7 +1022,8 @@ builders). Behavior lives in `ts/elements/<tag>.ts` (vanilla DOM,
 later insertion. Server↔client contract is one Python `TypedDict` per
 element registered with `register_element(...)` in
 `common/components/custom_elements.py`; `manage.py gen_element_types` codegens
-`ts/generated/props.ts` so renaming a prop fails `tsc`.
+`ts/generated/props.ts` so renaming a prop fails `tsc`. A `Literal` of strings
+becomes a TypeScript union whose reader throws on any other value.
 
 - **Build:** `tsc` per-module compiles `ts/` → `games/static/js/dist/`. `make ts` =
   codegen + compile; `make ts-check` (in `make check`) = codegen + `tsc --noEmit -p

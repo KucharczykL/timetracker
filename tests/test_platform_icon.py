@@ -60,3 +60,13 @@ def test_the_form_saves_a_suggested_or_typed_group(owned_library, group):
 
     assert form.is_valid(), form.errors
     assert form.save().group == group
+
+
+def test_a_cleared_group_box_states_no_group(owned_library):
+    platform = Platform.objects.create(library=owned_library, name="DOS", group="PC")
+    form = PlatformForm(
+        {"name": "DOS", "icon": "unspecified"}, instance=platform, library=owned_library
+    )
+
+    assert form.is_valid(), form.errors
+    assert form.save().group == ""

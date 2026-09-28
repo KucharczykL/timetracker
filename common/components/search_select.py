@@ -503,7 +503,8 @@ def SearchSelect(
     ``clear_description_id``: the ×'s ``aria-describedby`` target.
     ``none_label``: a pinned row holding none.
     ``shape``: the corners the box rounds.
-    ``create_selects``: the create row selects the typed text.
+    ``create_url``: the create row posts there.
+    ``create_selects``: it selects the typed text instead.
     ``create_verb``: the create row's verb; blank reads "Create".
     """
     if none_label and (multi_select or panel):

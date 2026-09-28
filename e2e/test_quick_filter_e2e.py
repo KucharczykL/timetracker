@@ -616,7 +616,7 @@ def test_a_preset_saves_the_unapplied_bar_and_loads_back(
 ):
     """One box names the save; Save stores what the bar states, applied or
     not, and never applies the bar's form."""
-    platform = Platform.objects.create(name="PC", icon="pc", library=e2e_library)
+    platform = Platform.objects.create(name="PC", icon="gog", library=e2e_library)
     Game.objects.create(name="Halo", platform=platform, library=e2e_library)
     Game.objects.create(name="Doom", platform=platform, library=e2e_library)
     page = authenticated_page

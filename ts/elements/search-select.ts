@@ -233,8 +233,12 @@ const initWidget = (containerElement: Element) => {
   const params = parseParams(props.params || null);
   //: A filter panel states a criterion and a free-text panel is the
   //: typed text itself; neither holds a row to create.
-  const create = isFilter || freeText ? "" : props.create;
   const createUrl = props.createUrl;
+  const create = isFilter || freeText ? "" : props.create;
+  if (create === "post" && !createUrl) {
+    //: A post with no endpoint would post to this page.
+    throw new Error(`search-select[${props.name}]: create="post" names no create-url`);
+  }
   const createVerb = props.createVerb || "Create";
   const replaceVerb = props.replaceVerb;
   //: A required field whose list usually holds one row commits it, so
@@ -737,6 +741,7 @@ const initWidget = (containerElement: Element) => {
       );
       return;
     }
+    if (create !== "post") return;
     creating = true;
     createRow.setAttribute("aria-disabled", "true");
     const body = { name, ...resolveParams(container, params) };
@@ -1494,6 +1499,14 @@ const initWidget = (containerElement: Element) => {
       // commits only on an explicit pick, so blur touches neither value nor text.
     }
   });
+
+  // Typed text is the value; submitting commits the draft.
+  if (create === "select") {
+    container.closest("form")?.addEventListener("formdata", event => {
+      const draft = search.value.trim();
+      if (container._searchSelectDirty && draft) event.formData.set(props.name, draft);
+    });
+  }
 
   // A field source is a dependency: the hosting form is where both a native
   // control's `change` and another combobox's own event arrive.

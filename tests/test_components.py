@@ -3917,7 +3917,7 @@ class SelectableTableMountTest(SimpleTestCase):
 
         emitted = _ts_for_spec(ElementSpec("mode-box", "ModeBox", ModeProps))
         self.assertIn('mode: "" | "post";', emitted)
-        self.assertIn('mode: (el.getAttribute("mode") ?? "") as "" | "post",', emitted)
+        self.assertIn('mode: oneOf(el, "mode", ["", "post"] as const),', emitted)
 
     def test_the_element_scopes_a_kept_selection(self):
         """The library and the table name it: neither the next person at this

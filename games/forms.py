@@ -518,6 +518,10 @@ class TextSearchSelectWidget(_SearchSelectAdapter):
         )
         self.suggestions = tuple(suggestions)
 
+    def value_omitted_from_data(self, data, files, name) -> bool:
+        """A cleared box posts nothing, and states empty."""
+        return False
+
     def render(self, name, value, attrs=None, renderer=None, *, shape="full"):
         options = [
             SearchSelectOption(value=text, label=text, data={})

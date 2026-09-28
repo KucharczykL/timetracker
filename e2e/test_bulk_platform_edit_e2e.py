@@ -129,3 +129,19 @@ def test_the_platform_form_picks_a_group_the_library_holds(
 
     page.wait_for_url(f"{live_server.url}{reverse('games:list_platforms')}**")
     assert Platform.objects.get(pk=platform.pk).group == "Commodore"
+
+
+def test_a_typed_group_is_saved_without_picking_it(
+    live_server, page: Page, e2e_library
+):
+    platform = Platform.objects.create(library=e2e_library, name="C64", group="PC")
+    _login(page, live_server)
+
+    page.goto(f"{live_server.url}{reverse('games:edit_platform', args=[platform.pk])}")
+    page.locator("search-select[name='group'] [data-search-select-search]").fill(
+        "Retro"
+    )
+    page.get_by_role("button", name="Submit").click()
+
+    page.wait_for_url(f"{live_server.url}{reverse('games:list_platforms')}**")
+    assert Platform.objects.get(pk=platform.pk).group == "Retro"
