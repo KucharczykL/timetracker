@@ -7,11 +7,13 @@ from django.apps import apps
 from django.db import models
 
 from games.endpoint_fields import EndpointColumns
+from games.events.device import DEVICE_ACCESS_END_EVENTS
 from games.events.endpoint import EndpointEvents
 from games.events.playthrough import (
     PLAYTHROUGH_COMPLETION_EVENTS,
     PLAYTHROUGH_START_EVENTS,
 )
+from games.models import DEVICE_ACCESS_END_COLUMNS
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -55,8 +57,10 @@ PLAYTHROUGH_COMPLETION = Endpoint(
     events=PLAYTHROUGH_COMPLETION_EVENTS,
 )
 
+DEVICE_ACCESS_END = Endpoint.over(DEVICE_ACCESS_END_COLUMNS, DEVICE_ACCESS_END_EVENTS)
 
 ENDPOINTS: tuple[Endpoint, ...] = (
     PLAYTHROUGH_START,
     PLAYTHROUGH_COMPLETION,
+    DEVICE_ACCESS_END,
 )

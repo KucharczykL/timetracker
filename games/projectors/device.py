@@ -2,7 +2,11 @@
 
 from typing import ClassVar
 
+from games.endpoints import DEVICE_ACCESS_END
 from games.events.device import (
+    DEVICE_ACCESS_END_CORRECTED,
+    DEVICE_ACCESS_END_VOIDED,
+    DEVICE_ACCESS_ENDED,
     DEVICE_CREATED,
     DEVICE_NAME_CHANGED,
     DEVICE_REMOVED,
@@ -42,10 +46,22 @@ class Devices(Projector):
     def _restored(self, event: RecordedEvent) -> None:
         self.amend(Device, event, removed_at=None)
 
+    def _access_ended(self, event: RecordedEvent) -> None:
+        self.project_stated(DEVICE_ACCESS_END, event)
+
+    def _access_end_corrected(self, event: RecordedEvent) -> None:
+        self.project_corrected(DEVICE_ACCESS_END, event)
+
+    def _access_end_voided(self, event: RecordedEvent) -> None:
+        self.project_voided(DEVICE_ACCESS_END, event)
+
     handles: ClassVar[HandlerMap] = {
         DEVICE_CREATED: _created,
         DEVICE_NAME_CHANGED: _name_changed,
         DEVICE_TYPE_CHANGED: _type_changed,
         DEVICE_REMOVED: _removed,
         DEVICE_RESTORED: _restored,
+        DEVICE_ACCESS_ENDED: _access_ended,
+        DEVICE_ACCESS_END_CORRECTED: _access_end_corrected,
+        DEVICE_ACCESS_END_VOIDED: _access_end_voided,
     }

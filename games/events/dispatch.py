@@ -115,6 +115,9 @@ class CommandName(CommandVocabulary):
     DEVICE_DESCRIBE = "library.device.describe"
     DEVICE_REMOVE = "library.device.remove"
     DEVICE_RESTORE = "library.device.restore"
+    DEVICE_END_ACCESS = "library.device.end_access"
+    DEVICE_CORRECT_ACCESS_END = "library.device.correct_access_end"
+    DEVICE_VOID_ACCESS_END = "library.device.void_access_end"
 
 
 @dataclass(frozen=True, slots=True)

@@ -12,11 +12,15 @@ import pytest
 from django.db import connection
 
 from games.commands.device import (
+    CorrectDeviceAccessEnd,
     CreateDevice,
     DescribeDevice,
+    EndDeviceAccess,
     RemoveDevice,
     RestoreDevice,
+    VoidDeviceAccessEnd,
 )
+from games.commands.endpoint import WayActStatement
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
     RecordHistoricalPlaytime,
@@ -60,6 +64,7 @@ from games.commands.session_reclassification import (
     UndoSessionReclassification,
     statement_from_session,
 )
+from games.end_ways import EndWay
 from games.events.dispatch import Command, CommandOutcome, CommandResult, dispatch
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.events.replay import replay
@@ -78,6 +83,7 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
 )
+from games.projectors.device import Devices
 from games.projectors.historical_playtime import HistoricalPlaytimes
 from games.projectors.playergame import PlayerGames
 from games.projectors.playersession import PlayerSessions
@@ -292,6 +298,26 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     run(RemoveDevice(device_id=retired.pk), "remove-tower")
     run(RestoreDevice(device_id=retired.pk), "restore-tower")
     run(RemoveDevice(device_id=retired.pk), "remove-tower-again")
+    #: Every act on an end, left stated so the columns reach snapshot.
+    sold = WayActStatement(TemporalValue.parse("2023-11"), EndWay.SOLD, "to a friend")
+    run(EndDeviceAccess(device_id=device.pk, statement=sold), "end-deck")
+    run(VoidDeviceAccessEnd(device_id=device.pk), "void-deck-end")
+    run(EndDeviceAccess(device_id=device.pk, statement=sold), "end-deck-again")
+    run(
+        CorrectDeviceAccessEnd(
+            device_id=device.pk,
+            statement=WayActStatement(None, EndWay.LOST, ""),
+        ),
+        "correct-deck-end",
+    )
+    run(
+        CreateDevice(
+            name="Phone",
+            type=Device.MOBILE,
+            access_end=WayActStatement(None, EndWay.BROKEN, ""),
+        ),
+        "create-broken-phone",
+    )
     noon = datetime(2024, 1, 5, 12, tzinfo=UTC)
     timed = _created_id(
         run(
@@ -475,10 +501,11 @@ def build_stream(user, library) -> list[DispatchedCommand]:
 
 
 def registered_event_types() -> set[str]:
-    """Every type the four CURRENT_STATE projectors read."""
+    """Every type the five CURRENT_STATE projectors read."""
     return {
         spec.event_type
         for handles in (
+            Devices.handles,
             PlayerGames.handles,
             Playthroughs.handles,
             PlayerSessions.handles,
@@ -506,7 +533,7 @@ def test_the_stream_carries_every_registered_event_type(owned_user, owned_librar
 
 
 def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_library):
-    """A real stream, short of twenty-nine types."""
+    """A real stream, short of thirty-seven types."""
     game = Game.objects.create(library=owned_library, name="Celeste")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -522,7 +549,7 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
         "library.playergame.created",
         "library.playthrough.created",
     }
-    assert len(missing) == 29
+    assert len(missing) == 37
 
 
 def build_neighbour(user, library) -> None:

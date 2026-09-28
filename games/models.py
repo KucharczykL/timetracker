@@ -26,10 +26,14 @@ from django.utils import timezone
 from common.naming import name_key
 from common.platform_icons import UNSPECIFIED_ICON, require_platform_icon
 from common.utils import label_with_details
+from games.end_ways import EndWay
 from games.endpoint_fields import (
+    EndpointColumns,
     endpoint_bound,
+    endpoint_constraints,
     endpoint_marker,
     endpoint_note,
+    endpoint_way,
     endpoint_when,
 )
 from games.external_references import external_reference_url, normalize_provider_key
@@ -1461,6 +1465,28 @@ def library_identity_constraint() -> models.UniqueConstraint:
     )
 
 
+#: How a device leaves the library's hands.
+DEVICE_WAYS: tuple[EndWay, ...] = (
+    EndWay.SOLD,
+    EndWay.LOST,
+    EndWay.GIVEN_AWAY,
+    EndWay.BROKEN,
+    EndWay.STOLEN,
+)
+
+DEVICE_ACCESS_END_COLUMNS = EndpointColumns(
+    name="access_end",
+    model_label="games.Device",
+    when="access_ended",
+    lower="access_ended_lower",
+    upper="access_ended_upper",
+    marker="access_end_recorded_at",
+    note="access_end_note",
+    way="access_end_way",
+    ways=DEVICE_WAYS,
+)
+
+
 class Device(ProjectionModel, ReferencedRow):
     """Owned device; only the Devices projector writes."""
 
@@ -1496,9 +1522,21 @@ class Device(ProjectionModel, ReferencedRow):
     removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
+    #: The day the library's access ended; null is a day nobody knows.
+    access_ended = endpoint_when()
+    access_ended_lower = endpoint_bound("access_ended", "lower")
+    access_ended_upper = endpoint_bound("access_ended", "upper")
+    #: Null is a device the library still holds.
+    access_end_recorded_at = endpoint_marker()
+    access_end_note = endpoint_note()
+    #: One of DEVICE_WAYS; empty while held.
+    access_end_way = endpoint_way(DEVICE_WAYS)
 
     class Meta:
-        constraints = (library_identity_constraint(),)
+        constraints = (
+            library_identity_constraint(),
+            *endpoint_constraints(DEVICE_ACCESS_END_COLUMNS),
+        )
 
     def __str__(self):
         return f"{self.name} ({self.type})"

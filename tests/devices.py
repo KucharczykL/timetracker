@@ -4,10 +4,18 @@ import uuid
 
 from django.db import transaction
 
-from games.commands.device import CreateDevice, RemoveDevice, RestoreDevice
+from games.commands.device import (
+    CreateDevice,
+    EndDeviceAccess,
+    RemoveDevice,
+    RestoreDevice,
+)
+from games.commands.endpoint import WayActStatement
+from games.end_ways import EndWay
 from games.events.dispatch import Command, CommandResult, append_command
 from games.models import Device, UserLibrary
 from games.reads.events import created_aggregate_id
+from timetracker.temporal import TemporalValue
 
 
 def _state(library: UserLibrary, command: Command) -> CommandResult:
@@ -39,5 +47,22 @@ def remove_device(device: Device) -> Device:
 def restore_device(device: Device) -> Device:
     """Restore a device by event."""
     _state(device.library, RestoreDevice(device_id=device.pk))
+    device.refresh_from_db()
+    return device
+
+
+def end_device_access(
+    device: Device,
+    way: EndWay = EndWay.SOLD,
+    when: TemporalValue | None = None,
+    note: str = "",
+) -> Device:
+    """End the library's access to a device by event."""
+    _state(
+        device.library,
+        EndDeviceAccess(
+            device_id=device.pk, statement=WayActStatement(when, way, note)
+        ),
+    )
     device.refresh_from_db()
     return device
