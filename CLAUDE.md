@@ -194,7 +194,14 @@ docs/           — Additional documentation
   conversion of existing rows ran out of a migration the 2026-09-28
   squash elided; what it left behind is the events (see
   [Squashing](docs/migration-squash.md)). Contract is
-  [The Device aggregate](docs/superpowers/specs/2026-09-24-issue-1274-device-aggregate-design.md)
+  [The Device aggregate](docs/superpowers/specs/2026-09-24-issue-1274-device-aggregate-design.md). #1275 states an end of access on
+  the stated-endpoint primitive: `library.device.access_ended`/
+  `.access_end_corrected`/`.access_end_voided`, way `sold`/`lost`/
+  `given_away`/`broken`/`stolen`; `EndDeviceAccess`,
+  `CorrectDeviceAccessEnd`, `VoidDeviceAccessEnd`, and `CreateDevice`'s
+  `access_end`. An ended device stays in session and record pickers,
+  hinted, and is no default. Contract is
+  [A device's access ends](docs/superpowers/specs/2026-09-28-issue-1275-device-access-end-design.md)
 - **ExchangeRate** — cached FX rates per currency pair per year
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs/historical_playtime/devices/platforms), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
 - **PlayerGame** — first projection: one row per catalog game a library tracks, written only by `PlayerGames` projector. Its `removed_at` is projector's, stated by `RemovePlayerGame` command, separate from catalog row's. States library's `status` (six `PlayerGameStatus` words) and `mastered`, and since #678 D2 only place either stated or read. Both `UUIDv7Field` defaults opted out (pk is event's `aggregate_id`); `game` is `RESTRICT`, so projection row never collateral; #1017 registers it, so `audit_library_ownership` reports a `PlayerGame` naming another library's Game
@@ -216,8 +223,8 @@ docs/           — Additional documentation
   `TemporalValueField` with generated lower- and upper-bound columns beside each,
   plus marker naming the act (`start_recorded_at`, `completion_recorded_at`) and
   note of their own: null date is only unknown day, so marker's null is act that
-  never happened, and `games/reads/playthrough_endpoints.py` reads pair as one
-  `StatedEndpoint`. #681 states both with
+  never happened, and `games/reads/playthrough_endpoints.py` reads each as a
+  `StatedEndpoint` (`games/reads/endpoints.py`). #681 states both with
   `StartPlaythrough`/`CompletePlaythrough` in `games/commands/playthrough.py`,
   which refuse second statement of stated endpoint and completion that certainly
   precedes start. #1010 adds three commands beside them:
@@ -513,6 +520,16 @@ docs/           — Additional documentation
   [HistoricalPlaytime aggregate](docs/superpowers/specs/2026-09-17-issue-705-historical-playtime-aggregate-design.md);
   wave is
   [Historical Playtime](docs/superpowers/specs/2026-09-17-historical-playtime-wave-design.md)
+
+**One act a row states once is an endpoint** (#1275). `Endpoint` in
+`games/endpoints.py` names its columns and three events (stated,
+corrected, voided); the model declares the columns through
+`games/endpoint_fields.py`, and `games.E014` holds the two together.
+Commands decide through `games/commands/endpoint.py`, projectors write
+through `project_stated`/`_corrected`/`_voided`, writes choose the act
+with `endpoint_move`, filters take `endpoint_filter_fields` and
+`way_filter_field` (`games/filters.py`). Playthrough
+start and completion and a device's end of access are its three.
 
 **Nothing user removes is destroyed** (#944). Six removable models — Game,
 Edition, Release, Platform, Purchase, FilterPreset —

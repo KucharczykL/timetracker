@@ -5,8 +5,10 @@ from typing import Literal, TypedDict
 
 from pydantic import with_config
 
+from games.events.endpoint import endpoint_events
 from games.events.references import STRICT_SCHEMA
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, EventSpec, NewEvent
+from timetracker.temporal import TemporalValue
 
 #: Recorded spelling: the six values `Device.type` stores.
 type DeviceTypeValue = Literal[
@@ -102,3 +104,48 @@ def device_removed(device_id: uuid.UUID) -> NewEvent:
 
 def device_restored(device_id: uuid.UUID) -> NewEvent:
     return DEVICE_RESTORED.new(aggregate_id=device_id, payload={})
+
+
+#: Recorded spelling; frozen apart from EndWay.
+type DeviceWayValue = Literal["sold", "lost", "given_away", "broken", "stolen"]
+
+
+@with_config(STRICT_SCHEMA)
+class DeviceAccessEndPayload(TypedDict):
+    """How access ended; day is effective_time."""
+
+    way: DeviceWayValue
+    note: str
+
+
+@with_config(STRICT_SCHEMA)
+class DeviceAccessEndVoidedPayload(TypedDict):
+    """The library takes back the record of an end."""
+
+
+DEVICE_ACCESS_END_EVENTS = endpoint_events(
+    "device",
+    stated="library.device.access_ended",
+    corrected="library.device.access_end_corrected",
+    voided="library.device.access_end_voided",
+    payload=DeviceAccessEndPayload,
+    voided_payload=DeviceAccessEndVoidedPayload,
+)
+DEVICE_ACCESS_ENDED = DEVICE_ACCESS_END_EVENTS.stated
+DEVICE_ACCESS_END_CORRECTED = DEVICE_ACCESS_END_EVENTS.corrected
+DEVICE_ACCESS_END_VOIDED = DEVICE_ACCESS_END_EVENTS.voided
+
+
+def device_access_ended(
+    device_id: uuid.UUID,
+    *,
+    when: TemporalValue | None,
+    way: DeviceWayValue,
+    note: str,
+) -> NewEvent:
+    """The library's access to the device ended."""
+    return DEVICE_ACCESS_ENDED.new(
+        aggregate_id=device_id,
+        effective_time=when,
+        payload={"way": way, "note": note},
+    )

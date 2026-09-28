@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
-from devices import create_device, remove_device
+from devices import create_device, end_device_access, remove_device
 from django.contrib.auth import get_user_model
 from django.db import connection
 from django.test import Client
@@ -140,6 +140,29 @@ def test_platform_search_blank_query_does_not_join_games_to_purchases(auth_clien
     )
     assert 'LEFT OUTER JOIN "games_game"' not in search_sql
     assert 'LEFT OUTER JOIN "games_purchase"' not in search_sql
+
+
+def test_device_search_offers_ended_devices_after_held_ones(auth_client):
+    sold = _owned_device(name="Switch")
+    held = _owned_device(name="Deck")
+    _played_on(sold, datetime(2026, 1, 1, tzinfo=UTC))
+    _played_on(held, datetime(2025, 1, 1, tzinfo=UTC))
+    end_device_access(sold)
+
+    rows = auth_client.get("/api/devices/search", {"limit": 10}).json()
+
+    assert [row["value"] for row in rows] == [str(held.id), str(sold.id)]
+    assert "hint" not in rows[0]
+    assert rows[1]["hint"] == "Sold"
+
+
+def test_device_search_by_name_keeps_held_devices_first(auth_client):
+    end_device_access(_owned_device(name="Alpha"))
+    _owned_device(name="Alpine")
+
+    rows = auth_client.get("/api/devices/search", {"q": "Al", "limit": 10}).json()
+
+    assert [row["label"] for row in rows] == ["Alpine", "Alpha"]
 
 
 def test_device_search_typed_query_remains_alphabetical(auth_client):

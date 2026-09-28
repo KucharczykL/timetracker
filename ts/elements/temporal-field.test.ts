@@ -409,6 +409,50 @@ describe("temporal-field", () => {
     expect(named(host, "kind").value).toBe("unknown");
   });
 
+  it("offers the qualifiers only beside a date", () => {
+    const host = mount();
+    const qualifiers = () => [named(host, "start_approximate"), named(host, "start_uncertain")];
+
+    expect(qualifiers().map((box) => box.disabled)).toEqual([true, true]);
+
+    type(host, "start", "year", "1984");
+    expect(qualifiers().map((box) => box.disabled)).toEqual([false, false]);
+    named(host, "start_uncertain").checked = true;
+
+    segment(host, "start", "year").focus();
+    document.activeElement!.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }),
+    );
+    expect(qualifiers().map((box) => [box.disabled, box.checked])).toEqual([
+      [true, false],
+      [true, false],
+    ]);
+  });
+
+  it.each([
+    ["a range's end", { kind: "range", start_year: "1990", end_year: "1995", end_uncertain: "on" }, "end_uncertain"],
+    ["an until's end", { kind: "until", end_year: "2000", end_approximate: "on" }, "end_approximate"],
+    ["a whole decade", { kind: "date", start_decade: "1990", start_uncertain: "on" }, "start_uncertain"],
+  ])("keeps the qualifier of %s", (_shape, stored, key) => {
+    const host = mountDraft(stored);
+
+    expect([named(host, key).checked, named(host, key).disabled]).toEqual([true, false]);
+  });
+
+  it("keeps an until's start undated and unqualified", () => {
+    const host = mountDraft({ kind: "until", end_year: "2000", end_approximate: "on" });
+
+    expect(named(host, "start_approximate").disabled).toBe(true);
+    expect(named(host, "start_uncertain").disabled).toBe(true);
+  });
+
+  it("offers a stored date's qualifiers from the start", () => {
+    const host = mountDraft({ kind: "date", start_year: "1997", start_uncertain: "on" });
+
+    expect(named(host, "start_uncertain").disabled).toBe(false);
+    expect(named(host, "start_uncertain").checked).toBe(true);
+  });
+
   it("keeps committing after the decade snap", () => {
     const host = mount("true");
 
@@ -707,6 +751,9 @@ describe("temporal-field", () => {
 
     expect(toggle(host, "end_none").disabled).toBe(false);
     expect(toggle(host, "end_date").checked).toBe(true);
+    //: Reopened, undated: nothing to qualify.
+    expect(named(host, "start_approximate").disabled).toBe(true);
+    type(host, "start", "year", "1984");
     expect(named(host, "start_approximate").disabled).toBe(false);
   });
 
@@ -856,6 +903,19 @@ describe("temporal-field copy", () => {
       normalized({ kind: "date", start_year: "1997", start_month: "3", start_day: "15" }),
     );
     expect(named(target, "kind").value).toBe("date");
+  });
+
+  it("copies a date's qualifier", () => {
+    const { source, target } = mountPair({
+      kind: "date",
+      start_year: "1997",
+      start_uncertain: "on",
+    });
+
+    copyTemporalDraft(source, target);
+
+    expect(named(target, "start_uncertain").checked).toBe(true);
+    expect(named(target, "start_uncertain").disabled).toBe(false);
   });
 
   it("copies a range onto both ends", () => {

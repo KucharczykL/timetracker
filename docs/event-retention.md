@@ -214,7 +214,7 @@ all use that verb.
 
 The column names the act in the past participle: `<act>_at`, and a name for what
 the act touches can come first. It is a nullable `DateTimeField`, and null is
-the live state. Thus `removed_at`, `voided_at`, `access_ended_at`.
+the live state. Thus `removed_at`, `voided_at`.
 
 An act whose own time a person states takes two columns. The past participle
 holds the stated time, in whichever field that time needs: a
@@ -222,7 +222,7 @@ holds the stated time, in whichever field that time needs: a
 of the statement takes the act's noun with `recorded_at`, and it is the
 nullable `DateTimeField`. Thus `started` beside `start_recorded_at`, and
 `completed` beside `completion_recorded_at`, where the noun is not the stem of
-the participle. Null in the stated column is only a time nobody knows; null in
+the participle. Thus also `access_ended` beside `access_end_recorded_at`. Null in the stated column is only a time nobody knows; null in
 the record column is the act that did not occur.
 
 An act that includes a removal states the removal's mark and adds no second

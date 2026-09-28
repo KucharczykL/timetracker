@@ -1,8 +1,14 @@
-import pytest
-from devices import create_device
-from django.core.exceptions import ValidationError
-from django.db import connection
+import uuid
 
+import pytest
+from devices import create_device, end_device_access
+from django.core.exceptions import ValidationError
+from django.db import connection, transaction
+from django.urls import reverse
+
+from games.commands.device import VoidDeviceAccessEnd
+from games.end_ways import EndWay
+from games.events.dispatch import append_command
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.models import Device, UserLibraryPreferences
 from timetracker import settings_commands
@@ -117,3 +123,90 @@ def test_a_default_device_row_lost_reads_as_none(owned_library):
     preferences = UserLibraryPreferences.objects.get(library=owned_library)
     assert preferences.default_device_id == device.pk
     assert preferences.default_device is None
+
+
+def _void(device: Device) -> None:
+    with transaction.atomic():
+        append_command(
+            VoidDeviceAccessEnd(device_id=device.pk),
+            actor=device.library.user,
+            library=device.library,
+            idempotency_key=str(uuid.uuid7()),
+            correlation_id=uuid.uuid7(),
+        )
+
+
+def test_an_ended_default_is_no_default_until_the_end_is_voided(user):
+    library = user.library
+    device = create_device(library=library, name="Deck")
+    settings_commands.change_library_default_device(library, device)
+
+    end_device_access(device)
+    preferences = UserLibraryPreferences.objects.get(library=library)
+    assert preferences.default_device is None
+    assert preferences.default_device_id == device.pk
+    assert preferences.stored_default_device == device
+
+    _void(device)
+    preferences.refresh_from_db()
+    assert preferences.default_device == device
+
+
+def test_the_settings_page_shows_an_ended_default_and_offers_held_devices(client, user):
+    library = user.library
+    kept = create_device(library=library, name="Deck")
+    end_device_access(create_device(library=library, name="Old laptop"))
+    phone = create_device(library=library, name="Phone")
+    settings_commands.change_library_default_device(library, kept)
+    end_device_access(kept, way=EndWay.LOST)
+    client.force_login(user)
+
+    body = client.get(reverse("games:library")).content.decode()
+
+    assert f'<option value="{kept.pk}" selected>Deck (Unknown) · Lost</option>' in body
+    assert f'<option value="{phone.pk}">Phone (Unknown)</option>' in body
+    assert (
+        "Old laptop" not in body.split('name="default_device"')[1].split("</select>")[0]
+    )
+    assert "Lost, so new sessions name no device. Choose another." in body
+
+
+def test_the_api_refuses_an_ended_device_even_as_the_stored_default(client, user):
+    library = user.library
+    device = create_device(library=library, name="Deck")
+    settings_commands.change_library_default_device(library, device)
+    end_device_access(device)
+    client.force_login(user)
+
+    kept = client.patch(
+        "/api/library/default-device",
+        data={"value": device.pk},
+        content_type="application/json",
+    )
+    cleared = client.patch(
+        "/api/library/default-device",
+        data={"value": None},
+        content_type="application/json",
+    )
+
+    assert kept.status_code == 422
+    assert cleared.status_code == 200
+    assert UserLibraryPreferences.objects.get(library=library).default_device_id is None
+
+
+def test_the_api_refuses_an_ended_device_as_a_new_default(client, user):
+    ended = end_device_access(create_device(library=user.library, name="Old laptop"))
+    client.force_login(user)
+
+    refused = client.patch(
+        "/api/library/default-device",
+        data={"value": ended.pk},
+        content_type="application/json",
+    )
+
+    assert refused.status_code == 422
+    assert "Choose one you still have" in refused.json()["detail"]
+    assert (
+        UserLibraryPreferences.objects.get(library=user.library).default_device_id
+        is None
+    )

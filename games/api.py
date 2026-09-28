@@ -60,7 +60,7 @@ from games.filters import (
     parse_session_filter,
 )
 from games.formatting import zone_label
-from games.forms import DeviceForm, PlatformForm, game_option_data
+from games.forms import DeviceForm, PlatformForm, device_option, game_option_data
 from games.models import (
     Device,
     FilterPreset,
@@ -301,6 +301,8 @@ class PickerOption(Schema):  # mirrors SearchSelectOption
     label: str
     #: What the element reads: `SearchSelectOption.data` is text.
     data: dict[str, str]
+    #: Muted after the label; absent when none.
+    hint: str | None = Field(default=None, exclude_if=lambda hint: hint is None)
 
 
 class StringOption(Schema):  # SearchSelectOption with a string value (e.g. group names)
@@ -536,9 +538,12 @@ def remove_playthrough(request, playthrough_id: UUIDv7):
 @device_router.get("/search", response=list[PickerOption])
 def search_devices(request, q: str = "", limit: int = 10):
     library = cast(User, request.user).library
-    qs = Device.objects.for_library(library)
+    #: Held first; ended ones serve past sessions.
+    qs = Device.objects.for_library(library).annotate(
+        ended=Case(When(access_end_recorded_at__isnull=True, then=0), default=1)
+    )
     if q:
-        qs = qs.filter(name__icontains=q).order_by("name")
+        qs = qs.filter(name__icontains=q).order_by("ended", "name")
     else:
         #: The live rows, on the base manager: a removed one moves nothing.
         qs = qs.annotate(
@@ -546,8 +551,8 @@ def search_devices(request, q: str = "", limit: int = 10):
                 "player_sessions__sort_instant",
                 filter=Q(player_sessions__removed_at__isnull=True),
             )
-        ).order_by(F("last_used").desc(nulls_last=True), "-created_at", "name")
-    return [{"value": d.id, "label": d.name, "data": {}} for d in qs[:limit]]
+        ).order_by("ended", F("last_used").desc(nulls_last=True), "-created_at", "name")
+    return [device_option(device) for device in qs[:limit]]
 
 
 class RowIn(Schema):
@@ -599,6 +604,7 @@ def create_device(request, payload: RowIn):
             "submission": str(uuid.uuid7()),
         },
         library=library,
+        presentation=date_time_presentation_for_request(request),
     )
     if not form.is_valid():
         raise RowRefused(refusal_sentence(form))
@@ -1603,6 +1609,11 @@ def update_user_setting(
     )
 
 
+ENDED_DEFAULT_DEVICE = (
+    "That device has left your library's hands. Choose one you still have."
+)
+
+
 @library_router.patch("/default-device", response=DefaultDeviceOut)
 def update_library_default_device(request, payload: DefaultDeviceIn):
     """Set the current library's default Device, or clear it with null.
@@ -1617,6 +1628,8 @@ def update_library_default_device(request, payload: DefaultDeviceIn):
         device = Device.objects.for_library(library).filter(pk=payload.value).first()
         if device is None:
             raise HttpError(404, "Device not found.")
+        if device.access_end_recorded_at is not None:
+            raise RowRefused(ENDED_DEFAULT_DEVICE)
     change_library_default_device(library, device)
     messages.success(request, "Default device saved")
     return {

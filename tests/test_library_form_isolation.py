@@ -142,6 +142,9 @@ def test_the_device_form_states_facts_and_saves_no_row(world):
     form = DeviceForm(
         data={"name": "New private device", "type": Device.UNKNOWN, "submission": ""},
         library=world.owner_library,
+        presentation=DateTimePresentation(
+            DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
+        ),
     )
 
     assert not isinstance(form, forms.ModelForm)

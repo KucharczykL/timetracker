@@ -56,6 +56,7 @@ from common.components.primitives import (
 )
 from common.date_time_presentation import DateTimePresentation, zone_or_none
 from common.platform_icons import PLATFORM_ICONS, UNSPECIFIED_ICON
+from games.commands.endpoint import WayActStatement
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
     when_sentence,
@@ -68,8 +69,11 @@ from games.commands.playersession import (
 )
 from games.commands.session_reclassification import statement_from_session
 from games.dev_login import prefill_credentials
+from games.end_ways import END_WAY_LABELS, EndWay
+from games.endpoints import DEVICE_ACCESS_END
 from games.events.idempotency import IdempotencyKey
 from games.models import (
+    DEVICE_WAYS,
     Device,
     Game,
     HistoricalPlaytime,
@@ -83,6 +87,7 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.companion_status import played_is_offered
+from games.reads.endpoints import stated
 from games.reads.platform_groups import platform_groups
 from games.reads.playthrough_numbering import display_name, numbered_for
 from games.reads.playthrough_runs import library_runs, tracked_game
@@ -229,10 +234,20 @@ class PrimitiveWidgetsMixin:
         apply_primitive_widget_classes(self.fields)
 
 
+class DeviceChoiceField(forms.ModelChoiceField):
+    """A device, and how it left."""
+
+    def label_from_instance(self, obj) -> str:
+        device = cast(Device, obj)
+        option = device_option(device)
+        hint = option.get("hint")
+        return str(device) if hint is None else f"{device} · {hint}"
+
+
 class LibraryPreferencesForm(PrimitiveWidgetsMixin, forms.Form):
     """Library-owned preferences rendered through the shared settings field kit."""
 
-    default_device = forms.ModelChoiceField(
+    default_device = DeviceChoiceField(
         queryset=Device.objects.none(),
         label="Default device",
         required=False,
@@ -245,11 +260,15 @@ class LibraryPreferencesForm(PrimitiveWidgetsMixin, forms.Form):
         devices: QuerySet[Device],
         default_device: Device | None,
     ) -> None:
+        """Held devices, and the stored default."""
         super().__init__()
         default_device_field = cast(
             forms.ModelChoiceField, self.fields["default_device"]
         )
-        default_device_field.queryset = devices
+        offered = devices.filter(access_end_recorded_at__isnull=True)
+        if default_device is not None:
+            offered = offered | devices.filter(pk=default_device.pk)
+        default_device_field.queryset = offered
         self.initial["default_device"] = default_device
 
 
@@ -290,10 +309,22 @@ def _game_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     ]
 
 
+def device_option(device: Device) -> SearchSelectOption:
+    """One device as a picker row."""
+    option: SearchSelectOption = {
+        "value": str(device.id),
+        "label": device.name,
+        "data": {},
+    }
+    if device.access_end_way:
+        option["hint"] = END_WAY_LABELS[EndWay(device.access_end_way)]
+    return option
+
+
 def device_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     return [
-        {"value": d.id, "label": d.name, "data": {}}
-        for d in Device.objects.for_library(library).filter(pk__in=values)
+        device_option(device)
+        for device in Device.objects.for_library(library).filter(pk__in=values)
     ]
 
 
@@ -1789,14 +1820,14 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         devices = Device.objects.for_library(library)
         held = record if record is not None else session
         if held is not None and held.device_id is not None:
-            #: A held device stays, removed or not.
+            #: The row's own device stays, removed or not.
             devices = devices | Device.objects.filter(
                 library=library, pk=held.device_id
             )
         device_field = cast(forms.ModelChoiceField, self.fields["device"])
         device_field.queryset = devices.order_by("name")
         device_field.widget.options_resolver = partial(
-            _held_device_options, devices=devices
+            _named_device_options, devices=devices
         )
 
     def clean_note(self) -> str:
@@ -1854,12 +1885,11 @@ def _parsed_ids(values) -> list[uuid.UUID]:
     return parsed
 
 
-def _held_device_options(
+def _named_device_options(
     values, *, devices: QuerySet[Device]
 ) -> list[SearchSelectOption]:
     return [
-        {"value": device.id, "label": device.name, "data": {}}
-        for device in devices.filter(pk__in=_parsed_ids(values))
+        device_option(device) for device in devices.filter(pk__in=_parsed_ids(values))
     ]
 
 
@@ -2178,14 +2208,37 @@ class PlatformForm(
         }
 
 
+#: "Held" first: no end stated.
+ACCESS_CHOICES = [
+    ("", "Held"),
+    *((way.value, END_WAY_LABELS[way]) for way in DEVICE_WAYS),
+]
+
+
+NO_WAY_FOR_A_DAY = "Choose how the device left, or clear the day and note."
+CHANGED_SINCE_OPENED = (
+    "This device changed since you opened this page. Reload it and save again."
+)
+
+
 class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
-    """One device, stated as commands."""
+    """One device, stated as commands.
+
+    Access fields are optional: the picker's create row
+    posts none.
+    """
 
     name = forms.CharField(
         max_length=Device._meta.get_field("name").max_length,
         widget=autofocus_input_widget,
     )
     type = forms.ChoiceField(choices=Device.DEVICE_TYPES, initial=Device.UNKNOWN)
+    access = forms.ChoiceField(choices=ACCESS_CHOICES, required=False, label="Access")
+    access_note = forms.CharField(
+        required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Access note"
+    )
+    #: The end this page showed; a void takes back only it.
+    access_end_seen = forms.CharField(required=False, widget=forms.HiddenInput)
     #: One key per page; resubmits replay.
     submission = forms.UUIDField(widget=forms.HiddenInput, initial=uuid.uuid7)
 
@@ -2193,21 +2246,71 @@ class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
         self,
         *args,
         library: UserLibrary,
+        presentation: DateTimePresentation,
         device: Device | None = None,
         **kwargs,
     ):
         if device is not None:
-            kwargs.setdefault("initial", {"name": device.name, "type": device.type})
+            kwargs.setdefault("initial", _device_initial(device))
         super().__init__(*args, **kwargs)
         self.library = library
         self.device = device
+        #: Needs the presentation, so built here.
+        self.fields["access_day"] = TemporalFormField(
+            presentation=presentation, label="Access ended", required=False
+        )
+        self.order_fields(["name", "type", "access", "access_day", "access_note"])
         if device is not None:
             #: A description repeats harmlessly.
             del self.fields["submission"]
 
+    def clean_access_note(self) -> str:
+        return self.cleaned_data["access_note"].replace("\r\n", "\n")
+
+    def clean(self) -> dict[str, Any] | None:
+        cleaned = super().clean()
+        if cleaned is None:
+            return cleaned
+        way = cleaned.get("access") or ""
+        when = cleaned.get("access_day")
+        note = (cleaned.get("access_note") or "").strip()
+        if way:
+            cleaned["access_end"] = WayActStatement(when, EndWay(way), note)
+            return cleaned
+        cleaned["access_end"] = None
+        #: Held on an ended device voids.
+        ended = self.device is not None and stated(self.device, DEVICE_ACCESS_END)
+        if not ended and (when is not None or note):
+            self.add_error("access", NO_WAY_FOR_A_DAY)
+        if ended and cleaned.get("access_end_seen") != _end_seen(self.device):
+            self.add_error(None, CHANGED_SINCE_OPENED)
+        return cleaned
+
     def submission_key(self) -> IdempotencyKey:
         """The creation's key."""
         return f"device-create-{self.cleaned_data['submission']}"
+
+
+def _end_seen(device: Device | None) -> str:
+    """The rendered end's marker, or empty while held."""
+    marker = None if device is None else device.access_end_recorded_at
+    return "" if marker is None else marker.isoformat()
+
+
+def _device_initial(device: Device) -> dict[str, Any]:
+    initial: dict[str, Any] = {
+        "name": device.name,
+        "type": device.type,
+        "access_end_seen": _end_seen(device),
+    }
+    ended = stated(device, DEVICE_ACCESS_END)
+    if ended is not None:
+        initial |= {
+            "access": ended.way,
+            "access_day": ended.when,
+            "access_note": ended.note,
+        }
+    return initial
 
 
 class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):

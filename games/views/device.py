@@ -24,12 +24,18 @@ from common.components import (
     paginated_table_content,
     parse_filter_dict,
 )
-from common.date_time_presentation import date_time_presentation_for_request
+from common.date_time_presentation import (
+    DateTimePresentation,
+    date_time_presentation_for_request,
+)
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
+from common.temporal_presentation import present_temporal_value
 from common.utils import paginate
 from games.bulk_removal import REMOVE_DEVICE
 from games.bulk_tray import tray_actions
+from games.end_ways import END_WAY_LABELS
+from games.endpoints import DEVICE_ACCESS_END
 from games.filters import (
     DeviceFilter,
     filter_query_context_for_library,
@@ -40,6 +46,7 @@ from games.list_columns import column_choice
 from games.models import Device
 from games.ownership import owned_or_404
 from games.reads.device_departures import sessions_naming
+from games.reads.endpoints import stated, way_of
 from games.sorting import (
     DEVICE_DEFAULT_SORT,
     DEVICE_SORTS,
@@ -55,7 +62,7 @@ from games.views.filtering import (
 from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
 from games.writes.answers import CommandFailed
-from games.writes.device import create_device, describe_device
+from games.writes.device import create_device, restate_device
 from games.writes.device import remove_device as remove_device_row
 from games.writes.device import restore_device as restore_device_row
 from games.writes.playergame import new_correlation_id
@@ -63,8 +70,20 @@ from games.writes.playergame import new_correlation_id
 DEVICE_COLUMNS: list[Column] = [
     Column("Name", "name", key="name", hideable=False),
     Column("Type", "type", priority=2, key="type"),
+    Column("Access", "access", priority=2, key="access"),
     Column("Created", "created", key="created", hidden_by_default=True),
 ]
+
+
+def access_cell(device: Device, presentation: DateTimePresentation) -> str:
+    """Held, or the way and its day."""
+    ended = stated(device, DEVICE_ACCESS_END)
+    if ended is None:
+        return "Held"
+    way = END_WAY_LABELS[way_of(ended)]
+    if ended.when is None:
+        return way
+    return f"{way} · {present_temporal_value(ended.when, presentation)}"
 
 
 @login_required
@@ -102,6 +121,7 @@ def list_devices(request: HttpRequest) -> HttpResponse:
             [
                 TruncatedText(device.name),
                 device.get_type_display(),
+                access_cell(device, presentation),
                 presentation.format(device.created_at, "date"),
             ]
             for device in page_devices
@@ -165,15 +185,21 @@ def edit_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
     user = cast(User, request.user)
     library = user.library
     device = owned_or_404(Device.objects.for_library(library), library, id=device_id)
-    form = DeviceForm(request.POST or None, library=library, device=device)
+    form = DeviceForm(
+        request.POST or None,
+        library=library,
+        presentation=date_time_presentation_for_request(request),
+        device=device,
+    )
     title = "Edit device"
     if form.is_valid():
         try:
-            describe_device(
+            restate_device(
                 user,
                 device,
                 name=form.cleaned_data["name"],
                 device_type=form.cleaned_data["type"],
+                access_end=form.cleaned_data["access_end"],
                 correlation_id=new_correlation_id(),
             )
         except CommandFailed as failure:
@@ -226,7 +252,11 @@ def remove_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
 @login_required
 def add_device(request: HttpRequest) -> HttpResponse:
     user = cast(User, request.user)
-    form = DeviceForm(request.POST or None, library=user.library)
+    form = DeviceForm(
+        request.POST or None,
+        library=user.library,
+        presentation=date_time_presentation_for_request(request),
+    )
     title = "Add New Device"
     if form.is_valid():
         try:
@@ -234,6 +264,7 @@ def add_device(request: HttpRequest) -> HttpResponse:
                 user,
                 name=form.cleaned_data["name"],
                 device_type=form.cleaned_data["type"],
+                access_end=form.cleaned_data["access_end"],
                 idempotency_key=form.submission_key(),
                 correlation_id=new_correlation_id(),
             )

@@ -17,11 +17,14 @@ from django.utils import timezone
 from common.components.icons_generated import ICON_NODES
 from common.criteria import FilterError, declared_through_paths, resolve_through_path
 from common.platform_icons import PLATFORM_ICONS, PlatformIcon
+from games.endpoint_fields import EndpointColumns, endpoint_constraints
+from games.endpoints import ENDPOINTS
 from games.models import ProjectionModel
 from games.projections import (
     stale_projection_references,
     unaudited_projection_references,
 )
+from timetracker.temporal import TemporalLowerBound, TemporalUpperBound
 
 #: A new UUID every call, so never a projection key.
 _UUID_FACTORIES = frozenset(
@@ -362,3 +365,78 @@ def check_atomic_requests(
             id="games.E008",
         )
     ]
+
+
+def endpoint_errors(
+    endpoint: EndpointColumns, model: type[models.Model]
+) -> list[CheckMessage]:
+    """Where a model departs from the endpoint it registers."""
+    problems: list[str] = []
+    if not issubclass(model, ProjectionModel):
+        problems.append("its model is no projection")
+    declared = {field.name: field for field in model._meta.get_fields()}
+    named = [endpoint.when, endpoint.lower, endpoint.upper, endpoint.marker]
+    named.append(endpoint.note)
+    if endpoint.way is not None:
+        named.append(endpoint.way.column)
+    problems.extend(
+        f"it declares no column {name!r}" for name in named if name not in declared
+    )
+    for bound, expression in (
+        (endpoint.lower, TemporalLowerBound),
+        (endpoint.upper, TemporalUpperBound),
+    ):
+        field = declared.get(bound)
+        if field is None:
+            continue
+        #: django-stubs declares no `expression` on GeneratedField.
+        computed = getattr(field, "expression", None)
+        if not (
+            isinstance(field, models.GeneratedField)
+            and isinstance(computed, expression)
+            and computed.source_expressions == [models.F(endpoint.when)]
+        ):
+            problems.append(
+                f"{bound!r} is not the {expression.__name__} of {endpoint.when!r}"
+            )
+    held = {constraint.name: constraint for constraint in model._meta.constraints}
+    problems.extend(
+        f"its Meta.constraints lack {constraint.name!r}"
+        for constraint in endpoint_constraints(endpoint)
+        if held.get(constraint.name) != constraint
+    )
+    return [_endpoint_error(endpoint, problem, model) for problem in problems]
+
+
+def _endpoint_error(
+    endpoint: EndpointColumns, problem: str, model: type[models.Model] | None = None
+) -> Error:
+    return Error(
+        f"Endpoint {endpoint.name!r} on {endpoint.model_label}: {problem}.",
+        hint=(
+            "Declare the endpoint's columns through the factories in "
+            "games/endpoint_fields.py, and spread endpoint_constraints() "
+            "into the model's own Meta.constraints."
+        ),
+        obj=model,
+        id="games.E014",
+    )
+
+
+@register(Tags.models)
+def check_endpoints(**kwargs: Any) -> list[CheckMessage]:
+    """Every registered endpoint names what its model holds."""
+    errors: list[CheckMessage] = []
+    seen: set[tuple[str, str]] = set()
+    for endpoint in ENDPOINTS:
+        key = (endpoint.model_label, endpoint.name)
+        if key in seen:
+            errors.append(_endpoint_error(endpoint, "another endpoint has its name"))
+        seen.add(key)
+        try:
+            model = endpoint.model
+        except LookupError:
+            errors.append(_endpoint_error(endpoint, "its model label names no model"))
+            continue
+        errors.extend(endpoint_errors(endpoint, model))
+    return errors

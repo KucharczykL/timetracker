@@ -6,6 +6,7 @@ import unittest
 from types import SimpleNamespace
 
 import django.test
+import pytest
 from django.contrib.auth import get_user_model
 from django.utils.safestring import SafeText
 
@@ -1478,3 +1479,31 @@ class NoneLabelWidgetTest(unittest.TestCase):
         html = widget.render("device", "gone", {"id": "id_device"})
         self.assertIn("data-search-select-none=", html)
         self.assertNotIn('value="gone"', html)
+
+
+def test_an_option_row_carries_its_hint_apart_from_its_label():
+    from common.components.search_select import _option_row
+
+    hinted = str(
+        _option_row({"value": "b", "label": "Switch", "data": {}, "hint": "Sold"})
+    )
+    plain = str(_option_row({"value": "a", "label": "Deck", "data": {}}))
+
+    assert 'data-hint="Sold"' in hinted
+    assert 'data-label="Switch"' in hinted
+    assert ">Sold</span>" in hinted
+    assert "data-hint" not in plain
+    assert "data-search-select-hint" in plain
+
+
+@pytest.mark.django_db
+def test_a_form_re_render_carries_an_ended_devices_hint(owned_library):
+    from devices import create_device, end_device_access
+
+    from games.forms import device_options
+
+    device = end_device_access(create_device(owned_library, "Switch"))
+
+    (option,) = device_options([device.pk], library=owned_library)
+
+    assert (option["label"], option.get("hint")) == ("Switch", "Sold")

@@ -352,6 +352,11 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         "removed_at": None,
         #: Every creation states it; form's first choice.
         "type": "Unknown",
+        #: A held device: no end stated.
+        "access_ended": None,
+        "access_end_recorded_at": None,
+        "access_end_note": "",
+        "access_end_way": "",
     },
     "games.HistoricalPlaytime": {
         #: The projector's marks.

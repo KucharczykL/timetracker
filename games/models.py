@@ -26,6 +26,17 @@ from django.utils import timezone
 from common.naming import name_key
 from common.platform_icons import UNSPECIFIED_ICON, require_platform_icon
 from common.utils import label_with_details
+from games.end_ways import EndWay
+from games.endpoint_fields import (
+    EndpointColumns,
+    WayColumn,
+    endpoint_bound,
+    endpoint_constraints,
+    endpoint_marker,
+    endpoint_note,
+    endpoint_way,
+    endpoint_when,
+)
 from games.external_references import external_reference_url, normalize_provider_key
 from timetracker.settings_registry import THEME_CHOICES, SettingKey
 from timetracker.temporal import (
@@ -1455,6 +1466,27 @@ def library_identity_constraint() -> models.UniqueConstraint:
     )
 
 
+#: How a device leaves the library's hands.
+DEVICE_WAYS: tuple[EndWay, *tuple[EndWay, ...]] = (
+    EndWay.SOLD,
+    EndWay.LOST,
+    EndWay.GIVEN_AWAY,
+    EndWay.BROKEN,
+    EndWay.STOLEN,
+)
+
+DEVICE_ACCESS_END_COLUMNS = EndpointColumns(
+    name="access_end",
+    model_label="games.Device",
+    when="access_ended",
+    lower="access_ended_lower",
+    upper="access_ended_upper",
+    marker="access_end_recorded_at",
+    note="access_end_note",
+    way=WayColumn("access_end_way", DEVICE_WAYS),
+)
+
+
 class Device(ProjectionModel, ReferencedRow):
     """Owned device; only the Devices projector writes."""
 
@@ -1490,9 +1522,21 @@ class Device(ProjectionModel, ReferencedRow):
     removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
+    #: The day access ended; null unknown.
+    access_ended = endpoint_when()
+    access_ended_lower = endpoint_bound("access_ended", "lower")
+    access_ended_upper = endpoint_bound("access_ended", "upper")
+    #: Null is a device the library still holds.
+    access_end_recorded_at = endpoint_marker()
+    access_end_note = endpoint_note()
+    #: One of DEVICE_WAYS; empty while held.
+    access_end_way = endpoint_way(DEVICE_WAYS)
 
     class Meta:
-        constraints = (library_identity_constraint(),)
+        constraints = (
+            library_identity_constraint(),
+            *endpoint_constraints(DEVICE_ACCESS_END_COLUMNS),
+        )
 
     def __str__(self):
         return f"{self.name} ({self.type})"
@@ -1657,53 +1701,23 @@ class Playthrough(ProjectionModel):
     note = models.TextField(blank=True, default="")
     #: The day the run began. Null is a day nobody knows, which is
     #: why `start_recorded_at` beside it carries the act itself.
-    started = TemporalValueField()
-    started_lower = models.GeneratedField(
-        expression=TemporalLowerBound("started"),
-        output_field=models.DateField(null=True),
-        null=True,
-        serialize=False,
-        db_persist=True,
-        editable=False,
-    )
-    started_upper = models.GeneratedField(
-        expression=TemporalUpperBound("started"),
-        output_field=models.DateField(null=True),
-        null=True,
-        serialize=False,
-        db_persist=True,
-        editable=False,
-    )
+    started = endpoint_when()
+    started_lower = endpoint_bound("started", "lower")
+    started_upper = endpoint_bound("started", "upper")
     #: Null is the act that never happened. An unknown day is null too,
     #: which is why the date cannot say it.
-    start_recorded_at = models.DateTimeField(null=True, default=None, editable=False)
+    start_recorded_at = endpoint_marker()
     #: The note of the act. The row's `note` has no day.
-    start_note = models.TextField(blank=True, default="")
+    start_note = endpoint_note()
     #: The day the run met its main objective. Null is a day nobody
     #: knows, as on the start.
-    completed = TemporalValueField()
-    completed_lower = models.GeneratedField(
-        expression=TemporalLowerBound("completed"),
-        output_field=models.DateField(null=True),
-        null=True,
-        serialize=False,
-        db_persist=True,
-        editable=False,
-    )
-    completed_upper = models.GeneratedField(
-        expression=TemporalUpperBound("completed"),
-        output_field=models.DateField(null=True),
-        null=True,
-        serialize=False,
-        db_persist=True,
-        editable=False,
-    )
+    completed = endpoint_when()
+    completed_lower = endpoint_bound("completed", "lower")
+    completed_upper = endpoint_bound("completed", "upper")
     #: Null is the act that never happened, as on the start.
-    completion_recorded_at = models.DateTimeField(
-        null=True, default=None, editable=False
-    )
+    completion_recorded_at = endpoint_marker()
     #: The note of the act. The row's `note` has no day.
-    completion_note = models.TextField(blank=True, default="")
+    completion_note = endpoint_note()
     #: The creation event's recorded_at.
     created_at = models.DateTimeField(editable=False)
     #: The remove event's recorded_at; null means live.
@@ -2156,7 +2170,15 @@ class UserLibraryPreferences(models.Model):
 
     @property
     def default_device(self) -> Device | None:
-        """The live default device, or none."""
+        """The held default; an ended one keeps its key."""
+        stored = self.stored_default_device
+        if stored is None or stored.access_end_recorded_at is not None:
+            return None
+        return stored
+
+    @property
+    def stored_default_device(self) -> Device | None:
+        """The live device the preference names, held or not."""
         if self.default_device_id is None:
             return None
         return (

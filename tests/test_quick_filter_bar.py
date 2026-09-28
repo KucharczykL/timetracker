@@ -658,7 +658,7 @@ class FacetOrderTest(SimpleTestCase):
             "created_at",
             "note",
         ],
-        "devices": ["name", "type", "created_at"],
+        "devices": ["name", "type", "is_owned", "access_end_way", "created_at"],
         "platforms": ["name", "group", "created_at"],
     }
 

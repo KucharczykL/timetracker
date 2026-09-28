@@ -54,6 +54,8 @@ export interface SearchSelectOption {
   value: string;
   label: string;
   data: Record<string, string>;
+  //: Muted after the label; never searched.
+  hint?: string;
 }
 
 //: `none: true` is a committed none, never a mid-edit drop.
@@ -606,6 +608,18 @@ const initWidget = (containerElement: Element) => {
 
   const setLabel = setLabelSlot;
 
+  const setHint = (row: HTMLElement, hint: string) => {
+    const slot = row.querySelector<HTMLElement>("[data-search-select-hint]");
+    if (hint) row.setAttribute("data-hint", hint);
+    else row.removeAttribute("data-hint");
+    if (!slot) {
+      if (hint) console.warn("search-select: a hint reached a row with no hint slot");
+      return;
+    }
+    slot.textContent = hint;
+    slot.hidden = !hint;
+  };
+
   const applyData = (node: Element, data: Record<string, string> = {}) => {
     Object.keys(data).forEach(key => {
       node.setAttribute(`data-${key}`, data[key]);
@@ -621,6 +635,7 @@ const initWidget = (containerElement: Element) => {
     row.setAttribute("data-label", option.label);
     applyData(row, option.data);
     setLabel(row, option.label);
+    setHint(row, option.hint ?? "");
     row._searchSelectOption = option;
     return row;
   };
@@ -1215,15 +1230,18 @@ const initWidget = (containerElement: Element) => {
     if (optionRow._searchSelectOption) return optionRow._searchSelectOption;
     const data: Record<string, string> = {};
     Object.keys(row.dataset).forEach(key => {
-      if (key !== "value" && key !== "label" && key !== "ssOption") {
+      if (key !== "value" && key !== "label" && key !== "hint" && key !== "ssOption") {
         data[key] = row.dataset[key] ?? "";
       }
     });
-    return {
+    const option: SearchSelectOption = {
       value: row.getAttribute("data-value") ?? "",
       label: row.getAttribute("data-label") ?? "",
       data,
     };
+    const hint = row.getAttribute("data-hint");
+    if (hint) option.hint = hint;
+    return option;
   };
 
   // `emit` lets a programmatic restore (setSelected) seed the selection WITHOUT

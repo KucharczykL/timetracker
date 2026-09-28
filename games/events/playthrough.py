@@ -5,6 +5,7 @@ from typing import Literal, TypedDict
 
 from pydantic import with_config
 
+from games.events.endpoint import EndpointPayload, endpoint_events
 from games.events.references import STRICT_SCHEMA, ReferenceId
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, EventSpec, NewEvent
 from timetracker.temporal import TemporalValue
@@ -58,39 +59,6 @@ def playthrough_created(
     )
 
 
-@with_config(STRICT_SCHEMA)
-class PlaythroughEndpointPayload(TypedDict):
-    """The note of one endpoint, and only that.
-
-    The date is `effective_time`, which is where the charter puts what
-    a player says happened. No note is the empty string: an optional
-    key would ask a reader whether a value is absent or empty, and
-    here the two mean one thing.
-
-    One type for the four specs about an endpoint. Each is its own
-    EventSpec, so an issue that gives one of them a field gives it a
-    type of its own, and the rows already written keep reading back.
-    """
-
-    note: str
-
-
-PLAYTHROUGH_STARTED = EventSpec(
-    "library.playthrough.started",
-    aggregate_type="playthrough",
-    payload=PlaythroughEndpointPayload,
-)
-
-PLAYTHROUGH_COMPLETED = EventSpec(
-    "library.playthrough.completed",
-    aggregate_type="playthrough",
-    payload=PlaythroughEndpointPayload,
-)
-
-DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_STARTED)
-DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_COMPLETED)
-
-
 def playthrough_started(
     playthrough_id: uuid.UUID,
     *,
@@ -118,22 +86,6 @@ def playthrough_completed(
         effective_time=when,
         payload={"note": note},
     )
-
-
-PLAYTHROUGH_START_CORRECTED = EventSpec(
-    "library.playthrough.start_corrected",
-    aggregate_type="playthrough",
-    payload=PlaythroughEndpointPayload,
-)
-
-PLAYTHROUGH_COMPLETION_CORRECTED = EventSpec(
-    "library.playthrough.completion_corrected",
-    aggregate_type="playthrough",
-    payload=PlaythroughEndpointPayload,
-)
-
-DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_START_CORRECTED)
-DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_COMPLETION_CORRECTED)
 
 
 def playthrough_start_corrected(
@@ -174,20 +126,28 @@ class PlaythroughCompletionVoidedPayload(TypedDict):
     """The library takes back the record of a completion."""
 
 
-PLAYTHROUGH_START_VOIDED = EventSpec(
-    "library.playthrough.start_voided",
-    aggregate_type="playthrough",
-    payload=PlaythroughStartVoidedPayload,
+PLAYTHROUGH_START_EVENTS = endpoint_events(
+    "playthrough",
+    stated="library.playthrough.started",
+    corrected="library.playthrough.start_corrected",
+    voided="library.playthrough.start_voided",
+    payload=EndpointPayload,
+    voided_payload=PlaythroughStartVoidedPayload,
 )
-
-PLAYTHROUGH_COMPLETION_VOIDED = EventSpec(
-    "library.playthrough.completion_voided",
-    aggregate_type="playthrough",
-    payload=PlaythroughCompletionVoidedPayload,
+PLAYTHROUGH_COMPLETION_EVENTS = endpoint_events(
+    "playthrough",
+    stated="library.playthrough.completed",
+    corrected="library.playthrough.completion_corrected",
+    voided="library.playthrough.completion_voided",
+    payload=EndpointPayload,
+    voided_payload=PlaythroughCompletionVoidedPayload,
 )
-
-DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_START_VOIDED)
-DEFAULT_EVENT_TYPES.register(PLAYTHROUGH_COMPLETION_VOIDED)
+PLAYTHROUGH_STARTED = PLAYTHROUGH_START_EVENTS.stated
+PLAYTHROUGH_START_CORRECTED = PLAYTHROUGH_START_EVENTS.corrected
+PLAYTHROUGH_START_VOIDED = PLAYTHROUGH_START_EVENTS.voided
+PLAYTHROUGH_COMPLETED = PLAYTHROUGH_COMPLETION_EVENTS.stated
+PLAYTHROUGH_COMPLETION_CORRECTED = PLAYTHROUGH_COMPLETION_EVENTS.corrected
+PLAYTHROUGH_COMPLETION_VOIDED = PLAYTHROUGH_COMPLETION_EVENTS.voided
 
 
 def playthrough_start_voided(playthrough_id: uuid.UUID) -> NewEvent:
@@ -211,7 +171,7 @@ class PlaythroughNamePayload(TypedDict):
 class PlaythroughNotePayload(TypedDict):
     """The note of the whole run.
 
-    Not `PlaythroughEndpointPayload`, though the shape is the same:
+    Not `EndpointPayload`, though the shape is the same:
     that note belongs to an act, and its day is the effective_time.
     This one describes a run and has no day.
     """
