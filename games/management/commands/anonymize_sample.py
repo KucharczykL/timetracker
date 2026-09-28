@@ -428,11 +428,28 @@ class Command(BaseCommand):
             ),
         }
 
+        #: One offset per device a dated fact names, drawn only for those,
+        #: so a library whose devices state no day draws as before.
+        dated_devices = (
+            LibraryEvent.objects.filter(
+                event_type__startswith="library.device.",
+                effective_time__isnull=False,
+            )
+            .values_list("aggregate_id", flat=True)
+            .distinct()
+            .order_by("aggregate_id")
+        )
+        device_offsets = {
+            device_id: timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
+            for device_id in dated_devices
+        }
+
         replacements_by_model = self._reassign_uuids()
         event_count, session_count = self._reassign_event_identities(
             game_offsets,
             game_id_by_aggregate,
             replacements_by_model,
+            device_offsets=device_offsets,
             library_id=library_id,
         )
 
@@ -473,7 +490,12 @@ class Command(BaseCommand):
 
     @staticmethod
     def _reassign_event_identities(
-        game_offsets, game_id_by_aggregate, replacements_by_model, *, library_id
+        game_offsets,
+        game_id_by_aggregate,
+        replacements_by_model,
+        *,
+        device_offsets,
+        library_id,
     ):
         """Shift, blank, re-key, re-mint every event.
 
@@ -496,12 +518,13 @@ class Command(BaseCommand):
         sessions_recorded = 0
         for event in events:
             library_keyed = event.aggregate_id == library_id
-            #: Device facts carry no day.
-            offset = (
-                timedelta(0)
-                if library_keyed or device_keyed(event)
-                else game_offsets[game_id_by_aggregate[event.aggregate_id]]
-            )
+            if library_keyed:
+                offset = timedelta(0)
+            elif device_keyed(event):
+                #: Only an end of access carries a day.
+                offset = device_offsets.get(event.aggregate_id, timedelta(0))
+            else:
+                offset = game_offsets[game_id_by_aggregate[event.aggregate_id]]
             event.effective_time = _shift_effective_time(event.effective_time, offset)
             if event.effective_time is not None:
                 last_dated_day[event.aggregate_id] = event.effective_time.lower_bound

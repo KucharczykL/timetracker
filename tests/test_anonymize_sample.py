@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 import yaml
-from devices import create_device
+from devices import create_device, end_device_access, remove_device
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -31,11 +31,13 @@ from games.events.dispatch import dispatch
 from games.events.playersession import day_from_text, instant_from_text
 from games.events.vocabulary import DEFAULT_EVENT_TYPES
 from games.management.commands.anonymize_sample import (
-    Command as AnonymizeCommand,
-)
-from games.management.commands.anonymize_sample import (
+    FIXED_EPOCH,
+    JITTER_DAYS,
     shift_dated,
     shift_instant,
+)
+from games.management.commands.anonymize_sample import (
+    Command as AnonymizeCommand,
 )
 from games.models import (
     Device,
@@ -353,6 +355,42 @@ class AnonymizeSampleTest(TransactionTestCase):
         self.assertEqual(session.note, "played after dinner")
         self.assertEqual(created.payload["note"], "played after dinner")
         self.assertEqual(session.started_at, FIRST_SESSION_START)
+
+    def test_an_end_of_access_moves_by_its_device_offset(self):
+        _build_dataset()
+        laptop = Device.objects.get(name="Anna's laptop")
+        end_device_access(
+            laptop,
+            when=TemporalValue.parse("2021-05-10"),
+            note="sold to her brother",
+        )
+        remove_device(laptop)
+
+        with TemporaryDirectory() as tempdir:
+            output = Path(tempdir) / "out.yaml.gz"
+            call_command(
+                "anonymize_sample", user="sample-source", seed=5, output=output
+            )
+            by_model = _by_model(_load_output(output))
+
+        (ended,) = _events_of(by_model, "library.device.access_ended")
+        (removed,) = _events_of(by_model, "library.device.removed")
+        (created,) = [
+            event
+            for event in _events_of(by_model, "library.device.created")
+            if event["fields"]["aggregate_id"] == ended["fields"]["aggregate_id"]
+        ]
+        moved = _day_of(ended) - date(2021, 5, 10)
+        self.assertLessEqual(abs(moved.days), JITTER_DAYS)
+        self.assertEqual(ended["fields"]["payload"], {"way": "sold", "note": ""})
+        self.assertEqual(_parsed_moment(created["fields"]["recorded_at"]), FIXED_EPOCH)
+        self.assertEqual(
+            _parsed_moment(ended["fields"]["recorded_at"]).date(), _day_of(ended)
+        )
+        self.assertGreaterEqual(
+            _parsed_moment(removed["fields"]["recorded_at"]),
+            _parsed_moment(ended["fields"]["recorded_at"]),
+        )
 
     def test_output_is_deterministic_for_a_fixed_seed(self):
         _build_dataset()
