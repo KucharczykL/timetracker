@@ -713,8 +713,13 @@ row's ⋯ and its items; the other four tables are Playwright only.
 
 `#711 → #713 → #712 → #714 → #715 → #717 → #718 → #1256 → #1245 → #1211`.
 #1212 and #1254 were parked by the user's decision on 2026-09-22, so #718
-landed with the checkbox reserve as it stood; #1316 replaced #1212 after it. Delivered through #1245
-as of 2026-09-22; #1211 and the four lists remain. #713 needs no table, so it
+landed with the checkbox reserve as it stood; #1316 replaced #1212 after it. Delivered whole as of
+2026-09-28: after #1245 came #1211, #1310, #1270, #1267, the three lists
+#1134–#1136, and #1316 and #1254 unparked. What stays open are
+follow-ups the wave filed, none gating it: #1261 and #1262 on the
+column choice, #1315, #1317, #1293, #1325 and #1326, #1275 beside the
+Access and ownership wave, #1100 behind #798, #1266 behind #725–#736,
+and every pending Orca check collected in #1335. #713 needs no table, so it
 runs beside #711. One prerequisite lies outside the wave: #1080, in the
 Session wave, landed before #714 as stack #1226–#1228 (`main` at
 63b5940f). Every issue merges alone and leaves `main` incomplete
