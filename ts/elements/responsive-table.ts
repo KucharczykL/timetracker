@@ -224,14 +224,7 @@ export class ResponsiveTableElement extends HTMLElement {
     return widths;
   }
 
-  /** Whether the host table reserves a checkbox in every row.
-   *
-   * The reserve is permanent, not the mode's: a checkbox is built when
-   * <selectable-table> connects and only shown with the mode, so the fit must
-   * budget it at every moment. Reading the mode instead would budget it at no
-   * moment, because a mode change mutates attributes alone and this element
-   * deliberately observes none.
-   */
+  /** Whether the host table holds a checkbox in every row. */
   isSelectable(): boolean {
     return this.closest("selectable-table") !== null;
   }

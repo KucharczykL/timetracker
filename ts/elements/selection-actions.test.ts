@@ -21,9 +21,6 @@ function mount(keys: string[], count = "50"): HTMLElement {
     .join("");
   document.body.innerHTML = `
     <selectable-table filter='${FILTER}' count="${count}" scope="${SCOPE}">
-      <div data-selection-bar>
-        <button data-selection-toggle aria-pressed="false">Select</button>
-      </div>
       <table><tbody>${rows}</tbody></table>
       <div data-selection-line hidden>
         <div data-selection-controls>
@@ -43,10 +40,8 @@ function mount(keys: string[], count = "50"): HTMLElement {
             </selection-actions>
           </div>
         </div>
-        <button data-selection-toggle aria-pressed="false">Select</button>
-        <div data-selection-announcement role="status"></div>
         <template data-selection-checkbox-template>
-          <input type="checkbox" data-selection-checkbox class="invisible">
+          <input type="checkbox" data-selection-checkbox>
         </template>
       </div>
     </selectable-table>`;
@@ -73,10 +68,6 @@ function posted(): unknown {
 
 function press(element: HTMLElement | null): void {
   element?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-}
-
-function toggle(element: HTMLElement): void {
-  press(element.querySelector("[data-selection-bar] [data-selection-toggle]"));
 }
 
 function tick(element: HTMLElement, index: number): void {
@@ -109,7 +100,6 @@ describe("<selection-actions>", () => {
 
   it("writes the keys a person marks", () => {
     const table = mount(["a", "b"]);
-    toggle(table);
 
     tick(table, 0);
 
@@ -119,7 +109,6 @@ describe("<selection-actions>", () => {
 
   it("writes the wider statement, and counts it", () => {
     const table = mount(["a", "b"]);
-    toggle(table);
 
     press(table.querySelector("[data-selection-all-matching]"));
 
@@ -134,7 +123,6 @@ describe("<selection-actions>", () => {
 
   it("disables the submits again when the selection empties", () => {
     const table = mount(["a", "b"]);
-    toggle(table);
     tick(table, 0);
 
     press(table.querySelector("[data-selection-clear]"));
@@ -145,7 +133,6 @@ describe("<selection-actions>", () => {
 
   it("disables the submits under a wider statement that excludes every row", () => {
     const table = mount(["a", "b"], "2");
-    toggle(table);
     press(table.querySelector("[data-selection-all-matching]"));
 
     tick(table, 0);
@@ -172,7 +159,6 @@ describe("<selection-actions>", () => {
     // <selectable-table> answers the press by forgetting the selection,
     // which announces an empty statement while the form is being read.
     const table = mount(["a", "b"]);
-    toggle(table);
     tick(table, 0);
 
     submit();
@@ -182,7 +168,6 @@ describe("<selection-actions>", () => {
 
   it("writes nothing more after the press", () => {
     const table = mount(["a", "b"]);
-    toggle(table);
     tick(table, 0);
     submit();
 
@@ -196,7 +181,6 @@ describe("<selection-actions>", () => {
     // press set would stand for the life of the tab and the next press
     // would post the statement of the press before it.
     const table = mount(["a", "b"]);
-    toggle(table);
     tick(table, 0);
     submit();
 
@@ -212,7 +196,6 @@ describe("<selection-actions>", () => {
 
   it("keeps the press when the page was never restored", () => {
     const table = mount(["a", "b"]);
-    toggle(table);
     tick(table, 0);
     submit();
 

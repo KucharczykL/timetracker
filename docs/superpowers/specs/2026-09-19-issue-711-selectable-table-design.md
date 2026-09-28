@@ -4,21 +4,14 @@
 rows at once. It holds `<responsive-table>`, which keeps the column drop. The
 wave is [Selectable tables](2026-09-19-selectable-tables-wave-design.md).
 
-## The mode
+## The checkboxes
 
-Selection is a mode. A Select toggle turns it on, and only then is there a
-checkbox in each row. The mode is off after each page load, unless the list
-holds a selection, and turned off it clears the selection. Escape clears the
-selection and keeps the mode; an overlay that closes on that Escape keeps it,
-because each marks such a press spent. The table reads that mark in the task
-after the press, because an overlay may answer before this table or after
-it.
-
-The element makes the checkboxes when it connects and shows them with the
-mode, so the mode moves no row. A page with no scripting shows none, and the
-line stays hidden until the element is defined. The toggle ends the strip
-above the table, and a second ends the line, so the control is at one edge
-for a reader at either end of a long table.
+Selection is not a mode. Each row shows a checkbox at all times. The element
+makes the row checkboxes when it connects. A page with no scripting shows no
+checkbox, and the line stays hidden. Escape clears the selection. An overlay
+that closes on that Escape keeps it, because each marks such a press spent.
+The table reads that mark in the task after the press, because an overlay
+may answer before this table or after it.
 
 ## The checkbox
 
@@ -29,9 +22,11 @@ below `md`, so a box placed in the cell would centre on both lines and sit
 below the name it marks. A cell that states no such row takes the box
 itself. It is not a column: the drop
 classes and `MAX_DATA_TABLE_COLUMNS` count as before. It carries the row name
-and a touch target, and its column is reserved always, which the name floor
-below `md` budgets and the header label clears — the label takes that inset
-back while the element is undefined, where no checkbox is built.
+and a touch target. The name floor below `md` budgets its 32px.
+
+The first header cell holds the page's check-all, in the same column. It
+takes `py-2`, so the header row keeps its height. It stands outside the sort
+link, and it is hidden while the element is undefined.
 
 Only the checkbox selects, because the row holds links and immediate
 controls. Shift and a click, or Shift and Space, takes the range from the
@@ -43,32 +38,38 @@ The shell holds a second region below the rows, the selection line above the
 pagination row, and each can stand alone. The general footer slot still
 refuses pagination.
 
-The line holds the check-all for the page, under the row checkboxes, the
-count and its scope, Clear, the actions slot, and the toggle at its end.
+The line shows while one row or more is selected. It holds a second
+check-all, under the row checkboxes, the count and its scope, Clear and the
+actions slot. The two check-alls show one state. Clear moves focus from the
+line to the header check-all, without a scroll.
 "Select all N matching" reads N from the paginator, so a table with none
 offers no such control: its page is the set. Below `sm` the line wraps rather
 than push a control past the shell.
 
-While the mode is on, the line sticks to the foot of the window and stops at
-the end of its table. A sticky child needs a shell that does not scroll, thus
+The line sticks to the foot of the window and stops at the end of its
+table. A sticky child needs a shell that does not scroll, thus
 the shell clips instead of hiding. The line stays under the menus and states
-its height, so the toasts stand off that corner; the build stamp is the
+its height, so the toasts stand off that corner, and the document's
+scroll padding keeps a focused control above it. The build stamp is the
 page's last line, which nothing sticky can bury.
 
 ## The statement
 
 A selection is one value: the keys, or `all` beside the filter of the list,
 the count seen, and the keys unmarked since. A row unmarked under `all`
-records an exclusion and keeps the scope. The element announces each change
-as `selectable-table:change`.
+records an exclusion and keeps the scope. A selection of no rows is the
+empty value. The element announces each change as
+`selectable-table:change`.
 
 The value waits in the tab under the library, the table and the path, so its
-other pages restore it, the mode with it, and neither the next person at that
+other pages restore it, and neither the next person at that
 browser nor the table beside it inherits it. A key of another page stays; a
 key this page held and holds no longer leaves, while an exclusion stays,
 because its row may be restored. A filter change restores nothing, and so
-does a page that states no count under a kept scope. Clear, the mode turned
-off, and an act on the selection forget the value. What is kept is bounded by
+does a page that states no count under a kept scope. Clear, the last row
+unmarked, and an act on the selection forget the value. The element writes
+only after a change, because an empty write forgets the value another
+filter keeps. What is kept is bounded by
 the clicking, never by the rows.
 
 ## What a view declares
@@ -82,18 +83,21 @@ repeats the row's own.
 
 ## The announcement
 
-The element owns one `role="status"` region. It speaks at the four changes of
-scope: the mode, check-all, all matching, Clear. A checkbox reports itself, and
-a restored selection says nothing, because the page arrived that way.
+The element owns one `role="status"` region, outside the line, because a
+hidden region does not speak. It speaks when the line appears ("N selected.
+Selection actions follow the table."), and at check-all, all matching and
+Clear. A checkbox reports itself, and a restored selection says nothing,
+because the page arrived that way.
 
 ## Proof
 
 Vitest covers the selection model and what it keeps. One end-to-end page
-proves the mode, the steady rows, the keyboard, the sticky line, the region,
-the selection that survives the next page, and the stacked cell at 390 px.
+proves the steady rows, the aligned checkboxes, the keyboard, focus, the
+sticky line, the region, the selection that survives the next page, and the
+stacked cell at 390 px.
 
 > This spec is over the 200 to 500 word band. It holds six rules the code
-> keeps: the mode and its reserved column, the line and where it sticks, the
+> keeps: the checkboxes and their column, the line and where it sticks, the
 > statement grammar, what outlives a page and what forgets it, what a view
 > declares, and the announcement. Cutting to the band drops a rule rather
 > than a word.

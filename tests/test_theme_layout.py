@@ -176,3 +176,9 @@ def test_layout_removes_legacy_inline_navbar_theme_handler(db):
 
     assert "themeToggleBtn.addEventListener" not in html
     assert "localStorage.getItem('color-theme')" not in html
+
+
+def test_document_scrolls_focus_clear_of_a_selection_line(db):
+    html = Client().get(reverse("login")).content.decode()
+
+    assert "scroll-pb-[var(--selection-line,0px)]" in _root_tag(html)

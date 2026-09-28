@@ -94,7 +94,6 @@ def test_the_checkbox_sits_beside_the_name_not_across_both_lines(
 ):
     page = authenticated_page
     page.goto(_organized(live_server, one_game_played))
-    page.locator("[data-selection-bar] [data-selection-toggle]").first.click()
     page.wait_for_selector("tbody [data-selection-checkbox]")
 
     placed = page.evaluate(CHECKBOX_PLACEMENT)

@@ -23,8 +23,7 @@ def _login(page: Page, live_server) -> None:
 
 
 def _select_rows(page: Page, *indexes: int) -> None:
-    """Turn the mode on, and tick those rows."""
-    page.get_by_role("button", name="Select rows").first.click()
+    """Tick those rows."""
     boxes = page.locator("tbody [data-selection-checkbox]")
     for index in indexes:
         boxes.nth(index).click()

@@ -23,9 +23,6 @@ beforeEach(() => {
 function markup(): void {
   document.body.innerHTML = `
     <selectable-table filter='${FILTER}' count="50" scope="${SCOPE}">
-      <div data-selection-bar>
-        <button data-selection-toggle aria-pressed="false">Select</button>
-      </div>
       <table><tbody>
         <tr data-selection-key="a"><th scope="row">Game a</th><td>2025</td></tr>
         <tr data-selection-key="b"><th scope="row">Game b</th><td>2025</td></tr>
@@ -46,10 +43,8 @@ function markup(): void {
             </selection-actions>
           </div>
         </div>
-        <button data-selection-toggle aria-pressed="false">Select</button>
-        <div data-selection-announcement role="status"></div>
         <template data-selection-checkbox-template>
-          <input type="checkbox" data-selection-checkbox class="invisible">
+          <input type="checkbox" data-selection-checkbox>
         </template>
       </div>
     </selectable-table>`;
