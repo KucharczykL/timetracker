@@ -709,6 +709,7 @@ def test_the_retired_names_are_pinned():
     assert RETIRED_COMMAND_NAMES == {
         "library.playergame.set_status",
         "library.playergame.set_mastered",
+        "library.playergame.set_excluded_from_unfinished",
     }
 
 

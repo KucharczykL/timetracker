@@ -121,36 +121,6 @@ class TrackGame(Command):
 
 
 @dataclass(frozen=True, slots=True)
-class SetPlayerGameExcludedFromUnfinished(Command):
-    """State whether unfinished lists omit a game."""
-
-    command_name: ClassVar[CommandName] = (
-        CommandName.PLAYERGAME_SET_EXCLUDED_FROM_UNFINISHED
-    )
-    #: A UUID, because Command fingerprints its fields.
-    game_id: uuid.UUID
-    excluded_from_unfinished: bool
-
-    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        tracked = tracked_game(context, self.game_id)
-        #: Under dispatch's lock: no concurrent duplicate.
-        if tracked.excluded_from_unfinished == self.excluded_from_unfinished:
-            recorded = (
-                "excluded from" if self.excluded_from_unfinished else "included in"
-            )
-            return Unchanged(
-                f"This library already records game {self.game_id} as {recorded} "
-                "unfinished lists."
-            )
-        return [
-            PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.new(
-                aggregate_id=tracked.pk,
-                payload={"excluded_from_unfinished": self.excluded_from_unfinished},
-            )
-        ]
-
-
-@dataclass(frozen=True, slots=True)
 class RemovePlayerGame(Command):
     """Take a tracked game out."""
 
@@ -189,10 +159,10 @@ class RestorePlayerGame(Command):
 
 @dataclass(frozen=True, slots=True)
 class RecordPlayerGameFacts(Command):
-    """State a status, a mastery, or both.
+    """State a status, a mastery, an exclusion, or several.
 
-    The one command that states either fact. The game form states both
-    at every save, so the two travel as one command. build() decides
+    The one command that states any of them. The game form states all
+    three at every save, so they travel as one command. build() decides
     which already holds, under the lock, where a form's stale initial
     cannot reach it.
     """
@@ -201,11 +171,16 @@ class RecordPlayerGameFacts(Command):
     #: A UUID, because Command fingerprints its fields.
     game_id: uuid.UUID
     #: None states no fact, and it fingerprints.
-    status: PlayerGameStatus | None
-    mastered: bool | None
+    status: PlayerGameStatus | None = None
+    mastered: bool | None = None
+    excluded_from_unfinished: bool | None = None
 
     def __post_init__(self) -> None:
-        if self.status is None and self.mastered is None:
+        if (
+            self.status is None
+            and self.mastered is None
+            and self.excluded_from_unfinished is None
+        ):
             raise ValueError(
                 "RecordPlayerGameFacts states no fact. A command that asks for "
                 "nothing would still claim an idempotency key and write a "
@@ -230,6 +205,16 @@ class RecordPlayerGameFacts(Command):
                 PLAYERGAME_MASTERED_CHANGED.new(
                     aggregate_id=tracked.pk,
                     payload={"mastered": self.mastered},
+                )
+            )
+        if (
+            self.excluded_from_unfinished is not None
+            and tracked.excluded_from_unfinished != self.excluded_from_unfinished
+        ):
+            events.append(
+                PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.new(
+                    aggregate_id=tracked.pk,
+                    payload={"excluded_from_unfinished": self.excluded_from_unfinished},
                 )
             )
         if not events:

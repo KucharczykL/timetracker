@@ -11,7 +11,6 @@ from games.commands.playergame import (
     RecordPlayerGameFacts,
     RemovePlayerGame,
     RestorePlayerGame,
-    SetPlayerGameExcludedFromUnfinished,
     TrackGame,
 )
 from games.events.dispatch import CommandOutcome, CommandRejected, dispatch
@@ -239,6 +238,17 @@ FACTS = [
         ),
         id="mastery",
     ),
+    pytest.param(
+        StatedFact(
+            stated={"excluded_from_unfinished": True},
+            held={"excluded_from_unfinished": False},
+            other={"mastered": True},
+            event_type="library.playergame.excluded_from_unfinished_changed",
+            payload={"excluded_from_unfinished": True},
+            column="excluded_from_unfinished",
+        ),
+        id="exclusion",
+    ),
 ]
 
 
@@ -386,140 +396,43 @@ def test_a_mastery_fact_states_no_time(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_excluding_a_game_records_it_and_projects_it(owned_user, owned_library):
+def test_one_command_states_three_facts_in_order(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 
     dispatch(
-        SetPlayerGameExcludedFromUnfinished(
-            game_id=game.pk, excluded_from_unfinished=True
+        RecordPlayerGameFacts(
+            game_id=game.pk,
+            status=PlayerGameStatus.PLAYED,
+            mastered=True,
+            excluded_from_unfinished=True,
         ),
         actor=owned_user,
         library=owned_library,
-        idempotency_key="exclude-outer-wilds",
+        idempotency_key="all-three",
     )
 
-    event = LibraryEvent.objects.get(
-        event_type="library.playergame.excluded_from_unfinished_changed"
-    )
-    assert event.payload == {"excluded_from_unfinished": True}
+    assert list(
+        LibraryEvent.objects.filter(event_type__startswith="library.playergame.")
+        .exclude(event_type="library.playergame.created")
+        .order_by("sequence")
+        .values_list("event_type", flat=True)
+    ) == [
+        "library.playergame.status_changed",
+        "library.playergame.mastered_changed",
+        "library.playergame.excluded_from_unfinished_changed",
+    ]
     row = PlayerGame.objects.get()
-    assert event.aggregate_id == row.pk
-    assert row.excluded_from_unfinished is True
-
-
-@pytest.mark.django_db(transaction=True)
-def test_an_exclusion_leaves_the_rest_of_the_row_alone(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    track(owned_user, owned_library, game)
-    state(owned_user, owned_library, game, {"status": None, "mastered": True}, "master")
-    before = PlayerGame.objects.get()
-
-    dispatch(
-        SetPlayerGameExcludedFromUnfinished(
-            game_id=game.pk, excluded_from_unfinished=True
-        ),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key="exclude-outer-wilds",
+    assert (row.status, row.mastered, row.excluded_from_unfinished) == (
+        PlayerGameStatus.PLAYED,
+        True,
+        True,
     )
 
-    after = PlayerGame.objects.get()
-    assert (after.pk, after.game_id, after.tracked_at, after.status) == (
-        before.pk,
-        before.game_id,
-        before.tracked_at,
-        before.status,
-    )
-    assert after.mastered is True
 
-
-@pytest.mark.django_db(transaction=True)
-def test_excluding_an_untracked_game_is_refused(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Untracked")
-
-    with pytest.raises(CommandRejected, match="tracks no game"):
-        dispatch(
-            SetPlayerGameExcludedFromUnfinished(
-                game_id=game.pk, excluded_from_unfinished=True
-            ),
-            actor=owned_user,
-            library=owned_library,
-            idempotency_key="exclude-untracked",
-        )
-
-    assert not LibraryEvent.objects.filter(
-        event_type="library.playergame.excluded_from_unfinished_changed"
-    ).exists()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_excluding_a_game_another_library_tracks_is_refused(
-    owned_user, owned_library, other_user, other_library, shared_game
-):
-    track(other_user, other_library, shared_game)
-
-    with pytest.raises(CommandRejected, match="tracks no game"):
-        dispatch(
-            SetPlayerGameExcludedFromUnfinished(
-                game_id=shared_game.pk, excluded_from_unfinished=True
-            ),
-            actor=owned_user,
-            library=owned_library,
-            idempotency_key="exclude-theirs",
-        )
-
-    assert PlayerGame.objects.get().excluded_from_unfinished is False
-
-
-@pytest.mark.django_db(transaction=True)
-def test_the_exclusion_a_game_already_records_changes_nothing(
-    owned_user, owned_library
-):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    track(owned_user, owned_library, game)
-
-    result = dispatch(
-        SetPlayerGameExcludedFromUnfinished(
-            game_id=game.pk, excluded_from_unfinished=False
-        ),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key="include-outer-wilds",
-    )
-
-    assert result.outcome is CommandOutcome.UNCHANGED
-    assert "included in" in result.reason
-    assert not LibraryEvent.objects.filter(
-        event_type="library.playergame.excluded_from_unfinished_changed"
-    ).exists()
-
-
-@pytest.mark.django_db(transaction=True)
-def test_one_idempotency_key_records_one_exclusion_change(owned_user, owned_library):
-    game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    track(owned_user, owned_library, game)
-    command = SetPlayerGameExcludedFromUnfinished(
-        game_id=game.pk, excluded_from_unfinished=True
-    )
-
-    first = dispatch(
-        command, actor=owned_user, library=owned_library, idempotency_key="exclude"
-    )
-    second = dispatch(
-        command, actor=owned_user, library=owned_library, idempotency_key="exclude"
-    )
-
-    assert (first.outcome, second.outcome) == (
-        CommandOutcome.APPENDED,
-        CommandOutcome.REPLAYED,
-    )
-    assert (
-        LibraryEvent.objects.filter(
-            event_type="library.playergame.excluded_from_unfinished_changed"
-        ).count()
-        == 1
-    )
+def test_a_command_stating_no_fact_is_refused_at_construction():
+    with pytest.raises(ValueError, match="states no fact"):
+        RecordPlayerGameFacts(game_id=uuid.uuid7())
 
 
 @pytest.mark.django_db(transaction=True)

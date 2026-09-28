@@ -43,7 +43,7 @@ from games.forms import ChoiceSearchSelectWidget, LabeledChoice, PrimitiveWidget
 from games.models import Game, PlayerGame, PlayerGameStatus, UserLibrary
 from games.reads.playergame_facts import batch_fact_changes
 from games.writes.answers import answered
-from games.writes.playergame import record_facts, set_excluded_from_unfinished
+from games.writes.playergame import record_facts
 
 
 class GameEditJson(TypedDict, total=False):
@@ -84,11 +84,6 @@ class GameEditStatement:
             and self.excluded_from_unfinished is None
         ):
             raise ValueError("An edit states a status, mastered or the flag.")
-
-    @property
-    def records_facts(self) -> bool:
-        """Whether `record_facts` has work."""
-        return self.status is not None or self.mastered is not None
 
     def encode(self) -> ChoiceValue:
         stated: GameEditJson = {}
@@ -273,36 +268,19 @@ def _state(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """Up to two dispatches; moved when either wrote."""
-    outcomes: list[RowOutcome] = []
-    if statement.records_facts:
-        outcomes.append(
-            RowOutcome.of(
-                record_facts(
-                    actor,
-                    game,
-                    status=statement.status,
-                    mastered=statement.mastered,
-                    correlation_id=correlation_id,
-                    idempotency_key=idempotency_key,
-                    source_metadata=_source(),
-                )
-            )
+    """One dispatch, so a row cannot commit half."""
+    return RowOutcome.of(
+        record_facts(
+            actor,
+            game,
+            status=statement.status,
+            mastered=statement.mastered,
+            excluded_from_unfinished=statement.excluded_from_unfinished,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=_source(),
         )
-    if statement.excluded_from_unfinished is not None:
-        outcomes.append(
-            RowOutcome.of(
-                set_excluded_from_unfinished(
-                    actor,
-                    game,
-                    statement.excluded_from_unfinished,
-                    correlation_id=correlation_id,
-                    idempotency_key=f"{idempotency_key}-excluded",
-                    source_metadata=_source(),
-                )
-            )
-        )
-    return RowOutcome.either(outcomes)
+    )
 
 
 def edit_one(

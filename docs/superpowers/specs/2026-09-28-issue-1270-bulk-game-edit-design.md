@@ -36,8 +36,8 @@ lists are two-answer pickers. Each placeholder states what the rows hold:
 
 ## Forward
 
-Status and mastered go through one `record_facts`, under the row's key.
-Excluded goes through `set_excluded_from_unfinished` under `<key>-excluded`.
+Status, mastered and excluded go through one `record_facts`, under the
+row's key, so one row cannot commit half.
 A game that has every stated fact answers `Unchanged`.
 
 ## The inverse

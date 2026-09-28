@@ -41,6 +41,7 @@ def record_facts_for_request(
     *,
     status: PlayerGameStatus | None = None,
     mastered: bool | None = None,
+    excluded_from_unfinished: bool | None = None,
     correlation_id: uuid.UUID,
 ) -> WriteAnswer:
     """State the facts; the refusal on failure."""
@@ -50,6 +51,7 @@ def record_facts_for_request(
             game,
             status=status,
             mastered=mastered,
+            excluded_from_unfinished=excluded_from_unfinished,
             correlation_id=correlation_id,
         )
     except CommandFailed as failure:
