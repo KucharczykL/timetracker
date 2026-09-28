@@ -3,12 +3,22 @@
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import ClassVar, NamedTuple, cast
+from functools import partial
+from typing import ClassVar, cast
 
 from django.db.models import QuerySet
 
+from games.commands.endpoint import (
+    ActStatement,
+    EndpointSentences,
+    Rejection,
+    correct_endpoint,
+    state_endpoint,
+    void_endpoint,
+)
 from games.commands.playergame import tracked_game
 from games.commands.scope import Refusal, library_row
+from games.endpoints import PLAYTHROUGH_COMPLETION, PLAYTHROUGH_START
 from games.events.dispatch import (
     Command,
     CommandContext,
@@ -19,15 +29,11 @@ from games.events.dispatch import (
 )
 from games.events.playthrough import (
     playthrough_completed,
-    playthrough_completion_corrected,
-    playthrough_completion_voided,
     playthrough_created,
     playthrough_name_changed,
     playthrough_note_changed,
     playthrough_removed,
     playthrough_restored,
-    playthrough_start_corrected,
-    playthrough_start_voided,
     playthrough_started,
 )
 from games.events.vocabulary import NewEvent, Unchanged
@@ -35,7 +41,6 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
 )
-from games.reads.playthrough_endpoints import stated_completion, stated_start
 from games.reads.playthrough_referrers import (
     blocking_referrer,
     foreign_referrer,
@@ -90,23 +95,6 @@ def endpoints_certainly_reversed(
     if started.lower_bound is None or completed.upper_bound is None:
         return False
     return completed.upper_bound < started.lower_bound
-
-
-class ActStatement(NamedTuple):
-    """An act that happened, and its note.
-
-    The act is this object's existence, so the day inside
-    never carries it: a run that never reached the endpoint
-    states no ActStatement at all.
-
-    A NamedTuple, so the idempotency fingerprint encodes it
-    as an array and the TemporalValue inside reaches the
-    encoder that knows it.
-    """
-
-    #: None is a day nobody wrote down.
-    when: TemporalValue | None
-    note: str = ""
 
 
 def refuse_name_the_column_cannot_hold(name: str) -> None:
@@ -343,26 +331,16 @@ class StartPlaythrough(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
-        stated = stated_start(run)
-        if stated is not None:
-            if (self.when, self.note) == (stated.when, stated.note):
-                return Unchanged("This run already states that start.")
-            raise CommandRejected(
-                f"Playthrough {self.playthrough_id} already states a start, and "
-                "a second one would say the run began twice. "
-                "CorrectPlaythroughStart states a better one.",
-                sentence=(
-                    "This run already has a start. Correct the one it has "
-                    "instead of adding another."
-                ),
-            )
-        if endpoints_certainly_reversed(started=self.when, completed=run.completed):
-            raise CommandRejected(
-                f"Playthrough {self.playthrough_id} completed before the start "
-                "being stated, and no run ends before it begins.",
-                sentence="This run finished before that date. Check the day.",
-            )
-        return [playthrough_started(run.pk, when=self.when, note=self.note)]
+        return state_endpoint(
+            run,
+            PLAYTHROUGH_START,
+            when=self.when,
+            note=self.note,
+            sentences=_start_sentences(run.pk),
+            before_event=partial(
+                _refuse_a_start_after_the_completion, run, started=self.when
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -383,26 +361,16 @@ class CompletePlaythrough(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
-        stated = stated_completion(run)
-        if stated is not None:
-            if (self.when, self.note) == (stated.when, stated.note):
-                return Unchanged("This run already states that completion.")
-            raise CommandRejected(
-                f"Playthrough {self.playthrough_id} already states a completion, "
-                "and a second one would say the run ended twice. "
-                "CorrectPlaythroughCompletion states a better one.",
-                sentence=(
-                    "This run already has a completion. Correct the one it has "
-                    "instead of adding another."
-                ),
-            )
-        if endpoints_certainly_reversed(started=run.started, completed=self.when):
-            raise CommandRejected(
-                f"Playthrough {self.playthrough_id} started after the completion "
-                "being stated, and no run ends before it begins.",
-                sentence="This run started after that date. Check the day.",
-            )
-        return [playthrough_completed(run.pk, when=self.when, note=self.note)]
+        return state_endpoint(
+            run,
+            PLAYTHROUGH_COMPLETION,
+            when=self.when,
+            note=self.note,
+            sentences=_completion_sentences(run.pk),
+            before_event=partial(
+                _refuse_a_completion_before_the_start, run, completed=self.when
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -471,26 +439,16 @@ class CorrectPlaythroughStart(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
-        stated = stated_start(run)
-        #: Ahead of the comparison: a run that never began holds the
-        #: very values a "played before" correction states.
-        if stated is None:
-            raise CommandRejected(
-                f"Playthrough {self.playthrough_id} states no start, so there is "
-                "nothing to correct. A first statement is StartPlaythrough.",
-                sentence=(
-                    "This run has no start to correct. Record that it started first."
-                ),
-            )
-        if (self.when, self.note) == (stated.when, stated.note):
-            return Unchanged("This correction states the start the run states.")
-        if endpoints_certainly_reversed(started=self.when, completed=run.completed):
-            raise CommandRejected(
-                f"Playthrough {self.playthrough_id} completed before the start "
-                "being stated, and no run ends before it begins.",
-                sentence="This run finished before that date. Check the day.",
-            )
-        return [playthrough_start_corrected(run.pk, when=self.when, note=self.note)]
+        return correct_endpoint(
+            run,
+            PLAYTHROUGH_START,
+            when=self.when,
+            note=self.note,
+            sentences=_start_sentences(run.pk),
+            before_event=partial(
+                _refuse_a_start_after_the_completion, run, started=self.when
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -512,28 +470,16 @@ class CorrectPlaythroughCompletion(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = _live_run(context, self.playthrough_id)
-        stated = stated_completion(run)
-        if stated is None:
-            raise CommandRejected(
-                f"Playthrough {self.playthrough_id} states no completion, so "
-                "there is nothing to correct. A first statement is "
-                "CompletePlaythrough.",
-                sentence=(
-                    "This run has no completion to correct. Record that it "
-                    "finished first."
-                ),
-            )
-        if (self.when, self.note) == (stated.when, stated.note):
-            return Unchanged("This correction states the completion the run states.")
-        if endpoints_certainly_reversed(started=run.started, completed=self.when):
-            raise CommandRejected(
-                f"Playthrough {self.playthrough_id} started after the completion "
-                "being stated, and no run ends before it begins.",
-                sentence="This run started after that date. Check the day.",
-            )
-        return [
-            playthrough_completion_corrected(run.pk, when=self.when, note=self.note)
-        ]
+        return correct_endpoint(
+            run,
+            PLAYTHROUGH_COMPLETION,
+            when=self.when,
+            note=self.note,
+            sentences=_completion_sentences(run.pk),
+            before_event=partial(
+                _refuse_a_completion_before_the_start, run, completed=self.when
+            ),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -552,13 +498,12 @@ class VoidPlaythroughStart(Command):
         run = library_playthrough(context, self.playthrough_id)
         #: The no-op before either mark: a repeat still
         #: succeeds once the game is gone.
-        if stated_start(run) is None:
-            return Unchanged(
-                f"Playthrough {self.playthrough_id} states no start to take back."
-            )
-        _refuse_under_a_removed_game(run)
-        _refuse_a_removed_run(run)
-        return [playthrough_start_voided(run.pk)]
+        return void_endpoint(
+            run,
+            PLAYTHROUGH_START,
+            sentences=_start_sentences(run.pk),
+            before_event=partial(_refuse_under_a_removed_parent, run),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -571,13 +516,82 @@ class VoidPlaythroughCompletion(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         run = library_playthrough(context, self.playthrough_id)
-        if stated_completion(run) is None:
-            return Unchanged(
-                f"Playthrough {self.playthrough_id} states no completion to take back."
-            )
-        _refuse_under_a_removed_game(run)
-        _refuse_a_removed_run(run)
-        return [playthrough_completion_voided(run.pk)]
+        return void_endpoint(
+            run,
+            PLAYTHROUGH_COMPLETION,
+            sentences=_completion_sentences(run.pk),
+            before_event=partial(_refuse_under_a_removed_parent, run),
+        )
+
+
+def _start_sentences(playthrough_id: uuid.UUID) -> EndpointSentences:
+    return EndpointSentences(
+        already_stated=Rejection(
+            f"Playthrough {playthrough_id} already states a start, and a second "
+            "one would say the run began twice. CorrectPlaythroughStart states "
+            "a better one.",
+            "This run already has a start. Correct the one it has instead of "
+            "adding another.",
+        ),
+        nothing_to_correct=Rejection(
+            f"Playthrough {playthrough_id} states no start, so there is nothing "
+            "to correct. A first statement is StartPlaythrough.",
+            "This run has no start to correct. Record that it started first.",
+        ),
+        same_statement="This run already states that start.",
+        same_correction="This correction states the start the run states.",
+        nothing_to_void=f"Playthrough {playthrough_id} states no start to take back.",
+    )
+
+
+def _completion_sentences(playthrough_id: uuid.UUID) -> EndpointSentences:
+    return EndpointSentences(
+        already_stated=Rejection(
+            f"Playthrough {playthrough_id} already states a completion, and a "
+            "second one would say the run ended twice. "
+            "CorrectPlaythroughCompletion states a better one.",
+            "This run already has a completion. Correct the one it has instead "
+            "of adding another.",
+        ),
+        nothing_to_correct=Rejection(
+            f"Playthrough {playthrough_id} states no completion, so there is "
+            "nothing to correct. A first statement is CompletePlaythrough.",
+            "This run has no completion to correct. Record that it finished first.",
+        ),
+        same_statement="This run already states that completion.",
+        same_correction="This correction states the completion the run states.",
+        nothing_to_void=(
+            f"Playthrough {playthrough_id} states no completion to take back."
+        ),
+    )
+
+
+def _refuse_a_start_after_the_completion(
+    run: Playthrough, *, started: TemporalValue | None
+) -> None:
+    if endpoints_certainly_reversed(started=started, completed=run.completed):
+        raise CommandRejected(
+            f"Playthrough {run.pk} completed before the start being stated, and "
+            "no run ends before it begins.",
+            sentence="This run finished before that date. Check the day.",
+        )
+
+
+def _refuse_a_completion_before_the_start(
+    run: Playthrough, *, completed: TemporalValue | None
+) -> None:
+    if endpoints_certainly_reversed(started=run.started, completed=completed):
+        raise CommandRejected(
+            f"Playthrough {run.pk} started after the completion being stated, "
+            "and no run ends before it begins.",
+            sentence="This run started after that date. Check the day.",
+        )
+
+
+def _refuse_under_a_removed_parent(run: Playthrough) -> None:
+    """The game's mark first, then the run's, as every act reads them."""
+    _refuse_under_a_removed_game(run)
+    _refuse_a_removed_run(run)
 
 
 def _refuse_a_removed_run(run: Playthrough) -> None:
