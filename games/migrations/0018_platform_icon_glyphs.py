@@ -1,12 +1,11 @@
-"""Every stored platform icon names a listed glyph.
+"""Stored platform icons name listed glyphs.
 
-The slugs are copied here, not imported: this migration keeps the
-meaning it had when written.
+Slugs copied, not imported: the meaning stays fixed.
 """
 
 from django.db import migrations, models
 
-#: The icons listed when this migration was written.
+#: The icons listed when this was written.
 KNOWN_ICONS = frozenset(
     {
         "unspecified",

@@ -6,7 +6,7 @@ from types import MappingProxyType
 #: An icon snippet's slug.
 type PlatformIcon = str  # "steam"
 
-#: The icon a platform holds when none is stated.
+#: The icon of a platform stating none.
 UNSPECIFIED_ICON: PlatformIcon = "unspecified"
 
 #: A person's name for an icon.

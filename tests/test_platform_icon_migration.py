@@ -1,4 +1,4 @@
-"""The migration that makes each stored icon name a glyph."""
+"""The migration naming each stored icon's glyph."""
 
 import uuid
 from importlib import import_module
