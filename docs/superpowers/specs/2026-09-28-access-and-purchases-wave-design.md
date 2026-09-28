@@ -518,8 +518,8 @@ M2 before M3; M7 and M8 any time; the stack after every member.
 |---|---|---|
 | M1 | #719, #720, #722 | the opening endpoint; the LibraryEntry aggregate: schema, creation, description, removal, multiple entries, reference kind, `_is_library_scoped` path, the generalised referrer registry, replay gate, API |
 | M2 | #721 | acquired correction, access end and resume on the primitive |
-| M3 | new | the Entries screens: list, filter, presets, navbar item, bulk Edit and Remove, the Games Access column and facets, Game detail's Library section, the entry forms |
-| M7 | new | `Game.kind` and `Game.parent`: columns, form, Game detail add-ons, Games facet |
+| M3 | #1352 | the Entries screens: list, filter, presets, navbar item, bulk Edit and Remove, the Games Access column and facets, Game detail's Library section, the entry forms |
+| M7 | #1353 | `Game.kind` and `Game.parent`: columns, form, Game detail add-ons, Games facet |
 | M8 | #1334 | `excluded_from_dropped` and its bulk Edit field |
 | P1 | #725, #726, #828 | the Purchase aggregate: projection, creation with an entry, description, day correction, removal, API |
 | P2 | #727 | refund endpoints and the coupled entry end |
@@ -553,10 +553,9 @@ inside a member says so in its body and closes with it.
 ## Cross-wave handoffs
 
 - **A Release on a session or a record** stays reserved `None`. The picker
-  this wave builds is the one #690 and #705 deferred; a follow-up issue
-  puts it on the session and record forms, with the rule that a session
+  this wave builds is the one #690 and #705 deferred; #1354 puts it on the session and record forms, with the rule that a session
   names a Release only where the library holds an entry on it.
-- **Bulk end of access over entries** is a follow-up beside #1345.
+- **Bulk end of access over entries** is #1355, beside #1345.
 - **#1344** copies `access_resumed`; **#1347** copies the opening
   endpoint. **#1346** decides where a sale price lives; this wave puts no
   money on an end.
@@ -618,9 +617,9 @@ refresh and its printed totals, then the fixture PR.
   aggregate, the conversion and the cutover are one stack.
 - #1275 landed before the wave and is its dependency, not a member.
 
-## Follow-up issues to file
+## Follow-up issues filed
 
-1. Entries screens (M3).
-2. `Game.kind` and `Game.parent` (M7).
-3. A Release on a session and a record.
-4. Bulk end of access over entries.
+- #1352, the Entries screens (M3)
+- #1353, `Game.kind` and `Game.parent` (M7)
+- #1354, a Release on a session and a record
+- #1355, bulk end of access over entries
