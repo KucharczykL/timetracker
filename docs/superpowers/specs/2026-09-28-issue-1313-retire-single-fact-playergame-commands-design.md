@@ -28,14 +28,17 @@ replays by key and digest, as before.
 
 A retired name is never used again. A new command with a retired name and equal
 fields would give an equal digest, and an old key would replay as the new
-command.
+command. No stored record holds either retired name, because no production code
+dispatched them: the guard is a precaution for the next retirement.
 
 `RETIRED_COMMAND_NAMES` in `games/events/dispatch.py` holds
 `library.playergame.set_status` and `library.playergame.set_mastered`.
-`Command.__init_subclass__` refuses a command whose name is in the set, before
-the registry check. That check covers each vocabulary, including the ones tests
-declare. A second test keeps each `CommandName` member out of the set, because a
-member that no command claims does not reach `__init_subclass__`.
+`Command.__init_subclass__` refuses a command whose name is in the set. The
+check comes after the vocabulary check, so the name has a value, and before the
+registry check, so a refused class does not register. It covers each
+vocabulary, including the ones tests declare. A test in
+`tests/test_command_dispatch.py` keeps each `CommandName` member out of the set,
+because a member that no command claims does not reach `__init_subclass__`.
 
 A name is removed from `CommandName` and added to the set. It is not renamed
 and not reused.
@@ -43,19 +46,28 @@ and not reused.
 ## Tests
 
 The status and mastery tests of `tests/test_playergame_command.py` were twins.
-Four tests take a `fact` parameter with the cases `status` and `mastery`, and
-dispatch `RecordPlayerGameFacts` through `dispatch`. `record_facts` is not
-used there, because it tracks an untracked game and a refusal test would pass
-for the wrong reason. Each case gives its event type, payload and row attribute
-as data.
+Six tests take a `fact` parameter with the cases `status` and `mastery`, and
+dispatch `RecordPlayerGameFacts` with the other fact `None`:
 
-Tests that the `RecordPlayerGameFacts` tests already cover are deleted: the day
-a status states, a fact for an untracked game, and a fact that already holds.
+- a fact records its event and projects it;
+- a fact leaves the rest of the row alone;
+- a fact for an untracked game is refused, and no event is appended;
+- a fact for a game another library tracks is refused;
+- a fact that already holds is `Unchanged`, and no event is appended;
+- one idempotency key records one change.
+
+The tests use `dispatch`, not `record_facts`, because `record_facts` tracks an
+untracked game and a refusal test would pass for the wrong reason. Each case
+gives its event type, payload, row attribute and values as data. The status
+day and the mastery event without a time keep their existing tests.
+
+The setup dispatches in the mastery, exclusion and removal tests also use
+`RecordPlayerGameFacts`. The removal test states both facts in one dispatch.
 
 `tests/test_projection_replay_gate.py` dispatches `RecordPlayerGameFacts` with
-the other fact `None`. The keys and the order do not change, and a `False`
-mastery is still stated. The gate asserts the set of event types, so it proves
-that both events are still appended.
+the other fact `None`, in `build_stream` and in `build_neighbour`. The keys and
+the order do not change, and a `False` mastery is still stated. The gate asserts
+the set of event types, so it proves that both events are still appended.
 
 ## Out of scope
 
