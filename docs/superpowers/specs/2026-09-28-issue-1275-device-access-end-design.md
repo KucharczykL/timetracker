@@ -88,7 +88,8 @@ lists every endpoint, for the system check and the replay gate.
 
 Each model spells its columns in its class body through small field
 factories (`endpoint_when()`, `endpoint_bound(when, "lower")`,
-`endpoint_marker()`, `endpoint_note()`, `endpoint_way(ways)`), so mypy and
+`endpoint_marker()`, `endpoint_note()`, `endpoint_way(ways)`, which sets
+`choices` from the ways so the set facet and the builder read them), so mypy and
 django-stubs see every field and the migration autodetector needs no
 trick. A class decorator or `locals()` injection would hide the fields
 from both; that cost is refused. The factories must build exactly the
@@ -158,11 +159,18 @@ or `Unchanged`:
 - `void_endpoint`: an unstated endpoint is `Unchanged`; then
   `before_event`; then the `voided` event.
 
-This reproduces today's order exactly. Playthrough's state and correct
+This reproduces today's order exactly (checked against all six
+playthrough commands). Playthrough's state and correct
 commands resolve through `_live_run` before the skeleton (removed run and
 removed game refused first) and pass the reversed-endpoints refusal as
 `before_event`; its voids resolve through `library_playthrough` and pass
 the two removal refusals as `before_event`, after the `Unchanged`.
+
+`CreatePlaythrough` has no row to compare and keeps building its endpoint
+events by hand, now through the descriptor's `stated` spec. `record_run`'s
+adopt branch, `games/writes/playthrough_endpoints.py` and the bulk acts in
+`games/bulk_playthrough_acts.py` reach the skeleton only through the six
+commands, so they are unaffected.
 
 Functions rather than dataclass bases, because each command's fields are
 its idempotency fingerprint (`canonical_command_input` encodes the
@@ -181,15 +189,19 @@ fingerprint for each playthrough endpoint command and for
 `games/writes/endpoint.py` holds the pure decision
 `endpoint_move(stated, wanted) -> EndpointMove`: nothing stated and none
 wanted is nothing; none stated and one wanted is the act; one stated and
-none wanted is the void; both, and they differ, is the correction; both
-and equal is nothing.
+none wanted is the void; both is the correction. It never compares values:
+the read is taken before dispatch's lock, so equality is the command's
+`Unchanged` under the lock, and a racer's correction between the read and
+the dispatch is overwritten by this person's statement rather than
+silently kept.
 
 What "none wanted" means is the caller's. Playthrough's edit never voids —
 a blank field restates the act without a day, and a correction carries
 the note the endpoint already states — so `games/writes/playthrough.py`
 keeps `_state_endpoint`, its early return, its note carry and
-`_statement_order`, and calls `endpoint_move` only to choose between the
-act and the correction. The device form states the whole endpoint, so its
+`_statement_order`; past the early return it calls `endpoint_move`, which
+then answers only the act or the correction, as the inline choice does
+today. The device form states the whole endpoint, so its
 write passes the form's statement straight through.
 
 No shared form component in this issue: the playthrough form has no note
@@ -212,7 +224,9 @@ labels, and no preset or builder page changes.
 ### Proof for member 1
 
 Every existing playthrough test passes untouched; the replay gate is
-clean; `makemigrations --check` finds nothing; `make render-pages` at both
+clean; `makemigrations --check` finds nothing; `manage.py check` runs
+`games.E014` over both playthrough endpoints, and a test pins
+`endpoint_constraints` to `()` for each; `make render-pages` at both
 commits on one database shows no difference; the new fingerprint test
 passes before and after the refactor.
 
@@ -243,10 +257,15 @@ conversion, since every existing device reads as held.
 In `games/commands/device.py`, each with its own `CommandName`:
 
 - `EndDeviceAccess(device_id, statement: WayActStatement)`,
-  `CorrectDeviceAccessEnd(device_id, statement)`: resolve the device and
-  refuse a removed one, then the skeleton.
+  `CorrectDeviceAccessEnd(device_id, statement)`: resolve through
+  `library_device_row` and refuse a removed device in this aggregate's own
+  sentence ("That device was removed. Put it back before changing what it
+  records."), not `library_device`'s picker sentence; then the skeleton.
 - `VoidDeviceAccessEnd(device_id)`: resolve, the skeleton's `Unchanged`
   first, the removed-device refusal as `before_event`.
+- A `check_way` beside `check_type` refuses a way outside the device's
+  five with a sentence, ahead of the payload's own validation, which would
+  answer a defect.
 - `CreateDevice` gains `access_end: WayActStatement | None = None` and
   returns the creation and, where stated, the `access_ended` event in one
   build, so Add Device stays one dispatch under its `submission` key. The
@@ -262,7 +281,9 @@ under one `correlation_id`, each through `answered("device")`.
 
 `DeviceForm` gains an Access select — "Held" first, then Sold, Lost,
 Given away, Broken, Stolen — a `TemporalField` day and a note, cleaning to
-`WayActStatement | None`. Help text beside "Held" says it takes back a
+`WayActStatement | None`. All three are `required=False`, and an absent or
+empty Access cleans to Held, because `POST /api/devices/` binds the same
+form with name, type and submission alone. Help text beside "Held" says it takes back a
 recorded end; getting a device back is not yet stated (below).
 `POST /api/devices/` states no end.
 
@@ -270,17 +291,28 @@ recorded end; getting a device back is not yet stated (below).
 
 - **Picker.** `/api/devices/search` and the forms' option resolvers keep
   offering an ended device. Its label stays its name, so the create row's
-  exact-label match is unchanged; `SearchSelectOption` gains an optional
-  `hint` the row renders as muted trailing text ("Sold") and no match
-  reads. With an empty box, held devices lead, then ended ones, each group
-  in today's order.
+  exact-label match is unchanged. An option gains an optional `hint`,
+  rendered as muted trailing text ("Sold") that no match reads. The type is
+  hand-written on both sides, not generated: `NotRequired[str]` on
+  `SearchSelectOption` (`common/components/search_select.py`), the Ninja
+  `PickerOption` schema `search_devices` answers, `_option_row` for the
+  server-rendered row, which carries it as `data-hint`, and in
+  `ts/elements/search-select.ts` the interface, `buildRow`, and
+  `optionFromRow`, which reads `data-hint` back into `hint` rather than
+  into `data`. Pills show no hint. With an empty box, held devices lead,
+  then ended ones, each group in today's order.
 - **Default device.** `UserLibraryPreferences.default_device` answers
   `None` for an ended device and keeps `default_device_id`, so a void
   restores the default; `clean()` does not change, so a later save never
-  trips on a kept id. The settings picker narrows its options to held
-  devices without narrowing the queryset the Devices count card reads.
-  `PATCH /api/library/default-device` refuses an ended device at 422 with
-  a sentence.
+  trips on a kept id. Every reader of the property (the session form's
+  initial, the API) therefore seeds no device. The settings page reads the
+  stored device itself: it shows an ended default as the current value
+  with its hint and help text ("Sold, so new sessions name no device;
+  choose another"), offers only held devices beside it, and a save that
+  keeps it posts it back unchanged, so opening the page never clears the
+  kept id. The Devices count card's queryset is not narrowed.
+  `PATCH /api/library/default-device` refuses a newly chosen ended device
+  through `RowRefused`, 422 with a sentence and a toast.
 - **No refusal** on a session or record naming an ended device, whatever
   its day: the player states both facts, and #1157 counts sessions by
   their own day.
@@ -299,19 +331,27 @@ recorded end; getting a device back is not yet stated (below).
 
 ### Sample data
 
-`anonymize_sample` offsets device events by zero today because no device
-fact carried a day. An `access_ended` event does; it gets a per-device
-offset as sessions do, and `tests/test_anonymize_sample.py` gains the
-case.
+`anonymize_sample` offsets device events by zero today: offsets are keyed
+per game through `game_id_by_aggregate`, which holds no device, and no
+device fact carried a day. An `access_ended` event does. A `device_offsets`
+map, seeded per device key before the keys are reassigned, replaces the
+zero branch; the end's `recorded_at` then follows from the last dated day,
+as other events' do, so a later `removed` inherits it and creation stays
+at the fixed epoch. Projections are rebuilt on load, so no row is
+rewritten. `tests/test_anonymize_sample.py` pins the offset and that
+order.
 
 ### Proof for member 2
 
 Command tests (every refusal, `Unchanged`, a correction of the way alone,
-`CreateDevice` with an end), projector and replay gate (the three events
-join `tests/test_projection_replay_gate.py`), the move decision, picker
-hint and order, default device and its PATCH, the list column, facets and
-sort, the anonymizer, and one e2e: Edit a device to Sold in a month, see
-the column, set it back to Held.
+a foreign way, `CreateDevice` with an end); projector and replay gate (the
+three events join `tests/test_projection_replay_gate.py`, through create
+with an end, correct, void, remove); a test that no command path reaches
+either CHECK; the move decision; `POST /api/devices/` still creating from
+name and type alone; picker hint and order, including a row rebuilt from
+the DOM; default device, the settings page with an ended default, and the
+PATCH; the list column, facets and sort; the anonymizer; and one e2e:
+Edit a device to Sold in a month, see the column, set it back to Held.
 
 ## What this design forecloses
 
