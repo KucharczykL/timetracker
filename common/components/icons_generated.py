@@ -215,8 +215,8 @@ ICON_NODES: dict[str, Element] = {
     'match-includes': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'M8.5 17.2 A6 6 0 1 0 8.5 6.8')]),
-        Path([('d', 'M4.5 12 20 12')]),
+        Path([('d', 'M7.5 17.2 A6 6 0 1 0 7.5 6.8')]),
+        Path([('d', 'M7.5 12 16.5 12')]),
     ],
     'match-is': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -227,10 +227,10 @@ ICON_NODES: dict[str, Element] = {
     'match-not-includes': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'M8.5 17.2 A6 6 0 0 0 14.17 17.37')]),
-        Path([('d', 'M17.15 14.02 A6 6 0 0 0 8.5 6.8')]),
-        Path([('d', 'M4.5 12 9.7 12')]),
-        Path([('d', 'M14.3 12 20 12')]),
+        Path([('d', 'M7.5 17.2 A6 6 0 0 0 13.83 16.99')]),
+        Path([('d', 'M16.34 13.38 A6 6 0 0 0 7.5 6.8')]),
+        Path([('d', 'M7.5 12 9.7 12')]),
+        Path([('d', 'M14.3 12 16.5 12')]),
         Path([('d', 'M4.5 4.5 19.5 19.5')]),
     ],
     'match-not-is': Svg(
