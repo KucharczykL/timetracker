@@ -46,7 +46,7 @@ from games.list_columns import column_choice
 from games.models import Device
 from games.ownership import owned_or_404
 from games.reads.device_departures import sessions_naming
-from games.reads.endpoints import stated
+from games.reads.endpoints import stated, way_of
 from games.sorting import (
     DEVICE_DEFAULT_SORT,
     DEVICE_SORTS,
@@ -78,9 +78,9 @@ DEVICE_COLUMNS: list[Column] = [
 def access_cell(device: Device, presentation: DateTimePresentation) -> str:
     """Held, or the way and its day."""
     ended = stated(device, DEVICE_ACCESS_END)
-    if ended is None or ended.way is None:
+    if ended is None:
         return "Held"
-    way = END_WAY_LABELS[ended.way]
+    way = END_WAY_LABELS[way_of(ended)]
     if ended.when is None:
         return way
     return f"{way} · {present_temporal_value(ended.when, presentation)}"

@@ -151,10 +151,9 @@ def test_device_search_offers_ended_devices_after_held_ones(auth_client):
 
     rows = auth_client.get("/api/devices/search", {"limit": 10}).json()
 
-    assert [(row["value"], row.get("hint")) for row in rows] == [
-        (str(held.id), None),
-        (str(sold.id), "Sold"),
-    ]
+    assert [row["value"] for row in rows] == [str(held.id), str(sold.id)]
+    assert "hint" not in rows[0]
+    assert rows[1]["hint"] == "Sold"
 
 
 def test_device_search_by_name_keeps_held_devices_first(auth_client):

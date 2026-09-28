@@ -27,8 +27,7 @@ class WayColumn(NamedTuple):
     """A way column and the ways it admits."""
 
     column: ColumnName
-    #: At least one; none would refuse every act.
-    ways: tuple[EndWay, *tuple[EndWay, ...]]
+    ways: tuple[EndWay, ...]
 
 
 type EndpointName = str  # e.g. "access_end"; names its constraints
@@ -38,9 +37,8 @@ type EndpointName = str  # e.g. "access_end"; names its constraints
 class EndpointColumns:
     """One endpoint's columns; no events, for Meta."""
 
-    #: Names the endpoint's constraints; unique per model.
-    name: str
-    #: A label: models read this value.
+    name: EndpointName
+    #: A label, not a class: models import this.
     model_label: ModelLabel
     #: The stated day; null is unknown.
     when: ColumnName

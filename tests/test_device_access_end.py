@@ -1,6 +1,7 @@
 """Stating that a library's access to a device ended."""
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from devices import create_device, end_device_access, remove_device
@@ -31,6 +32,7 @@ from timetracker.temporal import TemporalValue
 pytestmark = pytest.mark.django_db(transaction=True)
 
 MAY = TemporalValue.parse("2021-05")
+RECORDED = datetime(2026, 9, 28, tzinfo=UTC)
 JUNE = TemporalValue.parse("2021-06")
 
 
@@ -189,6 +191,20 @@ def test_a_device_created_after_it_left_states_both_in_one_build(owned_library):
     assert device.access_end_way == "given_away"
 
 
+def test_a_creation_with_a_foreign_way_appends_nothing(owned_library):
+    statement = WayActStatement(None, "refunded", "")  # type: ignore[arg-type]
+
+    refused = _refused(
+        owned_library,
+        CreateDevice(name="Old console", type=Device.CONSOLE, access_end=statement),
+    )
+
+    assert refused.sentence == UNKNOWN_WAY
+    assert not LibraryEvent.objects.filter(
+        event_type__startswith="library.device."
+    ).exists()
+
+
 def test_every_access_end_event_replays_to_the_same_rows(owned_library):
     device = end_device_access(create_device(owned_library, "Deck"), when=MAY)
     _dispatch(owned_library, _correct(device, way=EndWay.STOLEN, when=JUNE))
@@ -211,8 +227,10 @@ def test_every_access_end_event_replays_to_the_same_rows(owned_library):
 @pytest.mark.parametrize(
     "columns",
     [
+        #: A way without the marker.
         {"access_end_way": "sold"},
-        {"access_end_way": "refunded"},
+        #: The marker and a way no device takes.
+        {"access_end_way": "refunded", "access_end_recorded_at": RECORDED},
     ],
 )
 def test_the_database_backs_the_command(owned_library, columns):

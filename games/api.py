@@ -1628,10 +1628,7 @@ def update_library_default_device(request, payload: DefaultDeviceIn):
         device = Device.objects.for_library(library).filter(pk=payload.value).first()
         if device is None:
             raise HttpError(404, "Device not found.")
-        if (
-            device.access_end_recorded_at is not None
-            and device.pk != library.preferences.default_device_id
-        ):
+        if device.access_end_recorded_at is not None:
             raise RowRefused(ENDED_DEFAULT_DEVICE)
     change_library_default_device(library, device)
     messages.success(request, "Default device saved")

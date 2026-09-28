@@ -361,7 +361,7 @@ def _option_row(
         ]
         label = Span()[option["label"]]
     else:
-        hint = option.get("hint", "")
+        hint = option.get("hint")
         attributes = [
             *_data_attributes(option["data"]),
             *_option_role_attributes(selected),
@@ -369,14 +369,16 @@ def _option_row(
             ("data-value", str(option["value"])),
             ("data-label", option["label"]),
         ]
-        if hint:
+        if hint is not None:
             attributes.append(("data-hint", hint))
         #: Always present, so template clones carry it.
         label = Fragment(
             _label_slot(
                 option["label"], extra_class="truncate min-w-0" if actions else ""
             ),
-            Span(data_search_select_hint="", hidden=not hint, class_=_HINT_CLASS)[hint],
+            Span(data_search_select_hint="", hidden=hint is None, class_=_HINT_CLASS)[
+                hint or ""
+            ],
         )
     if not actions:
         return Div(attributes, class_=_ROW_CLASS)[label]

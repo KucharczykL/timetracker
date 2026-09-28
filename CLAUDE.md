@@ -199,8 +199,8 @@ docs/           — Additional documentation
   `.access_end_corrected`/`.access_end_voided`, way `sold`/`lost`/
   `given_away`/`broken`/`stolen`; `EndDeviceAccess`,
   `CorrectDeviceAccessEnd`, `VoidDeviceAccessEnd`, and `CreateDevice`'s
-  `access_end`. An ended device stays in pickers, hinted, and is no
-  default. Contract is
+  `access_end`. An ended device stays in session and record pickers,
+  hinted, and is no default. Contract is
   [A device's access ends](docs/superpowers/specs/2026-09-28-issue-1275-device-access-end-design.md)
 - **ExchangeRate** — cached FX rates per currency pair per year
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs/historical_playtime/devices/platforms), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern

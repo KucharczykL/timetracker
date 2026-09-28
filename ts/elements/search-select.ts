@@ -612,7 +612,10 @@ const initWidget = (containerElement: Element) => {
     const slot = row.querySelector<HTMLElement>("[data-search-select-hint]");
     if (hint) row.setAttribute("data-hint", hint);
     else row.removeAttribute("data-hint");
-    if (!slot) return;
+    if (!slot) {
+      if (hint) console.warn("search-select: a hint reached a row with no hint slot");
+      return;
+    }
     slot.textContent = hint;
     slot.hidden = !hint;
   };

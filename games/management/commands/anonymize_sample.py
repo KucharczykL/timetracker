@@ -430,14 +430,13 @@ class Command(BaseCommand):
 
         #: Drawn only for dated devices.
         #: Another draw shifts every later seeded value.
-        dated_devices = (
-            LibraryEvent.objects.filter(
-                event_type__startswith="library.device.",
-                effective_time__isnull=False,
-            )
-            .values_list("aggregate_id", flat=True)
-            .distinct()
-            .order_by("aggregate_id")
+        event_types = DEFAULT_WIRING.event_types
+        dated_devices = sorted(
+            {
+                event.aggregate_id
+                for event in LibraryEvent.objects.filter(effective_time__isnull=False)
+                if event_types.spec_for(event.event_type).aggregate_type == "device"
+            }
         )
         device_offsets = {
             device_id: timedelta(days=random.randint(-JITTER_DAYS, JITTER_DAYS))
@@ -521,8 +520,12 @@ class Command(BaseCommand):
             if library_keyed:
                 offset = timedelta(0)
             elif device_keyed(event):
-                #: Only an end of access carries a day.
-                offset = device_offsets.get(event.aggregate_id, timedelta(0))
+                #: A dated fact without its draw raises.
+                offset = (
+                    timedelta(0)
+                    if event.effective_time is None
+                    else device_offsets[event.aggregate_id]
+                )
             else:
                 offset = game_offsets[game_id_by_aggregate[event.aggregate_id]]
             event.effective_time = _shift_effective_time(event.effective_time, offset)

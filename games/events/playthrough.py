@@ -126,9 +126,6 @@ class PlaythroughCompletionVoidedPayload(TypedDict):
     """The library takes back the record of a completion."""
 
 
-#: The old name for EndpointPayload.
-PlaythroughEndpointPayload = EndpointPayload
-
 PLAYTHROUGH_START_EVENTS = endpoint_events(
     "playthrough",
     stated="library.playthrough.started",

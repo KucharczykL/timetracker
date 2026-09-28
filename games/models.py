@@ -29,6 +29,7 @@ from common.utils import label_with_details
 from games.end_ways import EndWay
 from games.endpoint_fields import (
     EndpointColumns,
+    WayColumn,
     endpoint_bound,
     endpoint_constraints,
     endpoint_marker,
@@ -1482,8 +1483,7 @@ DEVICE_ACCESS_END_COLUMNS = EndpointColumns(
     upper="access_ended_upper",
     marker="access_end_recorded_at",
     note="access_end_note",
-    way="access_end_way",
-    ways=DEVICE_WAYS,
+    way=WayColumn("access_end_way", DEVICE_WAYS),
 )
 
 

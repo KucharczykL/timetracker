@@ -222,7 +222,7 @@ holds the stated time, in whichever field that time needs: a
 of the statement takes the act's noun with `recorded_at`, and it is the
 nullable `DateTimeField`. Thus `started` beside `start_recorded_at`, and
 `completed` beside `completion_recorded_at`, where the noun is not the stem of
-the participle, and `access_ended` beside `access_end_recorded_at`. Null in the stated column is only a time nobody knows; null in
+the participle. Thus also `access_ended` beside `access_end_recorded_at`. Null in the stated column is only a time nobody knows; null in
 the record column is the act that did not occur.
 
 An act that includes a removal states the removal's mark and adds no second

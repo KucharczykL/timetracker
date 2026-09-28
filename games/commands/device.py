@@ -118,12 +118,6 @@ def _refuse_a_removed_device(device: Device) -> None:
         )
 
 
-def _held_device(context: CommandContext, device_id: uuid.UUID) -> Device:
-    device = cast(Device, library_device_row(context, device_id))
-    _refuse_a_removed_device(device)
-    return device
-
-
 @dataclass(frozen=True, slots=True)
 class CreateDevice(Command):
     """State a device the library owns."""
@@ -227,15 +221,14 @@ class EndDeviceAccess(Command):
         object.__setattr__(self, "statement", normalized(self.statement))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        device = cast(Device, library_device_row(context, self.device_id))
         way = check_way(self.statement.way)
-        device = _held_device(context, self.device_id)
         return state_endpoint(
             device,
             DEVICE_ACCESS_END,
-            when=self.statement.when,
-            note=self.statement.note,
-            way=way,
+            self.statement._replace(way=way),
             sentences=_access_end_sentences(device.pk),
+            before_event=partial(_refuse_a_removed_device, device),
         )
 
 
@@ -251,15 +244,14 @@ class CorrectDeviceAccessEnd(Command):
         object.__setattr__(self, "statement", normalized(self.statement))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        device = cast(Device, library_device_row(context, self.device_id))
         way = check_way(self.statement.way)
-        device = _held_device(context, self.device_id)
         return correct_endpoint(
             device,
             DEVICE_ACCESS_END,
-            when=self.statement.when,
-            note=self.statement.note,
-            way=way,
+            self.statement._replace(way=way),
             sentences=_access_end_sentences(device.pk),
+            before_event=partial(_refuse_a_removed_device, device),
         )
 
 

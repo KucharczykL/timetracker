@@ -41,7 +41,7 @@ from games.models import (
     Purchase,
     PurchaseConversionState,
 )
-from games.reads.endpoints import stated
+from games.reads.endpoints import stated, way_of
 from games.reads.playtime import total_playtime
 from games.views import stats_links
 from games.views.session_reclassification import (
@@ -66,11 +66,10 @@ DEFAULT_DEVICE_HELP = "Preselected when logging a game."
 def default_device_help(stored: Device | None) -> str:
     """The default's help, or why it lapsed."""
     ended = None if stored is None else stated(stored, DEVICE_ACCESS_END)
-    if ended is None or ended.way is None:
+    if ended is None:
         return DEFAULT_DEVICE_HELP
-    return (
-        f"{END_WAY_LABELS[ended.way]}, so new sessions name no device. Choose another."
-    )
+    way = END_WAY_LABELS[way_of(ended)]
+    return f"{way}, so new sessions name no device. Choose another."
 
 
 @login_required

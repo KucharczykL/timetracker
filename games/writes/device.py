@@ -1,7 +1,6 @@
 """Device writes; refusals become answers."""
 
 import uuid
-from typing import cast
 
 from django.contrib.auth.models import User
 
@@ -23,7 +22,7 @@ from games.models import Device
 from games.reads.endpoints import stated
 from games.reads.events import created_aggregate_id
 from games.writes.answers import SubjectNoun, answered
-from games.writes.endpoint import EndpointMove, endpoint_move
+from games.writes.endpoint import Act, Correct, Nothing, Void, endpoint_move
 
 SUBJECT: SubjectNoun = "device"
 
@@ -80,21 +79,24 @@ def restate_device(
     access_end: WayActStatement | None,
     correlation_id: uuid.UUID,
 ) -> None:
-    """Describe, then move the end, one correlation."""
+    """Move the end, then describe; one correlation.
+
+    The end goes first: a racer can refuse it, and the
+    description then stays unsent rather than half-saved.
+    """
+    command = _access_end_command(device, access_end)
+    if command is not None:
+        with answered(SUBJECT):
+            _dispatch(
+                command,
+                actor=actor,
+                correlation_id=correlation_id,
+                idempotency_key=None,
+                source_metadata=None,
+            )
     with answered(SUBJECT):
         _dispatch(
             DescribeDevice(device_id=device.pk, name=name, type=device_type),
-            actor=actor,
-            correlation_id=correlation_id,
-            idempotency_key=None,
-            source_metadata=None,
-        )
-    command = _access_end_command(device, access_end)
-    if command is None:
-        return
-    with answered(SUBJECT):
-        _dispatch(
-            command,
             actor=actor,
             correlation_id=correlation_id,
             idempotency_key=None,
@@ -105,15 +107,15 @@ def restate_device(
 def _access_end_command(
     device: Device, access_end: WayActStatement | None
 ) -> Command | None:
-    move = endpoint_move(stated(device, DEVICE_ACCESS_END), access_end)
-    if move is EndpointMove.NOTHING:
-        return None
-    if move is EndpointMove.VOID:
-        return VoidDeviceAccessEnd(device_id=device.pk)
-    statement = cast(WayActStatement, access_end)
-    if move is EndpointMove.ACT:
-        return EndDeviceAccess(device_id=device.pk, statement=statement)
-    return CorrectDeviceAccessEnd(device_id=device.pk, statement=statement)
+    match endpoint_move(stated(device, DEVICE_ACCESS_END), access_end):
+        case Act(statement):
+            return EndDeviceAccess(device_id=device.pk, statement=statement)
+        case Correct(statement):
+            return CorrectDeviceAccessEnd(device_id=device.pk, statement=statement)
+        case Void():
+            return VoidDeviceAccessEnd(device_id=device.pk)
+        case Nothing():
+            return None
 
 
 def remove_device(

@@ -2215,11 +2215,14 @@ ACCESS_CHOICES = [
 ]
 
 
+NO_WAY_FOR_A_DAY = "Choose how the device left, or clear the day and note."
+
+
 class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
     """One device, stated as commands.
 
     Access fields are optional: the picker's create row
-    posts a name alone.
+    posts none.
     """
 
     name = forms.CharField(
@@ -2264,16 +2267,16 @@ class DeviceForm(PrimitiveWidgetsMixin, forms.Form):
         if cleaned is None:
             return cleaned
         way = cleaned.get("access") or ""
-        #: Held drops the day and note.
-        cleaned["access_end"] = (
-            WayActStatement(
-                cleaned.get("access_day"),
-                EndWay(way),
-                (cleaned.get("access_note") or "").strip(),
-            )
-            if way
-            else None
-        )
+        when = cleaned.get("access_day")
+        note = (cleaned.get("access_note") or "").strip()
+        if way:
+            cleaned["access_end"] = WayActStatement(when, EndWay(way), note)
+            return cleaned
+        cleaned["access_end"] = None
+        #: Held on an ended device takes both back.
+        ended = self.device is not None and stated(self.device, DEVICE_ACCESS_END)
+        if not ended and (when is not None or note):
+            self.add_error("access", NO_WAY_FOR_A_DAY)
         return cleaned
 
     def submission_key(self) -> IdempotencyKey:

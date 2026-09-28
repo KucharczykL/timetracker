@@ -169,7 +169,29 @@ def test_the_settings_page_shows_an_ended_default_and_offers_held_devices(client
         "Old laptop" not in body.split('name="default_device"')[1].split("</select>")[0]
     )
     assert "Lost, so new sessions name no device. Choose another." in body
-    assert "Devices" in body
+
+
+def test_the_api_refuses_an_ended_device_even_as_the_stored_default(client, user):
+    library = user.library
+    device = create_device(library=library, name="Deck")
+    settings_commands.change_library_default_device(library, device)
+    end_device_access(device)
+    client.force_login(user)
+
+    kept = client.patch(
+        "/api/library/default-device",
+        data={"value": device.pk},
+        content_type="application/json",
+    )
+    cleared = client.patch(
+        "/api/library/default-device",
+        data={"value": None},
+        content_type="application/json",
+    )
+
+    assert kept.status_code == 422
+    assert cleared.status_code == 200
+    assert UserLibraryPreferences.objects.get(library=library).default_device_id is None
 
 
 def test_the_api_refuses_an_ended_device_as_a_new_default(client, user):

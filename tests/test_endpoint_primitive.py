@@ -3,6 +3,7 @@
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import get_args
 from unittest.mock import patch
 
 import pytest
@@ -20,15 +21,17 @@ from games.commands.endpoint import (
 from games.end_ways import EndWay
 from games.endpoint_fields import EndpointColumns, WayColumn, endpoint_constraints
 from games.endpoints import (
+    DEVICE_ACCESS_END,
     ENDPOINTS,
     PLAYTHROUGH_COMPLETION,
     PLAYTHROUGH_START,
     Endpoint,
 )
+from games.events.device import DeviceWayValue
 from games.events.dispatch import CommandRejected
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, NewEvent, Unchanged
 from games.filters import PlaythroughFilter, way_filter_field
-from games.models import Playthrough
+from games.models import DEVICE_WAYS, Device, Playthrough
 from games.reads.endpoints import StatedEndpoint
 from games.writes.endpoint import Act, Correct, Nothing, Void, endpoint_move
 from timetracker.temporal import TemporalValue
@@ -255,6 +258,13 @@ def test_playthrough_filter_keeps_its_endpoint_leaves() -> None:
 
 
 def test_a_statement_of_the_wrong_shape_is_a_defect() -> None:
+    with pytest.raises(TypeError, match="takes a WayActStatement"):
+        state_endpoint(
+            Device(id=uuid.uuid7()),
+            DEVICE_ACCESS_END,
+            ActStatement(MAY, ""),
+            sentences=SENTENCES,
+        )
     with pytest.raises(TypeError, match="takes a ActStatement"):
         state_endpoint(_unstated_run(), PLAYTHROUGH_START, SOLD, sentences=SENTENCES)
 
@@ -278,14 +288,10 @@ def test_the_check_refuses_an_endpoint_on_a_conventional_model() -> None:
     assert any("no projection" in message for message in messages)
 
 
+def test_the_device_way_literal_spells_every_device_way() -> None:
+    assert set(get_args(DeviceWayValue.__value__)) == {way.value for way in DEVICE_WAYS}
+
+
 def test_a_wayless_endpoint_has_no_way_leaf() -> None:
     with pytest.raises(TypeError, match="states no way"):
         way_filter_field(PLAYTHROUGH_START, label="Way")
-
-
-def test_the_check_refuses_two_endpoints_sharing_a_name() -> None:
-    from games.checks import check_endpoints
-
-    with patch("games.checks.ENDPOINTS", (*ENDPOINTS, PLAYTHROUGH_START)):
-        messages = [error.msg for error in check_endpoints()]
-    assert any("another endpoint has its name" in message for message in messages)

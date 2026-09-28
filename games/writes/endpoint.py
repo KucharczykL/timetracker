@@ -12,7 +12,29 @@ class Act[StatementT]:
     statement: StatementT
 
 
-def endpoint_move(stated: StatedEndpoint | None, wanted: object | None) -> EndpointMove:
+@dataclass(frozen=True, slots=True)
+class Correct[StatementT]:
+    """Restate the act the row holds."""
+
+    statement: StatementT
+
+
+@dataclass(frozen=True, slots=True)
+class Void:
+    """Take back the act the row holds."""
+
+
+@dataclass(frozen=True, slots=True)
+class Nothing:
+    """Neither side states an act."""
+
+
+type EndpointMove[StatementT] = Act[StatementT] | Correct[StatementT] | Void | Nothing
+
+
+def endpoint_move[StatementT](
+    stated: StatedEndpoint | None, wanted: StatementT | None
+) -> EndpointMove[StatementT]:
     """The act, chosen by presence alone.
 
     Read before dispatch's lock: comparing values here would

@@ -6,6 +6,7 @@ import unittest
 from types import SimpleNamespace
 
 import django.test
+import pytest
 from django.contrib.auth import get_user_model
 from django.utils.safestring import SafeText
 
@@ -1493,3 +1494,16 @@ def test_an_option_row_carries_its_hint_apart_from_its_label():
     assert ">Sold</span>" in hinted
     assert "data-hint" not in plain
     assert "data-search-select-hint" in plain
+
+
+@pytest.mark.django_db
+def test_a_form_re_render_carries_an_ended_devices_hint(owned_library):
+    from devices import create_device, end_device_access
+
+    from games.forms import device_options
+
+    device = end_device_access(create_device(owned_library, "Switch"))
+
+    (option,) = device_options([device.pk], library=owned_library)
+
+    assert (option["label"], option.get("hint")) == ("Switch", "Sold")

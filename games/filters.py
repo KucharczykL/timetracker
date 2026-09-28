@@ -12,7 +12,7 @@ with AND/OR/NOT composition and typed criterion fields.
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields
 from functools import cache
-from typing import TYPE_CHECKING, Any, ClassVar, Final, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Final, NamedTuple
 
 if TYPE_CHECKING:
     from games.models import (
@@ -610,8 +610,6 @@ class EndpointFilterFields(NamedTuple):
     interval: FilterField
     #: Whether the act happened at all.
     stated: FilterField
-    #: How it happened; none without ways.
-    way: FilterField | None
 
 
 def endpoint_filter_fields(
@@ -619,7 +617,6 @@ def endpoint_filter_fields(
     *,
     stated_label: str,
     interval_label: str | None = None,
-    way_label: str | None = None,
 ) -> EndpointFilterFields:
     """An endpoint's leaves, placed by each filter."""
     return EndpointFilterFields(
@@ -634,8 +631,14 @@ def endpoint_filter_fields(
             handler=bool_isnull_handler(endpoint.marker, invert=True),
             label=stated_label,
         ),
-        way=None if endpoint.way is None else FilterField(label=way_label),
     )
+
+
+def way_filter_field(endpoint: EndpointColumns, *, label: str) -> FilterField:
+    """A way endpoint's way, as a choice."""
+    if endpoint.way is None:
+        raise TypeError(f"Endpoint {endpoint.name!r} states no way.")
+    return FilterField(endpoint.way.column, label=label)
 
 
 _START_FIELDS = endpoint_filter_fields(PLAYTHROUGH_START, stated_label="Has a start")
@@ -643,10 +646,7 @@ _COMPLETION_FIELDS = endpoint_filter_fields(
     PLAYTHROUGH_COMPLETION, stated_label="Has a completion"
 )
 _ACCESS_END_FIELDS = endpoint_filter_fields(
-    DEVICE_ACCESS_END,
-    interval_label="Access ended",
-    stated_label="Access ended",
-    way_label="Way",
+    DEVICE_ACCESS_END, interval_label="Day access ended", stated_label="Access ended"
 )
 
 
@@ -679,7 +679,7 @@ class DeviceFilter(OperatorFilter):
         "created_at": FilterField("created_at__date"),
         "access_ended": _ACCESS_END_FIELDS.interval,
         "is_access_ended": _ACCESS_END_FIELDS.stated,
-        "access_end_way": cast(FilterField, _ACCESS_END_FIELDS.way),
+        "access_end_way": way_filter_field(DEVICE_ACCESS_END, label="Way"),
     }
 
     @classmethod

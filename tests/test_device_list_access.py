@@ -23,6 +23,11 @@ def devices(owned_library):
         when=TemporalValue.parse("2021-05"),
     )
     end_device_access(create_device(owned_library, "Phone"), way=EndWay.LOST)
+    end_device_access(
+        create_device(owned_library, "Wii"),
+        way=EndWay.GIVEN_AWAY,
+        when=TemporalValue.parse("2019"),
+    )
 
 
 @pytest.fixture
@@ -39,6 +44,12 @@ def matched(library, filter_object) -> set[str]:
     )
 
 
+def _row(body: str, name: str) -> str:
+    """The table row naming one device."""
+    start = body.rindex("<tr", 0, body.index(f">{name}<"))
+    return body[start : body.index("</tr>", start)]
+
+
 def _list(client, **query) -> str:
     return client.get(reverse("games:list_devices"), query).content.decode()
 
@@ -47,9 +58,9 @@ def test_the_access_column_reads_held_or_the_way_and_its_day(logged_in, devices)
     body = _list(logged_in)
 
     assert ">Access<" in body
-    assert "Held" in body
-    assert "Sold · May 2021" in body
-    assert ">Lost<" in body
+    assert _row(body, "Deck").count(">Held<") == 1
+    assert "Sold · May 2021" in _row(body, "Switch")
+    assert ">Lost<" in _row(body, "Phone")
 
 
 def test_the_facets_narrow_by_the_act_and_by_the_way(owned_library, devices):
@@ -57,7 +68,7 @@ def test_the_facets_narrow_by_the_act_and_by_the_way(owned_library, devices):
     held = matched(owned_library, DeviceFilter.where(is_access_ended=False))
     sold = matched(owned_library, DeviceFilter.where(access_end_way=["sold"]))
 
-    assert (ended, held, sold) == ({"Switch", "Phone"}, {"Deck"}, {"Switch"})
+    assert (ended, held, sold) == ({"Switch", "Phone", "Wii"}, {"Deck"}, {"Switch"})
 
 
 def test_the_end_filters_as_the_interval_its_day_states(owned_library, devices):
@@ -87,11 +98,14 @@ def test_devices_with_no_day_sort_last_both_ways(
 ):
     body = _list(logged_in, sort=direction)
 
+    at = {
+        device.name: body.index(f'"{device.pk}"')
+        for device in Device.objects.filter(library=owned_library)
+    }
+    earlier, later = ("Wii", "Switch") if direction == "access" else ("Switch", "Wii")
+    assert at[earlier] < at[later]
     #: No day: held, or left undated.
-    dated = Device.objects.get(library=owned_library, name="Switch")
-    for name in ("Deck", "Phone"):
-        undated = Device.objects.get(library=owned_library, name=name)
-        assert body.index(f'"{undated.pk}"') > body.index(f'"{dated.pk}"')
+    assert min(at["Deck"], at["Phone"]) > max(at["Wii"], at["Switch"])
 
 
 def test_the_builder_offers_the_access_leaves(logged_in):

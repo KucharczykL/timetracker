@@ -186,7 +186,7 @@ DEVICE_SORTS: SortMap = {
     "name": SortSpec("name"),
     "type": SortSpec("type"),
     "created": SortSpec("created_at"),
-    #: Held devices, stating no end, last both ways.
+    #: No day, held or undated, sorts last.
     "access": SortSpec("access_ended_lower"),
 }
 DEVICE_DEFAULT_SORT: SortString = "-created"

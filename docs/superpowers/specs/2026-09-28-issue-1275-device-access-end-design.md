@@ -27,14 +27,18 @@ columns back to their values before the act.
   The caller spells each type.
 - `Projector.project_stated`, `project_corrected`, `project_voided`.
 - `games/commands/endpoint.py`: `state_endpoint`, `correct_endpoint`,
-  `void_endpoint`. Each command keeps its own fields, so its fingerprint
-  does not change. A `before_event` hook holds the aggregate's own rules.
-- `games/writes/endpoint.py`: `endpoint_move` chooses the act from
-  presence only. The command compares values under the lock.
-- `endpoint_filter_fields` gives the interval, the act and the way.
+  `void_endpoint`. Each takes one statement: `ActStatement`, or
+  `WayActStatement` for an endpoint with ways. Each command keeps its own
+  fields, so its fingerprint does not change. A `before_event` hook holds
+  the aggregate's own rules.
+- `games/writes/endpoint.py`: `endpoint_move` answers `Act`, `Correct`,
+  `Void` or `Nothing` from presence only, and carries the statement. The
+  command compares values under the lock.
+- `endpoint_filter_fields` gives the interval and the act;
+  `way_filter_field` gives the way.
 
-The playthrough start and completion use this primitive. Their types,
-command names, fields, columns and filter keys did not change.
+The playthrough start and completion use this primitive, with their own
+event types, command names, fields, columns and filter keys.
 
 ## Device access end
 
@@ -49,20 +53,23 @@ The way is `sold`, `lost`, `given_away`, `broken` or `stolen`. The day is
 
 `Device` has `access_ended` and its two bounds, `access_end_recorded_at`,
 `access_end_note` and `access_end_way`. Two CHECKs admit only the known
-ways, and a way only where the marker is set.
+ways, and a way exactly where the marker is set.
 
 `EndDeviceAccess`, `CorrectDeviceAccessEnd` and `VoidDeviceAccessEnd`
-refuse a removed device. The void answers `Unchanged` first. `CreateDevice`
-can state an end in the same build.
+answer `Unchanged` first, then refuse a removed device. `CreateDevice` can
+state an end in the same build.
 
 ## Screens
 
-- The Device form has Access, the day and a note. "Held" takes back an
-  end, together with its day and note.
-- Pickers offer an ended device after the held devices, with the way as a
-  hint.
+- The Device form has Access, the day and a note. On an ended device,
+  "Held" takes back the end with its day and note. On a held device, a
+  day or note without a way is refused. The save sends the end first and
+  the description second, so a refused end saves nothing.
+- Session and record pickers offer an ended device after the held
+  devices, with the way as a hint.
 - `default_device` is none for an ended device. The key stays. The
-  library page shows the ended default with a reason.
+  library page shows the ended default with a reason. The API refuses an
+  ended device as the default.
 - The Devices list has an Access column, two facets, and a sort by day.
 
 ## Limits

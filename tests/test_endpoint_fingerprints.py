@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 
+from games.commands.device import CreateDevice
 from games.commands.playthrough import (
     ActStatement,
     CompletePlaythrough,
@@ -31,6 +32,8 @@ COMMANDS: dict[str, Command] = {
     ),
     "void_start": VoidPlaythroughStart(playthrough_id=RUN),
     "void_completion": VoidPlaythroughCompletion(playthrough_id=RUN),
+    #: Moved when CreateDevice gained access_end.
+    "create_device": CreateDevice(name="Deck", type="Handheld"),
     "create": CreatePlaythrough(
         game_id=GAME,
         started=ActStatement(MAY, "began"),
@@ -46,6 +49,9 @@ RECORDED: dict[str, str] = {
     ),
     "correct_start": "9650f82546728f0150ebe080bcc5bbc78466123b8418e7029989c62205ff69da",
     "create": "4820bdd45c212b9a0871172b1ca790d269bcb10f07d21fc0545490bd48ac99ba",
+    "create_device": (
+        "2bc2ba678e5fa0b358a78326139da09d621bd587ad0994b07a7663ac19ba5274"
+    ),
     "start": "89d10a7bcb9966145fbf794ecd8972584210c18e029986720af18bb06a5ff43a",
     "void_completion": (
         "31b02261fdd35cb1d88a85afb111029cf12964fb940dcfff270776cc1fb02c66"

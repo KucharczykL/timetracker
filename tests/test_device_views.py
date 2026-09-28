@@ -1,7 +1,7 @@
 """Device pages: add, edit, remove, restore."""
 
 import pytest
-from devices import create_device, remove_device
+from devices import create_device, end_device_access, remove_device
 from django.urls import reverse
 
 from games.models import Device, LibraryEvent
@@ -199,13 +199,55 @@ def test_a_rename_and_an_end_share_one_correlation(logged_in, owned_library):
         {"name": "Steam Deck", "type": device.type, **_access("stolen")},
     )
 
-    events = LibraryEvent.objects.filter(aggregate_id=device.pk).order_by("sequence")
-    renamed, ended = events[1], events[2]
-    assert (renamed.event_type, ended.event_type) == (
-        "library.device.name_changed",
-        "library.device.access_ended",
+    events = list(
+        LibraryEvent.objects.filter(aggregate_id=device.pk).order_by("sequence")
     )
-    assert renamed.correlation_id == ended.correlation_id
+    #: The end first: a refusal of it leaves no rename.
+    assert [event.event_type for event in events] == [
+        "library.device.created",
+        "library.device.access_ended",
+        "library.device.name_changed",
+    ]
+    assert events[1].correlation_id == events[2].correlation_id
+
+
+def test_a_refused_end_sends_no_rename(logged_in, owned_library, monkeypatch):
+    device = create_device(owned_library, "Deck", Device.HANDHELD)
+    #: A racer ends access between the page's read and the save.
+    monkeypatch.setattr(
+        "games.writes.device.stated", lambda row, endpoint: None, raising=True
+    )
+    end_device_access(device)
+
+    response = logged_in.post(
+        reverse("games:edit_device", args=[device.pk]),
+        {"name": "Steam Deck", "type": device.type, **_access("lost")},
+    )
+
+    assert response.status_code == CONFLICT_STATUS
+    assert "already has an end recorded" in response.content.decode()
+    device.refresh_from_db()
+    assert device.name == "Deck"
+
+
+def test_saving_an_ended_device_unchanged_appends_nothing(logged_in, owned_library):
+    device = create_device(owned_library, "Deck", Device.HANDHELD)
+    _edit(logged_in, device, way="sold", year="2021", month="5", note="one\r\ntwo")
+    before = _device_events(device)
+
+    _edit(logged_in, device, way="sold", year="2021", month="5", note="one\r\ntwo")
+
+    assert _device_events(device) == before
+
+
+def test_a_day_on_a_held_device_asks_for_a_way(logged_in, owned_library):
+    device = create_device(owned_library, "Deck", Device.HANDHELD)
+
+    response = _edit(logged_in, device, way="", note="sold it")
+
+    assert response.status_code == 200
+    assert "Choose how the device left" in response.content.decode()
+    assert _device_events(device) == ["library.device.created"]
 
 
 def test_held_takes_the_day_and_note_it_shows_with_it(logged_in, owned_library):
