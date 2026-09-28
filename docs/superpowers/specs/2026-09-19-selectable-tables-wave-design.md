@@ -373,8 +373,8 @@ inverse that reads a row's earlier events inherits, both found by
 #1211's review: a stream with no creation before the batch's event, or a
 payload of the wrong shape, is the row's fault and raises
 `RowUnreadable`, a defect that ends the batch, never a sentence the
-person cannot act on (`games/bulk_session_edit.py` does; move's `run_before`
-still refuses, #1283); and a second press of Undo runs under a fresh
+person cannot act on (`games/bulk_session_edit.py` and `run_before` in
+`games/bulk_move.py` do); and a second press of Undo runs under a fresh
 correlation id, so a gate that asks whether the batch's own event is the
 latest of its family reads the first Undo as a later change and refuses
 every row it already put back. #1256's acts run that gate only while
