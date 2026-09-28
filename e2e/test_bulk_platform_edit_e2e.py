@@ -21,7 +21,6 @@ def _held(platform: Platform) -> tuple[str, str]:
 
 def _edit_selected(page: Page, listed: str) -> None:
     page.goto(listed)
-    page.get_by_role("button", name="Select rows").first.click()
     boxes = page.locator("tbody [data-selection-checkbox]")
     boxes.nth(0).click()
     boxes.nth(1).click()
