@@ -128,8 +128,11 @@ class OptionGroup(NamedTuple):
     options: list[SearchSelectOption]
 
 
-def _box_class(shape: ButtonShape) -> str:
-    """Field-box classes, rounding ``shape``'s corners."""
+def field_box_class(shape: ButtonShape) -> str:
+    """Field-box classes, rounding ``shape``'s corners.
+
+    Every control drawn as a field shares it.
+    """
     return (
         "flex flex-wrap items-center gap-1 px-3 py-1 min-h-control "
         f"{SHAPE_CLASSES[shape]} "
@@ -140,7 +143,7 @@ def _box_class(shape: ButtonShape) -> str:
     )
 
 
-_BOX_CLASS = _box_class("full")
+_BOX_CLASS = field_box_class("full")
 # Anchors the standalone panel and drop-down.
 _CONTAINER_CLASS = "relative block"
 _PILLS_CLASS = "contents"
@@ -632,9 +635,9 @@ def SearchSelect(
         layout=layout,
         marker=marker,
         clear_button=clear_button,
-        box_class=f"{_box_class(shape)} {_UNCOMMITTED_BOX_CLASS}"
+        box_class=f"{field_box_class(shape)} {_UNCOMMITTED_BOX_CLASS}"
         if show_marker
-        else _box_class(shape),
+        else field_box_class(shape),
     )
     widget = _SearchSelect(
         # The <search-select> element itself is the drop-down's [data-toggle]: it

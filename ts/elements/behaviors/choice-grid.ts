@@ -17,8 +17,12 @@ export function reflectChoice(toggle: HTMLElement, radio: HTMLInputElement): voi
   const glyph = toggle.querySelector("[data-choice-grid-glyph]");
   const tileGlyph = radio.parentElement?.querySelector("[data-choice-grid-glyph]");
   if (glyph) glyph.innerHTML = tileGlyph ? tileGlyph.innerHTML : "";
-  const label = toggle.querySelector("[data-choice-grid-label]");
-  if (label) label.textContent = radio.dataset.choiceLabel ?? radio.value;
+  const label = toggle.querySelector<HTMLElement>("[data-choice-grid-label]");
+  if (label) {
+    label.textContent = radio.dataset.choiceLabel ?? radio.value;
+    // The keep tile reads as a placeholder.
+    label.toggleAttribute("data-keep", radio.value === "");
+  }
 }
 
 registerBehavior("choice-grid", {

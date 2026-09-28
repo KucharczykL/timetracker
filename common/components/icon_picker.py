@@ -13,12 +13,13 @@ from common.components.core import Node
 from common.components.custom_elements import Dropdown, DropdownPanel
 from common.components.elements import Fieldset, Legend
 from common.components.primitives import (
-    ControlButton,
+    Button,
     Icon,
     Input,
     Label,
     Span,
 )
+from common.components.search_select import field_box_class
 
 #: A tile's value; empty keeps.
 type IconChoiceValue = str  # "steam"
@@ -31,6 +32,7 @@ _TILE_CLASS = (
     "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand"
 )
 _KEEP_TILE_CLASS = f"{_TILE_CLASS} col-span-2 text-type-body"
+_TRIGGER_CLASS = "w-full cursor-pointer text-start text-type-input text-heading gap-2"
 
 
 class IconChoice(NamedTuple):
@@ -41,7 +43,10 @@ class IconChoice(NamedTuple):
 
 
 def _glyph(value: IconChoiceValue) -> Node:
-    return Span(data_choice_grid_glyph="", class_="flex")[Icon(value) if value else ""]
+    #: Empty, the slot takes no space.
+    return Span(data_choice_grid_glyph="", class_="flex empty:hidden")[
+        Icon(value) if value else ""
+    ]
 
 
 def _tile(name: str, choice: IconChoice, *, checked: bool) -> Node:
@@ -73,13 +78,20 @@ def IconPicker(
     """A "glyph Name ▾" trigger over a grid of icon radios."""
     current = next((choice for choice in choices if choice.value == value), None)
     shown = current or IconChoice(value, value)
-    trigger = ControlButton(
-        color="gray", variant="outline", aria_haspopup="dialog", class_="w-full"
+    #: A field, not a button: it wears the field box.
+    trigger = Button(
+        type="button",
+        aria_haspopup="dialog",
+        class_=f"{field_box_class('full')} {_TRIGGER_CLASS}",
     )[
         _glyph(shown.value),
-        Span(data_choice_grid_label="", class_="grow text-start")[shown.label],
+        Span(
+            data_choice_grid_label="",
+            data_keep="" if not shown.value else None,
+            class_="grow truncate data-[keep]:text-body",
+        )[shown.label],
         Icon("arrowdown", size="h-3 w-3"),
-    ].as_element()
+    ]
     panel = DropdownPanel(role="dialog", aria_label=label, width="w-72")[
         Fieldset(class_="grid grid-cols-6 gap-1 border-0 p-0 m-0")[
             Legend(class_="sr-only")[label],

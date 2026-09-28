@@ -56,6 +56,8 @@ describe("choice-grid behavior", () => {
     steam.dispatchEvent(new Event("change", { bubbles: true }));
     expect(parts(host).label()).toBe("Steam");
     expect(parts(host).glyph()).toBe("steam");
+    const label = host.querySelector("[data-choice-grid-label]")!;
+    expect(label.hasAttribute("data-keep")).toBe(false);
     expect(menu.hidden).toBe(false);
   });
 
