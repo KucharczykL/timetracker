@@ -123,20 +123,48 @@ describe("the tray", () => {
     expect(checkboxes(element)[0].getAttribute("aria-label")).toBe("Game a");
   });
 
-  it("names a clipped row once, not by its tooltip's copy", async () => {
+  async function nameOf(identity: string): Promise<string | null> {
     const row = document.createElement("tr");
     row.setAttribute("data-selection-key", "z");
-    row.innerHTML =
-      '<th scope="row"><div data-row-identity><truncated-text>' +
-      "<span data-truncated-clip>Steam Deck</span>" +
-      '<div data-pop-over-panel aria-hidden="true" hidden>Steam Deck</div>' +
-      "</truncated-text></div></th>";
+    row.innerHTML = `<th scope="row"><div data-row-identity>${identity}</div></th>`;
     element.querySelector("tbody")!.appendChild(row);
     await Promise.resolve();
+    return (
+      row.querySelector("[data-selection-checkbox]")?.getAttribute("aria-label") ??
+      null
+    );
+  }
 
-    expect(
-      row.querySelector("[data-selection-checkbox]")?.getAttribute("aria-label"),
-    ).toBe("Steam Deck");
+  it.each([
+    [
+      "an icon title and an open tooltip",
+      '<svg><title>PC</title></svg><span data-truncated-clip>The Witness</span>' +
+        '<div role="tooltip">Sort name Witness, The</div>',
+    ],
+    [
+      "a closed tooltip's copy",
+      "<span data-truncated-clip>The Witness</span>" +
+        '<div aria-hidden="true" hidden>The Witness</div>',
+    ],
+  ])("names a clipped row by its clip, not %s", async (_, identity) => {
+    expect(await nameOf(identity)).toBe("The Witness");
+  });
+
+  it.each([
+    ["hidden", "<div hidden>The Witness</div>"],
+    ["aria-hidden", '<div aria-hidden="true">The Witness</div>'],
+  ])("skips %s text in a row with no clip", async (_, copy) => {
+    expect(await nameOf(`The Witness${copy}`)).toBe("The Witness");
+  });
+
+  it("says so aloud when a row has no name", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await nameOf('<span aria-hidden="true">—</span>')).toBe("");
+    expect(error).toHaveBeenCalledWith(
+      "<selectable-table> row has no name",
+      expect.any(HTMLElement),
+    );
+    error.mockRestore();
   });
 
   it("hides the line while nothing is selected", () => {

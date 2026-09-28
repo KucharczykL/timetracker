@@ -151,7 +151,9 @@ export class SelectableTableElement extends HTMLElement {
         true,
       ) as HTMLInputElement | null;
       if (!checkbox) continue;
-      checkbox.setAttribute("aria-label", identityName(cell));
+      const name = identityName(cell);
+      if (!name) console.error("<selectable-table> row has no name", row);
+      checkbox.setAttribute("aria-label", name);
       // The row a selectable cell states for it: the name's own line,
       // so the box centres on the name rather than on the summary
       // under it. A cell that states none takes the box itself.
@@ -363,14 +365,19 @@ function isShown(element: HTMLElement): boolean {
   return !element.closest("[hidden]");
 }
 
-// A clipped name's tooltip repeats it.
+// Text a reader skips, where no clip names.
 const UNREAD_SELECTOR = `${CHECKBOX_SELECTOR}, [data-row-summary], [hidden], [aria-hidden="true"]`;
+const CLIP_SELECTOR = "[data-truncated-clip]";
 
-/** The row's name, once, without summary. */
+/** The row's shown name, once. */
 function identityName(cell: HTMLElement): string {
-  const clone = cell.cloneNode(true) as HTMLElement;
+  const identity = cell.querySelector<HTMLElement>(IDENTITY_SELECTOR) ?? cell;
+  // Icon titles and tooltips sit outside it.
+  const clip = identity.querySelector(CLIP_SELECTOR);
+  if (clip) return clip.textContent.trim();
+  const clone = identity.cloneNode(true) as HTMLElement;
   clone.querySelectorAll(UNREAD_SELECTOR).forEach((node) => node.remove());
-  return clone.textContent?.trim() ?? "";
+  return clone.textContent.trim();
 }
 
 /** The tallest showing line, for the toasts. */

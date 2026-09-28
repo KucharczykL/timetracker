@@ -1,65 +1,32 @@
-"""A row checkbox reads its name once.
+"""Each selectable row shows its name in one clip.
 
-Mirrors `identityName` in `ts/elements/selectable-table.ts`; change both.
+`identityName` in `ts/elements/selectable-table.ts` names the row checkbox
+from that clip; icon titles and tooltips beside it never reach the name.
 """
 
-from html.parser import HTMLParser
+import html
+import re
 
 from devices import create_device
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
+from tracked_games import create_tracked_game
 
-from games.models import Device
-
-# Void elements push no stack frame.
-_VOID_TAGS = frozenset({"input", "img", "br", "hr", "meta", "link", "source", "wbr"})
+from games.models import Device, Platform
 
 type RowName = str
 
-
-def _unread(attributes: dict[str, str | None]) -> bool:
-    return (
-        "hidden" in attributes
-        or attributes.get("aria-hidden") == "true"
-        or "data-row-summary" in attributes
-        or "data-selection-checkbox" in attributes
-    )
+_IDENTITY = re.compile(r"data-row-identity.*?</th>", re.DOTALL)
+_CLIP = re.compile(r"<span data-truncated-clip[^>]*>([^<]*)</span>")
 
 
-class _RowNames(HTMLParser):
-    """Body row headers' text, minus unread parts."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.names: list[RowName] = []
-        self._in_body = False
-        # Per open element in header: unread?
-        self._stack: list[bool] = []
-        self._text: list[str] = []
-
-    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        attributes = dict(attrs)
-        if tag == "tbody":
-            self._in_body = True
-        elif self._stack:
-            if tag not in _VOID_TAGS:
-                self._stack.append(self._stack[-1] or _unread(attributes))
-        elif self._in_body and tag == "th" and attributes.get("scope") == "row":
-            self._stack.append(False)
-            self._text = []
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag == "tbody":
-            self._in_body = False
-        elif self._stack:
-            self._stack.pop()
-            if not self._stack:
-                self.names.append("".join(self._text).strip())
-
-    def handle_data(self, data: str) -> None:
-        if self._stack and not self._stack[-1]:
-            self._text.append(data)
+def _clipped_names(page: str) -> list[list[RowName]]:
+    """Each row identity's clip texts."""
+    return [
+        [html.unescape(text) for text in _CLIP.findall(identity)]
+        for identity in _IDENTITY.findall(page)
+    ]
 
 
 class RowSelectionNameTest(TestCase):
@@ -67,12 +34,27 @@ class RowSelectionNameTest(TestCase):
         self.user = User.objects.create_user(username="tester", password="pw")
         self.client.force_login(self.user)
 
-    def test_the_device_list_names_each_row_once(self) -> None:
+    def _page(self, url_name: str) -> str:
+        return self.client.get(reverse(url_name)).content.decode()
+
+    def test_a_device_row_shows_its_name_in_one_clip(self) -> None:
         create_device(self.user.library, "Steam Deck", Device.HANDHELD)
 
-        html = self.client.get(reverse("games:list_devices")).content.decode()
-        parser = _RowNames()
-        parser.feed(html)
+        self.assertEqual(
+            _clipped_names(self._page("games:list_devices")), [["Steam Deck"]]
+        )
 
-        self.assertIn("<selectable-table", html)
-        self.assertEqual(parser.names, ["Steam Deck"])
+    def test_a_game_row_clips_its_name_apart_from_icon_and_tooltip(self) -> None:
+        platform = Platform.objects.create(
+            library=self.user.library, name="PC", icon="pc", group="PC"
+        )
+        create_tracked_game(
+            self.user.library,
+            "The Witness",
+            platform=platform,
+            sort_name="Witness, The",
+        )
+
+        self.assertEqual(
+            _clipped_names(self._page("games:list_games")), [["The Witness"]]
+        )
