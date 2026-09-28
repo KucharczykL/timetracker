@@ -599,6 +599,7 @@ def create_device(request, payload: RowIn):
             "submission": str(uuid.uuid7()),
         },
         library=library,
+        presentation=date_time_presentation_for_request(request),
     )
     if not form.is_valid():
         raise RowRefused(refusal_sentence(form))

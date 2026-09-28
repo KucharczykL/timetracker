@@ -1,21 +1,29 @@
 """Device writes; refusals become answers."""
 
 import uuid
+from typing import cast
 
 from django.contrib.auth.models import User
 
 from games.commands.device import (
+    CorrectDeviceAccessEnd,
     CreateDevice,
     DescribeDevice,
+    EndDeviceAccess,
     RemoveDevice,
     RestoreDevice,
+    VoidDeviceAccessEnd,
 )
+from games.commands.endpoint import WayActStatement
+from games.endpoints import DEVICE_ACCESS_END
 from games.events.append import SourceMetadata
 from games.events.dispatch import Command, CommandResult, dispatch
 from games.events.idempotency import IdempotencyKey
 from games.models import Device
+from games.reads.endpoints import stated
 from games.reads.events import created_aggregate_id
 from games.writes.answers import SubjectNoun, answered
+from games.writes.endpoint import EndpointMove, endpoint_move
 
 SUBJECT: SubjectNoun = "device"
 
@@ -47,13 +55,14 @@ def create_device(
     name: str,
     device_type: str,
     correlation_id: uuid.UUID,
+    access_end: WayActStatement | None = None,
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
 ) -> Device:
-    """State a new device; answer its row."""
+    """State a new device, and how it left if it has; answer its row."""
     with answered(SUBJECT):
         result = _dispatch(
-            CreateDevice(name=name, type=device_type),
+            CreateDevice(name=name, type=device_type, access_end=access_end),
             actor=actor,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
@@ -62,25 +71,54 @@ def create_device(
     return Device.objects.get(pk=created_aggregate_id(result), library=actor.library)
 
 
-def describe_device(
+def restate_device(
     actor: User,
     device: Device,
     *,
     name: str | None = None,
     device_type: str | None = None,
+    access_end: WayActStatement | None,
     correlation_id: uuid.UUID,
-    idempotency_key: IdempotencyKey | None = None,
-    source_metadata: SourceMetadata | None = None,
-) -> CommandResult:
-    """State name, type, or both."""
+) -> None:
+    """State name, type and the end of access a form shows.
+
+    One act per differing fact, under one correlation. The end's
+    act is chosen before dispatch's lock from presence alone; the
+    command compares values under it.
+    """
     with answered(SUBJECT):
-        return _dispatch(
+        _dispatch(
             DescribeDevice(device_id=device.pk, name=name, type=device_type),
             actor=actor,
             correlation_id=correlation_id,
-            idempotency_key=idempotency_key,
-            source_metadata=source_metadata,
+            idempotency_key=None,
+            source_metadata=None,
         )
+    command = _access_end_command(device, access_end)
+    if command is None:
+        return
+    with answered(SUBJECT):
+        _dispatch(
+            command,
+            actor=actor,
+            correlation_id=correlation_id,
+            idempotency_key=None,
+            source_metadata=None,
+        )
+
+
+def _access_end_command(
+    device: Device, access_end: WayActStatement | None
+) -> Command | None:
+    move = endpoint_move(stated(device, DEVICE_ACCESS_END), access_end)
+    if move is EndpointMove.NOTHING:
+        return None
+    if move is EndpointMove.VOID:
+        return VoidDeviceAccessEnd(device_id=device.pk)
+    statement = cast(WayActStatement, access_end)
+    if move is EndpointMove.ACT:
+        return EndDeviceAccess(device_id=device.pk, statement=statement)
+    return CorrectDeviceAccessEnd(device_id=device.pk, statement=statement)
 
 
 def remove_device(

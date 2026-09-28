@@ -55,7 +55,7 @@ from games.views.filtering import (
 from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
 from games.writes.answers import CommandFailed
-from games.writes.device import create_device, describe_device
+from games.writes.device import create_device, restate_device
 from games.writes.device import remove_device as remove_device_row
 from games.writes.device import restore_device as restore_device_row
 from games.writes.playergame import new_correlation_id
@@ -165,15 +165,21 @@ def edit_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
     user = cast(User, request.user)
     library = user.library
     device = owned_or_404(Device.objects.for_library(library), library, id=device_id)
-    form = DeviceForm(request.POST or None, library=library, device=device)
+    form = DeviceForm(
+        request.POST or None,
+        library=library,
+        presentation=date_time_presentation_for_request(request),
+        device=device,
+    )
     title = "Edit device"
     if form.is_valid():
         try:
-            describe_device(
+            restate_device(
                 user,
                 device,
                 name=form.cleaned_data["name"],
                 device_type=form.cleaned_data["type"],
+                access_end=form.cleaned_data["access_end"],
                 correlation_id=new_correlation_id(),
             )
         except CommandFailed as failure:
@@ -226,7 +232,11 @@ def remove_device(request: HttpRequest, device_id: UUID) -> HttpResponse:
 @login_required
 def add_device(request: HttpRequest) -> HttpResponse:
     user = cast(User, request.user)
-    form = DeviceForm(request.POST or None, library=user.library)
+    form = DeviceForm(
+        request.POST or None,
+        library=user.library,
+        presentation=date_time_presentation_for_request(request),
+    )
     title = "Add New Device"
     if form.is_valid():
         try:
@@ -234,6 +244,7 @@ def add_device(request: HttpRequest) -> HttpResponse:
                 user,
                 name=form.cleaned_data["name"],
                 device_type=form.cleaned_data["type"],
+                access_end=form.cleaned_data["access_end"],
                 idempotency_key=form.submission_key(),
                 correlation_id=new_correlation_id(),
             )

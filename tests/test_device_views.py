@@ -6,6 +6,7 @@ from django.urls import reverse
 
 from games.models import Device, LibraryEvent
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
+from timetracker.temporal import temporal_input_name
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -87,7 +88,7 @@ def test_a_refused_edit_is_a_sentence_on_the_form(
     def refuse(*args, **kwargs):
         raise CommandFailed("That device cannot be named so.", CONFLICT_STATUS)
 
-    monkeypatch.setattr("games.views.device.describe_device", refuse)
+    monkeypatch.setattr("games.views.device.restate_device", refuse)
 
     response = logged_in.post(
         reverse("games:edit_device", args=[device.pk]),
@@ -123,3 +124,114 @@ def test_a_removed_device_cannot_be_edited(logged_in, owned_library):
     response = logged_in.get(reverse("games:edit_device", args=[device.pk]))
 
     assert response.status_code == 404
+
+
+def _access(way: str, *, year: str = "", month: str = "", note: str = "") -> dict:
+    posted = {"access": way, "access_note": note}
+    if year:
+        posted[temporal_input_name("access_day", "kind")] = "date"
+        posted[temporal_input_name("access_day", "start_year")] = year
+        posted[temporal_input_name("access_day", "start_month")] = month
+    return posted
+
+
+def _edit(client, device: Device, **access):
+    return client.post(
+        reverse("games:edit_device", args=[device.pk]),
+        {"name": device.name, "type": device.type, **_access(**access)},
+    )
+
+
+def test_editing_to_sold_states_the_end(logged_in, owned_library):
+    device = create_device(owned_library, "Deck", Device.HANDHELD)
+
+    response = _edit(logged_in, device, way="sold", year="2021", month="5", note="x")
+
+    assert response.status_code == 302
+    device.refresh_from_db()
+    assert (
+        device.access_end_way,
+        device.access_ended.canonical,
+        device.access_end_note,
+    ) == (
+        "sold",
+        "2021-05",
+        "x",
+    )
+    assert _device_events(device)[-1] == "library.device.access_ended"
+
+
+def test_the_edit_page_shows_the_stated_end(logged_in, owned_library):
+    device = create_device(owned_library, "Deck", Device.HANDHELD)
+    _edit(logged_in, device, way="lost", note="on a train")
+
+    page = logged_in.get(reverse("games:edit_device", args=[device.pk]))
+
+    body = page.content.decode()
+    assert '<option value="lost" selected>' in body
+    assert "on a train" in body
+
+
+def test_another_way_corrects_and_held_voids(logged_in, owned_library):
+    device = create_device(owned_library, "Deck", Device.HANDHELD)
+    _edit(logged_in, device, way="sold")
+    device.refresh_from_db()
+    marker = device.access_end_recorded_at
+
+    _edit(logged_in, device, way="lost")
+    device.refresh_from_db()
+    assert (device.access_end_way, device.access_end_recorded_at) == ("lost", marker)
+
+    _edit(logged_in, device, way="")
+    device.refresh_from_db()
+    assert device.access_end_recorded_at is None
+    assert _device_events(device)[-2:] == [
+        "library.device.access_end_corrected",
+        "library.device.access_end_voided",
+    ]
+
+
+def test_a_rename_and_an_end_share_one_correlation(logged_in, owned_library):
+    device = create_device(owned_library, "Deck", Device.HANDHELD)
+
+    logged_in.post(
+        reverse("games:edit_device", args=[device.pk]),
+        {"name": "Steam Deck", "type": device.type, **_access("stolen")},
+    )
+
+    events = LibraryEvent.objects.filter(aggregate_id=device.pk).order_by("sequence")
+    renamed, ended = events[1], events[2]
+    assert (renamed.event_type, ended.event_type) == (
+        "library.device.name_changed",
+        "library.device.access_ended",
+    )
+    assert renamed.correlation_id == ended.correlation_id
+
+
+def test_a_day_without_a_way_is_refused_on_the_field(logged_in, owned_library):
+    device = create_device(owned_library, "Deck", Device.HANDHELD)
+
+    response = _edit(logged_in, device, way="", note="sold it")
+
+    assert response.status_code == 200
+    assert "Choose how the device left" in response.content.decode()
+    assert _device_events(device) == ["library.device.created"]
+
+
+def test_adding_a_device_that_already_left(logged_in):
+    logged_in.post(
+        reverse("games:add_device"),
+        {
+            "name": "Wii",
+            "type": Device.CONSOLE,
+            "submission": "2" * 32,
+            **_access("given_away", year="2015"),
+        },
+    )
+
+    device = Device.objects.get()
+    assert _device_events(device) == [
+        "library.device.created",
+        "library.device.access_ended",
+    ]
+    assert device.access_ended.canonical == "2015"
