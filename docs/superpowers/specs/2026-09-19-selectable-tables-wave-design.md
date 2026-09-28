@@ -1,862 +1,238 @@
-# Selectable tables and Session organization delivery wave
+# Selectable tables and Session organization: the delivered wave
 
-Date: 2026-09-19
-
-Parent epic: [#601](https://github.com/KucharczykL/timetracker/issues/601)
+Parent epic: [#601](https://github.com/KucharczykL/timetracker/issues/601).
+Charter: [the overhaul design](2026-08-09-timetracker-overhaul-design.md).
+Planned on 2026-09-19, delivered whole on 2026-09-28.
 
 ## Purpose
 
-This document is the wave review #601 requires before the Selectable tables
-and Session organization group begins. It replaces the placeholder ordering
-of #711 through #718 with a dependency-ordered sequence, states each issue's
-boundary, pulls in two issues the last wave filed against its own bulk act,
-and names what the production data says the organizer is for.
-
-The eight placeholders carry an outcome line and the shared acceptance
-block. Three of them describe one table personality from three sides, one
-describes a population of one row, and none of them knows that a bulk act
-already ships without the framework they define. This review merges one,
-closes two through another, adds one action, and leaves seven issues.
-
-The Historical Playtime wave is the model: no deployment window and no
-stack, because nothing here converts data.
-
-Every empirical claim below was checked against a production dump taken on
-2026-09-19, migrated to `0011`, and against the code. A clean-context
-review against the code corrected the first draft; its findings are included,
-and the corrections are named under "What was applied".
-
-## Product boundary
-
-A person selects rows of a table and acts on the selection: removes them,
-moves sessions to a playthrough, turns written-down sessions into historical
-playtime records. The act runs as one batch the person can undo as one. The
-Playtime page's session list, narrowed to one game and made selectable, is
-the organizer the charter describes.
-
-This wave does not add drag and drop, does not add a second session list,
-does not make the Games, Purchases, Devices or Platforms lists selectable,
-does not merge the two Playtime tabs (#1100), and does not build the Trash
-(#795).
-
-## What the data says
-
-One library. The conversion (#700) placed every legacy session by rule and
-left one bucket.
-
-| population | count |
-|---|---|
-| live ordinary runs | 869 |
-| sessions in the imported-history bucket | 1 |
-| games with two or more live runs | 8, none with more than 3 |
-| sessions dated outside their sole run's stated interval | 113, on 29 runs |
-| busiest run | 47 sessions |
-| runs holding no session | 145 |
-| run pairs at one game whose session days overlap | 0 |
-
-The run count was 39 in the review's first measurement and 29 on the
-2026-09-22 dump, as distinct run keys over the flagged rows; the first
-method is not on record, so 29 stands. Of 870 live ordinary runs, 207
-state both endpoints, 540 a start alone, none a completion alone, and 123
-neither; no session falls outside a start-alone run, because #1038 dated
-such a run from the earliest day the library held.
-
-The charter's organizer reconciles "ambiguous" sessions, which it defines as
-the bucket's. That population is one row: a Timed session at Our Red String
-on 2026-04-14, at a game that also holds two live runs. #717 as written is
-one move.
-
-The organizer's real population is the third row of the table. Elden Ring's
-sole run states February to April 2022 and holds 32 sessions running to July
-2024; Pokémon Pokopia's run states ten days and holds 25 sessions beyond
-them; The Rise of Golden Idol holds 8. The sole-run rule assigned them
-without asking, which was right, and nobody has since been offered the
-question. The organizer's first facet is that question.
-
-Bulk sizes, for the chunking decision:
-
-| list | live rows |
-|---|---|
-| sessions | 2,817 |
-| playthroughs | 870 |
-| games, purchases | 860, 805 |
-| devices, platforms | 13, 25 |
-| the reclassification review at 8 hours | 93 |
-
-Every real bulk is under 100 rows except "all matching" on the session list.
-
-## The wave's siblings
-
-Two open issues are this wave's questions asked against #1098's page, and
-join it:
-
-- **#1125** — the bulk reclassification posts one hidden field per row and
-  meets Django's field cap at a thousand. The framework decides what a
-  confirmation posts once, below.
-- **#1123** — the bulk reclassification offers no Undo because nothing names
-  the batch. The framework decides the batch's identity once, below. Today's
-  page already stamps one `correlation_id` across every row it converts, so
-  a batch converted before this wave ships has the identity; nothing shows
-  it to a person until the Trash (#795) lists batches.
-
-#1100 waits behind this wave, as filed. #481, #520 and #521 touch the same
-table and stay outside.
-
-## Selection
-
-`StyledTable` gains a selectable personality: a custom element
-`<selectable-table>` wrapping `<responsive-table>`, which keeps owning column
-dropping. The charter's rules hold, and this wave settles the shape:
-
-- The checkbox is the first child of the pinned identity cell, so the cell
-  stays the row's `<th scope="row">` and its pinning and shadow above the
-  `md` breakpoint hold. The element builds it: the server renders one
-  `data-selection-key` attribute on each `<tr>`, through `make_row`'s
-  attributes, and `<selectable-table>` inserts the checkbox when it
-  connects, so `TableRow` renders the first cell's content verbatim and
-  the view's row builder does not know the checkbox exists. A row swapped
-  into the live `tbody` arrives bare, so the element observes the `tbody` and
-  decorates the new row, checked when its key was checked before the swap.
-  Only the checkbox selects; the row's links and immediate controls keep
-  their meaning. The checkbox is not a column and does not count against
-  `MAX_DATA_TABLE_COLUMNS`.
-- Selection is not a mode (#1316, which overturned #711's mode and #1212's
-  question with it). Every row shows its checkbox at all times, in the
-  column the name floor below `md` budgets, so no row moves. The first
-  header cell and the footer's selection line each hold a check-all for
-  the page, in the checkbox column, showing one state. The line shows
-  while one row or more is selected; it holds the count, "Select all N
-  matching" with N read from the paginator, Clear and the actions, above
-  the pagination row. Without a paginator there is no "all matching": the
-  page is the matching set, on Game detail's tables and on a list shown
-  whole. Rows do not toggle on click. Prior art: Gmail and GitHub's issue
-  list; the mode had followed PatternFly, Carbon, Polaris, Helios and
-  SABnzbd's Glitter.
-- A selection outlives the page. The element keeps the statement, never
-  the rows: the keys a person clicked, or the scope and its exclusions,
-  in session storage keyed on the library, the table's caption and the
-  list's path, one per table, with the filter inside the value: paging
-  keeps it, a filter that does not match restores nothing and keeps the
-  value for a person who goes back, two tables on one page keep two, and a
-  second person signing in at the same browser inherits none, since session
-  storage outlives a logout. Clear, the last row unmarked and the submit of a bulk action forget
-  it, so a statement acted on is never restored over the rows it changed:
-  the element answers a `submit` in the actions slot itself, and a tray
-  that posts without a form calls its public `forget()`. That
-  answer runs inside the submit, before the form's entry list is built,
-  and dispatches `selectable-table:change` with an empty statement, so
-  the slot's form carries the statement it latched at the press and
-  writes nothing on that event; a slot that wrote there would post zero
-  rows to the runner and see a confirmation with no submit. The element
-  dispatches at connect only when it restores, on itself, and the slot's
-  element upgrades after it, so the slot reads the element's public
-  `statement()` when it connects rather than waiting for a change. Every
-  act's slot content, #714's move included, keeps both rules. An "all matching" statement
-  is not restored on a page that reports no count. The runner reads the
-  statement the POST carries and nothing else, so what the element keeps
-  changes nothing in the runner; a count that no longer matches is the
-  confirmation's to say, not the tray's to refuse.
-  A multi-row act is the checkboxes, then the action; a single row's act
-  is two presses, the ⋯ menu and the item, because the menu carries every
-  act valid for one row.
-- Below `md` the identity cell is today a shrinkable, single-line name cell,
-  and nothing stacks. #711 builds the stacked cell: the checkbox beside the
-  row's essential summary on two lines, while lower-priority columns keep
-  dropping as `<responsive-table>` decides. This is #716's whole substance:
-  the mobile organizer is the table's own personality, not a second screen.
-- Keyboard: Space toggles the focused checkbox, Shift+Space extends from the
-  last toggled row, Shift+click on a checkbox takes a range, the two
-  check-alls, header and line, are one tri-state control, each row's
-  checkbox is named by the identity cell's shown name, the truncation
-  clip, never a tooltip's copy or an icon's title (#1324), and the
-  element announces the count through one live region it owns, because it
-  owns the selection; the tray shows the same count and announces nothing.
-  The contract is verified with Orca in #718, on the finished pages.
-- Selection needs scripting. The server renders no row checkbox; the
-  header check-all hides until the element is defined, and the line until
-  a row is selected, so a page with scripting off shows a plain table. The runner reads one shape, the selection
-  statement below; a second, one-field-per-row shape for scripting off was
-  rejected, because it doubles the runner's grammar for a reader that also
-  never sees the selection line. After #718 such a reader has no per-row act either,
-  and that is the accepted cost.
-
-The selection travels as the **selection statement**: one hidden field
-holding a JSON list of row keys, or `all` beside the list's filter JSON,
-the count seen and the keys unchecked since, so an "all matching" selection
-records exclusions rather than falling back to keys. It is always POSTed,
-because a page of keys does not fit a URL. The confirmation resolves it
-under the library into the keys the person saw, the exclusions taken out, at the instant the confirmation rendered, and from then on
-the act names those keys and no others: a row gone by the act is counted
-lost, never converted; a row that entered the filter after the confirmation
-rendered is never touched.
-
-One field, not one per row, is what closes #1125 with no settings change:
-Django's cap counts fields, and 2,817 keys is 100 KB against a body limit of
-2.5 MB. Acting on the filter and a count was considered and rejected,
-because a row swapped for another between confirmation and act passes the
-count and gets acted on unseen, and the act stops meaning "these rows".
-
-## The tray
-
-The tray is the footer's selection line, not a surface of its own. While
-it shows the line is sticky to the viewport's bottom inside the
-table's shell, so it takes its own height in the flow and nothing reserves
-for it, and it stops sticking once the table has scrolled past. The shell's
-`overflow-hidden` would make the shell the sticky containing block, so it
-becomes `overflow-clip`, which clips the corners the same and is no scroll
-container. The line sits under the menu stratum (`z-20`), so an actions
-menu opens over it, and under the toasts (`z-50`). The toast stack is
-fixed to the same bottom edge, so the element publishes the line's height
-as `--selection-line` on the root while it shows, the tallest line
-any connected table shows, and the stack reads it in its own classes for
-its bottom offset. The version stamp is a
-`<footer>` in the flow on every page's last line, moved out of the fixed
-corner by #711, so nothing sticky covers it.
-`StyledTable`'s footer slot holds one region today and refuses a second;
-#711 makes it a composite the table builds: the selection line above the
-pagination row, either alone, so a table with no pagination, Game detail's
-playthroughs and records, gets the selection half by itself. #711 ships the
-line with the count and scope, check-all, "Select all N matching" and Clear,
-and an empty actions slot; #712 fills the slot with the actions the table's
-view declares.
-
-A `BulkAction` is a declaration, not a view: label, the confirmation
-route, the per-row command, its inverse, and the aggregate the inverse
-takes. One batch can append events under two aggregates: the
-reclassification mints a record beside each session it marks, so its Undo
-reads the batch's session events and not its record events. The tray
-offers an action while at least one row is selected, and every action is
-a `many` act: it POSTs the selection statement to its confirmation route
-with the origin, so the act returns where the person stands (`?origin=`,
-as every mutating link). The wave first planned a `one` cardinality, a
-link to the row's own page offered while exactly one row was selected,
-for Edit, Reset and Was-an-estimate. The user overturned it on the
-shipped tray: no act in the Actions column must be single, because bulk
-Edit is a different act from the row's Edit (it sets one device, one
-emulated flag, or both on every selected row, #1211) and Finish is
-coherent over many running sessions.
-The ⋯ menu on the row carries every act valid for one row, the tray
-every act, two complete lists (below), so the tray renders no `one` path
-and `Cardinality` leaves whole with #718.
-
-The selection line is the same on every table, and the actions differ by
-view. Nothing about it knows sessions. Since #718 the line lays its acts
-out as a priority-plus row on `ts/elements/priority-plus.ts`, the engine
-the quick bar reads: the acts that no longer fit move into one
-horizontal `EllipsisTrigger` at the end, rightmost first, measured off
-the line itself when it first shows. Declaration order is
-priority order, so a view states the act reached for most often first
-and the destructive act last, which is the one to overflow first and
-never sits between two benign ones; #1211 and #1256 place their acts by
-that rule.
-
-## The runner
-
-Every `many` action runs through one server-side runner,
-`games/views/bulk.py`. It is a new flow, not a generalisation of
-`confirm_and_apply`, whose one shape is "GET confirms, POST acts": the
-runner's confirmation arrives by POST, so it tells its two POSTs apart by
-the submission token.
-
-1. **Confirm.** A POST without a token resolves the selection statement
-   under the library and renders one `ConfirmPage` that leads with the act,
-   its count and its scope, lists the rows to a cap, lists every refusal
-   the resolve owns (a key outside the act's scope, a row the act already
-   covered) with its reason in full, and carries a fresh token beside the
-   resolved keys. An act that asks for a fact (#714's target run, #1211's
-   value) declares a `BulkChoice(offer, settle)`: `offer` draws the
-   control from every resolved row, not the printed sample, and may
-   refuse the whole act there (a selection spanning games); the value
-   rides one runner-named hidden field beside the token, and `run` and
-   `inverse` take it as one string, third, after the row. `settle` runs on
-   every request that acts, not once: the field rides the progress form
-   and is person-editable, and a value carried on trust would reach the
-   command, whose scope miss the runner answers as a defect. A refused
-   settle re-renders the confirmation on the posted token and tally,
-   never fresh ones, so one batch stays one correlation id. The batch's
-   undo never settles: its choice is the batch's own id, which reaches the
-   inverse no other way. The settle validates and writes nothing: a run the
-   person needs is created ahead of the submit by #1080's create row, in
-   its own request under its own correlation id, outside the batch, so no
-   Undo can name it. A command's rule (a
-   running session, a bucket, a last live run, a run a live session
-   names) is read at the press, per row, under the lock, and the
-   confirmation does not restate it; a forecast that imports the
-   command's predicates to fill the "left as they are" block is #1209,
-   parked until the interface is rethought after #599's epics. Today's review
-   confirmation lists every row; an `all` statement over the session list
-   resolves to thousands, which is megabytes on the page that exists to be
-   read, so the cap is the accepted trade. The runner parses an `all` statement's filter itself and refuses
-   one it cannot parse, with a sentence and no act. It does not reuse
-   `apply_structured_filter`, which drops an invalid filter and renders
-   the list unfiltered: harmless on a list page, and on a bulk act the
-   scope widened to every row.
-2. **Act.** A POST with a token dispatches the action's per-row command
-   through the row's `games/writes/` wrapper, under `answered()`, which
-   takes `idempotency_key` and `source_metadata` and answers the
-   `CommandResult` (`end_session`, `correct_session` and `move_session`
-   since #718, `describe_session` since #1211),
-   behind a callable of the act's own that takes `choice`,
-   `idempotency_key` and `correlation_id` as keywords and answers a
-   `RowOutcome`. An act's title is an `ActTitle(one, many)`, both halves
-   stated and neither empty, because a single row is the common case
-   once every row's menu reaches the runner. No act module reads a name
-   off another: the table imports every act at its foot, so the sibling
-   reached first finds nothing defined; a shared half lives in a module
-   of its own (`games/bulk_sessions.py`), and
-   `tests/test_bulk_act_imports.py` holds the rule. Each dispatch is one
-   transaction per row as every dispatch is, each row's idempotency key
-   derived from the token and the row key, every row under **one
-   `correlation_id`**, which is the batch's identity. The token is that
-   correlation id: it is minted once at the confirmation and resubmitted
-   by every chunk, so a batch of two requests has one id and its Undo
-   finds all of it. A refusal names its
-   row and its sentence, and the next row runs. A **chunk** is the rows one
-   request acts on inside a time budget of a few seconds; it is not a
-   transaction. The budget is the runner's constant, `CHUNK_BUDGET` of
-   three seconds. `make bench` measured a reclassification row at 9.1 ms
-   at p95, the resolve and the dispatch together, so a chunk holds about
-   300 rows; a move is one event a row against the reclassification's two,
-   so it holds more. "Select all N matching" on the session list is about
-   ten requests, so the progress page is the ordinary sight there.
-3. **Continue.** Rows left when the budget is spent render a progress page
-   that resubmits the token and the remaining keys with scripting off, and
-   auto-submits with it on. Every real population above fits one request;
-   "all matching" on the session list is the one that may not.
-4. **Answer.** One toast counting done, unchanged, refused and lost, with
-   the batch Undo, on the origin page.
-
-A defect in one row's command is `answered()`'s: the batch ends there, as
-the reclassification ends today and as `confirm_and_apply` admits no second
-press after one, the rows already done stay done because each committed on
-its own, and the toast says how many. The progress page does not follow a
-defect.
-
-The runner's route and the batch Undo's are classified `ORIGIN_AWARE` in
-`games/views/returns.py`, as every restore route is: each is a POST that
-acts and then redirects to the origin it carried. `CONFIRMATION` stays the GET-only bucket, and
-`IN_PLACE` the partial swap that leaves the person where they are;
-neither describes a route that acts on POST and leaves the page.
-An overlay either page closes on Escape marks the press spent, as the
-menus, tooltip, date pickers and toast stack do, because the selectable
-table decides its own Escape in the task after the press.
-
-### Batch Undo
-
-One POST route keyed on the batch's `correlation_id`. The runner reads the
-batch's events, applies the action's inverse to each row, and runs that as a
-batch itself: chunked the same way, under its own correlation id, with its
-own toast. A row whose inverse is refused, because its record was restated
-since or its run removed, is named in the report and does not block the
-rest. All-or-nothing was considered and rejected: one restated record would
-leave 92 rows stuck, which is #1123's own complaint.
-
-The inverses: reclassify → `UndoSessionReclassification`; remove → the
-row's restore command; move → `MoveSessionToPlaythrough` back to the run
-the session named before the batch; finish → `CorrectSessionTiming` back
-to running; edit (#1211) → `DescribeSession` restating, per fact the
-batch changed, the value the row's latest earlier `created` or
-`*_changed` event states; start and complete (#1256) → `VoidPlaythroughStart` and
-`VoidPlaythroughCompletion`, two commands and two event specs the issue
-declares, a void being a retraction in the retention doc's own word,
-which put the endpoint back to never stated. What an inverse does with a
-row changed since the batch depends on what it would do to the change:
-an inverse that restates what the batch overwrote (finish, move) reads
-the row as it stands and accepts the hazard; an inverse that would
-destroy a value the batch never wrote (a void over a day corrected since,
-read off the aggregate stream) refuses the row with a sentence, tallied
-refused, the batch going on. A side effect the batch stated on another
-aggregate is put back by the inverse as well, read from the batch's own
-events by correlation id while `inverse_aggregate` names the rows: a
-completion's Completed and a start's Played go back to the status that
-stood before, and a status changed since the batch is left and said. An
-Undo that leaves the game Completed is half an Undo. Two rules every
-inverse that reads a row's earlier events inherits, both found by
-#1211's review: a stream with no creation before the batch's event, or a
-payload of the wrong shape, is the row's fault and raises
-`RowUnreadable`, a defect that ends the batch, never a sentence the
-person cannot act on (`games/bulk_session_edit.py` and `run_before` in
-`games/bulk_move.py` do); and a second press of Undo runs under a fresh
-correlation id, so a gate that asks whether the batch's own event is the
-latest of its family reads the first Undo as a later change and refuses
-every row it already put back. #1256's acts run that gate only while
-the endpoint is still stated, so a second press answers already so
-(`test_an_undo_pressed_twice_is_already_so`, pinned since #1256), and
-#1284's report does not reproduce on `main`. A confirmation
-asking two facts at once rides the one `CHOICE_FIELD` as JSON, its
-controls under suffixed names of their own, so `settle` tells a carried
-statement from a first press; one fact needs no more than the plain
-`BulkChoice`. Every session inverse resolves its row through
-`session_of` in `games/bulk_sessions.py`, on the plain manager, because
-`library_sessions` hides a row whose catalog game was removed since. The move event carries its target only,
-and the run before is the target of the session's latest earlier `moved`
-event, or of its `created` payload. Reading that is new: nothing today reads
-events by aggregate, and `aggregate_id` is unindexed. #713 adds one
-migration with two indexes, `(library, correlation_id)` and
-`(library, aggregate_id)`, and the one reader its own Undo calls, the
-batch's events by `(library, correlation_id)`. The aggregate reader,
-`aggregate_events(library, aggregate_id)`, lands in #714 beside the move
-inverse, the only caller it has, so #713 merges no reader nothing runs.
-The event's shape does not change and no column is added to the row.
-
-The Undo is offered on the act's toast, as every removal's is (#695), through
-`UndoOffer`, whose route takes the correlation id. The removal helper's
-`restore_and_return` answers one command's result; the batch's undo answers
-counts, so it has its own returner in `bulk.py`. A durable place to reach a
-batch after its toast closes is the Trash's (#795), which inherits "recent
-batches".
-
-### Bulk Remove
-
-"Remove N selected" is the action every selectable table declares. Its
-per-row command is the row's own (`RemoveSession`, `RemovePlaythrough`,
-`RemoveHistoricalPlaytime`) and its inverse the restore. The confirmation
-summarises the scope, as the charter asks of a destructive act. It is added
-because it is the one action valid on every table, its inverse is trivial,
-and it proves the runner and the partial report on rows whose commands refuse
-for their own reasons: `RemovePlaythrough`'s last-live-run and referrer
-refusals surface per row here first. Measured on the anonymized
-production sample after #712: of one library's 867 live ordinary runs,
-852 are the sole run of their game and 722 are named by a live session,
-so three are removable, and a batch of fifty runs answers "0 of 50
-done". Sessions and records refuse far less. The act stays as the
-runner's proof and the one act on the run tables; whether it earns a
-place in the product is judged in the rethink #1209 is parked against,
-not here. Without it a tray on runs or records
-would hold nothing, and selecting ten runs would enable nothing.
-
-## The organizer
-
-The organizer is the Playtime page's session list narrowed to one game.
-Game detail's Sessions section keeps its five-row preview and gains
-"Organize" beside "view all"; both land on the list with `game` applied.
-That list already has every column, the filter, the sort, presets and, after
-#712, the tray. No new route, no second list, no rebuild of the preview.
-From it a person:
-
-- sorts by playthrough: #715 adds a Playthrough column and a sort on it,
-  keyed `playthrough` in `SESSION_SORTS` whether or not the column shows,
-  so a preset keeps it. #715 showed the column only while the list named
-  one game, asked of the narrowed queryset; #1245 took that judgement
-  away from the page: the column is declared always, and the person
-  turns it off through the list's column picker, so `sole_game` is gone
-  and no page decides whether a run is worth naming. The sort leads with the game's `sort_name`, constant
-  on the organizer and a grouping on the unnarrowed list, where runs of
-  unrelated games would otherwise interleave by start day; then the
-  bucket's null, then `DISPLAY_ORDER`, then `sort_instant`. So the bucket
-  sorts last within its own game under its own name, in both directions,
-  as `apply_sort` already pins an absent value last in both:
-  `DISPLAY_ORDER` numbers ordinary runs only and the bucket has no place
-  in it, which a null sort key states for free. `SortSpec` grows a `then`
-  tuple for the order behind one key, which also gives the Playthrough
-  list's own run column the sort key it lacked; #715 takes that column's
-  key, the user's widening. The name cell states no run label of its own,
-  so the run is said in one place, the column, which reads
-  `every_run_label` in `games/reads/session_run_labels.py`, #714's, a
-  sole run named too; a person who hides the column is named no run
-  anywhere, the stacked summary included, since the row builders read
-  the hidden set for the summary as well. The stacked cell's summary
-  (#711's `make_row(summary=...)`) is fed here with time range, duration,
-  device and the run label; #1241 fed the other four selectable tables. `StyledTable` has no group-header rows and the
-  column-drop classes address cells by position, so grouping is the column
-  and the sort, not header rows;
-- narrows by date and device, the session filter's own facets;
-- selects rows and moves them: since #1310 the run is bulk Edit's first
-  field, a plain `SearchSelect` with `create_url` (#1080, a prerequisite)
-  over the game's live ordinary runs, no name field and no second
-  control; #714's "Move to playthrough…" confirmation, which hosted that
-  picker alone, left the tray and the row's menu with it. A name typed
-  there goes through `POST /api/playthrough/` ahead
-  of the submit, so the choice is always an existing run key. That POST
-  runs `RecordPlaythroughByName`, which names the game's placeholder (its
-  sole live ordinary run, blank, never acted on, nothing naming it) rather
-  than creating a second run beside it, and creates one otherwise. A
-  selection at several games gets the rest of the form and no picker. The
-  Undo moves each session back, restoring the bucket first, and the run
-  named or created ahead stays, which the answer says: the batch never
-  wrote it. An abandoned confirmation leaves such a run, the cost #1080
-  accepts by name;
-- sees the session's day, duration, device and note in the row before
-  moving it, as the charter asks. #714's confirmation lists rows to
-  `CONFIRMATION_SAMPLE`, fifty, in five columns: Playthrough, through
-  `run_labels_for` in `games/views/session.py`, the bucket included, then
-  Day, Duration, Device and Note. No Game column, since the cross-game
-  refusal fixes the game.
-
-The action is declared on the session list whether or not the filter names
-a game. A selection spanning games is refused at the confirmation with a
-sentence naming the game count, rather than offered a two-step picker. The
-charter's "select a date range" is the date facet followed by "Select all N
-matching".
-
-### The bucket
-
-The bucket takes no new session and a move is the only way out (#702). When
-the last session leaves it, the move's command sequence removes the bucket
-under the same correlation id through `RemovePlaythrough`: its last-live-run
-rule reads ordinary runs only, and its referrer check finds nothing, because
-no session names the bucket any more and `RecordHistoricalPlaytime` refuses
-the bucket, so no record ever did. The Library page's Playtime section
-counts sessions in the bucket and links to the organizer when the count is
-not zero. The charter says "archive the empty bucket"; the word here is
-remove, as [Vocabulary](../../vocabulary.md) settles it.
-
-### The question the sole-run rule never asked
-
-`PlayerSessionFilter` gains `outside_playthrough_dates`, a boolean over
-`effective_day` against the run's `started_lower` and `completed_upper`:
-true where the day lies before a start the run states or after a
-completion it states, each endpoint judged on its own, so a run stating a
-start alone answers on that start and a run stating neither answers no.
-It is a handler-backed field with no column of its own, the `is_running`
-pattern, and a quick facet of kind `bool`. Beside it, `playthrough_kind`,
-a lookup over the run's `kind`, also a quick facet: the Imported history
-count needed a link that names the bucket and nothing wider. The Library
-page's Playtime section draws three linked cards, To review, Imported
-history and Outside dates, a card with no rows not drawn; each link lands
-on an editable quick bar, which is why both fields are facets. No stored
-state: the facet is the suggestion, and a row the person leaves is right
-where it is. The session bar holds seven facets and `max-w-7xl` fits four
-inline. An applied facet spills after every idle one, and Playthrough and
-Outside dates follow Game and Day in the idle row, as
-[the quick bar's facet priority](2026-09-28-issue-1254-quick-bar-facet-priority-design.md)
-states.
-
-## Reclassification, rebuilt
-
-#1098's confirmation becomes the runner's first consumer, in #713. The
-Library page's "Move all N" button posts an `all` statement over the review
-facet; the confirmation, chunks, token and Undo are the runner's, and the
-page's copy, which today says moving all at once offers no Undo, starts
-promising one. Once the tray ships (#712) the act moves there: the Playtime
-list with the review facet applied selects "all N matching" and acts from
-the tray. The Library page keeps the count and the link to the review and
-loses the button.
-
-## Retiring Actions columns
-
-#718 retires the Actions column on every table on the two pages this wave
-touches that has one: Game detail's playthroughs and historical playtime,
-and the Playtime page's sessions and historical playtime, four columns,
-and with them the Playthrough list's, which `playthrough_tabledata` draws
-from the same declaration and which carries the tray since #712: one
-builder is one personality, and a flag keeping the column on one page
-would reopen what the wave closed. Game detail's session preview has
-none. The ⋯ menu is not a column: `make_row` states it beside the
-`key` and `summary` a row already states, and `StyledTable` draws one
-trailing cell a row and one trailing header cell, headed by an
-accessible name and no visible label, because `<responsive-table>`
-hides by position and the grid stays rectangular for the declared
-columns to keep their indices. That header's `data-priority` is
-computed one above the table's highest, since the element reads a
-missing one as 1 and would drop the slot first, so its rank cannot be
-stated wrong and the five tables leave
-`tests/test_column_priority_contract.py`, which keeps guarding the six
-that still declare a labelled Actions column. The slot never enters a
-view's `Column` list and never counts against `MAX_DATA_TABLE_COLUMNS`;
-the checkbox, likewise, is content the selectable personality owns
-inside the name cell. The trigger is `EllipsisTrigger(label,
-orientation)`, one ghost `ControlButton` with a vertical glyph for a
-row's acts and a horizontal one for an overflow, which the quick bar's
-literal "⋯" and the Library page's summary rows adopt as well; the
-row's panel is a `DropdownMenuPanel` of items. `ellipsis.html` stays
-what `TruncatedText`'s reveal names. A table that keeps its Actions
-column today (#1134–#1136, Purchases) deletes it when its turn comes and
-takes the slot, whose rank it cannot get wrong. With scripting off the
-trigger is inert and the five tables offer no row act, a regression the
-user accepted; #1258, a page of its own for a session, a run and a
-record, is the answer. The playthrough tables'
-one-press "Started today" and "Completed today" are items in that menu;
-as tray acts with inverses of their own they are #1256's, after #718,
-and the items stay when the tray acts arrive. Finish's inverse is `CorrectSessionTiming` to the row's own start
-and zones with no end, which puts the row back to running, so `inverse`
-stays required on every act; `end_session` grows the runner's shape, a
-key, a correlation id and `source_metadata`, and answers the
-`CommandResult`. A reader a tray act needs moves
-to `games/reads/` first: an act module importing a view closes an import
-cycle through the foot imports of `games/bulk_actions.py`, which is why
-#714 moved the run labels out of `games/views/session.py`.
-
-Two complete lists, no residue, the user's rule of 2026-09-22 over the
-whole inventory of the five tables: the tray offers every act, and the
-row's ⋯ menu offers every act valid for a single row, in the tray act's
-words where one exists ("Record as historical playtime", "Remove"), so
-one act reads the same both ways. The words are the act's, so each
-table's items are built under `games/views/` (`session_menu.py` is the
-session row's) and read `games.bulk_actions`; `RowActionMenu` in
-`common/components/` states items and knows no act, since that import
-closes a cycle through the table's foot imports. A menu item may hand
-one row to a tray act through the runner's own statement, as Move does
-through `DropdownPostItem(hidden_fields=...)`, so the act grows no
-per-row route and the words and rules are one. An act with a side
-effect is never one press, the user's rule of 2026-09-22 on #1256:
-Completed today states Completed on the game and Started today states
-Played where nothing stronger stands, so both confirm first, and once
-the row's item confirms, a per-row route buys nothing over the runner's
-own confirmation. #1256 retires `games/views/playthrough_acts.py` and
-the routes `start_playthrough` and `complete_playthrough` with their
-`ORIGIN_AWARE` names, and its ⋯ items post a one-row statement to
-`run_bulk_action` as Move does, so one row gains the confirmation, the
-tally and the Undo it never had, and the confirmation's own sentence
-states the side effect beside the stamped day. Remove and the
-reclassification still pay two entries, weighed in #1209; these two do
-not. Its run helpers
-(`run_scope`, `run_resolution`, `RUN_GONE`, the endpoint preview cells)
-leave `games/bulk_removal.py` for `games/bulk_runs.py`, beside
-`bulk_sessions.py`; its tray order on both playthrough tables is Started
-today, Completed today, Remove. The tray's acts are Remove and Was-an-estimate
-(shipped), Finish (#718 declares it, `EndSession` on every running row
-at one instant, stamped by `offer` into the confirmation's own HTML so
-a form posted twice replays rather than mismatching each row's key;
-the zone is the browser's, `BrowserTimeZoneInput()` beside it, and
-`settle` composes the pair once and answers it unchanged on every
-later chunk; a reconfirmation stamps again for the rows that remain)
-and Edit as set-one-value (#1211, after #714,
-whose move confirmation was the form-over-a-selection precedent until
-#1310 made the run Edit's own field; its
-device control is the session form's creating `SearchSelect` over
-`POST /api/devices/`, #1080's, so a device the library does not hold
-yet is made at the confirmation). The menu is today's Actions column
-collapsed into one control: Edit, Reset, Finish, Remove and
-Was-an-estimate stay on the row, and a tray act shipping takes nothing
-off it. A gated act is absent, never disabled: a playthrough row offers
-Started today where it states neither endpoint and Completed today
-where it states a start and no completion, the gate #1256's tray acts
-inherit. Games, Devices and Platforms keep their columns, each filed as
-a follow-up (#1134–#1136), and inherit the rule with the column: their
-Actions column becomes the row's full act list in a menu, built under
-`games/views/`. Purchases' is #1266's, after the Purchases wave, which
-rebuilds that table. `make_row` now states `key`, `summary` and `menu`
-beside the cells, which is the row #1241 fed. Since #1245 the columns a
-list shows are the person's: a list column states a `key`, its identity
-(a label is not one; the playtime header reads three), `hideable=False`
-where nobody may turn it off (the first column, which names every row,
-and the Actions column, which carries every act), and
-`hidden_by_default` where it starts off; `ListColumnChoice` holds the
-choice per person and mode, `games/list_columns.py` alone reads and
-writes it, and `drop_columns` narrows a table by one `hidden` set the
-row builders read for the stacked summary too. The picker is an
-`IconTrigger` in the table's last header cell, the row-menu slot where
-the rows carry a menu and the Actions header otherwise, so it follows
-the slot by itself as #1134–#1136 and #1266 retire their columns; the
-row checkbox is no column and stays out of it. The quick bar's own
-grouping is #1267's, delivered as PR #1322: the acts, Apply, Clear,
-Presets and Advanced filter, are one segmented group at the row's end,
-and `<preset-panel>` loads and saves through `preset-panel:load` and
-`preset-panel:save`, the host answering the save with the state to
-store
-([spec](2026-09-28-issue-1267-filter-acts-group-design.md)). A preset
-carrying its columns is #1261's, which rides that answer; the choice
-without scripting is #1262's, and Apply still needs a script.
-
-The cost: a single row's act is two presses, the menu and the item, as
-an icon row cost; a multi-row act is the checkboxes, then the
-action. The charter's "a single-row bulk act is three presses" describes
-a path nobody has to take. The Orca pass in #718 is one transcript on
-the Playtime session list, selection, the live count, a tray act, then a
-row's ⋯ and its items; the other four tables are Playwright only.
-
-## Delivery order
-
-1. **#711** TABLE-01 — `<selectable-table>`: the footer
-   composite with the selection line's count, check-all, all-matching and
-   Clear beside the pagination row, the checkbox in the identity cell, the
-   selection statement, the keyboard contract, the stacked identity cell
-   below `md`. Proven on a synthetic e2e page; nothing on `main` uses it
-   yet. Absorbs #716.
-2. **#713** TABLE-03 — the runner: `BulkAction`, the confirmation and
-   progress pages, token and chunks, the two indexes and the batch
-   reader, batch Undo with the partial report, the bulk `make bench`; the
-   reclassification rebuilt on it, reached from today's Library button.
-   Closes #1125 and #1123.
-3. **#712** TABLE-02 — the selection line's actions slot and bulk Remove on
-   the four tables and on the Playthrough list, which shares the run
-   builder and its act and is the run table with a paginator; `many`
-   actions only, the `one` link path landing with #718's actions; the
-   reclassification moves into the line and the Library page keeps its
-   count. The confirmation's row renderer becomes
-   the act's and `BulkAction` generic over its row type, because
-   `_sample` in `games/views/bulk_pages.py` renders session columns only,
-   so no act on runs, records or platforms ships before it.
-4. **#714** ORG-01 — bulk move, after #1080: the confirmation with
-   #1080's creating `SearchSelect` over the game's runs, the bucket removed
-   when emptied, cross-game selections refused, the aggregate reader
-   beside the move inverse over the `(library, aggregate_id)` index #713
-   shipped, and the confirmation's five columns.
-5. **#715** ORG-02 — the organizer: the Playthrough column and sort on the
-   session list, the same sort key on the Playthrough list, Game detail's
-   "Organize" link beside "View all", the same page under
-   `sort=playthrough`, the mobile cell verified on the list. Absorbs #716.
-   The other tables' summaries are #1241's. It edits `_SORT_KEYS` in
-   `games/views/playthrough_rows.py`, whose Actions column #718 retires:
-   a textual overlap, #718 rebasing over it.
-6. **#717** ORG-04 — `outside_playthrough_dates` and `playthrough_kind`,
-   the Library page's three cards and their links.
-7. **#1316** TABLE-05 — no mode: checkboxes always shown, check-all in
-   the header and the line, the line shown with a selection. Supersedes
-   #1212.
-8. **#718** ORG-05 — the five Actions columns retired into the tray's
-   acts (Finish declared here, with its inverse) and the row's ⋯ menu
-   holding every single-row act, a trailing slot no view declares,
-   `EllipsisTrigger` shared with the quick bar and the summary rows,
-   `Cardinality` removed whole, the Orca pass, with the checkbox reserve
-   as it stands.
-9. **#1211** TABLE-04 — bulk Edit on the session tables, after #714:
-   device and emulated through `DescribeSession`, contract
-   [Set one device across many sessions](2026-09-25-issue-1211-bulk-edit-design.md).
-   #1310 then gives it the Playthrough field and takes #714's act off the
-   table: [Bulk Edit states the playthrough](2026-09-27-issue-1310-bulk-edit-moves-design.md).
-10. **#1256** — bulk Started today and Completed today, after #718,
-    delivered as PR #1265.
-11. **#1245** — the columns a list shows, after #718, delivered as PR
-    #1268; #1261, #1262 and #1267 follow it, #1266 the Purchases wave.
-
-`#711 → #713 → #712 → #714 → #715 → #717 → #718 → #1256 → #1245 → #1211`.
-#1212 and #1254 were parked by the user's decision on 2026-09-22, so #718
-landed with the checkbox reserve as it stood; #1316 replaced #1212 after it. Delivered whole as of
-2026-09-28: after #1245 came #1211, #1310, #1270, #1267, the three lists
-#1134–#1136, and #1316 and #1254 unparked. What stays open are
-follow-ups the wave filed, none gating it: #1261 and #1262 on the
-column choice, #1315, #1317, #1293, #1325 and #1326, #1275 beside the
-Access and ownership wave, #1100 behind #798, #1266 behind #725–#736,
-and every pending Orca check collected in #1335. #713 needs no table, so it
-runs beside #711. One prerequisite lies outside the wave: #1080, in the
-Session wave, landed before #714 as stack #1226–#1228 (`main` at
-63b5940f). Every issue merges alone and leaves `main` incomplete
-rather than inconsistent: #711 a personality nothing uses, #713 a runner one
-page uses, #712 a tray beside Actions columns it will replace. No stack.
-
-Merged: #716 into #711 and #715. Closed by #713: #1123, #1125. Added: bulk
-Remove, in #712.
-
-## Cross-wave handoffs
-
-- **The lists that stay** — Games (#1134), Devices (#1135) and Platforms
-  (#1136, whose Remove and Edit Undos read a batch ledger, because a
-  platform writes no event) each inherit the personality and the retirement of their
-  column after #718, and #1245's picker moves into their row-menu slot by
-  itself; Purchases' table is #725–#736's, then #1266's. The Games list's
-  bulk Edit is #1270's
-  ([spec](2026-09-28-issue-1270-bulk-game-edit-design.md)): one Edit per
-  list, as #1310 left the session list, and an inverse reading each fact's
-  latest earlier event the way #1211's does, not through #1256's gate
-  (#1284).
-- **The Trash** — #795 inherits "recent batches": the batch's correlation id
-  and the Undo route are what a Trash lists, and the correlation index is
-  what it reads.
-- **The union list** — #1100 inherits the selection statement and the tray;
-  a row on the union declares its kind, and the action's per-row command
-  reads it. `ListColumnChoice` is keyed on a `FilterPreset` mode, so a
-  union list states a mode of its own before it offers the picker.
-- **Import** — #798's inbox is a selectable table with bulk actions by
-  construction; it inherits the runner.
-- **Audit History** — the aggregate reader is the first per-aggregate read
-  of the stream, which the Journal and the Trash both need.
-- **The creating combobox** — #1080, in the Session wave, landed as
-  #714's prerequisite: the move confirmation was its fourth consumer,
-  since #1310 the Playthrough field of bulk Edit, and #1211's device
-  control its fifth. Its picker is always visible and its
-  create row names a placeholder run rather than doubling it, which #714's
-  Undo sentence and #715's Playthrough column both inherit.
-- **The rethink** — #1209, a confirmation that forecasts a command's
-  refusal, waits for the interface work after #599's epics, which also
-  judges whether bulk Remove on runs is kept at all, and now whether an
-  act declared twice, as a route with its own confirmation and as a
-  `BulkAction`, keeps two confirmations that say different things about
-  one act: Remove and the reclassification pay this since #718.
-
-## Verification contract
-
-- The selectable table's keyboard contract is proven by e2e on the synthetic
-  page and by an Orca transcript on the session list before #718 closes.
-- The runner is proven by the reclassification and by bulk Remove: a batch
-  of more than one chunk, an act after a row was removed (counted lost), a
-  repeated POST of one token (idempotent, same counts), a row whose command
-  refuses (named, the rest done), a defect (the batch ends, done rows stay).
-  The runner's e2e cover drives the selection line's action from #712 on,
-  since the Library button it drove until then is gone.
-- Batch Undo is proven on each inverse: reclassify, remove, move; a move
-  undone to the run the `created` payload named and to one an earlier
-  `moved` named; a batch one of whose rows was restated since (named, the
-  rest undone).
-- A move of every session out of the bucket removes the bucket under the
-  batch's correlation id; the Playthrough column shows no bucket after.
-- `outside_playthrough_dates` answers 113 on the 2026-09-19 dump, the Elden
-  Ring run 32.
-- `make bench` times one bulk of 600 sessions through the runner against the
-  100 ms per-command budget at p95, and records the rows written. #713
-  ships it, because the chunk budget is the runner's constant and a
-  constant nobody measured is a guess; the seeder extends
-  `games/events/benchmark_workload.py`, which already dispatches 600
-  records. That the reclassification's real population fits one chunk is
-  why the bench, not production, is where the second chunk is first seen.
-- `render_pages` before and after #718, every differing file attributed.
-- Full `make check` green at every merged commit.
-
-## What was applied
-
-Merged: #716 into #711 and #715.
-
-Pulled in: #1123 and #1125, closed by #713.
-
-Added: bulk Remove as every table's action, in #712.
-
-Reordered: #713 ahead of #712, because the tray's first action needs the
-runner; #717 after #715, because its facet reads the organizer.
-
-Amended in the charter's assumptions, on the evidence of the production
-copy: the ambiguous population is one row, and the organizer's work is the
-sole-run assignments the conversion made by rule, which the new facet
-surfaces.
-
-Corrected by the review of the first draft: the organizer is the session
-list narrowed to a game, not Game detail's preview, which is five rows with
-no note, no sort and no Actions column; a chunk is a budget of per-row
-transactions, not one transaction; a defect ends the batch; the
-confirmation is a two-POST flow the removal helper does not model; the move
-inverse needs an aggregate reader and a second index; the stacked cell is
-built, not inherited; run grouping is a column, not header rows; the
-Library copy starts promising an Undo rather than stopping.
-
-Amended after #711's planning: selection is a mode a footer toggle opens,
-with no header checkbox, and the tray is the footer's selection line, so
-the footer composite and the line's furniture moved from #712 into #711;
-the live region is the element's; selection needs scripting; an "all
-matching" selection records exclusions. Corrected by the review of #711's
-spec: the element builds the checkboxes from a row key the server renders,
-rather than revealing hidden ones, so the row builder stays unaware; no
-all-matching control without a paginator; the sticky line needs the shell
-to clip rather than hide, verified in a browser. Changed by #711's review
-against the rendered table: a selection outlives the page as a stored
-statement, two Select toggles bracket the table, every checkbox is built
-at connect, and the version stamp left the fixed corner. Corrected by
-#713's planning against the route table: the runner and the batch Undo are
-`ORIGIN_AWARE`, the aggregate reader moved to #714 with its one caller, and
-the runner refuses a filter it cannot parse rather than acting unfiltered.
-Corrected by the review of #713's spec: the confirmation lists rows to a
-cap, the token is the correlation id, and a `BulkAction` names the
-aggregate its inverse takes. Recorded after #713 merged: a chunk is about
-300 reclassification rows at 9.1 ms a row; the row renderer and
-`BulkAction`'s row type are #712's; #714 writes the aggregate reader over
-an index that exists and judges the confirmation's cap and columns.
-Settled by #712's planning: the Playthrough list is selectable beside the
-four tables, `one` actions render first in #718, and the confirmation's
-rows are a columns spec the act declares. Found by #712's review in
-#711's element: the slot latches the statement at the press and pulls it
-at connect. Measured after #712 shipped: the confirmation lists only the
-refusals the resolve owns, a command's rule is read at the press, and the
-forecast of it is #1209, parked with the numbers. Overturned by the user
-on the shipped tray: no `one` cardinality; bulk Edit (#1211) and Finish
-are tray acts, and the empty checkbox reserve was #1212's, which #1316
-removed with the mode.
-Overturned again by the user on 2026-09-22, over the five tables'
-inventory: no residue; the tray offers every act and the row's ⋯ menu
-every act valid for one row, two complete lists.
-
-Deviations recorded: the empty bucket is removed, not archived; Finish is
-a tray act and a menu item, the charter's inline control moved into the
-row's menu, beside the navbar's;
-a cross-game move is refused rather than
-picked; the organizer is reached from Game detail's Sessions section rather
-than its Playthrough section, and a date range is selected through the date
-facet and "all matching".
+A person selects rows of a list and acts on the selection as one batch.
+The batch has one Undo. Every list that had an Actions column now has a
+row menu and a tray instead. The Playtime page's session list, narrowed to
+one game, is the organizer the charter asked for. This document is the
+map of that work: what landed, which rules hold across it, what changed
+from the plan, and what the wave taught. Each rule's machinery is in the
+issue spec the table below names, or in `CLAUDE.md`. This document does not
+repeat it.
+
+## What was delivered
+
+| Issue | What it is | Contract |
+|---|---|---|
+| #711 | `<selectable-table>`: the row checkbox, the selection statement, the keyboard contract, the stacked identity cell below `md`, the footer's selection line | [Selectable table](2026-09-19-issue-711-selectable-table-design.md) |
+| #713 | The bulk runner: `BulkAction`, the two-POST confirmation, the token, chunks, the batch Undo, two event indexes, `make bench` for a batch. Closed #1123 and #1125 | [The bulk runner](2026-09-20-issue-713-bulk-runner-design.md) |
+| #712 | The tray's actions slot and bulk Remove on the five session, run and record tables | [Selection actions](2026-09-20-issue-712-selection-actions-design.md) |
+| #714 | Bulk move to a playthrough, the aggregate reader, the bucket removed when emptied. Its act later moved into Edit (#1310) | [Bulk move](2026-09-21-issue-714-bulk-move-design.md) |
+| #715 | The organizer: the Playthrough column and sort on the session list, Organize on Game detail | [Session organizer](2026-09-21-issue-715-session-organizer-design.md) |
+| #1241 | The stacked summary on the other four selectable tables | [Table summaries](2026-09-21-issue-1241-other-table-summaries-design.md) |
+| #717 | `outside_playthrough_dates`, `playthrough_kind`, the Library page's three cards | [Outside run dates](2026-09-21-issue-717-outside-run-dates-design.md) |
+| #718 | Five Actions columns retired into the tray and the row's ⋯ menu, Finish as a tray act, `EllipsisTrigger` | [The row menu](2026-09-22-issue-718-row-menu-design.md) |
+| #1256 | Started today and Completed today as tray acts, with void commands as inverses | [Bulk endpoint acts](2026-09-22-issue-1256-bulk-endpoint-acts-design.md) |
+| #1245 | The columns a list shows, per person and mode, with the picker in the row-menu slot | [Column choice](2026-09-22-issue-1245-column-choice-design.md) |
+| #1211 | Bulk Edit on the session tables: device, emulated, note | [Bulk edit](2026-09-25-issue-1211-bulk-edit-design.md) |
+| #1310 | Bulk Edit states the playthrough. Move leaves the tray | [Bulk Edit states the playthrough](2026-09-27-issue-1310-bulk-edit-moves-design.md) |
+| #1134 | The Games list selectable: bulk Remove from the library, the row menu | [Games list](2026-09-22-issue-1134-games-list-selectable-design.md) |
+| #1270 | Bulk Edit on the Games list: status, mastered, the unfinished flag | [Edit many games](2026-09-28-issue-1270-bulk-game-edit-design.md) |
+| #1274 | Device becomes an event-sourced aggregate, so its removal has events an Undo reads | [Device aggregate](2026-09-24-issue-1274-device-aggregate-design.md) |
+| #1135 | The Devices list selectable: bulk Remove, the row menu | [Devices list](2026-09-24-issue-1135-devices-list-selectable-design.md) |
+| #1136 | The Platforms list selectable: bulk Edit and Remove over a batch ledger, the icon picker | [Platforms list](2026-09-28-issue-1136-platforms-list-selectable-design.md) |
+| #1321 | Platform icons name their glyphs. Group is a search-select | [Platform icons](2026-09-28-issue-1321-platform-icon-glyphs-design.md) |
+| #1254 | The quick bar keeps an applied facet inline and marks it. Every mode's facets reordered | [Facet priority](2026-09-28-issue-1254-quick-bar-facet-priority-design.md) |
+| #1316 | Selection is not a mode: always-on checkboxes, a check-all in the header and the tray | [Always-on selection](2026-09-28-issue-1316-always-on-selection-design.md) |
+| #1267 | The quick bar's acts as one group. `<preset-panel>` loads and saves presets | [Filter acts](2026-09-28-issue-1267-filter-acts-group-design.md) |
+| #1283 | Edit's move-back answers a broken stream as a defect | [Move back](2026-09-28-issue-1283-move-back-unreadable-row-design.md) |
+
+One prerequisite came from the Session wave: #1080, the creating
+`SearchSelect`, which the move confirmation, the device control and the
+Playthrough field of Edit read. #716 merged into #711 and #715. #1212 was
+superseded by #1316.
+
+Every issue merged alone. Each left `main` incomplete, never inconsistent.
+#711 was a personality nothing used. #713 was a runner one page used. #712
+was a tray beside the Actions columns it later replaced. No stack was needed,
+because nothing converted data until #1274.
+
+## The rules that hold
+
+These rules cross the issues. No single spec owns them.
+
+- **Two complete lists, no residue.** The tray offers every act. The row's
+  ⋯ menu offers every act that is valid for one row, in the tray act's
+  words. A tray act takes nothing off the row. A single row's act is two
+  presses, the menu and the item. A multi-row act is the checkboxes, then
+  the action.
+- **The row menu is a slot, not a column.** `make_row` states it. The
+  table draws it as one trailing cell whose priority is computed above
+  every declared column. It never enters a view's `Column` list. The row
+  checkbox is content of the identity cell and is not a column either.
+- **A selection is a statement.** It is a list of keys, or `all` beside
+  the filter, the count seen and the keys unchecked since. It is always
+  POSTed. The confirmation resolves it under the library once. From then
+  on the act names those keys and no others. A row gone since is counted
+  lost. A row that entered the filter since is never touched.
+- **A batch is one correlation id.** The token is that id. Every chunk
+  resubmits it. Each row is its own transaction under its own idempotency
+  key. A refused row is named and the next row runs. A defect ends the
+  batch, and the rows already done stay done.
+- **Every act is `many`.** There is no `one` cardinality and no per-row
+  route for a tray act. A menu item hands one row to the runner through
+  the same statement, so one row gets the confirmation, the tally and the
+  Undo.
+- **An act with a side effect confirms first.** It is never one press.
+- **Declaration order is tray order.** The act reached for most often
+  comes first. The destructive act comes last, so it overflows first and
+  never sits between two benign acts.
+- **One Edit per list.** Edit states every fact the list's row has, and an
+  empty field keeps its value. A separate act per fact was tried and
+  removed.
+- **Every act has an inverse, and says where its Undo reads rows.** An
+  aggregate's Undo reads the batch's events (`EventRows`). A conventional
+  row's Undo reads the batch ledger (`LedgerRows`). The runner refuses an
+  act that names neither.
+- **An Undo is partial.** A row whose inverse is refused is named, and
+  the rest is undone. All-or-nothing was rejected.
+- **An inverse that restates overwrites and logs.** An inverse that would
+  destroy a value the batch never wrote refuses that row. A side effect
+  the batch stated on another aggregate is put back too.
+- **An unreadable row is a defect.** A stream with no creation before the
+  batch's event, or a payload of the wrong shape, raises `RowUnreadable`.
+  It is never a sentence the person cannot act on.
+- **The runner refuses a filter it cannot parse.** It never widens the
+  act to every row.
+- **A gated act is absent, never disabled.**
+- **A reader an act needs lives in `games/reads/`.** An act module
+  imports no sibling act. The act table imports every act at its foot.
+- **Selection needs scripting.** The server renders no checkbox and no
+  tray. With scripting off a page shows a plain table with no row act.
+  That cost is accepted. #1258 answers it with a page per row.
+- **A list column has a key.** A label is not one. `hideable=False`
+  marks the column nobody may turn off. `hidden_by_default` marks the
+  column that starts off.
+
+## What changed from the plan
+
+- **Selection was a mode. It is not.** The plan followed PatternFly,
+  Carbon, Polaris, Helios and SABnzbd: a Select toggle, a reserved empty
+  column, a tray opened with the mode. On the shipped list the empty
+  reserve was wrong to the eye. #1212 asked whether to collapse it and was
+  parked. #1316 removed the mode instead: every row shows its checkbox,
+  the tray shows with a selection, the check-all sits in the header and
+  the tray. Gmail and GitHub's issue list are the prior art that won.
+- **The `one` cardinality went.** The plan offered Edit, Reset and
+  Was-an-estimate as links while exactly one row was selected. The user
+  overturned it on the shipped tray: bulk Edit is a different act from the
+  row's Edit, and Finish is coherent over many rows. The two-lists rule
+  replaced it.
+- **Move and Set status became fields of Edit.** #714 shipped Move as its
+  own act with its own confirmation. #1310 made the playthrough Edit's
+  first field and took Move off the tray. #1270 was filed as Set status
+  and shipped as the Games list's Edit.
+- **The organizer's population was not the charter's.** The charter's
+  "ambiguous" sessions were the imported-history bucket's. On the
+  2026-09-19 production copy that was one row. The real population was the
+  sessions the conversion had placed by the sole-run rule: 113 sessions on
+  29 runs dated outside the run's stated interval. So #717 became a facet
+  that asks that question, with no stored state.
+- **Bulk Remove was added.** No placeholder named it. It is the one act
+  valid on every table and the runner's proof.
+- **#713 moved ahead of #712,** because the tray's first act needs the
+  runner. #717 moved after #715, because its facet reads the organizer.
+- **Devices needed an aggregate first.** #1135 was blocked: a device
+  removal wrote no event, so its Undo had nothing to read. The user ruled
+  a device player-owned state with a lifecycle, like a Purchase. #1274
+  moved it inside the event-sourced boundary. #1275, sold and lost,
+  followed.
+- **Platforms got a ledger instead.** The charter keeps custom catalog
+  rows conventional, and four tables hold a key to Platform. #1136 added
+  `BatchChange` and `LedgerRows`, so a conventional row's batch has an
+  Undo without becoming an aggregate.
+- **Purchases waits.** #1266 stays behind #725–#736, because a Purchase
+  becomes an aggregate there and takes `EventRows`. A ledger path built
+  first would be thrown away.
+- **Parked, then done.** #1212 and #1254 were parked on 2026-09-22 so
+  #718 could land. #1316 replaced the first and #1254 shipped after.
+- **Deviations from the charter.** The empty bucket is removed, not kept.
+  Finish is a tray act and a menu item, not an inline control. A
+  cross-game move is refused, not picked. The organizer is reached from
+  Game detail's Sessions section. A date range is the date facet and
+  "Select all N matching".
+
+## Lessons
+
+- **Ship the page, then judge the shape on it.** The mode, the empty
+  reserve and the `one` cardinality all read well in the spec. All three
+  fell on the shipped list. Prior art is a start, not a verdict.
+- **Measure the population before you design for it.** The charter's
+  organizer targeted one row. One query on a production copy found the
+  real work. The same query set the chunk size: every real bulk is under
+  100 rows, except "all matching" on the session list.
+- **Shape closes what a setting cannot.** #1125's field cap fell to one
+  statement field, not to a raised limit.
+- **Decide per model where an Undo reads rows, before the list.** Device
+  became an aggregate. Platform took a ledger. Purchase waits for its wave.
+  Each answer was found while planning the list, and each blocked it for a
+  day.
+- **Run the test before a defect goes into a doc.** #1284 was a peer's
+  claim carried into this document and one handoff. The test that
+  disproved it had passed since #1256's own commit.
+- **An acceptance item that is nobody's task never runs.** Three PRs
+  merged with "Orca pass pending". #1335 now holds every check with an
+  owner and a recipe.
+- **One act per list, many facts.** Two acts per fact doubled
+  confirmations and Undo rules. One Edit with "keep" as the empty value
+  replaced Move and Set status and gave the Platforms list its Edit in one
+  step.
+- **A defect ends the batch, and done rows stay done.** Each row commits
+  on its own. All-or-nothing would leave a batch stuck on one row, which
+  was #1123's own complaint.
+- **Keep the wave document current from the side.** After every merge, a
+  docs-only PR carried what changed into this document. A comment carried
+  it onto each open sibling issue. A planner who opened #1136 found the
+  Undo question already asked on #1135.
+- **Merge alone when nothing converts data.** Eleven issues landed as
+  single PRs with `main` incomplete between them. The one conversion,
+  #1274, landed with its consumer in one PR.
+
+## What other waves take
+
+- **The Trash (#795)** lists recent batches: the correlation id, the
+  Undo route and the `(library, correlation_id)` index.
+- **The union list (#1100)** takes the selection statement and the tray. A
+  row declares its kind, and the act's per-row command reads it. A union
+  mode states its own `FilterPreset` mode word, which keys both the column
+  choice and the presets.
+- **Import (#798)** gets an inbox that is a selectable table with bulk
+  acts by construction.
+- **Audit History** reads the aggregate reader, the first per-aggregate
+  read of the stream.
+- **Purchases (#1266)** takes the personality and the row menu after
+  #725–#736, with `EventRows`.
+- **Access and ownership** takes #1275, a device sold or lost.
+- **The rethink (#1209)** waits for the interface work after #599's
+  epics. It judges a confirmation that forecasts a command's refusal,
+  whether bulk Remove on runs stays, and whether an act declared twice
+  keeps two confirmations.
+
+## Verification
+
+Tests pin these proofs:
+
+- The keyboard contract, on a synthetic e2e page.
+- The runner: a batch of more than one chunk, a row removed since, a
+  repeated token, a refused row, and a defect.
+- The Undo on each inverse.
+- The bucket removed when the last session leaves it.
+- `make bench`: a reclassification row at 9.1 ms at p95, so a chunk holds
+  about 300 rows.
+
+Every PR ran `make render-pages` before and after, and attributed each
+differing file. Full `make check` was green at every merged commit.
+
+Not yet run: one Orca transcript over the shipped interface. #1335 holds
+every check.
+
+## What stays open
+
+Follow-ups the wave filed, none of which gates it: #1261 and #1262 on
+the column choice, #1315, #1317, #1293, #1325, #1326, #1275, #1100 behind
+#798, #1266 behind #725–#736, and #1335.
