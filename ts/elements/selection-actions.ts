@@ -67,8 +67,8 @@ class SelectionActionsElement extends HTMLElement {
   private acts: OverflowItem[] = [];
   // Taken the first time the line is shown.
   //
-  // Every width reads 0 under the `hidden` the table clears at the first
-  // press, and a width read inside the panel is the panel's. Only the acts
+  // Every width reads 0 under the `hidden` the table clears once a row is
+  // selected, and a width read inside the panel is the panel's. Only the acts
   // latch: the furniture is re-read every layout, because the count beside
   // them grows from "1 selected" to "1,284 selected" without the line
   // changing size, so nothing would fire a fresh measurement.

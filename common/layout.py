@@ -340,8 +340,6 @@ def TimetrackerDocument(
         ]
         theme_attributes = [
             ("lang", get_language() or settings.LANGUAGE_CODE),
-            # Focus scrolls clear of a selection line.
-            ("class", "scroll-pb-[var(--selection-line,0px)]"),
             (
                 "data-date-time-presentation",
                 json.dumps(

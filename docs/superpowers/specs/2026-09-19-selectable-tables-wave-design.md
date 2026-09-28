@@ -165,14 +165,14 @@ dropping. The charter's rules hold, and this wave settles the shape:
   dropping as `<responsive-table>` decides. This is #716's whole substance:
   the mobile organizer is the table's own personality, not a second screen.
 - Keyboard: Space toggles the focused checkbox, Shift+Space extends from the
-  last toggled row, Shift+click on a checkbox takes a range, the footer's
-  check-all is a tri-state control, and the
+  last toggled row, Shift+click on a checkbox takes a range, the two
+  check-alls, header and line, are one tri-state control, and the
   element announces the count through one live region it owns, because it
   owns the selection; the tray shows the same count and announces nothing.
   The contract is verified with Orca in #718, on the finished pages.
-- Selection needs scripting. The server renders no checkbox and the footer
-  renders its selection line hidden until the element connects, so a page
-  with scripting off shows the table it shows today. The runner reads one shape, the selection
+- Selection needs scripting. The server renders no row checkbox; the
+  header check-all hides until the element is defined, and the line until
+  a row is selected, so a page with scripting off shows a plain table. The runner reads one shape, the selection
   statement below; a second, one-field-per-row shape for scripting off was
   rejected, because it doubles the runner's grammar for a reader that also
   never sees the selection line. After #718 such a reader has no per-row act either,
@@ -630,12 +630,12 @@ row builders read for the stacked summary too. The picker is an
 `IconTrigger` in the table's last header cell, the row-menu slot where
 the rows carry a menu and the Actions header otherwise, so it follows
 the slot by itself as #1134–#1136 and #1266 retire their columns; the
-checkbox reserve is no column and stays out of it. A preset carrying
+row checkbox is no column and stays out of it. A preset carrying
 its columns is #1261's, the choice without scripting #1262's, and the
 quick bar's own grouping #1267's.
 
 The cost: a single row's act is two presses, the menu and the item, as
-an icon row cost; a multi-row act is Select, the checkboxes and the
+an icon row cost; a multi-row act is the checkboxes, then the
 action. The charter's "a single-row bulk act is three presses" describes
 a path nobody has to take. The Orca pass in #718 is one transcript on
 the Playtime session list, selection, the live count, a tray act, then a

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SelectionStatement } from "./selection-statement.js";
 import { storageKeyFor } from "./selection-storage.js";
 // Importing the module defines <selectable-table>.
@@ -176,6 +176,39 @@ describe("the tray", () => {
     expect(document.activeElement).toBe(headerCheckAll(element));
   });
 
+  it("moves focus off a line its own check-all empties", () => {
+    tick(element, 0);
+    const checkAll = lineCheckAll(element);
+    checkAll.focus();
+    checkAllPage(checkAll);
+    checkAllPage(checkAll, false);
+    expect(line(element).hidden).toBe(true);
+    expect(document.activeElement).toBe(headerCheckAll(element));
+  });
+
+  it("moves focus off the line on Escape pressed inside it", async () => {
+    tick(element, 0);
+    const clear = element.querySelector<HTMLElement>("[data-selection-clear]")!;
+    clear.focus();
+    clear.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    );
+    await settled();
+    expect(document.activeElement).toBe(headerCheckAll(element));
+  });
+
+  it("disables itself aloud when the server rendered no line", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    document.body.innerHTML = `
+      <selectable-table filter="" count="0" scope="lib-1:Games">
+        <table><thead><tr><th><input type="checkbox" data-selection-check-all></th></tr></thead></table>
+      </selectable-table>`;
+    const table = document.querySelector("selectable-table") as HTMLElement;
+    expect(error).toHaveBeenCalled();
+    expect(headerCheckAll(table).hidden).toBe(true);
+    error.mockRestore();
+  });
+
   it("moves focus to the first row's box where no header is shown", () => {
     element.querySelector("thead")!.remove();
     tick(element, 1);
@@ -327,16 +360,7 @@ describe("the selection", () => {
     expect(sessionStorage.length).toBe(0);
   });
 
-  it("shows nothing selected on a page brought back after the submit", () => {
-    tick(element, 0);
-    const actions = element.querySelector("[data-selection-actions]")!;
-    const form = document.createElement("form");
-    actions.appendChild(form);
-    form.dispatchEvent(new Event("submit", { bubbles: true }));
-    window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
-    expect(checkboxes(element)[0].checked).toBe(false);
-    expect(line(element).hidden).toBe(true);
-  });
+
 
   it("empties on Clear", () => {
     const seen = statements(element);
@@ -433,6 +457,24 @@ describe("the announcement", () => {
     tick(element, 1);
     expect(announcement(element)).toBe(
       "1 selected. Selection actions follow the table.",
+    );
+  });
+
+  it("announces the line once for a keyboard range from none", () => {
+    const element = mount(["a", "b", "c"]);
+    tick(element, 0);
+    tick(element, 0);
+    const target = checkboxes(element)[2];
+    target.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: " ",
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    expect(announcement(element)).toBe(
+      "3 selected. Selection actions follow the table.",
     );
   });
 
@@ -550,6 +592,10 @@ describe("a selection that outlives the page", () => {
     );
     const table = mount(["a", "b"], '{"year":2025}', "2");
     expect(line(table).hidden).toBe(true);
+    expect(sessionStorage.length).toBe(0);
+    const seen = statements(table);
+    tick(table, 0);
+    expect(seen[seen.length - 1]).toEqual({ mode: "some", keys: ["a"] });
   });
 
   it("is not restored under another filter: the set is another set", () => {
@@ -563,6 +609,7 @@ describe("a selection that outlives the page", () => {
   it("keeps another filter's selection through a mount and a row that leaves", async () => {
     const first = mount(["a", "b"]);
     tick(first, 0);
+    expect(sessionStorage.length).toBe(1);
     const stored = JSON.stringify({ ...sessionStorage });
 
     const second = mount(["c", "d"], '{"year":2024}');

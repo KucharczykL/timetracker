@@ -112,6 +112,14 @@ export function selectionCount(
   return Math.max(matchingCount - state.except.size, 0);
 }
 
+/** A selection of no rows, made empty. */
+export function normalised(
+  state: SelectionState,
+  matchingCount: number,
+): SelectionState {
+  return selectionCount(state, matchingCount) === 0 ? emptySelection() : state;
+}
+
 /** The statement, sorted: one selection, one value. */
 export function statementFor(
   state: SelectionState,

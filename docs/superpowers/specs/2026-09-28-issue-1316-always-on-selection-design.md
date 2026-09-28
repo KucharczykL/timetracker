@@ -28,21 +28,25 @@ boxes align without measurement.
 
 The header box is outside the sort link. The first header cell uses `py-2`,
 so the header row keeps its height. With no scripting, the header box is
-hidden.
+hidden. A selectable table without a header is refused, because the header
+holds the only check-all shown while nothing is selected. Both boxes set
+`autocomplete="off"`, so a restored form state does not show a false check.
 
 ## The line
 
 The element sets the line's `hidden` from the count. A selection of zero
 rows becomes the empty selection, also on restore. The element publishes
-the line's height only while the line shows. The document's scroll padding
-uses that height, so a focused control does not go under the line.
+the line's height as `--selection-line` only while the line shows. The
+rows use it as their bottom scroll margin, so a focused control in a row
+does not go under the line. Document padding would also scroll to reveal
+the sticky line itself, to the end of its table.
 
 Connect renders only a restored selection. An empty render forgets the
 stored value, and that value can belong to another filter of the list.
 
-Clear and Escape empty the selection. If focus was in the line, it moves to
-the header check-all, with no scroll. Without a header, it moves to the
-first row checkbox. A submitted act empties the selection.
+Clear and Escape empty the selection. A submitted act empties it too. When
+the line hides with focus in it, focus moves to the header check-all, with
+no scroll. If that box is not shown, focus moves to the first row checkbox.
 
 ## Announcements
 

@@ -102,9 +102,7 @@ describe("columnCosts", () => {
     ]);
   });
 
-  it("reads the reserve off the host, not off the mode", () => {
-    // The mode changes attributes alone, which this element does not observe;
-    // the reserve is permanent, so the budget must not wait for a mode.
+  it("budgets the checkbox inside <selectable-table>", () => {
     document.body.innerHTML = `
       <selectable-table>
         <responsive-table id="inside">

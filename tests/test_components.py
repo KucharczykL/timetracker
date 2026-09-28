@@ -3736,6 +3736,22 @@ class SelectionLineTest(SimpleTestCase):
         self.assertLess(header.index("data-selection-check-all"), header.index("Name"))
         self.assertLess(header.index("Name"), header.index("picker"))
 
+    def test_a_selectable_table_without_a_header_is_refused(self):
+        """The header holds the only check-all shown before a tick."""
+        with self.assertRaises(ValueError):
+            self._two_columns(selection={"filter": ""}, show_header=False)
+
+    def test_rows_scroll_clear_of_the_line(self):
+        html = self._paginated(selection={"filter": ""})
+        tbody = html.split("<tbody")[1].split(">")[0]
+        self.assertIn("[&amp;_*]:scroll-mb-[var(--selection-line,0px)]", tbody)
+        self.assertNotIn("scroll-mb", self._paginated().split("<tbody")[1][:400])
+
+    def test_check_alls_restore_no_form_state(self):
+        html = self._paginated(selection={"filter": ""})
+        for checkbox in html.split("data-selection-check-all")[1:]:
+            self.assertIn('autocomplete="off"', checkbox.split(">")[0])
+
     def test_a_table_with_no_selection_has_no_header_check_all(self):
         self.assertNotIn("data-selection-check-all", self._two_columns())
 

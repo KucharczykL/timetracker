@@ -3034,7 +3034,7 @@ def PageSizeSelect(request, current: int) -> Node:
 
 
 # No scripting, no checkboxes, no line.
-_SELECTION_LINE_HIDE_CLASS = "[selectable-table:not(:defined)_&]:hidden"
+_UNDEFINED_HIDE_CLASS = "[selectable-table:not(:defined)_&]:hidden"
 
 # Sticky while shown, under the menus.
 _SELECTION_LINE_STICKY_CLASS = "sticky bottom-0 z-10"
@@ -3055,7 +3055,13 @@ _SELECTION_INSET_CLASS = "px-2 sm:px-3 lg:px-6"
 # check-all takes the same 32px.
 SELECTION_RESERVE_PX = 32
 
-# Shown by the element with a selection.
+# Focus in a row scrolls clear of the line.
+#
+# A margin on the rows, not padding on the document: document padding
+# also scrolls to reveal the sticky line itself, to its table's end.
+_ROWS_CLEAR_OF_LINE_CLASS = "[&_*]:scroll-mb-[var(--selection-line,0px)]"
+
+# The line's controls row.
 _SELECTION_CONTROLS_CLASS = "flex flex-wrap items-center gap-x-3 gap-y-2"
 
 _CHECK_ALL_NAME = "Select every row on this page"
@@ -3064,7 +3070,12 @@ _CHECK_ALL_NAME = "Select every row on this page"
 def _check_all(name: str, *, extra_class: str = "") -> Node:
     """The page's check-all, header or line."""
     return Input(
-        [("data-selection-check-all", ""), ("aria-label", name)],
+        # A restored form state would stand beside no selection.
+        [
+            ("data-selection-check-all", ""),
+            ("aria-label", name),
+            ("autocomplete", "off"),
+        ],
         type="checkbox",
         class_=f"{CHECKBOX_LOOK_CLASS} {SELECTION_CHECKBOX_CLASS} {extra_class}".strip(),
     )
@@ -3075,13 +3086,13 @@ def _with_header_check_all(label: Child) -> Node:
     return Span(class_="flex items-center")[
         _check_all(
             _CHECK_ALL_NAME,
-            extra_class=f"{SELECTION_CHECKBOX_GAP_CLASS} {_SELECTION_LINE_HIDE_CLASS}",
+            extra_class=f"{SELECTION_CHECKBOX_GAP_CLASS} {_UNDEFINED_HIDE_CLASS}",
         ),
         label,
     ]
 
 
-def SelectionAnnouncement() -> Node:
+def _selection_announcement() -> Node:
     """The table's live region, outside the line."""
     return Div(
         [("data-selection-announcement", ""), ("role", "status")], class_="sr-only"
@@ -3250,7 +3261,7 @@ def SelectionLine(
             f"flex flex-wrap items-center gap-x-3 gap-y-2 "
             f"{_SELECTION_INSET_CLASS} py-3 "
             f"bg-neutral-primary-soft border-t border-default-medium "
-            f"{_SELECTION_LINE_STICKY_CLASS} {_SELECTION_LINE_HIDE_CLASS}"
+            f"{_SELECTION_LINE_STICKY_CLASS} {_UNDEFINED_HIDE_CLASS}"
         ),
     )[
         Div(
@@ -3465,6 +3476,8 @@ def StyledTable(
     )
     if align_rules:
         tbody_class = f"{tbody_class} {align_rules}"
+    if selection is not None:
+        tbody_class = f"{tbody_class} {_ROWS_CLEAR_OF_LINE_CLASS}"
     table_children.append(
         Tbody(class_=tbody_class)[
             [
@@ -3535,6 +3548,11 @@ def StyledTable(
         if paginated
         else footer
     )
+    if selection is not None and not show_header:
+        raise ValueError(
+            "A selectable table shows its header: the header holds the "
+            "check-all a table with nothing selected offers."
+        )
     if selection is not None:
         # A named region, not the general slot.
         inner_children.append(
@@ -3563,7 +3581,7 @@ def StyledTable(
                 #
                 # The count ticks silently; this speaks at a change of
                 # scope alone, so a tick is not said twice.
-                SelectionAnnouncement(),
+                _selection_announcement(),
             ]
         ]
 

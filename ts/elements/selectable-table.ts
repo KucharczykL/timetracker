@@ -16,6 +16,7 @@ import {
   emptySelection,
   forgetKeys,
   isMarked,
+  normalised,
   rangeKeys,
   selectAllMatching,
   SelectionStatement,
@@ -59,7 +60,12 @@ export class SelectableTableElement extends HTMLElement {
     this.checkboxTemplate = this.querySelector(
       "template[data-selection-checkbox-template]",
     );
-    if (!this.line) return;
+    if (!this.line) {
+      // A server defect: no line, no selection.
+      console.error("<selectable-table> has no [data-selection-line]", this);
+      for (const checkAll of this.checkAlls) checkAll.hidden = true;
+      return;
+    }
 
     for (const checkAll of this.checkAlls) {
       checkAll.addEventListener("change", () => this.onCheckAll(checkAll));
@@ -129,13 +135,15 @@ export class SelectableTableElement extends HTMLElement {
 
   /** Every change; zero rows is empty. */
   private setState(next: SelectionState): void {
-    this.state = next;
-    if (this.count() === 0) this.state = emptySelection();
+    this.state = normalised(next, this.props.count);
   }
 
   private decorateRows(): void {
     const template = this.checkboxTemplate;
-    if (!template) return;
+    if (!template) {
+      console.error("<selectable-table> has no checkbox template", this);
+      return;
+    }
     for (const row of this.rows()) {
       const cell = row.querySelector<HTMLElement>('th[scope="row"]');
       if (!cell || cell.querySelector(CHECKBOX_SELECTOR)) continue;
@@ -245,24 +253,20 @@ export class SelectableTableElement extends HTMLElement {
   }
 
   private onClear(): void {
-    // Read before hiding the line.
-    //
-    // The browser moves focus off a hidden element lazily.
-    const fromLine = this.line?.contains(document.activeElement) ?? false;
     this.setState(emptySelection());
     this.anchorKey = null;
-    if (this.storageKey) forgetSelection(this.storageKey);
     this.render();
     this.announce("Selection cleared.");
-    if (fromLine) this.focusTarget()?.focus({ preventScroll: true });
   }
 
   /** Focus target when the line hides. */
   private focusTarget(): HTMLInputElement | null {
     const header = this.checkAlls.find(
-      (checkAll) => checkAll.isConnected && checkAll.closest("thead"),
+      (checkAll) => checkAll.closest("thead") && isShown(checkAll),
     );
-    return header ?? this.querySelector<HTMLInputElement>(CHECKBOX_SELECTOR);
+    if (header) return header;
+    const rowBox = this.querySelector<HTMLInputElement>(CHECKBOX_SELECTOR);
+    return rowBox && isShown(rowBox) ? rowBox : null;
   }
 
   private onRowsChanged(): void {
@@ -305,7 +309,7 @@ export class SelectableTableElement extends HTMLElement {
       checkAll.indeterminate = all === "indeterminate";
     }
     if (this.countText) this.countText.textContent = this.countSentence();
-    if (this.line) this.line.hidden = this.count() === 0;
+    this.showLine(this.count() > 0);
     publishLineHeight();
     if (this.storageKey) {
       writeSelection(this.storageKey, this.props.filter, this.state);
@@ -316,6 +320,15 @@ export class SelectableTableElement extends HTMLElement {
         detail: statementFor(this.state, this.props.filter, this.props.count),
       }),
     );
+  }
+
+  /** A line that hides hands its focus on. */
+  private showLine(shown: boolean): void {
+    if (!this.line || this.line.hidden === !shown) return;
+    // Read before hiding: focus leaves a hidden element lazily.
+    const hadFocus = this.line.contains(document.activeElement);
+    this.line.hidden = !shown;
+    if (hadFocus && !shown) this.focusTarget()?.focus({ preventScroll: true });
   }
 
   private announce(sentence: string): void {
@@ -341,6 +354,15 @@ export class SelectableTableElement extends HTMLElement {
   }
 }
 
+/** Rendered, so focus can land on it. */
+function isShown(element: HTMLElement): boolean {
+  if (!element.isConnected) return false;
+  if (typeof element.checkVisibility === "function") {
+    return element.checkVisibility();
+  }
+  return !element.closest("[hidden]");
+}
+
 /** The row's name, without its summary line. */
 function identityName(cell: HTMLElement): string {
   const clone = cell.cloneNode(true) as HTMLElement;
@@ -349,9 +371,7 @@ function identityName(cell: HTMLElement): string {
   return clone.textContent?.trim() ?? "";
 }
 
-/** The tallest line any table is showing, for the chrome that shares the
- * corner with it. One page may hold two selectable tables; the toasts stand
- * off whichever of them is open. */
+/** The tallest showing line, for the toasts. */
 function publishLineHeight(): void {
   const style = document.documentElement.style;
   let tallest = 0;

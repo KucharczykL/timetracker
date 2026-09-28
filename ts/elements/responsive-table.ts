@@ -93,7 +93,7 @@ export function computeHiddenColumns(
  * costs at most the cap. Below md the shrinkable first column is being
  * squeezed by the max-md greed, so its natural width is not what it will
  * render at — it costs the flat floor the fit must preserve for it, raised by
- * the checkbox a selectable table reserves in every row.
+ * each row's selection checkbox.
  */
 export function columnCosts(
   policies: ColumnPolicy[],

@@ -4,7 +4,7 @@
 rows at once. It holds `<responsive-table>`, which keeps the column drop. The
 wave is [Selectable tables](2026-09-19-selectable-tables-wave-design.md).
 
-## The checkboxes
+## Always shown
 
 Selection is not a mode. Each row shows a checkbox at all times. The element
 makes the row checkboxes when it connects. A page with no scripting shows no
@@ -40,8 +40,9 @@ refuses pagination.
 
 The line shows while one row or more is selected. It holds a second
 check-all, under the row checkboxes, the count and its scope, Clear and the
-actions slot. The two check-alls show one state. Clear moves focus from the
-line to the header check-all, without a scroll.
+actions slot. The two check-alls show one state. When the line hides with focus in
+it, focus moves to the header check-all, or the first row checkbox, without
+a scroll.
 "Select all N matching" reads N from the paginator, so a table with none
 offers no such control: its page is the set. Below `sm` the line wraps rather
 than push a control past the shell.
@@ -49,8 +50,8 @@ than push a control past the shell.
 The line sticks to the foot of the window and stops at the end of its
 table. A sticky child needs a shell that does not scroll, thus
 the shell clips instead of hiding. The line stays under the menus and states
-its height, so the toasts stand off that corner, and the document's
-scroll padding keeps a focused control above it. The build stamp is the
+its height, so the toasts stand off that corner, and the rows' scroll
+margin keeps a focused control above it. The build stamp is the
 page's last line, which nothing sticky can bury.
 
 ## The statement
@@ -58,7 +59,7 @@ page's last line, which nothing sticky can bury.
 A selection is one value: the keys, or `all` beside the filter of the list,
 the count seen, and the keys unmarked since. A row unmarked under `all`
 records an exclusion and keeps the scope. A selection of no rows is the
-empty value. The element announces each change as
+empty value. The element dispatches each change as
 `selectable-table:change`.
 
 The value waits in the tab under the library, the table and the path, so its
@@ -67,9 +68,9 @@ browser nor the table beside it inherits it. A key of another page stays; a
 key this page held and holds no longer leaves, while an exclusion stays,
 because its row may be restored. A filter change restores nothing, and so
 does a page that states no count under a kept scope. Clear, the last row
-unmarked, and an act on the selection forget the value. The element writes
-only after a change, because an empty write forgets the value another
-filter keeps. What is kept is bounded by
+unmarked, and an act on the selection forget the value. The element never
+writes an empty selection it did not make, because an empty write forgets
+the value another filter keeps. What is kept is bounded by
 the clicking, never by the rows.
 
 ## What a view declares

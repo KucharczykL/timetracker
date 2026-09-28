@@ -251,6 +251,19 @@ def test_a_tabbed_box_is_not_under_the_line(page: Page, live_server):
     assert box_bottom <= line_top + 1, f"box {box_bottom}, line {line_top}"
 
 
+def test_tabbing_into_the_line_does_not_scroll_the_page(page: Page, live_server):
+    """The sticky line is in view already."""
+    page.set_viewport_size({"width": 1280, "height": 600})
+    _open(page, live_server)
+    _select_first(page)
+    page.evaluate("() => window.scrollTo(0, 400)")
+    page.wait_for_timeout(100)
+    before = page.evaluate("() => window.scrollY")
+    page.locator("[data-selection-clear]").focus()
+    page.wait_for_timeout(100)
+    assert page.evaluate("() => window.scrollY") == before
+
+
 def test_clear_hands_focus_to_the_header_without_scrolling(page: Page, live_server):
     page.set_viewport_size({"width": 1280, "height": 600})
     _open(page, live_server)
@@ -482,6 +495,19 @@ def test_the_name_keeps_its_floor_at_a_phone_width(page: Page, live_server):
         ".getBoundingClientRect().width"
     )
     assert name_width >= 150, f"name squeezed to {name_width}px"
+
+
+def test_a_hidden_line_publishes_nothing(page: Page, live_server):
+    """No stale height pads the page or lifts the toasts."""
+    _open(page, live_server)
+    _select_first(page)
+    assert page.evaluate(PUBLISHED_HEIGHT) > 0
+    page.locator("[data-selection-clear]").click()
+    expect(_line(page)).to_be_hidden()
+    published = page.evaluate(
+        "() => document.documentElement.style.getPropertyValue('--selection-line')"
+    )
+    assert published == ""
 
 
 def test_the_published_height_follows_a_line_that_wraps(page: Page, live_server):
