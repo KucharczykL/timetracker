@@ -218,6 +218,11 @@ def _games_at_status(library: UserLibrary, *statuses: PlayerGameStatus):
     return Game.objects.tracked_by(library, tracked__status__in=statuses)
 
 
+def _games_excluded_from_unfinished(library: UserLibrary):
+    """The library's tracked games that unfinished lists leave out."""
+    return Game.objects.tracked_by(library, tracked__excluded_from_unfinished=True)
+
+
 def compute_stats(library: UserLibrary, year: YearScope = None) -> StatsData:
     published_currency = (
         PurchaseConversionState.objects.only("published_currency")
@@ -294,9 +299,12 @@ def _compute_stats_from_scoped_querysets(
 
     # ── Purchase breakdown ───────────────────────────────────────────────────
     only_games_and_dlc = Q(type=Purchase.GAME) | Q(type=Purchase.DLC)
+    #: Any excluded game leaves the purchase out, as abandoned does.
+    not_excluded_q = ~Q(games__in=_games_excluded_from_unfinished(library))
     unfinished = (
         without_refunded.filter(not_finished_q)
         .filter(infinite=False)
+        .filter(not_excluded_q)
         .filter(only_games_and_dlc)
         #: not_finished_q already excludes retired.
         .filter(~Q(games__in=_games_at_status(library, PlayerGameStatus.ABANDONED)))
@@ -308,6 +316,7 @@ def _compute_stats_from_scoped_querysets(
             | Q(date_refunded__isnull=False)
         )
         .filter(infinite=False)
+        .filter(not_excluded_q)
         .filter(only_games_and_dlc)
     )
     unfinished_count = unfinished.count()

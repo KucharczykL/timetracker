@@ -72,15 +72,19 @@ PurchaseFilter(game_filter=GameFilter(
 ))
 ```
 
-The nested Game scope is `tracked_by(library)`, so this compiles to the same
-`~Q(games__id__in=excluded)` the figure reads. The flag does **not** go into
-`_not_finished_game`: its `game_filter` compiles with `ANY`, which keeps a bundle
-where some game is not excluded while the figure drops it. The existing done
-status clause has that gap for bundles; this issue does not copy it.
+The nested Game scope is `tracked_by(library)`, so the member reads the same
+set the figure reads. The flag does not go into `_not_finished_game`: that
+`game_filter` asks whether some game is included, not whether none is excluded.
 
-The parity tests in `tests/test_stats_links.py` gain a flagged single-game
-purchase and a two-game bundle (one flagged, one playing) in `world`, and hold
-unfinished and dropped per year and all-time.
+### Bundles
+
+For a single-game purchase, link and figure agree, and the parity tests in
+`tests/test_stats_links.py` hold both per year and all-time. A bundle holding
+one excluded game leaves the figure but stays in the link. `relation_to_q`
+compiles NONE as `~Q(games__id__in=...)`, and in one `Q` beside the ANY
+`game_filter` Django reuses the M2M join, so the negation holds per game row.
+#1337 fixes that in `relation_to_q` and adds the bundle parity case; a test here
+pins the figure alone. The done-status clause has the same bundle gap.
 
 Dropped follows the flag because `infinite` excludes from dropped today and the
 flag is its successor. A separate flag for dropped is #1334.
@@ -137,8 +141,8 @@ one `Fragment`.
   `RecordPlayerGameFacts`.
 - `tests/test_bulk_game_edit.py`: one dispatch per row under one key; Undo puts
   the flag back; a game with no tracked row is tracked.
-- `tests/test_stats_links.py`: parity as above; a stats test drops a flagged
-  purchase from both figures and the list.
+- `tests/test_stats_links.py`: parity for single-game purchases, flagged and
+  unflagged, per year and all-time; a bundle leaves the figure.
 - `tests/test_quick_filter_bar.py`: `ORDERS["games"]` ends with the facet; the
   facet round-trips as editable.
 - Game list: column hidden by default, shown and sorted on choice.
@@ -152,3 +156,4 @@ one `Fragment`.
 
 - #1334: a separate flag for the dropped figures.
 - #733 (commented): remove the `infinite` clause in both readers.
+- #1337: NONE/ALL over a multi-valued relation reuses the join.

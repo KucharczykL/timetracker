@@ -98,7 +98,8 @@ A purchase is **unfinished** when:
 3. It is NOT finished (per the finished definition above)
 4. It is NOT dropped (per the dropped definition above)
 5. It is NOT infinite (subscription, etc.)
-6. It IS a game or DLC (not season passes or battle passes)
+6. None of its games is excluded from unfinished lists
+7. It IS a game or DLC (not season passes or battle passes)
 
 **Unfinished = Active backlog** — games the user may still play.
 
@@ -109,7 +110,8 @@ A purchase is **dropped** when:
 2. It is NOT finished (per the finished definition above)
 3. It matches at least one dropped signal (per the dropped definition above)
 4. It is NOT infinite
-5. It IS a game or DLC
+5. None of its games is excluded from unfinished lists
+6. It IS a game or DLC
 
 **Dropped = Terminal state** — games the user has given up on or refunded.
 
@@ -121,6 +123,7 @@ A purchase is **dropped** when:
 | **Dropped** | Yes | NOT finished, AND (abandoned OR refunded) |
 | **Refunded** | Yes | `date_refunded IS NOT NULL` |
 | **Infinite** | Yes | `infinite = True` |
+| **Excluded from unfinished** | Yes | a game states `excluded_from_unfinished` |
 
 ---
 
