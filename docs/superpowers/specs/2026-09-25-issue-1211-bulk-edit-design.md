@@ -61,7 +61,7 @@ whose catalog game was removed.
 
 ## The confirmation
 
-The tray order is Finish, Move, Edit, Reclassify, Remove. The preview shows
+The tray order is Finish, Edit, Reclassify, Remove; Move left with #1310. The preview shows
 Game, Day, Duration, Device, Emulated and Note.
 
 Each act's heading states the count: `ActTitle.many` holds `{count}`, the
