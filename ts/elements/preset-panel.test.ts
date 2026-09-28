@@ -44,7 +44,8 @@ function mount(
     });
   }
   if (answersLoad) host.addEventListener(PRESET_LOAD_EVENT, (event) => event.preventDefault());
-  const dropDown = host.querySelector("drop-down") as HTMLElement & {
+  // An un-upgraded stand-in; the test gives it the one method used.
+  const dropDown = host.querySelector("drop-down") as unknown as HTMLElement & {
     close: ReturnType<typeof vi.fn>;
   };
   dropDown.close = vi.fn();

@@ -25,10 +25,6 @@ interface PresetWidget extends HTMLElement {
   refetchOptions?: () => void;
 }
 
-interface ClosableHost extends HTMLElement {
-  close?: () => void;
-}
-
 export class PresetPanelElement extends HTMLElement {
   private apiUrl = "";
   private mode = "";
@@ -87,7 +83,7 @@ export class PresetPanelElement extends HTMLElement {
     }
     // A kept selection would pin a stale row.
     this.widget()?.clearSelection?.();
-    this.closest<ClosableHost>("drop-down")?.close?.();
+    this.closest("drop-down")?.close();
   };
 
   private onCreate = (event: Event): void => {
