@@ -169,7 +169,7 @@ def test_removing_an_owned_game_untracks_it_and_stamps_the_row(
     tracked = _tracked(owned_library, owned)
     assert tracked.removed_at is not None
     assert batch_aggregate_ids(
-        owned_library, correlation_id, action.inverse_aggregate
+        owned_library, correlation_id, action.undo_rows.aggregate
     ) == [tracked.pk]
 
 

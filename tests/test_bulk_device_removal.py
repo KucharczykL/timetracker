@@ -11,7 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 from session_rows import duration_only_row, tracked_run
 
-from games.bulk_actions import BULK_ACTIONS, RowOutcome
+from games.bulk_actions import BULK_ACTIONS, EventRows, RowOutcome
 from games.bulk_removal import DEVICE_GONE, REMOVE_DEVICE
 from games.models import Device, Game, PlayerSession
 from games.reads.device_departures import naming_sessions_of
@@ -47,7 +47,7 @@ def _session_on(library, device, *, day=date(2026, 3, 5)) -> PlayerSession:
 
 def test_the_act_is_declared():
     assert BULK_ACTIONS["device.remove"] is REMOVE_DEVICE
-    assert REMOVE_DEVICE.inverse_aggregate == "device"
+    assert REMOVE_DEVICE.undo_rows == EventRows("device", Device)
 
 
 # ── The rows ─────────────────────────────────────────────────────────────────

@@ -11,6 +11,7 @@ from games.bulk_actions import (
     ActTitle,
     BulkAction,
     ChoiceValue,
+    EventRows,
     PreviewColumn,
     Refused,
     Resolution,
@@ -184,8 +185,7 @@ RECLASSIFY = BulkAction(
     subject="session",
     #: A move, not a removal: the hours stay.
     color="blue",
-    inverse_aggregate="playersession",
-    inverse_model=PlayerSession,
+    undo_rows=EventRows("playersession", PlayerSession),
     fallback="games:list_sessions",
     scope=review_scope,
     resolve=review_resolution,

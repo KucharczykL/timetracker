@@ -28,6 +28,7 @@ from common.layout import render_page
 from common.notices import Undo, notify
 from common.returns import UrlName
 from games.bulk_actions import (
+    BULK_ACTIONS,
     BoundRow,
     BulkAction,
     BulkActionName,
@@ -38,11 +39,12 @@ from games.bulk_actions import (
     RefusedAct,
     Resolution,
     RowOutcome,
+    StampedRows,
     bulk_action,
 )
 from games.events.dispatch import CommandRejected
 from games.models import UserLibrary
-from games.reads.events import batch_aggregate_ids, batch_events
+from games.reads.events import batch_events
 from games.views.bulk_pages import (
     ConfirmBatch,
     ProgressBatch,
@@ -826,13 +828,26 @@ def _act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkAction[Any] 
     """
     first = batch_events(library, correlation_id).first()
     if first is None:
-        raise Http404("No such batch.")
+        return _stamped_act_of(library, correlation_id)
     stated = first.source_metadata.get("bulk", {})
     name = stated.get("action") if isinstance(stated, dict) else None
     if not isinstance(name, str):
         raise Http404("That act is no batch.")
     #: Nothing validates the name at the append.
     return bulk_action(name)
+
+
+def _stamped_act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkAction[Any]:
+    """The act whose rows' stamps name this batch.
+
+    Such an act writes no event, so nothing else names it.
+    """
+    for declared in BULK_ACTIONS.values():
+        if isinstance(declared.undo_rows, StampedRows) and declared.undo_rows.rows(
+            library, correlation_id
+        ):
+            return declared
+    raise Http404("No such batch.")
 
 
 @login_required
@@ -855,7 +870,7 @@ def undo_bulk_action(request: HttpRequest, correlation_id: uuid.UUID) -> HttpRes
         )
 
     #: Read once a request: this is it.
-    rows = batch_aggregate_ids(user.library, correlation_id, declared.inverse_aggregate)
+    rows = declared.undo_rows.rows(user.library, correlation_id)
 
     token = request.POST.get(TOKEN_FIELD, "")
     if token:

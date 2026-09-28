@@ -461,7 +461,7 @@ def test_each_acts_undo_reads_the_rows_its_act_wrote(
     )
 
     assert batch_aggregate_ids(
-        owned_library, correlation_id, action.inverse_aggregate
+        owned_library, correlation_id, action.undo_rows.aggregate
     ) == [_aggregate_key(name, owned_library, row)]
 
 

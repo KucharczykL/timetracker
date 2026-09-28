@@ -29,6 +29,8 @@ from games.events.dispatch import CommandOutcome, CommandResult
 from games.events.idempotency import IdempotencyKey
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, AggregateType
 from games.models import UserLibrary
+from games.reads.events import batch_aggregate_ids
+from games.removal import names_its_batch
 from games.writes.answers import SubjectNoun
 
 #: An act's name, and its route segment.
@@ -247,6 +249,44 @@ class BulkChoice[RowT: Model]:
     settle: Callable[[UserLibrary, QueryDict], ChoiceValue]
 
 
+@dataclass(frozen=True, slots=True)
+class EventRows:
+    """An Undo reading the batch's events.
+
+    `model` is the one whose keys the inverse is handed. Usually the
+    act's own rows, and for `playergame.remove` not: it lists Games
+    and undoes PlayerGames, because the event is appended under the
+    PlayerGame's key.
+    """
+
+    aggregate: AggregateType
+    model: type[Model]
+
+    def rows(self, library: UserLibrary, batch: uuid.UUID) -> list[uuid.UUID]:
+        return batch_aggregate_ids(library, batch, self.aggregate)
+
+
+@dataclass(frozen=True, slots=True)
+class StampedRows:
+    """An Undo reading the rows whose stamp names the batch.
+
+    For a conventional row, which writes no event.
+    """
+
+    model: type[Model]
+
+    def rows(self, library: UserLibrary, batch: uuid.UUID) -> list[uuid.UUID]:
+        return list(
+            self.model._default_manager.filter(library=library, removed_in_batch=batch)
+            .order_by("pk")
+            .values_list("pk", flat=True)
+        )
+
+
+#: Where a batch's Undo reads the rows it takes back.
+type UndoRows = EventRows | StampedRows
+
+
 _TABLE: dict[BulkActionName, BulkAction[Any]] = {}
 
 
@@ -265,14 +305,8 @@ class BulkAction[RowT: Model]:
     subject: SubjectNoun
     #: What the act does to a row, in the button's colours.
     color: ButtonColor
-    #: Which half a mixed batch's Undo reads.
-    inverse_aggregate: AggregateType
-    #: The model whose keys the inverse is handed. Usually the act's
-    #: own rows, and for `playergame.remove` not: it lists Games and
-    #: undoes PlayerGames, because the event is appended under the
-    #: PlayerGame's key. Stated, so the pair can be checked rather
-    #: than left to hold by coincidence of naming.
-    inverse_model: type[Model]
+    #: Where its Undo reads the rows, and which model they are.
+    undo_rows: UndoRows
     #: Where the act returns without an origin.
     fallback: UrlName
     scope: Scope[RowT]
@@ -307,23 +341,38 @@ class BulkAction[RowT: Model]:
                         "by position. Two of the three facts are text, so "
                         "position cannot tell them apart."
                     )
-        if not DEFAULT_EVENT_TYPES.event_types_for(self.inverse_aggregate):
+        match self.undo_rows:
+            case EventRows(aggregate=aggregate, model=model):
+                self._refuse_an_unread_aggregate(aggregate, model)
+            case StampedRows(model=model):
+                if not names_its_batch(model):
+                    raise ValueError(
+                        f"{self.name!r} reads its Undo off {model.__name__}'s "
+                        "removal stamp, and that stamp names no batch. Its "
+                        "Undo would read an empty batch."
+                    )
+        _TABLE[self.name] = self
+
+    def _refuse_an_unread_aggregate(
+        self, aggregate: AggregateType, model: type[Model]
+    ) -> None:
+        """An Undo must read rows its inverse can take."""
+        if not DEFAULT_EVENT_TYPES.event_types_for(aggregate):
             raise ValueError(
-                f"{self.name!r} names {self.inverse_aggregate!r} as the "
+                f"{self.name!r} names {aggregate!r} as the "
                 "aggregate its inverse takes, and no event type speaks about "
                 "it. Its Undo would read an empty batch."
             )
-        stated_model = self.inverse_model._meta.model_name
-        if stated_model != self.inverse_aggregate:
+        stated_model = model._meta.model_name
+        if stated_model != aggregate:
             raise ValueError(
-                f"{self.name!r} names {self.inverse_aggregate!r} as the "
+                f"{self.name!r} names {aggregate!r} as the "
                 "aggregate its inverse takes, and "
-                f"{self.inverse_model.__name__} as the model it reads those "
+                f"{model.__name__} as the model it reads those "
                 f"keys off ({stated_model!r}). An Undo would hand one "
                 "model's key to a read of another, and answer 404 on every "
                 "row of its own batch."
             )
-        _TABLE[self.name] = self
 
 
 def bulk_action(name: BulkActionName) -> BulkAction[Any] | None:
