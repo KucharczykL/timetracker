@@ -61,7 +61,8 @@ registerBehavior("my-behavior", {
 
 [`ts/elements/behaviors/combobox.ts`](../ts/elements/behaviors/combobox.ts) is
 the plug point's canonical consumer (issue #297): a `<drop-down>` whose panel hosts a
-`<search-select>` (the preset picker, `LoadPresetDropdown`). "Fetch fresh
+`<search-select>` (the facets, and the presets panel through the `presets`
+behavior, which shares the same wiring). "Fetch fresh
 options on every open" is wired entirely off the lifecycle event — the behavior
 contains **zero fetch code**; it delegates to the widget's own fetch path:
 

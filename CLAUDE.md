@@ -737,6 +737,9 @@ Submodules re-exported via `common/components/__init__.py`:
   and upserts the answered `{value, label}` on its key, and `params` is one JSON
   mapping — a literal or a sibling field — read by that POST and by the search
   query alike, a field source being a dependency that re-searches, #1080;
+  `create_event` posts nothing and emits `search-select:create` `{name,
+  replaces}` for the consumer, `create_verb` names the row and
+  `replace_verb` offers it for a name a row holds exactly, #1328;
   a trailing × empties query and value in one press and emits
   `search-select:clear` after any `search-select:change`; on by default,
   `clearable=False` opts out, #1287; `none_label` pins a row that holds
@@ -745,8 +748,10 @@ Submodules re-exported via `common/components/__init__.py`:
   `FilterSelect()` (include/exclude
   with pinned Any/None modifiers; `layout="panel"` is GitHub-label-picker
   personality for hosting inside dropdown dialog, #315), `ComboboxDropdown()`
-  (generic "Label ▾" trigger + dialog), `PresetSelect()`/`LoadPresetDropdown()`
-  (fetch-on-open preset picker, #297), `SearchSelectOption`. Every picker
+  (generic "Label ▾" trigger + dialog), `SearchSelectOption`, and `PresetSelect()`
+  (fetch-on-open preset list, #297) inside `PresetPanel()`: the
+  `<preset-panel>` that loads and saves presets for any host answering
+  `preset-panel:load`/`:save`, opened by `presets_member()` (#1267). Every picker
   builds rows through one `_option_row(option, kind, *, actions)` in the menu
   item's look (`DROPDOWN_ITEM_SHAPE`/`DROPDOWN_ITEM_ACTIVE`), pills through
   `Pill(kind=…)` inside the field box, and its list is a `DropdownPanel`; the
@@ -851,11 +856,14 @@ structured filtering.
     ([Facet priority](docs/superpowers/specs/2026-09-28-issue-1254-quick-bar-facet-priority-design.md)).
   - Row anatomy: collapsible facets, then "⋯" priority-plus overflow menu
     (ResizeObserver-driven, continuous, no breakpoints — facets that don't fit are
-    MOVED into it, same DOM nodes so widget state survives), then non-collapsible
-    furniture — Load-preset picker (`preset_api_url`, load-only) and
-    Apply | Clear [| Advanced filter…] ButtonGroup (`builder_url` gates third
-    segment). `apply_url` overrides every derived list URL (#304
-    synthetic-harness constraint).
+    MOVED into it, same DOM nodes so widget state survives), then the acts:
+    one Apply | Clear | Presets [| Advanced filter] ButtonGroup with
+    `ml-auto`, icons beside Apply (`preset_api_url` gates Presets, which loads
+    and saves; `builder_url` gates Advanced filter). A `ButtonGroup` member
+    with `opens` wraps its shaped segment in a popup. The builder toolbar is
+    the same group without Advanced filter, and saves `serializeForQuery()`.
+    `apply_url` overrides every derived list URL (#304 synthetic-harness
+    constraint).
   - Editable only when every top-level filter key is facet field with dict
     criterion whose modifier its widget renders, or a `search` whose value is
     text in one of the six modes the field states (`is_quick_editable`, which
@@ -863,10 +871,11 @@ structured filtering.
     string and number kinds are checked against it, set/date/bool are not — see
     its docstring); operator keys, `*_filter` relations,
     `field_comparisons`, or any non-facet leaf degrade it to read-only
-    "Advanced filter active" pill with Edit-in-builder/Clear links. Bar's
+    "Advanced filter active" pill beside the acts group without Apply, inside
+    the same element, whose `filter` prop is what its Presets saves. Bar's
     serializer emits only flat facet criteria, so its own output always
     round-trips back to editable. Anything facets can't express lives in nested
-    builder, reached via "Advanced filter…" — every filterable mode has builder
+    builder, reached via the Advanced filter segment — every filterable mode has builder
     page, including devices/platforms (#336).
 
 **Views** (`games/views/`): function-based, decorated with `@login_required`,
@@ -889,8 +898,9 @@ organized by domain entity:
   parity-tested so each builder's queryset count equals stat it links from
 - `auth.py` — custom `LoginView`, renders via `render_page()`
 
-Filter presets have no classic views — they live on Ninja API; picker UI is shared
-combobox dropdown (#297).
+Filter presets have no classic views — they live on Ninja API; the UI is
+`<preset-panel>` behind the acts group's Presets segment, which loads and saves
+(#297, #1267).
 
 **Signals** (`games/signals.py`):
 - `pre_save` on Purchase: snapshots old price/currency for change detection

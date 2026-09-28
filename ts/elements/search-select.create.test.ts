@@ -331,3 +331,96 @@ describe("<search-select> create row (#1080)", () => {
     expect(panel.hidden).toBe(false);
   });
 });
+
+describe("<search-select> create row its consumer commits", () => {
+  beforeEach(() => document.body.replaceChildren());
+  afterEach(() => vi.unstubAllGlobals());
+
+  const byEvent = {
+    "create-url": "",
+    "create-event": "true",
+    "create-verb": "Save",
+    "replace-verb": "Overwrite",
+  };
+
+  function created(host: HTMLElement) {
+    const heard = vi.fn();
+    host.addEventListener("search-select:create", event =>
+      heard((event as CustomEvent).detail)
+    );
+    return heard;
+  }
+
+  it("reads the consumer's verb and emits the name, posting nothing", async () => {
+    const { createMock } = stubEndpoints([]);
+    const host = mount(byEvent);
+    const heard = created(host);
+
+    await type(host, "Backlog");
+    expect(createRow(host).textContent).toContain("Save “Backlog”");
+    pressEnter(host);
+
+    expect(heard).toHaveBeenCalledWith({ name: "Backlog", replaces: false });
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it("reads the replace verb for a name a row holds exactly", async () => {
+    stubEndpoints([{ value: "b", label: "Backlog", data: {} }]);
+    const host = mount(byEvent);
+    const heard = created(host);
+
+    await type(host, "Backlog");
+    expect(createRow(host).hidden).toBe(false);
+    expect(createRow(host).textContent).toContain("Overwrite “Backlog”");
+    createRow(host).click();
+
+    expect(heard).toHaveBeenCalledWith({ name: "Backlog", replaces: true });
+  });
+
+  it("keeps case: a name differing in case is another name", async () => {
+    stubEndpoints([{ value: "b", label: "Backlog", data: {} }]);
+    const host = mount(byEvent);
+
+    await type(host, "backlog");
+
+    expect(createRow(host).textContent).toContain("Save “backlog”");
+  });
+
+  it("Enter picks a matching row before it saves", async () => {
+    stubEndpoints([{ value: "b", label: "Backlog", data: {} }]);
+    const host = mount(byEvent);
+    const heard = created(host);
+    const picked = vi.fn();
+    host.addEventListener("search-select:change", picked);
+
+    await type(host, "Backlog");
+    pressEnter(host);
+
+    expect(picked).toHaveBeenCalled();
+    expect(heard).not.toHaveBeenCalled();
+  });
+});
+
+describe("<search-select> refetch", () => {
+  beforeEach(() => document.body.replaceChildren());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("drops a debounced search for the old query", async () => {
+    const { searchMock } = stubEndpoints([]);
+    const host = mount({ "create-url": "" }) as SearchSelectLike & {
+      refetchOptions(): void;
+    };
+    const box = searchBox(host);
+    box.focus();
+    box.value = "stale";
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+    host.refetchOptions();
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    const queries = searchMock.mock.calls.map(call =>
+      new URL(String((call as unknown[])[0]), window.location.origin).searchParams.get("q")
+    );
+    expect(queries).not.toContain("stale");
+    expect(box.value).toBe("");
+  });
+});

@@ -1,10 +1,17 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "./filter-group.js";
-import "./filter-builder.js";
+import { INCOMPLETE_SAVE_REFUSAL } from "./filter-builder.js";
 import { applyUrl } from "./filter-url.js";
 import { FILTER_TREE_CHANGE_EVENT } from "./filter-group.js";
 import type { FilterGroupElement } from "./filter-group.js";
+import {
+  PRESET_LOAD_EVENT,
+  PRESET_SAVE_EVENT,
+  PresetSaveAnswer,
+  PresetSaveRequest,
+  PresetState,
+} from "./presets.js";
 
 const MODELS = JSON.stringify({
   game: {
@@ -13,7 +20,6 @@ const MODELS = JSON.stringify({
     columns: [],
   },
 });
-const PRESET_UUID = "018f5e66-e800-7000-8000-000000000001";
 
 describe("applyUrl", () => {
   it("returns the bare list url for an empty filter", () => {
@@ -27,22 +33,15 @@ describe("applyUrl", () => {
   });
 });
 
-interface PickerWidgetStub extends HTMLElement {
-  refetchOptions: ReturnType<typeof vi.fn>;
-  clearSelection: ReturnType<typeof vi.fn>;
-}
-
 function mount(sort = "", perPage = ""): {
   group: FilterGroupElement;
   builder: HTMLElement;
-  widget: PickerWidgetStub;
+  panel: HTMLElement;
 } {
   document.body.innerHTML = "";
   const builder = document.createElement("filter-builder");
   builder.setAttribute("model", "game");
-  builder.setAttribute("mode", "games");
   builder.setAttribute("apply-url", "/tracker/game/list");
-  builder.setAttribute("preset-api-url", "/api/presets/");
   // Set before append so connectedCallback reads it (attrs aren't re-read).
   if (sort) builder.setAttribute("sort", sort);
   if (perPage) builder.setAttribute("per-page", perPage);
@@ -51,39 +50,33 @@ function mount(sort = "", perPage = ""): {
   group.setAttribute("models", MODELS);
   document.body.appendChild(builder);
   document.body.appendChild(group);
-  // ensureToolbar leaves [data-preset-picker] empty; give it the widget the
-  // real LoadPresetDropdown would host, with the duck-typed methods stubbed
-  // (this suite deliberately never imports search-select.js).
-  const picker = builder.querySelector("[data-preset-picker]") as HTMLElement & {
-    close?: ReturnType<typeof vi.fn>;
-  };
-  picker.close = vi.fn();
-  const widget = document.createElement("search-select") as PickerWidgetStub;
-  widget.refetchOptions = vi.fn();
-  widget.clearSelection = vi.fn();
-  picker.appendChild(widget);
-  return { group, builder, widget };
+  // A stand-in for <preset-panel>: this suite speaks its event contract only.
+  const panel = document.createElement("div");
+  builder.appendChild(panel);
+  return { group, builder, panel };
 }
 
-// A pick as the preset search-select emits it: bubbling search-select:change
-// whose last.data.filter carries the preset's filter JSON.
-function dispatchPick(
-  widget: HTMLElement,
-  filterJson: string,
-  sort?: string,
-  perPage?: string,
-): void {
-  const data: Record<string, string> = { filter: filterJson };
-  if (sort !== undefined) data.sort = sort;
-  if (perPage !== undefined) data.per_page = perPage;
-  widget.dispatchEvent(
-    new CustomEvent("search-select:change", {
+function load(panel: HTMLElement, preset: PresetState): void {
+  panel.dispatchEvent(new CustomEvent(PRESET_LOAD_EVENT, { bubbles: true, detail: preset }));
+}
+
+function requestSave(panel: HTMLElement): PresetSaveAnswer | null {
+  const request = new PresetSaveRequest();
+  panel.dispatchEvent(new CustomEvent(PRESET_SAVE_EVENT, { bubbles: true, detail: request }));
+  return request.answer;
+}
+
+function stubNavigate(builder: HTMLElement): ReturnType<typeof vi.fn> {
+  const navigate = vi.fn();
+  (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
+  return navigate;
+}
+
+function markIncomplete(): void {
+  document.dispatchEvent(
+    new CustomEvent(FILTER_TREE_CHANGE_EVENT, {
       bubbles: true,
-      detail: {
-        name: "preset",
-        values: [PRESET_UUID],
-        last: { value: PRESET_UUID, label: "Finished games", data },
-      },
+      detail: { tree: {}, incompleteCount: 1 },
     }),
   );
 }
@@ -103,300 +96,115 @@ describe("<filter-builder>", () => {
 
   it("Apply navigates to applyUrl(serializeForQuery())", () => {
     const { builder } = mount();
-    const navigate = vi.fn();
-    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
+    const navigate = stubNavigate(builder);
     (builder.querySelector("[data-apply]") as HTMLElement).click();
     expect(navigate).toHaveBeenCalledWith("/tracker/game/list");
   });
 
   it("Apply carries the sort threaded from the list (#77)", () => {
     const { builder } = mount("-playtime,name");
-    const navigate = vi.fn();
-    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
+    const navigate = stubNavigate(builder);
     (builder.querySelector("[data-apply]") as HTMLElement).click();
     expect(navigate).toHaveBeenCalledWith(applyUrl("/tracker/game/list", {}, "-playtime,name"));
   });
 
-  it("a picked preset's sort overrides the list sort on the next Apply (#77)", () => {
-    const { builder, widget } = mount("-playtime");
-    const navigate = vi.fn();
-    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
-    dispatchPick(widget, JSON.stringify({}), "name");
-    (builder.querySelector("[data-apply]") as HTMLElement).click();
-    expect(navigate).toHaveBeenCalledWith(applyUrl("/tracker/game/list", {}, "name"));
-  });
-
-  it("a picked preset with no stored sort clears the list sort (#77)", () => {
-    const { builder, widget } = mount("-playtime");
-    const navigate = vi.fn();
-    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
-    dispatchPick(widget, JSON.stringify({}), "");
-    (builder.querySelector("[data-apply]") as HTMLElement).click();
-    expect(navigate).toHaveBeenCalledWith("/tracker/game/list");
-  });
-
   it("Apply carries the per_page threaded from the list (#337)", () => {
     const { builder } = mount("", "100");
-    const navigate = vi.fn();
-    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
+    const navigate = stubNavigate(builder);
     (builder.querySelector("[data-apply]") as HTMLElement).click();
     expect(navigate).toHaveBeenCalledWith(applyUrl("/tracker/game/list", {}, "", "100"));
   });
 
-  it("a picked preset's per_page overrides the list size on the next Apply (#337)", () => {
-    const { builder, widget } = mount("", "100");
-    const navigate = vi.fn();
-    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
-    dispatchPick(widget, JSON.stringify({}), "", "50");
-    (builder.querySelector("[data-apply]") as HTMLElement).click();
-    expect(navigate).toHaveBeenCalledWith(applyUrl("/tracker/game/list", {}, "", "50"));
+  it("a loaded preset goes into the tree and the page stays", () => {
+    const { group, builder, panel } = mount();
+    const navigate = stubNavigate(builder);
+    const filter = { AND: [{ status: { modifier: "INCLUDES", value: ["f"] } }] };
+    load(panel, { filter, sort: "", perPage: "" });
+    expect(group.serialize()).toEqual(filter);
+    expect(navigate).not.toHaveBeenCalled();
   });
 
-  it("a picked preset with no stored per_page clears the list size (#337)", () => {
-    const { builder, widget } = mount("", "100");
-    const navigate = vi.fn();
-    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
-    dispatchPick(widget, JSON.stringify({}), "", "");
+  it("a loaded preset's sort and per_page replace the list's on the next Apply", () => {
+    const { builder, panel } = mount("-playtime", "100");
+    const navigate = stubNavigate(builder);
+    load(panel, { filter: {}, sort: "name", perPage: "50" });
+    (builder.querySelector("[data-apply]") as HTMLElement).click();
+    expect(navigate).toHaveBeenCalledWith(applyUrl("/tracker/game/list", {}, "name", "50"));
+  });
+
+  it("a loaded preset with no sort or per_page clears the list's", () => {
+    const { builder, panel } = mount("-playtime", "100");
+    const navigate = stubNavigate(builder);
+    load(panel, { filter: {}, sort: "", perPage: "" });
     (builder.querySelector("[data-apply]") as HTMLElement).click();
     expect(navigate).toHaveBeenCalledWith("/tracker/game/list");
   });
 
-  it("Preset pick loads the filter, clears the transient pick, and closes", () => {
-    const { group, builder, widget } = mount();
-    const navigate = vi.fn();
-    (builder as unknown as { navigate: (url: string) => void }).navigate = navigate;
-    const picker = builder.querySelector("[data-preset-picker]") as HTMLElement & {
-      close: ReturnType<typeof vi.fn>;
-    };
-
-    const filter = { AND: [{ status: { modifier: "INCLUDES", value: ["f"] } }] };
-    dispatchPick(widget, JSON.stringify(filter));
-
-    expect(group.serialize()).toEqual(filter);
-    expect(navigate).not.toHaveBeenCalled();
-    // The pick is a command, not a value: the selection is cleared so no stale
-    // row can be pinned through the next refetch, and the dialog closes.
-    expect(widget.clearSelection).toHaveBeenCalledOnce();
-    expect(picker.close).toHaveBeenCalledOnce();
+  it("a save states the live filter Apply queries, not the stored tree", () => {
+    const { group, panel } = mount("-playtime", "100");
+    const live = { AND: [{ status: { modifier: "INCLUDES", value: ["p"] } }] };
+    group.serialize = () => ({ AND: [{ status: {} }] });
+    group.serializeForQuery = () => live;
+    expect(requestSave(panel)).toEqual({
+      kind: "state",
+      state: { filter: live, sort: "-playtime", perPage: "100" },
+    });
   });
 
-  it("a change event from outside the picker is ignored", () => {
-    const { group, builder } = mount();
-    const untouched = group.serialize(); // pristine tree (one blank leaf)
-    const stray = document.createElement("search-select");
-    builder.appendChild(stray);
-
-    dispatchPick(stray, JSON.stringify({ AND: [{ status: { modifier: "EQUALS", value: "f" } }] }));
-
-    expect(group.serialize()).toEqual(untouched);
+  it("a save is refused while a criterion is incomplete", () => {
+    const { group, panel } = mount();
+    group.serializeForQuery = () => ({ AND: [{ status: {} }] });
+    markIncomplete();
+    expect(requestSave(panel)).toEqual({ kind: "refused", sentence: INCOMPLETE_SAVE_REFUSAL });
   });
 
-  it("bad preset JSON toasts and logs the 'preset load failed' crash-guard line", () => {
-    const { builder, widget } = mount();
-    const toastStub = vi.fn();
-    (window as unknown as Record<string, unknown>).toast = toastStub;
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    const picker = builder.querySelector("[data-preset-picker]") as HTMLElement & {
-      close: ReturnType<typeof vi.fn>;
-    };
-
-    dispatchPick(widget, "{not json");
-
-    expect(toastStub).toHaveBeenCalledWith("Preset is not a valid filter.", "error");
-    // The builder e2e greps the console for this substring as its crash guard.
-    expect(String(consoleError.mock.calls[0][0])).toContain("preset load failed");
-    expect(picker.close).toHaveBeenCalledOnce(); // still closes — nothing hangs open
+  it("a save of an all-blank tree states the empty filter", () => {
+    const { group, panel } = mount();
+    group.serializeForQuery = () => ({});
+    markIncomplete();
+    expect(requestSave(panel)).toMatchObject({ kind: "state", state: { filter: {} } });
   });
 
-  it("Delete action DELETEs base+id with X-CSRFToken and refetches, never picking", async () => {
-    const { group, widget } = mount();
-    const untouched = group.serialize(); // pristine tree (one blank leaf)
-    document.cookie = "csrftoken=testtoken";
-    const fetchStub = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ restore_url: "/preset/x/restore" }), { status: 200 })));
-    vi.stubGlobal("fetch", fetchStub);
-    vi.stubGlobal("confirm", vi.fn(() => true));
+  it("a save request stops at the builder", () => {
+    const { panel } = mount();
+    const outer = vi.fn();
+    document.body.addEventListener(PRESET_SAVE_EVENT, outer);
+    requestSave(panel);
+    document.body.removeEventListener(PRESET_SAVE_EVENT, outer);
+    expect(outer).not.toHaveBeenCalled();
+  });
 
-    widget.dispatchEvent(
-      new CustomEvent("search-select:action", {
-        bubbles: true,
-        detail: {
-          name: "preset",
-          action: "delete",
-          option: { value: PRESET_UUID, label: "My preset", data: { filter: "{}" } },
-        },
-      }),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 0));
+  it("with no filter group a save is refused, not left unanswered", () => {
+    const { group, panel } = mount();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    group.remove();
+    expect(requestSave(panel)?.kind).toBe("refused");
+  });
 
-    expect(fetchStub).toHaveBeenCalledOnce();
-    const [url, options] = fetchStub.mock.calls[0] as unknown as [
-      string,
-      RequestInit & { headers: Record<string, string> },
-    ];
-    expect(url).toBe(`/api/presets/${PRESET_UUID}`);
-    expect(options.method).toBe("DELETE");
-    expect(options.headers["X-CSRFToken"]).toBe("testtoken");
-    expect(widget.refetchOptions).toHaveBeenCalledOnce();
-    expect(group.serialize()).toEqual(untouched); // a delete is never a pick
-
-    document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+  it("a load is marked handled", () => {
+    const { panel } = mount();
+    const event = new CustomEvent(PRESET_LOAD_EVENT, {
+      bubbles: true,
+      cancelable: true,
+      detail: { filter: {}, sort: "", perPage: "" },
+    });
+    panel.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
   });
 
   it("Apply disabled when an incomplete leaf coexists with a non-empty filter", () => {
     const { group, builder } = mount();
-    // Stub serializeForQuery to return a non-empty filter so filterIsEmpty is false.
     group.serializeForQuery = () => ({ AND: [{ status: {} }] });
-    // Dispatch a filter-tree-change event with incompleteCount: 1.
-    document.dispatchEvent(
-      new CustomEvent(FILTER_TREE_CHANGE_EVENT, {
-        bubbles: true,
-        detail: { tree: {}, incompleteCount: 1 },
-      }),
-    );
+    markIncomplete();
     const applyButton = builder.querySelector<HTMLButtonElement>("[data-apply]");
     expect(applyButton?.disabled).toBe(true);
   });
 
   it("Apply enabled when the pruned filter is empty even with an incomplete leaf", () => {
     const { group, builder } = mount();
-    // Stub serializeForQuery to return an empty filter so filterIsEmpty is true.
     group.serializeForQuery = () => ({});
-    // Dispatch a filter-tree-change event with incompleteCount: 1.
-    document.dispatchEvent(
-      new CustomEvent(FILTER_TREE_CHANGE_EVENT, {
-        bubbles: true,
-        detail: { tree: {}, incompleteCount: 1 },
-      }),
-    );
+    markIncomplete();
     const applyButton = builder.querySelector<HTMLButtonElement>("[data-apply]");
     expect(applyButton?.disabled).toBe(false);
-  });
-
-  it("Save preset POSTs a JSON body with X-CSRFToken to the preset API", () => {
-    const { builder } = mount();
-    document.cookie = "csrftoken=testtoken";
-    const fetchStub = vi.fn(() => Promise.resolve(new Response(null, { status: 201 })));
-    vi.stubGlobal("fetch", fetchStub);
-    (window as unknown as Record<string, unknown>).toast = vi.fn();
-
-    const nameInput = builder.querySelector<HTMLInputElement>("[data-preset-name]");
-    if (nameInput) nameInput.value = "My preset";
-    (builder.querySelector("[data-save-preset]") as HTMLElement).click();
-
-    expect(fetchStub).toHaveBeenCalledOnce();
-    const [url, options] = fetchStub.mock.calls[0] as unknown as [
-      string,
-      RequestInit & { headers: Record<string, string>; body: string },
-    ];
-    expect(url).toBe("/api/presets/");
-    expect(options.method).toBe("POST");
-    expect(options.headers["Content-Type"]).toBe("application/json");
-    expect(options.headers["X-CSRFToken"]).toBe("testtoken");
-    expect(JSON.parse(options.body).name).toBe("My preset");
-    expect(JSON.parse(options.body).mode).toBe("games");
-
-    document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-  });
-
-  it("Save preset includes the active sort in the POST body (#77)", () => {
-    const { builder } = mount("-playtime,name");
-    document.cookie = "csrftoken=testtoken";
-    const fetchStub = vi.fn(() => Promise.resolve(new Response(null, { status: 201 })));
-    vi.stubGlobal("fetch", fetchStub);
-    (window as unknown as Record<string, unknown>).toast = vi.fn();
-
-    const nameInput = builder.querySelector<HTMLInputElement>("[data-preset-name]");
-    if (nameInput) nameInput.value = "Sorted";
-    (builder.querySelector("[data-save-preset]") as HTMLElement).click();
-
-    const [, options] = fetchStub.mock.calls[0] as unknown as [
-      string,
-      RequestInit & { body: string },
-    ];
-    expect(JSON.parse(options.body).sort).toBe("-playtime,name");
-
-    document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-  });
-
-  it("Save preset includes the active per_page in the POST body (#337)", () => {
-    const { builder } = mount("", "100");
-    document.cookie = "csrftoken=testtoken";
-    const fetchStub = vi.fn(() => Promise.resolve(new Response(null, { status: 201 })));
-    vi.stubGlobal("fetch", fetchStub);
-    (window as unknown as Record<string, unknown>).toast = vi.fn();
-
-    const nameInput = builder.querySelector<HTMLInputElement>("[data-preset-name]");
-    if (nameInput) nameInput.value = "Big";
-    (builder.querySelector("[data-save-preset]") as HTMLElement).click();
-
-    const [, options] = fetchStub.mock.calls[0] as unknown as [
-      string,
-      RequestInit & { body: string },
-    ];
-    expect(JSON.parse(options.body).per_page).toBe("100");
-
-    document.cookie = "csrftoken=; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-  });
-
-  it("Save preset with a blank name does not POST", () => {
-    const { builder } = mount();
-    const fetchStub = vi.fn(() => Promise.resolve(new Response()));
-    vi.stubGlobal("fetch", fetchStub);
-    (window as unknown as Record<string, unknown>).toast = vi.fn();
-
-    // Leave the name input empty (default value is "").
-    (builder.querySelector("[data-save-preset]") as HTMLElement).click();
-
-    expect(fetchStub).not.toHaveBeenCalled();
-  });
-
-  it("live-warns when the typed preset name collides with an existing one (#357)", async () => {
-    const { builder } = mount();
-    // GET /api/presets/ shape: an array of SearchSelectOptions (label = name).
-    const options = [{ value: PRESET_UUID, label: "Finished games", data: {} }];
-    const fetchStub = vi.fn(() =>
-      Promise.resolve(new Response(JSON.stringify(options), { status: 200 })),
-    );
-    vi.stubGlobal("fetch", fetchStub);
-
-    const nameInput = builder.querySelector<HTMLInputElement>("[data-preset-name]")!;
-    const warning = builder.querySelector<HTMLElement>("[data-preset-name-warning]")!;
-    const saveButton = builder.querySelector<HTMLButtonElement>("[data-save-preset]")!;
-
-    // Focus fetches the existing names; once they arrive the hint re-evaluates
-    // against the already-typed value (fetch is async, so wait for it).
-    nameInput.value = "Finished games";
-    nameInput.dispatchEvent(new Event("focusin", { bubbles: true }));
-    await vi.waitFor(() => expect(warning.hidden).toBe(false));
-    expect(warning.textContent).toContain("already exists");
-    // The collision is also carried on the button's accessible name.
-    expect(saveButton.textContent).toBe("Overwrite preset");
-
-    // A non-colliding name clears the hint and restores the resting label.
-    nameInput.value = "Something new";
-    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(warning.hidden).toBe(true);
-    expect(saveButton.textContent).toBe("Save as preset…");
-  });
-
-  it("remembers a just-saved name so re-typing it warns without a refetch (#357)", async () => {
-    const { builder } = mount();
-    const fetchStub = vi.fn(() =>
-      Promise.resolve(new Response(null, { status: 201 })),
-    );
-    vi.stubGlobal("fetch", fetchStub);
-    (window as unknown as Record<string, unknown>).toast = vi.fn();
-
-    const nameInput = builder.querySelector<HTMLInputElement>("[data-preset-name]")!;
-    const warning = builder.querySelector<HTMLElement>("[data-preset-name-warning]")!;
-
-    nameInput.value = "My preset";
-    (builder.querySelector("[data-save-preset]") as HTMLElement).click();
-    // A successful save clears the field and caches the name (no GET fetch).
-    await vi.waitFor(() => expect(nameInput.value).toBe(""));
-
-    nameInput.value = "My preset";
-    nameInput.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(warning.hidden).toBe(false);
   });
 });

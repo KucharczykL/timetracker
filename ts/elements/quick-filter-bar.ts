@@ -6,13 +6,21 @@
  * nothing merged from the wider filter) and navigates via applyUrl. That
  * strictness is what guarantees the bar's output always satisfies the
  * server-side is_quick_editable predicate, so a filter the bar produced
- * reloads as editable. The degraded "Advanced filter active" state is
- * server-rendered plain links and never mounts this element.
+ * reloads as editable. In the degraded "Advanced filter active" state the
+ * element holds no form and no row; it only hosts the Presets panel, whose
+ * save states the page's filter from the `filter` prop.
  */
 import type { LeafWidgetKind } from "../generated/filter-metadata.js";
 import { readQuickFilterBarProps } from "../generated/props.js";
 import { applyUrl } from "./filter-url.js";
-import { wirePresetDelete } from "./presets.js";
+import {
+  isPlainObject,
+  PRESET_LOAD_EVENT,
+  PRESET_SAVE_EVENT,
+  PresetSaveRequest,
+  PresetState,
+  UNREADABLE_FILTER_REFUSAL,
+} from "./presets.js";
 import {
   readLeafWidget,
   setupDeselectableRadios,
@@ -30,18 +38,29 @@ interface SpillableFacet extends OverflowItem {
   readonly applied: boolean;
 }
 
-// The preset picker's search-select change payload: `last` is
-// the picked row, whose data-filter attribute carries the preset's filter
-// JSON.
-interface PresetChangeDetail {
-  name: string;
-  values: string[];
-  last: { value: string; label: string; data: Record<string, string> } | null;
+// What a save states: the facets, or the degraded pill's page filter.
+type StatedFilter =
+  | { readonly kind: "facets" }
+  | { readonly kind: "page"; readonly filter: Record<string, unknown> }
+  | { readonly kind: "unreadable" };
+
+function readStatedFilter(raw: string): StatedFilter {
+  if (!raw) return { kind: "facets" };
+  try {
+    const filter: unknown = JSON.parse(raw);
+    if (isPlainObject(filter)) return { kind: "page", filter };
+  } catch {
+    // Reported below.
+  }
+  reportClientError("quick-filter-bar[filter]", raw, { toast: false });
+  return { kind: "unreadable" };
 }
 
 class QuickFilterBarElement extends HTMLElement {
   private applyTarget = "";
   private perPage = "";
+  // The degraded pill's filter; the facets state it otherwise.
+  private statedFilter: StatedFilter = { kind: "facets" };
   private facets: SpillableFacet[] = [];
   // Fit sequence: applied facets, then idle ones.
   private priority: SpillableFacet[] = [];
@@ -58,7 +77,6 @@ class QuickFilterBarElement extends HTMLElement {
   private overflowWidth = 0;
   private resizeObserver: ResizeObserver | null = null;
   private layoutQueued = false;
-  private disposePresetDelete: (() => void) | null = null;
 
   connectedCallback(): void {
     const props = readQuickFilterBarProps(this);
@@ -66,51 +84,49 @@ class QuickFilterBarElement extends HTMLElement {
     this.perPage = props.perPage;
     this.overflowLabel = props.overflowLabel;
     this.overflowLabelApplied = props.overflowLabelApplied;
+    this.statedFilter = readStatedFilter(props.filter);
     // Wires the number/string modifier selects (presence disables inputs,
     // BETWEEN reveals the second) and the bool facets' deselectable radios.
     setupModifierToggles(this);
     setupDeselectableRadios(this);
     this.querySelector("form")?.addEventListener("submit", this.onSubmit);
-    this.addEventListener("search-select:change", this.onPresetPick);
-    const picker = this.querySelector<HTMLElement>("[data-preset-picker]");
-    const select = picker?.querySelector<HTMLElement>("search-select");
-    const presetApiUrl = select?.getAttribute("search-url")?.split("?")[0];
-    if (presetApiUrl) this.disposePresetDelete = wirePresetDelete(this, presetApiUrl);
+    this.addEventListener(PRESET_LOAD_EVENT, this.onPresetLoad);
+    this.addEventListener(PRESET_SAVE_EVENT, this.onPresetSave);
     this.setupOverflow();
   }
 
   disconnectedCallback(): void {
     this.querySelector("form")?.removeEventListener("submit", this.onSubmit);
-    this.removeEventListener("search-select:change", this.onPresetPick);
-    this.disposePresetDelete?.();
-    this.disposePresetDelete = null;
+    this.removeEventListener(PRESET_LOAD_EVENT, this.onPresetLoad);
+    this.removeEventListener(PRESET_SAVE_EVENT, this.onPresetSave);
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
   }
 
-  // A pick inside the Load-preset picker navigates to the list carrying the
-  // preset's filter JSON. Facet search-selects bubble the same event; the
-  // [data-preset-picker] guard scopes this to the picker.
-  private onPresetPick = (event: Event): void => {
-    const detail = (event as CustomEvent<PresetChangeDetail>).detail;
-    if (!detail?.last) return;
-    const picker = (event.target as HTMLElement | null)?.closest<HTMLElement>(
-      "[data-preset-picker]",
-    );
-    if (!picker || !this.contains(picker)) return;
-    try {
-      const raw = detail.last.data.filter ?? "";
-      const filter = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-      // Preset state replaces live URL state.
-      const sort = detail.last.data.sort ?? "";
-      const perPage = detail.last.data.per_page ?? "";
-      this.navigate(applyUrl(this.applyTarget, filter, sort, perPage));
-    } catch (error) {
-      reportClientError("quick-filter-bar[preset]", String(error));
-      // Keep the "preset load failed" console substring (e2e crash guard).
-      console.error("quick-filter-bar: preset load failed", error);
-      window.toast("Preset is not a valid filter.", "error");
+  // A loaded preset replaces the live URL state.
+  private onPresetLoad = (event: Event): void => {
+    event.preventDefault();
+    const preset = (event as CustomEvent<PresetState>).detail;
+    this.navigate(applyUrl(this.applyTarget, preset.filter, preset.sort, preset.perPage));
+  };
+
+  // The facets as they stand, applied or not.
+  private onPresetSave = (event: Event): void => {
+    event.stopPropagation();
+    const request = (event as CustomEvent<PresetSaveRequest>).detail;
+    const stated = this.statedFilter;
+    if (stated.kind === "unreadable") {
+      request.answerWith({ kind: "refused", sentence: UNREADABLE_FILTER_REFUSAL });
+      return;
     }
+    request.answerWith({
+      kind: "state",
+      state: {
+        filter: stated.kind === "page" ? stated.filter : this.serialize(),
+        sort: this.currentSort(),
+        perPage: this.perPage,
+      },
+    });
   };
 
   // ── Priority-plus facet collapsing ────────────────────────────────
@@ -250,11 +266,15 @@ class QuickFilterBarElement extends HTMLElement {
 
   private onSubmit = (event: Event): void => {
     event.preventDefault();
-    // Page size is server-normalized; the raw URL may be invalid.
-    const params = new URLSearchParams(window.location.search);
-    const sort = params.get("sort") ?? "";
-    this.navigate(applyUrl(this.applyTarget, this.serialize(), sort, this.perPage));
+    this.navigate(
+      applyUrl(this.applyTarget, this.serialize(), this.currentSort(), this.perPage),
+    );
   };
+
+  // Sort from the URL; per-page from the prop, the URL's may be invalid.
+  private currentSort(): string {
+    return new URLSearchParams(window.location.search).get("sort") ?? "";
+  }
 
   // Strict facets-only serialization: one top-level {facet: criterion} entry
   // per non-empty flat widget. Reading is delegated to the shared

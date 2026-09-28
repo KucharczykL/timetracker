@@ -6,26 +6,29 @@ panel-layout widget (set → panel ``FilterSelect``, date → ``DateRangePanel``
 number/string/bool → the stacked widget embedded as-is). The facets are a
 form: Apply (or Enter in a facet input) serializes them and navigates
 (``ts/elements/quick-filter-bar.ts``); anything richer belongs to the nested
-builder, reachable from the action group's "Advanced filter…" segment.
+builder, reachable from the acts group's Advanced filter segment.
 
-Row anatomy: the free-text field, then the facets (collapsible), the "⋯"
-priority-plus overflow menu, the Load-preset picker, and the Apply | Clear
-[| Advanced filter…] ButtonGroup. Everything that is not a facet is
-non-collapsible row furniture — the layout reserves its width and moves only
-facets, so the field never enters the overflow.
+Row anatomy: the statements — the free-text field, the facets (collapsible)
+and the "⋯" priority-plus overflow menu — then the acts, one Apply | Clear |
+[| Presets] [| Advanced filter] ButtonGroup pushed to the row's end. Everything
+that is not a facet is non-collapsible row furniture — the layout reserves
+its width and moves only facets, so the field never enters the overflow.
 
 The bar is editable only when :func:`is_quick_editable` accepts the active
 filter; otherwise it degrades to a read-only "Advanced filter active" pill
-with Edit-in-builder / Clear links. The strictness is deliberate: the bar
+beside the acts group without Apply. The strictness is deliberate: the bar
 never renders controls that would silently drop part of the filter on the
 next apply, and Clear always discards the *whole* filter.
 """
 
+import json
 from collections.abc import Collection
 from typing import NamedTuple, cast
 
-from common.components.core import BaseComponent, Node
+from common.components.core import BaseComponent, Element, Node
 from common.components.custom_elements import (
+    CLEAR_FILTER_LABEL,
+    FILTER_ACTS_LABEL,
     FILTER_MODE_MODELS,
     Dropdown,
     DropdownPanel,
@@ -44,8 +47,9 @@ from common.components.primitives import (
     ButtonGroupMember,
     Div,
     EllipsisTrigger,
+    FilterJson,
     Form,
-    Link,
+    Icon,
     Span,
 )
 from common.components.search_field import (
@@ -55,7 +59,7 @@ from common.components.search_field import (
     MatchModeToken,
     SearchField,
 )
-from common.components.search_select import ComboboxDropdown, LoadPresetDropdown
+from common.components.search_select import ComboboxDropdown, presets_member
 from common.criteria import DEFAULT_STATED_MODIFIER, AttrName, OperatorFilter
 from common.date_time_presentation import DateTimePresentation
 
@@ -74,6 +78,9 @@ class QuickFacet(NamedTuple):
 # are excluded by construction (a cross-entity facet would serialize a relation
 # sub-filter, which the predicate below rejects).
 QUICK_FACET_KINDS = frozenset({"set", "number", "date", "string", "bool"})
+
+#: The builder segment's name and tooltip.
+ADVANCED_FILTER_LABEL = "Advanced filter"
 
 OVERFLOW_LABEL = "More filters"
 OVERFLOW_LABEL_APPLIED = "More filters, some applied"
@@ -247,19 +254,17 @@ _QUICK_PILL_CLASS = (
 class QuickFilterBar(BaseComponent):
     """The quick facet bar for one list mode.
 
-    Renders either the editable ``<quick-filter-bar>`` element (a form of
-    dropdown facets built via ``field_widget`` — prefilled from the filter
-    JSON — plus the preset picker and the action ButtonGroup) or, when
-    :func:`is_quick_editable` rejects the current filter, the degraded pill —
-    plain links, no custom element, so no bar JS is loaded.
+    Renders the ``<quick-filter-bar>`` element: either a form of dropdown
+    facets built via ``field_widget`` — prefilled from the filter JSON — and
+    the acts group, or, when :func:`is_quick_editable` rejects the current
+    filter, the degraded pill and the acts group without Apply.
 
     ``builder_url`` is the fully-formed nested-builder URL (already carrying
-    ``?filter=`` when one is set); when non-empty the action group grows the
-    "Advanced filter…" segment and the degraded pill an Edit link.
-    ``preset_api_url`` enables the Load-preset picker (load-only — saving
-    stays on the builder page).
+    ``?filter=`` when one is set); when non-empty the acts group grows the
+    Advanced filter segment.
+    ``preset_api_url`` enables the Presets segment, which loads and saves.
     ``apply_url`` overrides every derived list URL (the element's apply
-    target, the Clear link, the degraded pill's Clear) — the override
+    target and the Clear link) — the override
     for synthetic e2e harnesses rendered under a stripped ROOT_URLCONF,
     where ``list_url_for``'s ``reverse()`` would crash.
     """
@@ -321,23 +326,17 @@ class QuickFilterBar(BaseComponent):
         ]
         # From the overflow host on, the row is furniture.
         #
-        # The preset picker, then the action group. The TS reserve walks every
-        # row child but the host and the facets, so one added here needs no
-        # second registration.
-        if self.preset_api_url:
-            row_children.append(
-                LoadPresetDropdown(
-                    api_url=self.preset_api_url,
-                    mode=self.mode,
-                    id=f"quick-{self.mode}-preset-picker",
-                    ghost=True,
-                )
-            )
-        # One segmented group so the bar-level actions can't be separated
-        # by row wrapping. Clear is a plain link — radios and modifier
-        # selects have no per-widget unset, so the bar needs a one-click
-        # reset.
-        row_children.append(ButtonGroup(self._action_group_members()))
+        # ``ml-auto`` adds nothing to the overflow reserve, which sums
+        # ``offsetWidth``.
+        row_children.append(self._acts(apply=True))
+        return self._element(stated_filter="")[
+            # A real <form> so Enter in any facet input applies; the element
+            # intercepts submit and navigates.
+            Form()[Div(class_=_QUICK_BAR_ROW_CLASS, data_quick_row="")[row_children]]
+        ]
+
+    def _element(self, *, stated_filter: FilterJson) -> Element:
+        """``stated_filter`` is empty where the facets state the filter."""
         return _QuickFilterBarElement(
             apply_url=self._list_url(),
             per_page=(
@@ -345,11 +344,8 @@ class QuickFilterBar(BaseComponent):
             ),
             overflow_label=OVERFLOW_LABEL,
             overflow_label_applied=OVERFLOW_LABEL_APPLIED,
-        )[
-            # A real <form> so Enter in any facet input applies; the element
-            # intercepts submit and navigates.
-            Form()[Div(class_=_QUICK_BAR_ROW_CLASS, data_quick_row="")[row_children]]
-        ]
+            filter=stated_filter,
+        )
 
     def _search_field(self) -> Node:
         stated = self.existing.get("search")
@@ -414,20 +410,53 @@ class QuickFilterBar(BaseComponent):
             applied=applied,
         )
 
-    def _action_group_members(self) -> list[ButtonGroupMember]:
-        members: list[ButtonGroupMember] = [
+    def _acts(self, *, apply: bool) -> Element:
+        return ButtonGroup(
+            self._act_members(apply=apply),
+            class_="ml-auto",
+            aria_label=FILTER_ACTS_LABEL,
+        )
+
+    def _act_members(self, *, apply: bool) -> list[ButtonGroupMember]:
+        """Apply, Clear, Presets and Advanced filter, each where it applies."""
+        members: list[ButtonGroupMember] = []
+        if apply:
+            members.append(
+                {
+                    "slot": "Apply",
+                    "color": "blue",
+                    "button_attributes": [],
+                    "type": "submit",
+                }
+            )
+        # Clear is a plain link: radios and modifier selects have no
+        # per-widget unset, so the bar needs a one-click reset.
+        members.append(
             {
-                "slot": "Apply",
-                "color": "blue",
-                "button_attributes": [],
-                "type": "submit",
-            },
-            {"slot": "Clear", "href": self._list_url()},
-        ]
-        # The builder entry point rides in the group whenever the mode has a
-        # builder page (devices/platforms don't — no builder_url).
+                "slot": Icon("funnel-off"),
+                "href": self._list_url(),
+                "aria_label": CLEAR_FILTER_LABEL,
+                "title": CLEAR_FILTER_LABEL,
+            }
+        )
+        if self.preset_api_url:
+            members.append(
+                presets_member(
+                    api_url=self.preset_api_url,
+                    mode=self.mode,
+                    id=f"quick-{self.mode}-presets",
+                )
+            )
+        # Devices and platforms have no builder page.
         if self.builder_url:
-            members.append({"slot": "Advanced filter…", "href": self.builder_url})
+            members.append(
+                {
+                    "slot": Icon("funnel-cog"),
+                    "href": self.builder_url,
+                    "aria_label": ADVANCED_FILTER_LABEL,
+                    "title": ADVANCED_FILTER_LABEL,
+                }
+            )
         return members
 
     def _overflow_dropdown(self) -> Node:
@@ -464,10 +493,10 @@ class QuickFilterBar(BaseComponent):
         ]
 
     def _degraded(self) -> Node:
-        children: list[Node] = [Span(class_="text-body")["Advanced filter active"]]
-        # Modes without a nested-builder page (devices/platforms) pass no
-        # builder_url; their pill offers only Clear — an Edit link would 404.
-        if self.builder_url:
-            children.append(Link(href=self.builder_url)["Edit in builder"])
-        children.append(Link(href=self._list_url())["Clear"])
-        return Div(class_=_QUICK_PILL_CLASS)[children]
+        # No ``data-quick-row``: the overflow layout stays off.
+        return self._element(stated_filter=json.dumps(self.existing))[
+            Div(class_=_QUICK_PILL_CLASS)[
+                Span(class_="text-body")["Advanced filter active"],
+                self._acts(apply=False),
+            ]
+        ]

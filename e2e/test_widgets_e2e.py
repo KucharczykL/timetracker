@@ -564,7 +564,7 @@ def test_add_purchase_related_game_edit_clears_autofill(
 def test_quick_bar_preset_pick_navigates_to_filtered_list(
     authenticated_page: Page, live_server, e2e_library
 ):
-    """Picking a preset in the quick bar's Load-preset combobox navigates to the
+    """Picking a preset in the quick bar's Presets panel navigates to the
     list URL carrying ?filter= — the bar consumer's pick semantics."""
     from games.models import FilterPreset
 
@@ -579,7 +579,7 @@ def test_quick_bar_preset_pick_navigates_to_filtered_list(
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 
-    picker = page.locator("quick-filter-bar [data-preset-picker]")
+    picker = page.locator("quick-filter-bar drop-down:has(preset-panel)")
     picker.locator("[data-toggle]").click()
     row = picker.locator("[data-search-select-option]").filter(has_text="HaloOnly")
     expect(row).to_be_visible(timeout=5_000)

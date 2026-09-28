@@ -37,6 +37,11 @@ ICON_NODES: dict[str, Element] = {
     )[
         Path([('fill', 'currentColor'), ('d', 'M2.069,11 L5,11 L5,9 L2.069,9 C2.252,7.542 2.828,6.208 3.688,5.102 L5.757,7.172 L7.171,5.757 L5.102,3.688 C6.208,2.828 8,2.252 9,2.069 L9,5 L11,5 L11,2.069 C12,2.252 13.791,2.828 14.897,3.688 L12.828,5.757 L14.242,7.172 L16.311,5.102 C17.171,6.208 17.747,7.542 17.93,9 L15,9 L15,11 L17.93,11 C17.747,12.458 17.171,13.792 16.311,14.898 L14.242,12.828 L12.828,14.243 L14.897,16.312 C13.791,17.172 12,17.748 11,17.931 L11,15 L9,15 L9,17.931 C8,17.748 6.208,17.172 5.102,16.312 L7.171,14.243 L5.757,12.828 L3.688,14.898 C2.828,13.792 2.252,12.458 2.069,11 M10,0 C4.477,0 0,4.477 0,10 C0,15.523 4.477,20 10,20 C15.522,20 20,15.523 20,10 C20,4.477 15.522,0 10,0')]),
     ],
+    'bookmark': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'M18 7v14l-6 -4l-6 4v-14a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4')]),
+    ],
     'checkbox': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
@@ -135,6 +140,24 @@ ICON_NODES: dict[str, Element] = {
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
         Path([('fill', 'currentColor'), ('d', 'M 7.4765625 4.9785156 A 1.50015 1.50015 0 0 0 6 6.5 L 6 31.5 L 6 43.5 A 1.50015 1.50015 0 1 0 9 43.5 L 9 33 L 40.5 33 C 41.329 33 42 32.328 42 31.5 L 42 6.5 C 42 5.672 41.329 5 40.5 5 L 7.7460938 5 A 1.50015 1.50015 0 0 0 7.4765625 4.9785156 z M 16 8 L 24 8 L 24 15 L 32 15 L 32 8 L 39 8 L 39 15 L 32 15 L 32 23 L 39 23 L 39 30 L 32 30 L 32 23 L 24 23 L 24 30 L 16 30 L 16 23 L 9 23 L 9 15 L 16 15 L 16 8 z M 16 15 L 16 23 L 24 23 L 24 15 L 16 15 z')]),
+    ],
+    'funnel-cog': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'M12 20l-3 1v-8.5l-4.48 -4.928a2 2 0 0 1 -.52 -1.345v-2.227h16v2.172a2 2 0 0 1 -.586 1.414l-4.414 4.414v1.5')]),
+        Path([('d', 'M17.001 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0')]),
+        Path([('d', 'M19.001 15.5v1.5')]),
+        Path([('d', 'M19.001 21v1.5')]),
+        Path([('d', 'M22.032 17.25l-1.299 .75')]),
+        Path([('d', 'M17.27 20l-1.3 .75')]),
+        Path([('d', 'M15.97 17.25l1.3 .75')]),
+        Path([('d', 'M20.733 20l1.3 .75')]),
+    ],
+    'funnel-off': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'M8 4h12v2.172a2 2 0 0 1 -.586 1.414l-3.914 3.914m-.5 3.5v4l-6 2v-8.5l-4.48 -4.928a2 2 0 0 1 -.52 -1.345v-2.227')]),
+        Path([('d', 'M3 3l18 18')]),
     ],
     'gog': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 50 50'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],

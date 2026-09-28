@@ -1,11 +1,12 @@
 /**
- * Shared filter-preset plumbing for <quick-filter-bar> and <filter-builder>.
+ * Filter-preset plumbing for <preset-panel>, and the contract its hosts
+ * (<quick-filter-bar>, <filter-builder>) answer.
  *
- * The dropdown lifecycle (fetch-on-open, rendering, keyboard nav) now lives in
+ * The dropdown lifecycle (fetch-on-open, rendering, keyboard nav) lives in
  * the shared combobox primitives (search-select + the combobox drop-down
- * behavior); this module owns only the API calls: save (POST), per-row removal
- * (the search-select:action listener → confirm → DELETE → refetch), the
- * collision-check name fetch, and the CSRF token read. All endpoints are the
+ * behavior); this module owns the API calls: save (POST), per-row removal
+ * (the search-select:action listener → confirm → DELETE → refetch), and
+ * the CSRF token read. All endpoints are the
  * /api/presets/ collection URL; DELETE appends the preset id.
  */
 
@@ -14,6 +15,45 @@ import { getCsrfToken } from "../csrf.js";
 import type { SearchSelectOption } from "./search-select.js";
 
 export { getCsrfToken };
+
+/** A picked preset; the host loads it and calls preventDefault. */
+export const PRESET_LOAD_EVENT = "preset-panel:load";
+/** Asks the nearest host for the state to save, during dispatch. */
+export const PRESET_SAVE_EVENT = "preset-panel:save";
+
+/** What a preset states beside its name. Empty sort or per-page inherits. */
+export interface PresetState {
+  readonly filter: Record<string, unknown>;
+  readonly sort: string;
+  readonly perPage: string;
+}
+
+/** A host's answer: the state to save, or why not. */
+export type PresetSaveAnswer =
+  | { readonly kind: "state"; readonly state: PresetState }
+  | { readonly kind: "refused"; readonly sentence: string };
+
+/** A host's refusal when its own filter cannot be read. */
+export const UNREADABLE_FILTER_REFUSAL = "The filter could not be read — reload the page.";
+
+/** A filter JSON value: an object, never an array or null. */
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** The save event's detail; the host answers once, then stops propagation. */
+export class PresetSaveRequest {
+  #answer: PresetSaveAnswer | null = null;
+
+  get answer(): PresetSaveAnswer | null {
+    return this.#answer;
+  }
+
+  answerWith(answer: PresetSaveAnswer): void {
+    if (this.#answer) throw new Error("preset save answered twice");
+    this.#answer = answer;
+  }
+}
 
 // The /api/presets/ list item (value/label/data, including a UUID string value).
 type PresetOption = SearchSelectOption;
@@ -63,11 +103,13 @@ export function savePreset(
         const verb = response.status === 201 ? "saved" : "updated";
         window.toast(`Filter preset "${request.name}" ${verb}.`, "success");
       } else {
-        const detail = await response
+        const detail: unknown = await response
           .json()
-          .then((body: { detail?: string }) => body?.detail)
+          .then((body: { detail?: unknown }) => body?.detail)
           .catch(() => undefined);
-        window.toast(detail || "Failed to save preset.", "error");
+        // A 422 answers a list of errors, which no toast can print.
+        const sentence = typeof detail === "string" && detail ? detail : "Failed to save preset.";
+        window.toast(sentence, "error");
       }
       return response;
     })
@@ -146,31 +188,4 @@ export function wirePresetDelete(root: HTMLElement, presetApiUrl: string): () =>
   };
   root.addEventListener("search-select:action", onAction);
   return () => root.removeEventListener("search-select:action", onAction);
-}
-
-/**
- * The current user's preset names for `mode`, for the save-overwrite collision
- * warning (#212). Unbounded (`limit=0`) so a large collection can never hide a
- * collision. Resolves to an empty set on failure — the warning silently
- * degrades rather than blocking the save.
- */
-export function fetchPresetNames(
-  presetApiUrl: string,
-  mode: string,
-): Promise<Set<string>> {
-  const url = new URL(presetApiUrl, window.location.origin);
-  url.searchParams.set("mode", mode);
-  url.searchParams.set("limit", "0");
-  return fetch(url.toString(), { credentials: "same-origin" })
-    .then((response) => {
-      if (!response.ok) throw new Error(`preset list failed (${response.status})`);
-      return response.json();
-    })
-    .then(
-      (options: PresetOption[]) => new Set(options.map((option) => option.label.trim())),
-    )
-    .catch((error: unknown) => {
-      console.error("presets: failed to load preset names", error);
-      return new Set<string>();
-    });
 }

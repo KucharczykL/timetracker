@@ -51,12 +51,22 @@ from collections.abc import Callable, Iterable, Sequence
 from enum import Enum
 from typing import Literal, NamedTuple, TypedDict
 
-from common.components.core import Attributes, Child, HTMLAttribute, Node
+from common.components.core import (
+    Attributes,
+    Child,
+    Element,
+    Fragment,
+    HTMLAttribute,
+    Node,
+)
 from common.components.custom_elements import (
     DROPDOWN_ITEM_SHAPE,
     Dropdown,
     DropdownPanel,
+    FilterMode,
+    _as_dialog_trigger,
     _Dropdown,
+    _PresetPanelElement,
     _SearchSelect,
 )
 from common.components.primitives import (
@@ -65,6 +75,7 @@ from common.components.primitives import (
     SHAPE_CLASSES,
     AppliedDot,
     ButtonColor,
+    ButtonGroupMember,
     ButtonShape,
     ControlButton,
     Div,
@@ -968,20 +979,19 @@ def _preset_option_row(option: SearchSelectOption) -> Node:
 
 
 def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
-    """The preset-picker personality of the combobox shell (issue #297).
+    """The preset list, and the name a save states.
 
-    An always-visible single-select whose options are fetched from the preset
-    API (``?mode=`` scoped) on every open — the hosting dropdown's ``combobox``
-    behavior calls ``refetchOptions()`` on ``dropdown:show``, so the list is
-    server-fresh after saves and deletes with no refresh plumbing. A pick emits
-    the standard ``search-select:change`` whose ``last.data.filter`` carries the
-    preset's filter JSON; the consumer decides what a pick means (the builder
-    loads it into the tree, the filter bar navigates). The pick is transient —
-    consumers call ``clearSelection()`` after handling it.
+    One box filters the saved presets and names the preset to save: its
+    create row reads ``Save “…”``, or ``Overwrite “…”`` for a name a
+    preset holds, and emits ``search-select:create``. Options are fetched
+    on every open, so the list is fresh after saves and removals.
+    ``<preset-panel>`` clears a pick and re-emits it as
+    ``preset-panel:load``.
     """
     search_attributes: list[HTMLAttribute] = [
         ("data-search-select-search", ""),
-        ("placeholder", "Filter presets…"),
+        ("placeholder", PRESET_SEARCH_PLACEHOLDER),
+        ("aria-label", PRESET_SEARCH_PLACEHOLDER),
         ("autocomplete", "off"),
         ("class", _SEARCH_CLASS),
     ]
@@ -997,6 +1007,7 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         templates=templates,
         layout=_DIALOG_LAYOUT,
         no_results_text="No saved presets",
+        create_row=_option_row(_BLANK_OPTION, RowKind.CREATE),
     )
     return _SearchSelect(
         name="preset",
@@ -1007,6 +1018,9 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         always_visible="true",
         prefetch=_PRESET_PREFETCH,
         sync_url="false",
+        create_event="true",
+        create_verb=SAVE_PRESET_VERB,
+        replace_verb=OVERWRITE_PRESET_VERB,
         class_=_DIALOG_LAYOUT.container_class,
     )[*children]
 
@@ -1064,25 +1078,44 @@ def ComboboxDropdown(
     )
 
 
-def LoadPresetDropdown(
-    *, api_url: str, mode: str, id: str = "load-preset-dropdown", ghost: bool = False
-) -> Node:
-    """The "Load preset ▾" picker: a :func:`ComboboxDropdown`
-    hosting a :func:`PresetSelect`. ``ghost`` selects the quiet trigger (the
-    quick filter bar); the builder toolbar keeps the filled gray default.
+#: The Presets segment's and panel's name.
+PRESETS_LABEL = "Presets"
 
-    The wrapper carries ``data-preset-picker`` — the discriminator consumers use
-    to tell the picker's ``search-select:change``/``search-select:action`` events
-    apart from other widgets', and the hook whose ``close()`` they call after a
-    pick.
-    """
-    return ComboboxDropdown(
-        label="Load preset",
-        content=PresetSelect(api_url=api_url, mode=mode),
-        id=id,
-        ghost=ghost,
-        config={"data_preset_picker": ""},
-    )
+#: The preset box's placeholder and name.
+PRESET_SEARCH_PLACEHOLDER = "Find or name a preset"
+#: The create row's verbs.
+SAVE_PRESET_VERB = "Save"
+OVERWRITE_PRESET_VERB = "Overwrite"
+
+
+def PresetPanel(*, api_url: str, mode: FilterMode) -> Node:
+    """The preset list; ``data-preset-picker`` is the removal hook."""
+    return _PresetPanelElement(
+        preset_api_url=api_url, mode=mode, data_preset_picker=""
+    )[PresetSelect(api_url=api_url, mode=mode)]
+
+
+def presets_member(*, api_url: str, mode: FilterMode, id: str) -> ButtonGroupMember:
+    """The Presets segment, opening the panel."""
+
+    def opens(trigger: Element) -> Node:
+        panel = DropdownPanel(role="dialog", aria_label=PRESETS_LABEL, width="w-80")[
+            PresetPanel(api_url=api_url, mode=mode)
+        ]
+        return Dropdown(
+            trigger_element=_as_dialog_trigger(trigger),
+            target_element=panel,
+            id=id,
+            placement="bottom-end",
+            behavior="combobox",
+        )
+
+    return {
+        "slot": Fragment(Icon("bookmark"), Icon("arrowdown", size="h-3 w-3")),
+        "aria_label": PRESETS_LABEL,
+        "title": PRESETS_LABEL,
+        "opens": opens,
+    }
 
 
 def searchselect_selected(

@@ -36,6 +36,7 @@ from common.components.primitives import (
     ICON_BUTTON_SIZE_CLASS,
     Button,
     ButtonColor,
+    ButtonGroup,
     ControlButton,
     ControlLink,
     Dialog,
@@ -47,7 +48,6 @@ from common.components.primitives import (
     Input,
     Label,
     Li,
-    P,
     PlainH2,
     Popover,
     SelectionScope,
@@ -419,15 +419,18 @@ def FilterSummary(*, model: str, model_label: str, models: str) -> Node:
 
 class FilterBuilderProps(TypedDict):
     model: str  # root model key
-    mode: str  # preset/list mode (plural), e.g. "games"
     apply_url: str  # list URL to navigate to on Apply
-    preset_api_url: str  # /api/presets/ collection URL (GET/POST; DELETE at +id)
     sort: str  # active sort; "" means none
     per_page: str  # explicit override; "" means inherit
 
 
 register_element("filter-builder", "FilterBuilder", FilterBuilderProps)
 _FilterBuilder = custom_element_builder("filter-builder")
+
+#: A filter-acts group's accessible name.
+FILTER_ACTS_LABEL = "Filter actions"
+#: The Clear segment's name and tooltip.
+CLEAR_FILTER_LABEL = "Clear filter"
 
 
 def FilterBuilder(
@@ -443,54 +446,36 @@ def FilterBuilder(
     Apply and Save preserve ``sort`` and ``per_page``; loading a preset replaces
     both. Empty ``per_page`` means inherit.
     """
-    # Function-local import: search_select imports this module (for _SearchSelect
-    # and the panel constant), so a top-level import here would be a cycle.
-    from common.components.search_select import LoadPresetDropdown
+    # Function-local: search_select imports this module's element builders.
+    from common.components.search_select import presets_member
 
-    # ControlButton bakes the app's button look (color/corners/disabled); per-attr
-    # kwargs pass straight through **kwargs -> _attrs_from_kwargs, so data_* hooks
-    # work and a caller class_ ACCUMULATES onto the baked classes — except a
-    # class stating a corner, which is refused: that is `shape=`. Do NOT pass
-    # `attributes=` — that name is reserved and raises TypeError (use per-attr kwargs
-    # or the positional attrs slot; not needed here).
     return _FilterBuilder(
         model=model,
-        mode=mode,
         apply_url=list_url_for(mode),
-        preset_api_url=preset_api_url,
         sort=sort,
         per_page=per_page,
     )[
-        Div(class_="flex flex-wrap gap-3 items-center mb-4 @container")[
-            LoadPresetDropdown(
-                api_url=preset_api_url, mode=mode, id="builder-preset-picker"
-            ),
-            Input(
-                type="text",
-                data_preset_name="",
-                placeholder="Preset name…",
-                class_=(
-                    # Canonical input look + shared control height (min-h-control),
-                    # so it matches the sibling ControlButtons by construction.
-                    "px-3 min-h-control text-type-input rounded-base "
-                    "border border-default-medium bg-neutral-secondary-medium "
-                    "text-heading shadow-xs placeholder:text-body "
-                    "focus:ring-brand focus:border-brand"
-                ),
-            ),
-            ControlButton(color="gray", data_save_preset="")["Save as preset…"],
-            ControlButton(color="blue", data_apply="")["Apply"],
-            ControlButton(color="gray", data_clear="")["Clear"],
-            # Live collision hint: filter-builder.ts unhides this and fills its
-            # text when the typed name matches an existing preset (basis-full so
-            # it wraps onto its own line below the toolbar row).
-            P(
-                data_preset_name_warning="",
-                hidden=True,
-                role="status",
-                aria_live="polite",
-                class_="basis-full text-type-body text-amber-700 dark:text-amber-400",
-            ),
+        Div(class_="flex flex-wrap gap-3 items-center mb-4")[
+            ButtonGroup(
+                [
+                    {
+                        "slot": "Apply",
+                        "color": "blue",
+                        "button_attributes": [("data-apply", "")],
+                    },
+                    {
+                        "slot": Icon("funnel-off"),
+                        "aria_label": CLEAR_FILTER_LABEL,
+                        "title": CLEAR_FILTER_LABEL,
+                        "button_attributes": [("data-clear", "")],
+                    },
+                    presets_member(
+                        api_url=preset_api_url, mode=mode, id="builder-presets"
+                    ),
+                ],
+                class_="ml-auto",
+                aria_label=FILTER_ACTS_LABEL,
+            )
         ]
     ]
 
@@ -606,6 +591,12 @@ class SearchSelectProps(TypedDict):
     params: SearchSelectParams
     #: The endpoint the create row posts to; blank offers no row.
     create_url: str
+    #: The create row emits ``search-select:create`` and posts nothing.
+    create_event: bool
+    #: The create row's verb; blank reads "Create".
+    create_verb: str
+    #: Offered for a name a row holds exactly; blank hides the row.
+    replace_verb: str
     #: For a create row outside a form; a hosted row reads the form's.
     csrf: str
     #: Commit the one option a search answers, where nothing is held.
@@ -639,9 +630,19 @@ class QuickFilterBarProps(TypedDict):
     per_page: str  # explicit override; "" means inherit
     overflow_label: str  # the ⋯ trigger's name
     overflow_label_applied: str  # its name while it holds an applied facet
+    filter: str  # the page's filter JSON a save states; "" while facets state it
 
 
 register_element("quick-filter-bar", "QuickFilterBar", QuickFilterBarProps)
+
+
+class PresetPanelProps(TypedDict):
+    preset_api_url: str  # /api/presets/ collection URL (GET/POST; DELETE at +id)
+    mode: FilterMode
+
+
+register_element("preset-panel", "PresetPanel", PresetPanelProps)
+_PresetPanelElement = custom_element_builder("preset-panel")
 _QuickFilterBarElement = custom_element_builder("quick-filter-bar")
 
 
