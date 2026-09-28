@@ -33,6 +33,7 @@ from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_view
 from common.layout import render_page
 from common.utils import paginate
+from games.bulk_platform_edit import EDIT_PLATFORMS
 from games.bulk_removal import REMOVE_PLATFORM
 from games.bulk_tray import tray_actions
 from games.filters import (
@@ -133,7 +134,9 @@ def list_platforms(request: HttpRequest) -> HttpResponse:
         "selection": {
             "filter": filter_json,
             "csrf_token": get_token(request),
-            "actions": tray_actions(REMOVE_PLATFORM.name, origin=origin),
+            "actions": tray_actions(
+                EDIT_PLATFORMS.name, REMOVE_PLATFORM.name, origin=origin
+            ),
         },
     }
     content = paginated_table_content(

@@ -4,7 +4,6 @@ A platform writes no event, so every batch write records the value
 before it in the batch ledger, in the same transaction.
 """
 
-import logging
 import uuid
 
 from django.db import IntegrityError, transaction
@@ -13,11 +12,10 @@ from django.db.models.functions import Lower, Trim
 
 from common.naming import name_key
 from games.batch_ledger import ActName, FieldName, record, recorded, row_changes
+from games.bulk_edit import log_overwrite
 from games.models import Platform, UserLibrary
 from games.removal import remove, restore
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
-
-logger = logging.getLogger("games")
 
 #: Whether the write changed the row.
 type Moved = bool
@@ -220,16 +218,13 @@ def undo_platform_batch(
         if fields:
             _state_fields(row, fields)
         for field, change in restating.items():
-            if held[field] != change.stated:
-                logger.info(
-                    "[bulk]: %s Undo states %s %r over %r on platform %s of library %s",
-                    act,
-                    field,
-                    change.before,
-                    held[field],
-                    row.pk,
-                    library.pk,
-                )
+            log_overwrite(
+                change,
+                held[field],
+                act_name=act,
+                fact=field,
+                row_description=f"platform {row.pk} of library {library.pk}",
+            )
             record(
                 library,
                 batch=batch,

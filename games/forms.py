@@ -1,7 +1,7 @@
 import copy
 import datetime
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from functools import partial
@@ -21,11 +21,14 @@ from django.utils.datastructures import MultiValueDict
 from common.components import (
     DEFAULT_PREFETCH,
     DISABLED_CONTROL_CLASS,
+    Datalist,
     DatePicker,
     DateTimeCopyTarget,
     DateTimePicker,
+    Fragment,
     Media,
     NoneLabel,
+    Option,
     PostedName,
     Safe,
     SearchSelect,
@@ -461,6 +464,28 @@ DEFAULT_CHOICE_PLACEHOLDER = "Choose…"
 type ChoiceValue = str  # a posted option value
 type ChoiceLabel = str  # e.g. "Playthrough 2"
 type LabeledChoice = tuple[ChoiceValue, ChoiceLabel]
+
+
+class DatalistTextInput(forms.TextInput):
+    """A text box offering values it does not require."""
+
+    def __init__(self, *, suggestions: Sequence[str] = (), attrs=None):
+        super().__init__(attrs)
+        self.suggestions = tuple(suggestions)
+
+    def render(self, name, value, attrs=None, renderer=None):
+        attrs = {**(attrs or {})}
+        listed = f"{attrs.get('id') or name}-suggestions"
+        attrs["list"] = listed
+        box = super().render(name, value, attrs, renderer)
+        return str(
+            Fragment(
+                Safe(box),
+                Datalist(id=listed)[
+                    [Option(value=suggestion) for suggestion in self.suggestions]
+                ],
+            )
+        )
 
 
 class ChoiceSearchSelectWidget(_SearchSelectAdapter):

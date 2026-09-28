@@ -27,6 +27,12 @@ from games.bulk_actions import (
 )
 from games.bulk_games import GAME_GONE, game_scope
 from games.bulk_narrowing import narrowed
+from games.bulk_platforms import (
+    outcome,
+    platform_resolution,
+    platform_scope,
+    undoing,
+)
 from games.bulk_runs import RUN_PREVIEW, run_resolution, run_scope
 from games.bulk_sessions import lost, session_resolution, session_scope
 from games.events.dispatch import RowNotHeld
@@ -34,7 +40,6 @@ from games.events.idempotency import IdempotencyKey
 from games.filters import (
     parse_device_filter,
     parse_historical_playtime_filter,
-    parse_platform_filter,
 )
 from games.models import (
     Device,
@@ -60,11 +65,7 @@ from games.writes.historical_playtime import (
     remove_historical_playtime,
     restore_historical_playtime,
 )
-from games.writes.platform import (
-    Moved,
-    remove_platform_in_batch,
-    undo_platform_batch,
-)
+from games.writes.platform import remove_platform_in_batch
 from games.writes.playergame import remove_from_library, restore_to_library
 from games.writes.playersession import remove_session, restore_session
 from games.writes.playthrough import remove_run, restore_run
@@ -480,33 +481,11 @@ DEVICE_PREVIEW: tuple[PreviewColumn[Device], ...] = (
 # ── Platforms ────────────────────────────────────────────────────────────────
 
 
-def platform_scope(library: UserLibrary, filter_json: FilterJson) -> QuerySet[Platform]:
-    """The list's own read: private, live."""
-    return narrowed(
-        Platform.objects.for_library(library),
-        library,
-        filter_json,
-        parse_platform_filter,
-    )
-
-
-def platform_resolution(
+def removal_resolution(
     library: UserLibrary, keys: Sequence[uuid.UUID]
 ) -> Resolution[Platform]:
     """Keys to platforms, with what names each."""
-    wanted = list(dict.fromkeys(keys))
-    rows = tuple(
-        with_platform_departures(
-            Platform.objects.for_library(library).filter(pk__in=wanted), library
-        ).order_by("name", "id")
-    )
-    return Resolution(
-        rows, tuple(lost(wanted, {row.pk for row in rows}, PLATFORM_GONE))
-    )
-
-
-def _outcome(moved: Moved) -> RowOutcome:
-    return RowOutcome.MOVED if moved else RowOutcome.UNCHANGED
+    return platform_resolution(library, keys, with_platform_departures)
 
 
 def remove_one_platform(
@@ -517,28 +496,10 @@ def remove_one_platform(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """The stamp, not the key, makes a repeat harmless."""
-    return _outcome(
+    """The ledger, not the key, makes a repeat harmless."""
+    return outcome(
         remove_platform_in_batch(
             platform, batch=correlation_id, act=REMOVE_PLATFORM.name
-        )
-    )
-
-
-def restore_one_platform(
-    actor: User,
-    platform_id: uuid.UUID,
-    *,
-    undoes: uuid.UUID,
-    idempotency_key: IdempotencyKey,
-    correlation_id: uuid.UUID,
-) -> RowOutcome:
-    return _outcome(
-        undo_platform_batch(
-            _removed_row(Platform.objects.all(), actor, platform_id, "platform"),
-            undoes=undoes,
-            batch=correlation_id,
-            act=REMOVE_PLATFORM.name,
         )
     )
 
@@ -658,8 +619,8 @@ REMOVE_PLATFORM = BulkAction(
     undo_rows=LedgerRows(Platform),
     fallback="games:list_platforms",
     scope=platform_scope,
-    resolve=platform_resolution,
+    resolve=removal_resolution,
     run=remove_one_platform,
-    inverse=restore_one_platform,
+    inverse=undoing("platform.remove"),
     preview=PLATFORM_PREVIEW,
 )

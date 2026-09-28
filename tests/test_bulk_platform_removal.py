@@ -10,7 +10,8 @@ from django.http import Http404
 from django.urls import reverse
 
 from games.bulk_actions import BULK_ACTIONS, LedgerRows
-from games.bulk_removal import PLATFORM_GONE, REMOVE_PLATFORM
+from games.bulk_platforms import PLATFORM_GONE
+from games.bulk_removal import REMOVE_PLATFORM
 from games.models import Game, Platform, Purchase, UserLibrary
 from games.reads.platform_departures import platform_departures_of
 from games.removal import remove, restore
