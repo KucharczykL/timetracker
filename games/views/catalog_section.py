@@ -11,8 +11,10 @@ header row stands over the columns. The header and the cards are
 separate grids, thus both declare `EDITION_COLUMNS`.
 """
 
-from typing import Final
+from collections.abc import Mapping
+from typing import Final, cast
 
+from django import forms
 from django.forms import BoundField
 from django.forms.forms import BaseForm
 
@@ -88,6 +90,34 @@ _OUT_OF_SIGHT: Final[list[tuple[str, str]]] = [
     ("style", "display:none"),
 ]
 
+#: Where `<catalog-editor>` puts a row's current value. Mirrors
+#: `NAME_SLOT` in `ts/elements/catalog-editor.ts`.
+NAME_SLOT: Final[str] = "{}"
+
+_MARK_NAME: Final[str] = "Show the {} release in the library"
+_RELEASE_BIN_NAME: Final[str] = "Remove the {} release"
+_EDITION_NAME: Final[str] = "{}"
+_EDITION_NAME_EMPTY: Final[str] = "Unnamed edition"
+_EDITION_BIN_NAME: Final[str] = "Remove the {} edition"
+_EDITION_BIN_NAME_EMPTY: Final[str] = "Remove the unnamed edition"
+
+
+def _named(
+    pattern: str, follows: str, empty: str | None = None
+) -> list[tuple[str, str]]:
+    """The hooks `<catalog-editor>` restates a name through."""
+    hooks = [("data-catalog-name", pattern), ("data-catalog-name-of", follows)]
+    if empty is not None:
+        hooks.append(("data-catalog-name-empty", empty))
+    return hooks
+
+
+def _filled(pattern: str, value: str, empty: str | None = None) -> str:
+    """One name, as the element states it for ``value``."""
+    if not value and empty is not None:
+        return empty
+    return pattern.replace(NAME_SLOT, value)
+
 
 def _row_hooks(
     form: BaseForm, attribute: str, index: RowIndex
@@ -126,9 +156,10 @@ def _count_input(field: str, count: int) -> Node:
     return Input(type="hidden", name=field, value=str(count))
 
 
-def _remove_button(title: str) -> Node:
+def _remove_button(title: str, naming: list[tuple[str, str]]) -> Node:
     """Inert until `<catalog-editor>` picks it up."""
     return ControlButton(
+        naming,
         color="red",
         variant="ghost",
         type="button",
@@ -175,22 +206,34 @@ def _field_cell(field: BoundField, placement: str) -> Node:
     )
 
 
-def _platform_name(row: ReleaseRowForm) -> str:
-    """What the card's mark calls this row, for whoever cannot see it."""
-    release = row.instance
-    if release is None or release.platform is None:
-        return "unspecified platform"
-    return release.platform.name
+def _platform_name(row: ReleaseRowForm, platforms: Mapping[str, str]) -> str:
+    """The option the row's select shows, worded as the select words it.
+
+    The bound value, not the stored Release: a refused page shows what
+    was posted. A key the select does not offer shows the empty option.
+    """
+    empty = cast(forms.ModelChoiceField, row.fields["platform"]).empty_label
+    return platforms.get(str(row["platform"].value()), str(empty))
+
+
+def _edition_name(block: EditionBlock) -> str:
+    return str(block.form["name"].value() or "").strip()
 
 
 def _release_card(
-    row: ReleaseRowForm, *, index: RowIndex, value: str, chosen: bool
+    row: ReleaseRowForm,
+    *,
+    index: RowIndex,
+    value: str,
+    chosen: bool,
+    platforms: Mapping[str, str],
 ) -> Node:
-    platform = _platform_name(row)
+    platform = _platform_name(row, platforms)
     return ChoiceCard(
         name=MARK_FIELD,
         value=value,
-        label=f"Show the {platform} release in the library",
+        label=_filled(_MARK_NAME, platform),
+        label_attributes=_named(_MARK_NAME, "platform"),
         checked=chosen,
         columns=EDITION_COLUMNS,
         attributes=_row_hooks(row, "data-catalog-release", index),
@@ -198,7 +241,10 @@ def _release_card(
         [
             *_hidden_fields(row),
             Div(class_=_BIN_CELL_CLASS)[
-                _remove_button(f"Remove the {platform} release")
+                _remove_button(
+                    _filled(_RELEASE_BIN_NAME, platform),
+                    _named(_RELEASE_BIN_NAME, "platform"),
+                )
             ],
             _field_cell(row["platform"], _PLATFORM_PLACEMENT),
             _field_cell(row["release_date"], _DATE_PLACEMENT),
@@ -221,26 +267,38 @@ def _headings() -> Node:
 def _name_row(block: EditionBlock) -> Node:
     """The Edition's own name, which no header row stands over."""
     name = block.form["name"]
-    title = f"Remove the {name.value() or 'unnamed'} edition"
+    title = _filled(_EDITION_BIN_NAME, _edition_name(block), _EDITION_BIN_NAME_EMPTY)
     return Div(class_="flex items-end gap-3")[
         _labelled(name, "grow flex flex-col", FORM_LABEL_CLASS),
-        Div(class_="flex min-h-control items-center")[_remove_button(title)],
+        Div(class_="flex min-h-control items-center")[
+            _remove_button(
+                title,
+                _named(_EDITION_BIN_NAME, "name", _EDITION_BIN_NAME_EMPTY),
+            )
+        ],
     ]
 
 
-def _edition_block(block: EditionBlock, index: RowIndex, mark: str) -> Node:
+def _edition_block(
+    block: EditionBlock,
+    index: RowIndex,
+    mark: str,
+    platforms: Mapping[str, str],
+) -> Node:
     rows = [
         _release_card(
             row,
             index=row_index,
             value=release_prefix(index, row_index),
             chosen=release_prefix(index, row_index) == mark,
+            platforms=platforms,
         )
         for row_index, row in enumerate(block.rows)
     ]
     return ChoiceCardGroup(
         name=MARK_FIELD,
-        legend=block.form["name"].value() or "Unnamed edition",
+        legend=_filled(_EDITION_NAME, _edition_name(block), _EDITION_NAME_EMPTY),
+        legend_attributes=_named(_EDITION_NAME, "name", _EDITION_NAME_EMPTY),
         class_=BLOCK_CLASS,
         attributes=_row_hooks(block.form, "data-catalog-edition", index),
     )[
@@ -257,7 +315,7 @@ def _edition_block(block: EditionBlock, index: RowIndex, mark: str) -> Node:
     ]
 
 
-def _templates(graph: CatalogGraphForm) -> Node:
+def _templates(graph: CatalogGraphForm, platforms: Mapping[str, str]) -> Node:
     """The two blank rows the browser numbers and appends.
 
     The server states this markup once. `renumbered()` puts the row's
@@ -271,16 +329,20 @@ def _templates(graph: CatalogGraphForm) -> Node:
                 index=RELEASE_PLACEHOLDER,
                 value=release_prefix(EDITION_PLACEHOLDER, RELEASE_PLACEHOLDER),
                 chosen=False,
+                platforms=platforms,
             )
         ],
         Template(data_catalog_template="edition")[
-            _edition_block(graph.blank_block(), EDITION_PLACEHOLDER, mark="")
+            _edition_block(
+                graph.blank_block(), EDITION_PLACEHOLDER, mark="", platforms=platforms
+            )
         ],
     )
 
 
 def editions_area(graph: CatalogGraphForm) -> Node:
     """Every Edition of one Game, and every Release under each."""
+    platforms = graph.platform_names()
     errors = [
         Div(class_="text-type-body text-danger")[sentence]
         for sentence in graph.form_errors
@@ -291,10 +353,10 @@ def editions_area(graph: CatalogGraphForm) -> Node:
             *errors,
             _count_input(EDITION_COUNT_FIELD, len(graph.blocks)),
             *(
-                _edition_block(block, index, graph.mark)
+                _edition_block(block, index, graph.mark, platforms)
                 for index, block in enumerate(graph.blocks)
             ),
             Div()[_add_button("edition", "Add edition")],
         ],
-        _templates(graph),
+        _templates(graph, platforms),
     ]
