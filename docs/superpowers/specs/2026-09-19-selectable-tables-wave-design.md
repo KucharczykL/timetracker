@@ -166,7 +166,9 @@ dropping. The charter's rules hold, and this wave settles the shape:
   the mobile organizer is the table's own personality, not a second screen.
 - Keyboard: Space toggles the focused checkbox, Shift+Space extends from the
   last toggled row, Shift+click on a checkbox takes a range, the two
-  check-alls, header and line, are one tri-state control, and the
+  check-alls, header and line, are one tri-state control, each row's
+  checkbox is named by the identity cell's shown name, the truncation
+  clip, never a tooltip's copy or an icon's title (#1324), and the
   element announces the count through one live region it owns, because it
   owns the selection; the tray shows the same count and announces nothing.
   The contract is verified with Orca in #718, on the finished pages.
@@ -637,9 +639,15 @@ row builders read for the stacked summary too. The picker is an
 `IconTrigger` in the table's last header cell, the row-menu slot where
 the rows carry a menu and the Actions header otherwise, so it follows
 the slot by itself as #1134–#1136 and #1266 retire their columns; the
-row checkbox is no column and stays out of it. A preset carrying
-its columns is #1261's, the choice without scripting #1262's, and the
-quick bar's own grouping #1267's.
+row checkbox is no column and stays out of it. The quick bar's own
+grouping is #1267's, delivered as PR #1322: the acts, Apply, Clear,
+Presets and Advanced filter, are one segmented group at the row's end,
+and `<preset-panel>` loads and saves through `preset-panel:load` and
+`preset-panel:save`, the host answering the save with the state to
+store
+([spec](2026-09-28-issue-1267-filter-acts-group-design.md)). A preset
+carrying its columns is #1261's, which rides that answer; the choice
+without scripting is #1262's, and Apply still needs a script.
 
 The cost: a single row's act is two presses, the menu and the item, as
 an icon row cost; a multi-row act is the checkboxes, then the
