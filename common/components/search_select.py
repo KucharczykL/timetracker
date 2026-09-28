@@ -1098,7 +1098,7 @@ def PresetPanel(*, api_url: str, mode: FilterMode) -> Node:
         preset_api_url=api_url, mode=mode, data_preset_picker=""
     )[
         PresetSelect(api_url=api_url, mode=mode),
-        Div(class_="flex flex-col gap-2 border-t border-default-medium p-2")[
+        Div(class_="mt-2 flex flex-col gap-2 border-t border-default-medium pt-2")[
             Div(class_="flex items-center gap-2")[
                 Input(
                     type="text",
