@@ -233,9 +233,8 @@ const initWidget = (containerElement: Element) => {
   const params = parseParams(props.params || null);
   //: A filter panel states a criterion and a free-text panel is the
   //: typed text itself; neither holds a row to create.
-  const createUrl = isFilter || freeText ? "" : props.createUrl;
-  //: The consumer commits the row; nothing is posted.
-  const createsByEvent = !isFilter && !freeText && props.createEvent;
+  const create = isFilter || freeText ? "" : props.create;
+  const createUrl = props.createUrl;
   const createVerb = props.createVerb || "Create";
   const replaceVerb = props.replaceVerb;
   //: A required field whose list usually holds one row commits it, so
@@ -672,7 +671,7 @@ const initWidget = (containerElement: Element) => {
   // beside `PlayStation 4` matches that filter, and a rule built on it
   // would refuse to create any name a longer one holds.
   const createRowOffered = (query: string): boolean => {
-    if ((!createUrl && !createsByEvent) || !createRow) return false;
+    if (!create || !createRow) return false;
     const wanted = query.trim().toLowerCase();
     if (!wanted) return false;
     return Boolean(replaceVerb) || !loadedLabels().includes(wanted);
@@ -716,12 +715,20 @@ const initWidget = (containerElement: Element) => {
     return row;
   };
 
-  /** POST the typed name; take back the row and select it. */
+  /** Commit the typed name as `create` says. */
   const commitCreate = () => {
     if (creating || !createRow || createRow.hidden) return;
     const name = search.value.trim();
     if (!name) return;
-    if (createsByEvent) {
+    if (create === "select") {
+      const option: SearchSelectOption = { value: name, label: name, data: {} };
+      upsertOption(option);
+      createRow.hidden = true;
+      selectOption(option);
+      hidePanel();
+      return;
+    }
+    if (create === "event") {
       container.dispatchEvent(
         new CustomEvent<SearchSelectCreateDetail>("search-select:create", {
           bubbles: true,

@@ -64,6 +64,7 @@ from common.components.custom_elements import (
     Dropdown,
     DropdownPanel,
     FilterMode,
+    SearchSelectCreate,
     _as_dialog_trigger,
     _Dropdown,
     _PresetPanelElement,
@@ -437,6 +438,8 @@ def SearchSelect(
     search_url: str = "",
     params: ParamSources | None = None,
     create_url: str = "",
+    create_selects: bool = False,
+    create_verb: str = "",
     csrf: str = "",
     commit_sole_option: bool = False,
     multi_select: bool = False,
@@ -500,6 +503,8 @@ def SearchSelect(
     ``clear_description_id``: the ×'s ``aria-describedby`` target.
     ``none_label``: a pinned row holding none.
     ``shape``: the corners the box rounds.
+    ``create_selects``: the create row selects the typed text.
+    ``create_verb``: the create row's verb; blank reads "Create".
     """
     if none_label and (multi_select or panel):
         raise ValueError("none_label is single-select and field-hosted only")
@@ -507,6 +512,11 @@ def SearchSelect(
         always_visible = True
     if options and option_groups:
         raise ValueError("SearchSelect takes options or option_groups, not both")
+    if create_url and create_selects:
+        raise ValueError("A create row posts or selects, not both.")
+    create: SearchSelectCreate = (
+        "post" if create_url else "select" if create_selects else ""
+    )
     selected = [_normalize_option(option) for option in (selected or [])]
     options = [_normalize_option(option) for option in (options or [])]
 
@@ -635,7 +645,7 @@ def SearchSelect(
         ]
 
     children = _combobox_children(
-        create_row=_option_row(_BLANK_OPTION, RowKind.CREATE) if create_url else None,
+        create_row=_option_row(_BLANK_OPTION, RowKind.CREATE) if create else None,
         pill_nodes=pills_children,
         search_attributes=search_attrs,
         options_children=option_rows,
@@ -658,7 +668,9 @@ def SearchSelect(
         name=name,
         search_url=search_url,
         params=json.dumps(params) if params else "",
+        create=create,
         create_url=create_url,
+        create_verb=create_verb,
         csrf=csrf,
         commit_sole_option="true" if commit_sole_option else "false",
         multi="true" if multi_select else "false",
@@ -1018,7 +1030,7 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         always_visible="true",
         prefetch=_PRESET_PREFETCH,
         sync_url="false",
-        create_event="true",
+        create="event",
         create_verb=SAVE_PRESET_VERB,
         replace_verb=OVERWRITE_PRESET_VERB,
         class_=_DIALOG_LAYOUT.container_class,
