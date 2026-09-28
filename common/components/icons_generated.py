@@ -40,7 +40,7 @@ ICON_NODES: dict[str, Element] = {
     'bookmark': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
-        Path([('d', 'm19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z')]),
+        Path([('d', 'M18 7v14l-6 -4l-6 4v-14a4 4 0 0 1 4 -4h4a4 4 0 0 1 4 4')]),
     ],
     'checkbox': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
@@ -140,6 +140,18 @@ ICON_NODES: dict[str, Element] = {
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
         Path([('fill', 'currentColor'), ('d', 'M 7.4765625 4.9785156 A 1.50015 1.50015 0 0 0 6 6.5 L 6 31.5 L 6 43.5 A 1.50015 1.50015 0 1 0 9 43.5 L 9 33 L 40.5 33 C 41.329 33 42 32.328 42 31.5 L 42 6.5 C 42 5.672 41.329 5 40.5 5 L 7.7460938 5 A 1.50015 1.50015 0 0 0 7.4765625 4.9785156 z M 16 8 L 24 8 L 24 15 L 32 15 L 32 8 L 39 8 L 39 15 L 32 15 L 32 23 L 39 23 L 39 30 L 32 30 L 32 23 L 24 23 L 24 30 L 16 30 L 16 23 L 9 23 L 9 15 L 16 15 L 16 8 z M 16 15 L 16 23 L 24 23 L 24 15 L 16 15 z')]),
+    ],
+    'funnel-cog': Svg(
+        [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Path([('d', 'M12 20l-3 1v-8.5l-4.48 -4.928a2 2 0 0 1 -.52 -1.345v-2.227h16v2.172a2 2 0 0 1 -.586 1.414l-4.414 4.414v1.5')]),
+        Path([('d', 'M17.001 19a2 2 0 1 0 4 0a2 2 0 1 0 -4 0')]),
+        Path([('d', 'M19.001 15.5v1.5')]),
+        Path([('d', 'M19.001 21v1.5')]),
+        Path([('d', 'M22.032 17.25l-1.299 .75')]),
+        Path([('d', 'M17.27 20l-1.3 .75')]),
+        Path([('d', 'M15.97 17.25l1.3 .75')]),
+        Path([('d', 'M20.733 20l1.3 .75')]),
     ],
     'funnel-off': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],

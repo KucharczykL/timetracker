@@ -17,7 +17,7 @@ moves facets that are direct children of the row.
 | Apply | word, blue | — |
 | Clear | `funnel-off` icon | "Clear filter" |
 | Presets | `bookmark` icon and `▾` | "Presets" |
-| Advanced filter | `list-tree` icon | "Advanced filter" |
+| Advanced filter | `funnel-cog` icon | "Advanced filter" |
 
 Apply, the primary act, keeps its word. The group is named "Filter
 actions". Presets needs a preset API; Advanced filter needs a builder

@@ -451,7 +451,7 @@ class QuickFilterBar(BaseComponent):
         if self.builder_url:
             members.append(
                 {
-                    "slot": Icon("list-tree"),
+                    "slot": Icon("funnel-cog"),
                     "href": self.builder_url,
                     "aria_label": ADVANCED_FILTER_LABEL,
                     "title": ADVANCED_FILTER_LABEL,
