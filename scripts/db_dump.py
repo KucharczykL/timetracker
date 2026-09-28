@@ -38,7 +38,7 @@ PROTECTED_DATABASES = frozenset({"postgres", "template0", "template1"})
 
 #: Give each unset function in public its search_path.
 #:
-#: A dump loads under an empty search_path, and 0017 wrote twelve functions
+#: A dump loads under an empty search_path, and the baseline wrote functions
 #: that call their helpers by bare name. ALTER FUNCTION states reach and no
 #: body, thus a dump of any age loads without choosing a generation of a body
 #: to write. Three generations exist.

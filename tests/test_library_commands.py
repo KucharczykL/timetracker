@@ -414,7 +414,7 @@ def test_sample_load_refuses_a_device_stated_as_a_row(owner, monkeypatch, tmp_pa
 
 
 @pytest.mark.django_db
-def test_sample_load_refuses_a_session_naming_a_device_no_event_created(
+def test_sample_load_refuses_a_reference_naming_a_device_no_event_created(
     owner, monkeypatch, tmp_path
 ):
     """The device must be in the fixture as its creation event."""

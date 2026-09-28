@@ -97,11 +97,21 @@ squash applied only while every migration it `replaces` is recorded, so
 on the step-one image, which still carries `replaces`, the deleted rows
 turn the squash unapplied and startup `migrate` applies it for real
 against tables that exist. The same holds for a rollback to that image
-after the `DELETE`: put the twelve rows back first, with
-`INSERT INTO django_migrations (app, name, applied) VALUES ('games', '<name>', now()) ON CONFLICT DO NOTHING`
-for each name above. A dump taken before the squash row exists cannot
-rehearse the `DELETE` for the same reason. Fetch the dump after the
-deploy.
+after the `DELETE`: put the twelve rows back first. `django_migrations`
+has no unique key on `(app, name)`, so guard the insert yourself, for
+each name above:
+
+```sql
+INSERT INTO django_migrations (app, name, applied)
+SELECT 'games', '<name>', now()
+WHERE NOT EXISTS (
+  SELECT 1 FROM django_migrations WHERE app = 'games' AND name = '<name>'
+);
+```
+
+A dump taken before the squash row exists cannot rehearse the `DELETE`
+either: with the twelve rows gone and no squash row recorded, `migrate`
+applies the squashed file for real. Fetch the dump after the deploy.
 
 The next migration numbers on from the replaced range: `0019`.
 
