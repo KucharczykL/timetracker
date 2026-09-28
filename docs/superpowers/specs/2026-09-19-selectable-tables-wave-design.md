@@ -377,7 +377,10 @@ person cannot act on (`games/bulk_edit.py` does; move's `run_before`
 still refuses, #1283); and a second press of Undo runs under a fresh
 correlation id, so a gate that asks whether the batch's own event is the
 latest of its family reads the first Undo as a later change and refuses
-every row it already put back (#1256's acts do, #1284). A confirmation
+every row it already put back. #1256's acts run that gate only while
+the endpoint is still stated, so a second press answers already so
+(`test_an_undo_pressed_twice_is_already_so`, pinned since #1256), and
+#1284's report does not reproduce on `main`. A confirmation
 asking two facts at once rides the one `CHOICE_FIELD` as JSON, its
 controls under suffixed names of their own, so `settle` tells a carried
 statement from a first press; one fact needs no more than the plain
@@ -456,14 +459,17 @@ From it a person:
   column-drop classes address cells by position, so grouping is the column
   and the sort, not header rows;
 - narrows by date and device, the session filter's own facets;
-- selects rows and moves them: "Move to playthrough…" opens a confirmation
-  hosting one `SearchSelect` with `create_url` (#1080, a prerequisite)
+- selects rows and moves them: since #1310 the run is bulk Edit's first
+  field, a plain `SearchSelect` with `create_url` (#1080, a prerequisite)
   over the game's live ordinary runs, no name field and no second
-  control; a name typed there goes through `POST /api/playthrough/` ahead
+  control; #714's "Move to playthrough…" confirmation, which hosted that
+  picker alone, left the tray and the row's menu with it. A name typed
+  there goes through `POST /api/playthrough/` ahead
   of the submit, so the choice is always an existing run key. That POST
   runs `RecordPlaythroughByName`, which names the game's placeholder (its
   sole live ordinary run, blank, never acted on, nothing naming it) rather
-  than creating a second run beside it, and creates one otherwise. The
+  than creating a second run beside it, and creates one otherwise. A
+  selection at several games gets the rest of the form and no picker. The
   Undo moves each session back, restoring the bucket first, and the run
   named or created ahead stays, which the answer says: the batch never
   wrote it. An abandoned confirmation leaves such a run, the cost #1080
@@ -604,7 +610,8 @@ the zone is the browser's, `BrowserTimeZoneInput()` beside it, and
 `settle` composes the pair once and answers it unchanged on every
 later chunk; a reconfirmation stamps again for the rows that remain)
 and Edit as set-one-value (#1211, after #714,
-whose move confirmation is the form-over-a-selection precedent; its
+whose move confirmation was the form-over-a-selection precedent until
+#1310 made the run Edit's own field; its
 device control is the session form's creating `SearchSelect` over
 `POST /api/devices/`, #1080's, so a device the library does not hold
 yet is made at the confirmation). The menu is today's Actions column
@@ -732,8 +739,9 @@ Remove, in #712.
 - **Audit History** — the aggregate reader is the first per-aggregate read
   of the stream, which the Journal and the Trash both need.
 - **The creating combobox** — #1080, in the Session wave, landed as
-  #714's prerequisite: the move confirmation is its fourth consumer, and
-  #1211's device control its fifth. Its picker is always visible and its
+  #714's prerequisite: the move confirmation was its fourth consumer,
+  since #1310 the Playthrough field of bulk Edit, and #1211's device
+  control its fifth. Its picker is always visible and its
   create row names a placeholder run rather than doubling it, which #714's
   Undo sentence and #715's Playthrough column both inherit.
 - **The rethink** — #1209, a confirmation that forecasts a command's
