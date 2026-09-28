@@ -4,7 +4,7 @@
 
 **Goal:** State `PlayerGame.excluded_from_unfinished` through `RecordPlayerGameFacts`, make the unfinished and dropped statistics and their links honour it, and give it a filter, a list column, a form control and a detail note.
 
-**Architecture:** Fold the flag into the existing facts command and retire the single-fact command. Readers add one clause beside `Purchase.infinite`. UI follows `mastered` everywhere.
+**Architecture:** State the flag through the existing facts command and retire the single-fact command. Readers add one clause beside `Purchase.infinite`. UI follows `mastered` everywhere.
 
 **Tech Stack:** Django 6, event-sourced commands (`games/events`), Python component system, pytest + Playwright.
 
