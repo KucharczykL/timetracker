@@ -21,15 +21,18 @@ from django.utils.datastructures import MultiValueDict
 from common.components import (
     DEFAULT_PREFETCH,
     DISABLED_CONTROL_CLASS,
+    CreateRow,
     DatePicker,
     DateTimeCopyTarget,
     DateTimePicker,
     Media,
     NoneLabel,
+    PostCreate,
     PostedName,
     Safe,
     SearchSelect,
     SearchSelectOption,
+    SelectTyped,
     TemporalCopySource,
     TemporalField,
     TimeZoneRow,
@@ -395,7 +398,7 @@ class SearchSelectWidget(_SearchSelectAdapter):
         *,
         search_url,
         options_resolver,
-        create_url="",
+        create: CreateRow | None = None,
         params=None,
         commit_sole_option=False,
         multi_select=False,
@@ -418,7 +421,7 @@ class SearchSelectWidget(_SearchSelectAdapter):
         self.none_label = none_label
         self.search_url = search_url
         self.options_resolver = options_resolver
-        self.create_url = create_url
+        self.create = create
         self.params = params
         self.commit_sole_option = commit_sole_option
         self.multi_select = multi_select
@@ -447,7 +450,7 @@ class SearchSelectWidget(_SearchSelectAdapter):
             selected=searchselect_selected(self._values(value), self.options_resolver),
             options=None,
             search_url=self.search_url,
-            create_url=self.create_url,
+            create=self.create,
             params=self.params,
             commit_sole_option=self.commit_sole_option,
             multi_select=self.multi_select,
@@ -499,10 +502,6 @@ class IconPickerWidget(forms.Widget):
         )
 
 
-#: The create row's verb for typed text.
-USE_TYPED_TEXT = "Use"
-
-
 class TextSearchSelectWidget(_SearchSelectAdapter):
     """Suggestions, and any typed text."""
 
@@ -528,15 +527,30 @@ class TextSearchSelectWidget(_SearchSelectAdapter):
             for text in self.suggestions
         ]
         held = [SearchSelectOption(value=value, label=value, data={})] if value else []
+        #: A CharField's max_length arrives as maxlength.
+        stated = {**self.attrs, **(attrs or {})}.get("maxlength")
         return self._render(
             name,
             attrs,
             selected=held,
             options=options,
-            create_selects=True,
-            create_verb=USE_TYPED_TEXT,
+            create=SelectTyped(),
+            max_length=None if stated is None else int(stated),
             shape=shape,
         )
+
+
+def offer_platform_groups(
+    field: forms.Field, library: UserLibrary
+) -> TextSearchSelectWidget:
+    """The field's group picker, offering the library's groups."""
+    widget = field.widget
+    if isinstance(widget, UnsetWidget):
+        widget = widget.widget
+    if not isinstance(widget, TextSearchSelectWidget):
+        raise TypeError(f"{type(widget).__name__} offers no platform groups")
+    widget.suggestions = tuple(platform_groups(library))
+    return widget
 
 
 class ChoiceSearchSelectWidget(_SearchSelectAdapter):
@@ -1319,7 +1333,7 @@ class PlaythroughSelectWidget(SearchSelectWidget):
         super().__init__(
             search_url=PLAYTHROUGH_SEARCH_URL,
             options_resolver=run_options,
-            create_url=PLAYTHROUGH_CREATE_URL,
+            create=PostCreate(PLAYTHROUGH_CREATE_URL),
             params={"game_id": {"field": game_field}},
             #: Required field: a submit with no pick posts a run.
             commit_sole_option=True,
@@ -1463,7 +1477,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
         widget=SearchSelectWidget(
             search_url=DEVICE_SEARCH_URL,
             options_resolver=device_options,
-            create_url=DEVICE_CREATE_URL,
+            create=PostCreate(DEVICE_CREATE_URL),
             none_label="No device",
         ),
     )
@@ -1715,7 +1729,7 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         widget=SearchSelectWidget(
             search_url=DEVICE_SEARCH_URL,
             options_resolver=device_options,
-            create_url=DEVICE_CREATE_URL,
+            create=PostCreate(DEVICE_CREATE_URL),
             none_label="No device",
         ),
     )
@@ -1954,7 +1968,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         widget=SearchSelectWidget(
             search_url="/api/platforms/search",
             options_resolver=_platform_options,
-            create_url=PLATFORM_CREATE_URL,
+            create=PostCreate(PLATFORM_CREATE_URL),
             none_label="Unspecified",
         ),
     )
@@ -2135,9 +2149,7 @@ class PlatformForm(
         super().__init__(*args, **kwargs)
         self.library = library
         self.instance.library = library
-        cast(TextSearchSelectWidget, self.fields["group"].widget).suggestions = tuple(
-            platform_groups(library)
-        )
+        offer_platform_groups(self.fields["group"], library)
         field = cast(forms.ChoiceField, self.fields["icon"])
         field.choices = list(PLATFORM_ICONS.items())
         field.initial = self.instance.icon or UNSPECIFIED_ICON

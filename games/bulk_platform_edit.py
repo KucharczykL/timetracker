@@ -42,9 +42,9 @@ from games.forms import (
     TextSearchSelectWidget,
     UnsetFieldsForm,
     UnsetWidget,
+    offer_platform_groups,
 )
 from games.models import Platform, UserLibrary
-from games.reads.platform_groups import platform_groups
 from games.writes.answers import answered
 from games.writes.platform import edit_platform_in_batch
 
@@ -139,14 +139,9 @@ class BulkPlatformEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
         rows: Sequence[Platform] = (),
     ) -> None:
         super().__init__(data, prefix=prefix)
-        group = cast(UnsetWidget, self.fields["group"].widget).widget
-        cast(TextSearchSelectWidget, group).suggestions = tuple(
-            platform_groups(library)
-        )
+        group = offer_platform_groups(self.fields["group"], library)
         if rows:
-            cast(TextSearchSelectWidget, group).placeholder = keeping(
-                rows, lambda row: row.group, _group_shown
-            )
+            group.placeholder = keeping(rows, lambda row: row.group, _group_shown)
             cast(IconPickerWidget, self.fields["icon"].widget).keep_label = keeping(
                 rows, lambda row: row.icon, _icon_shown
             )

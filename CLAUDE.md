@@ -732,17 +732,16 @@ Submodules re-exported via `common/components/__init__.py`:
   and wired by `ts/elements/search-select.ts`: `SearchSelect()` (form combobox;
   with `host_dropdown=True`, set by `SearchSelectWidget` form adapter, lives in
   `<drop-down behavior="inline-combobox">` so its panel shares the one attachMenu
-  open/close/position/dismiss engine, #348; `create_url` offers a `Create “…”`
+  open/close/position/dismiss engine, #348; `create=PostCreate(url)` offers a `Create “…”`
   row for a query no loaded label **equals**, which POSTs `{name, ...params}`
   and upserts the answered `{value, label}` on its key, and `params` is one JSON
   mapping — a literal or a sibling field — read by that POST and by the search
   query alike, a field source being a dependency that re-searches, #1080;
-  `create_selects=True` instead makes that row hold the typed text as value
-  and label, and a form submit commits a typed draft; `PresetSelect`'s row
-  posts nothing and emits `search-select:create` `{name, replaces}` for the
-  consumer (element prop `create`: `post`, `event` or `select`);
-  `create_verb` names the row and `replace_verb` offers it for a name a row
-  holds exactly, #1328;
+  `SelectTyped()` instead holds the typed text as value and label, and a
+  form submit commits a typed draft; `EmitCreate()` posts nothing and emits
+  `search-select:create` `{name, replaces}` for the consumer (the presets
+  panel). Each names its verb, and `EmitCreate.replace_verb` offers the row
+  for a name a row holds exactly, #1328; `max_length` caps the box;
   a trailing × empties query and value in one press and emits
   `search-select:clear` after any `search-select:change`; on by default,
   `clearable=False` opts out, #1287; `none_label` pins a row that holds

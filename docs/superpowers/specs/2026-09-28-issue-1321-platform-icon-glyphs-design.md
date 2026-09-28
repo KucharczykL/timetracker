@@ -60,15 +60,14 @@ unlisted icon.
 Group is a `SearchSelect` on the Platform form and the bulk Edit, so
 its panel is a `<drop-down>` like every other picker. A group is text
 on a platform, not a row, so no endpoint creates one.
-`SearchSelectProps.create` names how the create row commits:
+`SearchSelect(create=...)` takes one `CreateRow`, which names how the
+create row commits, and none offers no row:
 
-- `""`: no create row.
-- `post`: it posts to `create_url` and selects the answered row.
-- `event`: it emits `search-select:create`; the consumer commits.
-- `select`: it selects the typed text as value and label.
+- `PostCreate(url)`: it posts there and holds the answered row.
+- `EmitCreate()`: it emits `search-select:create`; the consumer commits.
+- `SelectTyped()`: it holds the typed text as value and label.
 
-One prop, not flags, so no two ways contradict; `SearchSelect` derives
-it from `create_url` or `create_selects` and refuses both. The element
+One value, so no two ways contradict. The element
 codegen emits a `Literal` of strings as a TypeScript union whose reader
 throws on any other value. A form submit commits text typed and not
 picked, so the typed group is never dropped.

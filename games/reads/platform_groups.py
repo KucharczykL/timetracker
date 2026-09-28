@@ -2,8 +2,11 @@
 
 from games.models import Platform, UserLibrary
 
+#: A group a platform names.
+type PlatformGroup = str  # "Nintendo"
 
-def platform_groups(library: UserLibrary) -> list[str]:
+
+def platform_groups(library: UserLibrary) -> list[PlatformGroup]:
     """Every group a live platform the library sees holds."""
     return sorted(
         set(

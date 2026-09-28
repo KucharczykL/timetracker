@@ -70,3 +70,16 @@ def test_a_cleared_group_box_states_no_group(owned_library):
 
     assert form.is_valid(), form.errors
     assert form.save().group == ""
+
+
+def test_the_group_box_takes_no_more_than_a_group_holds(owned_library):
+    html = str(PlatformForm(library=owned_library)["group"])
+
+    assert 'maxlength="255"' in html
+
+
+def test_a_posting_create_row_names_its_endpoint():
+    from common.components import PostCreate
+
+    with pytest.raises(ValueError):
+        PostCreate("")
