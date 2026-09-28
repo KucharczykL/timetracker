@@ -547,7 +547,7 @@ Contract is [Undo a removal](docs/superpowers/specs/2026-09-16-issue-695-undo-re
 **One act on many rows is declared, not routed** (#713). An act is a value in
 `games/bulk_actions.py`, and making the value declares it: `__post_init__`
 refuses a name twice declared, `EventRows` refuses a model no `EventSpec`
-speaks about, and `StampedRows` one whose stamp names no batch. It states
+speaks about, and `LedgerRows` a projection. It states
 scope, resolve, run and inverse, beside `undo_rows`, where its Undo reads
 the rows it takes back -- one act may write two, as the reclassification writes a
 created record beside the reclassified session, and an Undo reading both would
@@ -583,15 +583,17 @@ aggregate, its row menu `device_row_menu` (Edit, Remove), its preview's
 Sessions count `games/reads/device_departures.py`, which the per-row
 confirmation reads too. Contract is
 [Select devices and remove them in bulk](docs/superpowers/specs/2026-09-24-issue-1135-devices-list-selectable-design.md).
-#1136's `platform.remove` does the same on the Platforms list over a
-conventional row: a platform writes no event, so `remove(row, batch=)`
-stamps `Platform.removed_in_batch` and the act's `undo_rows` is
-`StampedRows`, where every other act states `EventRows`; `_act_of` falls
-back to the stamped acts for a batch with no events. `games/writes/platform.py`
-refuses a restore whose name and group a live private or shared platform
-holds, or a row another act removed since, at
-409, on the per-row route too. Contract is
-[Select platforms and remove them in bulk](docs/superpowers/specs/2026-09-28-issue-1136-platforms-list-selectable-design.md).
+#1136's `platform.remove` and `platform.edit` (group, icon from
+`PLATFORM_ICONS`) do the same on the Platforms list over a conventional
+row: a platform writes no event, so `games/writes/platform.py` records
+each field it changes in the `BatchChange` ledger (`games/batch_ledger.py`),
+the acts' `undo_rows` is `LedgerRows`, and `_act_of` reads the ledger's
+act for a batch with no events. One inverse writes every recorded field
+back, over a later change too, and records its own writes so a repeat
+skips them. A write refuses at 409 where name and group would match a
+live private or shared platform, on the per-row restore route too.
+Contract is
+[Select platforms, then edit or remove them in bulk](docs/superpowers/specs/2026-09-28-issue-1136-platforms-list-selectable-design.md).
 #1211's `session.edit` sets a device, emulated, a note, or several on
 selected sessions through `DescribeSession`; its Undo restates each changed
 fact from the row's events. #1310 adds the run: the move of one row
@@ -607,6 +609,11 @@ its Undo states each changed fact's earlier value, read by
 `batch_fact_changes` in
 `games/reads/playergame_facts.py`; #1256's Undo reads `status_change`. Contract is
 [Edit many games](docs/superpowers/specs/2026-09-28-issue-1270-bulk-game-edit-design.md).
+The Edit acts live in `bulk_session_edit.py`, `bulk_game_edit.py` and
+`bulk_platform_edit.py`; what they share (the "Keep:" placeholder, the
+carried statement's decode, the settled-choice guard, the form refusal,
+the Undo's restate and overwrite log) is `games/bulk_edit.py`, which
+imports no act, and `FactChange` is `games/reads/fact_change.py`.
 
 **Multi-game Purchase is *unsplittable* bundle** — one price, whole-purchase
 refund (e.g. Humble Bundle). Independently-refundable multi-item orders (e.g.

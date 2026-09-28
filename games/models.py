@@ -1339,7 +1339,7 @@ class BatchChange(models.Model):
 
     id = UUIDv7Field(primary_key=True, editable=False)
     library = models.ForeignKey(
-        "UserLibrary", on_delete=models.CASCADE, related_name="batch_changes"
+        "UserLibrary", on_delete=models.CASCADE, related_name="+"
     )
     #: The batch's correlation id.
     batch = models.UUIDField()
