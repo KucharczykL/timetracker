@@ -78,5 +78,5 @@ class Migration(migrations.Migration):
             name="icon",
             field=models.SlugField(default="unspecified"),
         ),
-        migrations.RunPython(name_glyphs, migrations.RunPython.noop),
+        migrations.RunPython(name_glyphs, migrations.RunPython.noop, elidable=True),
     ]
