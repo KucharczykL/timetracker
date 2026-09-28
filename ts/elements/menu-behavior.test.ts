@@ -272,6 +272,32 @@ describe("attachMenu keepOpenOnTab", () => {
     expect(controller.isOpen()).toBe(true);
   });
 
+  it("lets its own toggle close it when focus sits inside the panel", async () => {
+    document.body.innerHTML = `
+      <div id="host">
+        <button data-toggle type="button">Open</button>
+        <div data-menu hidden><button data-first type="button">first</button></div>
+      </div>`;
+    const host = document.querySelector<HTMLElement>("#host") as HTMLElement;
+    const toggle = host.querySelector<HTMLElement>("[data-toggle]") as HTMLElement;
+    const menu = host.querySelector<HTMLElement>("[data-menu]") as HTMLElement;
+    const controller = attachMenu(host, toggle, menu, { keepOpenOnTab: true });
+    controller.bindDocument();
+    toggle.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    const first = menu.querySelector("[data-first]") as HTMLElement;
+    first.focus();
+
+    // The mousedown on the toggle moves focus there before its click.
+    toggle.focus();
+    first.dispatchEvent(
+      new FocusEvent("focusout", { bubbles: true, relatedTarget: toggle }),
+    );
+    await Promise.resolve();
+    expect(controller.isOpen()).toBe(true);
+    toggle.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
+    expect(controller.isOpen()).toBe(false);
+  });
+
   it("keeps the default Tab-close behavior when the option is absent", () => {
     const { menu, controller } = mount();
     controller.open();

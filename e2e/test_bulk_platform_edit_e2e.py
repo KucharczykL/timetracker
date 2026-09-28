@@ -91,8 +91,14 @@ def test_the_platform_form_picks_an_icon_from_the_grid(
     _login(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:edit_platform', args=[platform.pk])}")
-    page.get_by_role("button", name="Unspecified").click()
+    trigger = page.get_by_role("button", name="Unspecified")
     icons = page.get_by_role("dialog", name="Icon")
+    trigger.click()
+    expect(icons.get_by_role("radio", name="Unspecified")).to_be_focused()
+    # The toggle closes the panel it opened.
+    trigger.click()
+    expect(icons).to_be_hidden()
+    trigger.click()
     expect(icons.get_by_role("radio", name="Unspecified")).to_be_focused()
     page.keyboard.press("ArrowRight")
     page.keyboard.press("Enter")

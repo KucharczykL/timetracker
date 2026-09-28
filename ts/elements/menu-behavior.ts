@@ -376,6 +376,11 @@ export function attachMenu(
     // Remember the in-panel activation until its click bubbles; real Tab/
     // Shift+Tab focus transitions do not set this guard.
     let internalActivation = false;
+    // Focus moving to a click-owned toggle is that toggle's press: its
+    // click closes the panel, and closing here first would let the click
+    // open it again. An inline trigger's field owns no click.
+    const toOwnToggle = (target: Node): boolean =>
+      !inlineTrigger && toggle.contains(target);
     menu.addEventListener("pointerdown", (event) => {
       if (event.button === 0) internalActivation = true;
     });
@@ -395,7 +400,7 @@ export function attachMenu(
       if (internalActivation || !(event.target as HTMLElement).isConnected) return;
       const relatedTarget = event.relatedTarget as Node | null;
       if (relatedTarget) {
-        if (!menu.contains(relatedTarget)) close();
+        if (!menu.contains(relatedTarget) && !toOwnToggle(relatedTarget)) close();
         return;
       }
       // An in-panel action can disable the control that was just activated
@@ -414,6 +419,7 @@ export function attachMenu(
       queueMicrotask(() => {
         if (internalActivation) return;
         const activeElement = document.activeElement;
+        if (activeElement && toOwnToggle(activeElement)) return;
         if (!activeElement || !menu.contains(activeElement)) close();
       });
     });
