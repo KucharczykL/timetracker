@@ -6,6 +6,9 @@ from types import MappingProxyType
 #: An icon snippet's slug.
 type PlatformIcon = str  # "steam"
 
+#: The icon a platform holds when none is stated.
+UNSPECIFIED_ICON: PlatformIcon = "unspecified"
+
 #: A person's name for an icon.
 type IconLabel = str  # "Steam"
 
@@ -33,3 +36,19 @@ PLATFORM_ICONS: Mapping[PlatformIcon, IconLabel] = MappingProxyType(
         "yuzu": "Yuzu (Switch emulator)",
     }
 )
+
+#: Slugs that once copied a glyph, and that glyph.
+RETIRED_ICONS: Mapping[PlatformIcon, PlatformIcon] = MappingProxyType(
+    {
+        "nintendo-3ds": "nintendo",
+        "physical-media": "physical",
+        "ps1": "playstation",
+    }
+)
+
+
+def canonical_icon(slug: str) -> PlatformIcon:
+    """The icon a slug names, or Unspecified."""
+    if slug in PLATFORM_ICONS:
+        return slug
+    return RETIRED_ICONS.get(slug, UNSPECIFIED_ICON)
