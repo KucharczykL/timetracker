@@ -51,7 +51,7 @@ from collections.abc import Callable, Iterable, Sequence
 from enum import Enum
 from typing import Literal, NamedTuple, TypedDict
 
-from common.components.core import Attributes, Child, HTMLAttribute, Node
+from common.components.core import Attributes, Child, Fragment, HTMLAttribute, Node
 from common.components.custom_elements import (
     DROPDOWN_ITEM_SHAPE,
     Dropdown,
@@ -61,6 +61,7 @@ from common.components.custom_elements import (
 )
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
+    AppliedDot,
     MICRO_LABEL_CLASS,
     SHAPE_CLASSES,
     ButtonColor,
@@ -1015,6 +1016,7 @@ def ComboboxDropdown(
     ghost: bool = False,
     config: dict[str, str] | None = None,
     panel_width: str = "w-72",
+    applied: bool = False,
 ) -> Node:
     """A "Label ▾" trigger + combobox dialog, composed from the two shared
     primitives: ``<drop-down>`` owns the trigger,
@@ -1031,13 +1033,25 @@ def ComboboxDropdown(
     ``panel_width`` sets the dialog width class: the default ``w-72`` suits
     list-shaped content; content with an intrinsic width (a calendar) passes
     ``w-auto``.
+
+    ``applied`` marks a trigger whose widget the page's filter states: a
+    brand dot and label, and "(applied)" for a screen reader. The label is
+    its own span because the ghost tone's ``text-heading`` outranks a color
+    class on the button.
     """
+    trigger_label: Node | str = label
+    if applied:
+        trigger_label = Fragment(
+            AppliedDot(),
+            Span(class_="text-fg-brand")[label],
+            Span(class_="sr-only")[" (applied)"],
+        )
     trigger = ControlButton(
         color="gray",
         variant="ghost" if ghost else "filled",
         aria_haspopup="dialog",
     )[
-        label,
+        trigger_label,
         Icon("arrowdown", size="h-3 w-3"),
     ].as_element()
     # A dialog; the widget brings listbox semantics.

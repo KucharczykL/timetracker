@@ -11,6 +11,7 @@ from django.test import SimpleTestCase, TestCase
 
 from common.components import (
     QUICK_FACET_KINDS,
+    Span,
     QUICK_FACETS,
     is_quick_editable,
     parse_filter_dict,
@@ -500,6 +501,98 @@ class RunFacetsTest(TestCase):
         )
         self.assertIn("<quick-filter-bar", html)
         self.assertNotIn("Advanced filter active", html)
+
+
+_DROP_DOWN = re.compile(r"<drop-down\b[^>]*>")
+_TRIGGER_ID = re.compile(r'id="quick-(\w+)-dropdownLink"')
+
+
+def _applied_facets(html: str) -> list[str]:
+    """The fields whose facet the bar stamps applied, in row order."""
+    applied = []
+    for match in _DROP_DOWN.finditer(html):
+        if "data-quick-facet-applied" not in match.group(0):
+            continue
+        trigger = _TRIGGER_ID.search(html, match.end())
+        assert trigger is not None
+        applied.append(trigger.group(1))
+    return applied
+
+
+def _trigger(html: str, field: str) -> str:
+    start = html.index(f'id="quick-{field}-dropdownLink"')
+    return html[html.rindex("<button", 0, start) : html.index("</button>", start)]
+
+
+class AppliedFacetMarkTest(TestCase):
+    """A facet the page's filter states is stamped and marked."""
+
+    def test_a_dropdown_not_applied_renders_as_before(self):
+        from common.components.search_select import ComboboxDropdown
+
+        arguments = {"label": "Device", "content": Span()["x"], "id": "d"}
+        self.assertEqual(
+            str(ComboboxDropdown(**arguments)),
+            str(ComboboxDropdown(**arguments, applied=False)),
+        )
+
+    def test_an_applied_dropdown_marks_its_label_not_its_button(self):
+        from common.components.search_select import ComboboxDropdown
+
+        html = str(
+            ComboboxDropdown(
+                label="Device", content=Span()["x"], id="d", ghost=True, applied=True
+            )
+        )
+        button = html[html.index("<button") : html.index("</button>")]
+        button_tag = button[: button.index(">")]
+        self.assertNotIn("text-fg-brand", button_tag)
+        self.assertIn('class="text-fg-brand">Device</span>', button)
+        self.assertIn("bg-brand", button)
+        self.assertIn('<span class="sr-only"> (applied)</span>', button)
+        # The panel's name stays the bare label.
+        self.assertIn('aria-label="Device"', html)
+
+    def test_only_the_stated_keys_are_applied(self):
+        html = str(
+            QuickFilterBar(
+                mode="sessions",
+                filter_json=json.dumps(
+                    {
+                        "device": {"modifier": "IS_NULL"},
+                        "day": {"value": "2026-01-01", "modifier": "EQUALS"},
+                    }
+                ),
+            )
+        )
+        self.assertEqual(sorted(_applied_facets(html)), ["day", "device"])
+        self.assertIn("sr-only", _trigger(html, "device"))
+        self.assertNotIn("sr-only", _trigger(html, "game"))
+
+    def test_every_kind_is_marked(self):
+        cases = {
+            "games": {"status": {"value": [{"id": "f", "label": "Finished"}]}},
+            "sessions": {"duration_hours": {"value": 2, "modifier": "GREATER_THAN"}},
+            "purchases": {"date_purchased": {"value": "2026-01-01", "modifier": "EQUALS"}},
+            "devices": {"name": {"value": "Deck", "modifier": "INCLUDES"}},
+            "playthroughs": {"note": {"value": "", "modifier": "EQUALS"}},
+        }
+        cases_bool = {"purchases": {"infinite": {"value": True}}}
+        for mode, stated in [*cases.items(), *cases_bool.items()]:
+            with self.subTest(mode=mode, field=next(iter(stated))):
+                html = str(QuickFilterBar(mode=mode, filter_json=json.dumps(stated)))
+                self.assertEqual(_applied_facets(html), list(stated))
+
+    def test_the_overflow_carries_its_label_and_a_hidden_mark(self):
+        html = str(QuickFilterBar(mode="sessions"))
+        host = html[html.index("data-quick-overflow") :]
+        trigger = re.search(r"<button[^>]*data-quick-overflow-trigger[^>]*>", host)
+        assert trigger is not None
+        self.assertIn('aria-label="More filters"', trigger.group(0))
+        mark = re.search(r"<span[^>]*data-quick-overflow-mark[^>]*>", host)
+        assert mark is not None
+        self.assertIn("invisible", mark.group(0))
+        self.assertIn("bg-brand", mark.group(0))
 
 
 class QuickFacetsContractTest(TestCase):

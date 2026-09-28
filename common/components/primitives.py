@@ -2689,6 +2689,15 @@ _ELLIPSIS_GLYPHS: Mapping[EllipsisOrientation, str] = {
 }
 
 
+def AppliedDot(attrs: AttrsArg | None = None, /) -> Node:
+    """The brand dot beside a control whose filter is applied."""
+    return Span(
+        attrs,
+        class_="inline-block size-1.5 shrink-0 rounded-full bg-brand",
+        aria_hidden="true",
+    )
+
+
 def IconTrigger(
     attrs: AttrsArg | None = None,
     /,

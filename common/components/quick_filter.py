@@ -39,6 +39,7 @@ from common.components.filters import (
     parse_filter_dict,
 )
 from common.components.primitives import (
+    AppliedDot,
     ButtonGroup,
     ButtonGroupMember,
     Div,
@@ -380,6 +381,12 @@ class QuickFilterBar(BaseComponent):
         # propagates here; QuickFacet.label overrides only for compact wording.
         label = facet.label or _field_meta(filter_cls, facet.field)["label"]
         kind = _field_meta(filter_cls, facet.field)["kind"]
+        # Applied means the filter names the key; the bar's TS spills such a
+        # facet after every idle one.
+        applied = facet.field in self.existing
+        config = {"data_quick_facet": ""}
+        if applied:
+            config["data_quick_facet_applied"] = ""
         return ComboboxDropdown(
             label=label,
             content=field_widget(
@@ -403,7 +410,8 @@ class QuickFilterBar(BaseComponent):
             # The priority-plus hook: the bar's TS moves overfull facets
             # (whole <drop-down> nodes, widget state intact) into the "⋯"
             # overflow menu as the row narrows.
-            config={"data_quick_facet": ""},
+            config=config,
+            applied=applied,
         )
 
     def _action_group_members(self) -> list[ButtonGroupMember]:
@@ -431,6 +439,7 @@ class QuickFilterBar(BaseComponent):
         elements, and the single-open coordination keeps this menu open when
         a facet dropdown inside it opens (ancestor check)."""
         trigger = EllipsisTrigger(
+            [("data-quick-overflow-trigger", "")],
             label="More filters",
             orientation="horizontal",
             haspopup="dialog",
@@ -443,12 +452,17 @@ class QuickFilterBar(BaseComponent):
             content_attributes=[("data-quick-overflow-items", "")],
             content_class="flex flex-col items-stretch gap-1",
         )[()]
+        # The dot keeps its width while invisible, so the width measured at
+        # connect holds once the TS shows it.
         return Div(class_="hidden", data_quick_overflow="")[
-            Dropdown(
-                trigger_element=trigger,
-                target_element=panel,
-                id=f"quick-{self.mode}-overflow",
-            )
+            Div(class_="flex items-center gap-1")[
+                Dropdown(
+                    trigger_element=trigger,
+                    target_element=panel,
+                    id=f"quick-{self.mode}-overflow",
+                ),
+                AppliedDot([("data-quick-overflow-mark", ""), ("class", "invisible")]),
+            ]
         ]
 
     def _degraded(self) -> Node:
