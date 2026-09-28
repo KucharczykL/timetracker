@@ -63,10 +63,10 @@ Read on the 2026-09-28 dump. One library, 808 live purchases.
 |---|---|
 | Digital / Physical / Rented / Demo / Pirated / Borrowed / Digital Upgrade | 678 / 48 / 36 / 34 / 7 / 4 / 1 |
 | Refunded, all Digital, median one day after purchase | 221 |
-| Rented on Xbox Gamepass / on PlayStation 4 and 5 | 6 / 29 |
+| Rented on Xbox Gamepass / on PlayStation 3, 4 and 5 | 6 / 29 |
 | Price 0: Owned digital / non-owned (rental, demo, pirated, borrowed) | 73 / 81 |
 | Price 0 and Owned, on Epic Games Store / Steam / PlayStation 5 / other | 19 / 35 / 8 / 11 |
-| Bundles (2 to 8 games) | 7 |
+| Bundles (2 to 8 games), 38 games in all | 7 |
 | Add-ons: DLC / season pass / battle pass, every one naming the base game as its only game | 35 / 4 / 2 |
 | Named purchases: add-ons / games | 41 / 10 |
 | Single-game purchases whose platform is not the game's | 15 |
@@ -88,7 +88,20 @@ conversion must state one.
 
 ## Aggregates and storage
 
-The #1275 stack lands first. This wave's first migration is `0020`.
+#1275 is on `main`. This wave's first migration is `0020`.
+
+### The opening endpoint
+
+The stated endpoint of #1275 is an act a row states after it exists: three
+events, stated, corrected, voided. An entry's acquired day and a purchase's
+purchased day are different: the creation states them, a correction moves
+them, and there is nothing to void, because a row with no acquisition is
+no row. The primitive gains an **opening endpoint**: the same columns (the
+day, its two bounds, the marker, the note), one correction event, and no
+`stated` or `voided` spec. The creation event's `effective_time` is the
+day; the projector writes the marker from the creation's `recorded_at`.
+`games.E014` holds the columns of both variants. This is M1's first task,
+and the purchase's day reuses it.
 
 ### LibraryEntry
 
@@ -99,22 +112,19 @@ A new aggregate, stream `library.libraryentry`, projection
 |---|---|
 | `id` | the aggregate id |
 | `library` | the owning library |
-| `release` | the Release, `RESTRICT`, through the existing `catalog.release` reference kind |
+| `player_game` | the tracked game, `RESTRICT`, registered in `AUDITED_PROJECTION_REFERENCES`; every read reaches the Game through it, as the other projections do |
+| `release` | the Release, `RESTRICT`, through the existing `catalog.release` reference kind; a Release of `player_game`'s game, which a command rule and the replay gate hold |
 | `access` | `owned`, `borrowed`, `rented`, `subscription`, `trial`, `demo`, `pirated` |
 | `format` | `physical`, `digital`, `unknown` |
 | `note` | text |
-| `acquired`, `acquired_lower`, `acquired_upper`, `acquisition_recorded_at`, `acquisition_note` | the acquired endpoint |
-| `access_ended`, bounds, `access_end_recorded_at`, `access_end_note`, `access_end_way` | the end endpoint |
+| `acquired`, `acquired_lower`, `acquired_upper`, `acquisition_recorded_at`, `acquisition_note` | the opening endpoint |
+| `access_ended`, bounds, `access_end_recorded_at`, `access_end_note`, `access_end_way` | the stated endpoint |
 | `removed_at` | the projector's mark |
 
-Both endpoints are declared through `games/endpoints.py` and their columns
-through `games/endpoint_fields.py`; `games.E014` holds each against the
-model. The acquired endpoint has no void: the creation states it, a
-correction moves it, and an unknown day is null. The end endpoint's ways
-are `returned`, `expired`, `revoked`, `refunded`, `sold`, `lost`,
-`given_away`, `broken`, `stolen`; `EndWay` in `games/end_ways.py` grows by
-the first four, and the entry's payload states its own subset as a
-`Literal`.
+The end endpoint's ways are `returned`, `expired`, `revoked`, `refunded`,
+`sold`, `lost`, `given_away`, `broken`, `stolen`; `EndWay` in
+`games/end_ways.py` grows by the first four, and the entry's payload
+states its own subset as a `Literal`.
 
 A resume is a fact, not a void. `access_resumed` is dated, writes the end
 columns back to their unstated values, and the history keeps every end.
@@ -124,8 +134,13 @@ for a device.
 Two `CHECK`s admit only the words; a third admits a way exactly where the
 marker is set. The row is unique on `(id, library)`; a partial index on
 `(library, release)` covers live rows. The reference kind is
-`library.libraryentry`, resolution `PROJECTED`, as the device's is.
-`Purchase.entry` is registered in `AUDITED_PROJECTION_REFERENCES`.
+`libraryentry`, resolution `PROJECTED`, named as `device` is.
+
+`Release` carries no `library` column, so `ProjectionReference.on` cannot
+register `release` today. M1 teaches `_is_library_scoped` a path
+(`edition__game__library`), so `audit_library_ownership` reports an entry
+naming another library's private Release, and the swap's refusal sentence
+can name it.
 
 ### Purchase
 
@@ -136,13 +151,13 @@ re-minted.
 | Column | Meaning |
 |---|---|
 | `id`, `library` | as today |
-| `entry` | the LibraryEntry, `RESTRICT`, required; a pass or an upgrade names the base game's entry |
+| `entry` | the LibraryEntry, `RESTRICT`, required, registered; a pass or an upgrade names the base game's entry |
 | `kind` | `game`, `season_pass`, `battle_pass`, `upgrade` |
 | `name` | the product name; blank for a game |
 | `amount` | `DecimalField(12, 2)`; null is a price nobody knows; 0 is free |
 | `currency` | ISO code; required exactly where `amount` is stated, by `CHECK` |
-| `purchased`, bounds, `purchase_recorded_at`, `purchase_note` | the purchased endpoint; the creation states it |
-| `refunded`, bounds, `refund_recorded_at`, `refund_note` | the refund endpoint |
+| `purchased`, bounds, `purchase_recorded_at`, `purchase_note` | the opening endpoint |
+| `refunded`, bounds, `refund_recorded_at`, `refund_note` | the stated endpoint |
 | `note` | text |
 | `removed_at` | the projector's mark |
 
@@ -150,21 +165,47 @@ Gone at the cutover: `games`, `platform`, `related_game`, `type`,
 `ownership_type`, `infinite`, the float `price`, `converted_price`,
 `converted_currency`, `needs_price_update`, `num_purchases`,
 `price_per_game`, `date_purchased`, `date_refunded`, and the three price
-signals. Game and platform are read through the entry's Release. Between
-M4 and S2 the new columns are nullable and no deployed writer states them;
-S2 makes them `NOT NULL` after the conversion.
+signals. Game and platform are read through the entry.
+
+A `ProjectionModel` must hold events for every row: the replay gate
+rebuilds every projection, and `games.E014` admits an endpoint on no other
+model. So the Purchase aggregate, its conversion and the cutover are one
+stack (see [Delivery order](#delivery-order)); no deployed `main` carries
+a projection whose rows have no events.
 
 A DLC is a Game, so `dlc` is not a purchase kind.
 
+Two readers walk the M2M that goes. `PURCHASE_RUNS` in
+`games/reads/playthrough_completions.py`, which the Purchases list's
+Finished column and the `finished` sort read, becomes
+`entry__player_game`. `GameFilter.purchase_count` counts
+`player_games__entries__purchases`; `purchase_price_total` sums the
+valuation amounts at the library's published target through a subquery on
+the purchase key.
+
 ### PurchaseValuation
 
-Conventional, per the charter. One row per `(purchase, target_currency)`:
-`amount` decimal, the rate's identity and version, `calculated_at`. The
-currency task is its sole writer. No row exists for an unknown amount; a
-free purchase values at 0. `ExchangeRate.rate` becomes a decimal. The
-per-library run state that #630 built (requested and published version,
-status, retry) stays and points at valuations; the float cache and its
-writer go at S2.
+Conventional, per the charter. One row per `(purchase, target_currency)`,
+holding the purchase's **key**, never a foreign key: nothing outside the
+projections may point at a projection row, and a foreign key would block
+or empty the swap. Columns: `amount` decimal, the rate's identity and
+version, `calculated_at`. The currency task is its sole writer. No row
+exists for an unknown amount; a free purchase values at 0.
+`ExchangeRate.rate` becomes a decimal.
+
+The per-library run state that #630 built (requested and published
+version, status, retry) stays and points at valuations. Its trigger moves:
+`Purchase.save()` bumps the requested version today, and a projector never
+calls `save()`, so the write path in `games/writes/purchase.py` requests a
+valuation after any dispatch that states an amount (`created`,
+`amount_changed`, `restored`). The task finds every live purchase with an
+amount and no valuation at the published version and target, so
+`needs_price_update` has no successor. The float cache and its writer go
+at the cutover.
+
+The legacy converter rounds `converted_price` to a whole unit. The seeded
+valuations carry that rounding; the first refresh after the cutover moves
+every total to the decimal rate, and the reconciliation prints both.
 
 ### Game
 
@@ -172,14 +213,17 @@ writer go at S2.
 IGDB's `game_type` words; #782 admits the rest (remake, remaster, port and
 the others) when it meets them, and maps one to one. `parent`: a Game,
 `RESTRICT`, null exactly where the kind is `main`, IGDB's `parent_game`.
-Both are stated through `state_catalog_graph` and `CatalogGraphForm`; a
-parent must be visible to the library. A private DLC reconciles to IGDB's
-through the same redirect as any private Game.
+Both are Game columns, written by `save_game_columns` in
+`games/catalog_submit.py` from `GameForm`, beside the graph
+`state_catalog_graph` writes; a parent must be visible to the library. A
+private DLC reconciles to IGDB's through the same redirect as any private
+Game.
 
 ### PlayerGame
 
 `excluded_from_dropped`, stated by `RecordPlayerGameFacts` through
-`playergame.dropped_exclusion_changed`. Each figure that leaves a game out
+`playergame.excluded_from_dropped_changed`, the sibling of
+`excluded_from_unfinished_changed`. Each figure that leaves a game out
 reads its own fact and nothing else; the rule this wave makes is that no
 fact stated for one figure decides another.
 
@@ -201,12 +245,16 @@ do.
 
 | Command | Event | Rule |
 |---|---|---|
-| `RecordEntry` | `libraryentry.created` (access, format, note, `effective_time` the acquired day) | a Release the library cannot see is 404 from scope; a removed Release is refused; an untracked game is tracked first, as the session path does |
+| `RecordEntry` | `libraryentry.created` (player game, release, access, format, note, `effective_time` the acquired day) | a Release the library cannot see is 404 from scope; a removed Release is refused; the Release must belong to the tracked game; an untracked game is tracked first, as the session path does |
 | `DescribeEntry` | `access_changed`, `format_changed`, `note_changed`, `release_changed`, one per differing fact | the new Release must be a live Release of the same game |
-| `CorrectEntryAcquisition` | `acquisition_corrected` | the primitive's `correct_endpoint` |
+| `CorrectEntryAcquisition` | `acquisition_corrected` | the opening endpoint's correction |
 | `EndEntryAccess`, `CorrectEntryAccessEnd`, `VoidEntryAccessEnd` | `access_ended`, `access_end_corrected`, `access_end_voided` | the primitive's three, with a `before_event` that refuses a removed entry |
 | `ResumeEntryAccess` | `access_resumed` (note, `effective_time` the day) | refused where no end stands |
-| `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal refuses while a live Purchase names the entry, through a registry entry on `Purchase.entry` beside `BLOCKING_REFERRERS`, with a sentence naming the move; restore refuses under a removed PlayerGame or Release |
+| `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal refuses while a live Purchase names the entry, with a sentence naming the move; restore refuses under a removed PlayerGame or Release |
+
+`BlockingReferrer.on` refuses a field that is not a key to a run. M1
+gives it the target model as a parameter, so `Purchase.entry` registers
+beside the two run referrers with the same `alive()` rule.
 
 ### Purchase
 
@@ -214,16 +262,17 @@ do.
 
 | Command | Event | Rule |
 |---|---|---|
-| `RecordPurchase` | `purchase.created` (kind, name, amount, currency, note, `effective_time` the purchased day, `entry`) | names an existing entry, or carries a new entry's fields and emits `libraryentry.created` first under one correlation id, as `TrackGame` emits two; currency required exactly where an amount is stated |
+| `RecordPurchase` | `purchase.created` (entry, kind, name, amount, currency, note, `effective_time` the purchased day) | names an existing entry, or carries a new entry's fields and emits `libraryentry.created` first in the same dispatch, as `TrackGame` emits two; currency required exactly where an amount is stated |
 | `DescribePurchase` | `kind_changed`, `name_changed`, `amount_changed` (amount and currency, one fact), `note_changed`, `entry_changed` | the new entry must be a live entry of the same game |
-| `CorrectPurchaseDay` | `purchase_day_corrected` | the primitive |
-| `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund` | `refunded`, `refund_corrected`, `refund_voided` | the primitive; a refund also appends `libraryentry.access_ended` with way `refunded` on the entry where it is Owned, live and unended, under the same correlation id; the void takes that end back only while it is still the latest event of the entry's end family, the rule the batch Undo uses |
-| `RemovePurchase`, `RestorePurchase` | `removed`, `restored` | the removal is the charter's void; the stream keeps the money |
+| `CorrectPurchaseDay` | `purchase_day_corrected` | the opening endpoint's correction |
+| `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund` | `refunded`, `refund_corrected`, `refund_voided` | the primitive; a refund also appends `libraryentry.access_ended` with way `refunded` on the entry where it is Owned, live and unended, in the same dispatch, as the reclassification writes a second aggregate; the void takes that end back only where the entry's marker is still set and its latest end-family event is the refund's own |
+| `RemovePurchase`, `RestorePurchase` | `removed`, `restored` | the removal is the charter's void; the stream keeps the money; restore refuses under a removed entry |
 
 ### PlayerGame and catalog
 
-`RecordPlayerGameFacts` gains `excluded_from_dropped`. `state_catalog_graph`
-takes `kind` and `parent`.
+`RecordPlayerGameFacts` gains `excluded_from_dropped`, a fourth
+`bool | None`. `GameForm` and `save_game_columns` take `kind` and
+`parent`.
 
 ### Bulk acts
 
@@ -236,33 +285,39 @@ Declared in `games/bulk_actions.py`, Undo through `EventRows`:
 ### API
 
 `GET`/`POST /api/entries/`, `GET`/`PATCH /api/entries/{id}`, and the same
-four under `/api/purchases/`, shaped as the session routes: bodies
-`extra="forbid"`, a named key is the act, an `Idempotency-Key` header on
-`POST`, 404 from the command for a row the library does not hold, 409 with
-the command's sentence for every other refusal.
+four under `/api/purchases/`. The prefixes are plural, as `/api/games/`,
+`/api/devices/` and `/api/platforms/` are; the bodies follow the session
+routes: `extra="forbid"`, a named key is the act, an `Idempotency-Key`
+header on `POST`, 404 from the command for a row the library does not
+hold, 409 with the command's sentence for every other refusal.
 
 ## The conversion
 
 One pass, out of a migration marked `elidable=True`, as #700 and #1274
-ran. `ANALYZE` first. Every event's `recorded_at` is the pass's instant and
-its `effective_time` the day the row states. `source_metadata` names the
-pass and a review category. Idempotency keys derive from the legacy
-purchase id and game id, so a second run appends nothing. In order:
+ran. It runs `ANALYZE` on the tables it reads before its gate reads, as
+`verify_reclassification_parity` does. Every event's `recorded_at` is the
+pass's instant and its `effective_time` the day the row states.
+`source_metadata` names the pass and a review category. Idempotency keys
+derive from the legacy purchase id and game id, so a second run appends
+nothing. In order:
 
-1. **Bundles (7).** One purchase per game. The amount splits by the
-   charter's rule in integer cents: each game takes the quotient, and the
-   remainder goes one cent each to games ordered by key. The seeded
-   valuation splits by the same rule. Day, refund and words are copied.
+1. **Bundles (7).** One purchase per game, 38 rows from 7. The amount
+   splits by the charter's rule in integer cents: each game takes the
+   quotient, and the remainder goes one cent each to games ordered by key.
+   The seeded valuation splits by the same rule. Day, refund and words are
+   copied.
 2. **Add-ons (35 DLC).** A private Game of kind `dlc`, named from the
    purchase, parent the base game, with a default Edition and a Release on
-   the base's platform, tracked as a PlayerGame with default facts. The 6
-   passes and the upgrade stay purchases of their kind on the base entry.
+   the base's platform, tracked as a PlayerGame with default facts. No
+   add-on is among the 15 mismatched-platform rows. The 6 passes and the
+   upgrade stay purchases of their kind on the base entry.
 3. **Releases (15).** Where the purchase's platform is not the game's, a
    private Release on that platform under the default Edition.
 4. **Entries.** One per (purchase, game). Access and format by the table
    below; acquired the purchase day, exact; an end with way `refunded` on
    the refund day where one exists. The 81 non-owned rows at price 0
-   become an entry and no Purchase.
+   become an entry and no Purchase. A game bought twice gets two entries
+   on one Release.
 5. **Purchases.** Kind (`du` → `upgrade`), name, amount quantized to two
    places (two rows change; the delta is reported), currency upper-cased
    (three rows), 0 → Free on Epic Games Store, else unknown; the two
@@ -286,7 +341,9 @@ purchase id and game id, so a second run appends nothing. In order:
 | Demo | Demo | Digital |
 | Pirated | Pirated | Unknown |
 
-Nothing else is inferred. Every inferred row is in the review surface.
+The two platform rules (Gamepass, Epic) are the only inferences. Every
+inferred row, and every row the pass shaped in a way the person may want
+to look at, is in the review surface.
 
 ### Preflight and rehearsal
 
@@ -304,15 +361,20 @@ deploy. The pre-deploy dump is the rollback.
 A "Conversion review" section on the Library page, one row per category
 with its count. Unknown price (54) and Epic free (19) link to the
 Purchases list with its price-state facet and platform set. Rentals (30)
-link to the Entries list at Access: Rented. Created Releases (15) and mixed
-games (6), which no filter expresses, render as rows read from the pass's
-batch ids through `batch_aggregate_ids`, each linking to its edit page. A
-"Hide this review" checkbox on `UserLibraryPreferences` closes the section;
-it is its own toggle, not read from anything else.
+link to the Entries list at Access: Rented. Repurchased games (39) link to
+the Games list at entry count two or more. Created Releases (15) and mixed
+games (6), which no filter expresses, render as rows: the pass tags their
+`libraryentry.created` and `playergame` events with the category in
+`source_metadata`, the section reads those events by the pass's
+correlation id through `batch_aggregate_ids`, and each row links to its
+edit page. A Release writes no event, so the row is the entry that names
+it. A "Hide this review" checkbox on `UserLibraryPreferences` closes the
+section; it is its own toggle, read from nothing else.
 
-The sample fixture is regenerated after the cutover. The anonymizer moves
-an entry's and a purchase's dated facts by the game's offset, as it moves a
-device's.
+The sample fixture is regenerated after the cutover. The anonymizer
+shifts an entry's and a purchase's days as it shifts a purchase's today,
+by the row's own jitter, and randomises which entry a purchase names as it
+randomises the through table today.
 
 ## Screens and reads
 
@@ -328,8 +390,9 @@ temporal field), Note, and a three-way Purchase segment: Paid (amount,
 currency), Free, No purchase. An access other than Owned starts on No
 purchase and Owned on Paid; a default, changed at will. Kind and Name
 appear for a pass or an upgrade, which name an existing entry of the game
-in place of a Release. The "separate price per game" mode and the row
-Split go with the bundle.
+in place of a Release; on a game with no entry the picker offers to record
+one, Owned and Digital, in the same submit. The "separate price per game"
+mode and the row Split go with the bundle.
 
 **Edit entry**: access, format, release, acquired, access end (way, day,
 note; "Held" voids, "Resumed" states the fact), note. **Edit purchase**:
@@ -339,10 +402,11 @@ day, corrected on the edit page.
 
 ### Lists
 
-**Entries** (`entries` mode, its own filter and presets, selectable):
-Game, Platform, Access, Format, Acquired, Access ended (way · day),
-Purchases, Created. Facets access, format, ended, way, platform, acquired,
-game. Tray Edit and Remove; row menu Edit, End access, Resume, Remove.
+**Entries** (`entries` mode, its own filter and presets, selectable, a
+navbar item beside Purchases): Game, Platform, Access, Format, Acquired,
+Access ended (way · day), Purchases, Created. Facets access, format,
+ended, way, platform, acquired, game. Tray Edit and Remove; row menu Edit,
+End access, Resume, Remove.
 
 **Purchases** (selectable, the Actions column retired, #1266): Name (the
 game, or product · game), Kind, Amount (Free and Unknown as words, the
@@ -352,10 +416,11 @@ and platform through the entry. Tray Edit and Remove; row menu Edit,
 Refund, Remove.
 
 **Games**: an Access column ("Owned · Digital", or "2 entries") and facets
-access and format over live entries; a Kind column and facet, off by
-default. **Game detail**: a Library section listing entries with their
-purchases beneath and the add and edit acts; an Add-ons section on a main
-game; a parent link on an add-on.
+access and format over live entries, annotated through `player_games` so
+the shared-catalog scope holds; a Kind column and facet, off by default.
+**Game detail**: a Library section listing entries with their purchases
+beneath and the add and edit acts; an Add-ons section on a main game; a
+parent link on an add-on.
 
 ### Filters and presets
 
@@ -364,8 +429,9 @@ acts, way, platform through the Release, game, `game_filter`,
 `purchase_filter`. `PurchaseFilter` is rewritten on the new columns:
 amount, currency, price state, kind, the two endpoints, `entry_filter`,
 `game_filter` through the entry. `GameFilter` gains `kind`, `parent`,
-`access`, `format`, `entry_count` and an `entry_filter` relation. Saved
-purchase presets are rewritten once, as `ended` → `completed` was:
+`access`, `format`, `entry_count` and an `entry_filter` relation, and
+keeps `purchase_count` and `purchase_price_total` on their new paths.
+Saved purchase presets are rewritten once, as `ended` → `completed` was:
 
 | Old key | New key |
 |---|---|
@@ -387,8 +453,9 @@ purchase preset.
 per-game access summary the Games column reads. `games/reads/purchases.py`:
 `library_purchases()`, `game_purchases()`, spending through valuations.
 Every read states its scope through four marks: entry, PlayerGame,
-Release, Game. No sum reads a float. Sessions and records keep `release`
-reserved; the session form gets no picker in this wave.
+Release, Game, each a join on a key the row holds. No sum reads a float.
+Sessions and records keep `release` reserved; the session form gets no
+picker in this wave.
 
 ## Statistics
 
@@ -421,35 +488,67 @@ each.
 
 **Parity gate.** `make verify-purchase-conversion --confirm` judges every
 `StatsData` key, for every year and all-time, by a rule stated per key in
-`games/stats_parity.py`: money keys identical within the two quantized
-cents, counts identical, backlog keys allowed to differ only by the 6
-mixed games and the 35 DLC games now tracked on their own. An unattributed
-difference fails the run. `make bench` gains an entries-and-purchases
-workload; every read stays inside the 20 ms budget.
+`games/stats_parity.py`, which gains a second comparison shape beside the
+session-row one. The population changes the pass makes are the only
+admitted differences, each attributed by name and count:
+
+- purchase counts: minus the 81 non-owned rows and plus the 31 rows the
+  bundle split adds, each by its year;
+- money: identical within the quantized cents; the seeded valuations
+  carry the legacy rounding, so the refresh after the cutover is judged
+  separately;
+- backlog counts: the 6 mixed games, the 35 DLC games now tracked on their
+  own, and the 81 rows that are entries and no purchase, by year;
+- percentages: recomputed from the attributed counts.
+
+An unattributed difference fails the run. `make bench` gains an
+entries-and-purchases workload; every read stays inside the 20 ms budget.
 
 ## Delivery order
 
-The #1275 stack merges first. Members M1–M8 merge alone, each a PR against
+The entry, catalog and PlayerGame members merge alone, each a PR against
 `main`, with `main` incomplete between them as the last wave allowed;
-nothing in them converts data. S1 and S2 are one `gh stack merge`, so
-`main` never carries a half-converted Purchase. M1 before M2 before M3;
-M4 after M1; M5 and M6 after M4; M7 and M8 any time; S1 after every member.
+nothing in them converts data, and each holds events for every row it
+projects. The Purchase members cannot: a `ProjectionModel` whose rows
+hold no events fails the replay gate, so the Purchase aggregate, its
+conversion and the cutover are one `gh stack merge`, P1 to P5. M1 before
+M2 before M3; M7 and M8 any time; the stack after every member.
 
 | Member | Issues | Delivers |
 |---|---|---|
-| M1 | #719, #720, #722 | the LibraryEntry aggregate: schema, creation, description, removal, multiple entries, reference kind, replay gate, API |
+| M1 | #719, #720, #722 | the opening endpoint; the LibraryEntry aggregate: schema, creation, description, removal, multiple entries, reference kind, `_is_library_scoped` path, the generalised referrer registry, replay gate, API |
 | M2 | #721 | acquired correction, access end and resume on the primitive |
-| M3 | new | the Entries screens: list, filter, presets, bulk Edit and Remove, the Games Access column and facets, Game detail's Library section, the entry forms |
-| M4 | #725, #726, #828 | the Purchase aggregate on the same table, new columns nullable; creation with an entry, description, day correction, removal; legacy writers untouched |
-| M5 | #727 | refund endpoints and the coupled entry end |
-| M6 | #728, #729 | `PurchaseValuation`, decimal rates, the run state re-pointed; the float writer stays until S2 |
-| M7 | new | `Game.kind` and `Game.parent`: columns, service, form, Game detail add-ons, Games facet |
+| M3 | new | the Entries screens: list, filter, presets, navbar item, bulk Edit and Remove, the Games Access column and facets, Game detail's Library section, the entry forms |
+| M7 | new | `Game.kind` and `Game.parent`: columns, form, Game detail add-ons, Games facet |
 | M8 | #1334 | `excluded_from_dropped` and its bulk Edit field |
-| S1 | #723, #730, #731, #732, #733 | the conversion pass, `verify-purchase-conversion`, the reconciliation |
-| S2 | #724, #736, #734, #735, #1266 | every read and write switched: the Add to library form, the Purchases list selectable, filters, presets, statistics and links, #1157's readers, the review surface, the legacy columns dropped |
+| P1 | #725, #726, #828 | the Purchase aggregate: projection, creation with an entry, description, day correction, removal, API |
+| P2 | #727 | refund endpoints and the coupled entry end |
+| P3 | #728, #729 | `PurchaseValuation`, decimal rates, the run state re-pointed, the valuation request on the write path |
+| P4 | #723, #730, #731, #732, #733 | the conversion pass, `verify-purchase-conversion`, the reconciliation |
+| P5 | #724, #736, #734, #735, #1266 | every read and write switched: the Add to library form, the Purchases list selectable, filters, presets, statistics and links, #1157's readers, the review surface, the legacy columns and the float writer dropped |
 
-Each member gets its own specification and plan before code. An issue
-delivered inside a member says so in its body and closes with it.
+Each member passes the full gate on its own against a fresh database.
+Each gets its own specification and plan before code. An issue delivered
+inside a member says so in its body and closes with it.
+
+## What this design forecloses
+
+- **Moving an entry or a purchase to another game.** `release_changed`
+  and `entry_changed` stay inside one game. A row recorded on the wrong
+  game is removed and recorded again, and the removed purchase's money
+  stays in the stream under the old game. The cost of lifting it later is
+  a command that restates `player_game`, and every reader that caches the
+  game key.
+- **A pass without an entry.** A pass or an upgrade names an entry. The
+  form records one in the same submit where the game has none, so the
+  person is never blocked, but a pass on a game the library does not own
+  is recorded as owning it.
+- **One end per entry at a time.** The projection holds the latest end;
+  the stream holds them all. A list of a copy's lendings is a stream read
+  nothing renders yet.
+- **A refund of a non-owned entry.** The refund ends access only on an
+  Owned entry; a refunded subscription or rental keeps its own end, stated
+  by hand.
 
 ## Cross-wave handoffs
 
@@ -458,13 +557,13 @@ delivered inside a member says so in its body and closes with it.
   puts it on the session and record forms, with the rule that a session
   names a Release only where the library holds an entry on it.
 - **Bulk end of access over entries** is a follow-up beside #1345.
-- **#1344** copies `access_resumed`; **#1347** copies the acquired
+- **#1344** copies `access_resumed`; **#1347** copies the opening
   endpoint. **#1346** decides where a sale price lives; this wave puts no
   money on an end.
 - **#782** maps IGDB `game_type` to `Game.kind` one to one and admits the
   remaining words.
 - **#762** and **#750** read the Purchase projection this wave leaves.
-- **#773** closes with S2 where every legacy field is gone, or keeps what
+- **#773** closes with P5 where every legacy field is gone, or keeps what
   remains.
 - **#1337**'s bundle case disappears with the M2M; the issue keeps the
   general rule.
@@ -475,23 +574,25 @@ delivered inside a member says so in its body and closes with it.
 
 ## Deployment
 
-One image carries S1 and S2. The container's startup `migrate` runs the
+One image carries the stack. The container's startup `migrate` runs the
 pass; the pre-deploy dump is the rollback. Before the deploy, on that
 day's dump: `make verify-purchase-conversion ARGS="--confirm NAME"`,
 `make verify-replay-parity`, `make verify-dump`, `make verify-baseline
-ARGS="--migrate"`. After it: the review surface, then the fixture PR.
+ARGS="--migrate"`. After it: the review surface, the first valuation
+refresh and its printed totals, then the fixture PR.
 
 ## Verification contract
 
 - Every member: full `make check`; the replay gate through every new
   event type; a fingerprint test per command; two-library tests: a shared
   Release yields independent entries, another library's private Release
-  answers 404, another library's entry or purchase is never read.
+  answers 404, another library's entry or purchase is never read, and the
+  ownership audit reports an entry naming a foreign private Release.
 - Every screen member: `make render-pages` before and after on one
   database, every difference attributed in the PR.
-- S1: the reconciliation printed from the day's dump and pasted into the
+- P4: the reconciliation printed from the day's dump and pasted into the
   PR; every statistics difference attributed.
-- S2: `make bench` inside budget; the Orca checks listed on #1335 with a
+- P5: `make bench` inside budget; the Orca checks listed on #1335 with a
   recipe each.
 - After every merge: a docs-only PR carries the change into this document
   and a comment onto each open sibling issue.
@@ -500,6 +601,8 @@ ARGS="--migrate"`. After it: the review surface, then the fixture PR.
 
 - Access and Purchases are one wave (charter step 12).
 - A Purchase creates its entry; an entry can exist with no Purchase.
+- An entry names its PlayerGame and its Release; a purchase names its
+  entry. No column outside the projections points at either.
 - `amount` null is unknown, 0 is free; the form has a Free box.
 - Zero-price conversion: Epic Games Store rows free, the rest unknown, all
   in the review surface.
@@ -509,9 +612,11 @@ ARGS="--migrate"`. After it: the review surface, then the fixture PR.
   upgrade are Purchase kinds.
 - `infinite` converts to both exclusion facts; #1334 is in the wave.
 - The backlog reads Owned entries; every exclusion is its own fact.
-- Entry and purchase days are stated endpoints at any precision.
-- Members merge alone; the conversion and the cutover are one stack.
-- #1275 is not in the wave: its stack is the wave's dependency.
+- Entry and purchase days are endpoints at any precision; the opening
+  ones have no void.
+- Entry, catalog and PlayerGame members merge alone; the Purchase
+  aggregate, the conversion and the cutover are one stack.
+- #1275 landed before the wave and is its dependency, not a member.
 
 ## Follow-up issues to file
 
