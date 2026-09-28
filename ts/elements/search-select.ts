@@ -37,7 +37,7 @@ import { bindPopupDismiss } from "../utils.js";
 import { reportClientError } from "../client-errors.js";
 import { readSearchSelectProps } from "../generated/props.js";
 import { followPointer } from "../pointer-follow.js";
-// The host a delegated widget opens: defined before this module runs.
+// Defines the host a delegated widget opens.
 import "./drop-down.js";
 
 //: Every row a person can highlight and pick.

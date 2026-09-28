@@ -12,7 +12,7 @@
  * while a person typed would take the focus and scroll with every pause.
  */
 import { onReady } from "../utils.js";
-// The menu a picked mode closes: defined before this module runs.
+// Defines the menu a picked mode closes.
 import "./drop-down.js";
 
 const MODE_ITEM = "[data-match-mode]";

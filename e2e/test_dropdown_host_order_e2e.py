@@ -1,11 +1,11 @@
-"""A hosted widget never runs ahead of its <drop-down> host."""
+"""A hosted widget never outruns its host."""
 
 import pytest
 from devices import create_device
 from django.urls import reverse
 from playwright.sync_api import Page, Route, expect
 
-#: Holds the host module's evaluation back, as a slow fetch would.
+#: Delays host evaluation, like a slow fetch.
 HOST_DELAY = "await new Promise((resolve) => setTimeout(resolve, 500));\n"
 
 

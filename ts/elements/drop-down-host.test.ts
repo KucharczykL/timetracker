@@ -3,8 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// A module that calls into an ancestor <drop-down> imports it, so the host is
-// defined before the module runs. Page script order cannot promise that.
+// Host callers import it; page order is unreliable.
 
 const SOURCE_ROOT = "ts";
 const HOST_LOOKUP = /closest(<[^>]*>)?\(\s*"drop-down"\s*\)/;
@@ -19,7 +18,7 @@ function sourceModules(directory: string): string[] {
   });
 }
 
-//: Modules drop-down.ts evaluates itself, so they cannot import it back.
+//: drop-down.ts's own imports; importing back cycles.
 function dropdownOwnModules(): Set<string> {
   const source = readFileSync(join(SOURCE_ROOT, "elements", "drop-down.ts"), "utf8");
   const own = new Set([join(SOURCE_ROOT, "elements", "drop-down.ts")]);

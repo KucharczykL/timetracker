@@ -24,7 +24,7 @@ import {
 } from "../generated/calendar-classes.js";
 import { calendarWeekdayLabels, formatCalendarMonthYear } from "../date-time-presentation.js";
 import { addDays, isoFromDate, todayInDisplayZone } from "./date-field-core.js";
-// The host a calendar opens: defined before this module runs.
+// Defines the host a calendar opens.
 import "./drop-down.js";
 
 // Day-cell looks are GENERATED from Python (common/components/date_range_picker.py
