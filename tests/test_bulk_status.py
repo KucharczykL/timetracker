@@ -12,7 +12,7 @@ from django.urls import reverse
 from session_rows import tracked_run
 
 from games.bulk_actions import BULK_ACTIONS, AsksNothing, Control, RowOutcome
-from games.bulk_removal import GAME_GONE
+from games.bulk_games import GAME_GONE
 from games.bulk_status import (
     CHOOSE_A_STATUS,
     GAME_REMOVED,

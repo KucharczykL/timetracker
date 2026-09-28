@@ -1,14 +1,18 @@
 """A person records that runs were completed today."""
 
+import pytest
 from django.urls import reverse
 from playwright.sync_api import Page, expect
 from session_rows import tracked_run
-from tracked_games import create_tracked_game
 
 from e2e.helpers import open_row_menu
 from games.bulk_playthrough_acts import START_RUNS
-from games.models import PlayerGame, PlayerGameStatus, Playthrough
+from games.models import Game, PlayerGame, PlayerGameStatus, Playthrough
 from games.reads.calendar import calendar_today
+from games.writes.playergame import new_correlation_id, track_game
+
+#: The Undo reads the stream, so games are tracked through the command.
+pytestmark = pytest.mark.untracked_games
 
 COMPLETE = "Completed today"
 
@@ -21,11 +25,14 @@ def _login(page: Page, live_server) -> None:
     page.wait_for_url(f"{live_server.url}/tracker**")
 
 
-def _two_tracked_runs(library) -> tuple[Playthrough, Playthrough]:
-    return (
-        tracked_run(library, create_tracked_game(library, "Outer Wilds")),
-        tracked_run(library, create_tracked_game(library, "Tunic")),
-    )
+def _tracked(user, name: str) -> Playthrough:
+    game = Game.objects.create(library=user.library, name=name)
+    track_game(user, game, correlation_id=new_correlation_id())
+    return tracked_run(user.library, game)
+
+
+def _two_tracked_runs(user) -> tuple[Playthrough, Playthrough]:
+    return _tracked(user, "Outer Wilds"), _tracked(user, "Tunic")
 
 
 def _select_rows(page: Page, *indexes: int) -> None:
@@ -42,7 +49,7 @@ def _statused(game_name: str) -> PlayerGameStatus:
 def test_two_runs_are_completed_today_and_the_undo_takes_it_back(
     live_server, page: Page, e2e_user, e2e_library
 ):
-    first, second = _two_tracked_runs(e2e_library)
+    first, second = _two_tracked_runs(e2e_user)
     errors: list[str] = []
     page.on(
         "console",
@@ -94,7 +101,7 @@ def test_a_row_menu_reaches_the_same_act(
     live_server, page: Page, e2e_user, e2e_library
 ):
     """One row, through the item, to the same act."""
-    run, _ = _two_tracked_runs(e2e_library)
+    run, _ = _two_tracked_runs(e2e_user)
     _login(page, live_server)
 
     page.goto(f"{live_server.url}{reverse('games:list_playthroughs')}")

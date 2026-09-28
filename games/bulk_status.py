@@ -22,7 +22,7 @@ from games.bulk_actions import (
     Resolution,
     RowOutcome,
 )
-from games.bulk_removal import GAME_GONE, game_scope
+from games.bulk_games import GAME_GONE, game_scope
 from games.bulk_sessions import lost
 from games.events.append import SourceMetadata
 from games.events.dispatch import CommandRejected, RowNotHeld, RowUnreadable
