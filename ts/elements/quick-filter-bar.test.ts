@@ -2,9 +2,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "./quick-filter-bar.js";
 import { applyUrl } from "./filter-url.js";
+import {
+  PRESET_LOAD_EVENT,
+  PRESET_SAVE_EVENT,
+  PresetSaveRequest,
+  PresetState,
+} from "./presets.js";
 
 const LIST_URL = "/tracker/session/list";
-const PRESET_UUID = "018f5e66-e800-7000-8000-000000000001";
 
 // Static facet markup matching what the server's field_widget renders. For the
 // set kind the <search-select> root carries the data-filter-widget attributes
@@ -467,152 +472,86 @@ describe("quick-filter-bar applied facets", () => {
   });
 });
 
-// ── Preset pick navigation (the picker is quick-bar row furniture) ─────────
+// ── The Presets panel's host ───────────────────────────────────────────
 
-function mountWithPicker(): {
+function mountHost(facets = "", filter = ""): {
   bar: HTMLElement;
+  panel: HTMLElement;
   navigate: ReturnType<typeof vi.fn>;
-  pick: (filter: string | null, sort?: string, perPage?: string) => void;
 } {
+  const filterAttribute = filter ? ` filter='${filter}'` : "";
   document.body.innerHTML = `
-    <quick-filter-bar apply-url="${LIST_URL}">
-      <form>
-        <div data-quick-row>
-          <div data-preset-picker>
-            <search-select name="preset" search-url="/api/presets/?mode=games"></search-select>
-          </div>
-        </div>
-      </form>
+    <quick-filter-bar apply-url="${LIST_URL}" per-page="50"${filterAttribute}>
+      <form>${facets}<div id="panel"></div></form>
     </quick-filter-bar>`;
   const bar = document.querySelector("quick-filter-bar") as HTMLElement;
   const navigate = vi.fn();
   (bar as unknown as { navigate: (url: string) => void }).navigate = navigate;
-  const widget = bar.querySelector("search-select") as HTMLElement;
-  const pick = (filter: string | null, sort?: string, perPage?: string): void => {
-    const data: Record<string, string> = filter === null ? {} : { filter };
-    if (sort !== undefined) data.sort = sort;
-    if (perPage !== undefined) data.per_page = perPage;
-    widget.dispatchEvent(
-      new CustomEvent("search-select:change", {
-        bubbles: true,
-        detail: {
-          name: "preset",
-          values: [PRESET_UUID],
-          last: { value: PRESET_UUID, label: "My preset", data },
-        },
-      }),
-    );
-  };
-  return { bar, navigate, pick };
+  return { bar, panel: bar.querySelector<HTMLElement>("#panel")!, navigate };
 }
 
-describe("quick-filter-bar preset pick", () => {
-  it("wires the preset delete action to confirm, DELETE, and refetch", async () => {
-    const { bar } = mountWithPicker();
-    const widget = bar.querySelector("search-select") as HTMLElement & { refetchOptions: () => void };
-    const refetchOptions = vi.fn();
-    widget.refetchOptions = refetchOptions;
-    const confirm = vi.fn(() => true);
-    const fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ restore_url: "/preset/x/restore" }), { status: 200 })));
-    vi.stubGlobal("confirm", confirm);
-    vi.stubGlobal("toast", vi.fn());
-    vi.stubGlobal("fetch", fetch);
-    widget.dispatchEvent(new CustomEvent("search-select:action", {
-      bubbles: true,
-      detail: {
-        name: "preset",
-        action: "delete",
-        option: { value: PRESET_UUID, label: "Owned", data: {} },
-      },
-    }));
-    // The answer's body is read before the refetch: a macrotask, not one tick.
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(confirm).toHaveBeenCalledWith('Remove preset "Owned"?');
-    expect(fetch).toHaveBeenCalledWith(
-      `/api/presets/${PRESET_UUID}`,
-      expect.objectContaining({ method: "DELETE" }),
-    );
-    expect(refetchOptions).toHaveBeenCalledOnce();
-  });
+function load(panel: HTMLElement, preset: PresetState): void {
+  panel.dispatchEvent(new CustomEvent(PRESET_LOAD_EVENT, { bubbles: true, detail: preset }));
+}
 
-  it("navigates to the list with the preset's filter JSON", () => {
-    const { navigate, pick } = mountWithPicker();
+function requestSave(panel: HTMLElement): PresetSaveRequest {
+  const request: PresetSaveRequest = { state: null, refusal: null };
+  panel.dispatchEvent(new CustomEvent(PRESET_SAVE_EVENT, { bubbles: true, detail: request }));
+  return request;
+}
+
+describe("quick-filter-bar hosts the Presets panel", () => {
+  it("a load navigates with the preset's filter, sort and per_page", () => {
+    // The URL state differs, to prove the preset's own wins.
+    window.history.replaceState({}, "", "/tracker/session/list?sort=name&per_page=25");
+    const { panel, navigate } = mountHost();
     const filter = { game: { value: [{ id: "1", label: "X" }], modifier: "INCLUDES" } };
-    pick(JSON.stringify(filter));
-    expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, filter));
+    load(panel, { filter, sort: "-playtime", perPage: "100" });
+    expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, filter, "-playtime", "100"));
   });
 
   it("an empty preset navigates to the bare list URL", () => {
-    const { navigate, pick } = mountWithPicker();
-    pick(null);
-    expect(navigate).toHaveBeenCalledWith(LIST_URL);
-  });
-
-  it("restores the preset's stored sort, not the live URL sort", () => {
-    // The URL sort is deliberately different to prove the preset's own sort wins.
     window.history.replaceState({}, "", "/tracker/session/list?sort=name");
-    const { navigate, pick } = mountWithPicker();
-    const filter = { game: { value: [{ id: "1", label: "X" }], modifier: "INCLUDES" } };
-    pick(JSON.stringify(filter), "-playtime");
-    expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, filter, "-playtime"));
-  });
-
-  it("a preset with an empty sort navigates without ?sort=", () => {
-    window.history.replaceState({}, "", "/tracker/session/list?sort=name");
-    const { navigate, pick } = mountWithPicker();
-    pick(null, "");
+    const { panel, navigate } = mountHost();
+    load(panel, { filter: {}, sort: "", perPage: "" });
     expect(navigate).toHaveBeenCalledWith(LIST_URL);
   });
 
-  it("restores the preset's stored per_page, not the live URL size (#337)", () => {
-    window.history.replaceState({}, "", "/tracker/session/list?per_page=25");
-    const { navigate, pick } = mountWithPicker();
-    const filter = { game: { value: [{ id: "1", label: "X" }], modifier: "INCLUDES" } };
-    pick(JSON.stringify(filter), "", "100");
-    expect(navigate).toHaveBeenCalledWith(applyUrl(LIST_URL, filter, "", "100"));
-  });
-
-  it("a preset with no stored per_page navigates without ?per_page= (#337)", () => {
-    window.history.replaceState({}, "", "/tracker/session/list?per_page=100");
-    const { navigate, pick } = mountWithPicker();
-    pick(null, "", "");
-    expect(navigate).toHaveBeenCalledWith(LIST_URL);
-  });
-
-  it("invalid preset JSON toasts and stays put", () => {
-    const { navigate, pick } = mountWithPicker();
-    const toast = vi.fn();
-    (window as unknown as { toast: typeof toast }).toast = toast;
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-    pick("{not json");
+  it("a save states the facets as they stand, applied or not", () => {
+    window.history.replaceState({}, "", "/tracker/session/list?sort=-day");
+    const { panel, navigate } = mountHost(setFacet("game", includePill("1", "X")));
+    expect(requestSave(panel)).toEqual({
+      state: {
+        filter: {
+          game: { value: [{ id: "1", label: "X" }], excludes: [], modifier: "INCLUDES" },
+        },
+        sort: "-day",
+        perPage: "50",
+      },
+      refusal: null,
+    });
     expect(navigate).not.toHaveBeenCalled();
-    expect(toast).toHaveBeenCalled();
-    expect(consoleError.mock.calls.some((call) => String(call[0]).includes("preset load failed"))).toBe(true);
   });
 
-  it("facet search-select changes are not treated as preset picks", () => {
-    document.body.innerHTML = `
-      <quick-filter-bar apply-url="${LIST_URL}">
-        <form><div data-quick-row>
-          <search-select name="game"></search-select>
-        </div></form>
-      </quick-filter-bar>`;
-    const bar = document.querySelector("quick-filter-bar") as HTMLElement;
-    const navigate = vi.fn();
-    (bar as unknown as { navigate: (url: string) => void }).navigate = navigate;
-    bar.querySelector("search-select")!.dispatchEvent(
-      new CustomEvent("search-select:change", {
-        bubbles: true,
-        detail: { name: "game", values: [], last: { value: "1", label: "X", data: {} } },
-      }),
-    );
-    expect(navigate).not.toHaveBeenCalled();
+  it("the degraded bar saves the page's filter", () => {
+    const stated = { OR: [{ note: { value: "x", modifier: "INCLUDES" } }] };
+    const { panel } = mountHost("", JSON.stringify(stated));
+    expect(requestSave(panel).state?.filter).toEqual(stated);
+  });
+
+  it("the save request stops at the bar", () => {
+    const { panel } = mountHost();
+    const outer = vi.fn();
+    document.body.addEventListener(PRESET_SAVE_EVENT, outer);
+    requestSave(panel);
+    document.body.removeEventListener(PRESET_SAVE_EVENT, outer);
+    expect(outer).not.toHaveBeenCalled();
   });
 });
 
 // ── Overflow reserve counts furniture between host and group ────────
 
-it("reserves width for furniture after the overflow host (preset picker)", () => {
+it("reserves width for furniture after the overflow host", () => {
   document.body.innerHTML = `
     <quick-filter-bar apply-url="${LIST_URL}">
       <form>
@@ -642,8 +581,8 @@ it("reserves width for furniture after the overflow host (preset picker)", () =>
   parent.removeChild(bar);
   parent.appendChild(bar);
 
-  // Without the picker 300px would fit one 100px facet (reserve 120); with the
-  // 120px picker as furniture the reserve grows to 240 → nothing fits.
+  // Without #picker 300px would fit one 100px facet (reserve 120); with the
+  // 120px #picker as furniture the reserve grows to 240 → nothing fits.
   rowWidth = 300;
   bar.layoutOverflow();
   const items = bar.querySelector<HTMLElement>("[data-quick-overflow-items]")!;

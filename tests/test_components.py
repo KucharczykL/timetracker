@@ -1260,6 +1260,50 @@ class ControlButtonTest(SimpleTestCase):
         self.assertNotIn("rounded-e-base", form[: form.index("<button")])
         self.assertIn("rounded-e-base", form[form.index("<button") :])
 
+    def test_an_opening_member_hands_its_shaped_button_to_the_popup(self):
+        """The popup wraps the segment; the segment keeps its place's shape and
+        is a button, not a link."""
+        handed = []
+
+        def opens(trigger):
+            handed.append(trigger)
+            return components.Div(data_popup="")[trigger]
+
+        html = str(
+            components.ButtonGroup(
+                [
+                    {"slot": "Apply", "button_attributes": []},
+                    {"slot": "More", "aria_label": "More", "opens": opens},
+                ]
+            )
+        )
+        self.assertEqual(len(handed), 1)
+        popup = html[html.index("data-popup") :]
+        button_tag = popup[
+            popup.index("<button") : popup.index(">", popup.index("<button"))
+        ]
+        self.assertIn("rounded-e-base", button_tag)
+        self.assertIn('aria-label="More"', button_tag)
+        self.assertNotIn("<a ", html)
+
+    def test_the_group_states_its_own_name_and_class(self):
+        """A member's name never becomes the group's."""
+        html = str(
+            components.ButtonGroup(
+                [{"slot": "X", "href": "/a", "aria_label": "Clear filter"}],
+                class_="ml-auto",
+                aria_label="Filter actions",
+            )
+        )
+        group_tag = html[: html.index(">")]
+        self.assertIn('aria-label="Filter actions"', group_tag)
+        self.assertIn("ml-auto", group_tag)
+        self.assertIn('aria-label="Clear filter"', html[html.index("<a") :])
+
+    def test_an_unnamed_group_states_no_name(self):
+        html = str(components.ButtonGroup([{"slot": "X", "href": "/a"}]))
+        self.assertNotIn("aria-label", html[: html.index(">")])
+
     def test_a_skipped_member_is_not_an_end(self):
         """Entries with no slot are dropped before the row is counted — the
         game header emits empty dicts for members a state hides."""

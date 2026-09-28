@@ -1,9 +1,10 @@
 /**
- * Shared filter-preset plumbing for <quick-filter-bar> and <filter-builder>.
+ * Filter-preset plumbing for <preset-panel>, and the contract its hosts
+ * (<quick-filter-bar>, <filter-builder>) answer.
  *
- * The dropdown lifecycle (fetch-on-open, rendering, keyboard nav) now lives in
- * the shared combobox primitives (search-select + the combobox drop-down
- * behavior); this module owns only the API calls: save (POST), per-row removal
+ * The dropdown lifecycle (fetch-on-open, rendering, keyboard nav) lives in
+ * the shared combobox primitives (search-select + the presets drop-down
+ * behavior); this module owns the API calls: save (POST), per-row removal
  * (the search-select:action listener → confirm → DELETE → refetch), the
  * collision-check name fetch, and the CSRF token read. All endpoints are the
  * /api/presets/ collection URL; DELETE appends the preset id.
@@ -14,6 +15,28 @@ import { getCsrfToken } from "../csrf.js";
 import type { SearchSelectOption } from "./search-select.js";
 
 export { getCsrfToken };
+
+/** A picked preset; the host decides what loading it means. */
+export const PRESET_LOAD_EVENT = "preset-panel:load";
+/** Asks the nearest host for the state to save, during dispatch. */
+export const PRESET_SAVE_EVENT = "preset-panel:save";
+
+/** What a preset states beside its name. Empty sort or per-page inherits. */
+export interface PresetState {
+  filter: Record<string, unknown>;
+  sort: string;
+  perPage: string;
+}
+
+/**
+ * The mutable detail of PRESET_SAVE_EVENT. The host writes `state`, or a
+ * `refusal` sentence the panel shows instead of saving, and stops
+ * propagation.
+ */
+export interface PresetSaveRequest {
+  state: PresetState | null;
+  refusal: string | null;
+}
 
 // The /api/presets/ list item (value/label/data, including a UUID string value).
 type PresetOption = SearchSelectOption;

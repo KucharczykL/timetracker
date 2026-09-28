@@ -5,6 +5,7 @@ serializer output must reload as editable, never flip to "advanced")."""
 import json
 import re
 from collections.abc import Mapping
+from html import unescape
 from typing import ClassVar
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
@@ -284,23 +285,16 @@ class QuickFilterBarRenderingTest(TestCase):
         self.assertIn("<form", html)
         self.assertIn('type="submit"', html)
         self.assertIn(">Apply<", html)
-        self.assertIn(">Clear<", html)
-        self.assertIn(f'href="{list_url_for(mode)}"', html)
         # Apply + Clear are one segmented ButtonGroup — a single visual unit
-        # that row wrapping can't separate. Order is asserted inside
-        # the group's slice: the date facets' calendars carry their own
-        # ">Clear<" buttons earlier in the document.
-        self.assertIn('role="group"', html)
-        # Anchored on ButtonGroup's own wrapper class, not on the first
-        # role="group" in the document — the date facets' fields are labelled
-        # groups too, and they come earlier.
-        #
-        # The closing quote is load-bearing: the search field's row opens with
-        # the same joined-row shell and then states more, so a prefix match
-        # would start the slice at the field and take the date facets' own
-        # ">Clear<" with it.
-        group_html = html[html.index('class="inline-flex rounded-base shadow-xs"') :]
-        self.assertLess(group_html.index(">Apply<"), group_html.index(">Clear<"))
+        # that row wrapping can't separate. Order is asserted inside the
+        # group's slice, anchored on its own name: the date facets' fields
+        # are labelled groups too, and they come earlier.
+        group_html = html[html.index('aria-label="Filter actions"') :]
+        self.assertIn('aria-label="Clear filter"', group_html)
+        self.assertIn(f'href="{list_url_for(mode)}"', group_html)
+        self.assertLess(
+            group_html.index(">Apply<"), group_html.index('aria-label="Clear filter"')
+        )
         derived_labels = {
             meta["name"]: meta["label"]
             for meta in field_metadata(filter_for_model(FILTER_MODE_MODELS[mode]))
@@ -444,12 +438,17 @@ class QuickFilterBarRenderingTest(TestCase):
                 mode="games", filter_json=filter_json, builder_url=builder_url
             )
         )
-        self.assertNotIn("<quick-filter-bar", html)
+        # The element hosts the Presets panel; with no row there is no form.
+        self.assertIn("<quick-filter-bar", html)
+        self.assertNotIn("data-quick-row", html)
+        self.assertNotIn("<form", html)
         self.assertIn("Advanced filter active", html)
-        self.assertIn("Edit in builder", html)
-        self.assertIn(f'href="{builder_url.replace("&", "&amp;")}"', html)
-        self.assertIn("Clear", html)
-        self.assertIn(f'href="{list_url_for("games")}"', html)
+        group_html = html[html.index('role="group"') :]
+        self.assertIn('aria-label="Advanced filter"', group_html)
+        self.assertIn(f'href="{builder_url.replace("&", "&amp;")}"', group_html)
+        self.assertIn('aria-label="Clear filter"', group_html)
+        self.assertIn(f'href="{list_url_for("games")}"', group_html)
+        self.assertNotIn(">Apply<", group_html)
 
     def test_facet_labels_default_from_field_metadata(self):
         """A facet without a label override renders the FieldMeta-derived label
@@ -815,33 +814,55 @@ class ActionGroupTest(TestCase):
         html = str(
             QuickFilterBar(mode="sessions", filter_json="", builder_url="/builder-url")
         )
-        group_html = html[html.index('role="group"') :]
-        self.assertIn(">Advanced filter…<", group_html)
+        group_html = html[html.index('aria-label="Filter actions"') :]
+        self.assertIn('aria-label="Advanced filter"', group_html)
+        self.assertIn('title="Advanced filter"', group_html)
         self.assertIn('href="/builder-url"', group_html)
 
     def test_no_builder_url_no_advanced_segment(self):
         html = str(QuickFilterBar(mode="devices", filter_json=""))
-        self.assertNotIn("Advanced filter…", html)
+        self.assertNotIn('aria-label="Advanced filter"', html)
+
+    def test_the_group_is_pushed_to_the_rows_end(self):
+        html = str(QuickFilterBar(mode="games", filter_json=""))
+        group_tag = html[
+            html.rindex("<", 0, html.index('aria-label="Filter actions"')) :
+        ]
+        self.assertIn("ml-auto", group_tag[: group_tag.index(">")])
+        # Apply leads the group and the group follows the overflow host.
+        self.assertLess(html.index("data-quick-overflow"), html.index("Filter actions"))
+        self.assertIn(">Apply<", group_tag)
 
 
-class PresetPickerTest(TestCase):
-    """The Load-preset picker rides in the bar as non-collapsible row
-    furniture when a preset API URL is given — load-only."""
+class PresetsSegmentTest(TestCase):
+    """Presets rides in the acts group when a preset API URL is given."""
 
-    def test_preset_api_url_renders_the_picker_after_the_overflow_host(self):
+    def test_preset_api_url_renders_the_presets_segment_in_the_group(self):
         html = str(
             QuickFilterBar(mode="games", filter_json="", preset_api_url="/api/presets/")
         )
-        self.assertIn("data-preset-picker", html)
-        self.assertIn('id="quick-games-preset-picker"', html)
-        self.assertIn('search-url="/api/presets/?mode=games"', html)
-        # Furniture placement: picker AFTER the ⋯ overflow host, which is
-        # where a reader looks for the row's non-collapsible tail.
-        self.assertLess(
-            html.index("data-quick-overflow"), html.index("data-preset-picker")
-        )
+        group_html = html[html.index('aria-label="Filter actions"') :]
+        self.assertIn('id="quick-games-presets"', group_html)
+        self.assertIn("<preset-panel", group_html)
+        self.assertIn('search-url="/api/presets/?mode=games"', group_html)
 
-    def test_no_preset_api_url_no_picker(self):
+    def test_the_degraded_pill_offers_presets_and_states_its_filter(self):
+        filter_json = json.dumps({"AND": [{"status": {"value": ["f"]}}]})
+        html = str(
+            QuickFilterBar(
+                mode="games", filter_json=filter_json, preset_api_url="/api/presets/"
+            )
+        )
+        self.assertIn("<preset-panel", html)
+        stated = re.search(r'<quick-filter-bar[^>]* filter="([^"]*)"', html)
+        assert stated is not None
+        self.assertEqual(json.loads(unescape(stated.group(1))), json.loads(filter_json))
+
+    def test_the_editable_bar_states_no_filter_prop(self):
+        html = str(QuickFilterBar(mode="games", filter_json=""))
+        self.assertIn(' filter=""', html)
+
+    def test_no_preset_api_url_no_presets(self):
         html = str(QuickFilterBar(mode="games", filter_json=""))
         self.assertNotIn("data-preset-picker", html)
 

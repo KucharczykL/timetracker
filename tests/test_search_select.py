@@ -10,10 +10,10 @@ from django.contrib.auth import get_user_model
 from django.utils.safestring import SafeText
 
 from common.components import (
+    ButtonGroup,
     ComboboxDropdown,
     Div,
     FilterSelect,
-    LoadPresetDropdown,
     Pill,
     PresetSelect,
     SearchSelect,
@@ -21,6 +21,7 @@ from common.components import (
     searchselect_selected,
 )
 from common.components.core import collect_media
+from common.components.search_select import presets_member
 from games.models import Game, Platform
 
 # These components are lazy nodes; the tests below assert on rendered HTML, so
@@ -912,43 +913,55 @@ class PresetSelectComponentTest(unittest.TestCase):
         self.assertIn('role="option"', row_tag)
 
 
-class LoadPresetDropdownTest(unittest.TestCase):
-    """The composed trigger + combobox dialog (issue #297)."""
+class PresetsMemberTest(unittest.TestCase):
+    """The Presets segment and the panel it opens."""
 
     def setUp(self):
-        self.html = str(
-            LoadPresetDropdown(api_url="/api/presets/", mode="games", id="lpd")
+        self.node = ButtonGroup(
+            [
+                {"slot": "Apply", "button_attributes": []},
+                presets_member(api_url="/api/presets/", mode="games", id="pm"),
+            ]
         )
+        self.html = str(self.node)
 
-    def test_wrapper_carries_discriminator_and_behavior(self):
-        wrapper_tag = _tag_around(self.html, "data-preset-picker")
-        self.assertIn("<drop-down", wrapper_tag)
-        self.assertIn('behavior="combobox"', wrapper_tag)
+    def test_segment_opens_the_presets_behavior_at_the_end(self):
+        wrapper_tag = _tag_around(self.html, 'behavior="presets"')
+        self.assertTrue(wrapper_tag.startswith("<drop-down"))
+        self.assertIn('placement="bottom-end"', wrapper_tag)
 
-    def test_trigger_is_a_dialog_toggle(self):
+    def test_trigger_is_a_named_dialog_toggle_shaped_as_the_end(self):
         toggle_tag = _tag_around(self.html, "data-toggle")
         self.assertIn('aria-haspopup="dialog"', toggle_tag)
-        self.assertIn('aria-expanded="false"', toggle_tag)
-        self.assertIn('aria-controls="lpd"', toggle_tag)
+        self.assertIn('aria-controls="pm"', toggle_tag)
+        self.assertIn('aria-label="Presets"', toggle_tag)
+        self.assertIn('title="Presets"', toggle_tag)
+        self.assertIn("rounded-e-base", toggle_tag)
 
-    def test_panel_is_a_named_dialog_not_a_menu(self):
+    def test_panel_is_a_named_dialog_holding_the_panel(self):
         panel_tag = _tag_around(self.html, "data-menu")
         self.assertIn('role="dialog"', panel_tag)
-        self.assertIn('aria-label="Load preset"', panel_tag)
-        self.assertNotIn('role="menu"', self.html)
+        self.assertIn('aria-label="Presets"', panel_tag)
+        panel = _tag_around(self.html, "api-url=")
+        self.assertTrue(panel.startswith("<preset-panel"))
+        self.assertIn("data-preset-picker", panel)
+        self.assertIn('api-url="/api/presets/"', panel)
+        self.assertIn('mode="games"', panel)
 
-    def test_media_collects_both_elements(self):
-        # Both custom elements declare their compiled JS; Page() collects it from
-        # the tree — no view threading. Hard-coded dist/elements/… paths (the
-        # dist/search_select.js form in older docs is stale).
-        media = collect_media(LoadPresetDropdown(api_url="/api/presets/", mode="games"))
+    def test_name_box_is_no_search_box(self):
+        name_tag = _tag_around(self.html, "data-preset-name=")
+        self.assertNotIn("data-search-select-search", name_tag)
+        self.assertIn('aria-label="Preset name"', name_tag)
+
+    def test_media_collects_every_element(self):
+        media = collect_media(self.node)
         self.assertIn("dist/elements/drop-down.js", media.js)
         self.assertIn("dist/elements/search-select.js", media.js)
+        self.assertIn("dist/elements/preset-panel.js", media.js)
 
 
 class ComboboxDropdownTest(unittest.TestCase):
-    """The generic trigger + combobox dialog LoadPresetDropdown is built on
-    ."""
+    """The generic trigger + combobox dialog the facets are built on."""
 
     @staticmethod
     def _html(**kwargs) -> str:

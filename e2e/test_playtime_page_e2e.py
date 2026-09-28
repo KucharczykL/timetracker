@@ -102,7 +102,7 @@ def test_the_advanced_filter_link_opens_the_builder(
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_historical_playtime')}")
 
-    page.get_by_role("link", name="Advanced filter…").click()
+    page.get_by_role("link", name="Advanced filter", exact=True).click()
 
     page.wait_for_url(
         f"**{reverse('games:filter_builder', args=['historicalplaytime'])}**"

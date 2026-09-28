@@ -579,7 +579,7 @@ def test_quick_bar_preset_pick_navigates_to_filtered_list(
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_games')}")
 
-    picker = page.locator("quick-filter-bar [data-preset-picker]")
+    picker = page.locator("quick-filter-bar drop-down[behavior='presets']")
     picker.locator("[data-toggle]").click()
     row = picker.locator("[data-search-select-option]").filter(has_text="HaloOnly")
     expect(row).to_be_visible(timeout=5_000)

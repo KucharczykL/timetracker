@@ -11,7 +11,7 @@ from datetime import UTC
 import pytest
 from devices import create_device
 from django.urls import reverse
-from playwright.sync_api import ConsoleMessage, Page, expect
+from playwright.sync_api import ConsoleMessage, Locator, Page, expect
 from session_rows import session_row
 
 from e2e.helpers import open_facet
@@ -137,7 +137,7 @@ def test_quick_scalar_facet_filters_sessions(
 
 def test_advanced_filter_shows_degraded_pill(authenticated_page: Page, live_server):
     """A filter with operator nesting renders the read-only pill (with working
-    Edit-in-builder / Clear links) instead of facet widgets."""
+    Advanced filter / Clear segments) instead of facet widgets."""
     filter_json = json.dumps(
         {"AND": [{"status": {"value": [{"id": "completed", "label": "Completed"}]}}]}
     )
@@ -146,15 +146,15 @@ def test_advanced_filter_shows_degraded_pill(authenticated_page: Page, live_serv
     page.goto(f"{live_server.url}{list_url}?filter={urllib.parse.quote(filter_json)}")
 
     expect(page.get_by_text("Advanced filter active")).to_be_visible()
-    expect(page.locator("quick-filter-bar")).to_have_count(0)
+    expect(page.locator("quick-filter-bar form")).to_have_count(0)
 
-    edit_link = page.get_by_role("link", name="Edit in builder")
+    edit_link = page.get_by_role("link", name="Advanced filter", exact=True)
     href = edit_link.get_attribute("href")
     assert href is not None
     assert reverse("games:filter_builder", args=["game"]) in href
     assert "filter=" in href
 
-    clear_link = page.get_by_role("link", name="Clear")
+    clear_link = page.get_by_role("link", name="Clear filter")
     assert clear_link.get_attribute("href") == list_url
     clear_link.click()
     page.wait_for_url(f"{live_server.url}{list_url}")
@@ -309,8 +309,7 @@ def test_priority_plus_overflow_collapses_and_restores(
     first, and an applied facet spills last; facets keep working from
     inside it.
 
-    Past the body cap, four facets fit: Game, Day, Playthrough and
-    Outside dates."""
+    Past the body cap, six facets fit: all but Duration."""
     from datetime import datetime, timedelta
 
     platform = Platform.objects.create(library=e2e_library, name="PC", icon="pc")
@@ -333,17 +332,12 @@ def test_priority_plus_overflow_collapses_and_restores(
         "drop-down[data-quick-facet]:has(#quick-duration_hours-dropdown)"
     )
 
-    # Wide: the three rightmost facets spill.
+    # Wide: the rightmost facet spills.
     expect(overflow).to_be_visible()
-    expect(overflow_items.locator("[data-quick-facet]")).to_have_count(3)
+    expect(overflow_items.locator("[data-quick-facet]")).to_have_count(1)
     expect(
-        overflow_items.locator(":scope > drop-down:has(#quick-timing_mode-dropdown)")
+        overflow_items.locator(":scope > drop-down:has(#quick-duration_hours-dropdown)")
     ).to_have_count(1)
-    expect(
-        overflow_items.locator(
-            ":scope > drop-down:has(#quick-outside_playthrough_dates-dropdown)"
-        )
-    ).to_have_count(0)
 
     # Narrow: every facet spills.
     page.set_viewport_size({"width": 520, "height": 900})
@@ -353,7 +347,7 @@ def test_priority_plus_overflow_collapses_and_restores(
         overflow_items.locator(":scope > drop-down:has(#quick-duration_hours-dropdown)")
     ).to_have_count(1)
 
-    # The spilled facet still works: open ⋯ → open Duration → edit → Apply.
+    # The spilled facet still works: open ⋯ → open Duration → edit → Enter.
     page.locator("#quick-sessions-overflowLink").click()
     duration_facet.locator("#quick-duration_hours-dropdownLink").click()
     duration_panel = page.locator("#quick-duration_hours-dropdown")
@@ -361,8 +355,10 @@ def test_priority_plus_overflow_collapses_and_restores(
     duration_panel.locator("select[data-number-modifier-select]").select_option(
         "GREATER_THAN"
     )
-    duration_panel.locator('input[name="quick-duration_hours"]').fill("2")
-    _quick_apply(page)
+    duration_input = duration_panel.locator('input[name="quick-duration_hours"]')
+    duration_input.fill("2")
+    # The open menu covers the wrapped acts group; Enter applies from inside.
+    duration_input.press("Enter")
     page.wait_for_url("**filter=**")
     assert _filter_from_url(page.url) == {
         "duration_hours": {"value": 2, "modifier": "GREATER_THAN"}
@@ -370,21 +366,21 @@ def test_priority_plus_overflow_collapses_and_restores(
     expect(page.locator(f"#session-row-{long_session.pk}")).to_be_visible()
     expect(page.locator(f"#session-row-{short_session.pk}")).to_have_count(0)
 
-    # Widen: applied Duration outranks idle facets.
+    # Widen: applied Duration outranks the idle facets declared before it.
     page.set_viewport_size({"width": 2000, "height": 900})
     row_triggers = page.locator("[data-quick-row] > [data-quick-facet] > [data-toggle]")
-    expect(row_triggers).to_have_count(4)
+    expect(row_triggers).to_have_count(5)
     assert [trigger.get_attribute("id") for trigger in row_triggers.all()] == [
         "quick-game-dropdownLink",
         "quick-day-dropdownLink",
         "quick-playthrough_kind-dropdownLink",
+        "quick-outside_playthrough_dates-dropdownLink",
         "quick-duration_hours-dropdownLink",
     ]
     menu_triggers = page.locator(
         "[data-quick-overflow-items] > [data-quick-facet] > [data-toggle]"
     )
     assert [trigger.get_attribute("id") for trigger in menu_triggers.all()] == [
-        "quick-outside_playthrough_dates-dropdownLink",
         "quick-device-dropdownLink",
         "quick-timing_mode-dropdownLink",
     ]
@@ -448,7 +444,7 @@ def test_preset_pick_on_builderless_mode(
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:list_devices')}")
 
-    picker = page.locator("quick-filter-bar [data-preset-picker]")
+    picker = page.locator("quick-filter-bar drop-down[behavior='presets']")
     picker.locator("[data-toggle]").click()
     search = picker.locator("[data-search-select-search]")
     expect(search).to_be_focused()
@@ -602,3 +598,84 @@ def test_the_bar_logs_no_console_error(
     page.locator('search-field [data-match-mode="EQUALS"]').click()
     errors = [message.text for message in messages if message.type == "error"]
     assert errors == [], errors
+
+
+def _presets(page: Page) -> Locator:
+    return page.locator("quick-filter-bar drop-down[behavior='presets']")
+
+
+def _saved_filter(library, name: str) -> dict:
+    from games.models import FilterPreset
+
+    return FilterPreset.objects.for_library(library).get(name=name).object_filter
+
+
+def test_a_preset_saves_the_unapplied_bar_and_loads_back(
+    authenticated_page: Page, live_server, e2e_library
+):
+    """Save stores what the bar states, applied or not; Enter in the name box
+    saves and never applies the bar's form."""
+    platform = Platform.objects.create(name="PC", icon="pc", library=e2e_library)
+    Game.objects.create(name="Halo", platform=platform, library=e2e_library)
+    Game.objects.create(name="Doom", platform=platform, library=e2e_library)
+    page = authenticated_page
+    list_url = f"{live_server.url}{reverse('games:list_games')}"
+    page.goto(list_url)
+
+    page.locator('input[name="quick-games-search"]').fill("halo")
+    presets = _presets(page)
+    presets.locator("[data-toggle]").click()
+    name_box = presets.locator("[data-preset-name]")
+    name_box.fill("Halo search")
+    name_box.press("Enter")
+    expect(name_box).to_have_value("")
+    expect(page).to_have_url(list_url)
+    assert _saved_filter(e2e_library, "Halo search")["search"]["value"] == "halo"
+
+    page.reload()
+    presets.locator("[data-toggle]").click()
+    row = presets.locator("[data-search-select-option]").filter(has_text="Halo search")
+    expect(row).to_be_visible(timeout=5_000)
+    with page.expect_navigation():
+        row.click()
+    assert _filter_from_url(page.url)["search"]["value"] == "halo"
+    expect(page.locator("table")).not_to_contain_text("Doom")
+
+
+def test_tab_reaches_the_name_box_without_closing_the_panel(
+    authenticated_page: Page, live_server
+):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    presets = _presets(page)
+    presets.locator("[data-toggle]").click()
+    expect(presets.locator("[data-search-select-search]")).to_be_focused()
+    name_box = presets.locator("[data-preset-name]")
+    for _ in range(6):
+        if name_box.evaluate("box => box === document.activeElement"):
+            break
+        page.keyboard.press("Tab")
+        expect(presets.locator("[data-menu]")).to_be_visible()
+    expect(name_box).to_be_focused()
+
+
+def test_the_degraded_pill_saves_the_pages_filter(
+    authenticated_page: Page, live_server, e2e_library
+):
+    stated = {
+        "AND": [{"status": {"value": [{"id": "completed", "label": "Completed"}]}}]
+    }
+    page = authenticated_page
+    list_url = reverse("games:list_games")
+    page.goto(
+        f"{live_server.url}{list_url}?filter={urllib.parse.quote(json.dumps(stated))}"
+    )
+    expect(page.get_by_text("Advanced filter active")).to_be_visible()
+
+    presets = _presets(page)
+    presets.locator("[data-toggle]").click()
+    name_box = presets.locator("[data-preset-name]")
+    name_box.fill("Completed")
+    presets.locator("[data-save-preset]").click()
+    expect(name_box).to_have_value("")
+    assert _saved_filter(e2e_library, "Completed") == stated

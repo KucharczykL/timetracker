@@ -1222,6 +1222,10 @@ class ButtonGroupMember(TypedDict, total=False):
     # ancestor form (the quick bar's Apply). Only meaningful with
     # button_attributes; defaults to "button".
     type: str
+    # An icon-only member's accessible name.
+    aria_label: str
+    # Wraps the member's shaped trigger in the popup it opens.
+    opens: Callable[[Element], Node]
 
 
 def shaped[T](members: Sequence[T]) -> Iterator[tuple[ButtonShape, T]]:
@@ -1248,7 +1252,12 @@ def shaped[T](members: Sequence[T]) -> Iterator[tuple[ButtonShape, T]]:
 _JOINED_ROW_CLASS = "inline-flex rounded-base shadow-xs"
 
 
-def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
+def ButtonGroup(
+    buttons: list[ButtonGroupMember] | None = None,
+    *,
+    class_: str = "",
+    aria_label: str = "",
+) -> Element:
     """Generate a button group div of segmented :class:`ControlButton` members.
 
     Each member dict accepts: slot (required), href, color, title, and — for a
@@ -1256,7 +1265,9 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
     action (URL), csrf_token. A ``method="post"`` member renders as a no-JS
     ``<form>`` submit button instead of a link; a member with
     ``button_attributes`` renders as a bare ``<button type="button">`` carrying
-    those attributes (a JS-driven action with no navigation).
+    those attributes (a JS-driven action with no navigation). A member with
+    ``opens`` is a plain button handed, shaped, to that function, which
+    returns the popup around it.
     Empty dicts (no slot) are silently skipped — matching the template behavior
     for conditional buttons (e.g., end-session only when session is active).
     Every member is the one button size; no member resizes at any width.
@@ -1271,29 +1282,35 @@ def ButtonGroup(buttons: list[ButtonGroupMember] | None = None) -> Element:
         member_attributes: list[HTMLAttribute] = []
         if title := member.get("title", ""):
             member_attributes.append(("title", title))
+        if member_label := member.get("aria_label", ""):
+            member_attributes.append(("aria-label", member_label))
         button_attributes = member.get("button_attributes")
-        is_plain_button = button_attributes is not None
+        opens = member.get("opens")
+        is_plain_button = button_attributes is not None or opens is not None
         if button_attributes:
             member_attributes.extend(button_attributes)
-        children.append(
-            ControlButton(
-                member_attributes,
-                variant="segmented",
-                shape=shape,
-                color=member.get("color", "gray"),
-                href="" if is_plain_button else member.get("href", "#"),
-                method="" if is_plain_button else member.get("method", ""),
-                action=member.get("action", ""),
-                csrf_token=member.get("csrf_token", ""),
-                hidden_fields=member.get("hidden_fields"),
-                type=member.get("type", "button"),
-            )[slot]
-        )
+        button = ControlButton(
+            member_attributes,
+            variant="segmented",
+            shape=shape,
+            color=member.get("color", "gray"),
+            href="" if is_plain_button else member.get("href", "#"),
+            method="" if is_plain_button else member.get("method", ""),
+            action=member.get("action", ""),
+            csrf_token=member.get("csrf_token", ""),
+            hidden_fields=member.get("hidden_fields"),
+            type=member.get("type", "button"),
+        )[slot]
+        children.append(button if opens is None else opens(button.as_element()))
 
     # Alignment-agnostic: the group sits where its container puts it. In a table
     # Actions cell the <td> is right-aligned (table-level Column.align rule), so
     # this inline-flex group is pushed right; in the game header it sits left.
-    return Div(class_=_JOINED_ROW_CLASS, role="group")[children]
+    return Div(
+        class_=f"{_JOINED_ROW_CLASS} {class_}".strip(),
+        role="group",
+        aria_label=aria_label or None,
+    )[children]
 
 
 type TabLabel = str  # e.g. "Sessions"

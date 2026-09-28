@@ -745,8 +745,10 @@ Submodules re-exported via `common/components/__init__.py`:
   `FilterSelect()` (include/exclude
   with pinned Any/None modifiers; `layout="panel"` is GitHub-label-picker
   personality for hosting inside dropdown dialog, #315), `ComboboxDropdown()`
-  (generic "Label ▾" trigger + dialog), `PresetSelect()`/`LoadPresetDropdown()`
-  (fetch-on-open preset picker, #297), `SearchSelectOption`. Every picker
+  (generic "Label ▾" trigger + dialog), `PresetSelect()` (fetch-on-open preset
+  list, #297) inside `PresetPanel()`, the `<preset-panel>` that loads and
+  saves presets for any host answering `preset-panel:load`/`:save` (#1267),
+  opened by `presets_member()`, `SearchSelectOption`. Every picker
   builds rows through one `_option_row(option, kind, *, actions)` in the menu
   item's look (`DROPDOWN_ITEM_SHAPE`/`DROPDOWN_ITEM_ACTIVE`), pills through
   `Pill(kind=…)` inside the field box, and its list is a `DropdownPanel`; the
@@ -851,11 +853,14 @@ structured filtering.
     ([Facet priority](docs/superpowers/specs/2026-09-28-issue-1254-quick-bar-facet-priority-design.md)).
   - Row anatomy: collapsible facets, then "⋯" priority-plus overflow menu
     (ResizeObserver-driven, continuous, no breakpoints — facets that don't fit are
-    MOVED into it, same DOM nodes so widget state survives), then non-collapsible
-    furniture — Load-preset picker (`preset_api_url`, load-only) and
-    Apply | Clear [| Advanced filter…] ButtonGroup (`builder_url` gates third
-    segment). `apply_url` overrides every derived list URL (#304
-    synthetic-harness constraint).
+    MOVED into it, same DOM nodes so widget state survives), then the acts:
+    one Apply | Clear | Presets [| Advanced filter] ButtonGroup with
+    `ml-auto`, icons beside Apply (`preset_api_url` gates Presets, which loads
+    and saves; `builder_url` gates Advanced filter). A `ButtonGroup` member
+    with `opens` wraps its shaped segment in a popup. The builder toolbar is
+    the same group without Advanced filter, and saves `serializeForQuery()`.
+    `apply_url` overrides every derived list URL (#304 synthetic-harness
+    constraint).
   - Editable only when every top-level filter key is facet field with dict
     criterion whose modifier its widget renders, or a `search` whose value is
     text in one of the six modes the field states (`is_quick_editable`, which
@@ -863,7 +868,8 @@ structured filtering.
     string and number kinds are checked against it, set/date/bool are not — see
     its docstring); operator keys, `*_filter` relations,
     `field_comparisons`, or any non-facet leaf degrade it to read-only
-    "Advanced filter active" pill with Edit-in-builder/Clear links. Bar's
+    "Advanced filter active" pill beside the acts group without Apply, inside
+    the same element, whose `filter` prop is what its Presets saves. Bar's
     serializer emits only flat facet criteria, so its own output always
     round-trips back to editable. Anything facets can't express lives in nested
     builder, reached via "Advanced filter…" — every filterable mode has builder

@@ -51,12 +51,21 @@ from collections.abc import Callable, Iterable, Sequence
 from enum import Enum
 from typing import Literal, NamedTuple, TypedDict
 
-from common.components.core import Attributes, Child, HTMLAttribute, Node
+from common.components.core import (
+    Attributes,
+    Child,
+    Element,
+    Fragment,
+    HTMLAttribute,
+    Node,
+)
 from common.components.custom_elements import (
     DROPDOWN_ITEM_SHAPE,
     Dropdown,
     DropdownPanel,
+    _as_dialog_trigger,
     _Dropdown,
+    _PresetPanelElement,
     _SearchSelect,
 )
 from common.components.primitives import (
@@ -65,12 +74,14 @@ from common.components.primitives import (
     SHAPE_CLASSES,
     AppliedDot,
     ButtonColor,
+    ButtonGroupMember,
     ButtonShape,
     ControlButton,
     Div,
     FilterWidgetPath,
     Icon,
     Input,
+    P,
     Pill,
     Span,
     Template,
@@ -1064,25 +1075,73 @@ def ComboboxDropdown(
     )
 
 
-def LoadPresetDropdown(
-    *, api_url: str, mode: str, id: str = "load-preset-dropdown", ghost: bool = False
-) -> Node:
-    """The "Load preset ▾" picker: a :func:`ComboboxDropdown`
-    hosting a :func:`PresetSelect`. ``ghost`` selects the quiet trigger (the
-    quick filter bar); the builder toolbar keeps the filled gray default.
+#: The accessible name of the Presets segment and of the panel it opens.
+PRESETS_LABEL = "Presets"
 
-    The wrapper carries ``data-preset-picker`` — the discriminator consumers use
-    to tell the picker's ``search-select:change``/``search-select:action`` events
-    apart from other widgets', and the hook whose ``close()`` they call after a
-    pick.
+#: The Save button's resting label; ``preset-panel.ts`` restores it.
+SAVE_PRESET_LABEL = "Save"
+
+_PRESET_NAME_CLASS = (
+    "min-w-0 flex-1 px-3 min-h-control text-type-input rounded-base "
+    "border border-default-medium bg-neutral-secondary-medium "
+    "text-heading shadow-xs placeholder:text-body "
+    "focus:ring-brand focus:border-brand"
+)
+
+
+def PresetPanel(*, api_url: str, mode: str) -> Node:
+    """The saved presets above, a name box and Save below.
+
+    The host page answers ``preset-panel:load`` and ``preset-panel:save``;
+    the panel owns every preset API call. ``data-preset-picker`` is the hook
+    the removal wiring and the tests read.
     """
-    return ComboboxDropdown(
-        label="Load preset",
-        content=PresetSelect(api_url=api_url, mode=mode),
-        id=id,
-        ghost=ghost,
-        config={"data_preset_picker": ""},
-    )
+    return _PresetPanelElement(api_url=api_url, mode=mode, data_preset_picker="")[
+        PresetSelect(api_url=api_url, mode=mode),
+        Div(class_="flex flex-col gap-2 border-t border-default-medium p-2")[
+            Div(class_="flex items-center gap-2")[
+                Input(
+                    type="text",
+                    data_preset_name="",
+                    placeholder="Preset name",
+                    aria_label="Preset name",
+                    autocomplete="off",
+                    class_=_PRESET_NAME_CLASS,
+                ),
+                ControlButton(color="gray", data_save_preset="")[SAVE_PRESET_LABEL],
+            ],
+            P(
+                data_preset_name_warning="",
+                hidden=True,
+                role="status",
+                aria_live="polite",
+                class_="text-type-body text-amber-700 dark:text-amber-400",
+            ),
+        ],
+    ]
+
+
+def presets_member(*, api_url: str, mode: str, id: str) -> ButtonGroupMember:
+    """The Presets segment of a filter-acts group, opening the panel."""
+
+    def opens(trigger: Element) -> Node:
+        panel = DropdownPanel(role="dialog", aria_label=PRESETS_LABEL, width="w-80")[
+            PresetPanel(api_url=api_url, mode=mode)
+        ]
+        return Dropdown(
+            trigger_element=_as_dialog_trigger(trigger),
+            target_element=panel,
+            id=id,
+            placement="bottom-end",
+            behavior="presets",
+        )
+
+    return {
+        "slot": Fragment(Icon("bookmark"), Icon("arrowdown", size="h-3 w-3")),
+        "aria_label": PRESETS_LABEL,
+        "title": PRESETS_LABEL,
+        "opens": opens,
+    }
 
 
 def searchselect_selected(

@@ -14,7 +14,7 @@ function flushPromises(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
-// A picker as LoadPresetDropdown renders one: the [data-preset-picker] wrapper
+// A picker as PresetPanel renders one: the [data-preset-picker] wrapper
 // hosting a search-select. The widget is deliberately NOT the real custom
 // element (this suite never imports search-select.js), so refetchOptions is a
 // plain stub the delete flow duck-types onto.

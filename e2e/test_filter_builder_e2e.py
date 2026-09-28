@@ -309,8 +309,8 @@ def test_empty_preset_dropdown_shows_readable_placeholder(
     # unhides the widget's no-results row. The dark-mode toggle only flips a
     # class on <html>; the already-open panel restyles in place. The no-results
     # node is stable (refetches replace only option rows), so no detach race.
-    page.locator("filter-builder [data-preset-picker] [data-toggle]").click()
-    panel = page.locator("filter-builder [data-preset-picker] [data-menu]")
+    page.locator("filter-builder drop-down[behavior='presets'] [data-toggle]").click()
+    panel = page.locator("filter-builder drop-down[behavior='presets'] [data-menu]")
     placeholder = panel.locator("[data-search-select-no-results]")
     expect(placeholder).to_have_text("No saved presets", timeout=5_000)
 
@@ -395,11 +395,11 @@ def test_load_set_field_preset_reflects_field_without_crash(
     )
 
     # Open the Load-preset combobox dialog.
-    page.locator("filter-builder [data-preset-picker] [data-toggle]").click()
+    page.locator("filter-builder drop-down[behavior='presets'] [data-toggle]").click()
 
     # Wait for the fetch-on-open to populate the preset row.
     preset_row = page.locator(
-        "filter-builder [data-preset-picker] [data-search-select-option]"
+        "filter-builder drop-down[behavior='presets'] [data-search-select-option]"
     ).filter(has_text="setpreset")
     expect(preset_row).to_be_visible(timeout=5_000)
 
@@ -996,8 +996,8 @@ def test_preset_removal_flow_takes_the_row_out(
     page.on("dialog", lambda dialog: dialog.accept())
     page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['game'])}")
 
-    page.locator("filter-builder [data-preset-picker] [data-toggle]").click()
-    picker = page.locator("filter-builder [data-preset-picker]")
+    page.locator("filter-builder drop-down[behavior='presets'] [data-toggle]").click()
+    picker = page.locator("filter-builder drop-down[behavior='presets']")
     doomed_row = picker.locator("[data-search-select-option]").filter(
         has_text="deleteme"
     )
@@ -1036,7 +1036,7 @@ def test_removing_the_last_picked_preset_does_not_bring_it_back(
     page.on("dialog", lambda dialog: dialog.accept())
     page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['game'])}")
 
-    picker = page.locator("filter-builder [data-preset-picker]")
+    picker = page.locator("filter-builder drop-down[behavior='presets']")
     toggle = picker.locator("[data-toggle]")
 
     # Pick it (loads into the tree and closes the dialog).
@@ -1082,7 +1082,7 @@ def test_preset_keyboard_pick_and_empty_enter(
     page.goto(f"{live_server.url}{reverse('games:filter_builder', args=['game'])}")
     url_before = page.url
 
-    picker = page.locator("filter-builder [data-preset-picker]")
+    picker = page.locator("filter-builder drop-down[behavior='presets']")
     picker.locator("[data-toggle]").focus()
     page.keyboard.press("Enter")
 
@@ -1157,3 +1157,35 @@ def test_typing_over_a_picked_field_keeps_the_typed_text(
             "[data-field-picker] [data-search-select-option]", has_text="Name"
         ).first
     ).to_be_visible()
+
+
+def test_a_saved_preset_states_the_edited_leaf(
+    authenticated_page: Page, live_server, django_user_model
+) -> None:
+    """Save reads the live widgets: a leaf changed after the page loaded saves
+    its new value, not the one the tree was loaded with."""
+    user = django_user_model.objects.get(username="tester")
+    filter_param = _encode_filter({"name": {"modifier": "INCLUDES", "value": "old"}})
+    page = authenticated_page
+    page.goto(
+        f"{live_server.url}{reverse('games:filter_builder', args=['game'])}"
+        f"?filter={filter_param}"
+    )
+    expect(page.locator("filter-count")).not_to_contain_text("Counting…")
+    value_box = page.locator(
+        "[data-node-kind='criterion'] [data-value-cell] input[type='text']"
+    ).first
+    value_box.fill("new")
+
+    presets = page.locator("filter-builder drop-down[behavior='presets']")
+    presets.locator("[data-toggle]").click()
+    name_box = presets.locator("[data-preset-name]")
+    name_box.fill("Edited")
+    presets.locator("[data-save-preset]").click()
+    expect(name_box).to_have_value("")
+
+    saved = json.dumps(
+        FilterPreset.objects.for_library(user.library).get(name="Edited").object_filter
+    )
+    assert '"new"' in saved
+    assert '"old"' not in saved
