@@ -24,7 +24,9 @@ from games.bulk_reclassification import (
     NOT_AVAILABLE,
     NOT_WRITTEN,
     REVIEW_THRESHOLD_HOURS,
-    UNDER_THRESHOLD,
+    SHORT_MANY,
+    SHORT_ONE,
+    short_rows_note,
 )
 from games.commands.playergame import TrackGame
 from games.commands.playersession import CreateSession, DurationOnlyTiming
@@ -188,14 +190,30 @@ def test_the_scope_leaves_the_bucket_out(
     assert bucket_row not in scoped
 
 
-def test_the_scope_leaves_a_short_session_out(
+def test_the_review_filter_leaves_a_short_session_out(
     owned_user, owned_library, run, reclassify
 ):
+    """The suggestion narrows the scope; the base no longer does."""
     short = a_written_session(
         owned_library, owned_user, run, duration=timedelta(hours=1)
     )
 
     assert short not in set(reclassify.scope(owned_library, review_filter()))
+
+
+def test_the_scope_takes_a_short_session_the_filter_admits(
+    owned_user, owned_library, run, reclassify
+):
+    """A statement made off an unnarrowed list reaches every written row.
+
+    The threshold shapes the review, not what the act can convert: doing
+    a short row one at a time always worked (#1357).
+    """
+    short = a_written_session(
+        owned_library, owned_user, run, duration=timedelta(hours=1)
+    )
+
+    assert short in set(reclassify.scope(owned_library, "{}"))
 
 
 def test_a_filter_that_cannot_be_parsed_refuses_the_act(owned_library, reclassify):
@@ -225,17 +243,18 @@ def test_a_key_no_row_answers_is_lost(owned_library, reclassify):
     assert resolution.refused[0].lost
 
 
-def test_a_short_row_is_refused_and_not_lost(
+def test_a_short_row_is_offered_all_the_same(
     owned_user, owned_library, run, reclassify
 ):
+    """No sentence turns a row down for its length (#1357)."""
     short = a_written_session(
         owned_library, owned_user, run, duration=timedelta(hours=1)
     )
 
     resolution = reclassify.resolve(owned_library, [short.pk])
 
-    assert [refused.sentence for refused in resolution.refused] == [UNDER_THRESHOLD]
-    assert not resolution.refused[0].lost
+    assert [row.pk for row in resolution.rows] == [short.pk]
+    assert resolution.refused == ()
 
 
 def test_a_bucket_row_is_refused(owned_user, owned_library, game, reclassify):
@@ -412,6 +431,59 @@ def _spare(reclassify: BulkAction, name: str, preview) -> BulkAction:
     )
 
 
+# ── What the act cautions about ──────────────────────────────────────────────
+
+
+def test_the_act_states_a_caution(reclassify):
+    assert reclassify.caution is short_rows_note
+
+
+def test_an_act_cautions_about_nothing_by_default(reclassify):
+    name = "session.silent_caution"
+    try:
+        assert _spare(reclassify, name, reclassify.preview).caution is None
+    finally:
+        _TABLE.pop(name, None)
+
+
+def test_rows_at_the_threshold_are_worth_no_note(owned_user, owned_library, run):
+    rows = [a_written_session(owned_library, owned_user, run)]
+
+    assert short_rows_note(rows) is None
+
+
+def test_one_short_row_is_noted_in_the_singular(owned_user, owned_library, run):
+    short = a_written_session(
+        owned_library, owned_user, run, duration=timedelta(hours=1)
+    )
+    long_enough = a_written_session(
+        owned_library, owned_user, run, day=date(2026, 3, 6)
+    )
+
+    assert short_rows_note([short, long_enough]) == SHORT_ONE.format(
+        hours=REVIEW_THRESHOLD_HOURS
+    )
+
+
+def test_several_short_rows_are_counted(owned_user, owned_library, run):
+    """The note counts the short rows, not every row it stands over."""
+    short = [
+        a_written_session(
+            owned_library,
+            owned_user,
+            run,
+            day=date(2026, 3, day),
+            duration=timedelta(hours=hours),
+        )
+        for day, hours in ((6, 1), (7, 7))
+    ]
+    long_enough = a_written_session(owned_library, owned_user, run)
+
+    assert short_rows_note([*short, long_enough]) == SHORT_MANY.format(
+        count=2, hours=REVIEW_THRESHOLD_HOURS
+    )
+
+
 # ── The title the count picks ────────────────────────────────────────────────
 
 
@@ -564,6 +636,60 @@ def test_a_confirmation_over_no_rows_names_the_acts_subject(reclassify, presenta
         _TABLE.pop(name, None)
 
     assert "None of those records can be changed." in str(page)
+
+
+def test_the_confirmation_says_the_caution_over_the_rows(
+    owned_user, owned_library, run, reclassify, presentations
+):
+    """A note above the table, and no press taken away."""
+    from games.views.bulk_pages import ConfirmBatch
+
+    short = a_written_session(
+        owned_library, owned_user, run, duration=timedelta(hours=1)
+    )
+
+    page = str(
+        ConfirmBatch(
+            reclassify,
+            rows=[short],
+            refused=(),
+            hidden=[],
+            post_url="/bulk/session.reclassify/",
+            csrf_token="token",
+            cancel_url="/",
+            sample_cap=50,
+            presentations=presentations,
+        )
+    )
+
+    said = SHORT_ONE.format(hours=REVIEW_THRESHOLD_HOURS)
+    assert said in page
+    assert page.index(said) < page.index("<table")
+    assert reclassify.confirm_label in page
+
+
+def test_a_confirmation_over_long_rows_says_no_caution(
+    owned_user, owned_library, run, reclassify, presentations
+):
+    from games.views.bulk_pages import ConfirmBatch
+
+    long_enough = a_written_session(owned_library, owned_user, run)
+
+    page = str(
+        ConfirmBatch(
+            reclassify,
+            rows=[long_enough],
+            refused=(),
+            hidden=[],
+            post_url="/bulk/session.reclassify/",
+            csrf_token="token",
+            cancel_url="/",
+            sample_cap=50,
+            presentations=presentations,
+        )
+    )
+
+    assert f"shorter than {REVIEW_THRESHOLD_HOURS} hours" not in page
 
 
 def test_the_reclassification_states_its_three_columns(reclassify):
