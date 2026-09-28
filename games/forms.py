@@ -21,14 +21,11 @@ from django.utils.datastructures import MultiValueDict
 from common.components import (
     DEFAULT_PREFETCH,
     DISABLED_CONTROL_CLASS,
-    Datalist,
     DatePicker,
     DateTimeCopyTarget,
     DateTimePicker,
-    Fragment,
     Media,
     NoneLabel,
-    Option,
     PostedName,
     Safe,
     SearchSelect,
@@ -83,6 +80,7 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.companion_status import played_is_offered
+from games.reads.platform_groups import platform_groups
 from games.reads.playthrough_numbering import display_name, numbered_for
 from games.reads.playthrough_runs import library_runs, tracked_game
 from games.writes.playersession import latest_ordinary_run
@@ -501,25 +499,39 @@ class IconPickerWidget(forms.Widget):
         )
 
 
-class DatalistTextInput(forms.TextInput):
-    """A text box offering values it does not require."""
+#: The create row's verb for typed text.
+USE_TYPED_TEXT = "Use"
 
-    def __init__(self, *, suggestions: Sequence[str] = (), attrs=None):
-        super().__init__(attrs)
+
+class TextSearchSelectWidget(_SearchSelectAdapter):
+    """A `SearchSelect()` over suggestions, taking typed text too."""
+
+    def __init__(
+        self,
+        *,
+        suggestions: Sequence[str] = (),
+        placeholder: str = "Search or type…",
+        attrs=None,
+    ):
+        super().__init__(
+            placeholder=placeholder, autofocus=False, clearable=True, attrs=attrs
+        )
         self.suggestions = tuple(suggestions)
 
-    def render(self, name, value, attrs=None, renderer=None):
-        attrs = {**(attrs or {})}
-        listed = f"{attrs.get('id') or name}-suggestions"
-        attrs["list"] = listed
-        box = super().render(name, value, attrs, renderer)
-        return str(
-            Fragment(
-                Safe(box),
-                Datalist(id=listed)[
-                    [Option(value=suggestion) for suggestion in self.suggestions]
-                ],
-            )
+    def render(self, name, value, attrs=None, renderer=None, *, shape="full"):
+        options = [
+            SearchSelectOption(value=text, label=text, data={})
+            for text in self.suggestions
+        ]
+        held = [SearchSelectOption(value=value, label=value, data={})] if value else []
+        return self._render(
+            name,
+            attrs,
+            selected=held,
+            options=options,
+            create_selects=True,
+            create_verb=USE_TYPED_TEXT,
+            shape=shape,
         )
 
 
@@ -2119,6 +2131,9 @@ class PlatformForm(
         super().__init__(*args, **kwargs)
         self.library = library
         self.instance.library = library
+        cast(TextSearchSelectWidget, self.fields["group"].widget).suggestions = tuple(
+            platform_groups(library)
+        )
         field = cast(forms.ChoiceField, self.fields["icon"])
         field.choices = list(PLATFORM_ICONS.items())
         field.initial = self.instance.icon or UNSPECIFIED_ICON
@@ -2134,7 +2149,10 @@ class PlatformForm(
             "icon",
             "group",
         )
-        widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
+        widgets: ClassVar[dict[str, forms.Widget]] = {
+            "name": autofocus_input_widget,
+            "group": TextSearchSelectWidget(),
+        }
 
 
 class DeviceForm(PrimitiveWidgetsMixin, forms.Form):

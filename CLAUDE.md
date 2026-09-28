@@ -737,9 +737,11 @@ Submodules re-exported via `common/components/__init__.py`:
   and upserts the answered `{value, label}` on its key, and `params` is one JSON
   mapping — a literal or a sibling field — read by that POST and by the search
   query alike, a field source being a dependency that re-searches, #1080;
-  `create_event` posts nothing and emits `search-select:create` `{name,
-  replaces}` for the consumer, `create_verb` names the row and
-  `replace_verb` offers it for a name a row holds exactly, #1328;
+  the `create` prop names how that row commits — `post`, `event` (posts
+  nothing and emits `search-select:create` `{name, replaces}` for the
+  consumer) or `select` (holds the typed text as value and label,
+  `create_selects=True`); `create_verb` names the row and `replace_verb`
+  offers it for a name a row holds exactly, #1328;
   a trailing × empties query and value in one press and emits
   `search-select:clear` after any `search-select:change`; on by default,
   `clearable=False` opts out, #1287; `none_label` pins a row that holds
@@ -760,7 +762,9 @@ Submodules re-exported via `common/components/__init__.py`:
   `ChoiceField`'s fixed `choices` with no search URL: an optional field's `""`
   choice is the none row, a required field's is dropped; a widget set, or
   `required` changed, after the field is built goes through `host_choices`,
-  #1301
+  #1301; `TextSearchSelectWidget` hosts a text field over suggestions, its
+  create row reading `Use “…”`. An element prop typed as a `Literal` of
+  strings reaches TypeScript as a union
 - **`icon_picker.py`** — `IconPicker()`, a `<drop-down behavior="choice-grid">`
   whose panel is a grid of icon radios (`ts/elements/behaviors/choice-grid.ts`);
   `IconPickerWidget` in `games/forms.py` hosts it for a `ChoiceField`, and

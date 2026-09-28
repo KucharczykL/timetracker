@@ -92,7 +92,7 @@ from common.components.domain import (
     SessionDeviceSelector,
     _resolve_name_with_icon,
 )
-from common.components.elements import Datalist, Footer, LinkTag
+from common.components.elements import Footer, LinkTag
 from common.components.filters import (
     FilterFieldPicker,
     NumberFilter,
@@ -358,7 +358,6 @@ __all__ = [
     "CopyControl",
     "CopyableFactValue",
     "CsrfInput",
-    "Datalist",
     "DatePicker",
     "DatePickerCalendar",
     "DatePickerField",

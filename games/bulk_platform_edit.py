@@ -37,13 +37,14 @@ from games.bulk_platforms import outcome, platform_resolution, platform_scope, u
 from games.events.idempotency import IdempotencyKey
 from games.forms import (
     KEEP,
-    DatalistTextInput,
     IconPickerWidget,
     PrimitiveWidgetsMixin,
+    TextSearchSelectWidget,
     UnsetFieldsForm,
     UnsetWidget,
 )
 from games.models import Platform, UserLibrary
+from games.reads.platform_groups import platform_groups
 from games.writes.answers import answered
 from games.writes.platform import edit_platform_in_batch
 
@@ -105,18 +106,6 @@ class PlatformEditStatement:
             raise statement_unreadable(f"{raw!r}: {refused}") from refused
 
 
-def _groups(library: UserLibrary) -> list[str]:
-    """Every group a live platform the library sees holds."""
-    return sorted(
-        set(
-            Platform.objects.visible_to(library)
-            .exclude(group="")
-            .values_list("group", flat=True)
-        ),
-        key=str.casefold,
-    )
-
-
 def _group_shown(group: str) -> str:
     return group or NO_GROUP
 
@@ -132,7 +121,7 @@ class BulkPlatformEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
         label="Group",
         required=False,
         max_length=GROUP_LENGTH,
-        widget=UnsetWidget(DatalistTextInput(), none_label=NO_GROUP),
+        widget=UnsetWidget(TextSearchSelectWidget(), none_label=NO_GROUP),
     )
     icon = forms.ChoiceField(
         label="Icon",
@@ -151,9 +140,11 @@ class BulkPlatformEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
     ) -> None:
         super().__init__(data, prefix=prefix)
         group = cast(UnsetWidget, self.fields["group"].widget).widget
-        cast(DatalistTextInput, group).suggestions = tuple(_groups(library))
+        cast(TextSearchSelectWidget, group).suggestions = tuple(
+            platform_groups(library)
+        )
         if rows:
-            group.attrs["placeholder"] = keeping(
+            cast(TextSearchSelectWidget, group).placeholder = keeping(
                 rows, lambda row: row.group, _group_shown
             )
             cast(IconPickerWidget, self.fields["icon"].widget).keep_label = keeping(

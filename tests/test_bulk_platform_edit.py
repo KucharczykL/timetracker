@@ -160,7 +160,9 @@ def test_the_placeholders_say_what_the_rows_hold(owned_library, amiga, dos):
     )
 
     assert "Keep: mixed" in html
-    assert '<option value="Commodore">' in html
+    assert 'data-value="Commodore"' in html
+    assert 'create="select"' in html
+    assert "<datalist" not in html
 
 
 # ── A batch and its Undo ─────────────────────────────────────────────────────
