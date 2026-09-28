@@ -13,6 +13,7 @@ from uuid import UUID
 
 from django import forms
 from django.core.exceptions import ValidationError
+from django.forms.models import ModelChoiceIterator
 
 from common.components import TemporalCopySource
 from common.date_time_presentation import DateTimePresentation
@@ -419,6 +420,12 @@ class CatalogGraphForm:
             form=EditionRowForm(prefix=edition_prefix(EDITION_PLACEHOLDER)),
             rows=[self._release_form(None, EDITION_PLACEHOLDER, 0)],
         )
+
+    def platform_names(self) -> dict[str, str]:
+        """Trimmed option text by key; "" is empty."""
+        field = cast(forms.ModelChoiceField, self.blank_row().fields["platform"])
+        choices = cast(ModelChoiceIterator, field.choices)
+        return {str(key): str(label).strip() for key, label in choices}
 
     def marked(self) -> tuple[EditionBlock, ReleaseRowForm] | None:
         """The surviving row the mark names, if it names one."""

@@ -1,13 +1,17 @@
 """The Edit Game page draws the whole catalog graph."""
 
 import re
+import uuid
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from games.catalog_compat import mirror_legacy_columns
 from games.catalog_form import LAST_RELEASE, MOST_ROWS, TOO_MANY_ROWS
 from games.models import Edition, Game, Platform, Release
+from games.views.catalog_section import _Name
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -568,3 +572,184 @@ def test_a_refused_row_re_renders_beside_its_sentence(
     assert response.status_code == 200
     assert "Name this edition." in response.content.decode()
     assert Edition.objects.filter(game=plain_game).count() == 1
+
+
+def templates(body: str) -> str:
+    """Only the blank rows the browser clones."""
+    return body.split("<template data-catalog-template=", 1)[1]
+
+
+def edit_url(game: Game) -> str:
+    return reverse("games:edit_game", args=[game.pk])
+
+
+def test_a_row_names_its_stored_platform(logged_in, owned_library, plain_game):
+    amiga = Platform.objects.create(library=owned_library, name="Amiga")
+    Release.objects.filter(edition__game=plain_game).update(platform=amiga)
+
+    body = live(page(logged_in, plain_game))
+
+    assert ">Show the Amiga release in the library</span>" in body
+    assert 'aria-label="Remove the Amiga release"' in body
+
+
+def test_a_refused_page_names_what_the_person_posted(
+    logged_in, owned_library, plain_game
+):
+    """Not the stored Amiga the person replaced."""
+    amiga = Platform.objects.create(library=owned_library, name="Amiga")
+    dos = Platform.objects.create(library=owned_library, name="DOS")
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    release = edition.releases.get(is_default=True)
+    Release.objects.filter(pk=release.pk).update(platform=amiga)
+
+    response = logged_in.post(
+        edit_url(plain_game),
+        {
+            "name": "Portal",
+            "status": "played",
+            "reference_wikidata": "",
+            "editions-count": "1",
+            "edition-0-edition_id": str(edition.pk),
+            "edition-0-name": "Gold",
+            "edition-0-releases-count": "2",
+            "edition-0-release-0-release_id": str(release.pk),
+            "edition-0-release-0-platform": str(dos.pk),
+            # An unoffered key refuses the page.
+            "edition-0-release-1-platform": str(uuid.uuid4()),
+            "in_library": "edition-0-release-0",
+        },
+    )
+
+    assert response.status_code == 200
+    body = live(response.content.decode())
+    assert ">Show the DOS release in the library</span>" in body
+    assert 'aria-label="Remove the DOS release"' in body
+    assert "Amiga release" not in body
+    assert ">Show the Unspecified release in the library</span>" in body
+    assert ">Gold</legend>" in body
+    assert 'aria-label="Remove the Gold edition"' in body
+
+
+def test_a_blank_edition_name_is_unnamed(logged_in, plain_game):
+    """Whitespace is no name."""
+    response = logged_in.post(
+        edit_url(plain_game),
+        {
+            "name": "Portal",
+            "status": "played",
+            "reference_wikidata": "",
+            "editions-count": "2",
+            "edition-0-name": "   ",
+            "edition-0-releases-count": "1",
+            "edition-0-release-0-platform": "",
+            "edition-1-name": "",
+            "edition-1-releases-count": "1",
+            "edition-1-release-0-platform": "",
+            "in_library": "edition-0-release-0",
+        },
+    )
+
+    assert response.status_code == 200
+    body = live(response.content.decode())
+    assert body.count(">Unnamed edition</legend>") == 2
+    assert body.count('aria-label="Remove the unnamed edition"') == 2
+    assert "Remove the    " not in body
+
+
+def test_the_cloned_rows_carry_their_name_patterns(logged_in, plain_game):
+    blank = templates(page(logged_in, plain_game))
+
+    assert 'data-catalog-name="Show the {} release in the library"' in blank
+    assert 'data-catalog-name="Remove the {} release"' in blank
+    assert 'data-catalog-name-of="platform"' in blank
+    assert ">Show the Unspecified release in the library</span>" in blank
+    assert 'data-catalog-name="Remove the {} edition"' in blank
+    assert 'data-catalog-name-empty="Remove the unnamed edition"' in blank
+    assert 'data-catalog-name-empty="Unnamed edition"' in blank
+    assert 'data-catalog-name-of="name"' in blank
+    assert ">Unnamed edition</legend>" in blank
+
+
+def test_naming_the_rows_reads_no_more_per_row(logged_in, owned_library, plain_game):
+    """One Platform read serves every row."""
+    amiga = Platform.objects.create(library=owned_library, name="Amiga")
+    edition = Edition.objects.get(game=plain_game, is_default=True)
+    Release.objects.filter(edition=edition).update(platform=amiga)
+
+    def queries() -> int:
+        with CaptureQueriesContext(connection) as captured:
+            logged_in.get(edit_url(plain_game))
+        return len(captured.captured_queries)
+
+    one = queries()
+    for year in (2011, 2012):
+        Release.objects.create(
+            edition=edition, platform=amiga, release_date=TemporalValue.from_year(year)
+        )
+
+    assert queries() == one
+
+
+def _tag(pattern: str, body: str) -> str:
+    found = re.search(pattern, body)
+    assert found, pattern
+    return found.group(0)
+
+
+def test_a_live_row_carries_every_name_hook(logged_in, plain_game):
+    """The element reads these on live rows."""
+    body = live(page(logged_in, plain_game))
+
+    mark = _tag(r'<span[^>]*data-catalog-name="Show the \{\} release[^>]*>', body)
+    assert 'data-catalog-name-of="platform"' in mark
+    assert "data-catalog-name-empty" not in mark
+
+    legend = _tag(r"<legend[^>]*data-catalog-name=[^>]*>", body)
+    assert 'data-catalog-name="{}"' in legend
+    assert 'data-catalog-name-of="name"' in legend
+    assert 'data-catalog-name-empty="Unnamed edition"' in legend
+
+    release_bin = _tag(
+        r'<button[^>]*data-catalog-name="Remove the \{\} release"[^>]*>', body
+    )
+    assert 'data-catalog-name-of="platform"' in release_bin
+    assert 'aria-label="Remove the Unspecified release"' in release_bin
+    assert 'title="Remove the Unspecified release"' in release_bin
+
+    edition_bin = _tag(
+        r'<button[^>]*data-catalog-name="Remove the \{\} edition"[^>]*>', body
+    )
+    assert 'data-catalog-name-of="name"' in edition_bin
+    assert 'data-catalog-name-empty="Remove the unnamed edition"' in edition_bin
+    assert 'aria-label="Remove the unnamed edition"' in edition_bin
+
+
+def test_a_platform_the_library_cannot_see_is_unspecified(
+    logged_in, plain_game, django_user_model
+):
+    """Its select shows the empty option too."""
+    other = django_user_model.objects.create_user(username="other", password="p")
+    hidden = Platform.objects.create(library=other.library, name="Hidden")
+    Release.objects.filter(edition__game=plain_game).update(platform=hidden)
+
+    body = live(page(logged_in, plain_game))
+
+    assert ">Show the Unspecified release in the library</span>" in body
+    assert "Hidden" not in body
+
+
+def test_a_platform_name_is_trimmed_as_the_element_trims(
+    logged_in, owned_library, plain_game
+):
+    amiga = Platform.objects.create(library=owned_library, name="  Amiga ")
+    Release.objects.filter(edition__game=plain_game).update(platform=amiga)
+
+    body = live(page(logged_in, plain_game))
+
+    assert ">Show the Amiga release in the library</span>" in body
+
+
+def test_a_name_pattern_needs_its_slot():
+    with pytest.raises(ValueError, match="no slot"):
+        _Name("Remove the release", "platform")

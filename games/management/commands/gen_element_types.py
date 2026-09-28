@@ -37,6 +37,11 @@ from common.criteria import (
     ModifierToken,
 )
 from common.date_time_presentation import DateTimePresentationConfig
+from games.views.catalog_section import (
+    CATALOG_NAME_KINDS,
+    NAME_SLOT,
+    CatalogNameKind,
+)
 from timetracker.config import SETTING_SOURCE_CHOICES
 from timetracker.settings_commands import SETTING_NAMESPACE_CHOICES
 from timetracker.settings_registry import THEME_CHOICES
@@ -123,6 +128,18 @@ class Command(BaseCommand):
                     # every day cell in both pickers.
                     TsConstant(
                         "BUTTON_SHAPE_CLASSES", dict[ButtonShape, str], SHAPE_CLASSES
+                    ),
+                ],
+            ),
+            # `<catalog-editor>` fills the server's name patterns.
+            output_dir / "catalog-names.ts": render_filter_metadata_module(
+                [],
+                constants=[
+                    TsConstant("CATALOG_NAME_SLOT", str, NAME_SLOT),
+                    TsConstant(
+                        "CATALOG_NAME_KINDS",
+                        list[CatalogNameKind],
+                        list(CATALOG_NAME_KINDS),
                     ),
                 ],
             ),

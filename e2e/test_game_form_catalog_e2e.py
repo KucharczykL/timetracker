@@ -408,3 +408,154 @@ def test_the_button_wakes_when_the_original_release_fills(signed_in, live_server
     type_original_release(page, "1998")
 
     expect(button).to_be_enabled()
+
+
+def mark_text(card: Locator) -> Locator:
+    """The text naming a row's mark."""
+    return card.locator("label [data-catalog-name-of='platform']")
+
+
+def test_a_changed_row_names_its_new_platform(signed_in, live_server, game, dos):
+    """Narrow: visible text. Wide: the radio's name."""
+    page = signed_in
+    page.set_viewport_size({"width": 390, "height": 900})
+    open_form(page, live_server, game)
+    card = release_card(page, 0, 0)
+
+    choose_platform(card, "DOS")
+
+    expect(mark_text(card)).to_be_visible()
+    expect(mark_text(card)).to_have_text("Show the DOS release in the library")
+    expect(
+        card.get_by_role("button", name="Remove the DOS release", exact=True)
+    ).to_be_visible()
+
+    page.set_viewport_size({"width": 1200, "height": 900})
+
+    expect(
+        card.get_by_role(
+            "radio", name="Show the DOS release in the library", exact=True
+        )
+    ).to_be_visible()
+
+
+def test_a_cloned_row_names_the_platform_chosen_in_it(
+    signed_in, live_server, game, dos
+):
+    page = signed_in
+    open_form(page, live_server, game)
+    page.click("[data-catalog-edition='0'] [data-catalog-add='release']")
+    added = release_card(page, 0, 1)
+
+    expect(
+        added.get_by_role(
+            "radio", name="Show the Unspecified release in the library", exact=True
+        )
+    ).to_be_visible()
+    choose_platform(added, "DOS")
+
+    expect(
+        added.get_by_role(
+            "radio", name="Show the DOS release in the library", exact=True
+        )
+    ).to_be_visible()
+    expect(
+        added.get_by_role("button", name="Remove the DOS release", exact=True)
+    ).to_be_visible()
+    expect(
+        release_card(page, 0, 0).get_by_role(
+            "radio", name="Show the Amiga release in the library", exact=True
+        )
+    ).to_be_visible()
+
+
+def test_a_cloned_edition_names_what_is_typed_in_it(
+    signed_in, live_server, game, amiga
+):
+    page = signed_in
+    open_form(page, live_server, game)
+    page.click("[data-catalog-add='edition']")
+    block = page.locator("[data-catalog-edition='1']")
+
+    expect(block).to_have_accessible_name("Unnamed edition")
+    block.locator("input[name='edition-1-name']").fill("Gold")
+
+    expect(block).to_have_accessible_name("Gold")
+    expect(
+        block.get_by_role("button", name="Remove the Gold edition", exact=True)
+    ).to_be_visible()
+
+    first = release_card(page, 1, 0)
+    choose_platform(first, "Amiga")
+    expect(
+        first.get_by_role(
+            "radio", name="Show the Amiga release in the library", exact=True
+        )
+    ).to_be_visible()
+
+
+def radio_named(scope: Locator, platform: str) -> Locator:
+    return scope.get_by_role(
+        "radio", name=f"Show the {platform} release in the library", exact=True
+    )
+
+
+def test_a_restored_value_is_named_on_arrival(signed_in, live_server, game, dos):
+    """Back: the browser restores; the element renames."""
+    page = signed_in
+    open_form(page, live_server, game)
+    choose_platform(release_card(page, 0, 0), "DOS")
+    page.fill("input[name='edition-0-name']", "Gold")
+
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+    page.go_back()
+    _upgraded(page)
+
+    card = release_card(page, 0, 0)
+    assert (
+        page.evaluate("performance.getEntriesByType('navigation')[0].type")
+        == "back_forward"
+    )
+    expect(card.locator("select[name$='-platform']")).to_have_value(str(dos.pk))
+    expect(radio_named(card, "DOS")).to_be_visible()
+    expect(
+        card.get_by_role("button", name="Remove the DOS release", exact=True)
+    ).to_be_visible()
+    expect(page.locator("[data-catalog-edition='0']")).to_have_accessible_name("Gold")
+
+
+def test_a_refused_page_names_the_posted_platform(signed_in, live_server, game, dos):
+    """Two unnamed editions refuse the page."""
+    page = signed_in
+    open_form(page, live_server, game)
+    choose_platform(release_card(page, 0, 0), "DOS")
+    page.click("[data-catalog-add='edition']")
+
+    page.click(SUBMIT)
+    expect(page.get_by_text("Name this edition.").first).to_be_visible()
+    _upgraded(page)
+
+    card = release_card(page, 0, 0)
+    expect(radio_named(card, "DOS")).to_be_visible()
+    expect(
+        card.get_by_role("button", name="Remove the DOS release", exact=True)
+    ).to_be_visible()
+
+
+def test_a_row_added_after_a_bin_names_its_own_platform(
+    signed_in, live_server, game, dos
+):
+    page = signed_in
+    open_form(page, live_server, game)
+    add = "[data-catalog-edition='0'] [data-catalog-add='release']"
+    page.click(add)
+    release_card(page, 0, 1).get_by_role(
+        "button", name="Remove the Unspecified release", exact=True
+    ).click()
+    page.click(add)
+
+    added = release_card(page, 0, 2)
+    choose_platform(added, "DOS")
+
+    expect(radio_named(added, "DOS")).to_be_visible()
+    expect(radio_named(release_card(page, 0, 0), "Amiga")).to_be_visible()

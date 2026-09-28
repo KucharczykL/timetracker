@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { renumbered } from "./catalog-editor.js";
+import { filled, renumbered } from "./catalog-editor.js";
 import "./catalog-editor.js";
 
 describe("renumbered", () => {
@@ -189,4 +189,157 @@ it("leaves the mark alone when the row it sits on stays", () => {
   click('[data-catalog-release="1"] [data-catalog-remove]');
 
   expect(marked()).toBe("edition-0-release-0");
+});
+
+describe("filled", () => {
+  it("puts the value in the slot", () => {
+    expect(filled("Remove the {} release", "DOS")).toBe("Remove the DOS release");
+  });
+
+  it("keeps a dollar sign literal", () => {
+    expect(filled("Remove the {} release", "PS$&")).toBe("Remove the PS$& release");
+  });
+
+  it("states the empty sentence for no value", () => {
+    expect(filled("{}", "", "Unnamed edition")).toBe("Unnamed edition");
+  });
+});
+
+// Hooks as the server stamps them.
+const NAMED = `
+<catalog-editor>
+  <fieldset data-catalog-edition="0">
+    <legend data-catalog-name="{}" data-catalog-name-of="name"
+      data-catalog-name-empty="Unnamed edition">Gold</legend>
+    <input name="edition-0-name" value="Gold">
+    <button type="button" data-catalog-remove
+      aria-label="Remove the Gold edition" title="Remove the Gold edition"
+      data-catalog-name="Remove the {} edition" data-catalog-name-of="name"
+      data-catalog-name-empty="Remove the unnamed edition"></button>
+    <div data-catalog-release="0">
+      <label>
+        <input type="radio" data-choice-card name="in_library" value="edition-0-release-0" checked>
+        <span data-catalog-name="Show the {} release in the library"
+          data-catalog-name-of="platform">Show the Amiga release in the library</span>
+      </label>
+      <button type="button" data-catalog-remove
+        aria-label="Remove the Amiga release" title="Remove the Amiga release"
+        data-catalog-name="Remove the {} release" data-catalog-name-of="platform"></button>
+      <input name="edition-0-release-0-release_date-year" value="1984">
+      <select name="edition-0-release-0-platform">
+        <option value="">Unspecified</option>
+        <option value="a" selected>Amiga</option>
+        <option value="d">DOS</option>
+        <option value="p">PS$&amp;</option>
+      </select>
+    </div>
+  </fieldset>
+</catalog-editor>`;
+
+describe("names", () => {
+  beforeEach(() => {
+    document.body.innerHTML = NAMED;
+  });
+
+  const release = '[data-catalog-release="0"]';
+  const edition = '[data-catalog-edition="0"]';
+
+  function choose(key: string): void {
+    const select = document.querySelector<HTMLSelectElement>(`${release} select`)!;
+    select.value = key;
+    select.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function typeName(name: string): void {
+    const input = document.querySelector<HTMLInputElement>('input[name="edition-0-name"]')!;
+    input.value = name;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  function markText(): string {
+    return document.querySelector(`${release} span[data-catalog-name]`)!.textContent!;
+  }
+
+  function bin(scope: string): HTMLElement {
+    return document.querySelector<HTMLElement>(`${scope} > button[data-catalog-remove]`)!;
+  }
+
+  it("names a release by the platform chosen in it", () => {
+    choose("d");
+    expect(markText()).toBe("Show the DOS release in the library");
+    expect(bin(release).getAttribute("aria-label")).toBe("Remove the DOS release");
+    expect(bin(release).title).toBe("Remove the DOS release");
+  });
+
+  it("keeps a dollar sign in a platform literal", () => {
+    choose("p");
+    expect(markText()).toBe("Show the PS$& release in the library");
+  });
+
+  it("names an edition by what is typed in it, and leaves its releases", () => {
+    typeName("Silver");
+    expect(document.querySelector(`${edition} > legend`)!.textContent).toBe("Silver");
+    expect(bin(edition).getAttribute("aria-label")).toBe("Remove the Silver edition");
+    expect(bin(edition).title).toBe("Remove the Silver edition");
+    expect(markText()).toBe("Show the Amiga release in the library");
+  });
+
+  it("names a blank edition as unnamed", () => {
+    typeName("   ");
+    expect(document.querySelector(`${edition} > legend`)!.textContent).toBe(
+      "Unnamed edition",
+    );
+    expect(bin(edition).title).toBe("Remove the unnamed edition");
+  });
+
+  it("ignores input on a row's other fields", () => {
+    const year = document.querySelector<HTMLInputElement>(
+      'input[name="edition-0-release-0-release_date-year"]',
+    )!;
+    year.value = "Silver";
+    year.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(markText()).toBe("Show the Amiga release in the library");
+    expect(document.querySelector(`${edition} > legend`)!.textContent).toBe("Gold");
+  });
+
+  describe("drift", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    afterEach(() => error.mockClear());
+
+    it("leaves a hook without a pattern alone, and says so", () => {
+      document.body.innerHTML = NAMED.replace(
+        ' data-catalog-name="Remove the {} release"',
+        "",
+      );
+      choose("d");
+      expect(bin(release).getAttribute("aria-label")).toBe("Remove the Amiga release");
+      expect(error).toHaveBeenCalled();
+    });
+
+    it("says so when a named row has no control", () => {
+      document.body.innerHTML = NAMED.replace(
+        'name="edition-0-release-0-platform"',
+        'name="edition-0-release-0-shape"',
+      );
+      expect(markText()).toBe("Show the Amiga release in the library");
+      expect(error).toHaveBeenCalled();
+    });
+  });
+
+  it("renames after a late restore, on pageshow", () => {
+    // Chromium restores late, firing no input.
+    document.querySelector<HTMLSelectElement>(`${release} select`)!.value = "d";
+    window.dispatchEvent(new Event("pageshow"));
+    expect(markText()).toBe("Show the DOS release in the library");
+  });
+
+  it("corrects a stale name on arrival", () => {
+    // As a browser restores a changed select.
+    document.body.innerHTML = NAMED.replace(
+      '<option value="a" selected>Amiga</option>',
+      '<option value="a">Amiga</option>',
+    ).replace('<option value="d">DOS</option>', '<option value="d" selected>DOS</option>');
+    expect(markText()).toBe("Show the DOS release in the library");
+    expect(bin(release).getAttribute("aria-label")).toBe("Remove the DOS release");
+  });
 });
