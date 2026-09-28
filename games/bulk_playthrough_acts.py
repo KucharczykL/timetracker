@@ -29,10 +29,8 @@ from games.events.idempotency import IdempotencyKey
 from games.events.playergame import PLAYERGAME_STATUS_CHANGED
 from games.events.playthrough import (
     PLAYTHROUGH_COMPLETED,
-    PLAYTHROUGH_COMPLETION_CORRECTED,
-    PLAYTHROUGH_COMPLETION_VOIDED,
-    PLAYTHROUGH_START_CORRECTED,
-    PLAYTHROUGH_START_VOIDED,
+    PLAYTHROUGH_COMPLETION_EVENTS,
+    PLAYTHROUGH_START_EVENTS,
     PLAYTHROUGH_STARTED,
 )
 from games.models import PlayerGameStatus, Playthrough, UserLibrary
@@ -233,16 +231,8 @@ CHANGED_SINCE = (
 )
 
 #: One endpoint's events; the latest of them owns the value.
-_START_FAMILY = (
-    PLAYTHROUGH_STARTED.event_type,
-    PLAYTHROUGH_START_CORRECTED.event_type,
-    PLAYTHROUGH_START_VOIDED.event_type,
-)
-_COMPLETION_FAMILY = (
-    PLAYTHROUGH_COMPLETED.event_type,
-    PLAYTHROUGH_COMPLETION_CORRECTED.event_type,
-    PLAYTHROUGH_COMPLETION_VOIDED.event_type,
-)
+_START_FAMILY = PLAYTHROUGH_START_EVENTS.family
+_COMPLETION_FAMILY = PLAYTHROUGH_COMPLETION_EVENTS.family
 
 
 def _row(actor: User, run_id: uuid.UUID) -> Playthrough:

@@ -26,6 +26,12 @@ from django.utils import timezone
 from common.naming import name_key
 from common.platform_icons import UNSPECIFIED_ICON, require_platform_icon
 from common.utils import label_with_details
+from games.endpoint_fields import (
+    endpoint_bound,
+    endpoint_marker,
+    endpoint_note,
+    endpoint_when,
+)
 from games.external_references import external_reference_url, normalize_provider_key
 from timetracker.settings_registry import THEME_CHOICES, SettingKey
 from timetracker.temporal import (
@@ -1657,53 +1663,23 @@ class Playthrough(ProjectionModel):
     note = models.TextField(blank=True, default="")
     #: The day the run began. Null is a day nobody knows, which is
     #: why `start_recorded_at` beside it carries the act itself.
-    started = TemporalValueField()
-    started_lower = models.GeneratedField(
-        expression=TemporalLowerBound("started"),
-        output_field=models.DateField(null=True),
-        null=True,
-        serialize=False,
-        db_persist=True,
-        editable=False,
-    )
-    started_upper = models.GeneratedField(
-        expression=TemporalUpperBound("started"),
-        output_field=models.DateField(null=True),
-        null=True,
-        serialize=False,
-        db_persist=True,
-        editable=False,
-    )
+    started = endpoint_when()
+    started_lower = endpoint_bound("started", "lower")
+    started_upper = endpoint_bound("started", "upper")
     #: Null is the act that never happened. An unknown day is null too,
     #: which is why the date cannot say it.
-    start_recorded_at = models.DateTimeField(null=True, default=None, editable=False)
+    start_recorded_at = endpoint_marker()
     #: The note of the act. The row's `note` has no day.
-    start_note = models.TextField(blank=True, default="")
+    start_note = endpoint_note()
     #: The day the run met its main objective. Null is a day nobody
     #: knows, as on the start.
-    completed = TemporalValueField()
-    completed_lower = models.GeneratedField(
-        expression=TemporalLowerBound("completed"),
-        output_field=models.DateField(null=True),
-        null=True,
-        serialize=False,
-        db_persist=True,
-        editable=False,
-    )
-    completed_upper = models.GeneratedField(
-        expression=TemporalUpperBound("completed"),
-        output_field=models.DateField(null=True),
-        null=True,
-        serialize=False,
-        db_persist=True,
-        editable=False,
-    )
+    completed = endpoint_when()
+    completed_lower = endpoint_bound("completed", "lower")
+    completed_upper = endpoint_bound("completed", "upper")
     #: Null is the act that never happened, as on the start.
-    completion_recorded_at = models.DateTimeField(
-        null=True, default=None, editable=False
-    )
+    completion_recorded_at = endpoint_marker()
     #: The note of the act. The row's `note` has no day.
-    completion_note = models.TextField(blank=True, default="")
+    completion_note = endpoint_note()
     #: The creation event's recorded_at.
     created_at = models.DateTimeField(editable=False)
     #: The remove event's recorded_at; null means live.
