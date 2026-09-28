@@ -704,6 +704,14 @@ def test_the_allowlist_holds_real_commands_only():
     )
 
 
+def test_the_retired_names_are_pinned():
+    #: An empty set would skip the guard tests.
+    assert RETIRED_COMMAND_NAMES == {
+        "library.playergame.set_status",
+        "library.playergame.set_mastered",
+    }
+
+
 def test_the_allowlist_holds_no_retired_name():
     #: Unclaimed members skip __init_subclass__.
     assert not {name.value for name in CommandName} & RETIRED_COMMAND_NAMES

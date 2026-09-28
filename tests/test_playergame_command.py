@@ -1,4 +1,4 @@
-"""Dispatching the command that tracks a game."""
+"""Dispatching the playergame commands."""
 
 import uuid
 from typing import Any, NamedTuple
@@ -201,13 +201,19 @@ class StatedFact(NamedTuple):
     stated: dict[str, Any]
     #: What a freshly tracked row already holds.
     held: dict[str, Any]
-    #: Set first, so it is no default.
+    #: Other fact, moved off its default.
     other: dict[str, Any]
     event_type: str
     payload: dict[str, Any]
     column: str
-    value: Any
-    default: Any
+
+    @property
+    def value(self) -> Any:
+        return self.stated[self.column]
+
+    @property
+    def default(self) -> Any:
+        return self.held[self.column]
 
 
 FACTS = [
@@ -219,8 +225,6 @@ FACTS = [
             event_type="library.playergame.status_changed",
             payload={"status": "completed"},
             column="status",
-            value=PlayerGameStatus.COMPLETED,
-            default=PlayerGameStatus.UNPLAYED,
         ),
         id="status",
     ),
@@ -232,8 +236,6 @@ FACTS = [
             event_type="library.playergame.mastered_changed",
             payload={"mastered": True},
             column="mastered",
-            value=True,
-            default=False,
         ),
         id="mastery",
     ),
@@ -275,7 +277,14 @@ def test_a_stated_fact_leaves_the_rest_of_the_row_alone(
     state(owned_user, owned_library, game, fact.other, "other")
     untouched = [
         column
-        for column in ("pk", "game_id", "tracked_at", "status", "mastered")
+        for column in (
+            "pk",
+            "game_id",
+            "tracked_at",
+            "status",
+            "mastered",
+            "excluded_from_unfinished",
+        )
         if column != fact.column
     ]
     before = PlayerGame.objects.get()
@@ -342,8 +351,7 @@ def test_one_idempotency_key_records_one_fact_change(owned_user, owned_library, 
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_recorded_status_fact_states_the_day_too(owned_user, owned_library):
-    #: The game form dispatches this one.
+def test_a_recorded_status_fact_states_the_day(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 
@@ -361,7 +369,7 @@ def test_a_recorded_status_fact_states_the_day_too(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_mastery_fact_still_states_no_time(owned_user, owned_library):
+def test_a_mastery_fact_states_no_time(owned_user, owned_library):
     #: Only the status event states a time.
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)

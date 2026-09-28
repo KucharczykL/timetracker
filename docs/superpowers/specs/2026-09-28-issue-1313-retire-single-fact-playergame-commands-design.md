@@ -56,8 +56,7 @@ to `None`. The tests examine these rules:
 - One idempotency key records one change.
 
 The tests use `dispatch`. They do not use `record_facts`, because
-`record_facts` tracks an untracked game. A refusal test through `record_facts`
-passes for the wrong reason.
+`record_facts` tracks an untracked game, and then the refusal does not occur.
 
 `tests/test_projection_replay_gate.py` states each fact through
 `RecordPlayerGameFacts`. The gate asserts the set of event types, so it shows
@@ -66,4 +65,4 @@ that both events are appended.
 ## Limits
 
 `SetPlayerGameExcludedFromUnfinished` states a different fact and stays. The
-walk-back rule of #1034 goes into `RecordPlayerGameFacts.build()`.
+walk-back rule of #1034 must go into `RecordPlayerGameFacts.build()`.
