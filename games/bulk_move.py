@@ -122,18 +122,14 @@ def _remove_the_emptied_bucket(
     holds: an act that removed a bucket it did not empty
     would remove a row its own inverse never puts back.
 
-    Read from the batch's own events, because a chunk posted
-    twice replays the move as moved, and the row then names
-    the target already.
+    Read from the batch's own events. A replayed chunk
+    finds the row on the target already, and a row read
+    before the move may be stale.
 
     A broken stream ends the batch.
     """
     with answered("session"):
-        try:
-            emptied = run_before(actor.library, session_id, correlation_id)
-        except CommandRejected:
-            #: This batch moved no such row.
-            return
+        emptied = run_before(actor.library, session_id, correlation_id)
     bucket = Playthrough.objects.filter(
         library=actor.library,
         pk=emptied,
@@ -189,7 +185,11 @@ def moved_by(library: UserLibrary, session_id: uuid.UUID, batch_id: uuid.UUID) -
 def run_before(
     library: UserLibrary, session_id: uuid.UUID, batch_id: uuid.UUID
 ) -> uuid.UUID:
-    """The run the session sat on before."""
+    """The run the session sat on before.
+
+    `CommandRejected`: the batch moved no such session.
+    `RowUnreadable`: the stream states no earlier run.
+    """
     events = list(aggregate_events(library, session_id))
     moved = next(
         (
@@ -222,17 +222,21 @@ def run_before(
 def _run_of(event: LibraryEvent) -> uuid.UUID:
     """The run a created or moved payload states."""
     run = event.payload.get("playthrough")
+    unreadable = RowUnreadable(
+        f"event {event.pk} of library {event.library_id} states playthrough {run!r}"
+    )
     if not isinstance(run, str):
-        raise RowUnreadable(f"event {event.pk} states playthrough {run!r}")
+        raise unreadable
     try:
         return uuid.UUID(run)
     except ValueError as error:
-        raise RowUnreadable(f"event {event.pk} states playthrough {run!r}") from error
+        raise unreadable from error
 
 
 def _put_back_the_run(
     actor: User,
     act: ActName,
+    *,
     batch_id: uuid.UUID,
     session_id: uuid.UUID,
     run_id: uuid.UUID,
@@ -291,7 +295,13 @@ def move_back_row(
     with answered("session"):
         earlier = run_before(actor.library, session_id, undoes)
     _put_back_the_run(
-        actor, act, undoes, session_id, earlier, idempotency_key, correlation_id
+        actor,
+        act,
+        batch_id=undoes,
+        session_id=session_id,
+        run_id=earlier,
+        idempotency_key=idempotency_key,
+        correlation_id=correlation_id,
     )
     return RowOutcome.of(
         move_session(

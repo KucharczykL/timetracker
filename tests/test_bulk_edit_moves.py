@@ -36,6 +36,7 @@ from games.bulk_sessions import (
 )
 from games.commands.playersession import CreateSession, DurationOnlyTiming
 from games.events.dispatch import CommandRejected, RowUnreadable, dispatch
+from games.events.playersession import PLAYERSESSION_CREATED
 from games.models import (
     Game,
     HistoricalPlaytimeRun,
@@ -764,6 +765,16 @@ def _moved_without_a_creation(owned_user, owned_library, game):
     return session, batch
 
 
+def _edit_back(owned_user, session, batch):
+    return edit_back(
+        owned_user,
+        session.pk,
+        undoes=batch,
+        idempotency_key=str(uuid.uuid7()),
+        correlation_id=uuid.uuid7(),
+    )
+
+
 def test_a_move_with_no_run_before_it_is_a_defect(owned_user, owned_library, game):
     """No creation: the row is wrong."""
     session, batch = _moved_without_a_creation(owned_user, owned_library, game)
@@ -778,13 +789,7 @@ def test_the_undo_of_a_move_with_no_run_before_it_is_a_defect(
     session, batch = _moved_without_a_creation(owned_user, owned_library, game)
 
     with pytest.raises(CommandFailed) as failed:
-        edit_back(
-            owned_user,
-            session.pk,
-            undoes=batch,
-            idempotency_key=str(uuid.uuid7()),
-            correlation_id=uuid.uuid7(),
-        )
+        _edit_back(owned_user, session, batch)
 
     assert failed.value.status_code == DEFECT_STATUS
 
@@ -816,7 +821,7 @@ def test_a_move_out_of_a_bucket_with_no_creation_is_a_defect(
 def test_a_move_back_to_a_run_another_library_holds_is_a_defect(
     owned_user, owned_library, game, django_user_model
 ):
-    """No command moves a run; the row drifted."""
+    """No command changes a run's library."""
     target = tracked_run(owned_library, game)
     earlier = a_run(owned_library, game, name="Second run")
     session = a_recorded_session(owned_user, earlier)
@@ -834,15 +839,36 @@ def test_a_move_back_to_a_run_another_library_holds_is_a_defect(
     Playthrough.objects.filter(pk=earlier.pk).update(library=stranger)
 
     with pytest.raises(CommandFailed) as failed:
-        edit_back(
-            owned_user,
-            session.pk,
-            undoes=batch,
-            idempotency_key=str(uuid.uuid7()),
-            correlation_id=uuid.uuid7(),
-        )
+        _edit_back(owned_user, session, batch)
 
     assert failed.value.status_code == DEFECT_STATUS
+
+
+@pytest.mark.parametrize("stated", [None, 7, "not-a-key"])
+def test_a_run_the_stream_cannot_read_is_a_defect(
+    owned_user, owned_library, game, stated
+):
+    target = tracked_run(owned_library, game)
+    session = a_recorded_session(
+        owned_user, a_run(owned_library, game, name="Second run")
+    )
+    batch = uuid.uuid7()
+    edit_one(
+        owned_user,
+        session,
+        choice=_to(target),
+        idempotency_key="one-move",
+        correlation_id=batch,
+    )
+    created = LibraryEvent.objects.get(
+        aggregate_id=session.pk, event_type=PLAYERSESSION_CREATED.event_type
+    )
+    LibraryEvent.objects.filter(pk=created.pk).update(
+        payload={**created.payload, "playthrough": stated}
+    )
+
+    with pytest.raises(RowUnreadable):
+        run_before(owned_library, session.pk, batch)
 
 
 def test_an_undo_refuses_a_run_removed_by_hand_after_the_batch(

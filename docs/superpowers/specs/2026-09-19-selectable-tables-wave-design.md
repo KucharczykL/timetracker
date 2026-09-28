@@ -374,7 +374,7 @@ inverse that reads a row's earlier events inherits, both found by
 payload of the wrong shape, is the row's fault and raises
 `RowUnreadable`, a defect that ends the batch, never a sentence the
 person cannot act on (`games/bulk_session_edit.py` and `run_before` in
-`games/bulk_move.py`); and a second press of Undo runs under a fresh
+`games/bulk_move.py` do); and a second press of Undo runs under a fresh
 correlation id, so a gate that asks whether the batch's own event is the
 latest of its family reads the first Undo as a later change and refuses
 every row it already put back. #1256's acts run that gate only while

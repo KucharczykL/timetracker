@@ -48,8 +48,9 @@ A chunk posted twice and a second Undo give `Unchanged` in each command.
 
 ## The inverse
 
-`edit_back` reads the facts that the batch changed: the move from
-`moved_by`, the others from `values_before`. When it finds neither, it
+`edit_back` reads the facts that the batch changed: whether it moved the row
+from `moved_by`, the earlier run from `run_before`, the others from
+`values_before`. When it finds neither, it
 refuses with `NOT_EDITED_BY_THIS_BATCH`. It restates the described facts
 first. Then it restores the bucket that the batch removed and moves the row
 back. A source run removed by hand after the batch refuses the row with
