@@ -66,11 +66,20 @@ filter.
   platform (`games/reads/platform_departures.py`); the per-row
   confirmation shows the same numbers.
 - Edit previews Platform, Group and Icon. Group is a text box with the
-  groups the library sees as a `<datalist>`, and ⊘ for no group. Icon
-  picks from `PLATFORM_ICONS`.
+  groups the library sees as a `<datalist>`, and ⊘ for no group.
+
+## The icon picker
+
+`PLATFORM_ICONS` names each icon a platform may take. `IconPicker` is a
+`<drop-down>` whose trigger shows the icon and its name, and whose
+panel is a grid of native radios, one tile an icon, named for screen
+readers and on hover. The `choice-grid` behavior focuses the checked
+tile on open, reflects the arrow keys' choice on the trigger, and
+closes on a click, Enter or Space. The bulk Edit leads with a Keep
+tile; the Platform form starts on the platform's icon and keeps an
+older slug pickable.
 
 ## Not in this issue
 
-- The single-row form keeps its text box for the icon.
 - A picker that accepts a removed platform (#979).
 - The ledger for other removable models.

@@ -43,6 +43,8 @@ from common.components import (
 )
 from common.components.core import Node
 from common.components.elements import Fieldset
+from common.components.icon_picker import IconChoice, IconPicker
+from common.components.platform_icons import PLATFORM_ICONS
 from common.components.primitives import (
     SHAPE_CLASSES,
     ButtonShape,
@@ -207,6 +209,7 @@ def apply_primitive_widget_classes(fields: Mapping[str, forms.Field]) -> None:
                 TimeZoneRowWidget,
                 TemporalWidget,
                 _ChoiceListWidget,
+                IconPickerWidget,
                 HoursMinutesWidget,
                 # Shapes its own control.
                 UnsetWidget,
@@ -464,6 +467,38 @@ DEFAULT_CHOICE_PLACEHOLDER = "Choose…"
 type ChoiceValue = str  # a posted option value
 type ChoiceLabel = str  # e.g. "Playthrough 2"
 type LabeledChoice = tuple[ChoiceValue, ChoiceLabel]
+
+
+class IconPickerWidget(forms.Widget):
+    """A `ChoiceField`'s icons as a dropdown grid.
+
+    A choice whose value is empty keeps; it shows `keep_label`.
+    """
+
+    component_media: ClassVar[Media] = Media(js=("dist/elements/drop-down.js",))
+
+    def __init__(self, *, label: str = "Icon", attrs=None):
+        super().__init__(attrs)
+        self.label = label
+        self.keep_label = "Keep"
+        #: Written by the field.
+        self.choices: list[tuple[str, str]] = []
+
+    def render(self, name, value, attrs=None, renderer=None):
+        attrs = {**self.attrs, **(attrs or {})}
+        choices = [
+            IconChoice(str(slug), self.keep_label if not slug else str(label))
+            for slug, label in self.choices
+        ]
+        return str(
+            IconPicker(
+                name=name,
+                label=self.label,
+                choices=choices,
+                value="" if value is None else str(value),
+                id=f"{attrs.get('id') or name}-picker",
+            )
+        )
 
 
 class DatalistTextInput(forms.TextInput):
@@ -2076,10 +2111,22 @@ class GameForm(
 class PlatformForm(
     _LibraryBoundConstraintValidationMixin, PrimitiveWidgetsMixin, forms.ModelForm
 ):
+    icon = forms.ChoiceField(
+        required=False, choices=(), widget=IconPickerWidget(label="Icon")
+    )
+
     def __init__(self, *args, library: UserLibrary, **kwargs):
         super().__init__(*args, **kwargs)
         self.library = library
         self.instance.library = library
+        held = self.instance.icon
+        icons = dict(PLATFORM_ICONS)
+        if held and held not in icons:
+            #: An older slug stays pickable.
+            icons[held] = held
+        field = cast(forms.ChoiceField, self.fields["icon"])
+        field.choices = list(icons.items())
+        field.initial = held or "unspecified"
 
     class Meta:
         model = Platform

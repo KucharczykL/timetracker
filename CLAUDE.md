@@ -756,6 +756,10 @@ Submodules re-exported via `common/components/__init__.py`:
   choice is the none row, a required field's is dropped; a widget set, or
   `required` changed, after the field is built goes through `host_choices`,
   #1301
+- **`icon_picker.py`** — `IconPicker()`, a `<drop-down behavior="choice-grid">`
+  whose panel is a grid of icon radios (`ts/elements/behaviors/choice-grid.ts`);
+  `IconPickerWidget` in `games/forms.py` hosts it for a `ChoiceField`, and
+  `PLATFORM_ICONS` (`common/components/platform_icons.py`) names the icons
 - **`unset_field.py`** — `UnsetField()`, one field joined to a ⊘ toggle
   (`ts/elements/unset-field.ts`) whose checkbox posts `<name>-unset`: a bulk
   form's "none" apart from "keep", which an empty field states. Forms reach it

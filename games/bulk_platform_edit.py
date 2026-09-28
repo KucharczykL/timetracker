@@ -37,8 +37,8 @@ from games.bulk_platforms import outcome, platform_resolution, platform_scope, u
 from games.events.idempotency import IdempotencyKey
 from games.forms import (
     KEEP,
-    ChoiceSearchSelectWidget,
     DatalistTextInput,
+    IconPickerWidget,
     PrimitiveWidgetsMixin,
     UnsetFieldsForm,
     UnsetWidget,
@@ -121,6 +121,10 @@ def _group_shown(group: str) -> str:
     return group or NO_GROUP
 
 
+def _icon_shown(icon: str) -> str:
+    return PLATFORM_ICONS.get(icon, icon)
+
+
 class BulkPlatformEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
     """An empty field keeps; ⊘ states no group."""
 
@@ -133,8 +137,8 @@ class BulkPlatformEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
     icon = forms.ChoiceField(
         label="Icon",
         required=False,
-        choices=[("", ""), *((icon, icon) for icon in PLATFORM_ICONS)],
-        widget=ChoiceSearchSelectWidget(),
+        choices=[("", "Keep"), *PLATFORM_ICONS.items()],
+        widget=IconPickerWidget(label="Icon"),
     )
 
     def __init__(
@@ -152,9 +156,9 @@ class BulkPlatformEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
             group.attrs["placeholder"] = keeping(
                 rows, lambda row: row.group, _group_shown
             )
-            cast(
-                ChoiceSearchSelectWidget, self.fields["icon"].widget
-            ).placeholder = keeping(rows, lambda row: row.icon, str)
+            cast(IconPickerWidget, self.fields["icon"].widget).keep_label = keeping(
+                rows, lambda row: row.icon, _icon_shown
+            )
 
     def clean(self) -> dict[str, Any]:
         cleaned = super().clean()
