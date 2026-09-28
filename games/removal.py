@@ -4,8 +4,7 @@ Nothing here destroys a row. `games.retention` keeps the guard that
 refuses a destroying delete of a referenced row.
 """
 
-import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -94,20 +93,7 @@ _AFTER_STAMP: dict[type[Model], tuple[Callable[[Any, datetime | None], None], ..
 }
 
 
-#: The column naming the batch that removed a row.
-BATCH_COLUMN = "removed_in_batch"
-
-
-def names_its_batch(model: type[Model]) -> bool:
-    """Whether a removal of this model names its batch."""
-    return any(field.name == BATCH_COLUMN for field in model._meta.concrete_fields)
-
-
-def _stamp(
-    instance: Model,
-    value: datetime | None,
-    columns: Mapping[str, object] | None = None,
-) -> None:
+def _stamp(instance: Model, value: datetime | None) -> None:
     model = type(instance)
     if model not in REMOVABLE_MODELS:
         raise TypeError(f"{model.__name__} is not a removable model.")
@@ -122,24 +108,15 @@ def _stamp(
         #: and a stamp must not revalidate
         #: a row a user is taking out.
         #: _AFTER_STAMP does what post_save would.
-        stamped = {"removed_at": value, **(columns or {})}
-        rows.update(**stamped)
-        for column, stated in stamped.items():
-            setattr(instance, column, stated)
+        rows.update(removed_at=value)
+        instance.removed_at = value  # type: ignore[attr-defined]
         for after in _AFTER_STAMP.get(model, ()):
             after(instance, previous_mark)
 
 
-def remove(instance: Model, *, batch: uuid.UUID | None = None) -> None:
-    """Take the row out of the library.
-
-    Outside a batch, NULL: no earlier Undo claims it.
-    """
-    model = type(instance)
-    batched = names_its_batch(model)
-    if batch is not None and not batched:
-        raise TypeError(f"{model.__name__} names no batch that removed it.")
-    _stamp(instance, now(), {BATCH_COLUMN: batch} if batched else None)
+def remove(instance: Model) -> None:
+    """Take the row out of the library."""
+    _stamp(instance, now())
 
 
 def restore(instance: Model) -> None:

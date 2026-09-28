@@ -9,7 +9,7 @@ from bulk_posts import act_url, posted, selection
 from django.http import Http404
 from django.urls import reverse
 
-from games.bulk_actions import BULK_ACTIONS, StampedRows
+from games.bulk_actions import BULK_ACTIONS, LedgerRows
 from games.bulk_removal import PLATFORM_GONE, REMOVE_PLATFORM
 from games.models import Game, Platform, Purchase, UserLibrary
 from games.reads.platform_departures import platform_departures_of
@@ -56,7 +56,7 @@ def _undo(client, batch: uuid.UUID):
 
 def test_the_act_is_declared():
     assert BULK_ACTIONS["platform.remove"] is REMOVE_PLATFORM
-    assert REMOVE_PLATFORM.undo_rows == StampedRows(Platform)
+    assert REMOVE_PLATFORM.undo_rows == LedgerRows(Platform)
 
 
 # ── The rows ─────────────────────────────────────────────────────────────────
@@ -140,7 +140,7 @@ def test_a_batch_removes_and_its_undo_puts_every_row_back(
 
     assert _live(owned_library) == set()
     batch = uuid.UUID(submitted[TOKEN_FIELD])
-    assert set(StampedRows(Platform).rows(owned_library, batch)) == {amiga.pk, dos.pk}
+    assert set(LedgerRows(Platform).rows(owned_library, batch)) == {amiga.pk, dos.pk}
 
     _undo(logged_in, batch)
 
@@ -172,16 +172,14 @@ def test_the_undo_after_a_restore_by_hand_changes_nothing(
     assert _live(owned_library) == {amiga.pk, dos.pk}
 
 
-def test_a_later_removal_takes_the_row_off_the_earlier_undo(
-    logged_in, owned_library, amiga, dos
-):
+def test_the_undo_restores_over_a_later_removal(logged_in, owned_library, amiga, dos):
     batch = _press(logged_in, amiga, dos)
     restore(amiga)
     remove(amiga)
 
     _undo(logged_in, batch)
 
-    assert _live(owned_library) == {dos.pk}
+    assert _live(owned_library) == {amiga.pk, dos.pk}
 
 
 def test_the_undo_answers_a_taken_name_for_that_row_only(
@@ -200,13 +198,13 @@ def test_the_undo_answers_a_taken_name_for_that_row_only(
 # ── Which act wrote a batch ──────────────────────────────────────────────────
 
 
-def test_a_stamped_batch_names_its_act(logged_in, owned_library, amiga):
+def test_a_ledger_batch_names_its_act(logged_in, owned_library, amiga):
     batch = _press(logged_in, amiga)
 
     assert _act_of(owned_library, batch) is REMOVE_PLATFORM
 
 
-def test_another_librarys_stamped_batch_is_not_found(
+def test_another_librarys_ledger_batch_is_not_found(
     logged_in, client, owned_library, django_user_model, amiga
 ):
     batch = _press(logged_in, amiga)
@@ -224,17 +222,6 @@ def test_another_librarys_stamped_batch_is_not_found(
 def test_an_unknown_batch_is_not_found(owned_library):
     with pytest.raises(Http404):
         _act_of(owned_library, uuid.uuid7())
-
-
-def test_a_batch_every_row_of_which_went_again_is_not_found(
-    logged_in, owned_library, amiga
-):
-    batch = _press(logged_in, amiga)
-    restore(amiga)
-    remove(amiga)
-
-    with pytest.raises(Http404):
-        _act_of(owned_library, batch)
 
 
 # ── The row menu and the list ────────────────────────────────────────────────

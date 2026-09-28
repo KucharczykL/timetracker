@@ -19,11 +19,11 @@ from games.bulk_actions import (
     ChoiceValue,
     EventRows,
     FilterJson,
+    LedgerRows,
     PreviewColumn,
     Refused,
     Resolution,
     RowOutcome,
-    StampedRows,
 )
 from games.bulk_games import GAME_GONE, game_scope
 from games.bulk_narrowing import narrowed
@@ -63,7 +63,7 @@ from games.writes.historical_playtime import (
 from games.writes.platform import (
     Moved,
     remove_platform_in_batch,
-    restore_platform_from_batch,
+    undo_platform_batch,
 )
 from games.writes.playergame import remove_from_library, restore_to_library
 from games.writes.playersession import remove_session, restore_session
@@ -518,7 +518,11 @@ def remove_one_platform(
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
     """The stamp, not the key, makes a repeat harmless."""
-    return _outcome(remove_platform_in_batch(platform, batch=correlation_id))
+    return _outcome(
+        remove_platform_in_batch(
+            platform, batch=correlation_id, act=REMOVE_PLATFORM.name
+        )
+    )
 
 
 def restore_one_platform(
@@ -530,9 +534,11 @@ def restore_one_platform(
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
     return _outcome(
-        restore_platform_from_batch(
+        undo_platform_batch(
             _removed_row(Platform.objects.all(), actor, platform_id, "platform"),
-            batch=undoes,
+            undoes=undoes,
+            batch=correlation_id,
+            act=REMOVE_PLATFORM.name,
         )
     )
 
@@ -649,7 +655,7 @@ REMOVE_PLATFORM = BulkAction(
     confirm_label="Remove",
     subject="platform",
     color="red",
-    undo_rows=StampedRows(Platform),
+    undo_rows=LedgerRows(Platform),
     fallback="games:list_platforms",
     scope=platform_scope,
     resolve=platform_resolution,

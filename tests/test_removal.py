@@ -1,6 +1,5 @@
 """Removal takes a record out, destroying nothing."""
 
-import uuid
 from datetime import timedelta
 
 import pytest
@@ -8,7 +7,7 @@ from django.utils import timezone
 from session_rows import session_row
 from stated_runs import another_run
 
-from games.models import Game, Platform, PlayerSession, Playthrough
+from games.models import Game, PlayerSession, Playthrough
 from games.reads.player_sessions import library_sessions
 from games.reads.playtime import game_playtime
 from games.removal import remove, restore
@@ -84,45 +83,3 @@ def test_the_api_removes_a_playthrough_rather_than_destroying_it(client, owned_u
     run.refresh_from_db()
     assert run.removed_at is not None
     assert Playthrough.objects.filter(pk=run.pk).exists()
-
-
-# ── A removal that names its batch ───────────────────────────────────────────
-
-
-def test_a_batch_removal_names_the_batch(owned_library):
-    platform = Platform.objects.create(library=owned_library, name="Amiga")
-    batch = uuid.uuid7()
-
-    remove(platform, batch=batch)
-
-    platform.refresh_from_db()
-    assert platform.removed_at is not None
-    assert platform.removed_in_batch == batch
-
-
-def test_a_removal_outside_a_batch_lets_go_of_the_earlier_batch(owned_library):
-    platform = Platform.objects.create(library=owned_library, name="Amiga")
-    remove(platform, batch=uuid.uuid7())
-    restore(platform)
-
-    remove(platform)
-
-    platform.refresh_from_db()
-    assert platform.removed_in_batch is None
-
-
-def test_a_restore_keeps_the_batch_that_removed_the_row(owned_library):
-    platform = Platform.objects.create(library=owned_library, name="Amiga")
-    batch = uuid.uuid7()
-    remove(platform, batch=batch)
-
-    restore(platform)
-
-    platform.refresh_from_db()
-    assert platform.removed_at is None
-    assert platform.removed_in_batch == batch
-
-
-def test_a_model_without_the_column_refuses_a_batch(owned_library):
-    with pytest.raises(TypeError):
-        remove(make_game(owned_library), batch=uuid.uuid7())

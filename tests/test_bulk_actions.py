@@ -13,10 +13,10 @@ from games.bulk_actions import (
     ActTitle,
     BulkAction,
     EventRows,
+    LedgerRows,
     Presentations,
     PreviewColumn,
     RowOutcome,
-    StampedRows,
 )
 from games.bulk_reclassification import (
     ALREADY_RECORDED,
@@ -109,9 +109,9 @@ def test_a_model_no_event_speaks_about_is_refused():
         EventRows(Game)
 
 
-def test_a_stamp_that_names_no_batch_is_refused():
-    with pytest.raises(ValueError, match="names no batch"):
-        StampedRows(Game)
+def test_a_ledger_over_a_projection_is_refused():
+    with pytest.raises(TypeError, match="projection"):
+        LedgerRows(PlayerSession)
 
 
 def test_a_name_the_table_already_holds_is_refused(reclassify):

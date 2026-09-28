@@ -27,8 +27,8 @@ from common.duration_presentation import duration_presentation_for_request
 from common.layout import render_page
 from common.notices import Undo, notify
 from common.returns import UrlName
+from games.batch_ledger import batch_act
 from games.bulk_actions import (
-    BULK_ACTIONS,
     BoundRow,
     BulkAction,
     BulkActionName,
@@ -39,7 +39,6 @@ from games.bulk_actions import (
     RefusedAct,
     Resolution,
     RowOutcome,
-    StampedRows,
     bulk_action,
 )
 from games.events.dispatch import CommandRejected
@@ -825,11 +824,11 @@ def _act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkAction[Any] 
     A correlation nothing wrote, and one that is no batch, are not
     found. A name the table no longer holds answers None: that batch
     is real, and it is its Undo that is gone. Without events, the
-    stamps name it.
+    ledger names it.
     """
     first = batch_events(library, correlation_id).first()
     if first is None:
-        return _stamped_act_of(library, correlation_id)
+        return _ledger_act_of(library, correlation_id)
     stated = first.source_metadata.get("bulk", {})
     name = stated.get("action") if isinstance(stated, dict) else None
     if not isinstance(name, str):
@@ -838,15 +837,18 @@ def _act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkAction[Any] 
     return bulk_action(name)
 
 
-def _stamped_act_of(library: UserLibrary, correlation_id: uuid.UUID) -> BulkAction[Any]:
-    """The act whose stamps name this batch."""
-    for declared in BULK_ACTIONS.values():
-        if isinstance(declared.undo_rows, StampedRows) and declared.undo_rows.rows(
-            library, correlation_id
-        ):
-            return declared
-    logger.warning("[bulk]: %s names no event and no stamp", correlation_id)
-    raise Http404("No such batch.")
+def _ledger_act_of(
+    library: UserLibrary, correlation_id: uuid.UUID
+) -> BulkAction[Any] | None:
+    """The act the ledger names for this batch.
+
+    Such an act writes no event, so nothing else names it.
+    """
+    name = batch_act(library, correlation_id)
+    if name is None:
+        logger.warning("[bulk]: %s names no event and no ledger row", correlation_id)
+        raise Http404("No such batch.")
+    return bulk_action(name)
 
 
 @login_required

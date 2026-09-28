@@ -34,7 +34,8 @@ from games.events.dispatch import CommandRejected, RowNotHeld, RowUnreadable
 from games.events.idempotency import IdempotencyKey
 from games.forms import ChoiceSearchSelectWidget, LabeledChoice, PrimitiveWidgetsMixin
 from games.models import Game, PlayerGame, PlayerGameStatus, UserLibrary
-from games.reads.playergame_facts import FactChange, batch_fact_changes
+from games.reads.fact_change import FactChange
+from games.reads.playergame_facts import batch_fact_changes
 from games.writes.answers import answered
 from games.writes.playergame import record_facts, set_excluded_from_unfinished
 

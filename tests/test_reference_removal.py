@@ -1,7 +1,5 @@
 """What removal does to claimed keys (#976)."""
 
-import uuid
-
 import pytest
 from django.db import IntegrityError
 
@@ -199,14 +197,3 @@ def test_restoring_a_release_leaves_a_key_another_release_took(
     release.refresh_from_db()
     assert release.removed_at is None
     assert reference.removed_at is not None
-
-
-def test_a_batch_restore_of_a_platform_takes_back_its_key(owned_library):
-    platform = Platform.objects.create(name="Amiga", library=owned_library)
-    reference = _reference("platform", platform, "Q100")
-    remove(platform, batch=uuid.uuid7())
-
-    restore(platform)
-
-    reference.refresh_from_db()
-    assert reference.removed_at is None

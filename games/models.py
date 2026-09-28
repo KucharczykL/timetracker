@@ -474,10 +474,6 @@ class Platform(ReferencedRow):
     removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
-    #: The last removal's batch; NULL outside one.
-    removed_in_batch = models.UUIDField(
-        null=True, blank=True, default=None, editable=False
-    )
 
     def __str__(self):
         return self.name
@@ -1323,6 +1319,42 @@ class ListColumnChoice(models.Model):
 
     def __str__(self):
         return f"{self.user} ({self.get_mode_display()})"
+
+
+class BatchChange(models.Model):
+    """One field a batch changed on a conventional row.
+
+    A conventional row writes no event, so its batch Undo reads the
+    value before here. An event-backed act never writes one.
+    """
+
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                fields=("batch", "model_label", "row_id", "field"),
+                name="unique_batch_change_per_field",
+            ),
+        )
+        indexes = (models.Index(fields=("library", "batch")),)
+
+    id = UUIDv7Field(primary_key=True, editable=False)
+    library = models.ForeignKey(
+        "UserLibrary", on_delete=models.CASCADE, related_name="batch_changes"
+    )
+    #: The batch's correlation id.
+    batch = models.UUIDField()
+    #: The act's declared name.
+    act = models.CharField(max_length=100)
+    #: `app_label.model_name` of the row.
+    model_label = models.CharField(max_length=100)
+    row_id = models.UUIDField()
+    field = models.CharField(max_length=100)
+    earlier = models.JSONField(null=True)
+    stated = models.JSONField(null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.model_label} {self.row_id}.{self.field} in {self.batch}"
 
 
 class SiteSetting(models.Model):

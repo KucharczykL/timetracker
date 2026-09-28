@@ -25,12 +25,12 @@ from common.components.primitives import Align, ButtonColor, Cell
 from common.date_time_presentation import DateTimePresentation
 from common.duration_presentation import DurationPresentation
 from common.returns import UrlName
+from games.batch_ledger import batch_rows
 from games.events.dispatch import CommandOutcome, CommandResult
 from games.events.idempotency import IdempotencyKey
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, AggregateType
-from games.models import UserLibrary
+from games.models import ProjectionModel, UserLibrary
 from games.reads.events import batch_aggregate_ids
-from games.removal import BATCH_COLUMN, names_its_batch
 from games.writes.answers import SubjectNoun
 
 #: An act's name, and its route segment.
@@ -277,28 +277,24 @@ class EventRows:
 
 
 @dataclass(frozen=True, slots=True)
-class StampedRows:
-    """An Undo reading stamps: a conventional row."""
+class LedgerRows:
+    """An Undo reading the batch ledger: a conventional row."""
 
     model: type[Model]
 
     def __post_init__(self) -> None:
-        if not names_its_batch(self.model):
-            raise ValueError(
-                f"{self.model.__name__}'s removal stamp names no batch, so "
-                "an Undo reading it would read an empty batch."
+        if issubclass(self.model, ProjectionModel):
+            raise TypeError(
+                f"{self.model.__name__} is a projection: its batches are "
+                "events, and the ledger would record them twice."
             )
 
     def rows(self, library: UserLibrary, batch: uuid.UUID) -> list[uuid.UUID]:
-        return list(
-            self.model._default_manager.filter(library=library, **{BATCH_COLUMN: batch})
-            .order_by("pk")
-            .values_list("pk", flat=True)
-        )
+        return batch_rows(library, batch, self.model)
 
 
 #: Where a batch's Undo reads its rows.
-type UndoRows = EventRows | StampedRows
+type UndoRows = EventRows | LedgerRows
 
 
 _TABLE: dict[BulkActionName, BulkAction[Any]] = {}
