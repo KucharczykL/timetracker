@@ -56,5 +56,7 @@ class Migration(migrations.Migration):
                 name="historicalplaytime_one_live_per_session",
             ),
         ),
-        migrations.RunPython(state_restated_at, migrations.RunPython.noop),
+        migrations.RunPython(
+            state_restated_at, migrations.RunPython.noop, elidable=True
+        ),
     ]

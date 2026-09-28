@@ -192,8 +192,9 @@ docs/           — Additional documentation
   key, no foreign key, since nothing outside the projections points at a
   projection row; `default_device` reads the live one or none. Migration 0015
   converted every existing row under its own key through
-  `games/backfill/device.py`, which `load_sample_data` also runs until the
-  fixture is regenerated. Contract is
+  `games/backfill/device.py`; the 2026-09-28 squash elided it, and the
+  module leaves with the replaced files (see
+  [Squashing](docs/migration-squash.md)). Contract is
   [The Device aggregate](docs/superpowers/specs/2026-09-24-issue-1274-device-aggregate-design.md)
 - **ExchangeRate** — cached FX rates per currency pair per year
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs/historical_playtime/devices/platforms), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern

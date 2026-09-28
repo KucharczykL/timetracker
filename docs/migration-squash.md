@@ -36,21 +36,59 @@ WHERE app = 'games'
   );
 ```
 
-## What the next squash takes with it
+## The third squash, 2026-09-28
 
-`0015_device_conversion` is `elidable=True`, like the two data migrations
-before it, and imports `games/backfill/device.py`. The committed sample
-fixture still holds device rows and no device events, so `load_sample_data`
-runs the same pass before it rebuilds. Regenerate the fixture with `make
-anonymize-sample` against a deployment that has run `0015`, and the pass
-converts nothing on load; then the next squash drops `0015`, and the module
-and its call in `load_sample_data` leave the tree with it.
+`make squash-migrations ARGS="games 0007 0018"`, output committed as the
+tool wrote it plus `ruff` formatting, on the day the deployment reached
+`0018`. It replaces the twelve files from `0007` on and depends on the
+`0001` baseline, which it does not touch. Three data passes were elided:
+`0015`, written `elidable=True`, and `0011` and `0018`, which were not and
+took the flag on the day. The flag is read by the optimizer alone, so
+marking an applied migration changes nothing a deployment does. The two
+`RunSQL` operations in `0014` and `0016` are barriers and survive in the
+squashed file, as the four in `0001` do. Twenty-eight operations, no
+`RunPython`. `make verify-baseline ARGS="--migrate"` on that day's dump
+migrated the copy, recorded the squash beside the originals, and found
+every catalog identical.
 
-Until then, `0015` runs today's code. A fresh database holds no device and
-reads nothing, so it migrates under any later schema. A deployment still
-holding unconverted devices checks that its event and projection tables hold
-every column the code declares, and refuses by name otherwise: deploy the
-release carrying `0015`, migrate, and move on from there.
+## What step two takes with it
+
+After the deployment has run once with both present and recorded the
+squash:
+
+- The twelve replaced files go, and `replaces` comes off the squashed one.
+- `games/backfill/device.py` goes with `0015`, and so do its call in
+  `load_sample_data` and `tests/test_device_conversion.py`. The committed
+  fixture carries every device as its events since 2026-09-28, so the pass
+  converts nothing on load already.
+- `tests/test_platform_icon_migration.py` imports `0018` by module and
+  `tests/test_historical_playtime_projection.py` imports `0011`. Each
+  tests a data pass that ran once. Take the test with its file, or move the
+  function under test out of the migration first.
+- The deployment keeps the twelve history rows, so one statement follows
+  that deploy, rehearsed with `make verify-baseline ARGS="--normalize
+  cutover.sql --migrate"`:
+
+```sql
+DELETE FROM django_migrations
+WHERE app = 'games'
+  AND name IN (
+    '0007_remove_game_status_and_mastered',
+    '0008_projection_library_identity',
+    '0009_historical_playtime',
+    '0010_alter_filterpreset_mode',
+    '0011_historicalplaytime_reclassified_from',
+    '0012_library_event_batch_indexes',
+    '0013_list_column_choice',
+    '0014_device_projection',
+    '0015_device_conversion',
+    '0016_default_device_key',
+    '0017_batch_change',
+    '0018_platform_icon_glyphs'
+  );
+```
+
+The next migration numbers on from the replaced range: `0019`.
 
 ## Do it a different way next time
 
