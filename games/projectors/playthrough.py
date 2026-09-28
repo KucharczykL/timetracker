@@ -3,6 +3,7 @@
 import uuid
 from typing import ClassVar
 
+from games.endpoints import PLAYTHROUGH_COMPLETION, PLAYTHROUGH_START
 from games.events.envelope import RecordedEvent
 from games.events.playthrough import (
     PLAYTHROUGH_COMPLETED,
@@ -37,22 +38,10 @@ class Playthroughs(Projector):
 
     def _started(self, event: RecordedEvent) -> None:
         #: Every value off the event, so a replay agrees.
-        self.amend(
-            Playthrough,
-            event,
-            started=event.effective_time,
-            start_recorded_at=event.recorded_at,
-            start_note=event.payload["note"],
-        )
+        self.project_stated(PLAYTHROUGH_START, event)
 
     def _completed(self, event: RecordedEvent) -> None:
-        self.amend(
-            Playthrough,
-            event,
-            completed=event.effective_time,
-            completion_recorded_at=event.recorded_at,
-            completion_note=event.payload["note"],
-        )
+        self.project_stated(PLAYTHROUGH_COMPLETION, event)
 
     def _name_changed(self, event: RecordedEvent) -> None:
         self.amend(Playthrough, event, name=event.payload["name"])
@@ -61,40 +50,16 @@ class Playthroughs(Projector):
         self.amend(Playthrough, event, note=event.payload["note"])
 
     def _start_corrected(self, event: RecordedEvent) -> None:
-        #: The marker holds the first statement's instant, not this one.
-        self.amend(
-            Playthrough,
-            event,
-            started=event.effective_time,
-            start_note=event.payload["note"],
-        )
+        self.project_corrected(PLAYTHROUGH_START, event)
 
     def _completion_corrected(self, event: RecordedEvent) -> None:
-        self.amend(
-            Playthrough,
-            event,
-            completed=event.effective_time,
-            completion_note=event.payload["note"],
-        )
+        self.project_corrected(PLAYTHROUGH_COMPLETION, event)
 
     def _start_voided(self, event: RecordedEvent) -> None:
-        #: Marker included: null is the act that did not occur.
-        self.amend(
-            Playthrough,
-            event,
-            started=None,
-            start_recorded_at=None,
-            start_note="",
-        )
+        self.project_voided(PLAYTHROUGH_START, event)
 
     def _completion_voided(self, event: RecordedEvent) -> None:
-        self.amend(
-            Playthrough,
-            event,
-            completed=None,
-            completion_recorded_at=None,
-            completion_note="",
-        )
+        self.project_voided(PLAYTHROUGH_COMPLETION, event)
 
     def _removed(self, event: RecordedEvent) -> None:
         #: The event's instant, so a replay agrees.

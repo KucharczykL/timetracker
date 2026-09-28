@@ -19,9 +19,12 @@ unambiguous to the interpreter and a trap for everyone else.
 from abc import ABC
 from collections.abc import Callable, Container, Mapping
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 from weakref import WeakKeyDictionary
 
+from django.apps import apps
+
+from games.endpoint_fields import EndpointColumns
 from games.events.envelope import RecordedEvent
 from games.events.targets import LIVE_TARGET, ProjectionTarget
 from games.events.vocabulary import EventSpec, EventType
@@ -387,6 +390,25 @@ class Projector(ABC):
             "stream is wrong, not the row."
         )
 
+    def project_stated(self, endpoint: EndpointColumns, event: RecordedEvent) -> None:
+        """An endpoint's act, as the event states it."""
+        self.amend(
+            _endpoint_model(endpoint),
+            event,
+            **{endpoint.marker: event.recorded_at},
+            **_stated_values(endpoint, event),
+        )
+
+    def project_corrected(
+        self, endpoint: EndpointColumns, event: RecordedEvent
+    ) -> None:
+        """A better statement; the marker keeps the first act's instant."""
+        self.amend(_endpoint_model(endpoint), event, **_stated_values(endpoint, event))
+
+    def project_voided(self, endpoint: EndpointColumns, event: RecordedEvent) -> None:
+        """The record taken back: what a row holds before any act."""
+        self.amend(_endpoint_model(endpoint), event, **endpoint.unstated_columns())
+
     def __init_subclass__(
         cls,
         *,
@@ -400,3 +422,18 @@ class Projector(ABC):
         if abstract:
             return
         registry.register(cls)
+
+
+def _endpoint_model(endpoint: EndpointColumns) -> type[ProjectionModel]:
+    return cast("type[ProjectionModel]", apps.get_model(endpoint.model_label))
+
+
+def _stated_values(endpoint: EndpointColumns, event: RecordedEvent) -> dict[str, Any]:
+    """Every value a statement carries: day, note, and way."""
+    values: dict[str, Any] = {
+        endpoint.when: event.effective_time,
+        endpoint.note: event.payload["note"],
+    }
+    if endpoint.way is not None:
+        values[endpoint.way] = event.payload["way"]
+    return values
