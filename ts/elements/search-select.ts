@@ -1253,6 +1253,11 @@ const initWidget = (containerElement: Element) => {
   // this on dropdown:show, then focuses the input — issues #297/#94).
   container._searchSelectRefetch = () => {
     if (!searchUrl) return;
+    //: A debounced search for the old query would answer after this one.
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
+      debounceTimer = null;
+    }
     hasPrefetched = true;
     search.value = multi ? "" : (container._searchSelectLabel ?? "");
     if (!multi) container._searchSelectDirty = false;

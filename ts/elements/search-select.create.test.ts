@@ -400,3 +400,27 @@ describe("<search-select> create row its consumer commits", () => {
     expect(heard).not.toHaveBeenCalled();
   });
 });
+
+describe("<search-select> refetch", () => {
+  beforeEach(() => document.body.replaceChildren());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("drops a debounced search for the old query", async () => {
+    const { searchMock } = stubEndpoints([]);
+    const host = mount({ "create-url": "" }) as SearchSelectLike & {
+      refetchOptions(): void;
+    };
+    const box = searchBox(host);
+    box.focus();
+    box.value = "stale";
+    box.dispatchEvent(new Event("input", { bubbles: true }));
+    host.refetchOptions();
+    await new Promise(resolve => setTimeout(resolve, 600));
+
+    const queries = searchMock.mock.calls.map(call =>
+      new URL(String((call as unknown[])[0]), window.location.origin).searchParams.get("q")
+    );
+    expect(queries).not.toContain("stale");
+    expect(box.value).toBe("");
+  });
+});
