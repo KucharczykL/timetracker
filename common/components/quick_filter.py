@@ -76,11 +76,7 @@ class QuickFacet(NamedTuple):
 QUICK_FACET_KINDS = frozenset({"set", "number", "date", "string", "bool"})
 
 
-# One facet row per list mode, each rendered via field_widget (set →
-# FilterSelect, number → NumberFilter, date → DateRangePicker, …). The order
-# is the idle row's priority: the leading facets stay inline, and a facet the
-# search field already covers stands last. Contract-tested in
-# tests/test_quick_filter_bar.py.
+# Facets per mode, in idle-row priority order.
 QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "games": [
         QuickFacet("status"),
@@ -381,8 +377,7 @@ class QuickFilterBar(BaseComponent):
         # propagates here; QuickFacet.label overrides only for compact wording.
         label = facet.label or _field_meta(filter_cls, facet.field)["label"]
         kind = _field_meta(filter_cls, facet.field)["kind"]
-        # Applied means the filter names the key; the bar's TS spills such a
-        # facet after every idle one.
+        # Applied facets spill after idle ones.
         applied = facet.field in self.existing
         config = {"data_quick_facet": ""}
         if applied:
@@ -452,8 +447,7 @@ class QuickFilterBar(BaseComponent):
             content_attributes=[("data-quick-overflow-items", "")],
             content_class="flex flex-col items-stretch gap-1",
         )[()]
-        # The dot keeps its width while invisible, so the width measured at
-        # connect holds once the TS shows it.
+        # Invisible, not hidden: connect measures its width.
         return Div(class_="hidden", data_quick_overflow="")[
             Div(class_="flex items-center gap-1")[
                 Dropdown(

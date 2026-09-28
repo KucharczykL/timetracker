@@ -25,7 +25,7 @@ import {
   priorityPlusTotalWidth,
 } from "./priority-plus.js";
 
-// A facet the page's filter states spills after every idle one.
+// Applied facets spill after idle ones.
 interface PrioritizedFacet extends OverflowItem {
   applied: boolean;
 }
@@ -115,8 +115,7 @@ class QuickFilterBarElement extends HTMLElement {
   // ResizeObserver; on every width change the facets that no longer fit are
   // MOVED (same DOM nodes — widget state, listeners and serializer scope all
   // survive) into the "⋯" overflow dropdown and moved back as the row widens.
-  // Idle facets spill first, rightmost first; applied ones spill last. Both
-  // the row and the menu keep the declared order.
+  // Row and menu keep declared order.
 
   private setupOverflow(): void {
     this.row = this.querySelector<HTMLElement>("[data-quick-row]");
@@ -203,9 +202,7 @@ class QuickFilterBarElement extends HTMLElement {
     const inRow = this.facets.filter((facet) => kept.has(facet));
     const spilled = this.facets.filter((facet) => !kept.has(facet));
 
-    // Walking back from the host, each kept facet goes before its successor
-    // unless it already stands there, so a layout that changes nothing
-    // moves no node.
+    // Moves only misplaced facets.
     let successor: Element = overflowHost;
     for (const facet of [...inRow].reverse()) {
       if (facet.element.nextElementSibling !== successor) {
@@ -213,7 +210,7 @@ class QuickFilterBarElement extends HTMLElement {
       }
       successor = facet.element;
     }
-    // An unchanged menu is left alone, so a panel open inside it stays put.
+    // Unchanged menu stays put: keeps open panels.
     const menuOrder = Array.from(overflowItems.children);
     const menuInOrder =
       menuOrder.length === spilled.length &&

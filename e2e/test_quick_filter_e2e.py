@@ -370,8 +370,7 @@ def test_priority_plus_overflow_collapses_and_restores(
     expect(page.locator(f"#session-row-{long_session.pk}")).to_be_visible()
     expect(page.locator(f"#session-row-{short_session.pk}")).to_have_count(0)
 
-    # Widen: the applied Duration takes a row slot ahead of the idle facets,
-    # and both halves keep the declared order.
+    # Widen: applied Duration outranks idle facets.
     page.set_viewport_size({"width": 2000, "height": 900})
     row_triggers = page.locator("[data-quick-row] > [data-quick-facet] > [data-toggle]")
     expect(row_triggers).to_have_count(4)
@@ -394,8 +393,7 @@ def test_priority_plus_overflow_collapses_and_restores(
 def test_an_applied_facet_stays_inline_and_marked(
     authenticated_page: Page, live_server
 ):
-    """A link landing with a facet applied shows that facet in the row,
-    marked; where it must spill, the "⋯" trigger says so."""
+    """An applied facet stays inline, marked."""
     page = authenticated_page
     page.set_viewport_size({"width": 2000, "height": 900})
     stated = json.dumps({"outside_playthrough_dates": {"value": True}})

@@ -39,11 +39,7 @@ def open_row_menu(page: Page, menu_id: str) -> None:
 
 
 def open_facet(page: Page, field: str) -> None:
-    """Open one quick facet's panel, wherever the row put it.
-
-    A facet may sit in the "⋯" menu at the page's width; opening it from
-    there is what a person does.
-    """
+    """Open a quick facet, from the row or ⋯."""
     trigger = page.locator(f"#quick-{field}-dropdownLink")
     if not trigger.is_visible():
         page.locator("[data-quick-overflow] [data-toggle]").first.click()

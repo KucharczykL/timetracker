@@ -509,7 +509,7 @@ _TRIGGER_ID = re.compile(r'id="quick-(\w+)-dropdownLink"')
 
 
 def _applied_facets(html: str) -> list[str]:
-    """The fields whose facet the bar stamps applied, in row order."""
+    """Fields stamped applied, in row order."""
     applied = []
     for match in _DROP_DOWN.finditer(html):
         if "data-quick-facet-applied" not in match.group(0):
@@ -526,7 +526,7 @@ def _trigger(html: str, field: str) -> str:
 
 
 class AppliedFacetMarkTest(TestCase):
-    """A facet the page's filter states is stamped and marked."""
+    """Applied facets are stamped and marked."""
 
     def test_a_dropdown_not_applied_renders_as_before(self):
         from common.components.search_select import ComboboxDropdown
@@ -599,11 +599,7 @@ class AppliedFacetMarkTest(TestCase):
 
 
 class FacetOrderTest(SimpleTestCase):
-    """Each list's facets in the order its idle row keeps them.
-
-    A search-duplicating string facet stands last; the reasons for each
-    order are in the quick bar facet priority spec.
-    """
+    """Each mode's facets in declared order."""
 
     ORDERS: ClassVar[dict[str, list[str]]] = {
         "sessions": [
