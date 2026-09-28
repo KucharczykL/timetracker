@@ -49,7 +49,7 @@ or `nobody`. A box offering none of those has nobody to demote to, and
 
 Fresh databases are built from the migration files in `games/migrations/`.
 `0001_squashed_0006_remove_session` is the baseline: it states the schema the
-deployment reached, rather than building up to it, and it is the one migration
+deployment reached, rather than building up to it, and it is the migration
 file that carries raw SQL for what no model declares — the `uuid_v7` and `temporal_value`
 domains, the two generated columns whose NOT NULL a `CREATE TABLE` drops, and
 the composite foreign key holding an event's stream against its library. Future

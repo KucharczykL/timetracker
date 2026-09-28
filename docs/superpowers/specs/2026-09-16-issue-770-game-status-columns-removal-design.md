@@ -17,8 +17,9 @@ alive. The sample fixture carried both fields on every game row, and
 
 ## Design
 
-Migration `0007_remove_game_status_and_mastered` removes the two fields. It
-has no guard. A database that did not run the #676 backfill cannot apply
+The migration that removed the two fields is part of
+`0007_remove_game_status_and_mastered_squashed_0018_platform_icon_glyphs`
+since the 2026-09-28 squash. It had no guard. A database that did not run the #676 backfill cannot apply
 `0001_squashed_0006_remove_session`, so it cannot reach `0007`.
 
 `Game.Status`, `games/playergame_status.py` and its test are removed. No code

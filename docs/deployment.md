@@ -184,8 +184,8 @@ written once the functions carried their own setting loads in one command.
 
 ## Replacing the migration history
 
-The `games` app has one migration, `0001_squashed_0006_remove_session`, and
-it states the schema the deployment already reached rather than building up
+The `games` app's history begins at `0001_squashed_0006_remove_session`, which
+states the schema the deployment already reached rather than building up
 to it. Every migration before it had run in full on every database that
 exists, so they were replaced by their own result, the second time with
 Django's `squashmigrations` (see [Squashing](migration-squash.md)); see

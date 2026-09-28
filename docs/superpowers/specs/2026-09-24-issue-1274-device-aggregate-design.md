@@ -70,8 +70,8 @@ submit creates one device. The Add, Edit, remove and restore pages and
 
 ## Conversion
 
-Migration `0014` changes the schema. Migration `0015` runs
-`games/backfill/device.py` one time:
+The schema change and the conversion were two migrations, both elided
+by the 2026-09-28 squash. The conversion ran once:
 
 1. Stop if no device needs conversion.
 2. Stop if a device has an unknown type. Show each row.
@@ -80,8 +80,10 @@ Migration `0014` changes the schema. Migration `0015` runs
    removed. Use the same key and the same times.
 5. Replay each library that changed. Stop if a table is different.
 
-`load_sample_data` runs the same pass until you regenerate the fixture.
-`anonymize_sample` writes device events, not device rows.
+`load_sample_data` ran the same pass until the fixture was regenerated on
+2026-09-28. The committed fixture carries every device as its events, and
+the loader refuses a device stated as a row. `anonymize_sample` writes
+device events, not device rows.
 
 ## Proof
 

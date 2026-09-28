@@ -15,7 +15,6 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 
 from common.platform_icons import canonical_icon
-from games.backfill.device import DeviceConversionRefused, convert_devices
 from games.conversion import _request_conversion_for_locked_state
 from games.events.rebuild import (
     RebuildMode,
@@ -28,7 +27,6 @@ from games.events.replay import PayloadVersionUnsupported, StreamNotContiguous
 from games.events.wiring import DEFAULT_WIRING
 from games.external_references import backfill_wikidata_references
 from games.models import (
-    Device,
     ExchangeRate,
     FilterPreset,
     Game,
@@ -44,7 +42,6 @@ FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "sample.yaml.g
 TARGET_LIBRARY_MARKER = "__target_library__"
 
 PRIVATE_MODELS = {
-    "games.device": Device,
     "games.game": Game,
     "games.purchase": Purchase,
     "games.filterpreset": FilterPreset,
@@ -155,16 +152,7 @@ class Command(BaseCommand):
                     state.requested_currency,
                 )
 
-            #: Convert device rows before rebuilding them.
-            try:
-                convert_devices(user.library)
-            except DeviceConversionRefused as error:
-                raise CommandError(
-                    f"Sample fixture's devices could not be converted: {error}"
-                ) from error
-
-            #: The fixture now carries the events themselves; replay them
-            #: into projections the same way make verify-replay-parity does.
+            #: Replay the fixture's events into projections.
             try:
                 report = rebuild_projections(user.library, mode=RebuildMode.REBUILD)
             except (
@@ -181,7 +169,7 @@ class Command(BaseCommand):
                     "Sample fixture could not be projected: "
                     f"{report.attempts[-1].conflict}"
                 )
-            #: The fixture predates #896: no reference rows.
+            #: The fixture carries no Wikidata reference rows.
             try:
                 backfilled = backfill_wikidata_references(user.library)
             except ValidationError as refusal:
@@ -359,10 +347,9 @@ class Command(BaseCommand):
 
         def held(kind_name, referenced_id, model):
             kind = kinds.kind_for(kind_name)
-            if kind.resolution is Resolution.PROJECTED and (
-                (kind.created_by, str(referenced_id)) in created
-            ):
-                return True
+            #: Projected rows travel as creation events only.
+            if kind.resolution is Resolution.PROJECTED:
+                return (kind.created_by, str(referenced_id)) in created
             return (model._meta.label_lower, str(referenced_id)) in record_keys
 
         for record in records:

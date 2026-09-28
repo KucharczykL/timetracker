@@ -24,6 +24,7 @@ from games.models import (
     ExchangeRate,
     Game,
     LibraryCalendar,
+    LibraryEvent,
     Platform,
     PlayerGame,
     PlayerSession,
@@ -362,15 +363,18 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
     from games.management.commands import load_sample_data
 
     fixture = tmp_path / "sample.yaml"
-    device_id = "00000000-0000-7000-8000-000000000202"
+    purchase_id = "00000000-0000-7000-8000-000000000202"
     fixture.write_text(
-        f"""- model: games.device
-  pk: {device_id}
+        f"""- model: games.purchase
+  pk: {purchase_id}
   fields:
     library: null
-    name: Unowned device
-    type: PC
+    games: []
+    platform: null
+    date_purchased: 2025-01-01
+    ownership_type: di
     created_at: 2025-01-01 00:00:00+00:00
+    updated_at: 2025-01-01 00:00:00+00:00
 """
     )
     monkeypatch.setattr(load_sample_data, "FIXTURE_PATH", fixture)
@@ -378,7 +382,95 @@ def test_sample_load_rejects_a_private_row_without_portable_owner_marker(
     with pytest.raises(CommandError, match="portable owner marker"):
         call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
-    assert not Device.objects.filter(pk=device_id).exists()
+    assert not Purchase.objects.filter(pk=purchase_id).exists()
+
+
+@pytest.mark.django_db
+def test_sample_load_refuses_a_device_stated_as_a_row(owner, monkeypatch, tmp_path):
+    """A device row vanishes at the rebuild."""
+    from games.management.commands import load_sample_data
+
+    fixture = tmp_path / "sample.yaml"
+    device_id = "00000000-0000-7000-8000-000000000203"
+    fixture.write_text(
+        f"""- model: games.device
+  pk: {device_id}
+  fields:
+    library: __target_library__
+    name: Deck
+    type: PC
+    created_at: 2025-01-01 00:00:00+00:00
+"""
+    )
+    monkeypatch.setattr(load_sample_data, "FIXTURE_PATH", fixture)
+
+    with pytest.raises(CommandError, match="games.device"):
+        call_command("load_sample_data", "--user", owner.username, verbosity=0)
+
+    assert not Device.objects.filter(library=owner.library).exists()
+    assert not LibraryEvent.objects.filter(
+        library=owner.library, event_type__startswith="library.device."
+    ).exists()
+
+
+@pytest.mark.django_db
+def test_sample_load_refuses_a_reference_naming_a_device_no_event_created(
+    owner, monkeypatch, tmp_path
+):
+    """A referenced device needs its creation event."""
+    from games.management.commands import load_sample_data
+
+    fixture = tmp_path / "sample.yaml"
+    device_id = "00000000-0000-7000-8000-000000000204"
+    stream_id = "00000000-0000-7000-8000-000000000205"
+    event_id = "00000000-0000-7000-8000-000000000206"
+    fixture.write_text(
+        yaml.safe_dump(
+            [
+                {
+                    "model": "games.libraryeventstreamhead",
+                    "pk": stream_id,
+                    "fields": {"library": "__target_library__", "current_sequence": 1},
+                },
+                {
+                    #: The named device has no creation event.
+                    "model": "games.libraryevent",
+                    "pk": event_id,
+                    "fields": {
+                        "library": "__target_library__",
+                        "stream": stream_id,
+                        "aggregate_id": "00000000-0000-7000-8000-000000000207",
+                        "event_type": "library.device.created",
+                        "payload": {"name": "Deck", "type": "PC"},
+                        "payload_schema_version": 1,
+                        "sequence": 1,
+                        "recorded_at": "2025-01-01 00:00:00+00:00",
+                        "idempotency_key": "sample:1",
+                        "correlation_id": "00000000-0000-7000-8000-000000000208",
+                        "causation_id": None,
+                        "actor": None,
+                        "effective_time": None,
+                        "source_metadata": {},
+                    },
+                },
+                {
+                    "model": "games.libraryeventreference",
+                    "pk": "00000000-0000-7000-8000-000000000209",
+                    "fields": {
+                        "library": "__target_library__",
+                        "event": event_id,
+                        "kind": "device",
+                        "payload_key": "device",
+                        "referenced_id": device_id,
+                    },
+                },
+            ]
+        )
+    )
+    monkeypatch.setattr(load_sample_data, "FIXTURE_PATH", fixture)
+
+    with pytest.raises(CommandError, match=rf"Device '{device_id}'"):
+        call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
 
 # Session.game and both platform foreign keys reference their promoted target's
@@ -493,21 +585,21 @@ def test_sample_load_rejects_duplicate_fixture_primary_keys(
     from games.management.commands import load_sample_data
 
     fixture = tmp_path / "sample.yaml"
-    duplicate_device_id = "00000000-0000-7000-8000-000000000401"
+    duplicate_purchase_id = "00000000-0000-7000-8000-000000000401"
     fixture.write_text(
         yaml.safe_dump(
             [
                 {
-                    "model": "games.device",
-                    "pk": duplicate_device_id,
+                    "model": "games.purchase",
+                    "pk": duplicate_purchase_id,
                     "fields": {
                         "library": "__target_library__",
                         "name": "First",
                     },
                 },
                 {
-                    "model": "games.device",
-                    "pk": duplicate_device_id,
+                    "model": "games.purchase",
+                    "pk": duplicate_purchase_id,
                     "fields": {
                         "library": "__target_library__",
                         "name": "Second",
@@ -520,11 +612,11 @@ def test_sample_load_rejects_duplicate_fixture_primary_keys(
 
     with pytest.raises(
         CommandError,
-        match=rf"duplicate games.device primary key {duplicate_device_id}",
+        match=rf"duplicate games.purchase primary key {duplicate_purchase_id}",
     ):
         call_command("load_sample_data", "--user", owner.username, verbosity=0)
 
-    assert not Device.objects.filter(pk=duplicate_device_id).exists()
+    assert not Purchase.objects.filter(pk=duplicate_purchase_id).exists()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -534,7 +626,7 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
     from games.management.commands import load_sample_data
 
     fixture = tmp_path / "sample.yaml"
-    colliding_device_id = "00000000-0000-7000-8000-000000000503"
+    colliding_purchase_id = "00000000-0000-7000-8000-000000000503"
     fixture.write_text(
         yaml.safe_dump(
             [
@@ -558,12 +650,18 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
                     },
                 },
                 {
-                    "model": "games.device",
-                    "pk": colliding_device_id,
+                    "model": "games.purchase",
+                    "pk": colliding_purchase_id,
                     "fields": {
                         "library": "__target_library__",
-                        "name": "Fixture device",
+                        "games": [],
+                        "platform": None,
+                        "date_purchased": "2025-01-01",
+                        "ownership_type": "di",
+                        "price_currency": "USD",
+                        "name": "Fixture purchase",
                         "created_at": "2025-01-01 00:00:00+00:00",
+                        "updated_at": "2025-01-01 00:00:00+00:00",
                     },
                 },
             ]
@@ -574,11 +672,13 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
 
     def insert_after_check(records):
         original_check(records)
-        Device.objects.create(
-            pk=colliding_device_id,
+        Purchase.objects.create(
+            pk=colliding_purchase_id,
             library=owner.library,
-            name="Concurrent device",
-            created_at=timezone.now(),
+            name="Concurrent purchase",
+            date_purchased=date(2025, 1, 1),
+            ownership_type="di",
+            price_currency="USD",
         )
 
     monkeypatch.setattr(
@@ -592,7 +692,7 @@ def test_sample_load_force_inserts_and_rolls_back_a_late_primary_key_collision(
 
     assert "duplicate key" in str(error.value).lower()
     assert not Platform.objects.filter(name="Rollback platform").exists()
-    assert not Device.objects.filter(pk=colliding_device_id).exists()
+    assert not Purchase.objects.filter(pk=colliding_purchase_id).exists()
     assert not ExchangeRate.objects.filter(
         currency_from="USD",
         currency_to="EUR",

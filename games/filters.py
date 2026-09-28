@@ -756,7 +756,7 @@ class PlaythroughFilter(OperatorFilter):
     # Cross-entity: runs at games matching these criteria
     game_filter: GameFilter | None = None
 
-    #: #1013 renamed `ended`; migration 0047 rewrites presets.
+    #: Old presets still spell `completed` as `ended`.
     renamed_fields: ClassVar[Mapping[str, str]] = {"ended": "completed"}
 
     fields: ClassVar[dict[str, FilterField]] = {

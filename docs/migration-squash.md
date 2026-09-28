@@ -1,6 +1,6 @@
 # Squashing the migration history
 
-The `games` app has one migration. It was reached once, on 2026-09-12, by
+The `games` app's history begins at one baseline. It was reached once, on 2026-09-12, by
 replacing 50 files with a single hand-written `0001_initial` and carrying the
 deployment over by hand. This is what that cost, and what to do differently.
 
@@ -38,12 +38,12 @@ WHERE app = 'games'
 
 ## The third squash, 2026-09-28
 
-`make squash-migrations ARGS="games 0007 0018"`, output committed as the
-tool wrote it plus `ruff` formatting, on the day the deployment reached
-`0018`. It replaces the twelve files from `0007` on and depends on the
-`0001` baseline, which it does not touch. Three data passes were elided:
-`0015`, written `elidable=True`, and `0011` and `0018`, which were not and
-took the flag on the day. The flag is read by the optimizer alone, so
+`make squash-migrations ARGS="games 0007 0018"` ran on the day the
+deployment reached `0018`. The output is committed as the tool wrote it,
+plus `ruff` formatting. It replaced the twelve files from `0007` on. It
+depends on the `0001` baseline and does not touch it. Three data passes
+were elided. `0015` was written `elidable=True`. `0011` and `0018` were
+not, and took the flag on the day. The optimizer alone reads the flag, so
 marking an applied migration changes nothing a deployment does. The two
 `RunSQL` operations in `0014` and `0016` are barriers and survive in the
 squashed file, as the four in `0001` do. Twenty-eight operations, no
@@ -51,23 +51,27 @@ squashed file, as the four in `0001` do. Twenty-eight operations, no
 migrated the copy, recorded the squash beside the originals, and found
 every catalog identical.
 
-## What step two takes with it
+## Step two, 2026-09-28
 
-After the deployment has run once with both present and recorded the
-squash:
+The deployment ran once on the squash (`main-b45a42b`), printed "No
+migrations to apply" and recorded
+`0007_remove_game_status_and_mastered_squashed_0018_platform_icon_glyphs`
+beside the twelve originals. Then, in one PR:
 
-- The twelve replaced files go, and `replaces` comes off the squashed one.
-- `games/backfill/device.py` goes with `0015`, and so do its call in
+- The twelve replaced files went, and `replaces` came off the squashed one.
+- `games/backfill/device.py` went with `0015`, with its call in
   `load_sample_data` and `tests/test_device_conversion.py`. The committed
-  fixture carries every device as its events since 2026-09-28, so the pass
-  converts nothing on load already.
-- `tests/test_platform_icon_migration.py` imports `0018` by module and
-  `tests/test_historical_playtime_projection.py` imports `0011`. Each
-  tests a data pass that ran once. Take the test with its file, or move the
-  function under test out of the migration first.
+  fixture has carried every device as its events since the same day, so
+  the pass converted nothing on load already.
+- `tests/test_platform_icon_migration.py` imported `0018` by module, and
+  one test in `tests/test_historical_playtime_projection.py` imported
+  `0011`. Each tested a data pass that ran once. Both went with their file;
+  the icon rename keeps its cover through the loader's synthetic-fixture
+  test and `canonical_icon`'s own.
 - The deployment keeps the twelve history rows, so one statement follows
-  that deploy, rehearsed with `make verify-baseline ARGS="--normalize
-  cutover.sql --migrate"`:
+  the deploy of step two. Save the block below as `cutover.sql` and
+  rehearse with `make verify-baseline ARGS="--normalize cutover.sql
+  --migrate"` on a dump taken after the squash was recorded:
 
 ```sql
 DELETE FROM django_migrations
@@ -87,6 +91,27 @@ WHERE app = 'games'
     '0018_platform_icon_glyphs'
   );
 ```
+
+Run the `DELETE` only once the step-two image is up. Django marks a
+squash applied only while every migration it `replaces` is recorded. The
+step-one image still carries `replaces`, so there the deleted rows turn
+the squash unapplied, and startup `migrate` applies it for real against
+tables that exist. A rollback to that image after the `DELETE` has the
+same result. Put the twelve rows back first. `django_migrations`
+has no unique key on `(app, name)`, so guard the insert yourself, for
+each name above:
+
+```sql
+INSERT INTO django_migrations (app, name, applied)
+SELECT 'games', '<name>', now()
+WHERE NOT EXISTS (
+  SELECT 1 FROM django_migrations WHERE app = 'games' AND name = '<name>'
+);
+```
+
+A dump taken before the squash row exists cannot rehearse the `DELETE`
+either: with the twelve rows gone and no squash row recorded, `migrate`
+applies the squashed file for real. Fetch the dump after the deploy.
 
 The next migration numbers on from the replaced range: `0019`.
 

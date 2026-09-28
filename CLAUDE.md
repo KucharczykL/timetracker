@@ -190,10 +190,9 @@ docs/           — Additional documentation
   device reference against the stream's creation event, never the table the
   replay writes. `UserLibraryPreferences.default_device_id` names a device by
   key, no foreign key, since nothing outside the projections points at a
-  projection row; `default_device` reads the live one or none. Migration 0015
-  converted every existing row under its own key through
-  `games/backfill/device.py`; the 2026-09-28 squash elided it, and the
-  module leaves with the replaced files (see
+  projection row; `default_device` reads the live one or none. The one-time
+  conversion of existing rows ran out of a migration the 2026-09-28
+  squash elided; what it left behind is the events (see
   [Squashing](docs/migration-squash.md)). Contract is
   [The Device aggregate](docs/superpowers/specs/2026-09-24-issue-1274-device-aggregate-design.md)
 - **ExchangeRate** — cached FX rates per currency pair per year
@@ -444,8 +443,8 @@ docs/           — Additional documentation
   `calendar_day_zone(library)`: the dormancy clock, the parity command, and
   `CreateSession`/`CorrectSessionTiming`, which refuse a day zone the
   calendar does not state. Without a clock the two condition aliases resolve
-  and refuse to compile. Migration 0005 seeds one calendar per library; 0004's
-  gates keep reading the setting, because the table comes after them. Member
+  and refuse to compile. The one-time pass that seeded one calendar per
+  library ran out of a migration the 2026-09-16 squash elided. Member
   2 of the wave stack. Contract is
   [The zone a library counts days in](docs/superpowers/specs/2026-09-15-issue-1047-library-calendar-design.md)
 

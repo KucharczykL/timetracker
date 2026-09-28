@@ -39,8 +39,9 @@ vocabulary.
 
 ## The migration
 
-Migration 0018 rewrites each platform whose icon is not listed: a
-retired slug to its glyph, any other value to `unspecified`. It does
+A one-time pass, run out of a migration the 2026-09-28 squash elided,
+rewrote each platform whose icon was not listed: a retired slug to its
+glyph, any other value to `unspecified`. It did
 the same to the `earlier` and `stated` of each `BatchChange` row that
 records a platform's `icon`. It holds its own copy of the slugs and
 imports no application code, so its meaning does not change with the
