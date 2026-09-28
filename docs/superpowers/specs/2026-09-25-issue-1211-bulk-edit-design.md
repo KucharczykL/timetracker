@@ -2,7 +2,7 @@
 
 A person sets a device, the emulated flag, a note, or more than one of them,
 on each selected session. The batch is one act with one Undo. The act is in
-`games/bulk_edit.py` and uses the runner of the
+`games/bulk_session_edit.py` and uses the runner of the
 [Selectable tables wave](2026-09-19-selectable-tables-wave-design.md).
 
 Timing belongs to one row: one start on forty rows puts them on one instant.

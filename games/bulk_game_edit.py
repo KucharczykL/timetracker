@@ -1,15 +1,13 @@
 """Status, mastered or the unfinished flag, set on many games."""
 
 import json
-import logging
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, TypedDict, cast
 
 from django import forms
 from django.contrib.auth.models import User
-from django.core.exceptions import NON_FIELD_ERRORS
 from django.http import QueryDict
 
 from common.components.primitives import FormFields
@@ -27,19 +25,25 @@ from games.bulk_actions import (
     Resolution,
     RowOutcome,
 )
+from games.bulk_edit import (
+    form_refusal,
+    keeping,
+    log_overwrite,
+    restated,
+    settled,
+    stated_object,
+    statement_unreadable,
+)
 from games.bulk_games import GAME_GONE, game_scope
 from games.bulk_sessions import lost
 from games.events.append import SourceMetadata
-from games.events.dispatch import CommandRejected, RowNotHeld, RowUnreadable
+from games.events.dispatch import CommandRejected, RowNotHeld
 from games.events.idempotency import IdempotencyKey
 from games.forms import ChoiceSearchSelectWidget, LabeledChoice, PrimitiveWidgetsMixin
 from games.models import Game, PlayerGame, PlayerGameStatus, UserLibrary
-from games.reads.fact_change import FactChange
 from games.reads.playergame_facts import batch_fact_changes
 from games.writes.answers import answered
 from games.writes.playergame import record_facts, set_excluded_from_unfinished
-
-logger = logging.getLogger("games")
 
 
 class GameEditJson(TypedDict, total=False):
@@ -58,16 +62,11 @@ NOTHING_STATED = (
     "Choose a status, whether the games are mastered, or whether unfinished "
     "lists leave them out."
 )
-STATEMENT_UNREADABLE = "What to change could not be read. Choose it again."
-
 #: What an Undo refuses.
 NOT_EDITED_BY_THIS_BATCH = (
     "That game was not changed by this batch, so it was left as it is."
 )
 GAME_REMOVED = "That game is removed. Restore it first."
-
-#: A placeholder: what "leave as it is" keeps.
-type Keeping = str  # "Keep: Played"
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,18 +103,10 @@ class GameEditStatement:
     @classmethod
     def decode(cls, raw: ChoiceValue) -> GameEditStatement:
         """An earlier settle's answer, or a refusal."""
-        try:
-            stated = json.loads(raw)
-        except ValueError as unreadable:
-            raise _unreadable(f"{raw!r} is no JSON: {unreadable}") from unreadable
-        if not isinstance(stated, dict):
-            raise _unreadable(f"{raw!r} is no object")
-        unknown = set(stated) - _KEYS
-        if unknown:
-            raise _unreadable(f"{raw!r} names {sorted(unknown)}")
+        stated = stated_object(raw, _KEYS)
         status = stated.get("status")
         if "status" in stated and status not in PlayerGameStatus.values:
-            raise _unreadable(f"{raw!r} states a status that is no word")
+            raise statement_unreadable(f"{raw!r} states a status that is no word")
         mastered = _stated_flag(stated, "mastered", raw)
         excluded = _stated_flag(stated, "excluded_from_unfinished", raw)
         try:
@@ -125,19 +116,15 @@ class GameEditStatement:
                 excluded,
             )
         except ValueError as empty:
-            raise _unreadable(f"{raw!r} states nothing") from empty
+            raise statement_unreadable(f"{raw!r} states nothing") from empty
 
 
 def _stated_flag(stated: dict[str, object], key: str, raw: ChoiceValue) -> bool | None:
     flag = stated.get(key)
     #: Present means stated: null is no bool.
     if key in stated and not isinstance(flag, bool):
-        raise _unreadable(f"{raw!r} states a {key} that is no bool")
+        raise statement_unreadable(f"{raw!r} states a {key} that is no bool")
     return flag if isinstance(flag, bool) else None
-
-
-def _unreadable(message: str) -> CommandRejected:
-    return CommandRejected(message, sentence=STATEMENT_UNREADABLE)
 
 
 def game_edit_resolution(
@@ -167,16 +154,6 @@ def _mastered_shown(mastered: bool) -> str:
 
 def _excluded_shown(excluded: bool) -> str:
     return "Excluded" if excluded else "Included"
-
-
-def _keeping[T](
-    rows: Sequence[Game], value: Callable[[Game], T], shown: Callable[[T], str]
-) -> Keeping:
-    """What the rows hold; differing, "mixed"."""
-    held = {value(row) for row in rows}
-    if len(held) != 1:
-        return "Keep: mixed"
-    return f"Keep: {shown(held.pop())}"
 
 
 #: A flag's two answers; empty keeps.
@@ -233,7 +210,7 @@ class BulkGameEditForm(PrimitiveWidgetsMixin, forms.Form):
             ):
                 cast(
                     ChoiceSearchSelectWidget, self.fields[name].widget
-                ).placeholder = _keeping(rows, value, shown)
+                ).placeholder = keeping(rows, value, shown)
 
     def clean(self) -> dict[str, Any]:
         super().clean()
@@ -274,22 +251,8 @@ def settle_edit(library: UserLibrary, post: QueryDict) -> ChoiceValue:
         return GameEditStatement.decode(carried).encode()
     form = BulkGameEditForm(post, prefix=CHOICE_FIELD)
     if not form.is_valid():
-        sentences = [
-            _named(form, name, str(message))
-            for name, messages in form.errors.items()
-            for message in messages
-        ]
-        raise CommandRejected(
-            f"the edit form refuses: {sentences}", sentence=sentences[0]
-        )
+        raise form_refusal(form, labelled=True)
     return form.statement().encode()
-
-
-def _named(form: forms.Form, name: str, message: str) -> str:
-    """A field's message, led by its label."""
-    if name == NON_FIELD_ERRORS:
-        return message
-    return f"{form.fields[name].label}: {message}"
 
 
 EDIT_CHOICE: BulkChoice[Game] = BulkChoice(offer=offer_edit, settle=settle_edit)
@@ -339,7 +302,7 @@ def _state(
                 )
             )
         )
-    return RowOutcome.MOVED if RowOutcome.MOVED in outcomes else RowOutcome.UNCHANGED
+    return RowOutcome.either(outcomes)
 
 
 def edit_one(
@@ -351,19 +314,12 @@ def edit_one(
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
     with answered("game"):
-        if choice is None:
-            raise RowUnreadable(
-                f"{EDIT.name} ran with no statement for Game {game.pk} of "
-                f"library {actor.library.pk}. The act declares a choice, so "
-                "the runner settles one before a row."
-            )
-        try:
-            statement = GameEditStatement.decode(choice)
-        except CommandRejected as drift:
-            #: Settled this request, so a defect.
-            raise RowUnreadable(
-                f"{EDIT.name} settled {choice!r} and cannot read it back: {drift}"
-            ) from drift
+        statement = settled(
+            choice,
+            GameEditStatement.decode,
+            act_name=EDIT.name,
+            row_description=f"Game {game.pk} of library {actor.library.pk}",
+        )
     return _state(
         actor,
         game,
@@ -374,30 +330,6 @@ def edit_one(
 
 
 # ── Backward ─────────────────────────────────────────────────────────────────
-
-
-def _restated[T](change: FactChange[T] | None, held: T) -> T | None:
-    """The earlier value, where the row differs."""
-    if change is None or held == change.before:
-        return None
-    return change.before
-
-
-def _log_overwrite[T](
-    change: FactChange[T] | None, held: T, fact: str, tracked: PlayerGame
-) -> None:
-    """A later value the Undo writes over."""
-    if change is None or held in (change.before, change.stated):
-        return
-    logger.info(
-        "[bulk]: %s Undo states %s %s over %s on game %s of library %s",
-        EDIT.name,
-        fact,
-        change.before,
-        held,
-        tracked.game_id,
-        tracked.library_id,
-    )
 
 
 def edit_back(
@@ -430,9 +362,9 @@ def edit_back(
         held_status = PlayerGameStatus(tracked.status)
         try:
             restatement = GameEditStatement(
-                _restated(changes.status, held_status),
-                _restated(changes.mastered, tracked.mastered),
-                _restated(
+                restated(changes.status, held_status),
+                restated(changes.mastered, tracked.mastered),
+                restated(
                     changes.excluded_from_unfinished, tracked.excluded_from_unfinished
                 ),
             )
@@ -443,14 +375,19 @@ def edit_back(
             raise CommandRejected(
                 f"PlayerGame {player_game_id} is removed", sentence=GAME_REMOVED
             )
-    _log_overwrite(changes.status, held_status, "status", tracked)
-    _log_overwrite(changes.mastered, tracked.mastered, "mastered", tracked)
-    _log_overwrite(
-        changes.excluded_from_unfinished,
-        tracked.excluded_from_unfinished,
-        "excluded_from_unfinished",
-        tracked,
-    )
+    described = f"game {tracked.game_id} of library {tracked.library_id}"
+    for change, held, fact in (
+        (changes.status, held_status, "status"),
+        (changes.mastered, tracked.mastered, "mastered"),
+        (
+            changes.excluded_from_unfinished,
+            tracked.excluded_from_unfinished,
+            "excluded_from_unfinished",
+        ),
+    ):
+        log_overwrite(
+            change, held, act_name=EDIT.name, fact=fact, row_description=described
+        )
     return _state(
         actor,
         tracked.game,

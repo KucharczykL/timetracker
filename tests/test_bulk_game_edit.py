@@ -12,12 +12,12 @@ from django.urls import reverse
 from session_rows import tracked_run
 
 from games.bulk_actions import BULK_ACTIONS, AsksNothing, Control, RowOutcome
+from games.bulk_edit import STATEMENT_UNREADABLE
 from games.bulk_game_edit import (
     EDIT,
     GAME_REMOVED,
     NOT_EDITED_BY_THIS_BATCH,
     NOTHING_STATED,
-    STATEMENT_UNREADABLE,
     GameEditStatement,
 )
 from games.bulk_games import GAME_GONE

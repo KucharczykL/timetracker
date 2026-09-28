@@ -100,6 +100,11 @@ class RowOutcome(StrEnum):
             cls.UNCHANGED if result.outcome is CommandOutcome.UNCHANGED else cls.MOVED
         )
 
+    @classmethod
+    def either(cls, outcomes: Sequence[RowOutcome]) -> RowOutcome:
+        """Moved when any write moved the row."""
+        return cls.MOVED if cls.MOVED in outcomes else cls.UNCHANGED
+
 
 @dataclass(frozen=True, slots=True)
 class Refused:
@@ -365,10 +370,10 @@ BULK_ACTIONS: Mapping[BulkActionName, BulkAction[Any]] = MappingProxyType(_TABLE
 
 #: Imported last: each module declares its acts.
 from games import (  # noqa: F401
-    bulk_edit,
     bulk_finish,
     bulk_game_edit,
     bulk_playthrough_acts,
     bulk_reclassification,
     bulk_removal,
+    bulk_session_edit,
 )
