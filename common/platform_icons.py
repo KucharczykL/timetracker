@@ -48,7 +48,7 @@ RETIRED_ICONS: Mapping[PlatformIcon, PlatformIcon] = MappingProxyType(
 
 
 def canonical_icon(slug: str) -> PlatformIcon:
-    """The icon a slug names, or Unspecified."""
+    """For importers: an unknown slug is Unspecified."""
     if slug in PLATFORM_ICONS:
         return slug
     return RETIRED_ICONS.get(slug, UNSPECIFIED_ICON)

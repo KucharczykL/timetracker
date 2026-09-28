@@ -12,6 +12,7 @@ from django.db.models import Q
 from django.db.models.functions import Lower, Trim
 
 from common.naming import name_key
+from common.platform_icons import PLATFORM_ICONS
 from games.batch_ledger import ActName, FieldName, record, recorded, row_changes
 from games.bulk_edit import log_overwrite
 from games.models import Platform, UserLibrary
@@ -106,6 +107,9 @@ def _restore(platform: Platform) -> None:
 
 def _state_fields(platform: Platform, stated: dict[FieldName, str]) -> None:
     """Write group and icon, refusing a taken name."""
+    if ICON in stated and stated[ICON] not in PLATFORM_ICONS:
+        #: An UPDATE skips clean(); hold its rule.
+        raise ValueError(f"{stated[ICON]!r} is no platform icon.")
     group = stated.get(GROUP)
     sentence = group_taken_sentence(
         platform, platform.group if group is None else group

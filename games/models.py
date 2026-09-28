@@ -432,7 +432,7 @@ class Game(ReferencedRow):
         )
 
 
-#: Refuses an icon no snippet draws.
+#: Refuses an unlisted icon.
 ICON_UNLISTED = "Pick one of the listed icons."
 
 

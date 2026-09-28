@@ -10,6 +10,7 @@ from common.components.icons_generated import ICON_NODES
 from common.platform_icons import (
     PLATFORM_ICONS,
     RETIRED_ICONS,
+    UNSPECIFIED_ICON,
     canonical_icon,
 )
 from games.forms import PlatformForm
@@ -51,6 +52,7 @@ def test_any_other_slug_names_unspecified(slug):
 def test_a_retired_alias_is_no_listed_icon():
     assert not set(RETIRED_ICONS) & set(PLATFORM_ICONS)
     assert set(RETIRED_ICONS.values()) <= set(PLATFORM_ICONS)
+    assert UNSPECIFIED_ICON in PLATFORM_ICONS
 
 
 def test_no_two_snippets_draw_one_glyph():

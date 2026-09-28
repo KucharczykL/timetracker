@@ -6,7 +6,7 @@ from importlib import import_module
 import pytest
 from django.apps import apps
 
-from common.platform_icons import PLATFORM_ICONS
+from common.platform_icons import PLATFORM_ICONS, RETIRED_ICONS
 from games.batch_ledger import record
 from games.models import BatchChange, Platform
 
@@ -48,7 +48,7 @@ def test_a_stored_icon_names_its_glyph(owned_library, stored, named):
 def test_a_ledger_row_names_its_glyphs(owned_library):
     platform = _stored(owned_library, "Amiga", "steam")
     batch = uuid.uuid7()
-    for field, earlier, stated in [("icon", "ps1", "steam"), ("group", "ps1", "")]:
+    for field, earlier, stated in [("icon", "ps1", None), ("group", "ps1", "")]:
         record(
             owned_library,
             batch=batch,
@@ -65,10 +65,10 @@ def test_a_ledger_row_names_its_glyphs(owned_library):
         change.field: (change.earlier, change.stated)
         for change in BatchChange.objects.filter(batch=batch)
     }
-    assert changes == {"icon": ("playstation", "steam"), "group": ("ps1", "")}
+    assert changes == {"icon": ("playstation", None), "group": ("ps1", "")}
 
 
-def test_every_slug_it_writes_is_listed():
+def test_every_slug_it_writes_is_listed_or_retired():
     written = migration.KNOWN_ICONS | set(migration.RETIRED_ICONS.values())
 
-    assert written <= set(PLATFORM_ICONS)
+    assert written <= set(PLATFORM_ICONS) | set(RETIRED_ICONS)

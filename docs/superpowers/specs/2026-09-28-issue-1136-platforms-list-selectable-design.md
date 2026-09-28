@@ -76,8 +76,7 @@ panel is a grid of native radios, one tile an icon, named for screen
 readers and on hover. The `choice-grid` behavior focuses the checked
 tile on open, reflects the arrow keys' choice on the trigger, and
 closes on a click, Enter or Space. The bulk Edit leads with a Keep
-tile; the Platform form starts on the platform's icon and keeps an
-older slug pickable.
+tile; the Platform form starts on the platform's icon.
 
 ## Not in this issue
 

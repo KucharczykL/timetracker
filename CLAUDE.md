@@ -1285,7 +1285,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   `common/components/icons_generated.py`; drift-guarded in `make check`). A
   snippet is named for the glyph it draws, and no two draw one (a test holds
   it). Add/edit snippet, run `make gen-icons`, list a platform glyph in
-  `PLATFORM_ICONS` (`common/platform_icons.py`), whose `canonical_icon` maps a
+  `PLATFORM_ICONS` (`common/platform_icons.py`); `canonical_icon` there maps a
   retired slug (`RETIRED_ICONS`). `Icon(name, attributes=...)` returns node:
   `class` merges onto svg, `title` becomes `<title>` child. Never edit
   `icons_generated.py` by hand.

@@ -40,7 +40,7 @@ RETIRED_ICONS = {
 
 def _canonical(slug: object) -> object:
     """A known slug, its glyph, or Unspecified."""
-    if slug in KNOWN_ICONS:
+    if slug is None or slug in KNOWN_ICONS:
         return slug
     return RETIRED_ICONS.get(str(slug), "unspecified")
 
