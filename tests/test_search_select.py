@@ -1478,3 +1478,18 @@ class NoneLabelWidgetTest(unittest.TestCase):
         html = widget.render("device", "gone", {"id": "id_device"})
         self.assertIn("data-search-select-none=", html)
         self.assertNotIn('value="gone"', html)
+
+
+def test_an_option_row_carries_its_hint_apart_from_its_label():
+    from common.components.search_select import _option_row
+
+    hinted = str(
+        _option_row({"value": "b", "label": "Switch", "data": {}, "hint": "Sold"})
+    )
+    plain = str(_option_row({"value": "a", "label": "Deck", "data": {}}))
+
+    assert 'data-hint="Sold"' in hinted
+    assert 'data-label="Switch"' in hinted
+    assert ">Sold</span>" in hinted
+    assert "data-hint" not in plain
+    assert "data-search-select-hint" in plain

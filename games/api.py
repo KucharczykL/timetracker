@@ -60,7 +60,7 @@ from games.filters import (
     parse_session_filter,
 )
 from games.formatting import zone_label
-from games.forms import DeviceForm, PlatformForm, game_option_data
+from games.forms import DeviceForm, PlatformForm, device_option, game_option_data
 from games.models import (
     Device,
     FilterPreset,
@@ -301,6 +301,8 @@ class PickerOption(Schema):  # mirrors SearchSelectOption
     label: str
     #: What the element reads: `SearchSelectOption.data` is text.
     data: dict[str, str]
+    #: Muted text after the label, where a row states one.
+    hint: str | None = None
 
 
 class StringOption(Schema):  # SearchSelectOption with a string value (e.g. group names)
@@ -536,9 +538,12 @@ def remove_playthrough(request, playthrough_id: UUIDv7):
 @device_router.get("/search", response=list[PickerOption])
 def search_devices(request, q: str = "", limit: int = 10):
     library = cast(User, request.user).library
-    qs = Device.objects.for_library(library)
+    #: Held devices lead; an ended one is still offered, for a past session.
+    qs = Device.objects.for_library(library).annotate(
+        ended=Case(When(access_end_recorded_at__isnull=True, then=0), default=1)
+    )
     if q:
-        qs = qs.filter(name__icontains=q).order_by("name")
+        qs = qs.filter(name__icontains=q).order_by("ended", "name")
     else:
         #: The live rows, on the base manager: a removed one moves nothing.
         qs = qs.annotate(
@@ -546,8 +551,8 @@ def search_devices(request, q: str = "", limit: int = 10):
                 "player_sessions__sort_instant",
                 filter=Q(player_sessions__removed_at__isnull=True),
             )
-        ).order_by(F("last_used").desc(nulls_last=True), "-created_at", "name")
-    return [{"value": d.id, "label": d.name, "data": {}} for d in qs[:limit]]
+        ).order_by("ended", F("last_used").desc(nulls_last=True), "-created_at", "name")
+    return [device_option(device) for device in qs[:limit]]
 
 
 class RowIn(Schema):

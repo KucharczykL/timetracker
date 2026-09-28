@@ -295,10 +295,22 @@ def _game_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     ]
 
 
+def device_option(device: Device) -> SearchSelectOption:
+    """One device as a picker row: an ended one says how it left."""
+    option: SearchSelectOption = {
+        "value": str(device.id),
+        "label": device.name,
+        "data": {},
+    }
+    if device.access_end_way:
+        option["hint"] = END_WAY_LABELS[EndWay(device.access_end_way)]
+    return option
+
+
 def device_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     return [
-        {"value": d.id, "label": d.name, "data": {}}
-        for d in Device.objects.for_library(library).filter(pk__in=values)
+        device_option(device)
+        for device in Device.objects.for_library(library).filter(pk__in=values)
     ]
 
 
@@ -1863,8 +1875,7 @@ def _held_device_options(
     values, *, devices: QuerySet[Device]
 ) -> list[SearchSelectOption]:
     return [
-        {"value": device.id, "label": device.name, "data": {}}
-        for device in devices.filter(pk__in=_parsed_ids(values))
+        device_option(device) for device in devices.filter(pk__in=_parsed_ids(values))
     ]
 
 

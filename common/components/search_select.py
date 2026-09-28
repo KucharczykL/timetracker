@@ -50,7 +50,7 @@ import json
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from enum import Enum
-from typing import Literal, NamedTuple, TypedDict
+from typing import Literal, NamedTuple, NotRequired, TypedDict
 
 from common.components.core import (
     Attributes,
@@ -114,6 +114,8 @@ class SearchSelectOption(TypedDict):
     # Becomes data-* attrs on the row / pill. Values are str only, matching the
     # TS SearchSelectOption's Record<string, string> — producers stringify ids.
     data: dict[str, str]
+    #: Muted text after the label; no search reads it.
+    hint: NotRequired[str]
 
 
 # A lightweight (value, label) pair used wherever only those two fields are
@@ -193,6 +195,7 @@ _ROW_CLASS = (
 )
 _ROW_WITH_ACTIONS_CLASS = f"{_ROW_CLASS} flex items-center justify-between"
 _ROW_ACTIONS_CLASS = "flex gap-1 ml-2 shrink-0"
+_HINT_CLASS = "ms-2 text-type-micro text-body-subtle"
 #: Keeps a 26px button in a 36px row.
 _ROW_ACTION_PLACEMENT_CLASS = "-my-0.75"
 _NO_RESULTS_CLASS = "px-4 py-2 text-type-body italic text-body hidden"
@@ -358,6 +361,7 @@ def _option_row(
         ]
         label = Span()[option["label"]]
     else:
+        hint = option.get("hint", "")
         attributes = [
             *_data_attributes(option["data"]),
             *_option_role_attributes(selected),
@@ -365,8 +369,14 @@ def _option_row(
             ("data-value", str(option["value"])),
             ("data-label", option["label"]),
         ]
-        label = _label_slot(
-            option["label"], extra_class="truncate min-w-0" if actions else ""
+        if hint:
+            attributes.append(("data-hint", hint))
+        #: Every option row carries the slot, so the template's clone does.
+        label = Fragment(
+            _label_slot(
+                option["label"], extra_class="truncate min-w-0" if actions else ""
+            ),
+            Span(data_search_select_hint="", hidden=not hint, class_=_HINT_CLASS)[hint],
         )
     if not actions:
         return Div(attributes, class_=_ROW_CLASS)[label]
