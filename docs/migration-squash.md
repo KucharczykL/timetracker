@@ -1,6 +1,6 @@
 # Squashing the migration history
 
-The `games` app has one migration. It was reached once, on 2026-09-12, by
+The `games` app's history begins at one baseline. It was reached once, on 2026-09-12, by
 replacing 50 files with a single hand-written `0001_initial` and carrying the
 deployment over by hand. This is what that cost, and what to do differently.
 
@@ -40,7 +40,7 @@ WHERE app = 'games'
 
 `make squash-migrations ARGS="games 0007 0018"`, output committed as the
 tool wrote it plus `ruff` formatting, on the day the deployment reached
-`0018`. It replaces the twelve files from `0007` on and depends on the
+`0018`. It replaced the twelve files from `0007` on and depends on the
 `0001` baseline, which it does not touch. Three data passes were elided:
 `0015`, written `elidable=True`, and `0011` and `0018`, which were not and
 took the flag on the day. The flag is read by the optimizer alone, so
@@ -69,9 +69,9 @@ beside the twelve originals. Then, in one PR:
   the icon rename keeps its cover through the loader's synthetic-fixture
   test and `canonical_icon`'s own.
 - The deployment keeps the twelve history rows, so one statement follows
-  the deploy of step two, rehearsed with `make verify-baseline
-  ARGS="--normalize cutover.sql --migrate"` on a dump taken after the
-  squash was recorded:
+  the deploy of step two. Save the block below as `cutover.sql` and
+  rehearse with `make verify-baseline ARGS="--normalize cutover.sql
+  --migrate"` on a dump taken after the squash was recorded:
 
 ```sql
 DELETE FROM django_migrations
@@ -92,9 +92,16 @@ WHERE app = 'games'
   );
 ```
 
-A dump taken before the squash row exists cannot rehearse this: with the
-twelve rows gone and no squash row, `migrate` applies the squashed file for
-real against tables that exist. Fetch the dump after the deploy.
+Run the `DELETE` only once the step-two image is up. Django marks a
+squash applied only while every migration it `replaces` is recorded, so
+on the step-one image, which still carries `replaces`, the deleted rows
+turn the squash unapplied and startup `migrate` applies it for real
+against tables that exist. The same holds for a rollback to that image
+after the `DELETE`: put the twelve rows back first, with
+`INSERT INTO django_migrations (app, name, applied) VALUES ('games', '<name>', now()) ON CONFLICT DO NOTHING`
+for each name above. A dump taken before the squash row exists cannot
+rehearse the `DELETE` for the same reason. Fetch the dump after the
+deploy.
 
 The next migration numbers on from the replaced range: `0019`.
 

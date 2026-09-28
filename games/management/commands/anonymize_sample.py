@@ -46,7 +46,6 @@ from timetracker.uuidv7 import UUIDv7Field, uuid7_at
 GENERATED_FIELDS = frozenset(["price_per_game"])
 PORTABLE_LIBRARY_MODELS = frozenset(
     [
-        "games.device",
         "games.game",
         "games.purchase",
         "games.filterpreset",

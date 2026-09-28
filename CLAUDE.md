@@ -443,8 +443,8 @@ docs/           — Additional documentation
   `calendar_day_zone(library)`: the dormancy clock, the parity command, and
   `CreateSession`/`CorrectSessionTiming`, which refuse a day zone the
   calendar does not state. Without a clock the two condition aliases resolve
-  and refuse to compile. Migration 0005 seeds one calendar per library; 0004's
-  gates keep reading the setting, because the table comes after them. Member
+  and refuse to compile. The one-time pass that seeded one calendar per
+  library ran out of a migration the 2026-09-16 squash elided. Member
   2 of the wave stack. Contract is
   [The zone a library counts days in](docs/superpowers/specs/2026-09-15-issue-1047-library-calendar-design.md)
 
