@@ -11,6 +11,7 @@ from django import forms
 from django.contrib.auth.models import User
 from django.http import QueryDict
 
+from common.components import PostCreate
 from common.components.core import Fragment
 from common.components.primitives import FORM_LABEL_CLASS, Div, FormFields, P
 from common.utils import truncate
@@ -239,7 +240,7 @@ class BulkEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
         widget=SearchSelectWidget(
             search_url=PLAYTHROUGH_SEARCH_URL,
             options_resolver=run_options,
-            create_url=PLAYTHROUGH_CREATE_URL,
+            create=PostCreate(PLAYTHROUGH_CREATE_URL),
         ),
     )
     device = forms.ModelChoiceField(
@@ -250,7 +251,7 @@ class BulkEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
             SearchSelectWidget(
                 search_url=DEVICE_SEARCH_URL,
                 options_resolver=device_options,
-                create_url=DEVICE_CREATE_URL,
+                create=PostCreate(DEVICE_CREATE_URL),
             ),
             none_label="No device",
         ),

@@ -28,7 +28,7 @@ class RecentSessionResumesTest(TestCase):
         self.factory = RequestFactory()
         self.user = User.objects.create_user(username="u", password="p")
         self.platform = Platform.objects.create(
-            library=self.user.library, name="PC", icon="pc"
+            library=self.user.library, name="PC", icon="steam"
         )
 
     def _request(self, *, authenticated: bool):
@@ -109,7 +109,7 @@ class NavbarLogButtonRenderTest(TestCase):
             username="testuser", email="t@e.com", password="pw"
         )
         self.platform = Platform.objects.create(
-            library=self.user.library, name="PC", icon="pc"
+            library=self.user.library, name="PC", icon="steam"
         )
         self.game = Game.objects.create(
             library=self.user.library, name="Zzq Unique Title", platform=self.platform

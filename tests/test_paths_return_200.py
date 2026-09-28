@@ -28,7 +28,7 @@ class PathWorksTest(TestCase):
         self.client.force_login(self.user)
         library = self.user.library
         self.platform = Platform.objects.create(
-            library=library, name="Test Platform", icon="test"
+            library=library, name="Test Platform", icon="steam"
         )
         self.game = Game.objects.create(
             library=library, name="Test Game", platform=self.platform
@@ -141,7 +141,7 @@ class PathWorksTest(TestCase):
 
     def test_platform_groups_api_returns_200(self):
         # Distinct platform groups are returned as string-valued options.
-        Platform.objects.create(name="Switch", icon="switch", group="Nintendo")
+        Platform.objects.create(name="Switch", icon="gog", group="Nintendo")
         response = self.client.get("/api/platforms/groups")
         self.assertEqual(response.status_code, 200)
         body = response.json()

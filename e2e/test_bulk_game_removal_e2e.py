@@ -54,7 +54,7 @@ def test_two_games_are_removed_and_the_undo_puts_them_back(
 
 def test_each_row_checkbox_names_its_game_alone(live_server, page: Page, e2e_library):
     platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="pc", group="PC"
+        library=e2e_library, name="PC", icon="steam", group="PC"
     )
     create_tracked_game(
         e2e_library, "The Witness", platform=platform, sort_name="Witness, The"

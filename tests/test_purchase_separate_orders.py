@@ -12,7 +12,7 @@ class AddPurchasePricingTest(TestCase):
         self.user = User.objects.create_superuser("u", "u@e.com", "pw")
         self.client.force_login(self.user)
         self.library = self.user.library
-        self.platform = Platform.objects.create(name="PC", icon="pc", group="PC")
+        self.platform = Platform.objects.create(name="PC", icon="steam", group="PC")
         self.game_a = Game.objects.create(
             library=self.library, name="Game A", platform=self.platform
         )
@@ -91,7 +91,7 @@ class SplitPurchaseTest(TestCase):
         self.client.force_login(self.user)
         self.library = self.user.library
         self.platform = Platform.objects.create(
-            library=self.library, name="PC", icon="pc", group="PC"
+            library=self.library, name="PC", icon="steam", group="PC"
         )
         self.game_a = Game.objects.create(
             library=self.library, name="Game A", platform=self.platform

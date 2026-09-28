@@ -30,7 +30,7 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
 
 def _make_session(library) -> PlayerSession:
     platform = Platform.objects.create(
-        library=library, name="PC", icon="pc", group="PC"
+        library=library, name="PC", icon="steam", group="PC"
     )
     game = Game.objects.create(library=library, name="Sized Game", platform=platform)
     create_device(library=library, name="Handheld", type=Device.HANDHELD)

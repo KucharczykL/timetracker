@@ -55,7 +55,7 @@ function mount(
   return { host, dropDown, widget };
 }
 
-// The widget's create row, as a search-select with create-event emits it.
+// The widget's create row, as an event-committed search-select emits it.
 function create(widget: HTMLElement, name: string, replaces = false): void {
   widget.dispatchEvent(
     new CustomEvent("search-select:create", { bubbles: true, detail: { name, replaces } }),

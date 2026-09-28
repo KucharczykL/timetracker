@@ -175,7 +175,7 @@ docs/           — Additional documentation
 ### Models (in `games/models.py`)
 
 - **Game** — catalog row: `name`, `platform` (FK), `year_released`, `sort_name`, `wikidata`. Holds no status and no mastered flag: both live on `PlayerGame`
-- **Platform** — `name`, `group`, `icon` (slug, auto-generated from name)
+- **Platform** — `name`, `group`, `icon` (a `PLATFORM_ICONS` slug, `unspecified` by default; `clean()` refuses any other)
 - **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor `game.addon_purchases`)
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown). A
   projection since #1274: a device is owned — bought, renamed, sold, lost,
@@ -732,14 +732,16 @@ Submodules re-exported via `common/components/__init__.py`:
   and wired by `ts/elements/search-select.ts`: `SearchSelect()` (form combobox;
   with `host_dropdown=True`, set by `SearchSelectWidget` form adapter, lives in
   `<drop-down behavior="inline-combobox">` so its panel shares the one attachMenu
-  open/close/position/dismiss engine, #348; `create_url` offers a `Create “…”`
+  open/close/position/dismiss engine, #348; `create=PostCreate(url)` offers a `Create “…”`
   row for a query no loaded label **equals**, which POSTs `{name, ...params}`
   and upserts the answered `{value, label}` on its key, and `params` is one JSON
   mapping — a literal or a sibling field — read by that POST and by the search
   query alike, a field source being a dependency that re-searches, #1080;
-  `create_event` posts nothing and emits `search-select:create` `{name,
-  replaces}` for the consumer, `create_verb` names the row and
-  `replace_verb` offers it for a name a row holds exactly, #1328;
+  `SelectTyped()` instead holds the typed text as value and label, and a
+  form submit commits a typed draft; `EmitCreate()` posts nothing and emits
+  `search-select:create` `{name, replaces}` for the consumer (the presets
+  panel). Each names its verb, and `EmitCreate.replace_verb` offers the row
+  for a name a row holds exactly, #1328; `max_length` caps the box;
   a trailing × empties query and value in one press and emits
   `search-select:clear` after any `search-select:change`; on by default,
   `clearable=False` opts out, #1287; `none_label` pins a row that holds
@@ -760,11 +762,12 @@ Submodules re-exported via `common/components/__init__.py`:
   `ChoiceField`'s fixed `choices` with no search URL: an optional field's `""`
   choice is the none row, a required field's is dropped; a widget set, or
   `required` changed, after the field is built goes through `host_choices`,
-  #1301
+  #1301; `TextSearchSelectWidget` hosts a text field over suggestions, its
+  create row reading `Use “…”`
 - **`icon_picker.py`** — `IconPicker()`, a `<drop-down behavior="choice-grid">`
   whose panel is a grid of icon radios (`ts/elements/behaviors/choice-grid.ts`);
   `IconPickerWidget` in `games/forms.py` hosts it for a `ChoiceField`, and
-  `PLATFORM_ICONS` (`common/components/platform_icons.py`) names the icons
+  `PLATFORM_ICONS` (`common/platform_icons.py`) names the icons
 - **`unset_field.py`** — `UnsetField()`, one field joined to a ⊘ toggle
   (`ts/elements/unset-field.ts`) whose checkbox posts `<name>-unset`: a bulk
   form's "none" apart from "keep", which an empty field states. Forms reach it
@@ -1018,7 +1021,8 @@ builders). Behavior lives in `ts/elements/<tag>.ts` (vanilla DOM,
 later insertion. Server↔client contract is one Python `TypedDict` per
 element registered with `register_element(...)` in
 `common/components/custom_elements.py`; `manage.py gen_element_types` codegens
-`ts/generated/props.ts` so renaming a prop fails `tsc`.
+`ts/generated/props.ts` so renaming a prop fails `tsc`. A `Literal` of strings
+becomes a TypeScript union whose reader throws on any other value.
 
 - **Build:** `tsc` per-module compiles `ts/` → `games/static/js/dist/`. `make ts` =
   codegen + compile; `make ts-check` (in `make check`) = codegen + `tsc --noEmit -p
@@ -1282,10 +1286,15 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   input); wrapper fades itself via `DISABLED_WITHIN_CLASS`.
 - **Platform icons** are SVG snippets in `games/templates/icons/<slug>.html`,
   compiled to `Element` node trees by `make gen-icons` (committed
-  `common/components/icons_generated.py`; drift-guarded in `make check`). Add/edit
-  snippet, run `make gen-icons`, reference by slug in `Platform.icon`. `Icon(name,
-  attributes=...)` returns node: `class` merges onto svg, `title` becomes `<title>`
-  child. Never edit `icons_generated.py` by hand.
+  `common/components/icons_generated.py`; drift-guarded in `make check`). A
+  snippet is named for the glyph it draws, and no two draw one (a test holds
+  it). Add/edit snippet, run `make gen-icons`, list a platform glyph in
+  `PLATFORM_ICONS` (`common/platform_icons.py`); `canonical_icon` there maps a
+  retired slug (`RETIRED_ICONS`). `Icon(name, attributes=...)` returns node:
+  `class` merges onto svg, `title` becomes `<title>` child. An unknown name
+  draws `unspecified` and logs a WARNING on `games.icons`; a test that draws
+  one fails unless marked `draws_unknown_icon` (`tests/icon_names.py`). Never
+  edit `icons_generated.py` by hand.
 - **Inline Alpine.js** remains only as three `x-mask` inputs
   (`games/forms.py`, `games/settings_forms.py`), each with the empty `x-data`
   scope the plugin needs. New

@@ -52,7 +52,7 @@ class SortHeaderParityTest(TestCase):
         self.client.force_login(self.user)
         library = self.user.library
         self.platform = Platform.objects.create(
-            library=library, name="Test Platform", icon="test"
+            library=library, name="Test Platform", icon="steam"
         )
         self.game = Game.objects.create(
             library=library, name="Test Game", platform=self.platform

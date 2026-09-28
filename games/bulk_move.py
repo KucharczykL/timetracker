@@ -8,11 +8,12 @@ from django.http import Http404
 
 from games.bulk_actions import RowOutcome
 from games.bulk_sessions import session_of
-from games.events.dispatch import CommandRejected
+from games.events.dispatch import CommandRejected, RowUnreadable
 from games.events.idempotency import IdempotencyKey
 from games.events.playersession import PLAYERSESSION_CREATED, PLAYERSESSION_MOVED
 from games.events.playthrough import PLAYTHROUGH_REMOVED
 from games.models import (
+    LibraryEvent,
     PlayerSession,
     Playthrough,
     PlaythroughKind,
@@ -48,10 +49,6 @@ RUN_STATED = (PLAYERSESSION_CREATED.event_type, PLAYERSESSION_MOVED.event_type)
 #: What an Undo refuses.
 NOT_MOVED_BY_THIS_BATCH = (
     "That session was not moved by this batch, so its playthrough was left as it is."
-)
-NO_EARLIER_RUN = (
-    "Where that session was before cannot be read, so its playthrough was "
-    "left as it is."
 )
 SOURCE_TAKEN_AWAY = (
     "The playthrough that session came from was removed after this batch, so "
@@ -125,19 +122,14 @@ def _remove_the_emptied_bucket(
     holds: an act that removed a bucket it did not empty
     would remove a row its own inverse never puts back.
 
-    Read from the batch's own events, because a chunk posted
-    twice answers `Unchanged` for the move and the row then
-    names the target already.
+    Read from the batch's own events. A replayed chunk
+    finds the row on the target already, and a row read
+    before the move may be stale.
 
-    The answer is swallowed. A refusal would count a moved
-    row refused; a defect still ends the batch, as it does
-    everywhere else.
+    A broken stream ends the batch.
     """
-    try:
+    with answered("session"):
         emptied = run_before(actor.library, session_id, correlation_id)
-    except CommandRejected:
-        #: This batch moved no such row.
-        return
     bucket = Playthrough.objects.filter(
         library=actor.library,
         pk=emptied,
@@ -193,7 +185,11 @@ def moved_by(library: UserLibrary, session_id: uuid.UUID, batch_id: uuid.UUID) -
 def run_before(
     library: UserLibrary, session_id: uuid.UUID, batch_id: uuid.UUID
 ) -> uuid.UUID:
-    """The run the session sat on before."""
+    """The run the session sat on before.
+
+    `CommandRejected`: the batch moved no such session.
+    `RowUnreadable`: the stream states no earlier run.
+    """
     events = list(aggregate_events(library, session_id))
     moved = next(
         (
@@ -215,17 +211,34 @@ def run_before(
         if event.sequence < moved.sequence and event.event_type in RUN_STATED
     ]
     if not earlier:
-        raise CommandRejected(
-            f"session {session_id} states no run before sequence {moved.sequence}",
-            sentence=NO_EARLIER_RUN,
+        raise RowUnreadable(
+            f"session {session_id} of library {library.pk} states "
+            f"{moved.event_type} at sequence {moved.sequence} and no run "
+            "before it"
         )
-    return uuid.UUID(earlier[-1].payload["playthrough"])
+    return _run_of(earlier[-1])
+
+
+def _run_of(event: LibraryEvent) -> uuid.UUID:
+    """The run a created or moved payload states."""
+    run = event.payload.get("playthrough")
+    unreadable = RowUnreadable(
+        f"event {event.pk} of library {event.library_id} states playthrough {run!r}"
+    )
+    if not isinstance(run, str):
+        raise unreadable
+    try:
+        return uuid.UUID(run)
+    except ValueError as error:
+        raise unreadable from error
 
 
 def _put_back_the_run(
     actor: User,
     act: ActName,
+    *,
     batch_id: uuid.UUID,
+    session_id: uuid.UUID,
     run_id: uuid.UUID,
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
@@ -243,9 +256,10 @@ def _put_back_the_run(
     with answered("session"):
         run = Playthrough.objects.filter(library=actor.library, pk=run_id).first()
         if run is None:
-            raise CommandRejected(
-                f"playthrough {run_id} is not library {actor.library.pk}'s",
-                sentence=NO_EARLIER_RUN,
+            raise RowUnreadable(
+                f"session {session_id} of library {actor.library.pk} sat on "
+                f"playthrough {run_id} before batch {batch_id}, which this "
+                "library does not hold"
             )
         ours = (
             batch_events(actor.library, batch_id)
@@ -280,7 +294,15 @@ def move_back_row(
     """One session back to its earlier run."""
     with answered("session"):
         earlier = run_before(actor.library, session_id, undoes)
-    _put_back_the_run(actor, act, undoes, earlier, idempotency_key, correlation_id)
+    _put_back_the_run(
+        actor,
+        act,
+        batch_id=undoes,
+        session_id=session_id,
+        run_id=earlier,
+        idempotency_key=idempotency_key,
+        correlation_id=correlation_id,
+    )
     return RowOutcome.of(
         move_session(
             actor,

@@ -608,7 +608,7 @@ class TestChoiceCriterionAgainstDB:
         """Five tracked games, one per word."""
         from games.models import Game, Platform, PlayerGame, PlayerGameStatus
 
-        platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
+        platform, _ = Platform.objects.get_or_create(name="Test", icon="steam")
         statuses = [
             PlayerGameStatus.UNPLAYED,
             PlayerGameStatus.PLAYED,
@@ -699,7 +699,7 @@ class TestPurchaseGamesIncludesAllAgainstDB:
 
         from games.models import Game, Platform, Purchase
 
-        platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
+        platform, _ = Platform.objects.get_or_create(name="Test", icon="steam")
         a, _ = Game.objects.get_or_create(name="A", defaults={"platform": platform})
         b, _ = Game.objects.get_or_create(name="B", defaults={"platform": platform})
         c, _ = Game.objects.get_or_create(name="C", defaults={"platform": platform})
@@ -819,7 +819,7 @@ class TestPurchaseGamesIncludesOnlyAgainstDB:
 
         from games.models import Game, Platform, Purchase
 
-        platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
+        platform, _ = Platform.objects.get_or_create(name="Test", icon="steam")
         a, _ = Game.objects.get_or_create(name="A", defaults={"platform": platform})
         b, _ = Game.objects.get_or_create(name="B", defaults={"platform": platform})
         c, _ = Game.objects.get_or_create(name="C", defaults={"platform": platform})
@@ -1066,7 +1066,7 @@ class TestPurchaseNumPurchasesAgainstDB:
 
         from games.models import Game, Platform, Purchase
 
-        platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
+        platform, _ = Platform.objects.get_or_create(name="Test", icon="steam")
         a, _ = Game.objects.get_or_create(name="A", defaults={"platform": platform})
         b, _ = Game.objects.get_or_create(name="B", defaults={"platform": platform})
         c, _ = Game.objects.get_or_create(name="C", defaults={"platform": platform})
@@ -1148,7 +1148,7 @@ class TestExpandedFiltersAgainstDB:
 
         # 1. Platform & Game
         plat, _ = Platform.objects.get_or_create(
-            name="Retro Console", group="Nintendo", icon="retro"
+            name="Retro Console", group="Nintendo", icon="gog"
         )
         game, _ = Game.objects.get_or_create(
             name="Super Mario World", defaults={"platform": plat}
@@ -1837,7 +1837,7 @@ class TestPurchaseFilterDates:
 
         from games.models import Platform, Purchase
 
-        platform, _ = Platform.objects.get_or_create(name="Test", icon="test")
+        platform, _ = Platform.objects.get_or_create(name="Test", icon="steam")
         early = Purchase.objects.create(
             price_currency="CZK",
             platform=platform,
@@ -4319,9 +4319,7 @@ class TestFieldComparisonEndToEnd:
         """Create a minimal Platform + Game for Session-based tests."""
         from games.models import Game, Platform
 
-        platform, _ = Platform.objects.get_or_create(
-            name="FieldCmpTest", icon="fieldcmptest"
-        )
+        platform, _ = Platform.objects.get_or_create(name="FieldCmpTest", icon="egs")
         game, _ = Game.objects.get_or_create(
             name="FieldCmpGame", defaults={"platform": platform}
         )
@@ -4338,9 +4336,7 @@ class TestFieldComparisonEndToEnd:
         from games.filters import PurchaseFilter
         from games.models import Platform, Purchase
 
-        platform, _ = Platform.objects.get_or_create(
-            name="FieldCmpTest", icon="fieldcmptest"
-        )
+        platform, _ = Platform.objects.get_or_create(name="FieldCmpTest", icon="egs")
 
         # A: refund BEFORE purchase — the data-error case; must be returned
         purchase_a = Purchase.objects.create(
@@ -4539,9 +4535,7 @@ class TestFieldComparisonEndToEnd:
         from games.filters import PurchaseFilter
         from games.models import Platform, Purchase
 
-        platform, _ = Platform.objects.get_or_create(
-            name="FieldCmpTest", icon="fieldcmptest"
-        )
+        platform, _ = Platform.objects.get_or_create(name="FieldCmpTest", icon="egs")
 
         # A: date_refunded differs from date_purchased → returned
         purchase_a = Purchase.objects.create(
@@ -4631,9 +4625,7 @@ class TestFieldComparisonEndToEnd:
         from games.filters import PurchaseFilter
         from games.models import Platform, Purchase
 
-        platform, _ = Platform.objects.get_or_create(
-            name="FieldCmpTest", icon="fieldcmptest"
-        )
+        platform, _ = Platform.objects.get_or_create(name="FieldCmpTest", icon="egs")
 
         # A: refund after purchase AND price > converted_price → returned
         purchase_a = Purchase.objects.create(
@@ -4697,9 +4689,7 @@ class TestFieldComparisonEndToEnd:
         from games.filters import PurchaseFilter, parse_purchase_filter
         from games.models import Platform, Purchase
 
-        platform, _ = Platform.objects.get_or_create(
-            name="FieldCmpTest", icon="fieldcmptest"
-        )
+        platform, _ = Platform.objects.get_or_create(name="FieldCmpTest", icon="egs")
 
         # A: refund BEFORE purchase — should be returned
         purchase_a = Purchase.objects.create(
@@ -4751,9 +4741,7 @@ class TestFieldComparisonEndToEnd:
         from games.filters import GameFilter
         from games.models import Game, Platform
 
-        platform, _ = Platform.objects.get_or_create(
-            name="StrCmpTest", icon="strcmptest"
-        )
+        platform, _ = Platform.objects.get_or_create(name="StrCmpTest", icon="ubisoft")
         match = Game.objects.create(
             name="The Legend of Zelda", sort_name="Zelda", platform=platform
         )
@@ -4791,9 +4779,7 @@ class TestFieldComparisonEndToEnd:
         from games.filters import GameFilter, parse_game_filter
         from games.models import Game, Platform
 
-        platform, _ = Platform.objects.get_or_create(
-            name="StrCmpTest", icon="strcmptest"
-        )
+        platform, _ = Platform.objects.get_or_create(name="StrCmpTest", icon="ubisoft")
         match = Game.objects.create(
             name="Super Mario Bros", sort_name="Mario", platform=platform
         )
@@ -4832,7 +4818,7 @@ class TestFieldComparisonEndToEnd:
         from games.models import Device, Game, Platform, PlayerSession
 
         platform, _ = Platform.objects.get_or_create(
-            name="CrossModelIncludesTest", icon="crossmodelincludestest"
+            name="CrossModelIncludesTest", icon="itchio"
         )
         game = Game.objects.create(name="WikilessGame", platform=platform)
         #: Commands refuse empty names; write directly.
@@ -4884,7 +4870,7 @@ class TestStrictNullSemantics:
         from games.models import Game, Platform
 
         platform, _ = Platform.objects.get_or_create(
-            name="NullSemanticsTest", icon="nullsemanticstest"
+            name="NullSemanticsTest", icon="battlenet"
         )
         return Game.objects.create(name="NullGame", platform=platform)
 
@@ -5012,7 +4998,7 @@ class TestYearProjection:
         from games.models import Game, Platform, PlayerSession
 
         platform, _ = Platform.objects.get_or_create(
-            name="YearProjTest", icon="yearprojtest"
+            name="YearProjTest", icon="bethesda"
         )
         game = Game.objects.create(name="Doom", year_released=2020, platform=platform)
         hit = session_row(
@@ -5043,7 +5029,7 @@ class TestYearProjection:
         from games.models import Game, Platform, PlayerSession
 
         platform, _ = Platform.objects.get_or_create(
-            name="YearProjTest", icon="yearprojtest"
+            name="YearProjTest", icon="bethesda"
         )
         game = Game.objects.create(name="Doom", year_released=2020, platform=platform)
         hit = session_row(
@@ -6076,7 +6062,7 @@ class TestStringCriterionIsNullAgainstDB:
 
         from games.models import Device, Game, Platform
 
-        platform, _ = Platform.objects.get_or_create(name="Test Platform", icon="test")
+        platform, _ = Platform.objects.get_or_create(name="Test Platform", icon="steam")
         game, _ = Game.objects.get_or_create(
             name="Test Game", defaults={"platform": platform}
         )
@@ -6858,7 +6844,7 @@ class TestComparisonOperandPaths:
         from games.models import Game, Platform, Purchase
 
         platform, _ = Platform.objects.get_or_create(
-            name="OperandPathTest", icon="operandpathtest"
+            name="OperandPathTest", icon="eaorigin"
         )
         game = Game.objects.create(name="Doom", platform=platform)
         dlc = Purchase.objects.create(

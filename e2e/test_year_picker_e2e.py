@@ -23,7 +23,7 @@ def authenticated_page(live_server, page: Page, e2e_user) -> Page:
 @pytest.fixture
 def stats_data(e2e_library) -> None:
     platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="pc", group="PC"
+        library=e2e_library, name="PC", icon="steam", group="PC"
     )
     game = Game.objects.create(
         library=e2e_library, name="Year Picker Game", platform=platform

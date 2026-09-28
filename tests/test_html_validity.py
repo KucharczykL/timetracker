@@ -110,7 +110,7 @@ class HtmlValidityTest(TestCase):
 
         library = self.user.library
         self.platform = Platform.objects.create(
-            library=library, name="Test Platform", icon="test"
+            library=library, name="Test Platform", icon="steam"
         )
         self.device = create_device(library=library, name="Test Device", type="Console")
 

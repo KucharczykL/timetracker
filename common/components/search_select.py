@@ -48,6 +48,7 @@ user types.
 
 import json
 from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from enum import Enum
 from typing import Literal, NamedTuple, TypedDict
 
@@ -64,6 +65,7 @@ from common.components.custom_elements import (
     Dropdown,
     DropdownPanel,
     FilterMode,
+    SearchSelectCreate,
     _as_dialog_trigger,
     _Dropdown,
     _PresetPanelElement,
@@ -251,6 +253,62 @@ _BLANK_OPTION: SearchSelectOption = {"value": "", "label": "", "data": {}}
 type NoneLabel = str  # e.g. "No device"
 
 
+@dataclass(frozen=True)
+class PostCreate:
+    """The create row posts to ``url`` and holds the answer."""
+
+    url: str
+    verb: str = "Create"
+
+    def __post_init__(self) -> None:
+        if not self.url:
+            raise ValueError("A posting create row names its endpoint.")
+
+
+@dataclass(frozen=True)
+class SelectTyped:
+    """The create row holds the typed text."""
+
+    verb: str = "Use"
+
+
+@dataclass(frozen=True)
+class EmitCreate:
+    """The create row emits ``search-select:create``."""
+
+    verb: str = "Create"
+    #: Offered for a name a row holds exactly.
+    replace_verb: str = ""
+
+
+#: How a create row commits.
+type CreateRow = PostCreate | SelectTyped | EmitCreate
+
+
+class _CreateProps(TypedDict, total=False):
+    create: SearchSelectCreate
+    create_url: str
+    create_verb: str
+    replace_verb: str
+
+
+def _create_props(create: CreateRow | None) -> _CreateProps:
+    """The element props one ``CreateRow`` states."""
+    match create:
+        case PostCreate(url=url, verb=verb):
+            return _CreateProps(create="post", create_url=url, create_verb=verb)
+        case SelectTyped(verb=verb):
+            return _CreateProps(create="select", create_verb=verb)
+        case EmitCreate(verb=verb, replace_verb=""):
+            return _CreateProps(create="event", create_verb=verb)
+        case EmitCreate(verb=verb, replace_verb=replace_verb):
+            return _CreateProps(
+                create="event", create_verb=verb, replace_verb=replace_verb
+            )
+        case None:
+            return _CreateProps()
+
+
 class RowKind(Enum):
     """The hook the element reads."""
 
@@ -436,7 +494,8 @@ def SearchSelect(
     option_groups: list[OptionGroup] | None = None,
     search_url: str = "",
     params: ParamSources | None = None,
-    create_url: str = "",
+    create: CreateRow | None = None,
+    max_length: int | None = None,
     csrf: str = "",
     commit_sole_option: bool = False,
     multi_select: bool = False,
@@ -500,6 +559,8 @@ def SearchSelect(
     ``clear_description_id``: the ×'s ``aria-describedby`` target.
     ``none_label``: a pinned row holding none.
     ``shape``: the corners the box rounds.
+    ``create``: how a create row commits; none offers no row.
+    ``max_length``: the most characters the box takes.
     """
     if none_label and (multi_select or panel):
         raise ValueError("none_label is single-select and field-hosted only")
@@ -552,6 +613,8 @@ def SearchSelect(
         search_attrs.append(("autofocus", ""))
     if search_value:
         search_attrs.append(("value", search_value))
+    if max_length is not None:
+        search_attrs.append(("maxlength", str(max_length)))
 
     clear_button: Node | None = None
     if clearable:
@@ -635,7 +698,7 @@ def SearchSelect(
         ]
 
     children = _combobox_children(
-        create_row=_option_row(_BLANK_OPTION, RowKind.CREATE) if create_url else None,
+        create_row=_option_row(_BLANK_OPTION, RowKind.CREATE) if create else None,
         pill_nodes=pills_children,
         search_attributes=search_attrs,
         options_children=option_rows,
@@ -658,7 +721,7 @@ def SearchSelect(
         name=name,
         search_url=search_url,
         params=json.dumps(params) if params else "",
-        create_url=create_url,
+        **_create_props(create),
         csrf=csrf,
         commit_sole_option="true" if commit_sole_option else "false",
         multi="true" if multi_select else "false",
@@ -1018,9 +1081,9 @@ def PresetSelect(*, api_url: str, mode: str, items_visible: int = 8) -> Node:
         always_visible="true",
         prefetch=_PRESET_PREFETCH,
         sync_url="false",
-        create_event="true",
-        create_verb=SAVE_PRESET_VERB,
-        replace_verb=OVERWRITE_PRESET_VERB,
+        **_create_props(
+            EmitCreate(verb=SAVE_PRESET_VERB, replace_verb=OVERWRITE_PRESET_VERB)
+        ),
         class_=_DIALOG_LAYOUT.container_class,
     )[*children]
 

@@ -25,7 +25,7 @@ def library(db):
 
 @pytest.fixture
 def game(library):
-    platform = Platform.objects.create(library=library, name="PC", icon="pc")
+    platform = Platform.objects.create(library=library, name="PC", icon="steam")
     return Game.objects.create(library=library, name="A", platform=platform)
 
 

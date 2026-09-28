@@ -21,18 +21,18 @@ from django.utils.datastructures import MultiValueDict
 from common.components import (
     DEFAULT_PREFETCH,
     DISABLED_CONTROL_CLASS,
-    Datalist,
+    CreateRow,
     DatePicker,
     DateTimeCopyTarget,
     DateTimePicker,
-    Fragment,
     Media,
     NoneLabel,
-    Option,
+    PostCreate,
     PostedName,
     Safe,
     SearchSelect,
     SearchSelectOption,
+    SelectTyped,
     TemporalCopySource,
     TemporalField,
     TimeZoneRow,
@@ -44,7 +44,6 @@ from common.components import (
 from common.components.core import Node
 from common.components.elements import Fieldset
 from common.components.icon_picker import IconChoice, IconPicker
-from common.components.platform_icons import PLATFORM_ICONS
 from common.components.primitives import (
     SHAPE_CLASSES,
     ButtonShape,
@@ -56,6 +55,7 @@ from common.components.primitives import (
     field_label_id,
 )
 from common.date_time_presentation import DateTimePresentation, zone_or_none
+from common.platform_icons import PLATFORM_ICONS, UNSPECIFIED_ICON
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
     when_sentence,
@@ -83,6 +83,7 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.companion_status import played_is_offered
+from games.reads.platform_groups import platform_groups
 from games.reads.playthrough_numbering import display_name, numbered_for
 from games.reads.playthrough_runs import library_runs, tracked_game
 from games.writes.playersession import latest_ordinary_run
@@ -397,7 +398,7 @@ class SearchSelectWidget(_SearchSelectAdapter):
         *,
         search_url,
         options_resolver,
-        create_url="",
+        create: CreateRow | None = None,
         params=None,
         commit_sole_option=False,
         multi_select=False,
@@ -420,7 +421,7 @@ class SearchSelectWidget(_SearchSelectAdapter):
         self.none_label = none_label
         self.search_url = search_url
         self.options_resolver = options_resolver
-        self.create_url = create_url
+        self.create = create
         self.params = params
         self.commit_sole_option = commit_sole_option
         self.multi_select = multi_select
@@ -449,7 +450,7 @@ class SearchSelectWidget(_SearchSelectAdapter):
             selected=searchselect_selected(self._values(value), self.options_resolver),
             options=None,
             search_url=self.search_url,
-            create_url=self.create_url,
+            create=self.create,
             params=self.params,
             commit_sole_option=self.commit_sole_option,
             multi_select=self.multi_select,
@@ -501,26 +502,55 @@ class IconPickerWidget(forms.Widget):
         )
 
 
-class DatalistTextInput(forms.TextInput):
-    """A text box offering values it does not require."""
+class TextSearchSelectWidget(_SearchSelectAdapter):
+    """Suggestions, and any typed text."""
 
-    def __init__(self, *, suggestions: Sequence[str] = (), attrs=None):
-        super().__init__(attrs)
+    def __init__(
+        self,
+        *,
+        suggestions: Sequence[str] = (),
+        placeholder: str = "Search or type…",
+        attrs=None,
+    ):
+        super().__init__(
+            placeholder=placeholder, autofocus=False, clearable=True, attrs=attrs
+        )
         self.suggestions = tuple(suggestions)
 
-    def render(self, name, value, attrs=None, renderer=None):
-        attrs = {**(attrs or {})}
-        listed = f"{attrs.get('id') or name}-suggestions"
-        attrs["list"] = listed
-        box = super().render(name, value, attrs, renderer)
-        return str(
-            Fragment(
-                Safe(box),
-                Datalist(id=listed)[
-                    [Option(value=suggestion) for suggestion in self.suggestions]
-                ],
-            )
+    def value_omitted_from_data(self, data, files, name) -> bool:
+        """A cleared box posts nothing, and states empty."""
+        return False
+
+    def render(self, name, value, attrs=None, renderer=None, *, shape="full"):
+        options = [
+            SearchSelectOption(value=text, label=text, data={})
+            for text in self.suggestions
+        ]
+        held = [SearchSelectOption(value=value, label=value, data={})] if value else []
+        #: A CharField's max_length arrives as maxlength.
+        stated = {**self.attrs, **(attrs or {})}.get("maxlength")
+        return self._render(
+            name,
+            attrs,
+            selected=held,
+            options=options,
+            create=SelectTyped(),
+            max_length=None if stated is None else int(stated),
+            shape=shape,
         )
+
+
+def offer_platform_groups(
+    field: forms.Field, library: UserLibrary
+) -> TextSearchSelectWidget:
+    """The field's group picker, offering the library's groups."""
+    widget = field.widget
+    if isinstance(widget, UnsetWidget):
+        widget = widget.widget
+    if not isinstance(widget, TextSearchSelectWidget):
+        raise TypeError(f"{type(widget).__name__} offers no platform groups")
+    widget.suggestions = tuple(platform_groups(library))
+    return widget
 
 
 class ChoiceSearchSelectWidget(_SearchSelectAdapter):
@@ -1303,7 +1333,7 @@ class PlaythroughSelectWidget(SearchSelectWidget):
         super().__init__(
             search_url=PLAYTHROUGH_SEARCH_URL,
             options_resolver=run_options,
-            create_url=PLAYTHROUGH_CREATE_URL,
+            create=PostCreate(PLAYTHROUGH_CREATE_URL),
             params={"game_id": {"field": game_field}},
             #: Required field: a submit with no pick posts a run.
             commit_sole_option=True,
@@ -1447,7 +1477,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
         widget=SearchSelectWidget(
             search_url=DEVICE_SEARCH_URL,
             options_resolver=device_options,
-            create_url=DEVICE_CREATE_URL,
+            create=PostCreate(DEVICE_CREATE_URL),
             none_label="No device",
         ),
     )
@@ -1699,7 +1729,7 @@ class HistoricalPlaytimeForm(PrimitiveWidgetsMixin, forms.Form):
         widget=SearchSelectWidget(
             search_url=DEVICE_SEARCH_URL,
             options_resolver=device_options,
-            create_url=DEVICE_CREATE_URL,
+            create=PostCreate(DEVICE_CREATE_URL),
             none_label="No device",
         ),
     )
@@ -1938,7 +1968,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         widget=SearchSelectWidget(
             search_url="/api/platforms/search",
             options_resolver=_platform_options,
-            create_url=PLATFORM_CREATE_URL,
+            create=PostCreate(PLATFORM_CREATE_URL),
             none_label="Unspecified",
         ),
     )
@@ -2119,14 +2149,14 @@ class PlatformForm(
         super().__init__(*args, **kwargs)
         self.library = library
         self.instance.library = library
-        held = self.instance.icon
-        icons = dict(PLATFORM_ICONS)
-        if held and held not in icons:
-            #: An older slug stays pickable.
-            icons[held] = held
+        offer_platform_groups(self.fields["group"], library)
         field = cast(forms.ChoiceField, self.fields["icon"])
-        field.choices = list(icons.items())
-        field.initial = held or "unspecified"
+        field.choices = list(PLATFORM_ICONS.items())
+        field.initial = self.instance.icon or UNSPECIFIED_ICON
+
+    def clean_icon(self) -> str:
+        """No icon stated is Unspecified."""
+        return self.cleaned_data["icon"] or UNSPECIFIED_ICON
 
     class Meta:
         model = Platform
@@ -2135,7 +2165,10 @@ class PlatformForm(
             "icon",
             "group",
         )
-        widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
+        widgets: ClassVar[dict[str, forms.Widget]] = {
+            "name": autofocus_input_widget,
+            "group": TextSearchSelectWidget(),
+        }
 
 
 class DeviceForm(PrimitiveWidgetsMixin, forms.Form):

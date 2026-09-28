@@ -36,6 +36,7 @@ function mount(attributes: Record<string, string> = {}): SearchSelectLike {
   host.setAttribute("name", "playthrough");
   host.setAttribute("search-url", "/api/playthrough/search");
   host.setAttribute("prefetch", "20");
+  host.setAttribute("create", "post");
   host.setAttribute("create-url", "/api/playthrough/");
 
   Object.entries(attributes).forEach(([key, value]) => host.setAttribute(key, value));
@@ -127,7 +128,7 @@ describe("<search-select> create row (#1080)", () => {
 
   it("offers no row without a create URL", async () => {
     stubEndpoints([]);
-    const host = mount({ "create-url": "" });
+    const host = mount({ create: "" });
 
     await type(host, "New Game Plus");
 
@@ -337,8 +338,7 @@ describe("<search-select> create row its consumer commits", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   const byEvent = {
-    "create-url": "",
-    "create-event": "true",
+    create: "event",
     "create-verb": "Save",
     "replace-verb": "Overwrite",
   };
@@ -401,13 +401,107 @@ describe("<search-select> create row its consumer commits", () => {
   });
 });
 
+describe("<search-select> create row that selects the typed text", () => {
+  beforeEach(() => document.body.replaceChildren());
+  afterEach(() => vi.unstubAllGlobals());
+
+  const bySelect = { create: "select", "create-verb": "Use" };
+
+  function held(host: HTMLElement): string | undefined {
+    return host.querySelector<HTMLInputElement>('input[type="hidden"][name="playthrough"]')
+      ?.value;
+  }
+
+  it("holds the typed text, posting nothing", async () => {
+    const { createMock } = stubEndpoints([]);
+    const host = mount(bySelect);
+
+    await type(host, "  Retro  ");
+    expect(createRow(host).textContent).toContain("Use “Retro”");
+    pressEnter(host);
+
+    expect(held(host)).toBe("Retro");
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it("commits a typed draft when the form submits", async () => {
+    stubEndpoints([]);
+    const host = mount(bySelect);
+
+    await type(host, "  Retro  ");
+    //: jsdom builds a FormData without firing `formdata`.
+    const formData = new FormData();
+    host
+      .closest("form")!
+      .dispatchEvent(Object.assign(new Event("formdata"), { formData }));
+
+    expect(formData.get("playthrough")).toBe("Retro");
+  });
+
+  function submitted(host: HTMLElement): FormData {
+    //: jsdom builds a FormData without firing `formdata`.
+    const formData = new FormData();
+    host
+      .closest("form")!
+      .dispatchEvent(Object.assign(new Event("formdata"), { formData }));
+    return formData;
+  }
+
+  it("leaves a held pick alone when the box is untouched", async () => {
+    stubEndpoints([]);
+    const host = mount(bySelect);
+    await type(host, "Retro");
+    pressEnter(host);
+
+    expect(submitted(host).get("playthrough")).toBeNull();
+    expect(held(host)).toBe("Retro");
+  });
+
+  it("commits nothing for a box typed into and emptied", async () => {
+    stubEndpoints([]);
+    const host = mount(bySelect);
+    await type(host, "Retro");
+    pressEnter(host);
+
+    await type(host, "");
+
+    expect(submitted(host).get("playthrough")).toBeNull();
+    expect(held(host)).toBeUndefined();
+  });
+
+  it("replaces a held text with a new one", async () => {
+    stubEndpoints([]);
+    const host = mount(bySelect);
+    await type(host, "Retro");
+    pressEnter(host);
+    const changed = vi.fn();
+    host.addEventListener("search-select:change", changed);
+
+    await type(host, "Home");
+    pressEnter(host);
+
+    expect(host.querySelectorAll('input[type="hidden"][name="playthrough"]')).toHaveLength(1);
+    expect(held(host)).toBe("Home");
+    expect(changed).toHaveBeenCalled();
+  });
+
+  it("offers no row for a text a row holds, case ignored", async () => {
+    stubEndpoints([{ value: "Retro", label: "Retro", data: {} }]);
+    const host = mount(bySelect);
+
+    await type(host, "retro");
+
+    expect(createRow(host).hidden).toBe(true);
+  });
+});
+
 describe("<search-select> refetch", () => {
   beforeEach(() => document.body.replaceChildren());
   afterEach(() => vi.unstubAllGlobals());
 
   it("drops a debounced search for the old query", async () => {
     const { searchMock } = stubEndpoints([]);
-    const host = mount({ "create-url": "" }) as SearchSelectLike & {
+    const host = mount({ create: "" }) as SearchSelectLike & {
       refetchOptions(): void;
     };
     const box = searchBox(host);
@@ -422,5 +516,49 @@ describe("<search-select> refetch", () => {
     );
     expect(queries).not.toContain("stale");
     expect(box.value).toBe("");
+  });
+});
+
+describe("<search-select> create modes", () => {
+  it("refuses a select row outside a form", () => {
+    const errors: unknown[] = [];
+    const listener = (event: ErrorEvent) => {
+      errors.push(event.error);
+      event.preventDefault();
+    };
+    window.addEventListener("error", listener);
+    const markup = mount({ create: "select" }).innerHTML;
+    document.body.replaceChildren();
+    const host = document.createElement("search-select");
+    host.setAttribute("name", "group");
+    host.setAttribute("create", "select");
+    host.innerHTML = markup;
+    try {
+      document.body.appendChild(host);
+    } catch (error) {
+      errors.push(error);
+    } finally {
+      window.removeEventListener("error", listener);
+    }
+
+    expect(String(errors.at(-1))).toContain('create="select" outside a form');
+  });
+
+  it("refuses a post with no endpoint", () => {
+    const errors: unknown[] = [];
+    const listener = (event: ErrorEvent) => {
+      errors.push(event.error);
+      event.preventDefault();
+    };
+    window.addEventListener("error", listener);
+    try {
+      mount({ create: "post", "create-url": "" });
+    } catch (error) {
+      errors.push(error);
+    } finally {
+      window.removeEventListener("error", listener);
+    }
+
+    expect(String(errors[0])).toContain('create="post" names no create-url');
   });
 });

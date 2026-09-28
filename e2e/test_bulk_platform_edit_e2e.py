@@ -43,9 +43,15 @@ def test_two_platforms_are_edited_and_the_undo_puts_theirs_back(
     listed = f"{live_server.url}{reverse('games:list_platforms')}"
 
     _edit_selected(page, listed)
-    group = page.locator("input[name='choice-group']")
+    group = page.locator(
+        "search-select[name='choice-group'] [data-search-select-search]"
+    )
     expect(group).to_have_attribute("placeholder", "Keep: mixed")
     group.fill("Home")
+    page.get_by_role("option", name="Use “Home”").click()
+    expect(page.locator("input[type='hidden'][name='choice-group']")).to_have_value(
+        "Home"
+    )
     page.get_by_role("button", name="Keep: Unspecified").click()
     icons = page.get_by_role("dialog", name="Icon")
     icons.get_by_title("Steam", exact=True).click()
@@ -107,3 +113,55 @@ def test_the_platform_form_picks_an_icon_from_the_grid(
 
     page.wait_for_url(f"{live_server.url}{reverse('games:list_platforms')}**")
     assert Platform.objects.get(pk=platform.pk).icon == "battlenet"
+
+
+def test_the_platform_form_picks_a_group_the_library_holds(
+    live_server, page: Page, e2e_library
+):
+    Platform.objects.create(library=e2e_library, name="Amiga", group="Commodore")
+    platform = Platform.objects.create(library=e2e_library, name="C64")
+    _login(page, live_server)
+
+    page.goto(f"{live_server.url}{reverse('games:edit_platform', args=[platform.pk])}")
+    page.locator("search-select[name='group'] [data-search-select-search]").fill("com")
+    page.get_by_role("option", name="Commodore", exact=True).click()
+    page.get_by_role("button", name="Submit").click()
+
+    page.wait_for_url(f"{live_server.url}{reverse('games:list_platforms')}**")
+    assert Platform.objects.get(pk=platform.pk).group == "Commodore"
+
+
+def test_a_typed_group_is_saved_without_picking_it(
+    live_server, page: Page, e2e_library
+):
+    platform = Platform.objects.create(library=e2e_library, name="C64", group="PC")
+    _login(page, live_server)
+
+    page.goto(f"{live_server.url}{reverse('games:edit_platform', args=[platform.pk])}")
+    page.locator("search-select[name='group'] [data-search-select-search]").fill(
+        "Retro"
+    )
+    page.get_by_role("button", name="Submit").click()
+
+    page.wait_for_url(f"{live_server.url}{reverse('games:list_platforms')}**")
+    assert Platform.objects.get(pk=platform.pk).group == "Retro"
+
+
+def test_a_group_typed_in_bulk_is_saved_without_picking_it(
+    live_server, page: Page, e2e_library
+):
+    platforms = [
+        Platform.objects.create(library=e2e_library, name=name, group="PC")
+        for name in ("Amiga", "DOS")
+    ]
+    _login(page, live_server)
+    listed = f"{live_server.url}{reverse('games:list_platforms')}"
+
+    _edit_selected(page, listed)
+    page.locator("search-select[name='choice-group'] [data-search-select-search]").fill(
+        "Retro"
+    )
+    page.get_by_role("button", name="Save", exact=True).click()
+
+    page.wait_for_url(listed)
+    assert [_held(platform)[0] for platform in platforms] == ["Retro", "Retro"]

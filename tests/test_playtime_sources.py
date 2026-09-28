@@ -57,7 +57,7 @@ def tracked(playtime: timedelta) -> PlaytimeBreakdown:
 
 @pytest.fixture
 def platform() -> Platform:
-    return Platform.objects.create(name="PC", icon="pc")
+    return Platform.objects.create(name="PC", icon="steam")
 
 
 @pytest.fixture
@@ -395,8 +395,8 @@ def test_a_year_narrows_the_per_game_sum(owned_library, game):
 
 @pytest.mark.django_db
 def test_platforms_order_by_playtime_then_name(owned_library):
-    pc = Platform.objects.create(name="PC", icon="pc")
-    switch = Platform.objects.create(name="Switch", icon="switch")
+    pc = Platform.objects.create(name="PC", icon="steam")
+    switch = Platform.objects.create(name="Switch", icon="gog")
     day = date(2026, 3, 5)
     for platform, name, hours in (
         (switch, "Hades", 1),
@@ -505,11 +505,7 @@ def test_a_platform_or_month_only_records_reach_gets_a_row(owned_library, platfo
 def test_merged_platform_rows_keep_the_databases_order(owned_library):
     names = ["b", "a", None]
     for index, name in enumerate(names):
-        platform = (
-            None
-            if name is None
-            else Platform.objects.create(name=name, icon=f"icon-{index}")
-        )
+        platform = None if name is None else Platform.objects.create(name=name)
         played = Game.objects.create(
             library=owned_library, name=f"Game {index}", platform=platform
         )
@@ -528,11 +524,7 @@ def test_merged_platform_rows_keep_the_databases_order(owned_library):
 def test_the_unspecified_platform_sorts_last_on_a_tie(owned_library):
     day = date(2026, 3, 5)
     for index, name in enumerate([None, "b", "a"]):
-        platform = (
-            None
-            if name is None
-            else Platform.objects.create(name=name, icon=f"icon-{index}")
-        )
+        platform = None if name is None else Platform.objects.create(name=name)
         played = Game.objects.create(
             library=owned_library, name=f"Game {index}", platform=platform
         )

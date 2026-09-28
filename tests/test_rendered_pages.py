@@ -111,7 +111,7 @@ class RenderedPagesTest(TestCase):
         )
         self.client.force_login(self.user)
         self.platform = Platform.objects.create(
-            library=self.user.library, name="Test Platform", icon="test"
+            library=self.user.library, name="Test Platform", icon="steam"
         )
         self.game = Game.objects.create(
             library=self.user.library, name="Test Game", platform=self.platform
@@ -616,7 +616,7 @@ class PurchaseListDateFilterTest(TestCase):
         )
         self.client.force_login(self.user)
         self.platform = Platform.objects.create(
-            library=self.user.library, name="DateP", icon="datep"
+            library=self.user.library, name="DateP", icon="gog"
         )
         # Markers are placed on the Game name because LinkedPurchase renders
         # the linked game's name (purchase.name doesn't surface in the list row).
@@ -802,7 +802,7 @@ class GameListSessionFilterBoundaryTest(TestCase):
         )
         self.client.force_login(self.user)
         self.platform = Platform.objects.create(
-            library=self.user.library, name="GFP", icon="gfp"
+            library=self.user.library, name="GFP", icon="egs"
         )
         self.played = Game.objects.create(
             library=self.user.library, name="PLAYED-MARKER", platform=self.platform

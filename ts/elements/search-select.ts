@@ -233,9 +233,12 @@ const initWidget = (containerElement: Element) => {
   const params = parseParams(props.params || null);
   //: A filter panel states a criterion and a free-text panel is the
   //: typed text itself; neither holds a row to create.
-  const createUrl = isFilter || freeText ? "" : props.createUrl;
-  //: The consumer commits the row; nothing is posted.
-  const createsByEvent = !isFilter && !freeText && props.createEvent;
+  const createUrl = props.createUrl;
+  const create = isFilter || freeText ? "" : props.create;
+  if (create === "post" && !createUrl) {
+    //: A post with no endpoint would post to this page.
+    throw new Error(`search-select[${props.name}]: create="post" names no create-url`);
+  }
   const createVerb = props.createVerb || "Create";
   const replaceVerb = props.replaceVerb;
   //: A required field whose list usually holds one row commits it, so
@@ -672,7 +675,7 @@ const initWidget = (containerElement: Element) => {
   // beside `PlayStation 4` matches that filter, and a rule built on it
   // would refuse to create any name a longer one holds.
   const createRowOffered = (query: string): boolean => {
-    if ((!createUrl && !createsByEvent) || !createRow) return false;
+    if (!create || !createRow) return false;
     const wanted = query.trim().toLowerCase();
     if (!wanted) return false;
     return Boolean(replaceVerb) || !loadedLabels().includes(wanted);
@@ -716,12 +719,20 @@ const initWidget = (containerElement: Element) => {
     return row;
   };
 
-  /** POST the typed name; take back the row and select it. */
+  /** Commit the typed name as `create` says. */
   const commitCreate = () => {
     if (creating || !createRow || createRow.hidden) return;
     const name = search.value.trim();
     if (!name) return;
-    if (createsByEvent) {
+    if (create === "select") {
+      const option: SearchSelectOption = { value: name, label: name, data: {} };
+      upsertOption(option);
+      createRow.hidden = true;
+      selectOption(option);
+      hidePanel();
+      return;
+    }
+    if (create === "event") {
       container.dispatchEvent(
         new CustomEvent<SearchSelectCreateDetail>("search-select:create", {
           bubbles: true,
@@ -730,6 +741,7 @@ const initWidget = (containerElement: Element) => {
       );
       return;
     }
+    if (create !== "post") return;
     creating = true;
     createRow.setAttribute("aria-disabled", "true");
     const body = { name, ...resolveParams(container, params) };
@@ -1487,6 +1499,19 @@ const initWidget = (containerElement: Element) => {
       // commits only on an explicit pick, so blur touches neither value nor text.
     }
   });
+
+  // Typed text is the value; submitting commits the draft.
+  if (create === "select") {
+    const hostingForm = container.closest("form");
+    if (!hostingForm) {
+      //: Only a form submit commits a typed draft.
+      throw new Error(`search-select[${props.name}]: create="select" outside a form`);
+    }
+    hostingForm.addEventListener("formdata", event => {
+      const draft = search.value.trim();
+      if (container._searchSelectDirty && draft) event.formData.set(props.name, draft);
+    });
+  }
 
   // A field source is a dependency: the hosting form is where both a native
   // control's `change` and another combobox's own event arrive.

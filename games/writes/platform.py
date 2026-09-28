@@ -12,9 +12,11 @@ from django.db.models import Q
 from django.db.models.functions import Lower, Trim
 
 from common.naming import name_key
+from common.platform_icons import require_platform_icon
 from games.batch_ledger import ActName, FieldName, record, recorded, row_changes
 from games.bulk_edit import log_overwrite
 from games.models import Platform, UserLibrary
+from games.reads.platform_groups import PlatformGroup
 from games.removal import remove, restore
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
 
@@ -45,7 +47,7 @@ def taken_sentence(platform: Platform) -> str:
     )
 
 
-def group_taken_sentence(platform: Platform, group: str) -> str:
+def group_taken_sentence(platform: Platform, group: PlatformGroup) -> str:
     """Why this platform cannot take that group."""
     named = f"{platform.name} ({group})" if group else platform.name
     return (
@@ -55,7 +57,7 @@ def group_taken_sentence(platform: Platform, group: str) -> str:
     )
 
 
-def _name_is_taken(platform: Platform, group: str) -> bool:
+def _name_is_taken(platform: Platform, group: PlatformGroup) -> bool:
     """A live platform, private or shared, holding name and group.
 
     The constraints compare private with private and shared with
@@ -105,7 +107,10 @@ def _restore(platform: Platform) -> None:
 
 
 def _state_fields(platform: Platform, stated: dict[FieldName, str]) -> None:
-    """Write group and icon, refusing a taken name."""
+    """Write group and icon; refuse taken name, unlisted icon."""
+    if ICON in stated:
+        #: An UPDATE skips clean(); hold its rule.
+        require_platform_icon(stated[ICON])
     group = stated.get(GROUP)
     sentence = group_taken_sentence(
         platform, platform.group if group is None else group
@@ -157,7 +162,7 @@ def remove_platform_in_batch(
 def edit_platform_in_batch(
     platform: Platform,
     *,
-    group: str | None,
+    group: PlatformGroup | None,
     icon: str | None,
     batch: uuid.UUID,
     act: ActName,
