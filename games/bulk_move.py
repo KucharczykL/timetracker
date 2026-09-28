@@ -126,8 +126,7 @@ def _remove_the_emptied_bucket(
     twice replays the move as moved, and the row then names
     the target already.
 
-    A batch that moved no such row removes nothing. A
-    broken stream is a defect and ends the batch.
+    A broken stream ends the batch.
     """
     with answered("session"):
         try:

@@ -12,8 +12,8 @@ facts. It never shows a sentence that the person cannot act on.
 `run_before` in `games/bulk_move.py` raises `RowUnreadable` when it finds no
 run before the batch's `moved` event. The message names the session, its
 library, the event type and the sequence. It also raises `RowUnreadable` when
-the payload's run is missing or is not a key. Append validation already
-refuses such a payload; the check follows the rule `_device_of` follows.
+the payload's run is missing or is not a key. Append validation refuses such
+a payload. The check follows the rule that `_device_of` follows.
 
 `run_before` still refuses a batch that did not move the session with
 `NOT_MOVED_BY_THIS_BATCH`. Edit's Undo asks `moved_by` first, so only a direct
@@ -24,7 +24,7 @@ library holds no run with the key from the stream. No command deletes a run
 or changes its library, so a missing run is drift, as `_session_run` in
 `games/commands/playersession.py` treats it. The message names the session,
 the run, the library and the batch. The Undo ends on that row, and rows after
-it stay where the batch put them. `NO_EARLIER_RUN` goes.
+it stay where the batch put them.
 
 ## The forward move
 
@@ -48,12 +48,4 @@ the row was, so no inverse can do better.
   the row is on the target and the bucket is not removed.
 - A move back whose earlier run belongs to another library, set with
   `update()`, fails the same way.
-- `test_a_row_moves` uses `a_recorded_session`.
-
-## Docs
-
-`2026-09-19-selectable-tables-wave-design.md` no longer names `run_before` as
-the exception. The #1310 spec says that `edit_back` reads the move from
-`moved_by` and the other facts from `values_before`, and refuses with
-`NOT_EDITED_BY_THIS_BATCH` when the batch changed neither. Its sentence on a
-refused move-back names `SOURCE_TAKEN_AWAY`, the one refusal left.
+- `test_a_row_moves` uses `a_bucket_session`, which records the stream.

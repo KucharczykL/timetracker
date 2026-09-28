@@ -765,7 +765,7 @@ def _moved_without_a_creation(owned_user, owned_library, game):
 
 
 def test_a_move_with_no_run_before_it_is_a_defect(owned_user, owned_library, game):
-    """A stream that states no creation: the row is wrong."""
+    """No creation: the row is wrong."""
     session, batch = _moved_without_a_creation(owned_user, owned_library, game)
 
     with pytest.raises(RowUnreadable):
