@@ -26,6 +26,8 @@ from games.bulk_reclassification import (
     REVIEW_THRESHOLD_HOURS,
     SHORT_MANY,
     SHORT_ONE,
+    convertible_sessions,
+    reviewable_sessions,
     short_rows_note,
 )
 from games.commands.playergame import TrackGame
@@ -206,8 +208,7 @@ def test_the_scope_takes_a_short_session_the_filter_admits(
 ):
     """A statement made off an unnarrowed list reaches every written row.
 
-    The threshold shapes the review, not what the act can convert: doing
-    a short row one at a time always worked (#1357).
+    The threshold shapes the review, not what the act can convert.
     """
     short = a_written_session(
         owned_library, owned_user, run, duration=timedelta(hours=1)
@@ -246,7 +247,7 @@ def test_a_key_no_row_answers_is_lost(owned_library, reclassify):
 def test_a_short_row_is_offered_all_the_same(
     owned_user, owned_library, run, reclassify
 ):
-    """No sentence turns a row down for its length (#1357)."""
+    """No sentence turns a row down for its length."""
     short = a_written_session(
         owned_library, owned_user, run, duration=timedelta(hours=1)
     )
@@ -255,6 +256,28 @@ def test_a_short_row_is_offered_all_the_same(
 
     assert [row.pk for row in resolution.rows] == [short.pk]
     assert resolution.refused == ()
+
+
+def test_a_row_the_base_drops_for_no_named_reason_is_a_defect(
+    owned_user, owned_library, run, reclassify, monkeypatch
+):
+    """A narrowing no refusal sentence names fails, never mislabels."""
+    import games.bulk_reclassification as reclassification
+
+    base = reclassification.convertible_sessions
+    monkeypatch.setattr(
+        reclassification,
+        "convertible_sessions",
+        lambda library: base(library).filter(
+            effective_duration__gte=timedelta(hours=REVIEW_THRESHOLD_HOURS)
+        ),
+    )
+    short = a_written_session(
+        owned_library, owned_user, run, duration=timedelta(hours=1)
+    )
+
+    with pytest.raises(AssertionError, match=str(short.pk)):
+        reclassify.resolve(owned_library, [short.pk])
 
 
 def test_a_bucket_row_is_refused(owned_user, owned_library, game, reclassify):
@@ -434,10 +457,6 @@ def _spare(reclassify: BulkAction, name: str, preview) -> BulkAction:
 # ── What the act cautions about ──────────────────────────────────────────────
 
 
-def test_the_act_states_a_caution(reclassify):
-    assert reclassify.caution is short_rows_note
-
-
 def test_an_act_cautions_about_nothing_by_default(reclassify):
     name = "session.silent_caution"
     try:
@@ -481,6 +500,34 @@ def test_several_short_rows_are_counted(owned_user, owned_library, run):
 
     assert short_rows_note([*short, long_enough]) == SHORT_MANY.format(
         count=2, hours=REVIEW_THRESHOLD_HOURS
+    )
+
+
+def test_the_note_counts_exactly_the_rows_the_review_would_not_suggest(
+    owned_user, owned_library, run
+):
+    """One threshold, read by both: the note and the review cannot drift."""
+    threshold = timedelta(hours=REVIEW_THRESHOLD_HOURS)
+    durations = (
+        threshold - timedelta(minutes=1),
+        threshold,
+        threshold + timedelta(minutes=1),
+        timedelta(hours=1),
+    )
+    for offset, duration in enumerate(durations):
+        a_written_session(
+            owned_library,
+            owned_user,
+            run,
+            day=A_DAY + timedelta(days=offset),
+            duration=duration,
+        )
+    rows = list(convertible_sessions(owned_library))
+    unsuggested = len(rows) - reviewable_sessions(owned_library).count()
+
+    assert unsuggested == 2
+    assert short_rows_note(rows) == SHORT_MANY.format(
+        count=unsuggested, hours=REVIEW_THRESHOLD_HOURS
     )
 
 
@@ -666,6 +713,40 @@ def test_the_confirmation_says_the_caution_over_the_rows(
     assert said in page
     assert page.index(said) < page.index("<table")
     assert reclassify.confirm_label in page
+
+
+def test_the_caution_counts_rows_past_the_sample(
+    owned_user, owned_library, run, reclassify, presentations
+):
+    """The page shows a sample; the note speaks of every row."""
+    from games.views.bulk_pages import ConfirmBatch
+
+    short = [
+        a_written_session(
+            owned_library,
+            owned_user,
+            run,
+            day=A_DAY + timedelta(days=offset),
+            duration=timedelta(hours=1),
+        )
+        for offset in range(2)
+    ]
+
+    page = str(
+        ConfirmBatch(
+            reclassify,
+            rows=short,
+            refused=(),
+            hidden=[],
+            post_url="/bulk/session.reclassify/",
+            csrf_token="token",
+            cancel_url="/",
+            sample_cap=1,
+            presentations=presentations,
+        )
+    )
+
+    assert SHORT_MANY.format(count=2, hours=REVIEW_THRESHOLD_HOURS) in page
 
 
 def test_a_confirmation_over_long_rows_says_no_caution(

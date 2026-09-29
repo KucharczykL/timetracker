@@ -67,7 +67,7 @@ def _caution(action: BulkAction[Any], rows: Sequence[Any]) -> Node:
     A note, not a refusal: it stands above the rows it speaks of and
     takes nothing away from the press.
     """
-    if action.caution is None or not rows:
+    if action.caution is None:
         return Fragment()
     said = action.caution(rows)
     if said is None:

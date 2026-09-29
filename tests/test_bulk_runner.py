@@ -107,8 +107,7 @@ def a_bucket(library, game) -> Playthrough:
 def a_bucket_session(bucket, day=A_DAY):
     """A written-down row the act refuses: its hours name no run.
 
-    The one refusal a live written-down session can be written into, now
-    that a row's length notes rather than refuses (#1357).
+    The one refusal a live written-down session can be written into.
     """
     return duration_only_row(bucket, day, LONG_ENOUGH)
 
@@ -174,6 +173,8 @@ def test_an_all_statement_resolves_through_the_scope(client_in, owned_library, g
     rows = json.loads(posted(response)[PROGRESS_FIELD])["rows"]
     assert rows == [str(wanted.pk)]
     assert str(short.pk) not in rows
+    note = html_module.escape(SHORT_ONE.format(hours=REVIEW_THRESHOLD_HOURS))
+    assert note not in response.content.decode()
 
 
 def test_an_all_statement_drops_what_it_excludes(client_in, owned_library, game):
@@ -229,7 +230,7 @@ def test_a_refused_row_is_named_with_its_reason(client_in, owned_library, game):
 def test_a_short_row_is_noted_and_converted_all_the_same(
     client_in, owned_library, game
 ):
-    """The threshold shapes the review, and nothing else (#1357).
+    """The threshold shapes the review, and nothing else.
 
     A person selecting a short row on the list is told what the review
     would have thought of it, and the press still records it.
