@@ -29,6 +29,7 @@ from common.utils import label_with_details
 from games.end_ways import EndWay
 from games.endpoint_fields import (
     EndpointColumns,
+    OpeningEndpointColumns,
     WayColumn,
     endpoint_bound,
     endpoint_constraints,
@@ -36,6 +37,7 @@ from games.endpoint_fields import (
     endpoint_note,
     endpoint_way,
     endpoint_when,
+    opening_marker,
 )
 from games.external_references import external_reference_url, normalize_provider_key
 from timetracker.settings_registry import THEME_CHOICES, SettingKey
@@ -2155,6 +2157,102 @@ class HistoricalPlaytimeRun(ProjectionModel):
                 name="historicalplaytimerun_once_per_record",
             ),
         )
+
+
+class EntryAccess(models.TextChoices):
+    """How a library reaches a Release."""
+
+    OWNED = "owned", "Owned"
+    BORROWED = "borrowed", "Borrowed"
+    RENTED = "rented", "Rented"
+    SUBSCRIPTION = "subscription", "Subscription"
+    TRIAL = "trial", "Trial"
+    DEMO = "demo", "Demo"
+    PIRATED = "pirated", "Pirated"
+
+
+class EntryFormat(models.TextChoices):
+    """The shape a copy takes."""
+
+    PHYSICAL = "physical", "Physical"
+    DIGITAL = "digital", "Digital"
+    UNKNOWN = "unknown", "Unknown"
+
+
+ENTRY_ACQUISITION_COLUMNS = OpeningEndpointColumns(
+    name="acquisition",
+    model_label="games.LibraryEntry",
+    when="acquired",
+    lower="acquired_lower",
+    upper="acquired_upper",
+    marker="acquisition_recorded_at",
+    note="acquisition_note",
+)
+
+
+class LibraryEntryQuerySet(RemovableMixin, models.QuerySet["LibraryEntry"]):
+    """The marks that hide an entry; the catalog's are the reads'."""
+
+    ancestor_marks = ("player_game",)
+
+
+class LibraryEntry(ProjectionModel, ReferencedRow):
+    """One route of access to one Release; only Entries writes."""
+
+    objects = LibraryEntryQuerySet.as_manager()
+
+    #: The game is one parent away.
+    comparison_through = (("player_game__game", "Game"),)
+
+    #: The creation event's aggregate id.
+    id = UUIDv7Field(
+        primary_key=True,
+        editable=False,
+        default=models.NOT_PROVIDED,
+        db_default=models.NOT_PROVIDED,
+    )
+    player_game = models.ForeignKey(
+        "PlayerGame", on_delete=models.RESTRICT, related_name="entries"
+    )
+    #: A live Release of the tracked game.
+    release = models.ForeignKey(Release, on_delete=models.RESTRICT, related_name="+")
+    access = models.CharField(max_length=16, choices=EntryAccess)
+    format = models.CharField(max_length=16, choices=EntryFormat)
+    note = models.TextField(blank=True, default="")
+    #: The day acquired; null unknown.
+    acquired = endpoint_when()
+    acquired_lower = endpoint_bound("acquired", "lower")
+    acquired_upper = endpoint_bound("acquired", "upper")
+    #: The creation's instant; every row holds one.
+    acquisition_recorded_at = opening_marker()
+    acquisition_note = endpoint_note()
+    #: The creation event's recorded_at.
+    created_at = models.DateTimeField(editable=False)
+    #: The remove event's recorded_at; null live.
+    removed_at = models.DateTimeField(null=True, default=None, editable=False)
+
+    class Meta:
+        constraints = (
+            library_identity_constraint(),
+            models.CheckConstraint(
+                condition=Q(access__in=[word.value for word in EntryAccess]),
+                name="games_libraryentry_access_known",
+            ),
+            models.CheckConstraint(
+                condition=Q(format__in=[word.value for word in EntryFormat]),
+                name="games_libraryentry_format_known",
+            ),
+        )
+        indexes = (
+            models.Index(
+                fields=("library", "release"),
+                condition=Q(removed_at__isnull=True),
+                name="live_entry_per_release_idx",
+            ),
+        )
+
+    def __str__(self) -> str:
+        return f"{self.access} {self.format} copy of {self.release_id}"
 
 
 class UserLibraryPreferences(models.Model):

@@ -21,7 +21,7 @@ from typing import (
 from django.db import models
 from pydantic import AfterValidator, ConfigDict, with_config
 
-from games.models import Device, Game, Platform, Release
+from games.models import Device, Game, LibraryEntry, Platform, Release
 from timetracker.uuidv7 import UUIDv7ParseError, parse_uuidv7
 
 type ReferenceKindName = str  # "catalog.game"
@@ -186,6 +186,16 @@ def _capture_device(device: Device) -> Reference:
     )
 
 
+def _capture_entry(entry: LibraryEntry) -> Reference:
+    """Labelled by the game; detailed by its two words."""
+    return Reference(
+        kind="libraryentry",
+        id=str(entry.pk),
+        label=entry.player_game.game.name,
+        detail=f"{entry.access}, {entry.format}",
+    )
+
+
 def _capture_game(game: Game) -> Reference:
     return Reference(
         kind="catalog.game",
@@ -230,6 +240,15 @@ DEFAULT_REFERENCE_KINDS.register(
         #: Its own stream creates the device.
         resolution=Resolution.PROJECTED,
         created_by="library.device.created",
+    )
+)
+DEFAULT_REFERENCE_KINDS.register(
+    ReferenceKind(
+        name="libraryentry",
+        model=LibraryEntry,
+        capture=_capture_entry,
+        resolution=Resolution.PROJECTED,
+        created_by="library.libraryentry.created",
     )
 )
 DEFAULT_REFERENCE_KINDS.register(

@@ -727,6 +727,7 @@ def test_a_rebuild_swaps_every_table_with_an_empty_diff(
         ("games_historicalplaytime", 0, 0, 0),
         ("games_historicalplaytimerun", 0, 0, 0),
         ("games_librarycalendar", 0, 0, 0),
+        ("games_libraryentry", 0, 0, 0),
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),

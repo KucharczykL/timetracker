@@ -365,6 +365,15 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         #: The session a reclassified record came from.
         "reclassified_from": None,
     },
+    "games.LibraryEntry": {
+        #: The projector's mark.
+        "removed_at": None,
+        #: The empty string is no note.
+        "note": "",
+        #: The opening endpoint: the day may be unknown.
+        "acquired": None,
+        "acquisition_note": "",
+    },
 }
 
 

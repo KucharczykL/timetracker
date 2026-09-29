@@ -38,6 +38,8 @@ def test_the_walk_finds_every_outward_reference():
         ("HistoricalPlaytime", "reclassified_from"),
         ("HistoricalPlaytimeRun", "playthrough"),
         ("HistoricalPlaytimeRun", "record"),
+        ("LibraryEntry", "player_game"),
+        ("LibraryEntry", "release"),
         ("PlayerGame", "game"),
         ("PlayerSession", "device"),
         ("PlayerSession", "playthrough"),

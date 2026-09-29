@@ -15,6 +15,7 @@ from django.utils.timezone import now
 from games.models import (
     Device,
     Game,
+    LibraryEntry,
     Platform,
     Purchase,
     PurchaseConversionState,
@@ -83,6 +84,7 @@ def update_num_purchases(sender, instance, action, reverse, **kwargs):
 @receiver(pre_delete, sender=Game)
 @receiver(pre_delete, sender=Platform)
 @receiver(pre_delete, sender=Device)
+@receiver(pre_delete, sender=LibraryEntry)
 @receiver(pre_delete, sender=Release)
 def refuse_to_delete_a_row_an_event_references(sender, instance, **kwargs):
     """Stop a delete that strands a reference.

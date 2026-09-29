@@ -61,6 +61,7 @@ from games.models import (
     HistoricalPlaytime,
     HistoricalPlaytimeRun,
     LibraryCalendar,
+    LibraryEntry,
     LibraryEvent,
     LibraryEventStreamHead,
     PlayerGame,
@@ -144,12 +145,13 @@ def test_discovery_passes_over_a_manufactured_twin():
 
 
 def test_the_application_declares_its_projections():
-    """Seven projection tables so far."""
+    """Eight projection tables so far."""
     assert projection_models() == (
         Device,
         HistoricalPlaytime,
         HistoricalPlaytimeRun,
         LibraryCalendar,
+        LibraryEntry,
         PlayerGame,
         PlayerSession,
         Playthrough,

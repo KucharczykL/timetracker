@@ -9,6 +9,7 @@ from games.models import (
     Device,
     FilterPreset,
     Game,
+    LibraryEntry,
     Platform,
     PlayerSession,
     Purchase,
@@ -58,6 +59,10 @@ class Command(BaseCommand):
                 Purchase.objects.filter(library_id__in=library_ids).count(),
             ),
             ("devices", Device.objects.filter(library_id__in=library_ids).count()),
+            (
+                "entries",
+                LibraryEntry.objects.filter(library_id__in=library_ids).count(),
+            ),
             (
                 "private platforms",
                 Platform.objects.filter(library_id__in=library_ids).count(),

@@ -34,7 +34,16 @@ from games.events.vocabulary import (
     aliased_fields,
 )
 from games.events.wiring import EventWiring
-from games.models import Device, Edition, Game, LibraryEvent, Platform, Release
+from games.models import (
+    Device,
+    Edition,
+    Game,
+    LibraryEntry,
+    LibraryEvent,
+    Platform,
+    PlayerGame,
+    Release,
+)
 
 STRICT_CONFIG = ConfigDict(extra="forbid", strict=True)
 
@@ -125,6 +134,26 @@ def platform(owned_library):
 def release(game, platform):
     return Release.objects.create(
         edition=Edition.objects.create(game=game), platform=platform
+    )
+
+
+@pytest.fixture
+def entry(owned_library, game, release):
+    """A bare row; probe events only."""
+    tracked, _ = PlayerGame.objects.get_or_create(
+        library=owned_library,
+        game=game,
+        defaults={"id": uuid.uuid7(), "tracked_at": timezone.now()},
+    )
+    return LibraryEntry.objects.create(
+        id=uuid.uuid7(),
+        library=owned_library,
+        player_game=tracked,
+        release=release,
+        access="owned",
+        format="digital",
+        acquisition_recorded_at=timezone.now(),
+        created_at=timezone.now(),
     )
 
 
@@ -272,7 +301,9 @@ def test_a_release_on_no_platform_captures_an_empty_detail(game):
 
 
 @pytest.mark.django_db
-def test_every_captured_reference_validates_as_one(device, game, platform, release):
+def test_every_captured_reference_validates_as_one(
+    device, entry, game, platform, release
+):
     """Dict equality says nothing about the recorded shape.
 
     The schema is what refuses an uncanonical id or a label that is
@@ -281,6 +312,7 @@ def test_every_captured_reference_validates_as_one(device, game, platform, relea
     """
     by_kind = {
         "device": device,
+        "libraryentry": entry,
         "catalog.game": game,
         "catalog.platform": platform,
         "catalog.release": release,
