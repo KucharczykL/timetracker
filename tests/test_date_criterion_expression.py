@@ -1,5 +1,6 @@
 """`to_q_on(expression)` answers what `to_q(column)` answers."""
 
+import json
 from datetime import date
 
 import pytest
@@ -7,6 +8,7 @@ from completed_runs import make_purchase
 from django.db.models import F
 
 from common.criteria import DateCriterion, FilterError, Modifier
+from games.filters import parse_game_filter, parse_session_filter
 from games.models import Purchase
 
 pytestmark = pytest.mark.django_db
@@ -48,3 +50,27 @@ def test_both_forms_refuse_a_missing_bound(modifier):
         criterion.to_q("date_refunded")
     with pytest.raises(FilterError):
         criterion.to_q_on(F("date_refunded"))
+
+
+@pytest.mark.parametrize(
+    "modifier",
+    [Modifier.EQUALS, Modifier.NOT_EQUALS, Modifier.GREATER_THAN, Modifier.BETWEEN],
+    ids=lambda modifier: modifier.value,
+)
+def test_no_date_is_refused_not_compared_to_null(modifier):
+    """A keyword lookup read None as IS NULL; an expression must not."""
+    criterion = DateCriterion(value=None, value2="2026-03-06", modifier=modifier)
+
+    with pytest.raises(FilterError, match="IS_NULL"):
+        criterion.to_q_on(F("date_refunded"))
+
+
+@pytest.mark.parametrize(
+    ("parse", "field"),
+    [(parse_game_filter, "created_at"), (parse_session_filter, "started")],
+)
+def test_a_null_value_on_a_day_facet_is_refused_at_parse(parse, field):
+    blob = json.dumps({field: {"modifier": "EQUALS", "value": None}})
+
+    with pytest.raises(FilterError):
+        parse(blob)

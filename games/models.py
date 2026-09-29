@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Mapping
 from datetime import date, timedelta
-from typing import TYPE_CHECKING, ClassVar, Final
+from typing import TYPE_CHECKING, ClassVar, Final, Literal
 from uuid import UUID
 
 import requests
@@ -1792,8 +1792,11 @@ class PlayerSessionQuerySet(RemovableMixin, models.QuerySet["PlayerSession"]):
     ancestor_marks = ("playthrough", "playthrough__player_game")
 
 
-def session_day_of(column: str) -> Cast:
-    """The instant's day in the row's own zone."""
+type SessionInstantColumn = Literal["started_at", "ended_at"]
+
+
+def session_day_of(column: SessionInstantColumn) -> Cast:
+    """The instant's day in the row's zone."""
     return Cast(Func(F("day_zone"), F(column), function="timezone"), models.DateField())
 
 

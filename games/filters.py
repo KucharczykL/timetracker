@@ -55,6 +55,7 @@ from common.criteria import (
     _Criterion,
     bool_isnull_handler,
     bool_running_handler,
+    calendar_day_handler,
     comparable_columns,
     days_touched_handler,
     duration_hours_handler,
@@ -72,7 +73,7 @@ from games.endpoints import (
     PLAYTHROUGH_COMPLETION,
     PLAYTHROUGH_START,
 )
-from games.models import PlayerSessionTimingMode
+from games.models import PlayerSessionTimingMode, SessionInstantColumn, session_day_of
 from games.reads.playthrough_activity import RunActivity
 from timetracker.settings_registry import DEFAULT_PAGE_SIZE
 
@@ -99,12 +100,10 @@ class FindFilter:
         return self.per_page if self.per_page_explicit else None
 
 
-def session_day_handler(column: str) -> FieldHandler:
+def session_day_handler(column: SessionInstantColumn) -> FieldHandler:
     """A session instant's day, in its zone."""
 
-    def handler(criterion: _Criterion) -> Q:
-        from games.models import session_day_of
-
+    def handler(criterion: _Criterion, context: FilterQueryContext | None) -> Q:
         if not isinstance(criterion, DateCriterion):
             raise FilterError(f"{column} compares a day; state a date")
         return criterion.to_q_on(session_day_of(column))
@@ -195,8 +194,12 @@ class GameFilter(OperatorFilter):
             metadata_lookup="player_games__excluded_from_unfinished",
         ),
         "playtime_hours": FilterField(handler=duration_hours_handler("playtime")),
-        "created_at": FilterField(day_of="created_at"),
-        "updated_at": FilterField(day_of="updated_at"),
+        "created_at": FilterField(
+            handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
+        ),
+        "updated_at": FilterField(
+            handler=calendar_day_handler("updated_at"), metadata_lookup="updated_at"
+        ),
         "platform_group": FilterField(
             "platform__group", search_url="/api/platforms/groups"
         ),
@@ -332,8 +335,12 @@ class PlayerSessionFilter(OperatorFilter):
     #: The day the run's own dates do not cover.
     outside_playthrough_dates: BoolCriterion | None = None
     day: DateCriterion | None = None  # effective_day, the library's calendar
-    started: DateCriterion | None = None  # started_at's date; null Duration-only
-    ended: DateCriterion | None = None  # ended_at's date; null while running
+    started: DateCriterion | None = (
+        None  # started_at's day in day_zone; null Duration-only
+    )
+    ended: DateCriterion | None = (
+        None  # ended_at's day in day_zone; null running, Duration-only
+    )
     duration_hours: IntCriterion | None = None  # effective_duration
     created_at: DateCriterion | None = None  # compared by calendar day
 
@@ -366,7 +373,6 @@ class PlayerSessionFilter(OperatorFilter):
             label="Outside dates",
         ),
         "day": FilterField("effective_day", label="Day"),
-        # Compare the date portion so a date matches the datetime column.
         "started": FilterField(
             handler=session_day_handler("started_at"),
             metadata_lookup="started_at",
@@ -381,7 +387,9 @@ class PlayerSessionFilter(OperatorFilter):
             handler=duration_hours_handler("effective_duration"),
             label="Duration (hours)",
         ),
-        "created_at": FilterField(day_of="created_at"),
+        "created_at": FilterField(
+            handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
+        ),
     }
 
     @classmethod
@@ -495,8 +503,12 @@ class PurchaseFilter(OperatorFilter):
         "num_purchases": FilterField(),
         "ownership_type": FilterField(),
         "type": FilterField(),
-        "created_at": FilterField(day_of="created_at"),
-        "updated_at": FilterField(day_of="updated_at"),
+        "created_at": FilterField(
+            handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
+        ),
+        "updated_at": FilterField(
+            handler=calendar_day_handler("updated_at"), metadata_lookup="updated_at"
+        ),
         "infinite": FilterField(),
         "needs_price_update": FilterField(),
         "converted_currency": FilterField(),
@@ -708,7 +720,9 @@ class DeviceFilter(OperatorFilter):
     fields: ClassVar[dict[str, FilterField]] = {
         "name": FilterField(),
         "type": FilterField(),
-        "created_at": FilterField(day_of="created_at"),
+        "created_at": FilterField(
+            handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
+        ),
         "access_ended": _ACCESS_END_FIELDS.interval,
         "is_owned": _ACCESS_END_FIELDS.stated,
         "access_end_way": way_filter_field(DEVICE_ACCESS_END, label="Status"),
@@ -770,7 +784,9 @@ class PlatformFilter(OperatorFilter):
         "name": FilterField(),
         "group": FilterField(),
         "icon": FilterField(),
-        "created_at": FilterField(day_of="created_at"),
+        "created_at": FilterField(
+            handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
+        ),
     }
 
     @classmethod
@@ -864,10 +880,12 @@ class PlaythroughFilter(OperatorFilter):
         "note": FilterField(),
         "start_note": FilterField(),
         "completion_note": FilterField(),
-        "created_at": FilterField(day_of="created_at"),
+        "created_at": FilterField(
+            handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
+        ),
         "activity": FilterField(
             #: Delegate: a hand-built Q drops the modifier.
-            handler=lambda criterion: criterion.to_q("activity"),
+            handler=lambda criterion, context: criterion.to_q("activity"),
             label="Activity",
             choices=ACTIVITY_CHOICES,
             #: Null for completed runs; the picker asks.
@@ -951,7 +969,9 @@ class HistoricalPlaytimeFilter(OperatorFilter):
             label="When",
         ),
         "note": FilterField(),
-        "created_at": FilterField(day_of="created_at"),
+        "created_at": FilterField(
+            handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
+        ),
     }
 
     @classmethod
@@ -1176,7 +1196,7 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
     }
     return FilterQueryContext(
         lambda model: scopes[model](),
-        day_zone=cache(lambda: calendar_day_zone(library)),
+        day_zone=lambda: calendar_day_zone(library),
     )
 
 

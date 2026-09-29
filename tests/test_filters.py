@@ -205,7 +205,7 @@ class TestInclusiveComparisons:
 
         handler = temporal_interval_handler("started", "started_lower", "started_upper")
         with pytest.raises(FilterError):
-            handler(DateCriterion(value="2025-06-01", modifier=modifier))
+            handler(DateCriterion(value="2025-06-01", modifier=modifier), None)
 
     def test_days_touched(self):
         from datetime import timedelta
@@ -222,10 +222,10 @@ class TestInclusiveComparisons:
         )
         span_end = F("started_lower") + timedelta(days=2)
         assert handler(
-            IntCriterion(value=3, modifier=Modifier.GREATER_THAN_OR_EQUAL)
+            IntCriterion(value=3, modifier=Modifier.GREATER_THAN_OR_EQUAL), None
         ) == known & Q(completed_upper__gte=span_end)
         assert handler(
-            IntCriterion(value=3, modifier=Modifier.LESS_THAN_OR_EQUAL)
+            IntCriterion(value=3, modifier=Modifier.LESS_THAN_OR_EQUAL), None
         ) == known & Q(completed_upper__lte=span_end)
 
 
@@ -2936,6 +2936,7 @@ class TestFieldComparisonCriterion:
                 Modifier.EQUALS,
                 left_group="date",
                 right_group="date",
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(date_refunded=F("date_purchased")) & guards
         )
@@ -2949,6 +2950,7 @@ class TestFieldComparisonCriterion:
                 Modifier.NOT_EQUALS,
                 left_group="date",
                 right_group="date",
+                day_zone=lambda: UTC_ZONE,
             )
             == ~Q(date_refunded=F("date_purchased")) & guards
         )
@@ -2962,6 +2964,7 @@ class TestFieldComparisonCriterion:
                 Modifier.GREATER_THAN,
                 left_group="date",
                 right_group="date",
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(date_refunded__gt=F("date_purchased")) & guards
         )
@@ -2975,6 +2978,7 @@ class TestFieldComparisonCriterion:
                 Modifier.LESS_THAN,
                 left_group="date",
                 right_group="date",
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(date_refunded__lt=F("date_purchased")) & guards
         )
@@ -2988,6 +2992,7 @@ class TestFieldComparisonCriterion:
                 Modifier.INCLUDES,
                 left_group="string",
                 right_group="string",
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(name__icontains=F("sort_name")) & guards
         )
@@ -3001,6 +3006,7 @@ class TestFieldComparisonCriterion:
                 Modifier.EXCLUDES,
                 left_group="string",
                 right_group="string",
+                day_zone=lambda: UTC_ZONE,
             )
             == ~Q(name__icontains=F("sort_name")) & guards
         )
@@ -3014,6 +3020,7 @@ class TestFieldComparisonCriterion:
                 Modifier.GREATER_THAN_OR_EQUAL,
                 left_group="date",
                 right_group="date",
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(date_refunded__gte=F("date_purchased")) & guards
         )
@@ -3027,6 +3034,7 @@ class TestFieldComparisonCriterion:
                 Modifier.LESS_THAN_OR_EQUAL,
                 left_group="date",
                 right_group="date",
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(date_refunded__lte=F("date_purchased")) & guards
         )
@@ -3039,6 +3047,7 @@ class TestFieldComparisonCriterion:
                 Modifier.BETWEEN,
                 left_group="date",
                 right_group="date",
+                day_zone=lambda: UTC_ZONE,
             )
 
     # ── date-granular comparison (granularity="date") ────────────────────────
@@ -3055,7 +3064,7 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
-                day_zone=UTC_ZONE,
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(
                 Exact(
@@ -3078,7 +3087,7 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
-                day_zone=UTC_ZONE,
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(
                 GreaterThanOrEqual(
@@ -3101,7 +3110,7 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
-                day_zone=UTC_ZONE,
+                day_zone=lambda: UTC_ZONE,
             )
             == ~Q(
                 Exact(
@@ -3170,7 +3179,7 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
-                day_zone=UTC_ZONE,
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(
                 GreaterThan(
@@ -3188,7 +3197,7 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
-                day_zone=UTC_ZONE,
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(
                 LessThan(
@@ -4263,7 +4272,7 @@ class TestComparisonSpaces:
                 )
             ]
         )
-        filter_object.to_q()  # must not raise
+        filter_object.to_q(UNRESTRICTED_FILTER_CONTEXT)  # must not raise
 
     def test_date_space_accepts_date_vs_datetime(self):
         # Playthrough.started_lower is a DateField, created_at a DateTimeField
@@ -5021,6 +5030,7 @@ class TestStrictNullSemantics:
             "raw",
             left_group="datetime",
             right_group="datetime",
+            day_zone=lambda: UTC_ZONE,
         )
         assert str(q).count("isnull") == 2
 
@@ -5032,6 +5042,7 @@ class TestStrictNullSemantics:
             "raw",
             left_group="datetime",
             right_group="datetime",
+            day_zone=lambda: UTC_ZONE,
         )
         assert str(q).count("isnull") == 2
 
@@ -5064,7 +5075,7 @@ class TestYearProjection:
                     granularity="year",
                 )
             ]
-        ).to_q()
+        ).to_q(UNRESTRICTED_FILTER_CONTEXT)
         results = PlayerSession.objects.filter(q)
         assert hit in results and miss not in results
 
@@ -5091,7 +5102,7 @@ class TestYearProjection:
                     granularity="year",
                 )
             ]
-        ).to_q()
+        ).to_q(UNRESTRICTED_FILTER_CONTEXT)
         assert hit in PlayerSession.objects.filter(q)
 
     def test_year_projection_datetime_to_year_lookup(self):
@@ -5103,8 +5114,9 @@ class TestYearProjection:
             "year",
             left_group="datetime",
             right_group="datetime",
+            day_zone=lambda: UTC_ZONE,
         )
-        assert "started_at__year" in str(q)
+        assert "ExtractYear" in str(q)
 
     def test_year_projection_number_left_temporal_right(self):
         """'year' granularity: number left is unchanged; temporal right uses ExtractYear."""
@@ -5115,6 +5127,7 @@ class TestYearProjection:
             "year",
             left_group="number",
             right_group="datetime",
+            day_zone=lambda: UTC_ZONE,
         )
         # number left: no __year suffix on lookup
         assert "year_released__year" not in str(q)
@@ -5130,11 +5143,11 @@ class TestYearProjection:
             "year",
             left_group="datetime",
             right_group="number",
+            day_zone=lambda: UTC_ZONE,
         )
         # datetime left: __year lookup suffix
-        assert "started_at__year" in str(q)
-        # number right: no ExtractYear wrapper
-        assert "ExtractYear" not in str(q)
+        # temporal left is projected; the number right is not
+        assert str(q).count("ExtractYear") == 1
 
     def test_year_projection_date_left_date_right(self):
         """'year' granularity: both date operands get projected (left __year, right ExtractYear)."""
@@ -5145,9 +5158,10 @@ class TestYearProjection:
             "year",
             left_group="date",
             right_group="date",
+            day_zone=lambda: UTC_ZONE,
         )
         # date left: __year lookup suffix
-        assert "started__year" in str(q)
+        assert "ExtractYear" in str(q)
         # date right: ExtractYear wrapper
         assert "ExtractYear" in str(q)
 
@@ -5160,11 +5174,11 @@ class TestYearProjection:
             "year",
             left_group="date",
             right_group="number",
+            day_zone=lambda: UTC_ZONE,
         )
         # date left: __year lookup suffix
-        assert "started__year" in str(q)
-        # number right: no ExtractYear wrapper
-        assert "ExtractYear" not in str(q)
+        # temporal left is projected; the number right is not
+        assert str(q).count("ExtractYear") == 1
 
     def test_year_projection_number_left_number_right(self):
         """'year' granularity: both number operands pass through — no projection applied."""
@@ -5175,6 +5189,7 @@ class TestYearProjection:
             "year",
             left_group="number",
             right_group="number",
+            day_zone=lambda: UTC_ZONE,
         )
         # neither side gets projected
         assert "year_released__year" not in str(q)
@@ -5191,10 +5206,9 @@ class TestYearProjection:
             "date",
             left_group="date",
             right_group="datetime",
-            day_zone=UTC_ZONE,
+            day_zone=lambda: UTC_ZONE,
         )
         # date left: no __date suffix (only datetime needs truncation)
-        assert "started__date" not in str(q)
         # datetime right: TruncDate wrapper
         assert "TruncDate" in str(q)
 
@@ -5346,12 +5360,12 @@ class TestFilterField:
 
     def test_lookup_and_handler_together_rejected(self):
         with pytest.raises(ValueError, match="lookup OR handler"):
-            FilterField("x", handler=lambda c: Q())
+            FilterField("x", handler=lambda criterion, context: Q())
 
     def test_imperative_with_handler_rejected(self):
         # ``to_q`` skips imperative fields, so a handler would be dead code.
         with pytest.raises(ValueError, match="dead code"):
-            FilterField(handler=lambda c: Q(), imperative=True)
+            FilterField(handler=lambda criterion, context: Q(), imperative=True)
 
     def test_imperative_without_lookup_rejected(self):
         with pytest.raises(ValueError, match="needs a lookup"):
@@ -5359,7 +5373,7 @@ class TestFilterField:
 
     def test_search_url_with_handler_rejected(self):
         with pytest.raises(ValueError, match="search_url has no effect"):
-            FilterField(handler=lambda c: Q(), search_url="/x")
+            FilterField(handler=lambda criterion, context: Q(), search_url="/x")
 
     def test_imperative_with_lookup_is_accepted(self):
         # The legitimate shape (the M2M ``games``): widget config in the table,
@@ -5379,7 +5393,7 @@ class TestFilterFieldHandlers:
         from datetime import timedelta
 
         handler = duration_hours_handler("effective_duration")
-        assert handler(IntCriterion(value=4, modifier=Modifier.EQUALS)) == Q(
+        assert handler(IntCriterion(value=4, modifier=Modifier.EQUALS), None) == Q(
             effective_duration__gte=timedelta(hours=4),
             effective_duration__lt=timedelta(hours=5),
         )
@@ -5389,33 +5403,39 @@ class TestFilterFieldHandlers:
         from datetime import timedelta
 
         handler = duration_hours_handler("effective_duration")
-        assert handler(IntCriterion(value=1, value2=5, modifier=Modifier.BETWEEN)) == Q(
+        assert handler(
+            IntCriterion(value=1, value2=5, modifier=Modifier.BETWEEN), None
+        ) == Q(
             effective_duration__gte=timedelta(hours=1),
             effective_duration__lte=timedelta(hours=5),
         )
 
     def test_bool_isnull_handler_direct(self):
-        assert bool_isnull_handler("ended_at")(BoolCriterion(value=True)) == Q(
+        assert bool_isnull_handler("ended_at")(BoolCriterion(value=True), None) == Q(
             ended_at__isnull=True
         )
-        assert bool_isnull_handler("ended_at")(BoolCriterion(value=False)) == Q(
+        assert bool_isnull_handler("ended_at")(BoolCriterion(value=False), None) == Q(
             ended_at__isnull=False
         )
 
     def test_bool_isnull_handler_invert(self):
         assert bool_isnull_handler("date_refunded", invert=True)(
-            BoolCriterion(value=True)
+            BoolCriterion(value=True), None
         ) == Q(date_refunded__isnull=False)
         assert bool_isnull_handler("date_refunded", invert=True)(
-            BoolCriterion(value=False)
+            BoolCriterion(value=False), None
         ) == Q(date_refunded__isnull=True)
 
     def test_bool_nonzero_duration_handler(self):
         from datetime import timedelta
 
         handler = bool_nonzero_duration_handler("duration_manual")
-        assert handler(BoolCriterion(value=True)) == ~Q(duration_manual=timedelta(0))
-        assert handler(BoolCriterion(value=False)) == Q(duration_manual=timedelta(0))
+        assert handler(BoolCriterion(value=True), None) == ~Q(
+            duration_manual=timedelta(0)
+        )
+        assert handler(BoolCriterion(value=False), None) == Q(
+            duration_manual=timedelta(0)
+        )
 
     # ── wiring: the field maps to the intended handler via the generic to_q ──
 
@@ -6069,11 +6089,13 @@ class _DeclaredChoicesStub(OperatorFilter):
 
     fields: ClassVar[dict[str, FilterField]] = {
         "condition": FilterField(
-            handler=lambda criterion: criterion.to_q("condition"),
+            handler=lambda criterion, context: criterion.to_q("condition"),
             choices=(ChoiceMeta(value="a", label="A"),),
             nullable=True,
         ),
-        "other": FilterField(handler=lambda criterion: criterion.to_q("other")),
+        "other": FilterField(
+            handler=lambda criterion, context: criterion.to_q("other")
+        ),
     }
 
     @classmethod

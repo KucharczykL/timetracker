@@ -1,6 +1,5 @@
 """The query context carries the calendar zone."""
 
-from functools import cache
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -23,7 +22,7 @@ def test_a_context_states_its_zone():
 def test_the_validation_context_compiles_in_utc_and_never_executes():
     context = FilterQueryContext.for_validation()
 
-    assert context.calendar_zone() == ZoneInfo("UTC")
+    assert context.calendar_zone == ZoneInfo("UTC")
     with pytest.raises(RuntimeError):
         context.ensure_execution()
 
@@ -31,22 +30,25 @@ def test_the_validation_context_compiles_in_utc_and_never_executes():
 def test_the_zone_is_read_once():
     calls: list[int] = []
 
-    @cache
     def zone() -> ZoneInfo:
         calls.append(1)
         return ZoneInfo("Pacific/Niue")
 
     context = FilterQueryContext(_unrestricted, day_zone=zone)
 
-    assert context.calendar_zone() == context.calendar_zone()
+    assert context.calendar_zone == context.calendar_zone
     assert calls == [1]
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_library_context_reads_the_calendar(owned_library):
+def test_the_library_context_reads_the_calendar(
+    owned_library, django_assert_num_queries
+):
     displaced = displace_calendar(owned_library)
 
     context = filter_query_context_for_library(owned_library)
 
-    assert context.calendar_zone() == ZoneInfo(displaced)
-    assert context.calendar_zone() == calendar_day_zone(owned_library)
+    with django_assert_num_queries(1):
+        assert context.calendar_zone == ZoneInfo(displaced)
+        assert context.calendar_zone == ZoneInfo(displaced)
+    assert context.calendar_zone == calendar_day_zone(owned_library)

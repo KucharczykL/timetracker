@@ -41,7 +41,21 @@ def calendar_day_zone(library: UserLibrary) -> ZoneInfo:
             library.pk,
             stated,
         )
-    return ZoneInfo(resolve_str_for_user(library.user, "DISPLAY_TIME_ZONE"))
+    else:
+        logger.warning(
+            "Library %s states no calendar; reading days in the owner's display zone.",
+            library.pk,
+        )
+    display = resolve_str_for_user(library.user, "DISPLAY_TIME_ZONE")
+    zone = zone_or_none(display)
+    if zone is None:
+        logger.error(
+            "Library %s's display zone %r is unreadable; reading days in UTC.",
+            library.pk,
+            display,
+        )
+        return ZoneInfo("UTC")
+    return zone
 
 
 def calendar_today(library: UserLibrary) -> date:

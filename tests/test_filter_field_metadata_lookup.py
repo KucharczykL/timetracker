@@ -16,6 +16,7 @@ from common.criteria import (
     FilterQueryContextRequired,
     Modifier,
     OperatorFilter,
+    calendar_day_handler,
     field_metadata,
 )
 from games.models import Game, PlayerGame, Playthrough
@@ -74,7 +75,7 @@ class _HandlerFilter(OperatorFilter):
 
     fields: ClassVar[dict[str, FilterField]] = {
         "started": FilterField(
-            handler=lambda criterion: Q(),
+            handler=lambda criterion, context: Q(),
             metadata_lookup="started_lower",
         ),
     }
@@ -106,7 +107,7 @@ def test_a_handler_field_without_one_still_resolves_nothing():
         started: DateCriterion | None = None
 
         fields: ClassVar[dict[str, FilterField]] = {
-            "started": FilterField(handler=lambda criterion: Q()),
+            "started": FilterField(handler=lambda criterion, context: Q()),
         }
 
         @classmethod
@@ -131,7 +132,9 @@ class _DayFilter(OperatorFilter):
     created_at: DateCriterion | None = None
 
     fields: ClassVar[dict[str, FilterField]] = {
-        "created_at": FilterField(day_of="created_at"),
+        "created_at": FilterField(
+            handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
+        ),
     }
 
     @classmethod
@@ -139,16 +142,7 @@ class _DayFilter(OperatorFilter):
         return Game
 
 
-def test_a_day_field_refuses_a_lookup_or_handler_beside_it():
-    with pytest.raises(ValueError):
-        FilterField(day_of="created_at", lookup="created_at")
-    with pytest.raises(ValueError):
-        FilterField(day_of="created_at", handler=lambda criterion: Q())
-
-
 def test_a_day_field_reads_its_widget_from_the_column():
-    with pytest.raises(ValueError):
-        FilterField(day_of="created_at", nullable=True)
     entry = next(
         meta for meta in field_metadata(_DayFilter) if meta["name"] == "created_at"
     )
