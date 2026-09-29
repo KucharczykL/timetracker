@@ -1,15 +1,16 @@
 """Refusing a day off the process clock."""
 
 import ast
+from collections.abc import Mapping
 from pathlib import Path
 from typing import NamedTuple
 
-#: `tests` and `e2e` are guarded too, since #1221 moved the readers onto the
-#: library's calendar and left every test seeding off the process clock. Such
-#: a test agrees with the code it exercises for 22 hours a day and disagrees
-#: by a day for the other two, so CI fails on whichever PR happens to run
-#: between 22:00 and 00:00 UTC rather than on the commit that caused it.
-#: A test states a fixed day or asks the calendar; it never asks the clock.
+import pytest
+
+#: Tests are walked too: a fixture seeded off the process clock agrees with
+#: a calendar reader except for the hours their zones sit on different
+#: dates, so CI fails on whichever PR runs then. A test states a fixed day
+#: or asks the calendar; it never asks the clock.
 GUARDED_PACKAGES = (
     "games",
     "common",
@@ -20,38 +21,53 @@ GUARDED_PACKAGES = (
     "e2e",
 )
 
-#: Names answering a day from the active zone.
-CLOCK_NAMES = frozenset({"localdate", "today"})
+#: Answer a day in the active zone unless one is stated.
+ZONED_CLOCK_NAMES = frozenset({"localdate", "localtime"})
 
-#: `<path>:<function>`, and why the clock is right there.
-ALLOWED_FUNCTIONS: dict[str, str] = {
-    "games/views/general.py:global_current_year": (
+#: Answer the process zone's day and take no zone.
+TODAY_NAMES = frozenset({"today"})
+
+CLOCK_NAMES = ZONED_CLOCK_NAMES | TODAY_NAMES
+
+#: Its `.date()` is the UTC day, or the process's when naive.
+NOW_NAMES = frozenset({"now"})
+
+#: Modules whose clock attributes are the clock, by any import alias.
+CLOCK_MODULES = frozenset({"timezone", "date", "datetime"})
+
+type ModulePath = str  # e.g. "tests/calendar_days.py"
+type FunctionName = str  # qualified, e.g. "Clock.today" or "<module>"
+type Reason = str
+
+
+class AllowedFunction(NamedTuple):
+    path: ModulePath
+    function: FunctionName
+
+
+class Exemption(NamedTuple):
+    """Why the clock is right there, and how many reads it covers."""
+
+    reason: Reason
+    reads: int = 1
+
+
+ALLOWED_FUNCTIONS: dict[AllowedFunction, Exemption] = {
+    AllowedFunction("games/views/general.py", "global_current_year"): Exemption(
         "a viewer with no library has no calendar to ask"
     ),
-    "tests/test_navbar_calendar_day.py:elsewhere": (
-        "picks the zone that disagrees with the process clock, so it must "
-        "read that clock to know which one does"
+    AllowedFunction("games/checks.py", "<module>"): Exemption(
+        "names the clock's factories to refuse them as a field default",
+        reads=4,
     ),
-    "tests/test_playthrough_companion_status.py:"
-    "test_a_start_states_the_librarys_day_not_the_processs": (
-        "asserts the two clocks answer differently, which is unsayable "
-        "without reading both"
+    AllowedFunction("tests/calendar_days.py", "process_day"): Exemption(
+        "the one read of the process clock, for proving a calendar disagrees with it"
     ),
-    "tests/test_calendar_days.py:displaced": (
-        "picks the zone that disagrees with the process clock, so it must "
-        "read that clock to know which one does"
-    ),
-    "tests/test_calendar_days.py:test_the_fixture_puts_the_clocks_a_day_apart": (
-        "asserts the two clocks answer differently, which is what makes "
-        "every other assertion in that file prove something"
-    ),
-    "tests/test_historical_playtime_filter.py:test_created_at": (
+    AllowedFunction(
+        "tests/test_historical_playtime_filter.py", "test_created_at"
+    ): Exemption(
         "created_at is compared through Django's __date lookup, which "
         "resolves in the active zone rather than the library's calendar"
-    ),
-    "e2e/test_date_range_picker_e2e.py:_pinned_today": (
-        "the browser context is pinned to settings.TIME_ZONE, so the day "
-        "the picker computes is the active zone's and no library is involved"
     ),
 }
 
@@ -64,15 +80,15 @@ REPORT = (
     "or seed against the calendar with tests/calendar_days.py's "
     "library_noon(library); a fixture built on the process clock agrees with "
     "the reader for most of the day and is one day out for the rest. If no "
-    "library exists to ask, add '{path}:{function}' to ALLOWED_FUNCTIONS "
-    "with the reason."
+    "library exists to ask, add AllowedFunction({path!r}, {function!r}) to "
+    "ALLOWED_FUNCTIONS with the reason."
 )
 
 
-class FunctionSpan(NamedTuple):
-    """One definition, and the lines it covers."""
+class ScopeSpan(NamedTuple):
+    """One definition, its qualified name, and the lines it covers."""
 
-    name: str
+    name: FunctionName
     first_line: int
     last_line: int
 
@@ -84,48 +100,124 @@ class FunctionSpan(NamedTuple):
         return self.last_line - self.first_line
 
 
-def _function_spans(tree: ast.AST) -> list[FunctionSpan]:
-    return [
-        FunctionSpan(node.name, node.lineno, node.end_lineno or node.lineno)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
-    ]
+class ClockRead(NamedTuple):
+    line: int
+    function: FunctionName
 
 
-def _holding_function(spans: list[FunctionSpan], line: int) -> str:
-    """The innermost function around a line."""
+def _scope_spans(body: list[ast.stmt], prefix: FunctionName = "") -> list[ScopeSpan]:
+    spans = []
+    for node in body:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            name = f"{prefix}{node.name}"
+            spans.append(ScopeSpan(name, node.lineno, node.end_lineno or node.lineno))
+            spans.extend(_scope_spans(node.body, f"{name}."))
+        else:
+            for child in ast.iter_child_nodes(node):
+                if isinstance(child, ast.stmt):
+                    spans.extend(_scope_spans([child], prefix))
+    return spans
+
+
+def _holding_scope(spans: list[ScopeSpan], line: int) -> FunctionName:
+    """The innermost definition around a line."""
     holding = [span for span in spans if span.holds(line)]
     if not holding:
         return "<module>"
     return min(holding, key=lambda span: span.length).name
 
 
-def _clock_name(called: ast.expr) -> str | None:
+def _imported_names(tree: ast.AST) -> dict[str, str]:
+    """Each local name an import binds, mapped to the name it imports."""
+    names: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom | ast.Import):
+            for alias in node.names:
+                original = alias.name.rsplit(".", 1)[-1]
+                names[alias.asname or original] = original
+    return names
+
+
+def _called_name(called: ast.expr, imported: Mapping[str, str]) -> str | None:
     if isinstance(called, ast.Attribute):
         return called.attr
     if isinstance(called, ast.Name):
-        return called.id
+        return imported.get(called.id, called.id)
     return None
 
 
-def clock_calls(source: str, path: str) -> list[str]:
-    """Every call answering today from the clock."""
+def _states_a_zone(call: ast.Call) -> bool:
+    """`localdate(value, timezone)`: an instant alone is still the clock."""
+    return len(call.args) >= 2 or any(
+        keyword.arg == "timezone" for keyword in call.keywords
+    )
+
+
+def _reads_the_clock(call: ast.Call, imported: Mapping[str, str]) -> bool:
+    name = _called_name(call.func, imported)
+    if name in ZONED_CLOCK_NAMES:
+        return not _states_a_zone(call)
+    if name in TODAY_NAMES:
+        return not (call.args or call.keywords)
+    #: `now().date()`, not `now(zone).date()`.
+    if (
+        name == "date"
+        and isinstance(call.func, ast.Attribute)
+        and not (call.args or call.keywords)
+        and isinstance(inner := call.func.value, ast.Call)
+        and _called_name(inner.func, imported) in NOW_NAMES
+    ):
+        return not (inner.args or inner.keywords)
+    return False
+
+
+def _names_a_clock_module(node: ast.expr, imported: Mapping[str, str]) -> bool:
+    if isinstance(node, ast.Attribute):
+        return node.attr in CLOCK_MODULES
+    if isinstance(node, ast.Name):
+        return imported.get(node.id, node.id) in CLOCK_MODULES
+    return False
+
+
+def _refers_to_the_clock(node: ast.expr, imported: Mapping[str, str]) -> bool:
+    """A clock factory named rather than called, to be called elsewhere."""
+    if isinstance(node, ast.Attribute):
+        return node.attr in CLOCK_NAMES and _names_a_clock_module(node.value, imported)
+    if isinstance(node, ast.Name):
+        return node.id in imported and imported[node.id] in CLOCK_NAMES
+    return False
+
+
+def clock_reads(source: str) -> list[ClockRead]:
+    """Every call or reference answering today from the clock."""
     tree = ast.parse(source)
-    spans = _function_spans(tree)
-    reports = []
+    spans = _scope_spans(tree.body)
+    imported = _imported_names(tree)
+    called = {id(node.func) for node in ast.walk(tree) if isinstance(node, ast.Call)}
+    reads = []
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
+        if isinstance(node, ast.Call):
+            found = _reads_the_clock(node, imported)
+        elif isinstance(node, ast.Attribute | ast.Name) and id(node) not in called:
+            found = _refers_to_the_clock(node, imported)
+        else:
             continue
-        #: A stated zone is not the clock.
-        if node.args or node.keywords:
-            continue
-        if _clock_name(node.func) not in CLOCK_NAMES:
-            continue
-        function = _holding_function(spans, node.lineno)
-        if f"{path}:{function}" in ALLOWED_FUNCTIONS:
-            continue
-        reports.append(REPORT.format(path=path, line=node.lineno, function=function))
-    return reports
+        if found:
+            reads.append(ClockRead(node.lineno, _holding_scope(spans, node.lineno)))
+    return reads
+
+
+def clock_calls(
+    source: str,
+    path: ModulePath,
+    allowed: Mapping[AllowedFunction, Exemption] = ALLOWED_FUNCTIONS,
+) -> list[str]:
+    """A report for each read no exemption covers."""
+    return [
+        REPORT.format(path=path, line=read.line, function=read.function)
+        for read in clock_reads(source)
+        if AllowedFunction(path, read.function) not in allowed
+    ]
 
 
 def test_the_guard_reports_a_call() -> None:
@@ -143,22 +235,72 @@ def test_the_guard_reports_the_attribute_spelling() -> None:
     assert len(reports) == 1
 
 
-def test_the_guard_names_the_innermost_function() -> None:
-    source = "def outer():\n    def inner():\n        return date.today()\n"
+def test_the_guard_reports_an_aliased_import() -> None:
+    source = (
+        "from django.utils.timezone import localdate as day\n"
+        "def view():\n"
+        "    return day()\n"
+    )
 
-    assert "in inner()" in clock_calls(source, "x.py")[0]
+    assert len(clock_calls(source, "x.py")) == 1
 
 
-def test_the_guard_passes_a_day_built_from_a_stated_zone() -> None:
-    """An explicit zone is the caller's answer."""
-    source = "def read():\n    return datetime.now(tz=ZoneInfo(zone)).date()\n"
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "timezone.localtime()",
+        "timezone.localtime(timezone.now())",
+        "timezone.localdate(timezone.now())",
+        "timezone.localdate(value=instant)",
+        "timezone.now().date()",
+        "datetime.now().date()",
+        "datetime.date.today()",
+    ],
+)
+def test_the_guard_reports_every_spelling_of_the_active_day(expression) -> None:
+    source = f"def view():\n    return {expression}\n"
+
+    assert len(clock_calls(source, "x.py")) == 1, expression
+
+
+def test_the_guard_reports_a_clock_named_rather_than_called() -> None:
+    source = "def view():\n    factory = date.today\n    return factory()\n"
+
+    assert len(clock_calls(source, "x.py")) == 1
+
+
+def test_the_guard_passes_an_attribute_of_no_clock_module() -> None:
+    """A domain object may hold a field called `today`."""
+    source = "def view(clock):\n    return clock.today\n"
 
     assert clock_calls(source, "x.py") == []
 
 
-def test_the_guard_passes_a_name_that_is_never_called() -> None:
-    """`games/checks.py` names it without calling it."""
-    source = "FACTORIES = frozenset({timezone.localdate, date.today})\n"
+def test_the_guard_names_the_innermost_function() -> None:
+    source = "def outer():\n    def inner():\n        return date.today()\n"
+
+    assert "in outer.inner()" in clock_calls(source, "x.py")[0]
+
+
+def test_the_guard_qualifies_a_method() -> None:
+    source = "class View:\n    def get(self):\n        return localdate()\n"
+
+    assert "in View.get()" in clock_calls(source, "x.py")[0]
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "datetime.now(tz=ZoneInfo(zone)).date()",
+        "datetime.now(UTC).date()",
+        "timezone.now().astimezone(ZoneInfo(zone)).date()",
+        "timezone.localtime(instant, zone)",
+        "timezone.localdate(instant, timezone=zone)",
+    ],
+)
+def test_the_guard_passes_a_day_built_from_a_stated_zone(expression) -> None:
+    """An explicit zone is the caller's answer."""
+    source = f"def read():\n    return {expression}\n"
 
     assert clock_calls(source, "x.py") == []
 
@@ -170,14 +312,14 @@ def test_the_guard_passes_a_stated_day() -> None:
     assert clock_calls(source, "tests/test_x.py") == []
 
 
-def test_the_walk_reaches_the_test_packages() -> None:
-    """The scope is the guard here, so it is asserted and not assumed.
+def test_the_guard_reports_a_read_in_a_test_package() -> None:
+    source = "def test_x():\n    return timezone.localdate()\n"
 
-    #1221 moved the readers onto the calendar and left the tests on the
-    process clock, which is why this walk covers them at all. Dropping
-    either package would restore a suite that fails for two hours a day
-    on whichever PR runs in the window, so it fails here instead.
-    """
+    assert len(clock_calls(source, "tests/test_x.py")) == 1
+
+
+def test_the_walk_reaches_the_test_packages() -> None:
+    """The scope is the guard here, so it is asserted and not assumed."""
     reached = {path for path, _ in _first_party_files()}
 
     assert "tests/test_calendar_clock_guard.py" in reached
@@ -190,7 +332,17 @@ def test_an_allowed_function_is_passed() -> None:
     assert clock_calls(source, "games/views/general.py") == []
 
 
-def _first_party_files() -> list[tuple[str, str]]:
+def test_an_allowed_function_of_the_same_name_elsewhere_is_reported() -> None:
+    source = (
+        "class Other:\n"
+        "    def global_current_year(self):\n"
+        "        return localdate().year\n"
+    )
+
+    assert len(clock_calls(source, "games/views/general.py")) == 1
+
+
+def _first_party_files() -> list[tuple[ModulePath, str]]:
     """Every guarded module, path and source."""
     root = Path(__file__).resolve().parent.parent
     files = []
@@ -198,7 +350,7 @@ def _first_party_files() -> list[tuple[str, str]]:
         directory = root / package
         assert directory.is_dir(), f"{package}/ is in the walk but is not a directory"
         for path in sorted(directory.rglob("*.py")):
-            if "migrations" in path.parts:
+            if path.is_relative_to(root / "games" / "migrations"):
                 continue
             files.append(
                 (path.relative_to(root).as_posix(), path.read_text(encoding="utf-8"))
@@ -213,21 +365,16 @@ def test_no_first_party_module_reads_a_day_from_the_clock() -> None:
     assert not reports, "\n".join(reports)
 
 
-def test_every_allowed_function_still_reads_the_clock() -> None:
-    """An entry the walk no longer needs."""
+def test_every_exemption_covers_exactly_the_reads_it_states() -> None:
+    """A stale entry, or a new read hiding under an old one."""
     sources = dict(_first_party_files())
-    for entry in ALLOWED_FUNCTIONS:
-        path, function = entry.rsplit(":", 1)
-        assert path in sources, f"{entry} names a file the walk does not reach"
-        spans = _function_spans(ast.parse(sources[path]))
-        assert any(span.name == function for span in spans), (
-            f"{entry} names a function {path} no longer defines"
-        )
-        without_the_allowlist = [
-            report
-            for report in clock_calls(sources[path], f"{path}-unexempt")
-            if f"in {function}()" in report
+    for entry, exemption in ALLOWED_FUNCTIONS.items():
+        assert entry.path in sources, f"{entry} names a file the walk does not reach"
+        reads = [
+            read
+            for read in clock_reads(sources[entry.path])
+            if read.function == entry.function
         ]
-        assert without_the_allowlist, (
-            f"{entry} exempts a function that no longer reads the clock"
+        assert len(reads) == exemption.reads, (
+            f"{entry} states {exemption.reads} reads and covers {len(reads)}"
         )

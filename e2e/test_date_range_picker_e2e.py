@@ -22,7 +22,6 @@ from django.conf import settings
 from django.http import HttpResponse
 from django.test import override_settings
 from django.urls import path
-from django.utils import timezone as django_timezone
 from playwright.sync_api import expect
 
 from common.components import parse_filter_dict
@@ -357,14 +356,8 @@ def browser_context_args(browser_context_args):
 
 
 def _pinned_today() -> datetime.date:
-    """The day the browser is on, which is the zone pinned above.
-
-    `date.today()` would answer the *operating system's* day, which is
-    a third zone: wherever `TZ` differs from `settings.TIME_ZONE` -- a
-    CI runner on UTC, say -- it is a day out from the browser for the
-    hours the two disagree, and the picker is blamed for it.
-    """
-    return django_timezone.localdate()
+    """The day the browser is on, read in the zone pinned above."""
+    return datetime.datetime.now(ZoneInfo(settings.TIME_ZONE)).date()
 
 
 def _current_month_iso(day_of_month: int) -> str:

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from calendar_days import library_noon
 from devices import create_device
 from django.contrib.auth.models import AnonymousUser
 from django.test import RequestFactory
@@ -148,13 +149,9 @@ def world(client, django_user_model):
     own_device = create_device(library=owner_library, name="Owner device")
     foreign_device = create_device(library=foreign_library, name="Foreign device")
 
-    now = timezone.now()
-    #: The navbar sums the local day (#949).
-    start_of_today = timezone.localtime(now).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-    own_start = max(now - timedelta(hours=1), start_of_today)
-    foreign_start = max(now - timedelta(hours=6), start_of_today)
+    #: The navbar sums the calendar's day.
+    own_start = library_noon(owner_library)
+    foreign_start = library_noon(foreign_library)
     #: The projection's twins, which the navbar and the counts read.
     own_row = session_row(
         own_game,
@@ -176,7 +173,7 @@ def world(client, django_user_model):
         library=owner_library,
         name="Owner purchase",
         platform=own_platform,
-        date_purchased=now.date(),
+        date_purchased=own_start.date(),
         price=10,
         price_currency="USD",
         converted_price=10,
@@ -187,7 +184,7 @@ def world(client, django_user_model):
         library=foreign_library,
         name="Foreign purchase",
         platform=foreign_platform,
-        date_purchased=now.date(),
+        date_purchased=foreign_start.date(),
         price=20,
         price_currency="USD",
         converted_price=20,

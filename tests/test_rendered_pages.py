@@ -12,7 +12,7 @@ from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
 
 import pytest
-from calendar_days import library_day_zone, library_noon
+from calendar_days import library_noon
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
@@ -897,7 +897,6 @@ def test_the_navbar_week_counts_six_days_back_and_not_seven(owned_user):
             game,
             started_at=start,
             ended_at=start + timedelta(hours=hours),
-            day_zone=library_day_zone(owned_user.library),
         )
     request = RequestFactory().get("/")
     request.user = owned_user

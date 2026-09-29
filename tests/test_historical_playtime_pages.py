@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from calendar_days import library_day_zone, library_noon
+from calendar_days import library_noon
 from django.db import connection
 from django.test import RequestFactory
 from django.test.utils import CaptureQueriesContext
@@ -33,7 +33,6 @@ def test_the_navbar_adds_todays_record_in_two_queries(owned_user):
         game,
         started_at=noon,
         ended_at=noon + HOUR,
-        day_zone=library_day_zone(owned_user.library),
     )
     record_row(
         [tracked_run(owned_user.library, game)],
@@ -171,7 +170,6 @@ def test_the_navbar_states_the_split_and_carries_no_link(owned_user):
         game,
         started_at=noon,
         ended_at=noon + HOUR,
-        day_zone=library_day_zone(owned_user.library),
     )
     record_row(
         [tracked_run(owned_user.library, game)],

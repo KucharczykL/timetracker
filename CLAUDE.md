@@ -1275,18 +1275,21 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   Zero-cost, no wrapping. Use `NewType` only when you want checker to reject
   cross-assignment and will wrap every literal.
 - **Never ask what day it is** — no code, tests and `e2e/` included, reads a day
-  from the process clock (`timezone.localdate()`, `date.today()`). A day belongs
-  to the library's calendar: ask `calendar_today(library)`, or
+  from the process clock: `localdate()`/`localtime()` without a stated zone,
+  `date.today()`, `now().date()`, or one of them named to be called later. A day
+  belongs to the library's calendar: ask `calendar_today(library)`, or
   `request_calendar_today(request, library)` where a request is at hand. In a
-  test, state a fixed day (`date(2026, 3, 5)`) or seed against the calendar with
-  `tests/calendar_days.py`'s `library_noon(library)`. `tests/test_calendar_clock_guard.py`
-  is an AST pass that fails the build on a clock read, over every first-party
-  package; a genuine exception goes in its `ALLOWED_FUNCTIONS` with the reason,
-  and a second guard fails an entry that no longer needs it. This matters more
-  than it looks: the two clocks agree for most of the day and differ by one for
-  the hours their zones do, so a fixture on the process clock passes locally and
-  fails whichever PR's CI runs in that window (#1357's did). That is why the walk
-  covers `tests/` and `e2e/` and why dropping either fails its own test.
+  test, state a fixed day (`date(2026, 3, 5)`) or seed at
+  `library_noon(library)` from `tests/calendar_days.py`; `session_row` and its
+  siblings stamp the calendar's zone, since `effective_day` reads the row's own.
+  `displace_calendar()` there puts a library's calendar on another date than the
+  process, so a test fails at every hour rather than in the window.
+  `tests/test_calendar_clock_guard.py` walks every first-party package and fails
+  the build on such a read; a genuine exception is an `AllowedFunction` in
+  `ALLOWED_FUNCTIONS` stating its reason and read count, and a second test
+  fails an entry whose count no longer matches. The two clocks agree for most
+  of the day and differ by one for the hours their zones do, so a fixture on
+  the process clock passes locally and fails whichever PR's CI runs then.
 - **Use `render_page()` not `render()`** for all full-page HTTP responses (import
   from `common.layout`).
 - **Build UI with Python components** from `common.components`, not raw HTML

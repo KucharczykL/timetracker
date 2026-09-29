@@ -6,8 +6,7 @@ day ranges over `effective_day`, the library's calendar."""
 from datetime import timedelta
 
 import pytest
-from django.utils.timezone import localtime
-from django.utils.timezone import now as timezone_now
+from calendar_days import library_noon
 from session_rows import session_row
 
 from games.filters import PlayerSessionFilter
@@ -18,7 +17,7 @@ from games.models import Game, Platform, PlayerSession
 def sessions_across_days(owned_library):
     platform = Platform.objects.create(name="PC")
     game = Game.objects.create(library=owned_library, name="Zelda", platform=platform)
-    today = localtime(timezone_now())
+    today = library_noon(owned_library)
     return {
         "today": session_row(game, started_at=today),
         "three_days_ago": session_row(game, started_at=today - timedelta(days=3)),

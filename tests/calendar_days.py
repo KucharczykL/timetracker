@@ -1,44 +1,72 @@
 """Seeding a fixture on the day the code under test counts in.
 
-A test that wants "today" must ask the same clock the reader asks, which
-since #1221 is the library's calendar and not the process. The two agree
-for most of the day and disagree by one for the hours their zones do, so
-a fixture seeded off `timezone.localdate()` passes until CI happens to
-run in that window. `test_calendar_clock_guard.py` refuses the process
-clock here for that reason; this is what to reach for instead.
+A test that wants "today" asks the clock the reader asks: the library's
+calendar, not the process. The two agree except for the hours their zones
+sit on different dates, so a fixture seeded off the process clock passes
+until CI runs in that window. `test_calendar_clock_guard.py` refuses the
+process clock in tests; this is what to reach for instead.
 """
 
-from datetime import datetime, time, timedelta
+import uuid
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
+from django.contrib.auth.models import User
+from django.utils import timezone
+
+from games.commands.calendar import SetCalendarDayZone
+from games.events.dispatch import dispatch
+from games.events.playersession import ZoneName
 from games.models import UserLibrary
 from games.reads.calendar import calendar_day_zone, calendar_today
 
-
-def library_day_zone(library: UserLibrary) -> str:
-    """The zone key a seeded session states, as `session_row(day_zone=...)`.
-
-    A session's day is `effective_day`, which the database computes from
-    the row's *own* `day_zone` -- not the library's calendar. Every
-    day-grained reader filters on that column against calendar days, so a
-    row stating another zone lands on the calendar's day only by luck of
-    the offsets. Stating this one makes the two agree by construction.
-    """
-    return calendar_day_zone(library).key
+#: 25 hours apart, so at any instant one is on another date than any zone.
+DISPLACED_ZONES: tuple[ZoneName, ZoneName] = ("Pacific/Kiritimati", "Pacific/Niue")
 
 
 def library_noon(library: UserLibrary, *, days_ago: int = 0) -> datetime:
-    """Midday on the library's own day, in the library's own zone.
+    """Midday on the library's day, in the library's zone.
 
-    Midday rather than any instant of that day: no zone the calendar can
-    name moves it off the day `calendar_today()` answers, so a row seeded
-    here is counted by the day a reader asks for. Midnight would sit an
-    hour from the boundary the whole point is to avoid.
-
-    Pair it with `library_day_zone()` when the row is a session, so the
-    day the database computes is the day this instant names.
+    As far from either day boundary as an instant gets. `session_row`
+    and its siblings stamp the calendar's zone by default, so a row
+    seeded here lands on the day `calendar_today()` answers.
     """
     return datetime.combine(
         calendar_today(library) - timedelta(days=days_ago),
         time(12),
         tzinfo=calendar_day_zone(library),
     )
+
+
+def process_day() -> date:
+    """The process clock's day, which no reader asks.
+
+    Only for proving a calendar disagrees with it.
+    """
+    return timezone.localdate()
+
+
+def displace_calendar(user: User, library: UserLibrary) -> ZoneName:
+    """Set the library's calendar to a zone on another date than the process.
+
+    A fixture on the process clock then fails at every hour, not only
+    inside the window the default zones disagree in.
+    """
+    zone = next(
+        name
+        for name in DISPLACED_ZONES
+        if timezone.now().astimezone(ZoneInfo(name)).date() != process_day()
+    )
+    dispatch(
+        SetCalendarDayZone(day_zone=zone),
+        actor=user,
+        library=library,
+        idempotency_key=str(uuid.uuid7()),
+    )
+    return zone
+
+
+def other_displaced_zone(zone: ZoneName) -> ZoneName:
+    """The displaced zone that is not `zone`: never on the same date as it."""
+    (other,) = (name for name in DISPLACED_ZONES if name != zone)
+    return other
