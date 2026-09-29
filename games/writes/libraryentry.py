@@ -38,7 +38,7 @@ from games.reads.events import dispatched_events
 from games.writes.answers import SubjectNoun, answered
 from games.writes.endpoint import Act, Correct, Nothing, Void, endpoint_move
 
-SUBJECT: SubjectNoun = "entry"
+SUBJECT: SubjectNoun = "copy"
 
 
 class EntryDraft(NamedTuple):
@@ -246,6 +246,24 @@ def _access_end_command(
             return VoidEntryAccessEnd(entry_id=entry.pk)
         case unhandled:
             assert_never(unhandled)
+
+
+def end_entry_access(
+    actor: User,
+    entry: LibraryEntry,
+    statement: WayActStatement,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+) -> CommandResult:
+    """Access to a held copy ended."""
+    with answered(SUBJECT):
+        return _dispatch(
+            EndEntryAccess(entry_id=entry.pk, statement=statement),
+            actor=actor,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+        )
 
 
 def resume_entry_access(

@@ -3,6 +3,7 @@
 import uuid
 
 import pytest
+from django.http import Http404
 from django.utils import timezone
 from entries import record_entry as record_by_event
 from entries import remove_entry as remove_by_event
@@ -31,6 +32,7 @@ from games.removal import remove
 from games.writes.answers import CommandFailed
 from games.writes.libraryentry import (
     EntryDraft,
+    end_entry_access,
     record_entry,
     remove_entry,
     restate_entry,
@@ -536,3 +538,55 @@ def test_the_draft_check_admits_what_is_not_certain(
 
     entry.refresh_from_db()
     assert entry.access_end_recorded_at is not None
+
+
+# --- end access -------------------------------------------------------------
+
+
+def test_end_entry_access_ends_a_held_copy(owned_user, owned_library, graph):
+    entry = record_by_event(owned_library, graph.release, acquired=MAY)
+
+    end_entry_access(owned_user, entry, _returned(JUNE), correlation_id=uuid.uuid7())
+
+    entry.refresh_from_db()
+    assert entry.access_ended == JUNE
+    assert _types(entry)[-1] == "library.libraryentry.access_ended"
+
+
+def test_end_entry_access_absorbs_a_repeat_under_one_key(
+    owned_user, owned_library, graph
+):
+    entry = record_by_event(owned_library, graph.release, acquired=MAY)
+    for _ in range(2):
+        end_entry_access(
+            owned_user,
+            entry,
+            _returned(JUNE),
+            correlation_id=uuid.uuid7(),
+            idempotency_key="end-once",
+        )
+
+    assert _types(entry).count("library.libraryentry.access_ended") == 1
+
+
+def test_a_second_end_under_another_key_is_refused(owned_user, owned_library, graph):
+    entry = record_by_event(owned_library, graph.release, acquired=MAY)
+    end_entry_access(owned_user, entry, _returned(JUNE), correlation_id=uuid.uuid7())
+    entry.refresh_from_db()
+
+    with pytest.raises(CommandFailed) as failed:
+        end_entry_access(
+            owned_user, entry, _returned(JULY), correlation_id=uuid.uuid7()
+        )
+
+    assert failed.value.status_code == 409
+
+
+def test_a_copy_another_library_holds_is_named_a_copy(
+    owned_library, graph, django_user_model
+):
+    entry = record_by_event(owned_library, graph.release, acquired=MAY)
+    stranger = django_user_model.objects.create_user(username="stranger")
+
+    with pytest.raises(Http404, match="No such copy."):
+        end_entry_access(stranger, entry, _returned(JUNE), correlation_id=uuid.uuid7())
