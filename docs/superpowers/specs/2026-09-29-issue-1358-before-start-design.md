@@ -119,10 +119,12 @@ correction stays one row at a time.
 
 A session of a game's demo is often dated before the full game's run starts,
 sometimes by a year. Correcting the run's start to cover it is wrong: a demo is
-a different version of the game. The Access and Purchases wave owns the answer.
-The charter lists `Demo` among `LibraryEntry` access kinds (#719–#722), and a
-session keeps the Release it used. Until then such a session counts under
-Before start, and a person may move it to a run of its own.
+a different version of the game. #1361 owns the answer: a `demo` run kind,
+outside every run-shaped figure, which takes the demo's sessions. Until it
+lands such a session counts under Before start as a session nobody has moved
+yet. After it lands the remedy is "move it to a demo run", through the same bulk
+Edit, and never "correct the start". The rule this design states does not
+change.
 
 ## Tests
 
@@ -151,6 +153,6 @@ of what those issues decided, each with one line pointing here.
 
 ## Out of scope
 
-- Demo play (above), handed to the Access and Purchases wave.
+- Demo play (above), #1361.
 - A per-run statement that post-game play was reviewed. The after-completion
   sweep is one pass over legacy data, and a facet is enough for it.
