@@ -3603,9 +3603,10 @@ def StyledTable(
     # being painted over by it. The color must live on the cells too: border
     # color does not inherit, and without it each cell falls back to
     # currentColor — a bright heading-colored line under the row-header <th>.
+    # Both themes draw it, so a row is one height in either.
     tbody_class = (
-        "font-condensed dark:[&_tr:not(:last-child)>*]:border-b "
-        "dark:[&_tr:not(:last-child)>*]:border-default-medium"
+        "font-condensed [&_tr:not(:last-child)>*]:border-b "
+        "[&_tr:not(:last-child)>*]:border-default-medium"
         if data_table
         else "font-condensed dark:divide-y"
     )
