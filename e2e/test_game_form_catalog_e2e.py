@@ -10,9 +10,10 @@ itself on click, before anything is posted, so every ORM read below
 waits for the page the redirect lands on first.
 """
 
+from datetime import date
+
 import pytest
 from django.urls import reverse
-from django.utils import timezone
 from playwright.sync_api import Locator, Page, expect
 
 from games.catalog_compat import mirror_legacy_columns
@@ -569,7 +570,7 @@ def test_an_excluded_game_leaves_the_unfinished_list(
     page = signed_in
     Purchase.objects.create(
         library=e2e_library,
-        date_purchased=timezone.now(),
+        date_purchased=date(2026, 3, 5),
         price_currency="USD",
         type=Purchase.GAME,
     ).games.set([game])

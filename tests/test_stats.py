@@ -11,7 +11,6 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import pytest
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from django.utils import timezone
@@ -36,7 +35,7 @@ from games.views.stats_data import (
     compute_stats,
 )
 
-TZ = ZoneInfo(settings.TIME_ZONE)
+TZ = ZoneInfo("Europe/Prague")
 
 
 class DaysPlayedPercentTest(TestCase):

@@ -45,12 +45,17 @@ only that queryset. A render, an act or a helper is out of its reach.
 `tests/test_calendar_clock_guard.py` reads the syntax tree of `games/`,
 `common/`, `timetracker/`, `contrib/` and `scripts/`. It refuses a call to
 `localdate`, `date.today` or `datetime.today` that has no argument. The
-report names the file, the line and the function.
+report names the file, the line and the function. One function is in the
+allowlist: `global_current_year`, for the viewer who has no library. A stale
+entry is an error.
 
-A call with an argument states its own zone. The guard permits it. A name
-that is not called is not a call. The guard permits it.
+Tests are not in the walk. A test states a fixed day or seeds at
+`library_noon(library)`. The suite sets the process zone to a zone whose date
+is not the default calendar's date. A test that reads the process clock or
+the active zone thus fails at every hour. The direction follows the wall
+clock. `TIMETRACKER_TEST_PROCESS_ZONE` forces a zone and refuses one on the
+calendar's date.
 
-One function is in the allowlist: `global_current_year`, for the viewer who
-has no library. A stale entry in the allowlist is an error.
-
-Tests are out of the walk. A test states the day that it compares against.
+Not covered: a UTC day, a read inside a request, a test that pins
+`TIME_ZONE`, the browser, and an ORM `__date` lookup, which reads the active
+zone.

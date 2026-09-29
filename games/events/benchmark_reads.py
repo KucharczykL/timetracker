@@ -8,10 +8,9 @@ materialisation of exactly a breaching cell as the remedy.
 from collections.abc import Callable
 from typing import Final, NamedTuple
 
-from django.utils import timezone
-
 from games.filters import FindFilter
 from games.models import UserLibrary
+from games.reads.calendar import calendar_today
 from games.reads.play_figures import (
     distinct_days,
     first_play,
@@ -69,7 +68,7 @@ def _stats_by_platform(library: UserLibrary) -> object:
 def _stats_by_month(library: UserLibrary) -> object:
     """The latest played year; this year where none was."""
     years = played_years(library)
-    year = max(years) if years else timezone.now().year
+    year = max(years) if years else calendar_today(library).year
     return playtime_by_month(library, year=year)
 
 

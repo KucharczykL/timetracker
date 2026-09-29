@@ -1,9 +1,9 @@
 import uuid
+from datetime import date
 from zoneinfo import ZoneInfo
 
 import pytest
 from django.db import IntegrityError, connection, transaction
-from django.utils import timezone
 
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -11,6 +11,10 @@ from common.date_time_presentation import (
 )
 from games.forms import PurchaseForm
 from games.models import Game, Purchase
+
+#: A stated day; nothing counts by day.
+PURCHASE_DAY = date(2026, 3, 5)
+
 
 PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
@@ -63,7 +67,7 @@ def foreign_key_target(table_name: str, column_name: str) -> tuple[str, str] | N
 def _purchase(library, **overrides) -> Purchase:
     fields = {
         "library": library,
-        "date_purchased": timezone.now().date(),
+        "date_purchased": PURCHASE_DAY,
         "price": 10.0,
         "price_currency": "USD",
         "ownership_type": Purchase.DIGITAL,
@@ -122,7 +126,7 @@ def test_database_rejects_a_purchase_naming_a_game_uuid_no_game_owns(owned_libra
     # self.related_game and would raise in Python before PostgreSQL sees the row.
     orphan = Purchase(
         library=owned_library,
-        date_purchased=timezone.now().date(),
+        date_purchased=PURCHASE_DAY,
         price_currency="USD",
         type=Purchase.DLC,
         name="Orphan",

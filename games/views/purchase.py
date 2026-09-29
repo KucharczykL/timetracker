@@ -15,7 +15,6 @@ from django.http import (
 from django.shortcuts import redirect
 from django.template.defaultfilters import floatformat, pluralize
 from django.urls import reverse
-from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from common.components import (
@@ -73,6 +72,7 @@ from games.sorting import (
     parse_find_filter,
 )
 from games.views.filtering import warn_unknown_sort
+from games.views.general import request_calendar_today
 from games.views.removal import (
     confirm_and_apply,
     confirm_and_remove,
@@ -352,7 +352,7 @@ def _create_separate_purchases(form: PurchaseForm, post) -> None:
 def add_purchase(request: HttpRequest, game_id: UUID | None = None) -> HttpResponse:
     library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
-    initial = {"date_purchased": timezone.now()}
+    initial = {"date_purchased": request_calendar_today(request, library)}
 
     if request.method == "POST":
         form = PurchaseForm(

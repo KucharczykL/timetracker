@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -9,7 +8,7 @@ from historical_playtime_rows import record_row
 
 from games.models import Game, Platform, Playthrough, Purchase
 
-ZONEINFO = ZoneInfo(settings.TIME_ZONE)
+ZONEINFO = ZoneInfo("Europe/Prague")
 
 
 # DEBUG on turns every smoke test below into an id-uniqueness check: the page

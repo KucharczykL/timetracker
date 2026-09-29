@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 from django.utils import timezone
 
+from games.events.playersession import ZoneName
 from games.models import (
     Game,
     PlayerGame,
@@ -16,9 +17,6 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.calendar import calendar_day_zone
-
-#: The zone both twins read days in.
-TWIN_ZONE = ZoneInfo("Europe/Prague")
 
 
 def tracked_run(library: UserLibrary, game: Game) -> Playthrough:
@@ -69,7 +67,7 @@ def timed_row(
     started_at: datetime,
     ended_at: datetime | None,
     *,
-    day_zone: str | None = None,
+    day_zone: ZoneName | None = None,
     **columns: object,
 ) -> PlayerSession:
     """A Timed row on its library's calendar.
@@ -107,7 +105,7 @@ def corrected_row(
     ended_at: datetime,
     stated_duration: timedelta,
     *,
-    day_zone: str | None = None,
+    day_zone: ZoneName | None = None,
     **columns: object,
 ) -> PlayerSession:
     """A Corrected row on its library's calendar."""
@@ -131,21 +129,24 @@ def session_row(
     ended_at: datetime | None = None,
     duration_manual: timedelta | None = None,
     library: UserLibrary | None = None,
-    day_zone: str = TWIN_ZONE.key,
+    day_zone: ZoneName | None = None,
     **columns: object,
 ) -> PlayerSession:
-    """A projection row shaped like a legacy create.
+    """A legacy-shaped row in the calendar's zone.
 
-    Manual time alone is a Duration-only row on the start's day; manual
-    time beside an end is a Corrected row stating the legacy total.
+    Manual time alone: Duration-only, on the start's day in `day_zone`.
+    Manual time beside an end: Corrected, stating elapsed plus manual,
+    the legacy total, not the manual part alone.
     """
     library = library or game.library
     if library is None:
         raise ValueError("a shared catalog game needs the library stated")
     run = tracked_run(library, game)
+    if day_zone is None:
+        day_zone = calendar_day_zone(library).key
     manual = duration_manual or timedelta(0)
     if manual and ended_at is None:
-        day = started_at.astimezone(TWIN_ZONE).date()
+        day = started_at.astimezone(ZoneInfo(day_zone)).date()
         return duration_only_row(run, day, manual, **columns)
     if manual and ended_at is not None:
         return corrected_row(

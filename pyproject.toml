@@ -67,14 +67,10 @@ extend-exclude = [
 # lists are the generator's idiom, and hand-annotating ClassVar there would
 # fight every future regeneration.
 "games/migrations/*" = ["RUF012"]
-# These specific tests construct naive datetimes/dates as deliberate fixture
-# values (the code under test owns the tz semantics); the e2e one additionally
-# compares against the browser's local "today". Deliberately file-specific: a
-# blanket tests/e2e ignore would also silence genuine DTZ mistakes in new tests.
+# Deliberate naive fixtures; per file, never blanket.
 "tests/test_date_time_presentation.py" = ["DTZ001"]
 "tests/test_middleware_integration.py" = ["DTZ001"]
 "tests/test_stats.py" = ["DTZ001"]
-"e2e/test_date_range_picker_e2e.py" = ["DTZ011"]
 
 [tool.mypy]
 plugins = ["mypy_django_plugin.main"]
@@ -93,6 +89,10 @@ ignore_missing_imports = true
 DJANGO_SETTINGS_MODULE = "timetracker.settings"
 addopts = "-p timetracker.pytest_topology"
 python_files = ["test_*.py"]
+# Naive instants save in TIME_ZONE, not the calendar.
+filterwarnings = [
+    "error:DateTimeField .* received a naive datetime:RuntimeWarning",
+]
 markers = [
     "untracked_games: do not auto-create a PlayerGame row for a game this test creates. For the modules that exercise TrackGame or a rebuild, where a pre-existing row is the bug.",
     "draws_unknown_icon: the test draws an icon no snippet names on purpose, so the unknown-icon warning does not fail it.",

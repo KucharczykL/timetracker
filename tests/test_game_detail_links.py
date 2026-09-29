@@ -1,7 +1,6 @@
 """Rendering tests: game-detail sections wire "View all" links to filtered lists (#66)."""
 
 from datetime import UTC, datetime
-from zoneinfo import ZoneInfo
 
 import pytest
 from django.urls import reverse
@@ -9,10 +8,7 @@ from django.utils.html import escape
 from session_rows import session_row
 from tracked_games import create_tracked_game
 
-from common.date_time_presentation import (
-    DEFAULT_DATE_TIME_FORMAT_PROFILE,
-    DateTimePresentation,
-)
+from common.date_time_presentation import date_time_presentation_for_request
 from games.filters import (
     PlayerSessionFilter,
     PlaythroughFilter,
@@ -31,10 +27,6 @@ from games.models import (
 )
 from games.reads.playthrough_runs import library_runs
 from games.views.game import view_game
-
-_PRESENTATION = DateTimePresentation(
-    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("Europe/Prague")
-)
 
 
 def _dt(day, hour=12):
@@ -153,11 +145,12 @@ def test_sessions_section_shows_last_five(owned_user, rf):
     request.user = owned_user
     request.session = {}
     html = view_game(request, many.id, many.url_slug).content.decode()
+    presentation = date_time_presentation_for_request(request)
 
     newest, oldest = sessions[-1], sessions[0]
     # session_time_range output (digits/spaces/em-dash) isn't HTML-escaped, so no escape() needed
-    assert session_time_range(newest, _PRESENTATION) in html  # day 6 shown
-    assert session_time_range(oldest, _PRESENTATION) not in html  # day 1 dropped
+    assert session_time_range(newest, presentation) in html  # day 6 shown
+    assert session_time_range(oldest, presentation) not in html  # day 1 dropped
 
 
 def test_section_heading_spacing_does_not_depend_on_the_view_all_button(game, rendered):

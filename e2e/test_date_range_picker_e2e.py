@@ -18,7 +18,6 @@ from html import escape
 from zoneinfo import ZoneInfo
 
 import pytest
-from django.conf import settings
 from django.http import HttpResponse
 from django.test import override_settings
 from django.urls import path
@@ -79,13 +78,16 @@ def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:
 </html>"""
 
 
+#: Presets count days here, not the browser.
+PAGE_ZONE = ZoneInfo("Pacific/Kiritimati")
+
+
 def _dmy_presentation(request) -> DateTimePresentation:
     """Keep the segmented-entry interaction suite explicit about its DMY order."""
-    request_presentation = date_time_presentation_for_request(request)
     return DateTimePresentation(
         date_time_format_profile("dmy_24h"),
-        request_presentation.locale,
-        request_presentation.timezone,
+        date_time_presentation_for_request(request).locale,
+        PAGE_ZONE,
     )
 
 
@@ -342,22 +344,12 @@ def _open_calendar(page):
     page.locator(PICKER + " [data-date-range-calendar-toggle]").click()
 
 
-@pytest.fixture(scope="session")
-def browser_context_args(browser_context_args):
-    """Pin the browser to the clock this module asserts against.
-
-    The picker computes its days in the browser's zone, and
-    every assertion compares them against the process's day.
-    Unpinned, a working picker fails for the hours the two
-    disagree. Pinned rather than read back, because what is
-    asserted is arithmetic on a day, not which day it is.
-    """
-    return {**browser_context_args, "timezone_id": settings.TIME_ZONE}
+def _page_today() -> datetime.date:
+    return datetime.datetime.now(PAGE_ZONE).date()
 
 
 def _current_month_iso(day_of_month: int) -> str:
-    today = datetime.date.today()
-    return today.replace(day=day_of_month).isoformat()
+    return _page_today().replace(day=day_of_month).isoformat()
 
 
 @pytest.mark.django_db
@@ -419,7 +411,7 @@ def test_preset_fills_both_dates(live_server, page):
     page.goto(live_server.url + "/test-date-range-picker/")
     _open_calendar(page)
     page.locator(PICKER + ' [data-date-range-preset="last_7_days"]').click()
-    today = datetime.date.today()
+    today = _page_today()
     assert (
         page.locator(HIDDEN_MIN).input_value()
         == (today - datetime.timedelta(days=6)).isoformat()
@@ -580,7 +572,7 @@ def test_arrow_up_on_empty_year_uses_current_year(live_server, page):
     year_segment = _segment(page, "min", "year")
     year_segment.click()
     page.keyboard.press("ArrowUp")
-    assert year_segment.input_value() == str(datetime.date.today().year)
+    assert year_segment.input_value() == str(_page_today().year)
 
 
 @pytest.mark.django_db

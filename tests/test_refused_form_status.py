@@ -2,7 +2,6 @@
 
 import pytest
 from django.urls import reverse
-from django.utils import timezone
 from tracked_games import create_tracked_game
 
 from games.models import PlayerGame, PlayerSession, Playthrough
@@ -23,13 +22,12 @@ def tracked_game(owned_library):
 
 
 def _session_payload(game, **overrides):
-    started = timezone.now().replace(microsecond=0)
     tracked = PlayerGame.objects.filter(game=game).first()
     run = None if tracked is None else tracked.playthroughs.first()
     return {
         "game": str(game.id),
         "playthrough": "" if run is None else str(run.pk),
-        "started_at": started.strftime("%Y-%m-%d %H:%M"),
+        "started_at": "2026-03-05 12:00",
         "started_at_zone": "",
         "ended_at": "",
         "ended_at_zone": "",

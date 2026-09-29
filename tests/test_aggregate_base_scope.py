@@ -1,6 +1,6 @@
 """An aggregate spec states its own scope."""
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pytest
 from django.utils import timezone
@@ -22,6 +22,10 @@ from games.filters import (
 )
 from games.models import Game, PlayerSession, Purchase
 from games.removal import remove
+
+#: A stated day; nothing counts by day.
+PURCHASE_DAY = date(2026, 3, 5)
+
 
 pytestmark = pytest.mark.django_db
 
@@ -138,7 +142,7 @@ def test_an_unscoped_purchase_count_omits_a_removed_purchase(owned_library):
             library=owned_library,
             name=name,
             price_currency="CZK",
-            date_purchased=timezone.now().date(),
+            date_purchased=PURCHASE_DAY,
         )
         purchase.games.add(game)
     remove(Purchase.objects.get(name="removed"))

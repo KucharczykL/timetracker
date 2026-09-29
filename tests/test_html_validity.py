@@ -14,7 +14,6 @@ from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
 
 from devices import create_device
-from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
@@ -28,7 +27,7 @@ from games.models import (
     Purchase,
 )
 
-ZONEINFO = ZoneInfo(settings.TIME_ZONE)
+ZONEINFO = ZoneInfo("Europe/Prague")
 
 # Elements that must not contain another interactive element. An <a> here is
 # always a link (the app never emits bare anchors), so it counts unconditionally.

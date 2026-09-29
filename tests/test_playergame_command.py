@@ -4,7 +4,6 @@ import uuid
 from typing import Any, NamedTuple
 
 import pytest
-from django.utils import timezone
 
 from games.commands.playergame import (
     PlayerGameNotTracked,
@@ -22,6 +21,7 @@ from games.models import (
     PlayerGame,
     PlayerGameStatus,
 )
+from games.reads.calendar import calendar_today
 from games.removal import remove
 from games.retention import purging_library
 from timetracker.temporal import TemporalValue
@@ -382,7 +382,7 @@ def test_a_recorded_status_fact_states_the_day(owned_user, owned_library):
     )
 
     event = LibraryEvent.objects.get(event_type="library.playergame.status_changed")
-    assert event.effective_time == TemporalValue.from_day(timezone.localdate())
+    assert event.effective_time == TemporalValue.from_day(calendar_today(owned_library))
 
 
 @pytest.mark.django_db(transaction=True)

@@ -15,6 +15,7 @@ from uuid import UUID
 import pytest
 from devices import create_device
 from django.db.models import F, Q
+from django.test import override_settings
 from django.utils import timezone
 from session_rows import duration_only_row, session_row, tracked_run
 
@@ -4416,12 +4417,11 @@ class TestFieldComparisonEndToEnd:
         )
         assert result == {session_x}
 
+    @override_settings(TIME_ZONE="UTC")
     def test_date_granular_same_day_behavior(self):
         """granularity='date' matches by calendar day, unlike a raw comparison.
 
-        SAME spans one day (different clock times); CROSS spans two days. Uses
-        timestamps far from midnight in any near-UTC timezone so the active tz of
-        the test run cannot flip which calendar day a boundary falls on.
+        Pinned to UTC: `__date` reads the active zone.
         """
         import datetime
 
@@ -5598,8 +5598,8 @@ class TestValueTypeBoundaryIntegration:
 
         platform = Platform.objects.create(name="PC")
         game = Game.objects.create(name="Hades", platform=platform)
-        # auto_now_add can't be set on create; stamp an afternoon time directly.
-        moment = datetime(2024, 3, 14, 15, 9, 0, tzinfo=UTC)
+        # Noon in the active zone: __date reads that zone.
+        moment = datetime(2024, 3, 14, 12, tzinfo=timezone.get_current_timezone())
         Game.objects.filter(pk=game.pk).update(created_at=moment)
 
         good = json.dumps({"created_at": {"modifier": "EQUALS", "value": "2024-03-14"}})

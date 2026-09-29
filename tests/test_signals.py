@@ -3,7 +3,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core import serializers
 from django.core.management import call_command
@@ -11,7 +10,7 @@ from django.test import TestCase
 
 from games.models import Game, UserLibrary
 
-ZONEINFO = ZoneInfo(settings.TIME_ZONE)
+ZONEINFO = ZoneInfo("Europe/Prague")
 
 
 class SignalsTest(TestCase):

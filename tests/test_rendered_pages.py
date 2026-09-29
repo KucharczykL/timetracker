@@ -12,7 +12,7 @@ from html.parser import HTMLParser
 from zoneinfo import ZoneInfo
 
 import pytest
-from django.conf import settings
+from calendar_days import library_noon
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -25,7 +25,7 @@ from games.models import Game, Platform, PlayerSession, Purchase
 from games.reads.playtime import game_playtime
 from timetracker.temporal import TemporalValue
 
-ZONEINFO = ZoneInfo(settings.TIME_ZONE)
+ZONEINFO = ZoneInfo("Europe/Prague")
 
 # Elements with no end tag — must not be pushed onto the ancestry stack.
 _VOID_ELEMENTS = {
@@ -890,12 +890,13 @@ def test_the_navbar_week_counts_six_days_back_and_not_seven(owned_user):
     from games.views.general import model_counts
 
     game = Game.objects.create(library=owned_user.library, name="Tunic")
-    today = timezone.localdate()
     for days_back, hours in ((6, 1), (7, 2)):
-        start = timezone.make_aware(
-            datetime.combine(today - timedelta(days=days_back), datetime.min.time())
-        ) + timedelta(hours=12)
-        session_row(game, started_at=start, ended_at=start + timedelta(hours=hours))
+        start = library_noon(owned_user.library, days_ago=days_back)
+        session_row(
+            game,
+            started_at=start,
+            ended_at=start + timedelta(hours=hours),
+        )
     request = RequestFactory().get("/")
     request.user = owned_user
 

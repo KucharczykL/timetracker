@@ -4,12 +4,18 @@ cascading or substituting, and the conditional unique constraint keeps the
 platformless-dedup guarantee that ordinary uniqueness cannot provide when the
 platform is NULL."""
 
+from datetime import date
+
 import pytest
 from django.db import IntegrityError
 from django.utils import timezone
 from session_rows import session_row
 
 from games.models import Device, Game, Platform, PlayerGameStatus, Purchase
+
+#: A stated day; nothing counts by day.
+PURCHASE_DAY = date(2026, 3, 5)
+
 
 pytestmark = pytest.mark.django_db
 
@@ -35,7 +41,7 @@ def test_purchase_without_platform_stays_null_with_explicit_currency(
     game = Game.objects.create(library=owned_library, name="Homebrew")
     purchase = Purchase.objects.create(
         library=owned_library,
-        date_purchased=timezone.now().date(),
+        date_purchased=PURCHASE_DAY,
         price_currency="CZK",
     )
     purchase.games.add(game)
@@ -50,7 +56,7 @@ def test_platform_delete_sets_null_and_keeps_purchases(owned_library):
     purchase = Purchase.objects.create(
         price_currency="CZK",
         library=owned_library,
-        date_purchased=timezone.now().date(),
+        date_purchased=PURCHASE_DAY,
         platform=platform,
     )
     purchase.games.add(game)

@@ -118,14 +118,13 @@ def test_the_endpoint_takes_a_shared_game_this_library_tracks(logged_in, owned_l
 def test_a_session_marks_an_unplayed_game_played(logged_in, owned_library):
     """_record_played reads the row."""
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
-    started = timezone.now().replace(microsecond=0)
 
     logged_in.post(
         reverse("games:add_session"),
         {
             "game": str(game.pk),
             "playthrough": run_id(owned_library, game),
-            "started_at": started.strftime("%Y-%m-%d %H:%M"),
+            "started_at": "2026-03-05 12:00",
             "started_at_zone": "",
             "ended_at": "",
             "ended_at_zone": "",

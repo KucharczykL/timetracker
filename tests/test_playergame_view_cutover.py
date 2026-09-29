@@ -1,6 +1,7 @@
 """Each switched view states its fact."""
 
 import re
+from datetime import date
 
 import pytest
 from django.urls import reverse
@@ -171,13 +172,12 @@ def test_a_failed_status_write_answers_409_with_a_toast(
 
 
 def _session_payload(game, **overrides):
-    started = timezone.now().replace(microsecond=0)
     tracked = PlayerGame.objects.filter(game=game).first()
     run = None if tracked is None else tracked.playthroughs.first()
     return {
         "game": str(game.id),
         "playthrough": "" if run is None else str(run.pk),
-        "started_at": started.strftime("%Y-%m-%d %H:%M"),
+        "started_at": "2026-03-05 12:00",
         "started_at_zone": "",
         "ended_at": "",
         "ended_at_zone": "",
@@ -358,7 +358,7 @@ def test_refunding_abandons_every_game_under_one_correlation_id(
         library=owned_library,
         price=0,
         price_currency="CZK",
-        date_purchased=timezone.now(),
+        date_purchased=date(2026, 3, 5),
     )
     purchase.games.set(games)
 
@@ -388,7 +388,7 @@ def test_a_failed_refund_answers_the_refusal_on_the_confirmation(
         library=owned_library,
         price=0,
         price_currency="CZK",
-        date_purchased=timezone.now(),
+        date_purchased=date(2026, 3, 5),
     )
     purchase.games.set([game])
 
@@ -466,7 +466,7 @@ def test_a_partly_applied_refund_says_how_far_it_went(
         library=owned_library,
         price=0,
         price_currency="CZK",
-        date_purchased=timezone.now(),
+        date_purchased=date(2026, 3, 5),
     )
     purchase.games.set(games)
 

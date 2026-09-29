@@ -1,16 +1,13 @@
 """The navbar counts days on the calendar."""
 
-import uuid
 from datetime import timedelta
-from zoneinfo import ZoneInfo
 
 import pytest
+from calendar_days import displace_calendar
 from django.test import RequestFactory
-from django.utils import timezone as django_timezone
 from session_rows import duration_only_row, tracked_run
 
-from games.commands.calendar import SetCalendarDayZone
-from games.events.dispatch import dispatch
+from games.events.playersession import ZoneName
 from games.models import Game
 from games.reads.calendar import calendar_today
 from games.views.general import model_counts
@@ -19,25 +16,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 @pytest.fixture
-def elsewhere(owned_user, owned_library) -> str:
-    """A calendar provably on another date now.
-
-    The two zones are 25 hours apart, so one always is,
-    which fails a process-clock day at every hour.
-    """
-    zone = next(
-        name
-        for name in ("Pacific/Kiritimati", "Pacific/Niue")
-        if django_timezone.now().astimezone(ZoneInfo(name)).date()
-        != django_timezone.localdate()
-    )
-    dispatch(
-        SetCalendarDayZone(day_zone=zone),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key=str(uuid.uuid7()),
-    )
-    return zone
+def elsewhere(owned_library) -> ZoneName:
+    return displace_calendar(owned_library)
 
 
 @pytest.fixture

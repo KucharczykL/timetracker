@@ -1,17 +1,13 @@
 """#683: the status a lifecycle act offers."""
 
-import uuid
 from datetime import date
-from zoneinfo import ZoneInfo
 
 import pytest
 from bulk_posts import act_url, press
+from calendar_days import displace_calendar, process_day
 from django.urls import reverse
-from django.utils import timezone as django_timezone
 
 from games.bulk_playthrough_acts import COMPLETE_RUNS, START_RUNS
-from games.commands.calendar import SetCalendarDayZone
-from games.events.dispatch import dispatch
 from games.events.rebuild import RebuildMode, rebuild_projections
 from games.models import Game, LibraryEvent, PlayerGame, PlayerGameStatus, Playthrough
 from games.reads.calendar import calendar_today
@@ -370,28 +366,12 @@ def test_the_pair_replays_to_the_same_rows(logged_in, owned_library, game):
 def test_a_start_states_the_librarys_day_not_the_processs(
     logged_in, owned_user, owned_library, tracked
 ):
-    """The calendar decides the day, not the process clock.
-
-    The two zones are 25 hours apart, so one is always on
-    another date, which fails a process-clock day at any
-    hour rather than only where the defaults disagree.
-    """
-    elsewhere = next(
-        zone
-        for zone in ("Pacific/Kiritimati", "Pacific/Niue")
-        if django_timezone.now().astimezone(ZoneInfo(zone)).date()
-        != django_timezone.localdate()
-    )
-    dispatch(
-        SetCalendarDayZone(day_zone=elsewhere),
-        actor=owned_user,
-        library=owned_library,
-        idempotency_key=str(uuid.uuid7()),
-    )
+    """The calendar decides the day."""
+    displace_calendar(owned_library)
     run = Playthrough.objects.get(player_game__game=tracked)
 
     press(logged_in, START_RUNS, run)
 
     run.refresh_from_db()
     assert run.started_lower == calendar_today(owned_library)
-    assert run.started_lower != django_timezone.localdate()
+    assert run.started_lower != process_day()
