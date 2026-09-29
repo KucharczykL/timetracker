@@ -3,9 +3,14 @@
 import uuid
 from typing import ClassVar
 
+from games.endpoints import ENTRY_ACCESS_END
 from games.events.envelope import RecordedEvent
 from games.events.libraryentry import (
     LIBRARYENTRY_ACCESS_CHANGED,
+    LIBRARYENTRY_ACCESS_END_CORRECTED,
+    LIBRARYENTRY_ACCESS_END_VOIDED,
+    LIBRARYENTRY_ACCESS_ENDED,
+    LIBRARYENTRY_ACCESS_RESUMED,
     LIBRARYENTRY_ACQUISITION_CORRECTED,
     LIBRARYENTRY_CREATED,
     LIBRARYENTRY_FORMAT_CHANGED,
@@ -58,6 +63,18 @@ class Entries(Projector):
     def _acquisition_corrected(self, event: RecordedEvent) -> None:
         self.project_corrected(ENTRY_ACQUISITION_COLUMNS, event)
 
+    def _access_ended(self, event: RecordedEvent) -> None:
+        self.project_stated(ENTRY_ACCESS_END, event)
+
+    def _access_end_corrected(self, event: RecordedEvent) -> None:
+        self.project_corrected(ENTRY_ACCESS_END, event)
+
+    def _access_end_voided(self, event: RecordedEvent) -> None:
+        self.project_voided(ENTRY_ACCESS_END, event)
+
+    def _access_resumed(self, event: RecordedEvent) -> None:
+        self.project_resumed(ENTRY_ACCESS_END, event)
+
     def _removed(self, event: RecordedEvent) -> None:
         self.amend(LibraryEntry, event, removed_at=event.recorded_at)
 
@@ -71,6 +88,10 @@ class Entries(Projector):
         LIBRARYENTRY_NOTE_CHANGED: _note_changed,
         LIBRARYENTRY_RELEASE_CHANGED: _release_changed,
         LIBRARYENTRY_ACQUISITION_CORRECTED: _acquisition_corrected,
+        LIBRARYENTRY_ACCESS_ENDED: _access_ended,
+        LIBRARYENTRY_ACCESS_END_CORRECTED: _access_end_corrected,
+        LIBRARYENTRY_ACCESS_END_VOIDED: _access_end_voided,
+        LIBRARYENTRY_ACCESS_RESUMED: _access_resumed,
         LIBRARYENTRY_REMOVED: _removed,
         LIBRARYENTRY_RESTORED: _restored,
     }

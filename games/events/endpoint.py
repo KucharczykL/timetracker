@@ -39,6 +39,12 @@ class EndpointEvents[PayloadT](NamedTuple):
         acts = (self.stated, self.corrected, self.voided, self.resumed)
         return tuple(spec for spec in acts if spec is not None)
 
+    def resumed_spec(self) -> EventSpec[Any]:
+        """The resume, or a defect where there is none."""
+        if self.resumed is None:
+            raise TypeError(f"{self.stated.event_type} states no resume.")
+        return self.resumed
+
     @property
     def family(self) -> tuple[EventType, ...]:
         """The types whose latest owns the endpoint's value."""

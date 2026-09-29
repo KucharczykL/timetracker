@@ -123,6 +123,10 @@ class CommandName(CommandVocabulary):
     LIBRARYENTRY_CORRECT_ACQUISITION = "library.libraryentry.correct_acquisition"
     LIBRARYENTRY_REMOVE = "library.libraryentry.remove"
     LIBRARYENTRY_RESTORE = "library.libraryentry.restore"
+    LIBRARYENTRY_END_ACCESS = "library.libraryentry.end_access"
+    LIBRARYENTRY_CORRECT_ACCESS_END = "library.libraryentry.correct_access_end"
+    LIBRARYENTRY_VOID_ACCESS_END = "library.libraryentry.void_access_end"
+    LIBRARYENTRY_RESUME_ACCESS = "library.libraryentry.resume_access"
 
 
 @dataclass(frozen=True, slots=True)

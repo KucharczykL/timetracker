@@ -13,12 +13,19 @@ from games.endpoint_fields import (
 )
 from games.events.device import DEVICE_ACCESS_END_EVENTS
 from games.events.endpoint import EndpointEvents, OpeningEndpointEvents
-from games.events.libraryentry import ENTRY_ACQUISITION_EVENTS
+from games.events.libraryentry import (
+    ENTRY_ACCESS_END_EVENTS,
+    ENTRY_ACQUISITION_EVENTS,
+)
 from games.events.playthrough import (
     PLAYTHROUGH_COMPLETION_EVENTS,
     PLAYTHROUGH_START_EVENTS,
 )
-from games.models import DEVICE_ACCESS_END_COLUMNS, ENTRY_ACQUISITION_COLUMNS
+from games.models import (
+    DEVICE_ACCESS_END_COLUMNS,
+    ENTRY_ACCESS_END_COLUMNS,
+    ENTRY_ACQUISITION_COLUMNS,
+)
 
 
 def _column_values(columns: EndpointColumnsBase) -> dict[str, Any]:
@@ -87,9 +94,12 @@ ENTRY_ACQUISITION = OpeningEndpoint.over(
     ENTRY_ACQUISITION_COLUMNS, ENTRY_ACQUISITION_EVENTS
 )
 
+ENTRY_ACCESS_END = Endpoint.over(ENTRY_ACCESS_END_COLUMNS, ENTRY_ACCESS_END_EVENTS)
+
 ENDPOINTS: tuple[Endpoint | OpeningEndpoint, ...] = (
     PLAYTHROUGH_START,
     PLAYTHROUGH_COMPLETION,
     DEVICE_ACCESS_END,
     ENTRY_ACQUISITION,
+    ENTRY_ACCESS_END,
 )

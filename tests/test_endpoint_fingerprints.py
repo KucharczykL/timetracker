@@ -5,12 +5,17 @@ import uuid
 import pytest
 
 from games.commands.device import CreateDevice
+from games.commands.endpoint import WayActStatement
 from games.commands.libraryentry import (
+    CorrectEntryAccessEnd,
     CorrectEntryAcquisition,
     DescribeEntry,
+    EndEntryAccess,
     RecordEntry,
     RemoveEntry,
     RestoreEntry,
+    ResumeEntryAccess,
+    VoidEntryAccessEnd,
 )
 from games.commands.playthrough import (
     ActStatement,
@@ -22,6 +27,7 @@ from games.commands.playthrough import (
     VoidPlaythroughCompletion,
     VoidPlaythroughStart,
 )
+from games.end_ways import EndWay
 from games.events.dispatch import Command, canonical_command_input
 from games.events.idempotency import fingerprint_command_input
 from timetracker.temporal import TemporalValue
@@ -62,9 +68,31 @@ COMMANDS: dict[str, Command] = {
     ),
     "remove_entry": RemoveEntry(entry_id=ENTRY),
     "restore_entry": RestoreEntry(entry_id=ENTRY),
+    "end_entry_access": EndEntryAccess(
+        entry_id=ENTRY, statement=WayActStatement(MAY, EndWay.RETURNED, "lent")
+    ),
+    "correct_entry_access_end": CorrectEntryAccessEnd(
+        entry_id=ENTRY, statement=WayActStatement(None, EndWay.EXPIRED, "")
+    ),
+    "void_entry_access_end": VoidEntryAccessEnd(entry_id=ENTRY),
+    "resume_entry_access": ResumeEntryAccess(
+        entry_id=ENTRY, statement=ActStatement(MAY, "back")
+    ),
 }
 
 RECORDED: dict[str, str] = {
+    "correct_entry_access_end": (
+        "3c52b21416172e04e107a7fbc2f393307a230c83852ec59b3043da02e9405ce1"
+    ),
+    "end_entry_access": (
+        "d58b4017ab28d3d55c22c15e906d908a63b13791f39e35019ec61c593fe0e0a2"
+    ),
+    "resume_entry_access": (
+        "95ab5df157e2618c853ba772c2c4826a81db64bd941bd4bf8a168cccb8dcfa03"
+    ),
+    "void_entry_access_end": (
+        "d2313c5b75931be63e4b2f59028f51dad51ea0e297fb58fb026cad1f7de746d1"
+    ),
     "complete": "a383d10184a3fd5c8f7c128ad7c6540cffee5e05b5f329e2cc88f7a6ac398537",
     "correct_completion": (
         "0490e599e25fd92b2019a03e128c8596403b94e8c8911d31121ecdb9bdd30c03"

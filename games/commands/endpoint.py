@@ -228,9 +228,9 @@ def resume_endpoint(
 
     No Unchanged: a row with no end did not resume.
     """
-    resumed = endpoint.events.resumed
-    if resumed is None or sentences.nothing_to_resume is None:
-        raise TypeError(f"Endpoint {endpoint.name!r} states no resume.")
+    resumed = endpoint.events.resumed_spec()
+    if sentences.nothing_to_resume is None:
+        raise TypeError(f"Endpoint {endpoint.name!r} states no resume sentence.")
     if stated(row, endpoint) is None:
         raise sentences.nothing_to_resume.raised()
     before_event()
