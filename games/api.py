@@ -100,11 +100,7 @@ from games.sorting import (
 from games.toast_middleware import RELOAD_HEADER
 from games.writes.answers import CommandFailed, answered
 from games.writes.device import create_device as create_device_row
-from games.writes.libraryentry import (
-    EntryDraft,
-    record_entry,
-    restate_entry,
-)
+from games.writes.libraryentry import EntryDraft, record_entry, restate_entry
 from games.writes.playergame import new_correlation_id, record_facts
 from games.writes.playersession import (
     SessionDraft,

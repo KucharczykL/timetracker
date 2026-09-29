@@ -6,7 +6,11 @@ from typing import Any
 from django.apps import apps
 from django.db import models
 
-from games.endpoint_fields import EndpointColumns, OpeningEndpointColumns
+from games.endpoint_fields import (
+    EndpointColumns,
+    EndpointColumnsBase,
+    OpeningEndpointColumns,
+)
 from games.events.device import DEVICE_ACCESS_END_EVENTS
 from games.events.endpoint import EndpointEvents, OpeningEndpointEvents
 from games.events.libraryentry import ENTRY_ACQUISITION_EVENTS
@@ -15,6 +19,10 @@ from games.events.playthrough import (
     PLAYTHROUGH_START_EVENTS,
 )
 from games.models import DEVICE_ACCESS_END_COLUMNS, ENTRY_ACQUISITION_COLUMNS
+
+
+def _column_values(columns: EndpointColumnsBase) -> dict[str, Any]:
+    return {field.name: getattr(columns, field.name) for field in fields(columns)}
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -26,10 +34,7 @@ class Endpoint(EndpointColumns):
     @classmethod
     def over(cls, columns: EndpointColumns, events: EndpointEvents[Any]) -> Endpoint:
         """Columns joined with their events."""
-        return cls(
-            **{field.name: getattr(columns, field.name) for field in fields(columns)},
-            events=events,
-        )
+        return cls(**_column_values(columns), events=events)
 
     @property
     def model(self) -> type[models.Model]:
@@ -47,10 +52,7 @@ class OpeningEndpoint(OpeningEndpointColumns):
         cls, columns: OpeningEndpointColumns, events: OpeningEndpointEvents[Any]
     ) -> OpeningEndpoint:
         """Columns joined with their events."""
-        return cls(
-            **{field.name: getattr(columns, field.name) for field in fields(columns)},
-            events=events,
-        )
+        return cls(**_column_values(columns), events=events)
 
     @property
     def model(self) -> type[models.Model]:

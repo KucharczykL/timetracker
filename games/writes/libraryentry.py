@@ -48,8 +48,8 @@ def _dispatch(
     *,
     actor: User,
     correlation_id: uuid.UUID,
-    idempotency_key: IdempotencyKey | None,
-    source_metadata: SourceMetadata | None,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
 ) -> CommandResult:
     return dispatch(
         command,
@@ -129,13 +129,7 @@ def restate_entry(
     changed = False
     for command in commands:
         with answered(SUBJECT):
-            result = _dispatch(
-                command,
-                actor=actor,
-                correlation_id=correlation_id,
-                idempotency_key=None,
-                source_metadata=None,
-            )
+            result = _dispatch(command, actor=actor, correlation_id=correlation_id)
         changed = changed or result.outcome is CommandOutcome.APPENDED
     return changed
 

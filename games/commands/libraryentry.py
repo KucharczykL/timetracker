@@ -123,6 +123,12 @@ def _refuse_a_removed_entry(entry: LibraryEntry) -> None:
         )
 
 
+def _refuse_a_live_act(entry: LibraryEntry) -> None:
+    """Refuse a removed copy or game."""
+    _refuse_a_removed_entry(entry)
+    _refuse_under_a_removed_game(entry)
+
+
 def _refuse_a_foreign_referrer(entry: LibraryEntry) -> None:
     """Refuse a foreign row naming the entry."""
     foreign = foreign_referrer(entry)
@@ -229,8 +235,7 @@ class DescribeEntry(Command):
             events.append(libraryentry_release_changed(entry.pk, release))
         if not events:
             return Unchanged("This copy already states that.")
-        _refuse_a_removed_entry(entry)
-        _refuse_under_a_removed_game(entry)
+        _refuse_a_live_act(entry)
         return events
 
 
@@ -254,11 +259,6 @@ class CorrectEntryAcquisition(Command):
             same_correction="This correction states the day the copy states.",
             before_event=partial(_refuse_a_live_act, entry),
         )
-
-
-def _refuse_a_live_act(entry: LibraryEntry) -> None:
-    _refuse_a_removed_entry(entry)
-    _refuse_under_a_removed_game(entry)
 
 
 @dataclass(frozen=True, slots=True)

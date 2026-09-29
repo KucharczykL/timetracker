@@ -115,11 +115,10 @@ def unresolved_library_paths() -> list[PathProblem]:
             except FieldDoesNotExist:
                 problems.append((model, path, f"names no field {segment!r}"))
                 break
-            related = getattr(field, "related_model", None)
-            if not isinstance(field, models.ForeignKey) or related is None:
+            if not isinstance(field, models.ForeignKey):
                 problems.append((model, path, f"is not to-one at {segment!r}"))
                 break
-            reached = related
+            reached = field.related_model
         else:
             if reached is not UserLibrary:
                 problems.append(
