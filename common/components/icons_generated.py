@@ -53,6 +53,16 @@ ICON_NODES: dict[str, Element] = {
     )[
         Path([('fill', 'currentColor'), ('d', 'M 43.470703 8.9863281 A 1.50015 1.50015 0 0 0 42.439453 9.4394531 L 16.5 35.378906 L 5.5605469 24.439453 A 1.50015 1.50015 0 1 0 3.4394531 26.560547 L 15.439453 38.560547 A 1.50015 1.50015 0 0 0 17.560547 38.560547 L 44.560547 11.560547 A 1.50015 1.50015 0 0 0 43.470703 8.9863281 z')]),
     ],
+    'cloud': Svg(
+        [('viewBox', '1.5 1.5 21 21'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Title(
+            [],
+        )[
+            'Digital',
+        ],
+        Path([('fill', 'currentColor'), ('fill-rule', 'evenodd'), ('d', 'M4.5 9.75a6 6 0 0 1 11.573-2.226 3.75 3.75 0 0 1 4.133 4.303A4.5 4.5 0 0 1 18 20.25H6.75a5.25 5.25 0 0 1-2.23-10.004 6.072 6.072 0 0 1-.02-.496Z'), ('clip-rule', 'evenodd')]),
+    ],
     'columns': Svg(
         [('viewBox', '0 0 24 24'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round'), ('stroke-linejoin', 'round'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[
