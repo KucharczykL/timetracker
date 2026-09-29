@@ -61,12 +61,7 @@ def created_aggregate_id(result: CommandResult) -> uuid.UUID:
 
 
 def dispatched_events(result: CommandResult) -> LibraryEventQuerySet:
-    """Every event one dispatch appended, in append order.
-
-    A creation is not always the first: a command that tracks
-    the game ahead of its own row appends three. A replayed
-    dispatch answers the same range.
-    """
+    """One dispatch's events, in append order."""
     if result.sequences is None:
         #: Not an assert: `-O` strips one.
         raise ValueError("An outcome that appended no event names no range.")

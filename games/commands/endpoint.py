@@ -167,11 +167,7 @@ def correct_opening_endpoint(
     same_correction: str,
     before_event: BeforeEvent = _nothing,
 ) -> Sequence[NewEvent] | Unchanged:
-    """A better statement of the day the creation stated.
-
-    One sentence: an opening endpoint is never unstated and
-    never voided, so nothing here refuses.
-    """
+    """Restate the day the creation stated."""
     payload = _payload(endpoint, statement)
     if _states_it(row, endpoint, statement):
         return Unchanged(same_correction)

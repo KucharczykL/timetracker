@@ -1229,7 +1229,7 @@ ACQUISITION_TOGETHER = "State the acquired day and its note together."
 
 
 class EntryIn(Schema):
-    """One copy, stated whole: the Release and its words."""
+    """One copy, stated whole."""
 
     #: An unknown key is a mistake, not silence.
     model_config = ConfigDict(extra="forbid")
@@ -1243,12 +1243,7 @@ class EntryIn(Schema):
 
 
 class EntryUpdate(Schema):
-    """Each named key is one act; an omitted key states nothing.
-
-    `access`, `format`, `note` and `release_id` describe; `acquired`
-    and `acquisition_note` together are one correction, because the
-    command compares the pair under the lock.
-    """
+    """Each named key is one act."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -1268,7 +1263,7 @@ class EntryUpdate(Schema):
 
 
 class EntryOut(Schema):
-    """The projection row, the game reached through its tracked row."""
+    """The projection row, with its game."""
 
     id: UUIDv7
     game: str = Field(..., alias="player_game.game.name")
@@ -1297,11 +1292,7 @@ def list_entries(
     limit: int = Query(100, ge=0),
     offset: int = Query(0, ge=0),
 ):
-    """The library's live entries, oldest first.
-
-    `limit=0` is unbounded, as on presets. The order ends on
-    the key, so an offset reads a stable page.
-    """
+    """Live entries, oldest first; `limit=0` unbounded."""
     library = cast(User, request.user).library
     entries = readable_entries(library).order_by("created_at", "id")[offset:]
     return entries if limit == 0 else entries[:limit]
@@ -1338,8 +1329,7 @@ def create_entry(
         )
     except CommandFailed as failure:
         _answered_or_http(failure)
-    #: Read before the message: a repeat under the key of an entry
-    #: since removed answers no row.
+    #: Read first: a removed repeat answers no row.
     row = owned_or_404(readable_entries(library), library, pk=recorded.entry_id)
     messages.success(
         request,
@@ -1373,8 +1363,7 @@ def partial_update_entry(request, entry_id: UUIDv7, payload: EntryUpdate):
         )
     except CommandFailed as failure:
         _answered_or_http(failure)
-    #: Read before the message: this scope reads catalog marks
-    #: no command reads, so a Release change can lose the row.
+    #: Read first: a catalog mark can lose the row.
     updated = owned_or_404(readable_entries(library), library, pk=entry.pk)
     messages.success(request, "Entry updated.")
     return updated

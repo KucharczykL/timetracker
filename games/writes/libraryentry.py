@@ -39,7 +39,7 @@ class RecordedEntry(NamedTuple):
     """What a creation answers."""
 
     entry_id: uuid.UUID
-    #: The game was untracked; the dispatch tracked it.
+    #: The dispatch tracked an untracked game.
     tracked_the_game: bool
 
 
@@ -72,11 +72,7 @@ def record_entry(
     idempotency_key: IdempotencyKey | None = None,
     source_metadata: SourceMetadata | None = None,
 ) -> RecordedEntry:
-    """State a copy; answer its id and whether the game was tracked.
-
-    The creation may follow the tracking pair, so the id is read
-    off the dispatch's own events rather than its first.
-    """
+    """State a copy; answer id and tracking."""
     with answered(SUBJECT):
         result = _dispatch(
             RecordEntry(
@@ -111,11 +107,7 @@ def restate_entry(
     acquired: ActStatement | None,
     correlation_id: uuid.UUID,
 ) -> None:
-    """Correct the day, then describe; one correlation.
-
-    The correction goes first: a racer can refuse it,
-    and the description then stays unsent.
-    """
+    """Correct the day, then describe; one correlation."""
     if acquired is not None:
         with answered(SUBJECT):
             _dispatch(

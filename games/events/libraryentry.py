@@ -27,12 +27,7 @@ type EntryFormatValue = Literal["physical", "digital", "unknown"]
 
 @with_config(STRICT_SCHEMA)
 class LibraryEntryCreatedPayload(TypedDict):
-    """The entry as first stated; the day is effective_time.
-
-    `player_game` is a bare id: the row may not exist while the
-    creation composes. `release` is a Reference the retention
-    guard keeps.
-    """
+    """First statement; the day is effective_time."""
 
     player_game: ReferenceId
     release: Reference

@@ -46,7 +46,7 @@ PLAYER_GAME_REMOVED = (
 )
 ENTRY_REMOVED = "That copy was removed. Put it back before changing what it records."
 
-#: A copy acquired on a day nobody wrote down.
+#: An acquisition with no stated day.
 UNDATED_ACQUISITION = ActStatement(None, "")
 
 
@@ -72,7 +72,7 @@ def normalized(statement: ActStatement) -> ActStatement:
 
 
 def _visible_release(context: CommandContext, release_id: uuid.UUID) -> Release:
-    """A shared Release or the library's own, removed or not."""
+    """A visible Release, removed or not."""
     return visible_row(
         context,
         Release.objects.select_related("edition__game"),
@@ -87,7 +87,7 @@ def _visible_release(context: CommandContext, release_id: uuid.UUID) -> Release:
 
 
 def _refuse_a_removed_release(release: Release) -> None:
-    """Refuse a Release any of its three marks hides."""
+    """Refuse a Release a mark hides."""
     if not Release.objects.alive().filter(pk=release.pk).exists():
         raise CommandRejected(
             f"Release {release.pk} or one of its parents is removed, so no "
@@ -132,12 +132,7 @@ def _refuse_a_foreign_referrer(entry: LibraryEntry) -> None:
 
 @dataclass(frozen=True, slots=True)
 class RecordEntry(Command):
-    """State a copy of a Release the library holds.
-
-    The game is the Release's; an untracked one is tracked in
-    the same dispatch, so no window holds the game without the
-    copy.
-    """
+    """State a copy, tracking an untracked game."""
 
     command_name: ClassVar[CommandName] = CommandName.LIBRARYENTRY_RECORD
     release_id: uuid.UUID
@@ -234,7 +229,7 @@ class DescribeEntry(Command):
 
 @dataclass(frozen=True, slots=True)
 class CorrectEntryAcquisition(Command):
-    """A better statement of the day the copy was acquired."""
+    """Restate the day the copy was acquired."""
 
     command_name: ClassVar[CommandName] = CommandName.LIBRARYENTRY_CORRECT_ACQUISITION
     entry_id: uuid.UUID
@@ -261,7 +256,7 @@ def _refuse_a_live_act(entry: LibraryEntry) -> None:
 
 @dataclass(frozen=True, slots=True)
 class RemoveEntry(Command):
-    """Take a copy out of the lists; references stay."""
+    """Remove a copy; references stay."""
 
     command_name: ClassVar[CommandName] = CommandName.LIBRARYENTRY_REMOVE
     entry_id: uuid.UUID

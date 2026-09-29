@@ -187,7 +187,7 @@ def _capture_device(device: Device) -> Reference:
 
 
 def _capture_entry(entry: LibraryEntry) -> Reference:
-    """Labelled by the game; detailed by its two words."""
+    """Game name label; access and format detail."""
     return Reference(
         kind="libraryentry",
         id=str(entry.pk),

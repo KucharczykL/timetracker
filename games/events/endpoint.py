@@ -42,7 +42,7 @@ class EndpointEvents[PayloadT](NamedTuple):
 
 
 class OpeningEndpointEvents[PayloadT](NamedTuple):
-    """The one act on an opening endpoint: its correction."""
+    """An opening endpoint's one act: correction."""
 
     corrected: EventSpec[PayloadT]
 
@@ -57,7 +57,7 @@ def opening_endpoint_events[PayloadT](
     corrected: EventType,
     payload: type[PayloadT],
 ) -> OpeningEndpointEvents[PayloadT]:
-    """Register the correction; the creation states the day."""
+    """Register the correction; creation states the day."""
     events = OpeningEndpointEvents(
         corrected=EventSpec(corrected, aggregate_type=aggregate_type, payload=payload),
     )

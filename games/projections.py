@@ -87,14 +87,11 @@ def projection_models(apps: Apps = global_apps) -> tuple[type[ProjectionModel], 
 
 
 def library_path_of(model: type[models.Model]) -> LibraryPath | None:
-    """How `model` rows reach a library, or None.
+    """How rows reach a library; column before map.
 
-    The concrete column first, then the map, so a throwaway
-    registry's twin of a catalog model answers from its own
-    column. Concrete, because `get_field` answers for a reverse
-    relation too: `UserLibrary.user` is `related_name="library"`,
-    which would make the user model read as scoped and every
-    lookup built below a FieldError.
+    Concrete, because `get_field` answers a reverse relation too:
+    `UserLibrary.user` is `related_name="library"`, which would
+    scope the user model and make every lookup a FieldError.
     """
     try:
         field = model._meta.get_field(LIBRARY_FIELD)

@@ -72,12 +72,7 @@ def visible_row[RowT: Model](
     refusal: Refusal,
     **lookup: object,
 ) -> RowT:
-    """A shared row or this library's own, or a refusal.
-
-    The caller's queryset says whether a removed row is read.
-    The model reaches its library through the path the
-    projections module states for it.
-    """
+    """A shared row, or the library's own."""
     path = library_path_of(reads.model)
     if path is None:
         raise TypeError(f"{reads.model.__name__} reaches no library.")
@@ -127,7 +122,7 @@ def library_device(
 
 
 def library_entry_row(context: CommandContext, entry_id: uuid.UUID) -> LibraryEntry:
-    """This library's entry, removed or not, with its parent."""
+    """This library's entry, removed or not."""
     return library_row(
         context,
         #: Every caller reads the parent's mark.

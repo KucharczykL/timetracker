@@ -5,12 +5,7 @@ from games.reads.unscoped import require_library
 
 
 def library_entries(library: UserLibrary) -> LibraryEntryQuerySet:
-    """Every live entry this library holds.
-
-    Five marks: the entry's, its tracked game's, and the three
-    catalog rows' above the Release. The tracked game's library
-    is stated too: it can name another library's row.
-    """
+    """Live entries; five marks, two libraries."""
     library = require_library(library)
     return LibraryEntry.objects.filter(
         library=library,
@@ -24,7 +19,7 @@ def library_entries(library: UserLibrary) -> LibraryEntryQuerySet:
 
 
 def readable_entries(library: UserLibrary) -> LibraryEntryQuerySet:
-    """The row path the API serves: game, Release, platform."""
+    """The row path the API serves."""
     return library_entries(library).select_related(
         "player_game__game", "release__platform"
     )

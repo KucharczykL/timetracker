@@ -104,10 +104,7 @@ BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
 
 
 def referrers_of(target: type[ProjectionModel]) -> tuple[BlockingReferrer, ...]:
-    """The registered ways to name a row of `target`.
-
-    Read off the tuple at each call: a test patches it whole.
-    """
+    """Registered entries naming `target`, read per call."""
     return tuple(
         referrer for referrer in BLOCKING_REFERRERS if referrer.target is target
     )

@@ -2191,13 +2191,13 @@ ENTRY_ACQUISITION_COLUMNS = OpeningEndpointColumns(
 
 
 class LibraryEntryQuerySet(RemovableMixin, models.QuerySet["LibraryEntry"]):
-    """The marks that hide an entry; the catalog's are the reads'."""
+    """Entry marks; catalog marks are the reads'."""
 
     ancestor_marks = ("player_game",)
 
 
 class LibraryEntry(ProjectionModel, ReferencedRow):
-    """One route of access to one Release; only Entries writes."""
+    """One copy of a Release; Entries writes."""
 
     objects = LibraryEntryQuerySet.as_manager()
 
