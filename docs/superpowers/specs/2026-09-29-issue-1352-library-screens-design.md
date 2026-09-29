@@ -223,9 +223,11 @@ game's status) and a fact without one reads the creation's payload (a
 copy's access, format and note). `batch_fact_changes` for a game and a
 new reader for a copy call it; P5's purchase edit is the third caller.
 
-**Row menu** (`games/views/entry_menu.py`): the Game detail row's acts,
-Edit, End access or Edit end and Resume, and Remove, each linking to its
-page with the tab as origin, so a save returns to the tab. The
+**Row menu** (`games/views/entry_menu.py`): the Game detail row's acts.
+**I no longer have it** (or **I have it again**) posts in one click with
+Undo; "…, with details…" and, on an ended copy, "Edit how it left" open
+their pages; then Edit details and Remove. Each carries the tab as
+origin, so a save returns to the tab. The
 trigger reads "<game> (<platform>) actions", "Unspecified" where the
 Release names no platform.
 

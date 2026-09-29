@@ -105,6 +105,7 @@ def list_library(request: HttpRequest) -> HttpResponse:
     #: One read serves cells and rows.
     page_entries: list[LibraryEntry] = list(page)
 
+    csrf_token = get_token(request)
     hidden, picker = column_choice(request, "entries", ENTRY_COLUMNS)
     kept_columns, kept_cells = drop_columns(
         ENTRY_COLUMNS,
@@ -132,13 +133,17 @@ def list_library(request: HttpRequest) -> HttpResponse:
         "menu_slot": True,
         "sort_terms": sort.terms,
         "rows": [
-            make_row(*cells, key=str(entry.pk), menu=entry_row_menu(entry, origin))
+            make_row(
+                *cells,
+                key=str(entry.pk),
+                menu=entry_row_menu(entry, origin, csrf_token),
+            )
             for entry, cells in zip(page_entries, kept_cells, strict=True)
         ],
         "column_picker": picker,
         "selection": {
             "filter": filter_json,
-            "csrf_token": get_token(request),
+            "csrf_token": csrf_token,
             "actions": tray_actions(ENTRY_EDIT.name, REMOVE_ENTRY.name, origin=origin),
         },
     }

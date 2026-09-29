@@ -198,12 +198,12 @@ def test_a_held_copys_menu_links_to_end_access(owned_library, graph):
         "player_game__game", "release__platform"
     ).get(pk=record_entry(owned_library, graph.release).pk)
 
-    html = str(entry_row_menu(entry, "/tracker/game/library"))
+    html = str(entry_row_menu(entry, "/tracker/game/library", "token"))
 
     assert "Tunic (PS5) actions" in html
     assert f"{reverse('games:end_library_entry', args=[entry.pk])}?" in html
     assert reverse("games:edit_library_entry", args=[entry.pk]) in html
-    assert "Resume" not in html
+    assert "I have it again" not in html
     assert reverse("games:remove_library_entry", args=[entry.pk]) in html
 
 
@@ -213,12 +213,12 @@ def test_an_ended_copys_menu_offers_resume(owned_library, other_graph):
         "player_game__game", "release__platform"
     ).get(pk=ended.pk)
 
-    html = str(entry_row_menu(entry, None))
+    html = str(entry_row_menu(entry, None, "token"))
 
     assert "Hades (Unspecified) actions" in html
-    assert reverse("games:resume_library_entry", args=[entry.pk]) in html
+    assert reverse("games:resume_library_entry_now", args=[entry.pk]) in html
     assert reverse("games:edit_library_entry_end", args=[entry.pk]) in html
-    assert "End access" not in html
+    assert "I no longer have it" not in html
 
 
 # ── Game detail ─────────────────────────────────────────────────────────────
