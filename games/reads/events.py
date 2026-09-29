@@ -58,3 +58,19 @@ def created_aggregate_id(result: CommandResult) -> uuid.UUID:
     return LibraryEvent.objects.get(
         stream_id=result.stream_id, sequence=result.sequences.first
     ).aggregate_id
+
+
+def dispatched_events(result: CommandResult) -> LibraryEventQuerySet:
+    """Every event one dispatch appended, in append order.
+
+    A creation is not always the first: a command that tracks
+    the game ahead of its own row appends three. A replayed
+    dispatch answers the same range.
+    """
+    if result.sequences is None:
+        #: Not an assert: `-O` strips one.
+        raise ValueError("An outcome that appended no event names no range.")
+    return LibraryEvent.objects.filter(
+        stream_id=result.stream_id,
+        sequence__range=(result.sequences.first, result.sequences.last),
+    ).order_by("sequence")
