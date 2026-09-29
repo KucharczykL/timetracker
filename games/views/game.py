@@ -28,6 +28,7 @@ from common.components import (
     ExternalReferenceLinks,
     FormFields,
     Fragment,
+    GamesTabs,
     GameStatus,
     GameStatusSelector,
     Icon,
@@ -84,6 +85,7 @@ from games.filters import (
     FindFilter,
     GameFilter,
     HistoricalPlaytimeFilter,
+    LibraryEntryFilter,
     NarrowingClauses,
     PlayerSessionFilter,
     PlaythroughFilter,
@@ -340,7 +342,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         per_page_override=find.per_page_override,
     )
-    content = ContentContainer()[quick_bar, content]
+    content = ContentContainer()[GamesTabs("games"), quick_bar, content]
     return render_page(
         request,
         content,
@@ -701,6 +703,7 @@ def _game_section(
     organize_url: str | None = None,
     add_control: Node | None = None,
     surface: bool = False,
+    view_all_title: str | None = None,
 ) -> Node:
     """``add_control`` replaces the plain Add; ``surface`` sets it on a panel."""
     buttons: list[Node] = [add_control] if add_control is not None else []
@@ -721,7 +724,7 @@ def _game_section(
             ControlButton(
                 href=view_all_url,
                 color="gray",
-                title=f"View all {title.lower()} for this game",
+                title=view_all_title or f"View all {title.lower()} for this game",
             )[
                 Icon("arrowright", size=ICON_BUTTON_SIZE_CLASS),
                 "View all",
@@ -1241,6 +1244,8 @@ def _library_section(
             EMPTY_LIBRARY if add is not None else SHARED_GAME_RELEASE,
             add_control=add,
             surface=True,
+            view_all_url=filter_url(LibraryEntryFilter.where(game=[game.id])),
+            view_all_title="View all copies of this game",
         )
     ]
 

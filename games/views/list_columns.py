@@ -15,6 +15,7 @@ from games.list_columns import reset_columns, state_shown_columns
 from games.views.device import DEVICE_COLUMNS
 from games.views.game import game_list_columns
 from games.views.historical_playtime import historical_playtime_columns
+from games.views.library_list import ENTRY_COLUMNS
 from games.views.platform import PLATFORM_COLUMNS
 from games.views.playthrough_rows import playthrough_columns
 from games.views.purchase import PURCHASE_COLUMNS
@@ -43,6 +44,7 @@ LIST_COLUMNS: dict[str, DeclaredList] = {
     ),
     "devices": DeclaredList("games:list_devices", DEVICE_COLUMNS),
     "platforms": DeclaredList("games:list_platforms", PLATFORM_COLUMNS),
+    "entries": DeclaredList("games:list_library", ENTRY_COLUMNS),
 }
 
 

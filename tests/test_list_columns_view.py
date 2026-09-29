@@ -99,6 +99,7 @@ def test_an_origin_no_read_only_route_names_falls_back(logged_in):
         "historical_playtime",
         "devices",
         "platforms",
+        "entries",
     ],
 )
 def test_every_mode_states_a_route_and_a_list_to_return_to(logged_in, mode):

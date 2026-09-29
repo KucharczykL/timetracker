@@ -39,6 +39,7 @@ logger = logging.getLogger("games")
 
 
 type PlaytimeTab = Literal["sessions", "historical"]
+type GamesTab = Literal["games", "library"]
 
 
 def PlaytimeTabs(current: PlaytimeTab) -> Node:
@@ -57,6 +58,22 @@ def PlaytimeTabs(current: PlaytimeTab) -> Node:
                 current=current == "historical",
             ),
         ],
+    )
+
+
+def GamesTabs(current: GamesTab, *, trailing: Node | None = None) -> Node:
+    """The Games page's two lists."""
+    return PageTabs(
+        "Games",
+        [
+            PageTab("Games", reverse("games:list_games"), current=current == "games"),
+            PageTab(
+                "Library",
+                reverse("games:list_library"),
+                current=current == "library",
+            ),
+        ],
+        trailing=trailing,
     )
 
 

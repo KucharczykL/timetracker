@@ -21,7 +21,7 @@ from games.endpoints import ENTRY_ACCESS_END
 from games.models import EntryAccess, EntryFormat, Game, LibraryEntry, UserLibrary
 from games.reads.endpoints import stated, way_of
 from games.reads.entries import game_entries
-from games.reads.releases import UNSPECIFIED_PLATFORM, game_releases
+from games.reads.releases import game_releases, platform_words
 
 EMPTY_LIBRARY = "Nothing in your library yet."
 #: The hidden field a one-click form posts; `library_entry` reads it.
@@ -31,9 +31,7 @@ SUBMISSION_FIELD = "submission"
 def release_words(entry: LibraryEntry) -> str:
     """Platform, then a named edition."""
     release = entry.release
-    parts = [
-        UNSPECIFIED_PLATFORM if release.platform is None else release.platform.name
-    ]
+    parts = [platform_words(release)]
     if release.edition.name:
         parts.append(release.edition.name)
     return " · ".join(parts)

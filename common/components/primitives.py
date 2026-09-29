@@ -1353,8 +1353,13 @@ class PageTab(NamedTuple):
     current: bool = False
 
 
-def PageTabs(aria_label: NavLabel, tabs: Sequence[PageTab]) -> Node:
-    """Sibling pages as links; current one marked."""
+def PageTabs(
+    aria_label: NavLabel, tabs: Sequence[PageTab], *, trailing: Node | None = None
+) -> Node:
+    """Sibling pages as links; current one marked.
+
+    `trailing` ends the row, pushed right.
+    """
     links = [
         ControlLink(
             href=tab.href,
@@ -1371,8 +1376,13 @@ def PageTabs(aria_label: NavLabel, tabs: Sequence[PageTab]) -> Node:
         )[tab.label]
         for shape, tab in shaped(tabs)
     ]
-    return Nav(aria_label=aria_label, class_="mb-4")[
+    nav = Nav(aria_label=aria_label, class_="mb-4")[
         Div(class_=_JOINED_ROW_CLASS)[links]
+    ]
+    if trailing is None:
+        return nav
+    return Div(class_="mb-4 flex flex-wrap items-center justify-between gap-2")[
+        Nav(aria_label=aria_label)[Div(class_=_JOINED_ROW_CLASS)[links]], trailing
     ]
 
 

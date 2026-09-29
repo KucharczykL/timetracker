@@ -10,6 +10,7 @@ from games.views import (
     historical_playtime_entry,
     library,
     library_entry,
+    library_list,
     list_columns,
     platform,
     playthrough,
@@ -67,6 +68,7 @@ urlpatterns = [
     path("game/<uuidv7:game_id>/remove", game.remove_game, name="remove_game"),
     path("game/<uuidv7:game_id>/restore", game.restore_game, name="restore_game"),
     path("game/list", game.list_games, name="list_games"),
+    path("game/library", library_list.list_library, name="list_library"),
     path("platform/add", platform.add_platform, name="add_platform"),
     path(
         "platform/<uuidv7:platform_id>/edit",

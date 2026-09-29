@@ -24,6 +24,7 @@ READ_ONLY: frozenset[UrlName] = frozenset(
         "games:list_devices",
         "games:list_games",
         "games:list_historical_playtime",
+        "games:list_library",
         "games:list_platforms",
         "games:list_playthroughs",
         "games:list_purchases",
