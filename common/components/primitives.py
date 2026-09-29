@@ -2775,10 +2775,20 @@ def _with_title(children: Sequence[Child], title: str) -> list[Child]:
     return [title_node, *result]
 
 
+def _untitled(children: Sequence[Child]) -> list[Child]:
+    return [
+        child
+        for child in children
+        if not (isinstance(child, Element) and child.tag_name == "title")
+    ]
+
+
 def Icon(
     name: str,
     attributes: Attributes | None = None,
     size: str | None = None,
+    *,
+    decorative: bool = False,
 ) -> Node:
     """Render an icon, overriding its snippet's baked ``class`` with the central
     icon classes (:data:`ICON_BASE_CLASS` colour + size). Every other svg
@@ -2786,9 +2796,13 @@ def Icon(
     the paths to a sliver. ``size=`` replaces the default :data:`ICON_SIZE_CLASS`
     wholesale (e.g. ``ICON_BUTTON_SIZE_CLASS`` for button icons). ``title=`` sets
     the accessible ``<title>`` child; a passed ``class=`` appends as an override.
+    ``decorative`` drops the ``<title>``, whose tooltip would cover the
+    parent's, and hides the glyph from assistive technology.
     """
     root = get_icon_node(name)
-    extra_attributes: list[HTMLAttribute] = []
+    extra_attributes: list[HTMLAttribute] = (
+        [("aria-hidden", "true")] if decorative else []
+    )
     title: str | None = None
     caller_class = ""
     for key, value in attributes or []:
@@ -2798,7 +2812,12 @@ def Icon(
             caller_class = str(value)
         else:
             extra_attributes.append((key, value))
-    children = _with_title(root.children, title) if title is not None else root.children
+    if decorative:
+        children: Sequence[Child] = _untitled(root.children)
+    elif title is not None:
+        children = _with_title(root.children, title)
+    else:
+        children = root.children
     class_value = " ".join(
         part
         for part in (ICON_BASE_CLASS, size or ICON_SIZE_CLASS, caller_class)

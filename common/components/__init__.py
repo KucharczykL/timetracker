@@ -72,6 +72,7 @@ from common.components.date_time_picker import (
     DateTimePicker,
 )
 from common.components.domain import (
+    AccessBadge,
     BrowserTimeZoneInput,
     Duration,
     DurationAlternates,
@@ -329,6 +330,7 @@ __all__ = [
     "SELECTION_CHECKBOX_CLASS",
     "SELECTION_STATEMENT_FIELD",
     "A",
+    "AccessBadge",
     "AccountMenu",
     "AddForm",
     "AppliedDot",

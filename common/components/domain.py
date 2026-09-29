@@ -23,13 +23,22 @@ from common.components.primitives import (
     TruncatedText,
     Ul,
 )
+from common.date_time_presentation import DateTimePresentation
+from common.temporal_presentation import present_temporal_value
+from games.end_ways import END_WAY_LABELS
+from games.endpoints import ENTRY_ACCESS_END
 from games.models import (
+    EntryAccess,
+    EntryFormat,
     ExternalReference,
     Game,
+    LibraryEntry,
     PlayerGameStatus,
     PlayerSession,
     Purchase,
 )
+from games.reads.endpoints import stated, way_of
+from games.reads.entries import AccessSummary
 from games.reads.sums import PlaytimeBreakdown
 
 if TYPE_CHECKING:
@@ -75,6 +84,58 @@ def GamesTabs(current: GamesTab, *, trailing: Node | None = None) -> Node:
         ],
         trailing=trailing,
     )
+
+
+#: A copy's format, and the glyph that draws it, in badge order.
+_FORMAT_GLYPHS: tuple[tuple[EntryFormat, str], ...] = (
+    (EntryFormat.DIGITAL, "cloud"),
+    (EntryFormat.PHYSICAL, "physical"),
+)
+_ACCESS_BADGE_CLASS = (
+    "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-base border "
+    "text-type-body whitespace-nowrap"
+)
+_ACCESS_BADGE_FILL = {
+    True: "solid-brand border-brand",
+    False: "border-default-medium text-body",
+}
+
+
+def _copy_words(entry: LibraryEntry) -> str:
+    return f"{EntryAccess(entry.access).label} · {EntryFormat(entry.format).label}"
+
+
+def _access_words(summary: AccessSummary, presentation: DateTimePresentation) -> str:
+    if summary.held:
+        return ", ".join(_copy_words(entry) for entry in summary.held)
+    former = summary.former
+    if former is None:
+        raise ValueError("A summary holds a copy or names a former one.")
+    words = f"Not owned · formerly {_copy_words(former).lower()}"
+    ended = stated(former, ENTRY_ACCESS_END)
+    if ended is None:
+        return words
+    words = f"{words}, {END_WAY_LABELS[way_of(ended)].lower()}"
+    if ended.when is None:
+        return words
+    return f"{words} {present_temporal_value(ended.when, presentation)}"
+
+
+def AccessBadge(summary: AccessSummary, presentation: DateTimePresentation) -> Node:
+    """Fill: owned now. Glyph: format. Number: copies held."""
+    shown = summary.held or ((summary.former,) if summary.former else ())
+    formats = {entry.format for entry in shown}
+    glyphs = [glyph for word, glyph in _FORMAT_GLYPHS if word in formats]
+    words = _access_words(summary, presentation)
+    held = len(summary.held)
+    return Span(
+        class_=f"{_ACCESS_BADGE_CLASS} {_ACCESS_BADGE_FILL[summary.owned_now]}",
+        title=words,
+    )[
+        *(Icon(glyph, decorative=True) for glyph in glyphs or ["unspecified"]),
+        Span(aria_hidden="true")[str(held)] if held > 1 else None,
+        Span(class_="sr-only")[words],
+    ]
 
 
 def GameLink(
