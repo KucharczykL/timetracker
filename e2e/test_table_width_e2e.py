@@ -10,7 +10,6 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from devices import create_device
-from django.conf import settings
 from django.urls import reverse
 from historical_playtime_rows import record_row
 from playwright.sync_api import Page, expect
@@ -28,7 +27,7 @@ from games.models import (
 from games.writes.playergame import new_correlation_id, record_facts, track_game
 from timetracker.temporal import TemporalValue
 
-ZONEINFO = ZoneInfo(settings.TIME_ZONE)
+ZONEINFO = ZoneInfo("Europe/Prague")
 BASE = datetime(2025, 3, 1, 10, 0, tzinfo=ZONEINFO)
 
 LONG_NAME = (

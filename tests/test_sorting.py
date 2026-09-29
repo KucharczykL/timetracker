@@ -8,7 +8,6 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from devices import create_device
-from django.conf import settings
 from django.contrib.messages import get_messages
 from django.db.models import Case, DateField, Value, When
 from django.test import RequestFactory
@@ -55,7 +54,7 @@ from games.sorting import (
 from games.views.game import games_for_list
 from timetracker.temporal import TemporalValue
 
-ZONEINFO = ZoneInfo(settings.TIME_ZONE)
+ZONEINFO = ZoneInfo("Europe/Prague")
 
 # A minimal map; parse_sort_terms only checks key membership, not spec internals.
 SAMPLE_MAP = {"name": SortSpec("name"), "date": SortSpec("created_at")}

@@ -2,7 +2,6 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pytest
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from session_rows import duration_only_row, session_row, tracked_run
@@ -19,7 +18,7 @@ from common.duration_presentation import (
 from games.formatting import session_time_range
 from games.models import Game, Purchase
 
-ZONEINFO = ZoneInfo(settings.TIME_ZONE)
+ZONEINFO = ZoneInfo("Europe/Prague")
 
 
 class FormatDurationTest(TestCase):

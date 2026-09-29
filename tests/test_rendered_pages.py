@@ -13,7 +13,6 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from calendar_days import library_noon
-from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -26,7 +25,7 @@ from games.models import Game, Platform, PlayerSession, Purchase
 from games.reads.playtime import game_playtime
 from timetracker.temporal import TemporalValue
 
-ZONEINFO = ZoneInfo(settings.TIME_ZONE)
+ZONEINFO = ZoneInfo("Europe/Prague")
 
 # Elements with no end tag — must not be pushed onto the ancestry stack.
 _VOID_ELEMENTS = {

@@ -43,27 +43,19 @@ request does not.
 only that queryset. A render, an act or a helper is out of its reach.
 
 `tests/test_calendar_clock_guard.py` reads the syntax tree of `games/`,
-`common/`, `timetracker/`, `contrib/`, `scripts/`, `tests/` and `e2e/`. It
-refuses a day that comes from the process clock or the active zone:
+`common/`, `timetracker/`, `contrib/` and `scripts/`. It refuses a call to
+`localdate`, `date.today` or `datetime.today` that has no argument. The
+report names the file, the line and the function. One function is in the
+allowlist: `global_current_year`, for the viewer who has no library. A stale
+entry is an error.
 
-- `localdate` or `localtime` with no zone argument.
-- `date.today`, `datetime.today` and `date.fromtimestamp`.
-- A day field (`.date()`, `.year`, `.strftime` and others) of a `now()` that
-  has no zone. The guard follows the instant through arithmetic,
-  `.replace()`, `.astimezone()` with no zone, and a name in the same scope.
-- One of these clock functions named but not called.
+Tests are not in the walk. A test states a fixed day or seeds at
+`library_noon(library)`. The suite sets the process zone to a zone whose date
+is not the default calendar's date. A test that reads the process clock or
+the active zone thus fails at every hour. The direction follows the wall
+clock. `TIMETRACKER_TEST_PROCESS_ZONE` forces a zone and refuses one on the
+calendar's date.
 
-`None`, `get_current_timezone()`, `get_default_timezone()` and
-`settings.TIME_ZONE` do not state a zone. The report names the file, the line
-and the qualified function.
-
-An exception is an `ALLOWED_FUNCTIONS` entry. The key is an
-`AllowedFunction(path, function)`. The value is an `Exemption(reason, reads)`.
-A count that does not agree with the walk is an error.
-
-A test states a fixed day or seeds at `library_noon(library)`. The suite sets
-the process zone to a date that is not the default calendar's date. A test
-that reads the process clock thus fails at every hour.
-
-The guard cannot see an ORM `__date` lookup. Such a lookup reads the active
+Not covered: a UTC day, a read inside a request, a test that pins
+`TIME_ZONE`, the browser, and an ORM `__date` lookup, which reads the active
 zone.

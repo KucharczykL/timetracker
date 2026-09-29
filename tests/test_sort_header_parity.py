@@ -13,7 +13,6 @@ from urllib.parse import unquote
 from zoneinfo import ZoneInfo
 
 from devices import create_device
-from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
@@ -29,7 +28,7 @@ from games.sorting import (
     SESSION_SORTS,
 )
 
-ZONEINFO = ZoneInfo(settings.TIME_ZONE)
+ZONEINFO = ZoneInfo("Europe/Prague")
 
 
 def _header_sort_keys(html: str) -> set[str]:

@@ -17,7 +17,6 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from devices import create_device
-from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
@@ -27,7 +26,7 @@ from session_rows import session_row
 from common.components import Column, Span, StyledTable, make_row
 from games.models import Game, Platform, Playthrough, Purchase
 
-ZONEINFO = ZoneInfo(settings.TIME_ZONE)
+ZONEINFO = ZoneInfo("Europe/Prague")
 BASE = datetime(2024, 5, 1, 12, 0, tzinfo=ZONEINFO)
 
 _THEAD = re.compile(r"<thead.*?</thead>", re.DOTALL)

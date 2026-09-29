@@ -1274,23 +1274,21 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   SortKey = str  # e.g. "sort_name"`) so signatures say *which* string goes where.
   Zero-cost, no wrapping. Use `NewType` only when you want checker to reject
   cross-assignment and will wrap every literal.
-- **Never ask what day it is** — no code reads a day from the process clock
-  or the active zone, and tests and `e2e/` obey this too. A day belongs to the
-  library's calendar: ask `calendar_today(library)` or
-  `request_calendar_today(request, library)`. A `DateField` takes a day, not
-  an instant: Django converts an instant in `TIME_ZONE`. A test states a fixed
-  day or seeds at `library_noon(library)` (`tests/calendar_days.py`).
-  `session_row`, `timed_row` and `corrected_row` default to the calendar's
-  zone, because `effective_day` reads the row's own. An autouse fixture sets
-  the process zone to a date that is not the default calendar's date, so a
-  process-clock test fails at every hour. `displace_calendar()` moves one
-  library's calendar instead. `tests/test_calendar_clock_guard.py` refuses
-  `localdate()`/`localtime()` with no zone, `date.today()`, a day read off a
-  zoneless `now()` or `.astimezone()`, and a clock function named but not
-  called. `None`, the active zone and `settings.TIME_ZONE` state no zone. An
-  exception is an `ALLOWED_FUNCTIONS` entry, `AllowedFunction` to
-  `Exemption(reason, reads)`; a count that changes fails. The guard cannot see
-  an ORM `__date` lookup, which reads the active zone.
+- **Never ask what day it is** — production code reads no day from the
+  process clock or the active zone. A day belongs to the library's calendar:
+  ask `calendar_today(library)` or `request_calendar_today(request, library)`.
+  A `DateField` takes a day, not an instant: Django converts an instant in
+  `TIME_ZONE`. `tests/test_calendar_clock_guard.py` refuses a bare
+  `localdate()`/`today()` in the app packages. A test states a fixed day or
+  seeds at `library_noon(library)` (`tests/calendar_days.py`); `session_row`,
+  `timed_row` and `corrected_row` default to the calendar's zone, because
+  `effective_day` reads the row's own. The suite runs with the process zone on
+  a date that is not the default calendar's, so a test seeded off the process
+  clock fails at every hour. The direction follows the wall clock;
+  `TIMETRACKER_TEST_PROCESS_ZONE` forces one, and refuses a zone on the
+  calendar's date. Not covered: a UTC day (`timezone.now().date()`), a read
+  inside a request, a test that pins `TIME_ZONE`, the browser, and ORM
+  `__date` lookups, which read the active zone (#1363).
 - **Use `render_page()` not `render()`** for all full-page HTTP responses (import
   from `common.layout`).
 - **Build UI with Python components** from `common.components`, not raw HTML

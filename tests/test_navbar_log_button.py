@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 from unittest import mock
 from zoneinfo import ZoneInfo
 
-from django.conf import settings
 from django.contrib.auth.models import AnonymousUser, User
 from django.db import connection
 from django.test import RequestFactory, TestCase
@@ -19,7 +18,7 @@ from session_rows import session_row
 from common.layout import Navbar, NavbarViewer, recent_session_resumes
 from games.models import Game, Platform, PlayerSession
 
-ZONEINFO = ZoneInfo(settings.TIME_ZONE)
+ZONEINFO = ZoneInfo("Europe/Prague")
 BASE = datetime(2025, 1, 1, 12, 0, tzinfo=ZONEINFO)
 
 

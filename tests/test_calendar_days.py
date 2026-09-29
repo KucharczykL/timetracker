@@ -45,7 +45,12 @@ def _navbar_today(owned_user) -> str:
     return str(model_counts(request)["today_played"])
 
 
-def test_the_fixture_puts_the_clocks_a_day_apart(owned_library, displaced):
+def test_the_suite_runs_the_process_clock_off_a_fresh_calendar(owned_library):
+    """The autouse fixture's own claim."""
+    assert calendar_today(owned_library) != process_day()
+
+
+def test_the_fixture_puts_the_clocks_on_different_dates(owned_library, displaced):
     """Agreeing clocks would pass everything below."""
     assert calendar_today(owned_library) != process_day()
 

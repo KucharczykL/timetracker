@@ -89,7 +89,7 @@ ignore_missing_imports = true
 DJANGO_SETTINGS_MODULE = "timetracker.settings"
 addopts = "-p timetracker.pytest_topology"
 python_files = ["test_*.py"]
-# A naive instant is saved in the process zone, which no library counts in.
+# Naive instants save in TIME_ZONE, not the calendar.
 filterwarnings = [
     "error:DateTimeField .* received a naive datetime:RuntimeWarning",
 ]

@@ -12,7 +12,6 @@ from uuid import uuid7
 from zoneinfo import ZoneInfo
 
 from devices import create_device
-from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
@@ -29,7 +28,7 @@ from games.models import (
     Purchase,
 )
 
-ZONEINFO = ZoneInfo(settings.TIME_ZONE)
+ZONEINFO = ZoneInfo("Europe/Prague")
 BASE = datetime(2025, 3, 1, 10, 0, tzinfo=ZONEINFO)
 
 # Every list page; each one's first column is a name that must self-clip.

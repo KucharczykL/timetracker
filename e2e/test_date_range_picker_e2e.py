@@ -78,7 +78,7 @@ def _bar_page(presentation, filter_json: str = "", apply_url: str = "") -> str:
 </html>"""
 
 
-#: Presets count days here, not in the browser.
+#: Presets count days here, not the browser.
 PAGE_ZONE = ZoneInfo("Pacific/Kiritimati")
 
 

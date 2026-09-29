@@ -18,7 +18,6 @@ from zoneinfo import ZoneInfo
 import pytest
 from column_choice import show_every_column
 from devices import create_device
-from django.conf import settings
 from django.urls import reverse
 from playwright.sync_api import Browser, Page, ViewportSize
 from session_rows import session_row
@@ -26,7 +25,7 @@ from session_rows import session_row
 from e2e.helpers import settle_layout
 from games.models import Game, Platform, Purchase
 
-ZONEINFO = ZoneInfo(settings.TIME_ZONE)
+ZONEINFO = ZoneInfo("Europe/Prague")
 BASE = datetime(2025, 3, 1, 10, 0, tzinfo=ZONEINFO)
 
 LONG_NAME = (
