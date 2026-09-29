@@ -41,6 +41,7 @@ from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_api
 from games.api_creation import RowRefused, created_by_form, refusal_sentence
+from games.catalog_release import release_on_platform
 from games.commands.endpoint import ActStatement, WayActStatement
 from games.commands.playersession import (
     CorrectedTiming,
@@ -92,6 +93,7 @@ from games.reads.player_sessions import readable_sessions
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_numbering import display_name, with_display_number
 from games.reads.playthrough_runs import library_runs
+from games.reads.releases import game_releases, matching_releases, release_label
 from games.removal import remove
 from games.sorting import (
     HISTORICAL_PLAYTIME_DEFAULT_SORT,
@@ -707,6 +709,49 @@ def search_platform_groups(request, q: str = "", limit: int = 10):
     return [{"value": group, "label": group, "data": {}} for group in groups[:limit]]
 
 
+release_router = Router()
+
+
+class ReleaseIn(Schema):
+    """The create row's typed platform, at one Game."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    game_id: UUIDv7
+
+
+@release_router.get("/search", response=list[PickerOption])
+def search_releases(request, game_id: UUIDv7, q: str = "", limit: int = 10):
+    """One Game's live Releases, as picker options."""
+    library = cast(User, request.user).library
+    game = Game.objects.visible_to(library).filter(pk=game_id).first()
+    if game is None:
+        return []
+    releases = matching_releases(game_releases(library, game), q)[:limit]
+    return [
+        {"value": release.pk, "label": release_label(release), "data": {}}
+        for release in releases
+    ]
+
+
+@release_router.post("/", response={201: CreatedRow})
+def create_release(request, payload: ReleaseIn):
+    """A Release on the typed Platform, under the default Edition.
+
+    A Release that already stands on that Platform is answered
+    rather than made a second time.
+    """
+    library = cast(User, request.user).library
+    reached = release_on_platform(library, payload.game_id, payload.name)
+    label = release_label(reached.release)
+    if reached.created:
+        messages.success(request, f"{label} added")
+    else:
+        messages.info(request, f"{label} is already a release of this game")
+    return Status(201, CreatedRow(value=str(reached.release.pk), label=label))
+
+
 timezone_router = Router()
 
 # The pinned clear-to-NULL row: "" posts as the form's empty choice, which
@@ -744,6 +789,7 @@ api.add_router("/games", game_router)
 api.add_router("/devices", device_router)
 api.add_router("/platforms", platform_router)
 api.add_router("/timezones", timezone_router)
+api.add_router("/releases", release_router)
 
 session_router = Router()
 
