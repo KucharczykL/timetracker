@@ -44,6 +44,9 @@ In:
   written by the currency task alone.
 - `Game.kind` and `Game.parent`, in IGDB's words.
 - `PlayerGame.excluded_from_dropped` beside `excluded_from_unfinished`.
+- `Edition.kind`, so a demo or a beta is a prerelease Edition of its
+  game with a Release per platform, made and picked like any other; the
+  toggle that hides prerelease play is #1361, after #1354.
 - The Add to library form, the Entries list, the Purchases list made
   selectable, the Games list's Access column, Game detail's Library and
   Add-ons sections, filters, presets, statistics, the API.
@@ -78,6 +81,13 @@ Read on the 2026-09-28 dump. One library, 808 live purchases.
 | Games / Editions / Releases; games with two Releases | 863 / 864 / 864; 0 |
 | Purchases naming a game the library does not track | 0 |
 | Saved purchase presets | 0 |
+| Demo purchases / of them games also owned / games holding a hand-made second run for the demo | 34 / 7 / 2 |
+| Sessions before the run's start on a game holding a Demo purchase | 1 |
+| Sessions before the game's earliest catalog release day / games | 72 / 18 |
+
+The person stopped recording demos as purchases so as not to clog the
+library, and played 10 to 20; catalog release days are year-coarse port
+dates, so "before release" finds mostly the wrong sessions.
 
 Three readings shape the design. Every row today is the way the library
 says "I have this", money or none, so the form that records access stays
@@ -88,7 +98,9 @@ conversion must state one.
 
 ## Aggregates and storage
 
-#1275 is on `main`. This wave's first migration is `0020`.
+#1275 is on `main`. M1 is on `main` too (PR #1362, 2026-09-29), whose
+migration is `0020`; M2's first is `0021`. Its contract is
+[The LibraryEntry aggregate](2026-09-29-issue-719-libraryentry-aggregate-design.md).
 
 ### The opening endpoint
 
@@ -136,11 +148,14 @@ marker is set. The row is unique on `(id, library)`; a partial index on
 `(library, release)` covers live rows. The reference kind is
 `libraryentry`, resolution `PROJECTED`, named as `device` is.
 
-`Release` carries no `library` column, so `ProjectionReference.on` cannot
-register `release` today. M1 teaches `_is_library_scoped` a path
-(`edition__game__library`), so `audit_library_ownership` reports an entry
-naming another library's private Release, and the swap's refusal sentence
-can name it.
+`Release` carries no `library` column, so `LIBRARY_PATHS` in
+`games/projections.py` gives a catalog row its path to a library,
+`ProjectionReference` carries it as `library_path`, `games.E015` refuses
+a path that ends elsewhere, and `visible_row` in `games/commands/scope.py`
+resolves a shared row or the library's own through it. So
+`audit_library_ownership` reports an entry naming another library's
+private Release, `entry_game_violations` reports one whose Release is not
+its game's, and the swap's refusal sentence can name either.
 
 ### Purchase
 
@@ -227,6 +242,33 @@ Game.
 reads its own fact and nothing else; the rule this wave makes is that no
 fact stated for one figure decides another.
 
+### Edition
+
+A demo is another version of the game, so it is an Edition of that game,
+`kind` `prerelease`, with a Release per platform. An open or closed
+beta, an alpha, a network test, a playtest or a stress test is the same
+word: no reader tells one from another, so the kind holds one word and
+the Edition's name says which ("Demo", "Open Beta", "Network Test").
+Early Access is the full game sold unfinished, so `full`, as every other
+Edition is. The word is a catalog fact, shared as the Edition is, stated
+through `CatalogGraphForm` beside the name, and picked in Add to library
+as any Release is, told apart by its edition. It is not a playthrough
+kind and not a second run: prerelease sessions sit on the game's run, and the
+run's start stays the day the full game began. Three readers hold the
+word. The backlog reads Owned entries on full editions, or a free demo
+download would put the game in it. Before start (#1358) reads sessions
+on full editions, since a demo precedes the game by nature. And the
+toggle #1361 adds, one library setting stats and lists read alike, hides
+sessions on prerelease editions; it needs a session to name its Release,
+so it follows #1354. A Trial is the
+full game, on its own Edition. An entry on a prerelease Edition states
+the access the person likes, Owned for a free download or the charter's
+Demo, and a beta's access ends `expired` the day the test closes; no
+reader tells prerelease play from the access word, only from the
+Edition. `Edition.kind` lands in M7 beside `Game.kind`. The one beta the
+dump holds, "Diablo 4 Open Beta", is a private Game with one session and
+becomes a prerelease Edition of Diablo IV by hand, not by the pass.
+
 ### FilterPreset
 
 `mode` gains `entries`.
@@ -245,16 +287,18 @@ do.
 
 | Command | Event | Rule |
 |---|---|---|
-| `RecordEntry` | `libraryentry.created` (player game, release, access, format, note, `effective_time` the acquired day) | a Release the library cannot see is 404 from scope; a removed Release is refused; the Release must belong to the tracked game; an untracked game is tracked first, as the session path does |
+| `RecordEntry` | `libraryentry.created` (player game, release, access, format, note, `effective_time` the acquired day) | names the Release alone and derives the game from it; a Release the library cannot see is 404 from scope; a removed Release is refused; an untracked game is tracked inside the same dispatch by prepending `tracking_events(game)`, so the tracked row and the entry share one correlation with no window between them |
 | `DescribeEntry` | `access_changed`, `format_changed`, `note_changed`, `release_changed`, one per differing fact | the new Release must be a live Release of the same game |
 | `CorrectEntryAcquisition` | `acquisition_corrected` | the opening endpoint's correction |
 | `EndEntryAccess`, `CorrectEntryAccessEnd`, `VoidEntryAccessEnd` | `access_ended`, `access_end_corrected`, `access_end_voided` | the primitive's three, with a `before_event` that refuses a removed entry |
 | `ResumeEntryAccess` | `access_resumed` (note, `effective_time` the day) | refused where no end stands |
 | `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal refuses while a live Purchase names the entry, with a sentence naming the move; restore refuses under a removed PlayerGame or Release |
 
-`BlockingReferrer.on` refuses a field that is not a key to a run. M1
-gives it the target model as a parameter, so `Purchase.entry` registers
-beside the two run referrers with the same `alive()` rule.
+The referrer registry is `games/reads/referrers.py`: `BlockingReferrer.on`
+takes `target`, and `referrers_of(target)` reads the tuple at each call,
+so `Purchase.entry` registers beside the two run referrers with the same
+`alive()` rule; `RemoveEntry` asks it already and finds no entry referrer
+until P1.
 
 ### Purchase
 
@@ -262,7 +306,7 @@ beside the two run referrers with the same `alive()` rule.
 
 | Command | Event | Rule |
 |---|---|---|
-| `RecordPurchase` | `purchase.created` (entry, kind, name, amount, currency, note, `effective_time` the purchased day) | names an existing entry, or carries a new entry's fields and emits `libraryentry.created` first in the same dispatch, as `TrackGame` emits two; currency required exactly where an amount is stated |
+| `RecordPurchase` | `purchase.created` (entry, kind, name, amount, currency, note, `effective_time` the purchased day) | names an existing entry, or carries a new entry's fields and emits `libraryentry.created` first in the same dispatch, tracking an untracked game ahead of it the way `RecordEntry` does; currency required exactly where an amount is stated |
 | `DescribePurchase` | `kind_changed`, `name_changed`, `amount_changed` (amount and currency, one fact), `note_changed`, `entry_changed` | the new entry must be a live entry of the same game |
 | `CorrectPurchaseDay` | `purchase_day_corrected` | the opening endpoint's correction |
 | `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund` | `refunded`, `refund_corrected`, `refund_voided` | the primitive; a refund also appends `libraryentry.access_ended` with way `refunded` on the entry where it is Owned, live and unended, in the same dispatch, as the reclassification writes a second aggregate; the void takes that end back only where the entry's marker is still set and its latest end-family event is the refund's own |
@@ -313,6 +357,10 @@ nothing. In order:
    upgrade stay purchases of their kind on the base entry.
 3. **Releases (15).** Where the purchase's platform is not the game's, a
    private Release on that platform under the default Edition.
+   **Demo editions (34).** For each Demo purchase, a private Edition of
+   kind `prerelease` named "Demo" under its game, with one Release on the
+   purchase's platform; the entry of step 4 names that Release. A game
+   holding a demo Release beside its full one is in the review surface.
 4. **Entries.** One per (purchase, game). Access and format by the table
    below; acquired the purchase day, exact; an end with way `refunded` on
    the refund day where one exists. The 81 non-owned rows at price 0
@@ -368,7 +416,10 @@ games (6), which no filter expresses, render as rows: the pass tags their
 `source_metadata`, the section reads those events by the pass's
 correlation id through `batch_aggregate_ids`, and each row links to its
 edit page. A Release writes no event, so the row is the entry that names
-it. A "Hide this review" checkbox on `UserLibraryPreferences` closes the
+it. Demo editions (34, of which 30 games hold sessions) link to the
+Games list at entry access Demo; the pass names no session's Release,
+because no finder is reliable, and #1354's bulk Edit field is where a
+person states which sessions were the demo. A "Hide this review" checkbox on `UserLibraryPreferences` closes the
 section; it is its own toggle, read from nothing else.
 
 The sample fixture is regenerated after the cutover. The anonymizer
@@ -512,14 +563,15 @@ nothing in them converts data, and each holds events for every row it
 projects. The Purchase members cannot: a `ProjectionModel` whose rows
 hold no events fails the replay gate, so the Purchase aggregate, its
 conversion and the cutover are one `gh stack merge`, P1 to P5. M1 before
-M2 before M3; M7 and M8 any time; the stack after every member.
+M2 before M3; M7 and M8 any time; the stack after every member, and P5's
+backlog reads M7's edition word.
 
 | Member | Issues | Delivers |
 |---|---|---|
-| M1 | #719, #720, #722 | the opening endpoint; the LibraryEntry aggregate: schema, creation, description, removal, multiple entries, reference kind, `_is_library_scoped` path, the generalised referrer registry, replay gate, API |
-| M2 | #721 | acquired correction, access end and resume on the primitive |
+| M1 (merged, PR #1362, 2026-09-29) | #719, #720, #722 | the opening endpoint whole, its one correction (`CorrectEntryAcquisition`) included, since the replay gate refuses a registered event type no command emits; the LibraryEntry aggregate: schema without the end columns, creation, description, removal and restore as commands with no route, multiple entries, reference kind, `_is_library_scoped` path, the generalised referrer registry, replay gate, the four API routes with `limit`/`offset` |
+| M2 | #721 | the end columns and their `CHECK`s in a migration of its own, as `0019` added the device's; access end and resume on the primitive |
 | M3 | #1352 | the Entries screens: list, filter, presets, navbar item, bulk Edit and Remove, the Games Access column and facets, Game detail's Library section, the entry forms |
-| M7 | #1353 | `Game.kind` and `Game.parent`: columns, form, Game detail add-ons, Games facet |
+| M7 | #1353 | `Game.kind` and `Game.parent`, `Edition.kind`: columns, form, Game detail add-ons, Games facet |
 | M8 | #1334 | `excluded_from_dropped` and its bulk Edit field |
 | P1 | #725, #726, #828 | the Purchase aggregate: projection, creation with an entry, description, day correction, removal, API |
 | P2 | #727 | refund endpoints and the coupled entry end |
@@ -546,6 +598,11 @@ inside a member says so in its body and closes with it.
 - **One end per entry at a time.** The projection holds the latest end;
   the stream holds them all. A list of a copy's lendings is a stream read
   nothing renders yet.
+- **Demo play before #1354.** A session is demo play through the
+  Release it names, and no session names one until #1354; until then a
+  demo session is a session on the game's run, counted everywhere.
+  The cost of an earlier answer is a run kind or a session flag that
+  #1354 would then have to reconcile with the Release.
 - **A refund of a non-owned entry.** The refund ends access only on an
   Owned entry; a refunded subscription or rental keeps its own end, stated
   by hand.
@@ -571,6 +628,11 @@ inside a member says so in its body and closes with it.
 - **#889** later moves the per-platform figures onto the Release the entry
   names.
 - **#1157** draws its card from this wave's readers.
+- **#1358**'s Before start reads sessions on full editions once #1354
+  lets a session name a demo Release; #1354 owns that clause, and its
+  bulk Edit Release field is how an existing demo session is placed.
+  Until then a demo session counts as one nobody has placed yet. **#1361**, the toggle that hides demo
+  play from statistics and lists, follows #1354.
 
 ## Deployment
 
@@ -601,6 +663,10 @@ refresh and its printed totals, then the fixture PR.
 
 - Access and Purchases are one wave (charter step 12).
 - A Purchase creates its entry; an entry can exist with no Purchase.
+- An entry's command names the Release alone and derives the game
+  (`RecordEntry`, `DescribeEntry`); M3's form and P1's creation take the
+  same shape. An untracked game is tracked inside the same dispatch,
+  never by track-and-retry.
 - An entry names its PlayerGame and its Release; a purchase names its
   entry. No column outside the projections points at either.
 - `amount` null is unknown, 0 is free; the form has a Free box.
@@ -617,6 +683,10 @@ refresh and its printed totals, then the fixture PR.
 - Entry, catalog and PlayerGame members merge alone; the Purchase
   aggregate, the conversion and the cutover are one stack.
 - #1275 landed before the wave and is its dependency, not a member.
+- A demo, a beta or a test is an Edition of kind `prerelease`, one word
+  for all, made and picked like any other; no run kind. The backlog and
+  Before start read full editions; hiding prerelease play is one toggle,
+  after #1354.
 
 ## Follow-up issues filed
 
@@ -624,3 +694,4 @@ refresh and its printed totals, then the fixture PR.
 - #1353, `Game.kind` and `Game.parent` (M7)
 - #1354, a Release on a session and a record
 - #1355, bulk end of access over entries
+- #1361, a toggle that hides prerelease play (after #1354)
