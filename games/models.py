@@ -2189,6 +2189,30 @@ ENTRY_ACQUISITION_COLUMNS = OpeningEndpointColumns(
     note="acquisition_note",
 )
 
+#: How a copy leaves the library's hands.
+ENTRY_WAYS: tuple[EndWay, *tuple[EndWay, ...]] = (
+    EndWay.RETURNED,
+    EndWay.EXPIRED,
+    EndWay.REVOKED,
+    EndWay.REFUNDED,
+    EndWay.SOLD,
+    EndWay.LOST,
+    EndWay.GIVEN_AWAY,
+    EndWay.BROKEN,
+    EndWay.STOLEN,
+)
+
+ENTRY_ACCESS_END_COLUMNS = EndpointColumns(
+    name="access_end",
+    model_label="games.LibraryEntry",
+    when="access_ended",
+    lower="access_ended_lower",
+    upper="access_ended_upper",
+    marker="access_end_recorded_at",
+    note="access_end_note",
+    way=WayColumn("access_end_way", ENTRY_WAYS),
+)
+
 
 class LibraryEntryQuerySet(RemovableMixin, models.QuerySet["LibraryEntry"]):
     """Entry marks; catalog marks are the reads'."""
@@ -2226,6 +2250,15 @@ class LibraryEntry(ProjectionModel, ReferencedRow):
     #: The creation's instant; every row holds one.
     acquisition_recorded_at = opening_marker()
     acquisition_note = endpoint_note()
+    #: The day access ended; null unknown.
+    access_ended = endpoint_when()
+    access_ended_lower = endpoint_bound("access_ended", "lower")
+    access_ended_upper = endpoint_bound("access_ended", "upper")
+    #: Null is a copy the library holds.
+    access_end_recorded_at = endpoint_marker()
+    access_end_note = endpoint_note()
+    #: One of ENTRY_WAYS; empty while held.
+    access_end_way = endpoint_way(ENTRY_WAYS)
     #: The creation event's recorded_at.
     created_at = models.DateTimeField(editable=False)
     #: The remove event's recorded_at; null live.
@@ -2234,6 +2267,7 @@ class LibraryEntry(ProjectionModel, ReferencedRow):
     class Meta:
         constraints = (
             library_identity_constraint(),
+            *endpoint_constraints(ENTRY_ACCESS_END_COLUMNS),
             models.CheckConstraint(
                 condition=Q(access__in=[word.value for word in EntryAccess]),
                 name="games_libraryentry_access_known",
