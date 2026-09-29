@@ -48,7 +48,7 @@ value stays the ISO string `_coerce_date` keeps; the lookup preps it.
 `DateCriterion.to_q(field_name)` keeps its keyword form for a plain date
 column. A test holds the two forms to the same rows for every modifier.
 
-A `day_of` field compiles to `TruncDate(F(column), tzinfo=context.day_zone)`.
+A `day_of` field compiles to `TruncDate(F(column), tzinfo=context.day_zone())`.
 The nine `created_at` and `updated_at` fields use it.
 
 `_field_comparison_to_q` takes the zone. At `granularity="date"` it
