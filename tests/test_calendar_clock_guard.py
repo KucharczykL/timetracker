@@ -4,8 +4,21 @@ import ast
 from pathlib import Path
 from typing import NamedTuple
 
-#: Not tests/ or e2e/: they state days.
-GUARDED_PACKAGES = ("games", "common", "timetracker", "contrib", "scripts")
+#: `tests` and `e2e` are guarded too, since #1221 moved the readers onto the
+#: library's calendar and left every test seeding off the process clock. Such
+#: a test agrees with the code it exercises for 22 hours a day and disagrees
+#: by a day for the other two, so CI fails on whichever PR happens to run
+#: between 22:00 and 00:00 UTC rather than on the commit that caused it.
+#: A test states a fixed day or asks the calendar; it never asks the clock.
+GUARDED_PACKAGES = (
+    "games",
+    "common",
+    "timetracker",
+    "contrib",
+    "scripts",
+    "tests",
+    "e2e",
+)
 
 #: Names answering a day from the active zone.
 CLOCK_NAMES = frozenset({"localdate", "today"})
@@ -15,6 +28,31 @@ ALLOWED_FUNCTIONS: dict[str, str] = {
     "games/views/general.py:global_current_year": (
         "a viewer with no library has no calendar to ask"
     ),
+    "tests/test_navbar_calendar_day.py:elsewhere": (
+        "picks the zone that disagrees with the process clock, so it must "
+        "read that clock to know which one does"
+    ),
+    "tests/test_playthrough_companion_status.py:"
+    "test_a_start_states_the_librarys_day_not_the_processs": (
+        "asserts the two clocks answer differently, which is unsayable "
+        "without reading both"
+    ),
+    "tests/test_calendar_days.py:displaced": (
+        "picks the zone that disagrees with the process clock, so it must "
+        "read that clock to know which one does"
+    ),
+    "tests/test_calendar_days.py:test_the_fixture_puts_the_clocks_a_day_apart": (
+        "asserts the two clocks answer differently, which is what makes "
+        "every other assertion in that file prove something"
+    ),
+    "tests/test_historical_playtime_filter.py:test_created_at": (
+        "created_at is compared through Django's __date lookup, which "
+        "resolves in the active zone rather than the library's calendar"
+    ),
+    "e2e/test_date_range_picker_e2e.py:_pinned_today": (
+        "the browser context is pinned to settings.TIME_ZONE, so the day "
+        "the picker computes is the active zone's and no library is involved"
+    ),
 }
 
 REPORT = (
@@ -22,8 +60,12 @@ REPORT = (
     "A day belongs to the library's calendar: ask "
     "games.reads.calendar.calendar_today(library), or "
     "games.views.general.request_calendar_today(request, library) where a "
-    "request is at hand. If no library exists to ask, add "
-    "'{path}:{function}' to ALLOWED_FUNCTIONS with the reason."
+    "request is at hand. In a test, state a fixed day -- date(2026, 3, 5) -- "
+    "or seed against the calendar with tests/calendar_days.py's "
+    "library_noon(library); a fixture built on the process clock agrees with "
+    "the reader for most of the day and is one day out for the rest. If no "
+    "library exists to ask, add '{path}:{function}' to ALLOWED_FUNCTIONS "
+    "with the reason."
 )
 
 
@@ -119,6 +161,27 @@ def test_the_guard_passes_a_name_that_is_never_called() -> None:
     source = "FACTORIES = frozenset({timezone.localdate, date.today})\n"
 
     assert clock_calls(source, "x.py") == []
+
+
+def test_the_guard_passes_a_stated_day() -> None:
+    """A test may name a day. It may not ask what day it is."""
+    source = "def test_x():\n    return date(2026, 3, 5)\n"
+
+    assert clock_calls(source, "tests/test_x.py") == []
+
+
+def test_the_walk_reaches_the_test_packages() -> None:
+    """The scope is the guard here, so it is asserted and not assumed.
+
+    #1221 moved the readers onto the calendar and left the tests on the
+    process clock, which is why this walk covers them at all. Dropping
+    either package would restore a suite that fails for two hours a day
+    on whichever PR runs in the window, so it fails here instead.
+    """
+    reached = {path for path, _ in _first_party_files()}
+
+    assert "tests/test_calendar_clock_guard.py" in reached
+    assert "e2e/test_date_range_picker_e2e.py" in reached
 
 
 def test_an_allowed_function_is_passed() -> None:

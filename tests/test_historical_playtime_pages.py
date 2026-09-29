@@ -1,13 +1,13 @@
 """Pages that show playtime count historical records."""
 
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
+from calendar_days import library_day_zone, library_noon
 from django.db import connection
 from django.test import RequestFactory
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
-from django.utils import timezone
 from historical_playtime_rows import record_row
 from session_rows import session_row, tracked_run
 from statistic_cards import statistic_card
@@ -28,12 +28,17 @@ def element(html: str, element_id: str) -> str:
 @pytest.mark.django_db
 def test_the_navbar_adds_todays_record_in_two_queries(owned_user):
     game = Game.objects.create(library=owned_user.library, name="Tunic")
-    noon = timezone.make_aware(datetime.combine(timezone.localdate(), time(12)))
-    session_row(game, started_at=noon, ended_at=noon + HOUR)
+    noon = library_noon(owned_user.library)
+    session_row(
+        game,
+        started_at=noon,
+        ended_at=noon + HOUR,
+        day_zone=library_day_zone(owned_user.library),
+    )
     record_row(
         [tracked_run(owned_user.library, game)],
         duration=2 * HOUR,
-        when=timezone.localdate().isoformat(),
+        when=noon.date().isoformat(),
     )
     request = RequestFactory().get("/")
     request.user = owned_user
@@ -161,12 +166,17 @@ def test_the_stats_page_renders_the_composed_figures(client, owned_user):
 def test_the_navbar_states_the_split_and_carries_no_link(owned_user):
     """The session list cannot show a record, so the figure links nowhere."""
     game = Game.objects.create(library=owned_user.library, name="Tunic")
-    noon = timezone.make_aware(datetime.combine(timezone.localdate(), time(12)))
-    session_row(game, started_at=noon, ended_at=noon + HOUR)
+    noon = library_noon(owned_user.library)
+    session_row(
+        game,
+        started_at=noon,
+        ended_at=noon + HOUR,
+        day_zone=library_day_zone(owned_user.library),
+    )
     record_row(
         [tracked_run(owned_user.library, game)],
         duration=2 * HOUR,
-        when=timezone.localdate().isoformat(),
+        when=noon.date().isoformat(),
     )
     request = RequestFactory().get("/")
     request.user = owned_user
