@@ -551,8 +551,10 @@ docs/           — Additional documentation
   `games/reads/entries.py` reads five. Routes `GET`/`POST /api/entries/`,
   `GET`/`PATCH /api/entries/{id}`; a PATCH states `acquired` and
   `acquisition_note` together or is refused with 422. Two entries on one
-  Release are two copies. No screen, no end of access yet (M2 #721, M3
-  #1352). Contract is
+  Release are two copies; an entry whose parent or private Release is
+  another library's is `RowUnreadable`, and `entry_game_violations` joins
+  the ownership audit. `games.E015` walks `LIBRARY_PATHS`. No screen, no
+  end of access yet (M2 #721, M3 #1352). Contract is
   [The LibraryEntry aggregate](docs/superpowers/specs/2026-09-29-issue-719-libraryentry-aggregate-design.md);
   wave is
   [Access and Purchases](docs/superpowers/specs/2026-09-28-access-and-purchases-wave-design.md)
@@ -567,8 +569,9 @@ with `endpoint_move`, filters take `endpoint_filter_fields` and
 `way_filter_field` (`games/filters.py`). Playthrough
 start and completion and a device's end of access are its three. An
 **opening endpoint** (`OpeningEndpoint`, #719) is the variant the creation
-states: one event, the correction, and a marker that admits no null; an
-entry's acquisition is its one.
+states: one event, the correction, and a marker that admits no null; its
+columns are a sibling of the stated shape under `EndpointColumnsBase`, so a
+void of one is a type error. An entry's acquisition is its one.
 
 **Nothing user removes is destroyed** (#944). Six removable models — Game,
 Edition, Release, Platform, Purchase, FilterPreset —
@@ -1035,7 +1038,8 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   `limit`/`offset`, `limit=0` unbounded; `POST /` records one (201 and the
   row, `Idempotency-Key` absorbs a repeat, an untracked game is tracked in
   the same dispatch); `PATCH /{id}` describes each named key, and states
-  `acquired` and `acquisition_note` together or answers 422
+  `acquired` and `acquisition_note` together or answers 422; both bodies
+  take `EntryAccess`/`EntryFormat` and refuse a present null at the schema
 - `GET /api/presets/` — user's presets for a mode, shaped as combobox options
   (`limit=0` = unbounded)
 - `POST /api/presets/` — upsert on (user, mode, name); 201 create / 200 update

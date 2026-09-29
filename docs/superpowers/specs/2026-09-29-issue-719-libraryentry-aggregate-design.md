@@ -20,8 +20,10 @@ entries with the same words are two copies.
 An opening endpoint is an act that the creation states. A correction moves
 the day. Nothing voids it. The marker admits no null.
 
-- `games/endpoint_fields.py`: `OpeningEndpointColumns` has no way.
-  `unstated_columns()` raises. `opening_marker()` admits no null.
+- `games/endpoint_fields.py`: `EndpointColumns` and
+  `OpeningEndpointColumns` are siblings under `EndpointColumnsBase`. Only
+  the first states `unstated_columns()`, so a void of an opening endpoint
+  is a type error. `opening_marker()` admits no null.
 - `games/events/endpoint.py`: `OpeningEndpointEvents` holds `corrected`.
 - `games/endpoints.py`: `OpeningEndpoint`. `ENDPOINTS` lists both shapes.
   `games.E014` refuses a nullable opening marker.
@@ -62,10 +64,14 @@ bare id, `release` as a Reference, the words, both notes; the day is
 ## Scope and references
 
 `LIBRARY_PATHS` in `games/projections.py` gives a catalog row its path to
-a library. `library_path_of` reads the concrete column first.
+a library. `games.E015` refuses a path that does not end at a library.
+`library_path_of` reads the concrete column first.
 `ProjectionReference.library_path` carries the path, and the ownership
 audit joins through it. `visible_row` in `games/commands/scope.py` resolves
 a shared row or the library's own through that path. `TrackGame` uses it.
+`library_entry_row` refuses an entry whose `PlayerGame` or private Release
+is another library's with `RowUnreadable`. `entry_game_violations` reports
+an entry whose Release is not its game's.
 
 ## Referrer registry
 
@@ -78,8 +84,9 @@ a shared row or the library's own through that path. `TrackGame` uses it.
 `record_entry` answers `RecordedEntry` (the entry id, and whether the
 game was tracked) from `dispatched_events`. `restate_entry` sends the
 description first, whose refusals include the correction's. `library_entries` reads five marks. Routes: `GET`,
-`POST /api/entries/`; `GET`, `PATCH /api/entries/{id}`. A PATCH states
-`acquired` and `acquisition_note` together, or 422.
+`POST /api/entries/`; `GET`, `PATCH /api/entries/{id}`. The schema refuses
+an unknown word and a present null with 422. A PATCH states `acquired`
+and `acquisition_note` together, or 422.
 
 ## Limits
 
