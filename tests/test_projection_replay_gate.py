@@ -85,6 +85,7 @@ from games.models import (
 )
 from games.projectors.device import Devices
 from games.projectors.historical_playtime import HistoricalPlaytimes
+from games.projectors.libraryentry import Entries
 from games.projectors.playergame import PlayerGames
 from games.projectors.playersession import PlayerSessions
 from games.projectors.playthrough import Playthroughs
@@ -501,11 +502,12 @@ def build_stream(user, library) -> list[DispatchedCommand]:
 
 
 def registered_event_types() -> set[str]:
-    """Every type the five CURRENT_STATE projectors read."""
+    """Every type the six CURRENT_STATE projectors read."""
     return {
         spec.event_type
         for handles in (
             Devices.handles,
+            Entries.handles,
             PlayerGames.handles,
             Playthroughs.handles,
             PlayerSessions.handles,

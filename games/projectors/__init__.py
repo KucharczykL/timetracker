@@ -4,6 +4,7 @@ from games.projectors import (  # noqa: F401
     calendar,
     device,
     historical_playtime,
+    libraryentry,
     playergame,
     playersession,
     playthrough,
