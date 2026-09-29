@@ -74,7 +74,9 @@ carry a submission key (`form.submission_key()`), as the device form
 does, so a double press is absorbed, not refused. Edit, End access and
 Resume post the end marker the page rendered, as `DeviceForm` posts
 `access_end_seen`, and refuse with `CHANGED_SINCE_OPENED` where the row
-moved since: Held would otherwise void an end another tab stated.
+moved since: Held would otherwise void an end another tab stated. A
+press whose submission key already ran skips that check, so its repeat
+replays rather than reading its own write as another tab's.
 
 A query parameter opens one disclosure on load: `?library=add`, or
 `?library=<act>&copy=<entry id>` with the fragment `#copy-<entry id>`.
