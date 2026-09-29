@@ -98,8 +98,8 @@ conversion must state one.
 
 ## Aggregates and storage
 
-#1275 is on `main`. M1 is on `main` too (PR #1362, 2026-09-29), whose
-migration is `0020`; M2's first is `0021`. Its contract is
+#1275 is on `main`. M1 (PR #1362) and M2 (PR #1366) are on `main` too, migrations
+`0020` and `0021`; the next is `0022`. Its contract is
 [The LibraryEntry aggregate](2026-09-29-issue-719-libraryentry-aggregate-design.md).
 
 ### The opening endpoint
@@ -582,7 +582,7 @@ backlog reads M7's edition word.
 | Member | Issues | Delivers |
 |---|---|---|
 | M1 (merged, PR #1362, 2026-09-29) | #719, #720, #722 | the opening endpoint whole, its one correction (`CorrectEntryAcquisition`) included, since the replay gate refuses a registered event type no command emits; the LibraryEntry aggregate: schema without the end columns, creation, description, removal and restore as commands with no route, multiple entries, reference kind, `_is_library_scoped` path, the generalised referrer registry, replay gate, the four API routes with `limit`/`offset` |
-| M2 | #721 | the end columns and their `CHECK`s in a migration of its own, as `0019` added the device's; access end and resume on the primitive |
+| M2 (merged, PR #1366, 2026-09-29) | #721 | the end columns and their `CHECK`s in a migration of its own, as `0019` added the device's; access end and resume on the primitive |
 | M3 | #1352 | the Entries screens: list, filter, presets, navbar item, bulk Edit and Remove, the Games Access column and facets, Game detail's Library section, the entry forms |
 | M7 | #1353 | `Game.kind` and `Game.parent`, `Edition.kind`: columns, form, Game detail add-ons, Games facet |
 | M8 | #1334 | `excluded_from_dropped` and its bulk Edit field |
