@@ -119,12 +119,16 @@ correction stays one row at a time.
 
 A session of a game's demo is often dated before the full game's run starts,
 sometimes by a year. Correcting the run's start to cover it is wrong: a demo is
-a different version of the game. #1361 owns the answer: a `demo` run kind,
-outside every run-shaped figure, which takes the demo's sessions. Until it
-lands such a session counts under Before start as a session nobody has moved
-yet. After it lands the remedy is "move it to a demo run", through the same bulk
-Edit, and never "correct the start". The rule this design states does not
-change.
+a different version of the game. A demo is an Edition of kind `demo` (#1353),
+with a Release per platform. A session is demo play through the Release it
+names, which #1354 lets it state.
+
+Until #1354 lands, a demo session under Before start is one nobody has placed
+on its demo Release yet. The remedy is #1354's bulk Edit Release field, never a
+start correction. Once #1354 gives the join, `before_playthrough_start` gains a
+clause that reads only sessions on full editions, because a demo precedes the
+game by nature. The rule this design states does not change; #1361 hides demo
+play elsewhere.
 
 ## Tests
 
@@ -153,6 +157,6 @@ of what those issues decided, each with one line pointing here.
 
 ## Out of scope
 
-- Demo play (above), #1361.
+- Demo play (above): #1354 adds the full-editions clause.
 - A per-run statement that post-game play was reviewed. The after-completion
   sweep is one pass over legacy data, and a facet is enough for it.
