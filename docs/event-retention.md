@@ -223,7 +223,9 @@ of the statement takes the act's noun with `recorded_at`, and it is the
 nullable `DateTimeField`. Thus `started` beside `start_recorded_at`, and
 `completed` beside `completion_recorded_at`, where the noun is not the stem of
 the participle. Thus also `access_ended` beside `access_end_recorded_at`. Null in the stated column is only a time nobody knows; null in
-the record column is the act that did not occur.
+the record column is the act that did not occur. An opening endpoint is the
+act the creation itself states, so its record column admits no null: thus
+`acquired` beside `acquisition_recorded_at`, never null on any row.
 
 An act that includes a removal states the removal's mark and adds no second
 mark: every scope that hides a removed row already reads the one mark, and a
