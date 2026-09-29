@@ -4,10 +4,11 @@ import uuid
 from dataclasses import dataclass
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import Model, QuerySet
+from django.db.models import Model, Q, QuerySet
 
 from games.events.dispatch import CommandContext, CommandRejected, RowNotHeld
 from games.models import Device
+from games.projections import library_path_of
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +62,28 @@ def library_row[RowT: Model](
     try:
         return reads.get(library=context.library, **lookup)
     #: A generic queryset cannot name the class.
+    except ObjectDoesNotExist:
+        raise refusal.raised() from None
+
+
+def visible_row[RowT: Model](
+    context: CommandContext,
+    reads: QuerySet[RowT],
+    refusal: Refusal,
+    **lookup: object,
+) -> RowT:
+    """A shared row or this library's own, or a refusal.
+
+    The caller's queryset says whether a removed row is read.
+    The model reaches its library through the path the
+    projections module states for it.
+    """
+    path = library_path_of(reads.model)
+    if path is None:
+        raise TypeError(f"{reads.model.__name__} reaches no library.")
+    visible = Q(**{f"{path}__isnull": True}) | Q(**{path: context.library})
+    try:
+        return reads.filter(visible, **lookup).get()
     except ObjectDoesNotExist:
         raise refusal.raised() from None
 

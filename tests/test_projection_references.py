@@ -45,6 +45,17 @@ def test_the_walk_finds_every_outward_reference():
     ]
 
 
+def test_a_catalog_model_reaches_its_library_through_a_path():
+    """A concrete column first, then the map."""
+    from games.models import Edition, Release
+
+    assert projections.library_path_of(PlayerGame) == "library"
+    assert projections.library_path_of(Release) == "edition__game__library"
+    assert projections.library_path_of(Edition) == "game__library"
+    assert projections.library_path_of(get_user_model()) is None
+    assert ProjectionReference.on(PlayerGame, "game").library_path == "library"
+
+
 def test_the_library_column_is_not_a_reference():
     """`UserLibrary` has no library of its own."""
     assert "library" not in {

@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar, cast
 
-from games.commands.scope import Refusal, library_row
+from games.commands.scope import Refusal, library_row, visible_row
 from games.events.dispatch import (
     Command,
     CommandContext,
@@ -107,17 +107,22 @@ class TrackGame(Command):
 
     def _visible_game(self, context: CommandContext) -> Game:
         """Its own game, or a shared one."""
-        try:
-            return Game.objects.visible_to(context.library).get(pk=self.game_id)
-        except Game.DoesNotExist:
+        return visible_row(
+            context,
+            Game.objects.alive(),
             #: Leaks nothing about another library's rows.
-            raise CommandRejected(
-                f"No game {self.game_id} this library can track. A library "
-                "tracks its own games and the shared catalog, and neither "
-                "offers a removed row.",
+            Refusal(
+                message=(
+                    f"No game {self.game_id} this library can track. A library "
+                    "tracks its own games and the shared catalog, and neither "
+                    "offers a removed row."
+                ),
                 #: Names no id: a refusal is not a place to learn one.
                 sentence="That game is not available to track.",
-            ) from None
+                raises=CommandRejected,
+            ),
+            pk=self.game_id,
+        )
 
 
 @dataclass(frozen=True, slots=True)
