@@ -613,8 +613,9 @@ inside a member says so in its body and closes with it.
   names.
 - **#1157** draws its card from this wave's readers.
 - **#1358**'s Before start reads sessions on full editions once #1354
-  lets a session name a demo Release; until then a demo session counts
-  as one nobody has placed yet. **#1361**, the toggle that hides demo
+  lets a session name a demo Release; #1354 owns that clause, and its
+  bulk Edit Release field is how an existing demo session is placed.
+  Until then a demo session counts as one nobody has placed yet. **#1361**, the toggle that hides demo
   play from statistics and lists, follows #1354.
 
 ## Deployment
