@@ -13,7 +13,7 @@ from common.date_time_presentation import DateTimePresentation
 from games.commands.endpoint import ActStatement, WayActStatement
 from games.end_ways import END_WAY_LABELS, EndWay
 from games.endpoints import ENTRY_ACCESS_END
-from games.events.idempotency import IdempotencyKey
+from games.events.idempotency import IdempotencyKey, key_answered
 from games.forms import (
     PrimitiveWidgetsMixin,
     SearchSelectWidget,
@@ -61,6 +61,21 @@ def release_options(values, *, library: UserLibrary) -> list[SearchSelectOption]
         {"value": str(release.pk), "label": release_label(release), "data": {}}
         for release in releases
     ]
+
+
+def _entry_release_options(
+    values, *, entry: LibraryEntry, library: UserLibrary
+) -> list[SearchSelectOption]:
+    """The copy's own Release from the row; others read."""
+    if {str(value) for value in values} == {str(entry.release_id)}:
+        return [
+            {
+                "value": str(entry.release_id),
+                "label": release_label(entry.release),
+                "data": {},
+            }
+        ]
+    return release_options(values, library=library)
 
 
 def end_seen(entry: LibraryEntry) -> str:
@@ -120,6 +135,13 @@ class _Submission(forms.Form):
     def submission_key(self) -> IdempotencyKey:
         """The act's key."""
         return f"copy-{self.act}-{self.cleaned_data['submission']}"
+
+    def _replays(self, library: UserLibrary) -> bool:
+        """This page's press already ran; the dispatch replays it."""
+        submission = self.cleaned_data.get("submission")
+        return submission is not None and key_answered(
+            library, f"copy-{self.act}-{submission}"
+        )
 
 
 class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
@@ -243,6 +265,9 @@ class EntryEditForm(PrimitiveWidgetsMixin, _SeenEnd, forms.Form):
             {"game_id": {"value": str(game.pk)}},
             create=game.library_id == library.pk,
         )
+        self.fields["release"].widget.options_resolver = partial(
+            _entry_release_options, entry=entry, library=library
+        )
         self.fields["acquired"] = TemporalFormField(
             presentation=presentation, label="Acquired"
         )
@@ -334,7 +359,7 @@ class EntryEndForm(PrimitiveWidgetsMixin, _Submission, _SeenEnd, forms.Form):
 
     def clean(self) -> dict[str, Any] | None:
         cleaned = super().clean()
-        if cleaned is not None:
+        if cleaned is not None and not self._replays(self.entry.library):
             self._refuse_a_moved_end(cleaned)
         return cleaned
 
@@ -377,7 +402,7 @@ class EntryResumeForm(PrimitiveWidgetsMixin, _Submission, _SeenEnd, forms.Form):
 
     def clean(self) -> dict[str, Any] | None:
         cleaned = super().clean()
-        if cleaned is not None:
+        if cleaned is not None and not self._replays(self.entry.library):
             self._refuse_a_moved_end(cleaned)
         return cleaned
 

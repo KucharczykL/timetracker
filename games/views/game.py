@@ -139,8 +139,14 @@ from games.views.filtering import (
     warn_unknown_sort,
 )
 from games.views.game_menu import game_row_menu
+from games.views.general import request_calendar_today
 from games.views.historical_playtime import (
     historical_playtime_tabledata,
+)
+from games.views.library_cards import (
+    OpenForm,
+    library_section,
+    open_form_from_query,
 )
 from games.views.playergame_writes import (
     record_facts_for_request,
@@ -1232,9 +1238,26 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     game = owned_or_404(Game.objects.tracked_by(library), library, id=game_id)
     if slug != game.url_slug:
         return _canonical_game_redirect(request, game)
+    return game_detail_page(request, game, open_form_from_query(request))
+
+
+def game_detail_page(
+    request: HttpRequest,
+    game: Game,
+    open_form: OpenForm | None,
+    *,
+    status: int = 200,
+) -> HttpResponse:
+    """Game detail; a POST route renders it too.
+
+    The origin is the page's own URL, never the request path,
+    so a page a POST route renders carries links `return_url`
+    accepts.
+    """
+    library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
-    origin = request.get_full_path()
+    origin = game.get_absolute_url()
     #: Scoped, not `game.sessions` and friends: tracked_by() admits a
     #: shared catalog game, and a shared game's reverse accessors reach
     #: every library that ever wrote against it.
@@ -1272,6 +1295,14 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         _releases_section(
             hierarchy, presentation, origin, game=game, references=references
         ),
+        library_section(
+            request,
+            game,
+            library,
+            presentation=presentation,
+            today=request_calendar_today(request, library),
+            open_form=open_form,
+        ),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _historical_playtime_section(
@@ -1293,6 +1324,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         content,
         title=f"Game Overview - {game.name}",
         mastered=game.tracked_mastered,
+        status=status,
     )
 
 

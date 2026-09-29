@@ -9,6 +9,7 @@ from games.views import (
     historical_playtime,
     historical_playtime_entry,
     library,
+    library_entry,
     list_columns,
     platform,
     playthrough,
@@ -227,6 +228,36 @@ urlpatterns = [
         "historical-playtime/<uuidv7:record_id>/restore",
         historical_playtime_entry.restore_historical_playtime,
         name="restore_historical_playtime",
+    ),
+    path(
+        "game/<uuidv7:game_id>/library/add",
+        library_entry.add_library_entry,
+        name="add_library_entry",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/edit",
+        library_entry.edit_library_entry,
+        name="edit_library_entry",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/end",
+        library_entry.end_library_entry,
+        name="end_library_entry",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/resume",
+        library_entry.resume_library_entry,
+        name="resume_library_entry",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/remove",
+        library_entry.remove_library_entry,
+        name="remove_library_entry",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/restore",
+        library_entry.restore_library_entry,
+        name="restore_library_entry",
     ),
     path("session/list", session.list_sessions, name="list_sessions"),
     path(

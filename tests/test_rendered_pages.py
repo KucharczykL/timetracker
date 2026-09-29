@@ -367,6 +367,8 @@ class RenderedPagesTest(TestCase):
             "Released",
             'id="history-container"',
             'event="status-changed"',
+            'id="library"',
+            "Add to library",
             "Purchases",
             "Sessions",
             "Playthroughs",
@@ -468,6 +470,7 @@ class RenderedPagesTest(TestCase):
         )
         html = self.client.get(lonely.get_absolute_url()).content.decode()
         for marker in [
+            "Nothing in your library yet.",
             "No purchases yet.",
             "No sessions yet.",
         ]:
