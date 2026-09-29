@@ -1286,9 +1286,11 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   a date that is not the default calendar's, so a test seeded off the process
   clock fails at every hour. The direction follows the wall clock;
   `TIMETRACKER_TEST_PROCESS_ZONE` forces one, and refuses a zone on the
-  calendar's date. Not covered: a UTC day (`timezone.now().date()`), a read
-  inside a request, a test that pins `TIME_ZONE`, the browser, and ORM
-  `__date` lookups, which read the active zone (#1363).
+  calendar's date. A day facet compiles on the calendar zone the filter
+  context carries (`FilterField(day_of=…)`, `FilterQueryContext.day_zone`);
+  a session's `started`/`ended` read the row's own `day_zone`. Not covered:
+  a UTC day (`timezone.now().date()`), a read inside a request, a test that
+  pins `TIME_ZONE`, and the browser.
 - **Use `render_page()` not `render()`** for all full-page HTTP responses (import
   from `common.layout`).
 - **Build UI with Python components** from `common.components`, not raw HTML

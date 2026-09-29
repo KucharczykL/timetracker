@@ -943,7 +943,7 @@ class FieldComparisonCriterion(_Criterion):
     Granularity / comparison spaces: each non-``"raw"`` value defines a *space*
     whose accepted operand groups are listed in ``SPACE_GROUPS``.
     ``"date"`` space truncates datetime operands to calendar day at query time
-    (``left__date <op> TruncDate(F(right))``) using the active timezone —
+    (``TruncDate(F(left)) <op> TruncDate(F(right))``) in the context's calendar zone —
     accepts ``date`` and ``datetime`` operands.
     ``"year"`` space projects temporal operands to their year and compares as
     numbers (``left__year <op> ExtractYear(F(right))`` / vice-versa) —
@@ -2155,7 +2155,7 @@ def _field_comparison_to_q(
     right, and both operands on one relation share a single join.
 
     Space projection: ``date`` truncates datetime operands to calendar day
-    (``__date`` / ``TruncDate``), ``year`` extracts the year from temporal
+    (``TruncDate`` in ``day_zone``), ``year`` extracts the year from temporal
     operands (``__year`` / ``ExtractYear``) so they compare against numbers.
 
     NULL semantics are strict two-valued (#169): every Q carries explicit
