@@ -553,9 +553,19 @@ docs/           — Additional documentation
   `acquisition_note` together or is refused with 422. Two entries on one
   Release are two copies; an entry whose parent or private Release is
   another library's is `RowUnreadable`, and `entry_game_violations` joins
-  the ownership audit. `games.E015` walks `LIBRARY_PATHS`. No screen, no
-  end of access yet (M2 #721, M3 #1352). Contract is
-  [The LibraryEntry aggregate](docs/superpowers/specs/2026-09-29-issue-719-libraryentry-aggregate-design.md);
+  the ownership audit. `games.E015` walks `LIBRARY_PATHS`. #721 states
+  an end of access on the stated endpoint (`access_ended`/
+  `.access_end_corrected`/`.access_end_voided`, nine `ENTRY_WAYS`,
+  `refunded` by hand included) and `access_resumed`, a dated fact that
+  writes the end's columns back; `EndEntryAccess`, `CorrectEntryAccessEnd`,
+  `VoidEntryAccessEnd`, `ResumeEntryAccess`, each refusing a day certainly
+  before the acquisition or the end the row holds, and
+  `CorrectEntryAcquisition` one certainly after a standing end.
+  `restate_entry` takes `access_end` (`KEEP` states nothing, `None` voids);
+  `PATCH` takes `access_end` `{ended, way, note}` or null;
+  `POST /api/entries/{id}/resume`. No screen yet (M3 #1352). Contracts are
+  [The LibraryEntry aggregate](docs/superpowers/specs/2026-09-29-issue-719-libraryentry-aggregate-design.md)
+  and [A copy's access ends and resumes](docs/superpowers/specs/2026-09-29-issue-721-entry-access-end-design.md);
   wave is
   [Access and Purchases](docs/superpowers/specs/2026-09-28-access-and-purchases-wave-design.md)
 
@@ -566,8 +576,13 @@ corrected, voided); the model declares the columns through
 Commands decide through `games/commands/endpoint.py`, projectors write
 through `project_stated`/`_corrected`/`_voided`, writes choose the act
 with `endpoint_move`, filters take `endpoint_filter_fields` and
-`way_filter_field` (`games/filters.py`). Playthrough
-start and completion and a device's end of access are its three. An
+`way_filter_field` (`games/filters.py`). An endpoint may
+state a fourth act, `resumed` (#721): a dated fact, not a void, that
+writes the columns back (`project_resumed`, `resume_endpoint`); the
+row keeps nothing of it. `certainly_reversed` in
+`games/commands/endpoint.py` is the one day-order rule. Playthrough
+start and completion and a device's and a copy's end of access are its
+four. An
 **opening endpoint** (`OpeningEndpoint`, #719) is the variant the creation
 states: one event, the correction, and a marker that admits no null; its
 columns are a sibling of the stated shape under `EndpointColumnsBase`, so a
@@ -1038,8 +1053,11 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   `limit`/`offset`, `limit=0` unbounded; `POST /` records one (201 and the
   row, `Idempotency-Key` absorbs a repeat, an untracked game is tracked in
   the same dispatch); `PATCH /{id}` describes each named key, and states
-  `acquired` and `acquisition_note` together or answers 422; both bodies
-  take `EntryAccess`/`EntryFormat` and refuse a present null at the schema
+  `acquired` and `acquisition_note` together or answers 422, and takes
+  `access_end`, an object stating the end or null voiding it; both bodies
+  take `EntryAccess`/`EntryFormat` and refuse a present null at the schema;
+  `POST /{id}/resume` `{resumed, note}` states a resume under an optional
+  `Idempotency-Key`
 - `GET /api/presets/` — user's presets for a mode, shaped as combobox options
   (`limit=0` = unbounded)
 - `POST /api/presets/` — upsert on (user, mode, name); 201 create / 200 update

@@ -417,7 +417,7 @@ class RestoreEntry(Command):
 
 @dataclass(frozen=True, slots=True)
 class EndEntryAccess(Command):
-    """State that the library's access to a copy ended."""
+    """The copy's access ended."""
 
     command_name: ClassVar[CommandName] = CommandName.LIBRARYENTRY_END_ACCESS
     entry_id: uuid.UUID
@@ -480,7 +480,7 @@ class VoidEntryAccessEnd(Command):
 
 @dataclass(frozen=True, slots=True)
 class ResumeEntryAccess(Command):
-    """State that access to an ended copy started again."""
+    """Access to an ended copy resumed."""
 
     command_name: ClassVar[CommandName] = CommandName.LIBRARYENTRY_RESUME_ACCESS
     entry_id: uuid.UUID

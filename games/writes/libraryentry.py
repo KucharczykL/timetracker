@@ -165,7 +165,7 @@ def _refuse_a_reversed_draft(
     acquired: ActStatement | Keep,
     access_end: WayActStatement | None | Keep,
 ) -> None:
-    """Refused up front: no act withdraws a committed one."""
+    """Refuse up front; no act withdraws."""
     if isinstance(acquired, Keep) or not isinstance(access_end, WayActStatement):
         return
     if certainly_reversed(earlier=acquired.when, later=access_end.when):
@@ -227,7 +227,7 @@ def resume_entry_access(
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,
 ) -> CommandResult:
-    """State that access to an ended copy started again."""
+    """Access to an ended copy resumed."""
     with answered(SUBJECT):
         return _dispatch(
             ResumeEntryAccess(entry_id=entry.pk, statement=statement),

@@ -30,7 +30,7 @@ class EndpointEvents[PayloadT](NamedTuple):
     stated: EventSpec[PayloadT]
     corrected: EventSpec[PayloadT]
     voided: EventSpec[Any]
-    #: Access again after an end; the row reads as voided.
+    #: Access again; the row reads voided.
     resumed: EventSpec[Any] | None = None
 
     @property
@@ -40,7 +40,7 @@ class EndpointEvents[PayloadT](NamedTuple):
         return tuple(spec for spec in acts if spec is not None)
 
     def resumed_spec(self) -> EventSpec[Any]:
-        """The resume, or a defect where there is none."""
+        """The resume; a defect where none."""
         if self.resumed is None:
             raise TypeError(f"{self.stated.event_type} states no resume.")
         return self.resumed
