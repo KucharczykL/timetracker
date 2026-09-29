@@ -80,6 +80,7 @@ FILTER_MODE_LIST_URLS: dict[FilterMode, str] = {
     "historical_playtime": "games:list_historical_playtime",
     "devices": "games:list_devices",
     "platforms": "games:list_platforms",
+    "entries": "games:list_library",
 }
 
 
@@ -102,6 +103,7 @@ FILTER_MODE_MODELS: dict[FilterMode, ModelKey] = {
     "historical_playtime": "historicalplaytime",
     "devices": "device",
     "platforms": "platform",
+    "entries": "libraryentry",
 }
 
 

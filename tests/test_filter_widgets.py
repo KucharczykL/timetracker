@@ -340,6 +340,7 @@ class ListUrlForTest(SimpleTestCase):
             ("historical_playtime", "games:list_historical_playtime"),
             ("devices", "games:list_devices"),
             ("platforms", "games:list_platforms"),
+            ("entries", "games:list_library"),
         ]:
             self.assertEqual(list_url_for(mode), reverse(url_name))
 

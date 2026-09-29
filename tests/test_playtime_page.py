@@ -300,6 +300,7 @@ class TestHistoricalList:
             r'href="/tracker/[a-z]+/filter" role="menuitem"[^>]*>([^<]+)<', body
         )
         assert labels == [
+            "Copy",
             "Device",
             "Game",
             "Historical Playtime",

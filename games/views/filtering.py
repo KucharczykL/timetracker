@@ -35,6 +35,7 @@ BUILDER_MODES = frozenset(
         "historical_playtime",
         "devices",
         "platforms",
+        "entries",
     }
 )
 

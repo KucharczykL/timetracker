@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         Device,
         Game,
         HistoricalPlaytime,
+        LibraryEntry,
         Platform,
         PlayerSession,
         Playthrough,
@@ -70,6 +71,8 @@ from common.criteria import (
 from games.endpoint_fields import EndpointColumnsBase
 from games.endpoints import (
     DEVICE_ACCESS_END,
+    ENTRY_ACCESS_END,
+    ENTRY_ACQUISITION,
     PLAYTHROUGH_COMPLETION,
     PLAYTHROUGH_START,
 )
@@ -1017,6 +1020,90 @@ class HistoricalPlaytimeFilter(OperatorFilter):
         return q
 
 
+# ── LibraryEntryFilter ─────────────────────────────────────────────────────
+
+
+_ACQUISITION_FIELDS = endpoint_filter_fields(
+    ENTRY_ACQUISITION, interval_label="Acquired", stated_label="Acquired"
+)
+_ENTRY_END_FIELDS = endpoint_filter_fields(
+    ENTRY_ACCESS_END, interval_label="Day access ended", stated_label="Ended"
+)
+
+
+@dataclass
+class LibraryEntryFilter(OperatorFilter):
+    """Filter for the LibraryEntry projection."""
+
+    AND: list[LibraryEntryFilter] = field(default_factory=list)
+    OR: list[LibraryEntryFilter] = field(default_factory=list)
+    NOT: list[LibraryEntryFilter] = field(default_factory=list)
+
+    access: ChoiceCriterion | None = None
+    format: ChoiceCriterion | None = None
+    acquired: DateCriterion | None = None  # the interval the day states
+    is_ended: BoolCriterion | None = None  # an end of access is stated
+    access_ended: DateCriterion | None = None  # the interval the end states
+    access_end_way: ChoiceCriterion | None = None
+    platform: UUIDMultiCriterion | None = None  # the Release's platform
+    game: UUIDMultiCriterion | None = None  # player_game__game__id
+    note: StringCriterion | None = None
+    created_at: DateCriterion | None = None  # compared by calendar day
+
+    # Free-text search
+    search: StringCriterion | None = None
+
+    # Cross-entity: copies of games matching these criteria
+    game_filter: GameFilter | None = None
+
+    fields: ClassVar[dict[str, FilterField]] = {
+        "access": FilterField(),
+        "format": FilterField(),
+        "acquired": _ACQUISITION_FIELDS.interval,
+        "is_ended": _ENTRY_END_FIELDS.stated,
+        "access_ended": _ENTRY_END_FIELDS.interval,
+        "access_end_way": way_filter_field(ENTRY_ACCESS_END, label="Way"),
+        "platform": FilterField(
+            "release__platform__id", search_url="/api/platforms/search"
+        ),
+        "game": FilterField("player_game__game__id", search_url="/api/games/search"),
+        "note": FilterField(),
+        "created_at": FilterField(
+            handler=calendar_day_handler("created_at"), metadata_lookup="created_at"
+        ),
+    }
+
+    @classmethod
+    def _comparison_model(cls) -> type[LibraryEntry]:
+        from games.models import LibraryEntry
+
+        return LibraryEntry
+
+    def _extra_q(self, context: FilterQueryContext | None = None) -> Q:
+        q = Q()
+
+        if self.search is not None:
+            q &= search_q(
+                self.search,
+                "player_game__game__name",
+                "release__platform__name",
+                "note",
+            )
+
+        if self.game_filter is not None:
+            from games.models import Game
+
+            q &= relation_to_q(
+                self.game_filter,
+                context=context,
+                related_model=Game,
+                related_lookup="id",
+                parent_field="player_game__game__id",
+            )
+
+        return q
+
+
 # ── Aggregate wiring ───────────────────────────────────────────────────────
 
 # Assigned after the class definitions (not in GameFilter's body) because the
@@ -1090,6 +1177,10 @@ def parse_historical_playtime_filter(
     return filter_from_json(HistoricalPlaytimeFilter, json_str)
 
 
+def parse_entry_filter(json_str: str) -> LibraryEntryFilter | None:
+    return filter_from_json(LibraryEntryFilter, json_str)
+
+
 # Validates a mode's ``?filter=`` JSON, raising FilterError or returning None.
 type FilterParser = Callable[[str], OperatorFilter | None]
 #: One scope, built when a filter first names its model.
@@ -1106,6 +1197,7 @@ MODE_PARSERS: dict[str, FilterParser] = {
     "historical_playtime": parse_historical_playtime_filter,
     "devices": parse_device_filter,
     "platforms": parse_platform_filter,
+    "entries": parse_entry_filter,
 }
 
 
@@ -1137,13 +1229,20 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
     Game is one exception: its list counts the games this library tracks, so
     counting anything else here would answer the builder's live count with a
     number the destination list cannot show. Playthrough is the other: its
-    condition alias needs the viewer's clock. PlayerSession and
-    HistoricalPlaytime state no `for_library`: their read modules
-    state the scope.
+    condition alias needs the viewer's clock. PlayerSession,
+    HistoricalPlaytime and LibraryEntry state no `for_library`: their read
+    modules state the scope.
     """
     from django.apps import apps
 
-    from games.models import Game, HistoricalPlaytime, PlayerSession, Playthrough
+    from games.models import (
+        Game,
+        HistoricalPlaytime,
+        LibraryEntry,
+        PlayerSession,
+        Playthrough,
+    )
+    from games.reads.entries import library_entries
     from games.reads.historical_playtime_records import library_records
     from games.reads.player_sessions import library_sessions
     from games.reads.playthrough_runs import runs_with_condition
@@ -1157,6 +1256,8 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
         return library_sessions(library)
     if model is HistoricalPlaytime:
         return library_records(library)
+    if model is LibraryEntry:
+        return library_entries(library)
     return model.objects.for_library(library)
 
 
@@ -1169,12 +1270,14 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
         Device,
         Game,
         HistoricalPlaytime,
+        LibraryEntry,
         Platform,
         PlayerSession,
         Playthrough,
         Purchase,
     )
     from games.reads.calendar import calendar_day_zone
+    from games.reads.entries import library_entries
     from games.reads.historical_playtime_records import library_records
     from games.reads.player_sessions import library_sessions
     from games.reads.playthrough_runs import runs_with_condition
@@ -1186,6 +1289,7 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
         Game: cache(lambda: Game.objects.tracked_by(library)),
         PlayerSession: cache(lambda: library_sessions(library)),
         HistoricalPlaytime: cache(lambda: library_records(library)),
+        LibraryEntry: cache(lambda: library_entries(library)),
         Purchase: cache(lambda: Purchase.objects.for_library(library)),
         Playthrough: cache(lambda: runs_with_condition(library)),
         Device: cache(lambda: Device.objects.for_library(library)),
@@ -1256,6 +1360,7 @@ _FILTER_LIST_URL: dict[type[OperatorFilter], str] = {
     HistoricalPlaytimeFilter: "games:list_historical_playtime",
     DeviceFilter: "games:list_devices",
     PlatformFilter: "games:list_platforms",
+    LibraryEntryFilter: "games:list_library",
 }
 
 

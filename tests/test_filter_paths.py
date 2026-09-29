@@ -35,6 +35,7 @@ from games.filters import (
     DeviceFilter,
     GameFilter,
     HistoricalPlaytimeFilter,
+    LibraryEntryFilter,
     PlatformFilter,
     PlayerSessionFilter,
     PlaythroughFilter,
@@ -94,6 +95,7 @@ _BAR_CASES = [
     _BarCase("platforms", PlatformFilter),
     _BarCase("playthroughs", PlaythroughFilter),
     _BarCase("historical_playtime", HistoricalPlaytimeFilter),
+    _BarCase("entries", LibraryEntryFilter),
 ]
 _PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")

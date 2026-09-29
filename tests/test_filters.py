@@ -76,6 +76,7 @@ from games.filters import (
     DeviceFilter,
     GameFilter,
     HistoricalPlaytimeFilter,
+    LibraryEntryFilter,
     PlatformFilter,
     PlayerSessionFilter,
     PlaythroughFilter,
@@ -2778,6 +2779,7 @@ _ALL_FILTERS = [
     PlatformFilter,
     PlaythroughFilter,
     HistoricalPlaytimeFilter,
+    LibraryEntryFilter,
 ]
 
 
@@ -5232,6 +5234,7 @@ class TestFilterFieldDescriptors:
         PlatformFilter,
         PlaythroughFilter,
         HistoricalPlaytimeFilter,
+        LibraryEntryFilter,
     )
 
     @staticmethod
@@ -5595,6 +5598,11 @@ class TestPerFilterSearchColumns:
             "player_game__game__name",
             "player_game__game__platform__name",
             "device__name",
+            "note",
+        ),
+        LibraryEntryFilter: (
+            "player_game__game__name",
+            "release__platform__name",
             "note",
         ),
     }
