@@ -44,9 +44,9 @@ In:
   written by the currency task alone.
 - `Game.kind` and `Game.parent`, in IGDB's words.
 - `PlayerGame.excluded_from_dropped` beside `excluded_from_unfinished`.
-- `Edition.kind`, so a demo is an Edition of its game with a Release per
-  platform, made and picked like any other; the toggle that hides demo
-  play is #1361, after #1354.
+- `Edition.kind`, so a demo or a beta is a prerelease Edition of its
+  game with a Release per platform, made and picked like any other; the
+  toggle that hides prerelease play is #1361, after #1354.
 - The Add to library form, the Entries list, the Purchases list made
   selectable, the Games list's Access column, Game detail's Library and
   Add-ons sections, filters, presets, statistics, the API.
@@ -240,29 +240,29 @@ fact stated for one figure decides another.
 ### Edition
 
 A demo is another version of the game, so it is an Edition of that game,
-`kind` `demo`, with a Release per platform. An open or closed beta, an
-alpha, a network test, a playtest or a stress test is the same shape
-with the word `beta`: a build that closes, where a demo stays. The
-Edition's name says which ("Open Beta", "Network Test"); the kind says
-what the machinery reads. Early Access is the full game sold unfinished,
-so `full`, as every other Edition is. The word is a catalog fact, shared as the Edition is, stated
+`kind` `prerelease`, with a Release per platform. An open or closed
+beta, an alpha, a network test, a playtest or a stress test is the same
+word: no reader tells one from another, so the kind holds one word and
+the Edition's name says which ("Demo", "Open Beta", "Network Test").
+Early Access is the full game sold unfinished, so `full`, as every other
+Edition is. The word is a catalog fact, shared as the Edition is, stated
 through `CatalogGraphForm` beside the name, and picked in Add to library
 as any Release is, told apart by its edition. It is not a playthrough
-kind and not a second run: demo sessions sit on the game's run, and the
+kind and not a second run: prerelease sessions sit on the game's run, and the
 run's start stays the day the full game began. Three readers hold the
 word. The backlog reads Owned entries on full editions, or a free demo
 download would put the game in it. Before start (#1358) reads sessions
 on full editions, since a demo precedes the game by nature. And the
-toggle #1361 adds, one library setting stats and lists read alike, is
-the set of edition kinds hidden, so hiding demos never decides betas; it
-needs a session to name its Release, so it follows #1354. A Trial is the
-full game, on its own Edition. An entry on a demo or a beta states the
-access the person likes, Owned for a free download or the charter's
+toggle #1361 adds, one library setting stats and lists read alike, hides
+sessions on prerelease editions; it needs a session to name its Release,
+so it follows #1354. A Trial is the
+full game, on its own Edition. An entry on a prerelease Edition states
+the access the person likes, Owned for a free download or the charter's
 Demo, and a beta's access ends `expired` the day the test closes; no
-reader tells demo play from the access word, only from the Edition.
-`Edition.kind` lands in M7 beside `Game.kind`. The one beta the dump
-holds, "Diablo 4 Open Beta", is a private Game with one session and
-becomes a beta Edition of Diablo IV by hand, not by the pass.
+reader tells prerelease play from the access word, only from the
+Edition. `Edition.kind` lands in M7 beside `Game.kind`. The one beta the
+dump holds, "Diablo 4 Open Beta", is a private Game with one session and
+becomes a prerelease Edition of Diablo IV by hand, not by the pass.
 
 ### FilterPreset
 
@@ -351,7 +351,7 @@ nothing. In order:
 3. **Releases (15).** Where the purchase's platform is not the game's, a
    private Release on that platform under the default Edition.
    **Demo editions (34).** For each Demo purchase, a private Edition of
-   kind `demo` named "Demo" under its game, with one Release on the
+   kind `prerelease` named "Demo" under its game, with one Release on the
    purchase's platform; the entry of step 4 names that Release. A game
    holding a demo Release beside its full one is in the review surface.
 4. **Entries.** One per (purchase, game). Access and format by the table
@@ -674,9 +674,10 @@ refresh and its printed totals, then the fixture PR.
 - Entry, catalog and PlayerGame members merge alone; the Purchase
   aggregate, the conversion and the cutover are one stack.
 - #1275 landed before the wave and is its dependency, not a member.
-- A demo is an Edition of kind `demo`, made and picked like any other;
-  no run kind. The backlog and Before start read full editions; hiding
-  demo play is one toggle, after #1354.
+- A demo, a beta or a test is an Edition of kind `prerelease`, one word
+  for all, made and picked like any other; no run kind. The backlog and
+  Before start read full editions; hiding prerelease play is one toggle,
+  after #1354.
 
 ## Follow-up issues filed
 
@@ -684,4 +685,4 @@ refresh and its printed totals, then the fixture PR.
 - #1353, `Game.kind` and `Game.parent` (M7)
 - #1354, a Release on a session and a record
 - #1355, bulk end of access over entries
-- #1361, a toggle that hides demo play (after #1354)
+- #1361, a toggle that hides prerelease play (after #1354)
