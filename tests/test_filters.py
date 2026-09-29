@@ -11,12 +11,14 @@ from datetime import UTC, date, timedelta
 from functools import reduce
 from typing import ClassVar
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 from devices import create_device
 from django.db.models import F, Q
 from django.test import override_settings
 from django.utils import timezone
+from filter_contexts import unrestricted_filter_context
 from session_rows import duration_only_row, session_row, tracked_run
 
 from common.criteria import (
@@ -62,7 +64,6 @@ from common.criteria import (
     filter_from_json,
     filter_to_json,
     search_q,
-    with_filter_aliases,
 )
 from common.filter_execution import contains_regex_modifier, execute_filter
 from games.filters import (
@@ -83,9 +84,7 @@ from games.filters import (
 from games.models import PlayerSession
 from timetracker.temporal import TemporalValue
 
-UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
-    lambda model: with_filter_aliases(model._default_manager.all())
-)
+UNRESTRICTED_FILTER_CONTEXT = unrestricted_filter_context(ZoneInfo("UTC"))
 
 
 @pytest.fixture(autouse=True)
@@ -1683,7 +1682,6 @@ class TestPlaytimeHoursAgainstDB:
             list(unscoped)
 
     def test_validation_compiles_playtime_hours_without_a_library(self):
-        from common.criteria import FilterQueryContext
         from games.filters import GameFilter, PlayerSessionFilter
 
         criterion = {"playtime_hours": {"value": 1, "modifier": "GREATER_THAN"}}

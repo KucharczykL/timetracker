@@ -15,14 +15,15 @@ parent's n-ary ``AND`` list. This module asserts:
 import json
 from datetime import UTC, date, datetime
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 from devices import create_device
 from django.contrib.auth import get_user_model
 from django.utils import timezone
+from filter_contexts import unrestricted_filter_context
 from session_rows import session_row
 
-from common.criteria import FilterQueryContext, with_filter_aliases
 from games.filters import (
     parse_game_filter,
     parse_purchase_filter,
@@ -31,9 +32,7 @@ from games.filters import (
 from games.models import Device, Game, Platform, PlayerSession, Playthrough, Purchase
 from timetracker.temporal import TemporalValue
 
-UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
-    lambda model: with_filter_aliases(model._default_manager.all())
-)
+UNRESTRICTED_FILTER_CONTEXT = unrestricted_filter_context(ZoneInfo("UTC"))
 
 
 @pytest.fixture(autouse=True)

@@ -28,6 +28,7 @@ from typing import (
     get_type_hints,
 )
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import DataError, connection, models
@@ -1389,12 +1390,23 @@ def with_filter_aliases[M: models.Model](
     return queryset if annotate is None else annotate()
 
 
+type ZoneThunk = Callable[[], ZoneInfo]  # the calendar zone, read on demand
+
+#: Where validation compiles; it never executes.
+UTC_ZONE = ZoneInfo("UTC")
+
+
 @dataclass(frozen=True)
 class FilterQueryContext:
     """Explicit source of authorization-scoped querysets for filter compilation."""
 
     resolver: QuerysetResolver
     authorization_scoped: bool = True
+    #: The zone a day facet compares in; cached by its caller.
+    day_zone: ZoneThunk = field(kw_only=True)
+
+    def calendar_zone(self) -> ZoneInfo:
+        return self.day_zone()
 
     def queryset_for[M: models.Model](self, model: type[M]) -> models.QuerySet[M]:
         queryset = self.resolver(model)
@@ -1414,6 +1426,7 @@ class FilterQueryContext:
         return cls(
             lambda model: with_filter_aliases(model._default_manager.none()),
             authorization_scoped=False,
+            day_zone=lambda: UTC_ZONE,
         )
 
 

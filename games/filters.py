@@ -1130,6 +1130,7 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
         Playthrough,
         Purchase,
     )
+    from games.reads.calendar import calendar_day_zone
     from games.reads.historical_playtime_records import library_records
     from games.reads.player_sessions import library_sessions
     from games.reads.playthrough_runs import runs_with_condition
@@ -1149,7 +1150,10 @@ def filter_query_context_for_library(library: UserLibrary) -> FilterQueryContext
         # private-only base returned by filter_queryset_for_library().
         Platform: cache(lambda: Platform.objects.visible_to(library)),
     }
-    return FilterQueryContext(lambda model: scopes[model]())
+    return FilterQueryContext(
+        lambda model: scopes[model](),
+        day_zone=cache(lambda: calendar_day_zone(library)),
+    )
 
 
 def reachable_models(root_model: ModelKey) -> dict[ModelKey, type[OperatorFilter]]:
