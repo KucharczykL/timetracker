@@ -60,6 +60,8 @@ def world(owned_library):
         #: The mode of one list, for the same reason.
         "mode": "sessions",
         "correlation_id": uuid.uuid7(),
+        #: The redirect to login comes before any read.
+        "entry_id": uuid.uuid7(),
         "preset_id": FilterPreset.objects.create(
             library=owned_library, name="Mine", mode="games"
         ).id,
