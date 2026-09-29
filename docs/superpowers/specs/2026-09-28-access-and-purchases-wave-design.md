@@ -278,7 +278,11 @@ becomes a prerelease Edition of Diablo IV by hand, not by the pass.
 Every command runs under `answered()`, is fingerprinted for idempotency,
 resolves rows through `library_row`, carries a sentence on every refusal,
 and answers `Unchanged` ahead of every refusal, as the sibling aggregates
-do.
+do. Two endpoints on one row keep their order through one shared
+`endpoints_certainly_reversed`: an end certainly before the opening, a
+resume certainly before the standing end, and an opening correction
+certainly after a standing end are refused, each sentence naming the
+move; a refund before the purchased day is the same rule on Purchase.
 
 ### LibraryEntry
 
@@ -290,8 +294,8 @@ do.
 | `RecordEntry` | `libraryentry.created` (player game, release, access, format, note, `effective_time` the acquired day) | names the Release alone and derives the game from it; a Release the library cannot see is 404 from scope; a removed Release is refused; an untracked game is tracked inside the same dispatch by prepending `tracking_events(game)`, so the tracked row and the entry share one correlation with no window between them |
 | `DescribeEntry` | `access_changed`, `format_changed`, `note_changed`, `release_changed`, one per differing fact | the new Release must be a live Release of the same game |
 | `CorrectEntryAcquisition` | `acquisition_corrected` | the opening endpoint's correction |
-| `EndEntryAccess`, `CorrectEntryAccessEnd`, `VoidEntryAccessEnd` | `access_ended`, `access_end_corrected`, `access_end_voided` | the primitive's three, with a `before_event` that refuses a removed entry |
-| `ResumeEntryAccess` | `access_resumed` (note, `effective_time` the day) | refused where no end stands |
+| `EndEntryAccess`, `CorrectEntryAccessEnd`, `VoidEntryAccessEnd` | `access_ended`, `access_end_corrected`, `access_end_voided` | the primitive's three, with a `before_event` that refuses a removed entry; every way by hand, `refunded` included, since a person may state a refund no purchase records |
+| `ResumeEntryAccess` | `access_resumed` (note, `effective_time` the day) | refused with a sentence where no end stands, never `Unchanged`; the primitive's optional fourth act, in the end's family, projected as a void is |
 | `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal refuses while a live Purchase names the entry, with a sentence naming the move; restore refuses under a removed PlayerGame or Release |
 
 The referrer registry is `games/reads/referrers.py`: `BlockingReferrer.on`
@@ -333,7 +337,11 @@ four under `/api/purchases/`. The prefixes are plural, as `/api/games/`,
 `/api/devices/` and `/api/platforms/` are; the bodies follow the session
 routes: `extra="forbid"`, a named key is the act, an `Idempotency-Key`
 header on `POST`, 404 from the command for a row the library does not
-hold, 409 with the command's sentence for every other refusal.
+hold, 409 with the command's sentence for every other refusal. A stated
+endpoint travels as one key: an object states or corrects it, `null`
+voids it, an absent key states nothing; a resume is its own `POST
+/{id}/resume`. Every endpoint is answered as canonical temporal text
+beside its bounds, marker, way and note.
 
 ## The conversion
 
