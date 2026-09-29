@@ -54,8 +54,10 @@ The primitive gains an **opening endpoint**:
   endpoint.
 - `correct_opening_endpoint(row, endpoint, statement, *, same_correction,
   before_event)` in `games/commands/endpoint.py` shares `_payload` and
-  `_states_it` with `correct_endpoint` and takes one sentence, because an
-  opening endpoint can be neither unstated nor voided. `state_endpoint`,
+  `_states_it` with `correct_endpoint`, whose annotations widen to
+  `EndpointColumns` (they read `way`, `name` and `stated()` alone), and
+  takes one sentence, because an opening endpoint can be neither unstated
+  nor voided. `state_endpoint`,
   `correct_endpoint` and `void_endpoint` keep the three-event shape.
 - `endpoint_move` is not used by an opening endpoint: presence never changes,
   so a restatement is always a correction, and the command compares values
@@ -65,8 +67,11 @@ The purchased day of a Purchase reuses this variant in a later member.
 
 ## Storage
 
-Table `games_libraryentry`, written only by the `Entries` projector, family
-`CURRENT_STATE`. The first migration is `0020`.
+Table `games_libraryentry`, written only by the `Entries` projector in
+`games/projectors/libraryentry.py`, family `CURRENT_STATE`, imported by
+`games/projectors/__init__.py`, because a projector registers on import and
+an unregistered type projects nothing and raises nothing. The first
+migration is `0020`.
 
 | Column | Meaning |
 |---|---|
@@ -131,8 +136,10 @@ kind.
 ## Commands
 
 `games/commands/libraryentry.py`. Every command runs under `answered()`,
-resolves rows through `games/commands/scope.py`, carries a sentence on every
-refusal and answers `Unchanged` ahead of every refusal.
+resolves rows through `games/commands/scope.py` and carries a sentence on
+every refusal. The four that resolve an entry answer `Unchanged` ahead of
+every refusal; `RecordEntry` is a creation and has no `Unchanged`, as
+`CreateDevice` has none.
 
 | Command | Rule |
 |---|---|
@@ -155,6 +162,12 @@ day is normalised through `stated_date`.
 The event builder `libraryentry_created` takes an optional `entry_id`, as
 `device_created` does, so a later command can mint one beside its own event.
 
+The wave's table states the rule over two named rows, "the Release must
+belong to the tracked game". Here the command names the Release alone and
+the game is derived, so the rule holds by construction. The docs-only PR
+after the merge records that under the wave's Decisions, so M3's form and
+P1's creation take one shape.
+
 ## Scope and references
 
 `games/projections.py` gains `LIBRARY_PATHS`, one path per catalog model
@@ -162,13 +175,17 @@ that reaches a library through its parents: `Release` through
 `edition__game__library`, `Edition` through `game__library`. A model with a
 `library` column has the path `library`. Four readers share it:
 
-- `_is_library_scoped` answers true for a model the map names, so the
-  reference walk finds `LibraryEntry.release`, `games.E009` demands its
-  registration, and `tests/test_projection_references.py`'s exact list
-  gains `("LibraryEntry", "player_game")` and `("LibraryEntry", "release")`.
-- `ProjectionReference` carries the path, and `cross_library_violations`
-  joins through it: the `isnull` clause and the `exclude` both name the
-  path's `library_id`. `AUDITED_PROJECTION_REFERENCES` gains both entry
+- `_is_library_scoped` reads the concrete `library` field first, as it
+  does, and the map second, so the throwaway registries
+  `tests/test_projection_references.py` and `test_projection_targets.py`
+  build keep answering. The walk then finds `LibraryEntry.release`,
+  `games.E009` demands its registration, and the exact list in
+  `tests/test_projection_references.py` gains
+  `("LibraryEntry", "player_game")` and `("LibraryEntry", "release")`.
+- `ProjectionReference` carries `library_path`, a third field defaulting to
+  `"library"` so the positional construction that test makes still holds,
+  and `cross_library_violations` joins through it: the `isnull` clause and
+  the `exclude` both name the path's `library_id`. `AUDITED_PROJECTION_REFERENCES` gains both entry
   references. An entry naming another library's private Release is reported
   by `audit_library_ownership`, and the swap's refusal sentence names it.
 - `visible_row(context, reads, refusal, **lookup)` in
@@ -190,8 +207,11 @@ its importers move with it: `games/reads/playthrough_runs.py`,
 `tests/test_playthrough_command.py`, whose monkeypatch names the module.
 
 `BlockingReferrer.on(model, field_name, *, target, sentence)` takes the model
-the field names and refuses a field that names another. `referrers_of(target)`
-answers the registered entries for one model. `blocking_referrer`,
+the field names and refuses a field that names another; the eleven calls in
+`tests/test_playthrough_command.py` gain `target=Playthrough`.
+`referrers_of(target)` filters the module's `BLOCKING_REFERRERS` tuple at
+call time, never a mapping built at import, because that test monkeypatches
+the tuple whole. `blocking_referrer`,
 `foreign_referrer` and `rows_naming` take any projection row and read
 `referrers_of(type(row))`; `rows_naming` refuses a referrer whose target is
 not the row's model. `games/bulk_move.py` loops over
@@ -229,7 +249,7 @@ Routes on `/api/entries/`, in `games/api.py`:
 | `GET /` | `limit` (100, `0` unbounded) and `offset`; rows in `created_at, id` order |
 | `POST /` | `release_id`, `access`, `format`, `note`, `acquired` (canonical temporal text or null), `acquisition_note`; `Idempotency-Key` header; 201 and the row |
 | `GET /{id}` | the row, else 404 |
-| `PATCH /{id}` | `access`, `format`, `note`, `release_id` describe; `acquired` and `acquisition_note` correct, and a correction naming one keeps the row's other; a named key is the act |
+| `PATCH /{id}` | `access`, `format`, `note`, `release_id` describe; `acquired` and `acquisition_note` together are one correction, and a body naming one without the other is refused with 422 and a sentence, because the command compares the pair under the lock and a route reading the row's other half would read it outside; a named key is the act |
 
 Every body is `extra="forbid"`. A row the library does not hold answers 404,
 from the command, and every other refusal 409 with the command's sentence.
@@ -241,9 +261,13 @@ No screen, no filter and no route for removal in this member.
 
 ## Verification
 
-- Replay gate, `tests/test_projection_replay_gate.py`: `build_stream`
-  dispatches every one of the eight types, records two entries on one
-  Release, one on a game nothing tracks yet, and removes one;
+- Replay gate, `tests/test_projection_replay_gate.py`: the gate states a
+  default graph for each game through `state_catalog_graph`, the shape
+  `stated_graph` in `tests/conftest.py` builds, since a bare `Game` holds no
+  Release; `build_stream` dispatches every one of the eight types, records
+  two entries on one Release, one on a game nothing tracks yet, and removes
+  one; `build_neighbour` records one entry, because `rows_of` refuses an
+  empty table;
   `registered_event_types` reads `Entries.handles`; the partial-stream count
   becomes 45; the swap's table list gains `games_libraryentry` after
   `games_librarycalendar`; the removed-row test reads the new table;
@@ -251,6 +275,12 @@ No screen, no filter and no route for removal in this member.
   `ProjectionSnapshot`, `rows_of` and `row_versions` cover six tables. The
   gate asserts, after every replay, that each entry's Release belongs to its
   PlayerGame's game. The fingerprints test pins every new command.
+- Exact lists a seventh projection table changes, beside the gate: the
+  swap's table tuple in `tests/test_playergame_projection.py`,
+  `test_playthrough_projection.py`, `test_historical_playtime_projection.py`
+  and `test_event_benchmark.py`; `projection_models()` in
+  `tests/test_projection_rebuild.py`; `EXPECTED_RELATION_COLUMNS` and
+  `EXPECTED_IDENTITY_TABLES` in `tests/test_uuid_identity_audit.py`.
 - Two libraries: a shared Release yields one independent entry each; another
   library's private Release answers 404 from `RecordEntry` and from the
   `release_id` of `DescribeEntry`; another library's entry answers 404 on
