@@ -516,8 +516,8 @@ M2 before M3; M7 and M8 any time; the stack after every member.
 
 | Member | Issues | Delivers |
 |---|---|---|
-| M1 | #719, #720, #722 | the opening endpoint; the LibraryEntry aggregate: schema, creation, description, removal, multiple entries, reference kind, `_is_library_scoped` path, the generalised referrer registry, replay gate, API |
-| M2 | #721 | acquired correction, access end and resume on the primitive |
+| M1 | #719, #720, #722 | the opening endpoint whole, its one correction (`CorrectEntryAcquisition`) included, since the replay gate refuses a registered event type no command emits; the LibraryEntry aggregate: schema without the end columns, creation, description, removal and restore as commands with no route, multiple entries, reference kind, `_is_library_scoped` path, the generalised referrer registry, replay gate, the four API routes with `limit`/`offset` |
+| M2 | #721 | the end columns and their `CHECK`s in a migration of its own, as `0019` added the device's; access end and resume on the primitive |
 | M3 | #1352 | the Entries screens: list, filter, presets, navbar item, bulk Edit and Remove, the Games Access column and facets, Game detail's Library section, the entry forms |
 | M7 | #1353 | `Game.kind` and `Game.parent`: columns, form, Game detail add-ons, Games facet |
 | M8 | #1334 | `excluded_from_dropped` and its bulk Edit field |
