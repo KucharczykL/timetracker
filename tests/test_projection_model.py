@@ -373,6 +373,11 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         #: The opening endpoint: the day may be unknown.
         "acquired": None,
         "acquisition_note": "",
+        #: A held copy: no end stated.
+        "access_ended": None,
+        "access_end_recorded_at": None,
+        "access_end_note": "",
+        "access_end_way": "",
     },
 }
 
