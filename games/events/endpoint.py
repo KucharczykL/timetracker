@@ -1,5 +1,6 @@
 """The events of a stated endpoint: stated, corrected, voided."""
 
+from dataclasses import dataclass
 from typing import Any, NamedTuple, TypedDict
 
 from pydantic import with_config
@@ -24,7 +25,8 @@ class EndpointPayload(TypedDict):
     note: str
 
 
-class EndpointEvents[PayloadT](NamedTuple):
+@dataclass(frozen=True, slots=True)
+class EndpointEvents[PayloadT]:
     """The three acts on one endpoint."""
 
     stated: EventSpec[PayloadT]
@@ -32,19 +34,36 @@ class EndpointEvents[PayloadT](NamedTuple):
     voided: EventSpec[Any]
 
     @property
-    def family(self) -> tuple[EventType, EventType, EventType]:
+    def specs(self) -> tuple[EventSpec[Any], ...]:
+        """Every act this endpoint has."""
+        return (self.stated, self.corrected, self.voided)
+
+    @property
+    def family(self) -> tuple[EventType, ...]:
         """The types whose latest owns the endpoint's value."""
-        return (
-            self.stated.event_type,
-            self.corrected.event_type,
-            self.voided.event_type,
-        )
+        return tuple(spec.event_type for spec in self.specs)
+
+
+@dataclass(frozen=True, slots=True)
+class ResumableEndpointEvents[PayloadT](EndpointEvents[PayloadT]):
+    """The three acts, and a resume."""
+
+    #: Projects as a void does.
+    resumed: EventSpec[EndpointPayload]
+
+    @property
+    def specs(self) -> tuple[EventSpec[Any], ...]:
+        return (self.stated, self.corrected, self.voided, self.resumed)
 
 
 class OpeningEndpointEvents[PayloadT](NamedTuple):
     """An opening endpoint's one act: correction."""
 
     corrected: EventSpec[PayloadT]
+
+    @property
+    def specs(self) -> tuple[EventSpec[PayloadT]]:
+        return (self.corrected,)
 
     @property
     def family(self) -> tuple[EventType]:
@@ -65,6 +84,12 @@ def opening_endpoint_events[PayloadT](
     return events
 
 
+def _registered[EventsT: EndpointEvents[Any]](events: EventsT) -> EventsT:
+    for spec in events.specs:
+        DEFAULT_EVENT_TYPES.register(spec)
+    return events
+
+
 def endpoint_events[PayloadT](
     aggregate_type: AggregateType,
     *,
@@ -75,11 +100,41 @@ def endpoint_events[PayloadT](
     voided_payload: type,
 ) -> EndpointEvents[PayloadT]:
     """Register three specs; callers spell every type."""
-    events = EndpointEvents(
-        stated=EventSpec(stated, aggregate_type=aggregate_type, payload=payload),
-        corrected=EventSpec(corrected, aggregate_type=aggregate_type, payload=payload),
-        voided=EventSpec(voided, aggregate_type=aggregate_type, payload=voided_payload),
+    return _registered(
+        EndpointEvents(
+            stated=EventSpec(stated, aggregate_type=aggregate_type, payload=payload),
+            corrected=EventSpec(
+                corrected, aggregate_type=aggregate_type, payload=payload
+            ),
+            voided=EventSpec(
+                voided, aggregate_type=aggregate_type, payload=voided_payload
+            ),
+        )
     )
-    for spec in events:
-        DEFAULT_EVENT_TYPES.register(spec)
-    return events
+
+
+def resumable_endpoint_events[PayloadT](
+    aggregate_type: AggregateType,
+    *,
+    stated: EventType,
+    corrected: EventType,
+    voided: EventType,
+    resumed: EventType,
+    payload: type[PayloadT],
+    voided_payload: type,
+) -> ResumableEndpointEvents[PayloadT]:
+    """Register four specs; callers spell every type."""
+    return _registered(
+        ResumableEndpointEvents(
+            stated=EventSpec(stated, aggregate_type=aggregate_type, payload=payload),
+            corrected=EventSpec(
+                corrected, aggregate_type=aggregate_type, payload=payload
+            ),
+            voided=EventSpec(
+                voided, aggregate_type=aggregate_type, payload=voided_payload
+            ),
+            resumed=EventSpec(
+                resumed, aggregate_type=aggregate_type, payload=EndpointPayload
+            ),
+        )
+    )

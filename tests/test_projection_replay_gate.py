@@ -30,11 +30,15 @@ from games.commands.historical_playtime import (
     RestoreHistoricalPlaytime,
 )
 from games.commands.libraryentry import (
+    CorrectEntryAccessEnd,
     CorrectEntryAcquisition,
     DescribeEntry,
+    EndEntryAccess,
     RecordEntry,
     RemoveEntry,
     RestoreEntry,
+    ResumeEntryAccess,
+    VoidEntryAccessEnd,
 )
 from games.commands.playergame import (
     RecordPlayerGameFacts,
@@ -576,6 +580,49 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         ),
         "correct-entry-acquisition",
     )
+    run(
+        EndEntryAccess(
+            entry_id=kept_entry,
+            statement=WayActStatement(
+                TemporalValue.parse("2022-01"), EndWay.RETURNED, "lent"
+            ),
+        ),
+        "end-entry-access",
+    )
+    run(
+        CorrectEntryAccessEnd(
+            entry_id=kept_entry,
+            statement=WayActStatement(
+                TemporalValue.parse("2022-02"), EndWay.EXPIRED, ""
+            ),
+        ),
+        "correct-entry-access-end",
+    )
+    run(VoidEntryAccessEnd(entry_id=kept_entry), "void-entry-access-end")
+    run(
+        EndEntryAccess(
+            entry_id=kept_entry,
+            statement=WayActStatement(None, EndWay.SOLD, ""),
+        ),
+        "end-entry-access-again",
+    )
+    run(
+        ResumeEntryAccess(
+            entry_id=kept_entry,
+            statement=ActStatement(TemporalValue.parse("2023"), "bought back"),
+        ),
+        "resume-entry-access",
+    )
+    #: Left ended, so the end's columns are compared.
+    run(
+        EndEntryAccess(
+            entry_id=kept_entry,
+            statement=WayActStatement(
+                TemporalValue.parse("2024"), EndWay.GIVEN_AWAY, "to a friend"
+            ),
+        ),
+        "end-entry-access-last",
+    )
     run(RemoveEntry(entry_id=kept_entry), "remove-entry")
     run(RestoreEntry(entry_id=kept_entry), "restore-entry")
     removed_entry = _created_id(
@@ -628,7 +675,7 @@ def test_the_stream_carries_every_registered_event_type(owned_user, owned_librar
 
 
 def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_library):
-    """A real stream, short of forty-five types."""
+    """A real stream, short of forty-nine types."""
     game = Game.objects.create(library=owned_library, name="Celeste")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -644,7 +691,7 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
         "library.playergame.created",
         "library.playthrough.created",
     }
-    assert len(missing) == 45
+    assert len(missing) == 49
 
 
 def build_neighbour(user, library) -> None:

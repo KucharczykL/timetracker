@@ -16,6 +16,7 @@ from games.commands.endpoint import (
     WayActStatement,
     correct_endpoint,
     correct_opening_endpoint,
+    normalized,
     state_endpoint,
     void_endpoint,
 )
@@ -29,6 +30,7 @@ from games.endpoint_fields import (
 from games.endpoints import (
     DEVICE_ACCESS_END,
     ENDPOINTS,
+    ENTRY_ACCESS_END,
     PLAYTHROUGH_COMPLETION,
     PLAYTHROUGH_START,
     Endpoint,
@@ -62,7 +64,7 @@ def test_playthrough_endpoints_keep_their_recorded_types() -> None:
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS, ids=lambda endpoint: endpoint.name)
 def test_every_endpoint_event_is_registered(endpoint) -> None:
-    for spec in endpoint.events:
+    for spec in endpoint.events.specs:
         assert DEFAULT_EVENT_TYPES.spec_for(spec.event_type) is spec
 
 
@@ -408,3 +410,20 @@ def test_the_check_refuses_two_endpoints_sharing_a_name() -> None:
     with patch("games.checks.ENDPOINTS", (*ENDPOINTS, PLAYTHROUGH_START)):
         messages = [error.msg for error in check_endpoints()]
     assert any("another endpoint has its name" in message for message in messages)
+
+
+def test_an_endpoint_without_a_resume_has_three_acts() -> None:
+    assert not hasattr(PLAYTHROUGH_START.events, "resumed")
+    assert len(PLAYTHROUGH_START.events.family) == 3
+
+
+def test_a_resumable_endpoint_puts_its_resume_in_the_family() -> None:
+    assert ENTRY_ACCESS_END.events.family[-1] == "library.libraryentry.access_resumed"
+    assert len(ENTRY_ACCESS_END.events.specs) == 4
+
+
+def test_normalized_keeps_the_shape_it_was_given() -> None:
+    assert normalized(ActStatement(MAY, " began ")) == ActStatement(MAY, "began")
+    assert normalized(WayActStatement(MAY, EndWay.SOLD, " gone ")) == (
+        WayActStatement(MAY, EndWay.SOLD, "gone")
+    )

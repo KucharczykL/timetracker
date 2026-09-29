@@ -8,6 +8,7 @@ from django.db import connection, models, transaction
 from django.test.utils import isolate_apps
 from django.utils import timezone
 
+from games.commands.endpoint import certainly_reversed
 from games.commands.playergame import PlayerGameNotTracked, TrackGame
 from games.commands.playersession import (
     CreateSession,
@@ -29,7 +30,6 @@ from games.commands.playthrough import (
     StartPlaythrough,
     VoidPlaythroughCompletion,
     VoidPlaythroughStart,
-    endpoints_certainly_reversed,
 )
 from games.events.append import lock_stream
 from games.events.dispatch import (
@@ -376,9 +376,9 @@ def test_the_order_rule_refuses_only_the_certainly_impossible(
     qualifier alike state no certainty for a date to contradict.
     """
     assert (
-        endpoints_certainly_reversed(
-            started=None if started is None else TemporalValue(started),
-            completed=None if completed is None else TemporalValue(completed),
+        certainly_reversed(
+            earlier=None if started is None else TemporalValue(started),
+            later=None if completed is None else TemporalValue(completed),
         )
         is reversed_pair
     )

@@ -12,13 +12,24 @@ from games.endpoint_fields import (
     OpeningEndpointColumns,
 )
 from games.events.device import DEVICE_ACCESS_END_EVENTS
-from games.events.endpoint import EndpointEvents, OpeningEndpointEvents
-from games.events.libraryentry import ENTRY_ACQUISITION_EVENTS
+from games.events.endpoint import (
+    EndpointEvents,
+    OpeningEndpointEvents,
+    ResumableEndpointEvents,
+)
+from games.events.libraryentry import (
+    ENTRY_ACCESS_END_EVENTS,
+    ENTRY_ACQUISITION_EVENTS,
+)
 from games.events.playthrough import (
     PLAYTHROUGH_COMPLETION_EVENTS,
     PLAYTHROUGH_START_EVENTS,
 )
-from games.models import DEVICE_ACCESS_END_COLUMNS, ENTRY_ACQUISITION_COLUMNS
+from games.models import (
+    DEVICE_ACCESS_END_COLUMNS,
+    ENTRY_ACCESS_END_COLUMNS,
+    ENTRY_ACQUISITION_COLUMNS,
+)
 
 
 def _column_values(columns: EndpointColumnsBase) -> dict[str, Any]:
@@ -39,6 +50,20 @@ class Endpoint(EndpointColumns):
     @property
     def model(self) -> type[models.Model]:
         return apps.get_model(self.model_label)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ResumableEndpoint(Endpoint):
+    """An endpoint whose end may be followed by a resume."""
+
+    events: ResumableEndpointEvents[Any]
+
+    @classmethod
+    def resuming(
+        cls, columns: EndpointColumns, events: ResumableEndpointEvents[Any]
+    ) -> ResumableEndpoint:
+        """Columns joined with their four events."""
+        return cls(**_column_values(columns), events=events)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -87,9 +112,14 @@ ENTRY_ACQUISITION = OpeningEndpoint.over(
     ENTRY_ACQUISITION_COLUMNS, ENTRY_ACQUISITION_EVENTS
 )
 
+ENTRY_ACCESS_END = ResumableEndpoint.resuming(
+    ENTRY_ACCESS_END_COLUMNS, ENTRY_ACCESS_END_EVENTS
+)
+
 ENDPOINTS: tuple[Endpoint | OpeningEndpoint, ...] = (
     PLAYTHROUGH_START,
     PLAYTHROUGH_COMPLETION,
     DEVICE_ACCESS_END,
     ENTRY_ACQUISITION,
+    ENTRY_ACCESS_END,
 )

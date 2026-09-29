@@ -289,3 +289,178 @@ def test_patch_refuses_an_unknown_key(auth_client, library, graph):
 
 def test_the_routes_require_auth():
     assert Client().get("/api/entries/").status_code == 401
+
+
+# --- access end and resume --------------------------------------------------
+
+
+def _resume(client: Client, entry_id, body: dict, **headers):
+    return client.post(
+        f"/api/entries/{entry_id}/resume",
+        json.dumps(body),
+        content_type="application/json",
+        **headers,
+    )
+
+
+def test_patch_states_corrects_and_voids_the_end(auth_client, library, graph):
+    entry = record_entry(library, graph.release, acquired=TemporalValue.parse("2021"))
+
+    ended = _patch(
+        auth_client,
+        entry.pk,
+        {"access_end": {"ended": "2022-03", "way": "returned", "note": "lent"}},
+    )
+    corrected = _patch(
+        auth_client, entry.pk, {"access_end": {"ended": None, "way": "expired"}}
+    )
+    corrected_row = corrected.json()
+    voided = _patch(auth_client, entry.pk, {"access_end": None})
+
+    assert ended.status_code == 200, ended.content
+    row = ended.json()
+    assert (row["access_ended"], row["access_end_way"], row["access_end_note"]) == (
+        "2022-03",
+        "returned",
+        "lent",
+    )
+    assert (row["access_ended_lower"], row["access_ended_upper"]) == (
+        "2022-03-01",
+        "2022-03-31",
+    )
+    assert row["access_end_recorded_at"] is not None
+    assert (corrected_row["access_ended"], corrected_row["access_end_way"]) == (
+        None,
+        "expired",
+    )
+    assert voided.json()["access_end_recorded_at"] is None
+    assert voided.json()["access_end_way"] == ""
+
+
+def test_patch_without_the_key_keeps_the_end(auth_client, library, graph):
+    entry = record_entry(library, graph.release)
+    _patch(auth_client, entry.pk, {"access_end": {"ended": "2022", "way": "sold"}})
+
+    response = _patch(auth_client, entry.pk, {"note": "kept"})
+
+    assert response.json()["access_end_way"] == "sold"
+
+
+@pytest.mark.parametrize(
+    "access_end",
+    [
+        {"ended": "2022", "way": "melted"},
+        {"ended": "2022"},
+        {"ended": "2022", "way": "sold", "day": "2022"},
+    ],
+)
+def test_patch_refuses_a_malformed_end(auth_client, library, graph, access_end):
+    entry = record_entry(library, graph.release)
+
+    response = _patch(auth_client, entry.pk, {"access_end": access_end})
+
+    assert response.status_code == 422
+
+
+def test_an_end_before_the_acquisition_answers_the_sentence(
+    auth_client, library, graph
+):
+    entry = record_entry(library, graph.release, acquired=TemporalValue.parse("2022"))
+
+    response = _patch(
+        auth_client, entry.pk, {"access_end": {"ended": "2021", "way": "returned"}}
+    )
+
+    assert response.status_code == 409
+    assert "acquired after that day" in response.json()["detail"]
+
+
+def test_resume_answers_the_row_and_a_keyed_repeat_the_same(
+    auth_client, library, graph
+):
+    entry = record_entry(library, graph.release)
+    _patch(auth_client, entry.pk, {"access_end": {"ended": "2022", "way": "sold"}})
+
+    first = _resume(
+        auth_client,
+        entry.pk,
+        {"resumed": "2023", "note": "bought back"},
+        HTTP_IDEMPOTENCY_KEY="resume-once",
+    )
+    repeat = _resume(
+        auth_client,
+        entry.pk,
+        {"resumed": "2023", "note": "bought back"},
+        HTTP_IDEMPOTENCY_KEY="resume-once",
+    )
+    unkeyed = _resume(auth_client, entry.pk, {"resumed": "2023"})
+
+    assert first.status_code == 200, first.content
+    assert first.json()["access_end_recorded_at"] is None
+    assert repeat.status_code == 200
+    assert unkeyed.status_code == 409
+    assert "nothing to resume" in unkeyed.json()["detail"]
+    assert (
+        LibraryEvent.objects.filter(
+            aggregate_id=entry.pk, event_type="library.libraryentry.access_resumed"
+        ).count()
+        == 1
+    )
+
+
+def test_resume_refuses_an_unknown_key(auth_client, library, graph):
+    entry = record_entry(library, graph.release)
+
+    response = _resume(auth_client, entry.pk, {"day": "2023"})
+
+    assert response.status_code == 422
+
+
+def test_another_librarys_entry_is_absent_to_both_acts(
+    auth_client, second_library, stated_graph
+):
+    theirs = stated_graph(Game(name="Hades", library=second_library), second_library)
+    entry = record_entry(second_library, theirs.release)
+
+    patched = _patch(
+        auth_client, entry.pk, {"access_end": {"ended": None, "way": "sold"}}
+    )
+    resumed = _resume(auth_client, entry.pk, {})
+
+    assert (patched.status_code, resumed.status_code) == (404, 404)
+
+
+def test_resume_before_the_end_answers_the_sentence(auth_client, library, graph):
+    entry = record_entry(library, graph.release)
+    _patch(auth_client, entry.pk, {"access_end": {"ended": "2022", "way": "sold"}})
+
+    response = _resume(auth_client, entry.pk, {"resumed": "2021"})
+
+    assert response.status_code == 409
+    assert "ended after that day" in response.json()["detail"]
+
+
+def test_resume_of_a_removed_entry_is_absent(auth_client, library, graph):
+    entry = remove_entry(record_entry(library, graph.release))
+
+    response = _resume(auth_client, entry.pk, {})
+
+    assert response.status_code == 404
+
+
+def test_patch_moves_the_acquisition_and_the_end_together(auth_client, library, graph):
+    entry = record_entry(library, graph.release, acquired=TemporalValue.parse("2022"))
+
+    response = _patch(
+        auth_client,
+        entry.pk,
+        {
+            "acquired": "2019",
+            "acquisition_note": "",
+            "access_end": {"ended": "2020", "way": "returned"},
+        },
+    )
+
+    assert response.status_code == 200, response.content
+    row = response.json()
+    assert (row["acquired"], row["access_ended"]) == ("2019", "2020")

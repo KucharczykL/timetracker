@@ -11,6 +11,7 @@ from games.commands.endpoint import (
     Rejection,
     WayActStatement,
     correct_endpoint,
+    normalized,
     state_endpoint,
     void_endpoint,
 )
@@ -35,7 +36,6 @@ from games.events.dispatch import (
 )
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import DEVICE_WAYS, Device
-from timetracker.temporal import stated_date
 
 #: Longer names do not fit the column.
 NAME_MAX_LENGTH = cast(int, Device._meta.get_field("name").max_length)
@@ -78,13 +78,6 @@ def check_way(way: str) -> DeviceWayValue:
             f"{way!r} is not a way a device's access ends.", sentence=UNKNOWN_WAY
         )
     return cast(DeviceWayValue, EndWay(way).value)
-
-
-def normalized(statement: WayActStatement) -> WayActStatement:
-    """One spelling, so restatements fingerprint alike."""
-    return WayActStatement(
-        stated_date(statement.when), statement.way, statement.note.strip()
-    )
 
 
 def _access_end_sentences(device_id: uuid.UUID) -> EndpointSentences:

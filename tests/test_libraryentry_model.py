@@ -67,12 +67,49 @@ def test_a_foreign_word_is_refused_by_the_check(
         _row(owned_library, tracked, graph.release, **{column: "stolen"})
 
 
-def test_the_meta_states_the_index_and_both_checks() -> None:
+@pytest.mark.parametrize(
+    ("columns", "constraint"),
+    [
+        (
+            {"access_end_way": "melted", "access_end_recorded_at": timezone.now()},
+            "games_libraryentry_access_end_way_known",
+        ),
+        (
+            {"access_end_way": "returned"},
+            "games_libraryentry_access_end_way_with_marker",
+        ),
+        (
+            {"access_end_recorded_at": timezone.now()},
+            "games_libraryentry_access_end_way_with_marker",
+        ),
+    ],
+)
+def test_the_end_checks_back_the_command(owned_library, graph, columns, constraint):
+    tracked = _tracked(owned_library, graph.game)
+    with pytest.raises(IntegrityError, match=constraint), transaction.atomic():
+        _row(owned_library, tracked, graph.release, **columns)
+
+
+def test_an_ended_copy_states_its_way_beside_its_marker(owned_library, graph):
+    tracked = _tracked(owned_library, graph.game)
+    row = _row(
+        owned_library,
+        tracked,
+        graph.release,
+        access_end_way="expired",
+        access_end_recorded_at=timezone.now(),
+    )
+    assert LibraryEntry.objects.get(pk=row.pk).access_end_way == "expired"
+
+
+def test_the_meta_states_the_index_and_every_check() -> None:
     names = {constraint.name for constraint in LibraryEntry._meta.constraints}
     assert names == {
         "unique_games_libraryentry_library_identity",
         "games_libraryentry_access_known",
         "games_libraryentry_format_known",
+        "games_libraryentry_access_end_way_known",
+        "games_libraryentry_access_end_way_with_marker",
     }
     (index,) = LibraryEntry._meta.indexes
     assert (index.name, index.fields) == (

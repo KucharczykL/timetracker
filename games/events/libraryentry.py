@@ -5,7 +5,11 @@ from typing import Literal, TypedDict
 
 from pydantic import with_config
 
-from games.events.endpoint import EndpointPayload, opening_endpoint_events
+from games.events.endpoint import (
+    EndpointPayload,
+    opening_endpoint_events,
+    resumable_endpoint_events,
+)
 from games.events.playersession import NoteText
 from games.events.references import (
     STRICT_SCHEMA,
@@ -23,6 +27,18 @@ type EntryAccessValue = Literal[
 ]
 #: Recorded spelling: the words `LibraryEntry.format` stores.
 type EntryFormatValue = Literal["physical", "digital", "unknown"]
+#: Recorded spelling: `ENTRY_WAYS`.
+type EntryWayValue = Literal[
+    "returned",
+    "expired",
+    "revoked",
+    "refunded",
+    "sold",
+    "lost",
+    "given_away",
+    "broken",
+    "stolen",
+]
 
 
 @with_config(STRICT_SCHEMA)
@@ -56,6 +72,19 @@ class LibraryEntryNoteChangedPayload(TypedDict):
 @with_config(STRICT_SCHEMA)
 class LibraryEntryReleaseChangedPayload(TypedDict):
     release: Reference
+
+
+@with_config(STRICT_SCHEMA)
+class LibraryEntryAccessEndPayload(TypedDict):
+    """How access ended; day is effective_time."""
+
+    way: EntryWayValue
+    note: NoteText
+
+
+@with_config(STRICT_SCHEMA)
+class LibraryEntryAccessEndVoidedPayload(TypedDict):
+    """The library takes back the record of an end."""
 
 
 @with_config(STRICT_SCHEMA)
@@ -115,6 +144,20 @@ ENTRY_ACQUISITION_EVENTS = opening_endpoint_events(
     payload=EndpointPayload,
 )
 LIBRARYENTRY_ACQUISITION_CORRECTED = ENTRY_ACQUISITION_EVENTS.corrected
+
+ENTRY_ACCESS_END_EVENTS = resumable_endpoint_events(
+    "libraryentry",
+    stated="library.libraryentry.access_ended",
+    corrected="library.libraryentry.access_end_corrected",
+    voided="library.libraryentry.access_end_voided",
+    resumed="library.libraryentry.access_resumed",
+    payload=LibraryEntryAccessEndPayload,
+    voided_payload=LibraryEntryAccessEndVoidedPayload,
+)
+LIBRARYENTRY_ACCESS_ENDED = ENTRY_ACCESS_END_EVENTS.stated
+LIBRARYENTRY_ACCESS_END_CORRECTED = ENTRY_ACCESS_END_EVENTS.corrected
+LIBRARYENTRY_ACCESS_END_VOIDED = ENTRY_ACCESS_END_EVENTS.voided
+LIBRARYENTRY_ACCESS_RESUMED = ENTRY_ACCESS_END_EVENTS.resumed
 
 
 def libraryentry_created(

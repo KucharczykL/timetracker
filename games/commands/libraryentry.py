@@ -6,10 +6,23 @@ from dataclasses import dataclass
 from functools import partial
 from typing import ClassVar, cast, get_args
 
-from games.commands.endpoint import ActStatement, correct_opening_endpoint
+from games.commands.endpoint import (
+    ActStatement,
+    EndpointSentences,
+    Rejection,
+    WayActStatement,
+    certainly_reversed,
+    correct_endpoint,
+    correct_opening_endpoint,
+    normalized,
+    resume_endpoint,
+    state_endpoint,
+    void_endpoint,
+)
 from games.commands.playergame import tracking_events
 from games.commands.scope import Refusal, library_entry_row, visible_row
-from games.endpoints import ENTRY_ACQUISITION
+from games.end_ways import EndWay
+from games.endpoints import ENTRY_ACCESS_END, ENTRY_ACQUISITION
 from games.events.dispatch import (
     Command,
     CommandContext,
@@ -29,9 +42,10 @@ from games.events.libraryentry import (
     libraryentry_restored,
 )
 from games.events.vocabulary import NewEvent, Unchanged
-from games.models import LibraryEntry, PlayerGame, Release
+from games.models import ENTRY_WAYS, LibraryEntry, PlayerGame, Release
+from games.reads.endpoints import stated
 from games.reads.referrers import blocking_referrer, foreign_referrer
-from timetracker.temporal import stated_date
+from timetracker.temporal import TemporalValue
 
 UNKNOWN_ACCESS = "Choose one of the listed access words."
 UNKNOWN_FORMAT = "Choose one of the listed formats."
@@ -48,6 +62,19 @@ RECORD_UNDER_REMOVED_GAME = (
     "That game was removed from your library. Restore it before recording a copy."
 )
 ENTRY_REMOVED = "That copy was removed. Put it back before changing what it records."
+UNKNOWN_WAY = "Choose one of the listed ways a copy leaves your hands."
+END_BEFORE_ACQUISITION = (
+    "This copy was acquired after that day. Correct the acquired day first, "
+    "or check the day it ended."
+)
+RESUME_BEFORE_END = (
+    "Access to this copy ended after that day. Correct the end first, or "
+    "check the day it came back."
+)
+ACQUISITION_AFTER_END = (
+    "Access to this copy ended before that day. Correct the end first, or "
+    "check the day it was acquired."
+)
 
 #: An acquisition with no stated day.
 UNDATED_ACQUISITION = ActStatement(None, "")
@@ -73,9 +100,78 @@ def check_format(format: str) -> EntryFormatValue:
     return cast(EntryFormatValue, format)
 
 
-def normalized(statement: ActStatement) -> ActStatement:
-    """One spelling, so restatements fingerprint alike."""
-    return ActStatement(stated_date(statement.when), statement.note.strip())
+def check_way(way: str) -> EndWay:
+    """The stated way, or a refusal.
+
+    Ahead of the payload's validation, which answers a
+    foreign way with a defect rather than a sentence.
+    """
+    if way not in ENTRY_WAYS:
+        raise CommandRejected(
+            f"{way!r} is not a way a copy's access ends.", sentence=UNKNOWN_WAY
+        )
+    return EndWay(way)
+
+
+def _access_end_sentences(entry_id: uuid.UUID) -> EndpointSentences:
+    return EndpointSentences(
+        already_stated=Rejection(
+            f"Entry {entry_id} already states an end of access. "
+            "CorrectEntryAccessEnd states a better one.",
+            "This copy already has an end recorded. Correct the one it has "
+            "instead of adding another.",
+        ),
+        nothing_to_correct=Rejection(
+            f"Entry {entry_id} states no end of access, so there is nothing "
+            "to correct. A first statement is EndEntryAccess.",
+            "This copy has no end to correct. Record how it left first.",
+        ),
+        same_statement="This copy already states that end.",
+        same_correction="This correction states the end the copy states.",
+        nothing_to_void=f"Entry {entry_id} states no end of access to take back.",
+    )
+
+
+def _nothing_to_resume(entry_id: uuid.UUID) -> Rejection:
+    return Rejection(
+        f"Entry {entry_id} states no end of access, so access cannot resume.",
+        "This copy has no end recorded, so there is nothing to resume.",
+    )
+
+
+def _refuse_an_end_before_the_acquisition(
+    entry: LibraryEntry, *, ended: TemporalValue | None
+) -> None:
+    if certainly_reversed(earlier=entry.acquired, later=ended):
+        raise CommandRejected(
+            f"Entry {entry.pk} was acquired after the end being stated, and no "
+            "access ends before it begins.",
+            sentence=END_BEFORE_ACQUISITION,
+        )
+
+
+def _refuse_a_resume_before_the_end(
+    entry: LibraryEntry, *, resumed: TemporalValue | None
+) -> None:
+    if certainly_reversed(earlier=entry.access_ended, later=resumed):
+        raise CommandRejected(
+            f"Entry {entry.pk}'s access ended after the resume being stated, "
+            "and no access resumes before it ends.",
+            sentence=RESUME_BEFORE_END,
+        )
+
+
+def _refuse_an_acquisition_after_the_end(
+    entry: LibraryEntry, *, acquired: TemporalValue | None
+) -> None:
+    if stated(entry, ENTRY_ACCESS_END) is None:
+        return
+    if certainly_reversed(earlier=acquired, later=entry.access_ended):
+        raise CommandRejected(
+            f"Entry {entry.pk}'s access ended before the acquisition being "
+            "stated, and no access ends before it begins.",
+            sentence=ACQUISITION_AFTER_END,
+        )
 
 
 def _visible_release(context: CommandContext, release_id: uuid.UUID) -> Release:
@@ -127,6 +223,25 @@ def _refuse_a_live_act(entry: LibraryEntry) -> None:
     """Refuse a removed copy or game."""
     _refuse_a_removed_entry(entry)
     _refuse_under_a_removed_game(entry)
+
+
+def _refuse_a_live_act_after_the_end(
+    entry: LibraryEntry, *, acquired: TemporalValue | None
+) -> None:
+    _refuse_a_live_act(entry)
+    _refuse_an_acquisition_after_the_end(entry, acquired=acquired)
+
+
+def _refuse_a_live_end(entry: LibraryEntry, *, ended: TemporalValue | None) -> None:
+    _refuse_a_live_act(entry)
+    _refuse_an_end_before_the_acquisition(entry, ended=ended)
+
+
+def _refuse_a_live_resume(
+    entry: LibraryEntry, *, resumed: TemporalValue | None
+) -> None:
+    _refuse_a_live_act(entry)
+    _refuse_a_resume_before_the_end(entry, resumed=resumed)
 
 
 def _refuse_a_foreign_referrer(entry: LibraryEntry) -> None:
@@ -257,7 +372,9 @@ class CorrectEntryAcquisition(Command):
             ENTRY_ACQUISITION,
             self.statement,
             same_correction="This correction states the day the copy states.",
-            before_event=partial(_refuse_a_live_act, entry),
+            before_event=partial(
+                _refuse_a_live_act_after_the_end, entry, acquired=self.statement.when
+            ),
         )
 
 
@@ -299,3 +416,90 @@ class RestoreEntry(Command):
         _refuse_under_a_removed_game(entry)
         _refuse_a_removed_release(entry.release)
         return [libraryentry_restored(entry.pk)]
+
+
+@dataclass(frozen=True, slots=True)
+class EndEntryAccess(Command):
+    """The copy's access ended."""
+
+    command_name: ClassVar[CommandName] = CommandName.LIBRARYENTRY_END_ACCESS
+    entry_id: uuid.UUID
+    statement: WayActStatement
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "statement", normalized(self.statement))
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        entry = library_entry_row(context, self.entry_id)
+        way = check_way(self.statement.way)
+        return state_endpoint(
+            entry,
+            ENTRY_ACCESS_END,
+            self.statement._replace(way=way),
+            sentences=_access_end_sentences(entry.pk),
+            before_event=partial(_refuse_a_live_end, entry, ended=self.statement.when),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class CorrectEntryAccessEnd(Command):
+    """Restate an end already stated."""
+
+    command_name: ClassVar[CommandName] = CommandName.LIBRARYENTRY_CORRECT_ACCESS_END
+    entry_id: uuid.UUID
+    statement: WayActStatement
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "statement", normalized(self.statement))
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        entry = library_entry_row(context, self.entry_id)
+        way = check_way(self.statement.way)
+        return correct_endpoint(
+            entry,
+            ENTRY_ACCESS_END,
+            self.statement._replace(way=way),
+            sentences=_access_end_sentences(entry.pk),
+            before_event=partial(_refuse_a_live_end, entry, ended=self.statement.when),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class VoidEntryAccessEnd(Command):
+    """Take back the record that access ended."""
+
+    command_name: ClassVar[CommandName] = CommandName.LIBRARYENTRY_VOID_ACCESS_END
+    entry_id: uuid.UUID
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        entry = library_entry_row(context, self.entry_id)
+        return void_endpoint(
+            entry,
+            ENTRY_ACCESS_END,
+            sentences=_access_end_sentences(entry.pk),
+            before_event=partial(_refuse_a_live_act, entry),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ResumeEntryAccess(Command):
+    """Access to an ended copy resumed."""
+
+    command_name: ClassVar[CommandName] = CommandName.LIBRARYENTRY_RESUME_ACCESS
+    entry_id: uuid.UUID
+    statement: ActStatement
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "statement", normalized(self.statement))
+
+    def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
+        entry = library_entry_row(context, self.entry_id)
+        return resume_endpoint(
+            entry,
+            ENTRY_ACCESS_END,
+            self.statement,
+            nothing_to_resume=_nothing_to_resume(entry.pk),
+            before_event=partial(
+                _refuse_a_live_resume, entry, resumed=self.statement.when
+            ),
+        )

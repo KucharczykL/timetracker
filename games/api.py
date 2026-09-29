@@ -41,6 +41,7 @@ from common.criteria import FilterError, filter_from_json
 from common.date_time_presentation import date_time_presentation_for_request
 from common.filter_execution import execute_filter, regex_timeout_api
 from games.api_creation import RowRefused, created_by_form, refusal_sentence
+from games.commands.endpoint import ActStatement, WayActStatement
 from games.commands.playersession import (
     CorrectedTiming,
     DurationOnlyTiming,
@@ -48,9 +49,14 @@ from games.commands.playersession import (
     TimedTiming,
     TimingStatement,
 )
-from games.commands.playthrough import ActStatement
-from games.events.dispatch import IDEMPOTENCY_KEY_MAX_LENGTH, RowUnreadable
+from games.end_ways import EndWay
+from games.events.dispatch import (
+    IDEMPOTENCY_KEY_MAX_LENGTH,
+    CommandOutcome,
+    RowUnreadable,
+)
 from games.events.idempotency import IdempotencyKey
+from games.events.libraryentry import EntryWayValue
 from games.filters import (
     MODE_PARSERS,
     filter_for_model,
@@ -100,7 +106,14 @@ from games.sorting import (
 from games.toast_middleware import RELOAD_HEADER
 from games.writes.answers import CommandFailed, answered
 from games.writes.device import create_device as create_device_row
-from games.writes.libraryentry import EntryDraft, record_entry, restate_entry
+from games.writes.libraryentry import (
+    KEEP,
+    EntryDraft,
+    Keep,
+    record_entry,
+    restate_entry,
+    resume_entry_access,
+)
 from games.writes.playergame import new_correlation_id, record_facts
 from games.writes.playersession import (
     SessionDraft,
@@ -1241,6 +1254,19 @@ class EntryIn(Schema):
     acquisition_note: str = ""
 
 
+class EntryAccessEndIn(Schema):
+    """One end, stated whole; its day may be unknown."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ended: StatedTemporal = None
+    way: EntryWayValue
+    note: str = ""
+
+    def statement(self) -> WayActStatement:
+        return WayActStatement(self.ended, EndWay(self.way), self.note)
+
+
 class EntryUpdate(Schema):
     """Named keys state; omitted keys state nothing."""
 
@@ -1252,6 +1278,8 @@ class EntryUpdate(Schema):
     release_id: UUIDv7 | None = None
     acquired: StatedTemporal = None
     acquisition_note: str | None = None
+    #: Object states, null voids; the route reads absence.
+    access_end: EntryAccessEndIn | None = None
 
     @model_validator(mode="after")
     def a_named_key_states(self) -> EntryUpdate:
@@ -1263,6 +1291,14 @@ class EntryUpdate(Schema):
             if key in stated and getattr(self, key) is None:
                 raise ValueError(f"{key} states a value, or is left out.")
         return self
+
+    def access_end_statement(self) -> WayActStatement | None | Keep:
+        """The end stated, a void, or nothing."""
+        if "access_end" not in self.model_fields_set:
+            return KEEP
+        if self.access_end is None:
+            return None
+        return self.access_end.statement()
 
 
 class EntryOut(Schema):
@@ -1281,6 +1317,12 @@ class EntryOut(Schema):
     acquired_upper: date | None = None
     acquisition_recorded_at: datetime
     acquisition_note: str
+    access_ended: StatedTemporal
+    access_ended_lower: date | None = None
+    access_ended_upper: date | None = None
+    access_end_recorded_at: datetime | None = None
+    access_end_way: str
+    access_end_note: str
     created_at: datetime
 
     @staticmethod
@@ -1357,11 +1399,13 @@ def partial_update_entry(request, entry_id: UUIDv7, payload: EntryUpdate):
             format=None if payload.format is None else payload.format.value,
             note=payload.note,
             release_id=payload.release_id,
+            #: The validator states both or neither.
             acquired=(
-                ActStatement(payload.acquired, payload.acquisition_note)
-                if "acquired" in stated and payload.acquisition_note is not None
-                else None
+                ActStatement(payload.acquired, payload.acquisition_note or "")
+                if "acquired" in stated
+                else KEEP
             ),
+            access_end=payload.access_end_statement(),
             correlation_id=new_correlation_id(),
         )
     except CommandFailed as failure:
@@ -1370,6 +1414,43 @@ def partial_update_entry(request, entry_id: UUIDv7, payload: EntryUpdate):
     updated = owned_or_404(readable_entries(library), library, pk=entry.pk)
     if changed:
         messages.success(request, "Entry updated.")
+    return updated
+
+
+class EntryResumeIn(Schema):
+    """Access again; the day may be unknown."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    resumed: StatedTemporal = None
+    note: str = ""
+
+
+@entry_router.post("/{entry_id}/resume", response={200: EntryOut})
+def resume_entry(
+    request,
+    entry_id: UUIDv7,
+    payload: EntryResumeIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    actor = cast(User, request.user)
+    library = actor.library
+    stated_key = _stated_idempotency_key(idempotency_key)
+    entry = owned_or_404(readable_entries(library), library, id=entry_id)
+    try:
+        result = resume_entry_access(
+            actor,
+            entry,
+            ActStatement(payload.resumed, payload.note),
+            correlation_id=new_correlation_id(),
+            idempotency_key=stated_key,
+        )
+    except CommandFailed as failure:
+        _answered_or_http(failure)
+    #: Read before the message: a mark can lose the row.
+    updated = owned_or_404(readable_entries(library), library, pk=entry.pk)
+    if result.outcome is CommandOutcome.APPENDED:
+        messages.success(request, "Access resumed.")
     return updated
 
 

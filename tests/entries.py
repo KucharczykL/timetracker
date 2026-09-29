@@ -4,8 +4,14 @@ import uuid
 
 from django.db import transaction
 
-from games.commands.endpoint import ActStatement
-from games.commands.libraryentry import RecordEntry, RemoveEntry, RestoreEntry
+from games.commands.endpoint import ActStatement, WayActStatement
+from games.commands.libraryentry import (
+    EndEntryAccess,
+    RecordEntry,
+    RemoveEntry,
+    RestoreEntry,
+)
+from games.end_ways import EndWay
 from games.events.dispatch import Command, CommandResult, append_command
 from games.models import LibraryEntry, LibraryEvent, Release, UserLibrary
 from timetracker.temporal import TemporalValue
@@ -59,5 +65,20 @@ def remove_entry(entry: LibraryEntry) -> LibraryEntry:
 
 def restore_entry(entry: LibraryEntry) -> LibraryEntry:
     _state(entry.library, RestoreEntry(entry_id=entry.pk))
+    entry.refresh_from_db()
+    return entry
+
+
+def end_entry_access(
+    entry: LibraryEntry,
+    *,
+    way: EndWay = EndWay.RETURNED,
+    ended: TemporalValue | None = None,
+    note: str = "",
+) -> LibraryEntry:
+    _state(
+        entry.library,
+        EndEntryAccess(entry_id=entry.pk, statement=WayActStatement(ended, way, note)),
+    )
     entry.refresh_from_db()
     return entry

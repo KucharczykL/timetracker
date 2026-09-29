@@ -12,6 +12,10 @@ class EndWay(StrEnum):
     GIVEN_AWAY = "given_away"
     BROKEN = "broken"
     STOLEN = "stolen"
+    RETURNED = "returned"
+    EXPIRED = "expired"
+    REVOKED = "revoked"
+    REFUNDED = "refunded"
 
 
 END_WAY_LABELS: Mapping[EndWay, str] = {
@@ -20,4 +24,8 @@ END_WAY_LABELS: Mapping[EndWay, str] = {
     EndWay.GIVEN_AWAY: "Given away",
     EndWay.BROKEN: "Broken",
     EndWay.STOLEN: "Stolen",
+    EndWay.RETURNED: "Returned",
+    EndWay.EXPIRED: "Expired",
+    EndWay.REVOKED: "Revoked",
+    EndWay.REFUNDED: "Refunded",
 }
