@@ -2,7 +2,7 @@ import pytest
 from django.http import HttpResponse
 from django.test import override_settings
 from django.urls import path
-from playwright.sync_api import expect
+from playwright.sync_api import Route, expect
 
 from common.components import SearchSelect
 
@@ -571,6 +571,32 @@ def test_searchurl_committed_single_select_shows_full_list_on_focus(live_server,
         'search-select[name="item"] [data-search-select-option]:visible'
     )
     expect(options).to_have_count(6)
+
+
+#: Delays evaluation; `load` does not wait.
+MODULE_DELAY = "await new Promise((resolve) => setTimeout(resolve, 1000));\n"
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_search_select_e2e")
+def test_a_box_clicked_before_its_script_opens_its_panel(live_server, page):
+    delayed: list[int] = []
+
+    def delay_module(route: Route) -> None:
+        response = route.fetch()
+        delayed.append(response.status)
+        route.fulfill(response=response, body=MODULE_DELAY + response.text())
+
+    page.route("**/elements/search-select*.js", delay_module)
+    page.goto(live_server.url + "/searchurl-committed/")
+    picker = page.locator('search-select[name="item"]')
+    picker.locator("input[data-search-select-search]").click()
+    #: Still undefined, so the click came first.
+    assert page.evaluate('customElements.get("search-select") === undefined')
+
+    expect(picker.locator("[data-search-select-option]:visible")).to_have_count(6)
+    # Hashed or moved files skip the delay.
+    assert delayed == [200]
 
 
 def _games_search_input(page):

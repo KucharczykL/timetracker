@@ -1540,20 +1540,19 @@ const initWidget = (containerElement: Element) => {
     form?.addEventListener("search-select:change", onDependencyChange);
   }
 
-  // Autofocus lands before wiring; replay the focus.
-  if (search.hasAttribute("autofocus")) {
-    // Only a fresh, empty add form should steal focus and drive the panel open;
-    // a pre-committed single-select keeps its label and whatever native focus it
-    // got. Snapshot emptiness now — before any focus() runs the flow below.
+  // Focus before wiring fired no event; replay.
+  if (!search.hasAttribute("autofocus")) {
+    //: A click or script focused it first.
+    if (document.activeElement === search) runFocus();
+  } else {
+    // Only an empty autofocus box opens.
     //: A held none counts as empty.
     const startedEmpty = !search.value || holdsNone();
     // Native autofocus lands before this frame.
     requestAnimationFrame(() => {
       if (!search.isConnected || !startedEmpty) return;
       if (document.activeElement === search) {
-        // Native autofocus landed but fired before this listener bound: open the
-        // panel explicitly. Otherwise focus the field and let the listener open
-        // it — either way runFocus runs exactly once.
+        // Listener missed native autofocus; open explicitly.
         runFocus();
       } else {
         search.focus();
