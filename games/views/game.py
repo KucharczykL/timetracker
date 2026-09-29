@@ -45,6 +45,7 @@ from common.components import (
     Safe,
     SelectionDeclaration,
     StyledTable,
+    SummaryList,
     TableData,
     Ul,
     drop_columns,
@@ -75,6 +76,7 @@ from games.bulk_playthrough_acts import COMPLETE_RUNS, START_RUNS
 from games.bulk_removal import REMOVE_GAME, REMOVE_RECORD, REMOVE_RUN
 from games.bulk_tray import tray_actions
 from games.catalog_form import CatalogGraphForm
+from games.catalog_release import SHARED_GAME_RELEASE
 from games.catalog_submit import submitted_game_or_form_error
 from games.external_references import CatalogTarget, external_reference_url_or_none
 from games.filters import (
@@ -139,14 +141,13 @@ from games.views.filtering import (
     warn_unknown_sort,
 )
 from games.views.game_menu import game_row_menu
-from games.views.general import request_calendar_today
 from games.views.historical_playtime import (
     historical_playtime_tabledata,
 )
 from games.views.library_cards import (
-    OpenForm,
-    library_section,
-    open_form_from_query,
+    EMPTY_LIBRARY,
+    copy_rows,
+    library_add_url,
 )
 from games.views.playergame_writes import (
     record_facts_for_request,
@@ -697,6 +698,7 @@ def _game_section(
     view_all_url: str | None = None,
     add_url: str | None = None,
     organize_url: str | None = None,
+    add_title: str | None = None,
 ) -> Node:
     buttons: list[Node] = []
     if add_url:
@@ -705,7 +707,7 @@ def _game_section(
             ControlButton(
                 href=add_url,
                 color="gray",
-                title=f"Add {title.lower()} for this game",
+                title=add_title or f"Add {title.lower()} for this game",
             )[
                 Icon("plus", size=ICON_BUTTON_SIZE_CLASS),
                 "Add",
@@ -1215,6 +1217,26 @@ def _playthroughs_section(
     return Div(id_="playthroughs-container")[section]
 
 
+def _library_section(
+    game: Game,
+    library: UserLibrary,
+    presentation: DateTimePresentation,
+    origin: OriginUrl,
+) -> Node:
+    rows = copy_rows(game, library, presentation, origin)
+    add_url = library_add_url(game, library, origin)
+    return Div(id_="library")[
+        _game_section(
+            "Library",
+            len(rows),
+            SummaryList(*rows),
+            EMPTY_LIBRARY if add_url else SHARED_GAME_RELEASE,
+            add_url=add_url,
+            add_title="Add a copy of this game to your library",
+        )
+    ]
+
+
 def _history_section(
     game: Game, library: UserLibrary, presentation: DateTimePresentation
 ) -> Node:
@@ -1238,26 +1260,9 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
     game = owned_or_404(Game.objects.tracked_by(library), library, id=game_id)
     if slug != game.url_slug:
         return _canonical_game_redirect(request, game)
-    return game_detail_page(request, game, open_form_from_query(request))
-
-
-def game_detail_page(
-    request: HttpRequest,
-    game: Game,
-    open_form: OpenForm | None,
-    *,
-    status: int = 200,
-) -> HttpResponse:
-    """Game detail; a POST route renders it too.
-
-    The origin is the page's own URL, never the request path,
-    so a page a POST route renders carries links `return_url`
-    accepts.
-    """
-    library = cast(User, request.user).library
     presentation = date_time_presentation_for_request(request)
     durations = duration_presentation_for_request(request)
-    origin = game.get_absolute_url()
+    origin = request.get_full_path()
     #: Scoped, not `game.sessions` and friends: tracked_by() admits a
     #: shared catalog game, and a shared game's reverse accessors reach
     #: every library that ever wrote against it.
@@ -1295,14 +1300,7 @@ def game_detail_page(
         _releases_section(
             hierarchy, presentation, origin, game=game, references=references
         ),
-        library_section(
-            request,
-            game,
-            library,
-            presentation=presentation,
-            today=request_calendar_today(request, library),
-            open_form=open_form,
-        ),
+        _library_section(game, library, presentation, origin),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _historical_playtime_section(
@@ -1324,7 +1322,6 @@ def game_detail_page(
         content,
         title=f"Game Overview - {game.name}",
         mastered=game.tracked_mastered,
-        status=status,
     )
 
 

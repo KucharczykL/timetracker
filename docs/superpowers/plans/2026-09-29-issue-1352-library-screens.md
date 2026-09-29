@@ -39,6 +39,10 @@ them.
 
 ## PR 1: Game detail and the forms
 
+> Superseded in review: the section is summary rows and every act is its
+> own page. The spec's "One page per act" holds the rules; the disclosure
+> tasks below record what was first built.
+
 This branch (`claude/issue-1352-planning-2c9581`), whose first commits
 are the spec and this plan; PR 1 carries them.
 

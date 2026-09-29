@@ -1,13 +1,12 @@
-"""The routes that add, edit, end, resume, remove and restore a copy."""
+"""The pages that add, edit, end, resume, remove and restore a copy."""
 
 import datetime
-from urllib.parse import urlencode
 
 import pytest
 from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry
 
-from games.entry_forms import CHANGED_SINCE_OPENED
+from games.entry_forms import CHANGED_SINCE_OPENED, EntryEndEditForm
 from games.models import (
     Edition,
     Game,
@@ -18,7 +17,6 @@ from games.models import (
     Release,
 )
 from games.removal import remove
-from games.views.library_cards import ADD_PREFIX, act_prefix
 from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -68,15 +66,14 @@ def _types(entry_id) -> list[str]:
 
 
 def _add_post(graph, **changes) -> dict[str, str]:
-    posted = {
-        f"{ADD_PREFIX}-release": str(graph.release.pk),
-        f"{ADD_PREFIX}-access": "owned",
-        f"{ADD_PREFIX}-format": "digital",
-        f"{ADD_PREFIX}-note": "",
-        f"{ADD_PREFIX}-submission": SUBMISSION,
-        **_day(f"{ADD_PREFIX}-acquired", datetime.date(2026, 9, 1)),
-    }
-    return posted | {f"{ADD_PREFIX}-{key}": value for key, value in changes.items()}
+    return {
+        "release": str(graph.release.pk),
+        "access": "owned",
+        "format": "digital",
+        "note": "",
+        "submission": SUBMISSION,
+        **_day("acquired", datetime.date(2026, 9, 1)),
+    } | changes
 
 
 def _add_url(game) -> str:
@@ -102,13 +99,23 @@ def test_a_repeated_add_records_once(logged_in, graph):
     assert LibraryEntry.objects.filter(release=graph.release).count() == 1
 
 
-def test_an_invalid_add_renders_game_detail_with_the_form_open(logged_in, graph):
-    response = logged_in.post(_add_url(graph.game), _add_post(graph, access="lent"))
+def test_the_add_page_seeds_digital_and_the_default_release(logged_in, graph):
+    response = logged_in.get(_add_url(graph.game))
 
     assert response.status_code == 200
     html = response.content.decode()
-    assert 'id="library"' in html
-    assert "<details open" in html
+    assert (
+        'value="digital" class'
+        in html.split('checked="true"')[0].rsplit("<input", 1)[1]
+    )
+    assert str(graph.release.pk) in html
+
+
+def test_an_invalid_add_renders_the_page_again(logged_in, graph):
+    response = logged_in.post(_add_url(graph.game), _add_post(graph, access="lent"))
+
+    assert response.status_code == 200
+    assert "Add to library - Tunic" in response.content.decode()
     assert not LibraryEntry.objects.exists()
 
 
@@ -118,13 +125,6 @@ def test_a_removed_release_is_refused_on_the_form(logged_in, graph):
 
     assert response.status_code == 200
     assert not LibraryEntry.objects.exists()
-
-
-def test_a_get_on_add_opens_the_form(logged_in, graph):
-    response = logged_in.get(_add_url(graph.game))
-
-    assert response.status_code == 302
-    assert "?library=add" in response["Location"]
 
 
 def test_add_on_another_librarys_game_is_absent(client, graph, django_user_model):
@@ -140,30 +140,28 @@ def test_add_on_another_librarys_game_is_absent(client, graph, django_user_model
 
 
 def _edit_post(entry, **changes) -> dict[str, str]:
-    prefix = act_prefix(entry.pk, "edit")
-    posted = {
-        f"{prefix}-release": str(entry.release_id),
-        f"{prefix}-access": entry.access,
-        f"{prefix}-format": entry.format,
-        f"{prefix}-note": entry.note,
-        f"{prefix}-end_state": "held"
-        if entry.access_end_recorded_at is None
-        else "ended",
-        f"{prefix}-way": entry.access_end_way,
-        f"{prefix}-access_end_seen": (
-            ""
-            if entry.access_end_recorded_at is None
-            else entry.access_end_recorded_at.isoformat()
-        ),
-        temporal_input_name(f"{prefix}-acquired", "kind"): "date",
-        temporal_input_name(f"{prefix}-acquired", "start_year"): "2021",
-        temporal_input_name(f"{prefix}-acquired", "start_month"): "5",
-    }
-    return posted | {f"{prefix}-{key}": value for key, value in changes.items()}
+    return {
+        "release": str(entry.release_id),
+        "access": entry.access,
+        "format": entry.format,
+        "note": entry.note,
+        temporal_input_name("acquired", "kind"): "date",
+        temporal_input_name("acquired", "start_year"): "2021",
+        temporal_input_name("acquired", "start_month"): "5",
+    } | changes
 
 
 def _edit_url(entry) -> str:
     return reverse("games:edit_library_entry", args=[entry.pk])
+
+
+def test_the_edit_page_holds_the_copys_facts_alone(logged_in, entry):
+    response = logged_in.get(_edit_url(entry))
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert "Edit copy - Tunic (PS5)" in html
+    assert 'name="way"' not in html
 
 
 def test_edit_restates_the_copy(logged_in, entry):
@@ -174,36 +172,25 @@ def test_edit_restates_the_copy(logged_in, entry):
     assert entry.note == "shelf"
 
 
-def test_held_on_an_ended_copy_voids_the_end(logged_in, entry):
+def test_edit_leaves_a_standing_end_alone(logged_in, entry):
     entry = end_entry_access(entry)
 
-    logged_in.post(_edit_url(entry), _edit_post(entry, end_state="held"))
+    logged_in.post(_edit_url(entry), _edit_post(entry, note="shelf"))
 
-    entry.refresh_from_db()
-    assert entry.access_end_recorded_at is None
-    assert _types(entry.pk)[-1] == "library.libraryentry.access_end_voided"
-
-
-def test_a_stale_end_marker_is_refused(logged_in, entry):
-    posted = _edit_post(entry)
-    end_entry_access(entry)
-
-    response = logged_in.post(_edit_url(entry), posted)
-
-    assert response.status_code == 200
-    assert CHANGED_SINCE_OPENED in response.content.decode()
     entry.refresh_from_db()
     assert entry.access_end_recorded_at is not None
+    assert entry.note == "shelf"
 
 
-def test_a_refused_edit_renders_at_its_status(logged_in, entry):
-    posted = _edit_post(entry, end_state="ended", way="sold")
-    posted |= _day(f"{act_prefix(entry.pk, 'edit')}-ended", datetime.date(2020, 1, 1))
+def test_a_refused_edit_renders_the_page_at_its_status(logged_in, entry):
+    end_entry_access(entry, ended=TemporalValue.parse("2022"))
+    posted = _edit_post(entry)
+    posted[temporal_input_name("acquired", "start_year")] = "2025"
 
     response = logged_in.post(_edit_url(entry), posted)
 
     assert response.status_code == 409
-    assert "<details open" in response.content.decode()
+    assert "Edit copy - Tunic" in response.content.decode()
 
 
 def test_edit_of_another_librarys_copy_is_absent(client, entry, django_user_model):
@@ -213,48 +200,113 @@ def test_edit_of_another_librarys_copy_is_absent(client, entry, django_user_mode
     assert client.post(_edit_url(entry), _edit_post(entry)).status_code == 404
 
 
-def test_a_get_on_edit_opens_the_form(logged_in, entry):
-    response = logged_in.get(_edit_url(entry))
+def test_a_saved_edit_returns_to_its_origin(logged_in, entry):
+    origin = reverse("games:list_games")
 
-    assert response.status_code == 302
-    assert f"?library=edit&copy={entry.pk}#copy-{entry.pk}" in response["Location"]
+    response = logged_in.post(_edit_url(entry) + f"?origin={origin}", _edit_post(entry))
 
-
-# --- end and resume ---------------------------------------------------------
+    assert response["Location"] == origin
 
 
-def _end_post(entry, **changes) -> dict[str, str]:
-    prefix = act_prefix(entry.pk, "end")
-    posted = {
-        f"{prefix}-way": "sold",
-        f"{prefix}-note": "",
-        f"{prefix}-access_end_seen": "",
-        f"{prefix}-submission": SUBMISSION,
-        **_day(f"{prefix}-ended", datetime.date(2026, 9, 2)),
-    }
-    return posted | {f"{prefix}-{key}": value for key, value in changes.items()}
+# --- end, edit end, resume ----------------------------------------------------
+
+
+def _end_post(**changes) -> dict[str, str]:
+    return {
+        "way": "sold",
+        "note": "",
+        "access_end_seen": "",
+        "submission": SUBMISSION,
+        **_day("ended", datetime.date(2026, 9, 2)),
+    } | changes
 
 
 def test_end_access_states_the_end_once(logged_in, entry):
     url = reverse("games:end_library_entry", args=[entry.pk])
     for _ in range(2):
-        response = logged_in.post(url, _end_post(entry))
+        response = logged_in.post(url, _end_post())
 
     assert response.status_code == 302
     assert _types(entry.pk).count("library.libraryentry.access_ended") == 1
 
 
+def test_end_access_on_an_ended_copy_goes_to_edit_end(logged_in, entry):
+    entry = end_entry_access(entry)
+
+    response = logged_in.get(reverse("games:end_library_entry", args=[entry.pk]))
+
+    assert response.status_code == 302
+    assert (
+        reverse("games:edit_library_entry_end", args=[entry.pk]) in response["Location"]
+    )
+
+
+def _edit_end_post(entry, **changes) -> dict[str, str]:
+    return {
+        "way": "sold",
+        "note": "",
+        "access_end_seen": entry.access_end_recorded_at.isoformat(),
+        **_day("ended", datetime.date(2024, 3, 1)),
+    } | changes
+
+
+def test_edit_end_restates_the_way(logged_in, entry):
+    entry = end_entry_access(entry)
+    url = reverse("games:edit_library_entry_end", args=[entry.pk])
+
+    response = logged_in.post(url, _edit_end_post(entry))
+
+    assert response.status_code == 302
+    entry.refresh_from_db()
+    assert entry.access_end_way == "sold"
+
+
+def test_it_didnt_end_voids_the_end(logged_in, entry):
+    entry = end_entry_access(entry)
+    url = reverse("games:edit_library_entry_end", args=[entry.pk])
+
+    logged_in.post(
+        url,
+        {
+            "access_end_seen": entry.access_end_recorded_at.isoformat(),
+            EntryEndEditForm.VOID: "1",
+        },
+    )
+
+    entry.refresh_from_db()
+    assert entry.access_end_recorded_at is None
+    assert _types(entry.pk)[-1] == "library.libraryentry.access_end_voided"
+
+
+def test_a_stale_end_marker_is_refused(logged_in, entry):
+    entry = end_entry_access(entry)
+    posted = _edit_end_post(entry) | {"access_end_seen": "2000-01-01T00:00:00+00:00"}
+
+    response = logged_in.post(
+        reverse("games:edit_library_entry_end", args=[entry.pk]), posted
+    )
+
+    assert response.status_code == 200
+    assert CHANGED_SINCE_OPENED in response.content.decode()
+
+
+def test_edit_end_on_a_held_copy_goes_to_end_access(logged_in, entry):
+    response = logged_in.get(reverse("games:edit_library_entry_end", args=[entry.pk]))
+
+    assert response.status_code == 302
+    assert reverse("games:end_library_entry", args=[entry.pk]) in response["Location"]
+
+
 def test_resume_states_the_resume(logged_in, entry):
     entry = end_entry_access(entry, ended=TemporalValue.parse("2022"))
-    prefix = act_prefix(entry.pk, "resume")
 
     response = logged_in.post(
         reverse("games:resume_library_entry", args=[entry.pk]),
         {
-            f"{prefix}-note": "",
-            f"{prefix}-access_end_seen": entry.access_end_recorded_at.isoformat(),
-            f"{prefix}-submission": SUBMISSION,
-            **_day(f"{prefix}-resumed", datetime.date(2026, 9, 2)),
+            "note": "",
+            "access_end_seen": entry.access_end_recorded_at.isoformat(),
+            "submission": SUBMISSION,
+            **_day("resumed", datetime.date(2026, 9, 2)),
         },
     )
 
@@ -287,14 +339,6 @@ def test_restore_puts_a_removed_copy_back(logged_in, entry):
     assert entry.removed_at is None
 
 
-def test_the_page_a_post_renders_links_to_game_detail(logged_in, entry, graph):
-    response = logged_in.post(_edit_url(entry), _edit_post(entry, access="lent"))
-
-    html = response.content.decode()
-    assert urlencode({"origin": graph.game.get_absolute_url()}) in html
-    assert urlencode({"origin": _edit_url(entry)}) not in html
-
-
 # --- the Add to library page ------------------------------------------------
 
 
@@ -303,12 +347,12 @@ def test_the_add_page_renders_a_game_picker(logged_in):
 
     assert response.status_code == 200
     html = response.content.decode()
-    assert f'name="{ADD_PREFIX}-game"' in html
-    assert f"{ADD_PREFIX}-game" in html.split(f'name="{ADD_PREFIX}-release"')[1]
+    assert 'name="game"' in html
+    assert "&quot;field&quot;: &quot;game&quot;" in html.split('name="release"')[1]
 
 
 def test_the_add_page_records_a_copy_on_the_picked_game(logged_in, graph):
-    posted = _add_post(graph) | {f"{ADD_PREFIX}-game": str(graph.game.pk)}
+    posted = _add_post(graph) | {"game": str(graph.game.pk)}
 
     response = logged_in.post(reverse("games:add_to_library"), posted)
 
@@ -322,11 +366,11 @@ def test_the_add_page_tracks_an_untracked_shared_game(logged_in, owned_library):
     edition = Edition.objects.create(game=shared, is_default=True)
     release = Release.objects.create(edition=edition, is_default=True)
     posted = {
-        f"{ADD_PREFIX}-game": str(shared.pk),
-        f"{ADD_PREFIX}-release": str(release.pk),
-        f"{ADD_PREFIX}-access": "owned",
-        f"{ADD_PREFIX}-format": "physical",
-        f"{ADD_PREFIX}-submission": SUBMISSION,
+        "game": str(shared.pk),
+        "release": str(release.pk),
+        "access": "owned",
+        "format": "physical",
+        "submission": SUBMISSION,
     }
 
     response = logged_in.post(reverse("games:add_to_library"), posted)

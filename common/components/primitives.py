@@ -1838,6 +1838,8 @@ class FormFieldGroup(NamedTuple):
     fields: Sequence[str]
     description: str = ""
     id: str = ""
+    #: Named for a screen reader alone; space alone sets it apart.
+    legend_hidden: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1981,12 +1983,18 @@ def _grouped_form_fields(
             ("class", "flex flex-col gap-3"),
             ("data-form-field-group", ""),
         ]
+        if group.legend_hidden:
+            attributes.append(("class", "mt-3 first-of-type:mt-0"))
         if group.id:
             attributes.append(("id", group.id))
         if description_id and group.description:
             attributes.append(("aria-describedby", description_id))
         group_children: list[Node] = [
-            Legend(class_="text-type-section text-heading")[group.legend]
+            Legend(
+                class_="sr-only"
+                if group.legend_hidden
+                else "text-type-section text-heading"
+            )[group.legend]
         ]
         if group.description:
             description_attributes: list[HTMLAttribute] = [

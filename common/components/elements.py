@@ -133,8 +133,6 @@ Dd = element_builder("dd")
 Fieldset = element_builder("fieldset")
 Legend = element_builder("legend")
 Dialog = element_builder("dialog")
-Details = element_builder("details")
-Summary = element_builder("summary")
 Section = element_builder("section")
 # Size token only, no margin: parents own spacing via `gap` (see
 # docs/visual-conventions.md §3), enforced by tests/test_heading_margins.py.

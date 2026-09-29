@@ -1,6 +1,6 @@
-"""Add, edit, end, resume, remove and restore a copy."""
+"""Add, edit, end, resume, remove and restore a copy; one page each."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from functools import partial
 from typing import cast
 from uuid import UUID
@@ -13,28 +13,26 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.views.decorators.http import require_POST
 
-from common.components import AddForm, FormFields
+from common.components import AddForm, ControlButton, FormFieldGroup, FormFields
+from common.components.core import Node
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
+from common.returns import action_url
+from games.endpoints import ENTRY_ACCESS_END
 from games.entry_forms import (
     EntryAddForm,
     EntryEditForm,
+    EntryEndEditForm,
     EntryEndForm,
     EntryResumeForm,
+    copy_groups,
 )
 from games.models import Game, LibraryEntry
 from games.ownership import owned_or_404
+from games.reads.endpoints import stated
 from games.reads.entries import library_entries
-from games.views.game import game_detail_page
 from games.views.general import request_calendar_today
-from games.views.library_cards import (
-    ADD_PREFIX,
-    LibraryAct,
-    OpenForm,
-    act_prefix,
-    open_url,
-    release_words,
-)
+from games.views.library_cards import release_words
 from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
 from games.writes.answers import CommandFailed
@@ -79,75 +77,47 @@ def _any_library_entry(request: HttpRequest, entry_id: UUID) -> LibraryEntry:
     )
 
 
-def _act(
+def _copy_title(act: str, entry: LibraryEntry) -> str:
+    return f"{act} - {entry.player_game.game.name} ({release_words(entry)})"
+
+
+def _form_page(
     request: HttpRequest,
-    game: Game,
-    open_form: OpenForm,
     form: forms.Form,
+    *,
+    title: str,
     write: Callable[[], object],
     done: str,
+    game: Callable[[], Game],
+    groups: Sequence[FormFieldGroup] | None = None,
+    additional: Node | str = "",
 ) -> HttpResponse:
-    """Write a valid form; else Game detail with it open."""
-    if not form.is_valid():
-        return game_detail_page(request, _detail_game(request, game), open_form)
-    try:
-        write()
-    except CommandFailed as failure:
-        messages.error(request, failure.message)
-        return game_detail_page(
-            request,
-            _detail_game(request, game),
-            open_form,
-            status=failure.status_code,
-        )
-    messages.success(request, done)
-    return redirect(_game_page(request, game))
-
-
-def _detail_game(request: HttpRequest, game: Game) -> Game:
-    """The Game as Game detail reads it."""
-    library = cast(User, request.user).library
-    return owned_or_404(Game.objects.tracked_by(library), library, id=game.pk)
-
-
-def _opened(game: Game, act: LibraryAct, entry_id: UUID | None = None) -> HttpResponse:
-    """A GET lands on Game detail with that form open."""
-    return redirect(open_url(game, act, entry_id))
-
-
-@login_required
-def add_library_entry(request: HttpRequest, game_id: UUID) -> HttpResponse:
-    user = cast(User, request.user)
-    library = user.library
-    game = owned_or_404(Game.objects.visible_to(library), library, id=game_id)
-    if request.method != "POST":
-        return _opened(game, "add")
-    form = EntryAddForm(
-        request.POST,
-        library=library,
-        presentation=date_time_presentation_for_request(request),
-        today=request_calendar_today(request, library),
-        game=game,
-        prefix=ADD_PREFIX,
-    )
-    return _act(
+    """Render the form; a valid POST writes and returns."""
+    status = 200
+    if request.method == "POST" and form.is_valid():
+        try:
+            write()
+        except CommandFailed as failure:
+            messages.error(request, failure.message)
+            status = failure.status_code
+        else:
+            messages.success(request, done)
+            return redirect(_game_page(request, game()))
+    return render_page(
         request,
-        game,
-        OpenForm("add", None, form),
-        form,
-        lambda: record_entry(
-            user,
-            form.draft(),
-            correlation_id=new_correlation_id(),
-            idempotency_key=form.submission_key(),
+        AddForm(
+            form,
+            request=request,
+            submit_class="",
+            fields=FormFields(form, groups=groups),
+            additional_row=additional,
         ),
-        "Added to your library.",
+        title=title,
+        status=status,
     )
 
 
-@login_required
-def add_to_library(request: HttpRequest) -> HttpResponse:
-    """The section's Add, with a Game picker in front."""
+def _add(request: HttpRequest, game: Game | None) -> HttpResponse:
     user = cast(User, request.user)
     library = user.library
     form = EntryAddForm(
@@ -155,46 +125,47 @@ def add_to_library(request: HttpRequest) -> HttpResponse:
         library=library,
         presentation=date_time_presentation_for_request(request),
         today=request_calendar_today(request, library),
-        prefix=ADD_PREFIX,
+        game=game,
     )
-    status = 200
-    if form.is_valid():
-        try:
-            record_entry(
-                user,
-                form.draft(),
-                correlation_id=new_correlation_id(),
-                idempotency_key=form.submission_key(),
-            )
-        except CommandFailed as failure:
-            messages.error(request, failure.message)
-            status = failure.status_code
-        else:
-            messages.success(request, "Added to your library.")
-            game = form.cleaned_data["game"]
-            return redirect(_game_page(request, game))
-    return render_page(
+    return _form_page(
         request,
-        AddForm(form, request=request, fields=FormFields(form)),
-        title="Add to library",
-        status=status,
+        form,
+        title="Add to library" if game is None else f"Add to library - {game.name}",
+        write=lambda: record_entry(
+            user,
+            form.draft(),
+            correlation_id=new_correlation_id(),
+            idempotency_key=form.submission_key(),
+        ),
+        done="Added to your library.",
+        game=lambda: game or form.cleaned_data["game"],
+        groups=copy_groups(form),
     )
+
+
+@login_required
+def add_library_entry(request: HttpRequest, game_id: UUID) -> HttpResponse:
+    library = cast(User, request.user).library
+    return _add(
+        request, owned_or_404(Game.objects.visible_to(library), library, id=game_id)
+    )
+
+
+@login_required
+def add_to_library(request: HttpRequest) -> HttpResponse:
+    """Add, with a Game picker in front."""
+    return _add(request, None)
 
 
 @login_required
 def edit_library_entry(request: HttpRequest, entry_id: UUID) -> HttpResponse:
     user = cast(User, request.user)
     entry = _held_entry(request, entry_id)
-    game = entry.player_game.game
-    if request.method != "POST":
-        return _opened(game, "edit", entry.pk)
     form = EntryEditForm(
-        request.POST,
+        request.POST or None,
         entry=entry,
         library=user.library,
         presentation=date_time_presentation_for_request(request),
-        today=request_calendar_today(request, user.library),
-        prefix=act_prefix(entry.pk, "edit"),
     )
 
     def restate() -> bool:
@@ -207,12 +178,17 @@ def edit_library_entry(request: HttpRequest, entry_id: UUID) -> HttpResponse:
             note=cleaned["note"],
             release_id=cleaned["release"].pk,
             acquired=form.acquired(),
-            access_end=form.access_end(),
             correlation_id=new_correlation_id(),
         )
 
-    return _act(
-        request, game, OpenForm("edit", entry.pk, form), form, restate, "Copy saved."
+    return _form_page(
+        request,
+        form,
+        title=_copy_title("Edit copy", entry),
+        write=restate,
+        done="Copy saved.",
+        game=lambda: entry.player_game.game,
+        groups=copy_groups(form),
     )
 
 
@@ -220,29 +196,72 @@ def edit_library_entry(request: HttpRequest, entry_id: UUID) -> HttpResponse:
 def end_library_entry(request: HttpRequest, entry_id: UUID) -> HttpResponse:
     user = cast(User, request.user)
     entry = _held_entry(request, entry_id)
-    game = entry.player_game.game
-    if request.method != "POST":
-        return _opened(game, "end", entry.pk)
+    if stated(entry, ENTRY_ACCESS_END) is not None:
+        #: An ended copy's end is edited, not stated again.
+        return redirect(
+            action_url(
+                "games:edit_library_entry_end",
+                entry.pk,
+                origin=request.GET.get("origin"),
+            )
+        )
     form = EntryEndForm(
-        request.POST,
+        request.POST or None,
         entry=entry,
         presentation=date_time_presentation_for_request(request),
         today=request_calendar_today(request, user.library),
-        prefix=act_prefix(entry.pk, "end"),
     )
-    return _act(
+    return _form_page(
         request,
-        game,
-        OpenForm("end", entry.pk, form),
         form,
-        lambda: end_entry_access(
+        title=_copy_title("End access", entry),
+        write=lambda: end_entry_access(
             user,
             entry,
             form.statement(),
             correlation_id=new_correlation_id(),
             idempotency_key=form.submission_key(),
         ),
-        "Access ended.",
+        done="Access ended.",
+        game=lambda: entry.player_game.game,
+    )
+
+
+@login_required
+def edit_library_entry_end(request: HttpRequest, entry_id: UUID) -> HttpResponse:
+    user = cast(User, request.user)
+    entry = _held_entry(request, entry_id)
+    if stated(entry, ENTRY_ACCESS_END) is None:
+        #: A held copy has no end to edit; it may state one.
+        return redirect(
+            action_url(
+                "games:end_library_entry", entry.pk, origin=request.GET.get("origin")
+            )
+        )
+    form = EntryEndEditForm(
+        request.POST or None,
+        entry=entry,
+        presentation=date_time_presentation_for_request(request),
+    )
+    return _form_page(
+        request,
+        form,
+        title=_copy_title("Edit end of access", entry),
+        write=lambda: restate_entry(
+            user,
+            entry,
+            access_end=form.access_end(),
+            correlation_id=new_correlation_id(),
+        ),
+        done="Access still held." if form.voids() else "End of access saved.",
+        game=lambda: entry.player_game.game,
+        additional=ControlButton(
+            type="submit",
+            name=EntryEndEditForm.VOID,
+            value="1",
+            color="gray",
+            formnovalidate=True,
+        )["It didn't end"],
     )
 
 
@@ -250,29 +269,25 @@ def end_library_entry(request: HttpRequest, entry_id: UUID) -> HttpResponse:
 def resume_library_entry(request: HttpRequest, entry_id: UUID) -> HttpResponse:
     user = cast(User, request.user)
     entry = _held_entry(request, entry_id)
-    game = entry.player_game.game
-    if request.method != "POST":
-        return _opened(game, "resume", entry.pk)
     form = EntryResumeForm(
-        request.POST,
+        request.POST or None,
         entry=entry,
         presentation=date_time_presentation_for_request(request),
         today=request_calendar_today(request, user.library),
-        prefix=act_prefix(entry.pk, "resume"),
     )
-    return _act(
+    return _form_page(
         request,
-        game,
-        OpenForm("resume", entry.pk, form),
         form,
-        lambda: resume_entry_access(
+        title=_copy_title("Resume access", entry),
+        write=lambda: resume_entry_access(
             user,
             entry,
             form.statement(),
             correlation_id=new_correlation_id(),
             idempotency_key=form.submission_key(),
         ),
-        "Access resumed.",
+        done="Access resumed.",
+        game=lambda: entry.player_game.game,
     )
 
 

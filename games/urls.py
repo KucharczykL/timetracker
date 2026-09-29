@@ -246,6 +246,11 @@ urlpatterns = [
         name="end_library_entry",
     ),
     path(
+        "library/<uuidv7:entry_id>/end/edit",
+        library_entry.edit_library_entry_end,
+        name="edit_library_entry_end",
+    ),
+    path(
         "library/<uuidv7:entry_id>/resume",
         library_entry.resume_library_entry,
         name="resume_library_entry",

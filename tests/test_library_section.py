@@ -5,12 +5,12 @@ import uuid
 import pytest
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from django.urls import reverse
 from django.utils import timezone
 from entries import end_entry_access, record_entry, remove_entry
 
 from games.catalog_release import SHARED_GAME_RELEASE
 from games.models import Edition, Game, Platform, PlayerGame, PlayerGameStatus
-from games.views.library_cards import copy_anchor
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -29,21 +29,23 @@ def _page(client, game, query: str = "") -> str:
     return response.content.decode()
 
 
-def test_a_card_per_live_copy(client, owned_user, owned_library, graph):
-    held = record_entry(owned_library, graph.release, access="borrowed")
+def test_a_row_per_live_copy_with_its_acts(client, owned_user, owned_library, graph):
+    held = record_entry(owned_library, graph.release, access="borrowed", note="shelf")
     ended = end_entry_access(record_entry(owned_library, graph.release))
     gone = remove_entry(record_entry(owned_library, graph.release))
     client.force_login(owned_user)
 
     html = _page(client, graph.game)
 
-    assert f'id="{copy_anchor(held.pk)}"' in html
-    assert f'id="{copy_anchor(ended.pk)}"' in html
-    assert copy_anchor(gone.pk) not in html
+    assert html.count("data-summary-row") == 2
     assert "Borrowed · Digital" in html
+    assert "shelf" in html
+    assert f"{reverse('games:end_library_entry', args=[held.pk])}?" in html
+    assert f"{reverse('games:edit_library_entry_end', args=[ended.pk])}?" in html
+    assert f"{reverse('games:resume_library_entry', args=[ended.pk])}?" in html
+    assert f"{reverse('games:end_library_entry', args=[ended.pk])}?" not in html
+    assert str(gone.pk) not in html
     assert "Returned" in html
-    assert "Resume" in html
-    assert "End access" in html
 
 
 def test_an_empty_section_offers_add(client, owned_user, graph):
@@ -52,10 +54,10 @@ def test_an_empty_section_offers_add(client, owned_user, graph):
     html = _page(client, graph.game)
 
     assert "Nothing in your library yet." in html
-    assert "Add to library" in html
+    assert reverse("games:add_library_entry", args=[graph.game.pk]) in html
 
 
-def test_a_named_edition_joins_the_card_line(client, owned_user, owned_library, graph):
+def test_a_named_edition_joins_the_row_label(client, owned_user, owned_library, graph):
     Edition.objects.filter(pk=graph.edition.pk).update(name="Deluxe")
     record_entry(owned_library, graph.release)
     client.force_login(owned_user)
@@ -80,26 +82,7 @@ def test_a_shared_game_without_a_release_states_the_sentence(
     html = _page(client, shared)
 
     assert SHARED_GAME_RELEASE in html
-    assert "Add to library" not in html
-
-
-def test_the_query_opens_that_disclosure(client, owned_user, owned_library, graph):
-    entry = record_entry(owned_library, graph.release)
-    client.force_login(owned_user)
-
-    html = _page(client, graph.game, f"?library=end&copy={entry.pk}")
-
-    card = html[html.index(f'id="{copy_anchor(entry.pk)}"') :]
-    assert "<details open" in card.split("End access")[0].rsplit("Edit", 1)[1]
-
-
-def test_a_bad_query_opens_nothing(client, owned_user, owned_library, graph):
-    record_entry(owned_library, graph.release)
-    client.force_login(owned_user)
-
-    html = _page(client, graph.game, "?library=end&copy=nonsense")
-
-    assert "<details open" not in html
+    assert reverse("games:add_library_entry", args=[shared.pk]) not in html
 
 
 def test_another_librarys_copies_are_absent(
@@ -112,7 +95,7 @@ def test_another_librarys_copies_are_absent(
     response = client.get(graph.game.get_absolute_url())
 
     assert response.status_code == 404
-    assert copy_anchor(entry.pk) not in response.content.decode()
+    assert str(entry.pk) not in response.content.decode()
 
 
 def _count_queries(client, game) -> int:

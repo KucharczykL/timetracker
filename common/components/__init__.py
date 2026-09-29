@@ -92,7 +92,7 @@ from common.components.domain import (
     SessionDeviceSelector,
     _resolve_name_with_icon,
 )
-from common.components.elements import Details, Footer, LinkTag, Summary
+from common.components.elements import Footer, LinkTag
 from common.components.filters import (
     FilterFieldPicker,
     NumberFilter,
@@ -374,7 +374,6 @@ __all__ = [
     "DateTimeCopyTarget",
     "DateTimeField",
     "DateTimePicker",
-    "Details",
     "Dialog",
     "DialogTitle",
     "Div",
@@ -500,7 +499,6 @@ __all__ = [
     "StatisticGrid",
     "StringFilter",
     "StyledTable",
-    "Summary",
     "SummaryAction",
     "SummaryList",
     "SummaryRow",

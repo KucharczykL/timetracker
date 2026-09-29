@@ -49,62 +49,65 @@ full gate, in this order. Nothing in a PR links to a route a later PR adds.
 
 ### The section
 
-`_library_section` in `games/views/game.py` sits above Purchases. It is
-its own builder, not `_game_section`, because its Add is a disclosure and
-an empty section still shows it. Its heading is "Library" with a count of
-live copies; an empty section says "Nothing in your library yet."
-
-Each copy is a card with the id `copy-<entry id>`. Its line states the
-Release (platform, "Unspecified" where it names none, then the edition
-where it has a name), access, format and "since <acquired>". An ended copy
-adds a chip "<Way> <day>". The card shows Edit, and End access on a copy
-that holds or Resume on an ended one. Its ⋯ menu holds Remove. The card
-has room below for P5's purchases.
-
-### Forms inside the card
-
-Add, Edit, End access and Resume are native `<details>` disclosures, so
-they open with no script. `details` and `summary` join the generic
-builders in `common/components/elements.py`. Each disclosure holds a
-`<form>` whose action is `action_url(route, …, origin=game.get_absolute_url())`,
-which `tests/test_action_origin_parity.py` holds. Every form carries a prefix,
-`copy-<entry id>-<act>` or `library-add`, so ids never repeat on the page,
-and the POST binds with the same prefix. Add, End access and Resume
-carry a submission key (`form.submission_key()`), as the device form
-does, so a double press is absorbed, not refused. Edit, End access and
-Resume post the end marker the page rendered, as `DeviceForm` posts
-`access_end_seen`, and refuse with `CHANGED_SINCE_OPENED` where the row
-moved since: Held would otherwise void an end another tab stated. A
-press whose submission key already ran skips that check, so its repeat
-replays rather than reading its own write as another tab's.
-
-A query parameter opens one disclosure on load: `?library=add`, or
-`?library=<act>&copy=<entry id>` with the fragment `#copy-<entry id>`.
-
-`view_game`'s body becomes `game_detail_page(request, game, open_form)`.
-The GET and every entry route call it. Its origin is
-`game.get_absolute_url()`, never the request path, so a page rendered by
-a POST route carries links `return_url` accepts. An invalid form renders
-at 200 with that form open and bound, as the historical playtime form
-does; a refused command renders at the refusal's `status_code`; a row the
-library does not hold is 404. A GET on an entry POST route redirects to
-Game detail with that form open, so `<refreshing-section>` reading the
-page's URL after a re-render still lands on Game detail. An Undo toast
-pressed on such a page stamps the POST route as its origin and falls
-back to its default return; that is accepted.
+`_library_section` in `games/views/game.py` sits above Purchases and is
+one `_game_section`: heading "Library" with a count of live copies, an
+Add button, and "Nothing in your library yet." when empty. Its body is a
+`SummaryList` of one `SummaryRow` per copy (`copy_rows` in
+`games/views/library_cards.py`), the library kit's shape; the section
+invents no markup. A row's label is the Release (platform, "Unspecified"
+where it names none, then the edition where it has a name); its
+subtitle is access, format, "since <acquired>", and for an ended copy
+"<Way> <day>"; its detail is the copy's note. Its actions are links:
+Edit, End access and Remove on a held copy; Edit, Edit end, Resume and
+Remove on an ended one. The row has room below for P5's purchases.
 
 The section reads `game_entries(...)` with `select_related` of the
 Release, its Edition and its Platform; a test pins the query count over
 several copies.
+
+### One page per act
+
+Every act is its own page, as every other add and edit in the app is:
+`AddForm` over `FormFields`, titled "<Act> - <game> (<release>)". A GET
+renders the page; a valid POST writes and returns through `return_url`,
+falling back to Game detail; an invalid form renders again at 200; a
+refused command renders again at the refusal's `status_code`, its
+sentence in a toast; a row the library does not hold is 404. Every link
+to a page carries `action_url(..., origin=...)`. #1385 later opens these
+pages in a dialog (#1384); the pages stay the source of truth.
 
 | Act | Route | Write |
 |---|---|---|
 | Add | `game/<game>/library/add` | `record_entry` |
 | Edit | `library/<entry>/edit` | `restate_entry` |
 | End access | `library/<entry>/end` | `end_entry_access`, new |
+| Edit end | `library/<entry>/end/edit` | `restate_entry(access_end=...)` |
 | Resume | `library/<entry>/resume` | `resume_entry_access` |
 | Remove | `library/<entry>/remove` | `confirm_and_remove(action=partial(remove_entry, …))` |
 | Restore | `library/<entry>/restore` | `restore_and_return`, `restore_entry` |
+
+Add and Edit state the copy's own facts, grouped by space alone into
+what the copy is (Release, format), how it is had (access, acquired),
+and its note. Each group is a `FormFieldGroup` whose legend is hidden
+(`legend_hidden`), so a screen reader still names it. Format is a radio
+list. Add defaults access to Owned, format to Digital, acquired to
+`request_calendar_today(request, library)`, and the Release to the
+game's default one, first in `game_releases`' order.
+
+The end lives on its own pages, which the rarer act earns. End access
+states way, day and note on a held copy. Edit end restates a standing
+end's way, day and note, and its "It didn't end" button voids it, for an
+end stated by mistake; a copy that came back is Resume's act, a dated
+fact the history keeps. End access on an ended copy redirects to Edit
+end, and Edit end on a held copy to End access.
+
+Add, End access and Resume carry a submission key
+(`form.submission_key()`), as the device form does, so a double press
+is absorbed, not refused. End access, Edit end and Resume post the end
+marker the page rendered, as `DeviceForm` posts `access_end_seen`, and
+refuse with `CHANGED_SINCE_OPENED` where the row moved since. A press
+whose submission key already ran skips that check, so its repeat
+replays rather than reading its own write as another tab's.
 
 `end_entry_access` in `games/writes/libraryentry.py` dispatches
 `EndEntryAccess` alone under an idempotency key, so a second tab is
@@ -114,20 +117,12 @@ library-scoped plain-manager lookup, since `library_entries` excludes it.
 Every route is classified in `games/views/returns.py`. Remove keeps the
 one confirmation page every removal has, and offers Undo.
 
-Edit states Release, access, format, acquired, the access end and note.
-The end is two states, **Held** and **Ended**: Held on an ended copy
-voids the end, for an end stated by mistake. Ended shows way, day and
-note. A copy that came back is Resume's act, a dated fact the history
-keeps; Edit has no Resumed state. End access states way, day and note;
-Resume states day and note. Every day defaults to
-`request_calendar_today(request, library)`.
-
 ### The Release picker
 
 A `SearchSelect` over `GET /api/releases/search` with `game_id` and `q`,
 answering `{value, label, data}` for the game's visible live Releases.
 A label is platform, then the edition where it has a name, then the year:
-"PS5 · Deluxe · 2021". A game with one Release preselects it.
+"PS5 · Deluxe · 2021". Add preselects the game's default Release.
 
 Where the page knows the Game is the library's own (Game detail), the
 picker offers a create row with the verb "Create release", which renders
@@ -155,13 +150,13 @@ The row posts `{name, game_id}` to `POST /api/releases/`, which:
    toast, never 500.
 
 A shared Game with no Release shows the same sentence in the section in
-place of Add. #1375 owns a library's Release under a shared Edition.
+place of Add, and the section offers no Add button. #1375 owns a library's Release under a shared Edition.
 
 ### Add to library
 
-Route `library/add`, name `add_to_library`. It is the section's Add form
+Route `library/add`, name `add_to_library`. It is the Add page
 with a Game picker in front; the Release picker's `params` name the Game
-field by its posted, prefixed name (`self.add_prefix("game")`, set after
+field by its posted name (`self.add_prefix("game")`, set after
 `super().__init__`), so it searches again when the Game changes. An untracked game is
 tracked in the same dispatch, as `RecordEntry` does. The Library page's
 "Temporary home" row offers it beside Add purchase. P5 adds the purchase

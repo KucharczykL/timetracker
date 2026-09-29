@@ -37,9 +37,9 @@ def _game_on(library: UserLibrary, name: str, platform: Platform) -> Game:
     return game
 
 
-def _open_menu(page: Page, card) -> None:
-    page.wait_for_function("() => !!customElements.get('drop-down')")
-    card.locator("[data-copy-line] [data-toggle]").click()
+def _submit(page: Page) -> None:
+    with page.expect_navigation():
+        page.get_by_role("button", name="Submit", exact=True).click()
 
 
 def test_a_copy_goes_through_every_act_from_game_detail(
@@ -51,11 +51,14 @@ def test_a_copy_goes_through_every_act_from_game_detail(
     page = authenticated_page
     page.goto(f"{live_server.url}{game.get_absolute_url()}")
     section = page.locator("#library")
-    cards = section.locator("[data-library-copy]")
+    rows = section.locator("[data-summary-row]")
     expect(section.get_by_text("Nothing in your library yet.")).to_be_visible()
 
-    section.locator("summary", has_text="Add to library").click()
-    picker = page.locator("search-select[name='library-add-release']")
+    section.get_by_role("link", name="Add").click()
+    page.wait_for_function("() => !!customElements.get('search-select')")
+    picker = page.locator("search-select[name='release']")
+    held = picker.locator('[data-search-select-pills] input[type="hidden"]')
+    expect(held).to_have_value(str(Release.objects.get(edition__game=game).pk))
     search = picker.locator("[data-search-select-search]")
     search.click()
     search.fill("Switch")
@@ -68,45 +71,39 @@ def test_a_copy_goes_through_every_act_from_game_detail(
         picker.locator("[data-search-select-create]").click()
     assert response_info.value.status == 201
     created = Release.objects.get(edition__game=game, platform=switch)
-    page.select_option("select[name='library-add-format']", "physical")
-    with page.expect_navigation():
-        section.get_by_role("button", name="Add", exact=True).click()
+    page.get_by_label("Physical").check()
+    _submit(page)
 
     expect(page.get_by_text("Added to your library.")).to_be_visible()
-    expect(cards).to_have_count(1)
-    line = cards.first.locator("[data-copy-line]")
-    expect(line).to_contain_text("Switch")
-    expect(line).to_contain_text("Owned · Physical")
+    expect(rows).to_have_count(1)
+    expect(rows.first).to_contain_text("Switch")
+    expect(rows.first).to_contain_text("Owned · Physical")
     entry = LibraryEntry.objects.get(library=e2e_library)
     assert entry.release_id == created.pk
 
-    card = cards.first
-    card.locator("summary", has_text="End access").click()
-    page.select_option(f"select[name='copy-{entry.pk}-end-way']", "sold")
-    with page.expect_navigation():
-        card.get_by_role("button", name="End access", exact=True).click()
+    rows.first.get_by_role("link", name="End access").click()
+    page.select_option("select[name='way']", "sold")
+    _submit(page)
 
     expect(page.get_by_text("Access ended.")).to_be_visible()
-    expect(line).to_contain_text("Sold")
+    expect(rows.first).to_contain_text("Sold")
 
-    cards.first.locator("summary", has_text="Resume").click()
-    with page.expect_navigation():
-        cards.first.get_by_role("button", name="Resume", exact=True).click()
+    rows.first.get_by_role("link", name="Resume").click()
+    _submit(page)
 
     expect(page.get_by_text("Access resumed.")).to_be_visible()
-    expect(line).not_to_contain_text("Sold")
+    expect(rows.first).not_to_contain_text("Sold")
 
-    _open_menu(page, cards.first)
-    page.get_by_role("menuitem", name="Remove", exact=True).click()
+    rows.first.get_by_role("link", name="Remove").click()
     page.click('button:has-text("Remove")')
 
     expect(page.get_by_text("Copy removed.")).to_be_visible()
-    expect(cards).to_have_count(0)
+    expect(rows).to_have_count(0)
 
     page.get_by_role("button", name="Undo").click()
 
     expect(page.get_by_text("Copy restored.")).to_be_visible()
-    expect(cards).to_have_count(1)
+    expect(rows).to_have_count(1)
 
 
 def test_the_add_page_searches_releases_again_when_the_game_changes(
@@ -119,13 +116,13 @@ def test_the_add_page_searches_releases_again_when_the_game_changes(
     page = authenticated_page
     page.goto(f"{live_server.url}{reverse('games:add_to_library')}")
 
-    games = page.locator("search-select[name='library-add-game']")
+    games = page.locator("search-select[name='game']")
     game_search = games.locator("[data-search-select-search]")
     game_search.click()
     game_search.fill("Hades")
     games.locator("[data-search-select-option]").first.click()
 
-    releases = page.locator("search-select[name='library-add-release']")
+    releases = page.locator("search-select[name='release']")
     held = releases.locator('[data-search-select-pills] input[type="hidden"]')
     expect(held).to_have_value(str(Release.objects.get(edition__game=hades).pk))
 

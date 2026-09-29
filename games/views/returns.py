@@ -56,6 +56,7 @@ ORIGIN_AWARE: frozenset[UrlName] = frozenset(
         "games:edit_game",
         "games:edit_historical_playtime",
         "games:edit_library_entry",
+        "games:edit_library_entry_end",
         "games:end_library_entry",
         "games:edit_platform",
         "games:edit_playthrough",

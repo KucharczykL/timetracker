@@ -368,7 +368,7 @@ class RenderedPagesTest(TestCase):
             'id="history-container"',
             'event="status-changed"',
             'id="library"',
-            "Add to library",
+            "Add a copy of this game to your library",
             "Purchases",
             "Sessions",
             "Playthroughs",
