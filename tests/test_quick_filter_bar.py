@@ -640,6 +640,8 @@ class FacetOrderTest(SimpleTestCase):
         "games": [
             "status",
             "platform",
+            "access",
+            "format",
             "year_released",
             "playtime_hours",
             "mastered",

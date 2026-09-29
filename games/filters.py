@@ -12,7 +12,7 @@ with AND/OR/NOT composition and typed criterion fields.
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, fields
 from functools import cache
-from typing import TYPE_CHECKING, Any, ClassVar, Final, NamedTuple
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, NamedTuple
 
 if TYPE_CHECKING:
     from games.models import (
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 import builtins
 
-from django.db.models import Model, Q, QuerySet
+from django.db.models import Model, Q, QuerySet, TextChoices
 from django.urls import reverse
 from django.utils.http import urlencode
 
@@ -76,7 +76,13 @@ from games.endpoints import (
     PLAYTHROUGH_COMPLETION,
     PLAYTHROUGH_START,
 )
-from games.models import PlayerSessionTimingMode, SessionInstantColumn, session_day_of
+from games.models import (
+    EntryAccess,
+    EntryFormat,
+    PlayerSessionTimingMode,
+    SessionInstantColumn,
+    session_day_of,
+)
 from games.reads.playthrough_activity import RunActivity
 from timetracker.settings_registry import DEFAULT_PAGE_SIZE
 
@@ -114,6 +120,63 @@ def session_day_handler(column: SessionInstantColumn) -> FieldHandler:
     return handler
 
 
+#: A held copy's column a game facet reads.
+type HeldEntryColumn = Literal["access", "format"]
+
+
+def held_entry_word_handler(column: HeldEntryColumn) -> FieldHandler:
+    """A game by its held copies' words; ended copies say nothing."""
+
+    def handler(criterion: _Criterion, context: FilterQueryContext | None) -> Q:
+        if not isinstance(criterion, ChoiceCriterion):
+            raise FilterError(f"{column} picks words; state a list")
+        if context is None:
+            raise FilterQueryContextRequired(f"{column} reads the library's copies")
+        from games.models import LibraryEntry
+
+        held = context.queryset_for(LibraryEntry).filter(
+            access_end_recorded_at__isnull=True
+        )
+
+        def holding(copies: QuerySet[LibraryEntry]) -> Q:
+            return Q(pk__in=copies.values("player_game__game"))
+
+        def holding_any(words: list[str]) -> Q:
+            return holding(held.filter(**{f"{column}__in": words}))
+
+        modifier = criterion.modifier
+        if modifier == Modifier.IS_NULL:
+            return ~holding(held)
+        if modifier == Modifier.NOT_NULL:
+            return holding(held)
+        words = criterion.value
+        if not words:
+            q = Q()
+        elif modifier in (Modifier.INCLUDES, Modifier.EQUALS):
+            q = holding_any(words)
+        elif modifier in (Modifier.EXCLUDES, Modifier.NOT_EQUALS):
+            q = ~holding_any(words)
+        elif modifier == Modifier.INCLUDES_ONLY:
+            q = holding(held) & ~holding(held.exclude(**{f"{column}__in": words}))
+        elif modifier == Modifier.INCLUDES_ALL:
+            q = Q()
+            for word in words:
+                q &= holding(held.filter(**{column: word}))
+        else:
+            raise FilterError(f"Unsupported modifier {modifier} for {column}")
+        if criterion.excludes:
+            q &= ~holding_any(criterion.excludes)
+        return q
+
+    return handler
+
+
+def _word_choices(words: type[TextChoices]) -> tuple[ChoiceMeta, ...]:
+    return tuple(
+        ChoiceMeta(value=str(value), label=str(label)) for value, label in words.choices
+    )
+
+
 # ── GameFilter ─────────────────────────────────────────────────────────────
 
 
@@ -145,6 +208,9 @@ class GameFilter(OperatorFilter):
     playtime_hours: IntCriterion | None = None  # converted to timedelta on to_q()
     created_at: DateCriterion | None = None  # compared by calendar day
     updated_at: DateCriterion | None = None  # compared by calendar day
+    #: The held copies' words.
+    access: ChoiceCriterion | None = None
+    format: ChoiceCriterion | None = None
 
     # Aggregates over the game's relations (count / sum / avg). The reducer +
     # relation accessor + source + unit live in ``GameFilter.aggregates`` (the
@@ -154,6 +220,7 @@ class GameFilter(OperatorFilter):
     session_average: AggregateCriterion | None = None  # average in hours
     purchase_count: AggregateCriterion | None = None  # distinct purchases per game
     playthrough_count: AggregateCriterion | None = None  # finished runs per game
+    entry_count: AggregateCriterion | None = None  # live copies, ended included
 
     # The game's sessions' `effective_duration`, summed, in hours; a scope
     # on `timing_mode` narrows it to one mode's share.
@@ -171,6 +238,7 @@ class GameFilter(OperatorFilter):
     playthrough_filter: PlaythroughFilter | None = None
     historical_playtime_filter: HistoricalPlaytimeFilter | None = None
     platform_filter: PlatformFilter | None = None
+    entry_filter: LibraryEntryFilter | None = None
 
     # Declarative attr→ORM-lookup table, kept in the old to_q emission order for a
     # reviewable diff (AND-composition makes the order semantically irrelevant).
@@ -205,6 +273,19 @@ class GameFilter(OperatorFilter):
         ),
         "platform_group": FilterField(
             "platform__group", search_url="/api/platforms/groups"
+        ),
+        "access": FilterField(
+            handler=held_entry_word_handler("access"),
+            label="Access",
+            choices=_word_choices(EntryAccess),
+            #: No held copy is a state the picker asks for.
+            nullable=True,
+        ),
+        "format": FilterField(
+            handler=held_entry_word_handler("format"),
+            label="Format",
+            choices=_word_choices(EntryFormat),
+            nullable=True,
         ),
     }
 
@@ -306,6 +387,16 @@ class GameFilter(OperatorFilter):
                 related_model=Platform,
                 related_lookup="id",
                 parent_field="platform__id",
+            )
+
+        if self.entry_filter is not None:
+            from games.models import LibraryEntry
+
+            q &= relation_to_q(
+                self.entry_filter,
+                context=context,
+                related_model=LibraryEntry,
+                related_lookup="player_game__game__id",
             )
 
         return q
@@ -1123,6 +1214,7 @@ GameFilter.aggregates = {
         unit="duration_hours",
     ),
     "purchase_count": AggregateSpec("count", "purchases", PurchaseFilter),
+    "entry_count": AggregateSpec("count", "player_games__entries", LibraryEntryFilter),
     "playthrough_count": AggregateSpec(
         "count",
         "player_games__playthroughs",

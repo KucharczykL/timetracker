@@ -15,6 +15,7 @@ from django.views.decorators.http import require_POST
 
 from common.components import (
     ICON_BUTTON_SIZE_CLASS,
+    AccessBadge,
     AddForm,
     ButtonGroup,
     Cell,
@@ -110,6 +111,7 @@ from games.models import (
 )
 from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
+from games.reads.entries import AccessSummary, access_summaries
 from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.game_departures import game_departures
 from games.reads.historical_playtime_page import (
@@ -179,6 +181,13 @@ EDITIONS_UNDER_CONSTRUCTION = (
 _RefreshingSection = custom_element_builder("refreshing-section")
 
 
+def _access_cell(
+    summary: AccessSummary | None, presentation: DateTimePresentation
+) -> Cell:
+    """No badge without a live copy."""
+    return "" if summary is None else AccessBadge(summary, presentation)
+
+
 def _wikidata_cell(provider_key: str) -> Cell:
     """The mirror column, linked where it links."""
     if not provider_key:
@@ -244,6 +253,7 @@ def game_list_columns(playtime_label: str) -> list[Column]:
         Column("Year", "year", priority=2, key="year"),
         Column(playtime_label, "filtered_playtime", priority=2, key="playtime"),
         Column("Status", "status", priority=3, key="status"),
+        Column("Access", key="access", hidden_by_default=True),
         Column("Wikidata", "wikidata", key="wikidata", hidden_by_default=True),
         Column("Created", "created", key="created", hidden_by_default=True),
         Column(
@@ -280,6 +290,11 @@ def list_games(request: HttpRequest) -> HttpResponse:
     hidden, picker = column_choice(request, "games", columns)
     csrf_token = get_token(request)
     page_games = list(games)
+    summaries = (
+        {}
+        if "access" in hidden
+        else access_summaries(library, [game.pk for game in page_games])
+    )
     kept_columns, kept_cells = drop_columns(
         columns,
         [
@@ -297,6 +312,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                     csrf_token,
                     current=game.tracked_status,
                 ),
+                _access_cell(summaries.get(game.pk), presentation),
                 _wikidata_cell(game.wikidata),
                 presentation.format(game.created_at, "date"),
                 "Excluded" if game.tracked_excluded_from_unfinished else "",

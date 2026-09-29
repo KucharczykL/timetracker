@@ -91,6 +91,8 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "games": [
         QuickFacet("status"),
         QuickFacet("platform"),
+        QuickFacet("access"),
+        QuickFacet("format"),
         QuickFacet(
             "year_released", "Year", placeholder="e.g. 2020", placeholder2="e.g. 2024"
         ),

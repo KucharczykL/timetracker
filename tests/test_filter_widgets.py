@@ -156,6 +156,7 @@ class ReachableModelsTest(TestCase):
                 "historicalplaytime",
                 "platform",
                 "device",
+                "libraryentry",
             },
         )
 
@@ -180,6 +181,7 @@ class ReachableModelsTest(TestCase):
                 "historicalplaytime",
                 "platform",
                 "device",
+                "libraryentry",
             },
         )
         session = registry["playersession"]
@@ -210,6 +212,7 @@ class ReachableModelsTest(TestCase):
             "historicalplaytime",
             "platform",
             "device",
+            "libraryentry",
         }
         for root in full:
             self.assertEqual(set(reachable_models(root)), full, f"root={root}")

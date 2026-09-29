@@ -175,3 +175,23 @@ def test_an_ended_copy_is_had_again_in_one_click(
     expect(page.get_by_text("Marked as yours again.")).to_be_visible()
     entry.refresh_from_db()
     assert entry.access_end_recorded_at is None
+
+
+def test_the_games_tabs_access_facet_reads_copies(
+    authenticated_page: Page, live_server, copies
+):
+    page = authenticated_page
+    page.goto(f"{live_server.url}{reverse('games:list_games')}")
+
+    page.locator("#quick-access-dropdownLink").click()
+    page.locator(
+        '#quick-access-dropdown search-select[name="access"] '
+        '[data-search-select-option][data-label="Borrowed"] '
+        '[data-search-select-action="include"]'
+    ).click()
+    page.locator('quick-filter-bar button[type="submit"]').click()
+
+    page.wait_for_url("**filter=**")
+    rows = page.locator("tbody tr")
+    expect(rows).to_have_count(1)
+    expect(rows.first).to_contain_text("Hades")
