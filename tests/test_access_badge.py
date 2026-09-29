@@ -1,4 +1,4 @@
-"""The Access badge: fill, glyph, number, and the lines it shows."""
+"""The Access badge: fill, glyph, number, and the sentence it says."""
 
 import re
 from datetime import UTC, datetime
@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from common.components import AccessBadge
-from common.components.domain import AccessLine, access_lines
+from common.components.domain import access_sentence
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
@@ -41,11 +41,8 @@ def _ended(
     )
 
 
-def _lines(held=(), ended=()) -> list[str]:
-    return [
-        line.words
-        for line in access_lines(AccessSummary(tuple(held), tuple(ended)), PRESENTATION)
-    ]
+def _sentence(held=(), ended=()) -> str:
+    return access_sentence(AccessSummary(tuple(held), tuple(ended)), PRESENTATION)
 
 
 def _badge(held=(), ended=()) -> str:
@@ -68,110 +65,78 @@ def _glyphs(html: str) -> list[str]:
     ]
 
 
-# ── The lines ───────────────────────────────────────────────────────────────
+# ── The sentence ────────────────────────────────────────────────────────────
 
 
 @pytest.mark.parametrize(
-    ("held", "ended", "lines"),
+    ("held", "ended", "sentence"),
     [
-        ([_held()], [], ["Owned"]),
-        ([_held(format="physical")], [], ["Physical"]),
-        ([_held(format="unknown")], [], ["Owned, format unknown"]),
-        ([_held(format="physical"), _held()], [], ["Physical", "Owned"]),
+        ([_held(format="physical")], [], "You have a physical version"),
+        ([_held()], [], "You have a digital version"),
+        ([_held("pirated", "unknown")], [], "You have an unknown version"),
         (
-            [_held(), _held("rented", "physical"), _held()],
+            [_held(format="physical"), _held("borrowed")],
             [],
-            ["2 × owned", "Rented physical"],
+            "You have both the digital and physical version",
         ),
+        ([_held(), _held()], [], "You have 2 versions"),
         (
-            [
-                _held(format="physical"),
-                _held(format="physical"),
-                _held(),
-                _held(),
-                _held("borrowed", "unknown"),
-            ],
+            [_held(format="physical"), _held(), _held(format="unknown")],
             [],
-            ["2 × physical", "2 × owned", "Borrowed, format unknown"],
+            "You have 3 versions",
         ),
-        ([_held(), _held("subscription")], [], ["Owned", "Subscription"]),
-        ([_held("subscription")] * 4, [], ["4 × subscription"]),
-        ([_held("borrowed")], [], ["Borrowed"]),
-        ([_held("borrowed", "physical")], [], ["Borrowed physical"]),
-        ([_held("pirated", "unknown")], [], ["Pirated, format unknown"]),
-        ([_held("trial"), _held("demo")], [], ["Trial", "Demo"]),
         (
             [],
             [_ended(format="physical", ended="2024-03")],
-            ["Physical, sold March 2024"],
+            "You had a physical version, sold March 2024",
         ),
-        ([], [_ended(format="physical", way="lost", ended=None)], ["Physical, lost"]),
+        (
+            [],
+            [_ended(format="physical", way="lost", ended=None)],
+            "You had a physical version, lost",
+        ),
         (
             [],
             [_ended("borrowed", way="returned", ended="2024-03")],
-            ["Borrowed until March 2024"],
+            "You had a digital version until March 2024",
         ),
         (
             [],
-            [_ended("subscription", way="expired", ended="2025-06")],
-            ["Subscription until June 2025"],
+            [_ended("borrowed", way="returned", ended=None)],
+            "You had a digital version",
         ),
-        ([], [_ended("borrowed", way="returned", ended=None)], ["Borrowed until ?"]),
         (
             [],
             [_ended("trial", way="revoked", ended="2025-05")],
-            ["Trial until May 2025"],
+            "You had a digital version until May 2025",
         ),
-        ([], [_ended(way="refunded", ended="2025-05")], ["Refunded May 2025"]),
+        ([], [_ended(), _ended("borrowed", way="returned")], "You had 2 versions"),
+        ([_held()], [_ended()], "You have 1 version, and had 1"),
         (
-            [_held(format="physical")],
-            [_ended(ended="2023")],
-            ["Physical", "Sold 2023"],
-        ),
-        (
-            [],
-            [
-                _ended(format="physical", ended="2024-06"),
-                _ended("borrowed", way="returned", ended="2020"),
-            ],
-            ["Physical, sold June 2024", "Borrowed until 2020"],
+            [_held(), _held(format="physical")],
+            [_ended(), _ended(), _ended()],
+            "You have 2 versions, and had 3",
         ),
     ],
     ids=[
-        "owned-digital",
-        "owned-physical",
-        "owned-unknown",
+        "one-physical",
+        "one-digital",
+        "one-unknown",
         "physical-and-digital",
-        "two-owned-and-rented",
-        "five-copies",
-        "owned-and-subscription",
-        "four-subscriptions",
-        "borrowed",
-        "borrowed-physical",
-        "pirated-unknown",
-        "trial-and-demo",
-        "sold",
-        "lost-on-unknown-day",
-        "returned",
-        "subscription-expired",
-        "returned-on-unknown-day",
-        "trial-revoked",
-        "refunded",
-        "held-beside-sold",
+        "two-alike",
+        "three-mixed",
+        "one-sold",
+        "one-lost-on-unknown-day",
+        "one-returned",
+        "one-returned-on-unknown-day",
+        "one-trial-revoked",
         "two-ended",
+        "one-and-one",
+        "many-and-many",
     ],
 )
-def test_each_situation_reads_as_approved(held, ended, lines):
-    assert _lines(held, ended) == lines
-
-
-def test_ended_lines_follow_held_ones_and_say_so():
-    summary = AccessSummary((_held(),), (_ended(),))
-
-    assert access_lines(summary, PRESENTATION) == [
-        AccessLine("Owned", ended=False),
-        AccessLine("Sold 2023", ended=True),
-    ]
+def test_each_situation_reads_as_one_sentence(held, ended, sentence):
+    assert _sentence(held, ended) == sentence
 
 
 # ── The badge ───────────────────────────────────────────────────────────────
@@ -210,20 +175,12 @@ def test_fill_and_glyphs(held, ended, filled, glyphs):
     assert _glyphs(html) == glyphs
 
 
-def test_the_panel_mutes_ended_lines_and_grooves_the_first():
-    html = _badge([_held()], [_ended(), _ended(way="lost", ended=None)])
+def test_the_panel_says_the_sentence_alone():
+    html = _badge([_held()], [_ended()])
     panel = html.split('role="tooltip"', 1)[1]
 
-    assert "<li>Owned</li>" in panel
-    first, second = re.findall(r'<li class="([^"]*)">', panel)
-    assert first.startswith("text-body ") and "border-t" in first
-    assert second == "text-body"
-
-
-def test_ended_rows_alone_take_no_groove():
-    html = _badge([], [_ended(), _ended("borrowed", way="returned")])
-
-    assert "border-t" not in html.split('role="tooltip"', 1)[1]
+    assert "You have 1 version, and had 1" in panel
+    assert "<li" not in panel
 
 
 def test_the_number_counts_held_copies_above_one():
@@ -240,7 +197,7 @@ def test_the_badge_is_the_popovers_button_named_by_its_lines():
     assert button is not None
     assert "data-pop-over-trigger" in button.group(0)
     assert "aria-describedby" not in button.group(0)
-    assert '<span class="sr-only">2 × owned; Physical, sold 2023</span>' in html
+    assert '<span class="sr-only">You have 2 versions, and had 1</span>' in html
     assert "title=" not in html
 
 

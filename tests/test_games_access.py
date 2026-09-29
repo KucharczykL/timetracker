@@ -181,9 +181,10 @@ def test_the_column_shows_each_badge_once_chosen(logged_in, owned_user, games):
 
     html = logged_in.get(reverse("games:list_games")).content.decode()
 
-    assert '<span class="sr-only">Owned; Physical, sold' in html
-    assert '<span class="sr-only">Borrowed physical</span>' in html
-    assert '<span class="sr-only">Owned; Borrowed</span>' in html
+    assert '<span class="sr-only">You have 1 version, and had 1</span>' in html
+    assert '<span class="sr-only">You have a physical version</span>' in html
+    assert '<span class="sr-only">You have 2 versions</span>' in html
+    assert '<span class="sr-only">You had a digital version, returned</span>' in html
 
 
 def test_the_facets_render_on_the_games_list(logged_in):

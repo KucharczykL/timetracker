@@ -1,7 +1,6 @@
 """Domain components for games / purchases / sessions."""
 
 import logging
-from collections import Counter
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
@@ -105,7 +104,7 @@ _ACCESS_BADGE_FILL = {
 }
 
 
-#: Ends an access comes to by itself, so a line names the day alone.
+#: Ends an access comes to by itself, so a sentence names the day alone.
 _NATURAL_ENDS: dict[str, frozenset[EndWay]] = {
     EntryAccess.BORROWED: frozenset({EndWay.RETURNED, EndWay.EXPIRED}),
     EntryAccess.RENTED: frozenset({EndWay.RETURNED, EndWay.EXPIRED}),
@@ -113,25 +112,18 @@ _NATURAL_ENDS: dict[str, frozenset[EndWay]] = {
     EntryAccess.TRIAL: frozenset({EndWay.EXPIRED, EndWay.REVOKED}),
     EntryAccess.DEMO: frozenset({EndWay.EXPIRED, EndWay.REVOKED}),
 }
+_A_VERSION: dict[str, str] = {
+    EntryFormat.PHYSICAL: "a physical version",
+    EntryFormat.DIGITAL: "a digital version",
+    EntryFormat.UNKNOWN: "an unknown version",
+}
 
 
-class AccessLine(NamedTuple):
-    words: str
-    ended: bool
+def _versions(count: int) -> str:
+    return "1 version" if count == 1 else f"{count} versions"
 
 
-def _copy_words(entry: LibraryEntry) -> str:
-    """Owned and digital go unsaid; empty for an owned digital copy."""
-    owned = entry.access == EntryAccess.OWNED
-    words = "" if owned else EntryAccess(entry.access).label
-    if entry.format == EntryFormat.PHYSICAL:
-        return f"{words} physical" if words else "Physical"
-    if entry.format == EntryFormat.UNKNOWN:
-        return f"{words or 'Owned'}, format unknown"
-    return words
-
-
-def _ended_words(entry: LibraryEntry, presentation: DateTimePresentation) -> str:
+def _one_ended(entry: LibraryEntry, presentation: DateTimePresentation) -> str:
     ended = stated(entry, ENTRY_ACCESS_END)
     if ended is None:
         raise ValueError("An ended copy states its end.")
@@ -139,45 +131,30 @@ def _ended_words(entry: LibraryEntry, presentation: DateTimePresentation) -> str
     day = (
         None if ended.when is None else present_temporal_value(ended.when, presentation)
     )
-    words = _copy_words(entry)
+    words = f"You had {_A_VERSION[entry.format]}"
     if way in _NATURAL_ENDS.get(entry.access, frozenset()):
-        return f"{words or 'Owned'} until {day or '?'}"
-    how = END_WAY_LABELS[way]
-    words = f"{words}, {how.lower()}" if words else how
-    return f"{words} {day}" if day else words
+        return f"{words} until {day}" if day else words
+    how = END_WAY_LABELS[way].lower()
+    return f"{words}, {how} {day}" if day else f"{words}, {how}"
 
 
-def _grouped(words: list[str], *, ended: bool) -> list[AccessLine]:
-    counts = Counter(words)
-    return [
-        AccessLine(
-            line if count == 1 else f"{count} × {line[0].lower()}{line[1:]}", ended
-        )
-        for line, count in counts.items()
-    ]
-
-
-#: An engraved groove: a dark rule over a light one, panel-wide.
-_HELD_ENDED_GROOVE = (
-    "mt-1 pt-1 -mx-3 px-3 border-t border-black/15 dark:border-black/45 "
-    "shadow-[inset_0_1px_0_rgb(255_255_255_/_0.8)] "
-    "dark:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.12)]"
-)
-
-
-def _line_class(lines: list[AccessLine], index: int) -> str:
-    """Ended rows are muted; the first under held rows is grooved."""
-    first_ended = index > 0 and not lines[index - 1].ended
-    return f"text-body {_HELD_ENDED_GROOVE}" if first_ended else "text-body"
-
-
-def access_lines(
-    summary: AccessSummary, presentation: DateTimePresentation
-) -> list[AccessLine]:
-    """Held copies, then ended ones, latest end first."""
-    held = [_copy_words(entry) or "Owned" for entry in summary.held]
-    ended = [_ended_words(entry, presentation) for entry in summary.ended]
-    return [*_grouped(held, ended=False), *_grouped(ended, ended=True)]
+def access_sentence(summary: AccessSummary, presentation: DateTimePresentation) -> str:
+    """One sentence; the Library tab holds each copy's details."""
+    held, ended = summary.held, summary.ended
+    if not held:
+        if len(ended) == 1:
+            return _one_ended(ended[0], presentation)
+        return f"You had {_versions(len(ended))}"
+    if ended:
+        return f"You have {_versions(len(held))}, and had {len(ended)}"
+    if len(held) == 1:
+        return f"You have {_A_VERSION[held[0].format]}"
+    if len(held) == 2 and summary.formats == {
+        EntryFormat.PHYSICAL,
+        EntryFormat.DIGITAL,
+    }:
+        return "You have both the digital and physical version"
+    return f"You have {_versions(len(held))}"
 
 
 def AccessBadge(
@@ -187,17 +164,10 @@ def AccessBadge(
     shown = summary.held or ((summary.former,) if summary.former else ())
     formats = {entry.format for entry in shown}
     glyphs = [glyph for word, glyph in _FORMAT_GLYPHS if word in formats]
-    lines = access_lines(summary, presentation)
+    sentence = access_sentence(summary, presentation)
     held = len(summary.held)
     return Popover(
-        popover_content=Ul(class_="space-y-0.5")[
-            *(
-                Li([("class", _line_class(lines, index))] if line.ended else [])[
-                    line.words
-                ]
-                for index, line in enumerate(lines)
-            )
-        ],
+        popover_content=sentence,
         wrapped_classes=(
             f"{_ACCESS_BADGE_CLASS} {_ACCESS_BADGE_FILL[summary.owned_now]}"
         ),
@@ -209,7 +179,7 @@ def AccessBadge(
             ),
             *([Span(aria_hidden="true")[str(held)]] if held > 1 else []),
             #: The button's name; the panel repeats it for the eye alone.
-            Span(class_="sr-only")["; ".join(line.words for line in lines)],
+            Span(class_="sr-only")[sentence],
         ],
         id=id,
         symbol_trigger=True,
