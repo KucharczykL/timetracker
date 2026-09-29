@@ -39,6 +39,8 @@ from common.criteria import (
     ChoiceCriterion,
     ChoiceMeta,
     DateCriterion,
+    FieldHandler,
+    FilterError,
     FilterField,
     FilterQueryContext,
     FilterQueryContextRequired,
@@ -50,6 +52,7 @@ from common.criteria import (
     OperatorFilter,
     StringCriterion,
     UUIDMultiCriterion,
+    _Criterion,
     bool_isnull_handler,
     bool_running_handler,
     comparable_columns,
@@ -94,6 +97,19 @@ class FindFilter:
     def per_page_override(self) -> int | None:
         """Explicit URL override, if any."""
         return self.per_page if self.per_page_explicit else None
+
+
+def session_day_handler(column: str) -> FieldHandler:
+    """A day facet over a session instant, in the row's zone."""
+
+    def handler(criterion: _Criterion) -> Q:
+        from games.models import session_day_of
+
+        if not isinstance(criterion, DateCriterion):
+            raise FilterError(f"{column} compares a day; state a date")
+        return criterion.to_q_on(session_day_of(column))
+
+    return handler
 
 
 # ── GameFilter ─────────────────────────────────────────────────────────────
@@ -351,8 +367,16 @@ class PlayerSessionFilter(OperatorFilter):
         ),
         "day": FilterField("effective_day", label="Day"),
         # Compare the date portion so a date matches the datetime column.
-        "started": FilterField("started_at__date", label="Started"),
-        "ended": FilterField("ended_at__date", label="Ended"),
+        "started": FilterField(
+            handler=session_day_handler("started_at"),
+            metadata_lookup="started_at",
+            label="Started",
+        ),
+        "ended": FilterField(
+            handler=session_day_handler("ended_at"),
+            metadata_lookup="ended_at",
+            label="Ended",
+        ),
         "duration_hours": FilterField(
             handler=duration_hours_handler("effective_duration"),
             label="Duration (hours)",

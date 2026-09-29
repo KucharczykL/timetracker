@@ -1792,6 +1792,11 @@ class PlayerSessionQuerySet(RemovableMixin, models.QuerySet["PlayerSession"]):
     ancestor_marks = ("playthrough", "playthrough__player_game")
 
 
+def session_day_of(column: str) -> Cast:
+    """The instant's day in the row's own zone."""
+    return Cast(Func(F("day_zone"), F(column), function="timezone"), models.DateField())
+
+
 class PlayerSession(ProjectionModel):
     """One session a library recorded, projected from its events."""
 
@@ -1838,13 +1843,7 @@ class PlayerSession(ProjectionModel):
     #: The zone this library counts days in, not where the player sat.
     day_zone = models.CharField(max_length=64, null=True)
     effective_day = models.GeneratedField(
-        expression=Coalesce(
-            F("stated_day"),
-            Cast(
-                Func(F("day_zone"), F("started_at"), function="timezone"),
-                models.DateField(),
-            ),
-        ),
+        expression=Coalesce(F("stated_day"), session_day_of("started_at")),
         output_field=models.DateField(),
         db_persist=True,
         editable=False,
