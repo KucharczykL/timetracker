@@ -282,7 +282,7 @@ do.
 
 | Command | Event | Rule |
 |---|---|---|
-| `RecordEntry` | `libraryentry.created` (player game, release, access, format, note, `effective_time` the acquired day) | a Release the library cannot see is 404 from scope; a removed Release is refused; the Release must belong to the tracked game; an untracked game is tracked first, as the session path does |
+| `RecordEntry` | `libraryentry.created` (player game, release, access, format, note, `effective_time` the acquired day) | names the Release alone and derives the game from it; a Release the library cannot see is 404 from scope; a removed Release is refused; an untracked game is tracked inside the same dispatch by prepending `tracking_events(game)`, so the tracked row and the entry share one correlation with no window between them |
 | `DescribeEntry` | `access_changed`, `format_changed`, `note_changed`, `release_changed`, one per differing fact | the new Release must be a live Release of the same game |
 | `CorrectEntryAcquisition` | `acquisition_corrected` | the opening endpoint's correction |
 | `EndEntryAccess`, `CorrectEntryAccessEnd`, `VoidEntryAccessEnd` | `access_ended`, `access_end_corrected`, `access_end_voided` | the primitive's three, with a `before_event` that refuses a removed entry |
@@ -299,7 +299,7 @@ beside the two run referrers with the same `alive()` rule.
 
 | Command | Event | Rule |
 |---|---|---|
-| `RecordPurchase` | `purchase.created` (entry, kind, name, amount, currency, note, `effective_time` the purchased day) | names an existing entry, or carries a new entry's fields and emits `libraryentry.created` first in the same dispatch, as `TrackGame` emits two; currency required exactly where an amount is stated |
+| `RecordPurchase` | `purchase.created` (entry, kind, name, amount, currency, note, `effective_time` the purchased day) | names an existing entry, or carries a new entry's fields and emits `libraryentry.created` first in the same dispatch, tracking an untracked game ahead of it the way `RecordEntry` does; currency required exactly where an amount is stated |
 | `DescribePurchase` | `kind_changed`, `name_changed`, `amount_changed` (amount and currency, one fact), `note_changed`, `entry_changed` | the new entry must be a live entry of the same game |
 | `CorrectPurchaseDay` | `purchase_day_corrected` | the opening endpoint's correction |
 | `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund` | `refunded`, `refund_corrected`, `refund_voided` | the primitive; a refund also appends `libraryentry.access_ended` with way `refunded` on the entry where it is Owned, live and unended, in the same dispatch, as the reclassification writes a second aggregate; the void takes that end back only where the entry's marker is still set and its latest end-family event is the refund's own |
@@ -656,6 +656,8 @@ refresh and its printed totals, then the fixture PR.
 
 - Access and Purchases are one wave (charter step 12).
 - A Purchase creates its entry; an entry can exist with no Purchase.
+- A command names the Release alone and derives the game; an untracked
+  game is tracked inside the same dispatch, never by track-and-retry.
 - An entry names its PlayerGame and its Release; a purchase names its
   entry. No column outside the projections points at either.
 - `amount` null is unknown, 0 is free; the form has a Free box.
