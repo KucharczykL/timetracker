@@ -70,6 +70,16 @@ ICON_NODES: dict[str, Element] = {
         Path([('d', 'M9 3v18')]),
         Path([('d', 'M15 3v18')]),
     ],
+    'dashed-ring': Svg(
+        [('viewBox', '0 0 24 24'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Title(
+            [],
+        )[
+            'Format unknown',
+        ],
+        Circle([('cx', '12'), ('cy', '12'), ('r', '10.25'), ('fill', 'none'), ('stroke', 'currentColor'), ('stroke-width', '3.5'), ('stroke-dasharray', '4.2 3.85')]),
+    ],
     'delete': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 48 48'), ('class', 'w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[

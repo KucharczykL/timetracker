@@ -54,6 +54,7 @@ def test_an_ended_copy_is_not_held(owned_library, graph):
 
     assert summary.held == (kept,)
     assert summary.formats == {"physical"}
+    assert len(summary.ended) == 1
     assert summary.former is None
 
 

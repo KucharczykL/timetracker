@@ -1,4 +1,4 @@
-"""The Access badge: fill, glyph, number, and the words it speaks."""
+"""The Access badge: fill, glyph, number, and the lines it shows."""
 
 import re
 from datetime import UTC, datetime
@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from common.components import AccessBadge
+from common.components.domain import AccessLine, access_lines
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
     DateTimePresentation,
@@ -40,20 +41,19 @@ def _ended(
     )
 
 
-def _badge(*held: LibraryEntry, former: LibraryEntry | None = None) -> str:
-    return str(AccessBadge(AccessSummary(held, former), PRESENTATION, id="access-1"))
+def _lines(held=(), ended=()) -> list[str]:
+    return [
+        line.words
+        for line in access_lines(AccessSummary(tuple(held), tuple(ended)), PRESENTATION)
+    ]
 
 
-def _panel(html: str) -> list[str]:
-    """The popover's lines."""
-    panel = html.split('role="tooltip"', 1)[1]
-    return re.findall(r"<li>([^<]*)</li>", panel)
-
-
-def _spoken(html: str) -> str:
-    spoken = re.search(r'<span class="sr-only">([^<]*)</span>', html)
-    assert spoken is not None
-    return spoken.group(1)
+def _badge(held=(), ended=()) -> str:
+    return str(
+        AccessBadge(
+            AccessSummary(tuple(held), tuple(ended)), PRESENTATION, id="access-1"
+        )
+    )
 
 
 def _glyphs(html: str) -> list[str]:
@@ -62,93 +62,184 @@ def _glyphs(html: str) -> list[str]:
         for glyph, marker in (
             ("cloud", 'viewBox="1.5 1.5 21 21"'),
             ("physical", 'viewBox="0 0 512 512"'),
-            ("unspecified", 'viewBox="0 0 50 50"'),
+            ("dashed-ring", "stroke-dasharray"),
         )
         if marker in html
     ]
 
 
+# ── The lines ───────────────────────────────────────────────────────────────
+
+
 @pytest.mark.parametrize(
-    ("held", "filled", "glyphs", "lines"),
+    ("held", "ended", "lines"),
     [
-        ((_held(),), True, ["cloud"], ["Owned · Digital"]),
-        ((_held(format="physical"),), True, ["physical"], ["Owned · Physical"]),
-        ((_held(format="unknown"),), True, ["unspecified"], ["Owned · Unknown"]),
+        ([_held()], [], ["Owned"]),
+        ([_held(format="physical")], [], ["Physical"]),
+        ([_held(format="unknown")], [], ["Owned, format unknown"]),
+        ([_held(format="physical"), _held()], [], ["Physical", "Owned"]),
         (
-            (_held(format="physical"), _held("borrowed")),
-            True,
-            ["cloud", "physical"],
-            ["Owned · Physical", "Borrowed · Digital"],
-        ),
-        ((_held("borrowed"),), False, ["cloud"], ["Borrowed · Digital"]),
-        (
-            (_held("subscription"), _held("trial", "unknown")),
-            False,
-            ["cloud"],
-            ["Subscription · Digital", "Trial · Unknown"],
+            [_held(), _held("rented", "physical"), _held()],
+            [],
+            ["2 × owned", "Rented physical"],
         ),
         (
-            (_held(), _held("rented", "physical"), _held()),
-            True,
-            ["cloud", "physical"],
-            ["2 × Owned · Digital", "Rented · Physical"],
+            [
+                _held(format="physical"),
+                _held(format="physical"),
+                _held(),
+                _held(),
+                _held("borrowed", "unknown"),
+            ],
+            [],
+            ["2 × physical", "2 × owned", "Borrowed, format unknown"],
+        ),
+        ([_held(), _held("subscription")], [], ["Owned", "Subscription"]),
+        ([_held("subscription")] * 4, [], ["4 × subscription"]),
+        ([_held("borrowed")], [], ["Borrowed"]),
+        ([_held("borrowed", "physical")], [], ["Borrowed physical"]),
+        ([_held("pirated", "unknown")], [], ["Pirated, format unknown"]),
+        ([_held("trial"), _held("demo")], [], ["Trial", "Demo"]),
+        (
+            [],
+            [_ended(format="physical", ended="2024-03")],
+            ["Physical, sold March 2024"],
+        ),
+        ([], [_ended(format="physical", way="lost", ended=None)], ["Physical, lost"]),
+        (
+            [],
+            [_ended("borrowed", way="returned", ended="2024-03")],
+            ["Borrowed until March 2024"],
+        ),
+        (
+            [],
+            [_ended("subscription", way="expired", ended="2025-06")],
+            ["Subscription until June 2025"],
+        ),
+        ([], [_ended("borrowed", way="returned", ended=None)], ["Borrowed until ?"]),
+        (
+            [],
+            [_ended("trial", way="revoked", ended="2025-05")],
+            ["Trial until May 2025"],
+        ),
+        ([], [_ended(way="refunded", ended="2025-05")], ["Refunded May 2025"]),
+        (
+            [_held(format="physical")],
+            [_ended(ended="2023")],
+            ["Physical", "Sold 2023"],
+        ),
+        (
+            [],
+            [
+                _ended(format="physical", ended="2024-06"),
+                _ended("borrowed", way="returned", ended="2020"),
+            ],
+            ["Physical, sold June 2024", "Borrowed until 2020"],
         ),
     ],
     ids=[
         "owned-digital",
         "owned-physical",
         "owned-unknown",
-        "owned-and-borrowed",
+        "physical-and-digital",
+        "two-owned-and-rented",
+        "five-copies",
+        "owned-and-subscription",
+        "four-subscriptions",
         "borrowed",
-        "unknown-beside-known",
-        "alike-copies-group",
+        "borrowed-physical",
+        "pirated-unknown",
+        "trial-and-demo",
+        "sold",
+        "lost-on-unknown-day",
+        "returned",
+        "subscription-expired",
+        "returned-on-unknown-day",
+        "trial-revoked",
+        "refunded",
+        "held-beside-sold",
+        "two-ended",
     ],
 )
-def test_each_held_variant(held, filled, glyphs, lines):
-    html = _badge(*held)
+def test_each_situation_reads_as_approved(held, ended, lines):
+    assert _lines(held, ended) == lines
+
+
+def test_ended_lines_follow_held_ones_and_say_so():
+    summary = AccessSummary((_held(),), (_ended(),))
+
+    assert access_lines(summary, PRESENTATION) == [
+        AccessLine("Owned", ended=False),
+        AccessLine("Sold 2023", ended=True),
+    ]
+
+
+# ── The badge ───────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("held", "ended", "filled", "glyphs"),
+    [
+        ([_held()], [], True, ["cloud"]),
+        (
+            [_held(format="physical"), _held("borrowed")],
+            [],
+            True,
+            ["cloud", "physical"],
+        ),
+        ([_held("borrowed")], [], False, ["cloud"]),
+        ([_held(format="unknown")], [], True, ["dashed-ring"]),
+        ([_held("trial", "unknown"), _held("subscription")], [], False, ["cloud"]),
+        ([], [_ended(format="physical")], False, ["physical"]),
+        ([_held(format="physical")], [_ended()], True, ["physical"]),
+    ],
+    ids=[
+        "owned",
+        "owned-and-borrowed",
+        "borrowed",
+        "unknown-alone",
+        "unknown-beside-known",
+        "former",
+        "ended-beside-held",
+    ],
+)
+def test_fill_and_glyphs(held, ended, filled, glyphs):
+    html = _badge(held, ended)
 
     assert ("solid-brand" in html) is filled
     assert _glyphs(html) == glyphs
-    assert _panel(html) == lines
-    assert _spoken(html) == ", ".join(lines)
-    assert "title=" not in html
+
+
+def test_the_panel_mutes_ended_lines():
+    html = _badge([_held()], [_ended()])
+    panel = html.split('role="tooltip"', 1)[1]
+
+    assert "<li>Owned</li>" in panel
+    assert '<li class="text-body">Sold 2023</li>' in panel
 
 
 def test_the_number_counts_held_copies_above_one():
-    assert '<span aria-hidden="true">3</span>' in _badge(_held(), _held(), _held())
-    single = _badge(_held())
-    assert '<span aria-hidden="true">1</span>' not in single
+    assert '<span aria-hidden="true">3</span>' in _badge([_held()] * 3)
+    single = _badge([_held()], [_ended()])
+    assert not re.search(r'<span aria-hidden="true">\d', single)
     assert "None" not in single
 
 
-def test_a_former_copy_is_outlined_with_its_way_and_day():
-    html = _badge(former=_ended(format="physical"))
+def test_the_badge_is_the_popovers_button_named_by_its_lines():
+    html = _badge([_held(), _held()], [_ended(format="physical")])
 
-    assert "solid-brand" not in html
-    assert _glyphs(html) == ["physical"]
-    assert _panel(html) == ["Not owned", "Formerly owned · physical, sold 2023"]
-    assert not re.search(r'<span aria-hidden="true">\d', html)
-
-
-def test_a_former_copy_on_an_unknown_day_names_its_way_alone():
-    html = _badge(former=_ended(way="returned", ended=None))
-
-    assert _panel(html) == ["Not owned", "Formerly owned · digital, returned"]
+    button = re.search(r"<button[^>]*>", html)
+    assert button is not None
+    assert "data-pop-over-trigger" in button.group(0)
+    assert "aria-describedby" not in button.group(0)
+    assert '<span class="sr-only">2 × owned; Physical, sold 2023</span>' in html
+    assert "title=" not in html
 
 
 def test_every_glyph_is_hidden_and_untitled():
-    html = _badge(_held(format="physical"), _held())
+    html = _badge([_held(format="physical"), _held()])
 
     svgs = re.findall(r"<svg[^>]*>", html)
     assert len(svgs) == 2
     assert all('aria-hidden="true"' in svg for svg in svgs)
     assert "<title>" not in html
-
-
-def test_the_badge_is_the_popovers_button_named_by_its_words():
-    html = _badge(_held(), _held())
-
-    button = re.search(r"<button[^>]*>", html).group(0)
-    assert "data-pop-over-trigger" in button
-    assert "aria-describedby" not in button
-    assert _spoken(html) == "2 × Owned · Digital"

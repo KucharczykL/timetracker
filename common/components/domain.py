@@ -26,7 +26,7 @@ from common.components.primitives import (
 )
 from common.date_time_presentation import DateTimePresentation
 from common.temporal_presentation import present_temporal_value
-from games.end_ways import END_WAY_LABELS
+from games.end_ways import END_WAY_LABELS, EndWay
 from games.endpoints import ENTRY_ACCESS_END
 from games.models import (
     EntryAccess,
@@ -92,6 +92,8 @@ _FORMAT_GLYPHS: tuple[tuple[EntryFormat, str], ...] = (
     (EntryFormat.DIGITAL, "cloud"),
     (EntryFormat.PHYSICAL, "physical"),
 )
+#: Drawn only where no held copy states a format.
+_FORMAT_UNKNOWN_GLYPH = "dashed-ring"
 _ACCESS_BADGE_CLASS = (
     "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-base border "
     "text-type-body leading-none whitespace-nowrap"
@@ -103,30 +105,65 @@ _ACCESS_BADGE_FILL = {
 }
 
 
+#: Ends an access comes to by itself, so a line names the day alone.
+_NATURAL_ENDS: dict[str, frozenset[EndWay]] = {
+    EntryAccess.BORROWED: frozenset({EndWay.RETURNED, EndWay.EXPIRED}),
+    EntryAccess.RENTED: frozenset({EndWay.RETURNED, EndWay.EXPIRED}),
+    EntryAccess.SUBSCRIPTION: frozenset({EndWay.EXPIRED}),
+    EntryAccess.TRIAL: frozenset({EndWay.EXPIRED, EndWay.REVOKED}),
+    EntryAccess.DEMO: frozenset({EndWay.EXPIRED, EndWay.REVOKED}),
+}
+
+
+class AccessLine(NamedTuple):
+    words: str
+    ended: bool
+
+
 def _copy_words(entry: LibraryEntry) -> str:
-    return f"{EntryAccess(entry.access).label} · {EntryFormat(entry.format).label}"
+    """Owned and digital go unsaid; empty for an owned digital copy."""
+    owned = entry.access == EntryAccess.OWNED
+    words = "" if owned else EntryAccess(entry.access).label
+    if entry.format == EntryFormat.PHYSICAL:
+        return f"{words} physical" if words else "Physical"
+    if entry.format == EntryFormat.UNKNOWN:
+        return f"{words or 'Owned'}, format unknown"
+    return words
 
 
-def _access_lines(
+def _ended_words(entry: LibraryEntry, presentation: DateTimePresentation) -> str:
+    ended = stated(entry, ENTRY_ACCESS_END)
+    if ended is None:
+        raise ValueError("An ended copy states its end.")
+    way = way_of(ended)
+    day = (
+        None if ended.when is None else present_temporal_value(ended.when, presentation)
+    )
+    words = _copy_words(entry)
+    if way in _NATURAL_ENDS.get(entry.access, frozenset()):
+        return f"{words or 'Owned'} until {day or '?'}"
+    how = END_WAY_LABELS[way]
+    words = f"{words}, {how.lower()}" if words else how
+    return f"{words} {day}" if day else words
+
+
+def _grouped(words: list[str], *, ended: bool) -> list[AccessLine]:
+    counts = Counter(words)
+    return [
+        AccessLine(
+            line if count == 1 else f"{count} × {line[0].lower()}{line[1:]}", ended
+        )
+        for line, count in counts.items()
+    ]
+
+
+def access_lines(
     summary: AccessSummary, presentation: DateTimePresentation
-) -> list[str]:
-    """One line per kind of held copy, or what the latest end says."""
-    if summary.held:
-        kinds = Counter(_copy_words(entry) for entry in summary.held)
-        return [
-            words if count == 1 else f"{count} × {words}"
-            for words, count in kinds.items()
-        ]
-    former = summary.former
-    if former is None:
-        raise ValueError("A summary holds a copy or names a former one.")
-    words = f"Formerly {_copy_words(former).lower()}"
-    ended = stated(former, ENTRY_ACCESS_END)
-    if ended is not None:
-        words = f"{words}, {END_WAY_LABELS[way_of(ended)].lower()}"
-        if ended.when is not None:
-            words = f"{words} {present_temporal_value(ended.when, presentation)}"
-    return ["Not owned", words]
+) -> list[AccessLine]:
+    """Held copies, then ended ones, latest end first."""
+    held = [_copy_words(entry) or "Owned" for entry in summary.held]
+    ended = [_ended_words(entry, presentation) for entry in summary.ended]
+    return [*_grouped(held, ended=False), *_grouped(ended, ended=True)]
 
 
 def AccessBadge(
@@ -136,10 +173,15 @@ def AccessBadge(
     shown = summary.held or ((summary.former,) if summary.former else ())
     formats = {entry.format for entry in shown}
     glyphs = [glyph for word, glyph in _FORMAT_GLYPHS if word in formats]
-    lines = _access_lines(summary, presentation)
+    lines = access_lines(summary, presentation)
     held = len(summary.held)
     return Popover(
-        popover_content=Ul(class_="space-y-0.5")[*(Li()[line] for line in lines)],
+        popover_content=Ul(class_="space-y-0.5")[
+            *(
+                Li([("class", "text-body")] if line.ended else [])[line.words]
+                for line in lines
+            )
+        ],
         wrapped_classes=(
             f"{_ACCESS_BADGE_CLASS} {_ACCESS_BADGE_FILL[summary.owned_now]}"
         ),
@@ -147,11 +189,11 @@ def AccessBadge(
             #: Whole pixels: a fractional glyph rounds apart from the border.
             *(
                 Icon(glyph, size=_ACCESS_GLYPH_SIZE, decorative=True)
-                for glyph in glyphs or ["unspecified"]
+                for glyph in glyphs or [_FORMAT_UNKNOWN_GLYPH]
             ),
             *([Span(aria_hidden="true")[str(held)]] if held > 1 else []),
             #: The button's name; the panel repeats it for the eye alone.
-            Span(class_="sr-only")[", ".join(lines)],
+            Span(class_="sr-only")["; ".join(line.words for line in lines)],
         ],
         id=id,
         symbol_trigger=True,

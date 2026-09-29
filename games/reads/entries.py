@@ -77,8 +77,8 @@ class AccessSummary(NamedTuple):
 
     #: Copies no end stands on, earliest acquired first.
     held: tuple[LibraryEntry, ...]
-    #: With nothing held, the copy whose end is latest.
-    former: LibraryEntry | None
+    #: Copies whose access ended, latest end first.
+    ended: tuple[LibraryEntry, ...]
 
     @property
     def owned_now(self) -> bool:
@@ -88,13 +88,20 @@ class AccessSummary(NamedTuple):
     def formats(self) -> frozenset[str]:
         return frozenset(entry.format for entry in self.held)
 
+    @property
+    def former(self) -> LibraryEntry | None:
+        """With nothing held, the copy whose end is latest."""
+        if self.held or not self.ended:
+            return None
+        return self.ended[0]
+
 
 def access_summaries(
     library: UserLibrary, game_ids: Iterable[GameId]
 ) -> dict[GameId, AccessSummary]:
     """One summary per game holding a live copy; one query."""
     held: dict[GameId, list[LibraryEntry]] = defaultdict(list)
-    former: dict[GameId, LibraryEntry] = {}
+    ended: dict[GameId, list[LibraryEntry]] = defaultdict(list)
     rows = (
         library_entries(library)
         .filter(player_game__game_id__in=list(game_ids))
@@ -111,10 +118,8 @@ def access_summaries(
         if entry.access_end_recorded_at is None:
             held[game_id].append(entry)
         else:
-            former.setdefault(game_id, entry)
+            ended[game_id].append(entry)
     return {
-        game_id: AccessSummary(
-            tuple(held[game_id]), None if held[game_id] else former[game_id]
-        )
-        for game_id in held.keys() | former.keys()
+        game_id: AccessSummary(tuple(held[game_id]), tuple(ended[game_id]))
+        for game_id in held.keys() | ended.keys()
     }
