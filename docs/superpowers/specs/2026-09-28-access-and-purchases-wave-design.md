@@ -98,8 +98,8 @@ conversion must state one.
 
 ## Aggregates and storage
 
-#1275 is on `main`. M1 is on `main` too (PR #1362, 2026-09-29), whose
-migration is `0020`; M2's first is `0021`. Its contract is
+#1275 is on `main`. M1 (PR #1362) and M2 (PR #1366) are on `main` too, migrations
+`0020` and `0021`; the next is `0022`. Its contract is
 [The LibraryEntry aggregate](2026-09-29-issue-719-libraryentry-aggregate-design.md).
 
 ### The opening endpoint
@@ -278,7 +278,16 @@ becomes a prerelease Edition of Diablo IV by hand, not by the pass.
 Every command runs under `answered()`, is fingerprinted for idempotency,
 resolves rows through `library_row`, carries a sentence on every refusal,
 and answers `Unchanged` ahead of every refusal, as the sibling aggregates
-do.
+do. Two endpoints on one row keep their order through one shared
+`certainly_reversed(*, earlier, later)` in `games/commands/endpoint.py`:
+an end certainly before the opening, a resume certainly before the
+standing end, and an opening correction certainly after a standing end
+are refused, each sentence naming the move; a refund before the
+purchased day is the same rule on Purchase. A write that restates several
+facts (`restate_entry`, and `restate_purchase` after it) refuses a
+reversed order against the day the row keeps before any dispatch, so a
+refused PATCH appends nothing; a void always dispatches, and the command
+decides under the lock.
 
 ### LibraryEntry
 
@@ -290,8 +299,8 @@ do.
 | `RecordEntry` | `libraryentry.created` (player game, release, access, format, note, `effective_time` the acquired day) | names the Release alone and derives the game from it; a Release the library cannot see is 404 from scope; a removed Release is refused; an untracked game is tracked inside the same dispatch by prepending `tracking_events(game)`, so the tracked row and the entry share one correlation with no window between them |
 | `DescribeEntry` | `access_changed`, `format_changed`, `note_changed`, `release_changed`, one per differing fact | the new Release must be a live Release of the same game |
 | `CorrectEntryAcquisition` | `acquisition_corrected` | the opening endpoint's correction |
-| `EndEntryAccess`, `CorrectEntryAccessEnd`, `VoidEntryAccessEnd` | `access_ended`, `access_end_corrected`, `access_end_voided` | the primitive's three, with a `before_event` that refuses a removed entry |
-| `ResumeEntryAccess` | `access_resumed` (note, `effective_time` the day) | refused where no end stands |
+| `EndEntryAccess`, `CorrectEntryAccessEnd`, `VoidEntryAccessEnd` | `access_ended`, `access_end_corrected`, `access_end_voided` | the primitive's three, with a `before_event` that refuses a removed entry; every way by hand, `refunded` included, since a person may state a refund no purchase records |
+| `ResumeEntryAccess` | `access_resumed` (note, `effective_time` the day) | refused with a sentence where no end stands, never `Unchanged`; the fourth act of `ResumableEndpoint` over `ResumableEndpointEvents`, its own type beside the three-act `Endpoint`, in the end's family, projected as a void is, through `resume_endpoint`; a resume of a non-resumable endpoint and a void of an opening one fail in mypy |
 | `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal refuses while a live Purchase names the entry, with a sentence naming the move; restore refuses under a removed PlayerGame or Release |
 
 The referrer registry is `games/reads/referrers.py`: `BlockingReferrer.on`
@@ -309,7 +318,7 @@ until P1.
 | `RecordPurchase` | `purchase.created` (entry, kind, name, amount, currency, note, `effective_time` the purchased day) | names an existing entry, or carries a new entry's fields and emits `libraryentry.created` first in the same dispatch, tracking an untracked game ahead of it the way `RecordEntry` does; currency required exactly where an amount is stated |
 | `DescribePurchase` | `kind_changed`, `name_changed`, `amount_changed` (amount and currency, one fact), `note_changed`, `entry_changed` | the new entry must be a live entry of the same game |
 | `CorrectPurchaseDay` | `purchase_day_corrected` | the opening endpoint's correction |
-| `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund` | `refunded`, `refund_corrected`, `refund_voided` | the primitive; a refund also appends `libraryentry.access_ended` with way `refunded` on the entry where it is Owned, live and unended, in the same dispatch, as the reclassification writes a second aggregate; the void takes that end back only where the entry's marker is still set and its latest end-family event is the refund's own |
+| `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund` | `refunded`, `refund_corrected`, `refund_voided` | the primitive; a refund also appends `libraryentry.access_ended` with way `refunded` on the entry where it is Owned, live and unended, in the same dispatch, as the reclassification writes a second aggregate, and a refund whose day certainly precedes the entry's acquired day is refused whole with a sentence naming the move (correct the acquired day first), never appended with the coupling skipped; the void takes that end back only where the entry's marker is still set and its latest end-family event is the refund's own |
 | `RemovePurchase`, `RestorePurchase` | `removed`, `restored` | the removal is the charter's void; the stream keeps the money; restore refuses under a removed entry |
 
 ### PlayerGame and catalog
@@ -333,7 +342,11 @@ four under `/api/purchases/`. The prefixes are plural, as `/api/games/`,
 `/api/devices/` and `/api/platforms/` are; the bodies follow the session
 routes: `extra="forbid"`, a named key is the act, an `Idempotency-Key`
 header on `POST`, 404 from the command for a row the library does not
-hold, 409 with the command's sentence for every other refusal.
+hold, 409 with the command's sentence for every other refusal. A stated
+endpoint travels as one key: an object states or corrects it, `null`
+voids it, an absent key states nothing; a resume is its own `POST
+/{id}/resume`. Every endpoint is answered as canonical temporal text
+beside its bounds, marker, way and note.
 
 ## The conversion
 
@@ -569,7 +582,7 @@ backlog reads M7's edition word.
 | Member | Issues | Delivers |
 |---|---|---|
 | M1 (merged, PR #1362, 2026-09-29) | #719, #720, #722 | the opening endpoint whole, its one correction (`CorrectEntryAcquisition`) included, since the replay gate refuses a registered event type no command emits; the LibraryEntry aggregate: schema without the end columns, creation, description, removal and restore as commands with no route, multiple entries, reference kind, `_is_library_scoped` path, the generalised referrer registry, replay gate, the four API routes with `limit`/`offset` |
-| M2 | #721 | the end columns and their `CHECK`s in a migration of its own, as `0019` added the device's; access end and resume on the primitive |
+| M2 (merged, PR #1366, 2026-09-29) | #721 | the end columns and their `CHECK`s in a migration of its own, as `0019` added the device's; access end and resume on the primitive |
 | M3 | #1352 | the Entries screens: list, filter, presets, navbar item, bulk Edit and Remove, the Games Access column and facets, Game detail's Library section, the entry forms |
 | M7 | #1353 | `Game.kind` and `Game.parent`, `Edition.kind`: columns, form, Game detail add-ons, Games facet |
 | M8 | #1334 | `excluded_from_dropped` and its bulk Edit field |
@@ -596,8 +609,16 @@ inside a member says so in its body and closes with it.
   person is never blocked, but a pass on a game the library does not own
   is recorded as owning it.
 - **One end per entry at a time.** The projection holds the latest end;
-  the stream holds them all. A list of a copy's lendings is a stream read
-  nothing renders yet.
+  the stream holds them all, and a resume leaves nothing on the row. So
+  the day-order rules see only what the row holds: after an end and a
+  resume, a new end dated between them passes, and so does an
+  acquisition correction dated after the resumed end. An end the copy
+  resumed from can no longer be corrected or voided, and a mistaken
+  resume is taken back by stating the end again. A list of a copy's
+  lendings is a stream read nothing renders yet. The cost of lifting it
+  is a `resumed` day with bounds, held until the next end clears it,
+  which would floor the next end and an acquisition correction and make
+  the resumed end correctable again.
 - **Demo play before #1354.** A session is demo play through the
   Release it names, and no session names one until #1354; until then a
   demo session is a session on the game's run, counted everywhere.
@@ -614,8 +635,10 @@ inside a member says so in its body and closes with it.
   session and record forms, with the rule that a session names a Release
   only where the library holds an entry on it.
 - **Bulk end of access over entries** is #1355, beside #1345.
-- **#1344** copies `access_resumed`; **#1347** copies the opening
-  endpoint. **#1346** decides where a sale price lives; this wave puts no
+- **#1344** swaps the device's `endpoint_events(...)` for
+  `resumable_endpoint_events(..., resumed="library.device.access_resumed")`
+  and `Endpoint.over` for `ResumableEndpoint.resuming`, no primitive work;
+  **#1347** copies the opening endpoint. **#1346** decides where a sale price lives; this wave puts no
   money on an end.
 - **#782** maps IGDB `game_type` to `Game.kind` one to one and admits the
   remaining words.
