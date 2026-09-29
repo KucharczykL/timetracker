@@ -6,7 +6,11 @@ from dataclasses import dataclass
 from functools import partial
 from typing import ClassVar, cast, get_args
 
-from games.commands.endpoint import ActStatement, correct_opening_endpoint
+from games.commands.endpoint import (
+    ActStatement,
+    correct_opening_endpoint,
+    normalized,
+)
 from games.commands.playergame import tracking_events
 from games.commands.scope import Refusal, library_entry_row, visible_row
 from games.endpoints import ENTRY_ACQUISITION
@@ -31,7 +35,6 @@ from games.events.libraryentry import (
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import LibraryEntry, PlayerGame, Release
 from games.reads.referrers import blocking_referrer, foreign_referrer
-from timetracker.temporal import stated_date
 
 UNKNOWN_ACCESS = "Choose one of the listed access words."
 UNKNOWN_FORMAT = "Choose one of the listed formats."
@@ -71,11 +74,6 @@ def check_format(format: str) -> EntryFormatValue:
     if format not in FORMAT_WORDS:
         raise CommandRejected(f"{format!r} is not a format.", sentence=UNKNOWN_FORMAT)
     return cast(EntryFormatValue, format)
-
-
-def normalized(statement: ActStatement) -> ActStatement:
-    """One spelling, so restatements fingerprint alike."""
-    return ActStatement(stated_date(statement.when), statement.note.strip())
 
 
 def _visible_release(context: CommandContext, release_id: uuid.UUID) -> Release:

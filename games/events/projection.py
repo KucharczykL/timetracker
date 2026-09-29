@@ -415,6 +415,10 @@ class Projector(ABC):
         """The record taken back."""
         self.amend(_endpoint_model(endpoint), event, **endpoint.unstated_columns())
 
+    def project_resumed(self, endpoint: EndpointColumns, event: RecordedEvent) -> None:
+        """Access again; the end's columns clear."""
+        self.amend(_endpoint_model(endpoint), event, **endpoint.unstated_columns())
+
     def opening_columns(
         self, endpoint: OpeningEndpointColumns, event: RecordedEvent, *, note: str
     ) -> dict[str, Any]:

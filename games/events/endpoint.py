@@ -25,26 +25,34 @@ class EndpointPayload(TypedDict):
 
 
 class EndpointEvents[PayloadT](NamedTuple):
-    """The three acts on one endpoint."""
+    """The acts on one endpoint; a resume is optional."""
 
     stated: EventSpec[PayloadT]
     corrected: EventSpec[PayloadT]
     voided: EventSpec[Any]
+    #: Access again after an end; the row reads as voided.
+    resumed: EventSpec[Any] | None = None
 
     @property
-    def family(self) -> tuple[EventType, EventType, EventType]:
+    def specs(self) -> tuple[EventSpec[Any], ...]:
+        """Every act this endpoint has."""
+        acts = (self.stated, self.corrected, self.voided, self.resumed)
+        return tuple(spec for spec in acts if spec is not None)
+
+    @property
+    def family(self) -> tuple[EventType, ...]:
         """The types whose latest owns the endpoint's value."""
-        return (
-            self.stated.event_type,
-            self.corrected.event_type,
-            self.voided.event_type,
-        )
+        return tuple(spec.event_type for spec in self.specs)
 
 
 class OpeningEndpointEvents[PayloadT](NamedTuple):
     """An opening endpoint's one act: correction."""
 
     corrected: EventSpec[PayloadT]
+
+    @property
+    def specs(self) -> tuple[EventSpec[PayloadT]]:
+        return (self.corrected,)
 
     @property
     def family(self) -> tuple[EventType]:
@@ -73,13 +81,21 @@ def endpoint_events[PayloadT](
     voided: EventType,
     payload: type[PayloadT],
     voided_payload: type,
+    resumed: EventType | None = None,
 ) -> EndpointEvents[PayloadT]:
-    """Register three specs; callers spell every type."""
+    """Register every spec; callers spell every type."""
     events = EndpointEvents(
         stated=EventSpec(stated, aggregate_type=aggregate_type, payload=payload),
         corrected=EventSpec(corrected, aggregate_type=aggregate_type, payload=payload),
         voided=EventSpec(voided, aggregate_type=aggregate_type, payload=voided_payload),
+        resumed=(
+            None
+            if resumed is None
+            else EventSpec(
+                resumed, aggregate_type=aggregate_type, payload=EndpointPayload
+            )
+        ),
     )
-    for spec in events:
+    for spec in events.specs:
         DEFAULT_EVENT_TYPES.register(spec)
     return events

@@ -12,6 +12,7 @@ from games.commands.endpoint import (
     ActStatement,
     EndpointSentences,
     Rejection,
+    certainly_reversed,
     correct_endpoint,
     state_endpoint,
     void_endpoint,
@@ -45,56 +46,12 @@ from games.reads.referrers import (
     blocking_referrer,
     foreign_referrer,
 )
-from timetracker.temporal import TemporalQualifier, TemporalValue, stated_date
+from timetracker.temporal import TemporalValue, stated_date
 
 #: Read off the column, so the refusal and the constraint cannot drift.
 PLAYTHROUGH_NAME_MAX_LENGTH: int = cast(
     int, Playthrough._meta.get_field("name").max_length
 )
-
-
-def _bounding_qualifier(
-    value: TemporalValue, *, at_start: bool
-) -> TemporalQualifier | None:
-    """The qualifier on the end the comparison reads.
-
-    A range states no qualifier of its own; each endpoint states one.
-    Only the end that produced the bound in hand can excuse it, so the
-    far end is not consulted -- it says nothing about that day.
-    """
-    if not value.is_range:
-        return value.qualifier
-    endpoint = value.start if at_start else value.end
-    return None if endpoint is None else endpoint.qualifier
-
-
-def endpoints_certainly_reversed(
-    *, started: TemporalValue | None, completed: TemporalValue | None
-) -> bool:
-    """Whether a completion cannot follow its start.
-
-    Keyword-only, because the two arguments share a type and the order
-    is the whole meaning: a swap is silent on every pair but the one
-    this exists to catch.
-
-    Only the certainly-impossible. A bound is unknown for two reasons:
-    no date at all, or a range whose end is open or unknown --
-    `../2024-06` and `2024-01/` both bound nothing below and above
-    respectively -- and a window with no edge contradicts nothing.
-
-    A qualifier leaves the bounds where the bare value put them, so
-    `2024-05-10~` bounds to that day exactly. Refusing a completion on
-    the 9th would refuse what `~` was written to say.
-    """
-    if started is None or completed is None:
-        return False
-    if _bounding_qualifier(started, at_start=True) is not None:
-        return False
-    if _bounding_qualifier(completed, at_start=False) is not None:
-        return False
-    if started.lower_bound is None or completed.upper_bound is None:
-        return False
-    return completed.upper_bound < started.lower_bound
 
 
 def refuse_name_the_column_cannot_hold(name: str) -> None:
@@ -158,9 +115,9 @@ class CreatePlaythrough(Command):
                     "before adding a playthrough."
                 ),
             )
-        if endpoints_certainly_reversed(
-            started=None if self.started is None else self.started.when,
-            completed=None if self.completed is None else self.completed.when,
+        if certainly_reversed(
+            earlier=None if self.started is None else self.started.when,
+            later=None if self.completed is None else self.completed.when,
         ):
             raise CommandRejected(
                 f"The run being created at game {self.game_id} would complete "
@@ -565,7 +522,7 @@ def _completion_sentences(playthrough_id: uuid.UUID) -> EndpointSentences:
 def _refuse_a_start_after_the_completion(
     run: Playthrough, *, started: TemporalValue | None
 ) -> None:
-    if endpoints_certainly_reversed(started=started, completed=run.completed):
+    if certainly_reversed(earlier=started, later=run.completed):
         raise CommandRejected(
             f"Playthrough {run.pk} completed before the start being stated, and "
             "no run ends before it begins.",
@@ -576,7 +533,7 @@ def _refuse_a_start_after_the_completion(
 def _refuse_a_completion_before_the_start(
     run: Playthrough, *, completed: TemporalValue | None
 ) -> None:
-    if endpoints_certainly_reversed(started=run.started, completed=completed):
+    if certainly_reversed(earlier=run.started, later=completed):
         raise CommandRejected(
             f"Playthrough {run.pk} started after the completion being stated, "
             "and no run ends before it begins.",

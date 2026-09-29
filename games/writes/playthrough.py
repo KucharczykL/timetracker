@@ -10,6 +10,7 @@ from typing import NamedTuple, Protocol
 
 from django.contrib.auth.models import User
 
+from games.commands.endpoint import certainly_reversed
 from games.commands.playergame import PlayerGameNotTracked
 from games.commands.playthrough import (
     ActStatement,
@@ -24,7 +25,6 @@ from games.commands.playthrough import (
     StartPlaythrough,
     VoidPlaythroughCompletion,
     VoidPlaythroughStart,
-    endpoints_certainly_reversed,
 )
 from games.events.append import SourceMetadata
 from games.events.dispatch import (
@@ -264,9 +264,7 @@ def _statement_order(
         (_COMPLETION, completed),
         (_START, started),
     )
-    if endpoints_certainly_reversed(
-        started=_stated_day(started), completed=run.completed
-    ):
+    if certainly_reversed(earlier=_stated_day(started), later=run.completed):
         return completion_first
     return start_first
 
@@ -300,9 +298,7 @@ def _restate(
     completed = draft.completed
     #: Refused up front, because no act withdraws:
     #: a start commits, then the completion refuses.
-    if endpoints_certainly_reversed(
-        started=_stated_day(started), completed=_stated_day(completed)
-    ):
+    if certainly_reversed(earlier=_stated_day(started), later=_stated_day(completed)):
         raise CommandRejected(
             f"The statement about playthrough {run.pk} completes it before it "
             "began, and no run ends before it begins.",
