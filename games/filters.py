@@ -288,6 +288,8 @@ class GameFilter(OperatorFilter):
             nullable=True,
         ),
     }
+    #: A person reads "copy", never "entry".
+    labels: ClassVar[dict[str, str]] = {"entry_count": "Copies"}
 
     # Two overrides below (PurchaseFilter, DeviceFilter) spell this return type
     # ``builtins.type[...]``: those filters declare a field named ``type`` that

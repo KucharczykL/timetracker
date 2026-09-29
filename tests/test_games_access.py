@@ -8,6 +8,7 @@ from entries import end_entry_access, record_entry
 from tracked_games import create_tracked_game
 
 from common.components.quick_filter import QUICK_FACETS, is_quick_editable
+from common.criteria import field_metadata
 from common.filter_execution import execute_filter
 from games.commands.playergame import TrackGame
 from games.end_ways import EndWay
@@ -198,3 +199,9 @@ def test_the_facets_render_on_the_games_list(logged_in):
     html = response.content.decode()
     assert 'id="quick-access-dropdown"' in html
     assert 'id="quick-format-dropdown"' in html
+
+
+def test_the_builder_names_the_count_copies():
+    labels = {meta["name"]: meta["label"] for meta in field_metadata(GameFilter)}
+
+    assert labels["entry_count"] == "Copies"
