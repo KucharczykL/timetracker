@@ -109,6 +109,7 @@ from games.writes.device import create_device as create_device_row
 from games.writes.libraryentry import (
     KEEP,
     EntryDraft,
+    Keep,
     record_entry,
     restate_entry,
     resume_entry_access,
@@ -1291,6 +1292,14 @@ class EntryUpdate(Schema):
                 raise ValueError(f"{key} states a value, or is left out.")
         return self
 
+    def access_end_statement(self) -> WayActStatement | None | Keep:
+        """The end stated, a void, or nothing."""
+        if "access_end" not in self.model_fields_set:
+            return KEEP
+        if self.access_end is None:
+            return None
+        return self.access_end.statement()
+
 
 class EntryOut(Schema):
     """The projection row, with its game."""
@@ -1396,13 +1405,7 @@ def partial_update_entry(request, entry_id: UUIDv7, payload: EntryUpdate):
                 if "acquired" in stated
                 else KEEP
             ),
-            access_end=(
-                KEEP
-                if "access_end" not in stated
-                else None
-                if payload.access_end is None
-                else payload.access_end.statement()
-            ),
+            access_end=payload.access_end_statement(),
             correlation_id=new_correlation_id(),
         )
     except CommandFailed as failure:

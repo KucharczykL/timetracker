@@ -181,10 +181,12 @@ def _refuse_a_reversed_draft(
             ended, end_is_new = entry.access_ended, False
         case _:
             return
-    acquisition_is_new = not isinstance(acquired, Keep)
+    if isinstance(acquired, Keep):
+        acquired_day, acquisition_is_new = entry.acquired, False
+    else:
+        acquired_day, acquisition_is_new = acquired.when, True
     if not (end_is_new or acquisition_is_new):
         return
-    acquired_day = acquired.when if not isinstance(acquired, Keep) else entry.acquired
     if not certainly_reversed(earlier=acquired_day, later=ended):
         return
     if end_is_new and acquisition_is_new:
