@@ -240,8 +240,12 @@ fact stated for one figure decides another.
 ### Edition
 
 A demo is another version of the game, so it is an Edition of that game,
-`kind` `demo`, with a Release per platform; every other Edition is
-`full`. The word is a catalog fact, shared as the Edition is, stated
+`kind` `demo`, with a Release per platform. An open or closed beta, an
+alpha, a network test, a playtest or a stress test is the same shape
+with the word `beta`: a build that closes, where a demo stays. The
+Edition's name says which ("Open Beta", "Network Test"); the kind says
+what the machinery reads. Early Access is the full game sold unfinished,
+so `full`, as every other Edition is. The word is a catalog fact, shared as the Edition is, stated
 through `CatalogGraphForm` beside the name, and picked in Add to library
 as any Release is, told apart by its edition. It is not a playthrough
 kind and not a second run: demo sessions sit on the game's run, and the
@@ -249,11 +253,16 @@ run's start stays the day the full game began. Three readers hold the
 word. The backlog reads Owned entries on full editions, or a free demo
 download would put the game in it. Before start (#1358) reads sessions
 on full editions, since a demo precedes the game by nature. And the
-toggle #1361 adds, one library setting stats and lists read alike, hides
-sessions on demo editions; it needs a session to name its Release, so it
-follows #1354. A Trial is the full game, on its own Edition.
-`Edition.kind` lands in M7 beside `Game.kind`; `beta` is a third word
-the column admits the day one is wanted.
+toggle #1361 adds, one library setting stats and lists read alike, is
+the set of edition kinds hidden, so hiding demos never decides betas; it
+needs a session to name its Release, so it follows #1354. A Trial is the
+full game, on its own Edition. An entry on a demo or a beta states the
+access the person likes, Owned for a free download or the charter's
+Demo, and a beta's access ends `expired` the day the test closes; no
+reader tells demo play from the access word, only from the Edition.
+`Edition.kind` lands in M7 beside `Game.kind`. The one beta the dump
+holds, "Diablo 4 Open Beta", is a private Game with one session and
+becomes a beta Edition of Diablo IV by hand, not by the pass.
 
 ### FilterPreset
 
