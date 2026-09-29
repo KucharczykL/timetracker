@@ -98,7 +98,9 @@ conversion must state one.
 
 ## Aggregates and storage
 
-#1275 is on `main`. This wave's first migration is `0020`.
+#1275 is on `main`. M1 is on `main` too (PR #1362, 2026-09-29), whose
+migration is `0020`; M2's first is `0021`. Its contract is
+[The LibraryEntry aggregate](2026-09-29-issue-719-libraryentry-aggregate-design.md).
 
 ### The opening endpoint
 
@@ -146,11 +148,14 @@ marker is set. The row is unique on `(id, library)`; a partial index on
 `(library, release)` covers live rows. The reference kind is
 `libraryentry`, resolution `PROJECTED`, named as `device` is.
 
-`Release` carries no `library` column, so `ProjectionReference.on` cannot
-register `release` today. M1 teaches `_is_library_scoped` a path
-(`edition__game__library`), so `audit_library_ownership` reports an entry
-naming another library's private Release, and the swap's refusal sentence
-can name it.
+`Release` carries no `library` column, so `LIBRARY_PATHS` in
+`games/projections.py` gives a catalog row its path to a library,
+`ProjectionReference` carries it as `library_path`, `games.E015` refuses
+a path that ends elsewhere, and `visible_row` in `games/commands/scope.py`
+resolves a shared row or the library's own through it. So
+`audit_library_ownership` reports an entry naming another library's
+private Release, `entry_game_violations` reports one whose Release is not
+its game's, and the swap's refusal sentence can name either.
 
 ### Purchase
 
@@ -289,9 +294,11 @@ do.
 | `ResumeEntryAccess` | `access_resumed` (note, `effective_time` the day) | refused where no end stands |
 | `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal refuses while a live Purchase names the entry, with a sentence naming the move; restore refuses under a removed PlayerGame or Release |
 
-`BlockingReferrer.on` refuses a field that is not a key to a run. M1
-gives it the target model as a parameter, so `Purchase.entry` registers
-beside the two run referrers with the same `alive()` rule.
+The referrer registry is `games/reads/referrers.py`: `BlockingReferrer.on`
+takes `target`, and `referrers_of(target)` reads the tuple at each call,
+so `Purchase.entry` registers beside the two run referrers with the same
+`alive()` rule; `RemoveEntry` asks it already and finds no entry referrer
+until P1.
 
 ### Purchase
 
@@ -561,7 +568,7 @@ backlog reads M7's edition word.
 
 | Member | Issues | Delivers |
 |---|---|---|
-| M1 | #719, #720, #722 | the opening endpoint whole, its one correction (`CorrectEntryAcquisition`) included, since the replay gate refuses a registered event type no command emits; the LibraryEntry aggregate: schema without the end columns, creation, description, removal and restore as commands with no route, multiple entries, reference kind, `_is_library_scoped` path, the generalised referrer registry, replay gate, the four API routes with `limit`/`offset` |
+| M1 (merged, PR #1362, 2026-09-29) | #719, #720, #722 | the opening endpoint whole, its one correction (`CorrectEntryAcquisition`) included, since the replay gate refuses a registered event type no command emits; the LibraryEntry aggregate: schema without the end columns, creation, description, removal and restore as commands with no route, multiple entries, reference kind, `_is_library_scoped` path, the generalised referrer registry, replay gate, the four API routes with `limit`/`offset` |
 | M2 | #721 | the end columns and their `CHECK`s in a migration of its own, as `0019` added the device's; access end and resume on the primitive |
 | M3 | #1352 | the Entries screens: list, filter, presets, navbar item, bulk Edit and Remove, the Games Access column and facets, Game detail's Library section, the entry forms |
 | M7 | #1353 | `Game.kind` and `Game.parent`, `Edition.kind`: columns, form, Game detail add-ons, Games facet |
@@ -656,8 +663,10 @@ refresh and its printed totals, then the fixture PR.
 
 - Access and Purchases are one wave (charter step 12).
 - A Purchase creates its entry; an entry can exist with no Purchase.
-- A command names the Release alone and derives the game; an untracked
-  game is tracked inside the same dispatch, never by track-and-retry.
+- An entry's command names the Release alone and derives the game
+  (`RecordEntry`, `DescribeEntry`); M3's form and P1's creation take the
+  same shape. An untracked game is tracked inside the same dispatch,
+  never by track-and-retry.
 - An entry names its PlayerGame and its Release; a purchase names its
   entry. No column outside the projections points at either.
 - `amount` null is unknown, 0 is free; the form has a Free box.
