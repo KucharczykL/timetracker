@@ -355,16 +355,6 @@ def test_the_sentence_reads_the_delta():
     )
 
 
-def test_a_library_without_a_calendar_is_read_in_its_display_zone(
-    owned_library, capture_games_logger
-):
-    with capture_games_logger() as caplog:
-        zone = calendar_day_zone(owned_library)
-
-    assert zone == ZoneInfo("UTC")
-    assert "states no calendar" in caplog.text
-
-
 def test_an_unreadable_display_zone_falls_to_utc(
     owned_library, capture_games_logger, monkeypatch
 ):

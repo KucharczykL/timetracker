@@ -41,11 +41,6 @@ def calendar_day_zone(library: UserLibrary) -> ZoneInfo:
             library.pk,
             stated,
         )
-    else:
-        logger.warning(
-            "Library %s states no calendar; reading days in the owner's display zone.",
-            library.pk,
-        )
     display = resolve_str_for_user(library.user, "DISPLAY_TIME_ZONE")
     zone = zone_or_none(display)
     if zone is None:

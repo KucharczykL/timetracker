@@ -63,8 +63,9 @@ No library day read depends on it. `TZ` in the environment overrides it.
 
 ## A library with no calendar
 
-`calendar_day_zone` reads the owner's display zone and logs a warning. An
-unreadable display zone logs an error and reads UTC.
+`calendar_day_zone` reads the owner's display zone, the designed fallback
+before a zone is stated. An unreadable display zone logs an error and reads
+UTC.
 
 ## Stored filters do not move
 
