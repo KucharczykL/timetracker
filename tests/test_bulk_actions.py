@@ -685,29 +685,36 @@ def test_a_confirmation_over_no_rows_names_the_acts_subject(reclassify, presenta
     assert "None of those records can be changed." in str(page)
 
 
-def test_the_confirmation_says_the_caution_over_the_rows(
-    owned_user, owned_library, run, reclassify, presentations
-):
-    """A note above the table, and no press taken away."""
+def _reclassify_confirmation(
+    reclassify: BulkAction, rows, presentations, *, sample_cap: int = 50
+) -> str:
+    """The reclassification's confirmation over rows, none refused."""
     from games.views.bulk_pages import ConfirmBatch
 
-    short = a_written_session(
-        owned_library, owned_user, run, duration=timedelta(hours=1)
-    )
-
-    page = str(
+    return str(
         ConfirmBatch(
             reclassify,
-            rows=[short],
+            rows=rows,
             refused=(),
             hidden=[],
             post_url="/bulk/session.reclassify/",
             csrf_token="token",
             cancel_url="/",
-            sample_cap=50,
+            sample_cap=sample_cap,
             presentations=presentations,
         )
     )
+
+
+def test_the_confirmation_says_the_caution_over_the_rows(
+    owned_user, owned_library, run, reclassify, presentations
+):
+    """A note above the table, and no press taken away."""
+    short = a_written_session(
+        owned_library, owned_user, run, duration=timedelta(hours=1)
+    )
+
+    page = _reclassify_confirmation(reclassify, [short], presentations)
 
     said = SHORT_ONE.format(hours=REVIEW_THRESHOLD_HOURS)
     assert said in page
@@ -719,8 +726,6 @@ def test_the_caution_counts_rows_past_the_sample(
     owned_user, owned_library, run, reclassify, presentations
 ):
     """The page shows a sample; the note speaks of every row."""
-    from games.views.bulk_pages import ConfirmBatch
-
     short = [
         a_written_session(
             owned_library,
@@ -732,19 +737,7 @@ def test_the_caution_counts_rows_past_the_sample(
         for offset in range(2)
     ]
 
-    page = str(
-        ConfirmBatch(
-            reclassify,
-            rows=short,
-            refused=(),
-            hidden=[],
-            post_url="/bulk/session.reclassify/",
-            csrf_token="token",
-            cancel_url="/",
-            sample_cap=1,
-            presentations=presentations,
-        )
-    )
+    page = _reclassify_confirmation(reclassify, short, presentations, sample_cap=1)
 
     assert SHORT_MANY.format(count=2, hours=REVIEW_THRESHOLD_HOURS) in page
 
@@ -752,23 +745,9 @@ def test_the_caution_counts_rows_past_the_sample(
 def test_a_confirmation_over_long_rows_says_no_caution(
     owned_user, owned_library, run, reclassify, presentations
 ):
-    from games.views.bulk_pages import ConfirmBatch
-
     long_enough = a_written_session(owned_library, owned_user, run)
 
-    page = str(
-        ConfirmBatch(
-            reclassify,
-            rows=[long_enough],
-            refused=(),
-            hidden=[],
-            post_url="/bulk/session.reclassify/",
-            csrf_token="token",
-            cancel_url="/",
-            sample_cap=50,
-            presentations=presentations,
-        )
-    )
+    page = _reclassify_confirmation(reclassify, [long_enough], presentations)
 
     assert f"shorter than {REVIEW_THRESHOLD_HOURS} hours" not in page
 
