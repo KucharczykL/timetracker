@@ -20,28 +20,25 @@ entries with the same words are two copies.
 An opening endpoint is an act that the creation states. A correction moves
 the day. Nothing voids it. The marker admits no null.
 
-- `games/endpoint_fields.py`: `OpeningEndpointColumns` is an
-  `EndpointColumns` with no way. `unstated_columns()` raises.
-  `opening_marker()` is a non-null `DateTimeField`.
-- `games/events/endpoint.py`: `OpeningEndpointEvents` holds one spec,
-  `corrected`. `opening_endpoint_events` registers it.
+- `games/endpoint_fields.py`: `OpeningEndpointColumns` has no way.
+  `unstated_columns()` raises. `opening_marker()` admits no null.
+- `games/events/endpoint.py`: `OpeningEndpointEvents` holds `corrected`.
 - `games/endpoints.py`: `OpeningEndpoint`. `ENDPOINTS` lists both shapes.
   `games.E014` refuses a nullable opening marker.
-- `Projector.opening_columns(endpoint, event, note=)` answers the columns a
-  creation spreads into `project()`. `project_corrected` moves the day.
-- `correct_opening_endpoint` in `games/commands/endpoint.py` takes one
-  sentence. It answers `Unchanged` for the same statement.
+- `Projector.opening_columns` answers the creation's columns.
+  `project_corrected` moves the day.
+- `correct_opening_endpoint` takes one sentence and answers `Unchanged`
+  for the same statement.
 
 ## Storage
 
-Table `games_libraryentry`. Only the `Entries` projector writes it. The
-columns are `id`, `library`, `player_game` (RESTRICT), `release`
-(RESTRICT), `access`, `format`, `note`, the endpoint `acquisition`
-(`acquired`, its two bounds, `acquisition_recorded_at`,
-`acquisition_note`), `created_at` and `removed_at`. Two CHECKs admit only
-the known words. A partial index covers live rows on `(library, release)`.
-`alive()` reads the entry's mark and the tracked game's. The model is a
-`ReferencedRow`. Its reference kind `libraryentry` is `PROJECTED`.
+Table `games_libraryentry`. Only the `Entries` projector writes it.
+Columns: `id`, `library`, `player_game` (RESTRICT), `release` (RESTRICT),
+`access`, `format`, `note`, the endpoint `acquisition`, `created_at`,
+`removed_at`. Two CHECKs admit only the known words. A partial index
+covers live rows on `(library, release)`. `alive()` reads the entry's
+mark and the tracked game's. The reference kind `libraryentry` is
+`PROJECTED`.
 
 ## Events
 
@@ -78,13 +75,11 @@ a shared row or the library's own through that path. `TrackGame` uses it.
 
 ## Writes, reads, API
 
-`games/writes/libraryentry.py`: `record_entry` answers `RecordedEntry`
-(the entry id and whether the game was tracked) from
-`dispatched_events`. `restate_entry` sends the correction first.
-`games/reads/entries.py`: `library_entries` reads five marks;
-`readable_entries` and `game_entries` narrow it.
-Routes: `GET`, `POST /api/entries/`; `GET`, `PATCH /api/entries/{id}`.
-A PATCH states `acquired` and `acquisition_note` together, or 422.
+`record_entry` answers `RecordedEntry` (the entry id, and whether the
+game was tracked) from `dispatched_events`. `restate_entry` sends the
+correction first. `library_entries` reads five marks. Routes: `GET`,
+`POST /api/entries/`; `GET`, `PATCH /api/entries/{id}`. A PATCH states
+`acquired` and `acquisition_note` together, or 422.
 
 ## Limits
 
