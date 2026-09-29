@@ -15,23 +15,33 @@ from games.commands.endpoint import (
     Rejection,
     WayActStatement,
     correct_endpoint,
+    correct_opening_endpoint,
     state_endpoint,
     void_endpoint,
 )
 from games.end_ways import EndWay
-from games.endpoint_fields import EndpointColumns, WayColumn, endpoint_constraints
+from games.endpoint_fields import (
+    EndpointColumns,
+    OpeningEndpointColumns,
+    WayColumn,
+    endpoint_constraints,
+)
 from games.endpoints import (
     DEVICE_ACCESS_END,
     ENDPOINTS,
     PLAYTHROUGH_COMPLETION,
     PLAYTHROUGH_START,
     Endpoint,
+    OpeningEndpoint,
 )
 from games.events.device import DeviceWayValue
 from games.events.dispatch import CommandRejected
+from games.events.endpoint import OpeningEndpointEvents
+from games.events.envelope import RecordedEvent
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, NewEvent, Unchanged
 from games.filters import PlaythroughFilter, way_filter_field
 from games.models import DEVICE_WAYS, Device, Playthrough
+from games.projectors.device import Devices
 from games.reads.endpoints import StatedEndpoint
 from games.writes.endpoint import Act, Correct, Nothing, Void, endpoint_move
 from timetracker.temporal import TemporalValue
@@ -77,6 +87,101 @@ def _start(**changes) -> EndpointColumns:
         "note": "start_note",
     }
     return EndpointColumns(**(columns | changes))
+
+
+def _opening(**changes) -> OpeningEndpointColumns:
+    columns = {
+        "name": "start",
+        "model_label": "games.Playthrough",
+        "when": "started",
+        "lower": "started_lower",
+        "upper": "started_upper",
+        "marker": "start_recorded_at",
+        "note": "start_note",
+    }
+    return OpeningEndpointColumns(**(columns | changes))
+
+
+def test_an_opening_endpoint_refuses_a_way() -> None:
+    with pytest.raises(TypeError, match="states no way"):
+        _opening(way=WayColumn("name", (EndWay.SOLD,)))
+
+
+def test_an_opening_endpoint_states_no_unstated_columns() -> None:
+    """A sibling of the stated shape, not a subtype."""
+    assert _opening().way is None
+    assert not hasattr(_opening(), "unstated_columns")
+    assert not isinstance(_opening(), EndpointColumns)
+
+
+def test_the_check_refuses_a_nullable_opening_marker() -> None:
+    messages = [error.msg for error in endpoint_errors(_opening(), Playthrough)]
+    assert messages == [
+        "Endpoint 'start' on games.Playthrough: its marker admits null."
+    ]
+    assert endpoint_errors(_start(), Playthrough) == []
+
+
+def _creation() -> RecordedEvent:
+    return RecordedEvent(
+        id=uuid.uuid7(),
+        library_id=uuid.uuid7(),
+        stream_id=uuid.uuid7(),
+        sequence=1,
+        event_type="library.playthrough.created",
+        aggregate_id=uuid.uuid7(),
+        payload_schema_version=1,
+        recorded_at=RECORDED,
+        effective_time=MAY,
+        actor_id=None,
+        correlation_id=uuid.uuid7(),
+        causation_id=None,
+        source_metadata={},
+        idempotency_key="probe",
+        payload={},
+    )
+
+
+def test_a_missing_opening_marker_is_reported_once() -> None:
+    (error,) = endpoint_errors(_opening(marker="start_stamp"), Playthrough)
+    assert "declares no column 'start_stamp'" in error.msg
+
+
+def test_opening_columns_reads_the_creation() -> None:
+    event = _creation()
+    columns = Devices().opening_columns(_opening(), event, note="bought")
+    assert columns == {
+        "started": MAY,
+        "start_recorded_at": RECORDED,
+        "start_note": "bought",
+    }
+
+
+OPENING_START = OpeningEndpoint.over(
+    _opening(), OpeningEndpointEvents(corrected=PLAYTHROUGH_START.events.corrected)
+)
+
+
+def test_an_opening_correction_to_what_is_stated_is_unchanged() -> None:
+    answer = correct_opening_endpoint(
+        _started_run("x"),
+        OPENING_START,
+        ActStatement(MAY, "x"),
+        same_correction="same day",
+        before_event=_refuse,
+    )
+    assert answer == Unchanged("same day")
+
+
+def test_an_opening_correction_states_the_corrected_event() -> None:
+    (event,) = _events(
+        correct_opening_endpoint(
+            _started_run(), OPENING_START, ActStatement(None, "x"), same_correction=""
+        )
+    )
+    assert event.spec is PLAYTHROUGH_START.events.corrected
+    assert (event.effective_time, event.payload) == (None, {"note": "x"})
+    assert OPENING_START.events.family == ("library.playthrough.start_corrected",)
 
 
 def test_the_check_refuses_a_column_the_model_lacks() -> None:

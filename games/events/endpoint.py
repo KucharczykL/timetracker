@@ -41,6 +41,30 @@ class EndpointEvents[PayloadT](NamedTuple):
         )
 
 
+class OpeningEndpointEvents[PayloadT](NamedTuple):
+    """An opening endpoint's one act: correction."""
+
+    corrected: EventSpec[PayloadT]
+
+    @property
+    def family(self) -> tuple[EventType]:
+        return (self.corrected.event_type,)
+
+
+def opening_endpoint_events[PayloadT](
+    aggregate_type: AggregateType,
+    *,
+    corrected: EventType,
+    payload: type[PayloadT],
+) -> OpeningEndpointEvents[PayloadT]:
+    """Register the correction; creation states the day."""
+    events = OpeningEndpointEvents(
+        corrected=EventSpec(corrected, aggregate_type=aggregate_type, payload=payload),
+    )
+    DEFAULT_EVENT_TYPES.register(events.corrected)
+    return events
+
+
 def endpoint_events[PayloadT](
     aggregate_type: AggregateType,
     *,

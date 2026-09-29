@@ -11,6 +11,7 @@ from typing import Any, NamedTuple
 import pytest
 from django.db import connection
 
+from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.device import (
     CorrectDeviceAccessEnd,
     CreateDevice,
@@ -20,13 +21,20 @@ from games.commands.device import (
     RestoreDevice,
     VoidDeviceAccessEnd,
 )
-from games.commands.endpoint import WayActStatement
+from games.commands.endpoint import ActStatement, WayActStatement
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
     RecordHistoricalPlaytime,
     RemoveHistoricalPlaytime,
     RestateHistoricalPlaytime,
     RestoreHistoricalPlaytime,
+)
+from games.commands.libraryentry import (
+    CorrectEntryAcquisition,
+    DescribeEntry,
+    RecordEntry,
+    RemoveEntry,
+    RestoreEntry,
 )
 from games.commands.playergame import (
     RecordPlayerGameFacts,
@@ -74,6 +82,7 @@ from games.models import (
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
     HistoricalPlaytimeRun,
+    LibraryEntry,
     LibraryEvent,
     LibraryEventStreamHead,
     LibraryIdempotencyRecord,
@@ -82,9 +91,11 @@ from games.models import (
     PlayerSession,
     Playthrough,
     PlaythroughKind,
+    Release,
 )
 from games.projectors.device import Devices
 from games.projectors.historical_playtime import HistoricalPlaytimes
+from games.projectors.libraryentry import Entries
 from games.projectors.playergame import PlayerGames
 from games.projectors.playersession import PlayerSessions
 from games.projectors.playthrough import Playthroughs
@@ -114,6 +125,35 @@ def _created_id(result: CommandResult) -> Any:
     return LibraryEvent.objects.get(
         stream_id=result.stream_id, sequence=result.sequences.first
     ).aggregate_id
+
+
+def _default_releases(library, game: Game, count: int = 1) -> list[Release]:
+    """Releases to name; a bare Game holds none."""
+    written = state_catalog_graph(
+        game=game,
+        library=library,
+        editions=[
+            EditionState(
+                key="edition-0",
+                is_default=True,
+                releases=tuple(
+                    ReleaseState(
+                        key=f"edition-0-release-{index}", is_default=index == 0
+                    )
+                    for index in range(count)
+                ),
+            )
+        ],
+    )
+    return [entry.release for entry in written.editions[0].releases]
+
+
+def assert_entries_belong_to_their_games(library) -> None:
+    """Every entry's Release is its game's."""
+    for entry in LibraryEntry._base_manager.filter(library=library).select_related(
+        "release__edition", "player_game"
+    ):
+        assert entry.release.edition.game_id == entry.player_game.game_id, entry.pk
 
 
 def build_stream(user, library) -> list[DispatchedCommand]:
@@ -493,6 +533,60 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         "undo-reclassification",
     )
 
+    #: Two copies on one Release; one untracked game.
+    first_release, first_other = _default_releases(library, first, count=2)
+    (second_release,) = _default_releases(library, second)
+    fourth = Game.objects.create(library=library, name="Stardew Valley")
+    (fourth_release,) = _default_releases(library, fourth)
+    kept_entry = _created_id(
+        run(
+            RecordEntry(
+                release_id=first_release.pk,
+                access="owned",
+                format="digital",
+                acquired=ActStatement(TemporalValue.parse("2021-05"), "birthday"),
+            ),
+            "record-entry",
+        )
+    )
+    run(
+        RecordEntry(release_id=first_release.pk, access="borrowed", format="physical"),
+        "record-entry-twice",
+    )
+    #: Tracking pair, then the copy: three events.
+    run(
+        RecordEntry(
+            release_id=fourth_release.pk, access="subscription", format="unknown"
+        ),
+        "record-entry-untracked",
+    )
+    run(
+        DescribeEntry(
+            entry_id=kept_entry,
+            access="rented",
+            format="unknown",
+            note="lent",
+            release_id=first_other.pk,
+        ),
+        "describe-entry",
+    )
+    run(
+        CorrectEntryAcquisition(
+            entry_id=kept_entry, statement=ActStatement(None, "no receipt")
+        ),
+        "correct-entry-acquisition",
+    )
+    run(RemoveEntry(entry_id=kept_entry), "remove-entry")
+    run(RestoreEntry(entry_id=kept_entry), "restore-entry")
+    removed_entry = _created_id(
+        run(
+            RecordEntry(release_id=second_release.pk, access="demo", format="digital"),
+            "record-entry-to-remove",
+        )
+    )
+    #: Left removed, so the mark is compared.
+    run(RemoveEntry(entry_id=removed_entry), "remove-entry-again")
+
     run(RemovePlayerGame(game_id=second.pk), "remove-second-game")
     run(RestorePlayerGame(game_id=second.pk), "restore-second-game")
     #: Left removed, for the same reason as the third run.
@@ -501,11 +595,12 @@ def build_stream(user, library) -> list[DispatchedCommand]:
 
 
 def registered_event_types() -> set[str]:
-    """Every type the five CURRENT_STATE projectors read."""
+    """Every type the six listed projectors read."""
     return {
         spec.event_type
         for handles in (
             Devices.handles,
+            Entries.handles,
             PlayerGames.handles,
             Playthroughs.handles,
             PlayerSessions.handles,
@@ -533,7 +628,7 @@ def test_the_stream_carries_every_registered_event_type(owned_user, owned_librar
 
 
 def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_library):
-    """A real stream, short of thirty-seven types."""
+    """A real stream, short of forty-five types."""
     game = Game.objects.create(library=owned_library, name="Celeste")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -549,7 +644,7 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
         "library.playergame.created",
         "library.playthrough.created",
     }
-    assert len(missing) == 37
+    assert len(missing) == 45
 
 
 def build_neighbour(user, library) -> None:
@@ -603,6 +698,15 @@ def build_neighbour(user, library) -> None:
         idempotency_key="neighbour-record",
     )
     assert result.outcome is CommandOutcome.APPENDED, "neighbour-record"
+    #: One entry; the sixth table holds a neighbour.
+    (release,) = _default_releases(library, game)
+    result = dispatch(
+        RecordEntry(release_id=release.pk, access="owned", format="physical"),
+        actor=user,
+        library=library,
+        idempotency_key="neighbour-entry",
+    )
+    assert result.outcome is CommandOutcome.APPENDED, "neighbour-entry"
 
 
 @pytest.fixture
@@ -620,12 +724,17 @@ type ProjectionRows = list[Mapping[str, Any]]
 
 
 type ProjectionSnapshot = tuple[
-    ProjectionRows, ProjectionRows, ProjectionRows, ProjectionRows, ProjectionRows
+    ProjectionRows,
+    ProjectionRows,
+    ProjectionRows,
+    ProjectionRows,
+    ProjectionRows,
+    ProjectionRows,
 ]
 
 
 def rows_of(library) -> ProjectionSnapshot:
-    """Five tables' whole rows, in key order.
+    """Six tables' whole rows, in key order.
 
     `.values()` rather than a column list, so a column added later is
     in the comparison the day it lands. Refuses an empty table, because
@@ -647,10 +756,13 @@ def rows_of(library) -> ProjectionSnapshot:
     joins: ProjectionRows = list(
         HistoricalPlaytimeRun.objects.filter(library=library).order_by("pk").values()
     )
-    assert tracked and runs and sessions and records and joins, (
+    entries: ProjectionRows = list(
+        LibraryEntry.objects.filter(library=library).order_by("pk").values()
+    )
+    assert tracked and runs and sessions and records and joins and entries, (
         f"Library {library.pk} holds no rows to compare."
     )
-    return (tracked, runs, sessions, records, joins)
+    return (tracked, runs, sessions, records, joins, entries)
 
 
 def row_versions(library) -> list[tuple[str, str]]:
@@ -672,15 +784,18 @@ def row_versions(library) -> list[tuple[str, str]]:
             SELECT id::text, xmin::text FROM games_historicalplaytime WHERE library_id = %s
             UNION ALL
             SELECT id::text, xmin::text FROM games_historicalplaytimerun WHERE library_id = %s
+            UNION ALL
+            SELECT id::text, xmin::text FROM games_libraryentry WHERE library_id = %s
             ORDER BY 1
             """,
-            [library.pk] * 5,
+            [library.pk] * 6,
         )
         return cursor.fetchall()
 
 
 def empty_projections(library) -> None:
     """By library, children first; records before sessions."""
+    LibraryEntry.objects.filter(library=library).delete()
     HistoricalPlaytimeRun.objects.filter(library=library).delete()
     HistoricalPlaytime.objects.filter(library=library).delete()
     PlayerSession.objects.filter(library=library).delete()
@@ -707,6 +822,7 @@ def test_replaying_an_emptied_library_reproduces_every_table(
     assert rows_of(neighbour) == untouched
     #: Values alone cannot part untouched from upserted alike.
     assert row_versions(neighbour) == unwritten
+    assert_entries_belong_to_their_games(owned_library)
 
 
 def test_a_rebuild_swaps_every_table_with_an_empty_diff(
@@ -727,11 +843,13 @@ def test_a_rebuild_swaps_every_table_with_an_empty_diff(
         ("games_historicalplaytime", 0, 0, 0),
         ("games_historicalplaytimerun", 0, 0, 0),
         ("games_librarycalendar", 0, 0, 0),
+        ("games_libraryentry", 0, 0, 0),
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
     ]
     assert rows_of(neighbour) == untouched
+    assert_entries_belong_to_their_games(owned_library)
 
 
 def test_every_command_repeated_under_its_key_records_nothing(
@@ -792,6 +910,9 @@ def test_the_stream_leaves_a_removed_row_in_each_table(owned_user, owned_library
         library=owned_library, removed_at__isnull=False
     ).exists()
     assert HistoricalPlaytime.objects.filter(
+        library=owned_library, removed_at__isnull=False
+    ).exists()
+    assert LibraryEntry.objects.filter(
         library=owned_library, removed_at__isnull=False
     ).exists()
 

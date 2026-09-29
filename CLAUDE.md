@@ -253,8 +253,10 @@ docs/           — Additional documentation
   `RestorePlaythrough`. Both refuse lifecycle act under removed `PlayerGame`, and
   both answer `Unchanged` for state row already holds, ahead of that refusal.
   Removal alone refuses taking last live ordinary run off tracked game, then
-  reads `BLOCKING_REFERRERS`, registry of projections that name a run — one
-  entry since #694, `PlayerSession.playthrough`, so run with live sibling and
+  reads `BLOCKING_REFERRERS` (`games/reads/referrers.py`), registry of
+  projections that name a projection row, each entry stating its `target`
+  and read through `referrers_of(target)` — two run entries, first since
+  #694, `PlayerSession.playthrough`, so run with live sibling and
   live sessions refused with sentence naming move; last-run rule runs first
   because for sole run only its sentence names remedy that works (#1048).
   Row of *another* library naming run (drift `audit_library_ownership`
@@ -523,6 +525,39 @@ docs/           — Additional documentation
   [HistoricalPlaytime aggregate](docs/superpowers/specs/2026-09-17-issue-705-historical-playtime-aggregate-design.md);
   wave is
   [Historical Playtime](docs/superpowers/specs/2026-09-17-historical-playtime-wave-design.md)
+- **LibraryEntry** — projection (#719, #720, #722): one route of access
+  to one Release — `access` (owned/borrowed/rented/subscription/trial/demo/
+  pirated), `format` (physical/digital/unknown), `note`, and the acquired
+  day as the **opening endpoint** `acquisition` (`acquired` beside
+  `acquisition_recorded_at`, which admits no null: the creation states the
+  day, `acquisition_corrected` moves it, nothing voids it;
+  `OpeningEndpointColumns`/`OpeningEndpoint`/`opening_endpoint_events`,
+  `Projector.opening_columns`, `correct_opening_endpoint`). Written only by
+  `Entries` (`games/projectors/libraryentry.py`) from eight
+  `library.libraryentry.*` events; commands `RecordEntry` (names the
+  Release alone, derives the game, tracks an untracked one in the same
+  dispatch through `tracking_events`), `DescribeEntry`,
+  `CorrectEntryAcquisition`, `RemoveEntry` (asks `blocking_referrer` and
+  `foreign_referrer`, which hold no entry referrer yet), `RestoreEntry`
+  (refuses under a removed Release) in `games/commands/libraryentry.py`;
+  request-free half `games/writes/libraryentry.py`, whose `record_entry`
+  reads the entry id off `dispatched_events` because the creation may
+  follow the tracking pair, and whose `restate_entry` describes first,
+  then corrects the day. A Release resolves through `visible_row`
+  (`games/commands/scope.py`) over `LIBRARY_PATHS` (`games/projections.py`,
+  the path a catalog row takes to its library; `ProjectionReference` carries
+  it as `library_path`, so the ownership audit walks `LibraryEntry.release`).
+  `alive()` reads own mark and `player_game`'s; `library_entries` in
+  `games/reads/entries.py` reads five. Routes `GET`/`POST /api/entries/`,
+  `GET`/`PATCH /api/entries/{id}`; a PATCH states `acquired` and
+  `acquisition_note` together or is refused with 422. Two entries on one
+  Release are two copies; an entry whose parent or private Release is
+  another library's is `RowUnreadable`, and `entry_game_violations` joins
+  the ownership audit. `games.E015` walks `LIBRARY_PATHS`. No screen, no
+  end of access yet (M2 #721, M3 #1352). Contract is
+  [The LibraryEntry aggregate](docs/superpowers/specs/2026-09-29-issue-719-libraryentry-aggregate-design.md);
+  wave is
+  [Access and Purchases](docs/superpowers/specs/2026-09-28-access-and-purchases-wave-design.md)
 
 **One act a row states once is an endpoint** (#1275). `Endpoint` in
 `games/endpoints.py` names its columns and three events (stated,
@@ -532,13 +567,17 @@ Commands decide through `games/commands/endpoint.py`, projectors write
 through `project_stated`/`_corrected`/`_voided`, writes choose the act
 with `endpoint_move`, filters take `endpoint_filter_fields` and
 `way_filter_field` (`games/filters.py`). Playthrough
-start and completion and a device's end of access are its three.
+start and completion and a device's end of access are its three. An
+**opening endpoint** (`OpeningEndpoint`, #719) is the variant the creation
+states: one event, the correction, and a marker that admits no null; its
+columns are a sibling of the stated shape under `EndpointColumnsBase`, so a
+void of one is a type error. An entry's acquisition is its one.
 
 **Nothing user removes is destroyed** (#944). Six removable models — Game,
 Edition, Release, Platform, Purchase, FilterPreset —
 each carry nullable `removed_at`, listed in `REMOVABLE_MODELS` in
-`games/removal.py`; a projection's mark (session, run, record, device) is
-its projector's. `remove(instance)` stamps it, `restore(instance)` clears it,
+`games/removal.py`; a projection's mark (session, run, record, device,
+entry) is its projector's. `remove(instance)` stamps it, `restore(instance)` clears it,
 both use `UPDATE` rather than `save()`, so stamp revalidates nothing and fires no
 `post_save`. What signal would have done, `_AFTER_STAMP` does by hand: removed
 Game recounts its purchases. Playtime is no stored total, so a removed Session
@@ -995,6 +1034,12 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
 - `GET /api/historical-playtime/`, `GET /{id}` — live records through
   `readable_records`: `filter`/`sort`/`page` as the session list, `when` as
   canonical text beside its two bounds, `playthrough_ids`. No write endpoint
+- `GET /api/entries/`, `GET /{id}` — live entries through `readable_entries`,
+  `limit`/`offset`, `limit=0` unbounded; `POST /` records one (201 and the
+  row, `Idempotency-Key` absorbs a repeat, an untracked game is tracked in
+  the same dispatch); `PATCH /{id}` describes each named key, and states
+  `acquired` and `acquisition_note` together or answers 422; both bodies
+  take `EntryAccess`/`EntryFormat` and refuse a present null at the schema
 - `GET /api/presets/` — user's presets for a mode, shaped as combobox options
   (`limit=0` = unbounded)
 - `POST /api/presets/` — upsert on (user, mode, name); 201 create / 200 update

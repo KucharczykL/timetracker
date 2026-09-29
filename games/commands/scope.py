@@ -4,10 +4,16 @@ import uuid
 from dataclasses import dataclass
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import Model, QuerySet
+from django.db.models import Model, Q, QuerySet
 
-from games.events.dispatch import CommandContext, CommandRejected, RowNotHeld
-from games.models import Device
+from games.events.dispatch import (
+    CommandContext,
+    CommandRejected,
+    RowNotHeld,
+    RowUnreadable,
+)
+from games.models import Device, LibraryEntry
+from games.projections import library_path_of
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +71,23 @@ def library_row[RowT: Model](
         raise refusal.raised() from None
 
 
+def visible_row[RowT: Model](
+    context: CommandContext,
+    reads: QuerySet[RowT],
+    refusal: Refusal,
+    **lookup: object,
+) -> RowT:
+    """A shared row, or the library's own."""
+    path = library_path_of(reads.model)
+    if path is None:
+        raise TypeError(f"{reads.model.__name__} reaches no library.")
+    visible = Q(**{f"{path}__isnull": True}) | Q(**{path: context.library})
+    try:
+        return reads.filter(visible, **lookup).get()
+    except ObjectDoesNotExist:
+        raise refusal.raised() from None
+
+
 def library_device_row(
     context: CommandContext, device_id: uuid.UUID | None
 ) -> Device | None:
@@ -101,3 +124,38 @@ def library_device(
             ),
         )
     return device
+
+
+def library_entry_row(context: CommandContext, entry_id: uuid.UUID) -> LibraryEntry:
+    """This library's entry, removed or not.
+
+    A drifted parent is the ownership audit's defect:
+    no command states a fact on such a row.
+    """
+    entry = library_row(
+        context,
+        #: Every caller reads the parent's mark; restore the Release's.
+        LibraryEntry.objects.select_related("player_game", "release__edition__game"),
+        Refusal(
+            message=(
+                f"This library holds no entry {entry_id}. A stated fact names "
+                "a copy the library records."
+            )
+        ),
+        pk=entry_id,
+    )
+    if entry.player_game.library_id != context.library.pk:
+        raise RowUnreadable(
+            f"Entry {entry.pk} of library {entry.library_id} names player game "
+            f"{entry.player_game_id} of library {entry.player_game.library_id}; "
+            "the ownership audit reports it, and no command states a fact "
+            "about it."
+        )
+    release_library = entry.release.edition.game.library_id
+    if release_library is not None and release_library != context.library.pk:
+        raise RowUnreadable(
+            f"Entry {entry.pk} of library {entry.library_id} names release "
+            f"{entry.release_id} of library {release_library}; the ownership "
+            "audit reports it, and no command states a fact about it."
+        )
+    return entry

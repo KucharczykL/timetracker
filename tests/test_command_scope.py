@@ -3,11 +3,13 @@
 import uuid
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 
-from games.commands.scope import Refusal, library_row
+from games.commands.scope import Refusal, library_row, visible_row
 from games.events.dispatch import CommandContext, CommandRejected, RowNotHeld
-from games.models import Game, PlayerGame
+from games.models import Game, PlayerGame, Release
+from games.removal import remove
 
 
 class Nowhere(CommandRejected):
@@ -121,3 +123,70 @@ def test_the_queryset_the_caller_hands_over_is_the_one_read(
 
     with django_assert_num_queries(0):
         assert resolved.game.name == "Outer Wilds"
+
+
+@pytest.fixture
+def two_releases(owned_library, other_library, stated_graph):
+    """A shared Release and the other library's private one."""
+    shared = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+    Game.objects.filter(pk=shared.game.pk).update(library=None)
+    private = stated_graph(Game(name="Hades", library=other_library), other_library)
+    return shared.release, private.release
+
+
+def test_visible_row_answers_a_shared_row(owned_user, owned_library, two_releases):
+    shared, _private = two_releases
+    context = CommandContext(library=owned_library, actor=owned_user)
+
+    assert (
+        visible_row(context, Release.objects.all(), refusal(), pk=shared.pk) == shared
+    )
+
+
+def test_visible_row_answers_the_librarys_own_private_row(
+    owned_user, owned_library, stated_graph
+):
+    own = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+    context = CommandContext(library=owned_library, actor=owned_user)
+
+    resolved = visible_row(context, Release.objects.all(), refusal(), pk=own.release.pk)
+
+    assert resolved == own.release
+
+
+def test_visible_row_refuses_another_librarys_private_row_with_the_stated_class(
+    owned_user, owned_library, two_releases
+):
+    _shared, private = two_releases
+    context = CommandContext(library=owned_library, actor=owned_user)
+
+    with pytest.raises(RowNotHeld):
+        visible_row(context, Release.objects.all(), refusal(), pk=private.pk)
+    with pytest.raises(Nowhere) as refused:
+        visible_row(
+            context,
+            Release.objects.all(),
+            refusal(sentence="Not yours.", raises=Nowhere),
+            pk=private.pk,
+        )
+    assert refused.value.sentence == "Not yours."
+
+
+def test_visible_row_reads_removed_rows_when_the_caller_passes_all(
+    owned_user, owned_library, two_releases
+):
+    shared, _private = two_releases
+    remove(shared)
+    context = CommandContext(library=owned_library, actor=owned_user)
+
+    assert (
+        visible_row(context, Release.objects.all(), refusal(), pk=shared.pk) == shared
+    )
+    with pytest.raises(RowNotHeld):
+        visible_row(context, Release.objects.alive(), refusal(), pk=shared.pk)
+
+
+def test_visible_row_refuses_a_model_reaching_no_library(owned_user, owned_library):
+    context = CommandContext(library=owned_library, actor=owned_user)
+    with pytest.raises(TypeError, match="reaches no library"):
+        visible_row(context, get_user_model().objects.all(), refusal(), pk=1)

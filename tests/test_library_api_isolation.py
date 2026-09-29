@@ -513,3 +513,28 @@ def test_filter_execution_rejects_validation_only_context(two_libraries):
             Game.objects.for_library(world["library_a"]),
             FilterQueryContext.for_validation(),
         )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_entry_crud_is_library_scoped(two_libraries, stated_graph):
+    from entries import record_entry
+
+    world = two_libraries
+    library_a, library_b = world["library_a"], world["library_b"]
+    shared = stated_graph(Game(name="Shared Copy", library=library_a), library_a)
+    Game.objects.filter(pk=shared.game.pk).update(library=None)
+    own = record_entry(library_a, shared.release)
+    foreign = record_entry(library_b, shared.release, access="borrowed")
+    client = world["client_a"]
+
+    listed = client.get("/api/entries/?limit=0").json()
+    assert [row["id"] for row in listed] == [str(own.id)]
+    assert client.get(f"/api/entries/{foreign.id}").status_code == 404
+    assert (
+        _patch(client, f"/api/entries/{foreign.id}", {"note": "theirs"}).status_code
+        == 404
+    )
+    foreign.refresh_from_db()
+    assert foreign.note == ""
+    assert own.player_game.library == library_a
+    assert foreign.player_game.library == library_b

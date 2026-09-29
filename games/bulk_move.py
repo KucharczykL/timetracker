@@ -20,8 +20,8 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.events import aggregate_events, batch_events
-from games.reads.playthrough_referrers import BLOCKING_REFERRERS, rows_naming
 from games.reads.playthrough_runs import library_runs
+from games.reads.referrers import referrers_of, rows_naming
 from games.writes.answers import CONFLICT_STATUS, CommandFailed, answered
 from games.writes.playersession import move_session
 from games.writes.playthrough import remove_run, restore_run
@@ -138,7 +138,9 @@ def _remove_the_emptied_bucket(
     ).first()
     if bucket is None:
         return
-    if any(rows_naming(referrer, bucket).exists() for referrer in BLOCKING_REFERRERS):
+    if any(
+        rows_naming(referrer, bucket).exists() for referrer in referrers_of(Playthrough)
+    ):
         return
     try:
         remove_run(

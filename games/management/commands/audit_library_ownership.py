@@ -9,6 +9,7 @@ from games.models import (
     Device,
     FilterPreset,
     Game,
+    LibraryEntry,
     Platform,
     PlayerSession,
     Purchase,
@@ -17,7 +18,7 @@ from games.models import (
     UserLibraryPreferences,
     UserPreferences,
 )
-from games.projections import cross_library_violations
+from games.projections import cross_library_violations, entry_game_violations
 
 
 class Command(BaseCommand):
@@ -58,6 +59,10 @@ class Command(BaseCommand):
                 Purchase.objects.filter(library_id__in=library_ids).count(),
             ),
             ("devices", Device.objects.filter(library_id__in=library_ids).count()),
+            (
+                "entries",
+                LibraryEntry.objects.filter(library_id__in=library_ids).count(),
+            ),
             (
                 "private platforms",
                 Platform.objects.filter(library_id__in=library_ids).count(),
@@ -222,4 +227,5 @@ class Command(BaseCommand):
                 f"library {library_id}, device {device_id}"
             )
         violations.extend(cross_library_violations(library_ids))
+        violations.extend(entry_game_violations(library_ids))
         return violations

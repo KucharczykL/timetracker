@@ -1,7 +1,7 @@
 """Projection tables, and what they name outside."""
 
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import Any, NamedTuple
 
 from django.apps import apps as global_apps
@@ -11,12 +11,16 @@ from django.db import models
 from django.db.models import F, Q
 
 from games.models import (
+    Edition,
     HistoricalPlaytime,
     HistoricalPlaytimeRun,
+    LibraryEntry,
     PlayerGame,
     PlayerSession,
     Playthrough,
     ProjectionModel,
+    Release,
+    UserLibrary,
 )
 
 type FieldName = str  # e.g. "player_game"
@@ -30,12 +34,22 @@ LIBRARY_FIELD: FieldName = "library"
 #: The column that field writes.
 _LIBRARY_ID = f"{LIBRARY_FIELD}_id"
 
+type LibraryPath = str  # e.g. "edition__game__library"
+
+#: A catalog row's path to its library.
+LIBRARY_PATHS: Mapping[type[models.Model], LibraryPath] = {
+    Release: "edition__game__library",
+    Edition: "game__library",
+}
+
 
 class ProjectionReference(NamedTuple):
     """One foreign key out of a projection."""
 
     model: type[ProjectionModel]
     field: models.ForeignKey[Any, Any]
+    #: From the named row to its library.
+    library_path: LibraryPath = LIBRARY_FIELD
 
     @classmethod
     def on(
@@ -45,12 +59,13 @@ class ProjectionReference(NamedTuple):
         field = model._meta.get_field(field_name)
         if not isinstance(field, models.ForeignKey):
             raise TypeError(f"{model.__name__}.{field_name} is not a foreign key.")
-        if not _is_library_scoped(field.related_model):
+        path = library_path_of(field.related_model)
+        if path is None:
             raise TypeError(
                 f"{model.__name__}.{field_name} names "
                 f"{field.related_model.__name__}, which holds no library."
             )
-        return cls(model, field)
+        return cls(model, field, path)
 
     @property
     def key(self) -> ReferenceKey:
@@ -72,18 +87,44 @@ def projection_models(apps: Apps = global_apps) -> tuple[type[ProjectionModel], 
     return tuple(sorted(found, key=lambda model: model._meta.db_table))
 
 
-def _is_library_scoped(model: type[models.Model]) -> bool:
-    """Whether `model` rows carry a library column.
+def library_path_of(model: type[models.Model]) -> LibraryPath | None:
+    """A row's path to its library; column first.
 
-    Concrete, because `get_field` answers for a reverse relation too:
-    `UserLibrary.user` is `related_name="library"`, which would make the
-    user model read as scoped and every lookup built below a FieldError.
+    Concrete, because `get_field` answers a reverse relation too:
+    `UserLibrary.user` is `related_name="library"`, which would
+    scope the user model and make every lookup a FieldError.
     """
     try:
         field = model._meta.get_field(LIBRARY_FIELD)
     except FieldDoesNotExist:
-        return False
-    return field.concrete
+        return LIBRARY_PATHS.get(model)
+    return LIBRARY_FIELD if field.concrete else LIBRARY_PATHS.get(model)
+
+
+type PathProblem = tuple[type[models.Model], LibraryPath, str]
+
+
+def unresolved_library_paths() -> list[PathProblem]:
+    """Declared paths that do not end at a library."""
+    problems: list[PathProblem] = []
+    for model, path in LIBRARY_PATHS.items():
+        reached: type[models.Model] = model
+        for segment in path.split("__"):
+            try:
+                field = reached._meta.get_field(segment)
+            except FieldDoesNotExist:
+                problems.append((model, path, f"names no field {segment!r}"))
+                break
+            if not isinstance(field, models.ForeignKey):
+                problems.append((model, path, f"is not to-one at {segment!r}"))
+                break
+            reached = field.related_model
+        else:
+            if reached is not UserLibrary:
+                problems.append(
+                    (model, path, f"ends at {reached.__name__}, not UserLibrary")
+                )
+    return problems
 
 
 def projection_references(apps: Apps = global_apps) -> tuple[ProjectionReference, ...]:
@@ -95,11 +136,11 @@ def projection_references(apps: Apps = global_apps) -> tuple[ProjectionReference
     ever being purged, and `CASCADE` would take rows out of it.
     """
     found = [
-        ProjectionReference(model, field)
+        ProjectionReference(model, field, path)
         for model in projection_models(apps)
         for field in model._meta.concrete_fields
         if isinstance(field, models.ForeignKey)
-        and _is_library_scoped(field.related_model)
+        and (path := library_path_of(field.related_model)) is not None
     ]
     return tuple(
         sorted(
@@ -119,6 +160,8 @@ AUDITED_PROJECTION_REFERENCES: tuple[ProjectionReference, ...] = (
     ProjectionReference.on(HistoricalPlaytime, "reclassified_from"),
     ProjectionReference.on(HistoricalPlaytimeRun, "playthrough"),
     ProjectionReference.on(HistoricalPlaytimeRun, "record"),
+    ProjectionReference.on(LibraryEntry, "player_game"),
+    ProjectionReference.on(LibraryEntry, "release"),
     ProjectionReference.on(PlayerGame, "game"),
     ProjectionReference.on(PlayerSession, "device"),
     ProjectionReference.on(PlayerSession, "playthrough"),
@@ -171,15 +214,16 @@ def cross_library_violations(
     """
     violations: list[ViolationSentence] = []
     for reference in references:
-        name = reference.field.name
+        named_library = f"{reference.field.name}__{reference.library_path}"
+        named_library_id = f"{named_library}_id"
         #: The base manager: a removed row keeps its key.
         rows = (
             reference.model._base_manager.filter(
                 Q(**{f"{_LIBRARY_ID}__in": library_ids})
-                | Q(**{f"{name}__{_LIBRARY_ID}__in": library_ids}),
-                **{f"{name}__{LIBRARY_FIELD}__isnull": False},
+                | Q(**{f"{named_library_id}__in": library_ids}),
+                **{f"{named_library}__isnull": False},
             )
-            .exclude(**{f"{name}__{_LIBRARY_ID}": F(_LIBRARY_ID)})
+            .exclude(**{named_library_id: F(_LIBRARY_ID)})
             .values_list("pk", reference.field.attname)
         )
         referenced = reference.field.related_model.__name__
@@ -188,3 +232,17 @@ def cross_library_violations(
                 f"{reference}: {row_id} names {referenced} {referenced_id}"
             )
     return violations
+
+
+def entry_game_violations(library_ids: Sequence[uuid.UUID]) -> list[ViolationSentence]:
+    """Entries whose Release is not their tracked game's."""
+    rows = (
+        LibraryEntry._base_manager.filter(library_id__in=library_ids)
+        .exclude(release__edition__game=F("player_game__game"))
+        .values_list("pk", "release__edition__game_id", "player_game__game_id")
+    )
+    return [
+        f"LibraryEntry.release: {row_id} names a Release of Game "
+        f"{release_game}, and its PlayerGame tracks Game {tracked_game}"
+        for row_id, release_game, tracked_game in rows
+    ]

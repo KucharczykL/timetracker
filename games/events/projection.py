@@ -24,7 +24,11 @@ from weakref import WeakKeyDictionary
 
 from django.apps import apps
 
-from games.endpoint_fields import EndpointColumns
+from games.endpoint_fields import (
+    EndpointColumns,
+    EndpointColumnsBase,
+    OpeningEndpointColumns,
+)
 from games.events.envelope import RecordedEvent
 from games.events.targets import LIVE_TARGET, ProjectionTarget
 from games.events.vocabulary import EventSpec, EventType
@@ -390,7 +394,9 @@ class Projector(ABC):
             "stream is wrong, not the row."
         )
 
-    def project_stated(self, endpoint: EndpointColumns, event: RecordedEvent) -> None:
+    def project_stated(
+        self, endpoint: EndpointColumnsBase, event: RecordedEvent
+    ) -> None:
         """The act; every value off the event."""
         self.amend(
             _endpoint_model(endpoint),
@@ -400,7 +406,7 @@ class Projector(ABC):
         )
 
     def project_corrected(
-        self, endpoint: EndpointColumns, event: RecordedEvent
+        self, endpoint: EndpointColumnsBase, event: RecordedEvent
     ) -> None:
         """A restatement; the marker stays."""
         self.amend(_endpoint_model(endpoint), event, **_stated_values(endpoint, event))
@@ -408,6 +414,16 @@ class Projector(ABC):
     def project_voided(self, endpoint: EndpointColumns, event: RecordedEvent) -> None:
         """The record taken back."""
         self.amend(_endpoint_model(endpoint), event, **endpoint.unstated_columns())
+
+    def opening_columns(
+        self, endpoint: OpeningEndpointColumns, event: RecordedEvent, *, note: str
+    ) -> dict[str, Any]:
+        """What a creation spreads into `project()`."""
+        return {
+            endpoint.when: event.effective_time,
+            endpoint.marker: event.recorded_at,
+            endpoint.note: note,
+        }
 
     def __init_subclass__(
         cls,
@@ -424,11 +440,13 @@ class Projector(ABC):
         registry.register(cls)
 
 
-def _endpoint_model(endpoint: EndpointColumns) -> type[ProjectionModel]:
+def _endpoint_model(endpoint: EndpointColumnsBase) -> type[ProjectionModel]:
     return cast("type[ProjectionModel]", apps.get_model(endpoint.model_label))
 
 
-def _stated_values(endpoint: EndpointColumns, event: RecordedEvent) -> dict[str, Any]:
+def _stated_values(
+    endpoint: EndpointColumnsBase, event: RecordedEvent
+) -> dict[str, Any]:
     """Every value a statement carries: day, note, and way."""
     values: dict[str, Any] = {
         endpoint.when: event.effective_time,

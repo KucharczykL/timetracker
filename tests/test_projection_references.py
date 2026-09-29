@@ -38,11 +38,43 @@ def test_the_walk_finds_every_outward_reference():
         ("HistoricalPlaytime", "reclassified_from"),
         ("HistoricalPlaytimeRun", "playthrough"),
         ("HistoricalPlaytimeRun", "record"),
+        ("LibraryEntry", "player_game"),
+        ("LibraryEntry", "release"),
         ("PlayerGame", "game"),
         ("PlayerSession", "device"),
         ("PlayerSession", "playthrough"),
         ("Playthrough", "player_game"),
     ]
+
+
+def test_a_catalog_model_reaches_its_library_through_a_path():
+    """A concrete column first, then the map."""
+    from games.models import Edition, Release
+
+    assert projections.library_path_of(PlayerGame) == "library"
+    assert projections.library_path_of(Release) == "edition__game__library"
+    assert projections.library_path_of(Edition) == "game__library"
+    assert projections.library_path_of(get_user_model()) is None
+    assert ProjectionReference.on(PlayerGame, "game").library_path == "library"
+
+
+def test_a_path_that_ends_elsewhere_is_refused(monkeypatch):
+    from games.checks import check_library_paths
+    from games.models import Edition, Release
+
+    assert projections.unresolved_library_paths() == []
+    monkeypatch.setattr(
+        projections,
+        "LIBRARY_PATHS",
+        {Release: "edition__game", Edition: "game__name", PlayerGame: "nowhere"},
+    )
+    messages = [error.msg for error in check_library_paths()]
+    assert messages == [
+        "Release: library path 'edition__game' ends at Game, not UserLibrary.",
+        "Edition: library path 'game__name' is not to-one at 'name'.",
+        "PlayerGame: library path 'nowhere' names no field 'nowhere'.",
+    ]
+    assert all(error.id == "games.E015" for error in check_library_paths())
 
 
 def test_the_library_column_is_not_a_reference():
@@ -87,7 +119,7 @@ def test_a_reverse_relation_named_library_does_not_scope_a_model():
     user_model = get_user_model()
 
     assert user_model._meta.get_field("library").concrete is False
-    assert not projections._is_library_scoped(user_model)
+    assert projections.library_path_of(user_model) is None
 
 
 def test_a_reference_the_model_does_not_hold_is_refused():

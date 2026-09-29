@@ -52,9 +52,9 @@ from games.models import (
     ProjectionModel,
     RemovableLibraryQuerySet,
 )
-from games.reads import playthrough_referrers
+from games.reads import referrers
 from games.reads.playthrough_numbering import display_name, with_display_number
-from games.reads.playthrough_referrers import BlockingReferrer
+from games.reads.referrers import BlockingReferrer
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.untracked_games
@@ -1959,9 +1959,9 @@ def referring_models():
                     schema_editor.delete_model(model)
 
 
-def _register(monkeypatch, *referrers):
+def _register(monkeypatch, *entries):
     """The registry is patched whole."""
-    monkeypatch.setattr(playthrough_referrers, "BLOCKING_REFERRERS", referrers)
+    monkeypatch.setattr(referrers, "BLOCKING_REFERRERS", entries)
 
 
 ASSIGNED_SENTENCE = (
@@ -1980,7 +1980,10 @@ def test_a_registered_referrer_keeps_a_run_in_place(
     _register(
         monkeypatch,
         BlockingReferrer.on(
-            assignment_model, "playthrough", sentence=ASSIGNED_SENTENCE
+            assignment_model,
+            "playthrough",
+            target=Playthrough,
+            sentence=ASSIGNED_SENTENCE,
         ),
     )
 
@@ -2003,7 +2006,9 @@ def test_a_removed_referring_row_keeps_nothing_in_place(
     )
     _register(
         monkeypatch,
-        BlockingReferrer.on(assignment_model, "playthrough", sentence="unused"),
+        BlockingReferrer.on(
+            assignment_model, "playthrough", target=Playthrough, sentence="unused"
+        ),
     )
 
     result = _remove(owned_user, owned_library, run, key="not-blocked")
@@ -2023,10 +2028,16 @@ def test_a_later_entry_answers_where_the_first_names_nothing(
     _register(
         monkeypatch,
         BlockingReferrer.on(
-            assignment_model, "playthrough", sentence=ASSIGNED_SENTENCE
+            assignment_model,
+            "playthrough",
+            target=Playthrough,
+            sentence=ASSIGNED_SENTENCE,
         ),
         BlockingReferrer.on(
-            bookmark_model, "playthrough", sentence="Bookmarks name this playthrough."
+            bookmark_model,
+            "playthrough",
+            target=Playthrough,
+            sentence="Bookmarks name this playthrough.",
         ),
     )
 
@@ -2049,10 +2060,16 @@ def test_the_first_naming_entry_is_the_one_a_person_hears(
     _register(
         monkeypatch,
         BlockingReferrer.on(
-            assignment_model, "playthrough", sentence=ASSIGNED_SENTENCE
+            assignment_model,
+            "playthrough",
+            target=Playthrough,
+            sentence=ASSIGNED_SENTENCE,
         ),
         BlockingReferrer.on(
-            bookmark_model, "playthrough", sentence="Bookmarks name this playthrough."
+            bookmark_model,
+            "playthrough",
+            target=Playthrough,
+            sentence="Bookmarks name this playthrough.",
         ),
     )
 
@@ -2075,7 +2092,10 @@ def test_a_foreign_referring_row_is_refused_as_a_defect(
     _register(
         monkeypatch,
         BlockingReferrer.on(
-            assignment_model, "playthrough", sentence=ASSIGNED_SENTENCE
+            assignment_model,
+            "playthrough",
+            target=Playthrough,
+            sentence=ASSIGNED_SENTENCE,
         ),
     )
 
@@ -2106,7 +2126,10 @@ def test_an_own_session_answers_before_a_foreign_one(
     _register(
         monkeypatch,
         BlockingReferrer.on(
-            assignment_model, "playthrough", sentence=ASSIGNED_SENTENCE
+            assignment_model,
+            "playthrough",
+            target=Playthrough,
+            sentence=ASSIGNED_SENTENCE,
         ),
     )
 
@@ -2128,7 +2151,9 @@ def test_a_referrer_whose_reads_keep_removed_rows_is_refused():
                 app_label = "games"
 
         with pytest.raises(TypeError, match="states no alive"):
-            BlockingReferrer.on(Unmarked, "playthrough", sentence="unused")
+            BlockingReferrer.on(
+                Unmarked, "playthrough", target=Playthrough, sentence="unused"
+            )
 
 
 def test_a_referrer_on_a_field_that_is_not_a_key_is_refused():
@@ -2146,7 +2171,9 @@ def test_a_referrer_on_a_field_that_is_not_a_key_is_refused():
                 app_label = "games"
 
         with pytest.raises(TypeError, match="is not a foreign key"):
-            BlockingReferrer.on(Mislabeled, "playthrough", sentence="unused")
+            BlockingReferrer.on(
+                Mislabeled, "playthrough", target=Playthrough, sentence="unused"
+            )
 
 
 def test_a_referrer_naming_another_model_is_refused():
@@ -2164,7 +2191,9 @@ def test_a_referrer_naming_another_model_is_refused():
                 app_label = "games"
 
         with pytest.raises(TypeError, match="not a playthrough"):
-            BlockingReferrer.on(Misdirected, "playthrough", sentence="unused")
+            BlockingReferrer.on(
+                Misdirected, "playthrough", target=Playthrough, sentence="unused"
+            )
 
 
 SESSIONS_SENTENCE = (
@@ -2175,7 +2204,7 @@ SESSIONS_SENTENCE = (
 
 def test_the_delivered_registry_names_sessions_and_historical_playtime():
     """Two entries: sessions and records name runs."""
-    sessions, records = playthrough_referrers.BLOCKING_REFERRERS
+    sessions, records = referrers.BLOCKING_REFERRERS
 
     assert (sessions.model, sessions.field_name) == (PlayerSession, "playthrough")
     assert sessions.sentence == SESSIONS_SENTENCE
@@ -2183,7 +2212,7 @@ def test_the_delivered_registry_names_sessions_and_historical_playtime():
         HistoricalPlaytimeRun,
         "playthrough",
     )
-    assert records.sentence == playthrough_referrers.HISTORICAL_PLAYTIME_RECORDED
+    assert records.sentence == referrers.HISTORICAL_PLAYTIME_RECORDED
 
 
 def _record_session(owned_user, owned_library, run, key="session"):

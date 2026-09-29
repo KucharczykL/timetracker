@@ -1,4 +1,4 @@
-"""The registered ways to name a run."""
+"""The registered ways to name a projection row."""
 
 from datetime import UTC, datetime
 
@@ -6,10 +6,13 @@ import pytest
 from django.utils import timezone
 from session_rows import timed_row, tracked_run
 
-from games.models import Game, PlayerSession
-from games.reads.playthrough_referrers import (
+from games.models import Game, PlayerGame, PlayerSession, Playthrough
+from games.reads import referrers
+from games.reads.referrers import (
     BLOCKING_REFERRERS,
+    BlockingReferrer,
     blocking_referrer,
+    referrers_of,
     rows_naming,
 )
 
@@ -17,7 +20,7 @@ pytestmark = pytest.mark.django_db
 
 STARTED_AT = datetime(2026, 3, 5, 10, tzinfo=UTC)
 
-#: The entry a session answers.
+#: The member a session answers.
 SESSION_REFERRER = BLOCKING_REFERRERS[0]
 
 
@@ -61,3 +64,23 @@ def test_rows_naming_answers_nothing_for_an_unnamed_run(owned_library, game):
     run = tracked_run(owned_library, game)
 
     assert not rows_naming(SESSION_REFERRER, run).exists()
+
+
+def test_on_refuses_a_field_naming_another_model_than_the_target():
+    with pytest.raises(TypeError, match="names Playthrough, not a playergame"):
+        BlockingReferrer.on(
+            PlayerSession, "playthrough", target=PlayerGame, sentence="unused"
+        )
+
+
+def test_referrers_of_reads_the_patched_tuple(monkeypatch):
+    assert referrers_of(Playthrough) == BLOCKING_REFERRERS
+    assert referrers_of(PlayerGame) == ()
+    monkeypatch.setattr(referrers, "BLOCKING_REFERRERS", (SESSION_REFERRER,))
+    assert referrers_of(Playthrough) == (SESSION_REFERRER,)
+
+
+def test_rows_naming_refuses_a_row_of_another_model(owned_library, game):
+    run = tracked_run(owned_library, game)
+    with pytest.raises(TypeError, match="names a Playthrough, not a PlayerGame"):
+        rows_naming(SESSION_REFERRER, run.player_game)

@@ -58,3 +58,14 @@ def created_aggregate_id(result: CommandResult) -> uuid.UUID:
     return LibraryEvent.objects.get(
         stream_id=result.stream_id, sequence=result.sequences.first
     ).aggregate_id
+
+
+def dispatched_events(result: CommandResult) -> LibraryEventQuerySet:
+    """One dispatch's events, in append order."""
+    if result.sequences is None:
+        #: Not an assert: `-O` strips one.
+        raise ValueError("An outcome that appended no event names no range.")
+    return LibraryEvent.objects.filter(
+        stream_id=result.stream_id,
+        sequence__range=(result.sequences.first, result.sequences.last),
+    ).order_by("sequence")

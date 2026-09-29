@@ -118,6 +118,11 @@ class CommandName(CommandVocabulary):
     DEVICE_END_ACCESS = "library.device.end_access"
     DEVICE_CORRECT_ACCESS_END = "library.device.correct_access_end"
     DEVICE_VOID_ACCESS_END = "library.device.void_access_end"
+    LIBRARYENTRY_RECORD = "library.libraryentry.record"
+    LIBRARYENTRY_DESCRIBE = "library.libraryentry.describe"
+    LIBRARYENTRY_CORRECT_ACQUISITION = "library.libraryentry.correct_acquisition"
+    LIBRARYENTRY_REMOVE = "library.libraryentry.remove"
+    LIBRARYENTRY_RESTORE = "library.libraryentry.restore"
 
 
 @dataclass(frozen=True, slots=True)

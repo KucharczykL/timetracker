@@ -6,7 +6,8 @@ from typing import Any, NamedTuple
 from django.db import models
 
 from games.end_ways import EndWay
-from games.endpoints import Endpoint
+from games.endpoint_fields import EndpointColumnsBase
+from games.endpoints import Endpoint, OpeningEndpoint
 from games.events.dispatch import CommandRejected
 from games.events.vocabulary import NewEvent, Unchanged
 from games.reads.endpoints import stated
@@ -73,7 +74,7 @@ def _nothing() -> None:
 type Statement = ActStatement | WayActStatement
 
 
-def _payload(endpoint: Endpoint, statement: Statement) -> dict[str, Any]:
+def _payload(endpoint: EndpointColumnsBase, statement: Statement) -> dict[str, Any]:
     """The payload; its shape must match."""
     match statement:
         case WayActStatement() if endpoint.way is not None:
@@ -86,7 +87,9 @@ def _payload(endpoint: Endpoint, statement: Statement) -> dict[str, Any]:
     )
 
 
-def _states_it(row: models.Model, endpoint: Endpoint, statement: Statement) -> bool:
+def _states_it(
+    row: models.Model, endpoint: EndpointColumnsBase, statement: Statement
+) -> bool:
     held = stated(row, endpoint)
     if held is None:
         return False
@@ -154,3 +157,23 @@ def void_endpoint(
         return Unchanged(sentences.nothing_to_void)
     before_event()
     return [endpoint.events.voided.new(aggregate_id=row.pk, payload={})]
+
+
+def correct_opening_endpoint(
+    row: models.Model,
+    endpoint: OpeningEndpoint,
+    statement: ActStatement,
+    *,
+    same_correction: str,
+    before_event: BeforeEvent = _nothing,
+) -> Sequence[NewEvent] | Unchanged:
+    """Restate the creation's day and note."""
+    payload = _payload(endpoint, statement)
+    if _states_it(row, endpoint, statement):
+        return Unchanged(same_correction)
+    before_event()
+    return [
+        endpoint.events.corrected.new(
+            aggregate_id=row.pk, effective_time=statement.when, payload=payload
+        )
+    ]
