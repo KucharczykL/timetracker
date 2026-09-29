@@ -1,13 +1,21 @@
 """The LibraryEntry table: its CHECKs, index, marks and audit."""
 
 import uuid
+from typing import cast
 
 import pytest
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
-from games.models import Game, LibraryEntry, PlayerGame, Release
-from games.projections import cross_library_violations
+from games.models import (
+    EntryAccess,
+    EntryFormat,
+    Game,
+    LibraryEntry,
+    PlayerGame,
+    Release,
+)
+from games.projections import cross_library_violations, entry_game_violations
 
 pytestmark = [pytest.mark.django_db, pytest.mark.untracked_games]
 
@@ -112,3 +120,37 @@ def test_an_entry_naming_a_shared_release_is_no_violation(owned_library, graph):
     _row(owned_library, tracked, graph.release)
 
     assert cross_library_violations([owned_library.pk]) == []
+
+
+def test_an_entry_naming_a_foreign_player_game_is_reported(
+    owned_library, other_library, graph
+):
+    Game.objects.filter(pk=graph.game.pk).update(library=None)
+    theirs = _tracked(other_library, graph.game)
+    row = _row(owned_library, theirs, graph.release)
+
+    assert cross_library_violations([owned_library.pk]) == [
+        f"LibraryEntry.player_game: {row.pk} names PlayerGame {theirs.pk}"
+    ]
+
+
+def test_the_word_columns_fit_every_word() -> None:
+    access = cast(int, LibraryEntry._meta.get_field("access").max_length)
+    format = cast(int, LibraryEntry._meta.get_field("format").max_length)
+    assert max(len(word) for word in EntryAccess.values) <= access
+    assert max(len(word) for word in EntryFormat.values) <= format
+
+
+def test_an_entry_on_another_games_release_is_reported(
+    owned_library, graph, stated_graph
+):
+    other = stated_graph(Game(name="Celeste", library=owned_library), owned_library)
+    tracked = _tracked(owned_library, graph.game)
+    row = _row(owned_library, tracked, other.release)
+
+    sentence = (
+        f"LibraryEntry.release: {row.pk} names a Release of Game "
+        f"{other.game.pk}, and its PlayerGame tracks Game {graph.game.pk}"
+    )
+    assert entry_game_violations([owned_library.pk]) == [sentence]
+    assert entry_game_violations([]) == []

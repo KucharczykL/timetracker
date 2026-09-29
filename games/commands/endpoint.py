@@ -6,7 +6,7 @@ from typing import Any, NamedTuple
 from django.db import models
 
 from games.end_ways import EndWay
-from games.endpoint_fields import EndpointColumns
+from games.endpoint_fields import EndpointColumnsBase
 from games.endpoints import Endpoint, OpeningEndpoint
 from games.events.dispatch import CommandRejected
 from games.events.vocabulary import NewEvent, Unchanged
@@ -74,7 +74,7 @@ def _nothing() -> None:
 type Statement = ActStatement | WayActStatement
 
 
-def _payload(endpoint: EndpointColumns, statement: Statement) -> dict[str, Any]:
+def _payload(endpoint: EndpointColumnsBase, statement: Statement) -> dict[str, Any]:
     """The payload; its shape must match."""
     match statement:
         case WayActStatement() if endpoint.way is not None:
@@ -88,7 +88,7 @@ def _payload(endpoint: EndpointColumns, statement: Statement) -> dict[str, Any]:
 
 
 def _states_it(
-    row: models.Model, endpoint: EndpointColumns, statement: Statement
+    row: models.Model, endpoint: EndpointColumnsBase, statement: Statement
 ) -> bool:
     held = stated(row, endpoint)
     if held is None:
@@ -167,7 +167,7 @@ def correct_opening_endpoint(
     same_correction: str,
     before_event: BeforeEvent = _nothing,
 ) -> Sequence[NewEvent] | Unchanged:
-    """Restate the day the creation stated."""
+    """Restate the creation's day and note."""
     payload = _payload(endpoint, statement)
     if _states_it(row, endpoint, statement):
         return Unchanged(same_correction)

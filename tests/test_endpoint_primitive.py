@@ -108,9 +108,10 @@ def test_an_opening_endpoint_refuses_a_way() -> None:
 
 
 def test_an_opening_endpoint_states_no_unstated_columns() -> None:
+    """A sibling of the stated shape, not a subtype."""
     assert _opening().way is None
-    with pytest.raises(TypeError, match="never unstated"):
-        _opening().unstated_columns()
+    assert not hasattr(_opening(), "unstated_columns")
+    assert not isinstance(_opening(), EndpointColumns)
 
 
 def test_the_check_refuses_a_nullable_opening_marker() -> None:
@@ -139,6 +140,11 @@ def _creation() -> RecordedEvent:
         idempotency_key="probe",
         payload={},
     )
+
+
+def test_a_missing_opening_marker_is_reported_once() -> None:
+    (error,) = endpoint_errors(_opening(marker="start_stamp"), Playthrough)
+    assert "declares no column 'start_stamp'" in error.msg
 
 
 def test_opening_columns_reads_the_creation() -> None:

@@ -6,7 +6,12 @@ from dataclasses import dataclass
 from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Model, Q, QuerySet
 
-from games.events.dispatch import CommandContext, CommandRejected, RowNotHeld
+from games.events.dispatch import (
+    CommandContext,
+    CommandRejected,
+    RowNotHeld,
+    RowUnreadable,
+)
 from games.models import Device, LibraryEntry
 from games.projections import library_path_of
 
@@ -122,11 +127,15 @@ def library_device(
 
 
 def library_entry_row(context: CommandContext, entry_id: uuid.UUID) -> LibraryEntry:
-    """This library's entry, removed or not."""
-    return library_row(
+    """This library's entry, removed or not.
+
+    A drifted parent is the ownership audit's defect:
+    no command states a fact on such a row.
+    """
+    entry = library_row(
         context,
-        #: Every caller reads the parent's mark.
-        LibraryEntry.objects.select_related("player_game", "release"),
+        #: Every caller reads the parent's mark; restore the Release's.
+        LibraryEntry.objects.select_related("player_game", "release__edition__game"),
         Refusal(
             message=(
                 f"This library holds no entry {entry_id}. A stated fact names "
@@ -135,3 +144,18 @@ def library_entry_row(context: CommandContext, entry_id: uuid.UUID) -> LibraryEn
         ),
         pk=entry_id,
     )
+    if entry.player_game.library_id != context.library.pk:
+        raise RowUnreadable(
+            f"Entry {entry.pk} of library {entry.library_id} names player game "
+            f"{entry.player_game_id} of library {entry.player_game.library_id}; "
+            "the ownership audit reports it, and no command states a fact "
+            "about it."
+        )
+    release_library = entry.release.edition.game.library_id
+    if release_library is not None and release_library != context.library.pk:
+        raise RowUnreadable(
+            f"Entry {entry.pk} of library {entry.library_id} names release "
+            f"{entry.release_id} of library {release_library}; the ownership "
+            "audit reports it, and no command states a fact about it."
+        )
+    return entry

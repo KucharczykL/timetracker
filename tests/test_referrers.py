@@ -20,7 +20,7 @@ pytestmark = pytest.mark.django_db
 
 STARTED_AT = datetime(2026, 3, 5, 10, tzinfo=UTC)
 
-#: The entry a session answers.
+#: The member a session answers.
 SESSION_REFERRER = BLOCKING_REFERRERS[0]
 
 

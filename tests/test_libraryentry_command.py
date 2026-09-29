@@ -1,17 +1,20 @@
-"""Stating a copy of a Release the library holds."""
+"""Stating a copy of a Release the library sees."""
 
 import uuid
 from datetime import UTC, datetime
 
 import pytest
+from django.db import connection, models
+from django.test.utils import isolate_apps
+from django.utils import timezone
 from entries import record_entry, remove_entry, restore_entry
 
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
-from games.commands import libraryentry as entry_commands
 from games.commands.endpoint import ActStatement
 from games.commands.libraryentry import (
     ENTRY_REMOVED,
     PLAYER_GAME_REMOVED,
+    RECORD_UNDER_REMOVED_GAME,
     RELEASE_OF_ANOTHER_GAME,
     RELEASE_REMOVED,
     UNKNOWN_ACCESS,
@@ -36,10 +39,12 @@ from games.models import (
     LibraryEntry,
     LibraryEvent,
     PlayerGame,
-    PlayerSession,
     Playthrough,
+    ProjectionModel,
     Release,
+    RemovableLibraryQuerySet,
 )
+from games.reads import referrers
 from games.reads.referrers import BlockingReferrer, referrers_of
 from games.removal import remove
 from timetracker.temporal import TemporalValue
@@ -262,7 +267,7 @@ def test_recording_under_a_removed_player_game_is_refused(owned_library, graph):
         RecordEntry(release_id=graph.release.pk, access="owned", format="digital"),
     )
 
-    assert refused.sentence == PLAYER_GAME_REMOVED
+    assert refused.sentence == RECORD_UNDER_REMOVED_GAME
     assert PlayerGame.objects.filter(pk=tracked.pk).count() == 1
 
 
@@ -356,11 +361,15 @@ def test_a_description_refuses_another_librarys_release(
         )
 
 
-def test_a_description_of_a_removed_entry_is_refused(owned_library, graph):
+def test_a_description_of_a_removed_entry_is_refused_after_unchanged(
+    owned_library, graph
+):
     entry = remove_entry(record_entry(owned_library, graph.release))
 
+    same = _dispatch(owned_library, DescribeEntry(entry_id=entry.pk, access="owned"))
     refused = _refused(owned_library, DescribeEntry(entry_id=entry.pk, access="rented"))
 
+    assert same.outcome is CommandOutcome.UNCHANGED
     assert refused.sentence == ENTRY_REMOVED
 
 
@@ -510,55 +519,131 @@ def test_remove_and_restore_are_refused_under_a_removed_player_game(
         _refused(owned_library, RestoreEntry(entry_id=gone.pk)).sentence
         == PLAYER_GAME_REMOVED
     )
+    #: The state a row holds answers ahead of the parent's mark.
+    assert (
+        _dispatch(owned_library, RemoveEntry(entry_id=gone.pk)).outcome
+        is CommandOutcome.UNCHANGED
+    )
+    assert (
+        _dispatch(owned_library, RestoreEntry(entry_id=live.pk)).outcome
+        is CommandOutcome.UNCHANGED
+    )
 
 
-def test_a_restore_is_refused_under_a_removed_release(owned_library, graph):
+@pytest.mark.parametrize("level", ("release", "edition", "game"))
+def test_a_restore_is_refused_under_a_removed_release(owned_library, graph, level):
     entry = remove_entry(record_entry(owned_library, graph.release))
-    remove(graph.release)
+    remove(getattr(graph, level))
 
     refused = _refused(owned_library, RestoreEntry(entry_id=entry.pk))
 
     assert refused.sentence == RELEASE_REMOVED
 
 
+def test_an_entry_naming_a_foreign_player_game_is_a_defect(
+    owned_library, second_library, graph
+):
+    """The drift the ownership audit reports; no command writes on it."""
+    entry = record_entry(owned_library, graph.release)
+    Game.objects.filter(pk=graph.game.pk).update(library=None)
+    theirs = _track(second_library, graph.game)
+    LibraryEntry.objects.filter(pk=entry.pk).update(player_game=theirs)
+
+    with pytest.raises(RowUnreadable, match=str(theirs.pk)):
+        _dispatch(owned_library, DescribeEntry(entry_id=entry.pk, access="rented"))
+    assert _event_types(entry) == ["library.libraryentry.created"]
+
+
+def test_an_entry_naming_a_foreign_private_release_is_a_defect(
+    owned_library, second_library, graph, stated_graph
+):
+    entry = record_entry(owned_library, graph.release)
+    theirs = stated_graph(Game(name="Hades", library=second_library), second_library)
+    LibraryEntry.objects.filter(pk=entry.pk).update(release=theirs.release)
+
+    with pytest.raises(RowUnreadable, match=str(theirs.release.pk)):
+        _dispatch(owned_library, RemoveEntry(entry_id=entry.pk))
+    assert _event_types(entry) == ["library.libraryentry.created"]
+
+
 def test_no_referrer_names_an_entry_yet():
     assert referrers_of(LibraryEntry) == ()
 
 
-def test_a_registered_referrer_keeps_an_entry_in_place(
-    owned_library, graph, monkeypatch
-):
-    """The registry is read; today it holds no entry referrer."""
-    entry = record_entry(owned_library, graph.release)
-    blocker = BlockingReferrer.on(
-        PlayerSession,
-        "playthrough",
-        target=Playthrough,
-        sentence="Purchases name this copy.",
+@pytest.fixture
+def referring_model():
+    """A throwaway projection naming an entry."""
+    with isolate_apps("games"):
+
+        class Claim(ProjectionModel):
+            id = models.UUIDField(primary_key=True, default=uuid.uuid7)
+            entry = models.ForeignKey(LibraryEntry, on_delete=models.RESTRICT)
+            removed_at = models.DateTimeField(null=True, default=None)
+
+            objects = RemovableLibraryQuerySet.as_manager()
+
+            class Meta:
+                app_label = "games"
+                db_table = "test_libraryentry_claim"
+
+        with connection.schema_editor() as schema_editor:
+            schema_editor.create_model(Claim)
+        try:
+            yield Claim
+        finally:
+            with connection.schema_editor() as schema_editor:
+                schema_editor.delete_model(Claim)
+
+
+CLAIMED_SENTENCE = "Purchases name this copy. Remove them first."
+
+
+def _register(monkeypatch, referring_model) -> BlockingReferrer:
+    """The registry is patched whole."""
+    claim = BlockingReferrer.on(
+        referring_model, "entry", target=LibraryEntry, sentence=CLAIMED_SENTENCE
     )
-    monkeypatch.setattr(entry_commands, "blocking_referrer", lambda row: blocker)
+    monkeypatch.setattr(referrers, "BLOCKING_REFERRERS", (claim,))
+    return claim
+
+
+def test_a_registered_referrer_keeps_an_entry_in_place(
+    owned_library, graph, monkeypatch, referring_model
+):
+    entry = record_entry(owned_library, graph.release)
+    other = record_entry(owned_library, graph.release)
+    referring_model.objects.create(entry=entry, library=owned_library)
+    _register(monkeypatch, referring_model)
 
     refused = _refused(owned_library, RemoveEntry(entry_id=entry.pk))
+    result = _dispatch(owned_library, RemoveEntry(entry_id=other.pk))
 
-    assert refused.sentence == "Purchases name this copy."
+    assert refused.sentence == CLAIMED_SENTENCE
+    assert result.outcome is CommandOutcome.APPENDED
     entry.refresh_from_db()
     assert entry.removed_at is None
 
 
-def test_a_foreign_referrer_is_refused_as_a_defect(
-    owned_library, second_library, graph, monkeypatch
+def test_a_removed_referring_row_keeps_nothing_in_place(
+    owned_library, graph, monkeypatch, referring_model
 ):
-    from games.reads.referrers import ForeignReferrer
-
     entry = record_entry(owned_library, graph.release)
-    blocker = BlockingReferrer.on(
-        PlayerSession, "playthrough", target=Playthrough, sentence="unused"
+    referring_model.objects.create(
+        entry=entry, library=owned_library, removed_at=timezone.now()
     )
-    monkeypatch.setattr(
-        entry_commands,
-        "foreign_referrer",
-        lambda row: ForeignReferrer(blocker, (second_library.pk,)),
-    )
+    _register(monkeypatch, referring_model)
+
+    result = _dispatch(owned_library, RemoveEntry(entry_id=entry.pk))
+
+    assert result.outcome is CommandOutcome.APPENDED
+
+
+def test_a_foreign_referrer_is_refused_as_a_defect(
+    owned_library, second_library, graph, monkeypatch, referring_model
+):
+    entry = record_entry(owned_library, graph.release)
+    referring_model.objects.create(entry=entry, library=second_library)
+    _register(monkeypatch, referring_model)
 
     with pytest.raises(RowUnreadable) as refused:
         _dispatch(owned_library, RemoveEntry(entry_id=entry.pk))
@@ -566,7 +651,9 @@ def test_a_foreign_referrer_is_refused_as_a_defect(
     argument = str(refused.value)
     assert str(entry.pk) in argument
     assert str(second_library.pk) in argument
-    assert "PlayerSession.playthrough" in argument
+    assert f"{referring_model.__name__}.entry" in argument
+    entry.refresh_from_db()
+    assert entry.removed_at is None
 
 
 def test_a_removal_is_recorded_at_the_events_instant(owned_library, graph):

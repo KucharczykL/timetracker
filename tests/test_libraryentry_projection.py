@@ -109,7 +109,7 @@ def test_a_stream_naming_an_entry_it_never_created_is_refused(owned_library, gra
         created_at=timezone.now(),
     )
     live = LibraryEvent.objects.filter(library=owned_library).latest("sequence")
-    #: An index row naming the stray, as a later member's Purchase would.
+    #: A reference naming the stray; nothing creates one today.
     LibraryEventReference.objects.create(
         library=owned_library,
         event=live,

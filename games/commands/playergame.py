@@ -110,7 +110,7 @@ class TrackGame(Command):
         return visible_row(
             context,
             Game.objects.alive(),
-            #: Leaks nothing about another library's rows.
+            #: Older than the absent rule; keeps its sentence.
             Refusal(
                 message=(
                     f"No game {self.game_id} this library can track. A library "

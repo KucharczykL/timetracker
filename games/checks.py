@@ -18,7 +18,7 @@ from common.components.icons_generated import ICON_NODES
 from common.criteria import FilterError, declared_through_paths, resolve_through_path
 from common.platform_icons import PLATFORM_ICONS, PlatformIcon
 from games.endpoint_fields import (
-    EndpointColumns,
+    EndpointColumnsBase,
     OpeningEndpointColumns,
     endpoint_constraints,
 )
@@ -27,6 +27,7 @@ from games.models import ProjectionModel
 from games.projections import (
     stale_projection_references,
     unaudited_projection_references,
+    unresolved_library_paths,
 )
 from timetracker.temporal import TemporalLowerBound, TemporalUpperBound
 
@@ -372,7 +373,7 @@ def check_atomic_requests(
 
 
 def endpoint_errors(
-    endpoint: EndpointColumns, model: type[models.Model]
+    endpoint: EndpointColumnsBase, model: type[models.Model]
 ) -> list[CheckMessage]:
     """Where a model departs from the endpoint it registers."""
     problems: list[str] = []
@@ -410,13 +411,17 @@ def endpoint_errors(
         if held.get(constraint.name) != constraint
     )
     marker = declared.get(endpoint.marker)
-    if isinstance(endpoint, OpeningEndpointColumns) and getattr(marker, "null", True):
+    if (
+        isinstance(endpoint, OpeningEndpointColumns)
+        and marker is not None
+        and getattr(marker, "null", True)
+    ):
         problems.append("its marker admits null")
     return [_endpoint_error(endpoint, problem, model) for problem in problems]
 
 
 def _endpoint_error(
-    endpoint: EndpointColumns, problem: str, model: type[models.Model] | None = None
+    endpoint: EndpointColumnsBase, problem: str, model: type[models.Model] | None = None
 ) -> Error:
     return Error(
         f"Endpoint {endpoint.name!r} on {endpoint.model_label}: {problem}.",
@@ -428,6 +433,24 @@ def _endpoint_error(
         obj=model,
         id="games.E014",
     )
+
+
+@register(Tags.models)
+def check_library_paths(**kwargs: Any) -> list[CheckMessage]:
+    """Every declared library path ends at a library."""
+    return [
+        Error(
+            f"{model.__name__}: library path {path!r} {problem}.",
+            hint=(
+                "LIBRARY_PATHS in games/projections.py names the to-one "
+                "path from a catalog row to its UserLibrary; visible_row "
+                "and the ownership audit build lookups from it."
+            ),
+            obj=model,
+            id="games.E015",
+        )
+        for model, path, problem in unresolved_library_paths()
+    ]
 
 
 @register(Tags.models)

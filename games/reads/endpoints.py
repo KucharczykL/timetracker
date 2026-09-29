@@ -6,7 +6,7 @@ from datetime import datetime
 from django.db import models
 
 from games.end_ways import EndWay
-from games.endpoint_fields import EndpointColumns
+from games.endpoint_fields import EndpointColumnsBase
 from timetracker.temporal import TemporalValue
 
 
@@ -33,7 +33,7 @@ def way_of(ended: StatedEndpoint) -> EndWay:
     return ended.way
 
 
-def stated(row: models.Model, endpoint: EndpointColumns) -> StatedEndpoint | None:
+def stated(row: models.Model, endpoint: EndpointColumnsBase) -> StatedEndpoint | None:
     """What the row states about the endpoint, or nothing."""
     recorded_at = getattr(row, endpoint.marker)
     if recorded_at is None:

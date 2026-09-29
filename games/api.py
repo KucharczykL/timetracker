@@ -63,6 +63,8 @@ from games.formatting import zone_label
 from games.forms import DeviceForm, PlatformForm, device_option, game_option_data
 from games.models import (
     Device,
+    EntryAccess,
+    EntryFormat,
     FilterPreset,
     Game,
     HistoricalPlaytime,
@@ -1235,30 +1237,35 @@ class EntryIn(Schema):
     model_config = ConfigDict(extra="forbid")
 
     release_id: UUIDv7
-    access: str
-    format: str
+    #: The enum, so Ninja refuses unknown words.
+    access: EntryAccess
+    format: EntryFormat
     note: str = ""
     acquired: StatedTemporal = None
     acquisition_note: str = ""
 
 
 class EntryUpdate(Schema):
-    """Each named key is one act."""
+    """Named keys state; omitted keys state nothing."""
 
     model_config = ConfigDict(extra="forbid")
 
-    access: str | None = None
-    format: str | None = None
+    access: EntryAccess | None = None
+    format: EntryFormat | None = None
     note: str | None = None
     release_id: UUIDv7 | None = None
     acquired: StatedTemporal = None
     acquisition_note: str | None = None
 
     @model_validator(mode="after")
-    def the_acquisition_is_one_statement(self) -> EntryUpdate:
+    def a_named_key_states(self) -> EntryUpdate:
+        """Null states nothing here, so it is refused."""
         stated = self.model_fields_set
         if ("acquired" in stated) != ("acquisition_note" in stated):
             raise ValueError(ACQUISITION_TOGETHER)
+        for key in ("access", "format", "note", "release_id", "acquisition_note"):
+            if key in stated and getattr(self, key) is None:
+                raise ValueError(f"{key} states a value, or is left out.")
         return self
 
 
@@ -1313,14 +1320,14 @@ def create_entry(
     actor = cast(User, request.user)
     library = actor.library
     stated_key = _stated_idempotency_key(idempotency_key)
-    #: The Release resolves inside `build`, behind the key.
+    #: Release resolves inside `build`, behind the key.
     try:
         recorded = record_entry(
             actor,
             EntryDraft(
                 release_id=payload.release_id,
-                access=payload.access,
-                format=payload.format,
+                access=payload.access.value,
+                format=payload.format.value,
                 note=payload.note,
                 acquired=ActStatement(payload.acquired, payload.acquisition_note),
             ),
@@ -1329,7 +1336,7 @@ def create_entry(
         )
     except CommandFailed as failure:
         _answered_or_http(failure)
-    #: Read first: a removed repeat answers no row.
+    #: Read before the message: a mark can lose the row.
     row = owned_or_404(readable_entries(library), library, pk=recorded.entry_id)
     messages.success(
         request,
@@ -1347,25 +1354,26 @@ def partial_update_entry(request, entry_id: UUIDv7, payload: EntryUpdate):
     entry = owned_or_404(readable_entries(library), library, id=entry_id)
     stated = payload.model_fields_set
     try:
-        restate_entry(
+        changed = restate_entry(
             actor,
             entry,
-            access=payload.access,
-            format=payload.format,
+            access=None if payload.access is None else payload.access.value,
+            format=None if payload.format is None else payload.format.value,
             note=payload.note,
             release_id=payload.release_id,
             acquired=(
-                ActStatement(payload.acquired, payload.acquisition_note or "")
-                if "acquired" in stated
+                ActStatement(payload.acquired, payload.acquisition_note)
+                if "acquired" in stated and payload.acquisition_note is not None
                 else None
             ),
             correlation_id=new_correlation_id(),
         )
     except CommandFailed as failure:
         _answered_or_http(failure)
-    #: Read first: a catalog mark can lose the row.
+    #: Read before the message: a mark can lose the row.
     updated = owned_or_404(readable_entries(library), library, pk=entry.pk)
-    messages.success(request, "Entry updated.")
+    if changed:
+        messages.success(request, "Entry updated.")
     return updated
 
 

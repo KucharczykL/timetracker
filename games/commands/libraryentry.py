@@ -1,4 +1,4 @@
-"""Commands about one route of access to one Release."""
+"""Commands on one copy of a Release."""
 
 import uuid
 from collections.abc import Sequence
@@ -36,7 +36,7 @@ from timetracker.temporal import stated_date
 UNKNOWN_ACCESS = "Choose one of the listed access words."
 UNKNOWN_FORMAT = "Choose one of the listed formats."
 RELEASE_REMOVED = (
-    "That release was removed from the catalog. Restore it before recording a copy."
+    "That release was removed from the catalog. Choose another, or restore it."
 )
 RELEASE_OF_ANOTHER_GAME = (
     "That release belongs to another game. Choose a release of this one."
@@ -44,15 +44,22 @@ RELEASE_OF_ANOTHER_GAME = (
 PLAYER_GAME_REMOVED = (
     "That game was removed from your library. Restore it before changing its copies."
 )
+RECORD_UNDER_REMOVED_GAME = (
+    "That game was removed from your library. Restore it before recording a copy."
+)
 ENTRY_REMOVED = "That copy was removed. Put it back before changing what it records."
 
 #: An acquisition with no stated day.
 UNDATED_ACQUISITION = ActStatement(None, "")
 
 
+ACCESS_WORDS: frozenset[str] = frozenset(get_args(EntryAccessValue.__value__))
+FORMAT_WORDS: frozenset[str] = frozenset(get_args(EntryFormatValue.__value__))
+
+
 def check_access(access: str) -> EntryAccessValue:
     """The payload's access word, or a refusal."""
-    if access not in get_args(EntryAccessValue.__value__):
+    if access not in ACCESS_WORDS:
         raise CommandRejected(
             f"{access!r} is not an access word.", sentence=UNKNOWN_ACCESS
         )
@@ -61,7 +68,7 @@ def check_access(access: str) -> EntryAccessValue:
 
 def check_format(format: str) -> EntryFormatValue:
     """The payload's format word, or a refusal."""
-    if format not in get_args(EntryFormatValue.__value__):
+    if format not in FORMAT_WORDS:
         raise CommandRejected(f"{format!r} is not a format.", sentence=UNKNOWN_FORMAT)
     return cast(EntryFormatValue, format)
 
@@ -161,7 +168,7 @@ class RecordEntry(Command):
             raise CommandRejected(
                 f"This library removed {game.name}, so no copy of it is recorded "
                 "until it is restored.",
-                sentence=PLAYER_GAME_REMOVED,
+                sentence=RECORD_UNDER_REMOVED_GAME,
             )
         else:
             tracked_id = tracked.pk
@@ -256,7 +263,7 @@ def _refuse_a_live_act(entry: LibraryEntry) -> None:
 
 @dataclass(frozen=True, slots=True)
 class RemoveEntry(Command):
-    """Remove a copy; references stay."""
+    """Mark a copy removed; nothing is destroyed."""
 
     command_name: ClassVar[CommandName] = CommandName.LIBRARYENTRY_REMOVE
     entry_id: uuid.UUID

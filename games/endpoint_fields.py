@@ -35,8 +35,8 @@ type EndpointName = str  # e.g. "access_end"; names its constraints
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class EndpointColumns:
-    """One endpoint's columns; no events, for Meta."""
+class EndpointColumnsBase:
+    """The columns every endpoint shape names."""
 
     name: EndpointName
     #: A label: models import this module.
@@ -45,10 +45,15 @@ class EndpointColumns:
     when: ColumnName
     lower: ColumnName
     upper: ColumnName
-    #: First recorded; null is no act.
+    #: First recorded.
     marker: ColumnName
     note: ColumnName
     way: WayColumn | None = None
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class EndpointColumns(EndpointColumnsBase):
+    """A stated endpoint: stated, corrected, voided."""
 
     def unstated_columns(self) -> dict[ColumnName, Any]:
         """What a row holds before any act."""
@@ -63,15 +68,12 @@ class EndpointColumns:
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class OpeningEndpointColumns(EndpointColumns):
+class OpeningEndpointColumns(EndpointColumnsBase):
     """Stated by the creation; corrected; never voided."""
 
     def __post_init__(self) -> None:
         if self.way is not None:
             raise TypeError("An opening endpoint states no way.")
-
-    def unstated_columns(self) -> dict[ColumnName, Any]:
-        raise TypeError("An opening endpoint is never unstated.")
 
 
 _BOUND_EXPRESSIONS: dict[BoundSide, type[models.Func]] = {
@@ -123,7 +125,7 @@ def endpoint_way(ways: Sequence[EndWay]) -> models.CharField:
 
 
 def endpoint_constraints(
-    endpoint: EndpointColumns,
+    endpoint: EndpointColumnsBase,
 ) -> tuple[models.CheckConstraint, ...]:
     """A way endpoint's CHECKs; none without ways."""
     if endpoint.way is None:

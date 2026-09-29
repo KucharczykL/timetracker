@@ -63,7 +63,7 @@ from common.criteria import (
     search_q,
     temporal_interval_handler,
 )
-from games.endpoint_fields import EndpointColumns
+from games.endpoint_fields import EndpointColumnsBase
 from games.endpoints import (
     DEVICE_ACCESS_END,
     PLAYTHROUGH_COMPLETION,
@@ -613,7 +613,7 @@ class EndpointFilterFields(NamedTuple):
 
 
 def endpoint_filter_fields(
-    endpoint: EndpointColumns,
+    endpoint: EndpointColumnsBase,
     *,
     stated_label: str,
     interval_label: str | None = None,
@@ -639,7 +639,7 @@ def endpoint_filter_fields(
     )
 
 
-def way_filter_field(endpoint: EndpointColumns, *, label: str) -> FilterField:
+def way_filter_field(endpoint: EndpointColumnsBase, *, label: str) -> FilterField:
     """A way endpoint's way, as a choice."""
     if endpoint.way is None:
         raise TypeError(f"Endpoint {endpoint.name!r} states no way.")

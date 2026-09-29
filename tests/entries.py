@@ -32,7 +32,7 @@ def record_entry(
     acquired: TemporalValue | None = None,
     acquisition_note: str = "",
 ) -> LibraryEntry:
-    """A live entry, created by event; the game tracked if it was not."""
+    """A live entry by event; tracks the game."""
     result = _state(
         library,
         RecordEntry(

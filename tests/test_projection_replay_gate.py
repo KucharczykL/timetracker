@@ -128,7 +128,7 @@ def _created_id(result: CommandResult) -> Any:
 
 
 def _default_releases(library, game: Game, count: int = 1) -> list[Release]:
-    """The Releases a copy names; a bare Game holds none."""
+    """Releases to name; a bare Game holds none."""
     written = state_catalog_graph(
         game=game,
         library=library,
@@ -149,7 +149,7 @@ def _default_releases(library, game: Game, count: int = 1) -> list[Release]:
 
 
 def assert_entries_belong_to_their_games(library) -> None:
-    """Every entry's Release is a Release of its tracked game."""
+    """Every entry's Release is its game's."""
     for entry in LibraryEntry._base_manager.filter(library=library).select_related(
         "release__edition", "player_game"
     ):
@@ -533,7 +533,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         "undo-reclassification",
     )
 
-    #: Two copies on one Release, one on a game nothing tracks yet.
+    #: Two copies on one Release; one untracked game.
     first_release, first_other = _default_releases(library, first, count=2)
     (second_release,) = _default_releases(library, second)
     fourth = Game.objects.create(library=library, name="Stardew Valley")
@@ -553,7 +553,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         RecordEntry(release_id=first_release.pk, access="borrowed", format="physical"),
         "record-entry-twice",
     )
-    #: Three events under one key: the tracking pair, then the copy.
+    #: Tracking pair, then the copy: three events.
     run(
         RecordEntry(
             release_id=fourth_release.pk, access="subscription", format="unknown"
@@ -595,7 +595,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
 
 
 def registered_event_types() -> set[str]:
-    """Every type the six CURRENT_STATE projectors read."""
+    """Every type the six listed projectors read."""
     return {
         spec.event_type
         for handles in (

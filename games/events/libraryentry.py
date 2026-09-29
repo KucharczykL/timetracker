@@ -1,4 +1,4 @@
-"""Events about one route of access to one Release."""
+"""Events on one copy of a Release."""
 
 import uuid
 from typing import Literal, TypedDict
@@ -29,6 +29,7 @@ type EntryFormatValue = Literal["physical", "digital", "unknown"]
 class LibraryEntryCreatedPayload(TypedDict):
     """First statement; the day is effective_time."""
 
+    #: Bare: the row may not exist yet.
     player_game: ReferenceId
     release: Reference
     access: EntryAccessValue

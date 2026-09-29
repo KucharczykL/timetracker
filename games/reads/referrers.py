@@ -36,7 +36,7 @@ def _skips_removed_rows(model: type[ProjectionModel]) -> bool:
 
 
 class BlockingReferrer(NamedTuple):
-    """One registered way to name a projection row."""
+    """One registered way to name a row."""
 
     #: A projection: ProjectionModel gives it library.
     model: type[ProjectionModel]
@@ -56,9 +56,9 @@ class BlockingReferrer(NamedTuple):
         target: type[ProjectionModel],
         sentence: str,
     ) -> BlockingReferrer:
-        """The one construction path; refuses an entry the query cannot run.
+        """The one construction path; refuses a member the query cannot run.
 
-        A malformed entry would raise a FieldError inside build(),
+        A malformed member would raise a FieldError inside build(),
         which answers every removal with a 500. Refusing it here
         states it at import.
         """
@@ -104,7 +104,7 @@ BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
 
 
 def referrers_of(target: type[ProjectionModel]) -> tuple[BlockingReferrer, ...]:
-    """Registered entries naming `target`, read per call."""
+    """Registered members naming `target`, read per call."""
     return tuple(
         referrer for referrer in BLOCKING_REFERRERS if referrer.target is target
     )
@@ -130,7 +130,7 @@ def _live_rows_naming(
 
 
 def rows_naming(referrer: BlockingReferrer, row: ProjectionModel) -> QuerySet[Any]:
-    """Every row naming the row, removed ones included.
+    """Every row naming `row`, removed ones included.
 
     Unscoped by the library as well. An act that takes a row
     away on its own asks whether anything at all still names
@@ -143,7 +143,7 @@ def rows_naming(referrer: BlockingReferrer, row: ProjectionModel) -> QuerySet[An
 
 
 def blocking_referrer(row: ProjectionModel) -> BlockingReferrer | None:
-    """The first registered entry a live row of this library answers.
+    """The first member a live row of this library answers.
 
     Scoped on the library, as `_other_live_ordinary_runs` is: a
     person cannot act on advice about rows their library does not
@@ -163,7 +163,7 @@ class ForeignReferrer(NamedTuple):
 
 
 def foreign_referrer(row: ProjectionModel) -> ForeignReferrer | None:
-    """The first registered entry a row of another library answers.
+    """The first member a row of another library answers.
 
     Such a row is the drift `audit_library_ownership` reports.
     Removing the row would leave it live under a removed row,

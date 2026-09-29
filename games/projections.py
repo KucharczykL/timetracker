@@ -20,6 +20,7 @@ from games.models import (
     Playthrough,
     ProjectionModel,
     Release,
+    UserLibrary,
 )
 
 type FieldName = str  # e.g. "player_game"
@@ -35,7 +36,7 @@ _LIBRARY_ID = f"{LIBRARY_FIELD}_id"
 
 type LibraryPath = str  # e.g. "edition__game__library"
 
-#: How a catalog row without a library column reaches one.
+#: A catalog row's path to its library.
 LIBRARY_PATHS: Mapping[type[models.Model], LibraryPath] = {
     Release: "edition__game__library",
     Edition: "game__library",
@@ -87,7 +88,7 @@ def projection_models(apps: Apps = global_apps) -> tuple[type[ProjectionModel], 
 
 
 def library_path_of(model: type[models.Model]) -> LibraryPath | None:
-    """How rows reach a library; column before map.
+    """A row's path to its library; column first.
 
     Concrete, because `get_field` answers a reverse relation too:
     `UserLibrary.user` is `related_name="library"`, which would
@@ -100,8 +101,31 @@ def library_path_of(model: type[models.Model]) -> LibraryPath | None:
     return LIBRARY_FIELD if field.concrete else LIBRARY_PATHS.get(model)
 
 
-def _is_library_scoped(model: type[models.Model]) -> bool:
-    return library_path_of(model) is not None
+type PathProblem = tuple[type[models.Model], LibraryPath, str]
+
+
+def unresolved_library_paths() -> list[PathProblem]:
+    """Declared paths that do not end at a library."""
+    problems: list[PathProblem] = []
+    for model, path in LIBRARY_PATHS.items():
+        reached: type[models.Model] = model
+        for segment in path.split("__"):
+            try:
+                field = reached._meta.get_field(segment)
+            except FieldDoesNotExist:
+                problems.append((model, path, f"names no field {segment!r}"))
+                break
+            related = getattr(field, "related_model", None)
+            if not isinstance(field, models.ForeignKey) or related is None:
+                problems.append((model, path, f"is not to-one at {segment!r}"))
+                break
+            reached = related
+        else:
+            if reached is not UserLibrary:
+                problems.append(
+                    (model, path, f"ends at {reached.__name__}, not UserLibrary")
+                )
+    return problems
 
 
 def projection_references(apps: Apps = global_apps) -> tuple[ProjectionReference, ...]:
@@ -209,3 +233,17 @@ def cross_library_violations(
                 f"{reference}: {row_id} names {referenced} {referenced_id}"
             )
     return violations
+
+
+def entry_game_violations(library_ids: Sequence[uuid.UUID]) -> list[ViolationSentence]:
+    """Entries whose Release is not their tracked game's."""
+    rows = (
+        LibraryEntry._base_manager.filter(library_id__in=library_ids)
+        .exclude(release__edition__game=F("player_game__game"))
+        .values_list("pk", "release__edition__game_id", "player_game__game_id")
+    )
+    return [
+        f"LibraryEntry.release: {row_id} names a Release of Game "
+        f"{release_game}, and its PlayerGame tracks Game {tracked_game}"
+        for row_id, release_game, tracked_game in rows
+    ]

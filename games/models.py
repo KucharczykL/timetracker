@@ -2214,7 +2214,7 @@ class LibraryEntry(ProjectionModel, ReferencedRow):
     player_game = models.ForeignKey(
         "PlayerGame", on_delete=models.RESTRICT, related_name="entries"
     )
-    #: A live Release of the tracked game.
+    #: A Release of the tracked game; commands keep it.
     release = models.ForeignKey(Release, on_delete=models.RESTRICT, related_name="+")
     access = models.CharField(max_length=16, choices=EntryAccess)
     format = models.CharField(max_length=16, choices=EntryFormat)
@@ -2252,7 +2252,7 @@ class LibraryEntry(ProjectionModel, ReferencedRow):
         )
 
     def __str__(self) -> str:
-        return f"{self.access} {self.format} copy of {self.release_id}"
+        return f"{self.access}, {self.format}"
 
 
 class UserLibraryPreferences(models.Model):

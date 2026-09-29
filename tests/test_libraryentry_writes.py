@@ -11,7 +11,13 @@ from games.commands.endpoint import ActStatement
 from games.commands.libraryentry import ENTRY_REMOVED, UNKNOWN_ACCESS
 from games.commands.playergame import RemovePlayerGame
 from games.events.dispatch import CommandResult, dispatch
-from games.models import Game, LibraryEntry, LibraryEvent, PlayerGame
+from games.models import (
+    Game,
+    LibraryEntry,
+    LibraryEvent,
+    LibraryIdempotencyRecord,
+    PlayerGame,
+)
 from games.reads.entries import game_entries, library_entries, readable_entries
 from games.reads.events import dispatched_events
 from games.reads.unscoped import UnscopedRead
@@ -192,11 +198,23 @@ def test_a_removed_entry_refuses_the_whole_restatement(
 def test_restate_without_a_day_describes_alone(owned_user, owned_library, graph):
     entry = record_by_event(owned_library, graph.release)
 
-    restate_entry(
-        owned_user, entry, note="lent", acquired=None, correlation_id=uuid.uuid7()
-    )
+    changed = restate_entry(owned_user, entry, note="lent", correlation_id=uuid.uuid7())
 
+    assert changed is True
     assert _types(entry)[-1] == "library.libraryentry.note_changed"
+
+
+def test_restate_of_nothing_dispatches_nothing(owned_user, owned_library, graph):
+    entry = record_by_event(owned_library, graph.release, note="lent")
+    before = LibraryIdempotencyRecord.objects.count()
+
+    unstated = restate_entry(owned_user, entry, correlation_id=uuid.uuid7())
+    same = restate_entry(owned_user, entry, note="lent", correlation_id=uuid.uuid7())
+
+    assert (unstated, same) == (False, False)
+    #: No dispatch at all for an empty body; one for the same fact.
+    assert LibraryIdempotencyRecord.objects.count() == before + 1
+    assert _types(entry) == ["library.libraryentry.created"]
 
 
 # --- remove and restore ---------------------------------------------------
