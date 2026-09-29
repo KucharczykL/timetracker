@@ -47,8 +47,7 @@ IN_THE_BUCKET = (
 )
 ALREADY_RECORDED = "Some of the sessions were already recorded as historical playtime."
 
-#: What the confirmation says about a row under the threshold, which the
-#: act converts all the same: the duration suggests, and a person decides.
+#: Notes short rows; the act converts them.
 SHORT_ONE = (
     "One of these sessions is shorter than {hours} hours, so it may well be a "
     "single sitting rather than a total you typed in. It is recorded all the "
@@ -62,12 +61,7 @@ SHORT_MANY = (
 
 
 def convertible_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
-    """Every live written-down row on an ordinary run.
-
-    The act's base. No duration narrows it: a short row is noted on the
-    confirmation, never left alone. A statement's filter narrows this
-    base, never widens it.
-    """
+    """The act's base: any length, ordinary run."""
     return library_sessions(library).filter(
         timing_mode=PlayerSessionTimingMode.DURATION_ONLY,
         #: The bucket's hours name no run.
@@ -76,27 +70,24 @@ def convertible_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
 
 
 def reviewable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
-    """The rows the review suggests: convertible, and at the threshold.
-
-    What the Library page counts and the review's filter names.
-    """
+    """Convertible rows at the threshold: the suggestion."""
     return convertible_sessions(library).filter(
         effective_duration__gte=timedelta(hours=REVIEW_THRESHOLD_HOURS),
     )
 
 
 def conversion_scope(library: UserLibrary, filter_json: str) -> QuerySet[PlayerSession]:
-    """Every convertible row, narrowed by the statement's filter."""
+    """The base, narrowed by the statement's filter."""
     return narrowed(
         convertible_sessions(library), library, filter_json, parse_session_filter
     )
 
 
 def short_rows_note(rows: Sequence[PlayerSession]) -> str | None:
-    """A sentence counting the rows under the threshold, or None.
+    """Count rows under the threshold, or None.
 
-    None when there are none: a note about nothing would teach a
-    person to read past the ones that say something.
+    Never a note about zero rows: an empty note teaches
+    people to skip the notes that matter.
     """
     threshold = timedelta(hours=REVIEW_THRESHOLD_HOURS)
     short = sum(1 for row in rows if row.effective_duration < threshold)
@@ -144,7 +135,7 @@ def conversion_resolution(
         elif row.timing_mode != PlayerSessionTimingMode.DURATION_ONLY:
             refused.append(Refused(str(key), NOT_WRITTEN))
         else:
-            #: The base narrows on something no sentence here names.
+            #: A narrowing no sentence names.
             raise AssertionError(
                 f"Session {key} is live, ordinary and written down, yet "
                 "convertible_sessions() did not offer it."

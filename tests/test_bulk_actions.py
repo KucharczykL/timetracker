@@ -195,7 +195,7 @@ def test_the_scope_leaves_the_bucket_out(
 def test_the_review_filter_leaves_a_short_session_out(
     owned_user, owned_library, run, reclassify
 ):
-    """The suggestion narrows the scope; the base no longer does."""
+    """The review filter narrows the scope."""
     short = a_written_session(
         owned_library, owned_user, run, duration=timedelta(hours=1)
     )
@@ -206,10 +206,7 @@ def test_the_review_filter_leaves_a_short_session_out(
 def test_the_scope_takes_a_short_session_the_filter_admits(
     owned_user, owned_library, run, reclassify
 ):
-    """A statement made off an unnarrowed list reaches every written row.
-
-    The threshold shapes the review, not what the act can convert.
-    """
+    """An unnarrowed statement reaches short rows."""
     short = a_written_session(
         owned_library, owned_user, run, duration=timedelta(hours=1)
     )
@@ -247,7 +244,7 @@ def test_a_key_no_row_answers_is_lost(owned_library, reclassify):
 def test_a_short_row_is_offered_all_the_same(
     owned_user, owned_library, run, reclassify
 ):
-    """No sentence turns a row down for its length."""
+    """Length never refuses a row."""
     short = a_written_session(
         owned_library, owned_user, run, duration=timedelta(hours=1)
     )
@@ -261,7 +258,7 @@ def test_a_short_row_is_offered_all_the_same(
 def test_a_row_the_base_drops_for_no_named_reason_is_a_defect(
     owned_user, owned_library, run, reclassify, monkeypatch
 ):
-    """A narrowing no refusal sentence names fails, never mislabels."""
+    """An unnamed narrowing fails, never mislabels."""
     import games.bulk_reclassification as reclassification
 
     base = reclassification.convertible_sessions
@@ -485,7 +482,7 @@ def test_one_short_row_is_noted_in_the_singular(owned_user, owned_library, run):
 
 
 def test_several_short_rows_are_counted(owned_user, owned_library, run):
-    """The note counts the short rows, not every row it stands over."""
+    """The note counts only short rows."""
     short = [
         a_written_session(
             owned_library,
@@ -506,7 +503,7 @@ def test_several_short_rows_are_counted(owned_user, owned_library, run):
 def test_the_note_counts_exactly_the_rows_the_review_would_not_suggest(
     owned_user, owned_library, run
 ):
-    """One threshold, read by both: the note and the review cannot drift."""
+    """Note and review share one threshold."""
     threshold = timedelta(hours=REVIEW_THRESHOLD_HOURS)
     durations = (
         threshold - timedelta(minutes=1),
@@ -688,7 +685,7 @@ def test_a_confirmation_over_no_rows_names_the_acts_subject(reclassify, presenta
 def _reclassify_confirmation(
     reclassify: BulkAction, rows, presentations, *, sample_cap: int = 50
 ) -> str:
-    """The reclassification's confirmation over rows, none refused."""
+    """The confirmation page over these rows."""
     from games.views.bulk_pages import ConfirmBatch
 
     return str(
@@ -709,7 +706,7 @@ def _reclassify_confirmation(
 def test_the_confirmation_says_the_caution_over_the_rows(
     owned_user, owned_library, run, reclassify, presentations
 ):
-    """A note above the table, and no press taken away."""
+    """Note above the table; press stays."""
     short = a_written_session(
         owned_library, owned_user, run, duration=timedelta(hours=1)
     )
@@ -725,7 +722,7 @@ def test_the_confirmation_says_the_caution_over_the_rows(
 def test_the_caution_counts_rows_past_the_sample(
     owned_user, owned_library, run, reclassify, presentations
 ):
-    """The page shows a sample; the note speaks of every row."""
+    """The note counts rows past the sample."""
     short = [
         a_written_session(
             owned_library,

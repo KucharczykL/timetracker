@@ -392,12 +392,10 @@ docs/           — Additional documentation
   page's Playtime section reviews Duration-only rows of
   `REVIEW_THRESHOLD_HOURS` or longer and links to them; since #712 the
   session list's selection line states that review, and the bulk runner
-  acts on a base that contains it (below). **The threshold suggests and
-  never refuses** (#1357): `reviewable_sessions()` is the review the panel
-  counts and the review filter names, while the act's own base is
-  `convertible_sessions()` -- every live Duration-only row on an ordinary
-  run, whatever its length. A shorter row selected on the list converts
-  like any other, under the confirmation's `caution` (below). Contract is
+  acts on a base that contains it (below). The threshold suggests, never
+  refuses (#1357): `reviewable_sessions()` is the review,
+  `convertible_sessions()` the act's base, any length; a short row
+  converts under the confirmation's `caution`. Contract is
   [Reclassify a session](docs/superpowers/specs/2026-09-18-issue-1098-session-reclassification-design.md)
 
   #700 converted every legacy `Session` row into these events, under the
@@ -570,12 +568,10 @@ Contract is [Undo a removal](docs/superpowers/specs/2026-09-16-issue-695-undo-re
 `games/bulk_actions.py`, and making the value declares it: `__post_init__`
 refuses a name twice declared, `EventRows` refuses a model no `EventSpec`
 speaks about, and `LedgerRows` a projection. It states
-scope, resolve, run and inverse, and may state a `caution`: one sentence the
-confirmation says above its sample, about every row the press *will*
-act on -- the counterpart to `Refused`, which is a row left alone. A caution
-takes no press away, and `None` says nothing; the reclassification is the
-only act stating one, and its sentence counts the rows under the review's
-threshold (#1357). Beside those is `undo_rows`, where its Undo reads
+scope, resolve, run and inverse, and may state a `caution`: a sentence
+above the sample about rows the press *will* act on, where `Refused` names
+a row left alone. Only the reclassification states one. Beside those is
+`undo_rows`, where its Undo reads
 the rows it takes back -- one act may write two, as the reclassification writes a
 created record beside the reclassified session, and an Undo reading both would
 hand a record's key to a command that reads sessions. Each act's own half lives

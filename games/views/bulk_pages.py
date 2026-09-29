@@ -62,11 +62,7 @@ def _refusals(count: int, reasons: Sequence[str], lead: str) -> Node:
 
 
 def _caution(action: BulkAction[Any], rows: Sequence[Any]) -> Node:
-    """What the act says about the rows it will act on.
-
-    A note, not a refusal: it stands above the rows it speaks of and
-    takes nothing away from the press.
-    """
+    """The act's note above the rows."""
     if action.caution is None:
         return Fragment()
     said = action.caution(rows)

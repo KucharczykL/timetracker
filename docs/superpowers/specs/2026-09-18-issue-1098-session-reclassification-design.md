@@ -60,10 +60,10 @@ wait: live Duration-only rows of eight hours or longer on an ordinary run. One
 control opens the session list narrowed to them; one states that review as a
 selection and hands it to the bulk runner, which #713 owns.
 
-The threshold suggests and does not refuse. The act's base is every live
-Duration-only row on an ordinary run, of any length; the review is that base
-at eight hours or longer. A shorter row that a person selects is converted, and
-the confirmation states one sentence that counts such rows.
+The threshold is a suggestion. It does not refuse a row. The act takes every
+live Duration-only row on an ordinary run, of any length. The review is the
+rows of eight hours or longer. The act converts a shorter row that a person
+selects. The confirmation shows one sentence that counts these rows.
 
 The runner resolves the base again at the press, so the rows it converts are
 the rows that still qualify rather than the ones a page-old count named. Every

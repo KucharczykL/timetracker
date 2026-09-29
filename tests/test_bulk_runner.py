@@ -94,7 +94,7 @@ def a_written_session(library, game, day=A_DAY, duration=LONG_ENOUGH):
 
 
 def a_bucket(library, game) -> Playthrough:
-    """The game's imported-history bucket: one per game."""
+    """The game's imported-history bucket."""
     return Playthrough.objects.create(
         pk=uuid.uuid7(),
         library=library,
@@ -105,10 +105,7 @@ def a_bucket(library, game) -> Playthrough:
 
 
 def a_bucket_session(bucket, day=A_DAY):
-    """A written-down row the act refuses: its hours name no run.
-
-    The one refusal a live written-down session can be written into.
-    """
+    """A written-down row the act refuses."""
     return duration_only_row(bucket, day, LONG_ENOUGH)
 
 
@@ -230,11 +227,7 @@ def test_a_refused_row_is_named_with_its_reason(client_in, owned_library, game):
 def test_a_short_row_is_noted_and_converted_all_the_same(
     client_in, owned_library, game
 ):
-    """The threshold shapes the review, and nothing else.
-
-    A person selecting a short row on the list is told what the review
-    would have thought of it, and the press still records it.
-    """
+    """A short row is noted, then converted."""
     short = a_written_session(owned_library, game, duration=timedelta(hours=1))
 
     asked = confirm(client_in, some(short))
@@ -452,7 +445,7 @@ def test_a_row_gone_since_the_confirmation_is_counted_lost(
 def test_a_refused_row_leaves_the_rest_done(client_in, owned_library, game):
     wanted = a_written_session(owned_library, game)
     in_the_bucket = a_bucket_session(a_bucket(owned_library, game))
-    #: The bucket row is posted straight to the act, past the review.
+    #: Posted straight to the act.
     confirmation = confirm(client_in, some(wanted))
     fields = posted(confirmation)
     fields[PROGRESS_FIELD] = json.dumps(
