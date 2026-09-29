@@ -29,7 +29,12 @@ from games.models import (
     PlayerSession,
     Playthrough,
 )
-from games.reads.calendar import CalendarDelta, calendar_delta, calendar_sentence
+from games.reads.calendar import (
+    CalendarDelta,
+    calendar_day_zone,
+    calendar_delta,
+    calendar_sentence,
+)
 
 #: 00:30 on 2 January in Prague; 23:30 on 1 January in UTC.
 START = datetime(2026, 1, 1, 23, 30, tzinfo=UTC)
@@ -348,3 +353,27 @@ def test_the_sentence_reads_the_delta():
         "Days now counted in UTC: 2,807 sessions, 124 moved to another day, "
         "10 to another month, 5 to another year."
     )
+
+
+def test_a_library_without_a_calendar_is_read_in_its_display_zone(
+    owned_library, capture_games_logger
+):
+    with capture_games_logger() as caplog:
+        zone = calendar_day_zone(owned_library)
+
+    assert zone == ZoneInfo("UTC")
+    assert "states no calendar" in caplog.text
+
+
+def test_an_unreadable_display_zone_falls_to_utc(
+    owned_library, capture_games_logger, monkeypatch
+):
+    monkeypatch.setattr(
+        "games.reads.calendar.resolve_str_for_user", lambda user, key: "Nowhere/Nothing"
+    )
+
+    with capture_games_logger() as caplog:
+        zone = calendar_day_zone(owned_library)
+
+    assert zone == ZoneInfo("UTC")
+    assert "unreadable" in caplog.text
