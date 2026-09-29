@@ -573,7 +573,7 @@ def test_searchurl_committed_single_select_shows_full_list_on_focus(live_server,
     expect(options).to_have_count(6)
 
 
-#: Delays the module's evaluation, which `load` does not wait on.
+#: Delays evaluation; `load` does not wait.
 MODULE_DELAY = "await new Promise((resolve) => setTimeout(resolve, 1000));\n"
 
 
@@ -591,7 +591,7 @@ def test_a_box_clicked_before_its_script_opens_its_panel(live_server, page):
     page.goto(live_server.url + "/searchurl-committed/")
     picker = page.locator('search-select[name="item"]')
     picker.locator("input[data-search-select-search]").click()
-    #: Only goes undefined to defined: the click came first.
+    #: Still undefined, so the click came first.
     assert page.evaluate('customElements.get("search-select") === undefined')
 
     expect(picker.locator("[data-search-select-option]:visible")).to_have_count(6)
