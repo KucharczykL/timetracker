@@ -12,7 +12,7 @@ from games.models import (
 )
 from games.reads.playthrough_activity import activity_clock
 from games.reads.playthrough_endpoints import stated_completion, stated_start
-from games.reads.playthrough_referrers import blocking_referrer
+from games.reads.referrers import blocking_referrer
 
 
 def library_runs(library: UserLibrary) -> PlaythroughQuerySet:

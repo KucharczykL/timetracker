@@ -41,7 +41,7 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
 )
-from games.reads.playthrough_referrers import (
+from games.reads.referrers import (
     blocking_referrer,
     foreign_referrer,
 )
