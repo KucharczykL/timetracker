@@ -96,7 +96,9 @@ def test_each_held_variant(held, filled, glyphs, words):
 
 def test_the_number_counts_held_copies_above_one():
     assert '<span aria-hidden="true">3</span>' in _badge(_held(), _held(), _held())
-    assert '<span aria-hidden="true">' not in _badge(_held())
+    single = _badge(_held())
+    assert '<span aria-hidden="true">' not in single
+    assert "None" not in single
 
 
 def test_a_former_copy_is_outlined_with_its_way_and_day():

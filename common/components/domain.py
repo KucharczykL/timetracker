@@ -133,7 +133,7 @@ def AccessBadge(summary: AccessSummary, presentation: DateTimePresentation) -> N
         title=words,
     )[
         *(Icon(glyph, decorative=True) for glyph in glyphs or ["unspecified"]),
-        Span(aria_hidden="true")[str(held)] if held > 1 else None,
+        *([Span(aria_hidden="true")[str(held)]] if held > 1 else []),
         Span(class_="sr-only")[words],
     ]
 
