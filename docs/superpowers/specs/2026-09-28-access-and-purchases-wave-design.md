@@ -44,6 +44,8 @@ In:
   written by the currency task alone.
 - `Game.kind` and `Game.parent`, in IGDB's words.
 - `PlayerGame.excluded_from_dropped` beside `excluded_from_unfinished`.
+- `demo` as a playthrough kind, so demo play is its own run and the
+  game's run keeps its true start (#1361, out of the #1358 discussion).
 - The Add to library form, the Entries list, the Purchases list made
   selectable, the Games list's Access column, Game detail's Library and
   Add-ons sections, filters, presets, statistics, the API.
@@ -78,6 +80,13 @@ Read on the 2026-09-28 dump. One library, 808 live purchases.
 | Games / Editions / Releases; games with two Releases | 863 / 864 / 864; 0 |
 | Purchases naming a game the library does not track | 0 |
 | Saved purchase presets | 0 |
+| Demo purchases / of them games also owned / games holding a hand-made second run for the demo | 34 / 7 / 2 |
+| Sessions before the run's start on a game holding a Demo purchase | 1 |
+| Sessions before the game's earliest catalog release day / games | 72 / 18 |
+
+The person stopped recording demos as purchases so as not to clog the
+library, and played 10 to 20; catalog release days are year-coarse port
+dates, so "before release" finds mostly the wrong sessions.
 
 Three readings shape the design. Every row today is the way the library
 says "I have this", money or none, so the form that records access stays
@@ -227,6 +236,22 @@ Game.
 reads its own fact and nothing else; the rule this wave makes is that no
 fact stated for one figure decides another.
 
+### Playthrough
+
+`PlaythroughKind` gains `demo`. A demo is another version of the game,
+and its sessions must not date the game's run a year before release. A
+demo run is not ordinary: no number, out of `Played N times`, out of every
+completion figure and the backlog, never the placeholder `TrackGame`
+mints nor the sole run a session form seeds. Unlike the bucket it takes
+new sessions, so `CreateSession`'s refusal keys on `IMPORTED_HISTORY`
+alone. Its sessions count in playtime, days played, first and last play
+and games played, as the bucket's do. The creation payload carries `kind`
+already; the word is admitted there, on the column's `CHECK`, and in the
+session filter's `playthrough_kind`. Demo-ness is stated on the run and
+never read from the Release or the entry, and a Trial is the full game,
+on the ordinary run. A Demo entry records the access; the demo run
+records the play; neither implies the other.
+
 ### FilterPreset
 
 `mode` gains `entries`.
@@ -273,6 +298,14 @@ beside the two run referrers with the same `alive()` rule.
 `RecordPlayerGameFacts` gains `excluded_from_dropped`, a fourth
 `bool | None`. `GameForm` and `save_game_columns` take `kind` and
 `parent`.
+
+### Playthrough
+
+`DescribePlaythrough` gains `kind` and `playthrough.kind_changed`, the
+sibling of `name_changed`; ordinary to demo is refused where it would
+take the game's last live ordinary run, with `RemovePlaythrough`'s
+sentence. The run's create row and its Edit form state the kind, and
+`session_run_labels` names a demo run "(demo)".
 
 ### Bulk acts
 
@@ -368,7 +401,10 @@ games (6), which no filter expresses, render as rows: the pass tags their
 `source_metadata`, the section reads those events by the pass's
 correlation id through `batch_aggregate_ids`, and each row links to its
 edit page. A Release writes no event, so the row is the entry that names
-it. A "Hide this review" checkbox on `UserLibraryPreferences` closes the
+it. Demo play (30 games hold a Demo purchase and sessions) links to the
+Playtime list at `playthrough_kind` ordinary and
+`game_filter.entry_filter.access` Demo, so the list shrinks as sessions
+move onto a demo run; no pass moves one, because no finder is reliable. A "Hide this review" checkbox on `UserLibraryPreferences` closes the
 section; it is its own toggle, read from nothing else.
 
 The sample fixture is regenerated after the cutover. The anonymizer
@@ -512,7 +548,8 @@ nothing in them converts data, and each holds events for every row it
 projects. The Purchase members cannot: a `ProjectionModel` whose rows
 hold no events fails the replay gate, so the Purchase aggregate, its
 conversion and the cutover are one `gh stack merge`, P1 to P5. M1 before
-M2 before M3; M7 and M8 any time; the stack after every member.
+M2 before M3; M7, M8 and M9 any time; the stack after every member, and
+P5's demo review category reads M3 and M9.
 
 | Member | Issues | Delivers |
 |---|---|---|
@@ -521,6 +558,7 @@ M2 before M3; M7 and M8 any time; the stack after every member.
 | M3 | #1352 | the Entries screens: list, filter, presets, navbar item, bulk Edit and Remove, the Games Access column and facets, Game detail's Library section, the entry forms |
 | M7 | #1353 | `Game.kind` and `Game.parent`: columns, form, Game detail add-ons, Games facet |
 | M8 | #1334 | `excluded_from_dropped` and its bulk Edit field |
+| M9 | #1361 | the `demo` playthrough kind: word, `kind_changed`, form, labels, Game detail heading, the session filter's word |
 | P1 | #725, #726, #828 | the Purchase aggregate: projection, creation with an entry, description, day correction, removal, API |
 | P2 | #727 | refund endpoints and the coupled entry end |
 | P3 | #728, #729 | `PurchaseValuation`, decimal rates, the run state re-pointed, the valuation request on the write path |
@@ -546,6 +584,10 @@ inside a member says so in its body and closes with it.
 - **One end per entry at a time.** The projection holds the latest end;
   the stream holds them all. A list of a copy's lendings is a stream read
   nothing renders yet.
+- **Demo-ness read off the copy.** A session names a Release (#1354),
+  and an entry states Demo access, but neither makes a session demo
+  play: the run's kind does. The cost of deriving it later is a rule
+  that reads two projections to answer one session's word.
 - **A refund of a non-owned entry.** The refund ends access only on an
   Owned entry; a refunded subscription or rental keeps its own end, stated
   by hand.
@@ -571,6 +613,8 @@ inside a member says so in its body and closes with it.
 - **#889** later moves the per-platform figures onto the Release the entry
   names.
 - **#1157** draws its card from this wave's readers.
+- **#1358**'s Outside dates leaves demo sessions to M9's run kind and
+  bulk Edit's playthrough field (#1310).
 
 ## Deployment
 
@@ -617,6 +661,8 @@ refresh and its printed totals, then the fixture PR.
 - Entry, catalog and PlayerGame members merge alone; the Purchase
   aggregate, the conversion and the cutover are one stack.
 - #1275 landed before the wave and is its dependency, not a member.
+- Demo play is a run of kind `demo`, stated on the run; its sessions
+  count as play, its run counts as nothing; no pass moves a session.
 
 ## Follow-up issues filed
 
@@ -624,3 +670,4 @@ refresh and its printed totals, then the fixture PR.
 - #1353, `Game.kind` and `Game.parent` (M7)
 - #1354, a Release on a session and a record
 - #1355, bulk end of access over entries
+- #1361, demo play is its own run (M9)
