@@ -16,7 +16,13 @@ from zoneinfo import ZoneInfo
 import pytest
 from devices import create_device
 from django.db.models import F, Q
-from django.test import override_settings
+from django.db.models.lookups import (
+    Exact,
+    GreaterThan,
+    GreaterThanOrEqual,
+    LessThan,
+    LessThanOrEqual,
+)
 from django.utils import timezone
 from filter_contexts import unrestricted_filter_context
 from session_rows import duration_only_row, session_row, tracked_run
@@ -84,6 +90,7 @@ from games.filters import (
 from games.models import PlayerSession
 from timetracker.temporal import TemporalValue
 
+UTC_ZONE = ZoneInfo("UTC")
 UNRESTRICTED_FILTER_CONTEXT = unrestricted_filter_context(ZoneInfo("UTC"))
 
 
@@ -3048,8 +3055,15 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
+                day_zone=UTC_ZONE,
             )
-            == Q(started_at__date=TruncDate(F("ended_at"))) & guards
+            == Q(
+                Exact(
+                    TruncDate(F("started_at"), tzinfo=UTC_ZONE),
+                    TruncDate(F("ended_at"), tzinfo=UTC_ZONE),
+                )
+            )
+            & guards
         )
 
     def test_helper_date_granular_gte(self):
@@ -3064,8 +3078,15 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
+                day_zone=UTC_ZONE,
             )
-            == Q(started_at__date__gte=TruncDate(F("ended_at"))) & guards
+            == Q(
+                GreaterThanOrEqual(
+                    TruncDate(F("started_at"), tzinfo=UTC_ZONE),
+                    TruncDate(F("ended_at"), tzinfo=UTC_ZONE),
+                )
+            )
+            & guards
         )
 
     def test_helper_date_granular_not_equals(self):
@@ -3080,8 +3101,15 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
+                day_zone=UTC_ZONE,
             )
-            == ~Q(started_at__date=TruncDate(F("ended_at"))) & guards
+            == ~Q(
+                Exact(
+                    TruncDate(F("started_at"), tzinfo=UTC_ZONE),
+                    TruncDate(F("ended_at"), tzinfo=UTC_ZONE),
+                )
+            )
+            & guards
         )
 
     def test_to_q_raises_runtime_error(self):
@@ -3142,8 +3170,15 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
+                day_zone=UTC_ZONE,
             )
-            == Q(started_at__date__gt=TruncDate(F("ended_at"))) & guards
+            == Q(
+                GreaterThan(
+                    TruncDate(F("started_at"), tzinfo=UTC_ZONE),
+                    TruncDate(F("ended_at"), tzinfo=UTC_ZONE),
+                )
+            )
+            & guards
         )
         assert (
             _field_comparison_to_q(
@@ -3153,8 +3188,15 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
+                day_zone=UTC_ZONE,
             )
-            == Q(started_at__date__lt=TruncDate(F("ended_at"))) & guards
+            == Q(
+                LessThan(
+                    TruncDate(F("started_at"), tzinfo=UTC_ZONE),
+                    TruncDate(F("ended_at"), tzinfo=UTC_ZONE),
+                )
+            )
+            & guards
         )
 
     # ── FieldComparisonCriterion.to_q ────────────────────────────────────────
@@ -3836,7 +3878,14 @@ class TestFieldComparisonWiring:
             ]
         )
         guards = Q(started_at__isnull=False) & Q(ended_at__isnull=False)
-        assert stub.to_q() == Q(started_at__date__lte=TruncDate(F("ended_at"))) & guards
+        zone = ZoneInfo("UTC")
+        expected = Q(
+            LessThanOrEqual(
+                TruncDate(F("started_at"), tzinfo=zone),
+                TruncDate(F("ended_at"), tzinfo=zone),
+            )
+        )
+        assert stub.to_q(UNRESTRICTED_FILTER_CONTEXT) == expected & guards
 
     def test_date_granularity_on_non_temporal_raises(self):
         # Under the new space rules, date space accepts date and datetime
@@ -4228,7 +4277,7 @@ class TestComparisonSpaces:
                 )
             ]
         )
-        filter_object.to_q()
+        filter_object.to_q(UNRESTRICTED_FILTER_CONTEXT)
 
     def test_raw_space_keeps_same_group_rule(self):
         filter_object = PlaythroughFilter(
@@ -4415,11 +4464,10 @@ class TestFieldComparisonEndToEnd:
         )
         assert result == {session_x}
 
-    @override_settings(TIME_ZONE="UTC")
     def test_date_granular_same_day_behavior(self):
         """granularity='date' matches by calendar day, unlike a raw comparison.
 
-        Pinned to UTC: `__date` reads the active zone.
+        The context's zone is UTC, whatever the active zone.
         """
         import datetime
 
@@ -5143,6 +5191,7 @@ class TestYearProjection:
             "date",
             left_group="date",
             right_group="datetime",
+            day_zone=UTC_ZONE,
         )
         # date left: no __date suffix (only datetime needs truncation)
         assert "started__date" not in str(q)

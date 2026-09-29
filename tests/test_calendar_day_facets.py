@@ -15,7 +15,7 @@ from devices import create_device
 from django.utils import timezone
 from session_rows import session_row
 
-from common.criteria import DateCriterion, Modifier
+from common.criteria import DateCriterion, FieldComparisonCriterion, Modifier
 from games.filters import (
     DeviceFilter,
     GameFilter,
@@ -140,3 +140,29 @@ def test_ended_reads_the_rows_zone(owned_library, displaced_rows):
         ended = _sessions(owned_library, PlayerSessionFilter(ended=before_tomorrow))
 
     assert ended == {timed, corrected}
+
+
+def test_a_date_granular_comparison_reads_the_calendar(owned_library):
+    """One calendar day, two days in the other zone."""
+    displaced = displace_calendar(owned_library)
+    game = Game.objects.create(library=owned_library, name="Tunic")
+    noon = library_noon(owned_library)
+    half_day = timedelta(hours=11, minutes=30)
+    within_the_day = session_row(
+        game, started_at=noon - half_day, ended_at=noon + half_day
+    )
+    same_day = PlayerSessionFilter(
+        field_comparisons=[
+            FieldComparisonCriterion(
+                left="started_at",
+                right="ended_at",
+                modifier=Modifier.EQUALS,
+                granularity="date",
+            )
+        ]
+    )
+
+    with timezone.override(ZoneInfo(other_displaced_zone(displaced))):
+        matched = _sessions(owned_library, same_day)
+
+    assert matched == {within_the_day}

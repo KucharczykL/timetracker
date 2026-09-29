@@ -1708,14 +1708,6 @@ class OperatorFilter:
                         f"modifier {comparison.modifier} not allowed"
                         f" for {vocabulary_hint}"
                     )
-                predicate_q = _field_comparison_to_q(
-                    comparison.left,
-                    comparison.right,
-                    comparison.modifier,
-                    comparison.granularity,
-                    left_group=left_group,
-                    right_group=right_group,
-                )
                 # The relation paths whose fan-out the quantifier ranges over: one
                 # per multi-valued operand (deduped, so two operands on the SAME
                 # relation — purchases__date_purchased vs purchases__date_refunded,
@@ -1728,14 +1720,23 @@ class OperatorFilter:
                         assert info.relation_path is not None
                         if info.relation_path not in relation_paths:
                             relation_paths.append(info.relation_path)
+                if not relation_paths and comparison.quantifier != RelationMatch.ANY:
+                    # Same-row comparison (#169): a quantifier is meaningless —
+                    # reject rather than ignore it.
+                    raise FilterError(
+                        f"quantifier {comparison.quantifier} is only meaningful"
+                        f" when an operand traverses a multi-valued relation"
+                    )
+                predicate_q = _field_comparison_to_q(
+                    comparison.left,
+                    comparison.right,
+                    comparison.modifier,
+                    comparison.granularity,
+                    left_group=left_group,
+                    right_group=right_group,
+                    day_zone=None if context is None else context.calendar_zone(),
+                )
                 if not relation_paths:
-                    # Same-row comparison (#169): apply the predicate directly. A
-                    # quantifier here is meaningless — reject rather than ignore it.
-                    if comparison.quantifier != RelationMatch.ANY:
-                        raise FilterError(
-                            f"quantifier {comparison.quantifier} is only meaningful"
-                            f" when an operand traverses a multi-valued relation"
-                        )
                     q &= predicate_q
                 else:
                     # At least one operand fans out related rows (#282); quantify the
@@ -2145,6 +2146,7 @@ def _field_comparison_to_q(
     *,
     left_group: ComparisonGroup,
     right_group: ComparisonGroup,
+    day_zone: ZoneInfo | None = None,
 ) -> Q:
     """Build a Q comparing two operands: ``left <op> right`` in the row's space.
 
@@ -2166,18 +2168,23 @@ def _field_comparison_to_q(
     temporal_groups = ("date", "datetime")
     left_base = left
     right_expr: F | TruncDate | ExtractYear = F(right)
+    guards = Q(**{f"{left}__isnull": False}) & Q(**{f"{right}__isnull": False})
     if granularity == "date":
+        if day_zone is None:
+            raise FilterQueryContextRequired("a day comparison requires query context")
+        left_day: Expression = F(left)
+        right_day: Expression = F(right)
         if left_group == "datetime":
-            left_base = f"{left}__date"
+            left_day = TruncDate(F(left), tzinfo=day_zone)
         if right_group == "datetime":
-            right_expr = TruncDate(F(right))
-    elif granularity == "year":
+            right_day = TruncDate(F(right), tzinfo=day_zone)
+        return _ordered_expression_q(left_day, right_day, modifier) & guards
+    if granularity == "year":
         if left_group in temporal_groups:
             left_base = f"{left}__year"
         if right_group in temporal_groups:
             right_expr = ExtractYear(F(right))
 
-    guards = Q(**{f"{left}__isnull": False}) & Q(**{f"{right}__isnull": False})
     if modifier == Modifier.EQUALS:
         return Q(**{left_base: right_expr}) & guards
     if modifier == Modifier.NOT_EQUALS:
@@ -2194,6 +2201,23 @@ def _field_comparison_to_q(
         return Q(**{f"{left_base}__icontains": right_expr}) & guards
     if modifier == Modifier.EXCLUDES:
         return ~Q(**{f"{left_base}__icontains": right_expr}) & guards
+    raise FilterError(f"Unsupported modifier {modifier} for field comparison")
+
+
+def _ordered_expression_q(left: Expression, right: Expression, modifier: Modifier) -> Q:
+    """`left <op> right` over two expressions."""
+    if modifier == Modifier.EQUALS:
+        return Q(Exact(left, right))
+    if modifier == Modifier.NOT_EQUALS:
+        return ~Q(Exact(left, right))
+    if modifier == Modifier.GREATER_THAN:
+        return Q(GreaterThan(left, right))
+    if modifier == Modifier.LESS_THAN:
+        return Q(LessThan(left, right))
+    if modifier == Modifier.GREATER_THAN_OR_EQUAL:
+        return Q(GreaterThanOrEqual(left, right))
+    if modifier == Modifier.LESS_THAN_OR_EQUAL:
+        return Q(LessThanOrEqual(left, right))
     raise FilterError(f"Unsupported modifier {modifier} for field comparison")
 
 
