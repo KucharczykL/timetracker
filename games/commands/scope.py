@@ -7,7 +7,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import Model, Q, QuerySet
 
 from games.events.dispatch import CommandContext, CommandRejected, RowNotHeld
-from games.models import Device
+from games.models import Device, LibraryEntry
 from games.projections import library_path_of
 
 
@@ -124,3 +124,19 @@ def library_device(
             ),
         )
     return device
+
+
+def library_entry_row(context: CommandContext, entry_id: uuid.UUID) -> LibraryEntry:
+    """This library's entry, removed or not, with its parent."""
+    return library_row(
+        context,
+        #: Every caller reads the parent's mark.
+        LibraryEntry.objects.select_related("player_game", "release"),
+        Refusal(
+            message=(
+                f"This library holds no entry {entry_id}. A stated fact names "
+                "a copy the library records."
+            )
+        ),
+        pk=entry_id,
+    )
