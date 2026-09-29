@@ -16,6 +16,7 @@ from games.endpoints import ENTRY_ACCESS_END
 from games.events.idempotency import IdempotencyKey, key_answered
 from games.forms import (
     PrimitiveWidgetsMixin,
+    RadioListWidget,
     SearchSelectWidget,
     SingleGameChoiceField,
     TemporalFormField,
@@ -227,7 +228,7 @@ class EntryEditForm(PrimitiveWidgetsMixin, _SeenEnd, forms.Form):
         required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Note"
     )
     end_state = forms.ChoiceField(
-        choices=END_STATE_CHOICES, widget=forms.RadioSelect, label="Access"
+        choices=END_STATE_CHOICES, widget=RadioListWidget, label="Copy is"
     )
     way = forms.ChoiceField(choices=WAY_CHOICES, required=False, label="How it left")
     end_note = forms.CharField(
