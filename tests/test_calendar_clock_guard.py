@@ -7,10 +7,7 @@ from typing import NamedTuple
 
 import pytest
 
-#: Tests are walked too: a fixture seeded off the process clock agrees with
-#: a calendar reader except for the hours their zones sit on different
-#: dates, so CI fails on whichever PR runs then. A test states a fixed day
-#: or asks the calendar; it never asks the clock.
+#: Tests too: process-clock fixtures fail in CI.
 GUARDED_PACKAGES = (
     "games",
     "common",
@@ -21,18 +18,18 @@ GUARDED_PACKAGES = (
     "e2e",
 )
 
-#: Answer a day in the active zone unless one is stated.
+#: Active zone's day unless a zone stated.
 ZONED_CLOCK_NAMES = frozenset({"localdate", "localtime"})
 
-#: Answer the process zone's day and take no zone.
+#: The process zone's day; takes no zone.
 TODAY_NAMES = frozenset({"today"})
 
 CLOCK_NAMES = ZONED_CLOCK_NAMES | TODAY_NAMES
 
-#: Its `.date()` is the UTC day, or the process's when naive.
+#: Their `.date()` is UTC or naive.
 NOW_NAMES = frozenset({"now"})
 
-#: Modules whose clock attributes are the clock, by any import alias.
+#: Modules whose attributes are the clock.
 CLOCK_MODULES = frozenset({"timezone", "date", "datetime"})
 
 type ModulePath = str  # e.g. "tests/calendar_days.py"
@@ -46,7 +43,7 @@ class AllowedFunction(NamedTuple):
 
 
 class Exemption(NamedTuple):
-    """Why the clock is right there, and how many reads it covers."""
+    """Why, and how many reads it covers."""
 
     reason: Reason
     reads: int = 1
@@ -86,7 +83,7 @@ REPORT = (
 
 
 class ScopeSpan(NamedTuple):
-    """One definition, its qualified name, and the lines it covers."""
+    """A definition's qualified name and lines."""
 
     name: FunctionName
     first_line: int
@@ -128,7 +125,7 @@ def _holding_scope(spans: list[ScopeSpan], line: int) -> FunctionName:
 
 
 def _imported_names(tree: ast.AST) -> dict[str, str]:
-    """Each local name an import binds, mapped to the name it imports."""
+    """Local import names to imported names."""
     names: dict[str, str] = {}
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom | ast.Import):
@@ -147,7 +144,7 @@ def _called_name(called: ast.expr, imported: Mapping[str, str]) -> str | None:
 
 
 def _states_a_zone(call: ast.Call) -> bool:
-    """`localdate(value, timezone)`: an instant alone is still the clock."""
+    """An instant alone is still the clock."""
     return len(call.args) >= 2 or any(
         keyword.arg == "timezone" for keyword in call.keywords
     )
@@ -180,7 +177,7 @@ def _names_a_clock_module(node: ast.expr, imported: Mapping[str, str]) -> bool:
 
 
 def _refers_to_the_clock(node: ast.expr, imported: Mapping[str, str]) -> bool:
-    """A clock factory named rather than called, to be called elsewhere."""
+    """A clock factory named, not called."""
     if isinstance(node, ast.Attribute):
         return node.attr in CLOCK_NAMES and _names_a_clock_module(node.value, imported)
     if isinstance(node, ast.Name):
@@ -189,7 +186,7 @@ def _refers_to_the_clock(node: ast.expr, imported: Mapping[str, str]) -> bool:
 
 
 def clock_reads(source: str) -> list[ClockRead]:
-    """Every call or reference answering today from the clock."""
+    """Every clock-day call or reference."""
     tree = ast.parse(source)
     spans = _scope_spans(tree.body)
     imported = _imported_names(tree)
@@ -212,7 +209,7 @@ def clock_calls(
     path: ModulePath,
     allowed: Mapping[AllowedFunction, Exemption] = ALLOWED_FUNCTIONS,
 ) -> list[str]:
-    """A report for each read no exemption covers."""
+    """Reports for reads no exemption covers."""
     return [
         REPORT.format(path=path, line=read.line, function=read.function)
         for read in clock_reads(source)
@@ -270,7 +267,7 @@ def test_the_guard_reports_a_clock_named_rather_than_called() -> None:
 
 
 def test_the_guard_passes_an_attribute_of_no_clock_module() -> None:
-    """A domain object may hold a field called `today`."""
+    """A domain field may be `today`."""
     source = "def view(clock):\n    return clock.today\n"
 
     assert clock_calls(source, "x.py") == []
@@ -306,7 +303,7 @@ def test_the_guard_passes_a_day_built_from_a_stated_zone(expression) -> None:
 
 
 def test_the_guard_passes_a_stated_day() -> None:
-    """A test may name a day. It may not ask what day it is."""
+    """A test may name a day."""
     source = "def test_x():\n    return date(2026, 3, 5)\n"
 
     assert clock_calls(source, "tests/test_x.py") == []
@@ -319,7 +316,7 @@ def test_the_guard_reports_a_read_in_a_test_package() -> None:
 
 
 def test_the_walk_reaches_the_test_packages() -> None:
-    """The scope is the guard here, so it is asserted and not assumed."""
+    """Scope asserted, not assumed."""
     reached = {path for path, _ in _first_party_files()}
 
     assert "tests/test_calendar_clock_guard.py" in reached
@@ -366,7 +363,7 @@ def test_no_first_party_module_reads_a_day_from_the_clock() -> None:
 
 
 def test_every_exemption_covers_exactly_the_reads_it_states() -> None:
-    """A stale entry, or a new read hiding under an old one."""
+    """Stale entry, or a read hiding."""
     sources = dict(_first_party_files())
     for entry, exemption in ALLOWED_FUNCTIONS.items():
         assert entry.path in sources, f"{entry} names a file the walk does not reach"

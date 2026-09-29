@@ -366,7 +366,7 @@ def test_the_pair_replays_to_the_same_rows(logged_in, owned_library, game):
 def test_a_start_states_the_librarys_day_not_the_processs(
     logged_in, owned_user, owned_library, tracked
 ):
-    """The calendar decides the day, not the process clock."""
+    """The calendar decides the day."""
     displace_calendar(owned_user, owned_library)
     run = Playthrough.objects.get(player_game__game=tracked)
 

@@ -1,8 +1,4 @@
-"""The seeding helper clock-bound tests lean on.
-
-Asserted against a calendar the process clock provably disagrees with,
-because agreeing zones prove nothing.
-"""
+"""The seeding helper, against a displaced calendar."""
 
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -49,7 +45,7 @@ def _navbar_today(owned_user) -> str:
 
 
 def test_the_fixture_puts_the_clocks_a_day_apart(owned_library, displaced):
-    """Guards the guard: agreeing clocks would pass every test below."""
+    """Agreeing clocks would pass everything below."""
     assert calendar_today(owned_library) != process_day()
 
 
@@ -68,7 +64,7 @@ def test_days_ago_steps_back_on_the_calendar(owned_library, displaced):
 
 
 def test_the_other_displaced_zone_is_never_on_the_same_date():
-    """What makes a row stated in it provably miss the calendar's day."""
+    """Why the other zone always misses."""
     midnight = datetime(2026, 7, 1, tzinfo=UTC)
     for zone in DISPLACED_ZONES:
         other = ZoneInfo(other_displaced_zone(zone))
@@ -83,11 +79,7 @@ def test_the_other_displaced_zone_is_never_on_the_same_date():
 def test_a_session_seeded_at_noon_is_counted_by_todays_reader(
     owned_user, owned_library, displaced
 ):
-    """The seeded row and the reader name one day.
-
-    `effective_day` is computed from the row's own `day_zone`, which
-    `session_row` takes from the calendar unless one is named.
-    """
+    """Seeded row and reader share one day."""
     game = Game.objects.create(library=owned_library, name="Tunic")
     noon = library_noon(owned_library)
     row = session_row(game, started_at=noon, ended_at=noon + HOUR)
@@ -98,11 +90,7 @@ def test_a_session_seeded_at_noon_is_counted_by_todays_reader(
 
 
 def test_a_row_stating_another_zone_misses_the_day(owned_library, displaced):
-    """Why a row's zone travels with its instant, stated as a test.
-
-    The same noon, stated in a zone never on the calendar's date, is
-    filed under another day and today's reader does not count it.
-    """
+    """A row in another zone misses."""
     game = Game.objects.create(library=owned_library, name="Tunic")
     noon = library_noon(owned_library)
     session_row(

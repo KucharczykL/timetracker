@@ -12,7 +12,7 @@ from common.date_time_presentation import (
 from games.forms import PurchaseForm
 from games.models import Game, Purchase
 
-#: A stated day; no reader here counts purchases by day.
+#: A stated day; nothing counts by day.
 PURCHASE_DAY = date(2026, 3, 5)
 
 

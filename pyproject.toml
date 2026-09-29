@@ -67,10 +67,7 @@ extend-exclude = [
 # lists are the generator's idiom, and hand-annotating ClassVar there would
 # fight every future regeneration.
 "games/migrations/*" = ["RUF012"]
-# These specific tests construct naive datetimes/dates as deliberate fixture
-# values (the code under test owns the tz semantics). Deliberately
-# file-specific: a blanket tests/e2e ignore would also silence genuine DTZ
-# mistakes in new tests.
+# Deliberate naive fixtures; per file, never blanket.
 "tests/test_date_time_presentation.py" = ["DTZ001"]
 "tests/test_middleware_integration.py" = ["DTZ001"]
 "tests/test_stats.py" = ["DTZ001"]

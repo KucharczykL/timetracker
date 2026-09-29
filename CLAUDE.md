@@ -1274,22 +1274,17 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   SortKey = str  # e.g. "sort_name"`) so signatures say *which* string goes where.
   Zero-cost, no wrapping. Use `NewType` only when you want checker to reject
   cross-assignment and will wrap every literal.
-- **Never ask what day it is** — no code, tests and `e2e/` included, reads a day
-  from the process clock: `localdate()`/`localtime()` without a stated zone,
-  `date.today()`, `now().date()`, or one of them named to be called later. A day
-  belongs to the library's calendar: ask `calendar_today(library)`, or
-  `request_calendar_today(request, library)` where a request is at hand. In a
-  test, state a fixed day (`date(2026, 3, 5)`) or seed at
-  `library_noon(library)` from `tests/calendar_days.py`; `session_row` and its
-  siblings stamp the calendar's zone, since `effective_day` reads the row's own.
-  `displace_calendar()` there puts a library's calendar on another date than the
-  process, so a test fails at every hour rather than in the window.
-  `tests/test_calendar_clock_guard.py` walks every first-party package and fails
-  the build on such a read; a genuine exception is an `AllowedFunction` in
-  `ALLOWED_FUNCTIONS` stating its reason and read count, and a second test
-  fails an entry whose count no longer matches. The two clocks agree for most
-  of the day and differ by one for the hours their zones do, so a fixture on
-  the process clock passes locally and fails whichever PR's CI runs then.
+- **Never ask what day it is** — no code reads a day from the process clock.
+  Tests and `e2e/` obey this rule too. A day belongs to the library's calendar:
+  ask `calendar_today(library)` or `request_calendar_today(request, library)`.
+  A test states a fixed day or seeds at `library_noon(library)`
+  (`tests/calendar_days.py`). `session_row` and its siblings write the
+  calendar's zone, because `effective_day` reads the row's own zone.
+  `displace_calendar()` puts the calendar on another date than the process, so
+  a wrong test fails at every hour. `tests/test_calendar_clock_guard.py` fails
+  the build on `localdate()` or `localtime()` without a zone, `date.today()`,
+  `now().date()`, and a clock factory named but not called. An exception is an
+  `AllowedFunction` with a reason and a read count; a count that changes fails.
 - **Use `render_page()` not `render()`** for all full-page HTTP responses (import
   from `common.layout`).
 - **Build UI with Python components** from `common.components`, not raw HTML

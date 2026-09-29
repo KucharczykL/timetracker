@@ -344,19 +344,12 @@ def _open_calendar(page):
 
 @pytest.fixture(scope="session")
 def browser_context_args(browser_context_args):
-    """Pin the browser to the clock this module asserts against.
-
-    The picker computes its days in the browser's zone, and
-    every assertion compares them against that same zone via
-    `_pinned_today()`. Unpinned, a working picker fails for the
-    hours the two disagree. Pinned rather than read back, because
-    what is asserted is arithmetic on a day, not which day it is.
-    """
+    """Pin the browser to the asserted zone."""
     return {**browser_context_args, "timezone_id": settings.TIME_ZONE}
 
 
 def _pinned_today() -> datetime.date:
-    """The day the browser is on, read in the zone pinned above."""
+    """The browser's day, in the pinned zone."""
     return datetime.datetime.now(ZoneInfo(settings.TIME_ZONE)).date()
 
 

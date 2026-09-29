@@ -23,7 +23,7 @@ from games.filters import (
 from games.models import Game, PlayerSession, Purchase
 from games.removal import remove
 
-#: A stated day; no reader here counts purchases by day.
+#: A stated day; nothing counts by day.
 PURCHASE_DAY = date(2026, 3, 5)
 
 

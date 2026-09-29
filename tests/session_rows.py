@@ -134,12 +134,7 @@ def session_row(
     day_zone: str | None = None,
     **columns: object,
 ) -> PlayerSession:
-    """A projection row shaped like a legacy create.
-
-    Manual time alone is a Duration-only row on the start's day; manual
-    time beside an end is a Corrected row stating the legacy total. The
-    day is read in the library's calendar zone unless one is named.
-    """
+    """A legacy-shaped row in the calendar's zone."""
     library = library or game.library
     if library is None:
         raise ValueError("a shared catalog game needs the library stated")

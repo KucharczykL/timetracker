@@ -13,7 +13,7 @@ from session_rows import session_row
 
 from games.models import Device, Game, Platform, PlayerGameStatus, Purchase
 
-#: A stated day; no reader here counts purchases by day.
+#: A stated day; nothing counts by day.
 PURCHASE_DAY = date(2026, 3, 5)
 
 
