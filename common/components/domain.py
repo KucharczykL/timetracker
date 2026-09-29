@@ -95,6 +95,7 @@ _ACCESS_BADGE_CLASS = (
     "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-base border "
     "text-type-body leading-none whitespace-nowrap"
 )
+_ACCESS_GLYPH_SIZE = "size-4"
 _ACCESS_BADGE_FILL = {
     True: "solid-brand border-brand",
     False: "border-default-medium text-body",
@@ -132,7 +133,11 @@ def AccessBadge(summary: AccessSummary, presentation: DateTimePresentation) -> N
         class_=f"{_ACCESS_BADGE_CLASS} {_ACCESS_BADGE_FILL[summary.owned_now]}",
         title=words,
     )[
-        *(Icon(glyph, decorative=True) for glyph in glyphs or ["unspecified"]),
+        #: Whole pixels: a fractional glyph rounds apart from the border.
+        *(
+            Icon(glyph, size=_ACCESS_GLYPH_SIZE, decorative=True)
+            for glyph in glyphs or ["unspecified"]
+        ),
         *([Span(aria_hidden="true")[str(held)]] if held > 1 else []),
         Span(class_="sr-only")[words],
     ]
