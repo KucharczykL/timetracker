@@ -210,12 +210,20 @@ def test_fill_and_glyphs(held, ended, filled, glyphs):
     assert _glyphs(html) == glyphs
 
 
-def test_the_panel_mutes_ended_lines():
-    html = _badge([_held()], [_ended()])
+def test_the_panel_mutes_ended_lines_and_grooves_the_first():
+    html = _badge([_held()], [_ended(), _ended(way="lost", ended=None)])
     panel = html.split('role="tooltip"', 1)[1]
 
     assert "<li>Owned</li>" in panel
-    assert '<li class="text-body">Sold 2023</li>' in panel
+    first, second = re.findall(r'<li class="([^"]*)">', panel)
+    assert first.startswith("text-body ") and "border-t" in first
+    assert second == "text-body"
+
+
+def test_ended_rows_alone_take_no_groove():
+    html = _badge([], [_ended(), _ended("borrowed", way="returned")])
+
+    assert "border-t" not in html.split('role="tooltip"', 1)[1]
 
 
 def test_the_number_counts_held_copies_above_one():

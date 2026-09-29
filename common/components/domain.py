@@ -157,6 +157,20 @@ def _grouped(words: list[str], *, ended: bool) -> list[AccessLine]:
     ]
 
 
+#: An engraved groove: a dark rule over a light one, panel-wide.
+_HELD_ENDED_GROOVE = (
+    "mt-1 pt-1 -mx-3 px-3 border-t border-black/15 dark:border-black/45 "
+    "shadow-[inset_0_1px_0_rgb(255_255_255_/_0.8)] "
+    "dark:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.12)]"
+)
+
+
+def _line_class(lines: list[AccessLine], index: int) -> str:
+    """Ended rows are muted; the first under held rows is grooved."""
+    first_ended = index > 0 and not lines[index - 1].ended
+    return f"text-body {_HELD_ENDED_GROOVE}" if first_ended else "text-body"
+
+
 def access_lines(
     summary: AccessSummary, presentation: DateTimePresentation
 ) -> list[AccessLine]:
@@ -178,8 +192,10 @@ def AccessBadge(
     return Popover(
         popover_content=Ul(class_="space-y-0.5")[
             *(
-                Li([("class", "text-body")] if line.ended else [])[line.words]
-                for line in lines
+                Li([("class", _line_class(lines, index))] if line.ended else [])[
+                    line.words
+                ]
+                for index, line in enumerate(lines)
             )
         ],
         wrapped_classes=(
