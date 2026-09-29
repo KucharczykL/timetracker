@@ -391,8 +391,11 @@ docs/           — Additional documentation
   removed parent refused -- then appends each event still to happen. Library
   page's Playtime section reviews Duration-only rows of
   `REVIEW_THRESHOLD_HOURS` or longer and links to them; since #712 the
-  session list's selection line states that review and the bulk runner
-  acts on it (below). Contract is
+  session list's selection line states that review, and the bulk runner
+  acts on a base that contains it (below). The threshold suggests, never
+  refuses (#1357): `reviewable_sessions()` is the review,
+  `convertible_sessions()` the act's base, any length; a short row
+  converts under the confirmation's `caution`. Contract is
   [Reclassify a session](docs/superpowers/specs/2026-09-18-issue-1098-session-reclassification-design.md)
 
   #700 converted every legacy `Session` row into these events, under the
@@ -565,7 +568,10 @@ Contract is [Undo a removal](docs/superpowers/specs/2026-09-16-issue-695-undo-re
 `games/bulk_actions.py`, and making the value declares it: `__post_init__`
 refuses a name twice declared, `EventRows` refuses a model no `EventSpec`
 speaks about, and `LedgerRows` a projection. It states
-scope, resolve, run and inverse, beside `undo_rows`, where its Undo reads
+scope, resolve, run and inverse, and may state a `caution`: a sentence
+above the sample about rows the press *will* act on, where `Refused` names
+a row left alone. Only the reclassification states one. Beside those is
+`undo_rows`, where its Undo reads
 the rows it takes back -- one act may write two, as the reclassification writes a
 created record beside the reclassified session, and an Undo reading both would
 hand a record's key to a command that reads sessions. Each act's own half lives

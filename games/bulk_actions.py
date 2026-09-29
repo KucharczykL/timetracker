@@ -152,6 +152,8 @@ class PreviewColumn[RowT: Model]:
 
 #: What an "all" statement names, before exclusions.
 type Scope[RowT: Model] = Callable[[UserLibrary, FilterJson], QuerySet[RowT]]
+#: A note on the rows it acts on.
+type Caution[RowT: Model] = Callable[[Sequence[RowT]], str | None]
 #: Keys to rows, or to sentences.
 type Resolve[RowT: Model] = Callable[
     [UserLibrary, Sequence[uuid.UUID]], Resolution[RowT]
@@ -332,6 +334,8 @@ class BulkAction[RowT: Model]:
     preview: tuple[PreviewColumn[RowT], ...]
     #: What the act asks for first, or nothing.
     choice: BulkChoice[RowT] | None = None
+    #: A note the confirmation shows, or nothing.
+    caution: Caution[RowT] | None = None
 
     def __post_init__(self) -> None:
         """Refuse a declaration that cannot run."""

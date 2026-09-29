@@ -36,43 +36,69 @@ from games.writes.playersession import reclassify_session, undo_reclassification
 REVIEW_THRESHOLD_HOURS = 8
 
 NOT_WRITTEN = (
-    "A session whose time the app measured is not one the review offers, so "
-    "it was left as it is."
+    "A session whose time the app measured cannot be recorded as historical "
+    "playtime, so it was left as it is."
 )
 NOT_AVAILABLE = "One of the sessions is no longer available, so it was left as it is."
-UNDER_THRESHOLD = (
-    f"A session shorter than {REVIEW_THRESHOLD_HOURS} hours is not one the "
-    "review offers, so it was left as it is."
-)
 IN_THE_BUCKET = (
-    "A session in imported history is not one the review offers, because it "
-    "must be told which playthrough its hours belong to. Move it from its own "
-    "row."
+    "A session in imported history cannot be recorded as historical playtime "
+    "until it is told which playthrough its hours belong to. Move it from its "
+    "own row."
 )
 ALREADY_RECORDED = "Some of the sessions were already recorded as historical playtime."
 
+#: Notes short rows; the act converts them.
+SHORT_ONE = (
+    "One of these sessions is shorter than {hours} hours, so it may well be a "
+    "single sitting rather than a total you typed in. It is recorded all the "
+    "same."
+)
+SHORT_MANY = (
+    "{count} of these sessions are shorter than {hours} hours, so they may "
+    "well be single sittings rather than totals you typed in. They are "
+    "recorded all the same."
+)
 
-def reviewable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
-    """Live written-down rows at the threshold.
 
-    A statement's filter narrows this base, never widens it.
-    """
+def convertible_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
+    """The act's base: any length, ordinary run."""
     return library_sessions(library).filter(
         timing_mode=PlayerSessionTimingMode.DURATION_ONLY,
-        effective_duration__gte=timedelta(hours=REVIEW_THRESHOLD_HOURS),
         #: The bucket's hours name no run.
         playthrough__kind=PlaythroughKind.ORDINARY,
     )
 
 
-def review_scope(library: UserLibrary, filter_json: str) -> QuerySet[PlayerSession]:
-    """The review, narrowed by the statement's filter."""
-    return narrowed(
-        reviewable_sessions(library), library, filter_json, parse_session_filter
+def reviewable_sessions(library: UserLibrary) -> PlayerSessionQuerySet:
+    """Convertible rows at the threshold: the suggestion."""
+    return convertible_sessions(library).filter(
+        effective_duration__gte=timedelta(hours=REVIEW_THRESHOLD_HOURS),
     )
 
 
-def review_resolution(
+def conversion_scope(library: UserLibrary, filter_json: str) -> QuerySet[PlayerSession]:
+    """The base, narrowed by the statement's filter."""
+    return narrowed(
+        convertible_sessions(library), library, filter_json, parse_session_filter
+    )
+
+
+def short_rows_note(rows: Sequence[PlayerSession]) -> str | None:
+    """Count rows under the threshold, or None.
+
+    Never a note about zero rows: an empty note teaches
+    people to skip the notes that matter.
+    """
+    threshold = timedelta(hours=REVIEW_THRESHOLD_HOURS)
+    short = sum(1 for row in rows if row.effective_duration < threshold)
+    if not short:
+        return None
+    if short == 1:
+        return SHORT_ONE.format(hours=REVIEW_THRESHOLD_HOURS)
+    return SHORT_MANY.format(count=short, hours=REVIEW_THRESHOLD_HOURS)
+
+
+def conversion_resolution(
     library: UserLibrary, keys: Sequence[uuid.UUID]
 ) -> Resolution[PlayerSession]:
     """Keys to rows, and to sentences."""
@@ -87,7 +113,7 @@ def review_resolution(
     )
     offered = [
         row
-        for row in reviewable_sessions(library)
+        for row in convertible_sessions(library)
         .filter(pk__in=wanted)
         .select_related("playthrough__player_game__game")
         .order_by("-effective_duration", "id")
@@ -109,7 +135,11 @@ def review_resolution(
         elif row.timing_mode != PlayerSessionTimingMode.DURATION_ONLY:
             refused.append(Refused(str(key), NOT_WRITTEN))
         else:
-            refused.append(Refused(str(key), UNDER_THRESHOLD))
+            #: A narrowing no sentence names.
+            raise AssertionError(
+                f"Session {key} is live, ordinary and written down, yet "
+                "convertible_sessions() did not offer it."
+            )
     return Resolution(tuple(offered), tuple(refused))
 
 
@@ -187,9 +217,10 @@ RECLASSIFY = BulkAction(
     color="blue",
     undo_rows=EventRows(PlayerSession),
     fallback="games:list_sessions",
-    scope=review_scope,
-    resolve=review_resolution,
+    scope=conversion_scope,
+    resolve=conversion_resolution,
     run=convert_one,
     inverse=return_one,
     preview=PREVIEW,
+    caution=short_rows_note,
 )

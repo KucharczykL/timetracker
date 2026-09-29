@@ -61,6 +61,16 @@ def _refusals(count: int, reasons: Sequence[str], lead: str) -> Node:
     ]
 
 
+def _caution(action: BulkAction[Any], rows: Sequence[Any]) -> Node:
+    """The act's note above the rows."""
+    if action.caution is None:
+        return Fragment()
+    said = action.caution(rows)
+    if said is None:
+        return Fragment()
+    return P(class_="text-type-body text-body-subtle mb-4")[said]
+
+
 def _sample(
     action: BulkAction[Any],
     rows: Sequence[Any],
@@ -142,6 +152,7 @@ def ConfirmBatch(
         else f"None of those {action.subject}{pluralize(0)} can be changed.",
         details=Fragment(
             *(Input(type="hidden", name=name, value=value) for name, value in hidden),
+            _caution(action, rows),
             _refusals(len(refused), _reasons(refused), WILL_BE_LEFT_ALONE),
             _sample(action, rows, total, sample_cap, presentations),
         ),

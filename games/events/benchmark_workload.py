@@ -17,7 +17,7 @@ from common.keyset import keyset_pages
 from games.bulk_reclassification import (
     RECLASSIFY,
     REVIEW_THRESHOLD_HOURS,
-    reviewable_sessions,
+    convertible_sessions,
 )
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
@@ -373,10 +373,10 @@ def _keys_to_convert(
     keys = [
         _written_down(library, actor=actor, run=run) for run in islice(cycle, count)
     ]
-    offered = reviewable_sessions(library).filter(pk__in=keys).count()
+    offered = convertible_sessions(library).filter(pk__in=keys).count()
     if offered != count:
         raise ValueError(
-            f"The review offers {offered} of the {count} session(s) this "
+            f"The act offers {offered} of the {count} session(s) this "
             "scenario wrote, so the rows it would time are not its own."
         )
     return keys

@@ -33,7 +33,7 @@ from games.bulk_reclassification import (
     IN_THE_BUCKET,
     NOT_AVAILABLE,
     REVIEW_THRESHOLD_HOURS,
-    UNDER_THRESHOLD,
+    SHORT_ONE,
 )
 from games.commands.session_reclassification import statement_from_session
 from games.events.dispatch import CommandRejected
@@ -91,6 +91,22 @@ def game(owned_library):
 
 def a_written_session(library, game, day=A_DAY, duration=LONG_ENOUGH):
     return duration_only_row(tracked_run(library, game), day, duration)
+
+
+def a_bucket(library, game) -> Playthrough:
+    """The game's imported-history bucket."""
+    return Playthrough.objects.create(
+        pk=uuid.uuid7(),
+        library=library,
+        player_game=tracked_run(library, game).player_game,
+        kind=PlaythroughKind.IMPORTED_HISTORY,
+        created_at=timezone.now(),
+    )
+
+
+def a_bucket_session(bucket, day=A_DAY):
+    """A written-down row the act refuses."""
+    return duration_only_row(bucket, day, LONG_ENOUGH)
 
 
 def some(*sessions) -> str:
@@ -154,6 +170,8 @@ def test_an_all_statement_resolves_through_the_scope(client_in, owned_library, g
     rows = json.loads(posted(response)[PROGRESS_FIELD])["rows"]
     assert rows == [str(wanted.pk)]
     assert str(short.pk) not in rows
+    note = html_module.escape(SHORT_ONE.format(hours=REVIEW_THRESHOLD_HOURS))
+    assert note not in response.content.decode()
 
 
 def test_an_all_statement_drops_what_it_excludes(client_in, owned_library, game):
@@ -199,19 +217,29 @@ def test_another_librarys_key_never_resolves(
 
 
 def test_a_refused_row_is_named_with_its_reason(client_in, owned_library, game):
-    player_game = tracked_run(owned_library, game).player_game
-    bucket = Playthrough.objects.create(
-        pk=uuid.uuid7(),
-        library=owned_library,
-        player_game=player_game,
-        kind=PlaythroughKind.IMPORTED_HISTORY,
-        created_at=timezone.now(),
-    )
-    in_the_bucket = duration_only_row(bucket, A_DAY, LONG_ENOUGH)
+    in_the_bucket = a_bucket_session(a_bucket(owned_library, game))
 
     response = confirm(client_in, some(in_the_bucket))
 
     assert IN_THE_BUCKET.encode() in response.content
+
+
+def test_a_short_row_is_noted_and_converted_all_the_same(
+    client_in, owned_library, game
+):
+    """A short row is noted, then converted."""
+    short = a_written_session(owned_library, game, duration=timedelta(hours=1))
+
+    asked = confirm(client_in, some(short))
+    page = asked.content.decode()
+    assert html_module.escape(SHORT_ONE.format(hours=REVIEW_THRESHOLD_HOURS)) in page
+    assert "will be left as" not in page
+
+    done = act(client_in, asked)
+
+    assert done.status_code == 302
+    assert [str(message) for message in toasts(done)] == ["1 of 1 done."]
+    assert HistoricalPlaytime.objects.count() == 1
 
 
 def test_a_missing_key_is_named_lost(client_in, owned_library):
@@ -416,13 +444,13 @@ def test_a_row_gone_since_the_confirmation_is_counted_lost(
 
 def test_a_refused_row_leaves_the_rest_done(client_in, owned_library, game):
     wanted = a_written_session(owned_library, game)
-    short = a_written_session(
-        owned_library, game, day=date(2026, 3, 6), duration=timedelta(hours=1)
-    )
-    #: The short row is posted straight to the act, past the review.
+    in_the_bucket = a_bucket_session(a_bucket(owned_library, game))
+    #: Posted straight to the act.
     confirmation = confirm(client_in, some(wanted))
     fields = posted(confirmation)
-    fields[PROGRESS_FIELD] = json.dumps({"rows": [str(wanted.pk), str(short.pk)]})
+    fields[PROGRESS_FIELD] = json.dumps(
+        {"rows": [str(wanted.pk), str(in_the_bucket.pk)]}
+    )
 
     response = client_in.post(RECLASSIFY, fields)
 
@@ -440,14 +468,11 @@ def test_a_refused_row_is_counted_and_its_reason_reaches_the_person(
     sentence stood over several rows.
     """
     wanted = a_written_session(owned_library, game)
-    short = a_written_session(
-        owned_library, game, day=date(2026, 3, 6), duration=timedelta(hours=1)
-    )
-    brief = a_written_session(
-        owned_library, game, day=date(2026, 3, 7), duration=timedelta(hours=2)
-    )
+    bucket = a_bucket(owned_library, game)
+    imported = a_bucket_session(bucket, day=date(2026, 3, 6))
+    also_imported = a_bucket_session(bucket, day=date(2026, 3, 7))
 
-    asked = confirm(client_in, some(wanted, short, brief))
+    asked = confirm(client_in, some(wanted, imported, also_imported))
     assert "2 of them will be left as they are:" in asked.content.decode()
 
     done = act(client_in, asked)
@@ -455,7 +480,7 @@ def test_a_refused_row_is_counted_and_its_reason_reaches_the_person(
     assert done.status_code == 302
     assert [str(message) for message in toasts(done)] == [
         "1 of 1 done, 2 left as they are.",
-        UNDER_THRESHOLD,
+        IN_THE_BUCKET,
     ]
 
 
@@ -497,17 +522,17 @@ def test_every_row_left_alone_is_logged_with_its_library(
     A person reading a toast wants to know how many were left and why.
     Whoever reads the log afterwards wants to know which ones.
     """
-    short = a_written_session(owned_library, game, duration=timedelta(hours=1))
+    in_the_bucket = a_bucket_session(a_bucket(owned_library, game))
     fine = a_written_session(owned_library, game, day=date(2026, 3, 6))
 
     with capture_games_logger() as captured:
         #: The fixture pins WARNING; a row left alone is ordinary.
         captured.set_level(logging.INFO, logger="games")
-        act(client_in, confirm(client_in, some(short, fine)))
+        act(client_in, confirm(client_in, some(in_the_bucket, fine)))
 
     assert HistoricalPlaytime.objects.count() == 1
     said = " ".join(record.message for record in caplog.records)
-    assert str(short.pk) in said
+    assert str(in_the_bucket.pk) in said
     assert str(owned_library.pk) in said
 
 
@@ -691,16 +716,16 @@ def test_a_waypoint_says_what_has_been_left_alone_so_far(
         a_written_session(owned_library, game, day=A_DAY + timedelta(days=offset))
         for offset in range(2)
     ]
-    short = a_written_session(
-        owned_library, game, day=date(2026, 4, 1), duration=timedelta(hours=1)
+    in_the_bucket = a_bucket_session(
+        a_bucket(owned_library, game), day=date(2026, 4, 1)
     )
 
-    progressing = act(client_in, confirm(client_in, some(*sessions, short)))
+    progressing = act(client_in, confirm(client_in, some(*sessions, in_the_bucket)))
 
     assert progressing.status_code == 200
     page = progressing.content.decode()
     assert "1 left as it is so far:" in page
-    assert html_module.escape(UNDER_THRESHOLD) in page
+    assert html_module.escape(IN_THE_BUCKET) in page
 
 
 def test_stopping_ends_the_batch_where_it_stands(
@@ -844,9 +869,9 @@ def test_the_answer_of_a_batch_offers_the_batch_its_undo(
 
 def test_a_batch_that_did_nothing_offers_no_undo(client_in, owned_library, game):
     """Nothing to take back, so no press that says there is."""
-    session = a_written_session(owned_library, game, duration=timedelta(hours=1))
+    in_the_bucket = a_bucket_session(a_bucket(owned_library, game))
 
-    done = act(client_in, confirm(client_in, some(session)))
+    done = act(client_in, confirm(client_in, some(in_the_bucket)))
 
     assert actions_of(done) == []
 

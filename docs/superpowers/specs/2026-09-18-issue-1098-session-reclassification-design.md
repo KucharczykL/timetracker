@@ -41,7 +41,7 @@ behind the three. Every guard is scoped to the library.
 - No record was made from the session: refused.
 - No record is live and the session is live: `Unchanged`.
 - The live record was restated, which `restated_at` marks: refused whole, as
-  one refused leg leaves both live.
+  one refused step leaves both live.
 - The session was marked after its last record: refused. The act marks the
   session first, so a later mark is another act's.
 - A parent is removed: refused.
@@ -60,11 +60,16 @@ wait: live Duration-only rows of eight hours or longer on an ordinary run. One
 control opens the session list narrowed to them; one states that review as a
 selection and hands it to the bulk runner, which #713 owns.
 
-The runner resolves the review again at the press, so the rows it converts are
+The threshold is a suggestion. It does not refuse a row. The act takes every
+live Duration-only row on an ordinary run, of any length. The review is the
+rows of eight hours or longer. The act converts a shorter row that a person
+selects. The confirmation shows one sentence that counts these rows.
+
+The runner resolves the base again at the press, so the rows it converts are
 the rows that still qualify rather than the ones a page-old count named. Every
 other key is left alone with the sentence true of it: not available, already
-recorded, in the bucket, measured, or under the threshold. Each key left alone
-is logged with its library.
+recorded, in the bucket, or measured. Each key left alone is logged with its
+library.
 
 ## Dates
 
