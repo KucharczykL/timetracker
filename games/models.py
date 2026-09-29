@@ -2195,6 +2195,7 @@ ENTRY_ACQUISITION_COLUMNS = OpeningEndpointColumns(
 
 #: How a copy leaves the library's hands.
 ENTRY_WAYS: tuple[EndWay, *tuple[EndWay, ...]] = (
+    EndWay.UNSTATED,
     EndWay.RETURNED,
     EndWay.EXPIRED,
     EndWay.REVOKED,

@@ -247,26 +247,25 @@ def test_edit_end_restates_the_whole_end(owned_library, entry):
     )
 
 
-def test_it_didnt_end_voids_and_needs_nothing_else(owned_library, entry):
+def test_edit_end_refuses_an_end_that_moved_since_the_page(owned_library, entry):
     entry = end_entry_access(entry)
     form = _end_edit(
         entry,
         {
-            "access_end_seen": entry.access_end_recorded_at.isoformat(),
-            EntryEndEditForm.VOID: "1",
+            "way": "sold",
+            "access_end_seen": "",
+            **_day("ended", datetime.date(2022, 3, 4)),
         },
     )
 
-    assert form.is_valid(), form.errors
-    assert form.access_end() is None
-
-
-def test_edit_end_refuses_an_end_that_moved_since_the_page(owned_library, entry):
-    entry = end_entry_access(entry)
-    form = _end_edit(entry, {"access_end_seen": "", EntryEndEditForm.VOID: "1"})
-
     assert not form.is_valid()
     assert form.non_field_errors() == [CHANGED_SINCE_OPENED]
+
+
+def test_end_offers_not_said_first(owned_library, entry):
+    form = EntryEndForm(entry=entry, presentation=PRESENTATION, today=TODAY)
+
+    assert form.fields["way"].choices[0] == ("unstated", "Not said")
 
 
 def test_edit_end_of_a_held_copy_is_a_defect(owned_library, entry):

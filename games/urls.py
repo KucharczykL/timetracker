@@ -236,6 +236,11 @@ urlpatterns = [
         name="add_library_entry",
     ),
     path(
+        "game/<uuidv7:game_id>/library/add/now",
+        library_entry.add_library_entry_now,
+        name="add_library_entry_now",
+    ),
+    path(
         "library/<uuidv7:entry_id>/edit",
         library_entry.edit_library_entry,
         name="edit_library_entry",
@@ -249,6 +254,26 @@ urlpatterns = [
         "library/<uuidv7:entry_id>/end/edit",
         library_entry.edit_library_entry_end,
         name="edit_library_entry_end",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/end/now",
+        library_entry.end_library_entry_now,
+        name="end_library_entry_now",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/end/undo",
+        library_entry.undo_library_entry_end,
+        name="undo_library_entry_end",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/resume/now",
+        library_entry.resume_library_entry_now,
+        name="resume_library_entry_now",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/resume/undo",
+        library_entry.undo_library_entry_resume,
+        name="undo_library_entry_resume",
     ),
     path(
         "library/<uuidv7:entry_id>/resume",

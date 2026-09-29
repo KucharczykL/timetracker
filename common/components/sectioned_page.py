@@ -181,6 +181,12 @@ def SectionNav(
     ]
 
 
+#: The surface a page section sits on, set apart from the background.
+SECTION_SURFACE_CLASS = (
+    "rounded-base border border-default bg-neutral-primary-medium p-4"
+)
+
+
 def _section_panel(section: SectionedPageSection) -> Node:
     heading_id = f"{section.id}-heading"
     header_children: list[Node] = [
@@ -205,8 +211,8 @@ def _section_panel(section: SectionedPageSection) -> Node:
             (
                 "class",
                 (
-                    "scroll-mt-24 @4xl:scroll-mt-4 flex flex-col gap-6 rounded-base "
-                    "border border-default bg-neutral-primary-medium p-4 @container"
+                    "scroll-mt-24 @4xl:scroll-mt-4 flex flex-col gap-6 @container "
+                    f"{SECTION_SURFACE_CLASS}"
                 ),
             ),
         ],

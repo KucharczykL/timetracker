@@ -108,7 +108,7 @@ def _release_field(
 ) -> forms.ModelChoiceField:
     return forms.ModelChoiceField(
         queryset=Release.objects.visible_to(library),
-        label="Release",
+        label="Version",
         widget=SearchSelectWidget(
             search_url=RELEASE_SEARCH_URL,
             options_resolver=partial(release_options, library=library),
@@ -164,7 +164,9 @@ class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
 
     act = "add"
 
-    access = forms.ChoiceField(choices=EntryAccess.choices, initial=EntryAccess.OWNED)
+    access = forms.ChoiceField(
+        choices=EntryAccess.choices, initial=EntryAccess.OWNED, label="Got it as"
+    )
     format = forms.ChoiceField(
         choices=EntryFormat.choices,
         initial=EntryFormat.DIGITAL,
@@ -208,7 +210,7 @@ class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
                 self.initial["release"] = default.pk
         self.fields["release"] = _release_field(library, params, create=create)
         self.fields["acquired"] = TemporalFormField(
-            presentation=presentation, label="Acquired", initial=_day(today)
+            presentation=presentation, label="Got it on", initial=_day(today)
         )
         self.order_fields(["game", "release", "format", "access", "acquired", "note"])
 
@@ -244,7 +246,7 @@ class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
 class EntryEditForm(PrimitiveWidgetsMixin, forms.Form):
     """A copy's facts and its acquisition restated."""
 
-    access = forms.ChoiceField(choices=EntryAccess.choices)
+    access = forms.ChoiceField(choices=EntryAccess.choices, label="Got it as")
     format = forms.ChoiceField(choices=EntryFormat.choices, widget=RadioListWidget)
     note = forms.CharField(
         required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Note"
@@ -278,7 +280,7 @@ class EntryEditForm(PrimitiveWidgetsMixin, forms.Form):
             _entry_release_options, entry=entry, library=library
         )
         self.fields["acquired"] = TemporalFormField(
-            presentation=presentation, label="Acquired"
+            presentation=presentation, label="Got it on"
         )
         self.order_fields(["release", "format", "access", "acquired", "note"])
 
@@ -310,7 +312,7 @@ class EntryEndForm(PrimitiveWidgetsMixin, _Submission, _SeenEnd, forms.Form):
 
     act = "end"
 
-    way = forms.ChoiceField(choices=WAY_CHOICES, label="How it left")
+    way = forms.ChoiceField(choices=WAY_CHOICES, label="What happened")
     note = forms.CharField(
         required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Note"
     )
@@ -329,7 +331,7 @@ class EntryEndForm(PrimitiveWidgetsMixin, _Submission, _SeenEnd, forms.Form):
         super().__init__(*args, **kwargs)
         self.entry = entry
         self.fields["ended"] = TemporalFormField(
-            presentation=presentation, label="Ended", initial=_day(today)
+            presentation=presentation, label="When", initial=_day(today)
         )
         self.order_fields(["way", "ended", "note"])
 
@@ -372,7 +374,7 @@ class EntryResumeForm(PrimitiveWidgetsMixin, _Submission, _SeenEnd, forms.Form):
         super().__init__(*args, **kwargs)
         self.entry = entry
         self.fields["resumed"] = TemporalFormField(
-            presentation=presentation, label="Resumed", initial=_day(today)
+            presentation=presentation, label="When", initial=_day(today)
         )
         self.order_fields(["resumed", "note"])
 
@@ -391,12 +393,9 @@ class EntryResumeForm(PrimitiveWidgetsMixin, _Submission, _SeenEnd, forms.Form):
 
 
 class EntryEndEditForm(PrimitiveWidgetsMixin, _SeenEnd, forms.Form):
-    """A standing end restated, or taken back."""
+    """A standing end restated."""
 
-    #: The submit that states the copy never left.
-    VOID = "void"
-
-    way = forms.ChoiceField(choices=WAY_CHOICES, label="How it left")
+    way = forms.ChoiceField(choices=WAY_CHOICES, label="What happened")
     note = forms.CharField(
         required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Note"
     )
@@ -420,19 +419,12 @@ class EntryEndEditForm(PrimitiveWidgetsMixin, _SeenEnd, forms.Form):
         super().__init__(*args, **kwargs)
         self.entry = entry
         self.fields["ended"] = TemporalFormField(
-            presentation=presentation, label="Ended"
+            presentation=presentation, label="When"
         )
         self.order_fields(["way", "ended", "note"])
-        #: A void states nothing, so nothing it names is required.
-        if self.voids():
-            for field in self.fields.values():
-                field.required = False
-
-    def voids(self) -> bool:
-        return self.is_bound and self.VOID in self.data
 
     def clean_note(self) -> str:
-        return _note(self.cleaned_data.get("note") or "")
+        return _note(self.cleaned_data["note"])
 
     def clean(self) -> dict[str, Any] | None:
         cleaned = super().clean()
@@ -440,10 +432,8 @@ class EntryEndEditForm(PrimitiveWidgetsMixin, _SeenEnd, forms.Form):
             self._refuse_a_moved_end(cleaned)
         return cleaned
 
-    def access_end(self) -> WayActStatement | None:
-        """The restated end; None takes it back."""
-        if self.voids():
-            return None
+    def access_end(self) -> WayActStatement:
+        """The restated end."""
         cleaned = self.cleaned_data
         return WayActStatement(
             cleaned["ended"], EndWay(cleaned["way"]), cleaned["note"]

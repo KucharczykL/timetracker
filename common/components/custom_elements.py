@@ -32,6 +32,7 @@ from common.components.core import (
     Children,
     Element,
     Fragment,
+    HTMLAttribute,
     Node,
     as_children,
 )
@@ -1414,13 +1415,15 @@ def SplitButtonDropdown(
     # The caret sits flush against the primary, so its focus ring is drawn inset
     # (contained in the caret box) rather than as an outset halo over the join.
     caret_focus = "focus:ring-inset"
+    #: The caret is a glyph alone; the menu's name names it too.
+    caret_name: list[HTMLAttribute] = [("aria-label", aria_label)] if aria_label else []
     if caret_color is None:
-        caret_button = ControlButton([("class", caret_focus)], variant="outline")[
-            Icon("arrowdown")
-        ]
+        caret_button = ControlButton(
+            [("class", caret_focus), *caret_name], variant="outline"
+        )[Icon("arrowdown")]
     else:
         caret_button = ControlButton(
-            [("class", f"border-l border-l-white/30 {caret_focus}")],
+            [("class", f"border-l border-l-white/30 {caret_focus}"), *caret_name],
             color=caret_color,
         )[Icon("arrowdown")]
     # The row's two places, counted rather than remembered: a third element

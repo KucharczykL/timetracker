@@ -2131,6 +2131,8 @@ def AddForm(
     additional_row: Node | SafeText | str = "",
     submit_class: str = "mt-3",
     width_class: str = FORM_MAX_WIDTH_CLASS,
+    submit_label: str = "Submit",
+    cancel_url: str | None = None,
 ) -> Node:
     """Page body for the generic add/edit form (Python equivalent of add.html).
 
@@ -2140,6 +2142,7 @@ def AddForm(
     is applied to the main Submit button (the session form passes "" to match
     its original markup). `width_class` widens the column for a form that holds
     a grid of its own; every other page keeps the one-column default.
+    `submit_label` names the act; `cancel_url` adds a Cancel link beside it.
     """
     field_markup = fields if fields is not None else FormFields(form)
     submit_attrs = [("class", submit_class)] if submit_class else []
@@ -2152,7 +2155,14 @@ def AddForm(
     )[
         CsrfInput(request),
         field_markup,
-        Div()[ControlButton(submit_attrs, type="submit")["Submit"]],
+        Div(class_="flex flex-wrap items-center gap-2")[
+            ControlButton(submit_attrs, type="submit")[submit_label],
+            *(
+                [ControlButton(href=cancel_url, color="gray")["Cancel"]]
+                if cancel_url
+                else []
+            ),
+        ],
         Div(class_="flex flex-wrap gap-2")[
             *([additional_row] if additional_row else [])
         ],

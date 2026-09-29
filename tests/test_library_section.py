@@ -43,6 +43,10 @@ def test_a_row_per_live_copy_with_its_acts(client, owned_user, owned_library, gr
     assert f"{reverse('games:end_library_entry', args=[held.pk])}?" in html
     assert f"{reverse('games:edit_library_entry_end', args=[ended.pk])}?" in html
     assert f"{reverse('games:resume_library_entry', args=[ended.pk])}?" in html
+    assert reverse("games:end_library_entry_now", args=[held.pk]) in html
+    assert reverse("games:resume_library_entry_now", args=[ended.pk]) in html
+    assert "I no longer have it" in html
+    assert "I have it again" in html
     assert f"{reverse('games:end_library_entry', args=[ended.pk])}?" not in html
     assert str(gone.pk) not in html
     assert "Returned" in html
@@ -54,7 +58,7 @@ def test_an_empty_section_offers_add(client, owned_user, graph):
     html = _page(client, graph.game)
 
     assert "Nothing in your library yet." in html
-    assert reverse("games:add_library_entry", args=[graph.game.pk]) in html
+    assert reverse("games:add_library_entry_now", args=[graph.game.pk]) in html
 
 
 def test_a_named_edition_joins_the_row_label(client, owned_user, owned_library, graph):

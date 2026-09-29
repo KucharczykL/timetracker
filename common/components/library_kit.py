@@ -225,7 +225,9 @@ def SummaryRow(
     value: SummaryValue | None = None,
     actions: Sequence[SummaryAction] = (),
     detail: Child | None = None,
+    control: Child | None = None,
 ) -> Node:
+    """``control`` sits before the links, shown at every width."""
     primary_children: list[Child] = [
         Div(class_="flex min-w-0 flex-col gap-1")[
             P(class_="text-type-subheading text-heading")[label],
@@ -240,6 +242,10 @@ def SummaryRow(
             "text-type-subheading tabular-nums",
         )
         primary_children.append(Div(class_="justify-self-end text-right")[value_node])
+    if control is not None:
+        primary_children.append(
+            Div(data_summary_control="", class_="justify-self-end")[control]
+        )
     if actions:
         primary_children.extend(
             [
@@ -253,12 +259,14 @@ def SummaryRow(
                 )[*[Link(href=action.href)[action.label] for action in actions]],
             ]
         )
-    if value is not None and actions:
-        grid_columns = "grid-cols-[minmax(0,1fr)_auto_auto]"
-    elif value is not None or actions:
-        grid_columns = "grid-cols-[minmax(0,1fr)_auto]"
-    else:
-        grid_columns = "grid-cols-1"
+    #: One auto column per trailing part; the actions take one at any width.
+    trailing = sum(part is not None for part in (value, control)) + bool(actions)
+    grid_columns = {
+        0: "grid-cols-1",
+        1: "grid-cols-[minmax(0,1fr)_auto]",
+        2: "grid-cols-[minmax(0,1fr)_auto_auto]",
+        3: "grid-cols-[minmax(0,1fr)_auto_auto_auto]",
+    }[trailing]
     row_children: list[Child] = [
         Div(class_=f"grid {grid_columns} items-center gap-4")[*primary_children]
     ]

@@ -37,9 +37,15 @@ def _game_on(library: UserLibrary, name: str, platform: Platform) -> Game:
     return game
 
 
-def _submit(page: Page) -> None:
+def _submit(page: Page, label: str = "Save") -> None:
     with page.expect_navigation():
-        page.get_by_role("button", name="Submit", exact=True).click()
+        page.get_by_role("button", name=label, exact=True).click()
+
+
+def _details(page: Page, scope, menu_label: str, item: str) -> None:
+    page.wait_for_function("() => !!customElements.get('drop-down')")
+    scope.get_by_role("button", name=menu_label).click()
+    page.get_by_role("menuitem", name=item).click()
 
 
 def test_a_copy_goes_through_every_act_from_game_detail(
@@ -54,7 +60,7 @@ def test_a_copy_goes_through_every_act_from_game_detail(
     rows = section.locator("[data-summary-row]")
     expect(section.get_by_text("Nothing in your library yet.")).to_be_visible()
 
-    section.get_by_role("link", name="Add").click()
+    _details(page, section, "More ways to add to library", "…with details")
     page.wait_for_function("() => !!customElements.get('search-select')")
     picker = page.locator("search-select[name='release']")
     held = picker.locator('[data-search-select-pills] input[type="hidden"]')
@@ -72,7 +78,7 @@ def test_a_copy_goes_through_every_act_from_game_detail(
     assert response_info.value.status == 201
     created = Release.objects.get(edition__game=game, platform=switch)
     page.get_by_label("Physical").check()
-    _submit(page)
+    _submit(page, "Add to library")
 
     expect(page.get_by_text("Added to your library.")).to_be_visible()
     expect(rows).to_have_count(1)
@@ -81,18 +87,25 @@ def test_a_copy_goes_through_every_act_from_game_detail(
     entry = LibraryEntry.objects.get(library=e2e_library)
     assert entry.release_id == created.pk
 
-    rows.first.get_by_role("link", name="End access").click()
+    _details(
+        page, rows.first, "More ways to say i no longer have it", "…and add details"
+    )
     page.select_option("select[name='way']", "sold")
     _submit(page)
 
-    expect(page.get_by_text("Access ended.")).to_be_visible()
+    expect(page.get_by_text("Marked as no longer yours.")).to_be_visible()
     expect(rows.first).to_contain_text("Sold")
 
-    rows.first.get_by_role("link", name="Resume").click()
-    _submit(page)
+    with page.expect_navigation():
+        rows.first.get_by_role("button", name="I have it again", exact=True).click()
 
-    expect(page.get_by_text("Access resumed.")).to_be_visible()
+    expect(page.get_by_text("Marked as yours again.")).to_be_visible()
     expect(rows.first).not_to_contain_text("Sold")
+
+    page.get_by_role("button", name="Undo").click()
+
+    expect(page.get_by_text("Marked as no longer yours.")).to_be_visible()
+    expect(rows.first).to_contain_text("Sold")
 
     rows.first.get_by_role("link", name="Remove").click()
     page.click('button:has-text("Remove")')
@@ -104,6 +117,29 @@ def test_a_copy_goes_through_every_act_from_game_detail(
 
     expect(page.get_by_text("Copy restored.")).to_be_visible()
     expect(rows).to_have_count(1)
+
+
+def test_one_click_add_then_undo(authenticated_page: Page, live_server, e2e_library):
+    game = _game_on(
+        e2e_library, "Hades", Platform.objects.create(name="PS5", group="Sony")
+    )
+    page = authenticated_page
+    page.goto(f"{live_server.url}{game.get_absolute_url()}")
+    rows = page.locator("#library [data-summary-row]")
+
+    with page.expect_navigation():
+        page.locator("#library").get_by_role(
+            "button", name="Add to library", exact=True
+        ).click()
+
+    expect(page.get_by_text("Added to your library.")).to_be_visible()
+    expect(rows).to_have_count(1)
+    expect(rows.first).to_contain_text("Owned · Digital")
+
+    page.get_by_role("button", name="Undo").click()
+
+    expect(page.get_by_text("Copy removed.")).to_be_visible()
+    expect(rows).to_have_count(0)
 
 
 def test_the_add_page_searches_releases_again_when_the_game_changes(
@@ -126,8 +162,7 @@ def test_the_add_page_searches_releases_again_when_the_game_changes(
     held = releases.locator('[data-search-select-pills] input[type="hidden"]')
     expect(held).to_have_value(str(Release.objects.get(edition__game=hades).pk))
 
-    with page.expect_navigation():
-        page.get_by_role("button", name="Submit", exact=True).click()
+    _submit(page, "Add to library")
 
     expect(page.get_by_text("Added to your library.")).to_be_visible()
     assert LibraryEntry.objects.get(library=e2e_library).player_game.game == hades

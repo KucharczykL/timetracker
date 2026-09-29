@@ -16,6 +16,8 @@ class EndWay(StrEnum):
     EXPIRED = "expired"
     REVOKED = "revoked"
     REFUNDED = "refunded"
+    #: A copy gone for a reason nobody stated.
+    UNSTATED = "unstated"
 
 
 END_WAY_LABELS: Mapping[EndWay, str] = {
@@ -28,4 +30,5 @@ END_WAY_LABELS: Mapping[EndWay, str] = {
     EndWay.EXPIRED: "Expired",
     EndWay.REVOKED: "Revoked",
     EndWay.REFUNDED: "Refunded",
+    EndWay.UNSTATED: "Not said",
 }

@@ -1,7 +1,18 @@
-"""Game detail's Library section: one summary row per copy."""
+"""Game detail's Library section: have it, no longer have it."""
 
-from common.components import SummaryAction, SummaryRow
+import uuid
+
+from common.components import (
+    ControlButton,
+    DropdownLinkItem,
+    Icon,
+    Input,
+    SummaryAction,
+    SummaryRow,
+)
 from common.components.core import Node
+from common.components.custom_elements import SplitButtonDropdown
+from common.components.primitives import ICON_BUTTON_SIZE_CLASS
 from common.date_time_presentation import DateTimePresentation
 from common.returns import OriginUrl, action_url
 from common.temporal_presentation import present_temporal_value
@@ -13,6 +24,8 @@ from games.reads.entries import game_entries
 from games.reads.releases import UNSPECIFIED_PLATFORM, game_releases
 
 EMPTY_LIBRARY = "Nothing in your library yet."
+#: The hidden field a one-click form posts; `library_entry` reads it.
+SUBMISSION_FIELD = "submission"
 
 
 def release_words(entry: LibraryEntry) -> str:
@@ -40,37 +53,71 @@ def _facts(entry: LibraryEntry, presentation: DateTimePresentation) -> str:
     return " · ".join(parts)
 
 
-def copy_actions(entry: LibraryEntry, origin: OriginUrl | None) -> list[SummaryAction]:
-    """Each act a page; an ended copy's end is edited or resumed."""
-    ended = stated(entry, ENTRY_ACCESS_END) is not None
-    return [
-        SummaryAction(
-            "Edit", action_url("games:edit_library_entry", entry.pk, origin=origin)
-        ),
-        *(
-            [
-                SummaryAction(
-                    "Edit end",
-                    action_url("games:edit_library_entry_end", entry.pk, origin=origin),
-                ),
-                SummaryAction(
-                    "Resume",
-                    action_url("games:resume_library_entry", entry.pk, origin=origin),
-                ),
-            ]
-            if ended
-            else [
-                SummaryAction(
-                    "End access",
+def _one_click(
+    *,
+    route: str,
+    target: uuid.UUID,
+    label: str,
+    details: list[Node],
+    origin: OriginUrl | None,
+    csrf_token: str,
+    menu_id: str,
+) -> Node:
+    """One POST that states the common case; its ▾ holds the rest."""
+    return SplitButtonDropdown(
+        primary=ControlButton(
+            method="post",
+            action=action_url(route, target, origin=origin),
+            csrf_token=csrf_token,
+            hidden_fields=Input(
+                type="hidden", name=SUBMISSION_FIELD, value=str(uuid.uuid7())
+            ),
+            color="gray",
+        )[label],
+        items=details,
+        id=menu_id,
+        aria_label=f"More ways to say {label.lower()}",
+        menu_width="w-56",
+    )
+
+
+def copy_control(
+    entry: LibraryEntry, origin: OriginUrl | None, csrf_token: str
+) -> Node:
+    """I no longer have it, or I have it again; details in the ▾."""
+    if stated(entry, ENTRY_ACCESS_END) is None:
+        return _one_click(
+            route="games:end_library_entry_now",
+            target=entry.pk,
+            label="I no longer have it",
+            details=[
+                DropdownLinkItem(
                     action_url("games:end_library_entry", entry.pk, origin=origin),
+                    "…and add details",
                 )
-            ]
-        ),
-        SummaryAction(
-            "Remove",
-            action_url("games:remove_library_entry", entry.pk, origin=origin),
-        ),
-    ]
+            ],
+            origin=origin,
+            csrf_token=csrf_token,
+            menu_id=f"copy-control-{entry.pk}",
+        )
+    return _one_click(
+        route="games:resume_library_entry_now",
+        target=entry.pk,
+        label="I have it again",
+        details=[
+            DropdownLinkItem(
+                action_url("games:resume_library_entry", entry.pk, origin=origin),
+                "…and add details",
+            ),
+            DropdownLinkItem(
+                action_url("games:edit_library_entry_end", entry.pk, origin=origin),
+                "Edit how it left",
+            ),
+        ],
+        origin=origin,
+        csrf_token=csrf_token,
+        menu_id=f"copy-control-{entry.pk}",
+    )
 
 
 def copy_rows(
@@ -78,6 +125,7 @@ def copy_rows(
     library: UserLibrary,
     presentation: DateTimePresentation,
     origin: OriginUrl,
+    csrf_token: str,
 ) -> list[Node]:
     """One row per live copy, earliest acquired first."""
     entries = (
@@ -89,15 +137,52 @@ def copy_rows(
         SummaryRow(
             label=release_words(entry),
             subtitle=_facts(entry, presentation),
-            actions=copy_actions(entry, origin),
+            control=copy_control(entry, origin, csrf_token),
+            actions=[
+                SummaryAction(
+                    "Edit details",
+                    action_url("games:edit_library_entry", entry.pk, origin=origin),
+                ),
+                SummaryAction(
+                    "Remove",
+                    action_url("games:remove_library_entry", entry.pk, origin=origin),
+                ),
+            ],
             detail=entry.note or None,
         )
         for entry in entries
     ]
 
 
-def library_add_url(game: Game, library: UserLibrary, origin: OriginUrl) -> str | None:
-    """None where a shared game holds no Release to add."""
-    if game.library_id is None and not game_releases(library, game).exists():
-        return None
-    return action_url("games:add_library_entry", game.pk, origin=origin)
+def library_add_control(
+    game: Game, library: UserLibrary, origin: OriginUrl, csrf_token: str
+) -> Node | None:
+    """Add in one click, or with details; none where nothing can be added.
+
+    With no version yet, only the page can add: it creates one.
+    """
+    details = action_url("games:add_library_entry", game.pk, origin=origin)
+    if not game_releases(library, game).exists():
+        if game.library_id != library.pk:
+            return None
+        return ControlButton(
+            href=details,
+            color="gray",
+            title="Add a copy of this game to your library",
+        )[Icon("plus", size=ICON_BUTTON_SIZE_CLASS), "Add to library"]
+    return SplitButtonDropdown(
+        primary=ControlButton(
+            method="post",
+            action=action_url("games:add_library_entry_now", game.pk, origin=origin),
+            csrf_token=csrf_token,
+            hidden_fields=Input(
+                type="hidden", name=SUBMISSION_FIELD, value=str(uuid.uuid7())
+            ),
+            color="gray",
+            title="Add a copy of this game to your library",
+        )[Icon("plus", size=ICON_BUTTON_SIZE_CLASS), "Add to library"],
+        items=[DropdownLinkItem(details, "…with details")],
+        id=f"library-add-{game.pk}",
+        aria_label="More ways to add to library",
+        menu_width="w-56",
+    )

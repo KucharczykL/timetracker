@@ -54,6 +54,7 @@ from common.components import (
     parse_filter_dict,
 )
 from common.components.primitives import Li, Span, custom_element_builder
+from common.components.sectioned_page import SECTION_SURFACE_CLASS
 from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
@@ -147,7 +148,7 @@ from games.views.historical_playtime import (
 from games.views.library_cards import (
     EMPTY_LIBRARY,
     copy_rows,
-    library_add_url,
+    library_add_control,
 )
 from games.views.playergame_writes import (
     record_facts_for_request,
@@ -698,16 +699,18 @@ def _game_section(
     view_all_url: str | None = None,
     add_url: str | None = None,
     organize_url: str | None = None,
-    add_title: str | None = None,
+    add_control: Node | None = None,
+    surface: bool = False,
 ) -> Node:
-    buttons: list[Node] = []
+    """``add_control`` replaces the plain Add; ``surface`` sets it on a panel."""
+    buttons: list[Node] = [add_control] if add_control is not None else []
     if add_url:
         #: Offered on an empty section too.
         buttons.append(
             ControlButton(
                 href=add_url,
                 color="gray",
-                title=add_title or f"Add {title.lower()} for this game",
+                title=f"Add {title.lower()} for this game",
             )[
                 Icon("plus", size=ICON_BUTTON_SIZE_CLASS),
                 "Add",
@@ -746,7 +749,11 @@ def _game_section(
         ]
     else:
         header = heading
-    return Div(class_="mb-6 flex flex-col gap-4")[
+    return Div(
+        class_=f"mb-6 flex flex-col gap-4 {SECTION_SURFACE_CLASS}"
+        if surface
+        else "mb-6 flex flex-col gap-4"
+    )[
         header,
         table if count else empty_message,
     ]
@@ -1222,17 +1229,18 @@ def _library_section(
     library: UserLibrary,
     presentation: DateTimePresentation,
     origin: OriginUrl,
+    csrf_token: str,
 ) -> Node:
-    rows = copy_rows(game, library, presentation, origin)
-    add_url = library_add_url(game, library, origin)
+    rows = copy_rows(game, library, presentation, origin, csrf_token)
+    add = library_add_control(game, library, origin, csrf_token)
     return Div(id_="library")[
         _game_section(
             "Library",
             len(rows),
             SummaryList(*rows),
-            EMPTY_LIBRARY if add_url else SHARED_GAME_RELEASE,
-            add_url=add_url,
-            add_title="Add a copy of this game to your library",
+            EMPTY_LIBRARY if add is not None else SHARED_GAME_RELEASE,
+            add_control=add,
+            surface=True,
         )
     ]
 
@@ -1300,7 +1308,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         _releases_section(
             hierarchy, presentation, origin, game=game, references=references
         ),
-        _library_section(game, library, presentation, origin),
+        _library_section(game, library, presentation, origin, get_token(request)),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _historical_playtime_section(
