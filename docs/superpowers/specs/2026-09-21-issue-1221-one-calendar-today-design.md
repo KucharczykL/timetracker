@@ -57,5 +57,5 @@ clock. `TIMETRACKER_TEST_PROCESS_ZONE` forces a zone and refuses one on the
 calendar's date.
 
 Not covered: a UTC day, a read inside a request, a test that pins
-`TIME_ZONE`, the browser, and an ORM `__date` lookup, which reads the active
-zone.
+`TIME_ZONE`, and the browser. A day facet reads the calendar zone the filter
+context carries.

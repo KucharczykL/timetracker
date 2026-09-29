@@ -10,29 +10,27 @@
 
 import json
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from devices import create_device
 from django.contrib.auth import get_user_model
+from filter_contexts import unrestricted_filter_context
 from session_rows import session_row
 
 from common.criteria import (
     AggregateCriterion,
     BoolCriterion,
     ChoiceCriterion,
-    FilterQueryContext,
     Modifier,
     RelationMatch,
     StringCriterion,
     UUIDMultiCriterion,
-    with_filter_aliases,
 )
 from games.filters import GameFilter, PlayerSessionFilter, PurchaseFilter
 from games.models import Device, Game, Platform, PlayerSession, Purchase
 
-UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
-    lambda model: with_filter_aliases(model._default_manager.all())
-)
+UNRESTRICTED_FILTER_CONTEXT = unrestricted_filter_context(ZoneInfo("UTC"))
 
 
 @pytest.fixture(autouse=True)

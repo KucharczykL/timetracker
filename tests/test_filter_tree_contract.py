@@ -11,10 +11,12 @@ likely to diverge). Skipped if the artifact is missing (run `make test-ts` first
 import json
 import os
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
+from filter_contexts import unrestricted_filter_context
 
-from common.criteria import FilterQueryContext, filter_from_json, with_filter_aliases
+from common.criteria import filter_from_json
 from games.filters import (
     GameFilter,
     HistoricalPlaytimeFilter,
@@ -38,9 +40,7 @@ FILTER_FOR_MODEL = {
 }
 
 # Map each original fixture to its TS-emitted canonical form, by description.
-UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
-    lambda model: with_filter_aliases(model._default_manager.all())
-)
+UNRESTRICTED_FILTER_CONTEXT = unrestricted_filter_context(ZoneInfo("UTC"))
 
 if CANONICAL_PATH.exists():
     _canonical_by_description = {

@@ -11,12 +11,20 @@ from datetime import UTC, date, timedelta
 from functools import reduce
 from typing import ClassVar
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import pytest
 from devices import create_device
 from django.db.models import F, Q
-from django.test import override_settings
+from django.db.models.lookups import (
+    Exact,
+    GreaterThan,
+    GreaterThanOrEqual,
+    LessThan,
+    LessThanOrEqual,
+)
 from django.utils import timezone
+from filter_contexts import unrestricted_filter_context
 from session_rows import duration_only_row, session_row, tracked_run
 
 from common.criteria import (
@@ -62,7 +70,6 @@ from common.criteria import (
     filter_from_json,
     filter_to_json,
     search_q,
-    with_filter_aliases,
 )
 from common.filter_execution import contains_regex_modifier, execute_filter
 from games.filters import (
@@ -83,9 +90,8 @@ from games.filters import (
 from games.models import PlayerSession
 from timetracker.temporal import TemporalValue
 
-UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
-    lambda model: with_filter_aliases(model._default_manager.all())
-)
+UTC_ZONE = ZoneInfo("UTC")
+UNRESTRICTED_FILTER_CONTEXT = unrestricted_filter_context(ZoneInfo("UTC"))
 
 
 @pytest.fixture(autouse=True)
@@ -199,7 +205,7 @@ class TestInclusiveComparisons:
 
         handler = temporal_interval_handler("started", "started_lower", "started_upper")
         with pytest.raises(FilterError):
-            handler(DateCriterion(value="2025-06-01", modifier=modifier))
+            handler(DateCriterion(value="2025-06-01", modifier=modifier), None)
 
     def test_days_touched(self):
         from datetime import timedelta
@@ -216,10 +222,10 @@ class TestInclusiveComparisons:
         )
         span_end = F("started_lower") + timedelta(days=2)
         assert handler(
-            IntCriterion(value=3, modifier=Modifier.GREATER_THAN_OR_EQUAL)
+            IntCriterion(value=3, modifier=Modifier.GREATER_THAN_OR_EQUAL), None
         ) == known & Q(completed_upper__gte=span_end)
         assert handler(
-            IntCriterion(value=3, modifier=Modifier.LESS_THAN_OR_EQUAL)
+            IntCriterion(value=3, modifier=Modifier.LESS_THAN_OR_EQUAL), None
         ) == known & Q(completed_upper__lte=span_end)
 
 
@@ -1683,7 +1689,6 @@ class TestPlaytimeHoursAgainstDB:
             list(unscoped)
 
     def test_validation_compiles_playtime_hours_without_a_library(self):
-        from common.criteria import FilterQueryContext
         from games.filters import GameFilter, PlayerSessionFilter
 
         criterion = {"playtime_hours": {"value": 1, "modifier": "GREATER_THAN"}}
@@ -2931,6 +2936,7 @@ class TestFieldComparisonCriterion:
                 Modifier.EQUALS,
                 left_group="date",
                 right_group="date",
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(date_refunded=F("date_purchased")) & guards
         )
@@ -2944,6 +2950,7 @@ class TestFieldComparisonCriterion:
                 Modifier.NOT_EQUALS,
                 left_group="date",
                 right_group="date",
+                day_zone=lambda: UTC_ZONE,
             )
             == ~Q(date_refunded=F("date_purchased")) & guards
         )
@@ -2957,6 +2964,7 @@ class TestFieldComparisonCriterion:
                 Modifier.GREATER_THAN,
                 left_group="date",
                 right_group="date",
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(date_refunded__gt=F("date_purchased")) & guards
         )
@@ -2970,6 +2978,7 @@ class TestFieldComparisonCriterion:
                 Modifier.LESS_THAN,
                 left_group="date",
                 right_group="date",
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(date_refunded__lt=F("date_purchased")) & guards
         )
@@ -2983,6 +2992,7 @@ class TestFieldComparisonCriterion:
                 Modifier.INCLUDES,
                 left_group="string",
                 right_group="string",
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(name__icontains=F("sort_name")) & guards
         )
@@ -2996,6 +3006,7 @@ class TestFieldComparisonCriterion:
                 Modifier.EXCLUDES,
                 left_group="string",
                 right_group="string",
+                day_zone=lambda: UTC_ZONE,
             )
             == ~Q(name__icontains=F("sort_name")) & guards
         )
@@ -3009,6 +3020,7 @@ class TestFieldComparisonCriterion:
                 Modifier.GREATER_THAN_OR_EQUAL,
                 left_group="date",
                 right_group="date",
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(date_refunded__gte=F("date_purchased")) & guards
         )
@@ -3022,6 +3034,7 @@ class TestFieldComparisonCriterion:
                 Modifier.LESS_THAN_OR_EQUAL,
                 left_group="date",
                 right_group="date",
+                day_zone=lambda: UTC_ZONE,
             )
             == Q(date_refunded__lte=F("date_purchased")) & guards
         )
@@ -3034,6 +3047,7 @@ class TestFieldComparisonCriterion:
                 Modifier.BETWEEN,
                 left_group="date",
                 right_group="date",
+                day_zone=lambda: UTC_ZONE,
             )
 
     # ── date-granular comparison (granularity="date") ────────────────────────
@@ -3050,8 +3064,15 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
+                day_zone=lambda: UTC_ZONE,
             )
-            == Q(started_at__date=TruncDate(F("ended_at"))) & guards
+            == Q(
+                Exact(
+                    TruncDate(F("started_at"), tzinfo=UTC_ZONE),
+                    TruncDate(F("ended_at"), tzinfo=UTC_ZONE),
+                )
+            )
+            & guards
         )
 
     def test_helper_date_granular_gte(self):
@@ -3066,8 +3087,15 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
+                day_zone=lambda: UTC_ZONE,
             )
-            == Q(started_at__date__gte=TruncDate(F("ended_at"))) & guards
+            == Q(
+                GreaterThanOrEqual(
+                    TruncDate(F("started_at"), tzinfo=UTC_ZONE),
+                    TruncDate(F("ended_at"), tzinfo=UTC_ZONE),
+                )
+            )
+            & guards
         )
 
     def test_helper_date_granular_not_equals(self):
@@ -3082,8 +3110,15 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
+                day_zone=lambda: UTC_ZONE,
             )
-            == ~Q(started_at__date=TruncDate(F("ended_at"))) & guards
+            == ~Q(
+                Exact(
+                    TruncDate(F("started_at"), tzinfo=UTC_ZONE),
+                    TruncDate(F("ended_at"), tzinfo=UTC_ZONE),
+                )
+            )
+            & guards
         )
 
     def test_to_q_raises_runtime_error(self):
@@ -3144,8 +3179,15 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
+                day_zone=lambda: UTC_ZONE,
             )
-            == Q(started_at__date__gt=TruncDate(F("ended_at"))) & guards
+            == Q(
+                GreaterThan(
+                    TruncDate(F("started_at"), tzinfo=UTC_ZONE),
+                    TruncDate(F("ended_at"), tzinfo=UTC_ZONE),
+                )
+            )
+            & guards
         )
         assert (
             _field_comparison_to_q(
@@ -3155,8 +3197,15 @@ class TestFieldComparisonCriterion:
                 "date",
                 left_group="datetime",
                 right_group="datetime",
+                day_zone=lambda: UTC_ZONE,
             )
-            == Q(started_at__date__lt=TruncDate(F("ended_at"))) & guards
+            == Q(
+                LessThan(
+                    TruncDate(F("started_at"), tzinfo=UTC_ZONE),
+                    TruncDate(F("ended_at"), tzinfo=UTC_ZONE),
+                )
+            )
+            & guards
         )
 
     # ── FieldComparisonCriterion.to_q ────────────────────────────────────────
@@ -3838,7 +3887,14 @@ class TestFieldComparisonWiring:
             ]
         )
         guards = Q(started_at__isnull=False) & Q(ended_at__isnull=False)
-        assert stub.to_q() == Q(started_at__date__lte=TruncDate(F("ended_at"))) & guards
+        zone = ZoneInfo("UTC")
+        expected = Q(
+            LessThanOrEqual(
+                TruncDate(F("started_at"), tzinfo=zone),
+                TruncDate(F("ended_at"), tzinfo=zone),
+            )
+        )
+        assert stub.to_q(UNRESTRICTED_FILTER_CONTEXT) == expected & guards
 
     def test_date_granularity_on_non_temporal_raises(self):
         # Under the new space rules, date space accepts date and datetime
@@ -4216,7 +4272,7 @@ class TestComparisonSpaces:
                 )
             ]
         )
-        filter_object.to_q()  # must not raise
+        filter_object.to_q(UNRESTRICTED_FILTER_CONTEXT)  # must not raise
 
     def test_date_space_accepts_date_vs_datetime(self):
         # Playthrough.started_lower is a DateField, created_at a DateTimeField
@@ -4230,7 +4286,7 @@ class TestComparisonSpaces:
                 )
             ]
         )
-        filter_object.to_q()
+        filter_object.to_q(UNRESTRICTED_FILTER_CONTEXT)
 
     def test_raw_space_keeps_same_group_rule(self):
         filter_object = PlaythroughFilter(
@@ -4417,11 +4473,10 @@ class TestFieldComparisonEndToEnd:
         )
         assert result == {session_x}
 
-    @override_settings(TIME_ZONE="UTC")
     def test_date_granular_same_day_behavior(self):
         """granularity='date' matches by calendar day, unlike a raw comparison.
 
-        Pinned to UTC: `__date` reads the active zone.
+        The context's zone is UTC, whatever the active zone.
         """
         import datetime
 
@@ -4975,6 +5030,7 @@ class TestStrictNullSemantics:
             "raw",
             left_group="datetime",
             right_group="datetime",
+            day_zone=lambda: UTC_ZONE,
         )
         assert str(q).count("isnull") == 2
 
@@ -4986,6 +5042,7 @@ class TestStrictNullSemantics:
             "raw",
             left_group="datetime",
             right_group="datetime",
+            day_zone=lambda: UTC_ZONE,
         )
         assert str(q).count("isnull") == 2
 
@@ -5018,7 +5075,7 @@ class TestYearProjection:
                     granularity="year",
                 )
             ]
-        ).to_q()
+        ).to_q(UNRESTRICTED_FILTER_CONTEXT)
         results = PlayerSession.objects.filter(q)
         assert hit in results and miss not in results
 
@@ -5045,7 +5102,7 @@ class TestYearProjection:
                     granularity="year",
                 )
             ]
-        ).to_q()
+        ).to_q(UNRESTRICTED_FILTER_CONTEXT)
         assert hit in PlayerSession.objects.filter(q)
 
     def test_year_projection_datetime_to_year_lookup(self):
@@ -5057,8 +5114,9 @@ class TestYearProjection:
             "year",
             left_group="datetime",
             right_group="datetime",
+            day_zone=lambda: UTC_ZONE,
         )
-        assert "started_at__year" in str(q)
+        assert "ExtractYear" in str(q)
 
     def test_year_projection_number_left_temporal_right(self):
         """'year' granularity: number left is unchanged; temporal right uses ExtractYear."""
@@ -5069,6 +5127,7 @@ class TestYearProjection:
             "year",
             left_group="number",
             right_group="datetime",
+            day_zone=lambda: UTC_ZONE,
         )
         # number left: no __year suffix on lookup
         assert "year_released__year" not in str(q)
@@ -5084,11 +5143,11 @@ class TestYearProjection:
             "year",
             left_group="datetime",
             right_group="number",
+            day_zone=lambda: UTC_ZONE,
         )
         # datetime left: __year lookup suffix
-        assert "started_at__year" in str(q)
-        # number right: no ExtractYear wrapper
-        assert "ExtractYear" not in str(q)
+        # temporal left is projected; the number right is not
+        assert str(q).count("ExtractYear") == 1
 
     def test_year_projection_date_left_date_right(self):
         """'year' granularity: both date operands get projected (left __year, right ExtractYear)."""
@@ -5099,9 +5158,10 @@ class TestYearProjection:
             "year",
             left_group="date",
             right_group="date",
+            day_zone=lambda: UTC_ZONE,
         )
         # date left: __year lookup suffix
-        assert "started__year" in str(q)
+        assert "ExtractYear" in str(q)
         # date right: ExtractYear wrapper
         assert "ExtractYear" in str(q)
 
@@ -5114,11 +5174,11 @@ class TestYearProjection:
             "year",
             left_group="date",
             right_group="number",
+            day_zone=lambda: UTC_ZONE,
         )
         # date left: __year lookup suffix
-        assert "started__year" in str(q)
-        # number right: no ExtractYear wrapper
-        assert "ExtractYear" not in str(q)
+        # temporal left is projected; the number right is not
+        assert str(q).count("ExtractYear") == 1
 
     def test_year_projection_number_left_number_right(self):
         """'year' granularity: both number operands pass through — no projection applied."""
@@ -5129,6 +5189,7 @@ class TestYearProjection:
             "year",
             left_group="number",
             right_group="number",
+            day_zone=lambda: UTC_ZONE,
         )
         # neither side gets projected
         assert "year_released__year" not in str(q)
@@ -5145,9 +5206,9 @@ class TestYearProjection:
             "date",
             left_group="date",
             right_group="datetime",
+            day_zone=lambda: UTC_ZONE,
         )
         # date left: no __date suffix (only datetime needs truncation)
-        assert "started__date" not in str(q)
         # datetime right: TruncDate wrapper
         assert "TruncDate" in str(q)
 
@@ -5288,21 +5349,23 @@ class TestFilterField:
     """The descriptor's lookup/handler contract."""
 
     def test_plain_field_defaults_lookup_to_attr_name(self):
-        assert FilterField().to_q("name", StringCriterion(value="x")) == Q(name="x")
+        assert FilterField().to_q("name", StringCriterion(value="x"), None) == Q(
+            name="x"
+        )
 
     def test_lookup_override(self):
         assert FilterField("platform_id").to_q(
-            "platform", UUIDMultiCriterion(value=[GAME_UUID, OTHER_UUID])
+            "platform", UUIDMultiCriterion(value=[GAME_UUID, OTHER_UUID]), None
         ) == Q(platform_id__in=[GAME_UUID, OTHER_UUID])
 
     def test_lookup_and_handler_together_rejected(self):
         with pytest.raises(ValueError, match="lookup OR handler"):
-            FilterField("x", handler=lambda c: Q())
+            FilterField("x", handler=lambda criterion, context: Q())
 
     def test_imperative_with_handler_rejected(self):
         # ``to_q`` skips imperative fields, so a handler would be dead code.
         with pytest.raises(ValueError, match="dead code"):
-            FilterField(handler=lambda c: Q(), imperative=True)
+            FilterField(handler=lambda criterion, context: Q(), imperative=True)
 
     def test_imperative_without_lookup_rejected(self):
         with pytest.raises(ValueError, match="needs a lookup"):
@@ -5310,7 +5373,7 @@ class TestFilterField:
 
     def test_search_url_with_handler_rejected(self):
         with pytest.raises(ValueError, match="search_url has no effect"):
-            FilterField(handler=lambda c: Q(), search_url="/x")
+            FilterField(handler=lambda criterion, context: Q(), search_url="/x")
 
     def test_imperative_with_lookup_is_accepted(self):
         # The legitimate shape (the M2M ``games``): widget config in the table,
@@ -5330,7 +5393,7 @@ class TestFilterFieldHandlers:
         from datetime import timedelta
 
         handler = duration_hours_handler("effective_duration")
-        assert handler(IntCriterion(value=4, modifier=Modifier.EQUALS)) == Q(
+        assert handler(IntCriterion(value=4, modifier=Modifier.EQUALS), None) == Q(
             effective_duration__gte=timedelta(hours=4),
             effective_duration__lt=timedelta(hours=5),
         )
@@ -5340,33 +5403,39 @@ class TestFilterFieldHandlers:
         from datetime import timedelta
 
         handler = duration_hours_handler("effective_duration")
-        assert handler(IntCriterion(value=1, value2=5, modifier=Modifier.BETWEEN)) == Q(
+        assert handler(
+            IntCriterion(value=1, value2=5, modifier=Modifier.BETWEEN), None
+        ) == Q(
             effective_duration__gte=timedelta(hours=1),
             effective_duration__lte=timedelta(hours=5),
         )
 
     def test_bool_isnull_handler_direct(self):
-        assert bool_isnull_handler("ended_at")(BoolCriterion(value=True)) == Q(
+        assert bool_isnull_handler("ended_at")(BoolCriterion(value=True), None) == Q(
             ended_at__isnull=True
         )
-        assert bool_isnull_handler("ended_at")(BoolCriterion(value=False)) == Q(
+        assert bool_isnull_handler("ended_at")(BoolCriterion(value=False), None) == Q(
             ended_at__isnull=False
         )
 
     def test_bool_isnull_handler_invert(self):
         assert bool_isnull_handler("date_refunded", invert=True)(
-            BoolCriterion(value=True)
+            BoolCriterion(value=True), None
         ) == Q(date_refunded__isnull=False)
         assert bool_isnull_handler("date_refunded", invert=True)(
-            BoolCriterion(value=False)
+            BoolCriterion(value=False), None
         ) == Q(date_refunded__isnull=True)
 
     def test_bool_nonzero_duration_handler(self):
         from datetime import timedelta
 
         handler = bool_nonzero_duration_handler("duration_manual")
-        assert handler(BoolCriterion(value=True)) == ~Q(duration_manual=timedelta(0))
-        assert handler(BoolCriterion(value=False)) == Q(duration_manual=timedelta(0))
+        assert handler(BoolCriterion(value=True), None) == ~Q(
+            duration_manual=timedelta(0)
+        )
+        assert handler(BoolCriterion(value=False), None) == Q(
+            duration_manual=timedelta(0)
+        )
 
     # ── wiring: the field maps to the intended handler via the generic to_q ──
 
@@ -5587,25 +5656,28 @@ class TestValueTypeBoundaryIntegration:
         response = auth_client.get("/api/session/", {"filter": bad})
         assert response.status_code == 400
 
-    @pytest.mark.django_db
-    def test_created_at_filter_is_date_granular(self):
-        # The temporal StringCriterion → DateCriterion + __date reclass must match
-        # a non-midnight created_at datetime by its calendar date (a regression
-        # dropping __date would make equality silently never match).
-        from datetime import datetime
+    @pytest.mark.django_db(transaction=True)
+    def test_created_at_filter_is_date_granular(self, owned_library):
+        """Calendar noon matches its calendar day anywhere."""
+        from calendar_days import displace_calendar, library_noon
 
+        from games.filters import filter_query_context_for_library
         from games.models import Game, Platform
+        from games.reads.calendar import calendar_today
 
+        library = owned_library
+        displace_calendar(library)
         platform = Platform.objects.create(name="PC")
-        game = Game.objects.create(name="Hades", platform=platform)
-        # Noon in the active zone: __date reads that zone.
-        moment = datetime(2024, 3, 14, 12, tzinfo=timezone.get_current_timezone())
-        Game.objects.filter(pk=game.pk).update(created_at=moment)
+        game = Game.objects.create(library=library, name="Hades", platform=platform)
+        Game.objects.filter(pk=game.pk).update(created_at=library_noon(library))
+        day = calendar_today(library).isoformat()
 
-        good = json.dumps({"created_at": {"modifier": "EQUALS", "value": "2024-03-14"}})
+        good = json.dumps({"created_at": {"modifier": "EQUALS", "value": day}})
         parsed = parse_game_filter(good)
         assert parsed is not None
-        assert Game.objects.filter(parsed.to_q()).filter(pk=game.pk).exists()
+        context = filter_query_context_for_library(library)
+        found = context.queryset_for(Game).filter(parsed.to_q(context))
+        assert found.filter(pk=game.pk).exists()
 
 
 # ── Component 9 — per-model field-metadata registry (issue #187) ──────────────
@@ -6017,11 +6089,13 @@ class _DeclaredChoicesStub(OperatorFilter):
 
     fields: ClassVar[dict[str, FilterField]] = {
         "condition": FilterField(
-            handler=lambda criterion: criterion.to_q("condition"),
+            handler=lambda criterion, context: criterion.to_q("condition"),
             choices=(ChoiceMeta(value="a", label="A"),),
             nullable=True,
         ),
-        "other": FilterField(handler=lambda criterion: criterion.to_q("other")),
+        "other": FilterField(
+            handler=lambda criterion, context: criterion.to_q("other")
+        ),
     }
 
     @classmethod

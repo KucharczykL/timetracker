@@ -170,7 +170,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = config("TZ", default="Europe/Prague" if DEBUG else "UTC")
+TIME_ZONE = config("TZ", default="UTC")
 
 # Purchase entry and converted reporting intentionally have independent
 # defaults. Runtime consumers resolve their site/User hierarchy lazily.

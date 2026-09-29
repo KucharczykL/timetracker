@@ -8,14 +8,13 @@ from django.db import IntegrityError, transaction
 from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
+from filter_contexts import unrestricted_filter_context
 from session_rows import run_id, session_row
 
 from common.criteria import (
-    FilterQueryContext,
     Modifier,
     RelationMatch,
     StringCriterion,
-    with_filter_aliases,
 )
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -29,9 +28,7 @@ PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
 )
 
-UNRESTRICTED_FILTER_CONTEXT = FilterQueryContext(
-    lambda model: with_filter_aliases(model._default_manager.all())
-)
+UNRESTRICTED_FILTER_CONTEXT = unrestricted_filter_context(ZoneInfo("UTC"))
 
 pytestmark = pytest.mark.django_db(transaction=True)
 

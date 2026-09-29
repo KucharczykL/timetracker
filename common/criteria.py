@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from dataclasses import fields as dc_fields
 from datetime import date
 from enum import Enum
+from functools import cached_property
 from typing import (
     Any,
     ClassVar,
@@ -28,11 +29,22 @@ from typing import (
     get_type_hints,
 )
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import DataError, connection, models
 from django.db.models import F, Q
+from django.db.models.expressions import Combinable
 from django.db.models.functions import ExtractYear, TruncDate
+from django.db.models.lookups import (
+    Exact,
+    GreaterThan,
+    GreaterThanOrEqual,
+    IsNull,
+    LessThan,
+    LessThanOrEqual,
+    Lookup,
+)
 
 from common.filter_execution import FilterQueryTimeout, run_with_statement_timeout
 from timetracker.temporal import (
@@ -550,6 +562,16 @@ class FloatCriterion(_ScalarCriterion):
         raise FilterError(f"Unsupported modifier {m} for float field")
 
 
+#: One lookup class per ordered modifier, over any expression.
+ORDERED_LOOKUPS: Mapping[Modifier, type[Lookup]] = {
+    Modifier.EQUALS: Exact,
+    Modifier.GREATER_THAN: GreaterThan,
+    Modifier.LESS_THAN: LessThan,
+    Modifier.GREATER_THAN_OR_EQUAL: GreaterThanOrEqual,
+    Modifier.LESS_THAN_OR_EQUAL: LessThanOrEqual,
+}
+
+
 @dataclass
 class DateCriterion(_ScalarCriterion):
     value: str = ""
@@ -584,6 +606,39 @@ class DateCriterion(_ScalarCriterion):
         if m == Modifier.NOT_NULL:
             return Q(**{f"{field_name}__isnull": False})
         raise FilterError(f"Unsupported modifier {m} for date field")
+
+    def to_q_on(self, expression: Combinable) -> Q:
+        """The same predicate over an expression.
+
+        `~Q(field=v)` keeps NULL rows; `~Q(Exact(expression, v))` does not, so
+        NOT_EQUALS states `IsNull` beside the negation.
+        """
+        modifier = self.modifier
+        if modifier == Modifier.IS_NULL:
+            return Q(IsNull(expression, True))
+        if modifier == Modifier.NOT_NULL:
+            return Q(IsNull(expression, False))
+        if self.value is None:
+            #: A keyword lookup read None as IS NULL; an expression compares to it.
+            raise FilterError(
+                f"{modifier.value} needs a date; state IS_NULL or NOT_NULL for presence"
+            )
+        if modifier in (Modifier.BETWEEN, Modifier.WITHIN, Modifier.NOT_BETWEEN):
+            if self.value2 is None:
+                raise FilterError(
+                    f"{modifier.value} requires two bounds (value and value2)"
+                )
+            if modifier == Modifier.NOT_BETWEEN:
+                return Q(LessThan(expression, self.value)) | Q(
+                    GreaterThan(expression, self.value2)
+                )
+            low, high = min(self.value, self.value2), max(self.value, self.value2)
+            return Q(GreaterThanOrEqual(expression, low)) & Q(
+                LessThanOrEqual(expression, high)
+            )
+        if modifier == Modifier.NOT_EQUALS:
+            return ~Q(Exact(expression, self.value)) | Q(IsNull(expression, True))
+        return Q(ORDERED_LOOKUPS[modifier](expression, self.value))
 
 
 @dataclass
@@ -901,7 +956,7 @@ class FieldComparisonCriterion(_Criterion):
     Granularity / comparison spaces: each non-``"raw"`` value defines a *space*
     whose accepted operand groups are listed in ``SPACE_GROUPS``.
     ``"date"`` space truncates datetime operands to calendar day at query time
-    (``left__date <op> TruncDate(F(right))``) using the active timezone —
+    (``TruncDate(F(left)) <op> TruncDate(F(right))``) in the context's calendar zone —
     accepts ``date`` and ``datetime`` operands.
     ``"year"`` space projects temporal operands to their year and compares as
     numbers (``left__year <op> ExtractYear(F(right))`` / vice-versa) —
@@ -989,7 +1044,8 @@ type ORMLookup = str  # a Django query path, e.g. "platform__group"
 # A custom criterion→Q builder for a filter field whose mapping is not a plain
 # ``criterion.to_q(lookup)`` — e.g. hours→duration conversion or a bool
 # presence/zero test. Built by the factories below (see ``duration_hours_handler``).
-type FieldHandler = Callable[[_Criterion], Q]
+# The context is the compile's library facts; a handler over the row ignores it.
+type FieldHandler = Callable[[_Criterion, FilterQueryContext | None], Q]
 
 
 @dataclass(frozen=True)
@@ -1066,9 +1122,14 @@ class FilterField:
                     "a column-backed field reads its own"
                 )
 
-    def to_q(self, attr_name: AttrName, criterion: _Criterion) -> Q:
+    def to_q(
+        self,
+        attr_name: AttrName,
+        criterion: _Criterion,
+        context: FilterQueryContext | None,
+    ) -> Q:
         if self.handler is not None:
-            return self.handler(criterion)
+            return self.handler(criterion, context)
         return criterion.to_q(self.lookup or attr_name)
 
 
@@ -1389,12 +1450,24 @@ def with_filter_aliases[M: models.Model](
     return queryset if annotate is None else annotate()
 
 
+type ZoneThunk = Callable[[], ZoneInfo]  # the calendar zone, on demand
+
+#: The validation context's zone; validation never executes.
+UTC_ZONE = ZoneInfo("UTC")
+
+
 @dataclass(frozen=True)
 class FilterQueryContext:
     """Explicit source of authorization-scoped querysets for filter compilation."""
 
     resolver: QuerysetResolver
     authorization_scoped: bool = True
+    #: Zone for every day predicate, read once.
+    day_zone: ZoneThunk = field(kw_only=True, repr=False)
+
+    @cached_property
+    def calendar_zone(self) -> ZoneInfo:
+        return self.day_zone()
 
     def queryset_for[M: models.Model](self, model: type[M]) -> models.QuerySet[M]:
         queryset = self.resolver(model)
@@ -1414,6 +1487,7 @@ class FilterQueryContext:
         return cls(
             lambda model: with_filter_aliases(model._default_manager.none()),
             authorization_scoped=False,
+            day_zone=lambda: UTC_ZONE,
         )
 
 
@@ -1636,14 +1710,6 @@ class OperatorFilter:
                         f"modifier {comparison.modifier} not allowed"
                         f" for {vocabulary_hint}"
                     )
-                predicate_q = _field_comparison_to_q(
-                    comparison.left,
-                    comparison.right,
-                    comparison.modifier,
-                    comparison.granularity,
-                    left_group=left_group,
-                    right_group=right_group,
-                )
                 # The relation paths whose fan-out the quantifier ranges over: one
                 # per multi-valued operand (deduped, so two operands on the SAME
                 # relation — purchases__date_purchased vs purchases__date_refunded,
@@ -1656,14 +1722,22 @@ class OperatorFilter:
                         assert info.relation_path is not None
                         if info.relation_path not in relation_paths:
                             relation_paths.append(info.relation_path)
+                if not relation_paths and comparison.quantifier != RelationMatch.ANY:
+                    # Same-row comparison: a quantifier is meaningless; refuse it.
+                    raise FilterError(
+                        f"quantifier {comparison.quantifier} is only meaningful"
+                        f" when an operand traverses a multi-valued relation"
+                    )
+                predicate_q = _field_comparison_to_q(
+                    comparison.left,
+                    comparison.right,
+                    comparison.modifier,
+                    comparison.granularity,
+                    left_group=left_group,
+                    right_group=right_group,
+                    day_zone=None if context is None else context.day_zone,
+                )
                 if not relation_paths:
-                    # Same-row comparison (#169): apply the predicate directly. A
-                    # quantifier here is meaningless — reject rather than ignore it.
-                    if comparison.quantifier != RelationMatch.ANY:
-                        raise FilterError(
-                            f"quantifier {comparison.quantifier} is only meaningful"
-                            f" when an operand traverses a multi-valued relation"
-                        )
                     q &= predicate_q
                 else:
                     # At least one operand fans out related rows (#282); quantify the
@@ -1696,7 +1770,7 @@ class OperatorFilter:
                 continue
             criterion = getattr(self, attr_name)
             if criterion is not None:
-                q &= descriptor.to_q(attr_name, criterion)
+                q &= descriptor.to_q(attr_name, criterion, context)
         if self.aggregates:
             model = self._comparison_model()
             if model is None:
@@ -2073,6 +2147,7 @@ def _field_comparison_to_q(
     *,
     left_group: ComparisonGroup,
     right_group: ComparisonGroup,
+    day_zone: ZoneThunk | None,
 ) -> Q:
     """Build a Q comparing two operands: ``left <op> right`` in the row's space.
 
@@ -2081,7 +2156,7 @@ def _field_comparison_to_q(
     right, and both operands on one relation share a single join.
 
     Space projection: ``date`` truncates datetime operands to calendar day
-    (``__date`` / ``TruncDate``), ``year`` extracts the year from temporal
+    (``TruncDate`` in ``day_zone``), ``year`` extracts the year from temporal
     operands (``__year`` / ``ExtractYear``) so they compare against numbers.
 
     NULL semantics are strict two-valued (#169): every Q carries explicit
@@ -2092,37 +2167,55 @@ def _field_comparison_to_q(
     supersedes the previous NULL-counts-as-not-equal NOT_EQUALS behavior.
     """
     temporal_groups = ("date", "datetime")
-    left_base = left
-    right_expr: F | TruncDate | ExtractYear = F(right)
-    if granularity == "date":
-        if left_group == "datetime":
-            left_base = f"{left}__date"
-        if right_group == "datetime":
-            right_expr = TruncDate(F(right))
-    elif granularity == "year":
-        if left_group in temporal_groups:
-            left_base = f"{left}__year"
-        if right_group in temporal_groups:
-            right_expr = ExtractYear(F(right))
-
+    right_expr = F(right)
     guards = Q(**{f"{left}__isnull": False}) & Q(**{f"{right}__isnull": False})
+    if granularity != "raw":
+        if day_zone is None:
+            raise FilterQueryContextRequired(
+                f"a {granularity} comparison requires query context"
+            )
+        zone = day_zone()
+        left_projected: Combinable = F(left)
+        right_projected: Combinable = F(right)
+        if granularity == "date":
+            if left_group == "datetime":
+                left_projected = TruncDate(F(left), tzinfo=zone)
+            if right_group == "datetime":
+                right_projected = TruncDate(F(right), tzinfo=zone)
+        else:
+            if left_group in temporal_groups:
+                left_projected = ExtractYear(F(left), tzinfo=zone)
+            if right_group in temporal_groups:
+                right_projected = ExtractYear(F(right), tzinfo=zone)
+        return _ordered_expression_q(left_projected, right_projected, modifier) & guards
+
     if modifier == Modifier.EQUALS:
-        return Q(**{left_base: right_expr}) & guards
+        return Q(**{left: right_expr}) & guards
     if modifier == Modifier.NOT_EQUALS:
-        return ~Q(**{left_base: right_expr}) & guards
+        return ~Q(**{left: right_expr}) & guards
     if modifier == Modifier.GREATER_THAN:
-        return Q(**{f"{left_base}__gt": right_expr}) & guards
+        return Q(**{f"{left}__gt": right_expr}) & guards
     if modifier == Modifier.LESS_THAN:
-        return Q(**{f"{left_base}__lt": right_expr}) & guards
+        return Q(**{f"{left}__lt": right_expr}) & guards
     if modifier == Modifier.GREATER_THAN_OR_EQUAL:
-        return Q(**{f"{left_base}__gte": right_expr}) & guards
+        return Q(**{f"{left}__gte": right_expr}) & guards
     if modifier == Modifier.LESS_THAN_OR_EQUAL:
-        return Q(**{f"{left_base}__lte": right_expr}) & guards
+        return Q(**{f"{left}__lte": right_expr}) & guards
     if modifier == Modifier.INCLUDES:
-        return Q(**{f"{left_base}__icontains": right_expr}) & guards
+        return Q(**{f"{left}__icontains": right_expr}) & guards
     if modifier == Modifier.EXCLUDES:
-        return ~Q(**{f"{left_base}__icontains": right_expr}) & guards
+        return ~Q(**{f"{left}__icontains": right_expr}) & guards
     raise FilterError(f"Unsupported modifier {modifier} for field comparison")
+
+
+def _ordered_expression_q(left: Combinable, right: Combinable, modifier: Modifier) -> Q:
+    """`left <op> right` over two expressions."""
+    if modifier == Modifier.NOT_EQUALS:
+        return ~Q(Exact(left, right))
+    lookup = ORDERED_LOOKUPS.get(modifier)
+    if lookup is None:
+        raise FilterError(f"Unsupported modifier {modifier} for field comparison")
+    return Q(lookup(left, right))
 
 
 def _maybe_group_for(model: type[models.Model], column: str) -> ComparisonGroup | None:
@@ -3089,14 +3182,29 @@ def duration_hours_to_q(
 # fields declaratively instead of in an imperative ``to_q`` block.
 
 
+def calendar_day_handler(column: ORMLookup) -> FieldHandler:
+    """A timestamp's day in the context's calendar zone."""
+
+    def handler(criterion: _Criterion, context: FilterQueryContext | None) -> Q:
+        if not isinstance(criterion, DateCriterion):
+            raise FilterError(f"{column} compares a day; state a date")
+        if context is None:
+            raise FilterQueryContextRequired("a day facet requires query context")
+        return criterion.to_q_on(TruncDate(F(column), tzinfo=context.calendar_zone))
+
+    return handler
+
+
 def duration_hours_handler(field_name: str) -> FieldHandler:
     """Map an hours-based ``IntCriterion`` onto a DurationField via timedelta."""
 
-    def handler(c: _Criterion) -> Q:
+    def handler(criterion: _Criterion, context: FilterQueryContext | None) -> Q:
         # ``value2`` is the optional upper bound (BETWEEN); only numeric criteria
         # declare it, so read it None-tolerantly off the base-typed criterion.
-        value2 = getattr(c, "value2", None)
-        return duration_hours_to_q(c.value, value2, c.modifier, field_name)
+        value2 = getattr(criterion, "value2", None)
+        return duration_hours_to_q(
+            criterion.value, value2, criterion.modifier, field_name
+        )
 
     return handler
 
@@ -3108,8 +3216,12 @@ def bool_isnull_handler(field_name: str, *, invert: bool = False) -> FieldHandle
     session has ``timestamp_end IS NULL``).  ``invert=True``: True means the
     column IS NOT NULL (e.g. is_refunded → ``date_refunded IS NOT NULL``).
     """
-    return lambda c: Q(
-        **{f"{field_name}__isnull": (not c.value) if invert else c.value}
+    return lambda criterion, context: Q(
+        **{
+            f"{field_name}__isnull": (not criterion.value)
+            if invert
+            else criterion.value
+        }
     )
 
 
@@ -3120,7 +3232,7 @@ def bool_running_handler(timed_mode: str) -> FieldHandler:
     Corrected row is never running even though it states an end.
     """
     running = Q(timing_mode=timed_mode, ended_at__isnull=True)
-    return lambda c: running if c.value else ~running
+    return lambda criterion, context: running if criterion.value else ~running
 
 
 def outside_interval_handler(
@@ -3136,7 +3248,7 @@ def outside_interval_handler(
     outside = Q(**{f"{day_field}__lt": F(lower_field)}) | Q(
         **{f"{day_field}__gt": F(upper_field)}
     )
-    return lambda criterion: outside if criterion.value else ~outside
+    return lambda criterion, context: outside if criterion.value else ~outside
 
 
 def bool_nonzero_duration_handler(field_name: str) -> FieldHandler:
@@ -3147,9 +3259,9 @@ def bool_nonzero_duration_handler(field_name: str) -> FieldHandler:
     """
     from datetime import timedelta
 
-    return lambda c: (
+    return lambda criterion, context: (
         (~Q(**{field_name: timedelta(0)}))
-        if c.value
+        if criterion.value
         else Q(**{field_name: timedelta(0)})
     )
 
@@ -3178,7 +3290,7 @@ def temporal_interval_handler(
     leaving one bound null.
     """
 
-    def handler(criterion: _Criterion) -> Q:
+    def handler(criterion: _Criterion, context: FilterQueryContext | None) -> Q:
         modifier = criterion.modifier
         if modifier == Modifier.IS_NULL:
             return Q(**{f"{value_field}__isnull": True})
@@ -3245,7 +3357,7 @@ def days_touched_handler(lower_field: str, upper_field: str) -> FieldHandler:
     def span_end(count: Any) -> Any:
         return F(lower_field) + timedelta(days=int(count) - 1)
 
-    def handler(criterion: _Criterion) -> Q:
+    def handler(criterion: _Criterion, context: FilterQueryContext | None) -> Q:
         modifier = criterion.modifier
         known = (
             Q(**{f"{lower_field}__isnull": False})

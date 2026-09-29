@@ -40,6 +40,7 @@ from games.models import (
     PlayerGame,
     Playthrough,
 )
+from games.reads.calendar import calendar_today
 from games.reads.historical_playtime_records import library_records
 from games.removal import remove
 
@@ -222,7 +223,7 @@ def test_when_admits_an_open_range(owned_library):
 
 def test_created_at(owned_library, varied):
     today = HistoricalPlaytimeFilter(
-        created_at=DateCriterion(value=timezone.localdate().isoformat())
+        created_at=DateCriterion(value=calendar_today(owned_library).isoformat())
     )
     assert matched(owned_library, today) == {"zelda", "doom", "unknown"}
 

@@ -67,9 +67,8 @@ def process_zone_off_the_calendar() -> ZoneName:
     return forced
 
 
-def displace_calendar(library: UserLibrary) -> ZoneName:
-    """Moves the calendar off the process date."""
-    zone = _off_the_date_of(process_day())
+def set_calendar(library: UserLibrary, zone: ZoneName) -> ZoneName:
+    """States the library's calendar zone."""
     dispatch(
         SetCalendarDayZone(day_zone=zone),
         actor=library.user,
@@ -77,6 +76,11 @@ def displace_calendar(library: UserLibrary) -> ZoneName:
         idempotency_key=str(uuid.uuid7()),
     )
     return zone
+
+
+def displace_calendar(library: UserLibrary) -> ZoneName:
+    """Moves the calendar off the process date."""
+    return set_calendar(library, _off_the_date_of(process_day()))
 
 
 def other_displaced_zone(zone: ZoneName) -> ZoneName:

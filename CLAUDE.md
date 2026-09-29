@@ -1182,7 +1182,7 @@ All configurable Django settings read through `config()` in
   `CSRF_TRUSTED_ORIGINS` derived from all of them. `ALLOWED_HOSTS` can be
   overridden directly (e.g. `ALLOWED_HOSTS=*` behind reverse proxy);
   `CSRF_TRUSTED_ORIGINS` always derived from `APP_URL`.
-- `TIME_ZONE` reads `TZ` (defaults `Europe/Prague` in debug, `UTC` in prod).
+- `TIME_ZONE` reads `TZ` (defaults `UTC`); no library day read depends on it.
 - Django Admin, Debug Toolbar, and `django_extensions` are `DEBUG`-only.
 - `DEV_LOGIN_PREFILL` (**dev/staging only**, off by default): `username:password`
   prefills login form and sends `X-Robots-Tag: noindex` — login still POSTs and
@@ -1286,9 +1286,11 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   a date that is not the default calendar's, so a test seeded off the process
   clock fails at every hour. The direction follows the wall clock;
   `TIMETRACKER_TEST_PROCESS_ZONE` forces one, and refuses a zone on the
-  calendar's date. Not covered: a UTC day (`timezone.now().date()`), a read
-  inside a request, a test that pins `TIME_ZONE`, the browser, and ORM
-  `__date` lookups, which read the active zone (#1363).
+  calendar's date. A day facet compiles on the calendar zone the filter
+  context carries (`calendar_day_handler(column)`, `FilterQueryContext.day_zone`);
+  a session's `started`/`ended` read the row's own `day_zone`. Not covered:
+  a UTC day (`timezone.now().date()`), a read inside a request, a test that
+  pins `TIME_ZONE`, and the browser.
 - **Use `render_page()` not `render()`** for all full-page HTTP responses (import
   from `common.layout`).
 - **Build UI with Python components** from `common.components`, not raw HTML
