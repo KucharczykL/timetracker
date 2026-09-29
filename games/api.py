@@ -66,6 +66,7 @@ from games.models import (
     FilterPreset,
     Game,
     HistoricalPlaytime,
+    LibraryEntry,
     Platform,
     PlayerGameStatus,
     PlayerSession,
@@ -77,6 +78,7 @@ from games.models import (
 )
 from games.ownership import owned_or_404
 from games.reads.calendar import calendar_day_zone, calendar_sentence
+from games.reads.entries import readable_entries
 from games.reads.historical_playtime_page import listed_records
 from games.reads.player_sessions import readable_sessions
 from games.reads.playthrough_endpoints import days_to_finish
@@ -96,6 +98,11 @@ from games.sorting import (
 from games.toast_middleware import RELOAD_HEADER
 from games.writes.answers import CommandFailed, answered
 from games.writes.device import create_device as create_device_row
+from games.writes.libraryentry import (
+    EntryDraft,
+    record_entry,
+    restate_entry,
+)
 from games.writes.playergame import new_correlation_id, record_facts
 from games.writes.playersession import (
     SessionDraft,
@@ -1215,6 +1222,165 @@ def get_historical_playtime(request, record_id: UUIDv7):
 
 
 api.add_router("/historical-playtime", historical_playtime_router)
+
+entry_router = Router()
+
+ACQUISITION_TOGETHER = "State the acquired day and its note together."
+
+
+class EntryIn(Schema):
+    """One copy, stated whole: the Release and its words."""
+
+    #: An unknown key is a mistake, not silence.
+    model_config = ConfigDict(extra="forbid")
+
+    release_id: UUIDv7
+    access: str
+    format: str
+    note: str = ""
+    acquired: StatedTemporal = None
+    acquisition_note: str = ""
+
+
+class EntryUpdate(Schema):
+    """Each named key is one act; an omitted key states nothing.
+
+    `access`, `format`, `note` and `release_id` describe; `acquired`
+    and `acquisition_note` together are one correction, because the
+    command compares the pair under the lock.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    access: str | None = None
+    format: str | None = None
+    note: str | None = None
+    release_id: UUIDv7 | None = None
+    acquired: StatedTemporal = None
+    acquisition_note: str | None = None
+
+    @model_validator(mode="after")
+    def the_acquisition_is_one_statement(self) -> EntryUpdate:
+        stated = self.model_fields_set
+        if ("acquired" in stated) != ("acquisition_note" in stated):
+            raise ValueError(ACQUISITION_TOGETHER)
+        return self
+
+
+class EntryOut(Schema):
+    """The projection row, the game reached through its tracked row."""
+
+    id: UUIDv7
+    game: str = Field(..., alias="player_game.game.name")
+    game_id: UUIDv7 = Field(..., alias="player_game.game_id")
+    release_id: UUIDv7
+    platform: str
+    access: str
+    format: str
+    note: str
+    acquired: StatedTemporal
+    acquired_lower: date | None = None
+    acquired_upper: date | None = None
+    acquisition_recorded_at: datetime
+    acquisition_note: str
+    created_at: datetime
+
+    @staticmethod
+    def resolve_platform(obj: LibraryEntry) -> str:
+        platform = obj.release.platform
+        return "" if platform is None else platform.name
+
+
+@entry_router.get("/", response=list[EntryOut])
+def list_entries(
+    request,
+    limit: int = Query(100, ge=0),
+    offset: int = Query(0, ge=0),
+):
+    """The library's live entries, oldest first.
+
+    `limit=0` is unbounded, as on presets. The order ends on
+    the key, so an offset reads a stable page.
+    """
+    library = cast(User, request.user).library
+    entries = readable_entries(library).order_by("created_at", "id")[offset:]
+    return entries if limit == 0 else entries[:limit]
+
+
+@entry_router.get("/{entry_id}", response=EntryOut)
+def get_entry(request, entry_id: UUIDv7):
+    library = cast(User, request.user).library
+    return owned_or_404(readable_entries(library), library, id=entry_id)
+
+
+@entry_router.post("/", response={201: EntryOut})
+def create_entry(
+    request,
+    payload: EntryIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    actor = cast(User, request.user)
+    library = actor.library
+    stated_key = _stated_idempotency_key(idempotency_key)
+    #: The Release resolves inside `build`, behind the key.
+    try:
+        recorded = record_entry(
+            actor,
+            EntryDraft(
+                release_id=payload.release_id,
+                access=payload.access,
+                format=payload.format,
+                note=payload.note,
+                acquired=ActStatement(payload.acquired, payload.acquisition_note),
+            ),
+            correlation_id=new_correlation_id(),
+            idempotency_key=stated_key,
+        )
+    except CommandFailed as failure:
+        _answered_or_http(failure)
+    #: Read before the message: a repeat under the key of an entry
+    #: since removed answers no row.
+    row = owned_or_404(readable_entries(library), library, pk=recorded.entry_id)
+    messages.success(
+        request,
+        "Entry recorded and game added to your library."
+        if recorded.tracked_the_game
+        else "Entry recorded.",
+    )
+    return Status(201, row)
+
+
+@entry_router.patch("/{entry_id}", response={200: EntryOut})
+def partial_update_entry(request, entry_id: UUIDv7, payload: EntryUpdate):
+    actor = cast(User, request.user)
+    library = actor.library
+    entry = owned_or_404(readable_entries(library), library, id=entry_id)
+    stated = payload.model_fields_set
+    try:
+        restate_entry(
+            actor,
+            entry,
+            access=payload.access,
+            format=payload.format,
+            note=payload.note,
+            release_id=payload.release_id,
+            acquired=(
+                ActStatement(payload.acquired, payload.acquisition_note or "")
+                if "acquired" in stated
+                else None
+            ),
+            correlation_id=new_correlation_id(),
+        )
+    except CommandFailed as failure:
+        _answered_or_http(failure)
+    #: Read before the message: this scope reads catalog marks
+    #: no command reads, so a Release change can lose the row.
+    updated = owned_or_404(readable_entries(library), library, pk=entry.pk)
+    messages.success(request, "Entry updated.")
+    return updated
+
+
+api.add_router("/entries", entry_router)
 
 filter_router = Router()
 
