@@ -32,8 +32,16 @@ from zoneinfo import ZoneInfo
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import DataError, connection, models
-from django.db.models import F, Q
+from django.db.models import Expression, F, Q
 from django.db.models.functions import ExtractYear, TruncDate
+from django.db.models.lookups import (
+    Exact,
+    GreaterThan,
+    GreaterThanOrEqual,
+    IsNull,
+    LessThan,
+    LessThanOrEqual,
+)
 
 from common.filter_execution import FilterQueryTimeout, run_with_statement_timeout
 from timetracker.temporal import (
@@ -584,6 +592,39 @@ class DateCriterion(_ScalarCriterion):
             return Q(**{f"{field_name}__isnull": True})
         if m == Modifier.NOT_NULL:
             return Q(**{f"{field_name}__isnull": False})
+        raise FilterError(f"Unsupported modifier {m} for date field")
+
+    def to_q_on(self, expression: Expression) -> Q:
+        """The same predicate over a day expression.
+
+        A negated keyword lookup keeps NULL rows; `IsNull` says so here.
+        """
+        m = self.modifier
+        if m == Modifier.EQUALS:
+            return Q(Exact(expression, self.value))
+        if m == Modifier.NOT_EQUALS:
+            return ~Q(Exact(expression, self.value)) | Q(IsNull(expression, True))
+        if m == Modifier.GREATER_THAN:
+            return Q(GreaterThan(expression, self.value))
+        if m == Modifier.LESS_THAN:
+            return Q(LessThan(expression, self.value))
+        if m in (Modifier.BETWEEN, Modifier.WITHIN):
+            if self.value is None or self.value2 is None:
+                raise FilterError(f"{m.value} requires two bounds (value and value2)")
+            low, high = min(self.value, self.value2), max(self.value, self.value2)
+            return Q(GreaterThanOrEqual(expression, low)) & Q(
+                LessThanOrEqual(expression, high)
+            )
+        if m == Modifier.NOT_BETWEEN:
+            if self.value is None or self.value2 is None:
+                raise FilterError("NOT_BETWEEN requires two bounds (value and value2)")
+            return Q(LessThan(expression, self.value)) | Q(
+                GreaterThan(expression, self.value2)
+            )
+        if m == Modifier.IS_NULL:
+            return Q(IsNull(expression, True))
+        if m == Modifier.NOT_NULL:
+            return Q(IsNull(expression, False))
         raise FilterError(f"Unsupported modifier {m} for date field")
 
 
