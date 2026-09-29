@@ -461,8 +461,8 @@ mode and the row Split go with the bundle.
 **Edit entry**: access, format, release, acquired, access end (way, day,
 note; "Held" voids, "Resumed" states the fact), note. **Edit purchase**:
 kind, name, amount with Free, currency, purchased, refund (day, note; "Not
-refunded" voids), note. The row Refund act stays immediate with today's
-day, corrected on the edit page.
+refunded" voids), note. The row Refund act stays immediate with the
+calendar's day, corrected on the edit page.
 
 ### Lists
 
@@ -487,6 +487,16 @@ beneath and the add and edit acts; an Add-ons section on a main game; a
 parent link on an add-on.
 
 ### Filters and presets
+
+Every day the wave reads or defaults asks the library's calendar (#1360,
+#1372): a form's default day is `calendar_today(library)`, never the
+process clock, and a test seeds a day through `tests/calendar_days.py`,
+since the suite runs with the process clock on another date. A facet
+over a timestamp (`created_at`) compiles through `calendar_day_handler`
+with `metadata_lookup` naming the column; an endpoint facet reads the
+two bound date columns and needs no zone. A filter context comes from
+`filter_query_context_for_library`, whose `day_zone` a day predicate
+reads once.
 
 `EntryFilter` is new: access, format, the two endpoints as intervals and
 acts, way, platform through the Release, game, `game_filter`,
