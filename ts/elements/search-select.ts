@@ -1540,8 +1540,11 @@ const initWidget = (containerElement: Element) => {
     form?.addEventListener("search-select:change", onDependencyChange);
   }
 
-  // Autofocus lands before wiring; replay the focus.
-  if (search.hasAttribute("autofocus")) {
+  // Focus can land before wiring, and its event is gone; replay it once.
+  if (!search.hasAttribute("autofocus")) {
+    //: A click or a script got here first: the panel belongs open.
+    if (document.activeElement === search) runFocus();
+  } else {
     // Only a fresh, empty add form should steal focus and drive the panel open;
     // a pre-committed single-select keeps its label and whatever native focus it
     // got. Snapshot emptiness now — before any focus() runs the flow below.
