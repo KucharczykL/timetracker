@@ -5587,25 +5587,28 @@ class TestValueTypeBoundaryIntegration:
         response = auth_client.get("/api/session/", {"filter": bad})
         assert response.status_code == 400
 
-    @pytest.mark.django_db
-    def test_created_at_filter_is_date_granular(self):
-        # The temporal StringCriterion → DateCriterion + __date reclass must match
-        # a non-midnight created_at datetime by its calendar date (a regression
-        # dropping __date would make equality silently never match).
-        from datetime import datetime
+    @pytest.mark.django_db(transaction=True)
+    def test_created_at_filter_is_date_granular(self, owned_library):
+        """A noon stamp matches its calendar day, whatever the active zone."""
+        from calendar_days import displace_calendar, library_noon
 
+        from games.filters import filter_query_context_for_library
         from games.models import Game, Platform
+        from games.reads.calendar import calendar_today
 
+        library = owned_library
+        displace_calendar(library)
         platform = Platform.objects.create(name="PC")
-        game = Game.objects.create(name="Hades", platform=platform)
-        # Noon in the active zone: __date reads that zone.
-        moment = datetime(2024, 3, 14, 12, tzinfo=timezone.get_current_timezone())
-        Game.objects.filter(pk=game.pk).update(created_at=moment)
+        game = Game.objects.create(library=library, name="Hades", platform=platform)
+        Game.objects.filter(pk=game.pk).update(created_at=library_noon(library))
+        day = calendar_today(library).isoformat()
 
-        good = json.dumps({"created_at": {"modifier": "EQUALS", "value": "2024-03-14"}})
+        good = json.dumps({"created_at": {"modifier": "EQUALS", "value": day}})
         parsed = parse_game_filter(good)
         assert parsed is not None
-        assert Game.objects.filter(parsed.to_q()).filter(pk=game.pk).exists()
+        context = filter_query_context_for_library(library)
+        found = context.queryset_for(Game).filter(parsed.to_q(context))
+        assert found.filter(pk=game.pk).exists()
 
 
 # ── Component 9 — per-model field-metadata registry (issue #187) ──────────────

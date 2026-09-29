@@ -125,8 +125,8 @@ class GameFilter(OperatorFilter):
     mastered: BoolCriterion | None = None
     excluded_from_unfinished: BoolCriterion | None = None
     playtime_hours: IntCriterion | None = None  # converted to timedelta on to_q()
-    created_at: DateCriterion | None = None  # compared via __date
-    updated_at: DateCriterion | None = None  # compared via __date
+    created_at: DateCriterion | None = None  # compared by calendar day
+    updated_at: DateCriterion | None = None  # compared by calendar day
 
     # Aggregates over the game's relations (count / sum / avg). The reducer +
     # relation accessor + source + unit live in ``GameFilter.aggregates`` (the
@@ -179,8 +179,8 @@ class GameFilter(OperatorFilter):
             metadata_lookup="player_games__excluded_from_unfinished",
         ),
         "playtime_hours": FilterField(handler=duration_hours_handler("playtime")),
-        "created_at": FilterField("created_at__date"),
-        "updated_at": FilterField("updated_at__date"),
+        "created_at": FilterField(day_of="created_at"),
+        "updated_at": FilterField(day_of="updated_at"),
         "platform_group": FilterField(
             "platform__group", search_url="/api/platforms/groups"
         ),
@@ -319,7 +319,7 @@ class PlayerSessionFilter(OperatorFilter):
     started: DateCriterion | None = None  # started_at's date; null Duration-only
     ended: DateCriterion | None = None  # ended_at's date; null while running
     duration_hours: IntCriterion | None = None  # effective_duration
-    created_at: DateCriterion | None = None  # compared via __date
+    created_at: DateCriterion | None = None  # compared by calendar day
 
     # Free-text search
     search: StringCriterion | None = None
@@ -357,7 +357,7 @@ class PlayerSessionFilter(OperatorFilter):
             handler=duration_hours_handler("effective_duration"),
             label="Duration (hours)",
         ),
-        "created_at": FilterField("created_at__date"),
+        "created_at": FilterField(day_of="created_at"),
     }
 
     @classmethod
@@ -428,8 +428,8 @@ class PurchaseFilter(OperatorFilter):
     num_purchases: IntCriterion | None = None
     ownership_type: ChoiceCriterion | None = None  # ph/di/du/re/bo/tr/de/pi
     type: ChoiceCriterion | None = None  # game/dlc/season_pass/battle_pass
-    created_at: DateCriterion | None = None  # compared via __date
-    updated_at: DateCriterion | None = None  # compared via __date
+    created_at: DateCriterion | None = None  # compared by calendar day
+    updated_at: DateCriterion | None = None  # compared by calendar day
 
     infinite: BoolCriterion | None = None
     needs_price_update: BoolCriterion | None = None
@@ -471,8 +471,8 @@ class PurchaseFilter(OperatorFilter):
         "num_purchases": FilterField(),
         "ownership_type": FilterField(),
         "type": FilterField(),
-        "created_at": FilterField("created_at__date"),
-        "updated_at": FilterField("updated_at__date"),
+        "created_at": FilterField(day_of="created_at"),
+        "updated_at": FilterField(day_of="updated_at"),
         "infinite": FilterField(),
         "needs_price_update": FilterField(),
         "converted_currency": FilterField(),
@@ -668,7 +668,7 @@ class DeviceFilter(OperatorFilter):
 
     name: StringCriterion | None = None
     type: ChoiceCriterion | None = None
-    created_at: DateCriterion | None = None  # compared via __date
+    created_at: DateCriterion | None = None  # compared by calendar day
     access_ended: DateCriterion | None = None  # the interval the end states
     is_owned: BoolCriterion | None = None  # no end of access stated
     access_end_way: ChoiceCriterion | None = None
@@ -684,7 +684,7 @@ class DeviceFilter(OperatorFilter):
     fields: ClassVar[dict[str, FilterField]] = {
         "name": FilterField(),
         "type": FilterField(),
-        "created_at": FilterField("created_at__date"),
+        "created_at": FilterField(day_of="created_at"),
         "access_ended": _ACCESS_END_FIELDS.interval,
         "is_owned": _ACCESS_END_FIELDS.stated,
         "access_end_way": way_filter_field(DEVICE_ACCESS_END, label="Status"),
@@ -731,7 +731,7 @@ class PlatformFilter(OperatorFilter):
     name: StringCriterion | None = None
     group: StringCriterion | None = None
     icon: StringCriterion | None = None
-    created_at: DateCriterion | None = None  # compared via __date
+    created_at: DateCriterion | None = None  # compared by calendar day
 
     # Free-text search
     search: StringCriterion | None = None
@@ -746,7 +746,7 @@ class PlatformFilter(OperatorFilter):
         "name": FilterField(),
         "group": FilterField(),
         "icon": FilterField(),
-        "created_at": FilterField("created_at__date"),
+        "created_at": FilterField(day_of="created_at"),
     }
 
     @classmethod
@@ -813,7 +813,7 @@ class PlaythroughFilter(OperatorFilter):
     note: StringCriterion | None = None
     start_note: StringCriterion | None = None
     completion_note: StringCriterion | None = None
-    created_at: DateCriterion | None = None  # compared via __date
+    created_at: DateCriterion | None = None  # compared by calendar day
     #: The clock's word: an alias, not column.
     activity: ChoiceCriterion | None = None
 
@@ -840,7 +840,7 @@ class PlaythroughFilter(OperatorFilter):
         "note": FilterField(),
         "start_note": FilterField(),
         "completion_note": FilterField(),
-        "created_at": FilterField("created_at__date"),
+        "created_at": FilterField(day_of="created_at"),
         "activity": FilterField(
             #: Delegate: a hand-built Q drops the modifier.
             handler=lambda criterion: criterion.to_q("activity"),
@@ -903,7 +903,7 @@ class HistoricalPlaytimeFilter(OperatorFilter):
     duration_hours: IntCriterion | None = None
     when: DateCriterion | None = None  # the interval the record states
     note: StringCriterion | None = None
-    created_at: DateCriterion | None = None  # compared via __date
+    created_at: DateCriterion | None = None  # compared by calendar day
 
     # Free-text search
     search: StringCriterion | None = None
@@ -927,7 +927,7 @@ class HistoricalPlaytimeFilter(OperatorFilter):
             label="When",
         ),
         "note": FilterField(),
-        "created_at": FilterField("created_at__date"),
+        "created_at": FilterField(day_of="created_at"),
     }
 
     @classmethod
