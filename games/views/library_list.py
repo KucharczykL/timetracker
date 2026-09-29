@@ -64,6 +64,7 @@ ENTRY_COLUMNS: list[Column] = [
     Column("Format", "format", key="format"),
     Column("Acquired", "acquired", key="acquired"),
     Column("Access ended", "ended", priority=2, key="ended"),
+    Column("Note", key="note", wrap=True, hidden_by_default=True),
     Column("Created", "created", key="created", hidden_by_default=True),
 ]
 
@@ -117,6 +118,7 @@ def list_library(request: HttpRequest) -> HttpResponse:
                 if entry.acquired is None
                 else present_temporal_value(entry.acquired, presentation),
                 _ended_cell(entry, presentation),
+                entry.note,
                 presentation.format(entry.created_at, "date"),
             ]
             for entry in page_entries

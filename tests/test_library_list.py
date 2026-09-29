@@ -15,10 +15,12 @@ from games.filters import (
     filter_url,
     parse_entry_filter,
 )
+from games.list_columns import state_shown_columns
 from games.models import Game, LibraryEntry, Platform
 from games.reads.entries import library_entries
 from games.views.entry_menu import entry_row_menu
 from games.views.library_cards import copy_anchor
+from games.views.library_list import ENTRY_COLUMNS
 from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -228,3 +230,30 @@ def test_game_detail_links_view_all_to_the_tab(logged_in, owned_library, graph):
 
     assert "View all copies of this game" in html
     assert reverse("games:list_library") + "?filter=" in html
+
+
+def test_the_note_column_is_off_until_chosen(
+    logged_in, owned_user, owned_library, graph
+):
+    record_entry(owned_library, graph.release, note="boxed, with manual")
+
+    assert (
+        "boxed, with manual"
+        not in logged_in.get(reverse("games:list_library")).content.decode()
+    )
+
+    state_shown_columns(owned_user, "entries", ["game", "note"], ENTRY_COLUMNS)
+
+    assert (
+        "boxed, with manual"
+        in logged_in.get(reverse("games:list_library")).content.decode()
+    )
+
+
+def test_game_detail_shows_a_copys_note(logged_in, owned_library, graph):
+    record_entry(owned_library, graph.release, note="boxed, with manual")
+
+    html = logged_in.get(graph.game.get_absolute_url()).content.decode()
+
+    assert "data-copy-note" in html
+    assert "boxed, with manual" in html
