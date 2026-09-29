@@ -93,7 +93,7 @@ _FORMAT_GLYPHS: tuple[tuple[EntryFormat, str], ...] = (
 )
 _ACCESS_BADGE_CLASS = (
     "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-base border "
-    "text-type-body whitespace-nowrap"
+    "text-type-body leading-none whitespace-nowrap"
 )
 _ACCESS_BADGE_FILL = {
     True: "solid-brand border-brand",
