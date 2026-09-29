@@ -273,7 +273,7 @@ def _copy_card(
             " dark:border-neutral-700"
         ),
     )[
-        Div(class_="flex flex-wrap items-center gap-x-3 gap-y-1")[
+        Div(data_copy_line="", class_="flex flex-wrap items-center gap-x-3 gap-y-1")[
             Span(class_="font-semibold")[words],
             Span(class_="text-neutral-600 dark:text-neutral-300")[
                 _facts(entry, presentation)

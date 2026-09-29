@@ -13,7 +13,9 @@ from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.views.decorators.http import require_POST
 
+from common.components import AddForm, FormFields
 from common.date_time_presentation import date_time_presentation_for_request
+from common.layout import render_page
 from games.entry_forms import (
     EntryAddForm,
     EntryEditForm,
@@ -140,6 +142,42 @@ def add_library_entry(request: HttpRequest, game_id: UUID) -> HttpResponse:
             idempotency_key=form.submission_key(),
         ),
         "Added to your library.",
+    )
+
+
+@login_required
+def add_to_library(request: HttpRequest) -> HttpResponse:
+    """The section's Add, with a Game picker in front."""
+    user = cast(User, request.user)
+    library = user.library
+    form = EntryAddForm(
+        request.POST or None,
+        library=library,
+        presentation=date_time_presentation_for_request(request),
+        today=request_calendar_today(request, library),
+        prefix=ADD_PREFIX,
+    )
+    status = 200
+    if form.is_valid():
+        try:
+            record_entry(
+                user,
+                form.draft(),
+                correlation_id=new_correlation_id(),
+                idempotency_key=form.submission_key(),
+            )
+        except CommandFailed as failure:
+            messages.error(request, failure.message)
+            status = failure.status_code
+        else:
+            messages.success(request, "Added to your library.")
+            game = form.cleaned_data["game"]
+            return redirect(_game_page(request, game))
+    return render_page(
+        request,
+        AddForm(form, request=request, fields=FormFields(form)),
+        title="Add to library",
+        status=status,
     )
 
 

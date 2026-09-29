@@ -229,6 +229,7 @@ urlpatterns = [
         historical_playtime_entry.restore_historical_playtime,
         name="restore_historical_playtime",
     ),
+    path("library/add", library_entry.add_to_library, name="add_to_library"),
     path(
         "game/<uuidv7:game_id>/library/add",
         library_entry.add_library_entry,

@@ -8,7 +8,15 @@ from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry
 
 from games.entry_forms import CHANGED_SINCE_OPENED
-from games.models import Game, LibraryEntry, LibraryEvent, Platform
+from games.models import (
+    Edition,
+    Game,
+    LibraryEntry,
+    LibraryEvent,
+    Platform,
+    PlayerGame,
+    Release,
+)
 from games.removal import remove
 from games.views.library_cards import ADD_PREFIX, act_prefix
 from timetracker.temporal import TemporalValue, temporal_input_name
@@ -285,3 +293,49 @@ def test_the_page_a_post_renders_links_to_game_detail(logged_in, entry, graph):
     html = response.content.decode()
     assert urlencode({"origin": graph.game.get_absolute_url()}) in html
     assert urlencode({"origin": _edit_url(entry)}) not in html
+
+
+# --- the Add to library page ------------------------------------------------
+
+
+def test_the_add_page_renders_a_game_picker(logged_in):
+    response = logged_in.get(reverse("games:add_to_library"))
+
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert f'name="{ADD_PREFIX}-game"' in html
+    assert f"{ADD_PREFIX}-game" in html.split(f'name="{ADD_PREFIX}-release"')[1]
+
+
+def test_the_add_page_records_a_copy_on_the_picked_game(logged_in, graph):
+    posted = _add_post(graph) | {f"{ADD_PREFIX}-game": str(graph.game.pk)}
+
+    response = logged_in.post(reverse("games:add_to_library"), posted)
+
+    assert response.status_code == 302
+    assert response["Location"] == graph.game.get_absolute_url()
+    assert LibraryEntry.objects.filter(release=graph.release).count() == 1
+
+
+def test_the_add_page_tracks_an_untracked_shared_game(logged_in, owned_library):
+    shared = Game.objects.create(name="Celeste")
+    edition = Edition.objects.create(game=shared, is_default=True)
+    release = Release.objects.create(edition=edition, is_default=True)
+    posted = {
+        f"{ADD_PREFIX}-game": str(shared.pk),
+        f"{ADD_PREFIX}-release": str(release.pk),
+        f"{ADD_PREFIX}-access": "owned",
+        f"{ADD_PREFIX}-format": "physical",
+        f"{ADD_PREFIX}-submission": SUBMISSION,
+    }
+
+    response = logged_in.post(reverse("games:add_to_library"), posted)
+
+    assert response.status_code == 302
+    assert PlayerGame.objects.filter(library=owned_library, game=shared).exists()
+
+
+def test_the_library_page_offers_add_to_library(logged_in):
+    html = logged_in.get(reverse("games:library")).content.decode()
+
+    assert reverse("games:add_to_library") in html
