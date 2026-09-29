@@ -77,7 +77,7 @@ a shared row or the library's own through that path. `TrackGame` uses it.
 
 `record_entry` answers `RecordedEntry` (the entry id, and whether the
 game was tracked) from `dispatched_events`. `restate_entry` sends the
-correction first. `library_entries` reads five marks. Routes: `GET`,
+description first, whose refusals include the correction's. `library_entries` reads five marks. Routes: `GET`,
 `POST /api/entries/`; `GET`, `PATCH /api/entries/{id}`. A PATCH states
 `acquired` and `acquisition_note` together, or 422.
 

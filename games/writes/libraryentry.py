@@ -107,16 +107,12 @@ def restate_entry(
     acquired: ActStatement | None,
     correlation_id: uuid.UUID,
 ) -> None:
-    """Correct the day, then describe; one correlation."""
-    if acquired is not None:
-        with answered(SUBJECT):
-            _dispatch(
-                CorrectEntryAcquisition(entry_id=entry.pk, statement=acquired),
-                actor=actor,
-                correlation_id=correlation_id,
-                idempotency_key=None,
-                source_metadata=None,
-            )
+    """Describe, then correct the day; one correlation.
+
+    The description goes first: its refusals include every
+    one the correction can raise, so a refused body leaves
+    the day unmoved.
+    """
     with answered(SUBJECT):
         _dispatch(
             DescribeEntry(
@@ -131,6 +127,15 @@ def restate_entry(
             idempotency_key=None,
             source_metadata=None,
         )
+    if acquired is not None:
+        with answered(SUBJECT):
+            _dispatch(
+                CorrectEntryAcquisition(entry_id=entry.pk, statement=acquired),
+                actor=actor,
+                correlation_id=correlation_id,
+                idempotency_key=None,
+                source_metadata=None,
+            )
 
 
 def remove_entry(

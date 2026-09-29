@@ -8,7 +8,7 @@ from entries import record_entry as record_by_event
 from entries import remove_entry as remove_by_event
 
 from games.commands.endpoint import ActStatement
-from games.commands.libraryentry import ENTRY_REMOVED
+from games.commands.libraryentry import ENTRY_REMOVED, UNKNOWN_ACCESS
 from games.commands.playergame import RemovePlayerGame
 from games.events.dispatch import CommandResult, dispatch
 from games.models import Game, LibraryEntry, LibraryEvent, PlayerGame
@@ -131,7 +131,7 @@ def test_dispatched_events_refuses_an_unchanged_outcome(owned_user, owned_librar
 # --- restate --------------------------------------------------------------
 
 
-def test_restate_sends_the_correction_first(owned_user, owned_library, graph):
+def test_restate_sends_the_description_first(owned_user, owned_library, graph):
     entry = record_by_event(owned_library, graph.release, acquired=MAY)
     correlation = uuid.uuid7()
 
@@ -144,13 +144,31 @@ def test_restate_sends_the_correction_first(owned_user, owned_library, graph):
     )
 
     assert _types(entry)[1:] == [
-        "library.libraryentry.acquisition_corrected",
         "library.libraryentry.access_changed",
+        "library.libraryentry.acquisition_corrected",
     ]
     assert LibraryEvent.objects.filter(correlation_id=correlation).count() == 2
 
 
-def test_a_refused_correction_leaves_the_description_unsent(
+def test_a_refused_description_leaves_the_day_unmoved(owned_user, owned_library, graph):
+    entry = record_by_event(owned_library, graph.release, acquired=MAY)
+
+    with pytest.raises(CommandFailed) as failed:
+        restate_entry(
+            owned_user,
+            entry,
+            access="stolen",
+            acquired=ActStatement(JUNE, ""),
+            correlation_id=uuid.uuid7(),
+        )
+
+    assert failed.value.message == UNKNOWN_ACCESS
+    entry.refresh_from_db()
+    assert entry.acquired == MAY
+    assert _types(entry) == ["library.libraryentry.created"]
+
+
+def test_a_removed_entry_refuses_the_whole_restatement(
     owned_user, owned_library, graph
 ):
     entry = remove_by_event(record_by_event(owned_library, graph.release, acquired=MAY))

@@ -525,7 +525,7 @@ docs/           — Additional documentation
   [HistoricalPlaytime aggregate](docs/superpowers/specs/2026-09-17-issue-705-historical-playtime-aggregate-design.md);
   wave is
   [Historical Playtime](docs/superpowers/specs/2026-09-17-historical-playtime-wave-design.md)
-- **LibraryEntry** — fifth projection (#719, #720, #722): one route of access
+- **LibraryEntry** — projection (#719, #720, #722): one route of access
   to one Release — `access` (owned/borrowed/rented/subscription/trial/demo/
   pirated), `format` (physical/digital/unknown), `note`, and the acquired
   day as the **opening endpoint** `acquisition` (`acquired` beside
@@ -542,7 +542,8 @@ docs/           — Additional documentation
   (refuses under a removed Release) in `games/commands/libraryentry.py`;
   request-free half `games/writes/libraryentry.py`, whose `record_entry`
   reads the entry id off `dispatched_events` because the creation may
-  follow the tracking pair. A Release resolves through `visible_row`
+  follow the tracking pair, and whose `restate_entry` describes first,
+  then corrects the day. A Release resolves through `visible_row`
   (`games/commands/scope.py`) over `LIBRARY_PATHS` (`games/projections.py`,
   the path a catalog row takes to its library; `ProjectionReference` carries
   it as `library_path`, so the ownership audit walks `LibraryEntry.release`).
@@ -572,8 +573,8 @@ entry's acquisition is its one.
 **Nothing user removes is destroyed** (#944). Six removable models — Game,
 Edition, Release, Platform, Purchase, FilterPreset —
 each carry nullable `removed_at`, listed in `REMOVABLE_MODELS` in
-`games/removal.py`; a projection's mark (session, run, record, device) is
-its projector's. `remove(instance)` stamps it, `restore(instance)` clears it,
+`games/removal.py`; a projection's mark (session, run, record, device,
+entry) is its projector's. `remove(instance)` stamps it, `restore(instance)` clears it,
 both use `UPDATE` rather than `save()`, so stamp revalidates nothing and fires no
 `post_save`. What signal would have done, `_AFTER_STAMP` does by hand: removed
 Game recounts its purchases. Playtime is no stored total, so a removed Session
@@ -1030,6 +1031,11 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
 - `GET /api/historical-playtime/`, `GET /{id}` — live records through
   `readable_records`: `filter`/`sort`/`page` as the session list, `when` as
   canonical text beside its two bounds, `playthrough_ids`. No write endpoint
+- `GET /api/entries/`, `GET /{id}` — live entries through `readable_entries`,
+  `limit`/`offset`, `limit=0` unbounded; `POST /` records one (201 and the
+  row, `Idempotency-Key` absorbs a repeat, an untracked game is tracked in
+  the same dispatch); `PATCH /{id}` describes each named key, and states
+  `acquired` and `acquisition_note` together or answers 422
 - `GET /api/presets/` — user's presets for a mode, shaped as combobox options
   (`limit=0` = unbounded)
 - `POST /api/presets/` — upsert on (user, mode, name); 201 create / 200 update
