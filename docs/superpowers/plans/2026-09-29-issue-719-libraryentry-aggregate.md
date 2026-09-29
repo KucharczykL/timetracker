@@ -362,7 +362,8 @@ tracked game and three (`playergame.created`, `playthrough.created`,
 `libraryentry.created`) on an untracked one; foreign word → sentence;
 removed Release / Edition / Game → `RELEASE_REMOVED`; another library's
 private Release → `RowNotHeld`; shared Release → two libraries record
-independent rows; two entries on one Release in one library; describe
+independent rows; a Release under a non-default Edition (state two
+`EditionState`s, the second `is_default=False`) records as well; two entries on one Release in one library; describe
 emits one event per differing fact, `Unchanged` when none, refuses a
 Release of another game and a removed one; correction `Unchanged` on the
 same statement, emits on a different day, keeps the marker; remove/restore

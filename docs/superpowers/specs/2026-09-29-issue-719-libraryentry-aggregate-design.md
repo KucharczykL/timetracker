@@ -281,9 +281,10 @@ No screen, no filter and no route for removal in this member.
   and `test_event_benchmark.py`; `projection_models()` in
   `tests/test_projection_rebuild.py`; `EXPECTED_RELATION_COLUMNS` and
   `EXPECTED_IDENTITY_TABLES` in `tests/test_uuid_identity_audit.py`.
-- Two libraries: a shared Release yields one independent entry each; another
-  library's private Release answers 404 from `RecordEntry` and from the
-  `release_id` of `DescribeEntry`; another library's entry answers 404 on
+- Two libraries: a shared Release yields one independent entry each; a
+  Release under a non-default Edition resolves too, so the Release-alone
+  resolve assumes no default; another library's private Release answers
+  404 from `RecordEntry` and from the `release_id` of `DescribeEntry`; another library's entry answers 404 on
   `GET` and `PATCH`; an entry rewritten to name a foreign private Release is
   reported by `audit_library_ownership`.
 - Commands: one test per refusal sentence; `Unchanged` ahead of each refusal;
