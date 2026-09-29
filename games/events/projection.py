@@ -416,7 +416,7 @@ class Projector(ABC):
         self.amend(_endpoint_model(endpoint), event, **endpoint.unstated_columns())
 
     def project_resumed(self, endpoint: EndpointColumns, event: RecordedEvent) -> None:
-        """Access again; the end's columns clear."""
+        """The end's columns clear, as a void's do."""
         self.amend(_endpoint_model(endpoint), event, **endpoint.unstated_columns())
 
     def opening_columns(

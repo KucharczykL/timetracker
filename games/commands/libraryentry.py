@@ -129,10 +129,13 @@ def _access_end_sentences(entry_id: uuid.UUID) -> EndpointSentences:
         same_statement="This copy already states that end.",
         same_correction="This correction states the end the copy states.",
         nothing_to_void=f"Entry {entry_id} states no end of access to take back.",
-        nothing_to_resume=Rejection(
-            f"Entry {entry_id} states no end of access, so access cannot resume.",
-            "This copy has no end recorded, so there is nothing to resume.",
-        ),
+    )
+
+
+def _nothing_to_resume(entry_id: uuid.UUID) -> Rejection:
+    return Rejection(
+        f"Entry {entry_id} states no end of access, so access cannot resume.",
+        "This copy has no end recorded, so there is nothing to resume.",
     )
 
 
@@ -495,7 +498,7 @@ class ResumeEntryAccess(Command):
             entry,
             ENTRY_ACCESS_END,
             self.statement,
-            sentences=_access_end_sentences(entry.pk),
+            nothing_to_resume=_nothing_to_resume(entry.pk),
             before_event=partial(
                 _refuse_a_live_resume, entry, resumed=self.statement.when
             ),

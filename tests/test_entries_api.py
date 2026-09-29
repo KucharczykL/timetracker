@@ -399,6 +399,7 @@ def test_resume_answers_the_row_and_a_keyed_repeat_the_same(
     assert first.json()["access_end_recorded_at"] is None
     assert repeat.status_code == 200
     assert unkeyed.status_code == 409
+    assert "nothing to resume" in unkeyed.json()["detail"]
     assert (
         LibraryEvent.objects.filter(
             aggregate_id=entry.pk, event_type="library.libraryentry.access_resumed"
@@ -427,3 +428,39 @@ def test_another_librarys_entry_is_absent_to_both_acts(
     resumed = _resume(auth_client, entry.pk, {})
 
     assert (patched.status_code, resumed.status_code) == (404, 404)
+
+
+def test_resume_before_the_end_answers_the_sentence(auth_client, library, graph):
+    entry = record_entry(library, graph.release)
+    _patch(auth_client, entry.pk, {"access_end": {"ended": "2022", "way": "sold"}})
+
+    response = _resume(auth_client, entry.pk, {"resumed": "2021"})
+
+    assert response.status_code == 409
+    assert "ended after that day" in response.json()["detail"]
+
+
+def test_resume_of_a_removed_entry_is_absent(auth_client, library, graph):
+    entry = remove_entry(record_entry(library, graph.release))
+
+    response = _resume(auth_client, entry.pk, {})
+
+    assert response.status_code == 404
+
+
+def test_patch_moves_the_acquisition_and_the_end_together(auth_client, library, graph):
+    entry = record_entry(library, graph.release, acquired=TemporalValue.parse("2022"))
+
+    response = _patch(
+        auth_client,
+        entry.pk,
+        {
+            "acquired": "2019",
+            "acquisition_note": "",
+            "access_end": {"ended": "2020", "way": "returned"},
+        },
+    )
+
+    assert response.status_code == 200, response.content
+    row = response.json()
+    assert (row["acquired"], row["access_ended"]) == ("2019", "2020")

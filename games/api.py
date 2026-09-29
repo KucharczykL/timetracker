@@ -1277,7 +1277,7 @@ class EntryUpdate(Schema):
     release_id: UUIDv7 | None = None
     acquired: StatedTemporal = None
     acquisition_note: str | None = None
-    #: An object states the end, null voids it.
+    #: Object states, null voids; the route reads absence.
     access_end: EntryAccessEndIn | None = None
 
     @model_validator(mode="after")
@@ -1390,9 +1390,10 @@ def partial_update_entry(request, entry_id: UUIDv7, payload: EntryUpdate):
             format=None if payload.format is None else payload.format.value,
             note=payload.note,
             release_id=payload.release_id,
+            #: The validator states both or neither.
             acquired=(
-                ActStatement(payload.acquired, payload.acquisition_note)
-                if "acquired" in stated and payload.acquisition_note is not None
+                ActStatement(payload.acquired, payload.acquisition_note or "")
+                if "acquired" in stated
                 else KEEP
             ),
             access_end=(

@@ -533,7 +533,7 @@ docs/           — Additional documentation
   day, `acquisition_corrected` moves it, nothing voids it;
   `OpeningEndpointColumns`/`OpeningEndpoint`/`opening_endpoint_events`,
   `Projector.opening_columns`, `correct_opening_endpoint`). Written only by
-  `Entries` (`games/projectors/libraryentry.py`) from eight
+  `Entries` (`games/projectors/libraryentry.py`) from twelve
   `library.libraryentry.*` events; commands `RecordEntry` (names the
   Release alone, derives the game, tracks an untracked one in the same
   dispatch through `tracking_events`), `DescribeEntry`,
@@ -558,10 +558,13 @@ docs/           — Additional documentation
   `.access_end_corrected`/`.access_end_voided`, nine `ENTRY_WAYS`,
   `refunded` by hand included) and `access_resumed`, a dated fact that
   writes the end's columns back; `EndEntryAccess`, `CorrectEntryAccessEnd`,
-  `VoidEntryAccessEnd`, `ResumeEntryAccess`, each refusing a day certainly
-  before the acquisition or the end the row holds, and
-  `CorrectEntryAcquisition` one certainly after a standing end.
-  `restate_entry` takes `access_end` (`KEEP` states nothing, `None` voids);
+  `VoidEntryAccessEnd`, `ResumeEntryAccess` over a `ResumableEndpoint`, so
+  a resume of an endpoint without one is a type error. End and correction
+  refuse an end certainly before the acquisition, the resume one certainly
+  before the standing end, `CorrectEntryAcquisition` a day certainly
+  after a standing end. `restate_entry` takes `access_end` (`KEEP` states
+  nothing, `None` voids) and refuses a reversed day order before it
+  dispatches anything;
   `PATCH` takes `access_end` `{ended, way, note}` or null;
   `POST /api/entries/{id}/resume`. No screen yet (M3 #1352). Contracts are
   [The LibraryEntry aggregate](docs/superpowers/specs/2026-09-29-issue-719-libraryentry-aggregate-design.md)
@@ -578,8 +581,8 @@ through `project_stated`/`_corrected`/`_voided`, writes choose the act
 with `endpoint_move`, filters take `endpoint_filter_fields` and
 `way_filter_field` (`games/filters.py`). An endpoint may
 state a fourth act, `resumed` (#721): a dated fact, not a void, that
-writes the columns back (`project_resumed`, `resume_endpoint`); the
-row keeps nothing of it. `certainly_reversed` in
+writes the columns back (`ResumableEndpoint`, `ResumableEndpointEvents`,
+`project_resumed`, `resume_endpoint`); the row keeps nothing of it. `certainly_reversed` in
 `games/commands/endpoint.py` is the one day-order rule. Playthrough
 start and completion and a device's and a copy's end of access are its
 four. An

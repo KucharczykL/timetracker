@@ -13,11 +13,11 @@ That is a new fact with a day. A void says that the end did not occur.
 
 ## The resume act
 
-The stated endpoint has an optional fourth act, `resumed`.
+A stated endpoint can have a fourth act, `resumed`.
 
-- `EndpointEvents.resumed` is `None` by default. `specs` and `family`
-  include it when it is present. `resumed_spec()` raises `TypeError` when
-  it is absent.
+- `ResumableEndpoint` holds `ResumableEndpointEvents`, whose `specs` and
+  `family` include the resume. `resume_endpoint` takes only a
+  `ResumableEndpoint`, so a resume of another endpoint is a type error.
 - `project_resumed` writes the unstated columns. The row keeps nothing of
   the resume.
 - `resume_endpoint` refuses where no end stands. It never answers
@@ -36,9 +36,10 @@ Events: `library.libraryentry.access_ended`, `access_end_corrected`,
 
 ## Commands
 
-`EndEntryAccess`, `CorrectEntryAccessEnd`, `VoidEntryAccessEnd` and
-`ResumeEntryAccess` answer `Unchanged` before they refuse. They refuse a
-removed copy or game. A person can state `refunded`.
+An unknown way is refused first. `EndEntryAccess`, `CorrectEntryAccessEnd`
+and `VoidEntryAccessEnd` then answer `Unchanged` before they refuse a
+removed copy or game. `ResumeEntryAccess` never answers `Unchanged`; it
+refuses a copy with no end first. A person can state `refunded`.
 
 The day order refuses only what is certainly impossible:
 
@@ -51,8 +52,10 @@ The day order refuses only what is certainly impossible:
 ## Writes and API
 
 `restate_entry` takes `access_end`. `KEEP` states nothing and `None` voids.
-It refuses a draft that is reversed in itself. It moves the acquisition
-first only where the new end precedes the acquisition that the row holds.
+Before it dispatches, it refuses a stated day that is certainly reversed
+against the other day, stated or kept. It moves the acquisition first only
+where the new end certainly precedes the acquisition that the row holds.
+A void always dispatches, so the command decides under the lock.
 
 `PATCH /api/entries/{id}` takes `access_end`, `{ended, way, note}` or null.
 `POST /api/entries/{id}/resume` takes `{resumed, note}`.

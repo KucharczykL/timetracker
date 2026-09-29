@@ -7,8 +7,8 @@ from pydantic import with_config
 
 from games.events.endpoint import (
     EndpointPayload,
-    endpoint_events,
     opening_endpoint_events,
+    resumable_endpoint_events,
 )
 from games.events.playersession import NoteText
 from games.events.references import (
@@ -145,7 +145,7 @@ ENTRY_ACQUISITION_EVENTS = opening_endpoint_events(
 )
 LIBRARYENTRY_ACQUISITION_CORRECTED = ENTRY_ACQUISITION_EVENTS.corrected
 
-ENTRY_ACCESS_END_EVENTS = endpoint_events(
+ENTRY_ACCESS_END_EVENTS = resumable_endpoint_events(
     "libraryentry",
     stated="library.libraryentry.access_ended",
     corrected="library.libraryentry.access_end_corrected",
@@ -157,7 +157,7 @@ ENTRY_ACCESS_END_EVENTS = endpoint_events(
 LIBRARYENTRY_ACCESS_ENDED = ENTRY_ACCESS_END_EVENTS.stated
 LIBRARYENTRY_ACCESS_END_CORRECTED = ENTRY_ACCESS_END_EVENTS.corrected
 LIBRARYENTRY_ACCESS_END_VOIDED = ENTRY_ACCESS_END_EVENTS.voided
-LIBRARYENTRY_ACCESS_RESUMED = ENTRY_ACCESS_END_EVENTS.resumed_spec()
+LIBRARYENTRY_ACCESS_RESUMED = ENTRY_ACCESS_END_EVENTS.resumed
 
 
 def libraryentry_created(

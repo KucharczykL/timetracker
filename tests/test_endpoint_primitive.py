@@ -17,7 +17,6 @@ from games.commands.endpoint import (
     correct_endpoint,
     correct_opening_endpoint,
     normalized,
-    resume_endpoint,
     state_endpoint,
     void_endpoint,
 )
@@ -31,6 +30,7 @@ from games.endpoint_fields import (
 from games.endpoints import (
     DEVICE_ACCESS_END,
     ENDPOINTS,
+    ENTRY_ACCESS_END,
     PLAYTHROUGH_COMPLETION,
     PLAYTHROUGH_START,
     Endpoint,
@@ -413,19 +413,13 @@ def test_the_check_refuses_two_endpoints_sharing_a_name() -> None:
 
 
 def test_an_endpoint_without_a_resume_has_three_acts() -> None:
-    assert PLAYTHROUGH_START.events.resumed is None
-    assert len(PLAYTHROUGH_START.events.specs) == 3
+    assert not hasattr(PLAYTHROUGH_START.events, "resumed")
     assert len(PLAYTHROUGH_START.events.family) == 3
 
 
-def test_a_resume_of_an_endpoint_without_one_is_a_defect() -> None:
-    with pytest.raises(TypeError, match="states no resume"):
-        resume_endpoint(
-            _started_run(),
-            PLAYTHROUGH_START,
-            ActStatement(MAY, ""),
-            sentences=SENTENCES,
-        )
+def test_a_resumable_endpoint_puts_its_resume_in_the_family() -> None:
+    assert ENTRY_ACCESS_END.events.family[-1] == "library.libraryentry.access_resumed"
+    assert len(ENTRY_ACCESS_END.events.specs) == 4
 
 
 def test_normalized_keeps_the_shape_it_was_given() -> None:

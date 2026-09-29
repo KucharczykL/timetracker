@@ -315,15 +315,64 @@ def test_a_removed_copy_answers_unchanged_then_refuses(owned_library, graph):
     assert same.outcome is CommandOutcome.UNCHANGED
 
 
-def test_an_end_under_a_removed_player_game_is_refused(owned_library, graph):
+@pytest.mark.parametrize(
+    "command",
+    [
+        lambda entry: EndEntryAccess(entry_id=entry.pk, statement=_returned(JULY)),
+        lambda entry: CorrectEntryAccessEnd(
+            entry_id=entry.pk, statement=_returned(JULY)
+        ),
+        lambda entry: VoidEntryAccessEnd(entry_id=entry.pk),
+        lambda entry: ResumeEntryAccess(
+            entry_id=entry.pk, statement=ActStatement(JULY, "")
+        ),
+    ],
+    ids=["end", "correct", "void", "resume"],
+)
+def test_every_act_is_refused_under_a_removed_player_game(
+    owned_library, graph, command
+):
     entry = record_entry(owned_library, graph.release)
+    if not isinstance(command(entry), EndEntryAccess):
+        entry = end_entry_access(entry, ended=JUNE)
     _dispatch(owned_library, RemovePlayerGame(game_id=graph.game.pk))
 
+    assert _refused(owned_library, command(entry)).sentence == PLAYER_GAME_REMOVED
+
+
+def test_a_foreign_way_is_refused_ahead_of_a_removed_copy(owned_library, graph):
+    entry = remove_entry(record_entry(owned_library, graph.release))
+
     refused = _refused(
-        owned_library, EndEntryAccess(entry_id=entry.pk, statement=_returned())
+        owned_library,
+        EndEntryAccess(
+            entry_id=entry.pk,
+            statement=WayActStatement(JUNE, "melted", ""),  # type: ignore[arg-type]
+        ),
     )
 
-    assert refused.sentence == PLAYER_GAME_REMOVED
+    assert refused.sentence == UNKNOWN_WAY
+
+
+@pytest.mark.parametrize(
+    ("ended", "resumed"),
+    [
+        (None, MAY),
+        (JULY, TemporalValue.parse("2021-05~")),
+        (TemporalValue.parse("../2021-07"), MAY),
+    ],
+)
+def test_a_resume_the_end_does_not_certainly_follow_is_admitted(
+    owned_library, graph, ended, resumed
+):
+    entry = end_entry_access(record_entry(owned_library, graph.release), ended=ended)
+
+    result = _dispatch(
+        owned_library,
+        ResumeEntryAccess(entry_id=entry.pk, statement=ActStatement(resumed, "")),
+    )
+
+    assert result.outcome is CommandOutcome.APPENDED
 
 
 def test_another_librarys_copy_is_absent(owned_library, second_library, graph):

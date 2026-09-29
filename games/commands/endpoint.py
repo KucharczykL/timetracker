@@ -7,7 +7,7 @@ from django.db import models
 
 from games.end_ways import EndWay
 from games.endpoint_fields import EndpointColumnsBase
-from games.endpoints import Endpoint, OpeningEndpoint
+from games.endpoints import Endpoint, OpeningEndpoint, ResumableEndpoint
 from games.events.dispatch import CommandRejected
 from games.events.vocabulary import NewEvent, Unchanged
 from games.reads.endpoints import stated
@@ -62,8 +62,6 @@ class EndpointSentences(NamedTuple):
     same_statement: str
     same_correction: str
     nothing_to_void: str
-    #: Only an endpoint that resumes states it.
-    nothing_to_resume: Rejection | None = None
 
 
 type BeforeEvent = Callable[[], None]
@@ -117,7 +115,7 @@ def certainly_reversed(
     respectively -- and a window with no edge contradicts nothing.
 
     A qualifier leaves the bounds where the bare value put them, so
-    `2024-05-10~` bounds to that day exactly. Refusing a later day on
+    `2024-05-10~` bounds to that day exactly. Refusing `later` on
     the 9th would refuse what `~` was written to say.
     """
     if earlier is None or later is None:
@@ -218,24 +216,21 @@ def void_endpoint(
 
 def resume_endpoint(
     row: models.Model,
-    endpoint: Endpoint,
+    endpoint: ResumableEndpoint,
     statement: ActStatement,
     *,
-    sentences: EndpointSentences,
+    nothing_to_resume: Rejection,
     before_event: BeforeEvent = _nothing,
 ) -> Sequence[NewEvent]:
-    """Access again after a standing end.
+    """The resume; refused where no end stands.
 
-    No Unchanged: a row with no end did not resume.
+    No Unchanged: the row keeps no resume to compare.
     """
-    resumed = endpoint.events.resumed_spec()
-    if sentences.nothing_to_resume is None:
-        raise TypeError(f"Endpoint {endpoint.name!r} states no resume sentence.")
     if stated(row, endpoint) is None:
-        raise sentences.nothing_to_resume.raised()
+        raise nothing_to_resume.raised()
     before_event()
     return [
-        resumed.new(
+        endpoint.events.resumed.new(
             aggregate_id=row.pk,
             effective_time=statement.when,
             payload={"note": statement.note},

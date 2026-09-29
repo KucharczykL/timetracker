@@ -1524,7 +1524,7 @@ class Device(ProjectionModel, ReferencedRow):
     removed_at = models.DateTimeField(
         null=True, blank=True, default=None, editable=False
     )
-    #: The day access ended; null unknown.
+    #: The day access ended; null unknown or unstated.
     access_ended = endpoint_when()
     access_ended_lower = endpoint_bound("access_ended", "lower")
     access_ended_upper = endpoint_bound("access_ended", "upper")
@@ -2250,7 +2250,7 @@ class LibraryEntry(ProjectionModel, ReferencedRow):
     #: The creation's instant; every row holds one.
     acquisition_recorded_at = opening_marker()
     acquisition_note = endpoint_note()
-    #: The day access ended; null unknown.
+    #: The day access ended; null unknown or unstated.
     access_ended = endpoint_when()
     access_ended_lower = endpoint_bound("access_ended", "lower")
     access_ended_upper = endpoint_bound("access_ended", "upper")

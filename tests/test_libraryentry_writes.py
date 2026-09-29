@@ -8,7 +8,12 @@ from entries import record_entry as record_by_event
 from entries import remove_entry as remove_by_event
 
 from games.commands.endpoint import ActStatement, WayActStatement
-from games.commands.libraryentry import ENTRY_REMOVED, UNKNOWN_ACCESS
+from games.commands.libraryentry import (
+    ACQUISITION_AFTER_END,
+    END_BEFORE_ACQUISITION,
+    ENTRY_REMOVED,
+    UNKNOWN_ACCESS,
+)
 from games.commands.playergame import RemovePlayerGame
 from games.end_ways import EndWay
 from games.events.dispatch import CommandOutcome, CommandResult, dispatch
@@ -397,7 +402,10 @@ def test_a_copy_moved_wholly_later_lands(owned_user, owned_library, graph):
     )
 
     entry.refresh_from_db()
-    assert entry.access_ended == later
+    assert (entry.acquired, entry.access_ended) == (
+        TemporalValue.parse("2021-12"),
+        later,
+    )
     assert _types(entry)[-2:] == [
         "library.libraryentry.access_end_corrected",
         "library.libraryentry.acquisition_corrected",
@@ -422,3 +430,109 @@ def test_resume_answers_the_command_result(owned_user, owned_library, graph):
         resume_entry_access(
             owned_user, entry, ActStatement(JULY, ""), correlation_id=uuid.uuid7()
         )
+
+
+def test_a_note_beside_an_end_before_the_acquisition_appends_nothing(
+    owned_user, owned_library, graph
+):
+    entry = record_by_event(owned_library, graph.release, acquired=JULY)
+
+    with pytest.raises(CommandFailed) as failed:
+        restate_entry(
+            owned_user,
+            entry,
+            note="lent",
+            access_end=_returned(MAY),
+            correlation_id=uuid.uuid7(),
+        )
+
+    assert failed.value.message == END_BEFORE_ACQUISITION
+    assert _types(entry) == ["library.libraryentry.created"]
+
+
+def test_a_note_beside_an_acquisition_after_the_end_appends_nothing(
+    owned_user, owned_library, graph
+):
+    entry = record_by_event(owned_library, graph.release, acquired=MAY)
+    restate_entry(
+        owned_user, entry, access_end=_returned(JUNE), correlation_id=uuid.uuid7()
+    )
+    entry.refresh_from_db()
+
+    with pytest.raises(CommandFailed) as failed:
+        restate_entry(
+            owned_user,
+            entry,
+            note="lent",
+            acquired=ActStatement(JULY, ""),
+            correlation_id=uuid.uuid7(),
+        )
+
+    assert failed.value.message == ACQUISITION_AFTER_END
+    assert _types(entry)[-1] == "library.libraryentry.access_ended"
+
+
+def test_a_void_goes_before_an_acquisition_past_the_old_end(
+    owned_user, owned_library, graph
+):
+    entry = record_by_event(owned_library, graph.release, acquired=MAY)
+    restate_entry(
+        owned_user, entry, access_end=_returned(JUNE), correlation_id=uuid.uuid7()
+    )
+    entry.refresh_from_db()
+
+    restate_entry(
+        owned_user,
+        entry,
+        acquired=ActStatement(JULY, ""),
+        access_end=None,
+        correlation_id=uuid.uuid7(),
+    )
+
+    entry.refresh_from_db()
+    assert entry.acquired == JULY
+    assert _types(entry)[-2:] == [
+        "library.libraryentry.access_end_voided",
+        "library.libraryentry.acquisition_corrected",
+    ]
+
+
+def test_a_void_of_a_held_copy_dispatches_and_changes_nothing(
+    owned_user, owned_library, graph
+):
+    entry = record_by_event(owned_library, graph.release)
+    before = LibraryIdempotencyRecord.objects.count()
+
+    changed = restate_entry(
+        owned_user, entry, access_end=None, correlation_id=uuid.uuid7()
+    )
+
+    assert changed is False
+    assert LibraryIdempotencyRecord.objects.count() == before + 1
+    assert _types(entry) == ["library.libraryentry.created"]
+
+
+@pytest.mark.parametrize(
+    ("acquired", "ended"),
+    [
+        (None, MAY),
+        (JULY, None),
+        (JULY, TemporalValue.parse("2021-05~")),
+        (TemporalValue.parse("../2021-07"), MAY),
+    ],
+)
+def test_the_draft_check_admits_what_is_not_certain(
+    owned_user, owned_library, graph, acquired, ended
+):
+    entry = record_by_event(owned_library, graph.release)
+
+    restate_entry(
+        owned_user,
+        entry,
+        acquired=ActStatement(acquired, ""),
+        access_end=_returned(ended),
+        correlation_id=uuid.uuid7(),
+    )
+
+    entry.refresh_from_db()
+    assert entry.access_end_recorded_at is not None

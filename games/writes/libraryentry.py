@@ -8,6 +8,8 @@ from django.contrib.auth.models import User
 
 from games.commands.endpoint import ActStatement, WayActStatement, certainly_reversed
 from games.commands.libraryentry import (
+    ACQUISITION_AFTER_END,
+    END_BEFORE_ACQUISITION,
     CorrectEntryAccessEnd,
     CorrectEntryAcquisition,
     DescribeEntry,
@@ -133,9 +135,10 @@ def restate_entry(
 ) -> bool:
     """Describe, then move both endpoints; one correlation.
 
-    The description goes first: its refusals include every
-    live-act one the endpoints raise, so a refused body moves
-    no day. Answers whether anything was appended.
+    A reversed day order is refused before any dispatch; the
+    description then carries every live-act refusal, so a
+    refused body appends nothing. Answers whether anything
+    was appended.
     """
     with answered(SUBJECT):
         _refuse_a_reversed_draft(entry, acquired=acquired, access_end=access_end)
@@ -165,15 +168,35 @@ def _refuse_a_reversed_draft(
     acquired: ActStatement | Keep,
     access_end: WayActStatement | None | Keep,
 ) -> None:
-    """Refuse up front; no act withdraws."""
-    if isinstance(acquired, Keep) or not isinstance(access_end, WayActStatement):
+    """Refuse up front: a committed act stays.
+
+    Each stated day is compared with the other one the row
+    keeps, so a refusal a command would raise later is raised
+    before the description commits.
+    """
+    match access_end:
+        case WayActStatement():
+            ended, end_is_new = access_end.when, True
+        case Keep() if stated(entry, ENTRY_ACCESS_END) is not None:
+            ended, end_is_new = entry.access_ended, False
+        case _:
+            return
+    acquisition_is_new = not isinstance(acquired, Keep)
+    if not (end_is_new or acquisition_is_new):
         return
-    if certainly_reversed(earlier=acquired.when, later=access_end.when):
-        raise CommandRejected(
-            f"The statement about entry {entry.pk} ends its access before it "
-            "was acquired.",
-            sentence="This copy left before it was acquired. Check the days.",
-        )
+    acquired_day = acquired.when if not isinstance(acquired, Keep) else entry.acquired
+    if not certainly_reversed(earlier=acquired_day, later=ended):
+        return
+    if end_is_new and acquisition_is_new:
+        sentence = "This copy left before it was acquired. Check the days."
+    elif end_is_new:
+        sentence = END_BEFORE_ACQUISITION
+    else:
+        sentence = ACQUISITION_AFTER_END
+    raise CommandRejected(
+        f"The statement about entry {entry.pk} ends its access before it was acquired.",
+        sentence=sentence,
+    )
 
 
 def _endpoint_commands(
@@ -186,7 +209,8 @@ def _endpoint_commands(
 
     One is stated at a time, so in between the row holds one
     new day beside one old one. The end goes first unless its
-    new day falls before the acquisition the row holds.
+    new day certainly falls before the acquisition the row
+    holds.
     """
     end = (
         None if isinstance(access_end, Keep) else _access_end_command(entry, access_end)
@@ -205,16 +229,19 @@ def _endpoint_commands(
 
 def _access_end_command(
     entry: LibraryEntry, access_end: WayActStatement | None
-) -> Command | None:
+) -> Command:
+    """The act; a void always dispatches.
+
+    The command decides under the lock, so an end a racer
+    stated is voided rather than dropped.
+    """
     match endpoint_move(stated(entry, ENTRY_ACCESS_END), access_end):
         case Act(statement):
             return EndEntryAccess(entry_id=entry.pk, statement=statement)
         case Correct(statement):
             return CorrectEntryAccessEnd(entry_id=entry.pk, statement=statement)
-        case Void():
+        case Void() | Nothing():
             return VoidEntryAccessEnd(entry_id=entry.pk)
-        case Nothing():
-            return None
         case unhandled:
             assert_never(unhandled)
 
