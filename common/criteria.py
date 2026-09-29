@@ -596,9 +596,10 @@ class DateCriterion(_ScalarCriterion):
         raise FilterError(f"Unsupported modifier {m} for date field")
 
     def to_q_on(self, expression: Combinable) -> Q:
-        """The same predicate over a day expression.
+        """The same predicate over an expression.
 
-        A negated keyword lookup keeps NULL rows; `IsNull` says so here.
+        `~Q(field=v)` keeps NULL rows; `~Q(Exact(expression, v))` does not, so
+        NOT_EQUALS states `IsNull` beside the negation.
         """
         m = self.modifier
         if m == Modifier.EQUALS:
@@ -1051,7 +1052,7 @@ class FilterField:
 
     lookup: ORMLookup | None = None
     handler: FieldHandler | None = None
-    #: The timestamp column whose calendar day is compared.
+    #: The column whose calendar day is compared.
     day_of: ORMLookup | None = None
     # Human label for the field-metadata registry (``field_metadata``). Optional;
     # when None, the registry falls back to a title-cased field name.
@@ -1450,7 +1451,7 @@ def with_filter_aliases[M: models.Model](
     return queryset if annotate is None else annotate()
 
 
-type ZoneThunk = Callable[[], ZoneInfo]  # the calendar zone, read on demand
+type ZoneThunk = Callable[[], ZoneInfo]  # the calendar zone, on demand
 
 #: Where validation compiles; it never executes.
 UTC_ZONE = ZoneInfo("UTC")
@@ -1462,7 +1463,7 @@ class FilterQueryContext:
 
     resolver: QuerysetResolver
     authorization_scoped: bool = True
-    #: The zone a day facet compares in; cached by its caller.
+    #: Where a day facet compares; caller caches.
     day_zone: ZoneThunk = field(kw_only=True)
 
     def calendar_zone(self) -> ZoneInfo:

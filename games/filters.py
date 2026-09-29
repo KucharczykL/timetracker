@@ -100,7 +100,7 @@ class FindFilter:
 
 
 def session_day_handler(column: str) -> FieldHandler:
-    """A day facet over a session instant, in the row's zone."""
+    """A session instant's day, in its zone."""
 
     def handler(criterion: _Criterion) -> Q:
         from games.models import session_day_of

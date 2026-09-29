@@ -1,4 +1,4 @@
-"""A day facet reads the library calendar, not the active zone."""
+"""Day facets read the calendar, not the active zone."""
 
 from datetime import timedelta
 from zoneinfo import ZoneInfo
@@ -92,7 +92,7 @@ def _sessions(library, session_filter) -> set:
 
 @pytest.fixture
 def displaced_rows(owned_library):
-    """A Timed, a Corrected and a Duration-only row at the calendar's noon."""
+    """Timed, Corrected and Duration-only, at calendar noon."""
     displaced = displace_calendar(owned_library)
     game = Game.objects.create(library=owned_library, name="Tunic")
     noon = library_noon(owned_library)
@@ -143,7 +143,7 @@ def test_ended_reads_the_rows_zone(owned_library, displaced_rows):
 
 
 def test_a_date_granular_comparison_reads_the_calendar(owned_library):
-    """One calendar day, two days in the other zone."""
+    """One calendar day; two in the other zone."""
     displaced = displace_calendar(owned_library)
     game = Game.objects.create(library=owned_library, name="Tunic")
     noon = library_noon(owned_library)

@@ -5638,7 +5638,7 @@ class TestValueTypeBoundaryIntegration:
 
     @pytest.mark.django_db(transaction=True)
     def test_created_at_filter_is_date_granular(self, owned_library):
-        """A noon stamp matches its calendar day, whatever the active zone."""
+        """Calendar noon matches its calendar day anywhere."""
         from calendar_days import displace_calendar, library_noon
 
         from games.filters import filter_query_context_for_library

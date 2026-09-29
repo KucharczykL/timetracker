@@ -1,4 +1,4 @@
-"""A filter context over every row, in a stated zone."""
+"""Every row, in a stated zone."""
 
 from zoneinfo import ZoneInfo
 
