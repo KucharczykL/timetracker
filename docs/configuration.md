@@ -46,7 +46,7 @@ remove that and `settings.ini` wins; remove that and the code default applies.
 | `DEBUG` | bool | `true` (dev) | no | Debug mode. Turn **off** in production. Defaults on for local development. |
 | `APP_URL` | str (or comma-separated URLs) | `http://localhost:8000` | no | Public URL(s) of the site. One full URL or a comma-separated list. Derives `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` from all listed URLs. |
 | `ALLOWED_HOSTS` | list | derived from `APP_URL` | no | Comma-separated hostnames. Overrides the `APP_URL` derivation (useful for `ALLOWED_HOSTS=*` behind a reverse proxy). |
-| `TZ` | str | `Europe/Prague` (dev) / `UTC` (prod) | no | Boot-time Django/server time zone. Requires a restart and is not editable on Admin settings. |
+| `TZ` | str | `UTC` | no | Boot-time Django/server time zone. Nothing a library reads depends on it: days come from the library calendar. Requires a restart and is not editable on Admin settings. |
 | `DEFAULT_PURCHASE_CURRENCY` | str | `CZK` | no | Live user/site default used to pre-fill the required original currency on new purchases. |
 | `DEFAULT_DISPLAY_CURRENCY` | str | `CZK` | no | Live user/site target for that library's converted purchase cache, totals, and statistics. |
 | `DEFAULT_PAGE_SIZE` | int | `25` | no | Default rows shown on list pages. Valid preference/site values: `10`, `25`, `50`, `100`, `500`, `1000`. |
