@@ -8,6 +8,11 @@ from games.reads.unscoped import require_library
 UNSPECIFIED_PLATFORM = "Unspecified"
 
 
+def platform_words(release: Release) -> str:
+    """Its platform's name, else Unspecified."""
+    return UNSPECIFIED_PLATFORM if release.platform is None else release.platform.name
+
+
 def game_releases(library: UserLibrary, game: Game) -> QuerySet[Release]:
     """One Game's live Releases this library sees."""
     library = require_library(library)

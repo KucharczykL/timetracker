@@ -162,6 +162,28 @@ def restate_entry(
     return changed
 
 
+def describe_entry(
+    actor: User,
+    entry: LibraryEntry,
+    *,
+    access: str | None = None,
+    format: str | None = None,
+    note: str | None = None,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
+    """One description; None states nothing."""
+    with answered(SUBJECT):
+        return _dispatch(
+            DescribeEntry(entry_id=entry.pk, access=access, format=format, note=note),
+            actor=actor,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
+        )
+
+
 def _refuse_a_reversed_draft(
     entry: LibraryEntry,
     *,
