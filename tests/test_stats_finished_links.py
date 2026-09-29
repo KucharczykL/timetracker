@@ -1,7 +1,7 @@
 """The statistics links order by the runs."""
 
 import json
-from datetime import UTC, date, datetime
+from datetime import date
 
 import pytest
 from completed_runs import add_game, make_purchase
@@ -30,7 +30,7 @@ def in_scope_purchase(user, library, name, *days):
     the filter twice and the join hands the list two rows.
     """
     purchase = make_purchase(library, name=name)
-    purchase.date_purchased = datetime(YEAR, 1, 1, tzinfo=UTC)
+    purchase.date_purchased = date(YEAR, 1, 1)
     purchase.save()
     for index, day in enumerate(days):
         game, _ = add_game(

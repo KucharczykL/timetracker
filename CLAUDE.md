@@ -1274,17 +1274,23 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   SortKey = str  # e.g. "sort_name"`) so signatures say *which* string goes where.
   Zero-cost, no wrapping. Use `NewType` only when you want checker to reject
   cross-assignment and will wrap every literal.
-- **Never ask what day it is** — no code reads a day from the process clock.
-  Tests and `e2e/` obey this rule too. A day belongs to the library's calendar:
-  ask `calendar_today(library)` or `request_calendar_today(request, library)`.
-  A test states a fixed day or seeds at `library_noon(library)`
-  (`tests/calendar_days.py`). `session_row` and its siblings write the
-  calendar's zone, because `effective_day` reads the row's own zone.
-  `displace_calendar()` puts the calendar on another date than the process, so
-  a wrong test fails at every hour. `tests/test_calendar_clock_guard.py` fails
-  the build on `localdate()` or `localtime()` without a zone, `date.today()`,
-  `now().date()`, and a clock factory named but not called. An exception is an
-  `AllowedFunction` with a reason and a read count; a count that changes fails.
+- **Never ask what day it is** — no code reads a day from the process clock
+  or the active zone, and tests and `e2e/` obey this too. A day belongs to the
+  library's calendar: ask `calendar_today(library)` or
+  `request_calendar_today(request, library)`. A `DateField` takes a day, not
+  an instant: Django converts an instant in `TIME_ZONE`. A test states a fixed
+  day or seeds at `library_noon(library)` (`tests/calendar_days.py`).
+  `session_row`, `timed_row` and `corrected_row` default to the calendar's
+  zone, because `effective_day` reads the row's own. An autouse fixture sets
+  the process zone to a date that is not the default calendar's date, so a
+  process-clock test fails at every hour. `displace_calendar()` moves one
+  library's calendar instead. `tests/test_calendar_clock_guard.py` refuses
+  `localdate()`/`localtime()` with no zone, `date.today()`, a day read off a
+  zoneless `now()` or `.astimezone()`, and a clock function named but not
+  called. `None`, the active zone and `settings.TIME_ZONE` state no zone. An
+  exception is an `ALLOWED_FUNCTIONS` entry, `AllowedFunction` to
+  `Exemption(reason, reads)`; a count that changes fails. The guard cannot see
+  an ORM `__date` lookup, which reads the active zone.
 - **Use `render_page()` not `render()`** for all full-page HTTP responses (import
   from `common.layout`).
 - **Build UI with Python components** from `common.components`, not raw HTML

@@ -7,6 +7,7 @@ from calendar_days import displace_calendar
 from django.test import RequestFactory
 from session_rows import duration_only_row, tracked_run
 
+from games.events.playersession import ZoneName
 from games.models import Game
 from games.reads.calendar import calendar_today
 from games.views.general import model_counts
@@ -15,8 +16,8 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 
 @pytest.fixture
-def elsewhere(owned_user, owned_library) -> str:
-    return displace_calendar(owned_user, owned_library)
+def elsewhere(owned_library) -> ZoneName:
+    return displace_calendar(owned_library)
 
 
 @pytest.fixture

@@ -4,6 +4,7 @@ import uuid
 from typing import NamedTuple
 
 import pytest
+from calendar_days import process_zone_off_the_calendar
 from django.db.models.signals import post_save
 from django.utils import timezone
 from icon_names import unknown_icon_names_fail  # noqa: F401
@@ -147,6 +148,12 @@ def catalog_graph_post():
         return posted
 
     return fields
+
+
+@pytest.fixture(autouse=True)
+def _process_clock_off_the_calendar(settings):
+    """A process-clock day is wrong at every hour."""
+    settings.TIME_ZONE = process_zone_off_the_calendar()
 
 
 @pytest.fixture(autouse=True)

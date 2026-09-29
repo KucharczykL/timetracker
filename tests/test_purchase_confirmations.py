@@ -3,10 +3,12 @@
 from datetime import date
 
 import pytest
+from calendar_days import displace_calendar
 from django.urls import reverse
 
 from common.returns import action_url
 from games.models import Game, Purchase
+from games.reads.calendar import calendar_today
 from games.removal import remove
 from games.views.purchase import _split
 from games.writes.answers import CommandFailed
@@ -46,6 +48,16 @@ def test_a_refunded_purchase_refuses_a_second_refund(logged_in, owned_library):
     assert "This purchase is already refunded." in response.content.decode()
     purchase.refresh_from_db()
     assert purchase.date_refunded == refunded_at
+
+
+def test_a_refund_is_dated_on_the_library_calendar(logged_in, owned_library):
+    displace_calendar(owned_library)
+    purchase = bundle(owned_library, "Tunic")
+
+    logged_in.post(reverse("games:refund_purchase", args=[purchase.id]))
+
+    purchase.refresh_from_db()
+    assert purchase.date_refunded == calendar_today(owned_library)
 
 
 def test_a_refund_says_so_on_the_page_it_lands_on(logged_in, owned_library):

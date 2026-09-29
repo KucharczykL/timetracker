@@ -5,6 +5,7 @@ import json
 import re
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from django.contrib.messages import get_messages
@@ -12,7 +13,6 @@ from django.urls import reverse
 from django.utils import timezone
 from historical_playtime_rows import record_row
 from session_rows import (
-    TWIN_ZONE,
     duration_only_row,
     timed_row,
     tracked_run,
@@ -32,6 +32,9 @@ from games.writes.answers import REFUSED_BY_AN_UNREADABLE_ROW
 from games.writes.playergame import new_correlation_id
 from games.writes.playthrough import remove_run
 from timetracker.temporal import TemporalValue
+
+#: A fixed zone these rows state.
+PRAGUE = ZoneInfo("Europe/Prague")
 
 
 def day(value: str) -> ActStatement:
@@ -429,7 +432,7 @@ def _prefill(client, user, game) -> dict[str, str]:
 
 
 def prague(hour: int, day: date) -> datetime:
-    return datetime.combine(day, time(hour), tzinfo=TWIN_ZONE)
+    return datetime.combine(day, time(hour), tzinfo=PRAGUE)
 
 
 @pytest.mark.django_db
@@ -440,13 +443,13 @@ def test_the_prefill_sums_the_sessions_from_the_seeded_start(client, user, game)
         tracked_run(library, game),
         prague(10, date(2026, 1, 5)),
         prague(12, date(2026, 1, 5)),
-        day_zone=TWIN_ZONE.key,
+        day_zone=PRAGUE.key,
     )
     timed_row(
         tracked_run(library, game),
         prague(10, date(2026, 3, 1)),
         prague(11, date(2026, 3, 1)),
-        day_zone=TWIN_ZONE.key,
+        day_zone=PRAGUE.key,
     )
     duration_only_row(
         tracked_run(library, game), date(2026, 3, 4), timedelta(minutes=30)
@@ -472,7 +475,7 @@ def test_the_prefill_reads_the_earliest_session_day_without_a_finish(
         tracked_run(library, game),
         prague(10, date(2026, 1, 5)),
         prague(12, date(2026, 1, 5)),
-        day_zone=TWIN_ZONE.key,
+        day_zone=PRAGUE.key,
     )
     duration_only_row(
         tracked_run(library, game), date(2026, 3, 4), timedelta(minutes=30)
@@ -494,7 +497,7 @@ def test_the_prefill_leaves_a_contained_record_out(client, user, game):
         run,
         prague(10, date(2026, 1, 5)),
         prague(12, date(2026, 1, 5)),
-        day_zone=TWIN_ZONE.key,
+        day_zone=PRAGUE.key,
     )
     record_row([run], duration=timedelta(hours=5), when="2026-01-05")
 
@@ -523,7 +526,7 @@ def test_a_finish_after_the_last_session_seeds_an_empty_note(client, user, game)
         tracked_run(library, game),
         prague(10, date(2026, 1, 5)),
         prague(12, date(2026, 1, 5)),
-        day_zone=TWIN_ZONE.key,
+        day_zone=PRAGUE.key,
     )
     Playthrough.objects.filter(pk=tracked_run(library, game).pk).update(
         completion_recorded_at=timezone.now(),

@@ -12,6 +12,8 @@ from django.utils import timezone
 #: browser tests too. pytest puts each suite's own directory on the path.
 sys.path.append(str(Path(__file__).resolve().parents[1] / "tests"))
 
+from calendar_days import process_zone_off_the_calendar
+
 from timetracker import config as config_module
 from timetracker import settings_resolver
 
@@ -19,6 +21,12 @@ from timetracker import settings_resolver
 # Django's async safety checks when running synchronous tests. This allows
 # synchronous operations inside the async context safely.
 os.environ.setdefault("DJANGO_ALLOW_ASYNC_UNSAFE", "true")
+
+
+@pytest.fixture(autouse=True)
+def _process_clock_off_the_calendar(settings):
+    """A process-clock day is wrong at every hour."""
+    settings.TIME_ZONE = process_zone_off_the_calendar()
 
 
 @pytest.fixture(autouse=True)

@@ -4,7 +4,6 @@ import uuid
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
-from django.contrib.auth.models import User
 from django.utils import timezone
 
 from games.commands.calendar import SetCalendarDayZone
@@ -12,8 +11,9 @@ from games.events.dispatch import dispatch
 from games.events.playersession import ZoneName
 from games.models import UserLibrary
 from games.reads.calendar import calendar_day_zone, calendar_today
+from timetracker.settings_resolver import resolve_fallthrough_uncached
 
-#: 25 hours apart: never one date.
+#: 25 hours apart, no DST: never one date.
 DISPLACED_ZONES: tuple[ZoneName, ZoneName] = ("Pacific/Kiritimati", "Pacific/Niue")
 
 
@@ -31,16 +31,28 @@ def process_day() -> date:
     return timezone.localdate()
 
 
-def displace_calendar(user: User, library: UserLibrary) -> ZoneName:
-    """Moves the calendar off the process date."""
-    zone = next(
+def _off_the_date_of(day: date) -> ZoneName:
+    return next(
         name
         for name in DISPLACED_ZONES
-        if timezone.now().astimezone(ZoneInfo(name)).date() != process_day()
+        if timezone.now().astimezone(ZoneInfo(name)).date() != day
     )
+
+
+def process_zone_off_the_calendar() -> ZoneName:
+    """A process zone off the default calendar's date."""
+    default_calendar = ZoneInfo(
+        resolve_fallthrough_uncached("DISPLAY_TIME_ZONE", skip_db=True).value
+    )
+    return _off_the_date_of(timezone.now().astimezone(default_calendar).date())
+
+
+def displace_calendar(library: UserLibrary) -> ZoneName:
+    """Moves the calendar off the process date."""
+    zone = _off_the_date_of(process_day())
     dispatch(
         SetCalendarDayZone(day_zone=zone),
-        actor=user,
+        actor=library.user,
         library=library,
         idempotency_key=str(uuid.uuid7()),
     )

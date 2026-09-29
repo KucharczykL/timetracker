@@ -14,6 +14,7 @@ from calendar_days import (
 from django.test import RequestFactory
 from session_rows import session_row
 
+from games.events.playersession import ZoneName
 from games.models import Game, UserLibrary
 from games.reads.calendar import calendar_today
 from games.reads.days import DayInterval
@@ -26,8 +27,8 @@ HOUR = timedelta(hours=1)
 
 
 @pytest.fixture
-def displaced(owned_user, owned_library) -> str:
-    return displace_calendar(owned_user, owned_library)
+def displaced(owned_library) -> ZoneName:
+    return displace_calendar(owned_library)
 
 
 def _played_today(library: UserLibrary) -> timedelta:
@@ -90,7 +91,6 @@ def test_a_session_seeded_at_noon_is_counted_by_todays_reader(
 
 
 def test_a_row_stating_another_zone_misses_the_day(owned_library, displaced):
-    """A row in another zone misses."""
     game = Game.objects.create(library=owned_library, name="Tunic")
     noon = library_noon(owned_library)
     session_row(

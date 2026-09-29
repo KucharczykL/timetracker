@@ -9,7 +9,6 @@ from devices import create_device
 from django.utils import timezone
 from historical_playtime_rows import record_row
 from session_rows import (
-    TWIN_ZONE,
     corrected_row,
     duration_only_row,
     timed_row,
@@ -48,6 +47,10 @@ from games.reads.playtime import (
 )
 from games.reads.unscoped import UnscopedRead
 
+#: A fixed zone these rows state.
+PRAGUE = ZoneInfo("Europe/Prague")
+
+
 ZERO = timedelta(0)
 
 
@@ -85,12 +88,12 @@ def summed(library: UserLibrary | None, game: Game, **scope):
 
 
 def prague(hour: int, day: date) -> datetime:
-    return datetime.combine(day, time(hour), tzinfo=TWIN_ZONE)
+    return datetime.combine(day, time(hour), tzinfo=PRAGUE)
 
 
 def timed(library: UserLibrary, game: Game, started_at, ended_at):
     return timed_row(
-        tracked_run(library, game), started_at, ended_at, day_zone=TWIN_ZONE.key
+        tracked_run(library, game), started_at, ended_at, day_zone=PRAGUE.key
     )
 
 
@@ -140,11 +143,11 @@ def test_a_row_of_each_mode_counts_its_effective_duration(
         prague(20, day),
         prague(21, day),
         timedelta(minutes=30),
-        day_zone=TWIN_ZONE.key,
+        day_zone=PRAGUE.key,
     )
     total = timedelta(hours=4)
 
-    with timezone.override(TWIN_ZONE):
+    with timezone.override(PRAGUE):
         figures = {
             "game": game_playtime(owned_library, game).total,
             "summed": summed(owned_library, game),
@@ -185,7 +188,7 @@ def test_a_running_timed_row_counts_zero(owned_library, game):
     started_at = prague(10, date(2026, 3, 5))
     timed(owned_library, game, started_at, None)
 
-    with timezone.override(TWIN_ZONE):
+    with timezone.override(PRAGUE):
         assert game_playtime(owned_library, game).total == ZERO
         assert (
             game_playtime_between(
@@ -207,7 +210,7 @@ def test_the_stored_day_is_read_whatever_the_active_zone(owned_library, game):
         day_zone="Europe/Prague",
     )
 
-    for zone in (TWIN_ZONE, ZoneInfo("UTC")):
+    for zone in (PRAGUE, ZoneInfo("UTC")):
         with timezone.override(zone):
             assert total_playtime(owned_library, year=2026).total == timedelta(
                 minutes=20
@@ -222,7 +225,7 @@ def test_a_duration_only_row_lands_on_its_written_day(owned_library, game):
     duration = timedelta(minutes=90)
     duration_only_row(tracked_run(owned_library, game), day, duration)
 
-    with timezone.override(TWIN_ZONE):
+    with timezone.override(PRAGUE):
         assert total_playtime(owned_library, year=2026).total == duration
         assert playtime_by_month(owned_library, year=2026) == [
             MonthPlaytime(date(2026, 3, 1), tracked(duration))
@@ -243,9 +246,9 @@ def test_a_day_window_is_inclusive(owned_library, game):
     first, last = date(2026, 3, 5), date(2026, 3, 7)
     inside = timedelta(minutes=10)
     outside = timedelta(minutes=1)
-    before_first = datetime.combine(first, time(0), tzinfo=TWIN_ZONE)
+    before_first = datetime.combine(first, time(0), tzinfo=PRAGUE)
     timed(owned_library, game, before_first, before_first + inside)
-    late_on_last = datetime.combine(last, time(23, 30), tzinfo=TWIN_ZONE)
+    late_on_last = datetime.combine(last, time(23, 30), tzinfo=PRAGUE)
     timed(owned_library, game, late_on_last, late_on_last + inside)
     timed(
         owned_library,
@@ -253,10 +256,10 @@ def test_a_day_window_is_inclusive(owned_library, game):
         before_first - timedelta(minutes=5),
         before_first - timedelta(minutes=4),
     )
-    after_last = datetime.combine(last + timedelta(days=1), time(0), tzinfo=TWIN_ZONE)
+    after_last = datetime.combine(last + timedelta(days=1), time(0), tzinfo=PRAGUE)
     timed(owned_library, game, after_last, after_last + outside)
 
-    with timezone.override(TWIN_ZONE):
+    with timezone.override(PRAGUE):
         assert (
             playtime_between(owned_library, DayInterval(first, last)).total
             == 2 * inside
@@ -270,19 +273,19 @@ def test_a_games_window_counts_that_game_alone(owned_library, game):
     inside = timedelta(minutes=10)
     other = Game.objects.create(library=owned_library, name="Tunic")
     run = tracked_run(owned_library, game)
-    on_first = datetime.combine(first, time(0), tzinfo=TWIN_ZONE)
+    on_first = datetime.combine(first, time(0), tzinfo=PRAGUE)
     timed(owned_library, game, on_first, on_first + inside)
-    late_on_last = datetime.combine(last, time(23, 30), tzinfo=TWIN_ZONE)
+    late_on_last = datetime.combine(last, time(23, 30), tzinfo=PRAGUE)
     timed(owned_library, game, late_on_last, late_on_last + inside)
     duration_only_row(run, last, inside)
-    corrected_row(run, on_first, on_first + inside, inside, day_zone=TWIN_ZONE.key)
+    corrected_row(run, on_first, on_first + inside, inside, day_zone=PRAGUE.key)
     timed(owned_library, other, on_first, on_first + inside)
     before = on_first - timedelta(minutes=5)
     timed(owned_library, game, before, before + inside)
-    after = datetime.combine(last + timedelta(days=1), time(0), tzinfo=TWIN_ZONE)
+    after = datetime.combine(last + timedelta(days=1), time(0), tzinfo=PRAGUE)
     timed(owned_library, game, after, after + inside)
 
-    with timezone.override(TWIN_ZONE):
+    with timezone.override(PRAGUE):
         figure = game_playtime_between(
             owned_library, game, DayInterval(first, last)
         ).total
@@ -446,7 +449,7 @@ def test_every_figure_adds_the_contained_records(owned_library, game, platform):
     record_row([run], duration=8 * HOUR, when=None)
     in_march = PlaytimeBreakdown(HOUR, 2 * HOUR)
 
-    with timezone.override(TWIN_ZONE):
+    with timezone.override(PRAGUE):
         assert game_playtime(owned_library, game) == PlaytimeBreakdown(HOUR, 14 * HOUR)
         assert total_playtime(owned_library) == PlaytimeBreakdown(HOUR, 14 * HOUR)
         assert total_playtime(owned_library, year=2026) == PlaytimeBreakdown(
@@ -476,7 +479,7 @@ def test_both_windows_are_read_in_two_queries(
     record_row([run], duration=2 * HOUR, when="2026-03-01")
     week = DayInterval.ending(day, days=7)
 
-    with timezone.override(TWIN_ZONE), django_assert_num_queries(2):
+    with timezone.override(PRAGUE), django_assert_num_queries(2):
         figures = playtime_between_each(owned_library, [DayInterval.single(day), week])
 
     assert figures == [
@@ -645,7 +648,7 @@ def test_the_games_tracked_window_leaves_records_out(owned_library, game):
     record_row([run], duration=2 * HOUR, when="2026-03-05")
     days = DayInterval.single(day)
 
-    with timezone.override(TWIN_ZONE):
+    with timezone.override(PRAGUE):
         assert game_tracked_between(owned_library, game, days) == HOUR
         assert game_playtime_between(owned_library, game, days).total == 3 * HOUR
 

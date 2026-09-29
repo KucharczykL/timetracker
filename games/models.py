@@ -1129,7 +1129,9 @@ class Purchase(models.Model):
         return self.type == self.GAME
 
     def refund(self):
-        self.date_refunded = timezone.now()
+        from games.reads.calendar import calendar_today
+
+        self.date_refunded = calendar_today(self.library)
         self.save()
 
     def clean(self):

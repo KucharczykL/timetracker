@@ -367,7 +367,7 @@ def test_a_start_states_the_librarys_day_not_the_processs(
     logged_in, owned_user, owned_library, tracked
 ):
     """The calendar decides the day."""
-    displace_calendar(owned_user, owned_library)
+    displace_calendar(owned_library)
     run = Playthrough.objects.get(player_game__game=tracked)
 
     press(logged_in, START_RUNS, run)

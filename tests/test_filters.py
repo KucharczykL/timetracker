@@ -15,6 +15,7 @@ from uuid import UUID
 import pytest
 from devices import create_device
 from django.db.models import F, Q
+from django.test import override_settings
 from django.utils import timezone
 from session_rows import duration_only_row, session_row, tracked_run
 
@@ -4416,6 +4417,7 @@ class TestFieldComparisonEndToEnd:
         )
         assert result == {session_x}
 
+    @override_settings(TIME_ZONE="UTC")
     def test_date_granular_same_day_behavior(self):
         """granularity='date' matches by calendar day, unlike a raw comparison.
 
