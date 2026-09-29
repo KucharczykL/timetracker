@@ -8,23 +8,36 @@ from games.endpoints import ENTRY_ACCESS_END
 from games.models import LibraryEntry
 from games.reads.endpoints import stated
 from games.reads.releases import platform_words
-from games.views.library_cards import open_url
 
 
 def entry_row_menu(entry: LibraryEntry, origin: OriginUrl | None) -> Node:
-    """Edit, End access or Resume, Remove."""
+    """Each act's page; an ended copy's end is edited or resumed."""
     game = entry.player_game.game
     ended = stated(entry, ENTRY_ACCESS_END) is not None
-    return RowActionMenu(
+
+    def page(route: str) -> str:
+        return action_url(route, entry.pk, origin=origin)
+
+    end_items = (
         [
-            DropdownLinkItem(open_url(game, "edit", entry.pk), "Edit", icon="edit"),
             DropdownLinkItem(
-                open_url(game, "resume" if ended else "end", entry.pk),
-                "Resume" if ended else "End access",
-                icon="reset" if ended else "end",
+                page("games:edit_library_entry_end"), "Edit end", icon="end"
             ),
             DropdownLinkItem(
-                action_url("games:remove_library_entry", entry.pk, origin=origin),
+                page("games:resume_library_entry"), "Resume", icon="reset"
+            ),
+        ]
+        if ended
+        else [
+            DropdownLinkItem(page("games:end_library_entry"), "End access", icon="end")
+        ]
+    )
+    return RowActionMenu(
+        [
+            DropdownLinkItem(page("games:edit_library_entry"), "Edit", icon="edit"),
+            *end_items,
+            DropdownLinkItem(
+                page("games:remove_library_entry"),
                 REMOVE_ENTRY.label,
                 icon="delete",
                 danger=True,

@@ -129,17 +129,23 @@ def test_two_copies_are_edited_and_the_undo_puts_theirs_back(
     assert _formats() == ["digital", "digital"]
 
 
-def test_the_row_menu_opens_end_access_on_game_detail(
+def test_the_row_menu_opens_end_access_and_returns_to_the_tab(
     authenticated_page: Page, live_server, copies
 ):
     page = authenticated_page
-    page.goto(f"{live_server.url}{reverse('games:list_library')}")
+    listed = f"{live_server.url}{reverse('games:list_library')}"
+    page.goto(listed)
     page.wait_for_function("() => !!customElements.get('drop-down')")
 
     page.get_by_role("button", name="Tunic (PS5) actions").click()
     page.get_by_role("menuitem", name="End access").click()
 
     entry = copies[0]
-    page.wait_for_url(f"**?library=end&copy={entry.pk}*")
-    card = page.locator(f"#copy-{entry.pk}")
-    expect(card.locator("details[open] summary", has_text="End access")).to_be_visible()
+    page.wait_for_url(f"**{reverse('games:end_library_entry', args=[entry.pk])}*")
+    page.select_option("select[name='way']", "sold")
+    with page.expect_navigation():
+        page.get_by_role("button", name="Submit", exact=True).click()
+
+    page.wait_for_url(listed)
+    entry.refresh_from_db()
+    assert entry.access_end_way == "sold"

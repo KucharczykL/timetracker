@@ -15,8 +15,8 @@ A person sees and changes the copies they hold where they already look:
 
 - The Games page has two tabs, **Games** and **Library**. The Library tab
   lists every copy, with filters, presets, bulk Edit and bulk Remove.
-- Game detail has a **Library** section: one card per copy of the game.
-  Every act on one copy opens inside its card.
+- Game detail has a **Library** section: one summary row per copy of
+  the game. Every act on one copy is its own page.
 - The Games tab has an **Access** column, off by default, and two facets,
   access and format.
 - **Add to library** is a page, reached from the Library tab and from the
@@ -223,13 +223,15 @@ game's status) and a fact without one reads the creation's payload (a
 copy's access, format and note). `batch_fact_changes` for a game and a
 new reader for a copy call it; P5's purchase edit is the third caller.
 
-**Row menu** (`games/views/entry_menu.py`): Edit, End access or Resume
-(whichever applies), Remove. Edit, End access and Resume link to the
-game's page with that form open; Remove links to the confirmation. The
+**Row menu** (`games/views/entry_menu.py`): the Game detail row's acts,
+Edit, End access or Edit end and Resume, and Remove, each linking to its
+page with the tab as origin, so a save returns to the tab. The
 trigger reads "<game> (<platform>) actions", "Unspecified" where the
 Release names no platform.
 
-**Game detail** gains View all, to the tab filtered to the game.
+**Game detail** gains View all, `_game_section`'s own button, to the tab
+filtered to the game. The Library column **Note**, hidden by default,
+and the row's detail show a copy's note.
 
 ## 3. The Games tab
 
@@ -318,5 +320,5 @@ Each PR changes the exact lists its additions join:
   temporal field inside it; add, end, resume and remove a copy; select two
   copies and edit them; filter the Games tab by access.
 - Orca checks added to #1335, each with a recipe: the badge's spoken
-  text, a card's buttons and disclosure, the Library tab's row menu.
+  text, a copy row's links and its pages, the Library tab's row menu.
 - Full `make check`.
