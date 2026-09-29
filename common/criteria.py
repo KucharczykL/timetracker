@@ -1050,6 +1050,8 @@ class FilterField:
 
     lookup: ORMLookup | None = None
     handler: FieldHandler | None = None
+    #: The timestamp column whose calendar day is compared.
+    day_of: ORMLookup | None = None
     # Human label for the field-metadata registry (``field_metadata``). Optional;
     # when None, the registry falls back to a title-cased field name.
     label: str | None = None
@@ -1080,6 +1082,10 @@ class FilterField:
         # misconfigured field fails on load rather than degrading at query/render.
         if self.lookup is not None and self.handler is not None:
             raise ValueError("FilterField takes lookup OR handler, not both")
+        if self.day_of is not None and (
+            self.lookup is not None or self.handler is not None
+        ):
+            raise ValueError("FilterField day_of stands alone: no lookup, no handler")
         if self.imperative and self.handler is not None:
             # ``to_q`` skips imperative fields, so the handler would never run.
             raise ValueError(
@@ -1108,9 +1114,21 @@ class FilterField:
                     "a column-backed field reads its own"
                 )
 
-    def to_q(self, attr_name: AttrName, criterion: _Criterion) -> Q:
+    def to_q(
+        self,
+        attr_name: AttrName,
+        criterion: _Criterion,
+        context: FilterQueryContext | None,
+    ) -> Q:
         if self.handler is not None:
             return self.handler(criterion)
+        if self.day_of is not None:
+            if not isinstance(criterion, DateCriterion):
+                raise FilterError(f"{attr_name} compares a day; state a date")
+            if context is None:
+                raise FilterQueryContextRequired("a day facet requires query context")
+            day = TruncDate(F(self.day_of), tzinfo=context.calendar_zone())
+            return criterion.to_q_on(day)
         return criterion.to_q(self.lookup or attr_name)
 
 
@@ -1750,7 +1768,7 @@ class OperatorFilter:
                 continue
             criterion = getattr(self, attr_name)
             if criterion is not None:
-                q &= descriptor.to_q(attr_name, criterion)
+                q &= descriptor.to_q(attr_name, criterion, context)
         if self.aggregates:
             model = self._comparison_model()
             if model is None:
@@ -2937,7 +2955,12 @@ def field_metadata(filter_cls: type[OperatorFilter]) -> list[FieldMeta]:
                 )
                 and model is not None
             ):
-                lookup = field_spec.metadata_lookup or field_spec.lookup or name
+                lookup = (
+                    field_spec.metadata_lookup
+                    or field_spec.day_of
+                    or field_spec.lookup
+                    or name
+                )
                 resolved_lookup = lookup
                 model_field = _resolve_model_field(model, lookup)
                 if model_field is None:

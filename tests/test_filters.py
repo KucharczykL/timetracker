@@ -5286,11 +5286,13 @@ class TestFilterField:
     """The descriptor's lookup/handler contract."""
 
     def test_plain_field_defaults_lookup_to_attr_name(self):
-        assert FilterField().to_q("name", StringCriterion(value="x")) == Q(name="x")
+        assert FilterField().to_q("name", StringCriterion(value="x"), None) == Q(
+            name="x"
+        )
 
     def test_lookup_override(self):
         assert FilterField("platform_id").to_q(
-            "platform", UUIDMultiCriterion(value=[GAME_UUID, OTHER_UUID])
+            "platform", UUIDMultiCriterion(value=[GAME_UUID, OTHER_UUID]), None
         ) == Q(platform_id__in=[GAME_UUID, OTHER_UUID])
 
     def test_lookup_and_handler_together_rejected(self):
