@@ -32,7 +32,8 @@ from zoneinfo import ZoneInfo
 
 from django.core.exceptions import FieldDoesNotExist
 from django.db import DataError, connection, models
-from django.db.models import Expression, F, Q
+from django.db.models import F, Q
+from django.db.models.expressions import Combinable
 from django.db.models.functions import ExtractYear, TruncDate
 from django.db.models.lookups import (
     Exact,
@@ -594,7 +595,7 @@ class DateCriterion(_ScalarCriterion):
             return Q(**{f"{field_name}__isnull": False})
         raise FilterError(f"Unsupported modifier {m} for date field")
 
-    def to_q_on(self, expression: Expression) -> Q:
+    def to_q_on(self, expression: Combinable) -> Q:
         """The same predicate over a day expression.
 
         A negated keyword lookup keeps NULL rows; `IsNull` says so here.
@@ -2172,8 +2173,8 @@ def _field_comparison_to_q(
     if granularity == "date":
         if day_zone is None:
             raise FilterQueryContextRequired("a day comparison requires query context")
-        left_day: Expression = F(left)
-        right_day: Expression = F(right)
+        left_day: Combinable = F(left)
+        right_day: Combinable = F(right)
         if left_group == "datetime":
             left_day = TruncDate(F(left), tzinfo=day_zone)
         if right_group == "datetime":
@@ -2204,7 +2205,7 @@ def _field_comparison_to_q(
     raise FilterError(f"Unsupported modifier {modifier} for field comparison")
 
 
-def _ordered_expression_q(left: Expression, right: Expression, modifier: Modifier) -> Q:
+def _ordered_expression_q(left: Combinable, right: Combinable, modifier: Modifier) -> Q:
     """`left <op> right` over two expressions."""
     if modifier == Modifier.EQUALS:
         return Q(Exact(left, right))
