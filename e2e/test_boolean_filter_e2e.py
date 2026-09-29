@@ -61,6 +61,13 @@ def _filter_from_url(url: str) -> dict:
     return json.loads(raw) if raw else {}
 
 
+def _open_mastered(page, url: str):
+    """Wide enough that Mastered sits in the row, not the overflow."""
+    page.set_viewport_size({"width": 1920, "height": 900})
+    page.goto(url)
+    page.locator("#quick-mastered-dropdownLink").click()
+
+
 def _submit(page):
     with page.expect_navigation():
         page.locator('quick-filter-bar button[type="submit"]').click()
@@ -78,8 +85,7 @@ def test_no_selection_omits_boolean_filters(live_server, page):
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_boolean_filter_e2e")
 def test_select_true_serializes_correctly(live_server, page):
-    page.goto(live_server.url + "/test-boolean-filter/")
-    page.locator("#quick-mastered-dropdownLink").click()
+    _open_mastered(page, live_server.url + "/test-boolean-filter/")
 
     page.locator('input[name="quick-mastered"][value="true"]').click()
     _submit(page)
@@ -90,8 +96,7 @@ def test_select_true_serializes_correctly(live_server, page):
 @pytest.mark.django_db
 @override_settings(ROOT_URLCONF="e2e.test_boolean_filter_e2e")
 def test_click_to_deselect_radio_works(live_server, page):
-    page.goto(live_server.url + "/test-boolean-filter/")
-    page.locator("#quick-mastered-dropdownLink").click()
+    _open_mastered(page, live_server.url + "/test-boolean-filter/")
 
     true_radio = page.locator('input[name="quick-mastered"][value="true"]')
 
