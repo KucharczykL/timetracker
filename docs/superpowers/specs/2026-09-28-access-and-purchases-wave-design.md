@@ -279,10 +279,15 @@ Every command runs under `answered()`, is fingerprinted for idempotency,
 resolves rows through `library_row`, carries a sentence on every refusal,
 and answers `Unchanged` ahead of every refusal, as the sibling aggregates
 do. Two endpoints on one row keep their order through one shared
-`endpoints_certainly_reversed`: an end certainly before the opening, a
-resume certainly before the standing end, and an opening correction
-certainly after a standing end are refused, each sentence naming the
-move; a refund before the purchased day is the same rule on Purchase.
+`certainly_reversed(*, earlier, later)` in `games/commands/endpoint.py`:
+an end certainly before the opening, a resume certainly before the
+standing end, and an opening correction certainly after a standing end
+are refused, each sentence naming the move; a refund before the
+purchased day is the same rule on Purchase. A write that restates several
+facts (`restate_entry`, and `restate_purchase` after it) refuses a
+reversed order against the day the row keeps before any dispatch, so a
+refused PATCH appends nothing; a void always dispatches, and the command
+decides under the lock.
 
 ### LibraryEntry
 
@@ -295,7 +300,7 @@ move; a refund before the purchased day is the same rule on Purchase.
 | `DescribeEntry` | `access_changed`, `format_changed`, `note_changed`, `release_changed`, one per differing fact | the new Release must be a live Release of the same game |
 | `CorrectEntryAcquisition` | `acquisition_corrected` | the opening endpoint's correction |
 | `EndEntryAccess`, `CorrectEntryAccessEnd`, `VoidEntryAccessEnd` | `access_ended`, `access_end_corrected`, `access_end_voided` | the primitive's three, with a `before_event` that refuses a removed entry; every way by hand, `refunded` included, since a person may state a refund no purchase records |
-| `ResumeEntryAccess` | `access_resumed` (note, `effective_time` the day) | refused with a sentence where no end stands, never `Unchanged`; the primitive's optional fourth act, in the end's family, projected as a void is |
+| `ResumeEntryAccess` | `access_resumed` (note, `effective_time` the day) | refused with a sentence where no end stands, never `Unchanged`; the fourth act of `ResumableEndpoint` over `ResumableEndpointEvents`, its own type beside the three-act `Endpoint`, in the end's family, projected as a void is, through `resume_endpoint`; a resume of a non-resumable endpoint and a void of an opening one fail in mypy |
 | `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal refuses while a live Purchase names the entry, with a sentence naming the move; restore refuses under a removed PlayerGame or Release |
 
 The referrer registry is `games/reads/referrers.py`: `BlockingReferrer.on`
@@ -630,8 +635,10 @@ inside a member says so in its body and closes with it.
   session and record forms, with the rule that a session names a Release
   only where the library holds an entry on it.
 - **Bulk end of access over entries** is #1355, beside #1345.
-- **#1344** copies `access_resumed`; **#1347** copies the opening
-  endpoint. **#1346** decides where a sale price lives; this wave puts no
+- **#1344** swaps the device's `endpoint_events(...)` for
+  `resumable_endpoint_events(..., resumed="library.device.access_resumed")`
+  and `Endpoint.over` for `ResumableEndpoint.resuming`, no primitive work;
+  **#1347** copies the opening endpoint. **#1346** decides where a sale price lives; this wave puts no
   money on an end.
 - **#782** maps IGDB `game_type` to `Game.kind` one to one and admits the
   remaining words.
