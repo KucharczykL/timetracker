@@ -41,7 +41,19 @@ def _ended(
 
 
 def _badge(*held: LibraryEntry, former: LibraryEntry | None = None) -> str:
-    return str(AccessBadge(AccessSummary(held, former), PRESENTATION))
+    return str(AccessBadge(AccessSummary(held, former), PRESENTATION, id="access-1"))
+
+
+def _panel(html: str) -> list[str]:
+    """The popover's lines."""
+    panel = html.split('role="tooltip"', 1)[1]
+    return re.findall(r"<li>([^<]*)</li>", panel)
+
+
+def _spoken(html: str) -> str:
+    spoken = re.search(r'<span class="sr-only">([^<]*)</span>', html)
+    assert spoken is not None
+    return spoken.group(1)
 
 
 def _glyphs(html: str) -> list[str]:
@@ -57,23 +69,29 @@ def _glyphs(html: str) -> list[str]:
 
 
 @pytest.mark.parametrize(
-    ("held", "filled", "glyphs", "words"),
+    ("held", "filled", "glyphs", "lines"),
     [
-        ((_held(),), True, ["cloud"], "Owned · Digital"),
-        ((_held(format="physical"),), True, ["physical"], "Owned · Physical"),
-        ((_held(format="unknown"),), True, ["unspecified"], "Owned · Unknown"),
+        ((_held(),), True, ["cloud"], ["Owned · Digital"]),
+        ((_held(format="physical"),), True, ["physical"], ["Owned · Physical"]),
+        ((_held(format="unknown"),), True, ["unspecified"], ["Owned · Unknown"]),
         (
             (_held(format="physical"), _held("borrowed")),
             True,
             ["cloud", "physical"],
-            "Owned · Physical, Borrowed · Digital",
+            ["Owned · Physical", "Borrowed · Digital"],
         ),
-        ((_held("borrowed"),), False, ["cloud"], "Borrowed · Digital"),
+        ((_held("borrowed"),), False, ["cloud"], ["Borrowed · Digital"]),
         (
             (_held("subscription"), _held("trial", "unknown")),
             False,
             ["cloud"],
-            "Subscription · Digital, Trial · Unknown",
+            ["Subscription · Digital", "Trial · Unknown"],
+        ),
+        (
+            (_held(), _held("rented", "physical"), _held()),
+            True,
+            ["cloud", "physical"],
+            ["2 × Owned · Digital", "Rented · Physical"],
         ),
     ],
     ids=[
@@ -83,21 +101,23 @@ def _glyphs(html: str) -> list[str]:
         "owned-and-borrowed",
         "borrowed",
         "unknown-beside-known",
+        "alike-copies-group",
     ],
 )
-def test_each_held_variant(held, filled, glyphs, words):
+def test_each_held_variant(held, filled, glyphs, lines):
     html = _badge(*held)
 
     assert ("solid-brand" in html) is filled
     assert _glyphs(html) == glyphs
-    assert f'title="{words}"' in html
-    assert f'<span class="sr-only">{words}</span>' in html
+    assert _panel(html) == lines
+    assert _spoken(html) == ", ".join(lines)
+    assert "title=" not in html
 
 
 def test_the_number_counts_held_copies_above_one():
     assert '<span aria-hidden="true">3</span>' in _badge(_held(), _held(), _held())
     single = _badge(_held())
-    assert '<span aria-hidden="true">' not in single
+    assert '<span aria-hidden="true">1</span>' not in single
     assert "None" not in single
 
 
@@ -106,14 +126,14 @@ def test_a_former_copy_is_outlined_with_its_way_and_day():
 
     assert "solid-brand" not in html
     assert _glyphs(html) == ["physical"]
-    assert 'title="Not owned · formerly owned · physical, sold 2023"' in html
-    assert '<span aria-hidden="true">' not in html
+    assert _panel(html) == ["Not owned", "Formerly owned · physical, sold 2023"]
+    assert not re.search(r'<span aria-hidden="true">\d', html)
 
 
 def test_a_former_copy_on_an_unknown_day_names_its_way_alone():
     html = _badge(former=_ended(way="returned", ended=None))
 
-    assert 'title="Not owned · formerly owned · digital, returned"' in html
+    assert _panel(html) == ["Not owned", "Formerly owned · digital, returned"]
 
 
 def test_every_glyph_is_hidden_and_untitled():
@@ -123,3 +143,12 @@ def test_every_glyph_is_hidden_and_untitled():
     assert len(svgs) == 2
     assert all('aria-hidden="true"' in svg for svg in svgs)
     assert "<title>" not in html
+
+
+def test_the_badge_is_the_popovers_button_named_by_its_words():
+    html = _badge(_held(), _held())
+
+    button = re.search(r"<button[^>]*>", html).group(0)
+    assert "data-pop-over-trigger" in button
+    assert "aria-describedby" not in button
+    assert _spoken(html) == "2 × Owned · Digital"

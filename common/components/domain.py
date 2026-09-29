@@ -1,6 +1,7 @@
 """Domain components for games / purchases / sessions."""
 
 import logging
+from collections import Counter
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
@@ -106,41 +107,56 @@ def _copy_words(entry: LibraryEntry) -> str:
     return f"{EntryAccess(entry.access).label} · {EntryFormat(entry.format).label}"
 
 
-def _access_words(summary: AccessSummary, presentation: DateTimePresentation) -> str:
+def _access_lines(
+    summary: AccessSummary, presentation: DateTimePresentation
+) -> list[str]:
+    """One line per kind of held copy, or what the latest end says."""
     if summary.held:
-        return ", ".join(_copy_words(entry) for entry in summary.held)
+        kinds = Counter(_copy_words(entry) for entry in summary.held)
+        return [
+            words if count == 1 else f"{count} × {words}"
+            for words, count in kinds.items()
+        ]
     former = summary.former
     if former is None:
         raise ValueError("A summary holds a copy or names a former one.")
-    words = f"Not owned · formerly {_copy_words(former).lower()}"
+    words = f"Formerly {_copy_words(former).lower()}"
     ended = stated(former, ENTRY_ACCESS_END)
-    if ended is None:
-        return words
-    words = f"{words}, {END_WAY_LABELS[way_of(ended)].lower()}"
-    if ended.when is None:
-        return words
-    return f"{words} {present_temporal_value(ended.when, presentation)}"
+    if ended is not None:
+        words = f"{words}, {END_WAY_LABELS[way_of(ended)].lower()}"
+        if ended.when is not None:
+            words = f"{words} {present_temporal_value(ended.when, presentation)}"
+    return ["Not owned", words]
 
 
-def AccessBadge(summary: AccessSummary, presentation: DateTimePresentation) -> Node:
+def AccessBadge(
+    summary: AccessSummary, presentation: DateTimePresentation, *, id: str
+) -> Node:
     """Fill: owned now. Glyph: format. Number: copies held."""
     shown = summary.held or ((summary.former,) if summary.former else ())
     formats = {entry.format for entry in shown}
     glyphs = [glyph for word, glyph in _FORMAT_GLYPHS if word in formats]
-    words = _access_words(summary, presentation)
+    lines = _access_lines(summary, presentation)
     held = len(summary.held)
-    return Span(
-        class_=f"{_ACCESS_BADGE_CLASS} {_ACCESS_BADGE_FILL[summary.owned_now]}",
-        title=words,
-    )[
-        #: Whole pixels: a fractional glyph rounds apart from the border.
-        *(
-            Icon(glyph, size=_ACCESS_GLYPH_SIZE, decorative=True)
-            for glyph in glyphs or ["unspecified"]
+    return Popover(
+        popover_content=Ul(class_="space-y-0.5")[*(Li()[line] for line in lines)],
+        wrapped_classes=(
+            f"{_ACCESS_BADGE_CLASS} {_ACCESS_BADGE_FILL[summary.owned_now]}"
         ),
-        *([Span(aria_hidden="true")[str(held)]] if held > 1 else []),
-        Span(class_="sr-only")[words],
-    ]
+        children=[
+            #: Whole pixels: a fractional glyph rounds apart from the border.
+            *(
+                Icon(glyph, size=_ACCESS_GLYPH_SIZE, decorative=True)
+                for glyph in glyphs or ["unspecified"]
+            ),
+            *([Span(aria_hidden="true")[str(held)]] if held > 1 else []),
+            #: The button's name; the panel repeats it for the eye alone.
+            Span(class_="sr-only")[", ".join(lines)],
+        ],
+        id=id,
+        symbol_trigger=True,
+        describedby=False,
+    )
 
 
 def GameLink(

@@ -182,10 +182,14 @@ _RefreshingSection = custom_element_builder("refreshing-section")
 
 
 def _access_cell(
-    summary: AccessSummary | None, presentation: DateTimePresentation
+    game_id: UUID,
+    summary: AccessSummary | None,
+    presentation: DateTimePresentation,
 ) -> Cell:
     """No badge without a live copy."""
-    return "" if summary is None else AccessBadge(summary, presentation)
+    if summary is None:
+        return ""
+    return AccessBadge(summary, presentation, id=f"access-{game_id}")
 
 
 def _wikidata_cell(provider_key: str) -> Cell:
@@ -312,7 +316,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                     csrf_token,
                     current=game.tracked_status,
                 ),
-                _access_cell(summaries.get(game.pk), presentation),
+                _access_cell(game.pk, summaries.get(game.pk), presentation),
                 _wikidata_cell(game.wikidata),
                 presentation.format(game.created_at, "date"),
                 "Excluded" if game.tracked_excluded_from_unfinished else "",
