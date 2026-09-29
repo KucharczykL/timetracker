@@ -17,7 +17,11 @@ from django.utils import timezone
 from common.components.icons_generated import ICON_NODES
 from common.criteria import FilterError, declared_through_paths, resolve_through_path
 from common.platform_icons import PLATFORM_ICONS, PlatformIcon
-from games.endpoint_fields import EndpointColumns, endpoint_constraints
+from games.endpoint_fields import (
+    EndpointColumns,
+    OpeningEndpointColumns,
+    endpoint_constraints,
+)
 from games.endpoints import ENDPOINTS
 from games.models import ProjectionModel
 from games.projections import (
@@ -405,6 +409,9 @@ def endpoint_errors(
         for constraint in endpoint_constraints(endpoint)
         if held.get(constraint.name) != constraint
     )
+    marker = declared.get(endpoint.marker)
+    if isinstance(endpoint, OpeningEndpointColumns) and getattr(marker, "null", True):
+        problems.append("its marker admits null")
     return [_endpoint_error(endpoint, problem, model) for problem in problems]
 
 

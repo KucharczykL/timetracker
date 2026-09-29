@@ -24,7 +24,7 @@ from weakref import WeakKeyDictionary
 
 from django.apps import apps
 
-from games.endpoint_fields import EndpointColumns
+from games.endpoint_fields import EndpointColumns, OpeningEndpointColumns
 from games.events.envelope import RecordedEvent
 from games.events.targets import LIVE_TARGET, ProjectionTarget
 from games.events.vocabulary import EventSpec, EventType
@@ -408,6 +408,16 @@ class Projector(ABC):
     def project_voided(self, endpoint: EndpointColumns, event: RecordedEvent) -> None:
         """The record taken back."""
         self.amend(_endpoint_model(endpoint), event, **endpoint.unstated_columns())
+
+    def opening_columns(
+        self, endpoint: OpeningEndpointColumns, event: RecordedEvent, *, note: str
+    ) -> dict[str, Any]:
+        """What a creation spreads into `project()`."""
+        return {
+            endpoint.when: event.effective_time,
+            endpoint.marker: event.recorded_at,
+            endpoint.note: note,
+        }
 
     def __init_subclass__(
         cls,

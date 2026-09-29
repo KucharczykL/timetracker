@@ -62,6 +62,18 @@ class EndpointColumns:
         return columns
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class OpeningEndpointColumns(EndpointColumns):
+    """Stated by the creation; corrected; never voided."""
+
+    def __post_init__(self) -> None:
+        if self.way is not None:
+            raise TypeError("An opening endpoint states no way.")
+
+    def unstated_columns(self) -> dict[ColumnName, Any]:
+        raise TypeError("An opening endpoint is never unstated.")
+
+
 _BOUND_EXPRESSIONS: dict[BoundSide, type[models.Func]] = {
     "lower": TemporalLowerBound,
     "upper": TemporalUpperBound,
@@ -88,6 +100,11 @@ def endpoint_bound(when: str, side: BoundSide) -> models.GeneratedField:
 def endpoint_marker() -> models.DateTimeField:
     """First recorded; null is no act."""
     return models.DateTimeField(null=True, default=None, editable=False)
+
+
+def opening_marker() -> models.DateTimeField:
+    """First recorded; every row holds the act."""
+    return models.DateTimeField(editable=False)
 
 
 def endpoint_note() -> models.TextField:

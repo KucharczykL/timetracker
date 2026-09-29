@@ -6,9 +6,9 @@ from typing import Any
 from django.apps import apps
 from django.db import models
 
-from games.endpoint_fields import EndpointColumns
+from games.endpoint_fields import EndpointColumns, OpeningEndpointColumns
 from games.events.device import DEVICE_ACCESS_END_EVENTS
-from games.events.endpoint import EndpointEvents
+from games.events.endpoint import EndpointEvents, OpeningEndpointEvents
 from games.events.playthrough import (
     PLAYTHROUGH_COMPLETION_EVENTS,
     PLAYTHROUGH_START_EVENTS,
@@ -24,6 +24,27 @@ class Endpoint(EndpointColumns):
 
     @classmethod
     def over(cls, columns: EndpointColumns, events: EndpointEvents[Any]) -> Endpoint:
+        """Columns joined with their events."""
+        return cls(
+            **{field.name: getattr(columns, field.name) for field in fields(columns)},
+            events=events,
+        )
+
+    @property
+    def model(self) -> type[models.Model]:
+        return apps.get_model(self.model_label)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class OpeningEndpoint(OpeningEndpointColumns):
+    """One opening endpoint's columns and its correction."""
+
+    events: OpeningEndpointEvents[Any]
+
+    @classmethod
+    def over(
+        cls, columns: OpeningEndpointColumns, events: OpeningEndpointEvents[Any]
+    ) -> OpeningEndpoint:
         """Columns joined with their events."""
         return cls(
             **{field.name: getattr(columns, field.name) for field in fields(columns)},
@@ -59,7 +80,7 @@ PLAYTHROUGH_COMPLETION = Endpoint(
 
 DEVICE_ACCESS_END = Endpoint.over(DEVICE_ACCESS_END_COLUMNS, DEVICE_ACCESS_END_EVENTS)
 
-ENDPOINTS: tuple[Endpoint, ...] = (
+ENDPOINTS: tuple[Endpoint | OpeningEndpoint, ...] = (
     PLAYTHROUGH_START,
     PLAYTHROUGH_COMPLETION,
     DEVICE_ACCESS_END,
