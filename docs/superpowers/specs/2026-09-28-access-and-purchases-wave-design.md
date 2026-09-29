@@ -313,7 +313,7 @@ until P1.
 | `RecordPurchase` | `purchase.created` (entry, kind, name, amount, currency, note, `effective_time` the purchased day) | names an existing entry, or carries a new entry's fields and emits `libraryentry.created` first in the same dispatch, tracking an untracked game ahead of it the way `RecordEntry` does; currency required exactly where an amount is stated |
 | `DescribePurchase` | `kind_changed`, `name_changed`, `amount_changed` (amount and currency, one fact), `note_changed`, `entry_changed` | the new entry must be a live entry of the same game |
 | `CorrectPurchaseDay` | `purchase_day_corrected` | the opening endpoint's correction |
-| `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund` | `refunded`, `refund_corrected`, `refund_voided` | the primitive; a refund also appends `libraryentry.access_ended` with way `refunded` on the entry where it is Owned, live and unended, in the same dispatch, as the reclassification writes a second aggregate; the void takes that end back only where the entry's marker is still set and its latest end-family event is the refund's own |
+| `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund` | `refunded`, `refund_corrected`, `refund_voided` | the primitive; a refund also appends `libraryentry.access_ended` with way `refunded` on the entry where it is Owned, live and unended, in the same dispatch, as the reclassification writes a second aggregate, and a refund whose day certainly precedes the entry's acquired day is refused whole with a sentence naming the move (correct the acquired day first), never appended with the coupling skipped; the void takes that end back only where the entry's marker is still set and its latest end-family event is the refund's own |
 | `RemovePurchase`, `RestorePurchase` | `removed`, `restored` | the removal is the charter's void; the stream keeps the money; restore refuses under a removed entry |
 
 ### PlayerGame and catalog
@@ -604,8 +604,16 @@ inside a member says so in its body and closes with it.
   person is never blocked, but a pass on a game the library does not own
   is recorded as owning it.
 - **One end per entry at a time.** The projection holds the latest end;
-  the stream holds them all. A list of a copy's lendings is a stream read
-  nothing renders yet.
+  the stream holds them all, and a resume leaves nothing on the row. So
+  the day-order rules see only what the row holds: after an end and a
+  resume, a new end dated between them passes, and so does an
+  acquisition correction dated after the resumed end. An end the copy
+  resumed from can no longer be corrected or voided, and a mistaken
+  resume is taken back by stating the end again. A list of a copy's
+  lendings is a stream read nothing renders yet. The cost of lifting it
+  is a `resumed` day with bounds, held until the next end clears it,
+  which would floor the next end and an acquisition correction and make
+  the resumed end correctable again.
 - **Demo play before #1354.** A session is demo play through the
   Release it names, and no session names one until #1354; until then a
   demo session is a session on the game's run, counted everywhere.
