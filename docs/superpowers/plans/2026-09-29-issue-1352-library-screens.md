@@ -39,9 +39,21 @@ them.
 
 ## PR 1: Game detail and the forms
 
-> Superseded in review: the section is summary rows and every act is its
-> own page. The spec's "One page per act" holds the rules; the disclosure
-> tasks below record what was first built.
+> Superseded in review: the section is summary rows on a panel, each
+> with a one-click split button and Undo, details on optional pages. The
+> spec's "One click, then Undo" and "Details, when wanted" hold the rules.
+> Rework tasks, in order:
+>
+> 1. `EndWay.UNSTATED` ("Not said") in `ENTRY_WAYS` and `EntryWayValue`;
+>    migration for the way CHECK.
+> 2. `SECTION_SURFACE_CLASS` lifted from `_section_panel`;
+>    `SummaryRow(control=…)`; `AddForm(submit_label=…, cancel_url=…)`.
+> 3. One-click routes (add, end, resume) and Undo routes (remove, void,
+>    re-end); the Undo of a resume reads the end the resume took back
+>    from the copy's events.
+> 4. Split buttons on the rows and the section; the page labels and
+>    fields renamed (Version, Got it as, Got it on, What happened, When).
+> 5. The Library tab's row menu takes the same acts (PR 2).
 
 This branch (`claude/issue-1352-planning-2c9581`), whose first commits
 are the spec and this plan; PR 1 carries them.

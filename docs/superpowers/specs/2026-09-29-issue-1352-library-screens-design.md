@@ -49,73 +49,89 @@ full gate, in this order. Nothing in a PR links to a route a later PR adds.
 
 ### The section
 
+A player thinks in two states, have it and no longer have it; details
+are optional. The screens say that and nothing of the event model.
+
 `_library_section` in `games/views/game.py` sits above Purchases and is
-one `_game_section`: heading "Library" with a count of live copies, an
-Add button, and "Nothing in your library yet." when empty. Its body is a
-`SummaryList` of one `SummaryRow` per copy (`copy_rows` in
-`games/views/library_cards.py`), the library kit's shape; the section
-invents no markup. A row's label is the Release (platform, "Unspecified"
-where it names none, then the edition where it has a name); its
-subtitle is access, format, "since <acquired>", and for an ended copy
-"<Way> <day>"; its detail is the copy's note. Its actions are links:
-Edit, End access and Remove on a held copy; Edit, Edit end, Resume and
-Remove on an ended one. The row has room below for P5's purchases.
+one `_game_section` on the Library page's section surface
+(`SECTION_SURFACE_CLASS`, lifted out of `_section_panel` in
+`common/components/sectioned_page.py`): heading "Library" with a count
+of live copies, View all, an **Add to library** split button, and
+"Nothing in your library yet." when empty. Its body is a `SummaryList`
+of one `SummaryRow` per copy (`copy_rows` in
+`games/views/library_cards.py`); the section invents no markup. A row's
+label is the version (platform, "Unspecified" where it names none, then
+the edition where it has a name); its subtitle is access, format,
+"since <acquired>", and for an ended copy "<Way> <day>"; its detail is
+the copy's note. The row has room below for P5's purchases.
 
-The section reads `game_entries(...)` with `select_related` of the
-Release, its Edition and its Platform; a test pins the query count over
-several copies.
+Each row carries one split button (`SplitButtonDropdown`, the kit's
+`SummaryRow` gaining a `control` slot) and two links:
 
-### One page per act
+| Copy | Button, one click | ▾ menu | Links |
+|---|---|---|---|
+| held | **I no longer have it** | …and add details | Edit details, Remove |
+| ended | **I have it again** | …and add details · Edit how it left | Edit details, Remove |
 
-Every act is its own page, as every other add and edit in the app is:
-`AddForm` over `FormFields`, titled "<Act> - <game> (<release>)". A GET
-renders the page; a valid POST writes and returns through `return_url`,
-falling back to Game detail; an invalid form renders again at 200; a
-refused command renders again at the refusal's `status_code`, its
-sentence in a toast; a row the library does not hold is 404. Every link
-to a page carries `action_url(..., origin=...)`. #1385 later opens these
-pages in a dialog (#1384); the pages stay the source of truth.
+The section's **Add to library** adds a copy in one click with the
+game's default version, Owned, Digital, today; its ▾ opens **…with
+details**, the Add page.
 
-| Act | Route | Write |
+### One click, then Undo
+
+A one-click act is a POST with a submission key, so a double click
+records once. It states today (`request_calendar_today`) and returns
+to its origin with an Undo toast (`UndoOffer`), as every removal does:
+
+| One click | States | Undo |
 |---|---|---|
-| Add | `game/<game>/library/add` | `record_entry` |
-| Edit | `library/<entry>/edit` | `restate_entry` |
-| End access | `library/<entry>/end` | `end_entry_access`, new |
-| Edit end | `library/<entry>/end/edit` | `restate_entry(access_end=...)` |
-| Resume | `library/<entry>/resume` | `resume_entry_access` |
-| Remove | `library/<entry>/remove` | `confirm_and_remove(action=partial(remove_entry, …))` |
-| Restore | `library/<entry>/restore` | `restore_and_return`, `restore_entry` |
+| Add to library | `record_entry`: default version, Owned, Digital, today | removes the copy |
+| I no longer have it | `end_entry_access`: way **Not said**, today | voids the end |
+| I have it again | `resume_entry_access`: today | states the end the resume took back again |
 
-Add and Edit state the copy's own facts, grouped by space alone into
-what the copy is (Release, format), how it is had (access, acquired),
-and its note. Each group is a `FormFieldGroup` whose legend is hidden
-(`legend_hidden`), so a screen reader still names it. Format is a radio
-list. Add defaults access to Owned, format to Digital, acquired to
-`request_calendar_today(request, library)`, and the Release to the
-game's default one, first in `game_releases`' order.
+A mistaken click is undone from the toast, so the void has no control
+of its own: "It didn't end" is gone. **Not said** is a new way,
+`EndWay.UNSTATED`, in `ENTRY_WAYS` and the event's `EntryWayValue`; a
+one-click end states it, since any other way would be a fact nobody
+stated.
 
-The end lives on its own pages, which the rarer act earns. End access
-states way, day and note on a held copy. Edit end restates a standing
-end's way, day and note, and its "It didn't end" button voids it, for an
-end stated by mistake; a copy that came back is Resume's act, a dated
-fact the history keeps. End access on an ended copy redirects to Edit
-end, and Edit end on a held copy to End access.
+### Details, when wanted
+
+Each act's details are a page, as every other add and edit in the app
+is: `AddForm` over `FormFields`, titled with the act, the game and the
+version, its button named for the act (`AddForm(submit_label=…)`), with
+a **Cancel** link to its origin. A GET renders the page; a valid POST
+returns to its origin; an invalid form or a refusal renders the page
+again, the refusal's sentence in a toast; a row the library does not
+hold is 404. #1385 later opens these pages in a dialog (#1384).
+
+| Page | Route | Fields | Button |
+|---|---|---|---|
+| Add to library | `game/<game>/library/add` | Version, Format, Got it as, Got it on, Note | Add to library |
+| Edit details | `library/<entry>/edit` | the same five | Save |
+| I no longer have it | `library/<entry>/end` | What happened (Not said first), When, Note | Save |
+| Edit how it left | `library/<entry>/end/edit` | the same three | Save |
+| I have it again | `library/<entry>/resume` | When, Note | Save |
+
+The five copy fields group by space alone, what the copy is (Version,
+Format) and how it is had (Got it as, Got it on), then its note: each
+group a `FormFieldGroup` with `legend_hidden`, so a screen reader still
+names it. Format is a radio list. The one-click routes and Undo routes
+sit beside these; Remove keeps the one confirmation page every removal
+has, and offers Undo.
 
 Add, End access and Resume carry a submission key
-(`form.submission_key()`), as the device form does, so a double press
-is absorbed, not refused. End access, Edit end and Resume post the end
-marker the page rendered, as `DeviceForm` posts `access_end_seen`, and
-refuse with `CHANGED_SINCE_OPENED` where the row moved since. A press
-whose submission key already ran skips that check, so its repeat
-replays rather than reading its own write as another tab's.
+(`form.submission_key()`), so a double press is absorbed, not refused.
+End access, Edit how it left and Resume post the end marker the page
+rendered and refuse with `CHANGED_SINCE_OPENED` where the row moved
+since; a press whose key already ran replays instead.
 
 `end_entry_access` in `games/writes/libraryentry.py` dispatches
 `EndEntryAccess` alone under an idempotency key, so a second tab is
 refused rather than correcting the end, which `restate_entry`'s
 `endpoint_move` would do. Restore resolves a removed entry through a
 library-scoped plain-manager lookup, since `library_entries` excludes it.
-Every route is classified in `games/views/returns.py`. Remove keeps the
-one confirmation page every removal has, and offers Undo.
+Every route is classified in `games/views/returns.py`.
 
 ### The Release picker
 
