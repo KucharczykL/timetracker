@@ -51,6 +51,8 @@ These reads use the order, among others:
   runs of two tied games do not mix.
 
 - The stats games card, `games_by_playtime_queryset`. Playtime comes first.
+- The games list's `kind` sort, after the kind, and a game's add-ons,
+  `tracked_addons`.
 
 `_game_first` in `games/sorting.py` makes a `SortSpec` that starts with the
 game order.

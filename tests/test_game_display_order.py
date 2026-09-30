@@ -253,7 +253,7 @@ def test_record_name_sort_reads_display_order(owned_library, games, sort):
     ) == _directed([game.id for game in games], sort)
 
 
-@pytest.mark.parametrize("sort", ["sort_name", "-sort_name"])
+@pytest.mark.parametrize("sort", ["sort_name", "-sort_name", "kind", "-kind"])
 def test_game_sort_name_sort_reads_display_order(owned_library, games, sort):
     queryset = Game.objects.filter(library=owned_library)
     assert _sorted_column(queryset, sort, GAME_SORTS, "id") == _directed(
