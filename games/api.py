@@ -60,6 +60,7 @@ from games.events.idempotency import IdempotencyKey
 from games.events.libraryentry import EntryWayValue
 from games.filters import (
     MODE_PARSERS,
+    GameFilter,
     filter_for_model,
     filter_query_context_for_library,
     filter_queryset_for_library,
@@ -1526,7 +1527,7 @@ def filter_count(request, model: str, filter: str = ""):
         # contract of not masking genuine wiring bugs.
         raise HttpError(400, f"Unknown model: {model!r}") from exc
     library = cast(User, request.user).library
-    queryset = filter_queryset_for_library(model, library)
+    parsed = None
     if filter:
         # "" -> None (count all); "{}" -> an all-None filter whose to_q() is an
         # empty Q() (also counts all). A present-but-invalid filter -> 400.
@@ -1540,12 +1541,16 @@ def filter_count(request, model: str, filter: str = ""):
                 exc,
             )
             raise HttpError(400, f"Invalid filter: {exc}") from exc
-        if parsed is not None:
-            queryset = execute_filter(
-                parsed,
-                queryset,
-                filter_query_context_for_library(library),
-            )
+    #: The Game list's base reads the filter.
+    queryset = filter_queryset_for_library(
+        model, library, parsed if isinstance(parsed, GameFilter) else None
+    )
+    if parsed is not None:
+        queryset = execute_filter(
+            parsed,
+            queryset,
+            filter_query_context_for_library(library),
+        )
     return {"count": queryset.count()}
 
 

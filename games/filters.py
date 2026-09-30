@@ -10,7 +10,7 @@ with AND/OR/NOT composition and typed criterion fields.
 """
 
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from functools import cache
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal, NamedTuple
 
@@ -171,6 +171,14 @@ def held_entry_word_handler(column: HeldEntryColumn) -> FieldHandler:
     return handler
 
 
+#: The Game columns that choose the Games list's base.
+ADDON_FIELDS: Final = ("kind", "parent")
+
+
+def _names_addon_column(column: str) -> bool:
+    return column.split("__", 1)[0] in ADDON_FIELDS
+
+
 def _word_choices(words: type[TextChoices]) -> tuple[ChoiceMeta, ...]:
     return tuple(
         ChoiceMeta(value=str(value), label=str(label)) for value, label in words.choices
@@ -211,6 +219,9 @@ class GameFilter(OperatorFilter):
     #: The held copies' words.
     access: ChoiceCriterion | None = None
     format: ChoiceCriterion | None = None
+    #: Naming either lists add-ons beside main games.
+    kind: ChoiceCriterion | None = None
+    parent: UUIDMultiCriterion | None = None  # Game ids
 
     # Aggregates over the game's relations (count / sum / avg). The reducer +
     # relation accessor + source + unit live in ``GameFilter.aggregates`` (the
@@ -287,6 +298,10 @@ class GameFilter(OperatorFilter):
             choices=_word_choices(EntryFormat),
             nullable=True,
         ),
+        "kind": FilterField(label="Kind"),
+        "parent": FilterField(
+            "parent__id", search_url="/api/games/search", label="Add-on of"
+        ),
     }
     #: A person reads "copy", never "entry".
     labels: ClassVar[dict[str, str]] = {"entry_count": "Copies"}
@@ -301,6 +316,32 @@ class GameFilter(OperatorFilter):
         from games.models import Game
 
         return Game
+
+    def names_addon_fields(self) -> bool:
+        """Whether any level names a kind or a parent, `NOT` included."""
+        if self.kind is not None or self.parent is not None:
+            return True
+        if any(
+            _names_addon_column(comparison.left)
+            or _names_addon_column(comparison.right)
+            for comparison in self.field_comparisons
+        ):
+            return True
+        return any(
+            member.names_addon_fields() for member in (*self.AND, *self.OR, *self.NOT)
+        )
+
+    @classmethod
+    def every_kind(cls, **members: Any) -> GameFilter:
+        """Every kind of game, beside the members stated.
+
+        A link whose figure counts add-ons states this, or the list
+        it opens would show main games alone. Under an `OR`, state it
+        on each member: a node ORs its members with its own leaves.
+        """
+        from games.models import GameKind
+
+        return replace(cls.where(kind=list(GameKind.values)), **members)
 
     def narrowing(self) -> NarrowingClauses:
         """The clauses the Playtime column narrows by.
@@ -324,11 +365,15 @@ class GameFilter(OperatorFilter):
         return NarrowingClauses(sessions, records)
 
     def _states_a_leaf(self) -> bool:
-        """Any criterion or comparison at this level."""
+        """Any criterion or comparison at this level.
+
+        `kind` and `parent` choose the list's base and narrow no playtime.
+        """
         return any(
             getattr(self, f.name) is not None
             for f in fields(self)
-            if f.name not in ("AND", "OR", "NOT", "match", "field_comparisons")
+            if f.name
+            not in ("AND", "OR", "NOT", "match", "field_comparisons", *ADDON_FIELDS)
             and not f.name.endswith("_filter")
         ) or bool(self.field_comparisons)
 
@@ -1313,14 +1358,17 @@ def filter_for_model(model_name: ModelKey) -> type[OperatorFilter]:
     return globals()[f"{model.__name__}Filter"]
 
 
-def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> QuerySet:
+def filter_queryset_for_library(
+    model_name: ModelKey, library: UserLibrary, game_filter: GameFilter | None = None
+) -> QuerySet:
     """Return the explicit ownership base for a generic filter model.
 
     Most models reachable from the filter builder implement ``for_library``;
     notably, Platform uses the private-management scope here rather than
     ``visible_to`` because the destination list manages private Platforms only.
 
-    Game is one exception: its list counts the games this library tracks, so
+    Game is one exception: its list counts the games this library tracks,
+    main games alone unless `game_filter` names a kind or a parent, so
     counting anything else here would answer the builder's live count with a
     number the destination list cannot show. Playthrough is the other: its
     condition alias needs the viewer's clock. PlayerSession,
@@ -1337,13 +1385,14 @@ def filter_queryset_for_library(model_name: ModelKey, library: UserLibrary) -> Q
         Playthrough,
     )
     from games.reads.entries import library_entries
+    from games.reads.games_list import games_list_base
     from games.reads.historical_playtime_records import library_records
     from games.reads.player_sessions import library_sessions
     from games.reads.playthrough_runs import runs_with_condition
 
     model = apps.get_model("games", model_name)
     if model is Game:
-        return Game.objects.tracked_by(library)
+        return games_list_base(library, game_filter)
     if model is Playthrough:
         return runs_with_condition(library)
     if model is PlayerSession:

@@ -124,6 +124,7 @@ from games.reads.catalog_hierarchy import (
 from games.reads.entries import AccessSummary, access_summaries
 from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.game_departures import game_departures
+from games.reads.games_list import games_list_base
 from games.reads.historical_playtime_page import (
     listed_records,
     run_labels_for,
@@ -228,7 +229,7 @@ def games_for_list(
 
     One function, so the benchmark times the plan the page serves.
     """
-    games = Game.objects.tracked_by(library).select_related("platform")
+    games = games_list_base(library, game_filter).select_related("platform")
     #: Narrows the Playtime column; none counts all.
     clauses = NarrowingClauses(None, None)
     if game_filter is not None:
@@ -267,6 +268,7 @@ def game_list_columns(playtime_label: str) -> list[Column]:
         Column("Year", "year", priority=2, key="year"),
         Column(playtime_label, "filtered_playtime", priority=2, key="playtime"),
         Column("Status", "status", priority=3, key="status"),
+        Column("Kind", key="kind", hidden_by_default=True),
         Column("Access", key="access", hidden_by_default=True),
         Column("Wikidata", "wikidata", key="wikidata", hidden_by_default=True),
         Column("Created", "created", key="created", hidden_by_default=True),
@@ -326,6 +328,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                     csrf_token,
                     current=game.tracked_status,
                 ),
+                GameKind(game.kind).label,
                 _access_cell(game.pk, summaries.get(game.pk), presentation),
                 _wikidata_cell(game.wikidata),
                 presentation.format(game.created_at, "date"),

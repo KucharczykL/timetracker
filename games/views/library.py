@@ -32,7 +32,7 @@ from common.layout import render_page
 from common.returns import OriginUrl, UrlName, action_url
 from games.end_ways import END_WAY_LABELS
 from games.endpoints import DEVICE_ACCESS_END
-from games.filters import PurchaseFilter, filter_url
+from games.filters import GameFilter, PurchaseFilter, filter_url
 from games.forms import LibraryPreferencesForm
 from games.models import (
     Device,
@@ -52,10 +52,10 @@ from timetracker.settings_commands import SettingNamespace
 
 
 def _actions(
-    list_name: UrlName, add_name: UrlName, *, origin: OriginUrl
+    list_url: str, add_name: UrlName, *, origin: OriginUrl
 ) -> tuple[SummaryAction, ...]:
     return (
-        SummaryAction("Browse", reverse(list_name)),
+        SummaryAction("Browse", list_url),
         SummaryAction("Add", action_url(add_name, origin=origin)),
     )
 
@@ -96,6 +96,8 @@ def library(request: HttpRequest) -> HttpResponse:
     total_spent = not_refunded.aggregate(total=Sum(F("converted_price")))["total"] or 0
     currency = conversion.published_currency
     total_spent_value = f"{currency} {total_spent:,.2f}"
+    #: The count takes add-ons, thus the list it opens does too.
+    every_game = filter_url(GameFilter.every_kind())
     overview = Fragment(
         FactList(
             [
@@ -107,7 +109,7 @@ def library(request: HttpRequest) -> HttpResponse:
             ]
         ),
         StatisticGrid(
-            StatisticCard("Games", game_count, href=reverse("games:list_games")),
+            StatisticCard("Games", game_count, href=every_game),
             #: No link: the session list shows no record, so it sums less.
             StatisticCard(
                 "Playtime",
@@ -143,22 +145,24 @@ def library(request: HttpRequest) -> HttpResponse:
         SummaryRow(
             label="Games",
             subtitle="Games currently tracked in this library.",
-            value=SummaryValue(game_count, reverse("games:list_games")),
-            actions=_actions("games:list_games", "games:add_game", origin=origin),
+            value=SummaryValue(game_count, every_game),
+            actions=_actions(every_game, "games:add_game", origin=origin),
         ),
         SummaryRow(
             label="Platforms",
             subtitle="Platforms you added manually.",
             value=SummaryValue(platform_count, reverse("games:list_platforms")),
             actions=_actions(
-                "games:list_platforms", "games:add_platform", origin=origin
+                reverse("games:list_platforms"), "games:add_platform", origin=origin
             ),
         ),
         SummaryRow(
             label="Devices",
             subtitle="Hardware you use to play.",
             value=SummaryValue(device_count, reverse("games:list_devices")),
-            actions=_actions("games:list_devices", "games:add_device", origin=origin),
+            actions=_actions(
+                reverse("games:list_devices"), "games:add_device", origin=origin
+            ),
             detail=default_device_control,
         ),
     )

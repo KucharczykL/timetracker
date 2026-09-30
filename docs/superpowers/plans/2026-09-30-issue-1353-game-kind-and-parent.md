@@ -216,7 +216,7 @@ The Add-ons section:
 
 **Gotchas:**
 - `filter_queryset_for_library` is imported lazily in places; keep its two-argument calls working (`None` means the main-only base).
-- The stats links are `OR` trees. Put the `kind` leaf at the top level beside `OR`. The `narrowing()` skip is what keeps its sessions and records.
+- The stats links are `OR` trees. A node ORs its `OR` members with its own leaves, so a top-level `kind` beside `OR` matches every game. Put the `kind` leaf on each member. The `narrowing()` skip is what keeps its sessions and records.
 - The Library page count is `for_library`, and the link carries every kind. Do not change the figure.
 
 **Tests:**

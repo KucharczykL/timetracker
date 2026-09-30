@@ -642,6 +642,7 @@ class FacetOrderTest(SimpleTestCase):
             "platform",
             "access",
             "format",
+            "kind",
             "year_released",
             "playtime_hours",
             "mastered",

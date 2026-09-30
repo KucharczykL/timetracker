@@ -105,16 +105,16 @@ def sessions_for_platform(
 
 
 def games_in_month(year: int, month: int) -> GameFilter:
-    """A session or contained record that month."""
+    """A session or contained record that month, every kind."""
     last_day = monthrange(year, month)[1]
     start = f"{year}-{month:02d}-01"
     end = f"{year}-{month:02d}-{last_day:02d}"
     return GameFilter(
         OR=[
-            GameFilter(
+            GameFilter.every_kind(
                 session_filter=PlayerSessionFilter.where(day__between=(start, end))
             ),
-            GameFilter(
+            GameFilter.every_kind(
                 historical_playtime_filter=HistoricalPlaytimeFilter.where(
                     when__within=(start, end)
                 )
@@ -140,11 +140,11 @@ def records_for_game(game_id: UUID, year, label: str = "") -> HistoricalPlaytime
 
 
 def games_played(year) -> GameFilter:
-    """A session or record in scope (`total_games`)."""
+    """A session or record in scope (`total_games`), every kind."""
     return GameFilter(
         OR=[
-            GameFilter(session_filter=all_sessions(year)),
-            GameFilter(historical_playtime_filter=all_records(year)),
+            GameFilter.every_kind(session_filter=all_sessions(year)),
+            GameFilter.every_kind(historical_playtime_filter=all_records(year)),
         ]
     )
 
