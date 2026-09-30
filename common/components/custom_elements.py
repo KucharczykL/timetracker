@@ -939,6 +939,16 @@ DROPDOWN_ITEM_WITH_ICON_CLASS = f"{DROPDOWN_ITEM_CLASS} flex items-center gap-2"
 DANGER_ITEM_ICON_CLASS = "text-fg-danger"
 
 
+def _described(label: Child, description: str) -> Child:
+    """The item's words, a quieter line beneath where it says more."""
+    if not description:
+        return label
+    return Span(class_="flex flex-col")[
+        Span()[label],
+        Span(class_="text-type-micro italic text-body-subtle")[description],
+    ]
+
+
 def _item_children(label: Child, icon: str, danger: bool = False) -> list[Child]:
     """The item's words, behind its act's glyph."""
     if not icon:
@@ -1050,6 +1060,7 @@ def DropdownLinkItem(
     current: bool = False,
     icon: str = "",
     danger: bool = False,
+    description: str = "",
 ) -> Node:
     """A navigation menu item; ``danger`` colours the glyph."""
     attributes: list[tuple[str, str]] = [
@@ -1061,7 +1072,9 @@ def DropdownLinkItem(
     if current:
         attributes.append(("aria-current", "page"))
     return Li(role="presentation")[
-        ControlLink(attributes)[*_item_children(label, icon, danger)]
+        ControlLink(attributes)[
+            *_item_children(_described(label, description), icon, danger)
+        ]
     ]
 
 
@@ -1073,6 +1086,7 @@ def DropdownPostItem(
     hidden_fields: Node | None = None,
     icon: str = "",
     danger: bool = False,
+    description: str = "",
 ) -> Node:
     """A CSRF-protected POST action, as a menu item.
 
@@ -1091,8 +1105,41 @@ def DropdownPostItem(
                 role="menuitem",
                 tabindex="-1",
                 class_=_item_class(icon),
-            )[*_item_children(label, icon, danger)],
+            )[*_item_children(_described(label, description), icon, danger)],
         ]
+    ]
+
+
+def DropdownSubmenuItem(
+    label: Child, *, items: list[Node], id: str, icon: str = ""
+) -> Node:
+    """An item whose ``items`` open in a flyout beside the menu.
+
+    The flyout is a ``<drop-down submenu>``: it opens on hover and on the
+    arrow key towards it.
+    """
+    trigger = Button(
+        type="button",
+        role="menuitem",
+        tabindex="-1",
+        class_=f"{_item_class(icon)} w-full",
+    )[
+        *_item_children(label, icon),
+        Icon(
+            "arrowright",
+            [("aria-hidden", "true"), ("class", "ms-auto shrink-0 text-body-subtle")],
+            size="size-3.5",
+        ),
+    ]
+    return Li(role="presentation")[
+        _assemble(
+            _as_menu_trigger(trigger),
+            DropdownMenuPanel(items=items, menu_width=ROW_MENU_WIDTH),
+            id=id,
+            placement="right-start",
+            submenu=True,
+            wrapper_class="relative block",
+        )
     ]
 
 
@@ -1157,7 +1204,15 @@ def DropdownCheckItem(
 
 def DropdownDivider() -> Node:
     """A separator between groups of items."""
-    return Li(role="separator", class_="my-1 h-px bg-neutral-quaternary-medium")
+    #: Engraved, not drawn: a dark hairline over a faint highlight.
+    return Li(
+        role="separator",
+        class_=(
+            "mx-1 my-1.5 h-px bg-black/10 dark:bg-black/40 "
+            "shadow-[0_1px_0_rgb(255_255_255_/_0.7)] "
+            "dark:shadow-[0_1px_0_rgb(255_255_255_/_0.05)]"
+        ),
+    )
 
 
 # A registered client behavior name (see ts/elements/dropdown-behaviors.ts). Kept
@@ -1418,8 +1473,13 @@ def SplitButtonDropdown(
     #: The caret is a glyph alone; the menu's name names it too.
     caret_name: list[HTMLAttribute] = [("aria-label", aria_label)] if aria_label else []
     if caret_color is None:
+        #: A quiet primary keeps a quiet caret: its look and size follow.
         caret_button = ControlButton(
-            [("class", caret_focus), *caret_name], variant="outline"
+            [("class", caret_focus), *caret_name],
+            variant=primary.variant
+            if primary.variant in ("outline", "ghost")
+            else "outline",
+            size=primary.size,
         )[Icon("arrowdown")]
     else:
         caret_button = ControlButton(
@@ -1439,7 +1499,9 @@ def SplitButtonDropdown(
         id=id,
         placement=placement,
     )
-    return Div(class_="inline-flex items-stretch rounded-base shadow-2xs")[
+    #: A ghost has no edge for a shadow to lift; it would draw a stray line.
+    lift = "" if primary.variant == "ghost" else " shadow-2xs"
+    return Div(class_=f"inline-flex items-stretch rounded-base{lift}")[
         primary.with_shape(start_shape), dropdown
     ]
 

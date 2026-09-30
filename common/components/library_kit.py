@@ -195,10 +195,13 @@ class SummaryValue:
     href: str | None = None
 
 
-def SummaryList(*rows: Child) -> Node:
+def SummaryList(*rows: Child, labelled: bool = False) -> Node:
+    """Rows parted by a rule; ``labelled`` groups part by space alone."""
     return Div(
         data_summary_list="",
-        class_="flex flex-col divide-y divide-default-medium",
+        class_="flex flex-col gap-4"
+        if labelled
+        else "flex flex-col divide-y divide-default-medium",
     )[*rows]
 
 
@@ -221,17 +224,24 @@ def _summary_action_menu(
 def SummaryRow(
     *,
     label: str,
-    subtitle: str,
+    subtitle: Child,
     value: SummaryValue | None = None,
     actions: Sequence[SummaryAction] = (),
     detail: Child | None = None,
     control: Child | None = None,
+    dense: bool = False,
 ) -> Node:
-    """``control`` sits before the links, shown at every width."""
+    """``control`` sits before the links, shown at every width.
+
+    ``dense`` tightens a row that sits in a group.
+    """
     primary_children: list[Child] = [
         Div(class_="flex min-w-0 flex-col gap-1")[
-            P(class_="text-type-subheading text-heading")[label],
-            P(class_="text-type-body text-body")[subtitle],
+            #: A row inside a group leaves its name to the group.
+            *([P(class_="text-type-subheading text-heading")[label]] if label else []),
+            Div(
+                class_="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-type-body text-body"
+            )[subtitle],
         ]
     ]
     if value is not None:
@@ -279,8 +289,23 @@ def SummaryRow(
         )
     return Div(
         data_summary_row="",
-        class_="@container flex min-w-0 flex-col gap-3 py-4 first:pt-0 last:pb-0",
+        class_=(
+            "@container flex min-w-0 flex-col gap-3 py-1"
+            if dense
+            else "@container flex min-w-0 flex-col gap-3 py-4 first:pt-0 last:pb-0"
+        ),
     )[*row_children]
+
+
+def SummaryGroup(*, label: str, rows: Sequence[Child]) -> Node:
+    """A name over its rows, as a row's own label; each row states none.
+
+    Groups sit in a ``SummaryList(labelled=True)``, parted by space alone.
+    """
+    return Div(data_summary_group="", class_="flex flex-col")[
+        P(class_="text-type-subheading text-heading")[label],
+        *rows,
+    ]
 
 
 __all__ = [
@@ -291,6 +316,7 @@ __all__ = [
     "StatisticCard",
     "StatisticGrid",
     "SummaryAction",
+    "SummaryGroup",
     "SummaryList",
     "SummaryRow",
     "SummaryValue",

@@ -314,6 +314,16 @@ ICON_NODES: dict[str, Element] = {
         Circle([('cx', '12'), ('cy', '12'), ('r', '9'), ('stroke', 'currentColor'), ('stroke-width', '2')]),
         Path([('d', 'M5.636 18.364L18.364 5.636'), ('stroke', 'currentColor'), ('stroke-width', '2'), ('stroke-linecap', 'round')]),
     ],
+    'note': Svg(
+        [('viewBox', '0 0 24 24'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
+    )[
+        Title(
+            [],
+        )[
+            'Note',
+        ],
+        Path([('fill', 'currentColor'), ('fill-rule', 'evenodd'), ('d', 'M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm2 9v2h8v-2H8Zm0 4v2h6v-2H8Z')]),
+    ],
     'physical': Svg(
         [('x', '0px'), ('y', '0px'), ('viewBox', '0 0 512 512'), ('class', 'text-black dark:text-white w-4 h-4'), ('xmlns', 'http://www.w3.org/2000/svg')],
     )[

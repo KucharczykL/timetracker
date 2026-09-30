@@ -342,3 +342,48 @@ def test_a_linked_node_value_with_words_speaks_them():
 
     assert 'aria-label="242 hours"' in html
     assert "&lt;span" not in html
+
+
+def test_a_chip_is_a_static_tag_with_its_tone_and_glyph():
+    from common.components import Chip
+
+    html = str(Chip(tone="neutral", icon="note")["boxed"])
+
+    assert html.startswith("<span")
+    assert "bg-neutral-tertiary-medium text-body" in html
+    assert 'aria-hidden="true"' in html
+    assert "boxed" in html
+    assert "<button" not in html
+
+
+def test_a_pill_keeps_its_tone_through_the_chip():
+    from common.components import Pill
+
+    html = str(Pill(label="Done", kind="exclude"))
+
+    assert "bg-danger-soft" in html
+    assert "line-through" in html
+    assert "data-pill" in html
+
+
+def test_a_group_names_its_rows_once():
+    from common.components import SummaryGroup
+
+    html = str(
+        SummaryList(
+            SummaryGroup(
+                label="PS5",
+                rows=[
+                    SummaryRow(label="", subtitle="Owned", dense=True),
+                    SummaryRow(label="", subtitle="Borrowed", dense=True),
+                ],
+            ),
+            labelled=True,
+        )
+    )
+
+    assert html.count("PS5") == 1
+    assert html.count("data-summary-row") == 2
+    assert "divide-y" not in html
+    assert "text-type-subheading" in html
+    assert "py-1" in html

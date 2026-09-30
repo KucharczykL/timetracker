@@ -1156,6 +1156,14 @@ class ControlButton(BaseComponent):
             *self._caller_attributes,
         ]
 
+    @property
+    def variant(self) -> ButtonVariant:
+        return self._variant
+
+    @property
+    def size(self) -> ButtonSize:
+        return self._size
+
     def with_shape(self, shape: ButtonShape) -> ControlButton:
         """This button, restated with different corners — for a builder
         composing a row out of buttons it did not build.
@@ -1508,19 +1516,65 @@ def Radio(
 # to edge) and share the field's font (font-condensed here read as squashed next
 # to the un-condensed search box).
 #: max-w-full lets a narrow host truncate.
-_PILL_CLASS = (
+_CHIP_CLASS = (
     "inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded-base max-w-full"
 )
+
+type ChipTone = Literal["brand", "danger", "warning", "neutral"]
+
+_CHIP_TONE_CLASSES: dict[ChipTone, str] = {
+    "brand": "bg-brand-soft text-heading",
+    "danger": "bg-danger-soft text-fg-danger-strong",
+    "warning": "bg-warning-soft text-fg-warning",
+    "neutral": "bg-neutral-tertiary-medium text-body",
+}
+
+
+class Chip(BaseComponent):
+    """A static tag: tone, an optional leading glyph, and the ``[]`` slot.
+
+    ``Pill`` builds on it; a chip carries no hooks and no remove button.
+    """
+
+    def __init__(
+        self,
+        attrs: AttrsArg | None = None,
+        /,
+        *,
+        tone: ChipTone = "brand",
+        icon: str = "",
+        _children: Children = None,
+        **kwargs: object,
+    ) -> None:
+        self._attrs = [*_coerce_attrs(attrs), *_attrs_from_kwargs(kwargs)]
+        self._tone = tone
+        self._icon = icon
+        self._children = as_children(_children)
+
+    def __getitem__(self, children: Children) -> Chip:
+        return Chip(self._attrs, tone=self._tone, icon=self._icon, _children=children)
+
+    def render(self) -> Node:
+        glyph = (
+            [Icon(self._icon, [("aria-hidden", "true")], size="size-3 shrink-0")]
+            if self._icon
+            else []
+        )
+        return Span(
+            [("class", f"{_CHIP_CLASS} {_CHIP_TONE_CLASSES[self._tone]}"), *self._attrs]
+        )[*glyph, *self._children]
+
+
 _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
 
 type PillKind = Literal["include", "exclude", "modifier"]
 
 #: Each kind replaces the brand tone.
-_PILL_TONE_CLASSES: dict[PillKind | None, str] = {
-    None: "bg-brand-soft text-heading",
-    "include": "bg-brand-soft text-heading",
-    "exclude": "bg-danger-soft text-fg-danger-strong line-through",
-    "modifier": "bg-warning-soft text-fg-warning",
+_PILL_TONES: dict[PillKind | None, ChipTone] = {
+    None: "brand",
+    "include": "brand",
+    "exclude": "danger",
+    "modifier": "warning",
 }
 _PILL_GLYPHS: dict[PillKind | None, str] = {"include": "✓", "exclude": "✗"}
 
@@ -1547,7 +1601,7 @@ def Pill(
     it ``data-search-select-label`` for a template clone to fill.
     """
     baked: list[HTMLAttribute] = [
-        ("class", f"{_PILL_CLASS} {_PILL_TONE_CLASSES[kind]}"),
+        ("class", "line-through" if kind == "exclude" else ""),
         ("class", extra_class),
         ("data-pill", ""),
     ]
@@ -1574,7 +1628,7 @@ def Pill(
             )["×"]
         )
 
-    return Span(pill_attrs)[*children]
+    return Chip(pill_attrs, tone=_PILL_TONES[kind])[*children]
 
 
 # A small count/label badge (the brand-soft pill historically inlined in H1).
