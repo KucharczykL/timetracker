@@ -377,7 +377,7 @@ NO_RELEASE = "This game has no version yet; add one on the Add page."
 
 
 def _one_click_key(request: HttpRequest, act: SubmissionAct) -> IdempotencyKey:
-    """The press's key; a press without one is malformed."""
+    """The press's key; missing is malformed."""
     try:
         token = uuid.UUID(request.POST.get(SUBMISSION_FIELD, ""))
     except ValueError:

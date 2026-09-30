@@ -94,7 +94,7 @@ def release_on_platform(
     platform = _platform_named(library, platform_name.strip())
 
     def state() -> PlatformRelease:
-        #: Two create rows at once make one Release.
+        #: Concurrent creates make one Release.
         Game.objects.select_for_update().filter(pk=game.pk).first()
         edition = _default_edition(game)
         standing = _standing(edition, platform)
