@@ -336,11 +336,7 @@ class StringOption(Schema):  # SearchSelectOption with a string value (e.g. grou
 @game_router.get("/search", response=list[PickerOption])
 def search_games(request, q: str = "", limit: int = 10, kind: GameKind | None = None):
     library = cast(User, request.user).library
-    qs = (
-        Game.objects.visible_to(library)
-        .select_related("platform")
-        .order_by("sort_name")
-    )
+    qs = Game.objects.visible_to(library).select_related("platform").in_display_order()
     if kind is not None:
         qs = qs.filter(kind=kind)
     if q:

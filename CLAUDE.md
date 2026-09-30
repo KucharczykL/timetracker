@@ -447,9 +447,9 @@ docs/           — Additional documentation
   #711's summary naming the run, and Game detail offers Organize beside View
   all. No page judges whether a run is worth naming: a person who hides the
   column is named no run anywhere, the summary included. Both lists take a
-  `playthrough` sort key:
-  game, then a null-or-not numbering key, then `DISPLAY_ORDER_FIELDS`. That
-  is several `ORDER BY` terms under one key, which is why `SortSpec` states
+  `playthrough` sort key: the game's display order, then a null-or-not
+  numbering key, then the run's `DISPLAY_ORDER_FIELDS`
+  (`games/reads/playthrough_numbering.py`). That is several `ORDER BY` terms under one key, which is why `SortSpec` states
   `then`. Both branches write NULLS LAST, so the bucket and a run stating no
   start sort last in both directions. Contract is
   [The desktop Session organizer](docs/superpowers/specs/2026-09-21-issue-715-session-organizer-design.md)
@@ -1310,6 +1310,15 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   a session's `started`/`ended` read the row's own `day_zone`. Not covered:
   a UTC day (`timezone.now().date()`), a read inside a request, a test that
   pins `TIME_ZONE`, and the browser.
+- **A read that orders by game uses its display order** —
+  `Game.DISPLAY_ORDER_FIELDS` (`sort_name`, `name`, `id`), never
+  `sort_name` alone: tied games come back in plan order. Three spellings:
+  `in_display_order()` on a game queryset or related manager;
+  `game_display_order_through(path)` through a relation, a path with no
+  trailing `__` (`lookup` in `common/keyset.py`; `_game_first` in
+  `games/sorting.py` builds a `SortSpec`); `game_display_key` over loaded
+  rows (it reads a prefetch; `order_by()` does not). Contract is
+  [The game display order](docs/superpowers/specs/2026-09-30-issue-1392-game-display-order-design.md)
 - **Use `render_page()` not `render()`** for all full-page HTTP responses (import
   from `common.layout`).
 - **Build UI with Python components** from `common.components`, not raw HTML

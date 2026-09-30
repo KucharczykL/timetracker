@@ -1,6 +1,46 @@
-from django.test import SimpleTestCase
+import uuid
+from datetime import UTC, date, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import patch
 
-from games.models import Game, game_display_key
+import pytest
+from django.contrib.auth.models import User
+from django.test import SimpleTestCase, TestCase
+from django.urls import reverse
+from django.utils import timezone
+from entries import record_entry
+from game_display_order import tied_games
+from historical_playtime_rows import record_row
+from session_rows import timed_row
+
+from games.api import search_games
+from games.bulk_entries import entry_resolution
+from games.bulk_game_edit import game_edit_resolution
+from games.bulk_removal import game_resolution
+from games.bulk_runs import run_resolution
+from games.filters import FindFilter
+from games.forms import _game_options
+from games.models import (
+    Game,
+    HistoricalPlaytime,
+    LibraryEntry,
+    PlayerSession,
+    Playthrough,
+    PlaythroughKind,
+    Purchase,
+    game_display_key,
+    game_display_order_through,
+)
+from games.sorting import (
+    ENTRY_SORTS,
+    GAME_SORTS,
+    HISTORICAL_PLAYTIME_SORTS,
+    PLAYTHROUGH_SORTS,
+    SESSION_SORTS,
+    apply_sort,
+)
+from games.views.purchase import _refund
+from games.writes.answers import CONFLICT_STATUS, CommandFailed
 
 
 class GameDisplayOrderTest(SimpleTestCase):
@@ -19,3 +59,226 @@ class GameDisplayOrderTest(SimpleTestCase):
         self.assertEqual(
             sorted([later, earlier], key=game_display_key), [earlier, later]
         )
+
+
+class GameDisplayOrderReadsTest(TestCase):
+    def setUp(self):
+        self.library = User.objects.create_user(username="order").library
+
+    def test_related_manager_reads_in_display_order(self):
+        games = tied_games(self.library)
+        purchase = Purchase.objects.create(
+            library=self.library, date_purchased="2025-01-01", price_currency="USD"
+        )
+        purchase.games.set(games)
+        self.assertEqual(list(purchase.games.in_display_order()), games)
+
+    def test_order_through_a_relation(self):
+        self.assertEqual(
+            game_display_order_through("player_game__game"),
+            (
+                "player_game__game__sort_name",
+                "player_game__game__name",
+                "player_game__game__id",
+            ),
+        )
+
+
+class GameQuerysetsReadInDisplayOrderTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_superuser("order", "o@e.com", "pw")
+        self.client.force_login(self.user)
+        self.library = self.user.library
+        self.games = tied_games(self.library)
+        self.expected = [game.id for game in self.games]
+
+    def _bundle(self):
+        bundle = Purchase.objects.create(
+            library=self.library,
+            price=70,
+            price_currency="USD",
+            date_purchased=date(2025, 1, 1),
+            ownership_type=Purchase.DIGITAL,
+            type=Purchase.GAME,
+        )
+        bundle.games.set(reversed(self.games))
+        return bundle
+
+    def _games_of_new_purchases(self, excluding=None):
+        purchases = Purchase.objects.for_library(self.library).exclude(pk=excluding)
+        return [purchase.games.get().id for purchase in purchases.order_by("id")]
+
+    def test_search_answers_in_display_order(self):
+        request = SimpleNamespace(user=self.user)
+        self.assertEqual(
+            [row["value"] for row in search_games(request, limit=100)], self.expected
+        )
+        #: Five cuts between the two tied on sort_name.
+        self.assertEqual(
+            [row["value"] for row in search_games(request, limit=5)],
+            self.expected[:5],
+        )
+
+    def test_picker_resolves_selected_games_in_display_order(self):
+        options = _game_options(list(reversed(self.expected)), library=self.library)
+        self.assertEqual([option["value"] for option in options], self.expected)
+
+    def test_separate_prices_create_purchases_in_display_order(self):
+        response = self.client.post(
+            reverse("games:add_purchase"),
+            {
+                "games": list(reversed(self.expected)),
+                "date_purchased": "2025-01-01",
+                "price_currency": "USD",
+                "ownership_type": Purchase.DIGITAL,
+                "type": Purchase.GAME,
+                "name": "",
+                "pricing_mode": "per_game",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(self._games_of_new_purchases(), self.expected)
+
+    def test_split_creates_purchases_in_display_order(self):
+        bundle = self._bundle()
+        self.client.post(reverse("games:split_purchase", args=[bundle.id]))
+        self.assertEqual(
+            self._games_of_new_purchases(excluding=bundle.pk), self.expected
+        )
+
+    def test_refund_abandons_games_in_display_order(self):
+        bundle = self._bundle()
+        with patch("games.views.purchase.record_facts") as record_facts:
+            _refund(self.user, bundle)
+        abandoned = [call.args[1].id for call in record_facts.call_args_list]
+        self.assertEqual(abandoned, self.expected)
+
+    def test_refund_failure_counts_games_in_display_order(self):
+        bundle = self._bundle()
+        refused = self.games[4]
+
+        def abandon(user, game, **facts):
+            if game == refused:
+                raise CommandFailed("Refused.", CONFLICT_STATUS)
+
+        with (
+            patch("games.views.purchase.record_facts", side_effect=abandon),
+            pytest.raises(CommandFailed, match="4 of 7 games were abandoned"),
+        ):
+            _refund(self.user, bundle)
+
+    def test_first_game_leads_the_display_order(self):
+        self.assertEqual(self._bundle().first_game, self.games[0])
+
+    def test_first_game_reads_prefetched_games(self):
+        bundle = Purchase.objects.prefetch_related("games").get(pk=self._bundle().pk)
+        with self.assertNumQueries(0):
+            self.assertEqual(bundle.first_game, self.games[0])
+
+    def test_game_resolutions_answer_in_display_order(self):
+        for resolution in (game_resolution, game_edit_resolution):
+            rows = resolution(self.library, list(reversed(self.expected))).rows
+            self.assertEqual([row.id for row in rows], self.expected)
+
+
+def _runs_of(library, games):
+    """Two runs a game; seconds made last."""
+    firsts = [
+        Playthrough.objects.get(library=library, player_game__game=game)
+        for game in games
+    ]
+    seconds = [
+        Playthrough.objects.create(
+            pk=uuid.uuid7(),
+            library=library,
+            player_game=run.player_game,
+            kind=PlaythroughKind.ORDINARY,
+            created_at=timezone.now(),
+        )
+        for run in firsts
+    ]
+    return [run for pair in zip(firsts, seconds, strict=True) for run in pair]
+
+
+def _sorted_column(queryset, sort, sort_map, path):
+    ordered = apply_sort(queryset, FindFilter(sort=sort), sort_map, sort).queryset
+    return list(ordered.values_list(path, flat=True))
+
+
+def _directed(expected, sort):
+    return expected[::-1] if sort.startswith("-") else expected
+
+
+@pytest.fixture
+def games(owned_library):
+    return tied_games(owned_library)
+
+
+@pytest.mark.parametrize("sort", ["name", "playthrough"])
+def test_run_sorts_group_runs_by_game_in_display_order(owned_library, games, sort):
+    runs = _runs_of(owned_library, games)
+    queryset = Playthrough.objects.filter(library=owned_library)
+    assert _sorted_column(queryset, sort, PLAYTHROUGH_SORTS, "id") == [
+        run.id for run in runs
+    ]
+    assert _sorted_column(queryset, f"-{sort}", PLAYTHROUGH_SORTS, "player_game__game")[
+        ::2
+    ] == [game.id for game in reversed(games)]
+
+
+@pytest.mark.parametrize("sort", ["name", "-name", "playthrough", "-playthrough"])
+def test_session_sorts_group_sessions_by_game_in_display_order(
+    owned_library, games, sort
+):
+    runs = _runs_of(owned_library, games)
+    started = datetime(2025, 1, 1, 12, tzinfo=UTC)
+    for run in reversed(runs):
+        timed_row(run, started, started + timedelta(hours=1))
+    queryset = PlayerSession.objects.filter(library=owned_library)
+    expected = [run.player_game.game_id for run in runs]
+    assert _sorted_column(
+        queryset, sort, SESSION_SORTS, "playthrough__player_game__game"
+    ) == _directed(expected, sort)
+
+
+@pytest.mark.parametrize("sort", ["name", "-name"])
+def test_record_name_sort_reads_display_order(owned_library, games, sort):
+    for game in reversed(games):
+        record_row(
+            [Playthrough.objects.get(library=owned_library, player_game__game=game)]
+        )
+    queryset = HistoricalPlaytime.objects.filter(library=owned_library)
+    assert _sorted_column(
+        queryset, sort, HISTORICAL_PLAYTIME_SORTS, "player_game__game"
+    ) == _directed([game.id for game in games], sort)
+
+
+@pytest.mark.parametrize("sort", ["sort_name", "-sort_name", "kind", "-kind"])
+def test_game_sort_name_sort_reads_display_order(owned_library, games, sort):
+    queryset = Game.objects.filter(library=owned_library)
+    assert _sorted_column(queryset, sort, GAME_SORTS, "id") == _directed(
+        [game.id for game in games], sort
+    )
+
+
+@pytest.mark.parametrize("sort", ["name", "-name"])
+def test_entries_resolve_and_sort_in_display_order(
+    owned_library, games, stated_graph, sort
+):
+    entries = [
+        record_entry(owned_library, stated_graph(game, owned_library).release)
+        for game in reversed(games)
+    ]
+    expected = [game.id for game in games]
+    resolved = entry_resolution(owned_library, [entry.id for entry in entries]).rows
+    assert [entry.player_game.game_id for entry in resolved] == expected
+    queryset = LibraryEntry.objects.filter(library=owned_library)
+    assert _sorted_column(
+        queryset, sort, ENTRY_SORTS, "player_game__game"
+    ) == _directed(expected, sort)
+
+
+def test_runs_resolve_grouped_by_game_in_display_order(owned_library, games):
+    runs = _runs_of(owned_library, games)
+    resolved = run_resolution(owned_library, [run.id for run in reversed(runs)]).rows
+    assert [run.id for run in resolved] == [run.id for run in runs]

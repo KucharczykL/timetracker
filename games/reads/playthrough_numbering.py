@@ -7,6 +7,7 @@ from django.db.models import Case, F, OrderBy, QuerySet, Value, When, Window
 from django.db.models.fields import SmallIntegerField
 from django.db.models.functions import RowNumber
 
+from common.keyset import FieldName, RelationPath, lookup
 from games.models import Playthrough, PlaythroughKind, UserLibrary
 from games.reads.playthrough_activity import activity_clock
 
@@ -14,7 +15,7 @@ from games.reads.playthrough_activity import activity_clock
 type PlayerGameId = uuid.UUID
 
 #: The fields that order runs on a screen.
-DISPLAY_ORDER_FIELDS: tuple[str, ...] = (
+DISPLAY_ORDER_FIELDS: tuple[FieldName, ...] = (
     "started_lower",
     "completed_lower",
     "created_at",
@@ -28,12 +29,12 @@ DISPLAY_ORDER: tuple[OrderBy, ...] = tuple(
 )
 
 
-def display_order_through(path: str = "") -> tuple[str, ...]:
+def display_order_through(path: RelationPath = "") -> tuple[FieldName, ...]:
     """DISPLAY_ORDER's fields, reached through a relation."""
-    return tuple(f"{path}{name}" for name in DISPLAY_ORDER_FIELDS)
+    return tuple(lookup(path, name) for name in DISPLAY_ORDER_FIELDS)
 
 
-def numbered_sort_key(path: str = "") -> Case:
+def numbered_sort_key(path: RelationPath = "") -> Case:
     """Null where no number is counted across the run.
 
     The ORM twin of `is_numbered`. Only null against
@@ -44,8 +45,8 @@ def numbered_sort_key(path: str = "") -> Case:
     return Case(
         When(
             **{
-                f"{path}kind": PlaythroughKind.ORDINARY,
-                f"{path}removed_at__isnull": True,
+                lookup(path, "kind"): PlaythroughKind.ORDINARY,
+                lookup(path, "removed_at__isnull"): True,
             },
             then=Value(0),
         ),

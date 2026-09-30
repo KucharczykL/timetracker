@@ -143,7 +143,7 @@ def game_edit_resolution(
         Game.objects.tracked_by(library)
         .filter(pk__in=wanted)
         .select_related("platform")
-        .order_by("sort_name", "id")
+        .in_display_order()
     )
     return Resolution(rows, tuple(lost(wanted, {row.pk for row in rows}, GAME_GONE)))
 

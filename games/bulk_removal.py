@@ -343,9 +343,10 @@ def game_resolution(
     """
     wanted = list(dict.fromkeys(keys))
     rows = tuple(
-        with_departures(Game.objects.tracked_by(library).filter(pk__in=wanted), library)
-        .select_related("platform")
-        .order_by("sort_name", "id")
+        with_departures(
+            Game.objects.tracked_by(library).filter(pk__in=wanted).in_display_order(),
+            library,
+        ).select_related("platform")
     )
     found = {row.pk for row in rows}
     missing = [key for key in wanted if key not in found]
