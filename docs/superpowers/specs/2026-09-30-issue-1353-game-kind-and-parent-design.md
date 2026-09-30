@@ -48,7 +48,7 @@ Migration `0024` (renumbered if M8 lands first):
 The database admits a superset of what the rules below admit: a parent that
 is itself an add-on, a foreign parent and a removed one pass the `CHECK`s and
 are refused in Python, where a sentence can name the move. The four
-`CHECK`s are unreachable from the Game form, because `state_lineage` runs
+`CHECK`s are unreachable from the Game form, because `state_addon` runs
 first; they go in `UNREACHABLE_FROM_THE_GAME_FORM` with that reason, and
 `test_every_unique_constraint_the_form_can_reach_is_mapped` walks
 `CheckConstraint` too, so the next one is not an unmapped 500.
@@ -58,16 +58,16 @@ private add-on and its private parent in one collector pass.
 a Game whose parent is a private Game of another library, a shared Game
 naming a private parent included, is a violation.
 
-## The lineage rules
+## The add-on rules
 
-`games/catalog_lineage.py`, request-free, one entry point:
+`games/catalog_addons.py`, request-free, one entry point:
 
 ```text
-state_lineage(game, *, kind, parent, library) -> None
+state_addon(game, *, kind, parent, library) -> None
 ```
 
 It sets `game.kind` and `game.parent` and does not save; the caller
-saves, as `save_game_columns` does. It raises `LineageRefused`, a
+saves, as `save_game_columns` does. It raises `AddonRefused`, a
 `ValidationError` carrying the field it belongs to (`kind` or `parent`) and
 one sentence, a module constant. It runs inside the caller's transaction
 and refuses to run outside one. It locks the Game (when persisted) and the
@@ -99,7 +99,7 @@ existing lock through the same call. Rules, in order:
    the parent row, so a concurrent pair serialises.
 
 `save_game_columns` calls it before `game.save()`, and `_game_form_refusal`
-answers a `LineageRefused` onto its field. P4 calls `state_lineage` and
+answers a `AddonRefused` onto its field. P4 calls `state_addon` and
 `state_catalog_graph` with no form (see Limits).
 
 A removed parent does not cascade: the add-on keeps its key and reads the
@@ -136,7 +136,7 @@ after).
   `params={"kind": {"value": "main"}}` (a `LiteralParam`) and an
   `options_resolver` that labels the stored parent. The search route gains
   an optional `kind` parameter (one of `GameKind`, else 422).
-- A `<game-lineage>` custom element (`ts/elements/game-lineage.ts`),
+- A `<game-addon>` custom element (`ts/elements/game-addon.ts`),
   rendered after `FormFields` with the two field names as props, finds
   its form and hides the `[data-field-row="parent"]` row while kind is
   `main`, clearing the value on hide. It wraps nothing, so `FormFields`
@@ -144,7 +144,7 @@ after).
   rules answer.
 
 Both fields are form fields the form does not save through `Meta.fields`;
-`save_game_columns` hands them to `state_lineage`.
+`save_game_columns` hands them to `state_addon`.
 
 ## Reads and screens
 
@@ -175,7 +175,7 @@ an unnamed demo as the full game.
 
 **Games list.** The base is main games unless the filter names `kind` or
 `parent` in any leaf of its tree, `NOT` included
-(`GameFilter.names_lineage()`); then it is every kind and the filter
+(`GameFilter.names_addon_fields()`); then it is every kind and the filter
 narrows. One function, `games_list_base(library, game_filter)` in a new
 `games/reads/games_list.py` (the bulk act imports no view), states it.
 Three readers take it: `games_for_list`; `bulk_games.game_scope`, so a
@@ -184,7 +184,7 @@ branch of `filter_queryset_for_library`, which the builder's live count
 (`/api/filter/count`) and the parity tests read. It gains an optional
 parsed filter; `None` answers the main-only base, what the list shows
 unfiltered, so the two-argument callers keep their meaning, and
-`filter_count` passes the filter it parses. A lineage leaf chooses the base and narrows
+`filter_count` passes the filter it parses. A `kind` or `parent` leaf chooses the base and narrows
 no playtime: `GameFilter.narrowing()` skips `kind` and `parent` when it
 asks whether a level states a leaf, or the stats links below would lose
 the Playtime column's narrowing. `game_edit_resolution` takes keys and is
@@ -214,7 +214,7 @@ free-text `search`.
 
 - Model: the four `CHECK`s refuse through the ORM with `IntegrityError`;
   defaults read `main`/`full` on a fresh row.
-- `catalog_lineage`: each rule's refusal and field; the unchanged removed
+- `catalog_addons`: each rule's refusal and field; the unchanged removed
   parent passes; `main` → add-on with a removed add-on naming it passes;
   add-on → `main` clears the parent.
 - Form and view: Add Game and Edit Game state a DLC with a parent; each
@@ -247,7 +247,7 @@ free-text `search`.
 - Purge: `purge_user_library` removes a library holding a private add-on
   and its private parent (the `RESTRICT` claim above, run rather than
   reasoned).
-- e2e: `<game-lineage>` hides and clears the parent row; picking a parent
+- e2e: `<game-addon>` hides and clears the parent row; picking a parent
   and saving lands on the add-on's page with the row.
 
 `make render-pages` at both commits on one dump, every difference
@@ -258,7 +258,7 @@ add-on or a prerelease, since every row reads `main`/`full`.
 
 ## Limits
 
-- **P4 calls `games/catalog_lineage.state_lineage`** and
+- **P4 calls `games/catalog_addons.state_addon`** and
   `games/catalog_writes.state_catalog_graph` with no form to state the 35
   DLC Games (kind `dlc`, the base Game as parent). Neither takes a form.
 - A shared Game's kind and parent have no write path until #782's
