@@ -20,7 +20,8 @@ from common.duration_presentation import (
     DEFAULT_DURATION_FORMAT_PROFILE,
     DurationPresentation,
 )
-from games.bulk_actions import BULK_ACTIONS, Presentations, RowOutcome
+from games.bulk_actions import BULK_ACTIONS
+from games.bulk_parts import Presentations, RowOutcome
 from games.bulk_removal import RECORD_GONE
 from games.bulk_runs import RUN_GONE
 from games.bulk_sessions import SESSION_GONE

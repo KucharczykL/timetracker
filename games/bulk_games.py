@@ -2,8 +2,8 @@
 
 from django.db.models import QuerySet
 
-from games.bulk_actions import FilterJson
 from games.bulk_narrowing import narrowed
+from games.bulk_parts import FilterJson
 from games.filters import parse_game_filter
 from games.models import Game, UserLibrary
 

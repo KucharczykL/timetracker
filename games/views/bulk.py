@@ -28,9 +28,9 @@ from common.layout import render_page
 from common.notices import Undo, notify
 from common.returns import UrlName
 from games.batch_ledger import batch_act
-from games.bulk_actions import (
+from games.bulk_actions import BulkAction, bulk_action
+from games.bulk_parts import (
     BoundRow,
-    BulkAction,
     BulkActionName,
     ChoiceValue,
     Control,
@@ -39,7 +39,6 @@ from games.bulk_actions import (
     RefusedAct,
     Resolution,
     RowOutcome,
-    bulk_action,
 )
 from games.events.dispatch import CommandRejected
 from games.models import UserLibrary

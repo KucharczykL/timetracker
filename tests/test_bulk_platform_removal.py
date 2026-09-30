@@ -9,7 +9,8 @@ from bulk_posts import act_url, posted, selection
 from django.http import Http404
 from django.urls import reverse
 
-from games.bulk_actions import BULK_ACTIONS, LedgerRows
+from games.bulk_actions import BULK_ACTIONS
+from games.bulk_parts import LedgerRows
 from games.bulk_platforms import PLATFORM_GONE
 from games.bulk_removal import REMOVE_PLATFORM
 from games.models import Game, Platform, Purchase, UserLibrary

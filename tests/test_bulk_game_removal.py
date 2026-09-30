@@ -13,8 +13,9 @@ import pytest
 from django.urls import reverse
 from session_rows import duration_only_row
 
-from games.bulk_actions import BULK_ACTIONS, RowOutcome
+from games.bulk_actions import BULK_ACTIONS
 from games.bulk_games import GAME_GONE
+from games.bulk_parts import RowOutcome
 from games.models import Game, Platform, PlayerGame, Purchase
 from games.reads.events import batch_aggregate_ids
 from games.reads.game_departures import game_departures

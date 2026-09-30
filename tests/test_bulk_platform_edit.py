@@ -9,8 +9,9 @@ from django.http import QueryDict
 from django.urls import reverse
 
 from common.components.unset_field import unset_input_name
-from games.bulk_actions import BULK_ACTIONS, LedgerRows
+from games.bulk_actions import BULK_ACTIONS
 from games.bulk_edit import STATEMENT_UNREADABLE
+from games.bulk_parts import LedgerRows
 from games.bulk_platform_edit import (
     EDIT_PLATFORMS,
     NOTHING_STATED,

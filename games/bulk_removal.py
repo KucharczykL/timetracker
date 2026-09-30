@@ -13,9 +13,17 @@ from django.contrib.auth.models import User
 from django.db.models import Exists, Model, OuterRef, QuerySet
 
 from common.temporal_presentation import TemporalText
-from games.bulk_actions import (
+from games.bulk_actions import BulkAction
+from games.bulk_entries import (
+    ENTRY_PREVIEW,
+    entry_resolution,
+    entry_scope,
+    removed_entry,
+)
+from games.bulk_games import GAME_GONE, game_scope
+from games.bulk_narrowing import narrowed
+from games.bulk_parts import (
     ActTitle,
-    BulkAction,
     ChoiceValue,
     EventRows,
     FilterJson,
@@ -25,14 +33,6 @@ from games.bulk_actions import (
     Resolution,
     RowOutcome,
 )
-from games.bulk_entries import (
-    ENTRY_PREVIEW,
-    entry_resolution,
-    entry_scope,
-    removed_entry,
-)
-from games.bulk_games import GAME_GONE, game_scope
-from games.bulk_narrowing import narrowed
 from games.bulk_platforms import (
     outcome,
     platform_resolution,

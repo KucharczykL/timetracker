@@ -5,7 +5,7 @@ from collections.abc import Callable
 from django.db.models import Model, QuerySet
 
 from common.criteria import FilterError, OperatorFilter
-from games.bulk_actions import FilterJson
+from games.bulk_parts import FilterJson
 from games.filters import filter_query_context_for_library
 from games.models import UserLibrary
 

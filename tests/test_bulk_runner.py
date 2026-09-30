@@ -20,15 +20,8 @@ from common.duration_presentation import (
     DurationPresentation,
 )
 from games import bulk_reclassification
-from games.bulk_actions import (
-    _TABLE,
-    BULK_ACTIONS,
-    BulkAction,
-    BulkChoice,
-    Control,
-    RefusedAct,
-    RowOutcome,
-)
+from games.bulk_actions import _TABLE, BULK_ACTIONS, BulkAction
+from games.bulk_parts import BulkChoice, Control, RefusedAct, RowOutcome
 from games.bulk_reclassification import (
     IN_THE_BUCKET,
     NOT_AVAILABLE,

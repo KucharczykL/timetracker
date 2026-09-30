@@ -7,9 +7,10 @@ from datetime import timedelta
 from django.contrib.auth.models import User
 from django.db.models import QuerySet
 
-from games.bulk_actions import (
+from games.bulk_actions import BulkAction
+from games.bulk_narrowing import narrowed
+from games.bulk_parts import (
     ActTitle,
-    BulkAction,
     ChoiceValue,
     EventRows,
     PreviewColumn,
@@ -17,7 +18,6 @@ from games.bulk_actions import (
     Resolution,
     RowOutcome,
 )
-from games.bulk_narrowing import narrowed
 from games.commands.session_reclassification import statement_from_session
 from games.events.idempotency import IdempotencyKey
 from games.filters import parse_session_filter

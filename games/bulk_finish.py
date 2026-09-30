@@ -20,10 +20,10 @@ from common.components import BrowserTimeZoneInput, Div, Input, P
 from common.components.domain import BROWSER_TIME_ZONE_FIELD
 from common.components.primitives import Cell
 from common.date_time_presentation import zone_or_none
-from games.bulk_actions import (
+from games.bulk_actions import BulkAction
+from games.bulk_parts import (
     ActTitle,
     AsksNothing,
-    BulkAction,
     BulkChoice,
     ChoiceValue,
     Control,

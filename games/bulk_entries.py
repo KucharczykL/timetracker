@@ -6,8 +6,8 @@ from collections.abc import Sequence
 from django.contrib.auth.models import User
 from django.db.models import QuerySet
 
-from games.bulk_actions import FilterJson, PreviewColumn, Resolution
 from games.bulk_narrowing import narrowed
+from games.bulk_parts import FilterJson, PreviewColumn, Resolution
 from games.bulk_sessions import lost
 from games.events.dispatch import RowNotHeld
 from games.filters import parse_entry_filter

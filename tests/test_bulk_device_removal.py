@@ -11,7 +11,8 @@ from django.urls import reverse
 from django.utils import timezone
 from session_rows import duration_only_row, tracked_run
 
-from games.bulk_actions import BULK_ACTIONS, EventRows, RowOutcome
+from games.bulk_actions import BULK_ACTIONS
+from games.bulk_parts import EventRows, RowOutcome
 from games.bulk_removal import DEVICE_GONE, REMOVE_DEVICE
 from games.models import Device, Game, PlayerSession
 from games.reads.device_departures import naming_sessions_of

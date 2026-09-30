@@ -24,7 +24,8 @@ from common.components.primitives import (
     custom_element_builder,
     make_row,
 )
-from games.bulk_actions import BulkAction, Presentations, Refused
+from games.bulk_actions import BulkAction
+from games.bulk_parts import Presentations, Refused
 
 #: A page that asks for a fact beside its rows.
 WIDE_CONFIRMATION = "max-w-3xl"

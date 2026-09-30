@@ -7,10 +7,15 @@ the one entry order, which is why a suite can stay green while a page 500s.
 """
 
 import ast
+import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 TABLE = ROOT / "games" / "bulk_actions.py"
+BULK_MODULES = sorted(path.stem for path in (ROOT / "games").glob("bulk_*.py"))
 
 
 def declared_act_modules() -> set[str]:
@@ -47,3 +52,19 @@ def test_no_act_module_imports_a_sibling():
             "first decides whether the import works. Put the shared half in a "
             "module that declares no act."
         )
+
+
+@pytest.mark.parametrize("module", BULK_MODULES)
+def test_each_bulk_module_imports_first(module):
+    """A fresh interpreter, because this one has imported the table already."""
+    script = f"import django; django.setup(); import games.{module}"
+
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+
+    assert result.returncode == 0, result.stderr

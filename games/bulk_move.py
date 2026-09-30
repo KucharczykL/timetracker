@@ -6,7 +6,7 @@ import uuid
 from django.contrib.auth.models import User
 from django.http import Http404
 
-from games.bulk_actions import RowOutcome
+from games.bulk_parts import RowOutcome
 from games.bulk_sessions import session_of
 from games.events.dispatch import CommandRejected, RowUnreadable
 from games.events.idempotency import IdempotencyKey

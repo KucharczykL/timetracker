@@ -7,11 +7,9 @@ import pytest
 from django.utils import timezone
 from session_rows import duration_only_row, timed_row, tracked_run
 
-from games.bulk_actions import (
-    _TABLE,
-    BULK_ACTIONS,
+from games.bulk_actions import _TABLE, BULK_ACTIONS, BulkAction
+from games.bulk_parts import (
     ActTitle,
-    BulkAction,
     EventRows,
     LedgerRows,
     Presentations,
@@ -615,7 +613,7 @@ def test_the_confirmation_heads_three_rows_in_the_plural(reclassify, presentatio
 )
 def test_a_title_that_does_not_count_once_is_refused(one, many):
     """Only `many` states the count, and once."""
-    from games.bulk_actions import ActTitle
+    from games.bulk_parts import ActTitle
 
     with pytest.raises(ValueError, match="states {count} once"):
         ActTitle(one=one, many=many)
