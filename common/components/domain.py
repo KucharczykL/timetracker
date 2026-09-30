@@ -132,7 +132,8 @@ def _one_ended(entry: LibraryEntry, presentation: DateTimePresentation) -> str:
         None if ended.when is None else present_temporal_value(ended.when, presentation)
     )
     words = f"You had {_A_VERSION[entry.format]}"
-    if way in _NATURAL_ENDS.get(entry.access, frozenset()):
+    #: A way nobody stated reads like a natural end: the day alone.
+    if way == EndWay.UNSTATED or way in _NATURAL_ENDS.get(entry.access, frozenset()):
         return f"{words} until {day}" if day else words
     how = END_WAY_LABELS[way].lower()
     return f"{words}, {how} {day}" if day else f"{words}, {how}"

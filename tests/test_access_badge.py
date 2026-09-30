@@ -110,6 +110,11 @@ def _glyphs(html: str) -> list[str]:
             [_ended("trial", way="revoked", ended="2025-05")],
             "You had a digital version until May 2025",
         ),
+        (
+            [],
+            [_ended(way="unstated", ended="2025-05")],
+            "You had a digital version until May 2025",
+        ),
         ([], [_ended(), _ended("borrowed", way="returned")], "You had 2 versions"),
         ([_held()], [_ended()], "You have 1 version, and had 1"),
         (
@@ -130,6 +135,7 @@ def _glyphs(html: str) -> list[str]:
         "one-returned",
         "one-returned-on-unknown-day",
         "one-trial-revoked",
+        "one-gone-for-no-stated-reason",
         "two-ended",
         "one-and-one",
         "many-and-many",
