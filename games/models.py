@@ -1,6 +1,7 @@
 import logging
 from collections.abc import Mapping
 from datetime import date, timedelta
+from operator import attrgetter
 from typing import TYPE_CHECKING, ClassVar, Final, Literal
 from uuid import UUID
 
@@ -23,6 +24,7 @@ from django.template.defaultfilters import floatformat, pluralize, slugify
 from django.urls import reverse
 from django.utils import timezone
 
+from common.keyset import FieldName
 from common.naming import name_key
 from common.platform_icons import UNSPECIFIED_ICON, require_platform_icon
 from common.utils import label_with_details
@@ -265,8 +267,9 @@ class Game(ReferencedRow):
         tracked_mastered: bool
         tracked_excluded_from_unfinished: bool
 
-    #: A list of games reads in this order.
-    DISPLAY_ORDER: ClassVar[tuple[str, ...]] = ("sort_name", "name", "pk")
+    #: Where no sort is stated; blank sort_name leads.
+    #: Local non-null columns only: Python sorts on them too.
+    DISPLAY_ORDER_FIELDS: ClassVar[tuple[FieldName, ...]] = ("sort_name", "name", "id")
 
     #: Columns gone, refused by name in comparisons.
     RETIRED_COMPARISON_COLUMNS: ClassVar[dict[str, str]] = {
@@ -446,6 +449,10 @@ class Game(ReferencedRow):
         return label_with_details(
             self.name, self.platform or "Unspecified", self.year_released
         )
+
+
+#: Sorts loaded games as `order_by(*DISPLAY_ORDER_FIELDS)` does.
+game_display_key = attrgetter(*Game.DISPLAY_ORDER_FIELDS)
 
 
 class PlatformQuerySet(RemovableLibraryQuerySet):

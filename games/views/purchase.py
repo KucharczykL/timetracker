@@ -500,7 +500,7 @@ def _view_purchase_content(
         Ul()[
             [
                 Li()[GameLink(game, game.name)]
-                for game in purchase.games.order_by(*Game.DISPLAY_ORDER)
+                for game in purchase.games.order_by(*Game.DISPLAY_ORDER_FIELDS)
             ]
         ],
     ]

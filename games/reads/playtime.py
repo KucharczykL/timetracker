@@ -182,7 +182,7 @@ def games_by_playtime_queryset(
         .annotate(total_playtime=playtime_by_game(library, year=year))
         .filter(total_playtime__gt=timedelta(0))
         #: Ties need an order, or rows reshuffle.
-        .order_by("-total_playtime", *Game.DISPLAY_ORDER)
+        .order_by("-total_playtime", *Game.DISPLAY_ORDER_FIELDS)
     )
 
 
