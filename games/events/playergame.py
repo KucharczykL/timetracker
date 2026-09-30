@@ -81,6 +81,22 @@ DEFAULT_EVENT_TYPES.register(PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED)
 
 
 @with_config(STRICT_SCHEMA)
+class PlayerGameExcludedFromDroppedChangedPayload(TypedDict):
+    """Whether dropped figures now omit the game."""
+
+    excluded_from_dropped: bool
+
+
+PLAYERGAME_EXCLUDED_FROM_DROPPED_CHANGED = EventSpec(
+    "library.playergame.excluded_from_dropped_changed",
+    aggregate_type="playergame",
+    payload=PlayerGameExcludedFromDroppedChangedPayload,
+)
+
+DEFAULT_EVENT_TYPES.register(PLAYERGAME_EXCLUDED_FROM_DROPPED_CHANGED)
+
+
+@with_config(STRICT_SCHEMA)
 class PlayerGameRemovedPayload(TypedDict):
     """The library took the game out."""
 

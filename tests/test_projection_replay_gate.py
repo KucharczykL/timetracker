@@ -224,6 +224,18 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         "excluded-second-off",
     )
     run(
+        RecordPlayerGameFacts(game_id=first.pk, excluded_from_dropped=True),
+        "dropped-first",
+    )
+    run(
+        RecordPlayerGameFacts(game_id=second.pk, excluded_from_dropped=True),
+        "dropped-second-on",
+    )
+    run(
+        RecordPlayerGameFacts(game_id=second.pk, excluded_from_dropped=False),
+        "dropped-second-off",
+    )
+    run(
         StartPlaythrough(
             playthrough_id=first_run.pk,
             when=TemporalValue.from_day(date(2024, 1, 1)),
@@ -691,7 +703,7 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
         "library.playergame.created",
         "library.playthrough.created",
     }
-    assert len(missing) == 49
+    assert len(missing) == 50
 
 
 def build_neighbour(user, library) -> None:

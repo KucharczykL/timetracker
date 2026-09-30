@@ -10,6 +10,7 @@ def create_tracked_game(
     status: PlayerGameStatus = PlayerGameStatus.UNPLAYED,
     mastered: bool = False,
     excluded_from_unfinished: bool = False,
+    excluded_from_dropped: bool = False,
     **game_fields,
 ) -> Game:
     game = Game.objects.create(library=library, name=name, **game_fields)
@@ -17,6 +18,7 @@ def create_tracked_game(
         status=status,
         mastered=mastered,
         excluded_from_unfinished=excluded_from_unfinished,
+        excluded_from_dropped=excluded_from_dropped,
     )
     if stated != 1:
         raise RuntimeError(

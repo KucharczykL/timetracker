@@ -256,6 +256,17 @@ FACTS = [
         ),
         id="exclusion",
     ),
+    pytest.param(
+        StatedFact(
+            stated={"excluded_from_dropped": True},
+            held={"excluded_from_dropped": False},
+            other={"excluded_from_unfinished": True},
+            event_type="library.playergame.excluded_from_dropped_changed",
+            payload={"excluded_from_dropped": True},
+            column="excluded_from_dropped",
+        ),
+        id="dropped exclusion",
+    ),
 ]
 
 
@@ -301,6 +312,7 @@ def test_a_stated_fact_leaves_the_rest_of_the_row_alone(
             "status",
             "mastered",
             "excluded_from_unfinished",
+            "excluded_from_dropped",
         )
         if column != fact.column
     ]
@@ -403,7 +415,7 @@ def test_a_mastery_fact_states_no_time(owned_user, owned_library):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_one_command_states_three_facts_in_order(owned_user, owned_library):
+def test_one_command_states_four_facts_in_order(owned_user, owned_library):
     game = Game.objects.create(library=owned_library, name="Outer Wilds")
     track(owned_user, owned_library, game)
 
@@ -413,10 +425,11 @@ def test_one_command_states_three_facts_in_order(owned_user, owned_library):
             status=PlayerGameStatus.PLAYED,
             mastered=True,
             excluded_from_unfinished=True,
+            excluded_from_dropped=True,
         ),
         actor=owned_user,
         library=owned_library,
-        idempotency_key="all-three",
+        idempotency_key="all-four",
     )
 
     assert list(
@@ -428,13 +441,15 @@ def test_one_command_states_three_facts_in_order(owned_user, owned_library):
         "library.playergame.status_changed",
         "library.playergame.mastered_changed",
         "library.playergame.excluded_from_unfinished_changed",
+        "library.playergame.excluded_from_dropped_changed",
     ]
     row = PlayerGame.objects.get()
-    assert (row.status, row.mastered, row.excluded_from_unfinished) == (
-        PlayerGameStatus.PLAYED,
-        True,
-        True,
-    )
+    assert (
+        row.status,
+        row.mastered,
+        row.excluded_from_unfinished,
+        row.excluded_from_dropped,
+    ) == (PlayerGameStatus.PLAYED, True, True, True)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -808,7 +823,37 @@ def test_a_command_that_states_no_fact_cannot_be_built():
             status=None,
             mastered=None,
             excluded_from_unfinished=None,
+            excluded_from_dropped=None,
         )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_key_recorded_before_the_fourth_fact_replays(owned_user, owned_library):
+    """A digest from the three-field command."""
+    game = Game.objects.create(library=owned_library, name="Outer Wilds")
+    track(owned_user, owned_library, game)
+    stated = {
+        "status": PlayerGameStatus.PLAYED,
+        "mastered": None,
+        "excluded_from_unfinished": None,
+    }
+    first = state(owned_user, owned_library, game, stated, "before-deploy")
+    old_digest = fingerprint_command_input(
+        {
+            "command": "library.playergame.record_facts",
+            "fields": {"game_id": game.pk, **stated},
+        }
+    )
+    LibraryIdempotencyRecord.objects.filter(idempotency_key="before-deploy").update(
+        request_fingerprint=old_digest, fingerprint_version=2
+    )
+
+    again = state(owned_user, owned_library, game, stated, "before-deploy")
+
+    assert (first.outcome, again.outcome) == (
+        CommandOutcome.APPENDED,
+        CommandOutcome.REPLAYED,
+    )
 
 
 @pytest.mark.django_db(transaction=True)

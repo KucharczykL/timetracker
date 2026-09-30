@@ -37,8 +37,8 @@ type TaggedValue = tuple[str, str | None]  # ("decimal", "11E-1")
 #: Bump when a deployed record's digest changes.
 #:
 #: A command's field set is part of its digest: 2 took the facts
-#: command's third field.
-FINGERPRINT_VERSION = 2
+#: command's third field, 3 its fourth.
+FINGERPRINT_VERSION = 3
 
 
 class IdempotencyKeyMismatch(CommandConflict):
