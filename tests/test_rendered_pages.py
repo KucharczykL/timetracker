@@ -603,6 +603,44 @@ class RenderedPagesTest(TestCase):
         # The Python builder emits well-formed, balanced markup.
         self.assertEqual(html.count("<div"), html.count("</div>"))
 
+    def test_view_purchase_lists_games_in_display_order(self):
+        switch = Platform.objects.create(
+            library=self.user.library, name="Switch", icon="nintendo-switch"
+        )
+        created = {}
+        for key, name, sort_name, platform in [
+            ("aardvark", "Aardvark", "zz", self.platform),
+            ("doom_first", "Doom", "doom", switch),
+            ("doom_second", "Doom", "doom", self.platform),
+            ("alpha", "alpha", "alpha", self.platform),
+            ("zeta", "Zeta Prime", "Beta", self.platform),
+        ]:
+            created[key] = Game.objects.create(
+                library=self.user.library,
+                name=name,
+                sort_name=sort_name,
+                platform=platform,
+            )
+            self.purchase.games.add(created[key])
+        html = self.get("games:view_purchase", self.purchase.id).content.decode()
+        included = html.split("Games included in this purchase:", 1)[1]
+        links = re.findall(
+            r'<a [^>]*href="([^"]+)"[^>]*>([^<]+)</a>',
+            included.split("</ul>", 1)[0],
+        )
+        # "Test Game" states no sort_name, so it leads.
+        self.assertEqual(
+            [name for _, name in links],
+            ["Test Game", "Zeta Prime", "alpha", "Doom", "Doom", "Aardvark"],
+        )
+        self.assertEqual(
+            [href for href, name in links if name == "Doom"],
+            [
+                created["doom_first"].get_absolute_url(),
+                created["doom_second"].get_absolute_url(),
+            ],
+        )
+
 
 class PurchaseListDateFilterTest(TestCase):
     """End-to-end: GET /tracker/purchase/list?filter=… narrows the rendered

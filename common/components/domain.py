@@ -34,6 +34,7 @@ from games.models import (
     PlayerGameStatus,
     PlayerSession,
     Purchase,
+    game_display_key,
 )
 from games.reads.endpoints import way_of
 from games.reads.entries import AccessSummary, EndedCopy
@@ -326,10 +327,11 @@ def _game_name(game: Game, purchase: Purchase) -> str:
 def LinkedPurchase(purchase: Purchase) -> Node:
     link = reverse("games:view_purchase", args=[purchase.id])
     games_list: Node | None = None
-    #: Read the relation once, not per row.
-    #: `first()` orders, which the prefetch cache cannot
-    #: answer, so the list pays a query per row.
-    games = list(purchase.games.all())
+    #: Sort the prefetched games here: `order_by()` skips the
+    #: prefetch cache, costing a query per purchase. Python's
+    #: code-point order matches the Purchase page's `order_by()`
+    #: under C.UTF-8.
+    games = sorted(purchase.games.all(), key=game_display_key)
     game_count = len(games)
     if game_count == 0:
         #: A purchase naming no game is live.

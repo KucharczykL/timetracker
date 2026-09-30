@@ -497,7 +497,12 @@ def _view_purchase_content(
             ]
         ],
         Div(class_=row_class)["Games included in this purchase:"],
-        Ul()[[Li()[GameLink(game, game.name)] for game in purchase.games.all()]],
+        Ul()[
+            [
+                Li()[GameLink(game, game.name)]
+                for game in purchase.games.order_by(*Game.DISPLAY_ORDER_FIELDS)
+            ]
+        ],
     ]
     return ContentContainer(class_="dark:text-white")[inner]
 

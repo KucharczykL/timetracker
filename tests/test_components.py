@@ -1905,6 +1905,41 @@ class ModelDependentComponentsTest(django.test.TestCase):
         self.assertIn("Game A", result)
         self.assertIn("Game B", result)
 
+    #: Neither creation order, name order nor case-blind order.
+    BUNDLE_IN_DISPLAY_ORDER = ("Zeta Prime", "alpha", "Doom", "Doom", "Aardvark")
+
+    def _bundle_created_out_of_display_order(self):
+        steam = self._create_platform(name="Steam", icon="steam")
+        switch = self._create_platform(name="Switch", icon="nintendo-switch")
+        games = [
+            Game.objects.create(
+                library=self.library, name=name, sort_name=sort_name, platform=platform
+            )
+            for name, sort_name, platform in [
+                ("Aardvark", "zz", steam),
+                ("Doom", "doom", switch),
+                ("Doom", "doom", steam),
+                ("alpha", "alpha", steam),
+                ("Zeta Prime", "Beta", steam),
+            ]
+        ]
+        return self._create_purchase(games, platform=steam)
+
+    def _tooltip_names(self, html):
+        return tuple(re.findall(r"<li>([^<]+)</li>", html))
+
+    def test_linked_purchase_lists_bundle_in_display_order(self):
+        purchase = self._bundle_created_out_of_display_order()
+        html = str(components.LinkedPurchase(purchase))
+        self.assertEqual(self._tooltip_names(html), self.BUNDLE_IN_DISPLAY_ORDER)
+
+    def test_linked_purchase_orders_prefetched_bundle_without_a_query(self):
+        purchase = self._bundle_created_out_of_display_order()
+        prefetched = Purchase.objects.prefetch_related("games").get(pk=purchase.pk)
+        with self.assertNumQueries(0):
+            html = str(components.LinkedPurchase(prefetched))
+        self.assertEqual(self._tooltip_names(html), self.BUNDLE_IN_DISPLAY_ORDER)
+
     def test_linked_purchase_renders_game_names_in_popover(self):
         platform = self._create_platform(icon="steam")
         game1 = self._create_game(platform, name="Alpha")
