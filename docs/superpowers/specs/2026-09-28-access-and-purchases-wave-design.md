@@ -250,7 +250,11 @@ pass call alike. An add-on is no top-level row of the Games list unless
 a `kind` or `parent` leaf appears anywhere in the filter tree, in which
 case the base is every kind: the Kind facet is the
 switch, Clear returns to main games, and statistics and the backlog read
-every kind regardless. A private DLC reconciles to IGDB's through the
+every kind regardless. So a link into the Games list from a figure that
+counts every kind states `kind` INCLUDES every word
+(`GameFilter.every_kind()`), the stats builders and the Library page's
+Games count alike, and the parity test holds stat and link to one
+predicate. A private DLC reconciles to IGDB's through the
 same redirect as any private Game.
 
 ### PlayerGame
