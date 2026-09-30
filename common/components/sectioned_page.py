@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from common.components.core import Child, Children, Node, as_children, randomid
 from common.components.custom_elements import BottomSheet
 from common.components.primitives import (
+    SECTION_SURFACE_CLASS,
     ContentContainer,
     ControlButton,
     ControlLink,
@@ -179,12 +180,6 @@ def SectionNav(
             aria_hidden="true",
         ),
     ]
-
-
-#: A section panel's border, fill, padding.
-SECTION_SURFACE_CLASS = (
-    "rounded-base border border-default bg-neutral-primary-medium p-4"
-)
 
 
 def _section_panel(section: SectionedPageSection) -> Node:

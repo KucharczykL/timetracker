@@ -8,6 +8,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
+from common.components.primitives import SECTION_SURFACE_CLASS
 from games.catalog_compat import mirror_legacy_columns
 from games.catalog_form import LAST_RELEASE, MOST_ROWS, TOO_MANY_ROWS
 from games.models import Edition, Game, LibraryEvent, Platform, PlayerGame, Release
@@ -785,6 +786,8 @@ def _exclusion_box(body: str, fact: str) -> str:
 
 def test_the_visibility_fieldset_holds_both_boxes(logged_in, plain_game):
     body = page(logged_in, plain_game)
+    opening = body[body.rindex("<fieldset", 0, body.index('id="visibility"')) :]
+    assert SECTION_SURFACE_CLASS in opening.split(">", 1)[0]
     fieldset = body.split('id="visibility"', 1)[1].split("</fieldset>", 1)[0]
 
     assert "Visibility</legend>" in fieldset

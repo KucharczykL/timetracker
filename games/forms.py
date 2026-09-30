@@ -2248,6 +2248,7 @@ GAME_FORM_GROUPS = (
         VISIBILITY_FIELDS,
         description="Leave this game out of:",
         id="visibility",
+        surface=True,
     ),
 )
 

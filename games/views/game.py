@@ -60,8 +60,12 @@ from common.components import (
     parse_filter_dict,
 )
 from common.components.game_addon import GameAddon
-from common.components.primitives import Li, Span, custom_element_builder
-from common.components.sectioned_page import SECTION_SURFACE_CLASS
+from common.components.primitives import (
+    SECTION_SURFACE_CLASS,
+    Li,
+    Span,
+    custom_element_builder,
+)
 from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,

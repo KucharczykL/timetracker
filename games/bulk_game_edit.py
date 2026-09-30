@@ -194,7 +194,10 @@ _FACTS_GROUP = ("status", "mastered")
 BULK_GAME_EDIT_GROUPS = (
     FormFieldGroup("Facts", _FACTS_GROUP, legend_hidden=True),
     FormFieldGroup(
-        "Visibility", VISIBILITY_FIELDS, description="Leave these games out of:"
+        "Visibility",
+        VISIBILITY_FIELDS,
+        description="Leave these games out of:",
+        surface=True,
     ),
 )
 
