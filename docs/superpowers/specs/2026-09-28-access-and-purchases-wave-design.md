@@ -242,9 +242,13 @@ stated, and of kind `main`: IGDB has no DLC of a DLC. A parent removed
 later does not cascade; the add-on keeps its key and its parent link
 renders as removed. A kind change to an add-on states a parent in the
 same submit, and one to `main` clears it; the form refuses the other
-pairs with a sentence, the column's `CHECK` behind it. An add-on is no
-top-level row of the Games list unless the filter names `kind` or
-`parent`, in which case the base is every kind: the Kind facet is the
+pairs with a sentence, the column's `CHECK` behind it, and refuses
+`main` to an add-on while live add-ons name the game, so a child's
+parent stays main. The rules live request-free in
+`games/catalog_lineage.py`, which `save_game_columns` and the conversion
+pass call alike. An add-on is no top-level row of the Games list unless
+a `kind` or `parent` leaf appears anywhere in the filter tree, in which
+case the base is every kind: the Kind facet is the
 switch, Clear returns to main games, and statistics and the backlog read
 every kind regardless. A private DLC reconciles to IGDB's through the
 same redirect as any private Game.
