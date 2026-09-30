@@ -102,7 +102,7 @@ from games.filters import (
     parse_game_filter,
 )
 from games.formatting import session_time_range
-from games.forms import GameForm
+from games.forms import GAME_FORM_GROUPS, GameForm
 from games.list_columns import column_choice
 from games.models import (
     Edition,
@@ -433,6 +433,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
                 status=form.cleaned_data["status"],
                 mastered=form.cleaned_data["mastered"],
                 excluded_from_unfinished=form.cleaned_data["excluded_from_unfinished"],
+                excluded_from_dropped=form.cleaned_data["excluded_from_dropped"],
                 correlation_id=correlation_id,
             )
             if not recorded:
@@ -459,7 +460,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
             form,
             request=request,
             fields=Fragment(
-                FormFields(form),
+                FormFields(form, groups=GAME_FORM_GROUPS),
                 GameAddon("kind", "parent"),
                 editions_area(graph),
                 references_area(references),
@@ -562,6 +563,7 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
                 status=form.cleaned_data["status"],
                 mastered=form.cleaned_data["mastered"],
                 excluded_from_unfinished=form.cleaned_data["excluded_from_unfinished"],
+                excluded_from_dropped=form.cleaned_data["excluded_from_dropped"],
                 correlation_id=new_correlation_id(),
             )
             if answer.refusal is None:
@@ -583,7 +585,7 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
             form,
             request=request,
             fields=Fragment(
-                FormFields(form),
+                FormFields(form, groups=GAME_FORM_GROUPS),
                 GameAddon("kind", "parent"),
                 editions_area(graph),
                 references_area(references),
