@@ -1,4 +1,4 @@
-"""Status, mastered or the unfinished flag, set on many games."""
+"""Status, mastered or a visibility flag, on many games."""
 
 import json
 import uuid
@@ -10,7 +10,7 @@ from django import forms
 from django.contrib.auth.models import User
 from django.http import QueryDict
 
-from common.components.primitives import FormFields
+from common.components.primitives import FormFieldGroup, FormFields
 from games.bulk_actions import BulkAction
 from games.bulk_edit import (
     form_refusal,
@@ -39,7 +39,12 @@ from games.bulk_sessions import lost
 from games.events.append import SourceMetadata
 from games.events.dispatch import CommandRejected, RowNotHeld
 from games.events.idempotency import IdempotencyKey
-from games.forms import ChoiceSearchSelectWidget, LabeledChoice, PrimitiveWidgetsMixin
+from games.forms import (
+    VISIBILITY_FIELDS,
+    ChoiceSearchSelectWidget,
+    LabeledChoice,
+    PrimitiveWidgetsMixin,
+)
 from games.models import Game, PlayerGame, PlayerGameStatus, UserLibrary
 from games.reads.playergame_facts import batch_fact_changes
 from games.writes.answers import answered
@@ -52,6 +57,7 @@ class GameEditJson(TypedDict, total=False):
     status: str
     mastered: bool
     excluded_from_unfinished: bool
+    excluded_from_dropped: bool
 
 
 #: What a statement's JSON may name.
@@ -59,8 +65,8 @@ _KEYS = frozenset(GameEditJson.__annotations__)
 
 #: What settling refuses.
 NOTHING_STATED = (
-    "Choose a status, whether the games are mastered, or whether unfinished "
-    "lists leave them out."
+    "Choose a status, whether the games are mastered, or what they are left "
+    "out of."
 )
 #: What an Undo refuses.
 NOT_EDITED_BY_THIS_BATCH = (
@@ -69,21 +75,23 @@ NOT_EDITED_BY_THIS_BATCH = (
 GAME_REMOVED = "That game is removed. Restore it first."
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class GameEditStatement:
     """What one batch states; None leaves alone."""
 
-    status: PlayerGameStatus | None
-    mastered: bool | None
-    excluded_from_unfinished: bool | None
+    status: PlayerGameStatus | None = None
+    mastered: bool | None = None
+    excluded_from_unfinished: bool | None = None
+    excluded_from_dropped: bool | None = None
 
     def __post_init__(self) -> None:
         if (
             self.status is None
             and self.mastered is None
             and self.excluded_from_unfinished is None
+            and self.excluded_from_dropped is None
         ):
-            raise ValueError("An edit states a status, mastered or the flag.")
+            raise ValueError("An edit states a status, mastered or a flag.")
 
     def encode(self) -> ChoiceValue:
         stated: GameEditJson = {}
@@ -93,6 +101,8 @@ class GameEditStatement:
             stated["mastered"] = self.mastered
         if self.excluded_from_unfinished is not None:
             stated["excluded_from_unfinished"] = self.excluded_from_unfinished
+        if self.excluded_from_dropped is not None:
+            stated["excluded_from_dropped"] = self.excluded_from_dropped
         return json.dumps(stated, sort_keys=True)
 
     @classmethod
@@ -102,13 +112,16 @@ class GameEditStatement:
         status = stated.get("status")
         if "status" in stated and status not in PlayerGameStatus.values:
             raise statement_unreadable(f"{raw!r} states a status that is no word")
-        mastered = _stated_flag(stated, "mastered", raw)
-        excluded = _stated_flag(stated, "excluded_from_unfinished", raw)
         try:
             return cls(
-                None if status is None else PlayerGameStatus(status),
-                mastered,
-                excluded,
+                status=None if status is None else PlayerGameStatus(status),
+                mastered=_stated_flag(stated, "mastered", raw),
+                excluded_from_unfinished=_stated_flag(
+                    stated, "excluded_from_unfinished", raw
+                ),
+                excluded_from_dropped=_stated_flag(
+                    stated, "excluded_from_dropped", raw
+                ),
             )
         except ValueError as empty:
             raise statement_unreadable(f"{raw!r} states nothing") from empty
@@ -155,9 +168,13 @@ def _excluded_shown(excluded: bool) -> str:
 type FlagChoices = tuple[LabeledChoice, ...]
 
 _MASTERED_CHOICES: FlagChoices = (("True", "Mastered"), ("False", "Not mastered"))
-_EXCLUDED_CHOICES: FlagChoices = (
+_UNFINISHED_CHOICES: FlagChoices = (
     ("True", "Excluded from unfinished lists"),
     ("False", "Included in unfinished lists"),
+)
+_DROPPED_CHOICES: FlagChoices = (
+    ("True", "Excluded from dropped figures"),
+    ("False", "Included in dropped figures"),
 )
 
 
@@ -172,6 +189,17 @@ def _flag(choices: FlagChoices, label: str) -> forms.TypedChoiceField:
     )
 
 
+_FACTS_GROUP = ("status", "mastered")
+
+#: Every visible field: groups render first.
+BULK_GAME_EDIT_GROUPS = (
+    FormFieldGroup("Facts", _FACTS_GROUP, legend_hidden=True),
+    FormFieldGroup(
+        "Visibility", VISIBILITY_FIELDS, description="Leave these games out of:"
+    ),
+)
+
+
 class BulkGameEditForm(PrimitiveWidgetsMixin, forms.Form):
     """An empty field keeps."""
 
@@ -183,7 +211,8 @@ class BulkGameEditForm(PrimitiveWidgetsMixin, forms.Form):
         widget=ChoiceSearchSelectWidget(),
     )
     mastered = _flag(_MASTERED_CHOICES, "Mastered")
-    excluded_from_unfinished = _flag(_EXCLUDED_CHOICES, "Unfinished lists")
+    excluded_from_unfinished = _flag(_UNFINISHED_CHOICES, "Unfinished lists")
+    excluded_from_dropped = _flag(_DROPPED_CHOICES, "Dropped figures")
 
     def __init__(
         self,
@@ -202,6 +231,11 @@ class BulkGameEditForm(PrimitiveWidgetsMixin, forms.Form):
                     lambda row: row.tracked_excluded_from_unfinished,
                     _excluded_shown,
                 ),
+                (
+                    "excluded_from_dropped",
+                    lambda row: row.tracked_excluded_from_dropped,
+                    _excluded_shown,
+                ),
             ):
                 cast(
                     ChoiceSearchSelectWidget, self.fields[name].widget
@@ -210,19 +244,17 @@ class BulkGameEditForm(PrimitiveWidgetsMixin, forms.Form):
     def clean(self) -> dict[str, Any]:
         super().clean()
         cleaned = self.cleaned_data
-        if all(
-            cleaned.get(name) is None
-            for name in ("status", "mastered", "excluded_from_unfinished")
-        ):
+        if all(cleaned.get(name) is None for name in _FACTS_GROUP + VISIBILITY_FIELDS):
             raise forms.ValidationError(NOTHING_STATED)
         return cleaned
 
     def statement(self) -> GameEditStatement:
         """The valid form, as one statement."""
         return GameEditStatement(
-            self.cleaned_data["status"],
-            self.cleaned_data["mastered"],
-            self.cleaned_data["excluded_from_unfinished"],
+            **{
+                name: self.cleaned_data[name]
+                for name in _FACTS_GROUP + VISIBILITY_FIELDS
+            }
         )
 
 
@@ -233,7 +265,12 @@ def offer_edit(
     if not rows:
         #: The confirmation states there are no rows.
         return AsksNothing()
-    return Control(FormFields(BulkGameEditForm(prefix=field_name, rows=rows)))
+    return Control(
+        FormFields(
+            BulkGameEditForm(prefix=field_name, rows=rows),
+            groups=BULK_GAME_EDIT_GROUPS,
+        )
+    )
 
 
 def settle_edit(library: UserLibrary, post: QueryDict) -> ChoiceValue:
@@ -276,6 +313,7 @@ def _state(
             status=statement.status,
             mastered=statement.mastered,
             excluded_from_unfinished=statement.excluded_from_unfinished,
+            excluded_from_dropped=statement.excluded_from_dropped,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             source_metadata=_source(),
@@ -340,10 +378,13 @@ def edit_back(
         held_status = PlayerGameStatus(tracked.status)
         try:
             restatement = GameEditStatement(
-                restated(changes.status, held_status),
-                restated(changes.mastered, tracked.mastered),
-                restated(
+                status=restated(changes.status, held_status),
+                mastered=restated(changes.mastered, tracked.mastered),
+                excluded_from_unfinished=restated(
                     changes.excluded_from_unfinished, tracked.excluded_from_unfinished
+                ),
+                excluded_from_dropped=restated(
+                    changes.excluded_from_dropped, tracked.excluded_from_dropped
                 ),
             )
         except ValueError:
@@ -361,6 +402,11 @@ def edit_back(
             changes.excluded_from_unfinished,
             tracked.excluded_from_unfinished,
             "excluded_from_unfinished",
+        ),
+        (
+            changes.excluded_from_dropped,
+            tracked.excluded_from_dropped,
+            "excluded_from_dropped",
         ),
     ):
         log_overwrite(
@@ -389,6 +435,10 @@ EDIT_PREVIEW: tuple[PreviewColumn[Game], ...] = (
     PreviewColumn(
         "Unfinished lists",
         lambda row, _: _excluded_shown(row.tracked_excluded_from_unfinished),
+    ),
+    PreviewColumn(
+        "Dropped figures",
+        lambda row, _: _excluded_shown(row.tracked_excluded_from_dropped),
     ),
 )
 
