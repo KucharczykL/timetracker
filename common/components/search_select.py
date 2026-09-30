@@ -61,6 +61,7 @@ from common.components.core import (
     Node,
 )
 from common.components.custom_elements import (
+    DROPDOWN_GROUP_HEADER_CLASS,
     DROPDOWN_ITEM_SHAPE,
     Dropdown,
     DropdownPanel,
@@ -73,7 +74,6 @@ from common.components.custom_elements import (
 )
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
-    MICRO_LABEL_CLASS,
     SHAPE_CLASSES,
     AppliedDot,
     ButtonColor,
@@ -203,7 +203,6 @@ _NO_RESULTS_CLASS = "px-4 py-2 text-type-body italic text-body hidden"
 # out of the combobox's option semantics; carrying no data-search-select-option
 # excludes it from keyboard nav, client-side filtering, and selection. The JS
 # hides a header whose whole run of following option rows is filtered out.
-_GROUP_HEADER_CLASS = f"px-4 pt-2 pb-1 {MICRO_LABEL_CLASS} text-body"
 
 # Approximate rendered height of one option row (px-3 py-2 text-type-body) in rem,
 # used to derive the panel's max-height from items_visible.
@@ -391,7 +390,7 @@ def _group_header(label: str) -> Node:
     return Div(
         data_search_select_group_header="",
         role="presentation",
-        class_=_GROUP_HEADER_CLASS,
+        class_=DROPDOWN_GROUP_HEADER_CLASS,
     )[label]
 
 

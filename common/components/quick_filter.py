@@ -28,6 +28,7 @@ from typing import NamedTuple, cast
 from common.components.core import BaseComponent, Element, Node
 from common.components.custom_elements import (
     CLEAR_FILTER_LABEL,
+    DROPDOWN_GROUP_HEADER_CLASS,
     FILTER_ACTS_LABEL,
     FILTER_MODE_MODELS,
     Dropdown,
@@ -469,13 +470,14 @@ class QuickFilterBar(BaseComponent):
                     f"Quick facet group {group.key!r} holds {member.field!r}, a "
                     f"{kind} field; a group admits {sorted(QUICK_FACET_GROUP_KINDS)}."
                 )
-        return Div(class_="flex flex-col gap-3")[
+        return Div(class_="flex flex-col")[
             [
                 Fieldset(class_="flex flex-col")[
-                    Legend(class_="text-type-body font-medium text-heading")[
+                    #: Floated, so it sits in the flex column.
+                    Legend(class_=f"float-left w-full {DROPDOWN_GROUP_HEADER_CLASS}")[
                         _facet_label(filter_cls, member)
                     ],
-                    self._widget(filter_cls, member),
+                    Div(class_="px-4")[self._widget(filter_cls, member)],
                 ]
                 for member in group.members
             ]
