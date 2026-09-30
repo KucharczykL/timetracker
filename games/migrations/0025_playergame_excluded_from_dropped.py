@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("games", "0023_entries_mode"),
+        ("games", "0024_game_kind_parent_edition_kind"),
     ]
 
     operations = [
