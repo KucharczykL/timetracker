@@ -31,6 +31,7 @@ from common.components.custom_elements import (
     FilterMode,
     list_url_for,
 )
+from common.components.primitives import FLOATED_LEGEND_CLASS
 from common.components.quick_filter import QUICK_FACET_GROUP_KINDS
 from common.criteria import AttrName, field_metadata
 from common.date_time_presentation import (
@@ -712,6 +713,13 @@ class VisibilityFacetTest(SimpleTestCase):
                 "</fieldset>", 1
             )[0]
             self.assertIn(f'data-path="[&quot;{field}&quot;]"', fieldset)
+
+    def test_each_legend_floats_inside_its_fieldset(self):
+        legends = re.findall(r"<legend[^>]*>", self._dropdown())
+
+        self.assertEqual(len(legends), 2)
+        for legend in legends:
+            self.assertIn(FLOATED_LEGEND_CLASS, legend)
 
     def test_one_stated_member_marks_the_group_applied(self):
         stated = json.dumps({"excluded_from_dropped": {"value": True}})

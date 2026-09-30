@@ -37,6 +37,7 @@ from common.components.core import (
     as_children,
 )
 from common.components.primitives import (
+    FLOATED_LEGEND_CLASS,
     ICON_BUTTON_SIZE_CLASS,
     MICRO_LABEL_CLASS,
     Button,
@@ -48,11 +49,13 @@ from common.components.primitives import (
     Dialog,
     Div,
     EllipsisTrigger,
+    Fieldset,
     FilterJson,
     Form,
     Icon,
     Input,
     Label,
+    Legend,
     Li,
     PlainH2,
     Popover,
@@ -936,6 +939,23 @@ class DropdownPanel:
 DROPDOWN_ITEM_SHAPE = "px-4 py-2 rounded-base text-body cursor-pointer"
 #: A heading over a panel's group of rows.
 DROPDOWN_GROUP_HEADER_CLASS = f"px-4 pt-2 pb-1 {MICRO_LABEL_CLASS} text-body"
+
+
+class DropdownFieldset:
+    """A labelled group of controls in a panel."""
+
+    def __init__(self, label: str) -> None:
+        self._label = label
+
+    def __getitem__(self, children: Children) -> Element:
+        return Fieldset(class_="flex flex-col")[
+            Legend(class_=f"{FLOATED_LEGEND_CLASS} {DROPDOWN_GROUP_HEADER_CLASS}")[
+                self._label
+            ],
+            Div(class_="px-4")[as_children(children)],
+        ]
+
+
 #: Tailwind needs literals; a test pins each.
 DROPDOWN_ITEM_ACTIVE = "bg-neutral-tertiary-medium text-heading"
 _ITEM_ACTIVE_ON_HOVER = "hover:bg-neutral-tertiary-medium hover:text-heading"

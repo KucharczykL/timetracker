@@ -28,10 +28,10 @@ from typing import NamedTuple, cast
 from common.components.core import BaseComponent, Element, Node
 from common.components.custom_elements import (
     CLEAR_FILTER_LABEL,
-    DROPDOWN_GROUP_HEADER_CLASS,
     FILTER_ACTS_LABEL,
     FILTER_MODE_MODELS,
     Dropdown,
+    DropdownFieldset,
     DropdownPanel,
     FilterMode,
     _QuickFilterBarElement,
@@ -48,11 +48,9 @@ from common.components.primitives import (
     ButtonGroupMember,
     Div,
     EllipsisTrigger,
-    Fieldset,
     FilterJson,
     Form,
     Icon,
-    Legend,
     Span,
 )
 from common.components.search_field import (
@@ -472,12 +470,8 @@ class QuickFilterBar(BaseComponent):
                 )
         return Div(class_="flex flex-col")[
             [
-                Fieldset(class_="flex flex-col")[
-                    #: Floated, so it sits in the flex column.
-                    Legend(class_=f"float-left w-full {DROPDOWN_GROUP_HEADER_CLASS}")[
-                        _facet_label(filter_cls, member)
-                    ],
-                    Div(class_="px-4")[self._widget(filter_cls, member)],
+                DropdownFieldset(_facet_label(filter_cls, member))[
+                    self._widget(filter_cls, member)
                 ]
                 for member in group.members
             ]

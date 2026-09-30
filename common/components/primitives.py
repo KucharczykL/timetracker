@@ -200,6 +200,9 @@ type BadgeTone = Literal["brand", "neutral", "success", "warning", "danger"]
 DISABLED_CONTROL_CLASS = "disabled:opacity-50 disabled:cursor-not-allowed"
 DISABLED_WITHIN_CLASS = "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-allowed"
 
+#: A bordered or flex fieldset holds it inside.
+FLOATED_LEGEND_CLASS = "float-left w-full"
+
 #: A section panel's border, fill, padding.
 SECTION_SURFACE_CLASS = (
     "rounded-base border border-default bg-neutral-primary-medium p-4"
@@ -2060,8 +2063,7 @@ def _grouped_form_fields(
             Legend(
                 class_="sr-only"
                 if group.legend_hidden
-                #: Floated: a bordered fieldset draws it inside.
-                else "float-left w-full text-type-section text-heading"
+                else f"{FLOATED_LEGEND_CLASS} text-type-section text-heading"
                 if group.surface
                 else "text-type-section text-heading"
             )[group.legend]
