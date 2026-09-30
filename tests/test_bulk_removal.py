@@ -500,7 +500,10 @@ def _hidden(html: str) -> dict[str, str]:
         ("session.remove", ("Game", "Day", "Duration")),
         ("playthrough.remove", ("Playthrough", "Game", "Started", "Completed")),
         ("historicalplaytime.remove", ("Game", "When", "Duration")),
-        ("playergame.remove", ("Game", "Sessions", "Purchases", "Playthroughs")),
+        (
+            "playergame.remove",
+            ("Game", "Sessions", "Purchases", "Playthroughs", "Add-ons staying"),
+        ),
     ],
 )
 def test_each_acts_confirmation_states_its_own_columns(

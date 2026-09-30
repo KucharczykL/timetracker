@@ -31,7 +31,7 @@ NOTE_MAX_WIDTH_CLASS = "max-w-[16ch]"
 
 
 def release_words(entry: LibraryEntry) -> str:
-    """Platform, then a named edition."""
+    """Platform, then the edition's words."""
     release = entry.release
     parts = [platform_words(release)]
     if words := edition_words(release.edition):

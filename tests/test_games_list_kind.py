@@ -4,9 +4,11 @@ from html import escape
 import pytest
 from django.urls import reverse
 
+from common.components.quick_filter import QUICK_FACETS, is_quick_editable
+from common.criteria import FieldComparisonCriterion, Modifier
 from games.bulk_games import game_scope
 from games.filters import FindFilter, GameFilter, filter_url
-from games.list_columns import hidden_columns
+from games.list_columns import hidden_columns, state_shown_columns
 from games.models import Game, GameKind
 from games.views.game import game_list_columns, games_for_list
 
@@ -48,7 +50,7 @@ def test_the_list_hides_addons_by_default(owned_library, kinds):
             GameFilter(OR=[GameFilter.where(kind=["expansion"])]),
             {"Base Expansion"},
         ),
-        (GameFilter.every_kind(), {"Base", "Base DLC", "Base Expansion"}),
+        (GameFilter().of_every_kind(), {"Base", "Base DLC", "Base Expansion"}),
     ],
 )
 def test_a_filter_naming_kind_lists_every_kind(
@@ -83,6 +85,37 @@ def test_the_bulk_scope_and_the_live_count_match_the_list(
     assert counted == len(listed)
 
 
+@pytest.mark.parametrize(
+    ("comparison", "expected"),
+    [
+        (
+            FieldComparisonCriterion(
+                left="kind", right="name", modifier=Modifier.NOT_EQUALS
+            ),
+            {"Base", "Base DLC", "Base Expansion"},
+        ),
+        (
+            FieldComparisonCriterion(
+                left="name", right="parent__name", modifier=Modifier.NOT_EQUALS
+            ),
+            {"Base DLC", "Base Expansion"},
+        ),
+        (
+            FieldComparisonCriterion(
+                left="name", right="sort_name", modifier=Modifier.NOT_EQUALS
+            ),
+            {"Base"},
+        ),
+    ],
+)
+def test_a_comparison_naming_kind_or_parent_widens_the_base(
+    owned_library, kinds, comparison, expected
+):
+    by_comparison = GameFilter(field_comparisons=[comparison])
+
+    assert _listed(owned_library, _from_json(by_comparison)) == expected
+
+
 def test_names_addon_fields_reads_every_level():
     assert not GameFilter.where(name__contains="x").names_addon_fields()
     assert GameFilter(NOT=[GameFilter.where(kind=["dlc"])]).names_addon_fields()
@@ -99,17 +132,42 @@ def test_the_kind_column_starts_hidden_and_can_be_shown(owned_user):
     assert "kind" in hidden_columns(owned_user, "games", columns)
 
 
-def test_the_kind_facet_renders_on_the_list(client, owned_user, kinds):
+def test_the_kind_column_prints_each_row_s_kind(client, owned_user, kinds):
+    columns = game_list_columns("Playtime")
+    shown = [column.key for column in columns if not column.hidden_by_default]
+    state_shown_columns(owned_user, "games", [*shown, "kind"], columns)
+    client.force_login(owned_user)
+
+    page = client.get(filter_url(GameFilter().of_every_kind())).content.decode()
+
+    assert ">DLC<" in _row(page, "Base DLC")
+    assert ">Main game<" in _row(page, "Base<")
+
+
+def _row(page: str, name: str) -> str:
+    """The table row holding `name`."""
+    at = page.index(name)
+    return page[page.rindex("<tr", 0, at) : page.index("</tr>", at)]
+
+
+def test_the_kind_facet_offers_the_four_kinds(client, owned_user, kinds):
     client.force_login(owned_user)
     page = client.get(reverse("games:list_games")).content.decode()
 
-    assert "quick-kind" in page
+    facet = page[page.index('data-path="[&quot;kind&quot;]"') :]
+    for kind in GameKind:
+        assert f'data-value="{kind.value}"' in facet
+    assert is_quick_editable(
+        GameFilter.where(kind=["dlc"]).to_json(),
+        [facet.field for facet in QUICK_FACETS["games"]],
+        filter_cls=GameFilter,
+    )
 
 
 def test_every_library_page_link_into_the_list_states_every_kind(client, owned_user):
     client.force_login(owned_user)
     page = client.get(reverse("games:library")).content.decode()
-    every_game = escape(filter_url(GameFilter.every_kind()))
+    every_game = escape(filter_url(GameFilter().of_every_kind()))
 
     #: Card, row figure and Browse.
     assert page.count(f'href="{every_game}"') >= 3

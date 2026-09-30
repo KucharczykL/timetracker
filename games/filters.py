@@ -36,6 +36,7 @@ from django.utils.http import urlencode
 from common.criteria import (
     AggregateCriterion,
     AggregateSpec,
+    AttrName,
     BoolCriterion,
     ChoiceCriterion,
     ChoiceMeta,
@@ -172,7 +173,7 @@ def held_entry_word_handler(column: HeldEntryColumn) -> FieldHandler:
 
 
 #: Columns that widen the Games list.
-ADDON_FIELDS: Final = ("kind", "parent")
+ADDON_FIELDS: Final[tuple[AttrName, ...]] = ("kind", "parent")
 
 
 def _names_addon_column(column: str) -> bool:
@@ -318,7 +319,7 @@ class GameFilter(OperatorFilter):
         return Game
 
     def names_addon_fields(self) -> bool:
-        """Any level names kind or parent."""
+        """Any boolean level names kind or parent."""
         if self.kind is not None or self.parent is not None:
             return True
         if any(
@@ -331,9 +332,8 @@ class GameFilter(OperatorFilter):
             member.names_addon_fields() for member in (*self.AND, *self.OR, *self.NOT)
         )
 
-    @classmethod
-    def every_kind(cls, **members: Any) -> GameFilter:
-        """Every kind, beside the members stated.
+    def of_every_kind(self) -> GameFilter:
+        """This filter, over every kind.
 
         Under an `OR`, state it on each member:
         a node ORs its members with its own
@@ -341,7 +341,7 @@ class GameFilter(OperatorFilter):
         """
         from games.models import GameKind
 
-        return replace(cls.where(kind=list(GameKind.values)), **members)
+        return replace(self, kind=GameFilter.where(kind=list(GameKind.values)).kind)
 
     def narrowing(self) -> NarrowingClauses:
         """The clauses the Playtime column narrows by.
@@ -1245,6 +1245,9 @@ class LibraryEntryFilter(OperatorFilter):
 # specs reference filter classes defined below GameFilter — a class-body dict
 # would NameError on PlayerSessionFilter/PurchaseFilter/PlaythroughFilter. The generic
 # ``OperatorFilter.to_q`` walks this table; ``from_json`` reads each spec's
+if _unknown := set(ADDON_FIELDS) - {field.name for field in fields(GameFilter)}:
+    raise RuntimeError(f"ADDON_FIELDS names no GameFilter field: {_unknown}")
+
 # ``scope_filter`` to deserialize an aggregate's scope. The drift guard in
 # tests/test_filters.py asserts the table covers exactly the
 # AggregateCriterion-annotated fields.
@@ -1365,8 +1368,10 @@ def filter_queryset_for_library(
     ``visible_to`` because the destination list manages private Platforms only.
 
     Game is one exception: its list counts the games this library tracks,
-    through `games_list_base`, so counting anything else here would answer
-    the builder's live count with a number the destination list cannot show. Playthrough is the other: its
+    through `games_list_base`, which only `game_filter` naming `kind` or
+    `parent` widens; other models ignore it. Counting anything else here
+    would answer the builder's live count with a number the destination
+    list cannot show. Playthrough is the other: its
     condition alias needs the viewer's clock. PlayerSession,
     HistoricalPlaytime and LibraryEntry state no `for_library`: their read
     modules state the scope.

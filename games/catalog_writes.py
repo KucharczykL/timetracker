@@ -76,7 +76,8 @@ class EditionState:
     key: RowKey
     edition: Edition | None = None
     name: EditionName = ""
-    kind: EditionKind = EditionKind.FULL
+    #: None keeps it; new rows are full.
+    kind: EditionKind | None = None
     removed: bool = False
     is_default: bool = False
     releases: tuple[ReleaseState, ...] = ()
@@ -257,16 +258,19 @@ def _written_edition(
     stored: Edition | None,
     stored_releases: StoredReleases,
 ) -> WrittenEdition:
-    """One Edition, and its surviving Releases."""
+    """Creates or updates it, then its Releases."""
     name = state.name.strip()
     if stored is None:
         edition = Edition.objects.create(
-            game=owner, name=name, kind=state.kind, is_default=False
+            game=owner,
+            name=name,
+            kind=state.kind or EditionKind.FULL,
+            is_default=False,
         )
     else:
         edition = stored
         edition.name = name
-        edition.kind = state.kind
+        edition.kind = state.kind or stored.kind
         edition.is_default = False
         edition.save(update_fields=("name", "kind", "is_default"))
     rows = tuple(

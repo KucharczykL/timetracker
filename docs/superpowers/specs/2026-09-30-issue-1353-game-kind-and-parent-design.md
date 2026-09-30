@@ -16,13 +16,14 @@ demo, a beta or a playtest.
   are IGDB's `game_type` words. The default is `main`.
 - `ADDON_KINDS` are the three kinds that are not `main`.
 - `EditionKind`: `full`, `prerelease`. The default is `full`. Early
-  Access is `full`.
+  Access is `full`. A statement with no kind keeps the stored kind.
 
 ## Storage
 
 `Game.kind`, `Game.parent` and `Edition.kind`. `parent` is a self key with
-`RESTRICT` and no reverse accessor. Four CHECKs hold the words and the rule
-that only an add-on names a parent. The database admits more than the
+`RESTRICT` and no reverse accessor. Four CHECKs hold the words, the rule that
+an add-on names a parent and a main game names none, and the rule that
+no Game is its own parent. The database admits more than the
 rules do. `audit_library_ownership` reports a parent of another library.
 
 ## The rules
@@ -56,10 +57,12 @@ parent as removed.
 ## The Games list
 
 `games_list_base` gives main games. When a filter names `kind` or
-`parent` at any level, it gives every kind. The list, its bulk scope and
+`parent` at any boolean level, it gives every kind. The list, its bulk scope and
 `/api/filter/count` read it. The list has a Kind facet and a Kind column.
+A removal of a main game keeps its add-ons. The per-row confirmation and
+the bulk preview count the tracked add-ons that stay.
 
-A link whose figure counts every kind states `GameFilter.every_kind()`.
+A link whose figure counts every kind states `GameFilter.of_every_kind()`.
 Under an `OR`, each member states it, because a node ORs its members with
 its own leaves. `narrowing()` ignores `kind` and `parent`.
 

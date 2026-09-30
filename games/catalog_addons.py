@@ -1,10 +1,11 @@
-"""A Game's kind and parent, stated or refused."""
+"""A Game's kind and parent, or refusal."""
 
 from typing import Final, Literal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
 
+from games.events.dispatch import RowUnreadable
 from games.models import Game, GameKind, UserLibrary
 
 type AddonField = Literal["kind", "parent"]
@@ -17,11 +18,18 @@ OWN_PARENT: Final = "A game cannot be its own parent."
 FOREIGN_PARENT: Final = "That game is not in your library."
 REMOVED_PARENT: Final = "That game is removed. Put it back before you name it."
 PARENT_NOT_MAIN: Final = "An add-on belongs to a main game."
+#: Names a foreign parent without its name.
+FOREIGN_PARENT_LABEL: Final = "A game in another library"
 #: Formatted with `count` and `plural`.
 HAS_ADDONS: Final = (
     "{count} add-on{plural} name this game as the parent. "
     "Give them another parent before you make this game an add-on."
 )
+
+
+def foreign_to(game: Game, library: UserLibrary) -> bool:
+    """Another library's private game."""
+    return game.library_id is not None and game.library_id != library.pk
 
 
 class AddonRefused(ValidationError):
@@ -30,17 +38,12 @@ class AddonRefused(ValidationError):
     def __init__(self, sentence: str, *, field: AddonField) -> None:
         super().__init__(sentence)
         self.field: AddonField = field
-        self.sentence = sentence
 
 
 def state_addon(
     game: Game, *, kind: GameKind, parent: Game | None, library: UserLibrary
 ) -> None:
-    """Set kind and parent; the caller saves.
-
-    Locks both rows in key order: two edits
-    naming each other wait, never deadlock.
-    """
+    """Set kind and parent; the caller saves."""
     if not transaction.get_connection().in_atomic_block:
         raise RuntimeError("state_addon runs inside the caller's transaction.")
     persisted = not game._state.adding
@@ -71,12 +74,12 @@ def _refuse_the_parent(
     game: Game, parent: Game | None, stored: Game | None, library: UserLibrary
 ) -> None:
     if parent is None:
-        raise AddonRefused(FOREIGN_PARENT, field="parent")
+        raise RowUnreadable(f"Game {game.pk} names a parent no row holds.")
     if parent.pk == game.pk:
         raise AddonRefused(OWN_PARENT, field="parent")
     #: Not `visible_to`: it hides removed parents.
-    #: Rule 5 must see them, to pass an unchanged one.
-    if parent.library_id is not None and parent.library_id != library.pk:
+    #: The removed-parent check must see them.
+    if foreign_to(parent, library):
         raise AddonRefused(FOREIGN_PARENT, field="parent")
     #: Keeps an add-on editable.
     unchanged = stored is not None and stored.parent_id == parent.pk

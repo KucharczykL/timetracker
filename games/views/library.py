@@ -96,8 +96,8 @@ def library(request: HttpRequest) -> HttpResponse:
     total_spent = not_refunded.aggregate(total=Sum(F("converted_price")))["total"] or 0
     currency = conversion.published_currency
     total_spent_value = f"{currency} {total_spent:,.2f}"
-    #: The count includes add-ons; so does the list.
-    every_game = filter_url(GameFilter.every_kind())
+    #: Both count add-ons.
+    every_game = filter_url(GameFilter().of_every_kind())
     overview = Fragment(
         FactList(
             [

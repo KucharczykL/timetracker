@@ -1,6 +1,5 @@
+import { ADDON_KINDS } from "../generated/game-kinds.js";
 import { readGameAddonProps } from "../generated/props.js";
-
-const MAIN_KIND = "main";
 
 /** Shows the parent row for add-ons only. */
 class GameAddonElement extends HTMLElement {
@@ -16,9 +15,17 @@ class GameAddonElement extends HTMLElement {
     this.parentRow =
       form?.querySelector<HTMLElement>(`[data-field-row="${parentField}"]`) ??
       null;
-    this.kindSelect?.addEventListener("change", this.onKindChange);
+    //: Missing either, both rows stay visible.
+    if (!this.kindSelect || !this.parentRow) {
+      console.error(
+        `game-addon: no select[name="${kindField}"] or ` +
+          `[data-field-row="${parentField}"] in its form`
+      );
+      return;
+    }
+    this.kindSelect.addEventListener("change", this.onKindChange);
     //: A refused posted parent stays visible.
-    if (!this.parentHeld()) this.show(!this.isMain());
+    if (!this.parentHeld()) this.show(this.isAddon());
   }
 
   disconnectedCallback(): void {
@@ -26,25 +33,37 @@ class GameAddonElement extends HTMLElement {
   }
 
   private readonly onKindChange = (): void => {
-    const main = this.isMain();
-    this.show(!main);
-    if (main && this.parentHeld()) {
-      this.parentRow
-        ?.querySelector<HTMLButtonElement>("[data-search-select-clear]")
-        ?.click();
-    }
+    const addon = this.isAddon();
+    this.show(addon);
+    if (!addon && this.parentHeld()) this.clearParent();
   };
 
-  private isMain(): boolean {
-    const kind = this.kindSelect?.value ?? MAIN_KIND;
-    return kind === "" || kind === MAIN_KIND;
+  private isAddon(): boolean {
+    return ADDON_KINDS.includes(this.kindSelect?.value ?? "");
+  }
+
+  private parentInputs(): HTMLInputElement[] {
+    return Array.from(
+      this.parentRow?.querySelectorAll<HTMLInputElement>(
+        'input[type="hidden"]'
+      ) ?? []
+    );
   }
 
   private parentHeld(): boolean {
-    const inputs = this.parentRow?.querySelectorAll<HTMLInputElement>(
-      'input[type="hidden"]'
+    return this.parentInputs().some(input => input.value !== "");
+  }
+
+  private clearParent(): void {
+    const clear = this.parentRow?.querySelector<HTMLButtonElement>(
+      "[data-search-select-clear]"
     );
-    return Array.from(inputs ?? []).some(input => input.value !== "");
+    if (clear) {
+      clear.click();
+      return;
+    }
+    console.error("game-addon: the parent picker has no clear button");
+    for (const input of this.parentInputs()) input.value = "";
   }
 
   private show(visible: boolean): void {

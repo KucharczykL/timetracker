@@ -73,7 +73,7 @@ UNREACHABLE_FROM_THE_GAME_FORM: Final[dict[str, str]] = {
     "external_reference_kind_matches_target": _REFUSED_BY_THE_REFERENCE_FORM,
     "external_reference_supported_provider": _REFUSED_BY_THE_REFERENCE_FORM,
     "external_reference_canonical_provider_key": _REFUSED_BY_THE_REFERENCE_FORM,
-    "game_kind_word": _REFUSED_BY_STATE_ADDON,
+    "game_kind_word": _A_SELECT_OVER_THE_WORDS,
     "game_parent_exactly_for_addons": _REFUSED_BY_STATE_ADDON,
     "game_not_its_own_parent": _REFUSED_BY_STATE_ADDON,
     "edition_kind_word": _A_SELECT_OVER_THE_WORDS,
@@ -106,7 +106,7 @@ def save_game_columns(form: GameForm, identity: MirroredIdentity) -> Game:
     platform never stands beside the pair it is replacing.
     """
     game = form.save(commit=False)
-    #: First: it locks both rows in key order.
+    #: First: locks both rows in key order.
     #: Locking the Game alone first could deadlock.
     state_addon(
         game,
@@ -150,7 +150,7 @@ def save_game_and_graph(
 def _game_form_refusal(form: GameForm, error: ValidationError) -> bool:
     """A refusal the Game's own fields caused."""
     if isinstance(error, AddonRefused):
-        form.add_error(error.field, error.sentence)
+        form.add_error(error.field, error.messages[0])
         return True
     if REMOVED_SINCE_READ in error.messages:
         form.add_error(None, REMOVED_SINCE_READ)

@@ -19,7 +19,7 @@ from django.db.models import (
 )
 from django.db.models.functions import Coalesce
 
-from games.models import Game, Purchase, UserLibrary
+from games.models import Game, PlayerGame, Purchase, UserLibrary
 from games.reads.player_sessions import library_sessions
 from games.reads.playthrough_runs import library_runs
 
@@ -27,6 +27,7 @@ from games.reads.playthrough_runs import library_runs
 SESSIONS = "departing_sessions"
 PURCHASES = "departing_purchases"
 RUNS = "departing_runs"
+ADDONS = "staying_addons"
 
 
 class Departures(NamedTuple):
@@ -35,6 +36,8 @@ class Departures(NamedTuple):
     sessions: int
     purchases: int
     runs: int
+    #: They stay, off the default Games list.
+    addons: int
 
 
 def counted(rows: QuerySet) -> Coalesce:
@@ -69,6 +72,14 @@ def with_departures(games: QuerySet[Game], library: UserLibrary) -> QuerySet[Gam
             RUNS: counted(
                 library_runs(library).filter(player_game__game=OuterRef("pk"))
             ),
+            ADDONS: counted(
+                PlayerGame.objects.filter(
+                    library=library,
+                    removed_at__isnull=True,
+                    game__removed_at__isnull=True,
+                    game__parent=OuterRef("pk"),
+                )
+            ),
         }
     )
 
@@ -79,6 +90,7 @@ def departures_of(game: Game) -> Departures:
         sessions=getattr(game, SESSIONS),
         purchases=getattr(game, PURCHASES),
         runs=getattr(game, RUNS),
+        addons=getattr(game, ADDONS),
     )
 
 

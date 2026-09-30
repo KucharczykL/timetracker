@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Sequence
 from datetime import timedelta
 from functools import partial
@@ -81,6 +82,7 @@ from games.bulk_game_edit import EDIT as EDIT_GAMES
 from games.bulk_playthrough_acts import COMPLETE_RUNS, START_RUNS
 from games.bulk_removal import REMOVE_GAME, REMOVE_RECORD, REMOVE_RUN
 from games.bulk_tray import tray_actions
+from games.catalog_addons import FOREIGN_PARENT_LABEL, foreign_to
 from games.catalog_form import CatalogGraphForm
 from games.catalog_release import SHARED_GAME_RELEASE
 from games.catalog_submit import submitted_game_or_form_error
@@ -179,7 +181,11 @@ from games.views.returns import origin_from, return_url
 from games.writes.playergame import new_correlation_id
 
 #: The value half of a meta row.
+logger = logging.getLogger("games")
+
 META_VALUE_CLASS = "text-heading"
+#: Formatted with `count`.
+ADDONS_STAY = "{count} add-on(s) stay, off the Games list"
 #: No Platform is a fact, not blank.
 UNSPECIFIED_PLATFORM = "Unspecified"
 #: Said on the page, because the shape is not final.
@@ -513,6 +519,8 @@ def _removed_with_game(game: Game, library: UserLibrary) -> Node:
         (departing.runs, "playthrough"),
     ]
     present = [Li()[f"{count} {label}(s)"] for count, label in counts if count]
+    if departing.addons:
+        present.append(Li()[ADDONS_STAY.format(count=departing.addons)])
     return Ul()[*(present or [Li()["No associated data"]])]
 
 
@@ -847,7 +855,7 @@ def _platform_words(release: Release | None) -> str:
 
 
 def _reads_plainly(entries: Sequence[EditionEntry]) -> bool:
-    """One unnamed full Edition, at most one Release."""
+    """At most one plain Edition and Release."""
     if len(entries) > 1:
         return False
     if not entries:
@@ -861,7 +869,7 @@ def _reads_plainly(entries: Sequence[EditionEntry]) -> bool:
 
 
 def _edition_name_cell(edition: Edition) -> Node:
-    """The name, and a chip on a prerelease."""
+    """The name, with a prerelease chip."""
     if edition.kind != EditionKind.PRERELEASE:
         return Fragment(edition.display_name)
     return Span(class_="inline-flex flex-wrap items-center gap-2")[
@@ -1100,7 +1108,10 @@ def _parent_row(game: Game, library: UserLibrary) -> list[Node]:
         return []
     parent = Game.objects.get(pk=game.parent_id)
     name: Node
-    if parent.removed_at is not None:
+    if foreign_to(parent, library):
+        logger.error("Game %s names foreign parent %s.", game.pk, parent.pk)
+        name = Span(class_=META_VALUE_CLASS)[FOREIGN_PARENT_LABEL]
+    elif parent.removed_at is not None:
         name = Span(class_=META_VALUE_CLASS)[f"{parent.name} (removed)"]
     elif Game.objects.tracked_by(library).filter(pk=parent.pk).exists():
         name = Link(href=parent.get_absolute_url(), class_=META_VALUE_CLASS)[

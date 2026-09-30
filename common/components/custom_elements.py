@@ -716,9 +716,12 @@ register_element("search-field", "SearchField", SearchFieldProps)
 _SearchFieldElement = custom_element_builder("search-field")
 
 
+type FormFieldName = str  # e.g. "parent"
+
+
 class GameAddonProps(TypedDict):
-    kind_field: str
-    parent_field: str
+    kind_field: FormFieldName
+    parent_field: FormFieldName
 
 
 register_element("game-addon", "GameAddon", GameAddonProps)

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 def games_list_base(
     library: UserLibrary, game_filter: GameFilter | None
 ) -> QuerySet[Game]:
-    """Main games, unless the filter names kind or parent."""
+    """Main games, unless filtered on kind/parent."""
     games = Game.objects.tracked_by(library)
     if game_filter is not None and game_filter.names_addon_fields():
         return games

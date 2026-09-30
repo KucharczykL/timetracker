@@ -413,6 +413,10 @@ GAME_PREVIEW: tuple[PreviewColumn[Game], ...] = (
     PreviewColumn(
         "Playthroughs", lambda row, _: str(departures_of(row).runs), align="right"
     ),
+    #: They stay, off the default Games list.
+    PreviewColumn(
+        "Add-ons staying", lambda row, _: str(departures_of(row).addons), align="right"
+    ),
 )
 
 

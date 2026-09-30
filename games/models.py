@@ -268,9 +268,7 @@ class GameKind(models.TextChoices):
 
 
 #: Kinds that name a parent.
-ADDON_KINDS: Final[frozenset[GameKind]] = frozenset(
-    {GameKind.DLC, GameKind.EXPANSION, GameKind.STANDALONE_EXPANSION}
-)
+ADDON_KINDS: Final[frozenset[GameKind]] = frozenset(GameKind) - {GameKind.MAIN}
 
 
 class EditionKind(models.TextChoices):
@@ -320,7 +318,7 @@ class Game(ReferencedRow):
                 condition=Q(kind__in=GameKind.values),
                 name="game_kind_word",
             ),
-            #: Only an add-on names a parent.
+            #: An add-on names a parent; main, none.
             models.CheckConstraint(
                 condition=(
                     Q(kind=GameKind.MAIN, parent__isnull=True)

@@ -14,7 +14,7 @@ from games.catalog_addons import (
     state_addon,
 )
 from games.models import Game, GameKind
-from games.removal import remove, restore
+from games.removal import remove
 
 pytestmark = pytest.mark.django_db
 
@@ -51,21 +51,21 @@ def test_a_main_game_with_a_parent_is_refused(library):
     refusal = _refusal(
         _game(library, "Other"), kind=GameKind.MAIN, parent=parent, library=library
     )
-    assert (refusal.sentence, refusal.field) == (PARENT_ON_MAIN, "parent")
+    assert (refusal.messages[0], refusal.field) == (PARENT_ON_MAIN, "parent")
 
 
 def test_an_addon_without_a_parent_is_refused(library):
     refusal = _refusal(
         _game(library, "Orphan"), kind=GameKind.DLC, parent=None, library=library
     )
-    assert (refusal.sentence, refusal.field) == (ADDON_WITHOUT_PARENT, "parent")
+    assert (refusal.messages[0], refusal.field) == (ADDON_WITHOUT_PARENT, "parent")
 
 
 def test_a_game_its_own_parent_is_refused_and_left_untouched(library):
     game = _game(library, "Loop")
     refusal = _refusal(game, kind=GameKind.DLC, parent=game, library=library)
 
-    assert (refusal.sentence, refusal.field) == (OWN_PARENT, "parent")
+    assert (refusal.messages[0], refusal.field) == (OWN_PARENT, "parent")
     assert (game.kind, game.parent_id) == (GameKind.MAIN, None)
 
 
@@ -74,7 +74,7 @@ def test_a_parent_of_another_library_is_refused(library, other_library):
     refusal = _refusal(
         _game(library, "Addon"), kind=GameKind.DLC, parent=foreign, library=library
     )
-    assert (refusal.sentence, refusal.field) == (FOREIGN_PARENT, "parent")
+    assert (refusal.messages[0], refusal.field) == (FOREIGN_PARENT, "parent")
 
 
 def test_a_newly_named_removed_parent_is_refused(library):
@@ -83,7 +83,7 @@ def test_a_newly_named_removed_parent_is_refused(library):
     refusal = _refusal(
         _game(library, "Addon"), kind=GameKind.DLC, parent=parent, library=library
     )
-    assert (refusal.sentence, refusal.field) == (REMOVED_PARENT, "parent")
+    assert (refusal.messages[0], refusal.field) == (REMOVED_PARENT, "parent")
 
 
 def test_an_unchanged_removed_parent_passes(library):
@@ -102,7 +102,7 @@ def test_an_addon_as_parent_is_refused(library):
     refusal = _refusal(
         _game(library, "Nested"), kind=GameKind.DLC, parent=addon, library=library
     )
-    assert (refusal.sentence, refusal.field) == (PARENT_NOT_MAIN, "parent")
+    assert (refusal.messages[0], refusal.field) == (PARENT_NOT_MAIN, "parent")
 
 
 def test_a_main_game_with_addons_cannot_become_one(library):
@@ -113,7 +113,7 @@ def test_a_main_game_with_addons_cannot_become_one(library):
     refusal = _refusal(game, kind=GameKind.DLC, parent=other, library=library)
 
     assert refusal.field == "kind"
-    assert refusal.sentence == HAS_ADDONS.format(count=1, plural="")
+    assert refusal.messages[0] == HAS_ADDONS.format(count=1, plural="")
 
 
 def test_a_removed_addon_still_holds_its_parent_main(library):
@@ -124,11 +124,49 @@ def test_a_removed_addon_still_holds_its_parent_main(library):
     refusal = _refusal(
         game, kind=GameKind.DLC, parent=_game(library, "Other"), library=library
     )
-    restore(addon)
 
     assert refusal.field == "kind"
-    game.refresh_from_db()
     assert game.kind == GameKind.MAIN
+
+
+def test_the_count_names_every_addon(library):
+    game = _game(library, "Base")
+    _addon(library, "First", game)
+    _addon(library, "Second", game)
+
+    refusal = _refusal(
+        game, kind=GameKind.DLC, parent=_game(library, "Other"), library=library
+    )
+
+    assert refusal.messages[0] == HAS_ADDONS.format(count=2, plural="s")
+
+
+def test_the_parent_s_stored_kind_decides_not_the_instance(library):
+    """The locked row decides, not the instance."""
+    parent = _game(library, "Base")
+    Game.objects.filter(pk=parent.pk).update(
+        kind=GameKind.DLC, parent=_game(library, "Root")
+    )
+
+    refusal = _refusal(
+        _game(library, "Addon"), kind=GameKind.DLC, parent=parent, library=library
+    )
+
+    assert parent.kind == GameKind.MAIN
+    assert refusal.messages[0] == PARENT_NOT_MAIN
+
+
+def test_the_stored_parent_decides_what_is_unchanged(library):
+    """The stored key decides, not the instance's."""
+    stored_parent = _game(library, "Stored")
+    removed = _game(library, "Removed")
+    addon = _addon(library, "Addon", stored_parent)
+    remove(removed)
+    addon.parent_id = removed.pk
+
+    refusal = _refusal(addon, kind=GameKind.DLC, parent=removed, library=library)
+
+    assert refusal.messages[0] == REMOVED_PARENT
 
 
 def test_an_addon_becomes_main_and_drops_its_parent(library):

@@ -277,7 +277,7 @@ def _headings() -> Node:
 
 
 def _name_row(block: EditionBlock) -> Node:
-    """Name and kind; no header row above."""
+    """Name and kind, each labelled inline."""
     name = block.form["name"]
     title = _EDITION_BIN_NAME.text(_edition_name(block))
     return Div(class_="flex items-end gap-3")[

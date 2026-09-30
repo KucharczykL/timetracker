@@ -180,8 +180,8 @@ docs/           — Additional documentation
   alone sets both and refuses with `AddonRefused` on its field. The Games
   list, its bulk scope and the builder's count read `games_list_base`
   (`games/reads/games_list.py`): main games until the filter names `kind`
-  or `parent` anywhere (`GameFilter.names_addon_fields`), and a link whose
-  figure counts add-ons states `GameFilter.every_kind()`, on each `OR`
+  or `parent` at any boolean level (`GameFilter.names_addon_fields`), and a link whose
+  figure counts add-ons states `GameFilter.of_every_kind()`, on each `OR`
   member. An **Edition** states `kind` (`EditionKind`: `full`/`prerelease`);
   `edition_words` names an unnamed prerelease. Contract is
   [Game kind and parent](docs/superpowers/specs/2026-09-30-issue-1353-game-kind-and-parent-design.md)

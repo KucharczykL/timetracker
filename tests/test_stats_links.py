@@ -131,7 +131,7 @@ def world(db):
     )
     record_row([tracked_run(library, recorded_elsewhere)], when=f"{YEAR - 1}-05")
 
-    #: Hidden from the list without every_kind.
+    #: Hidden from the list without of_every_kind.
     dlc = create_tracked_game(
         library, "Finished DLC", status=PlayerGameStatus.PLAYED, platform=pc
     )
@@ -339,6 +339,15 @@ def test_all_sessions_matches_total_sessions(world):
 # ── Count links ──────────────────────────────────────────────────────────────
 
 
+@pytest.mark.parametrize(
+    "link", [stats_links.games_played(YEAR), stats_links.games_in_month(YEAR, 6)]
+)
+def test_the_kind_clause_sits_on_each_member_not_the_root(link):
+    """A root leaf would match every game."""
+    assert link.kind is None
+    assert all(member.kind is not None for member in link.OR)
+
+
 def test_games_played_narrows_the_playtime_column(world):
     """Kind leaves leave the narrowing intact."""
     clauses = stats_links.games_played(YEAR).narrowing()
@@ -347,7 +356,7 @@ def test_games_played_narrows_the_playtime_column(world):
     assert clauses.records is not None
 
 
-def test_a_link_without_every_kind_drops_the_dlc(world):
+def test_a_link_over_main_games_drops_the_dlc(world):
     """The DLC makes the clause necessary."""
     bare = GameFilter(OR=[member for member in stats_links.games_played(YEAR).OR])
     for member in bare.OR:

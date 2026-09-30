@@ -98,7 +98,7 @@ class EditionRowForm(PrimitiveWidgetsMixin, forms.Form):
 
     edition_id = forms.UUIDField(required=False, widget=forms.HiddenInput)
     name = forms.CharField(max_length=255, required=False, label="Edition name")
-    #: An empty post means full.
+    #: An empty post keeps the stored kind.
     kind = forms.ChoiceField(
         choices=EditionKind.choices,
         required=False,
@@ -117,8 +117,12 @@ class EditionRowForm(PrimitiveWidgetsMixin, forms.Form):
     def clean_name(self) -> str:
         return cast(str, self.cleaned_data["name"]).strip()
 
-    def clean_kind(self) -> EditionKind:
-        return EditionKind(self.cleaned_data["kind"] or EditionKind.FULL)
+    def clean_kind(self) -> EditionKind | None:
+        return (
+            EditionKind(self.cleaned_data["kind"])
+            if self.cleaned_data["kind"]
+            else None
+        )
 
 
 class ReleaseRowForm(PrimitiveWidgetsMixin, forms.Form):
@@ -588,10 +592,7 @@ class CatalogGraphForm:
                 key=_key(block.form),
                 edition=block.edition,
                 name=cast(str, block.form.cleaned_data.get("name", "")),
-                kind=cast(
-                    EditionKind,
-                    block.form.cleaned_data.get("kind") or EditionKind.FULL,
-                ),
+                kind=block.form.cleaned_data.get("kind"),
                 removed=block.removed,
                 is_default=block is marked_block,
                 releases=tuple(

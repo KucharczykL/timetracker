@@ -37,6 +37,7 @@ from common.criteria import (
     ModifierToken,
 )
 from common.date_time_presentation import DateTimePresentationConfig
+from games.models import ADDON_KINDS
 from games.views.catalog_section import (
     CATALOG_NAME_KINDS,
     NAME_SLOT,
@@ -129,6 +130,13 @@ class Command(BaseCommand):
                     TsConstant(
                         "BUTTON_SHAPE_CLASSES", dict[ButtonShape, str], SHAPE_CLASSES
                     ),
+                ],
+            ),
+            # `<game-addon>` shows the parent for these.
+            output_dir / "game-kinds.ts": render_filter_metadata_module(
+                [],
+                constants=[
+                    TsConstant("ADDON_KINDS", list[str], sorted(ADDON_KINDS)),
                 ],
             ),
             # `<catalog-editor>` fills the server's name patterns.

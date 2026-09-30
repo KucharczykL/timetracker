@@ -56,6 +56,7 @@ from common.components.primitives import (
 )
 from common.date_time_presentation import DateTimePresentation, zone_or_none
 from common.platform_icons import PLATFORM_ICONS, UNSPECIFIED_ICON
+from games.catalog_addons import FOREIGN_PARENT_LABEL, foreign_to
 from games.commands.endpoint import WayActStatement
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
@@ -310,18 +311,23 @@ def _game_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
     ]
 
 
+def _parent_option(game: Game, library: UserLibrary) -> SearchSelectOption:
+    """A foreign parent shows no name."""
+    if foreign_to(game, library):
+        return {"value": str(game.id), "label": FOREIGN_PARENT_LABEL, "data": {}}
+    removed = " (removed)" if game.removed_at is not None else ""
+    return {
+        "value": str(game.id),
+        "label": game.search_label + removed,
+        "data": game_option_data(game),
+    }
+
+
 def _parent_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
-    """Labels a stored parent, even removed."""
+    """The stored parent, whatever its state."""
     return [
-        {
-            "value": str(game.id),
-            "label": game.search_label
-            + (" (removed)" if game.removed_at is not None else ""),
-            "data": game_option_data(game),
-        }
-        for game in Game.objects.filter(
-            Q(library__isnull=True) | Q(library=library), pk__in=values
-        ).select_related("platform")
+        _parent_option(game, library)
+        for game in Game.objects.filter(pk__in=values).select_related("platform")
     ]
 
 
@@ -2167,7 +2173,7 @@ class GameForm(
     excluded_from_unfinished = forms.BooleanField(
         required=False, label="Excluded from unfinished lists"
     )
-    #: Written by `state_addon`; empty means main.
+    #: Read by `state_addon`; empty means main.
     kind = forms.ChoiceField(
         choices=GameKind.choices, required=False, initial=GameKind.MAIN
     )
@@ -2177,7 +2183,7 @@ class GameForm(
         label="Add-on of",
         widget=SearchSelectWidget(
             search_url="/api/games/search",
-            options_resolver=_game_options,
+            options_resolver=_parent_options,
             params={"kind": {"value": GameKind.MAIN.value}},
         ),
     )

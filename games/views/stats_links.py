@@ -111,14 +111,14 @@ def games_in_month(year: int, month: int) -> GameFilter:
     end = f"{year}-{month:02d}-{last_day:02d}"
     return GameFilter(
         OR=[
-            GameFilter.every_kind(
+            GameFilter(
                 session_filter=PlayerSessionFilter.where(day__between=(start, end))
-            ),
-            GameFilter.every_kind(
+            ).of_every_kind(),
+            GameFilter(
                 historical_playtime_filter=HistoricalPlaytimeFilter.where(
                     when__within=(start, end)
                 )
-            ),
+            ).of_every_kind(),
         ]
     )
 
@@ -143,8 +143,8 @@ def games_played(year) -> GameFilter:
     """A session or record in scope."""
     return GameFilter(
         OR=[
-            GameFilter.every_kind(session_filter=all_sessions(year)),
-            GameFilter.every_kind(historical_playtime_filter=all_records(year)),
+            GameFilter(session_filter=all_sessions(year)).of_every_kind(),
+            GameFilter(historical_playtime_filter=all_records(year)).of_every_kind(),
         ]
     )
 

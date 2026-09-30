@@ -44,7 +44,7 @@ def matching_releases(releases: QuerySet[Release], query: str) -> QuerySet[Relea
 
 
 def release_label(release: Release) -> str:
-    """Platform, named edition, then year."""
+    """Platform, edition words, then year."""
     parts = [
         UNSPECIFIED_PLATFORM if release.platform is None else release.platform.name
     ]
