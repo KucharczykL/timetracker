@@ -246,7 +246,7 @@ pairs with a sentence, the column's `CHECK` behind it, and refuses
 `main` to an add-on while any add-on names the game, removed ones
 included, since a restore runs no lineage rule and a live-only count
 would let one stand an add-on under an add-on. The rules live request-free in
-`games/catalog_lineage.py`, which `save_game_columns` and the conversion
+`games/catalog_addons.py` (`state_addon`, raising `AddonRefused`), which `save_game_columns` and the conversion
 pass call alike. An add-on is no top-level row of the Games list unless
 a `kind` or `parent` leaf appears anywhere in the filter tree, in which
 case the base is every kind: the Kind facet is the
