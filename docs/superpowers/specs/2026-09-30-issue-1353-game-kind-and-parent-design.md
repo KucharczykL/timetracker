@@ -50,8 +50,9 @@ is itself an add-on, a foreign parent and a removed one pass the `CHECK`s and
 are refused in Python, where a sentence can name the move.
 `RESTRICT` guards the delete nobody calls; a whole-library purge deletes a
 private add-on and its private parent in one collector pass.
-`audit_library_ownership` gains `Game.parent`: a private Game whose parent
-is another library's private Game is a violation, as `Game.platform` is.
+`audit_library_ownership` gains `Game.parent`, read as `Game.platform` is:
+a Game whose parent is a private Game of another library, a shared Game
+naming a private parent included, is a violation.
 
 ## The lineage rules
 
@@ -61,11 +62,14 @@ is another library's private Game is a violation, as `Game.platform` is.
 state_lineage(game, *, kind, parent, library) -> None
 ```
 
-It sets `game.kind` and `game.parent` or raises `LineageRefused`, a
+It sets `game.kind` and `game.parent` and does not save; the caller
+saves, as `save_game_columns` does. It raises `LineageRefused`, a
 `ValidationError` carrying the field it belongs to (`kind` or `parent`) and
-one sentence, a module constant. It locks the parent row and, where the
-Game is persisted, reads the stored row under the lock `save_game_columns`
-already holds. Rules, in order:
+one sentence, a module constant. It runs inside the caller's transaction
+and refuses to run outside one. It locks the Game (when persisted) and the
+named parent in one `select_for_update()` ordered by key, so two edits
+naming each other lock in the same order; `save_game_columns` takes its
+existing lock through the same call. Rules, in order:
 
 1. `main` with a parent: refused on `parent` ("A main game has no parent.
    Choose an add-on kind or clear the parent.").
@@ -80,10 +84,12 @@ already holds. Rules, in order:
    later stays editable.
 6. The parent's kind is not `main`: refused on `parent` ("An add-on belongs
    to a main game."). IGDB has no add-on of an add-on.
-7. A stored `main` Game becoming an add-on while live add-ons name it:
-   refused on `kind`, the sentence counting them. With rule 6 this closes
-   the invariant from both sides; both lock the parent row, so a concurrent
-   pair serialises.
+7. A stored `main` Game becoming an add-on while any add-on names it,
+   removed ones included: refused on `kind`, the sentence counting them.
+   A removed add-on counts because restoring it runs no rule, so a
+   live-only count would let a restore stand an add-on under an add-on.
+   With rule 6 this closes the invariant from both sides, and both lock
+   the parent row, so a concurrent pair serialises.
 
 `save_game_columns` calls it before `game.save()`, and `_game_form_refusal`
 answers a `LineageRefused` onto its field. P4 calls `state_lineage` and
@@ -96,8 +102,11 @@ parent as removed.
 
 `EditionState` gains `kind: EditionKind = EditionKind.FULL`;
 `state_catalog_graph` writes it on create and on change like `name`.
-`EditionRowForm` gains a `kind` `ChoiceField` beside the name, read from
-storage and written through `_states()`. A shared Edition's kind is
+`EditionRowForm` gains a `kind` `ChoiceField` beside the name; the
+storage initial (`_blocks_from_storage`) carries it, `_states()` passes it,
+`_written_edition` adds it to `update_fields`, and the Edition block in
+`games/views/catalog_section.py` renders it beside `_name_row`, since that
+block draws its fields by hand. A shared Edition's kind is
 read-only, as its name is. No rule couples an Edition's kind to anything:
 a Game may hold only prerelease Editions (a demo nobody bought the game
 after).
@@ -107,15 +116,23 @@ after).
 `GameForm` (private Games only; `edit_game` resolves through
 `for_library`, so a shared Game never reaches it) gains, after `sort_name`:
 
-- `kind`, a `ChoiceField` over `GameKind`, initial `main`.
+- `kind`, a `ChoiceField` over `GameKind`, initial `main` on Add Game and
+  the stored kind on Edit Game.
 - `parent`, a `ModelChoiceField` whose queryset is `visible_to(library)`
   plus the stored parent, so an add-on whose parent was removed later
-  resubmits. Widget: `SearchSelectWidget` over `GET /api/games/search` with
-  `params={"kind": "main"}`. The search route gains an optional `kind`
-  parameter (one of `GameKind`, else 422).
-- A `<game-lineage>` custom element (`ts/elements/game-lineage.ts`) wraps
-  the two rows and hides the parent row while kind is `main`, clearing its
-  value on hide. With scripting off both rows show and the rules answer.
+  resubmits; initial the stored parent on Edit Game. Both initials are set
+  by hand beside `original_release_date`'s, because neither field is in
+  `Meta.fields`; without them an untouched Edit of a DLC would save it as
+  main. Widget: `SearchSelectWidget` over `GET /api/games/search` with
+  `params={"kind": {"value": "main"}}` (a `LiteralParam`) and an
+  `options_resolver` that labels the stored parent. The search route gains
+  an optional `kind` parameter (one of `GameKind`, else 422).
+- A `<game-lineage>` custom element (`ts/elements/game-lineage.ts`),
+  rendered after `FormFields` with the two field names as props, finds
+  its form and hides the `[data-field-row="parent"]` row while kind is
+  `main`, clearing the value on hide. It wraps nothing, so `FormFields`
+  needs no grouping change. With scripting off both rows show and the
+  rules answer.
 
 Both fields are form fields the form does not save through `Meta.fields`;
 `save_game_columns` hands them to `state_lineage`.
@@ -123,9 +140,11 @@ Both fields are form fields the form does not save through `Meta.fields`;
 ## Reads and screens
 
 **Game detail, an add-on.** One meta row above Original release: "Add-on
-of", the parent's name linked to its page and a `Chip` naming the kind. A
-removed or otherwise invisible parent renders its name with "(removed)"
-and no link. A shared Game shows the same row, read-only by construction.
+of", the parent's name and a `Chip` naming the kind. The name links to the
+parent's page only where the library tracks the parent, since `view_game`
+resolves through `tracked_by`; a shared parent the library does not track
+reads as plain text, and a removed one as its name with "(removed)". A
+shared Game shows the same row, read-only by construction.
 
 **Game detail, a main game.** An Add-ons section after Library:
 `_game_section` on `SECTION_SURFACE_CLASS`, a `SummaryList` of
@@ -136,27 +155,36 @@ added"), through `tracked_addons(library, game)` in
 No rows: the section renders nothing. No Add button.
 
 **Game detail, Releases.** A prerelease Edition breaks the plain shape
-(`_reads_plainly`), and its block heading carries a "Prerelease" `Chip`.
-Release pickers need nothing: `release_label` already prints the
-Edition's name ("PC · Demo · 2024").
+(`_reads_plainly`), and its row's Name cell carries a "Prerelease" `Chip`.
+`release_label` prints the Edition's name where it has one ("PC · Demo ·
+2024") and "Prerelease" where a prerelease Edition has none, so a picker
+never reads an unnamed demo as the full game.
 
 **Games list.** The base is main games unless the filter names `kind` or
 `parent` in any leaf of its tree, `NOT` included
 (`GameFilter.names_lineage()`); then it is every kind and the filter
 narrows. One function, `games_list_base(library, game_filter)` in a new
-`games/reads/games_list.py` (the bulk act imports no view), states it, and `games_for_list` and
-`bulk_games.game_scope` both read it, so a tray's "every matching row"
-acts on what the list shows. `game_edit_resolution` takes keys and is
+`games/reads/games_list.py` (the bulk act imports no view), states it.
+Three readers take it: `games_for_list`; `bulk_games.game_scope`, so a
+tray's "every matching row" acts on what the list shows; and the Game
+branch of `filter_queryset_for_library`, which the builder's live count
+(`/api/filter/count`) and the parity tests read, so it takes the parsed
+filter beside the model name. A lineage leaf chooses the base and narrows
+no playtime: `GameFilter.narrowing()` skips `kind` and `parent` when it
+asks whether a level states a leaf, or the stats links below would lose
+the Playtime column's narrowing. `game_edit_resolution` takes keys and is
 untouched. A Kind column (the label) after Status, `hidden_by_default`.
 A Kind quick facet after Format.
 
 **Links into the Games list.** Any link into the Games list whose figure
 counts every kind states `kind` INCLUDES every word, through
 `GameFilter.every_kind()`: `stats_links.games_played`, `games_in_month`,
-and the Library page's Games count (`games/views/library.py`). The stats
-link parity test reads the link through `games_list_base`, so it holds
-the rule and P5's new links inherit it. The applied dot on the Kind facet
-says why the list shows add-ons.
+and the Library page's three links into the list (`StatisticCard`,
+`SummaryValue` and the row's View all, `games/views/library.py`). The
+stats link parity test reads the link through `games_list_base`, so it
+holds the rule and P5's new links inherit it. On the Library page's link
+the Kind facet's applied dot says why the list shows add-ons; the stats
+links are `OR` trees, which the quick bar shows as an advanced filter.
 
 **Filters.** `GameFilter` gains `kind` (`ChoiceCriterion`, choices
 `GameKind`) and `parent` (`UUIDMultiCriterion`,
@@ -180,10 +208,17 @@ the nested builder with no further work; `kind` is quick-editable.
   section lists tracked add-ons only and is absent when empty; the
   Prerelease chip and the broken plain shape.
 - Games list: add-ons absent by default; present under a `kind` leaf,
-  under `NOT kind`, under `parent`; the bulk scope matches the list; the
-  Kind column and facet.
-- Links: `every_kind()` on the three links; parity through
-  `games_list_base`.
+  under `NOT kind`, under `parent`; the bulk scope and the builder's live
+  count match the list; the Kind column and facet.
+- Links: `every_kind()` on every link named; parity through
+  `games_list_base`; `games_played(year).narrowing()` still states the
+  year's sessions and records with the kind leaf beside them.
+- Edit Game resubmitted untouched keeps a DLC's kind and parent.
+- Rule 7 refuses while only a removed add-on names the Game; restoring
+  that add-on afterwards leaves it under a main parent.
+- The "Add-on of" link: tracked parent linked, untracked shared parent
+  plain, removed parent marked.
+- An unnamed prerelease Edition's `release_label` says "Prerelease".
 - Audit: a foreign parent is reported.
 - Purge: `purge_user_library` removes a library holding a private add-on
   and its private parent (the `RESTRICT` claim above, run rather than
@@ -191,8 +226,11 @@ the nested builder with no further work; `kind` is quick-editable.
 - e2e: `<game-lineage>` hides and clears the parent row; picking a parent
   and saving lands on the add-on's page with the row.
 
-`make render-pages` at both commits on one dump: the diff is the new
-columns' absence on every page (all `main`/`full`), attributed.
+`make render-pages` at both commits on one dump, every difference
+attributed: the Games list's Kind facet and column-picker entry, the Edit
+Game form's two fields and each Edition row's select, and the stats and
+Library pages' link hrefs carrying the `kind` clause. No page shows an
+add-on or a prerelease, since every row reads `main`/`full`.
 
 ## Limits
 
@@ -206,5 +244,11 @@ columns' absence on every page (all `main`/`full`), attributed.
   the list is not in this issue.
 - Hiding prerelease play is #1361, after #1354. The backlog (P5) and
   Before start (#1358) read `Edition.kind`; nothing in M7 does.
+- `make anonymize-sample` prunes other libraries with
+  `Game.objects.exclude(library=library).delete()`, which the new
+  `RESTRICT` refuses for a kept private add-on under a shared parent, as
+  `PlayerGame.game` already does for a tracked shared game. No such row
+  exists before P4; the anonymizer's order is P4's to fix if its output
+  holds one.
 - #1383 redraws Game detail after this issue and P5; the sections here
   take the library kit's shapes and invent no markup.
