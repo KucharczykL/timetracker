@@ -229,17 +229,14 @@ def _abandoned_or_refunded() -> PurchaseFilter:
     return purchase_filter
 
 
-def _holding_no_game_excluded_from(fact: str) -> PurchaseFilter:
-    """No game of the purchase states `fact`.
+def _holding_no_game(excluded: GameFilter) -> PurchaseFilter:
+    """No game of the purchase matches `excluded`.
 
     NONE, not a leaf: a leaf asks ANY.
     TODO(#1337): the shared join lets bundles pass.
     """
-    return PurchaseFilter(
-        game_filter=GameFilter(
-            **{fact: BoolCriterion(value=True)}, match=RelationMatch.NONE
-        )
-    )
+    excluded.match = RelationMatch.NONE
+    return PurchaseFilter(game_filter=excluded)
 
 
 def purchases_dropped(year) -> PurchaseFilter:
@@ -251,7 +248,7 @@ def purchases_dropped(year) -> PurchaseFilter:
     purchase_filter.game_filter = _not_finished_game(year, list(DONE_STATUSES))
     purchase_filter.AND = [
         _abandoned_or_refunded(),
-        _holding_no_game_excluded_from("excluded_from_dropped"),
+        _holding_no_game(GameFilter(excluded_from_dropped=BoolCriterion(value=True))),
     ]
     return purchase_filter
 
@@ -266,7 +263,9 @@ def purchases_unfinished(year) -> PurchaseFilter:
     purchase_filter.game_filter = _not_finished_game(
         year, [*DONE_STATUSES, PlayerGameStatus.ABANDONED]
     )
-    purchase_filter.AND = [_holding_no_game_excluded_from("excluded_from_unfinished")]
+    purchase_filter.AND = [
+        _holding_no_game(GameFilter(excluded_from_unfinished=BoolCriterion(value=True)))
+    ]
     return purchase_filter
 
 
