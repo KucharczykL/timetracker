@@ -87,10 +87,11 @@ ever wrote under it.
 
 Most Games hold one unnamed Edition and one Release. That shape says everything
 in two header rows — the Platform, and the date through the presenter — and the
-page adds no heading above them. Three things break the shape and bring the
-`Releases` section: a second Edition, a second Release, or a name on the only
-Edition. The section carries one block per Edition, each a Platform and Released
-table, or the words `No releases yet.` where an Edition holds none.
+page adds no heading above them. Four things break the shape and bring the
+`Editions` section: a second Edition, a second Release, a name on the only
+Edition, or a prerelease kind on it. The section carries one block per
+Edition, each a Platform and Released table, or the words `No releases yet.`
+where an Edition holds none.
 
 A block is headed by `display_name` where the name tells one Edition from
 another: where two Editions meet, and where a lone Edition states a name of its
@@ -132,6 +133,29 @@ A shared Game's graph is shown, and the control is not. The page says
 nothing about who may change it, because the page offers nothing either way.
 What sharing means is unsettled until the IGDB wave (#783, #784, #785) lands,
 and a mark written now would state a rule that does not exist yet.
+
+## Add-ons
+
+A Game states its `kind`: a main game, or an add-on (DLC, Expansion,
+Standalone expansion). An add-on names the main game it belongs to as
+`parent`; a main game names none. `state_addon()` in
+`games/catalog_addons.py` sets both and saves nothing. It refuses a parent
+on a main game, an add-on without one, the Game itself, another library's
+private Game, a removed Game the add-on did not already name, and an add-on
+as parent. A main game that any add-on names, a removed one included, does
+not become an add-on. A parent removed later is kept and reads as removed.
+
+Game detail names an add-on's parent above Original release, linked where
+the library tracks it. A main game lists the add-ons the library tracks in
+an `Add-ons` section beside `Library`, grouped by kind, each row with the
+Games list's row menu. The Games list shows main games until a
+filter names `kind` or `parent`. Removing a main game keeps its add-ons, and
+both removal confirmations count the tracked add-ons that stay.
+
+An Edition states its `kind`: `full`, or `prerelease` for a demo, beta or
+playtest. A prerelease Edition breaks the plain shape and carries a chip in
+the `Editions` table, and an unnamed one reads as `Prerelease` wherever an
+Edition's words are printed.
 
 ## Removing a Game from a library
 

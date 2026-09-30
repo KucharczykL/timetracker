@@ -23,11 +23,13 @@ from tracked_games import create_tracked_game
 from common.criteria import Modifier
 from common.filter_execution import execute_filter
 from games.filters import (
+    GameFilter,
     filter_query_context_for_library,
     filter_queryset_for_library,
 )
 from games.models import (
     Game,
+    GameKind,
     HistoricalPlaytime,
     Platform,
     PlayerGame,
@@ -129,6 +131,14 @@ def world(db):
     )
     record_row([tracked_run(library, recorded_elsewhere)], when=f"{YEAR - 1}-05")
 
+    #: Hidden from the list without of_every_kind.
+    dlc = create_tracked_game(
+        library, "Finished DLC", status=PlayerGameStatus.PLAYED, platform=pc
+    )
+    Game.objects.filter(pk=dlc.pk).update(kind=GameKind.DLC, parent=finished_game)
+    session_row(dlc, started_at=_dt(YEAR, 6, 8))
+    record_row([tracked_run(library, dlc)], when=f"{YEAR}-05")
+
     foreign_library = (
         get_user_model().objects.create_user(username="stats-links-foreign").library
     )
@@ -166,7 +176,11 @@ def _stats(world, year):
 
 
 def _count(filter_obj, model, library):
-    queryset = filter_queryset_for_library(model._meta.model_name, library)
+    queryset = filter_queryset_for_library(
+        model._meta.model_name,
+        library,
+        filter_obj if isinstance(filter_obj, GameFilter) else None,
+    )
     return (
         execute_filter(filter_obj, queryset, filter_query_context_for_library(library))
         .distinct()
@@ -301,15 +315,16 @@ def test_games_in_month_matches_that_month(world):
         )
         .count()
     )
-    assert expected == 2
+    #: The DLC's session counts.
+    assert expected == 3
     assert (
         _count(stats_links.games_in_month(YEAR, 6), Game, world["library"]) == expected
     )
 
 
 def test_games_in_month_finds_a_game_only_a_record_reaches(world):
-    """May holds one record and no session."""
-    assert _count(stats_links.games_in_month(YEAR, 5), Game, world["library"]) == 1
+    """May holds two records, no session."""
+    assert _count(stats_links.games_in_month(YEAR, 5), Game, world["library"]) == 2
     assert _count(stats_links.games_in_month(YEAR, 4), Game, world["library"]) == 0
 
 
@@ -322,6 +337,34 @@ def test_all_sessions_matches_total_sessions(world):
 
 
 # ── Count links ──────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "link", [stats_links.games_played(YEAR), stats_links.games_in_month(YEAR, 6)]
+)
+def test_the_kind_clause_sits_on_each_member_not_the_root(link):
+    """A root leaf would match every game."""
+    assert link.kind is None
+    assert all(member.kind is not None for member in link.OR)
+
+
+def test_games_played_narrows_the_playtime_column(world):
+    """Kind leaves leave the narrowing intact."""
+    clauses = stats_links.games_played(YEAR).narrowing()
+
+    assert clauses.sessions is not None
+    assert clauses.records is not None
+
+
+def test_a_link_over_main_games_drops_the_dlc(world):
+    """The DLC makes the clause necessary."""
+    bare = GameFilter(OR=[member for member in stats_links.games_played(YEAR).OR])
+    for member in bare.OR:
+        member.kind = None
+
+    assert _count(bare, Game, world["library"]) == (
+        _stats(world, YEAR)["total_games"] - 1
+    )
 
 
 def test_games_played_matches_total_games(world):
@@ -346,12 +389,12 @@ def test_games_in_month_drops_a_record_that_crosses_the_boundary(world):
     june = _count(stats_links.games_in_month(YEAR, 6), Game, world["library"])
     july = _count(stats_links.games_in_month(YEAR, 7), Game, world["library"])
     played = _count(stats_links.games_played(YEAR), Game, world["library"])
-    assert (june, july) == (2, 1)
+    assert (june, july) == (3, 1)
     assert played == _stats(world, YEAR)["total_games"]
 
 
 def test_games_played_all_time_counts_every_record(world):
-    assert _count(stats_links.games_played(None), Game, world["library"]) == 4
+    assert _count(stats_links.games_played(None), Game, world["library"]) == 5
 
 
 def test_total_purchases_matches_count(world):
@@ -574,7 +617,7 @@ def test_stats_link_destination_count_parity_for_each_library(world):
     assert (
         foreign_count == compute_stats(world["foreign_library"], YEAR)["total_sessions"]
     )
-    assert (own_count, foreign_count) == (3, 1)
+    assert (own_count, foreign_count) == (4, 1)
 
 
 # must survive the same to_json → from_json the view performs.

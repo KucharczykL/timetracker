@@ -41,6 +41,7 @@ from common.components.primitives import (
     Button,
     ButtonColor,
     ButtonGroup,
+    ButtonSize,
     ControlButton,
     ControlLink,
     Dialog,
@@ -716,6 +717,17 @@ register_element("search-field", "SearchField", SearchFieldProps)
 _SearchFieldElement = custom_element_builder("search-field")
 
 
+type FormFieldName = str  # e.g. "parent"
+
+
+class GameAddonProps(TypedDict):
+    kind_field: FormFieldName
+    parent_field: FormFieldName
+
+
+register_element("game-addon", "GameAddon", GameAddonProps)
+
+
 class CopyControlProps(TypedDict):
     value: str
 
@@ -1387,6 +1399,7 @@ def RowActionMenu(
     label: str,
     id: str,
     placement: str = "bottom-end",
+    size: ButtonSize = "control",
 ) -> Node:
     """A table row's acts behind one bare ellipsis trigger.
 
@@ -1399,7 +1412,7 @@ def RowActionMenu(
     clips a whole clause; the panel fits its content instead.
     """
     return Dropdown(
-        trigger_element=EllipsisTrigger(label=label).as_element(),
+        trigger_element=EllipsisTrigger(label=label, size=size).as_element(),
         target_element=DropdownMenuPanel(
             items=list(items),
             aria_label=label,

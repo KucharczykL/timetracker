@@ -60,6 +60,7 @@ from games.events.idempotency import IdempotencyKey
 from games.events.libraryentry import EntryWayValue
 from games.filters import (
     MODE_PARSERS,
+    GameFilter,
     filter_for_model,
     filter_query_context_for_library,
     filter_queryset_for_library,
@@ -74,6 +75,7 @@ from games.models import (
     EntryFormat,
     FilterPreset,
     Game,
+    GameKind,
     HistoricalPlaytime,
     LibraryEntry,
     Platform,
@@ -332,13 +334,15 @@ class StringOption(Schema):  # SearchSelectOption with a string value (e.g. grou
 
 
 @game_router.get("/search", response=list[PickerOption])
-def search_games(request, q: str = "", limit: int = 10):
+def search_games(request, q: str = "", limit: int = 10, kind: GameKind | None = None):
     library = cast(User, request.user).library
     qs = (
         Game.objects.visible_to(library)
         .select_related("platform")
         .order_by("sort_name")
     )
+    if kind is not None:
+        qs = qs.filter(kind=kind)
     if q:
         qs = qs.filter(
             Q(name__icontains=q) | Q(library=library, sort_name__icontains=q)
@@ -1523,7 +1527,7 @@ def filter_count(request, model: str, filter: str = ""):
         # contract of not masking genuine wiring bugs.
         raise HttpError(400, f"Unknown model: {model!r}") from exc
     library = cast(User, request.user).library
-    queryset = filter_queryset_for_library(model, library)
+    parsed = None
     if filter:
         # "" -> None (count all); "{}" -> an all-None filter whose to_q() is an
         # empty Q() (also counts all). A present-but-invalid filter -> 400.
@@ -1537,12 +1541,16 @@ def filter_count(request, model: str, filter: str = ""):
                 exc,
             )
             raise HttpError(400, f"Invalid filter: {exc}") from exc
-        if parsed is not None:
-            queryset = execute_filter(
-                parsed,
-                queryset,
-                filter_query_context_for_library(library),
-            )
+    #: Only a GameFilter widens the Games base.
+    queryset = filter_queryset_for_library(
+        model, library, parsed if isinstance(parsed, GameFilter) else None
+    )
+    if parsed is not None:
+        queryset = execute_filter(
+            parsed,
+            queryset,
+            filter_query_context_for_library(library),
+        )
     return {"count": queryset.count()}
 
 

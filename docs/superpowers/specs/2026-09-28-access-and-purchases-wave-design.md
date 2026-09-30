@@ -253,8 +253,9 @@ case the base is every kind: the Kind facet is the
 switch, Clear returns to main games, and statistics and the backlog read
 every kind regardless. So a link into the Games list from a figure that
 counts every kind states `kind` INCLUDES every word
-(`GameFilter.every_kind()`), the stats builders and the Library page's
-Games count alike, and the parity test holds stat and link to one
+(`GameFilter.of_every_kind()`), the stats builders and the Library page's
+Games count alike. Under an `OR` each member states it, because a node
+ORs its members with its own leaves. The parity test holds stat and link to one
 predicate; `GameFilter.narrowing()` skips those leaves, so the Playtime
 column's narrowing survives the clause. A private DLC reconciles to IGDB's through the
 same redirect as any private Game.

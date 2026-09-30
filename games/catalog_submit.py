@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Final, NamedTuple
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
+from games.catalog_addons import AddonRefused, state_addon
 from games.catalog_compat import LEGACY_IDENTITY_TAKEN, MirroredIdentity
 from games.catalog_form import CatalogGraphForm
 from games.catalog_writes import DUPLICATE_EDITION_NAME
@@ -57,7 +58,25 @@ _ANSWERED_BY_THE_REFERENCE_SERVICE = (
     "arrives as a `ReferencesRefused` naming the box that stated "
     "it, never as an `IntegrityError`."
 )
+_REFUSED_BY_THE_REFERENCE_FORM = (
+    "`ReferenceSetForm` names one supported provider per box and "
+    "normalises its key, and the service picks the target column "
+    "by entity kind, thus no write reaches this check."
+)
+_REFUSED_BY_STATE_ADDON = (
+    "`state_addon` refuses first and names the field, thus no save reaches this check."
+)
+_A_SELECT_OVER_THE_WORDS = (
+    "The field is a select over the same words, thus no save reaches this check."
+)
 UNREACHABLE_FROM_THE_GAME_FORM: Final[dict[str, str]] = {
+    "external_reference_kind_matches_target": _REFUSED_BY_THE_REFERENCE_FORM,
+    "external_reference_supported_provider": _REFUSED_BY_THE_REFERENCE_FORM,
+    "external_reference_canonical_provider_key": _REFUSED_BY_THE_REFERENCE_FORM,
+    "game_kind_word": _A_SELECT_OVER_THE_WORDS,
+    "game_parent_exactly_for_addons": _REFUSED_BY_STATE_ADDON,
+    "game_not_its_own_parent": _REFUSED_BY_STATE_ADDON,
+    "edition_kind_word": _A_SELECT_OVER_THE_WORDS,
     "unique_external_reference_provider_kind_key": _ANSWERED_BY_THE_REFERENCE_SERVICE,
     "unique_live_game_reference_per_provider": _ANSWERED_BY_THE_REFERENCE_SERVICE,
     "unique_live_edition_reference_per_provider": _ANSWERED_BY_THE_REFERENCE_SERVICE,
@@ -87,6 +106,14 @@ def save_game_columns(form: GameForm, identity: MirroredIdentity) -> Game:
     platform never stands beside the pair it is replacing.
     """
     game = form.save(commit=False)
+    #: First: locks both rows in key order.
+    #: Locking the Game alone first could deadlock.
+    state_addon(
+        game,
+        kind=form.cleaned_data["kind"],
+        parent=form.cleaned_data["parent"],
+        library=form.library,
+    )
     if not game._state.adding:
         persisted = Game.objects.select_for_update().get(pk=game.pk)
         if persisted.library_id != game.library_id:
@@ -122,6 +149,9 @@ def save_game_and_graph(
 
 def _game_form_refusal(form: GameForm, error: ValidationError) -> bool:
     """A refusal the Game's own fields caused."""
+    if isinstance(error, AddonRefused):
+        form.add_error(error.field, error.messages[0])
+        return True
     if REMOVED_SINCE_READ in error.messages:
         form.add_error(None, REMOVED_SINCE_READ)
         return True

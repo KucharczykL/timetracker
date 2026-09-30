@@ -2,7 +2,7 @@
 
 from django.db.models import Q, QuerySet
 
-from games.models import Game, Release, UserLibrary
+from games.models import Edition, EditionKind, Game, Release, UserLibrary
 from games.reads.unscoped import require_library
 
 UNSPECIFIED_PLATFORM = "Unspecified"
@@ -11,6 +11,15 @@ UNSPECIFIED_PLATFORM = "Unspecified"
 def platform_words(release: Release) -> str:
     """Its platform's name, else Unspecified."""
     return UNSPECIFIED_PLATFORM if release.platform is None else release.platform.name
+
+
+def edition_words(edition: Edition) -> str:
+    """Its name, else Prerelease, else nothing."""
+    if edition.name:
+        return edition.name
+    if edition.kind == EditionKind.PRERELEASE:
+        return EditionKind.PRERELEASE.label
+    return ""
 
 
 def game_releases(library: UserLibrary, game: Game) -> QuerySet[Release]:
@@ -35,12 +44,10 @@ def matching_releases(releases: QuerySet[Release], query: str) -> QuerySet[Relea
 
 
 def release_label(release: Release) -> str:
-    """Platform, named edition, then year."""
-    parts = [
-        UNSPECIFIED_PLATFORM if release.platform is None else release.platform.name
-    ]
-    if release.edition.name:
-        parts.append(release.edition.name)
+    """Platform, edition words, then year."""
+    parts = [platform_words(release)]
+    if words := edition_words(release.edition):
+        parts.append(words)
     if release.release_date is not None and release.release_date.year is not None:
         parts.append(str(release.release_date.year))
     return " · ".join(parts)

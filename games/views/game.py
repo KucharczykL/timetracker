@@ -1,3 +1,4 @@
+import logging
 from collections.abc import Sequence
 from datetime import timedelta
 from functools import partial
@@ -19,6 +20,7 @@ from common.components import (
     AddForm,
     ButtonGroup,
     Cell,
+    Chip,
     Column,
     ContentContainer,
     ControlButton,
@@ -47,7 +49,9 @@ from common.components import (
     Safe,
     SelectionDeclaration,
     StyledTable,
+    SummaryGroup,
     SummaryList,
+    SummaryRow,
     TableData,
     Ul,
     drop_columns,
@@ -55,6 +59,7 @@ from common.components import (
     paginated_table_content,
     parse_filter_dict,
 )
+from common.components.game_addon import GameAddon
 from common.components.primitives import Li, Span, custom_element_builder
 from common.components.sectioned_page import SECTION_SURFACE_CLASS
 from common.date_time_presentation import (
@@ -78,6 +83,7 @@ from games.bulk_game_edit import EDIT as EDIT_GAMES
 from games.bulk_playthrough_acts import COMPLETE_RUNS, START_RUNS
 from games.bulk_removal import REMOVE_GAME, REMOVE_RECORD, REMOVE_RUN
 from games.bulk_tray import tray_actions
+from games.catalog_addons import FOREIGN_PARENT_LABEL, foreign_to
 from games.catalog_form import CatalogGraphForm
 from games.catalog_release import SHARED_GAME_RELEASE
 from games.catalog_submit import submitted_game_or_form_error
@@ -99,8 +105,11 @@ from games.formatting import session_time_range
 from games.forms import GameForm
 from games.list_columns import column_choice
 from games.models import (
+    Edition,
+    EditionKind,
     ExternalReference,
     Game,
+    GameKind,
     PlayerGameStatus,
     PlayerSessionQuerySet,
     PlayerSessionTimingMode,
@@ -110,10 +119,15 @@ from games.models import (
     UserLibrary,
 )
 from games.ownership import owned_or_404
-from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
+from games.reads.catalog_hierarchy import (
+    EditionEntry,
+    game_hierarchy,
+    tracked_addons,
+)
 from games.reads.entries import AccessSummary, access_summaries
 from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.game_departures import game_departures
+from games.reads.games_list import games_list_base
 from games.reads.historical_playtime_page import (
     listed_records,
     run_labels_for,
@@ -167,8 +181,14 @@ from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import origin_from, return_url
 from games.writes.playergame import new_correlation_id
 
+logger = logging.getLogger("games")
+
 #: The value half of a meta row.
 META_VALUE_CLASS = "text-heading"
+#: Lets a grid cell shrink below its content.
+_GRID_CELL_CLASS = "min-w-0"
+#: Formatted with `count`.
+ADDONS_STAY = "{count} add-on(s) stay, off the Games list"
 #: No Platform is a fact, not blank.
 UNSPECIFIED_PLATFORM = "Unspecified"
 #: Said on the page, because the shape is not final.
@@ -218,7 +238,7 @@ def games_for_list(
 
     One function, so the benchmark times the plan the page serves.
     """
-    games = Game.objects.tracked_by(library).select_related("platform")
+    games = games_list_base(library, game_filter).select_related("platform")
     #: Narrows the Playtime column; none counts all.
     clauses = NarrowingClauses(None, None)
     if game_filter is not None:
@@ -257,6 +277,7 @@ def game_list_columns(playtime_label: str) -> list[Column]:
         Column("Year", "year", priority=2, key="year"),
         Column(playtime_label, "filtered_playtime", priority=2, key="playtime"),
         Column("Status", "status", priority=3, key="status"),
+        Column("Kind", "kind", key="kind", hidden_by_default=True),
         Column("Access", key="access", hidden_by_default=True),
         Column("Wikidata", "wikidata", key="wikidata", hidden_by_default=True),
         Column("Created", "created", key="created", hidden_by_default=True),
@@ -316,6 +337,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                     csrf_token,
                     current=game.tracked_status,
                 ),
+                GameKind(game.kind).label,
                 _access_cell(game.pk, summaries.get(game.pk), presentation),
                 _wikidata_cell(game.wikidata),
                 presentation.format(game.created_at, "date"),
@@ -430,7 +452,10 @@ def add_game(request: HttpRequest) -> HttpResponse:
             form,
             request=request,
             fields=Fragment(
-                FormFields(form), editions_area(graph), references_area(references)
+                FormFields(form),
+                GameAddon("kind", "parent"),
+                editions_area(graph),
+                references_area(references),
             ),
             width_class="max-w-xl md:max-w-4xl",
             additional_row=Fragment(
@@ -497,6 +522,8 @@ def _removed_with_game(game: Game, library: UserLibrary) -> Node:
         (departing.runs, "playthrough"),
     ]
     present = [Li()[f"{count} {label}(s)"] for count, label in counts if count]
+    if departing.addons:
+        present.append(Li()[ADDONS_STAY.format(count=departing.addons)])
     return Ul()[*(present or [Li()["No associated data"]])]
 
 
@@ -549,7 +576,10 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
             form,
             request=request,
             fields=Fragment(
-                FormFields(form), editions_area(graph), references_area(references)
+                FormFields(form),
+                GameAddon("kind", "parent"),
+                editions_area(graph),
+                references_area(references),
             ),
             width_class="max-w-xl md:max-w-4xl",
         ),
@@ -774,7 +804,8 @@ def _game_section(
             Div(class_="flex flex-wrap items-center gap-2")[*buttons],
         ]
     else:
-        header = heading
+        #: A button row's height, so side-by-side headings align.
+        header = Div(class_="flex min-h-control items-center")[heading]
     return Div(
         class_=f"mb-6 flex flex-col gap-4 {SECTION_SURFACE_CLASS}"
         if surface
@@ -828,13 +859,27 @@ def _platform_words(release: Release | None) -> str:
 
 
 def _reads_plainly(entries: Sequence[EditionEntry]) -> bool:
-    """One unnamed Edition, at most one Release."""
+    """At most one plain Edition and Release."""
     if len(entries) > 1:
         return False
     if not entries:
         return True
     entry = entries[0]
-    return not entry.edition.name and len(entry.releases) <= 1
+    return (
+        not entry.edition.name
+        and entry.edition.kind == EditionKind.FULL
+        and len(entry.releases) <= 1
+    )
+
+
+def _edition_name_cell(edition: Edition) -> Node:
+    """The name, with a prerelease chip."""
+    if edition.kind != EditionKind.PRERELEASE:
+        return Fragment(edition.display_name)
+    return Span(class_="inline-flex flex-wrap items-center gap-2")[
+        edition.display_name,
+        Chip(tone="neutral")[EditionKind.PRERELEASE.label],
+    ]
 
 
 def _catalog_controls_visible(game: Game) -> bool:
@@ -944,7 +989,7 @@ def _releases_section(
     ]
     rows = [
         make_row(
-            entry.edition.display_name,
+            _edition_name_cell(entry.edition),
             _platforms_cell(entry, presentation),
             _references_cell(entry, references),
             *((edit,) if controls else ()),
@@ -979,6 +1024,7 @@ def _game_header(
     entries: Sequence[EditionEntry],
     references: Sequence[ExternalReference],
     played: int,
+    library: UserLibrary,
 ) -> Node:
     playrange_start = metrics["playrange_start"]
     playrange_end = metrics["playrange_end"]
@@ -1024,6 +1070,7 @@ def _game_header(
     metadata = Div(
         class_="flex flex-col mb-6 text-body gap-y-4 text-type-body",
     )[
+        *_parent_row(game, library),
         _meta_row(
             "Original release",
             TemporalText(
@@ -1056,6 +1103,66 @@ def _game_header(
         stats_row,
         metadata,
         _game_action_buttons(game, origin),
+    ]
+
+
+def _parent_row(game: Game, library: UserLibrary) -> list[Node]:
+    """The parent, linked where the page exists."""
+    if game.parent_id is None:
+        return []
+    parent = Game.objects.get(pk=game.parent_id)
+    name: Node
+    if foreign_to(parent, library):
+        logger.error("Game %s names foreign parent %s.", game.pk, parent.pk)
+        name = Span(class_=META_VALUE_CLASS)[FOREIGN_PARENT_LABEL]
+    elif parent.removed_at is not None:
+        name = Span(class_=META_VALUE_CLASS)[f"{parent.name} (removed)"]
+    elif Game.objects.tracked_by(library).filter(pk=parent.pk).exists():
+        name = Link(href=parent.get_absolute_url(), class_=META_VALUE_CLASS)[
+            parent.name
+        ]
+    else:
+        name = Span(class_=META_VALUE_CLASS)[parent.name]
+    return [
+        _meta_row("Add-on of", name, Chip(tone="neutral")[GameKind(game.kind).label])
+    ]
+
+
+def _addons_section(game: Game, library: UserLibrary, origin: OriginUrl | None) -> Node:
+    """Tracked add-ons; nothing when none."""
+    addons = list(tracked_addons(library, game))
+    if not addons:
+        return Fragment()
+    by_kind: dict[GameKind, list[Game]] = {}
+    for addon in addons:
+        by_kind.setdefault(GameKind(addon.kind), []).append(addon)
+    groups = [
+        SummaryGroup(
+            label=kind.label,
+            rows=[
+                SummaryRow(
+                    label="",
+                    subtitle=Fragment(
+                        Link(href=addon.get_absolute_url())[addon.name],
+                        Span()[f"· {PlayerGameStatus(addon.tracked_status).label}"],
+                    ),
+                    control=game_row_menu(addon, origin, size="compact"),
+                    dense=True,
+                )
+                for addon in by_kind[kind]
+            ],
+        )
+        for kind in GameKind
+        if kind in by_kind
+    ]
+    return Div(id_="addons", class_=_GRID_CELL_CLASS)[
+        _game_section(
+            "Add-ons",
+            len(addons),
+            SummaryList(*groups, labelled=True),
+            "",
+            surface=True,
+        )
     ]
 
 
@@ -1289,7 +1396,7 @@ def _library_section(
     empty = EMPTY_LIBRARY if add is not None else SHARED_GAME_RELEASE
     if copies.ended and not copies.held:
         empty = EMPTY_LIBRARY_NOW
-    return Div(id_="library")[
+    return Div(id_="library", class_=_GRID_CELL_CLASS)[
         _game_section(
             "Library",
             copies.held,
@@ -1363,11 +1470,16 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             hierarchy,
             held_by(references, game.pk),
             played,
+            library,
         ),
         _releases_section(
             hierarchy, presentation, origin, game=game, references=references
         ),
-        _library_section(game, library, presentation, origin, get_token(request)),
+        #: Half width each on wide screens.
+        Div(class_="grid grid-cols-1 items-start lg:grid-cols-2 lg:gap-x-6")[
+            _addons_section(game, library, origin),
+            _library_section(game, library, presentation, origin, get_token(request)),
+        ],
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _historical_playtime_section(

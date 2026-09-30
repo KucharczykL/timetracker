@@ -329,7 +329,7 @@ def test_the_confirmation_states_what_leaves_with_each_game(logged_in, owned, sh
         url, {"selection": _statement(owned.pk, shared.pk)}
     ).content.decode()
 
-    for heading in ("Game", "Sessions", "Purchases", "Playthroughs"):
+    for heading in ("Game", "Sessions", "Purchases", "Playthroughs", "Add-ons staying"):
         assert heading in html
     assert "Remove 2 games" in html
     assert html.count("data-bulk-sample-row") == 2

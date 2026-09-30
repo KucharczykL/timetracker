@@ -39,6 +39,7 @@ EXPECTED_RELATION_COLUMNS = {
     ("games_externalreference", "release_id"),
     ("games_filterpreset", "library_id"),
     ("games_game", "library_id"),
+    ("games_game", "parent_id"),
     ("games_game", "platform_id"),
     ("games_historicalplaytime", "device_id"),
     ("games_historicalplaytime", "library_id"),

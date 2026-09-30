@@ -6,12 +6,15 @@ closes a cycle through that table's foot imports.
 
 from common.components import DropdownLinkItem, RowActionMenu
 from common.components.core import Node
+from common.components.primitives import ButtonSize
 from common.returns import OriginUrl, action_url
 from games.bulk_removal import REMOVE_GAME
 from games.models import Game
 
 
-def game_row_menu(game: Game, origin: OriginUrl | None) -> Node:
+def game_row_menu(
+    game: Game, origin: OriginUrl | None, *, size: ButtonSize = "control"
+) -> Node:
     """Edit where the library may edit the row, and Remove on every row.
 
     A shared catalog game is read-only for everyone, the rule Game
@@ -39,4 +42,5 @@ def game_row_menu(game: Game, origin: OriginUrl | None) -> Node:
         items,
         label=f"{game.name}{platform} actions",
         id=f"game-menu-{game.pk}",
+        size=size,
     )

@@ -3,6 +3,7 @@
 from typing import NamedTuple
 from uuid import UUID
 
+from django.db.models import QuerySet
 from django.db.models.functions import Coalesce, Lower
 
 from games.models import Edition, Game, Release, UserLibrary
@@ -44,4 +45,14 @@ def game_hierarchy(game: Game, library: UserLibrary) -> tuple[EditionEntry, ...]
         grouped[release.edition_id].append(release)
     return tuple(
         EditionEntry(edition, tuple(grouped[edition.pk])) for edition in editions
+    )
+
+
+def tracked_addons(library: UserLibrary, game: Game) -> QuerySet[Game]:
+    """The add-ons of `game` this library tracks."""
+    return (
+        Game.objects.tracked_by(library)
+        .filter(parent=game)
+        .select_related("platform")
+        .order_by("sort_name", "name", "pk")
     )

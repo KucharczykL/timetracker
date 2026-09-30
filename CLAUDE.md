@@ -174,7 +174,17 @@ docs/           — Additional documentation
 
 ### Models (in `games/models.py`)
 
-- **Game** — catalog row: `name`, `platform` (FK), `year_released`, `sort_name`, `wikidata`. Holds no status and no mastered flag: both live on `PlayerGame`
+- **Game** — catalog row: `name`, `platform` (FK), `year_released`, `sort_name`, `wikidata`. Holds no status and no mastered flag: both live on `PlayerGame`. `kind` (`GameKind`: `main`/`dlc`/`expansion`/`standalone_expansion`)
+  and `parent` (self key, `RESTRICT`, no reverse accessor) state an add-on
+  and the main game it belongs to; `state_addon` in `games/catalog_addons.py`
+  alone sets both and refuses with `AddonRefused` on its field. The Games
+  list, its bulk scope and the builder's count read `games_list_base`
+  (`games/reads/games_list.py`): main games until the filter names `kind`
+  or `parent` at any boolean level (`GameFilter.names_addon_fields`), and a link whose
+  figure counts add-ons states `GameFilter.of_every_kind()`, on each `OR`
+  member. An **Edition** states `kind` (`EditionKind`: `full`/`prerelease`);
+  `edition_words` names an unnamed prerelease. Contract is
+  [Game kind and parent](docs/superpowers/specs/2026-09-30-issue-1353-game-kind-and-parent-design.md)
 - **Platform** — `name`, `group`, `icon` (a `PLATFORM_ICONS` slug, `unspecified` by default; `clean()` refuses any other)
 - **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor `game.addon_purchases`)
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown). A

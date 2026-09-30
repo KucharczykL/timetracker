@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from django import forms
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.models import User
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 from django.forms.models import ModelChoiceIterator
 from django.http import QueryDict
 from django.utils import timezone
@@ -56,6 +56,7 @@ from common.components.primitives import (
 )
 from common.date_time_presentation import DateTimePresentation, zone_or_none
 from common.platform_icons import PLATFORM_ICONS, UNSPECIFIED_ICON
+from games.catalog_addons import FOREIGN_PARENT_LABEL, foreign_to
 from games.commands.endpoint import WayActStatement
 from games.commands.historical_playtime import (
     HistoricalPlaytimeStatement,
@@ -76,6 +77,7 @@ from games.models import (
     DEVICE_WAYS,
     Device,
     Game,
+    GameKind,
     HistoricalPlaytime,
     HistoricalPlaytimeProvenance,
     Platform,
@@ -306,6 +308,26 @@ def _game_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
         for g in Game.objects.for_library(library)
         .filter(pk__in=values)
         .select_related("platform")
+    ]
+
+
+def _parent_option(game: Game, library: UserLibrary) -> SearchSelectOption:
+    """A foreign parent shows no name."""
+    if foreign_to(game, library):
+        return {"value": str(game.id), "label": FOREIGN_PARENT_LABEL, "data": {}}
+    removed = " (removed)" if game.removed_at is not None else ""
+    return {
+        "value": str(game.id),
+        "label": game.search_label + removed,
+        "data": game_option_data(game),
+    }
+
+
+def _parent_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
+    """The stored parent, whatever its state."""
+    return [
+        _parent_option(game, library)
+        for game in Game.objects.filter(pk__in=values).select_related("platform")
     ]
 
 
@@ -2114,6 +2136,13 @@ class GameForm(
         self.fields["original_release_date"] = TemporalFormField(
             presentation=presentation, label="Original release"
         )
+        stored_parent = self.instance.parent_id
+        parent = cast(forms.ModelChoiceField, self.fields["parent"])
+        #: A removed stored parent still resubmits.
+        parent.queryset = Game.objects.filter(
+            Q(pk__in=Game.objects.visible_to(library)) | Q(pk=stored_parent)
+        ).select_related("platform")
+        parent.widget.options_resolver = partial(_parent_options, library=library)
         #: A field added after __init__ otherwise sinks to the bottom.
         self.order_fields(self.field_order)
         #: They left Meta.fields, so model_to_dict misses them.
@@ -2121,6 +2150,8 @@ class GameForm(
             self.initial.setdefault(
                 "original_release_date", self.instance.original_release_date
             )
+            self.initial.setdefault("kind", self.instance.kind)
+            self.initial.setdefault("parent", stored_parent)
             tracked = PlayerGame.objects.filter(
                 library=library, game=self.instance
             ).first()
@@ -2142,16 +2173,35 @@ class GameForm(
     excluded_from_unfinished = forms.BooleanField(
         required=False, label="Excluded from unfinished lists"
     )
+    #: Read by `state_addon`; empty means main.
+    kind = forms.ChoiceField(
+        choices=GameKind.choices, required=False, initial=GameKind.MAIN
+    )
+    parent = SingleGameChoiceField(
+        queryset=Game.objects.none(),
+        required=False,
+        label="Add-on of",
+        widget=SearchSelectWidget(
+            search_url="/api/games/search",
+            options_resolver=_parent_options,
+            params={"kind": {"value": GameKind.MAIN.value}},
+        ),
+    )
 
     #: Declared fields otherwise sink below model fields.
     field_order = (
         "name",
         "sort_name",
+        "kind",
+        "parent",
         "original_release_date",
         "status",
         "mastered",
         "excluded_from_unfinished",
     )
+
+    def clean_kind(self) -> GameKind:
+        return GameKind(self.cleaned_data["kind"] or GameKind.MAIN)
 
     def save(self, commit=True):
         game = super().save(commit=False)

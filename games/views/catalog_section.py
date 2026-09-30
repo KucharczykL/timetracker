@@ -277,11 +277,12 @@ def _headings() -> Node:
 
 
 def _name_row(block: EditionBlock) -> Node:
-    """The Edition's own name, which no header row stands over."""
+    """Name and kind, each labelled inline."""
     name = block.form["name"]
     title = _EDITION_BIN_NAME.text(_edition_name(block))
     return Div(class_="flex items-end gap-3")[
         _labelled(name, "grow flex flex-col", FORM_LABEL_CLASS),
+        _labelled(block.form["kind"], "flex flex-col", FORM_LABEL_CLASS),
         Div(class_="flex min-h-control items-center")[
             _remove_button(title, _EDITION_BIN_NAME.hooks())
         ],
