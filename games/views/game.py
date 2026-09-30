@@ -49,6 +49,7 @@ from common.components import (
     SelectionDeclaration,
     StyledTable,
     SummaryList,
+    SummaryRow,
     TableData,
     Ul,
     drop_columns,
@@ -105,6 +106,7 @@ from games.models import (
     EditionKind,
     ExternalReference,
     Game,
+    GameKind,
     PlayerGameStatus,
     PlayerSessionQuerySet,
     PlayerSessionTimingMode,
@@ -114,7 +116,11 @@ from games.models import (
     UserLibrary,
 )
 from games.ownership import owned_or_404
-from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
+from games.reads.catalog_hierarchy import (
+    EditionEntry,
+    game_hierarchy,
+    tracked_addons,
+)
 from games.reads.entries import AccessSummary, access_summaries
 from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.game_departures import game_departures
@@ -1003,6 +1009,7 @@ def _game_header(
     entries: Sequence[EditionEntry],
     references: Sequence[ExternalReference],
     played: int,
+    library: UserLibrary,
 ) -> Node:
     playrange_start = metrics["playrange_start"]
     playrange_end = metrics["playrange_end"]
@@ -1048,6 +1055,7 @@ def _game_header(
     metadata = Div(
         class_="flex flex-col mb-6 text-body gap-y-4 text-type-body",
     )[
+        *_parent_row(game, library),
         _meta_row(
             "Original release",
             TemporalText(
@@ -1080,6 +1088,53 @@ def _game_header(
         stats_row,
         metadata,
         _game_action_buttons(game, origin),
+    ]
+
+
+def _parent_row(game: Game, library: UserLibrary) -> list[Node]:
+    """The Game an add-on belongs to, linked where the page exists.
+
+    Read off the plain manager: a removed parent is still named.
+    """
+    if game.parent_id is None:
+        return []
+    parent = Game.objects.get(pk=game.parent_id)
+    name: Node
+    if parent.removed_at is not None:
+        name = Span(class_=META_VALUE_CLASS)[f"{parent.name} (removed)"]
+    elif Game.objects.tracked_by(library).filter(pk=parent.pk).exists():
+        name = Link(href=parent.get_absolute_url(), class_=META_VALUE_CLASS)[
+            parent.name
+        ]
+    else:
+        name = Span(class_=META_VALUE_CLASS)[parent.name]
+    return [
+        _meta_row("Add-on of", name, Chip(tone="neutral")[GameKind(game.kind).label])
+    ]
+
+
+def _addons_section(game: Game, library: UserLibrary) -> Node:
+    """The tracked add-ons of a main game; nothing when it has none."""
+    addons = list(tracked_addons(library, game))
+    if not addons:
+        return Fragment()
+    rows = [
+        SummaryRow(
+            label="",
+            subtitle=Fragment(
+                Link(href=addon.get_absolute_url())[addon.name],
+                Chip(tone="neutral")[GameKind(addon.kind).label],
+                GameStatus(
+                    status=addon.tracked_status,
+                    children=[PlayerGameStatus(addon.tracked_status).label],
+                ),
+            ),
+            dense=True,
+        )
+        for addon in addons
+    ]
+    return Div(id_="addons")[
+        _game_section("Add-ons", len(addons), SummaryList(*rows), "", surface=True)
     ]
 
 
@@ -1387,11 +1442,13 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
             hierarchy,
             held_by(references, game.pk),
             played,
+            library,
         ),
         _releases_section(
             hierarchy, presentation, origin, game=game, references=references
         ),
         _library_section(game, library, presentation, origin, get_token(request)),
+        _addons_section(game, library),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _historical_playtime_section(

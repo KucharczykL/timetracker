@@ -624,3 +624,6 @@ def test_a_new_dlc_names_its_parent(signed_in, live_server, e2e_library, game):
 
     written = Game.objects.get(library=e2e_library, name="Elite Expansion")
     assert (written.kind, written.parent_id) == ("dlc", game.pk)
+    page.goto(f"{live_server.url}{written.get_absolute_url()}")
+    parent_link = page.get_by_role("link", name="Elite", exact=True)
+    expect(parent_link).to_have_attribute("href", game.get_absolute_url())
