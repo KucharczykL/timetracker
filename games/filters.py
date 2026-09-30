@@ -214,6 +214,7 @@ class GameFilter(OperatorFilter):
     status: ChoiceCriterion | None = None  # selectable filter widget
     mastered: BoolCriterion | None = None
     excluded_from_unfinished: BoolCriterion | None = None
+    excluded_from_dropped: BoolCriterion | None = None
     playtime_hours: IntCriterion | None = None  # converted to timedelta on to_q()
     created_at: DateCriterion | None = None  # compared by calendar day
     updated_at: DateCriterion | None = None  # compared by calendar day
@@ -275,6 +276,10 @@ class GameFilter(OperatorFilter):
         "excluded_from_unfinished": FilterField(
             "tracked__excluded_from_unfinished",
             metadata_lookup="player_games__excluded_from_unfinished",
+        ),
+        "excluded_from_dropped": FilterField(
+            "tracked__excluded_from_dropped",
+            metadata_lookup="player_games__excluded_from_dropped",
         ),
         "playtime_hours": FilterField(handler=duration_hours_handler("playtime")),
         "created_at": FilterField(
