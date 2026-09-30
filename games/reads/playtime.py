@@ -182,7 +182,7 @@ def games_by_playtime_queryset(
         .annotate(total_playtime=playtime_by_game(library, year=year))
         .filter(total_playtime__gt=timedelta(0))
         #: Ties need an order, or rows reshuffle.
-        .order_by("-total_playtime", "sort_name", "name", "pk")
+        .order_by("-total_playtime", *Game.DISPLAY_ORDER)
     )
 
 
@@ -258,7 +258,7 @@ def playtime_matching_both(
     session_filter: PlayerSessionFilter | None,
     record_filter: HistoricalPlaytimeFilter | None,
 ) -> Playtime:
-    """The narrowed column: whichever legs the filter states, zero when none."""
+    """The narrowed column: whichever clauses the filter states, zero when none."""
     tracked = (
         ZERO
         if session_filter is None

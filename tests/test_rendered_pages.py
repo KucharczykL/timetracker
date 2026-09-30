@@ -603,6 +603,21 @@ class RenderedPagesTest(TestCase):
         # The Python builder emits well-formed, balanced markup.
         self.assertEqual(html.count("<div"), html.count("</div>"))
 
+    def test_view_purchase_lists_games_in_display_order(self):
+        for name, sort_name in [("Zeta", "a"), ("Beta", ""), ("Alpha", "")]:
+            self.purchase.games.add(
+                Game.objects.create(
+                    library=self.user.library,
+                    name=name,
+                    sort_name=sort_name,
+                    platform=self.platform,
+                )
+            )
+        html = self.get("games:view_purchase", self.purchase.id).content.decode()
+        included = html.split("Games included in this purchase:", 1)[1]
+        names = re.findall(r"<a [^>]*>([^<]+)</a>", included.split("</ul>", 1)[0])
+        self.assertEqual(names, ["Alpha", "Beta", "Test Game", "Zeta"])
+
 
 class PurchaseListDateFilterTest(TestCase):
     """End-to-end: GET /tracker/purchase/list?filter=… narrows the rendered

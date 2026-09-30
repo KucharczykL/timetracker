@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import Sequence
+from operator import attrgetter
 from typing import TYPE_CHECKING, Literal, NamedTuple
 
 from django.template.defaultfilters import floatformat
@@ -326,10 +327,11 @@ def _game_name(game: Game, purchase: Purchase) -> str:
 def LinkedPurchase(purchase: Purchase) -> Node:
     link = reverse("games:view_purchase", args=[purchase.id])
     games_list: Node | None = None
-    #: Read the relation once, not per row.
-    #: `first()` orders, which the prefetch cache cannot
-    #: answer, so the list pays a query per row.
-    games = list(purchase.games.all())
+    #: Read the relation once, not per row, and sort here.
+    #: `order_by()` bypasses the prefetch cache, so the list
+    #: would pay a query per row. C.UTF-8 sorts by code point,
+    #: as Python does.
+    games = sorted(purchase.games.all(), key=attrgetter(*Game.DISPLAY_ORDER))
     game_count = len(games)
     if game_count == 0:
         #: A purchase naming no game is live.

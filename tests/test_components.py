@@ -1905,6 +1905,37 @@ class ModelDependentComponentsTest(django.test.TestCase):
         self.assertIn("Game A", result)
         self.assertIn("Game B", result)
 
+    def _bundle_created_out_of_display_order(self):
+        """Creation (pk) order is Zeta, Beta, Alpha, Gamma."""
+        platform = self._create_platform(icon="steam")
+        games = []
+        for name, sort_name in [
+            ("Zeta", "a"),
+            ("Beta", ""),
+            ("Alpha", ""),
+            ("Gamma", "a"),
+        ]:
+            game = self._create_game(platform, name=name)
+            game.sort_name = sort_name
+            game.save()
+            games.append(game)
+        return self._create_purchase(games)
+
+    def _tooltip_names(self, html):
+        return re.findall(r"<li>([^<]+)</li>", html)
+
+    def test_linked_purchase_lists_bundle_in_display_order(self):
+        purchase = self._bundle_created_out_of_display_order()
+        html = str(components.LinkedPurchase(purchase))
+        self.assertEqual(self._tooltip_names(html), ["Alpha", "Beta", "Gamma", "Zeta"])
+
+    def test_linked_purchase_orders_prefetched_bundle_without_a_query(self):
+        purchase = self._bundle_created_out_of_display_order()
+        prefetched = Purchase.objects.prefetch_related("games").get(pk=purchase.pk)
+        with self.assertNumQueries(0):
+            html = str(components.LinkedPurchase(prefetched))
+        self.assertEqual(self._tooltip_names(html), ["Alpha", "Beta", "Gamma", "Zeta"])
+
     def test_linked_purchase_renders_game_names_in_popover(self):
         platform = self._create_platform(icon="steam")
         game1 = self._create_game(platform, name="Alpha")

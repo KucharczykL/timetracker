@@ -265,6 +265,9 @@ class Game(ReferencedRow):
         tracked_mastered: bool
         tracked_excluded_from_unfinished: bool
 
+    #: A list of games reads in this order.
+    DISPLAY_ORDER: ClassVar[tuple[str, ...]] = ("sort_name", "name", "pk")
+
     #: Columns gone, refused by name in comparisons.
     RETIRED_COMPARISON_COLUMNS: ClassVar[dict[str, str]] = {
         "playtime": (
