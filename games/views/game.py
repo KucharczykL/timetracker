@@ -287,6 +287,12 @@ def game_list_columns(playtime_label: str) -> list[Column]:
             key="unfinished_lists",
             hidden_by_default=True,
         ),
+        Column(
+            "Dropped figures",
+            "dropped_figures",
+            key="dropped_figures",
+            hidden_by_default=True,
+        ),
     ]
 
 
@@ -342,6 +348,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                 _wikidata_cell(game.wikidata),
                 presentation.format(game.created_at, "date"),
                 "Excluded" if game.tracked_excluded_from_unfinished else "",
+                "Excluded" if game.tracked_excluded_from_dropped else "",
             ]
             for game in page_games
         ],
@@ -692,6 +699,26 @@ def _meta_row(label: str, value: Node | str, extra: Node | str = "") -> Node:
     if extra:
         children.append(extra)
     return Div(class_="flex gap-2 items-center")[*children]
+
+
+def _visibility_row(game: Game) -> list[Node]:
+    """What the game is left out of."""
+    left_out = [
+        shown
+        for excluded, shown in (
+            (game.tracked_excluded_from_unfinished, "unfinished lists"),
+            (game.tracked_excluded_from_dropped, "dropped figures"),
+        )
+        if excluded
+    ]
+    if not left_out:
+        return []
+    return [
+        _meta_row(
+            "Visibility",
+            Span(class_=META_VALUE_CLASS)[f"Left out of {', '.join(left_out)}"],
+        )
+    ]
 
 
 def _game_action_buttons(game: Game, origin: OriginUrl | None) -> Node:
@@ -1088,13 +1115,9 @@ def _game_header(
                     current=game.tracked_status,
                 )
             ],
-            Fragment(
-                "👑" if game.tracked_mastered else "",
-                Span(class_="text-body")["Excluded from unfinished lists"]
-                if game.tracked_excluded_from_unfinished
-                else "",
-            ),
+            "👑" if game.tracked_mastered else "",
         ),
+        *_visibility_row(game),
         _played_row(game, origin, played),
         *_plain_release_rows(entries, presentation),
     ]
