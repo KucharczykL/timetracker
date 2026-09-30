@@ -16,7 +16,7 @@ from games.bulk_narrowing import narrowed
 from games.bulk_parts import FilterJson, Presentations, PreviewColumn, Resolution
 from games.bulk_sessions import lost
 from games.filters import parse_playthrough_filter
-from games.models import Playthrough, UserLibrary
+from games.models import Playthrough, UserLibrary, game_display_key
 from games.reads.playthrough_endpoints import (
     StatedEndpoint,
     stated_completion,
@@ -65,7 +65,7 @@ def run_resolution(
                 if run.pk in live
             ),
             #: A stable sort keeps the numbering order inside a game.
-            key=lambda run: run.player_game.game.name,
+            key=lambda run: game_display_key(run.player_game.game),
         )
     )
     return Resolution(rows, tuple(lost(wanted, live, RUN_GONE)))

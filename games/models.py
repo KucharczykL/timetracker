@@ -136,6 +136,10 @@ class GameQuerySet(RemovableLibraryQuerySet):
     def visible_to(self, library):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
+    def in_display_order(self) -> GameQuerySet:
+        """Where no sort is stated."""
+        return self.order_by(*Game.DISPLAY_ORDER_FIELDS)
+
     def annotated_for_filtering(self, library=None):
         """Register the aliases only; drop no row.
 
@@ -501,6 +505,11 @@ class Game(ReferencedRow):
 
 #: Sorts loaded games as `order_by(*DISPLAY_ORDER_FIELDS)` does.
 game_display_key = attrgetter(*Game.DISPLAY_ORDER_FIELDS)
+
+
+def game_display_order_through(path: str) -> tuple[str, ...]:
+    """DISPLAY_ORDER_FIELDS, reached through a relation."""
+    return tuple(f"{path}__{name}" for name in Game.DISPLAY_ORDER_FIELDS)
 
 
 class PlatformQuerySet(RemovableLibraryQuerySet):
@@ -1176,7 +1185,8 @@ class Purchase(models.Model):
 
     @property
     def first_game(self):
-        return self.games.first()
+        #: `.all()` reads a prefetch; `first()` would not.
+        return min(self.games.all(), key=game_display_key, default=None)
 
     def __str__(self):
         return self.standardized_name

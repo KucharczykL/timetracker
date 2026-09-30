@@ -32,7 +32,7 @@ from common.sorting import (
     parse_sort_terms,
 )
 from games.filters import SESSION_GAME, FindFilter
-from games.models import GameKind
+from games.models import GameKind, game_display_order_through
 from games.reads.playthrough_numbering import (
     display_order_through,
     numbered_sort_key,
@@ -93,6 +93,14 @@ class SortSpec:
 type SortMap = dict[SortKey, SortSpec]
 
 
+def _game_first(
+    path: str, annotate: Annotations | None = None, then: tuple[OrderField, ...] = ()
+) -> SortSpec:
+    """A game's display order, then `then`."""
+    head, *rest = game_display_order_through(path)
+    return SortSpec(head, annotate, then=(*rest, *then))
+
+
 # ── Per-model sort maps ─────────────────────────────────────────────────────
 # Some sorts read aliases the view registers.
 # To-one relations (game__sort_name, device__name) are ordered directly.
@@ -105,10 +113,14 @@ KIND_RANK: Final = Case(
 
 GAME_SORTS: SortMap = {
     "name": SortSpec("name"),
-    "sort_name": SortSpec("sort_name"),
+    "sort_name": SortSpec("sort_name", then=("name",)),
     "year": SortSpec("year_released"),
     "status": SortSpec("tracked_status"),
-    "kind": SortSpec("kind_rank", {"kind_rank": KIND_RANK}, then=("sort_name",)),
+    "kind": SortSpec(
+        "kind_rank",
+        {"kind_rank": KIND_RANK},
+        then=game_display_order_through(""),
+    ),
     "unfinished_lists": SortSpec("tracked_excluded_from_unfinished"),
     "dropped_figures": SortSpec("tracked_excluded_from_dropped"),
     "wikidata": SortSpec("wikidata"),
@@ -123,15 +135,15 @@ GAME_SORTS: SortMap = {
 GAME_DEFAULT_SORT: SortString = "-created"
 
 SESSION_SORTS: SortMap = {
-    "name": SortSpec("playthrough__player_game__game__sort_name"),
+    "name": _game_first(SESSION_GAME),
     #: One total order across the three timing modes.
     "date": SortSpec("sort_instant"),
     "duration": SortSpec("effective_duration"),
     "device": SortSpec("device__name"),
     "created": SortSpec("created_at"),
     #: The game first: a number means nothing outside it.
-    "playthrough": SortSpec(
-        f"{SESSION_GAME}__sort_name",
+    "playthrough": _game_first(
+        SESSION_GAME,
         {"run_numbered": numbered_sort_key("playthrough__")},
         then=(
             "run_numbered",
@@ -169,14 +181,14 @@ _DAYS_SPAN = Case(
 )
 
 PLAYTHROUGH_SORTS: SortMap = {
-    "name": SortSpec("player_game__game__sort_name"),
+    "name": _game_first("player_game__game"),
     "started": SortSpec("started_lower"),
     "completed": SortSpec("completed_lower"),
     "days": SortSpec("days_span", {"days_span": _DAYS_SPAN}),
     "created": SortSpec("created_at"),
     #: The game leads, or `started` reads nearly the same.
-    "playthrough": SortSpec(
-        "player_game__game__sort_name",
+    "playthrough": _game_first(
+        "player_game__game",
         {"run_numbered": numbered_sort_key()},
         then=("run_numbered", *display_order_through()),
     ),
@@ -184,7 +196,7 @@ PLAYTHROUGH_SORTS: SortMap = {
 PLAYTHROUGH_DEFAULT_SORT: SortString = "-created"
 
 HISTORICAL_PLAYTIME_SORTS: SortMap = {
-    "name": SortSpec("player_game__game__sort_name"),
+    "name": _game_first("player_game__game"),
     "when": SortSpec("when_lower"),
     "duration": SortSpec("duration"),
     #: Stored value, not label order.
@@ -212,7 +224,7 @@ PLATFORM_SORTS: SortMap = {
 PLATFORM_DEFAULT_SORT: SortString = "name"
 
 ENTRY_SORTS: SortMap = {
-    "name": SortSpec("player_game__game__sort_name"),
+    "name": _game_first("player_game__game"),
     "platform": SortSpec("release__platform__name"),
     #: Stored value, not label order.
     "access": SortSpec("access"),

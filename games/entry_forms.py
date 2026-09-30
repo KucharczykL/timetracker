@@ -212,7 +212,7 @@ class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
         params: ParamSources
         if game is None:
             self.fields["game"] = SingleGameChoiceField(
-                queryset=Game.objects.visible_to(library),
+                queryset=Game.objects.visible_to(library).in_display_order(),
                 label="Game",
                 widget=SearchSelectWidget(
                     search_url=GAME_SEARCH_URL,

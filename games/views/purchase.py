@@ -500,7 +500,7 @@ def _view_purchase_content(
         Ul()[
             [
                 Li()[GameLink(game, game.name)]
-                for game in purchase.games.order_by(*Game.DISPLAY_ORDER_FIELDS)
+                for game in purchase.games.in_display_order()
             ]
         ],
     ]
@@ -535,7 +535,7 @@ def _refund(user: User, purchase: Purchase) -> None:
     if purchase.date_refunded is not None:
         raise CommandFailed("This purchase is already refunded.", CONFLICT_STATUS)
     correlation_id = new_correlation_id()
-    games = list(purchase.games.all())
+    games = list(purchase.games.in_display_order())
     for abandoned, game in enumerate(games):
         try:
             record_facts(
@@ -593,7 +593,7 @@ def _split(purchase: Purchase) -> int:
         purchase = Purchase.objects.select_for_update().get(pk=purchase.pk)
         if purchase.removed_at is not None:
             raise CommandFailed("This purchase is already split.", CONFLICT_STATUS)
-        games = list(purchase.games.all())
+        games = list(purchase.games.in_display_order())
         count = len(games)
         if count < 2:
             raise CommandFailed(

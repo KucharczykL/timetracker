@@ -310,6 +310,7 @@ def _game_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
         for g in Game.objects.for_library(library)
         .filter(pk__in=values)
         .select_related("platform")
+        .in_display_order()
     ]
 
 
@@ -1436,7 +1437,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
         self.instance = instance
         cast(
             forms.ModelChoiceField, self.fields["game"]
-        ).queryset = Game.objects.for_library(library).order_by("sort_name")
+        ).queryset = Game.objects.for_library(library).in_display_order()
         self.fields["game"].widget.options_resolver = partial(
             _game_options, library=library
         )
@@ -1497,7 +1498,7 @@ class SessionForm(PrimitiveWidgetsMixin, forms.Form):
         return zone or self._presentation.timezone
 
     game = SingleGameChoiceField(
-        queryset=Game.objects.order_by("sort_name"),
+        queryset=Game.objects.in_display_order(),
         widget=SearchSelectWidget(
             search_url="/api/games/search",
             options_resolver=_game_options,
@@ -1973,7 +1974,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         self.default_currency = resolve_str_for_user(user, "DEFAULT_PURCHASE_CURRENCY")
         super().__init__(*args, **kwargs)
         self.instance.library = library
-        games = Game.objects.for_library(library).order_by("sort_name")
+        games = Game.objects.for_library(library).in_display_order()
         visible_platforms = Platform.objects.visible_to(library).order_by("name")
         cast(forms.ModelMultipleChoiceField, self.fields["games"]).queryset = games
         self.fields["games"].widget.options_resolver = partial(
@@ -2008,7 +2009,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
             )
 
     games = MultipleGameChoiceField(
-        queryset=Game.objects.order_by("sort_name"),
+        queryset=Game.objects.in_display_order(),
         widget=SearchSelectMultiple(
             search_url="/api/games/search",
             options_resolver=_game_options,
@@ -2027,7 +2028,7 @@ class PurchaseForm(PrimitiveWidgetsMixin, forms.ModelForm):
         ),
     )
     related_game = forms.ModelChoiceField(
-        queryset=Game.objects.order_by("sort_name"),
+        queryset=Game.objects.in_display_order(),
         required=False,
         widget=SearchSelectWidget(
             search_url="/api/games/search", options_resolver=_game_options
@@ -2403,7 +2404,7 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
         self.locked_game = locked_game
         cast(
             forms.ModelChoiceField, self.fields["game"]
-        ).queryset = Game.objects.for_library(library).order_by("sort_name")
+        ).queryset = Game.objects.for_library(library).in_display_order()
         self.fields["game"].widget.options_resolver = partial(
             _game_options, library=library
         )
@@ -2419,7 +2420,7 @@ class PlaythroughForm(PrimitiveWidgetsMixin, forms.Form):
             del self.fields["also_mark_played"]
 
     game = SingleGameChoiceField(
-        queryset=Game.objects.order_by("sort_name"),
+        queryset=Game.objects.in_display_order(),
         widget=SearchSelectWidget(
             search_url="/api/games/search",
             options_resolver=_game_options,

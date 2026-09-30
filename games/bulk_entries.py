@@ -11,7 +11,13 @@ from games.bulk_parts import FilterJson, PreviewColumn, Resolution
 from games.bulk_sessions import lost
 from games.events.dispatch import RowNotHeld
 from games.filters import parse_entry_filter
-from games.models import EntryAccess, EntryFormat, LibraryEntry, UserLibrary
+from games.models import (
+    EntryAccess,
+    EntryFormat,
+    LibraryEntry,
+    UserLibrary,
+    game_display_order_through,
+)
 from games.reads.entries import library_entries
 from games.reads.releases import platform_words
 from games.writes.answers import answered
@@ -36,7 +42,7 @@ def entry_resolution(
         library_entries(library)
         .filter(pk__in=wanted)
         .select_related("player_game__game", "release__platform")
-        .order_by("player_game__game__sort_name", "id")
+        .order_by(*game_display_order_through("player_game__game"), "id")
     )
     return Resolution(rows, tuple(lost(wanted, {row.pk for row in rows}, ENTRY_GONE)))
 
