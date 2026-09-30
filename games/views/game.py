@@ -49,6 +49,7 @@ from common.components import (
     Safe,
     SelectionDeclaration,
     StyledTable,
+    SummaryGroup,
     SummaryList,
     SummaryRow,
     TableData,
@@ -1131,24 +1132,34 @@ def _addons_section(game: Game, library: UserLibrary) -> Node:
     addons = list(tracked_addons(library, game))
     if not addons:
         return Fragment()
-    rows = [
-        SummaryRow(
-            label="",
-            subtitle=Fragment(
-                Link(href=addon.get_absolute_url())[addon.name],
-                Chip(tone="neutral")[GameKind(addon.kind).label],
-                GameStatus(
-                    status=addon.tracked_status,
-                    children=[PlayerGameStatus(addon.tracked_status).label],
-                ),
-            ),
-            dense=True,
+    by_kind: dict[GameKind, list[Game]] = {}
+    for addon in addons:
+        by_kind.setdefault(GameKind(addon.kind), []).append(addon)
+    groups = [
+        SummaryGroup(
+            label=kind.label,
+            rows=[
+                SummaryRow(
+                    label="",
+                    subtitle=Link(href=addon.get_absolute_url())[addon.name],
+                    control=Span(class_="text-type-body text-body-subtle")[
+                        PlayerGameStatus(addon.tracked_status).label
+                    ],
+                    dense=True,
+                )
+                for addon in by_kind[kind]
+            ],
         )
-        for addon in addons
+        for kind in GameKind
+        if kind in by_kind
     ]
     return Div(id_="addons", class_=_GRID_CELL_CLASS)[
         _game_section(
-            "Add-ons", len(addons), SummaryList(*rows, ruled=False), "", surface=True
+            "Add-ons",
+            len(addons),
+            SummaryList(*groups, labelled=True),
+            "",
+            surface=True,
         )
     ]
 
