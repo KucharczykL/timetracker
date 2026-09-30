@@ -147,7 +147,8 @@ not become an add-on. A parent removed later is kept and reads as removed.
 
 Game detail names an add-on's parent above Original release, linked where
 the library tracks it. A main game lists the add-ons the library tracks in
-an `Add-ons` section after `Library`. The Games list shows main games until a
+an `Add-ons` section beside `Library`, grouped by kind, each row with the
+Games list's row menu. The Games list shows main games until a
 filter names `kind` or `parent`. Removing a main game keeps its add-ons, and
 both removal confirmations count the tracked add-ons that stay.
 

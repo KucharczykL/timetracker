@@ -51,7 +51,10 @@ parent as removed.
   prerelease "Prerelease".
 - Game detail shows "Add-on of" with a kind chip. The parent is a link
   only where the library tracks it. A main game has an Add-ons section
-  that lists the tracked add-ons.
+  that lists the tracked add-ons, grouped by kind. Each row shows the name,
+  the status and the Games list's row menu. Add-ons and Library each take
+  half the width on a wide screen, and stack on a narrow one. Library
+  keeps its half when there are no add-ons.
 - A prerelease Edition shows the Editions table, with a chip.
 
 ## The Games list
