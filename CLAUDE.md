@@ -1310,6 +1310,14 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   a session's `started`/`ended` read the row's own `day_zone`. Not covered:
   a UTC day (`timezone.now().date()`), a read inside a request, a test that
   pins `TIME_ZONE`, and the browser.
+- **A read that orders by game uses its display order** —
+  `Game.DISPLAY_ORDER_FIELDS` (`sort_name`, `name`, `id`), never
+  `sort_name` alone: tied games come back in plan order. Spell it
+  `in_display_order()` on a game queryset or related manager,
+  `game_display_order_through(path)` through a relation (`_game_first` in
+  `games/sorting.py` for a `SortSpec`), `game_display_key` over loaded rows,
+  which a prefetch still answers. Contract is
+  [The game display order](docs/superpowers/specs/2026-09-30-issue-1392-game-display-order-design.md)
 - **Use `render_page()` not `render()`** for all full-page HTTP responses (import
   from `common.layout`).
 - **Build UI with Python components** from `common.components`, not raw HTML
