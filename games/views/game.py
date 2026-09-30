@@ -184,6 +184,8 @@ logger = logging.getLogger("games")
 
 #: The value half of a meta row.
 META_VALUE_CLASS = "text-heading"
+#: A lone member takes the whole row.
+_HALF_ROW_MEMBER_CLASS = "min-w-0 lg:flex-1"
 #: Formatted with `count`.
 ADDONS_STAY = "{count} add-on(s) stay, off the Games list"
 #: No Platform is a fact, not blank.
@@ -1144,8 +1146,10 @@ def _addons_section(game: Game, library: UserLibrary) -> Node:
         )
         for addon in addons
     ]
-    return Div(id_="addons")[
-        _game_section("Add-ons", len(addons), SummaryList(*rows), "", surface=True)
+    return Div(id_="addons", class_=_HALF_ROW_MEMBER_CLASS)[
+        _game_section(
+            "Add-ons", len(addons), SummaryList(*rows, ruled=False), "", surface=True
+        )
     ]
 
 
@@ -1379,7 +1383,7 @@ def _library_section(
     empty = EMPTY_LIBRARY if add is not None else SHARED_GAME_RELEASE
     if copies.ended and not copies.held:
         empty = EMPTY_LIBRARY_NOW
-    return Div(id_="library")[
+    return Div(id_="library", class_=_HALF_ROW_MEMBER_CLASS)[
         _game_section(
             "Library",
             copies.held,
@@ -1458,8 +1462,11 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         _releases_section(
             hierarchy, presentation, origin, game=game, references=references
         ),
-        _library_section(game, library, presentation, origin, get_token(request)),
-        _addons_section(game, library),
+        #: Side by side on wide screens.
+        Div(class_="flex flex-col lg:flex-row lg:items-start lg:gap-6")[
+            _library_section(game, library, presentation, origin, get_token(request)),
+            _addons_section(game, library),
+        ],
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _historical_playtime_section(

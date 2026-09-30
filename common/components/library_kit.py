@@ -195,14 +195,15 @@ class SummaryValue:
     href: str | None = None
 
 
-def SummaryList(*rows: Child, labelled: bool = False) -> Node:
+def SummaryList(*rows: Child, labelled: bool = False, ruled: bool = True) -> Node:
     """Ruled rows; ``labelled`` groups part by space."""
-    return Div(
-        data_summary_list="",
-        class_="flex flex-col gap-4"
-        if labelled
-        else "flex flex-col divide-y divide-default-medium",
-    )[*rows]
+    if labelled:
+        layout = "flex flex-col gap-4"
+    elif ruled:
+        layout = "flex flex-col divide-y divide-default-medium"
+    else:
+        layout = "flex flex-col gap-1"
+    return Div(data_summary_list="", class_=layout)[*rows]
 
 
 def _summary_action_menu(
