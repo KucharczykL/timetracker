@@ -311,7 +311,7 @@ def _game_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
 
 
 def _parent_options(values, *, library: UserLibrary) -> list[SearchSelectOption]:
-    """A stored parent reads, shared or removed since."""
+    """Labels a stored parent, even removed."""
     return [
         {
             "value": str(game.id),
@@ -2132,7 +2132,7 @@ class GameForm(
         )
         stored_parent = self.instance.parent_id
         parent = cast(forms.ModelChoiceField, self.fields["parent"])
-        #: The stored parent resubmits, even removed since.
+        #: A removed stored parent still resubmits.
         parent.queryset = Game.objects.filter(
             Q(pk__in=Game.objects.visible_to(library)) | Q(pk=stored_parent)
         ).select_related("platform")
@@ -2167,8 +2167,7 @@ class GameForm(
     excluded_from_unfinished = forms.BooleanField(
         required=False, label="Excluded from unfinished lists"
     )
-    #: Written by `state_addon`, not by `Meta.fields`. An empty post
-    #: is a main game, as every Game was before the field existed.
+    #: Written by `state_addon`; empty means main.
     kind = forms.ChoiceField(
         choices=GameKind.choices, required=False, initial=GameKind.MAIN
     )

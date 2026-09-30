@@ -2,7 +2,7 @@ import { readGameAddonProps } from "../generated/props.js";
 
 const MAIN_KIND = "main";
 
-/** Shows the parent row only while the kind names an add-on. */
+/** Shows the parent row for add-ons only. */
 class GameAddonElement extends HTMLElement {
   private kindSelect: HTMLSelectElement | null = null;
   private parentRow: HTMLElement | null = null;
@@ -17,7 +17,7 @@ class GameAddonElement extends HTMLElement {
       form?.querySelector<HTMLElement>(`[data-field-row="${parentField}"]`) ??
       null;
     this.kindSelect?.addEventListener("change", this.onKindChange);
-    //: A parent posted beside main keeps its row, so its refusal shows.
+    //: A refused posted parent stays visible.
     if (!this.parentHeld()) this.show(!this.isMain());
   }
 

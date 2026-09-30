@@ -1095,10 +1095,7 @@ def _game_header(
 
 
 def _parent_row(game: Game, library: UserLibrary) -> list[Node]:
-    """The Game an add-on belongs to, linked where the page exists.
-
-    Read off the plain manager: a removed parent is still named.
-    """
+    """The parent, linked where the page exists."""
     if game.parent_id is None:
         return []
     parent = Game.objects.get(pk=game.parent_id)
@@ -1117,7 +1114,7 @@ def _parent_row(game: Game, library: UserLibrary) -> list[Node]:
 
 
 def _addons_section(game: Game, library: UserLibrary) -> Node:
-    """The tracked add-ons of a main game; nothing when it has none."""
+    """Tracked add-ons; nothing when none."""
     addons = list(tracked_addons(library, game))
     if not addons:
         return Fragment()

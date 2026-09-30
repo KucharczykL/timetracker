@@ -106,7 +106,8 @@ def save_game_columns(form: GameForm, identity: MirroredIdentity) -> Game:
     platform never stands beside the pair it is replacing.
     """
     game = form.save(commit=False)
-    #: First, so the Game and its parent lock in one order by key.
+    #: First: it locks both rows in key order.
+    #: Locking the Game alone first could deadlock.
     state_addon(
         game,
         kind=form.cleaned_data["kind"],

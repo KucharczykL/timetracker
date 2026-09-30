@@ -98,7 +98,7 @@ class EditionRowForm(PrimitiveWidgetsMixin, forms.Form):
 
     edition_id = forms.UUIDField(required=False, widget=forms.HiddenInput)
     name = forms.CharField(max_length=255, required=False, label="Edition name")
-    #: An empty post is full, as every Edition was before the field.
+    #: An empty post means full.
     kind = forms.ChoiceField(
         choices=EditionKind.choices,
         required=False,

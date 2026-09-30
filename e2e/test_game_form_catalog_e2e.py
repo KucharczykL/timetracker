@@ -590,7 +590,7 @@ def test_an_excluded_game_leaves_the_unfinished_list(
 
 
 def test_the_parent_row_follows_the_kind(signed_in, live_server, game):
-    """Hidden for a main game, shown for an add-on, emptied on the way back."""
+    """Hidden for main, shown for add-ons, cleared."""
     page = signed_in
     open_add_form(page, live_server)
     parent_row = page.locator("[data-field-row='parent']")

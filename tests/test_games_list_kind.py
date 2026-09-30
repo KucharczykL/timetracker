@@ -4,8 +4,6 @@ from html import escape
 import pytest
 from django.urls import reverse
 
-#: The act table imports `bulk_games`; loading it first breaks the cycle.
-import games.bulk_actions  # noqa: F401
 from games.bulk_games import game_scope
 from games.filters import FindFilter, GameFilter, filter_url
 from games.list_columns import hidden_columns
@@ -113,6 +111,6 @@ def test_every_library_page_link_into_the_list_states_every_kind(client, owned_u
     page = client.get(reverse("games:library")).content.decode()
     every_game = escape(filter_url(GameFilter.every_kind()))
 
-    #: The card, the row's figure and its Browse.
+    #: Card, row figure and Browse.
     assert page.count(f'href="{every_game}"') >= 3
     assert f'href="{reverse("games:list_games")}"' not in page

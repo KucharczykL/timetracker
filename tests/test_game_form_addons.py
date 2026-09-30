@@ -33,7 +33,7 @@ def _addon(library, name, parent, kind=GameKind.DLC) -> Game:
 
 
 def _field_row(content: str, field: str) -> str:
-    """The markup of one form row, up to the next one."""
+    """One form row's markup."""
     start = content.index(f'data-field-row="{field}"')
     end = content.find("data-field-row=", start + 1)
     return content[start : end if end != -1 else None]

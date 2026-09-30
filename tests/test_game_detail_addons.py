@@ -26,7 +26,7 @@ def _addon(library, name, parent, kind=GameKind.DLC) -> Game:
 
 
 def _track(library, game: Game) -> None:
-    """What the seeding hook does for a private game."""
+    """The seeding hook's rows, for any game."""
     tracked = PlayerGame.objects.create(
         pk=uuid.uuid7(),
         library=library,

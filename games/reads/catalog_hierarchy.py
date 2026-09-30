@@ -49,11 +49,7 @@ def game_hierarchy(game: Game, library: UserLibrary) -> tuple[EditionEntry, ...]
 
 
 def tracked_addons(library: UserLibrary, game: Game) -> QuerySet[Game]:
-    """The add-ons of `game` this library tracks.
-
-    Filtered on the key, never a reverse accessor: a shared Game's
-    would reach every library's add-ons.
-    """
+    """The add-ons of `game` this library tracks."""
     return (
         Game.objects.tracked_by(library)
         .filter(parent=game)

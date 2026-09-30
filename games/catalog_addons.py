@@ -1,9 +1,4 @@
-"""What kind of work a Game is, and the Game an add-on belongs to.
-
-Request-free: the Game form's save calls it, and so does a writer
-with no form. It sets the two columns and leaves the save to the
-caller, inside the caller's transaction.
-"""
+"""A Game's kind and parent, stated or refused."""
 
 from typing import Final, Literal
 
@@ -30,7 +25,7 @@ HAS_ADDONS: Final = (
 
 
 class AddonRefused(ValidationError):
-    """One rule refused, on the field that stated it."""
+    """One refusal, on its own field."""
 
     def __init__(self, sentence: str, *, field: AddonField) -> None:
         super().__init__(sentence)
@@ -41,11 +36,10 @@ class AddonRefused(ValidationError):
 def state_addon(
     game: Game, *, kind: GameKind, parent: Game | None, library: UserLibrary
 ) -> None:
-    """Set `game.kind` and `game.parent`, or refuse.
+    """Set kind and parent; the caller saves.
 
-    The Game (when persisted) and the parent are locked in one
-    statement ordered by key, thus two edits naming each other
-    wait on each other rather than deadlock.
+    Locks both rows in key order: two edits
+    naming each other wait, never deadlock.
     """
     if not transaction.get_connection().in_atomic_block:
         raise RuntimeError("state_addon runs inside the caller's transaction.")
@@ -80,10 +74,11 @@ def _refuse_the_parent(
         raise AddonRefused(FOREIGN_PARENT, field="parent")
     if parent.pk == game.pk:
         raise AddonRefused(OWN_PARENT, field="parent")
-    #: Read off the row, not `visible_to`, which hides a removed parent.
+    #: Not `visible_to`: it hides removed parents.
+    #: Rule 5 must see them, to pass an unchanged one.
     if parent.library_id is not None and parent.library_id != library.pk:
         raise AddonRefused(FOREIGN_PARENT, field="parent")
-    #: An unchanged removed parent passes: the add-on stays editable.
+    #: Keeps an add-on editable.
     unchanged = stored is not None and stored.parent_id == parent.pk
     if parent.removed_at is not None and not unchanged:
         raise AddonRefused(REMOVED_PARENT, field="parent")
@@ -92,7 +87,11 @@ def _refuse_the_parent(
 
 
 def _refuse_while_addons_name(game: Game) -> None:
-    """A removed add-on counts: restoring it runs no rule."""
+    """Removed add-ons count too.
+
+    Restoring one runs no rule, so a live-only
+    count would let an add-on stand under one.
+    """
     count = Game.objects.filter(parent=game).count()
     if count:
         raise AddonRefused(

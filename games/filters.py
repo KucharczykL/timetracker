@@ -171,7 +171,7 @@ def held_entry_word_handler(column: HeldEntryColumn) -> FieldHandler:
     return handler
 
 
-#: The Game columns that choose the Games list's base.
+#: Columns that widen the Games list.
 ADDON_FIELDS: Final = ("kind", "parent")
 
 
@@ -219,7 +219,7 @@ class GameFilter(OperatorFilter):
     #: The held copies' words.
     access: ChoiceCriterion | None = None
     format: ChoiceCriterion | None = None
-    #: Naming either lists add-ons beside main games.
+    #: Naming either lists add-ons too.
     kind: ChoiceCriterion | None = None
     parent: UUIDMultiCriterion | None = None  # Game ids
 
@@ -318,7 +318,7 @@ class GameFilter(OperatorFilter):
         return Game
 
     def names_addon_fields(self) -> bool:
-        """Whether any level names a kind or a parent, `NOT` included."""
+        """Any level names kind or parent."""
         if self.kind is not None or self.parent is not None:
             return True
         if any(
@@ -333,11 +333,11 @@ class GameFilter(OperatorFilter):
 
     @classmethod
     def every_kind(cls, **members: Any) -> GameFilter:
-        """Every kind of game, beside the members stated.
+        """Every kind, beside the members stated.
 
-        A link whose figure counts add-ons states this, or the list
-        it opens would show main games alone. Under an `OR`, state it
-        on each member: a node ORs its members with its own leaves.
+        Under an `OR`, state it on each member:
+        a node ORs its members with its own
+        leaves, so a top-level one matches all.
         """
         from games.models import GameKind
 
@@ -365,10 +365,7 @@ class GameFilter(OperatorFilter):
         return NarrowingClauses(sessions, records)
 
     def _states_a_leaf(self) -> bool:
-        """Any criterion or comparison at this level.
-
-        `kind` and `parent` choose the list's base and narrow no playtime.
-        """
+        """Any criterion here, bar kind and parent."""
         return any(
             getattr(self, f.name) is not None
             for f in fields(self)
@@ -1368,9 +1365,8 @@ def filter_queryset_for_library(
     ``visible_to`` because the destination list manages private Platforms only.
 
     Game is one exception: its list counts the games this library tracks,
-    main games alone unless `game_filter` names a kind or a parent, so
-    counting anything else here would answer the builder's live count with a
-    number the destination list cannot show. Playthrough is the other: its
+    through `games_list_base`, so counting anything else here would answer
+    the builder's live count with a number the destination list cannot show. Playthrough is the other: its
     condition alias needs the viewer's clock. PlayerSession,
     HistoricalPlaytime and LibraryEntry state no `for_library`: their read
     modules state the scope.

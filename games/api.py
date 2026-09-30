@@ -1541,7 +1541,7 @@ def filter_count(request, model: str, filter: str = ""):
                 exc,
             )
             raise HttpError(400, f"Invalid filter: {exc}") from exc
-    #: The Game list's base reads the filter.
+    #: The Games list's base reads it.
     queryset = filter_queryset_for_library(
         model, library, parsed if isinstance(parsed, GameFilter) else None
     )

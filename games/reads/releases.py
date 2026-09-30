@@ -14,7 +14,7 @@ def platform_words(release: Release) -> str:
 
 
 def edition_words(edition: Edition) -> str:
-    """Its name, else Prerelease for an unnamed prerelease, else nothing."""
+    """Its name, else Prerelease, else nothing."""
     if edition.name:
         return edition.name
     if edition.kind == EditionKind.PRERELEASE:

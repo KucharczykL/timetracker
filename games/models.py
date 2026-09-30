@@ -259,7 +259,7 @@ def _validate_related_library(
 
 
 class GameKind(models.TextChoices):
-    """What kind of work a Game is, in IGDB's words."""
+    """What work a Game is; IGDB's words."""
 
     MAIN = "main", "Main game"
     DLC = "dlc", "DLC"
@@ -267,14 +267,14 @@ class GameKind(models.TextChoices):
     STANDALONE_EXPANSION = "standalone_expansion", "Standalone expansion"
 
 
-#: The kinds that belong to a parent Game.
+#: Kinds that name a parent.
 ADDON_KINDS: Final[frozenset[GameKind]] = frozenset(
     {GameKind.DLC, GameKind.EXPANSION, GameKind.STANDALONE_EXPANSION}
 )
 
 
 class EditionKind(models.TextChoices):
-    """Whether an Edition is the whole game or a prerelease of it."""
+    """The whole game, or a prerelease."""
 
     FULL = "full", "Full"
     PRERELEASE = "prerelease", "Prerelease"
@@ -320,7 +320,7 @@ class Game(ReferencedRow):
                 condition=Q(kind__in=GameKind.values),
                 name="game_kind_word",
             ),
-            #: An add-on names its parent; a main game names none.
+            #: Only an add-on names a parent.
             models.CheckConstraint(
                 condition=(
                     Q(kind=GameKind.MAIN, parent__isnull=True)
@@ -446,7 +446,7 @@ class Game(ReferencedRow):
         default=None,
     )
     kind = models.CharField(max_length=20, choices=GameKind, default=GameKind.MAIN)
-    #: No reverse accessor: a shared Game's would reach every library's add-ons.
+    #: No reverse accessor: it crosses libraries.
     parent = models.ForeignKey(
         "self",
         on_delete=models.RESTRICT,

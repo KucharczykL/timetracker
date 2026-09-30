@@ -257,7 +257,7 @@ def _written_edition(
     stored: Edition | None,
     stored_releases: StoredReleases,
 ) -> WrittenEdition:
-    """One Edition's name, its kind and its surviving Releases."""
+    """One Edition, and its surviving Releases."""
     name = state.name.strip()
     if stored is None:
         edition = Edition.objects.create(

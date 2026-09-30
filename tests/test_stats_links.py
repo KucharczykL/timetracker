@@ -131,7 +131,7 @@ def world(db):
     )
     record_row([tracked_run(library, recorded_elsewhere)], when=f"{YEAR - 1}-05")
 
-    #: An add-on the Games list hides unless a link states every kind.
+    #: Hidden from the list without every_kind.
     dlc = create_tracked_game(
         library, "Finished DLC", status=PlayerGameStatus.PLAYED, platform=pc
     )
@@ -315,7 +315,7 @@ def test_games_in_month_matches_that_month(world):
         )
         .count()
     )
-    #: The DLC's session is inside it.
+    #: The DLC's session counts.
     assert expected == 3
     assert (
         _count(stats_links.games_in_month(YEAR, 6), Game, world["library"]) == expected
@@ -323,7 +323,7 @@ def test_games_in_month_matches_that_month(world):
 
 
 def test_games_in_month_finds_a_game_only_a_record_reaches(world):
-    """May holds two records, the DLC's among them, and no session."""
+    """May holds two records, no session."""
     assert _count(stats_links.games_in_month(YEAR, 5), Game, world["library"]) == 2
     assert _count(stats_links.games_in_month(YEAR, 4), Game, world["library"]) == 0
 
@@ -340,7 +340,7 @@ def test_all_sessions_matches_total_sessions(world):
 
 
 def test_games_played_narrows_the_playtime_column(world):
-    """The kind leaves choose the base; the relations still narrow."""
+    """Kind leaves leave the narrowing intact."""
     clauses = stats_links.games_played(YEAR).narrowing()
 
     assert clauses.sessions is not None
@@ -348,7 +348,7 @@ def test_games_played_narrows_the_playtime_column(world):
 
 
 def test_a_link_without_every_kind_drops_the_dlc(world):
-    """The parity world holds a counted add-on, so the clause is needed."""
+    """The DLC makes the clause necessary."""
     bare = GameFilter(OR=[member for member in stats_links.games_played(YEAR).OR])
     for member in bare.OR:
         member.kind = None

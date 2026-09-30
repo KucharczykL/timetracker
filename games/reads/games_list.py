@@ -1,4 +1,4 @@
-"""The rows the Games list reads before a filter narrows them."""
+"""The Games list's rows, before filtering."""
 
 from typing import TYPE_CHECKING
 
@@ -13,11 +13,7 @@ if TYPE_CHECKING:
 def games_list_base(
     library: UserLibrary, game_filter: GameFilter | None
 ) -> QuerySet[Game]:
-    """Main games, unless the filter names a kind or a parent.
-
-    The list, its bulk scope and the builder's count read this one
-    base, so the three agree on which rows a filter narrows.
-    """
+    """Main games, unless the filter names kind or parent."""
     games = Game.objects.tracked_by(library)
     if game_filter is not None and game_filter.names_addon_fields():
         return games
