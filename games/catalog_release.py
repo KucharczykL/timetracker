@@ -1,8 +1,7 @@
-"""A Release on one Platform, made from the name a person typed.
+"""A Release made from a typed platform.
 
-The Release picker's create row states a platform name and a
-Game. The graph is stated through `state_catalog_graph`, so the
-Game form's rules refuse here too.
+Stated through `state_catalog_graph`, so the Game form's rules refuse
+here too.
 """
 
 from typing import NamedTuple
@@ -41,7 +40,7 @@ def _several_platforms(name: str, platforms: list[Platform]) -> str:
 
 
 def _platform_named(library: UserLibrary, name: str) -> Platform:
-    """The one visible live Platform the text names, case ignored."""
+    """The one Platform the text names."""
     matches = list(
         Platform.objects.visible_to(library)
         .annotate(key=Lower(Trim("name")))
@@ -68,7 +67,7 @@ def _default_edition(game: Game) -> Edition | None:
 def release_on_platform(
     library: UserLibrary, game_id: object, platform_name: str
 ) -> PlatformRelease:
-    """The live Release on that Platform, stated if none stands."""
+    """That Platform's live Release, stated if absent."""
     game = Game.objects.visible_to(library).filter(pk=game_id).first()
     if game is None:
         raise Http404("No such game.")

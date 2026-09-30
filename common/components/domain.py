@@ -86,12 +86,12 @@ def GamesTabs(current: GamesTab, *, trailing: Node | None = None) -> Node:
     )
 
 
-#: A copy's format, and the glyph that draws it, in badge order.
+#: Each format's glyph, in badge order.
 _FORMAT_GLYPHS: tuple[tuple[EntryFormat, str], ...] = (
     (EntryFormat.DIGITAL, "cloud"),
     (EntryFormat.PHYSICAL, "physical"),
 )
-#: Drawn only where no held copy states a format.
+#: Only where no held format is known.
 _FORMAT_UNKNOWN_GLYPH = "dashed-ring"
 _ACCESS_BADGE_CLASS = (
     "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-base border "
@@ -104,7 +104,7 @@ _ACCESS_BADGE_FILL = {
 }
 
 
-#: Ends an access comes to by itself, so a sentence names the day alone.
+#: Ends that come by themselves: day alone.
 _NATURAL_ENDS: dict[str, frozenset[EndWay]] = {
     EntryAccess.BORROWED: frozenset({EndWay.RETURNED, EndWay.EXPIRED}),
     EntryAccess.RENTED: frozenset({EndWay.RETURNED, EndWay.EXPIRED}),
@@ -132,7 +132,7 @@ def _one_ended(entry: LibraryEntry, presentation: DateTimePresentation) -> str:
         None if ended.when is None else present_temporal_value(ended.when, presentation)
     )
     words = f"You had {_A_VERSION[entry.format]}"
-    #: A way nobody stated reads like a natural end: the day alone.
+    #: An unstated way: the day alone.
     if way == EndWay.UNSTATED or way in _NATURAL_ENDS.get(entry.access, frozenset()):
         return f"{words} until {day}" if day else words
     how = END_WAY_LABELS[way].lower()
@@ -140,7 +140,7 @@ def _one_ended(entry: LibraryEntry, presentation: DateTimePresentation) -> str:
 
 
 def access_sentence(summary: AccessSummary, presentation: DateTimePresentation) -> str:
-    """One sentence; the Library tab holds each copy's details."""
+    """One sentence; details live elsewhere."""
     held, ended = summary.held, summary.ended
     if not held:
         if len(ended) == 1:
@@ -161,7 +161,7 @@ def access_sentence(summary: AccessSummary, presentation: DateTimePresentation) 
 def AccessBadge(
     summary: AccessSummary, presentation: DateTimePresentation, *, id: str
 ) -> Node:
-    """Fill: owned now. Glyph: format. Number: copies held."""
+    """Fill: had now. Glyph: format."""
     shown = summary.held or ((summary.former,) if summary.former else ())
     formats = {entry.format for entry in shown}
     glyphs = [glyph for word, glyph in _FORMAT_GLYPHS if word in formats]
@@ -173,13 +173,13 @@ def AccessBadge(
             f"{_ACCESS_BADGE_CLASS} {_ACCESS_BADGE_FILL[summary.owned_now]}"
         ),
         children=[
-            #: Whole pixels: a fractional glyph rounds apart from the border.
+            #: Whole pixels, or glyphs drift from border.
             *(
                 Icon(glyph, size=_ACCESS_GLYPH_SIZE, decorative=True)
                 for glyph in glyphs or [_FORMAT_UNKNOWN_GLYPH]
             ),
             *([Span(aria_hidden="true")[str(held)]] if held > 1 else []),
-            #: The button's name; the panel repeats it for the eye alone.
+            #: The button's name; the panel shows it.
             Span(class_="sr-only")[sentence],
         ],
         id=id,

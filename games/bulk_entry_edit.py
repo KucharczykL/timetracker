@@ -1,4 +1,4 @@
-"""Access, format or note, set on many copies."""
+"""Access, format or note on many copies."""
 
 import json
 import uuid
@@ -57,7 +57,7 @@ from games.writes.libraryentry import SUBJECT, describe_entry
 
 
 class EntryEditJson(TypedDict, total=False):
-    """A statement on the wire; absent is unstated."""
+    """The wire statement; absent is unstated."""
 
     access: str
     format: str
@@ -129,7 +129,7 @@ def _note_shown(note: str) -> str:
 
 
 class BulkEntryEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
-    """An empty field keeps; ⊘ states no note."""
+    """Empty keeps; ⊘ states no note."""
 
     access = forms.TypedChoiceField(
         choices=EntryAccess.choices,
@@ -284,7 +284,7 @@ def edit_back(
     idempotency_key: IdempotencyKey,
     correlation_id: uuid.UUID,
 ) -> RowOutcome:
-    """Each changed fact back to its earlier value."""
+    """Each changed fact back as before."""
     entry = removed_entry(actor, entry_id)
     with answered(SUBJECT):
         changes = entry_fact_changes(actor.library, entry_id, undoes)

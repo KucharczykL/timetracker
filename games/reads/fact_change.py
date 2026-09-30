@@ -24,11 +24,7 @@ class FactChange[T]:
 
 @dataclass(frozen=True, slots=True)
 class Fact[T]:
-    """One fact's events, payload key and reading.
-
-    `initial` is its value at creation; None reads the
-    creation's payload under `key`.
-    """
+    """One fact; `initial` None reads the creation."""
 
     created: EventSpec[Any]
     changed: EventSpec[Any]
@@ -53,10 +49,7 @@ def fact_change[T](
     aggregate_id: uuid.UUID,
     batch_id: uuid.UUID,
 ) -> FactChange[T] | None:
-    """None where the batch stated no such fact.
-
-    `RowUnreadable` where nothing precedes the batch's event.
-    """
+    """None where the batch stated no such fact."""
     created, changed = fact.created.event_type, fact.changed.event_type
     events = list(
         aggregate_events(library, aggregate_id).filter(

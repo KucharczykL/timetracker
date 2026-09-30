@@ -1,4 +1,4 @@
-"""A copy's facts before a batch changed them."""
+"""A copy's facts before a batch."""
 
 import uuid
 from dataclasses import dataclass

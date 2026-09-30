@@ -1356,10 +1356,7 @@ class PageTab(NamedTuple):
 def PageTabs(
     aria_label: NavLabel, tabs: Sequence[PageTab], *, trailing: Node | None = None
 ) -> Node:
-    """Sibling pages as links; current one marked.
-
-    `trailing` ends the row, pushed right.
-    """
+    """Sibling pages; `trailing` ends the row."""
     links = [
         ControlLink(
             href=tab.href,
@@ -1541,10 +1538,7 @@ _CHIP_TONE_CLASSES: dict[ChipTone, str] = {
 
 
 class Chip(BaseComponent):
-    """A static tag: tone, an optional leading glyph, and the ``[]`` slot.
-
-    ``Pill`` builds on it; a chip carries no hooks and no remove button.
-    """
+    """A static tag: tone, glyph, ``[]`` slot."""
 
     def __init__(
         self,
@@ -1902,7 +1896,7 @@ class FormFieldGroup(NamedTuple):
     fields: Sequence[str]
     description: str = ""
     id: str = ""
-    #: Named for a screen reader alone; space alone sets it apart.
+    #: Screen readers name it; space parts it.
     legend_hidden: bool = False
 
 

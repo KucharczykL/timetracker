@@ -25,7 +25,7 @@ def game_releases(library: UserLibrary, game: Game) -> QuerySet[Release]:
 
 
 def matching_releases(releases: QuerySet[Release], query: str) -> QuerySet[Release]:
-    """Releases whose platform or edition names the text."""
+    """Releases whose platform or edition match."""
     text = query.strip()
     if not text:
         return releases
@@ -35,7 +35,7 @@ def matching_releases(releases: QuerySet[Release], query: str) -> QuerySet[Relea
 
 
 def release_label(release: Release) -> str:
-    """Platform, then a named edition, then the year."""
+    """Platform, named edition, then year."""
     parts = [
         UNSPECIFIED_PLATFORM if release.platform is None else release.platform.name
     ]

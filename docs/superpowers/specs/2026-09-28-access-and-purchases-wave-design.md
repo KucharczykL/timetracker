@@ -458,8 +458,9 @@ in place of a Release; on a game with no entry the picker offers to record
 one, Owned and Digital, in the same submit. The "separate price per game"
 mode and the row Split go with the bundle.
 
-**Edit entry**: access, format, release, acquired, access end (way, day,
-note; "Held" voids, "Resumed" states the fact), note. **Edit purchase**:
+**Edit entry**: access, format, release, acquired, note. The end of
+access has its own pages, and a one-click end or resume offers Undo
+(#1352). **Edit purchase**:
 kind, name, amount with Free, currency, purchased, refund (day, note; "Not
 refunded" voids), note. The row Refund act stays immediate with the
 calendar's day, corrected on the edit page.
@@ -469,8 +470,9 @@ calendar's day, corrected on the edit page.
 **Entries** (`entries` mode, its own filter and presets, selectable, a
 navbar item beside Purchases): Game, Platform, Access, Format, Acquired,
 Access ended (way · day), Purchases, Created. Facets access, format,
-ended, way, platform, acquired, game. Tray Edit and Remove; row menu Edit,
-End access, Resume, Remove.
+ended, way, platform, acquired, game. Tray Edit and Remove; row menu
+"I no longer have it" or "I have it again" (each one click or with
+details), Edit, Remove, shared with Game detail (#1352).
 
 **Purchases** (selectable, the Actions column retired, #1266): Name (the
 game, or product · game), Kind, Amount (Free and Unknown as words, the
@@ -479,11 +481,11 @@ amount, price state (Paid, Free, Unknown), purchased, refunded, and access
 and platform through the entry. Tray Edit and Remove; row menu Edit,
 Refund, Remove.
 
-**Games**: an Access column ("Owned · Digital", or "2 entries") and facets
+**Games**: an Access column (a badge whose popover says one sentence) and facets
 access and format over live entries, annotated through `player_games` so
 the shared-catalog scope holds; a Kind column and facet, off by default.
-**Game detail**: a Library section listing entries with their purchases
-beneath and the add and edit acts; an Add-ons section on a main game; a
+**Game detail**: a Library section listing the entries had now, grouped
+by version, with their purchases beneath; an Add-ons section on a main game; a
 parent link on an add-on.
 
 ### Filters and presets

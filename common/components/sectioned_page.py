@@ -181,7 +181,7 @@ def SectionNav(
     ]
 
 
-#: The surface a page section sits on, set apart from the background.
+#: A section's surface, apart from background.
 SECTION_SURFACE_CLASS = (
     "rounded-base border border-default bg-neutral-primary-medium p-4"
 )

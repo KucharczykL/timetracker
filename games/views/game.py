@@ -727,7 +727,7 @@ def _game_section(
     view_all_title: str | None = None,
     note: str | None = None,
 ) -> Node:
-    """``add_control`` replaces the plain Add; ``surface`` sets it on a panel."""
+    """``add_control`` replaces Add; ``surface`` adds a panel."""
     buttons: list[Node] = [add_control] if add_control is not None else []
     if add_url:
         #: Offered on an empty section too.
@@ -741,7 +741,7 @@ def _game_section(
                 "Add",
             ]
         )
-    #: A note may name View all where no row shows.
+    #: A note may name View all.
     if view_all_url and (count or note):
         buttons.append(
             ControlButton(
@@ -1263,7 +1263,7 @@ def _playthroughs_section(
 
 
 def _had_copies(had: int) -> str | None:
-    """Copies no longer had leave the section; one line says so."""
+    """One line counts copies no longer had."""
     if not had:
         return None
     if had == 1:

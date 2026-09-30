@@ -1,4 +1,4 @@
-"""The forms a copy is recorded, restated, ended and resumed with."""
+"""The forms that state a copy."""
 
 import datetime
 import uuid
@@ -47,7 +47,7 @@ RELEASE_OF_ANOTHER_GAME = "Pick a release of the game you chose."
 
 WAY_CHOICES = [(way.value, END_WAY_LABELS[way]) for way in ENTRY_WAYS]
 
-#: What the copy is, how it is had, and a word about it.
+#: What it is, how had, a note.
 _COPY_GROUPS = (
     FormFieldGroup("What", ("game", "release", "format"), legend_hidden=True),
     FormFieldGroup("How you have it", ("access", "acquired"), legend_hidden=True),
@@ -56,7 +56,7 @@ _COPY_GROUPS = (
 
 
 def copy_groups(form: forms.Form) -> list[FormFieldGroup]:
-    """The groups, naming only the fields this form holds."""
+    """The groups of the fields held."""
     return [
         group._replace(
             fields=tuple(name for name in group.fields if name in form.fields)
@@ -81,7 +81,7 @@ def release_options(values, *, library: UserLibrary) -> list[SearchSelectOption]
 def _entry_release_options(
     values, *, entry: LibraryEntry, library: UserLibrary
 ) -> list[SearchSelectOption]:
-    """The copy's own Release from the row; others read."""
+    """The row's own Release; others read."""
     if {str(value) for value in values} == {str(entry.release_id)}:
         return [
             {
@@ -94,7 +94,7 @@ def _entry_release_options(
 
 
 def end_seen(entry: LibraryEntry) -> str:
-    """The rendered end's marker, or empty while held."""
+    """The rendered end's marker, if any."""
     marker = entry.access_end_recorded_at
     return "" if marker is None else marker.isoformat()
 
@@ -129,7 +129,7 @@ def _note(value: str) -> str:
 
 
 class _SeenEnd(forms.Form):
-    """Refuses a copy whose end moved since the page rendered."""
+    """Refuses an end moved since rendering."""
 
     #: The end this page showed.
     access_end_seen = forms.CharField(required=False, widget=forms.HiddenInput)
@@ -152,7 +152,7 @@ class _Submission(forms.Form):
         return f"copy-{self.act}-{self.cleaned_data['submission']}"
 
     def _replays(self, library: UserLibrary) -> bool:
-        """This page's press already ran; the dispatch replays it."""
+        """This press already ran; dispatch replays."""
         submission = self.cleaned_data.get("submission")
         return submission is not None and key_answered(
             library, f"copy-{self.act}-{submission}"
@@ -160,7 +160,7 @@ class _Submission(forms.Form):
 
 
 class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
-    """One copy recorded; the Game fixed or picked."""
+    """One copy; the Game fixed or picked."""
 
     act = "add"
 
@@ -204,7 +204,7 @@ class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
         else:
             params = {"game_id": {"value": str(game.pk)}}
             create = game.library_id == library.pk
-            #: The game's default Release, first in the read's order.
+            #: The default Release reads first.
             default = game_releases(library, game).first()
             if default is not None and "release" not in self.initial:
                 self.initial["release"] = default.pk

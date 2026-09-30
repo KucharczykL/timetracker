@@ -1,4 +1,4 @@
-"""Game detail's Library section: have it, no longer have it."""
+"""Game detail's Library section."""
 
 import uuid
 from typing import NamedTuple
@@ -28,7 +28,7 @@ from games.views.entry_menu import entry_row_menu, submission_input
 
 EMPTY_LIBRARY = "Nothing in your library yet."
 EMPTY_LIBRARY_NOW = "Nothing in your library right now."
-#: About four words of a note show; the rest waits for a hover.
+#: About four words; hover shows the rest.
 NOTE_MAX_WIDTH_CLASS = "max-w-[16ch]"
 
 
@@ -50,7 +50,7 @@ def _facts(entry: LibraryEntry, presentation: DateTimePresentation) -> str:
 
 
 def _note_chip(note: str) -> Node:
-    """The note, clipped to a few words; the whole of it on hover."""
+    """The note, clipped; whole on hover."""
     return Chip(tone="neutral", icon="note")[
         TruncatedText(note, max_width=NOTE_MAX_WIDTH_CLASS)
     ]
@@ -77,9 +77,9 @@ def _copy_row(
 
 class CopyRows(NamedTuple):
     rows: list[Node]
-    #: Copies had now, not rows: a group holds several.
+    #: Copies had now, not rows.
     copies: int
-    #: Copies whose access ended; the Library tab lists them.
+    #: Copies whose access ended.
     had: int
 
 
@@ -90,13 +90,13 @@ def copy_rows(
     origin: OriginUrl,
     csrf_token: str,
 ) -> CopyRows:
-    """One row per copy had now; a version with several gathers them."""
+    """Copies had now, grouped by version."""
     entries = (
         game_entries(library, game)
         .select_related("release__edition", "release__platform", "player_game__game")
         .order_by("acquired_lower", "created_at", "id")
     )
-    #: First acquired first, by version, keeping that order.
+    #: Versions in first-acquired order.
     by_version: dict[uuid.UUID, list[LibraryEntry]] = {}
     count = had = 0
     for entry in entries:
@@ -121,10 +121,7 @@ def copy_rows(
 def library_add_control(
     game: Game, library: UserLibrary, origin: OriginUrl, csrf_token: str
 ) -> Node | None:
-    """Add in one click, or with details; none where nothing can be added.
-
-    With no version yet, only the page can add: it creates one.
-    """
+    """One click, or the page; none if impossible."""
     details = action_url("games:add_library_entry", game.pk, origin=origin)
     if not game_releases(library, game).exists():
         if game.library_id != library.pk:

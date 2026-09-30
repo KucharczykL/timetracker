@@ -263,7 +263,7 @@ def idempotent_append(
 
 
 def key_answered(library: UserLibrary, idempotency_key: IdempotencyKey) -> bool:
-    """Whether a command under this key already ran."""
+    """Whether this key already ran."""
     return LibraryIdempotencyRecord.objects.filter(
         library=library, idempotency_key=idempotency_key
     ).exists()

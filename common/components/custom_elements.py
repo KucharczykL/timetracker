@@ -942,7 +942,7 @@ DANGER_ITEM_ICON_CLASS = "text-fg-danger"
 
 
 def _described(label: Child, description: str) -> Child:
-    """The item's words, a quieter line beneath where it says more."""
+    """The label, a quieter line beneath."""
     if not description:
         return label
     return Span(class_="flex flex-col")[
@@ -1115,11 +1115,7 @@ def DropdownPostItem(
 def DropdownSubmenuItem(
     label: Child, *, items: list[Node], id: str, icon: str = ""
 ) -> Node:
-    """An item whose ``items`` open in a flyout beside the menu.
-
-    The flyout is a ``<drop-down submenu>``: it opens on hover and on the
-    arrow key towards it.
-    """
+    """An item opening ``items`` beside the menu."""
     trigger = Button(
         type="button",
         role="menuitem",
@@ -1206,7 +1202,7 @@ def DropdownCheckItem(
 
 def DropdownDivider() -> Node:
     """A separator between groups of items."""
-    #: Engraved, not drawn: a dark hairline over a faint highlight.
+    #: Engraved: dark hairline over faint highlight.
     return Li(
         role="separator",
         class_=(
@@ -1472,10 +1468,10 @@ def SplitButtonDropdown(
     # The caret sits flush against the primary, so its focus ring is drawn inset
     # (contained in the caret box) rather than as an outset halo over the join.
     caret_focus = "focus:ring-inset"
-    #: The caret is a glyph alone; the menu's name names it too.
+    #: A glyph alone; the menu names it.
     caret_name: list[HTMLAttribute] = [("aria-label", aria_label)] if aria_label else []
     if caret_color is None:
-        #: A quiet primary keeps a quiet caret: its look and size follow.
+        #: A quiet primary keeps a quiet caret.
         caret_button = ControlButton(
             [("class", caret_focus), *caret_name],
             variant=primary.variant
@@ -1501,7 +1497,7 @@ def SplitButtonDropdown(
         id=id,
         placement=placement,
     )
-    #: A ghost has no edge for a shadow to lift; it would draw a stray line.
+    #: No shadow: a ghost has no edge.
     lift = "" if primary.variant == "ghost" else " shadow-2xs"
     return Div(class_=f"inline-flex items-stretch rounded-base{lift}")[
         primary.with_shape(start_shape), dropdown

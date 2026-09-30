@@ -1,4 +1,4 @@
-"""Add, edit, end, resume, remove and restore a copy; one page each."""
+"""Every act on one copy."""
 
 import uuid
 from collections.abc import Callable, Sequence
@@ -88,7 +88,7 @@ def _any_library_entry(request: HttpRequest, entry_id: UUID) -> LibraryEntry:
 
 
 def _cancel_url(request: HttpRequest, game: Callable[[], Game]) -> str:
-    """The origin; a page with no game yet falls back to the Library tab."""
+    """The origin, else the Library tab."""
     try:
         return _game_page(request, game())
     except KeyError, AttributeError:
@@ -110,7 +110,7 @@ def _form_page(
     groups: Sequence[FormFieldGroup] | None = None,
     submit_label: str = "Save",
 ) -> HttpResponse:
-    """Render the form; a valid POST writes and returns."""
+    """Render; a valid POST writes and returns."""
     status = 200
     if request.method == "POST" and form.is_valid():
         try:
@@ -217,7 +217,7 @@ def end_library_entry(request: HttpRequest, entry_id: UUID) -> HttpResponse:
     user = cast(User, request.user)
     entry = _held_entry(request, entry_id)
     if stated(entry, ENTRY_ACCESS_END) is not None:
-        #: An ended copy's end is edited, not stated again.
+        #: An ended copy's end is edited.
         return redirect(
             action_url(
                 "games:edit_library_entry_end",
@@ -252,7 +252,7 @@ def edit_library_entry_end(request: HttpRequest, entry_id: UUID) -> HttpResponse
     user = cast(User, request.user)
     entry = _held_entry(request, entry_id)
     if stated(entry, ENTRY_ACCESS_END) is None:
-        #: A held copy has no end to edit; it may state one.
+        #: A held copy has no end to edit.
         return redirect(
             action_url(
                 "games:end_library_entry", entry.pk, origin=request.GET.get("origin")
@@ -349,7 +349,7 @@ def restore_library_entry(request: HttpRequest, entry_id: UUID) -> HttpResponse:
 
 
 def _one_click_key(request: HttpRequest, act: str) -> IdempotencyKey | None:
-    """The press's key; a missing token keys nothing."""
+    """The press's key, if it carries one."""
     try:
         token = uuid.UUID(request.POST.get(SUBMISSION_FIELD, ""))
     except ValueError:
@@ -365,7 +365,7 @@ def _one_click(
     done: str,
     undo: UrlName,
 ) -> HttpResponse:
-    """Write, say so with Undo, return; a refusal is an error message."""
+    """Write, offer Undo, return; refusals show."""
     try:
         entry_id = write()
     except CommandFailed as failure:
@@ -473,7 +473,7 @@ def resume_library_entry_now(request: HttpRequest, entry_id: UUID) -> HttpRespon
 @login_required
 @require_POST
 def undo_library_entry_end(request: HttpRequest, entry_id: UUID) -> HttpResponse:
-    """Takes a mistaken end back: the copy never left."""
+    """Void a mistaken end."""
     user = cast(User, request.user)
     entry = _held_entry(request, entry_id)
     game = entry.player_game.game
@@ -496,7 +496,7 @@ def undo_library_entry_end(request: HttpRequest, entry_id: UUID) -> HttpResponse
 @login_required
 @require_POST
 def undo_library_entry_resume(request: HttpRequest, entry_id: UUID) -> HttpResponse:
-    """States again the end a resume took back."""
+    """Restate the end a resume took back."""
     user = cast(User, request.user)
     entry = _held_entry(request, entry_id)
     game = entry.player_game.game

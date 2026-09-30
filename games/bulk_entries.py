@@ -1,4 +1,4 @@
-"""What acts on the Library tab share; declares no act."""
+"""What the Library tab's acts share."""
 
 import uuid
 from collections.abc import Sequence
@@ -30,7 +30,7 @@ def entry_scope(
 def entry_resolution(
     library: UserLibrary, keys: Sequence[uuid.UUID]
 ) -> Resolution[LibraryEntry]:
-    """Keys to live copies, with game and platform."""
+    """Live copies, with game and platform."""
     wanted = list(dict.fromkeys(keys))
     rows = tuple(
         library_entries(library)
@@ -42,10 +42,7 @@ def entry_resolution(
 
 
 def removed_entry(actor: User, entry_id: uuid.UUID) -> LibraryEntry:
-    """An inverse's row, removed or not.
-
-    Raises its own absence under `answered`, so the runner names it.
-    """
+    """An inverse's row, removed or not."""
     with answered(SUBJECT):
         entry = (
             LibraryEntry.objects.select_related("player_game__game")

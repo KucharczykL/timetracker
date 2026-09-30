@@ -16,7 +16,7 @@ class EndWay(StrEnum):
     EXPIRED = "expired"
     REVOKED = "revoked"
     REFUNDED = "refunded"
-    #: A copy gone for a reason nobody stated.
+    #: Gone for a reason nobody stated.
     UNSTATED = "unstated"
 
 

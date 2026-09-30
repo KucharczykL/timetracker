@@ -196,7 +196,7 @@ class SummaryValue:
 
 
 def SummaryList(*rows: Child, labelled: bool = False) -> Node:
-    """Rows parted by a rule; ``labelled`` groups part by space alone."""
+    """Ruled rows; ``labelled`` groups part by space."""
     return Div(
         data_summary_list="",
         class_="flex flex-col gap-4"
@@ -231,13 +231,10 @@ def SummaryRow(
     control: Child | None = None,
     dense: bool = False,
 ) -> Node:
-    """``control`` sits before the links, shown at every width.
-
-    ``dense`` tightens a row that sits in a group.
-    """
+    """``control`` precedes links; ``dense`` for groups."""
     primary_children: list[Child] = [
         Div(class_="flex min-w-0 flex-col gap-1")[
-            #: A row inside a group leaves its name to the group.
+            #: In a group, the group names it.
             *([P(class_="text-type-subheading text-heading")[label]] if label else []),
             Div(
                 class_="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-type-body text-body"
@@ -269,7 +266,7 @@ def SummaryRow(
                 )[*[Link(href=action.href)[action.label] for action in actions]],
             ]
         )
-    #: One auto column per trailing part; the actions take one at any width.
+    #: One auto column per trailing part.
     trailing = sum(part is not None for part in (value, control)) + bool(actions)
     grid_columns = {
         0: "grid-cols-1",
@@ -298,10 +295,7 @@ def SummaryRow(
 
 
 def SummaryGroup(*, label: str, rows: Sequence[Child]) -> Node:
-    """A name over its rows, as a row's own label; each row states none.
-
-    Groups sit in a ``SummaryList(labelled=True)``, parted by space alone.
-    """
+    """A name over rows that state none."""
     return Div(data_summary_group="", class_="flex flex-col")[
         P(class_="text-type-subheading text-heading")[label],
         *rows,

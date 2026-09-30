@@ -713,7 +713,7 @@ release_router = Router()
 
 
 class ReleaseIn(Schema):
-    """The create row's typed platform, at one Game."""
+    """The create row's typed platform."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -737,11 +737,7 @@ def search_releases(request, game_id: UUIDv7, q: str = "", limit: int = 10):
 
 @release_router.post("/", response={201: CreatedRow})
 def create_release(request, payload: ReleaseIn):
-    """A Release on the typed Platform, under the default Edition.
-
-    A Release that already stands on that Platform is answered
-    rather than made a second time.
-    """
+    """A Release on the typed Platform, once."""
     library = cast(User, request.user).library
     reached = release_on_platform(library, payload.game_id, payload.name)
     label = release_label(reached.release)

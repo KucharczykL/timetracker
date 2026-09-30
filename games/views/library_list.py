@@ -59,7 +59,7 @@ from games.views.filtering import (
 ENTRY_COLUMNS: list[Column] = [
     Column("Game", "name", key="game", hideable=False),
     Column("Platform", "platform", priority=2, key="platform"),
-    #: What a copy is outlasts every other fact.
+    #: What a copy is comes first.
     Column("Access", "access", priority=3, key="access"),
     Column("Format", "format", key="format"),
     Column("Acquired", "acquired", key="acquired"),
@@ -74,7 +74,7 @@ def _ended_cell(entry: LibraryEntry, presentation: DateTimePresentation) -> str:
     ended = stated(entry, ENTRY_ACCESS_END)
     if ended is None:
         return ""
-    #: A way nobody stated says nothing; the day alone does.
+    #: An unstated way: the day alone.
     way = "" if way_of(ended) == EndWay.UNSTATED else END_WAY_LABELS[way_of(ended)]
     day = "" if ended.when is None else present_temporal_value(ended.when, presentation)
     return " · ".join(part for part in (way, day) if part) or "Ended"

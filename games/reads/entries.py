@@ -48,7 +48,7 @@ def game_entries(library: UserLibrary, game: Game) -> LibraryEntryQuerySet:
 
 
 def taken_back_end(library: UserLibrary, entry_id: uuid.UUID) -> WayActStatement | None:
-    """The end a copy's latest resume took back, as it stood."""
+    """The end the latest resume took back."""
     latest = (
         LibraryEvent.objects.filter(
             library=require_library(library),
@@ -73,9 +73,9 @@ type GameId = uuid.UUID
 
 
 class AccessSummary(NamedTuple):
-    """What one game's live copies say, for its badge."""
+    """One game's live copies, for its badge."""
 
-    #: Copies no end stands on, earliest acquired first.
+    #: Held copies, earliest acquired first.
     held: tuple[LibraryEntry, ...]
     #: Copies whose access ended, latest end first.
     ended: tuple[LibraryEntry, ...]
@@ -90,7 +90,7 @@ class AccessSummary(NamedTuple):
 
     @property
     def former(self) -> LibraryEntry | None:
-        """With nothing held, the copy whose end is latest."""
+        """Nothing held: the latest-ended copy."""
         if self.held or not self.ended:
             return None
         return self.ended[0]
@@ -99,7 +99,7 @@ class AccessSummary(NamedTuple):
 def access_summaries(
     library: UserLibrary, game_ids: Iterable[GameId]
 ) -> dict[GameId, AccessSummary]:
-    """One summary per game holding a live copy; one query."""
+    """One summary per game; one query."""
     held: dict[GameId, list[LibraryEntry]] = defaultdict(list)
     ended: dict[GameId, list[LibraryEntry]] = defaultdict(list)
     rows = (

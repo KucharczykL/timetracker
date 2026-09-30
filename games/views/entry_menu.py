@@ -17,19 +17,19 @@ from games.models import LibraryEntry
 from games.reads.endpoints import stated
 from games.reads.releases import platform_words
 
-#: The hidden field a one-click form posts; `library_entry` reads it.
+#: The one-click form's hidden key field.
 SUBMISSION_FIELD = "submission"
 
 
 def submission_input() -> Node:
-    """A fresh key, so a double press records once."""
+    """A fresh key: a double press records once."""
     return Input(type="hidden", name=SUBMISSION_FIELD, value=str(uuid.uuid7()))
 
 
 def entry_row_menu(
     entry: LibraryEntry, origin: OriginUrl | None, csrf_token: str
 ) -> Node:
-    """The Game detail row's acts: one click first, then the pages."""
+    """A copy's acts: one click, then pages."""
     game = entry.player_game.game
     ended = stated(entry, ENTRY_ACCESS_END) is not None
 
@@ -102,7 +102,7 @@ def entry_row_menu(
                 danger=True,
             ),
         ],
-        #: One game may hold several copies; the platform tells them apart.
+        #: The platform tells copies apart.
         label=f"{game.name} ({platform_words(entry.release)}) actions",
         id=f"entry-menu-{entry.pk}",
     )

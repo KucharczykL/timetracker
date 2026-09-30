@@ -566,7 +566,13 @@ docs/           — Additional documentation
   nothing, `None` voids) and refuses a reversed day order before it
   dispatches anything;
   `PATCH` takes `access_end` `{ended, way, note}` or null;
-  `POST /api/entries/{id}/resume`. No screen yet (M3 #1352). Contracts are
+  `POST /api/entries/{id}/resume`. #1352's screens: Game detail's Library
+  section lists copies had now, grouped by version; the Library tab lists
+  every copy (`LibraryEntryFilter`, mode `entries`); both share
+  `entry_row_menu`, whose one-click end states `EndWay.UNSTATED` with
+  Undo; the Games tab's `AccessBadge` says one sentence
+  ([screens](docs/superpowers/specs/2026-09-29-issue-1352-library-screens-design.md)).
+  Contracts are
   [The LibraryEntry aggregate](docs/superpowers/specs/2026-09-29-issue-719-libraryentry-aggregate-design.md)
   and [A copy's access ends and resumes](docs/superpowers/specs/2026-09-29-issue-721-entry-access-end-design.md);
   wave is

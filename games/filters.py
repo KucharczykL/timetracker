@@ -120,12 +120,12 @@ def session_day_handler(column: SessionInstantColumn) -> FieldHandler:
     return handler
 
 
-#: A held copy's column a game facet reads.
+#: The held copy's column a facet reads.
 type HeldEntryColumn = Literal["access", "format"]
 
 
 def held_entry_word_handler(column: HeldEntryColumn) -> FieldHandler:
-    """A game by its held copies' words; ended copies say nothing."""
+    """A game by its held copies' words."""
 
     def handler(criterion: _Criterion, context: FilterQueryContext | None) -> Q:
         if not isinstance(criterion, ChoiceCriterion):
@@ -278,7 +278,7 @@ class GameFilter(OperatorFilter):
             handler=held_entry_word_handler("access"),
             label="Access",
             choices=_word_choices(EntryAccess),
-            #: No held copy is a state the picker asks for.
+            #: The picker asks for no held copy.
             nullable=True,
         ),
         "format": FilterField(
