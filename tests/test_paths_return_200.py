@@ -74,6 +74,10 @@ class PathWorksTest(TestCase):
         response = self.client.get(reverse("games:list_games"), follow=True)
         self.assertEqual(response.status_code, 200)
 
+    def test_library_tab_returns_200(self):
+        response = self.client.get(reverse("games:list_library"))
+        self.assertEqual(response.status_code, 200)
+
     def test_game_list_survives_a_wikidata_column_naming_no_entity(self):
         # A mirror key the pattern rejects renders.
         Game.objects.create(

@@ -91,6 +91,8 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
     "games": [
         QuickFacet("status"),
         QuickFacet("platform"),
+        QuickFacet("access"),
+        QuickFacet("format"),
         QuickFacet(
             "year_released", "Year", placeholder="e.g. 2020", placeholder2="e.g. 2024"
         ),
@@ -185,6 +187,15 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
         QuickFacet("name", placeholder="e.g. Switch"),
         QuickFacet("group", placeholder="e.g. Nintendo"),
         QuickFacet("created_at", "Created"),
+    ],
+    "entries": [
+        QuickFacet("access", "Access"),
+        QuickFacet("format", "Format"),
+        QuickFacet("is_ended", "Ended"),
+        QuickFacet("access_end_way", "Way"),
+        QuickFacet("platform"),
+        QuickFacet("acquired", "Acquired"),
+        QuickFacet("game"),
     ],
 }
 

@@ -458,19 +458,22 @@ in place of a Release; on a game with no entry the picker offers to record
 one, Owned and Digital, in the same submit. The "separate price per game"
 mode and the row Split go with the bundle.
 
-**Edit entry**: access, format, release, acquired, access end (way, day,
-note; "Held" voids, "Resumed" states the fact), note. **Edit purchase**:
+**Edit entry**: access, format, release, acquired, note. The end of
+access has its own pages, and a one-click end or resume offers Undo
+(#1352). **Edit purchase**:
 kind, name, amount with Free, currency, purchased, refund (day, note; "Not
 refunded" voids), note. The row Refund act stays immediate with the
 calendar's day, corrected on the edit page.
 
 ### Lists
 
-**Entries** (`entries` mode, its own filter and presets, selectable, a
-navbar item beside Purchases): Game, Platform, Access, Format, Acquired,
-Access ended (way · day), Purchases, Created. Facets access, format,
-ended, way, platform, acquired, game. Tray Edit and Remove; row menu Edit,
-End access, Resume, Remove.
+**Entries** (`entries` mode, its own filter and presets, selectable, the
+Library tab beside Games): Game, Platform, Access, Format, Acquired,
+Access ended (way · day), Note, Created; P5 adds Purchases. Facets
+access, format, ended, way, platform, acquired, game. Tray Edit and
+Remove; row menu "I no longer have it" or "I have it again" (each one
+click or with details), "Edit how it left…" on an ended copy, Edit,
+Remove, shared with Game detail (#1352).
 
 **Purchases** (selectable, the Actions column retired, #1266): Name (the
 game, or product · game), Kind, Amount (Free and Unknown as words, the
@@ -479,11 +482,11 @@ amount, price state (Paid, Free, Unknown), purchased, refunded, and access
 and platform through the entry. Tray Edit and Remove; row menu Edit,
 Refund, Remove.
 
-**Games**: an Access column ("Owned · Digital", or "2 entries") and facets
-access and format over live entries, annotated through `player_games` so
-the shared-catalog scope holds; a Kind column and facet, off by default.
-**Game detail**: a Library section listing entries with their purchases
-beneath and the add and edit acts; an Add-ons section on a main game; a
+**Games**: an Access column (a badge whose popover says one sentence) and facets
+access and format over held entries, scoped through
+`context.queryset_for` so the shared-catalog scope holds; a Kind column and facet, off by default.
+**Game detail**: a Library section listing the entries had now, grouped
+by version, with their purchases beneath; an Add-ons section on a main game; a
 parent link on an add-on.
 
 ### Filters and presets
@@ -593,7 +596,7 @@ backlog reads M7's edition word.
 |---|---|---|
 | M1 (merged, PR #1362, 2026-09-29) | #719, #720, #722 | the opening endpoint whole, its one correction (`CorrectEntryAcquisition`) included, since the replay gate refuses a registered event type no command emits; the LibraryEntry aggregate: schema without the end columns, creation, description, removal and restore as commands with no route, multiple entries, reference kind, `_is_library_scoped` path, the generalised referrer registry, replay gate, the four API routes with `limit`/`offset` |
 | M2 (merged, PR #1366, 2026-09-29) | #721 | the end columns and their `CHECK`s in a migration of its own, as `0019` added the device's; access end and resume on the primitive |
-| M3 | #1352 | the Entries screens: list, filter, presets, navbar item, bulk Edit and Remove, the Games Access column and facets, Game detail's Library section, the entry forms |
+| M3 | #1352 | the Entries screens: list as the Library tab, filter, presets, bulk Edit and Remove, the Games Access column and facets, Game detail's Library section, the entry forms |
 | M7 | #1353 | `Game.kind` and `Game.parent`, `Edition.kind`: columns, form, Game detail add-ons, Games facet |
 | M8 | #1334 | `excluded_from_dropped` and its bulk Edit field |
 | P1 | #725, #726, #828 | the Purchase aggregate: projection, creation with an entry, description, day correction, removal, API |

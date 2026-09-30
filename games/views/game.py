@@ -15,6 +15,7 @@ from django.views.decorators.http import require_POST
 
 from common.components import (
     ICON_BUTTON_SIZE_CLASS,
+    AccessBadge,
     AddForm,
     ButtonGroup,
     Cell,
@@ -28,6 +29,7 @@ from common.components import (
     ExternalReferenceLinks,
     FormFields,
     Fragment,
+    GamesTabs,
     GameStatus,
     GameStatusSelector,
     Icon,
@@ -45,6 +47,7 @@ from common.components import (
     Safe,
     SelectionDeclaration,
     StyledTable,
+    SummaryList,
     TableData,
     Ul,
     drop_columns,
@@ -53,6 +56,7 @@ from common.components import (
     parse_filter_dict,
 )
 from common.components.primitives import Li, Span, custom_element_builder
+from common.components.sectioned_page import SECTION_SURFACE_CLASS
 from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
@@ -75,12 +79,14 @@ from games.bulk_playthrough_acts import COMPLETE_RUNS, START_RUNS
 from games.bulk_removal import REMOVE_GAME, REMOVE_RECORD, REMOVE_RUN
 from games.bulk_tray import tray_actions
 from games.catalog_form import CatalogGraphForm
+from games.catalog_release import SHARED_GAME_RELEASE
 from games.catalog_submit import submitted_game_or_form_error
 from games.external_references import CatalogTarget, external_reference_url_or_none
 from games.filters import (
     FindFilter,
     GameFilter,
     HistoricalPlaytimeFilter,
+    LibraryEntryFilter,
     NarrowingClauses,
     PlayerSessionFilter,
     PlaythroughFilter,
@@ -105,6 +111,7 @@ from games.models import (
 )
 from games.ownership import owned_or_404
 from games.reads.catalog_hierarchy import EditionEntry, game_hierarchy
+from games.reads.entries import AccessSummary, access_summaries
 from games.reads.external_references import ReferenceMap, held_by, references_for
 from games.reads.game_departures import game_departures
 from games.reads.historical_playtime_page import (
@@ -142,6 +149,12 @@ from games.views.game_menu import game_row_menu
 from games.views.historical_playtime import (
     historical_playtime_tabledata,
 )
+from games.views.library_cards import (
+    EMPTY_LIBRARY,
+    EMPTY_LIBRARY_NOW,
+    copy_rows,
+    library_add_control,
+)
 from games.views.playergame_writes import (
     record_facts_for_request,
     remove_game_for_request,
@@ -166,6 +179,17 @@ EDITIONS_UNDER_CONSTRUCTION = (
 )
 
 _RefreshingSection = custom_element_builder("refreshing-section")
+
+
+def _access_cell(
+    game_id: UUID,
+    summary: AccessSummary | None,
+    presentation: DateTimePresentation,
+) -> Cell:
+    """No badge without a live copy."""
+    if summary is None:
+        return ""
+    return AccessBadge(summary, presentation, id=f"access-{game_id}")
 
 
 def _wikidata_cell(provider_key: str) -> Cell:
@@ -233,6 +257,7 @@ def game_list_columns(playtime_label: str) -> list[Column]:
         Column("Year", "year", priority=2, key="year"),
         Column(playtime_label, "filtered_playtime", priority=2, key="playtime"),
         Column("Status", "status", priority=3, key="status"),
+        Column("Access", key="access", hidden_by_default=True),
         Column("Wikidata", "wikidata", key="wikidata", hidden_by_default=True),
         Column("Created", "created", key="created", hidden_by_default=True),
         Column(
@@ -269,6 +294,11 @@ def list_games(request: HttpRequest) -> HttpResponse:
     hidden, picker = column_choice(request, "games", columns)
     csrf_token = get_token(request)
     page_games = list(games)
+    summaries = (
+        {}
+        if "access" in hidden
+        else access_summaries(library, [game.pk for game in page_games])
+    )
     kept_columns, kept_cells = drop_columns(
         columns,
         [
@@ -286,6 +316,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                     csrf_token,
                     current=game.tracked_status,
                 ),
+                _access_cell(game.pk, summaries.get(game.pk), presentation),
                 _wikidata_cell(game.wikidata),
                 presentation.format(game.created_at, "date"),
                 "Excluded" if game.tracked_excluded_from_unfinished else "",
@@ -332,7 +363,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
         preset_api_url=reverse("api-1.0.0:list_presets"),
         per_page_override=find.per_page_override,
     )
-    content = ContentContainer()[quick_bar, content]
+    content = ContentContainer()[GamesTabs("games"), quick_bar, content]
     return render_page(
         request,
         content,
@@ -691,8 +722,13 @@ def _game_section(
     view_all_url: str | None = None,
     add_url: str | None = None,
     organize_url: str | None = None,
+    add_control: Node | None = None,
+    surface: bool = False,
+    view_all_title: str | None = None,
+    note: str | None = None,
 ) -> Node:
-    buttons: list[Node] = []
+    """``add_control`` replaces Add; ``surface`` adds a panel."""
+    buttons: list[Node] = [add_control] if add_control is not None else []
     if add_url:
         #: Offered on an empty section too.
         buttons.append(
@@ -705,12 +741,13 @@ def _game_section(
                 "Add",
             ]
         )
-    if view_all_url and count:
+    #: View all shows beside a note.
+    if view_all_url and (count or note):
         buttons.append(
             ControlButton(
                 href=view_all_url,
                 color="gray",
-                title=f"View all {title.lower()} for this game",
+                title=view_all_title or f"View all {title.lower()} for this game",
             )[
                 Icon("arrowright", size=ICON_BUTTON_SIZE_CLASS),
                 "View all",
@@ -738,9 +775,25 @@ def _game_section(
         ]
     else:
         header = heading
-    return Div(class_="mb-6 flex flex-col gap-4")[
+    return Div(
+        class_=f"mb-6 flex flex-col gap-4 {SECTION_SURFACE_CLASS}"
+        if surface
+        else "mb-6 flex flex-col gap-4"
+    )[
         header,
         table if count else empty_message,
+        *(
+            [
+                P(
+                    class_=(
+                        "flex items-center justify-center gap-2 "
+                        "text-type-body text-body-subtle"
+                    )
+                )[Icon("info", [("aria-hidden", "true")]), note]
+            ]
+            if note
+            else []
+        ),
     ]
 
 
@@ -1209,6 +1262,48 @@ def _playthroughs_section(
     return Div(id_="playthroughs-container")[section]
 
 
+def _had_copies(had: int) -> str | None:
+    """One line counts copies no longer had."""
+    if not had:
+        return None
+    if had == 1:
+        return (
+            "There is 1 more copy previously in your library, "
+            "click View all to manage it."
+        )
+    return (
+        f"There are {had} more copies previously in your library, "
+        "click View all to manage them."
+    )
+
+
+def _library_section(
+    game: Game,
+    library: UserLibrary,
+    presentation: DateTimePresentation,
+    origin: OriginUrl,
+    csrf_token: str,
+) -> Node:
+    copies = copy_rows(game, library, presentation, origin, csrf_token)
+    add = library_add_control(game, library, origin, csrf_token)
+    empty = EMPTY_LIBRARY if add is not None else SHARED_GAME_RELEASE
+    if copies.ended and not copies.held:
+        empty = EMPTY_LIBRARY_NOW
+    return Div(id_="library")[
+        _game_section(
+            "Library",
+            copies.held,
+            SummaryList(*copies.rows, labelled=True),
+            empty,
+            add_control=add,
+            surface=True,
+            view_all_url=filter_url(LibraryEntryFilter.where(game=[game.id])),
+            view_all_title="View all copies of this game",
+            note=_had_copies(copies.ended),
+        )
+    ]
+
+
 def _history_section(
     game: Game, library: UserLibrary, presentation: DateTimePresentation
 ) -> Node:
@@ -1272,6 +1367,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         _releases_section(
             hierarchy, presentation, origin, game=game, references=references
         ),
+        _library_section(game, library, presentation, origin, get_token(request)),
         _purchases_section(game, purchases, presentation, origin),
         _sessions_section(game, sessions, presentation, durations),
         _historical_playtime_section(

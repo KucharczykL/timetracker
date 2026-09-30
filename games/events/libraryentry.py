@@ -29,6 +29,7 @@ type EntryAccessValue = Literal[
 type EntryFormatValue = Literal["physical", "digital", "unknown"]
 #: Recorded spelling: `ENTRY_WAYS`.
 type EntryWayValue = Literal[
+    "unstated",
     "returned",
     "expired",
     "revoked",

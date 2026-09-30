@@ -1,6 +1,6 @@
 """Rows taken out of the lists, in bulk.
 
-Six acts, one for each row a selectable table holds. Each states the
+Seven acts, one for each row a selectable table holds. Each states the
 list's own read as its base, and refuses nothing of its own: every rule
 is the command's or the write's, so one row's refusal is a sentence and the batch goes
 on.
@@ -25,6 +25,12 @@ from games.bulk_actions import (
     Resolution,
     RowOutcome,
 )
+from games.bulk_entries import (
+    ENTRY_PREVIEW,
+    entry_resolution,
+    entry_scope,
+    removed_entry,
+)
 from games.bulk_games import GAME_GONE, game_scope
 from games.bulk_narrowing import narrowed
 from games.bulk_platforms import (
@@ -45,6 +51,7 @@ from games.models import (
     Device,
     Game,
     HistoricalPlaytime,
+    LibraryEntry,
     Platform,
     PlayerGame,
     PlayerSession,
@@ -65,6 +72,8 @@ from games.writes.historical_playtime import (
     remove_historical_playtime,
     restore_historical_playtime,
 )
+from games.writes.libraryentry import SUBJECT as COPY_SUBJECT
+from games.writes.libraryentry import remove_entry, restore_entry
 from games.writes.platform import remove_platform_in_batch
 from games.writes.playergame import remove_from_library, restore_to_library
 from games.writes.playersession import remove_session, restore_session
@@ -477,6 +486,47 @@ DEVICE_PREVIEW: tuple[PreviewColumn[Device], ...] = (
 )
 
 
+# ── Copies ───────────────────────────────────────────────────────────────────
+
+
+def remove_one_entry(
+    actor: User,
+    entry: LibraryEntry,
+    *,
+    choice: ChoiceValue | None,
+    idempotency_key: IdempotencyKey,
+    correlation_id: uuid.UUID,
+) -> RowOutcome:
+    return RowOutcome.of(
+        remove_entry(
+            actor,
+            entry,
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
+            source_metadata=_source(REMOVE_ENTRY.name),
+        )
+    )
+
+
+def restore_one_entry(
+    actor: User,
+    entry_id: uuid.UUID,
+    *,
+    undoes: uuid.UUID,
+    idempotency_key: IdempotencyKey,
+    correlation_id: uuid.UUID,
+) -> RowOutcome:
+    return RowOutcome.of(
+        restore_entry(
+            actor,
+            removed_entry(actor, entry_id),
+            idempotency_key=idempotency_key,
+            correlation_id=correlation_id,
+            source_metadata=_source(REMOVE_ENTRY.name),
+        )
+    )
+
+
 # ── Platforms ────────────────────────────────────────────────────────────────
 
 
@@ -625,4 +675,20 @@ REMOVE_PLATFORM = BulkAction(
     run=remove_one_platform,
     inverse=undoing(REMOVE_PLATFORM_NAME),
     preview=PLATFORM_PREVIEW,
+)
+
+REMOVE_ENTRY = BulkAction(
+    name="entry.remove",
+    label="Remove",
+    title=ActTitle(one="Remove this copy", many="Remove {count} copies"),
+    confirm_label="Remove",
+    subject=COPY_SUBJECT,
+    color="red",
+    undo_rows=EventRows(LibraryEntry),
+    fallback="games:list_library",
+    scope=entry_scope,
+    resolve=entry_resolution,
+    run=remove_one_entry,
+    inverse=restore_one_entry,
+    preview=ENTRY_PREVIEW,
 )

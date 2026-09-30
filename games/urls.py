@@ -9,6 +9,8 @@ from games.views import (
     historical_playtime,
     historical_playtime_entry,
     library,
+    library_entry,
+    library_list,
     list_columns,
     platform,
     playthrough,
@@ -66,6 +68,7 @@ urlpatterns = [
     path("game/<uuidv7:game_id>/remove", game.remove_game, name="remove_game"),
     path("game/<uuidv7:game_id>/restore", game.restore_game, name="restore_game"),
     path("game/list", game.list_games, name="list_games"),
+    path("game/library", library_list.list_library, name="list_library"),
     path("platform/add", platform.add_platform, name="add_platform"),
     path(
         "platform/<uuidv7:platform_id>/edit",
@@ -227,6 +230,67 @@ urlpatterns = [
         "historical-playtime/<uuidv7:record_id>/restore",
         historical_playtime_entry.restore_historical_playtime,
         name="restore_historical_playtime",
+    ),
+    path("library/add", library_entry.add_to_library, name="add_to_library"),
+    path(
+        "game/<uuidv7:game_id>/library/add",
+        library_entry.add_library_entry,
+        name="add_library_entry",
+    ),
+    path(
+        "game/<uuidv7:game_id>/library/add/now",
+        library_entry.add_library_entry_now,
+        name="add_library_entry_now",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/edit",
+        library_entry.edit_library_entry,
+        name="edit_library_entry",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/end",
+        library_entry.end_library_entry,
+        name="end_library_entry",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/end/edit",
+        library_entry.edit_library_entry_end,
+        name="edit_library_entry_end",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/end/now",
+        library_entry.end_library_entry_now,
+        name="end_library_entry_now",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/end/undo/<int:sequence>",
+        library_entry.undo_library_entry_end,
+        name="undo_library_entry_end",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/resume/now",
+        library_entry.resume_library_entry_now,
+        name="resume_library_entry_now",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/resume/undo/<int:sequence>",
+        library_entry.undo_library_entry_resume,
+        name="undo_library_entry_resume",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/resume",
+        library_entry.resume_library_entry,
+        name="resume_library_entry",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/remove",
+        library_entry.remove_library_entry,
+        name="remove_library_entry",
+    ),
+    path(
+        "library/<uuidv7:entry_id>/restore",
+        library_entry.restore_library_entry,
+        name="restore_library_entry",
     ),
     path("session/list", session.list_sessions, name="list_sessions"),
     path(

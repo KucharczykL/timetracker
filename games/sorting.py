@@ -39,6 +39,8 @@ from timetracker.settings_resolver import resolve_for_user
 __all__ = [
     "DEVICE_DEFAULT_SORT",
     "DEVICE_SORTS",
+    "ENTRY_DEFAULT_SORT",
+    "ENTRY_SORTS",
     "GAME_DEFAULT_SORT",
     "GAME_SORTS",
     "HISTORICAL_PLAYTIME_DEFAULT_SORT",
@@ -198,6 +200,19 @@ PLATFORM_SORTS: SortMap = {
 }
 PLATFORM_DEFAULT_SORT: SortString = "name"
 
+ENTRY_SORTS: SortMap = {
+    "name": SortSpec("player_game__game__sort_name"),
+    "platform": SortSpec("release__platform__name"),
+    #: Stored value, not label order.
+    "access": SortSpec("access"),
+    "format": SortSpec("format"),
+    "acquired": SortSpec("acquired_lower"),
+    #: No day, held or undated, sorts last.
+    "ended": SortSpec("access_ended_lower"),
+    "created": SortSpec("created_at"),
+}
+ENTRY_DEFAULT_SORT: SortString = "name,-acquired"
+
 
 # Maps a FilterPreset.mode to the sort map that mode's list view applies. Every
 # mode has a sort map (all six list views apply ?sort=), so the keyset equals
@@ -212,6 +227,7 @@ MODE_SORTS: dict[str, SortMap] = {
     "historical_playtime": HISTORICAL_PLAYTIME_SORTS,
     "devices": DEVICE_SORTS,
     "platforms": PLATFORM_SORTS,
+    "entries": ENTRY_SORTS,
 }
 
 

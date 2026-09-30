@@ -32,13 +32,13 @@ from games.events.dispatch import (
 from games.events.idempotency import IdempotencyKey
 from games.events.libraryentry import LIBRARYENTRY_CREATED
 from games.events.playergame import PLAYERGAME_CREATED
-from games.models import LibraryEntry
+from games.models import EntryAccess, EntryFormat, LibraryEntry
 from games.reads.endpoints import stated
 from games.reads.events import dispatched_events
 from games.writes.answers import SubjectNoun, answered
 from games.writes.endpoint import Act, Correct, Nothing, Void, endpoint_move
 
-SUBJECT: SubjectNoun = "entry"
+SUBJECT: SubjectNoun = "copy"
 
 
 class EntryDraft(NamedTuple):
@@ -125,8 +125,8 @@ def restate_entry(
     actor: User,
     entry: LibraryEntry,
     *,
-    access: str | None = None,
-    format: str | None = None,
+    access: EntryAccess | None = None,
+    format: EntryFormat | None = None,
     note: str | None = None,
     release_id: uuid.UUID | None = None,
     acquired: ActStatement | Keep = KEEP,
@@ -160,6 +160,28 @@ def restate_entry(
             result = _dispatch(command, actor=actor, correlation_id=correlation_id)
         changed = changed or result.outcome is CommandOutcome.APPENDED
     return changed
+
+
+def describe_entry(
+    actor: User,
+    entry: LibraryEntry,
+    *,
+    access: EntryAccess | None = None,
+    format: EntryFormat | None = None,
+    note: str | None = None,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+    source_metadata: SourceMetadata | None = None,
+) -> CommandResult:
+    """One description; None states nothing."""
+    with answered(SUBJECT):
+        return _dispatch(
+            DescribeEntry(entry_id=entry.pk, access=access, format=format, note=note),
+            actor=actor,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+            source_metadata=source_metadata,
+        )
 
 
 def _refuse_a_reversed_draft(
@@ -246,6 +268,24 @@ def _access_end_command(
             return VoidEntryAccessEnd(entry_id=entry.pk)
         case unhandled:
             assert_never(unhandled)
+
+
+def end_entry_access(
+    actor: User,
+    entry: LibraryEntry,
+    statement: WayActStatement,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey | None = None,
+) -> CommandResult:
+    """Access to a held copy ended."""
+    with answered(SUBJECT):
+        return _dispatch(
+            EndEntryAccess(entry_id=entry.pk, statement=statement),
+            actor=actor,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+        )
 
 
 def resume_entry_access(

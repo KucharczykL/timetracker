@@ -214,4 +214,5 @@ SEARCH_PLACEHOLDERS: dict[FilterMode, str] = {
     "historical_playtime": "Search game, platform, device, note",
     "devices": "Search name, type",
     "platforms": "Search name, group",
+    "entries": "Search game, platform, note",
 }

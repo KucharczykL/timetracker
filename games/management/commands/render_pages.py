@@ -35,6 +35,7 @@ LIST_ROUTES: frozenset[UrlName] = frozenset(
         "games:list_devices",
         "games:list_games",
         "games:list_historical_playtime",
+        "games:list_library",
         "games:list_platforms",
         "games:list_playthroughs",
         "games:list_purchases",
@@ -45,6 +46,8 @@ LIST_ROUTES: frozenset[UrlName] = frozenset(
 #: Every token in a page: the hidden input and any
 #: `...csrf="..."` attribute; then the footer's build stamp.
 _CSRF_TOKEN = re.compile(r'((?:name="csrfmiddlewaretoken" value|[\w-]*csrf)=")[^"]*(")')
+#: A form's fresh submission key.
+_SUBMISSION_KEY = re.compile(r'(name="[\w-]*submission" value=")[^"]*(")')
 _VERSION_FOOTER = re.compile(
     rf'(class="{re.escape(escape(VERSION_STAMP_CLASS))}">)[^<]*(</footer>)'
 )
@@ -103,6 +106,7 @@ def _urls(library: UserLibrary, unmounted: list[UrlName]) -> Iterator[RenderedUr
 def normalise(html: str) -> str:
     """What differs between two renders of one page on one database."""
     html = _CSRF_TOKEN.sub(r"\1CSRF\2", html)
+    html = _SUBMISSION_KEY.sub(r"\1SUBMISSION\2", html)
     return _VERSION_FOOTER.sub(r"\1VERSION\2", html)
 
 

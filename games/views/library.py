@@ -167,6 +167,9 @@ def library(request: HttpRequest) -> HttpResponse:
         subtitle="Purchase management will move into the future Catalogue. This section provides a library summary in the meantime.",
         actions=(
             SummaryAction(
+                "Add to library", action_url("games:add_to_library", origin=origin)
+            ),
+            SummaryAction(
                 "Add purchase", action_url("games:add_purchase", origin=origin)
             ),
         ),

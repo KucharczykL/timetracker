@@ -97,6 +97,14 @@ def test_the_csrf_token_and_the_version_footer_are_normalised(furnished):
     assert ">VERSION</footer>" in normalise(first)
 
 
+def test_a_forms_submission_key_is_normalised():
+    first = '<input type="hidden" name="library-add-submission" value="0192-a">'
+    second = '<input type="hidden" name="library-add-submission" value="0192-b">'
+
+    assert normalise(first) == normalise(second)
+    assert 'value="SUBMISSION"' in normalise(first)
+
+
 def test_the_command_writes_one_file_per_url_with_its_status_first(furnished, tmp_path):
     out = tmp_path / "pages"
     stdout = StringIO()

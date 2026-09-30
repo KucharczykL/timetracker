@@ -1286,6 +1286,7 @@ class FilterPreset(models.Model):
         ("historical_playtime", "Historical playtime"),
         ("devices", "Devices"),
         ("platforms", "Platforms"),
+        ("entries", "Library"),
     )
 
     library = models.ForeignKey(
@@ -2195,6 +2196,7 @@ ENTRY_ACQUISITION_COLUMNS = OpeningEndpointColumns(
 
 #: How a copy leaves the library's hands.
 ENTRY_WAYS: tuple[EndWay, *tuple[EndWay, ...]] = (
+    EndWay.UNSTATED,
     EndWay.RETURNED,
     EndWay.EXPIRED,
     EndWay.REVOKED,
@@ -2269,6 +2271,9 @@ class LibraryEntry(ProjectionModel, ReferencedRow):
     removed_at = models.DateTimeField(null=True, default=None, editable=False)
 
     class Meta:
+        #: The person's word.
+        verbose_name = "copy"
+        verbose_name_plural = "copies"
         constraints = (
             library_identity_constraint(),
             *endpoint_constraints(ENTRY_ACCESS_END_COLUMNS),

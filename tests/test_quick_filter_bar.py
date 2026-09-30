@@ -640,6 +640,8 @@ class FacetOrderTest(SimpleTestCase):
         "games": [
             "status",
             "platform",
+            "access",
+            "format",
             "year_released",
             "playtime_hours",
             "mastered",
@@ -660,6 +662,15 @@ class FacetOrderTest(SimpleTestCase):
         ],
         "devices": ["name", "type", "is_owned", "access_end_way", "created_at"],
         "platforms": ["name", "group", "created_at"],
+        "entries": [
+            "access",
+            "format",
+            "is_ended",
+            "access_end_way",
+            "platform",
+            "acquired",
+            "game",
+        ],
     }
 
     def test_every_mode_states_its_order(self):

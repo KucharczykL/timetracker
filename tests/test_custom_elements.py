@@ -407,6 +407,22 @@ class DropdownWrapperTest(unittest.TestCase):
         self.assertIn('aria-label="Playthrough actions"', html)
         self.assertNotIn("aria-labelledby", html)  # icon-only caret → explicit label
 
+    def test_a_quiet_primary_keeps_a_quiet_caret_named_for_its_menu(self):
+        from common.components import ControlButton, SplitButtonDropdown
+
+        html = str(
+            SplitButtonDropdown(
+                primary=ControlButton(variant="ghost")["Add"],
+                id="add",
+                aria_label="More ways to add",
+                items=[],
+            )
+        )
+        caret = html[html.index("<drop-down") :]
+        self.assertIn("bg-transparent", caret)
+        self.assertIn('aria-label="More ways to add"', caret)
+        self.assertNotIn("shadow-2xs", html[: html.index("<button")])
+
     def test_the_split_button_states_its_primary_shape(self):
         """A caller that had to remember `start` would render a primary rounded
         on four corners with a notch at the join, and nothing would say so."""
@@ -575,3 +591,37 @@ class SelectDropdownRenderTest(unittest.TestCase):
             )
         )
         self.assertIn('data-empty-is-null="true"', html)
+
+
+class DropdownSubmenuTest(unittest.TestCase):
+    def test_a_submenu_item_opens_its_items_beside_the_menu(self):
+        from common.components import DropdownLinkItem, DropdownSubmenuItem
+
+        html = str(
+            DropdownSubmenuItem(
+                "I no longer have it",
+                icon="end",
+                id="gone",
+                items=[DropdownLinkItem("/end/", "With details…")],
+            )
+        )
+        self.assertIn('role="menuitem"', html)
+        self.assertIn('submenu="true"', html)
+        self.assertIn('placement="right-start"', html)
+        self.assertIn('href="/end/"', html)
+
+    def test_a_description_says_more_under_the_label(self):
+        from common.components import DropdownLinkItem
+
+        html = str(
+            DropdownLinkItem("/end/", "With details…", description="Pick the day")
+        )
+        self.assertIn("italic text-body-subtle", html)
+        self.assertIn("Pick the day", html)
+
+    def test_the_divider_is_engraved(self):
+        from common.components import DropdownDivider
+
+        html = str(DropdownDivider())
+        self.assertIn("bg-black/10", html)
+        self.assertIn("shadow-[0_1px_0_rgb(255_255_255_/_0.7)]", html)

@@ -78,6 +78,7 @@ def _missing_origin(body: str, page_path: str) -> list[str]:
         "games:list_historical_playtime",
         "games:list_platforms",
         "games:list_devices",
+        "games:list_library",
     ],
 )
 def test_list_pages_stamp_their_own_path(client, owned_user, world, url_name):

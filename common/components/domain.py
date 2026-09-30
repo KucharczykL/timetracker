@@ -23,13 +23,20 @@ from common.components.primitives import (
     TruncatedText,
     Ul,
 )
+from common.date_time_presentation import DateTimePresentation
+from common.temporal_presentation import present_temporal_value
+from games.end_ways import EndWay, way_words
 from games.models import (
+    EntryAccess,
+    EntryFormat,
     ExternalReference,
     Game,
     PlayerGameStatus,
     PlayerSession,
     Purchase,
 )
+from games.reads.endpoints import way_of
+from games.reads.entries import AccessSummary, EndedCopy
 from games.reads.sums import PlaytimeBreakdown
 
 if TYPE_CHECKING:
@@ -39,6 +46,7 @@ logger = logging.getLogger("games")
 
 
 type PlaytimeTab = Literal["sessions", "historical"]
+type GamesTab = Literal["games", "library"]
 
 
 def PlaytimeTabs(current: PlaytimeTab) -> Node:
@@ -57,6 +65,119 @@ def PlaytimeTabs(current: PlaytimeTab) -> Node:
                 current=current == "historical",
             ),
         ],
+    )
+
+
+def GamesTabs(current: GamesTab, *, trailing: Node | None = None) -> Node:
+    """The Games page's two lists."""
+    return PageTabs(
+        "Games",
+        [
+            PageTab("Games", reverse("games:list_games"), current=current == "games"),
+            PageTab(
+                "Library",
+                reverse("games:list_library"),
+                current=current == "library",
+            ),
+        ],
+        trailing=trailing,
+    )
+
+
+#: Each format's glyph, in badge order.
+_FORMAT_GLYPHS: tuple[tuple[EntryFormat, str], ...] = (
+    (EntryFormat.DIGITAL, "cloud"),
+    (EntryFormat.PHYSICAL, "physical"),
+)
+#: Only where no shown format is known.
+_FORMAT_UNKNOWN_GLYPH = "dashed-ring"
+_ACCESS_BADGE_CLASS = (
+    "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-base border "
+    "text-type-body leading-none whitespace-nowrap"
+)
+_ACCESS_GLYPH_SIZE = "size-4"
+_ACCESS_BADGE_FILL = {
+    True: "solid-brand border-brand",
+    False: "border-default-medium text-body",
+}
+
+
+#: Ends that come by themselves: day alone.
+_NATURAL_ENDS: dict[str, frozenset[EndWay]] = {
+    EntryAccess.BORROWED: frozenset({EndWay.RETURNED, EndWay.EXPIRED}),
+    EntryAccess.RENTED: frozenset({EndWay.RETURNED, EndWay.EXPIRED}),
+    EntryAccess.SUBSCRIPTION: frozenset({EndWay.EXPIRED}),
+    EntryAccess.TRIAL: frozenset({EndWay.EXPIRED, EndWay.REVOKED}),
+    EntryAccess.DEMO: frozenset({EndWay.EXPIRED, EndWay.REVOKED}),
+}
+_A_VERSION: dict[str, str] = {
+    EntryFormat.PHYSICAL: "a physical version",
+    EntryFormat.DIGITAL: "a digital version",
+    EntryFormat.UNKNOWN: "an unknown version",
+}
+
+
+def _versions(count: int) -> str:
+    return "1 version" if count == 1 else f"{count} versions"
+
+
+def _one_ended(copy: EndedCopy, presentation: DateTimePresentation) -> str:
+    entry, ended = copy
+    way = way_of(ended)
+    day = (
+        None if ended.when is None else present_temporal_value(ended.when, presentation)
+    )
+    words = f"You had {_A_VERSION[entry.format]}"
+    how = way_words(way)
+    if how is None or way in _NATURAL_ENDS.get(entry.access, frozenset()):
+        return f"{words} until {day}" if day else words
+    return f"{words}, {how.lower()} {day}" if day else f"{words}, {how.lower()}"
+
+
+def access_sentence(summary: AccessSummary, presentation: DateTimePresentation) -> str:
+    """One sentence; details live elsewhere."""
+    held, ended = summary.held, summary.ended
+    if not held:
+        if len(ended) == 1:
+            return _one_ended(ended[0], presentation)
+        return f"You had {_versions(len(ended))}"
+    if ended:
+        return f"You have {_versions(len(held))}, and had {len(ended)}"
+    if len(held) == 1:
+        return f"You have {_A_VERSION[held[0].format]}"
+    if len(held) == 2 and summary.formats == {
+        EntryFormat.PHYSICAL,
+        EntryFormat.DIGITAL,
+    }:
+        return "You have both the digital and physical version"
+    return f"You have {_versions(len(held))}"
+
+
+def AccessBadge(
+    summary: AccessSummary, presentation: DateTimePresentation, *, id: str
+) -> Node:
+    """Fill: owned now. Glyph: format."""
+    glyphs = [glyph for word, glyph in _FORMAT_GLYPHS if word in summary.formats]
+    sentence = access_sentence(summary, presentation)
+    held = len(summary.held)
+    return Popover(
+        popover_content=sentence,
+        wrapped_classes=(
+            f"{_ACCESS_BADGE_CLASS} {_ACCESS_BADGE_FILL[summary.owned_now]}"
+        ),
+        children=[
+            #: Whole pixels, or glyphs drift from border.
+            *(
+                Icon(glyph, size=_ACCESS_GLYPH_SIZE, decorative=True)
+                for glyph in glyphs or [_FORMAT_UNKNOWN_GLYPH]
+            ),
+            *([Span(aria_hidden="true")[str(held)]] if held > 1 else []),
+            #: The button's name; the panel shows it.
+            Span(class_="sr-only")[sentence],
+        ],
+        id=id,
+        symbol_trigger=True,
+        describedby=False,
     )
 
 

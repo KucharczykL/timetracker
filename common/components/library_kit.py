@@ -195,10 +195,13 @@ class SummaryValue:
     href: str | None = None
 
 
-def SummaryList(*rows: Child) -> Node:
+def SummaryList(*rows: Child, labelled: bool = False) -> Node:
+    """Ruled rows; ``labelled`` groups part by space."""
     return Div(
         data_summary_list="",
-        class_="flex flex-col divide-y divide-default-medium",
+        class_="flex flex-col gap-4"
+        if labelled
+        else "flex flex-col divide-y divide-default-medium",
     )[*rows]
 
 
@@ -221,15 +224,21 @@ def _summary_action_menu(
 def SummaryRow(
     *,
     label: str,
-    subtitle: str,
+    subtitle: Child,
     value: SummaryValue | None = None,
     actions: Sequence[SummaryAction] = (),
     detail: Child | None = None,
+    control: Child | None = None,
+    dense: bool = False,
 ) -> Node:
+    """``control`` precedes links; ``dense`` for groups."""
     primary_children: list[Child] = [
         Div(class_="flex min-w-0 flex-col gap-1")[
-            P(class_="text-type-subheading text-heading")[label],
-            P(class_="text-type-body text-body")[subtitle],
+            #: In a group, the group names it.
+            *([P(class_="text-type-subheading text-heading")[label]] if label else []),
+            Div(
+                class_="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-type-body text-body"
+            )[subtitle],
         ]
     ]
     if value is not None:
@@ -240,6 +249,10 @@ def SummaryRow(
             "text-type-subheading tabular-nums",
         )
         primary_children.append(Div(class_="justify-self-end text-right")[value_node])
+    if control is not None:
+        primary_children.append(
+            Div(data_summary_control="", class_="justify-self-end")[control]
+        )
     if actions:
         primary_children.extend(
             [
@@ -253,12 +266,14 @@ def SummaryRow(
                 )[*[Link(href=action.href)[action.label] for action in actions]],
             ]
         )
-    if value is not None and actions:
-        grid_columns = "grid-cols-[minmax(0,1fr)_auto_auto]"
-    elif value is not None or actions:
-        grid_columns = "grid-cols-[minmax(0,1fr)_auto]"
-    else:
-        grid_columns = "grid-cols-1"
+    #: One auto column per trailing part.
+    trailing = sum(part is not None for part in (value, control)) + bool(actions)
+    grid_columns = {
+        0: "grid-cols-1",
+        1: "grid-cols-[minmax(0,1fr)_auto]",
+        2: "grid-cols-[minmax(0,1fr)_auto_auto]",
+        3: "grid-cols-[minmax(0,1fr)_auto_auto_auto]",
+    }[trailing]
     row_children: list[Child] = [
         Div(class_=f"grid {grid_columns} items-center gap-4")[*primary_children]
     ]
@@ -271,8 +286,20 @@ def SummaryRow(
         )
     return Div(
         data_summary_row="",
-        class_="@container flex min-w-0 flex-col gap-3 py-4 first:pt-0 last:pb-0",
+        class_=(
+            "@container flex min-w-0 flex-col gap-3 py-1"
+            if dense
+            else "@container flex min-w-0 flex-col gap-3 py-4 first:pt-0 last:pb-0"
+        ),
     )[*row_children]
+
+
+def SummaryGroup(*, label: str, rows: Sequence[Child]) -> Node:
+    """A name over rows that state none."""
+    return Div(data_summary_group="", class_="flex flex-col")[
+        P(class_="text-type-subheading text-heading")[label],
+        *rows,
+    ]
 
 
 __all__ = [
@@ -283,6 +310,7 @@ __all__ = [
     "StatisticCard",
     "StatisticGrid",
     "SummaryAction",
+    "SummaryGroup",
     "SummaryList",
     "SummaryRow",
     "SummaryValue",

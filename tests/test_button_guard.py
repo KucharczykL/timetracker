@@ -14,6 +14,7 @@ ALLOWED = {
     ("common/components/primitives.py", "TruncatedText"),
     ("common/components/primitives.py", "Pill"),
     ("common/components/custom_elements.py", "DropdownPostItem"),
+    ("common/components/custom_elements.py", "DropdownSubmenuItem"),
     ("common/components/custom_elements.py", "DropdownActionItem.render"),
     ("common/components/custom_elements.py", "DropdownCheckItem"),
     ("common/components/custom_elements.py", "ListboxPanel"),

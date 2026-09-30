@@ -1156,6 +1156,14 @@ class ControlButton(BaseComponent):
             *self._caller_attributes,
         ]
 
+    @property
+    def variant(self) -> ButtonVariant:
+        return self._variant
+
+    @property
+    def size(self) -> ButtonSize:
+        return self._size
+
     def with_shape(self, shape: ButtonShape) -> ControlButton:
         """This button, restated with different corners — for a builder
         composing a row out of buttons it did not build.
@@ -1345,8 +1353,10 @@ class PageTab(NamedTuple):
     current: bool = False
 
 
-def PageTabs(aria_label: NavLabel, tabs: Sequence[PageTab]) -> Node:
-    """Sibling pages as links; current one marked."""
+def PageTabs(
+    aria_label: NavLabel, tabs: Sequence[PageTab], *, trailing: Node | None = None
+) -> Node:
+    """Sibling pages; `trailing` ends the row."""
     links = [
         ControlLink(
             href=tab.href,
@@ -1363,8 +1373,13 @@ def PageTabs(aria_label: NavLabel, tabs: Sequence[PageTab]) -> Node:
         )[tab.label]
         for shape, tab in shaped(tabs)
     ]
-    return Nav(aria_label=aria_label, class_="mb-4")[
+    nav = Nav(aria_label=aria_label, class_="mb-4")[
         Div(class_=_JOINED_ROW_CLASS)[links]
+    ]
+    if trailing is None:
+        return nav
+    return Div(class_="mb-4 flex flex-wrap items-center justify-between gap-2")[
+        Nav(aria_label=aria_label)[Div(class_=_JOINED_ROW_CLASS)[links]], trailing
     ]
 
 
@@ -1500,7 +1515,7 @@ def Radio(
     )[input_el, label]
 
 
-# Pill's inline utilities. Client-side pills clone this server <template>
+# Chip's utilities; Pill builds on Chip. Client-side pills clone this server <template>
 # (search-select.ts never names a pill class), so this is the single source of
 # pill markup — no byte-for-byte JS contract to keep in sync.
 # A pill is a token *inside* a control, not a row-control: it must stay shorter
@@ -1508,19 +1523,62 @@ def Radio(
 # to edge) and share the field's font (font-condensed here read as squashed next
 # to the un-condensed search box).
 #: max-w-full lets a narrow host truncate.
-_PILL_CLASS = (
+_CHIP_CLASS = (
     "inline-flex items-center gap-1 px-2 py-0.5 text-type-body rounded-base max-w-full"
 )
+
+type ChipTone = Literal["brand", "danger", "warning", "neutral"]
+
+_CHIP_TONE_CLASSES: dict[ChipTone, str] = {
+    "brand": "bg-brand-soft text-heading",
+    "danger": "bg-danger-soft text-fg-danger-strong",
+    "warning": "bg-warning-soft text-fg-warning",
+    "neutral": "bg-neutral-tertiary-medium text-body",
+}
+
+
+class Chip(BaseComponent):
+    """A static tag: tone, glyph, ``[]`` slot."""
+
+    def __init__(
+        self,
+        attrs: AttrsArg | None = None,
+        /,
+        *,
+        tone: ChipTone = "brand",
+        icon: str = "",
+        _children: Children = None,
+        **kwargs: object,
+    ) -> None:
+        self._attrs = [*_coerce_attrs(attrs), *_attrs_from_kwargs(kwargs)]
+        self._tone = tone
+        self._icon = icon
+        self._children = as_children(_children)
+
+    def __getitem__(self, children: Children) -> Chip:
+        return Chip(self._attrs, tone=self._tone, icon=self._icon, _children=children)
+
+    def render(self) -> Node:
+        glyph = (
+            [Icon(self._icon, [("aria-hidden", "true")], size="size-3 shrink-0")]
+            if self._icon
+            else []
+        )
+        return Span(
+            [("class", f"{_CHIP_CLASS} {_CHIP_TONE_CLASSES[self._tone]}"), *self._attrs]
+        )[*glyph, *self._children]
+
+
 _PILL_REMOVE_CLASS = "ml-1 text-body hover:text-heading font-bold cursor-pointer"
 
 type PillKind = Literal["include", "exclude", "modifier"]
 
 #: Each kind replaces the brand tone.
-_PILL_TONE_CLASSES: dict[PillKind | None, str] = {
-    None: "bg-brand-soft text-heading",
-    "include": "bg-brand-soft text-heading",
-    "exclude": "bg-danger-soft text-fg-danger-strong line-through",
-    "modifier": "bg-warning-soft text-fg-warning",
+_PILL_TONES: dict[PillKind | None, ChipTone] = {
+    None: "brand",
+    "include": "brand",
+    "exclude": "danger",
+    "modifier": "warning",
 }
 _PILL_GLYPHS: dict[PillKind | None, str] = {"include": "✓", "exclude": "✗"}
 
@@ -1547,7 +1605,7 @@ def Pill(
     it ``data-search-select-label`` for a template clone to fill.
     """
     baked: list[HTMLAttribute] = [
-        ("class", f"{_PILL_CLASS} {_PILL_TONE_CLASSES[kind]}"),
+        ("class", "line-through" if kind == "exclude" else ""),
         ("class", extra_class),
         ("data-pill", ""),
     ]
@@ -1574,7 +1632,7 @@ def Pill(
             )["×"]
         )
 
-    return Span(pill_attrs)[*children]
+    return Chip(pill_attrs, tone=_PILL_TONES[kind])[*children]
 
 
 # A small count/label badge (the brand-soft pill historically inlined in H1).
@@ -1838,6 +1896,8 @@ class FormFieldGroup(NamedTuple):
     fields: Sequence[str]
     description: str = ""
     id: str = ""
+    #: Screen readers name it; space parts it.
+    legend_hidden: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -1981,12 +2041,18 @@ def _grouped_form_fields(
             ("class", "flex flex-col gap-3"),
             ("data-form-field-group", ""),
         ]
+        if group.legend_hidden:
+            attributes.append(("class", "mt-3 first-of-type:mt-0"))
         if group.id:
             attributes.append(("id", group.id))
         if description_id and group.description:
             attributes.append(("aria-describedby", description_id))
         group_children: list[Node] = [
-            Legend(class_="text-type-section text-heading")[group.legend]
+            Legend(
+                class_="sr-only"
+                if group.legend_hidden
+                else "text-type-section text-heading"
+            )[group.legend]
         ]
         if group.description:
             description_attributes: list[HTMLAttribute] = [
@@ -2123,6 +2189,8 @@ def AddForm(
     additional_row: Node | SafeText | str = "",
     submit_class: str = "mt-3",
     width_class: str = FORM_MAX_WIDTH_CLASS,
+    submit_label: str = "Submit",
+    cancel_url: str | None = None,
 ) -> Node:
     """Page body for the generic add/edit form (Python equivalent of add.html).
 
@@ -2132,6 +2200,7 @@ def AddForm(
     is applied to the main Submit button (the session form passes "" to match
     its original markup). `width_class` widens the column for a form that holds
     a grid of its own; every other page keeps the one-column default.
+    `submit_label` names the act; `cancel_url` adds a Cancel link beside it.
     """
     field_markup = fields if fields is not None else FormFields(form)
     submit_attrs = [("class", submit_class)] if submit_class else []
@@ -2144,7 +2213,14 @@ def AddForm(
     )[
         CsrfInput(request),
         field_markup,
-        Div()[ControlButton(submit_attrs, type="submit")["Submit"]],
+        Div(class_="flex flex-wrap items-center gap-2")[
+            ControlButton(submit_attrs, type="submit")[submit_label],
+            *(
+                [ControlButton(href=cancel_url, color="gray")["Cancel"]]
+                if cancel_url
+                else []
+            ),
+        ],
         Div(class_="flex flex-wrap gap-2")[
             *([additional_row] if additional_row else [])
         ],
@@ -2693,10 +2769,20 @@ def _with_title(children: Sequence[Child], title: str) -> list[Child]:
     return [title_node, *result]
 
 
+def _untitled(children: Sequence[Child]) -> list[Child]:
+    return [
+        child
+        for child in children
+        if not (isinstance(child, Element) and child.tag_name == "title")
+    ]
+
+
 def Icon(
     name: str,
     attributes: Attributes | None = None,
     size: str | None = None,
+    *,
+    decorative: bool = False,
 ) -> Node:
     """Render an icon, overriding its snippet's baked ``class`` with the central
     icon classes (:data:`ICON_BASE_CLASS` colour + size). Every other svg
@@ -2704,9 +2790,13 @@ def Icon(
     the paths to a sliver. ``size=`` replaces the default :data:`ICON_SIZE_CLASS`
     wholesale (e.g. ``ICON_BUTTON_SIZE_CLASS`` for button icons). ``title=`` sets
     the accessible ``<title>`` child; a passed ``class=`` appends as an override.
+    ``decorative`` drops the ``<title>``, whose tooltip would cover the
+    parent's, and hides the glyph from assistive technology.
     """
     root = get_icon_node(name)
-    extra_attributes: list[HTMLAttribute] = []
+    extra_attributes: list[HTMLAttribute] = (
+        [("aria-hidden", "true")] if decorative else []
+    )
     title: str | None = None
     caller_class = ""
     for key, value in attributes or []:
@@ -2716,7 +2806,12 @@ def Icon(
             caller_class = str(value)
         else:
             extra_attributes.append((key, value))
-    children = _with_title(root.children, title) if title is not None else root.children
+    if decorative:
+        children: Sequence[Child] = _untitled(root.children)
+    elif title is not None:
+        children = _with_title(root.children, title)
+    else:
+        children = root.children
     class_value = " ".join(
         part
         for part in (ICON_BASE_CLASS, size or ICON_SIZE_CLASS, caller_class)
