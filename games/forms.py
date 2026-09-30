@@ -2080,12 +2080,6 @@ class IncludeNameSelect(forms.Select):
         return option
 
 
-class GameModelChoiceField(forms.ModelChoiceField):
-    def label_from_instance(self, obj):
-        # Use sort_name as the label for the option
-        return obj.sort_name
-
-
 class _LibraryBoundConstraintValidationMixin:
     def _get_validation_exclusions(self):
         exclusions = super()._get_validation_exclusions()
