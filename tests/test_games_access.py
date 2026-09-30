@@ -4,7 +4,7 @@ import json
 
 import pytest
 from django.urls import reverse
-from entries import end_entry_access, record_entry
+from entries import end_entry_access, record_entry, remove_entry
 from tracked_games import create_tracked_game
 
 from common.components.quick_filter import QUICK_FACETS, is_quick_editable
@@ -110,6 +110,17 @@ def test_entry_count_counts_ended_copies_too(owned_library, games):
     two = {"entry_count": {"value": 2, "modifier": "EQUALS"}}
 
     assert _matching(owned_library, two) == {"Owned", "Both"}
+
+
+def test_a_removed_copy_counts_nowhere(owned_library, stated_graph):
+    gone = stated_graph(Game(name="Gone", library=owned_library), owned_library)
+    remove_entry(record_entry(owned_library, gone.release))
+
+    held = {"access": {"modifier": "NOT_NULL"}}
+    counted = {"entry_count": {"value": 0, "modifier": "GREATER_THAN"}}
+
+    assert _matching(owned_library, held) == set()
+    assert _matching(owned_library, counted) == set()
 
 
 def test_entry_filter_narrows_by_a_copy(owned_library, games):

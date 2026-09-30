@@ -5,17 +5,18 @@ import uuid
 
 import pytest
 from bulk_posts import act_url, posted, press, selection
-from django.http import QueryDict
+from django.http import Http404, QueryDict
 from django.urls import reverse
 from entries import record_entry, remove_entry
 
 from common.components.unset_field import unset_input_name
 from common.criteria import FilterError
-from games.bulk_actions import BULK_ACTIONS, Control, EventRows
+from games.bulk_actions import BULK_ACTIONS, Control, EventRows, RowOutcome
 from games.bulk_entries import ENTRY_GONE
 from games.bulk_entry_edit import (
     EDIT_CHOICE,
     ENTRY_EDIT,
+    ENTRY_REMOVED,
     NOTHING_STATED,
     EntryEditStatement,
 )
@@ -25,6 +26,7 @@ from games.models import EntryAccess, EntryFormat, Game, LibraryEntry, Platform
 from games.reads.entry_facts import entry_fact_changes
 from games.reads.fact_change import FactChange
 from games.views.bulk import CHOICE_FIELD, STATEMENT_FIELD, TOKEN_FIELD
+from games.writes.answers import CommandFailed
 from games.writes.libraryentry import describe_entry
 from games.writes.playergame import new_correlation_id
 
@@ -267,12 +269,50 @@ def test_a_copy_removed_since_the_confirmation_is_left_alone(logged_in, first):
     assert first.removed_at is not None
 
 
-def test_an_undo_of_another_librarys_copy_is_absent(owned_user, first):
-    with pytest.raises(Exception, match="No such copy"):
+def test_an_undo_of_another_librarys_copy_is_absent(
+    owned_user, django_user_model, stated_graph
+):
+    stranger = django_user_model.objects.create_user("stranger").library
+    theirs = stated_graph(Game(name="Hades", library=stranger), stranger)
+    their_copy = remove_entry(record_entry(stranger, theirs.release))
+
+    with pytest.raises(Http404):
         REMOVE_ENTRY.inverse(
             owned_user,
-            uuid.uuid7(),
+            their_copy.pk,
             undoes=uuid.uuid7(),
             idempotency_key=str(uuid.uuid7()),
             correlation_id=uuid.uuid7(),
         )
+
+
+def _edit_back(owned_user, entry, token):
+    return ENTRY_EDIT.inverse(
+        owned_user,
+        entry.pk,
+        undoes=uuid.UUID(token),
+        idempotency_key=str(uuid.uuid7()),
+        correlation_id=uuid.uuid7(),
+    )
+
+
+def test_edit_normalises_a_notes_line_breaks(logged_in, first):
+    _edit(logged_in, first, note="boxed\r\nwith manual")
+
+    assert _facts(first)[2] == "boxed\nwith manual"
+
+
+def test_an_undo_finds_the_facts_already_back(logged_in, owned_user, first):
+    token = _edit(logged_in, first, access="rented")
+    _undo(logged_in, token)
+
+    assert _edit_back(owned_user, first, token) is RowOutcome.UNCHANGED
+
+
+def test_an_undo_refuses_a_copy_removed_since(logged_in, owned_user, first):
+    token = _edit(logged_in, first, access="rented")
+    remove_entry(first)
+
+    with pytest.raises(CommandFailed, match=ENTRY_REMOVED):
+        _edit_back(owned_user, first, token)
+    assert _facts(first)[0] == "rented"

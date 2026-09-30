@@ -32,3 +32,8 @@ END_WAY_LABELS: Mapping[EndWay, str] = {
     EndWay.REFUNDED: "Refunded",
     EndWay.UNSTATED: "Not said",
 }
+
+
+def way_words(way: EndWay) -> str | None:
+    """Its label; an unstated way says nothing."""
+    return None if way == EndWay.UNSTATED else END_WAY_LABELS[way]

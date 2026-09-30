@@ -181,7 +181,7 @@ def SectionNav(
     ]
 
 
-#: A section's surface, apart from background.
+#: A section panel's border, fill, padding.
 SECTION_SURFACE_CLASS = (
     "rounded-base border border-default bg-neutral-primary-medium p-4"
 )

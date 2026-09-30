@@ -1,12 +1,15 @@
 """The pages that add, edit, end, resume, remove and restore a copy."""
 
 import datetime
+import re
 
 import pytest
 from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry
 
-from games.entry_forms import CHANGED_SINCE_OPENED
+from games.catalog_release import SHARED_GAME_RELEASE
+from games.end_ways import EndWay
+from games.entry_forms import CHANGED_SINCE_OPENED, end_seen
 from games.models import (
     Edition,
     Game,
@@ -17,6 +20,7 @@ from games.models import (
     Release,
 )
 from games.removal import remove
+from games.views.library_entry import NO_RELEASE, UNDO_OVERTAKEN
 from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -245,7 +249,7 @@ def _edit_end_post(entry, **changes) -> dict[str, str]:
     return {
         "way": "sold",
         "note": "",
-        "access_end_seen": entry.access_end_recorded_at.isoformat(),
+        "access_end_seen": end_seen(entry),
         **_day("ended", datetime.date(2024, 3, 1)),
     } | changes
 
@@ -287,7 +291,7 @@ def test_resume_states_the_resume(logged_in, entry):
         reverse("games:resume_library_entry", args=[entry.pk]),
         {
             "note": "",
-            "access_end_seen": entry.access_end_recorded_at.isoformat(),
+            "access_end_seen": end_seen(entry),
             "submission": SUBMISSION,
             **_day("resumed", datetime.date(2026, 9, 2)),
         },
@@ -397,34 +401,204 @@ def test_one_click_end_states_not_said_today(logged_in, entry):
     assert entry.access_ended is not None
 
 
-def test_the_end_s_undo_voids_it(logged_in, entry):
-    _now(logged_in, "games:end_library_entry_now", entry.pk)
+def _offered_undo(client, response) -> str:
+    page = client.get(response["Location"]).content.decode()
+    match = re.search(r"/tracker/library/[0-9a-f-]+/(?:end|resume)/undo/\d+", page)
+    assert match is not None
+    return match.group(0)
 
-    logged_in.post(reverse("games:undo_library_entry_end", args=[entry.pk]))
+
+def _messages(client, response) -> str:
+    return client.get(response["Location"]).content.decode()
+
+
+def test_the_end_s_undo_voids_it(logged_in, entry):
+    undo = _offered_undo(
+        logged_in, _now(logged_in, "games:end_library_entry_now", entry.pk)
+    )
+
+    logged_in.post(undo)
 
     entry.refresh_from_db()
     assert entry.access_end_recorded_at is None
     assert _types(entry.pk)[-1] == "library.libraryentry.access_end_voided"
 
 
+def test_the_end_s_undo_leaves_a_later_correction_alone(logged_in, entry):
+    undo = _offered_undo(
+        logged_in, _now(logged_in, "games:end_library_entry_now", entry.pk)
+    )
+    entry.refresh_from_db()
+    logged_in.post(
+        reverse("games:edit_library_entry_end", args=[entry.pk]),
+        _edit_end_post(entry, way="sold"),
+    )
+
+    response = logged_in.post(undo)
+
+    entry.refresh_from_db()
+    assert entry.access_end_way == "sold"
+    assert UNDO_OVERTAKEN in _messages(logged_in, response)
+
+
+def test_a_second_undo_of_one_end_changes_nothing(logged_in, entry):
+    undo = _offered_undo(
+        logged_in, _now(logged_in, "games:end_library_entry_now", entry.pk)
+    )
+    logged_in.post(undo)
+    events = _types(entry.pk)
+
+    response = logged_in.post(undo)
+
+    assert _types(entry.pk) == events
+    assert UNDO_OVERTAKEN in _messages(logged_in, response)
+
+
 def test_the_resume_s_undo_states_the_end_it_took_back(logged_in, entry):
     entry = end_entry_access(entry, ended=TemporalValue.parse("2022"))
-    _now(logged_in, "games:resume_library_entry_now", entry.pk)
+    undo = _offered_undo(
+        logged_in, _now(logged_in, "games:resume_library_entry_now", entry.pk)
+    )
     entry.refresh_from_db()
     assert entry.access_end_recorded_at is None
 
-    logged_in.post(reverse("games:undo_library_entry_resume", args=[entry.pk]))
+    logged_in.post(undo)
 
     entry.refresh_from_db()
     assert entry.access_end_way == "returned"
     assert entry.access_ended == TemporalValue.parse("2022")
 
 
+def test_a_stale_resume_undo_never_restates_a_voided_end(logged_in, entry):
+    entry = end_entry_access(entry, ended=TemporalValue.parse("2022"))
+    stale = _offered_undo(
+        logged_in, _now(logged_in, "games:resume_library_entry_now", entry.pk)
+    )
+    gone = _offered_undo(
+        logged_in,
+        _now(
+            logged_in,
+            "games:end_library_entry_now",
+            entry.pk,
+            token="01928e5e-4f6b-7c3a-8e9d-000000000002",
+        ),
+    )
+    logged_in.post(gone)
+
+    logged_in.post(stale)
+
+    entry.refresh_from_db()
+    assert entry.access_end_recorded_at is None
+
+
 def test_one_click_offers_undo(logged_in, entry):
     response = _now(logged_in, "games:end_library_entry_now", entry.pk)
 
-    page = logged_in.get(response["Location"]).content.decode()
-    assert reverse("games:undo_library_entry_end", args=[entry.pk]) in page
+    assert f"/library/{entry.pk}/end/undo/" in _offered_undo(logged_in, response)
+
+
+def test_a_refused_one_click_offers_no_undo(logged_in, entry):
+    entry = end_entry_access(entry, way=EndWay.SOLD)
+
+    response = _now(logged_in, "games:end_library_entry_now", entry.pk)
+
+    assert "/end/undo/" not in _messages(logged_in, response)
+    entry.refresh_from_db()
+    assert entry.access_end_way == "sold"
+
+
+def test_a_one_click_press_without_its_key_is_malformed(logged_in, entry):
+    response = logged_in.post(
+        reverse("games:end_library_entry_now", args=[entry.pk]), {}
+    )
+
+    assert response.status_code == 400
+    entry.refresh_from_db()
+    assert entry.access_end_recorded_at is None
+
+
+def test_one_click_add_on_an_own_game_without_a_version_says_so(
+    logged_in, owned_library
+):
+    game = Game.objects.create(name="Unreleased", library=owned_library)
+
+    response = _now(logged_in, "games:add_library_entry_now", game.pk)
+
+    assert NO_RELEASE in _messages(logged_in, response)
+    assert not LibraryEntry.objects.filter(player_game__game=game).exists()
+
+
+def test_one_click_add_on_a_shared_game_without_a_version_says_so(logged_in):
+    shared = Game.objects.create(name="Celeste")
+
+    response = _now(logged_in, "games:add_library_entry_now", shared.pk)
+
+    assert SHARED_GAME_RELEASE in _messages(logged_in, response)
+
+
+@pytest.mark.parametrize(
+    "route",
+    [
+        "games:add_library_entry_now",
+    ],
+)
+def test_one_click_add_on_another_librarys_game_is_absent(
+    client, graph, django_user_model, route
+):
+    client.force_login(django_user_model.objects.create_user(username="stranger"))
+
+    assert _now(client, route, graph.game.pk).status_code == 404
+
+
+@pytest.mark.parametrize(
+    "route",
+    [
+        "games:remove_library_entry",
+        "games:restore_library_entry",
+        "games:undo_library_entry_end",
+        "games:undo_library_entry_resume",
+    ],
+)
+def test_another_librarys_copy_is_absent_from_every_act(
+    client, entry, django_user_model, route
+):
+    client.force_login(django_user_model.objects.create_user(username="stranger"))
+    args = [entry.pk] if "undo" not in route else [entry.pk, 1]
+    before = _types(entry.pk)
+
+    assert client.post(reverse(route, args=args)).status_code == 404
+    assert _types(entry.pk) == before
+
+
+def test_the_resume_page_of_a_held_copy_goes_to_end_access(logged_in, entry):
+    response = logged_in.get(reverse("games:resume_library_entry", args=[entry.pk]))
+
+    assert response.status_code == 302
+    assert reverse("games:end_library_entry", args=[entry.pk]) in response["Location"]
+
+
+def test_a_correction_since_the_page_opened_is_refused(logged_in, entry):
+    entry = end_entry_access(entry, way=EndWay.SOLD)
+    opened = _edit_end_post(entry, way="lost")
+    logged_in.post(
+        reverse("games:edit_library_entry_end", args=[entry.pk]),
+        _edit_end_post(entry, way="stolen"),
+    )
+
+    response = logged_in.post(
+        reverse("games:edit_library_entry_end", args=[entry.pk]), opened
+    )
+
+    entry.refresh_from_db()
+    assert entry.access_end_way == "stolen"
+    assert CHANGED_SINCE_OPENED in response.content.decode()
+
+
+def test_an_empty_add_page_post_renders_its_errors(logged_in):
+    response = logged_in.post(reverse("games:add_to_library"), {})
+
+    assert response.status_code == 200
+    assert f'href="{reverse("games:library")}"' in response.content.decode()
 
 
 def test_one_click_on_another_librarys_copy_is_absent(client, entry, django_user_model):

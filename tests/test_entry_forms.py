@@ -20,6 +20,7 @@ from games.entry_forms import (
     EntryEndEditForm,
     EntryEndForm,
     EntryResumeForm,
+    end_seen,
 )
 from games.models import Game, Platform
 from games.writes.libraryentry import KEEP
@@ -236,7 +237,7 @@ def test_edit_end_restates_the_whole_end(owned_library, entry):
         {
             "way": "sold",
             "note": " eBay ",
-            "access_end_seen": entry.access_end_recorded_at.isoformat(),
+            "access_end_seen": end_seen(entry),
             **_day("ended", datetime.date(2022, 3, 4)),
         },
     )

@@ -1468,7 +1468,7 @@ def SplitButtonDropdown(
     # The caret sits flush against the primary, so its focus ring is drawn inset
     # (contained in the caret box) rather than as an outset halo over the join.
     caret_focus = "focus:ring-inset"
-    #: A glyph alone; the menu names it.
+    #: A glyph alone needs a name.
     caret_name: list[HTMLAttribute] = [("aria-label", aria_label)] if aria_label else []
     if caret_color is None:
         #: A quiet primary keeps a quiet caret.

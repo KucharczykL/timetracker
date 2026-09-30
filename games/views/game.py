@@ -741,7 +741,7 @@ def _game_section(
                 "Add",
             ]
         )
-    #: A note may name View all.
+    #: View all shows beside a note.
     if view_all_url and (count or note):
         buttons.append(
             ControlButton(
@@ -1287,19 +1287,19 @@ def _library_section(
     copies = copy_rows(game, library, presentation, origin, csrf_token)
     add = library_add_control(game, library, origin, csrf_token)
     empty = EMPTY_LIBRARY if add is not None else SHARED_GAME_RELEASE
-    if copies.had and not copies.copies:
+    if copies.ended and not copies.held:
         empty = EMPTY_LIBRARY_NOW
     return Div(id_="library")[
         _game_section(
             "Library",
-            copies.copies,
+            copies.held,
             SummaryList(*copies.rows, labelled=True),
             empty,
             add_control=add,
             surface=True,
             view_all_url=filter_url(LibraryEntryFilter.where(game=[game.id])),
             view_all_title="View all copies of this game",
-            note=_had_copies(copies.had),
+            note=_had_copies(copies.ended),
         )
     ]
 

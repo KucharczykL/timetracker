@@ -25,20 +25,18 @@ from common.components.primitives import (
 )
 from common.date_time_presentation import DateTimePresentation
 from common.temporal_presentation import present_temporal_value
-from games.end_ways import END_WAY_LABELS, EndWay
-from games.endpoints import ENTRY_ACCESS_END
+from games.end_ways import EndWay, way_words
 from games.models import (
     EntryAccess,
     EntryFormat,
     ExternalReference,
     Game,
-    LibraryEntry,
     PlayerGameStatus,
     PlayerSession,
     Purchase,
 )
-from games.reads.endpoints import stated, way_of
-from games.reads.entries import AccessSummary
+from games.reads.endpoints import way_of
+from games.reads.entries import AccessSummary, EndedCopy
 from games.reads.sums import PlaytimeBreakdown
 
 if TYPE_CHECKING:
@@ -91,7 +89,7 @@ _FORMAT_GLYPHS: tuple[tuple[EntryFormat, str], ...] = (
     (EntryFormat.DIGITAL, "cloud"),
     (EntryFormat.PHYSICAL, "physical"),
 )
-#: Only where no held format is known.
+#: Only where no shown format is known.
 _FORMAT_UNKNOWN_GLYPH = "dashed-ring"
 _ACCESS_BADGE_CLASS = (
     "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-base border "
@@ -123,20 +121,17 @@ def _versions(count: int) -> str:
     return "1 version" if count == 1 else f"{count} versions"
 
 
-def _one_ended(entry: LibraryEntry, presentation: DateTimePresentation) -> str:
-    ended = stated(entry, ENTRY_ACCESS_END)
-    if ended is None:
-        raise ValueError("An ended copy states its end.")
+def _one_ended(copy: EndedCopy, presentation: DateTimePresentation) -> str:
+    entry, ended = copy
     way = way_of(ended)
     day = (
         None if ended.when is None else present_temporal_value(ended.when, presentation)
     )
     words = f"You had {_A_VERSION[entry.format]}"
-    #: An unstated way: the day alone.
-    if way == EndWay.UNSTATED or way in _NATURAL_ENDS.get(entry.access, frozenset()):
+    how = way_words(way)
+    if how is None or way in _NATURAL_ENDS.get(entry.access, frozenset()):
         return f"{words} until {day}" if day else words
-    how = END_WAY_LABELS[way].lower()
-    return f"{words}, {how} {day}" if day else f"{words}, {how}"
+    return f"{words}, {how.lower()} {day}" if day else f"{words}, {how.lower()}"
 
 
 def access_sentence(summary: AccessSummary, presentation: DateTimePresentation) -> str:
@@ -161,10 +156,8 @@ def access_sentence(summary: AccessSummary, presentation: DateTimePresentation) 
 def AccessBadge(
     summary: AccessSummary, presentation: DateTimePresentation, *, id: str
 ) -> Node:
-    """Fill: had now. Glyph: format."""
-    shown = summary.held or ((summary.former,) if summary.former else ())
-    formats = {entry.format for entry in shown}
-    glyphs = [glyph for word, glyph in _FORMAT_GLYPHS if word in formats]
+    """Fill: owned now. Glyph: format."""
+    glyphs = [glyph for word, glyph in _FORMAT_GLYPHS if word in summary.formats]
     sentence = access_sentence(summary, presentation)
     held = len(summary.held)
     return Popover(

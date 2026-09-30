@@ -39,6 +39,7 @@ from games.bulk_entries import (
     entry_scope,
     removed_entry,
 )
+from games.entry_forms import normalised_note
 from games.events.append import SourceMetadata
 from games.events.dispatch import CommandRejected
 from games.events.idempotency import IdempotencyKey
@@ -87,6 +88,15 @@ class EntryEditStatement:
     def __post_init__(self) -> None:
         if self.access is None and self.format is None and self.note is None:
             raise ValueError("An edit states an access, a format or a note.")
+
+    @classmethod
+    def of(
+        cls, access: EntryAccess | None, format: EntryFormat | None, note: str | None
+    ) -> EntryEditStatement | None:
+        """None where nothing is stated."""
+        if access is None and format is None and note is None:
+            return None
+        return cls(access, format, note)
 
     def encode(self) -> ChoiceValue:
         stated: EntryEditJson = {}
@@ -188,7 +198,7 @@ class BulkEntryEditForm(PrimitiveWidgetsMixin, UnsetFieldsForm):
         return EntryEditStatement(
             self.cleaned_data["access"],
             self.cleaned_data["format"],
-            None if note is KEEP else note,
+            None if note is KEEP else normalised_note(note),
         )
 
 
@@ -239,8 +249,8 @@ def _state(
         describe_entry(
             actor,
             entry,
-            access=None if statement.access is None else statement.access.value,
-            format=None if statement.format is None else statement.format.value,
+            access=statement.access,
+            format=statement.format,
             note=statement.note,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
@@ -295,13 +305,12 @@ def edit_back(
             )
         held_access = EntryAccess(entry.access)
         held_format = EntryFormat(entry.format)
-        try:
-            restatement = EntryEditStatement(
-                restated(changes.access, held_access),
-                restated(changes.format, held_format),
-                restated(changes.note, entry.note),
-            )
-        except ValueError:
+        restatement = EntryEditStatement.of(
+            restated(changes.access, held_access),
+            restated(changes.format, held_format),
+            restated(changes.note, entry.note),
+        )
+        if restatement is None:
             #: Every changed fact is back already.
             return RowOutcome.UNCHANGED
         if entry.removed_at is not None:

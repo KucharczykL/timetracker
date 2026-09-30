@@ -84,7 +84,7 @@ def test_with_nothing_held_the_latest_end_is_former(owned_library, graph):
 
     assert summary.held == ()
     assert not summary.owned_now
-    assert summary.former == latest
+    assert summary.former.entry == latest
 
 
 def test_among_ends_on_one_day_the_later_statement_is_former(owned_library, graph):
@@ -92,7 +92,7 @@ def test_among_ends_on_one_day_the_later_statement_is_former(owned_library, grap
     end_entry_access(record_entry(owned_library, graph.release), ended=day)
     later = end_entry_access(record_entry(owned_library, graph.release), ended=day)
 
-    assert _summary(owned_library, graph.game).former == later
+    assert _summary(owned_library, graph.game).former.entry == later
 
 
 def test_another_librarys_copy_never_counts(

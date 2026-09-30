@@ -3,13 +3,14 @@
 import uuid
 from collections.abc import Callable, Sequence
 from functools import partial
-from typing import cast
+from typing import Any, cast
 from uuid import UUID
 
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.core.exceptions import BadRequest
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
@@ -19,7 +20,7 @@ from common.components import AddForm, FormFieldGroup, FormFields
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
 from common.notices import Undo, notify
-from common.returns import UrlName, action_url
+from common.returns import action_url
 from games.catalog_release import SHARED_GAME_RELEASE
 from games.commands.endpoint import ActStatement, WayActStatement
 from games.end_ways import EndWay
@@ -30,20 +31,37 @@ from games.entry_forms import (
     EntryEndEditForm,
     EntryEndForm,
     EntryResumeForm,
+    SubmissionAct,
     copy_groups,
+    one_click_key,
 )
+from games.events.dispatch import CommandResult
 from games.events.idempotency import IdempotencyKey
-from games.models import EntryAccess, EntryFormat, Game, LibraryEntry
+from games.events.libraryentry import ENTRY_ACCESS_END_EVENTS
+from games.events.vocabulary import EventSpec
+from games.models import (
+    EntryAccess,
+    EntryFormat,
+    Game,
+    LibraryEntry,
+    LibraryEvent,
+    UserLibrary,
+)
 from games.ownership import owned_or_404
 from games.reads.endpoints import stated
-from games.reads.entries import library_entries, taken_back_end
+from games.reads.entries import (
+    EventSequence,
+    latest_end_act,
+    library_entries,
+    taken_back_end,
+)
 from games.reads.releases import game_releases
 from games.views.entry_menu import SUBMISSION_FIELD
 from games.views.general import request_calendar_today
 from games.views.library_cards import release_words
 from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
-from games.writes.answers import CommandFailed
+from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from games.writes.libraryentry import (
     EntryDraft,
     end_entry_access,
@@ -87,12 +105,12 @@ def _any_library_entry(request: HttpRequest, entry_id: UUID) -> LibraryEntry:
     )
 
 
-def _cancel_url(request: HttpRequest, game: Callable[[], Game]) -> str:
-    """The origin, else the Library tab."""
-    try:
-        return _game_page(request, game())
-    except KeyError, AttributeError:
+def _cancel_url(request: HttpRequest, game: Callable[[], Game | None]) -> str:
+    """Origin, else Game detail, else Library."""
+    known = game()
+    if known is None:
         return return_url(request, fallback="games:library")
+    return _game_page(request, known)
 
 
 def _copy_title(act: str, entry: LibraryEntry) -> str:
@@ -106,7 +124,7 @@ def _form_page(
     title: str,
     write: Callable[[], object],
     done: str,
-    game: Callable[[], Game],
+    game: Callable[[], Game | None],
     groups: Sequence[FormFieldGroup] | None = None,
     submit_label: str = "Save",
 ) -> HttpResponse:
@@ -120,7 +138,7 @@ def _form_page(
             status = failure.status_code
         else:
             messages.success(request, done)
-            return redirect(_game_page(request, game()))
+            return redirect(_cancel_url(request, game))
     return render_page(
         request,
         AddForm(
@@ -157,7 +175,7 @@ def _add(request: HttpRequest, game: Game | None) -> HttpResponse:
             idempotency_key=form.submission_key(),
         ),
         done="Added to your library.",
-        game=lambda: game or form.cleaned_data["game"],
+        game=lambda: game or getattr(form, "cleaned_data", {}).get("game"),
         groups=copy_groups(form),
         submit_label="Add to library",
     )
@@ -282,6 +300,13 @@ def edit_library_entry_end(request: HttpRequest, entry_id: UUID) -> HttpResponse
 def resume_library_entry(request: HttpRequest, entry_id: UUID) -> HttpResponse:
     user = cast(User, request.user)
     entry = _held_entry(request, entry_id)
+    if stated(entry, ENTRY_ACCESS_END) is None:
+        #: A held copy has nothing to resume.
+        return redirect(
+            action_url(
+                "games:end_library_entry", entry.pk, origin=request.GET.get("origin")
+            )
+        )
     form = EntryResumeForm(
         request.POST or None,
         entry=entry,
@@ -347,37 +372,58 @@ def restore_library_entry(request: HttpRequest, entry_id: UUID) -> HttpResponse:
 
 # --- one click, then Undo ----------------------------------------------------
 
+UNDO_OVERTAKEN = "This copy changed since; nothing was undone."
+NO_RELEASE = "This game has no version yet; add one on the Add page."
 
-def _one_click_key(request: HttpRequest, act: str) -> IdempotencyKey | None:
-    """The press's key, if it carries one."""
+
+def _one_click_key(request: HttpRequest, act: SubmissionAct) -> IdempotencyKey:
+    """The press's key; a press without one is malformed."""
     try:
         token = uuid.UUID(request.POST.get(SUBMISSION_FIELD, ""))
     except ValueError:
-        return None
-    return f"copy-{act}-now-{token}"
+        raise BadRequest("A one-click press carries its submission key.") from None
+    return one_click_key(act, token)
 
 
 def _one_click(
     request: HttpRequest,
     game: Game,
     *,
-    write: Callable[[], UUID],
+    write: Callable[[], str],
     done: str,
-    undo: UrlName,
 ) -> HttpResponse:
     """Write, offer Undo, return; refusals show."""
     try:
-        entry_id = write()
+        undo_url = write()
     except CommandFailed as failure:
         messages.error(request, failure.message)
     else:
-        notify(
-            request,
-            done,
-            level=messages.SUCCESS,
-            action=Undo(reverse(undo, args=[entry_id])),
-        )
+        notify(request, done, level=messages.SUCCESS, action=Undo(undo_url))
     return redirect(_game_page(request, game))
+
+
+def _appended_at(result: CommandResult) -> EventSequence:
+    """The one end event this press wrote."""
+    if result.sequences is None:
+        raise CommandFailed(UNDO_OVERTAKEN, CONFLICT_STATUS)
+    return result.sequences.last
+
+
+def _still_latest(
+    library: UserLibrary,
+    entry: LibraryEntry,
+    spec: EventSpec[Any],
+    sequence: EventSequence,
+) -> LibraryEvent:
+    """Refuses an Undo a later act overtook."""
+    latest = latest_end_act(library, entry.pk)
+    if (
+        latest is None
+        or latest.sequence != sequence
+        or latest.event_type != spec.event_type
+    ):
+        raise CommandFailed(UNDO_OVERTAKEN, CONFLICT_STATUS)
+    return latest
 
 
 @login_required
@@ -387,14 +433,18 @@ def add_library_entry_now(request: HttpRequest, game_id: UUID) -> HttpResponse:
     user = cast(User, request.user)
     library = user.library
     game = owned_or_404(Game.objects.visible_to(library), library, id=game_id)
+    key = _one_click_key(request, "add")
     release = game_releases(library, game).first()
     if release is None:
-        messages.error(request, SHARED_GAME_RELEASE)
+        messages.error(
+            request,
+            NO_RELEASE if game.library_id == library.pk else SHARED_GAME_RELEASE,
+        )
         return redirect(_game_page(request, game))
     today = TemporalValue.from_day(request_calendar_today(request, library))
 
-    def add() -> UUID:
-        return record_entry(
+    def add() -> str:
+        entry_id = record_entry(
             user,
             EntryDraft(
                 release_id=release.pk,
@@ -404,16 +454,11 @@ def add_library_entry_now(request: HttpRequest, game_id: UUID) -> HttpResponse:
                 acquired=ActStatement(today, ""),
             ),
             correlation_id=new_correlation_id(),
-            idempotency_key=_one_click_key(request, "add"),
+            idempotency_key=key,
         ).entry_id
+        return reverse("games:remove_library_entry", args=[entry_id])
 
-    return _one_click(
-        request,
-        game,
-        write=add,
-        done="Added to your library.",
-        undo="games:remove_library_entry",
-    )
+    return _one_click(request, game, write=add, done="Added to your library.")
 
 
 @login_required
@@ -422,24 +467,23 @@ def end_library_entry_now(request: HttpRequest, entry_id: UUID) -> HttpResponse:
     """Gone for a reason nobody stated, today."""
     user = cast(User, request.user)
     entry = _held_entry(request, entry_id)
+    key = _one_click_key(request, "end")
     today = TemporalValue.from_day(request_calendar_today(request, user.library))
 
-    def end() -> UUID:
-        end_entry_access(
+    def end() -> str:
+        result = end_entry_access(
             user,
             entry,
             WayActStatement(today, EndWay.UNSTATED, ""),
             correlation_id=new_correlation_id(),
-            idempotency_key=_one_click_key(request, "end"),
+            idempotency_key=key,
         )
-        return entry.pk
+        return reverse(
+            "games:undo_library_entry_end", args=[entry.pk, _appended_at(result)]
+        )
 
     return _one_click(
-        request,
-        entry.player_game.game,
-        write=end,
-        done="Marked as no longer yours.",
-        undo="games:undo_library_entry_end",
+        request, entry.player_game.game, write=end, done="Marked as no longer yours."
     )
 
 
@@ -449,40 +493,39 @@ def resume_library_entry_now(request: HttpRequest, entry_id: UUID) -> HttpRespon
     """Had again, today."""
     user = cast(User, request.user)
     entry = _held_entry(request, entry_id)
+    key = _one_click_key(request, "resume")
     today = TemporalValue.from_day(request_calendar_today(request, user.library))
 
-    def resume() -> UUID:
-        resume_entry_access(
+    def resume() -> str:
+        result = resume_entry_access(
             user,
             entry,
             ActStatement(today, ""),
             correlation_id=new_correlation_id(),
-            idempotency_key=_one_click_key(request, "resume"),
+            idempotency_key=key,
         )
-        return entry.pk
+        return reverse(
+            "games:undo_library_entry_resume", args=[entry.pk, _appended_at(result)]
+        )
 
     return _one_click(
-        request,
-        entry.player_game.game,
-        write=resume,
-        done="Marked as yours again.",
-        undo="games:undo_library_entry_resume",
+        request, entry.player_game.game, write=resume, done="Marked as yours again."
     )
 
 
 @login_required
 @require_POST
-def undo_library_entry_end(request: HttpRequest, entry_id: UUID) -> HttpResponse:
-    """Void a mistaken end."""
+def undo_library_entry_end(
+    request: HttpRequest, entry_id: UUID, sequence: EventSequence
+) -> HttpResponse:
+    """Void this press's end, if still latest."""
     user = cast(User, request.user)
     entry = _held_entry(request, entry_id)
     game = entry.player_game.game
 
     def void() -> None:
-        if stated(entry, ENTRY_ACCESS_END) is not None:
-            restate_entry(
-                user, entry, access_end=None, correlation_id=new_correlation_id()
-            )
+        _still_latest(user.library, entry, ENTRY_ACCESS_END_EVENTS.stated, sequence)
+        restate_entry(user, entry, access_end=None, correlation_id=new_correlation_id())
 
     return restore_and_return(
         request,
@@ -495,18 +538,22 @@ def undo_library_entry_end(request: HttpRequest, entry_id: UUID) -> HttpResponse
 
 @login_required
 @require_POST
-def undo_library_entry_resume(request: HttpRequest, entry_id: UUID) -> HttpResponse:
-    """Restate the end a resume took back."""
+def undo_library_entry_resume(
+    request: HttpRequest, entry_id: UUID, sequence: EventSequence
+) -> HttpResponse:
+    """Restate the end this resume took back."""
     user = cast(User, request.user)
     entry = _held_entry(request, entry_id)
     game = entry.player_game.game
 
     def end_again() -> None:
-        taken_back = taken_back_end(user.library, entry.pk)
-        if taken_back is not None and stated(entry, ENTRY_ACCESS_END) is None:
-            end_entry_access(
-                user, entry, taken_back, correlation_id=new_correlation_id()
-            )
+        resumed = _still_latest(
+            user.library, entry, ENTRY_ACCESS_END_EVENTS.resumed, sequence
+        )
+        taken_back = taken_back_end(user.library, entry.pk, resumed_at=resumed.sequence)
+        if taken_back is None:
+            raise CommandFailed(UNDO_OVERTAKEN, CONFLICT_STATUS)
+        end_entry_access(user, entry, taken_back, correlation_id=new_correlation_id())
 
     return restore_and_return(
         request,

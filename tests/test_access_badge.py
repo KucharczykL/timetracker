@@ -13,7 +13,7 @@ from common.date_time_presentation import (
     DateTimePresentation,
 )
 from games.models import LibraryEntry
-from games.reads.entries import AccessSummary
+from games.reads.entries import AccessSummary, EndedCopy, copy_end
 from timetracker.temporal import TemporalValue
 
 PRESENTATION = DateTimePresentation(
@@ -41,16 +41,22 @@ def _ended(
     )
 
 
+def _ended_copy(entry: LibraryEntry) -> EndedCopy:
+    end = copy_end(entry)
+    assert end is not None
+    return EndedCopy(entry, end)
+
+
+def _summary(held, ended) -> AccessSummary:
+    return AccessSummary(tuple(held), tuple(_ended_copy(entry) for entry in ended))
+
+
 def _sentence(held=(), ended=()) -> str:
-    return access_sentence(AccessSummary(tuple(held), tuple(ended)), PRESENTATION)
+    return access_sentence(_summary(held, ended), PRESENTATION)
 
 
 def _badge(held=(), ended=()) -> str:
-    return str(
-        AccessBadge(
-            AccessSummary(tuple(held), tuple(ended)), PRESENTATION, id="access-1"
-        )
-    )
+    return str(AccessBadge(_summary(held, ended), PRESENTATION, id="access-1"))
 
 
 def _glyphs(html: str) -> list[str]:

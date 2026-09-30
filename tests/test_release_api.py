@@ -72,7 +72,7 @@ def test_search_never_answers_another_librarys_game(client, graph, django_user_m
     stranger = django_user_model.objects.create_user(username="stranger")
     client.force_login(stranger)
 
-    assert _search(client, graph.game).json() == []
+    assert _search(client, graph.game).status_code == 404
 
 
 def test_create_states_a_release_on_the_typed_platform(client, owned_user, graph):
@@ -198,3 +198,19 @@ def test_create_refuses_an_unknown_key(client, owned_user, graph):
     )
 
     assert response.status_code == 422
+
+
+def test_create_refuses_a_game_whose_editions_have_no_default(
+    client, owned_user, graph
+):
+    Edition.objects.filter(pk=graph.edition.pk).update(is_default=False)
+    Edition.objects.create(game=graph.game, name="Deluxe", is_default=False)
+    Platform.objects.create(name="Switch", group="Nintendo")
+    client.force_login(owned_user)
+
+    response = _create(client, graph.game, "Switch")
+
+    assert response.status_code == 422
+    assert not Release.objects.filter(
+        edition__game=graph.game, platform__name="Switch"
+    ).exists()

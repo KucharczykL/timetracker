@@ -263,7 +263,7 @@ urlpatterns = [
         name="end_library_entry_now",
     ),
     path(
-        "library/<uuidv7:entry_id>/end/undo",
+        "library/<uuidv7:entry_id>/end/undo/<int:sequence>",
         library_entry.undo_library_entry_end,
         name="undo_library_entry_end",
     ),
@@ -273,7 +273,7 @@ urlpatterns = [
         name="resume_library_entry_now",
     ),
     path(
-        "library/<uuidv7:entry_id>/resume/undo",
+        "library/<uuidv7:entry_id>/resume/undo/<int:sequence>",
         library_entry.undo_library_entry_resume,
         name="undo_library_entry_resume",
     ),

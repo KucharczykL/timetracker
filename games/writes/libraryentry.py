@@ -32,7 +32,7 @@ from games.events.dispatch import (
 from games.events.idempotency import IdempotencyKey
 from games.events.libraryentry import LIBRARYENTRY_CREATED
 from games.events.playergame import PLAYERGAME_CREATED
-from games.models import LibraryEntry
+from games.models import EntryAccess, EntryFormat, LibraryEntry
 from games.reads.endpoints import stated
 from games.reads.events import dispatched_events
 from games.writes.answers import SubjectNoun, answered
@@ -125,8 +125,8 @@ def restate_entry(
     actor: User,
     entry: LibraryEntry,
     *,
-    access: str | None = None,
-    format: str | None = None,
+    access: EntryAccess | None = None,
+    format: EntryFormat | None = None,
     note: str | None = None,
     release_id: uuid.UUID | None = None,
     acquired: ActStatement | Keep = KEEP,
@@ -166,8 +166,8 @@ def describe_entry(
     actor: User,
     entry: LibraryEntry,
     *,
-    access: str | None = None,
-    format: str | None = None,
+    access: EntryAccess | None = None,
+    format: EntryFormat | None = None,
     note: str | None = None,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,

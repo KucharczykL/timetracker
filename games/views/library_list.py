@@ -36,7 +36,7 @@ from common.utils import paginate
 from games.bulk_entry_edit import ENTRY_EDIT
 from games.bulk_removal import REMOVE_ENTRY
 from games.bulk_tray import tray_actions
-from games.end_ways import END_WAY_LABELS, EndWay
+from games.end_ways import way_words
 from games.endpoints import ENTRY_ACCESS_END
 from games.filters import (
     LibraryEntryFilter,
@@ -59,7 +59,7 @@ from games.views.filtering import (
 ENTRY_COLUMNS: list[Column] = [
     Column("Game", "name", key="game", hideable=False),
     Column("Platform", "platform", priority=2, key="platform"),
-    #: What a copy is comes first.
+    #: Access drops last when narrow.
     Column("Access", "access", priority=3, key="access"),
     Column("Format", "format", key="format"),
     Column("Acquired", "acquired", key="acquired"),
@@ -74,9 +74,10 @@ def _ended_cell(entry: LibraryEntry, presentation: DateTimePresentation) -> str:
     ended = stated(entry, ENTRY_ACCESS_END)
     if ended is None:
         return ""
-    #: An unstated way: the day alone.
-    way = "" if way_of(ended) == EndWay.UNSTATED else END_WAY_LABELS[way_of(ended)]
-    day = "" if ended.when is None else present_temporal_value(ended.when, presentation)
+    way = way_words(way_of(ended))
+    day = (
+        None if ended.when is None else present_temporal_value(ended.when, presentation)
+    )
     return " · ".join(part for part in (way, day) if part) or "Ended"
 
 

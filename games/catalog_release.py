@@ -7,6 +7,7 @@ here too.
 from typing import NamedTuple
 
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.db.models.functions import Lower, Trim
 from django.http import Http404
 
@@ -54,6 +55,12 @@ def _platform_named(library: UserLibrary, name: str) -> Platform:
     return matches[0]
 
 
+NO_DEFAULT_EDITION = (
+    "This game has several editions and none is the default. "
+    "Pick one on the Edit game page first."
+)
+
+
 def _default_edition(game: Game) -> Edition | None:
     """The default Edition, else the lone one."""
     editions = list(Edition.objects.filter(game=game).alive().order_by("-is_default"))
@@ -61,7 +68,18 @@ def _default_edition(game: Game) -> Edition | None:
         return None
     if editions[0].is_default or len(editions) == 1:
         return editions[0]
-    return None
+    raise RowRefused(NO_DEFAULT_EDITION)
+
+
+def _standing(edition: Edition | None, platform: Platform) -> Release | None:
+    if edition is None:
+        return None
+    return (
+        Release.objects.filter(edition=edition, platform=platform)
+        .alive()
+        .order_by("-is_default", "id")
+        .first()
+    )
 
 
 def release_on_platform(
@@ -73,36 +91,33 @@ def release_on_platform(
         raise Http404("No such game.")
     if game.library_id is None:
         raise RowRefused(SHARED_GAME_RELEASE)
-    name = platform_name.strip()
-    platform = _platform_named(library, name)
-    edition = _default_edition(game)
-    if edition is not None:
-        standing = (
-            Release.objects.filter(edition=edition, platform=platform)
-            .alive()
-            .order_by("-is_default", "id")
-            .first()
-        )
+    platform = _platform_named(library, platform_name.strip())
+
+    def state() -> PlatformRelease:
+        #: Two create rows at once make one Release.
+        Game.objects.select_for_update().filter(pk=game.pk).first()
+        edition = _default_edition(game)
+        standing = _standing(edition, platform)
         if standing is not None:
             return PlatformRelease(standing, created=False)
-    statement = EditionState(
-        key="edition",
-        edition=edition,
-        name="" if edition is None else edition.name,
-        is_default=edition is None,
-        releases=(ReleaseState(key="release", platform=platform),),
-    )
-    try:
-        written = write_and_mirror(
-            game,
-            lambda: state_catalog_graph(
-                game=game, library=library, editions=[statement]
-            ),
+        statement = EditionState(
+            key="edition",
+            edition=edition,
+            name="" if edition is None else edition.name,
+            is_default=edition is None,
+            releases=(ReleaseState(key="release", platform=platform),),
         )
+        written = state_catalog_graph(game=game, library=library, editions=[statement])
+        return PlatformRelease(written.editions[0].releases[0].release, created=True)
+
+    try:
+        with transaction.atomic():
+            reached = write_and_mirror(game, state)
     except ValidationError as error:
         raise RowRefused(" ".join(error.messages)) from error
-    release = written.editions[0].releases[0].release
     return PlatformRelease(
-        Release.objects.select_related("edition", "platform").get(pk=release.pk),
-        created=True,
+        Release.objects.select_related("edition", "platform").get(
+            pk=reached.release.pk
+        ),
+        created=reached.created,
     )

@@ -725,9 +725,7 @@ class ReleaseIn(Schema):
 def search_releases(request, game_id: UUIDv7, q: str = "", limit: int = 10):
     """One Game's live Releases, as picker options."""
     library = cast(User, request.user).library
-    game = Game.objects.visible_to(library).filter(pk=game_id).first()
-    if game is None:
-        return []
+    game = owned_or_404(Game.objects.visible_to(library), library, id=game_id)
     releases = matching_releases(game_releases(library, game), q)[:limit]
     return [
         {"value": release.pk, "label": release_label(release), "data": {}}
@@ -1437,8 +1435,8 @@ def partial_update_entry(request, entry_id: UUIDv7, payload: EntryUpdate):
         changed = restate_entry(
             actor,
             entry,
-            access=None if payload.access is None else payload.access.value,
-            format=None if payload.format is None else payload.format.value,
+            access=payload.access,
+            format=payload.format,
             note=payload.note,
             release_id=payload.release_id,
             #: The validator states both or neither.

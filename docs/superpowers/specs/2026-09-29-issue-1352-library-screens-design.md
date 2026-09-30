@@ -41,9 +41,10 @@ An ended copy also offers "Edit how it left…". Every copy offers "Edit…"
 and "Remove…". A trailing "…" opens a page.
 
 A one-click act posts a submission key, so a double press records once.
-It states today, and its toast offers Undo. A one-click end states the
-way **Not said** (`EndWay.UNSTATED`). No screen prints that way: the day
-stands alone.
+It states today, and its toast offers Undo. The Undo acts only while
+the press's own event is the copy's latest end act. A one-click end
+states the way **Not said** (`EndWay.UNSTATED`). The end pages offer it
+first; no list or badge prints it, so the day stands alone.
 
 ## The pages
 
@@ -62,7 +63,7 @@ with Undo.
 
 The Access column is off by default. `AccessBadge` shows a cloud for a
 digital copy, a disc for a physical copy, and a dashed ring for an
-unknown format. A filled glyph means the person has the copy now. The
+unknown format. A filled badge means the person owns a copy now. The
 badge opens a popover with one sentence, for example "You have 2
 versions, and had 3". `GameFilter` gains `access`, `format`,
 `entry_count` and `entry_filter`.

@@ -1515,7 +1515,7 @@ def Radio(
     )[input_el, label]
 
 
-# Pill's inline utilities. Client-side pills clone this server <template>
+# Chip's utilities; Pill builds on Chip. Client-side pills clone this server <template>
 # (search-select.ts never names a pill class), so this is the single source of
 # pill markup — no byte-for-byte JS contract to keep in sync.
 # A pill is a token *inside* a control, not a row-control: it must stay shorter

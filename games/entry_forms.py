@@ -1,9 +1,10 @@
 """The forms that state a copy."""
 
 import datetime
+import hashlib
 import uuid
 from functools import partial
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from django import forms
 
@@ -56,7 +57,7 @@ _COPY_GROUPS = (
 
 
 def copy_groups(form: forms.Form) -> list[FormFieldGroup]:
-    """The groups of the fields held."""
+    """Each group, less absent fields."""
     return [
         group._replace(
             fields=tuple(name for name in group.fields if name in form.fields)
@@ -94,9 +95,19 @@ def _entry_release_options(
 
 
 def end_seen(entry: LibraryEntry) -> str:
-    """The rendered end's marker, if any."""
+    """The rendered end, correction included."""
     marker = entry.access_end_recorded_at
-    return "" if marker is None else marker.isoformat()
+    if marker is None:
+        return ""
+    stated_end = "\x1f".join(
+        (
+            marker.isoformat(),
+            entry.access_end_way,
+            str(entry.access_ended),
+            entry.access_end_note,
+        )
+    )
+    return hashlib.sha256(stated_end.encode()).hexdigest()
 
 
 def _day(today: datetime.date) -> TemporalValue:
@@ -124,7 +135,7 @@ def _release_field(
     )
 
 
-def _note(value: str) -> str:
+def normalised_note(value: str) -> str:
     return value.replace("\r\n", "\n").strip()
 
 
@@ -141,28 +152,38 @@ class _SeenEnd(forms.Form):
             self.add_error(None, CHANGED_SINCE_OPENED)
 
 
+type SubmissionAct = Literal["add", "end", "resume"]
+
+
+def page_key(act: SubmissionAct, token: uuid.UUID) -> IdempotencyKey:
+    return f"copy-{act}-{token}"
+
+
+def one_click_key(act: SubmissionAct, token: uuid.UUID) -> IdempotencyKey:
+    return f"copy-{act}-now-{token}"
+
+
 class _Submission(forms.Form):
     #: One key per page; a resubmit replays.
     submission = forms.UUIDField(widget=forms.HiddenInput, initial=uuid.uuid7)
 
-    act: str
+    act: SubmissionAct
 
     def submission_key(self) -> IdempotencyKey:
-        """The act's key."""
-        return f"copy-{self.act}-{self.cleaned_data['submission']}"
+        return page_key(self.act, self.cleaned_data["submission"])
 
     def _replays(self, library: UserLibrary) -> bool:
         """This press already ran; dispatch replays."""
         submission = self.cleaned_data.get("submission")
         return submission is not None and key_answered(
-            library, f"copy-{self.act}-{submission}"
+            library, page_key(self.act, submission)
         )
 
 
 class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
     """One copy; the Game fixed or picked."""
 
-    act = "add"
+    act: SubmissionAct = "add"
 
     access = forms.ChoiceField(
         choices=EntryAccess.choices, initial=EntryAccess.OWNED, label="Got it as"
@@ -215,7 +236,7 @@ class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
         self.order_fields(["game", "release", "format", "access", "acquired", "note"])
 
     def clean_note(self) -> str:
-        return _note(self.cleaned_data["note"])
+        return normalised_note(self.cleaned_data["note"])
 
     def clean(self) -> dict[str, Any] | None:
         cleaned = super().clean()
@@ -246,8 +267,12 @@ class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
 class EntryEditForm(PrimitiveWidgetsMixin, forms.Form):
     """A copy's facts and its acquisition restated."""
 
-    access = forms.ChoiceField(choices=EntryAccess.choices, label="Got it as")
-    format = forms.ChoiceField(choices=EntryFormat.choices, widget=RadioListWidget)
+    access = forms.TypedChoiceField(
+        choices=EntryAccess.choices, coerce=EntryAccess, label="Got it as"
+    )
+    format = forms.TypedChoiceField(
+        choices=EntryFormat.choices, coerce=EntryFormat, widget=RadioListWidget
+    )
     note = forms.CharField(
         required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Note"
     )
@@ -285,7 +310,7 @@ class EntryEditForm(PrimitiveWidgetsMixin, forms.Form):
         self.order_fields(["release", "format", "access", "acquired", "note"])
 
     def clean_note(self) -> str:
-        return _note(self.cleaned_data["note"])
+        return normalised_note(self.cleaned_data["note"])
 
     def clean(self) -> dict[str, Any] | None:
         cleaned = super().clean()
@@ -310,7 +335,7 @@ class EntryEditForm(PrimitiveWidgetsMixin, forms.Form):
 class EntryEndForm(PrimitiveWidgetsMixin, _Submission, _SeenEnd, forms.Form):
     """Access to a held copy ended."""
 
-    act = "end"
+    act: SubmissionAct = "end"
 
     way = forms.ChoiceField(choices=WAY_CHOICES, label="What happened")
     note = forms.CharField(
@@ -336,7 +361,7 @@ class EntryEndForm(PrimitiveWidgetsMixin, _Submission, _SeenEnd, forms.Form):
         self.order_fields(["way", "ended", "note"])
 
     def clean_note(self) -> str:
-        return _note(self.cleaned_data["note"])
+        return normalised_note(self.cleaned_data["note"])
 
     def clean(self) -> dict[str, Any] | None:
         cleaned = super().clean()
@@ -354,7 +379,7 @@ class EntryEndForm(PrimitiveWidgetsMixin, _Submission, _SeenEnd, forms.Form):
 class EntryResumeForm(PrimitiveWidgetsMixin, _Submission, _SeenEnd, forms.Form):
     """Access to an ended copy resumed."""
 
-    act = "resume"
+    act: SubmissionAct = "resume"
 
     note = forms.CharField(
         required=False, widget=forms.Textarea(attrs={"rows": 2}), label="Note"
@@ -379,7 +404,7 @@ class EntryResumeForm(PrimitiveWidgetsMixin, _Submission, _SeenEnd, forms.Form):
         self.order_fields(["resumed", "note"])
 
     def clean_note(self) -> str:
-        return _note(self.cleaned_data["note"])
+        return normalised_note(self.cleaned_data["note"])
 
     def clean(self) -> dict[str, Any] | None:
         cleaned = super().clean()
@@ -424,7 +449,7 @@ class EntryEndEditForm(PrimitiveWidgetsMixin, _SeenEnd, forms.Form):
         self.order_fields(["way", "ended", "note"])
 
     def clean_note(self) -> str:
-        return _note(self.cleaned_data["note"])
+        return normalised_note(self.cleaned_data["note"])
 
     def clean(self) -> dict[str, Any] | None:
         cleaned = super().clean()

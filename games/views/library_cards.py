@@ -19,10 +19,8 @@ from common.components.primitives import ICON_BUTTON_SIZE_CLASS
 from common.date_time_presentation import DateTimePresentation
 from common.returns import OriginUrl, action_url
 from common.temporal_presentation import present_temporal_value
-from games.endpoints import ENTRY_ACCESS_END
 from games.models import EntryAccess, EntryFormat, Game, LibraryEntry, UserLibrary
-from games.reads.endpoints import stated
-from games.reads.entries import game_entries
+from games.reads.entries import copy_end, game_entries
 from games.reads.releases import game_releases, platform_words
 from games.views.entry_menu import entry_row_menu, submission_input
 
@@ -76,11 +74,10 @@ def _copy_row(
 
 
 class CopyRows(NamedTuple):
-    rows: list[Node]
-    #: Copies had now, not rows.
-    copies: int
-    #: Copies whose access ended.
-    had: int
+    rows: tuple[Node, ...]
+    #: Copies, not rows: a group holds several.
+    held: int
+    ended: int
 
 
 def copy_rows(
@@ -98,14 +95,14 @@ def copy_rows(
     )
     #: Versions in first-acquired order.
     by_version: dict[uuid.UUID, list[LibraryEntry]] = {}
-    count = had = 0
+    held = ended = 0
     for entry in entries:
-        if stated(entry, ENTRY_ACCESS_END) is not None:
-            had += 1
+        if copy_end(entry) is not None:
+            ended += 1
             continue
-        count += 1
+        held += 1
         by_version.setdefault(entry.release_id, []).append(entry)
-    rows: list[Node] = [
+    rows = tuple(
         SummaryGroup(
             label=release_words(copies[0]),
             rows=[
@@ -114,8 +111,8 @@ def copy_rows(
             ],
         )
         for copies in by_version.values()
-    ]
-    return CopyRows(rows, count, had)
+    )
+    return CopyRows(rows, held, ended)
 
 
 def library_add_control(

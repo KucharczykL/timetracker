@@ -157,3 +157,15 @@ def test_the_query_count_holds_over_more_copies(
     four = _count_queries(client, graph.game)
 
     assert four == one
+
+
+def test_an_own_game_without_a_release_offers_the_page_alone(
+    client, owned_user, owned_library
+):
+    game = Game.objects.create(name="Unreleased", library=owned_library)
+    client.force_login(owned_user)
+
+    html = _page(client, game)
+
+    assert reverse("games:add_library_entry", args=[game.pk]) in html
+    assert reverse("games:add_library_entry_now", args=[game.pk]) not in html
