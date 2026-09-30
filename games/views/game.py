@@ -1146,7 +1146,7 @@ def _addons_section(game: Game, library: UserLibrary, origin: OriginUrl | None) 
                         Link(href=addon.get_absolute_url())[addon.name],
                         Span()[f"· {PlayerGameStatus(addon.tracked_status).label}"],
                     ),
-                    control=game_row_menu(addon, origin),
+                    control=game_row_menu(addon, origin, size="compact"),
                     dense=True,
                 )
                 for addon in by_kind[kind]

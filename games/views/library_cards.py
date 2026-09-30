@@ -68,7 +68,7 @@ def _copy_row(
             Span()[_facts(entry, presentation)],
             *([_note_chip(entry.note)] if entry.note else []),
         ),
-        control=entry_row_menu(entry, origin, csrf_token),
+        control=entry_row_menu(entry, origin, csrf_token, size="compact"),
         dense=not label,
     )
 

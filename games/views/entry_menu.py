@@ -11,6 +11,7 @@ from common.components import (
     RowActionMenu,
 )
 from common.components.core import Node
+from common.components.primitives import ButtonSize
 from common.returns import OriginUrl, action_url
 from games.endpoints import ENTRY_ACCESS_END
 from games.models import LibraryEntry
@@ -27,7 +28,11 @@ def submission_input() -> Node:
 
 
 def entry_row_menu(
-    entry: LibraryEntry, origin: OriginUrl | None, csrf_token: str
+    entry: LibraryEntry,
+    origin: OriginUrl | None,
+    csrf_token: str,
+    *,
+    size: ButtonSize = "control",
 ) -> Node:
     """A copy's acts: one click, then pages."""
     game = entry.player_game.game
@@ -105,4 +110,5 @@ def entry_row_menu(
         #: The platform tells copies apart.
         label=f"{game.name} ({platform_words(entry.release)}) actions",
         id=f"entry-menu-{entry.pk}",
+        size=size,
     )

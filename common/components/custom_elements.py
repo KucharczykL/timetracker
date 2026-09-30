@@ -41,6 +41,7 @@ from common.components.primitives import (
     Button,
     ButtonColor,
     ButtonGroup,
+    ButtonSize,
     ControlButton,
     ControlLink,
     Dialog,
@@ -1398,6 +1399,7 @@ def RowActionMenu(
     label: str,
     id: str,
     placement: str = "bottom-end",
+    size: ButtonSize = "control",
 ) -> Node:
     """A table row's acts behind one bare ellipsis trigger.
 
@@ -1410,7 +1412,7 @@ def RowActionMenu(
     clips a whole clause; the panel fits its content instead.
     """
     return Dropdown(
-        trigger_element=EllipsisTrigger(label=label).as_element(),
+        trigger_element=EllipsisTrigger(label=label, size=size).as_element(),
         target_element=DropdownMenuPanel(
             items=list(items),
             aria_label=label,

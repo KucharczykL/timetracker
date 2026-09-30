@@ -2847,6 +2847,7 @@ def IconTrigger(
     icon: str,
     label: str,
     haspopup: PopupKind = "menu",
+    size: ButtonSize = "control",
 ) -> ControlButton:
     """A bare glyph that opens a popup.
 
@@ -2860,7 +2861,9 @@ def IconTrigger(
         attrs,
         color="gray",
         variant="ghost",
-        class_="p-2",
+        size=size,
+        #: A glyph square sizes itself.
+        class_="p-2" if size == "control" else "",
         aria_label=label,
         aria_haspopup=haspopup,
     )[Icon(icon, [("aria-hidden", "true")])]
@@ -2873,6 +2876,7 @@ def EllipsisTrigger(
     label: str,
     orientation: EllipsisOrientation = "vertical",
     haspopup: PopupKind = "menu",
+    size: ButtonSize = "control",
 ) -> ControlButton:
     """The bare three-dot trigger, shared by three surfaces.
 
@@ -2888,6 +2892,7 @@ def EllipsisTrigger(
         icon=_ELLIPSIS_GLYPHS[orientation],
         label=label,
         haspopup=haspopup,
+        size=size,
     )
 
 
