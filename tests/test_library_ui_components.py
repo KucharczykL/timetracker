@@ -385,5 +385,5 @@ def test_a_group_names_its_rows_once():
     assert html.count("PS5") == 1
     assert html.count("data-summary-row") == 2
     assert "divide-y" not in html
-    assert "text-type-subheading" in html
+    assert "text-type-section" in html
     assert "py-1" in html
