@@ -64,6 +64,8 @@ from common.components.search_select import ComboboxDropdown, presets_member
 from common.criteria import DEFAULT_STATED_MODIFIER, AttrName, OperatorFilter
 from common.date_time_presentation import DateTimePresentation
 
+type FacetKey = str  # a dropdown's id stem, e.g. "visibility"
+
 
 class QuickFacet(NamedTuple):
     # The ?filter= key: leaf field or alias.
@@ -74,7 +76,7 @@ class QuickFacet(NamedTuple):
     step: str = "1"  # number-input step, e.g. "0.01" for prices
 
     @property
-    def key(self) -> str:
+    def key(self) -> FacetKey:
         return self.field
 
     @property
@@ -85,7 +87,7 @@ class QuickFacet(NamedTuple):
 class QuickFacetGroup(NamedTuple):
     """One dropdown stating several fields."""
 
-    key: str  # the dropdown's id stem
+    key: FacetKey
     label: str
     members: tuple[QuickFacet, ...]
 

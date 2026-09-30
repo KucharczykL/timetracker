@@ -1,7 +1,7 @@
 """A game's facts before a batch changed them."""
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 from games.events.playergame import (
     PLAYERGAME_CREATED,
@@ -69,12 +69,7 @@ class BatchFactChanges:
 
     @property
     def changed_any(self) -> bool:
-        return not (
-            self.status is None
-            and self.mastered is None
-            and self.excluded_from_unfinished is None
-            and self.excluded_from_dropped is None
-        )
+        return any(getattr(self, fact.name) is not None for fact in fields(self))
 
 
 def batch_fact_changes(

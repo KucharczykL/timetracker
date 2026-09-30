@@ -1633,6 +1633,16 @@ DONE_STATUSES: tuple[PlayerGameStatus, ...] = (
 )
 
 
+#: A PlayerGame flag leaving it out.
+type VisibilityField = Literal["excluded_from_unfinished", "excluded_from_dropped"]
+
+#: What a game may be left out of.
+VISIBILITY_FIELDS: tuple[VisibilityField, ...] = (
+    "excluded_from_unfinished",
+    "excluded_from_dropped",
+)
+
+
 class PlayerGame(ProjectionModel):
     """One catalog game a library tracks, projected from its events."""
 
@@ -1660,7 +1670,7 @@ class PlayerGame(ProjectionModel):
         default=PlayerGameStatus.UNPLAYED,
     )
     mastered = models.BooleanField(default=False)
-    #: An explicit preference, never inferred from status.
+    #: Explicit preferences, never inferred from status.
     excluded_from_unfinished = models.BooleanField(default=False)
     excluded_from_dropped = models.BooleanField(default=False)
     #: The remove event's recorded_at; null means live.

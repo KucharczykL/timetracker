@@ -945,6 +945,8 @@ class DropdownFieldset:
     """A labelled group of controls in a panel."""
 
     def __init__(self, label: str) -> None:
+        if not label:
+            raise ValueError("A dropdown fieldset needs a label.")
         self._label = label
 
     def __getitem__(self, children: Children) -> Element:

@@ -28,6 +28,7 @@ from common.components import (
 )
 from common.components.custom_elements import (
     FILTER_MODE_MODELS,
+    DropdownFieldset,
     FilterMode,
     list_url_for,
 )
@@ -727,6 +728,24 @@ class VisibilityFacetTest(SimpleTestCase):
         self.assertIn("data-quick-facet-applied", self._dropdown(stated))
         self.assertNotIn("data-quick-facet-applied", self._dropdown())
 
+    def test_each_member_checks_its_stated_radio(self):
+        stated = json.dumps(
+            {
+                "excluded_from_unfinished": {"value": False},
+                "excluded_from_dropped": {"value": True},
+            }
+        )
+        dropdown = self._dropdown(stated)
+
+        for field, value in (
+            ("excluded_from_unfinished", "false"),
+            ("excluded_from_dropped", "true"),
+        ):
+            radios = re.findall(rf'<input[^>]*name="quick-{field}"[^>]*>', dropdown)
+            checked = [tag for tag in radios if "checked" in tag]
+            self.assertEqual(len(checked), 1, field)
+            self.assertIn(f'value="{value}"', checked[0])
+
     def test_both_members_stated_stay_editable(self):
         parsed = {
             "excluded_from_unfinished": {"value": True},
@@ -793,6 +812,23 @@ class QuickFacetsContractTest(TestCase):
                 for field in group.fields:
                     with self.subTest(mode=mode, group=group.key, field=field):
                         self.assertIn(metadata[field]["kind"], QUICK_FACET_GROUP_KINDS)
+
+    def test_facet_keys_are_unique_and_groups_hold_several(self):
+        for mode, facets in QUICK_FACETS.items():
+            with self.subTest(mode=mode):
+                keys = [facet.key for facet in facets]
+                self.assertEqual(len(keys), len(set(keys)))
+                fields = [field for facet in facets for field in facet.fields]
+                self.assertEqual(len(fields), len(set(fields)))
+                groups = [
+                    facet for facet in facets if isinstance(facet, QuickFacetGroup)
+                ]
+                for group in groups:
+                    self.assertGreaterEqual(len(group.members), 2, group.key)
+
+    def test_an_unlabelled_dropdown_fieldset_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "needs a label"):
+            DropdownFieldset("")
 
     def test_a_group_holding_a_set_field_is_refused(self):
         group = QuickFacetGroup("broken", "Broken", (QuickFacet("status"),))

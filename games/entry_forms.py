@@ -50,9 +50,9 @@ WAY_CHOICES = [(way.value, END_WAY_LABELS[way]) for way in ENTRY_WAYS]
 
 #: What it is, how had, a note.
 _COPY_GROUPS = (
-    FormFieldGroup("What", ("game", "release", "format"), legend_hidden=True),
-    FormFieldGroup("How you have it", ("access", "acquired"), legend_hidden=True),
-    FormFieldGroup("Note", ("note",), legend_hidden=True),
+    FormFieldGroup("What", ("game", "release", "format"), look="hidden"),
+    FormFieldGroup("How you have it", ("access", "acquired"), look="hidden"),
+    FormFieldGroup("Note", ("note",), look="hidden"),
 )
 
 

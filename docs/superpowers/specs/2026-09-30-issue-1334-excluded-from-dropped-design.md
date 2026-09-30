@@ -40,14 +40,16 @@ each figure.
 surface groups them:
 
 - The Game form has a "Visibility" fieldset on a section panel.
-  `FormFieldGroup(surface=True)` supplies the panel.
+  `FormFieldGroup(look="panel")` supplies the panel.
 - The bulk Edit has the same fieldset.
 - Game detail shows a "Visibility" row when a fact is set.
 - The Games quick bar has one "Visibility" facet.
 - The Games list has one hidden column for each fact. You can sort each column.
 
-To add a fact, put its field in `VISIBILITY_FIELDS` (`games/forms.py`) and in
-the Visibility `QuickFacetGroup`.
+`VISIBILITY_FIELDS` (`games/models.py`) and the Visibility `QuickFacetGroup`
+group the facts. They do not add a fact. A new fact also needs a column, an
+event, a command field and each reader. A test compares the fact lists of the
+command, the bulk statement and the Undo reader.
 
 ## The grouped facet
 

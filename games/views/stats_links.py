@@ -16,6 +16,7 @@ must never restore a global model-manager fallback.
 """
 
 from calendar import monthrange
+from dataclasses import replace
 from uuid import UUID
 
 from common.criteria import (
@@ -235,8 +236,7 @@ def _holding_no_game(excluded: GameFilter) -> PurchaseFilter:
     NONE, not a leaf: a leaf asks ANY.
     TODO(#1337): the shared join lets bundles pass.
     """
-    excluded.match = RelationMatch.NONE
-    return PurchaseFilter(game_filter=excluded)
+    return PurchaseFilter(game_filter=replace(excluded, match=RelationMatch.NONE))
 
 
 def purchases_dropped(year) -> PurchaseFilter:

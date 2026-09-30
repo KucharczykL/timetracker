@@ -200,7 +200,7 @@ type BadgeTone = Literal["brand", "neutral", "success", "warning", "danger"]
 DISABLED_CONTROL_CLASS = "disabled:opacity-50 disabled:cursor-not-allowed"
 DISABLED_WITHIN_CLASS = "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-allowed"
 
-#: Keeps it inside a bordered fieldset.
+#: Keeps a legend inside its fieldset's border.
 FLOATED_LEGEND_CLASS = "float-left w-full"
 
 #: A section panel's border, fill, padding.
@@ -1890,6 +1890,24 @@ def FieldErrors(errors) -> Node | None:
     return Ul(class_=_FIELD_ERROR_CLASS)[*items]
 
 
+#: How a group shows its legend.
+#:
+#: "hidden": screen readers name it; space parts it.
+#: "panel": a section panel, legend inside.
+type FieldGroupLook = Literal["shown", "hidden", "panel"]
+
+_LEGEND_CLASSES: dict[FieldGroupLook, str] = {
+    "shown": "text-type-section text-heading",
+    "hidden": "sr-only",
+    "panel": f"{FLOATED_LEGEND_CLASS} text-type-section text-heading",
+}
+_GROUP_LOOK_CLASSES: dict[FieldGroupLook, str] = {
+    "shown": "",
+    "hidden": "mt-3 first-of-type:mt-0",
+    "panel": SECTION_SURFACE_CLASS,
+}
+
+
 class FormFieldGroup(NamedTuple):
     """One semantic group rendered by :func:`FormFields`.
 
@@ -1904,10 +1922,7 @@ class FormFieldGroup(NamedTuple):
     fields: Sequence[str]
     description: str = ""
     id: str = ""
-    #: Screen readers name it; space parts it.
-    legend_hidden: bool = False
-    #: A section panel around the group.
-    surface: bool = False
+    look: FieldGroupLook = "shown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -2051,22 +2066,14 @@ def _grouped_form_fields(
             ("class", "flex flex-col gap-3"),
             ("data-form-field-group", ""),
         ]
-        if group.legend_hidden:
-            attributes.append(("class", "mt-3 first-of-type:mt-0"))
-        if group.surface:
-            attributes.append(("class", SECTION_SURFACE_CLASS))
+        if look_class := _GROUP_LOOK_CLASSES[group.look]:
+            attributes.append(("class", look_class))
         if group.id:
             attributes.append(("id", group.id))
         if description_id and group.description:
             attributes.append(("aria-describedby", description_id))
         group_children: list[Node] = [
-            Legend(
-                class_="sr-only"
-                if group.legend_hidden
-                else f"{FLOATED_LEGEND_CLASS} text-type-section text-heading"
-                if group.surface
-                else "text-type-section text-heading"
-            )[group.legend]
+            Legend(class_=_LEGEND_CLASSES[group.look])[group.legend]
         ]
         if group.description:
             description_attributes: list[HTMLAttribute] = [

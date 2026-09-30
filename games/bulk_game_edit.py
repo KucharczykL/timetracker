@@ -39,13 +39,14 @@ from games.bulk_sessions import lost
 from games.events.append import SourceMetadata
 from games.events.dispatch import CommandRejected, RowNotHeld
 from games.events.idempotency import IdempotencyKey
-from games.forms import (
+from games.forms import ChoiceSearchSelectWidget, LabeledChoice, PrimitiveWidgetsMixin
+from games.models import (
     VISIBILITY_FIELDS,
-    ChoiceSearchSelectWidget,
-    LabeledChoice,
-    PrimitiveWidgetsMixin,
+    Game,
+    PlayerGame,
+    PlayerGameStatus,
+    UserLibrary,
 )
-from games.models import Game, PlayerGame, PlayerGameStatus, UserLibrary
 from games.reads.playergame_facts import batch_fact_changes
 from games.writes.answers import answered
 from games.writes.playergame import record_facts
@@ -111,16 +112,15 @@ class GameEditStatement:
         status = stated.get("status")
         if "status" in stated and status not in PlayerGameStatus.values:
             raise statement_unreadable(f"{raw!r} states a status that is no word")
+        mastered = _stated_flag(stated, "mastered", raw)
+        unfinished = _stated_flag(stated, "excluded_from_unfinished", raw)
+        dropped = _stated_flag(stated, "excluded_from_dropped", raw)
         try:
             return cls(
                 status=None if status is None else PlayerGameStatus(status),
-                mastered=_stated_flag(stated, "mastered", raw),
-                excluded_from_unfinished=_stated_flag(
-                    stated, "excluded_from_unfinished", raw
-                ),
-                excluded_from_dropped=_stated_flag(
-                    stated, "excluded_from_dropped", raw
-                ),
+                mastered=mastered,
+                excluded_from_unfinished=unfinished,
+                excluded_from_dropped=dropped,
             )
         except ValueError as empty:
             raise statement_unreadable(f"{raw!r} states nothing") from empty
@@ -190,14 +190,15 @@ def _flag(choices: FlagChoices, label: str) -> forms.TypedChoiceField:
 
 _FACTS_GROUP = ("status", "mastered")
 
-#: Every visible field: groups render first.
+#: Groups name every visible field.
 BULK_GAME_EDIT_GROUPS = (
-    FormFieldGroup("Facts", _FACTS_GROUP, legend_hidden=True),
+    FormFieldGroup("Facts", _FACTS_GROUP, look="hidden"),
     FormFieldGroup(
         "Visibility",
         VISIBILITY_FIELDS,
         description="Leave these games out of:",
-        surface=True,
+        id="bulk-visibility",
+        look="panel",
     ),
 )
 
@@ -252,11 +253,12 @@ class BulkGameEditForm(PrimitiveWidgetsMixin, forms.Form):
 
     def statement(self) -> GameEditStatement:
         """The valid form, as one statement."""
+        cleaned = self.cleaned_data
         return GameEditStatement(
-            **{
-                name: self.cleaned_data[name]
-                for name in _FACTS_GROUP + VISIBILITY_FIELDS
-            }
+            status=cleaned["status"],
+            mastered=cleaned["mastered"],
+            excluded_from_unfinished=cleaned["excluded_from_unfinished"],
+            excluded_from_dropped=cleaned["excluded_from_dropped"],
         )
 
 

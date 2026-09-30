@@ -76,6 +76,7 @@ from games.endpoints import DEVICE_ACCESS_END
 from games.events.idempotency import IdempotencyKey
 from games.models import (
     DEVICE_WAYS,
+    VISIBILITY_FIELDS,
     Device,
     Game,
     GameKind,
@@ -2119,10 +2120,6 @@ class _LibraryBoundConstraintValidationMixin:
         return exclusions
 
 
-#: What a game may be left out of.
-VISIBILITY_FIELDS = ("excluded_from_unfinished", "excluded_from_dropped")
-
-
 class GameForm(
     _LibraryBoundConstraintValidationMixin, PrimitiveWidgetsMixin, forms.ModelForm
 ):
@@ -2228,7 +2225,7 @@ class GameForm(
         widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
 
 
-#: Every visible field: groups render first.
+#: Groups name every visible field.
 GAME_FORM_GROUPS = (
     FormFieldGroup(
         "Game",
@@ -2241,14 +2238,14 @@ GAME_FORM_GROUPS = (
             "status",
             "mastered",
         ),
-        legend_hidden=True,
+        look="hidden",
     ),
     FormFieldGroup(
         "Visibility",
         VISIBILITY_FIELDS,
         description="Leave this game out of:",
         id="visibility",
-        surface=True,
+        look="panel",
     ),
 )
 

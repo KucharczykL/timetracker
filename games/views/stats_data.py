@@ -35,6 +35,7 @@ from games.models import (
     PurchaseConversionState,
     PurchaseQueryset,
     UserLibrary,
+    VisibilityField,
 )
 from games.reads.calendar import calendar_today
 from games.reads.days import YearScope
@@ -218,7 +219,7 @@ def _games_at_status(library: UserLibrary, *statuses: PlayerGameStatus):
     return Game.objects.tracked_by(library, tracked__status__in=statuses)
 
 
-def _holding_no_game_excluded_from(library: UserLibrary, fact: str) -> Q:
+def _holding_no_game_excluded_from(library: UserLibrary, fact: VisibilityField) -> Q:
     """Purchases holding no game stating `fact`."""
     return ~Q(games__in=Game.objects.tracked_by(library, **{f"tracked__{fact}": True}))
 

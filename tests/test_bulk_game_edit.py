@@ -4,6 +4,7 @@ import html as html_module
 import json
 import logging
 import uuid
+from dataclasses import fields as dataclass_fields
 
 import pytest
 from django.contrib.messages import get_messages
@@ -18,15 +19,18 @@ from games.bulk_game_edit import (
     GAME_REMOVED,
     NOT_EDITED_BY_THIS_BATCH,
     NOTHING_STATED,
+    GameEditJson,
     GameEditStatement,
 )
 from games.bulk_games import GAME_GONE
 from games.bulk_parts import AsksNothing, Control, RowOutcome
+from games.commands.playergame import RecordPlayerGameFacts
 from games.events.dispatch import CommandRejected, RowUnreadable
 from games.events.playergame import (
     PLAYERGAME_STATUS_CHANGED,
 )
 from games.models import (
+    VISIBILITY_FIELDS,
     Game,
     LibraryEvent,
     LibraryIdempotencyRecord,
@@ -36,6 +40,7 @@ from games.models import (
 )
 from games.reads.events import batch_aggregate_ids
 from games.reads.playergame_facts import (
+    BatchFactChanges,
     FactChange,
     batch_fact_changes,
     status_change,
@@ -223,6 +228,13 @@ def test_the_control_keeps_what_the_rows_hold(
     owned_user, owned_library, game, second_game
 ):
     _stated(owned_user, game, PlayerGameStatus.PLAYED)
+    for each in (game, second_game):
+        record_facts(
+            owned_user,
+            each,
+            excluded_from_dropped=True,
+            correlation_id=new_correlation_id(),
+        )
     rows = EDIT.resolve(owned_library, [game.pk, second_game.pk]).rows
 
     offered = EDIT.choice.offer(owned_library, rows, CHOICE_FIELD)
@@ -234,7 +246,9 @@ def test_the_control_keeps_what_the_rows_hold(
     #: Status differs; the flags agree.
     assert "Keep: mixed" in markup
     assert "Keep: Not mastered" in markup
-    assert "Keep: Included" in markup
+    #: One per flag: each reads its own column.
+    assert markup.count("Keep: Included") == 1
+    assert markup.count("Keep: Excluded") == 1
 
 
 def test_settling_refuses_a_form_that_states_nothing(owned_library):
@@ -251,6 +265,14 @@ def test_settling_composes_the_statement(owned_library):
 
     assert GameEditStatement.decode(settled) == GameEditStatement(
         status=PlayerGameStatus.COMPLETED, mastered=True
+    )
+
+
+def test_settling_states_the_dropped_flag_alone(owned_library):
+    settled = EDIT.choice.settle(owned_library, _post(**{DROPPED: "True"}))
+
+    assert GameEditStatement.decode(settled) == GameEditStatement(
+        excluded_from_dropped=True
     )
 
 
@@ -452,6 +474,39 @@ def test_an_undo_pressed_twice_is_already_so(client_in, game):
     assert _status(game) == PlayerGameStatus.UNPLAYED
     assert _events() == events
     assert any("already" in sentence for sentence in said(again))
+
+
+def test_an_undo_of_a_dropped_flag_already_back_is_already_so(
+    client_in, owned_user, game
+):
+    token, _ = _run(client_in, game, **{DROPPED: "True"})
+    record_facts(
+        owned_user,
+        game,
+        excluded_from_dropped=False,
+        correlation_id=new_correlation_id(),
+    )
+    events = _events()
+
+    answer = _undo(client_in, token)
+
+    assert _tracked(game).excluded_from_dropped is False
+    assert _events() == events
+    assert any("already" in sentence for sentence in said(answer))
+
+
+def test_the_fact_lists_agree():
+    """Command, statement, wire and Undo name one set."""
+    command_facts = {
+        field.name for field in dataclass_fields(RecordPlayerGameFacts)
+    } - {"game_id"}
+
+    assert command_facts == {
+        field.name for field in dataclass_fields(GameEditStatement)
+    }
+    assert command_facts == set(GameEditJson.__annotations__)
+    assert command_facts == {field.name for field in dataclass_fields(BatchFactChanges)}
+    assert set(VISIBILITY_FIELDS) < command_facts
 
 
 def test_an_undo_states_the_earlier_word_over_a_later_one(
