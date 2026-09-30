@@ -1,8 +1,8 @@
 import logging
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import date, timedelta
 from operator import attrgetter
-from typing import TYPE_CHECKING, ClassVar, Final, Literal
+from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal
 from uuid import UUID
 
 import requests
@@ -24,7 +24,7 @@ from django.template.defaultfilters import floatformat, pluralize, slugify
 from django.urls import reverse
 from django.utils import timezone
 
-from common.keyset import FieldName
+from common.keyset import FieldName, RelationPath, lookup
 from common.naming import name_key
 from common.platform_icons import UNSPECIFIED_ICON, require_platform_icon
 from common.utils import label_with_details
@@ -137,7 +137,7 @@ class GameQuerySet(RemovableLibraryQuerySet):
         return self.filter(Q(library__isnull=True) | Q(library=library)).alive()
 
     def in_display_order(self) -> GameQuerySet:
-        """Where no sort is stated."""
+        """Order by DISPLAY_ORDER_FIELDS."""
         return self.order_by(*Game.DISPLAY_ORDER_FIELDS)
 
     def annotated_for_filtering(self, library=None):
@@ -293,7 +293,7 @@ class Game(ReferencedRow):
         tracked_excluded_from_unfinished: bool
         tracked_excluded_from_dropped: bool
 
-    #: Where no sort is stated; blank sort_name leads.
+    #: Every game order; blank sort_name leads.
     #: Local non-null columns only: Python sorts on them too.
     DISPLAY_ORDER_FIELDS: ClassVar[tuple[FieldName, ...]] = ("sort_name", "name", "id")
 
@@ -504,12 +504,14 @@ class Game(ReferencedRow):
 
 
 #: Sorts loaded games as `order_by(*DISPLAY_ORDER_FIELDS)` does.
-game_display_key = attrgetter(*Game.DISPLAY_ORDER_FIELDS)
+game_display_key: Callable[[Game], tuple[Any, ...]] = attrgetter(
+    *Game.DISPLAY_ORDER_FIELDS
+)
 
 
-def game_display_order_through(path: str) -> tuple[str, ...]:
+def game_display_order_through(path: RelationPath) -> tuple[FieldName, ...]:
     """DISPLAY_ORDER_FIELDS, reached through a relation."""
-    return tuple(f"{path}__{name}" for name in Game.DISPLAY_ORDER_FIELDS)
+    return tuple(lookup(path, name) for name in Game.DISPLAY_ORDER_FIELDS)
 
 
 class PlatformQuerySet(RemovableLibraryQuerySet):

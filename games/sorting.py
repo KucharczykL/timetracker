@@ -22,6 +22,8 @@ from django.db.models import (
 )
 from django.http import HttpRequest
 
+from common.keyset import RelationPath
+
 # The pure sort-string core lives in common.sorting; this module is the ORM
 # binding. Re-exported here so existing `from games.sorting import …` keeps working.
 from common.sorting import (
@@ -94,7 +96,10 @@ type SortMap = dict[SortKey, SortSpec]
 
 
 def _game_first(
-    path: str, annotate: Annotations | None = None, then: tuple[OrderField, ...] = ()
+    path: RelationPath,
+    *,
+    annotate: Annotations | None = None,
+    then: tuple[OrderField, ...] = (),
 ) -> SortSpec:
     """A game's display order, then `then`."""
     head, *rest = game_display_order_through(path)
@@ -103,7 +108,7 @@ def _game_first(
 
 # ── Per-model sort maps ─────────────────────────────────────────────────────
 # Some sorts read aliases the view registers.
-# To-one relations (game__sort_name, device__name) are ordered directly.
+# To-one relations are ordered directly.
 
 #: Kinds in declared order, not alphabetical.
 KIND_RANK: Final = Case(
@@ -113,7 +118,7 @@ KIND_RANK: Final = Case(
 
 GAME_SORTS: SortMap = {
     "name": SortSpec("name"),
-    "sort_name": SortSpec("sort_name", then=("name",)),
+    "sort_name": _game_first(""),
     "year": SortSpec("year_released"),
     "status": SortSpec("tracked_status"),
     "kind": SortSpec(
@@ -144,10 +149,10 @@ SESSION_SORTS: SortMap = {
     #: The game first: a number means nothing outside it.
     "playthrough": _game_first(
         SESSION_GAME,
-        {"run_numbered": numbered_sort_key("playthrough__")},
+        annotate={"run_numbered": numbered_sort_key("playthrough")},
         then=(
             "run_numbered",
-            *display_order_through("playthrough__"),
+            *display_order_through("playthrough"),
             "sort_instant",
         ),
     ),
@@ -189,7 +194,7 @@ PLAYTHROUGH_SORTS: SortMap = {
     #: The game leads, or `started` reads nearly the same.
     "playthrough": _game_first(
         "player_game__game",
-        {"run_numbered": numbered_sort_key()},
+        annotate={"run_numbered": numbered_sort_key()},
         then=("run_numbered", *display_order_through()),
     ),
 }

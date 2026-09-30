@@ -333,7 +333,7 @@ def test_numbered_for_renders_the_numbers_down_the_page_in_order(
 
 def test_display_order_through_names_the_fields_a_relation_reaches():
     assert display_order_through() == DISPLAY_ORDER_FIELDS
-    assert display_order_through("playthrough__") == tuple(
+    assert display_order_through("playthrough") == tuple(
         f"playthrough__{name}" for name in DISPLAY_ORDER_FIELDS
     )
 

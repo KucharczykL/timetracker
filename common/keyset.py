@@ -14,6 +14,7 @@ from collections.abc import Iterator, Sequence
 from typing import Any
 
 from django.db.models import F, Model, QuerySet
+from django.db.models.constants import LOOKUP_SEP
 from django.db.models.fields.tuple_lookups import (
     Tuple,
     TupleGreaterThan,
@@ -22,6 +23,15 @@ from django.db.models.fields.tuple_lookups import (
 
 #: A local field of the model.
 type FieldName = str
+
+#: A relation walk, no trailing "__"; "" is the row.
+type RelationPath = str
+
+
+def lookup(path: RelationPath, name: FieldName) -> FieldName:
+    """`name` reached through `path`."""
+    return LOOKUP_SEP.join(part for part in (path, name) if part)
+
 
 #: Memory, not speed: matches REPLAY_CHUNK_SIZE.
 DEFAULT_PAGE_SIZE = 500

@@ -18,28 +18,39 @@ The code is in `games/models.py`.
 | `game_display_order_through(path)` | The three fields through a relation, for a sort or an `order_by` on another model |
 | `game_display_key` | A Python sort of games that are already loaded |
 
-Use `game_display_key` where the rows can come from a prefetch.
-`order_by()` and `first()` do not read the prefetch cache, so each one
-costs one query for each row. `LinkedPurchase` and `Purchase.first_game`
-use the key for this reason.
+A path has no trailing `__`, and `""` is the row itself. `lookup` in
+`common/keyset.py` joins a path and a field. The runs' `display_order_through`
+and `numbered_sort_key` use the same rule.
+
+Use `game_display_key` where the rows can come from a prefetch. `order_by()`
+makes a new query. `first()` also makes one on `Game`, because `Game` has no
+default order. Each call costs one query for each purchase. `LinkedPurchase`
+and `Purchase.first_game` use the key for this reason.
 
 PostgreSQL compares text in `C.UTF-8` by code point. Python compares `str`
-by code point. The two sorts therefore agree.
+by code point. Python and PostgreSQL also compare a UUID in the same order.
+The two sorts therefore agree.
 
 ## Where the order applies
+
+These reads use the order, among others:
 
 - The game search, `GET /api/games/search`. The order decides which games a
   `limit` keeps.
 - Every game picker: the field queryset and the selected options. A multi-game
-  picker shows its selected games in display order.
+  picker shows its selected games in display order. It does not keep the
+  order in which a person picked them.
 - `PurchaseForm.games`. `ModelMultipleChoiceField.clean` keeps the order of
   its queryset, so the separate purchases are created in display order.
 - A purchase: its page list, its tooltip, `first_game`, split and refund.
 - The bulk resolutions of games, copies and runs.
 - The `name` sort of sessions, runs, records and copies, and the `sort_name`
-  sort of games. The fields after the first go into `SortSpec.then`.
+  sort of games. The fields after the first go into `SortSpec.then`, so a
+  descending sort reverses all three.
 - The `playthrough` sort of sessions and runs. The game order comes first, so
   runs of two tied games do not mix.
+
+- The stats games card, `games_by_playtime_queryset`. Playtime comes first.
 
 `_game_first` in `games/sorting.py` makes a `SortSpec` that starts with the
 game order.
@@ -48,8 +59,8 @@ game order.
 
 - A sort on one column that is not a game. `apply_sort` ends every order with
   `pk`, so the order is total.
-- The Purchase list's `name` sort. It orders purchases by the name a row
-  shows.
+- The Purchase list's `name` sort. It orders purchases by the lowest `name`
+  of their games. It does not read `sort_name` or the purchase's own name.
 - The figure readers in `session_figures.py` and `play_figures.py`. They
   break a tie on `sort_name`, then on the game key. A change to that rule
   changes figures.
@@ -70,3 +81,4 @@ games.
 - #1393: the game search offers shared games that the forms refuse.
 - #1394: a purchase's game reads include removed games.
 - #1395: the stats page's purchase lists order by one date.
+- #1399: a purchase with no games breaks its page and name.

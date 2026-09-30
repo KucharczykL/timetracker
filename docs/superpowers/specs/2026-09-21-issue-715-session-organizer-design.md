@@ -33,8 +33,7 @@ not-null has meaning.
 
 `SESSION_SORTS["playthrough"]` and `PLAYTHROUGH_SORTS["playthrough"]` lead with
 the game's display order (`Game.DISPLAY_ORDER_FIELDS`), then `numbered_sort_key`,
-then the run's display order. The
-session key ends with `sort_instant`.
+then the run's display order. The session key ends with `sort_instant`.
 
 The game leads because a run's number has no meaning outside its game. On a
 list of many games, the runs of unrelated games would interleave by start day.

@@ -8,6 +8,9 @@ def tied_games(library: UserLibrary) -> list[Game]:
 
     Neither creation, name nor case-blind order matches. Two
     tie on `sort_name` alone, two on `sort_name` and `name`.
+
+    The full tie's ids follow creation, so only a read that
+    orders another model by the game can show `id` decides.
     """
     first_platform = Platform.objects.create(
         library=library, name="Order One", icon="steam"

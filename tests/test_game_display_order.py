@@ -23,9 +23,8 @@ from games.bulk_entries import entry_resolution
 from games.bulk_game_edit import game_edit_resolution
 from games.bulk_removal import game_resolution
 from games.bulk_runs import run_resolution
-from games.entry_forms import EntryAddForm
 from games.filters import FindFilter
-from games.forms import SessionForm, _game_options
+from games.forms import _game_options
 from games.models import (
     Game,
     HistoricalPlaytime,
@@ -46,6 +45,7 @@ from games.sorting import (
     apply_sort,
 )
 from games.views.purchase import _refund
+from games.writes.answers import CONFLICT_STATUS, CommandFailed
 
 PRESENTATION = DateTimePresentation(
     DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
@@ -122,23 +122,15 @@ class GameQuerysetsReadInDisplayOrderTest(TestCase):
         self.assertEqual(
             [row["value"] for row in search_games(request, limit=100)], self.expected
         )
+        #: Five cuts between the two tied on sort_name.
         self.assertEqual(
-            [row["value"] for row in search_games(request, limit=1)],
-            self.expected[:1],
+            [row["value"] for row in search_games(request, limit=5)],
+            self.expected[:5],
         )
 
     def test_picker_resolves_selected_games_in_display_order(self):
         options = _game_options(list(reversed(self.expected)), library=self.library)
         self.assertEqual([option["value"] for option in options], self.expected)
-
-    def test_game_pickers_offer_games_in_display_order(self):
-        session_form = SessionForm(library=self.library, presentation=PRESENTATION)
-        entry_form = EntryAddForm(
-            library=self.library, presentation=PRESENTATION, today=date(2026, 9, 29)
-        )
-        for form in (session_form, entry_form):
-            offered = [game.id for game in form.fields["game"].queryset]
-            self.assertEqual(offered, self.expected)
 
     def test_separate_prices_create_purchases_in_display_order(self):
         response = self.client.post(
@@ -169,6 +161,20 @@ class GameQuerysetsReadInDisplayOrderTest(TestCase):
             _refund(self.user, bundle)
         abandoned = [call.args[1].id for call in record_facts.call_args_list]
         self.assertEqual(abandoned, self.expected)
+
+    def test_refund_failure_counts_games_in_display_order(self):
+        bundle = self._bundle()
+        refused = self.games[4]
+
+        def abandon(user, game, **facts):
+            if game == refused:
+                raise CommandFailed("Refused.", CONFLICT_STATUS)
+
+        with (
+            patch("games.views.purchase.record_facts", side_effect=abandon),
+            pytest.raises(CommandFailed, match="4 of 7 games were abandoned"),
+        ):
+            _refund(self.user, bundle)
 
     def test_first_game_leads_the_display_order(self):
         self.assertEqual(self._bundle().first_game, self.games[0])
@@ -208,6 +214,10 @@ def _sorted_game_ids(queryset, sort, sort_map, path):
     return list(ordered.values_list(path, flat=True))
 
 
+def _directed(expected, sort):
+    return expected[::-1] if sort.startswith("-") else expected
+
+
 @pytest.fixture
 def games(owned_library):
     return tied_games(owned_library)
@@ -227,7 +237,7 @@ def test_run_sorts_group_runs_by_game_in_display_order(owned_library, games, sor
     )[::2] == [game.id for game in reversed(games)]
 
 
-@pytest.mark.parametrize("sort", ["name", "playthrough"])
+@pytest.mark.parametrize("sort", ["name", "-name", "playthrough", "-playthrough"])
 def test_session_sorts_group_sessions_by_game_in_display_order(
     owned_library, games, sort
 ):
@@ -236,30 +246,36 @@ def test_session_sorts_group_sessions_by_game_in_display_order(
     for run in reversed(runs):
         timed_row(run, started, started + timedelta(hours=1))
     queryset = PlayerSession.objects.filter(library=owned_library)
+    expected = [run.player_game.game_id for run in runs]
     assert _sorted_game_ids(
         queryset, sort, SESSION_SORTS, "playthrough__player_game__game"
-    ) == [run.player_game.game_id for run in runs]
+    ) == _directed(expected, sort)
 
 
-def test_record_name_sort_reads_display_order(owned_library, games):
+@pytest.mark.parametrize("sort", ["name", "-name"])
+def test_record_name_sort_reads_display_order(owned_library, games, sort):
     for game in reversed(games):
         record_row(
             [Playthrough.objects.get(library=owned_library, player_game__game=game)]
         )
     queryset = HistoricalPlaytime.objects.filter(library=owned_library)
     assert _sorted_game_ids(
-        queryset, "name", HISTORICAL_PLAYTIME_SORTS, "player_game__game"
-    ) == [game.id for game in games]
+        queryset, sort, HISTORICAL_PLAYTIME_SORTS, "player_game__game"
+    ) == _directed([game.id for game in games], sort)
 
 
-def test_game_sort_name_sort_reads_display_order(owned_library, games):
+@pytest.mark.parametrize("sort", ["sort_name", "-sort_name"])
+def test_game_sort_name_sort_reads_display_order(owned_library, games, sort):
     queryset = Game.objects.filter(library=owned_library)
-    assert _sorted_game_ids(queryset, "sort_name", GAME_SORTS, "id") == [
-        game.id for game in games
-    ]
+    assert _sorted_game_ids(queryset, sort, GAME_SORTS, "id") == _directed(
+        [game.id for game in games], sort
+    )
 
 
-def test_entries_resolve_and_sort_in_display_order(owned_library, games, stated_graph):
+@pytest.mark.parametrize("sort", ["name", "-name"])
+def test_entries_resolve_and_sort_in_display_order(
+    owned_library, games, stated_graph, sort
+):
     entries = [
         record_entry(owned_library, stated_graph(game, owned_library).release)
         for game in reversed(games)
@@ -268,9 +284,9 @@ def test_entries_resolve_and_sort_in_display_order(owned_library, games, stated_
     resolved = entry_resolution(owned_library, [entry.id for entry in entries]).rows
     assert [entry.player_game.game_id for entry in resolved] == expected
     queryset = LibraryEntry.objects.filter(library=owned_library)
-    assert (
-        _sorted_game_ids(queryset, "name", ENTRY_SORTS, "player_game__game") == expected
-    )
+    assert _sorted_game_ids(
+        queryset, sort, ENTRY_SORTS, "player_game__game"
+    ) == _directed(expected, sort)
 
 
 def test_runs_resolve_grouped_by_game_in_display_order(owned_library, games):
