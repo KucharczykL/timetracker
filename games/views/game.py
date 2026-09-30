@@ -55,6 +55,7 @@ from common.components import (
     paginated_table_content,
     parse_filter_dict,
 )
+from common.components.game_addon import GameAddon
 from common.components.primitives import Li, Span, custom_element_builder
 from common.components.sectioned_page import SECTION_SURFACE_CLASS
 from common.date_time_presentation import (
@@ -430,7 +431,10 @@ def add_game(request: HttpRequest) -> HttpResponse:
             form,
             request=request,
             fields=Fragment(
-                FormFields(form), editions_area(graph), references_area(references)
+                FormFields(form),
+                GameAddon("kind", "parent"),
+                editions_area(graph),
+                references_area(references),
             ),
             width_class="max-w-xl md:max-w-4xl",
             additional_row=Fragment(
@@ -549,7 +553,10 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
             form,
             request=request,
             fields=Fragment(
-                FormFields(form), editions_area(graph), references_area(references)
+                FormFields(form),
+                GameAddon("kind", "parent"),
+                editions_area(graph),
+                references_area(references),
             ),
             width_class="max-w-xl md:max-w-4xl",
         ),

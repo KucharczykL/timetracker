@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Final, NamedTuple
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
+from games.catalog_addons import AddonRefused, state_addon
 from games.catalog_compat import LEGACY_IDENTITY_TAKEN, MirroredIdentity
 from games.catalog_form import CatalogGraphForm
 from games.catalog_writes import DUPLICATE_EDITION_NAME
@@ -105,6 +106,13 @@ def save_game_columns(form: GameForm, identity: MirroredIdentity) -> Game:
     platform never stands beside the pair it is replacing.
     """
     game = form.save(commit=False)
+    #: First, so the Game and its parent lock in one order by key.
+    state_addon(
+        game,
+        kind=form.cleaned_data["kind"],
+        parent=form.cleaned_data["parent"],
+        library=form.library,
+    )
     if not game._state.adding:
         persisted = Game.objects.select_for_update().get(pk=game.pk)
         if persisted.library_id != game.library_id:
@@ -140,6 +148,9 @@ def save_game_and_graph(
 
 def _game_form_refusal(form: GameForm, error: ValidationError) -> bool:
     """A refusal the Game's own fields caused."""
+    if isinstance(error, AddonRefused):
+        form.add_error(error.field, error.sentence)
+        return True
     if REMOVED_SINCE_READ in error.messages:
         form.add_error(None, REMOVED_SINCE_READ)
         return True

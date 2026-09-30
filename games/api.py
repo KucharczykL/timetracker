@@ -74,6 +74,7 @@ from games.models import (
     EntryFormat,
     FilterPreset,
     Game,
+    GameKind,
     HistoricalPlaytime,
     LibraryEntry,
     Platform,
@@ -332,13 +333,15 @@ class StringOption(Schema):  # SearchSelectOption with a string value (e.g. grou
 
 
 @game_router.get("/search", response=list[PickerOption])
-def search_games(request, q: str = "", limit: int = 10):
+def search_games(request, q: str = "", limit: int = 10, kind: GameKind | None = None):
     library = cast(User, request.user).library
     qs = (
         Game.objects.visible_to(library)
         .select_related("platform")
         .order_by("sort_name")
     )
+    if kind is not None:
+        qs = qs.filter(kind=kind)
     if q:
         qs = qs.filter(
             Q(name__icontains=q) | Q(library=library, sort_name__icontains=q)

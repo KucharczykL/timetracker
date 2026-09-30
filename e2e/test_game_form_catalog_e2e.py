@@ -587,3 +587,40 @@ def test_an_excluded_game_leaves_the_unfinished_list(
     page.goto(stats)
     expect(page.get_by_role("row", name="Unfinished 0 (0%)")).to_be_visible()
     assert PlayerGame.objects.get(game=game).excluded_from_unfinished is True
+
+
+def test_the_parent_row_follows_the_kind(signed_in, live_server, game):
+    """Hidden for a main game, shown for an add-on, emptied on the way back."""
+    page = signed_in
+    open_add_form(page, live_server)
+    parent_row = page.locator("[data-field-row='parent']")
+    kind = page.locator("select[name='kind']")
+    expect(parent_row).to_be_hidden()
+
+    kind.select_option("dlc")
+    expect(parent_row).to_be_visible()
+    picker = page.locator("search-select[name='parent']")
+    picker.locator("[data-search-select-search]").click()
+    picker.get_by_role("option", name="Elite").first.click()
+    expect(parent_row.locator("input[type=hidden][name='parent']")).to_have_value(
+        str(game.pk)
+    )
+
+    kind.select_option("main")
+    expect(parent_row).to_be_hidden()
+    expect(parent_row.locator("input[type=hidden][name='parent']")).to_have_count(0)
+
+
+def test_a_new_dlc_names_its_parent(signed_in, live_server, e2e_library, game):
+    page = signed_in
+    open_add_form(page, live_server)
+
+    page.fill("input[name='name']", "Elite Expansion")
+    page.locator("select[name='kind']").select_option("dlc")
+    picker = page.locator("search-select[name='parent']")
+    picker.locator("[data-search-select-search]").click()
+    picker.get_by_role("option", name="Elite").first.click()
+    saved(page, live_server)
+
+    written = Game.objects.get(library=e2e_library, name="Elite Expansion")
+    assert (written.kind, written.parent_id) == ("dlc", game.pk)
