@@ -354,7 +354,11 @@ def test_the_session_list_carries_no_review_row(logged_in, session):
 
 def test_the_review_filter_parses_and_stays_quick_editable(logged_in):
     """The link lands on an editable bar."""
-    from common.components import QUICK_FACETS, is_quick_editable, parse_filter_dict
+    from common.components import (
+        is_quick_editable,
+        parse_filter_dict,
+        quick_facet_fields,
+    )
     from games.filters import PlayerSessionFilter
     from games.views.session_reclassification import review_filter, review_url
 
@@ -363,7 +367,7 @@ def test_the_review_filter_parses_and_stays_quick_editable(logged_in):
     assert set(parsed) == {"timing_mode", "duration_hours", "playthrough_kind"}
     assert is_quick_editable(
         parsed,
-        {facet.field for facet in QUICK_FACETS["sessions"]},
+        quick_facet_fields("sessions"),
         filter_cls=PlayerSessionFilter,
     )
     rendered = logged_in.get(review_url()).content.decode()

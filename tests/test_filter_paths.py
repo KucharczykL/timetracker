@@ -17,10 +17,10 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from common.components import (
-    QUICK_FACETS,
     QuickFilterBar,
     is_quick_editable,
     parse_filter_dict,
+    quick_facet_fields,
 )
 from common.criteria import (
     OperatorFilter,
@@ -116,7 +116,7 @@ def test_every_widget_path_resolves_to_its_kind(case: _BarCase) -> None:
     assert [widget.path for widget in widgets].count(["search"]) == 1, (
         f"{case.mode} bar rendered no search field"
     )
-    assert len(widgets) == len(QUICK_FACETS[case.mode]) + 1, (
+    assert len(widgets) == len(quick_facet_fields(case.mode)) + 1, (
         f"{case.mode} bar rendered {len(widgets)} filter widgets, expected one "
         f"per facet plus the search field (a forgotten path= silently drops one)"
     )
@@ -140,7 +140,7 @@ def test_the_run_bar_round_trips_completed() -> None:
 
     assert is_quick_editable(
         parsed,
-        {facet.field for facet in QUICK_FACETS["playthroughs"]},
+        quick_facet_fields("playthroughs"),
         filter_cls=PlaythroughFilter,
     )
 

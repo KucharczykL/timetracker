@@ -237,8 +237,10 @@ from common.components.quick_filter import (
     QUICK_FACET_KINDS,
     QUICK_FACETS,
     QuickFacet,
+    QuickFacetGroup,
     QuickFilterBar,
     is_quick_editable,
+    quick_facet_fields,
 )
 from common.components.search_field import (
     DEFAULT_MATCH_MODE,
@@ -474,6 +476,7 @@ __all__ = [
     "PriceConverted",
     "PurchasePrice",
     "QuickFacet",
+    "QuickFacetGroup",
     "QuickFilterBar",
     "Radio",
     "ReadonlySettingField",
@@ -551,6 +554,7 @@ __all__ = [
     "paginated_table_content",
     "parse_filter_dict",
     "prepare_setting_fields",
+    "quick_facet_fields",
     "randomid",
     "register_element",
     "render",

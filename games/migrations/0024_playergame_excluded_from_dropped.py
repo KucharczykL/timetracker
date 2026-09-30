@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('games', '0023_entries_mode'),
+        ("games", "0023_entries_mode"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='playergame',
-            name='excluded_from_dropped',
+            model_name="playergame",
+            name="excluded_from_dropped",
             field=models.BooleanField(default=False),
         ),
     ]

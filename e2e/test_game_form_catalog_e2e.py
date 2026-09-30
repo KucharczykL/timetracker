@@ -579,7 +579,9 @@ def test_an_excluded_game_leaves_the_unfinished_list(
     expect(page.get_by_role("row", name="Unfinished 1 (100%)")).to_be_visible()
 
     open_form(page, live_server, game)
-    page.get_by_role("group", name="Visibility").get_by_label("Unfinished lists").check()
+    page.get_by_role("group", name="Visibility").get_by_label(
+        "Unfinished lists"
+    ).check()
     saved(page, live_server)
 
     page.goto(f"{live_server.url}{game.get_absolute_url()}")

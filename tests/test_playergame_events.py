@@ -138,9 +138,7 @@ EXCLUSIONS = [
 
 
 def _flag_key(spec) -> str:
-    return spec.event_type.removeprefix("library.playergame.").removesuffix(
-        "_changed"
-    )
+    return spec.event_type.removeprefix("library.playergame.").removesuffix("_changed")
 
 
 @pytest.mark.parametrize("spec", EXCLUSIONS)

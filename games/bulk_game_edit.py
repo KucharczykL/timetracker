@@ -65,8 +65,7 @@ _KEYS = frozenset(GameEditJson.__annotations__)
 
 #: What settling refuses.
 NOTHING_STATED = (
-    "Choose a status, whether the games are mastered, or what they are left "
-    "out of."
+    "Choose a status, whether the games are mastered, or what they are left out of."
 )
 #: What an Undo refuses.
 NOT_EDITED_BY_THIS_BATCH = (

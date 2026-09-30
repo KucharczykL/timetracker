@@ -514,7 +514,9 @@ def append_excluded(library, actor, identity, excluded, exclusion, *, key="exclu
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("exclusion", EXCLUSIONS)
-def test_the_exclusion_event_writes_the_flag(owned_user, owned_library, tracked_game, exclusion):
+def test_the_exclusion_event_writes_the_flag(
+    owned_user, owned_library, tracked_game, exclusion
+):
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
 
@@ -533,9 +535,7 @@ def test_the_exclusion_event_states_the_way_back(
     append_created(owned_library, owned_user, tracked_game, identity=identity)
     append_excluded(owned_library, owned_user, identity, True, exclusion)
 
-    append_excluded(
-        owned_library, owned_user, identity, False, exclusion, key="undo"
-    )
+    append_excluded(owned_library, owned_user, identity, False, exclusion, key="undo")
 
     assert getattr(PlayerGame.objects.get(pk=identity), exclusion[1]) is False
 
@@ -578,7 +578,9 @@ def test_replaying_the_exclusion_event_costs_one_statement(
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("exclusion", EXCLUSIONS)
-def test_a_replay_reproduces_the_exclusion(owned_user, owned_library, tracked_game, exclusion):
+def test_a_replay_reproduces_the_exclusion(
+    owned_user, owned_library, tracked_game, exclusion
+):
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
     append_excluded(owned_library, owned_user, identity, True, exclusion)
@@ -591,7 +593,9 @@ def test_a_replay_reproduces_the_exclusion(owned_user, owned_library, tracked_ga
 
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("exclusion", EXCLUSIONS)
-def test_a_rebuild_reproduces_the_exclusion(owned_user, owned_library, tracked_game, exclusion):
+def test_a_rebuild_reproduces_the_exclusion(
+    owned_user, owned_library, tracked_game, exclusion
+):
     """Replay parity over an amended row."""
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)

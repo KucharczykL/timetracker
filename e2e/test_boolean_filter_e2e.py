@@ -111,3 +111,22 @@ def test_click_to_deselect_radio_works(live_server, page):
     _submit(page)
     parsed = _filter_from_url(page.url)
     assert "mastered" not in parsed
+
+
+@pytest.mark.django_db
+@override_settings(ROOT_URLCONF="e2e.test_boolean_filter_e2e")
+def test_the_visibility_facet_states_each_flag(live_server, page):
+    page.set_viewport_size({"width": 1920, "height": 900})
+    page.goto(live_server.url + "/test-boolean-filter/")
+    trigger = page.get_by_role("button", name="Visibility")
+    if not trigger.is_visible():
+        page.get_by_role("button", name="More filters").click()
+    trigger.click()
+
+    page.get_by_role("group", name="Unfinished lists").get_by_label("False").check()
+    page.get_by_role("group", name="Dropped figures").get_by_label("True").check()
+    _submit(page)
+
+    parsed = _filter_from_url(page.url)
+    assert parsed["excluded_from_unfinished"] == {"value": False, "modifier": "EQUALS"}
+    assert parsed["excluded_from_dropped"] == {"value": True, "modifier": "EQUALS"}

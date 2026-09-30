@@ -470,9 +470,7 @@ def _figures_and_links(world, year):
     [
         #: Endless is unfinished; Left endless is dropped.
         pytest.param({}, (2, 2, 3, 3), id="neither"),
-        pytest.param(
-            {"excluded_from_unfinished": True}, (1, 1, 3, 3), id="unfinished"
-        ),
+        pytest.param({"excluded_from_unfinished": True}, (1, 1, 3, 3), id="unfinished"),
         pytest.param({"excluded_from_dropped": True}, (2, 2, 2, 2), id="dropped"),
         pytest.param(
             {"excluded_from_unfinished": True, "excluded_from_dropped": True},
