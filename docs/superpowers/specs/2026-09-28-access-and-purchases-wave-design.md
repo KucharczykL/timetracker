@@ -99,12 +99,13 @@ conversion must state one.
 ## Aggregates and storage
 
 #1275 is on `main`. M1 (PR #1362), M2 (PR #1366), M3 (stack #1379:
-PRs #1377, #1378, #1380) and M7 (PR #1390) are on `main` too, migrations
-`0020` to `0024`; the next is `0025`. The contracts are
+PRs #1377, #1378, #1380), M7 (PR #1390) and M8 (PR #1397) are on `main`
+too, migrations `0020` to `0025`; the next is `0026`. The contracts are
 [The LibraryEntry aggregate](2026-09-29-issue-719-libraryentry-aggregate-design.md),
 [A copy's access ends and resumes](2026-09-29-issue-721-entry-access-end-design.md),
-M3's own and
-[Game kind and parent](2026-09-30-issue-1353-game-kind-and-parent-design.md).
+M3's own,
+[Game kind and parent](2026-09-30-issue-1353-game-kind-and-parent-design.md)
+and [Excluded from dropped](2026-09-30-issue-1334-excluded-from-dropped-design.md).
 
 ### The opening endpoint
 
@@ -269,11 +270,16 @@ same redirect as any private Game.
 
 ### PlayerGame
 
-`excluded_from_dropped`, stated by `RecordPlayerGameFacts` through
+`excluded_from_dropped`, stated by `RecordPlayerGameFacts` (its fourth
+field, `FINGERPRINT_VERSION` 3) through
 `playergame.excluded_from_dropped_changed`, the sibling of
 `excluded_from_unfinished_changed`. Each figure that leaves a game out
 reads its own fact and nothing else; the rule this wave makes is that no
-fact stated for one figure decides another.
+fact stated for one figure decides another. Nothing was backfilled: P4
+states both flags on every game with an infinite purchase. The two
+flags are one "Visibility" group, `VISIBILITY_FIELDS` in
+`games/models.py`, a `QuickFacetGroup` in the quick bar and a
+`FormFieldGroup(look="panel")` on the Game form and bulk Edit.
 
 Both flags are the Visibility group (M8): `VISIBILITY_FIELDS` in
 `games/models.py` names them for the Game form and the bulk Edit, and one
@@ -683,7 +689,7 @@ backlog reads M7's edition word.
 | M2 (merged, PR #1366, 2026-09-29) | #721 | the end columns and their `CHECK`s in a migration of its own, as `0019` added the device's; access end and resume on the primitive |
 | M3 (merged, stack #1379: PRs #1377, #1378, #1380, 2026-09-30) | #1352 | the Library screens: Add to library, Game detail's Library section with its inline acts, the end and resume pages with one-click Undo; the Library tab, `LibraryEntryFilter`, presets, bulk Edit and Remove; the Games tab's Access column and facets |
 | M7 (merged, PR #1390, 2026-09-30) | #1353 | `Game.kind` and `Game.parent`, `Edition.kind`: columns, form, `<game-addon>`, `state_addon`, Game detail's Add-ons section and "Add-on of" row, the Games list's main-only base, Kind facet and column, the every-kind clause on links |
-| M8 | #1334 | `excluded_from_dropped` and its bulk Edit field |
+| M8 (merged, PR #1397, 2026-09-30) | #1334 | `excluded_from_dropped` and its bulk Edit field, the Visibility group |
 | P1 | #725, #726, #828 | the Purchase aggregate: projection, creation with an entry, description, day correction, removal, API |
 | P2 | #727 | refund endpoints and the coupled entry end |
 | P3 | #728, #729 | `PurchaseValuation`, decimal rates, the run state re-pointed, the valuation request on the write path |
