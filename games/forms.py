@@ -2120,6 +2120,18 @@ class _LibraryBoundConstraintValidationMixin:
         return exclusions
 
 
+#: The Game group's fields, in order.
+_GAME_FIELDS = (
+    "name",
+    "sort_name",
+    "kind",
+    "parent",
+    "original_release_date",
+    "status",
+    "mastered",
+)
+
+
 class GameForm(
     _LibraryBoundConstraintValidationMixin, PrimitiveWidgetsMixin, forms.ModelForm
 ):
@@ -2195,16 +2207,7 @@ class GameForm(
     excluded_from_dropped = forms.BooleanField(required=False, label="Dropped figures")
 
     #: Declared fields otherwise sink below model fields.
-    field_order = (
-        "name",
-        "sort_name",
-        "kind",
-        "parent",
-        "original_release_date",
-        "status",
-        "mastered",
-        *VISIBILITY_FIELDS,
-    )
+    field_order = (*_GAME_FIELDS, *VISIBILITY_FIELDS)
 
     def clean_kind(self) -> GameKind:
         return GameKind(self.cleaned_data["kind"] or GameKind.MAIN)
@@ -2227,19 +2230,7 @@ class GameForm(
 
 #: Groups name every visible field.
 GAME_FORM_GROUPS = (
-    FormFieldGroup(
-        "Game",
-        (
-            "name",
-            "sort_name",
-            "kind",
-            "parent",
-            "original_release_date",
-            "status",
-            "mastered",
-        ),
-        look="hidden",
-    ),
+    FormFieldGroup("Game", _GAME_FIELDS, look="hidden"),
     FormFieldGroup(
         "Visibility",
         VISIBILITY_FIELDS,

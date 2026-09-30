@@ -188,11 +188,11 @@ def _flag(choices: FlagChoices, label: str) -> forms.TypedChoiceField:
     )
 
 
-_FACTS_GROUP = ("status", "mastered")
+_FACT_FIELDS = ("status", "mastered")
 
 #: Groups name every visible field.
 BULK_GAME_EDIT_GROUPS = (
-    FormFieldGroup("Facts", _FACTS_GROUP, look="hidden"),
+    FormFieldGroup("Facts", _FACT_FIELDS, look="hidden"),
     FormFieldGroup(
         "Visibility",
         VISIBILITY_FIELDS,
@@ -247,7 +247,7 @@ class BulkGameEditForm(PrimitiveWidgetsMixin, forms.Form):
     def clean(self) -> dict[str, Any]:
         super().clean()
         cleaned = self.cleaned_data
-        if all(cleaned.get(name) is None for name in _FACTS_GROUP + VISIBILITY_FIELDS):
+        if all(cleaned.get(name) is None for name in _FACT_FIELDS + VISIBILITY_FIELDS):
             raise forms.ValidationError(NOTHING_STATED)
         return cleaned
 
