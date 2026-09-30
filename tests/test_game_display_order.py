@@ -2,7 +2,6 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
-from zoneinfo import ZoneInfo
 
 import pytest
 from django.contrib.auth.models import User
@@ -14,10 +13,6 @@ from game_display_order import tied_games
 from historical_playtime_rows import record_row
 from session_rows import timed_row
 
-from common.date_time_presentation import (
-    DEFAULT_DATE_TIME_FORMAT_PROFILE,
-    DateTimePresentation,
-)
 from games.api import search_games
 from games.bulk_entries import entry_resolution
 from games.bulk_game_edit import game_edit_resolution
@@ -46,10 +41,6 @@ from games.sorting import (
 )
 from games.views.purchase import _refund
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
-
-PRESENTATION = DateTimePresentation(
-    DEFAULT_DATE_TIME_FORMAT_PROFILE, "en-us", ZoneInfo("UTC")
-)
 
 
 class GameDisplayOrderTest(SimpleTestCase):
@@ -209,7 +200,7 @@ def _runs_of(library, games):
     return [run for pair in zip(firsts, seconds, strict=True) for run in pair]
 
 
-def _sorted_game_ids(queryset, sort, sort_map, path):
+def _sorted_column(queryset, sort, sort_map, path):
     ordered = apply_sort(queryset, FindFilter(sort=sort), sort_map, sort).queryset
     return list(ordered.values_list(path, flat=True))
 
@@ -227,14 +218,12 @@ def games(owned_library):
 def test_run_sorts_group_runs_by_game_in_display_order(owned_library, games, sort):
     runs = _runs_of(owned_library, games)
     queryset = Playthrough.objects.filter(library=owned_library)
-    assert list(
-        apply_sort(
-            queryset, FindFilter(sort=sort), PLAYTHROUGH_SORTS, sort
-        ).queryset.values_list("id", flat=True)
-    ) == [run.id for run in runs]
-    assert _sorted_game_ids(
-        queryset, f"-{sort}", PLAYTHROUGH_SORTS, "player_game__game"
-    )[::2] == [game.id for game in reversed(games)]
+    assert _sorted_column(queryset, sort, PLAYTHROUGH_SORTS, "id") == [
+        run.id for run in runs
+    ]
+    assert _sorted_column(queryset, f"-{sort}", PLAYTHROUGH_SORTS, "player_game__game")[
+        ::2
+    ] == [game.id for game in reversed(games)]
 
 
 @pytest.mark.parametrize("sort", ["name", "-name", "playthrough", "-playthrough"])
@@ -247,7 +236,7 @@ def test_session_sorts_group_sessions_by_game_in_display_order(
         timed_row(run, started, started + timedelta(hours=1))
     queryset = PlayerSession.objects.filter(library=owned_library)
     expected = [run.player_game.game_id for run in runs]
-    assert _sorted_game_ids(
+    assert _sorted_column(
         queryset, sort, SESSION_SORTS, "playthrough__player_game__game"
     ) == _directed(expected, sort)
 
@@ -259,7 +248,7 @@ def test_record_name_sort_reads_display_order(owned_library, games, sort):
             [Playthrough.objects.get(library=owned_library, player_game__game=game)]
         )
     queryset = HistoricalPlaytime.objects.filter(library=owned_library)
-    assert _sorted_game_ids(
+    assert _sorted_column(
         queryset, sort, HISTORICAL_PLAYTIME_SORTS, "player_game__game"
     ) == _directed([game.id for game in games], sort)
 
@@ -267,7 +256,7 @@ def test_record_name_sort_reads_display_order(owned_library, games, sort):
 @pytest.mark.parametrize("sort", ["sort_name", "-sort_name"])
 def test_game_sort_name_sort_reads_display_order(owned_library, games, sort):
     queryset = Game.objects.filter(library=owned_library)
-    assert _sorted_game_ids(queryset, sort, GAME_SORTS, "id") == _directed(
+    assert _sorted_column(queryset, sort, GAME_SORTS, "id") == _directed(
         [game.id for game in games], sort
     )
 
@@ -284,7 +273,7 @@ def test_entries_resolve_and_sort_in_display_order(
     resolved = entry_resolution(owned_library, [entry.id for entry in entries]).rows
     assert [entry.player_game.game_id for entry in resolved] == expected
     queryset = LibraryEntry.objects.filter(library=owned_library)
-    assert _sorted_game_ids(
+    assert _sorted_column(
         queryset, sort, ENTRY_SORTS, "player_game__game"
     ) == _directed(expected, sort)
 
