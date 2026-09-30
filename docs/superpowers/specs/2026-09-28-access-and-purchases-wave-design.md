@@ -47,7 +47,7 @@ In:
 - `Edition.kind`, so a demo or a beta is a prerelease Edition of its
   game with a Release per platform, made and picked like any other; the
   toggle that hides prerelease play is #1361, after #1354.
-- The Add to library form, the Entries list, the Purchases list made
+- The Add to library form, the Games page's Library tab, the Purchases list made
   selectable, the Games list's Access column, Game detail's Library and
   Add-ons sections, filters, presets, statistics, the API.
 - The conversion of every existing row, its preflight, its parity gate and
@@ -98,9 +98,12 @@ conversion must state one.
 
 ## Aggregates and storage
 
-#1275 is on `main`. M1 (PR #1362) and M2 (PR #1366) are on `main` too, migrations
-`0020` and `0021`; the next is `0022`. Its contract is
-[The LibraryEntry aggregate](2026-09-29-issue-719-libraryentry-aggregate-design.md).
+#1275 is on `main`. M1 (PR #1362), M2 (PR #1366) and M3 (stack #1379:
+PRs #1377, #1378, #1380) are on `main` too, migrations `0020` to `0023`;
+the next is `0024`. The contracts are
+[The LibraryEntry aggregate](2026-09-29-issue-719-libraryentry-aggregate-design.md),
+[A copy's access ends and resumes](2026-09-29-issue-721-entry-access-end-design.md)
+and M3's own.
 
 ### The opening endpoint
 
@@ -134,9 +137,11 @@ A new aggregate, stream `library.libraryentry`, projection
 | `removed_at` | the projector's mark |
 
 The end endpoint's ways are `returned`, `expired`, `revoked`, `refunded`,
-`sold`, `lost`, `given_away`, `broken`, `stolen`; `EndWay` in
-`games/end_ways.py` grows by the first four, and the entry's payload
-states its own subset as a `Literal`.
+`sold`, `lost`, `given_away`, `broken`, `stolen`, and `unstated` ("Not
+said"), which a one-click end states with the calendar's day and
+`way_words()` renders as nothing; `EndWay` in `games/end_ways.py` grows
+by those five, and the entry's payload states its own subset as a
+`Literal`.
 
 A resume is a fact, not a void. `access_resumed` is dated, writes the end
 columns back to their unstated values, and the history keeps every end.
@@ -333,7 +338,9 @@ Declared in `games/bulk_actions.py`, Undo through `EventRows`:
 `entry.edit` (access, format, note; an empty field keeps), `entry.remove`,
 `purchase.edit` (amount with Free, currency, kind, name, note; keep),
 `purchase.remove`. The Edit acts live beside the others and share
-`games/bulk_edit.py`.
+`games/bulk_edit.py`; their Undo reads the one fact-change reader in
+`games/reads/fact_change.py`, which `playergame.edit` and `entry.edit`
+call and P5's `purchase.edit` calls third.
 
 ### API
 
@@ -422,7 +429,7 @@ deploy. The pre-deploy dump is the rollback.
 A "Conversion review" section on the Library page, one row per category
 with its count. Unknown price (54) and Epic free (19) link to the
 Purchases list with its price-state facet and platform set. Rentals (30)
-link to the Entries list at Access: Rented. Repurchased games (39) link to
+link to the Library tab at Access: Rented. Repurchased games (39) link to
 the Games list at entry count two or more. Created Releases (15) and mixed
 games (6), which no filter expresses, render as rows: the pass tags their
 `libraryentry.created` and `playergame` events with the category in
@@ -432,8 +439,12 @@ edit page. A Release writes no event, so the row is the entry that names
 it. Demo editions (34, of which 30 games hold sessions) link to the
 Games list at entry access Demo; the pass names no session's Release,
 because no finder is reliable, and #1354's bulk Edit field is where a
-person states which sessions were the demo. A "Hide this review" checkbox on `UserLibraryPreferences` closes the
-section; it is its own toggle, read from nothing else.
+person states which sessions were the demo. A copy recorded by hand
+between M3 and the cutover beside a legacy purchase of the same copy
+becomes two entries, since no rule tells one copy stated twice from two
+copies; the preflight lists such games as a category. A "Hide this
+review" checkbox on `UserLibraryPreferences` closes the section; it is
+its own toggle, read from nothing else.
 
 The sample fixture is regenerated after the cutover. The anonymizer
 shifts an entry's and a purchase's days as it shifts a purchase's today,
@@ -444,13 +455,23 @@ randomises the through table today.
 
 ### Forms
 
-**Add to library** replaces Add purchase: one submit records one item.
-Game; a Release picker over the game's live Releases, the sole one
-preselected, whose create row takes a platform and states a private
-Release through the catalog service. This is the selector #893 deferred:
-visible Releases only, similar ones told apart by platform, edition and
-date, an explicit choice, never inferred. Then Access, Format, Acquired (a
-temporal field), Note, and a three-way Purchase segment: Paid (amount,
+"Copy" is the person's word and "Library" the screens' ("Add to
+library", the Library tab, Game detail's Library section); "entry" stays
+in code, events and the API. A copy leaves with "I no longer have it"
+and returns with "I have it again", never "End access" or "Resume".
+
+**Add to library** replaces Add purchase. M3 built it at its final URL
+with the copy's fields; Game detail's inline add fixes the game, and the
+standalone page is the same form with a Game picker in front. Game; a
+Release picker over the game's live Releases, the sole one preselected,
+a row reading platform · edition (named only) · year, whose create row
+takes a platform and states a private Release under the default Edition
+through the catalog service on a Game the library owns (a shared Game
+lists visible Releases only until #1375). This is the selector #893
+deferred: visible Releases only, an explicit choice, never inferred.
+Then Access, Format, Acquired (a temporal field defaulting to the
+calendar's day), Note, and from P5 a three-way Purchase segment on the
+"Add to library…" page, never on the one-click add: Paid (amount,
 currency), Free, No purchase. An access other than Owned starts on No
 purchase and Owned on Paid; a default, changed at will. Kind and Name
 appear for a pass or an upgrade, which name an existing entry of the game
@@ -458,12 +479,23 @@ in place of a Release; on a game with no entry the picker offers to record
 one, Owned and Digital, in the same submit. The "separate price per game"
 mode and the row Split go with the bundle.
 
-**Edit entry**: access, format, release, acquired, note. The end of
-access has its own pages, and a one-click end or resume offers Undo
-(#1352). **Edit purchase**:
-kind, name, amount with Free, currency, purchased, refund (day, note; "Not
-refunded" voids), note. The row Refund act stays immediate with the
-calendar's day, corrected on the edit page.
+**Edit copy**: access, format, release, acquired, note. The end of
+access has its own pages: "I no longer have it" and "I have it again"
+each one click or "With details…", and "Edit how it left…" on an ended
+copy. The one-click pattern is the wave's for every immediate act: a
+`*_now` POST carries a submission key (400 without one), states the act
+with the calendar's day (an end with way `unstated`), and offers Undo
+keyed on the stream sequence its press appended
+(`library/<entry>/end/undo/<sequence>`), which refuses once a later act
+overtook it, through `latest_end_act` and `taken_back_end` in
+`games/reads/entries.py`; the "With details…" pages offer no Undo. An
+edit page carries a stale-page token (`end_seen` in
+`games/entry_forms.py`, a hash of marker, way, day and note), so a
+correction made since the page opened is refused; the device form
+lacks one (#1387). **Edit purchase**: kind, name, amount with Free,
+currency, purchased, refund (day, note; "Not refunded" voids), note. The
+row Refund act is one click in that pattern, the calendar's day and a
+sequence-keyed Undo, corrected on the edit page.
 
 ### Lists
 
@@ -471,9 +503,11 @@ calendar's day, corrected on the edit page.
 Library tab beside Games): Game, Platform, Access, Format, Acquired,
 Access ended (way · day), Note, Created; P5 adds Purchases. Facets
 access, format, ended, way, platform, acquired, game. Tray Edit and
-Remove; row menu "I no longer have it" or "I have it again" (each one
-click or with details), "Edit how it left…" on an ended copy, Edit,
-Remove, shared with Game detail (#1352).
+Remove; one row menu (`entry_row_menu`, `games/views/entry_menu.py`,
+a `DropdownSubmenuItem` holding "Just mark it gone" or "Just add it
+back" and "With details…"), then "Edit how it left…" on an ended copy,
+Edit, Remove, shared with Game detail (#1352). No navbar item and no
+standalone page.
 
 **Purchases** (selectable, the Actions column retired, #1266): Name (the
 game, or product · game), Kind, Amount (Free and Unknown as words, the
@@ -482,12 +516,19 @@ amount, price state (Paid, Free, Unknown), purchased, refunded, and access
 and platform through the entry. Tray Edit and Remove; row menu Edit,
 Refund, Remove.
 
-**Games**: an Access column (a badge whose popover says one sentence) and facets
-access and format over held entries, scoped through
-`context.queryset_for` so the shared-catalog scope holds; a Kind column and facet, off by default.
-**Game detail**: a Library section listing the entries had now, grouped
-by version, with their purchases beneath; an Add-ons section on a main game; a
-parent link on an add-on.
+**Games**: an Access column, off by default (`AccessBadge`, filled only
+where a copy is held now, whose popover says one sentence) and facets
+access and format over held copies, scoped through
+`context.queryset_for` so the shared-catalog scope holds; `copy_end()`
+is the one held-or-ended rule, and `AccessSummary` carries an
+`EndedCopy` per ended one; a Kind column and facet, off by default.
+**Game detail**: a Library section, on `SECTION_SURFACE_CLASS`, listing
+the copies had now grouped by version (`SummaryGroup` over dense
+`SummaryRow`s), every per-copy act inline and never one press without
+Undo, ended copies out of the section with one muted line pointing at
+View all, and from P5 each copy's purchases under its row; an Add-ons
+section on a main game, in the same kit's shapes; a parent link on an
+add-on.
 
 ### Filters and presets
 
@@ -501,9 +542,9 @@ two bound date columns and needs no zone. A filter context comes from
 `filter_query_context_for_library`, whose `day_zone` a day predicate
 reads once.
 
-`EntryFilter` is new: access, format, the two endpoints as intervals and
-acts, way, platform through the Release, game, `game_filter`,
-`purchase_filter`. `PurchaseFilter` is rewritten on the new columns:
+`LibraryEntryFilter` is new: access, format, the two endpoints as
+intervals and acts, way, platform through the Release, game,
+`game_filter`, and from P5 `purchase_filter`. `PurchaseFilter` is rewritten on the new columns:
 amount, currency, price state, kind, the two endpoints, `entry_filter`,
 `game_filter` through the entry. `GameFilter` gains `kind`, `parent`,
 `access`, `format`, `entry_count` and an `entry_filter` relation, and
@@ -526,8 +567,9 @@ purchase preset.
 
 ### Reads
 
-`games/reads/entries.py`: `library_entries()`, `game_entries()`, the
-per-game access summary the Games column reads. `games/reads/purchases.py`:
+`games/reads/entries.py`: `library_entries()`, `readable_entries()`,
+`game_entries()`, `access_summaries()` for the Games column,
+`latest_end_act()` and `taken_back_end()` for the sequence-keyed Undo. `games/reads/purchases.py`:
 `library_purchases()`, `game_purchases()`, spending through valuations.
 Every read states its scope through four marks: entry, PlayerGame,
 Release, Game, each a join on a key the row holds. No sum reads a float.
@@ -546,7 +588,9 @@ known price" prints beside any total an unknown amount left out. Purchased
 count, refunded count and refunded percent read purchases on the two
 endpoints.
 
-**Backlog** reads entries with Owned access, live, joined to the game.
+**Backlog** reads copies with Owned access, live and held now (no end
+standing, the `copy_end()` rule), joined to the game: a sold copy is no
+backlog item.
 Owned-unfinished: the game is at no done status, has no completion in
 scope, is not Abandoned, and `excluded_from_unfinished` is false. Dropped:
 Abandoned, or the entry's access ended with way `refunded`, and
@@ -596,7 +640,7 @@ backlog reads M7's edition word.
 |---|---|---|
 | M1 (merged, PR #1362, 2026-09-29) | #719, #720, #722 | the opening endpoint whole, its one correction (`CorrectEntryAcquisition`) included, since the replay gate refuses a registered event type no command emits; the LibraryEntry aggregate: schema without the end columns, creation, description, removal and restore as commands with no route, multiple entries, reference kind, `_is_library_scoped` path, the generalised referrer registry, replay gate, the four API routes with `limit`/`offset` |
 | M2 (merged, PR #1366, 2026-09-29) | #721 | the end columns and their `CHECK`s in a migration of its own, as `0019` added the device's; access end and resume on the primitive |
-| M3 | #1352 | the Entries screens: list as the Library tab, filter, presets, bulk Edit and Remove, the Games Access column and facets, Game detail's Library section, the entry forms |
+| M3 (merged, stack #1379: PRs #1377, #1378, #1380, 2026-09-30) | #1352 | the Library screens: Add to library, Game detail's Library section with its inline acts, the end and resume pages with one-click Undo; the Library tab, `LibraryEntryFilter`, presets, bulk Edit and Remove; the Games tab's Access column and facets |
 | M7 | #1353 | `Game.kind` and `Game.parent`, `Edition.kind`: columns, form, Game detail add-ons, Games facet |
 | M8 | #1334 | `excluded_from_dropped` and its bulk Edit field |
 | P1 | #725, #726, #828 | the Purchase aggregate: projection, creation with an entry, description, day correction, removal, API |
@@ -647,7 +691,12 @@ inside a member says so in its body and closes with it.
   this wave builds is the one #690 and #705 deferred; #1354 puts it on the
   session and record forms, with the rule that a session names a Release
   only where the library holds an entry on it.
-- **Bulk end of access over entries** is #1355, beside #1345.
+- **Bulk end of access over copies** is #1355, beside #1345, on the
+  bulk runner; it reads `latest_end_act` and voids only where the
+  batch's own event is still the latest of the end's family, as
+  #1256's Undo does. **A platform across many copies** is #1382, which
+  resolves each game's Release on the platform and refuses a row whose
+  game holds none, never creating one.
 - **#1344** swaps the device's `endpoint_events(...)` for
   `resumable_endpoint_events(..., resumed="library.device.access_resumed")`
   and `Endpoint.over` for `ResumableEndpoint.resuming`, no primitive work;
@@ -664,6 +713,13 @@ inside a member says so in its body and closes with it.
 - **#889** later moves the per-platform figures onto the Release the entry
   names.
 - **#1157** draws its card from this wave's readers.
+- **#1383** redesigns Game detail after P5 and #1353, so every section
+  the wave adds is on the page it redraws; the wave's sections take the
+  library kit's shapes meanwhile (`SummaryGroup`, `SummaryList`, `Chip`,
+  `SECTION_SURFACE_CLASS`) and invent no markup of their own.
+- **#1385** opens every add and edit form in a modal once #1384 lands,
+  Game detail's with #1383's mockups; until then each act the wave adds
+  is its own page, and every page keeps working as one after.
 - **#1358**'s Before start reads sessions on full editions once #1354
   lets a session name a demo Release; #1354 owns that clause, and its
   bulk Edit Release field is how an existing demo session is placed.
@@ -713,7 +769,11 @@ refresh and its printed totals, then the fixture PR.
 - DLC is a Game with `kind` and `parent` in IGDB's words; passes and the
   upgrade are Purchase kinds.
 - `infinite` converts to both exclusion facts; #1334 is in the wave.
-- The backlog reads Owned entries; every exclusion is its own fact.
+- The backlog reads Owned copies held now; every exclusion is its own
+  fact. The Games column and facets read the same state.
+- An immediate act is one click with a sequence-keyed Undo, never a
+  page; a detailed one is a page with no Undo.
+- "Copy" and "Library" are the person's words; "entry" is the code's.
 - Entry and purchase days are endpoints at any precision; the opening
   ones have no void.
 - Entry, catalog and PlayerGame members merge alone; the Purchase
@@ -726,8 +786,15 @@ refresh and its printed totals, then the fixture PR.
 
 ## Follow-up issues filed
 
-- #1352, the Entries screens (M3)
+- #1352, the Library screens (M3)
 - #1353, `Game.kind` and `Game.parent` (M7)
 - #1354, a Release on a session and a record
 - #1355, bulk end of access over entries
 - #1361, a toggle that hides prerelease play (after #1354)
+- #1375, a library's own Release under a shared Edition
+- #1382, set the platform across many copies on the Library tab
+- #1383, the Game detail redesign, after P5 and #1353
+- #1384, the `<form-dialog>` element, and #1385, the epic that opens
+  every add and edit form in a modal, tied to #1383
+- #1381, #1386, #1387: a row divider in light mode, overflow facet
+  chevrons, the device form's stale-page gap
