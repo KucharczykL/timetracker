@@ -12,8 +12,8 @@ from django.contrib.auth.models import User
 from django.db.models import QuerySet
 
 from common.components.primitives import Cell
-from games.bulk_actions import FilterJson, Presentations, Refused, Resolution
 from games.bulk_narrowing import narrowed
+from games.bulk_parts import FilterJson, Presentations, Refused, Resolution
 from games.events.dispatch import RowNotHeld, RowUnreadable
 from games.filters import parse_session_filter
 from games.models import PlayerSession, UserLibrary

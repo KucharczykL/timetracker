@@ -11,20 +11,7 @@ from django.contrib.auth.models import User
 from django.http import QueryDict
 
 from common.components.primitives import FormFields
-from games.bulk_actions import (
-    ActTitle,
-    AsksNothing,
-    BulkAction,
-    BulkChoice,
-    ChoiceValue,
-    Control,
-    EventRows,
-    FieldName,
-    Offered,
-    PreviewColumn,
-    Resolution,
-    RowOutcome,
-)
+from games.bulk_actions import BulkAction
 from games.bulk_edit import (
     form_refusal,
     keeping,
@@ -35,6 +22,19 @@ from games.bulk_edit import (
     statement_unreadable,
 )
 from games.bulk_games import GAME_GONE, game_scope
+from games.bulk_parts import (
+    ActTitle,
+    AsksNothing,
+    BulkChoice,
+    ChoiceValue,
+    Control,
+    EventRows,
+    FieldName,
+    Offered,
+    PreviewColumn,
+    Resolution,
+    RowOutcome,
+)
 from games.bulk_sessions import lost
 from games.events.append import SourceMetadata
 from games.events.dispatch import CommandRejected, RowNotHeld

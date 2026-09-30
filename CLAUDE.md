@@ -639,7 +639,10 @@ the rows it takes back -- one act may write two, as the reclassification writes 
 created record beside the reclassified session, and an Undo reading both would
 hand a record's key to a command that reads sessions. Each act's own half lives
 beside it (`games/bulk_reclassification.py`), imported at the foot of the
-table. `games/views/bulk.py` runs any of them: one route, two POSTs told apart
+table. The parts an act is built from (`Resolution`, `RowOutcome`,
+`FilterJson`, ...) live in `games/bulk_parts.py`, which imports no act, so
+a half two acts share (`games/bulk_games.py`) reads them without reaching
+the table; the table holds `BulkAction` alone. `games/views/bulk.py` runs any of them: one route, two POSTs told apart
 by a submission token that **is** the batch's correlation id, so a batch
 spanning chunks stays one batch. A chunk is the rows one request acts on inside
 `CHUNK_BUDGET` and is no transaction -- each row is its own dispatch, keyed

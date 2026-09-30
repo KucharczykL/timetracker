@@ -13,10 +13,17 @@ from django.http import QueryDict
 from common.components import Icon
 from common.components.primitives import FormFields
 from common.platform_icons import PLATFORM_ICONS, require_platform_icon
-from games.bulk_actions import (
+from games.bulk_actions import BulkAction
+from games.bulk_edit import (
+    form_refusal,
+    keeping,
+    settled,
+    stated_object,
+    statement_unreadable,
+)
+from games.bulk_parts import (
     ActTitle,
     AsksNothing,
-    BulkAction,
     BulkChoice,
     ChoiceValue,
     Control,
@@ -25,13 +32,6 @@ from games.bulk_actions import (
     Offered,
     PreviewColumn,
     RowOutcome,
-)
-from games.bulk_edit import (
-    form_refusal,
-    keeping,
-    settled,
-    stated_object,
-    statement_unreadable,
 )
 from games.bulk_platforms import outcome, platform_resolution, platform_scope, undoing
 from games.events.idempotency import IdempotencyKey

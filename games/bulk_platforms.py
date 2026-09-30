@@ -7,8 +7,8 @@ from django.contrib.auth.models import User
 from django.db.models import QuerySet
 
 from games.batch_ledger import ActName
-from games.bulk_actions import FilterJson, Resolution, RowOutcome, UndoRow
 from games.bulk_narrowing import narrowed
+from games.bulk_parts import FilterJson, Resolution, RowOutcome, UndoRow
 from games.bulk_sessions import lost
 from games.events.dispatch import RowNotHeld
 from games.events.idempotency import IdempotencyKey

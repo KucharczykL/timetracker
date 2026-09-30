@@ -12,13 +12,8 @@ from django.db.models import QuerySet
 
 from common.components.primitives import Cell
 from common.temporal_presentation import TemporalText
-from games.bulk_actions import (
-    FilterJson,
-    Presentations,
-    PreviewColumn,
-    Resolution,
-)
 from games.bulk_narrowing import narrowed
+from games.bulk_parts import FilterJson, Presentations, PreviewColumn, Resolution
 from games.bulk_sessions import lost
 from games.filters import parse_playthrough_filter
 from games.models import Playthrough, UserLibrary

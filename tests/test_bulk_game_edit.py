@@ -11,7 +11,7 @@ from django.http import Http404, QueryDict
 from django.urls import reverse
 from session_rows import tracked_run
 
-from games.bulk_actions import BULK_ACTIONS, AsksNothing, Control, RowOutcome
+from games.bulk_actions import BULK_ACTIONS
 from games.bulk_edit import STATEMENT_UNREADABLE
 from games.bulk_game_edit import (
     EDIT,
@@ -21,6 +21,7 @@ from games.bulk_game_edit import (
     GameEditStatement,
 )
 from games.bulk_games import GAME_GONE
+from games.bulk_parts import AsksNothing, Control, RowOutcome
 from games.events.dispatch import CommandRejected, RowUnreadable
 from games.events.playergame import (
     PLAYERGAME_STATUS_CHANGED,

@@ -11,7 +11,7 @@ from entries import record_entry, remove_entry
 
 from common.components.unset_field import unset_input_name
 from common.criteria import FilterError
-from games.bulk_actions import BULK_ACTIONS, Control, EventRows, RowOutcome
+from games.bulk_actions import BULK_ACTIONS
 from games.bulk_entries import ENTRY_GONE
 from games.bulk_entry_edit import (
     EDIT_CHOICE,
@@ -20,6 +20,7 @@ from games.bulk_entry_edit import (
     NOTHING_STATED,
     EntryEditStatement,
 )
+from games.bulk_parts import Control, EventRows, RowOutcome
 from games.bulk_removal import REMOVE_ENTRY
 from games.events.dispatch import CommandRejected
 from games.models import EntryAccess, EntryFormat, Game, LibraryEntry, Platform

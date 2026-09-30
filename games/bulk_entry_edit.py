@@ -12,18 +12,7 @@ from django.http import QueryDict
 from django.template.defaultfilters import truncatechars
 
 from common.components.primitives import FormFields
-from games.bulk_actions import (
-    ActTitle,
-    AsksNothing,
-    BulkAction,
-    BulkChoice,
-    ChoiceValue,
-    Control,
-    EventRows,
-    FieldName,
-    Offered,
-    RowOutcome,
-)
+from games.bulk_actions import BulkAction
 from games.bulk_edit import (
     form_refusal,
     keeping,
@@ -38,6 +27,17 @@ from games.bulk_entries import (
     entry_resolution,
     entry_scope,
     removed_entry,
+)
+from games.bulk_parts import (
+    ActTitle,
+    AsksNothing,
+    BulkChoice,
+    ChoiceValue,
+    Control,
+    EventRows,
+    FieldName,
+    Offered,
+    RowOutcome,
 )
 from games.entry_forms import normalised_note
 from games.events.append import SourceMetadata

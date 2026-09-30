@@ -15,19 +15,7 @@ from common.components import PostCreate
 from common.components.core import Fragment
 from common.components.primitives import FORM_LABEL_CLASS, Div, FormFields, P
 from common.utils import truncate
-from games.bulk_actions import (
-    ActTitle,
-    AsksNothing,
-    BulkAction,
-    BulkChoice,
-    ChoiceValue,
-    Control,
-    EventRows,
-    FieldName,
-    Offered,
-    PreviewColumn,
-    RowOutcome,
-)
+from games.bulk_actions import BulkAction
 from games.bulk_edit import (
     Keeping,
     form_refusal,
@@ -43,6 +31,18 @@ from games.bulk_move import (
     moved_by,
     refuse_another_game,
     target_run,
+)
+from games.bulk_parts import (
+    ActTitle,
+    AsksNothing,
+    BulkChoice,
+    ChoiceValue,
+    Control,
+    EventRows,
+    FieldName,
+    Offered,
+    PreviewColumn,
+    RowOutcome,
 )
 from games.bulk_sessions import (
     device_cell,

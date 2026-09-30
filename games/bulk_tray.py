@@ -11,7 +11,8 @@ from common.components import (
 )
 from common.components.core import Node
 from common.returns import OriginUrl, action_url
-from games.bulk_actions import BULK_ACTIONS, BulkActionName
+from games.bulk_actions import BULK_ACTIONS
+from games.bulk_parts import BulkActionName
 
 #: The colours a line of acts keeps: one adds, one takes away.
 #:

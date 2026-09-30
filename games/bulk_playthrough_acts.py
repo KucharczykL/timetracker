@@ -10,10 +10,10 @@ from django.contrib.auth.models import User
 from django.http import QueryDict
 
 from common.components import Div, Input, P
-from games.bulk_actions import (
+from games.bulk_actions import BulkAction
+from games.bulk_parts import (
     ActTitle,
     AsksNothing,
-    BulkAction,
     BulkChoice,
     ChoiceValue,
     Control,
