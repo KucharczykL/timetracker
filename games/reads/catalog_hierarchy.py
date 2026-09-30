@@ -53,5 +53,6 @@ def tracked_addons(library: UserLibrary, game: Game) -> QuerySet[Game]:
     return (
         Game.objects.tracked_by(library)
         .filter(parent=game)
+        .select_related("platform")
         .order_by("sort_name", "name", "pk")
     )

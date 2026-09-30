@@ -126,7 +126,9 @@ def test_the_addons_section_lists_tracked_addons_only(
     section = page[page.index('id="addons"') :]
     assert f'href="{tracked.get_absolute_url()}"' in section
     assert ">DLC<" in section
-    assert PlayerGameStatus.UNPLAYED.label in section
+    assert f"· {PlayerGameStatus.UNPLAYED.label}" in section
+    assert reverse("games:edit_game", args=[tracked.pk]) in section
+    assert reverse("games:remove_game", args=[tracked.pk]) in section
     assert "Untracked DLC" not in page
     assert foreign.name not in page
 

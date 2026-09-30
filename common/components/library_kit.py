@@ -297,7 +297,7 @@ def SummaryRow(
 def SummaryGroup(*, label: str, rows: Sequence[Child]) -> Node:
     """A name over rows that state none."""
     return Div(data_summary_group="", class_="flex flex-col")[
-        P(class_="text-type-subheading text-heading")[label],
+        P(class_="text-type-section text-heading")[label],
         *rows,
     ]
 

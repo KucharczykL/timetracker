@@ -804,7 +804,8 @@ def _game_section(
             Div(class_="flex flex-wrap items-center gap-2")[*buttons],
         ]
     else:
-        header = heading
+        #: A button row's height, so side-by-side headings align.
+        header = Div(class_="flex min-h-control items-center")[heading]
     return Div(
         class_=f"mb-6 flex flex-col gap-4 {SECTION_SURFACE_CLASS}"
         if surface
@@ -1127,7 +1128,7 @@ def _parent_row(game: Game, library: UserLibrary) -> list[Node]:
     ]
 
 
-def _addons_section(game: Game, library: UserLibrary) -> Node:
+def _addons_section(game: Game, library: UserLibrary, origin: OriginUrl | None) -> Node:
     """Tracked add-ons; nothing when none."""
     addons = list(tracked_addons(library, game))
     if not addons:
@@ -1141,10 +1142,11 @@ def _addons_section(game: Game, library: UserLibrary) -> Node:
             rows=[
                 SummaryRow(
                     label="",
-                    subtitle=Link(href=addon.get_absolute_url())[addon.name],
-                    control=Span(class_="text-type-body text-body-subtle")[
-                        PlayerGameStatus(addon.tracked_status).label
-                    ],
+                    subtitle=Fragment(
+                        Link(href=addon.get_absolute_url())[addon.name],
+                        Span()[f"· {PlayerGameStatus(addon.tracked_status).label}"],
+                    ),
+                    control=game_row_menu(addon, origin),
                     dense=True,
                 )
                 for addon in by_kind[kind]
@@ -1475,7 +1477,7 @@ def view_game(request: HttpRequest, game_id: UUID, slug: str) -> HttpResponse:
         ),
         #: Half width each on wide screens.
         Div(class_="grid grid-cols-1 items-start lg:grid-cols-2 lg:gap-x-6")[
-            _addons_section(game, library),
+            _addons_section(game, library, origin),
             _library_section(game, library, presentation, origin, get_token(request)),
         ],
         _purchases_section(game, purchases, presentation, origin),
