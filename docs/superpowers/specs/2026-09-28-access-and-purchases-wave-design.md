@@ -235,9 +235,19 @@ the others) when it meets them, and maps one to one. `parent`: a Game,
 `RESTRICT`, null exactly where the kind is `main`, IGDB's `parent_game`.
 Both are Game columns, written by `save_game_columns` in
 `games/catalog_submit.py` from `GameForm`, beside the graph
-`state_catalog_graph` writes; a parent must be visible to the library. A
-private DLC reconciles to IGDB's through the same redirect as any private
-Game.
+`state_catalog_graph` writes, and by the conversion pass through the
+same two; a shared Game's are shown and never written through a private
+form, as its graph is. A parent must be visible to the library, live when
+stated, and of kind `main`: IGDB has no DLC of a DLC. A parent removed
+later does not cascade; the add-on keeps its key and its parent link
+renders as removed. A kind change to an add-on states a parent in the
+same submit, and one to `main` clears it; the form refuses the other
+pairs with a sentence, the column's `CHECK` behind it. An add-on is no
+top-level row of the Games list unless the filter names `kind` or
+`parent`, in which case the base is every kind: the Kind facet is the
+switch, Clear returns to main games, and statistics and the backlog read
+every kind regardless. A private DLC reconciles to IGDB's through the
+same redirect as any private Game.
 
 ### PlayerGame
 
@@ -527,8 +537,9 @@ the copies had now grouped by version (`SummaryGroup` over dense
 `SummaryRow`s), every per-copy act inline and never one press without
 Undo, ended copies out of the section with one muted line pointing at
 View all, and from P5 each copy's purchases under its row; an Add-ons
-section on a main game, in the same kit's shapes; a parent link on an
-add-on.
+section on a main game listing the add-ons the library tracks, in the
+same kit's shapes with no Add button of its own, empty rendering
+nothing; a parent link on an add-on.
 
 ### Filters and presets
 
