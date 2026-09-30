@@ -276,7 +276,7 @@ def game_list_columns(playtime_label: str) -> list[Column]:
         Column("Year", "year", priority=2, key="year"),
         Column(playtime_label, "filtered_playtime", priority=2, key="playtime"),
         Column("Status", "status", priority=3, key="status"),
-        Column("Kind", key="kind", hidden_by_default=True),
+        Column("Kind", "kind", key="kind", hidden_by_default=True),
         Column("Access", key="access", hidden_by_default=True),
         Column("Wikidata", "wikidata", key="wikidata", hidden_by_default=True),
         Column("Created", "created", key="created", hidden_by_default=True),

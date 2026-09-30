@@ -172,3 +172,20 @@ def test_every_library_page_link_into_the_list_states_every_kind(client, owned_u
     #: Card, row figure and Browse.
     assert page.count(f'href="{every_game}"') >= 3
     assert f'href="{reverse("games:list_games")}"' not in page
+
+
+@pytest.mark.parametrize(
+    ("sort", "expected"),
+    [
+        ("kind", ["Base", "Base DLC", "Base Expansion"]),
+        ("-kind", ["Base Expansion", "Base DLC", "Base"]),
+    ],
+)
+def test_the_kind_column_sorts_in_declared_order(owned_library, kinds, sort, expected):
+    listed = games_for_list(
+        owned_library,
+        game_filter=GameFilter().of_every_kind(),
+        find=FindFilter(sort=sort),
+    )
+
+    assert [game.name for game in listed.sort.queryset] == expected

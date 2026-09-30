@@ -6,7 +6,7 @@ docs/superpowers/specs/2026-06-21-list-view-sort-param-design.md.
 """
 
 from dataclasses import dataclass
-from typing import NamedTuple, cast
+from typing import Final, NamedTuple, cast
 
 from django.db.models import (
     Case,
@@ -14,8 +14,10 @@ from django.db.models import (
     Expression,
     ExpressionWrapper,
     F,
+    IntegerField,
     Min,
     QuerySet,
+    Value,
     When,
 )
 from django.http import HttpRequest
@@ -30,6 +32,7 @@ from common.sorting import (
     parse_sort_terms,
 )
 from games.filters import SESSION_GAME, FindFilter
+from games.models import GameKind
 from games.reads.playthrough_numbering import (
     display_order_through,
     numbered_sort_key,
@@ -94,11 +97,18 @@ type SortMap = dict[SortKey, SortSpec]
 # Some sorts read aliases the view registers.
 # To-one relations (game__sort_name, device__name) are ordered directly.
 
+#: Kinds in declared order, not alphabetical.
+KIND_RANK: Final = Case(
+    *(When(kind=kind, then=Value(rank)) for rank, kind in enumerate(GameKind)),
+    output_field=IntegerField(),
+)
+
 GAME_SORTS: SortMap = {
     "name": SortSpec("name"),
     "sort_name": SortSpec("sort_name"),
     "year": SortSpec("year_released"),
     "status": SortSpec("tracked_status"),
+    "kind": SortSpec("kind_rank", {"kind_rank": KIND_RANK}, then=("sort_name",)),
     "unfinished_lists": SortSpec("tracked_excluded_from_unfinished"),
     "wikidata": SortSpec("wikidata"),
     "created": SortSpec("created_at"),
