@@ -96,7 +96,7 @@ class QuickFacetGroup(NamedTuple):
 
 type AnyQuickFacet = QuickFacet | QuickFacetGroup
 
-#: Member panels stack; set and date panels size the dialog.
+#: Kinds whose panels stack in one dialog.
 QUICK_FACET_GROUP_KINDS = frozenset({"number", "string", "bool"})
 
 
@@ -440,7 +440,7 @@ class QuickFilterBar(BaseComponent):
             label = _facet_label(filter_cls, facet)
             content = self._widget(filter_cls, facet)
             kind = _field_meta(filter_cls, facet.field)["kind"]
-            # The calendar has an intrinsic width; list panels keep w-72.
+            # Calendars size themselves; lists keep w-72.
             panel_width = "w-auto" if kind == "date" else "w-72"
         # Stamped for the bar's spill order.
         applied = any(field in self.existing for field in facet.fields)
@@ -483,8 +483,7 @@ class QuickFilterBar(BaseComponent):
             facet.field,
             presentation=self.presentation,
             value=self.existing.get(facet.field),
-            # The quick- name prefix keeps scalar-widget input names (and
-            # the date picker's hidden-input DOM ids) unique and stable.
+            # Unique, stable input names and date ids.
             name_prefix=f"quick-{facet.field}",
             label=_facet_label(filter_cls, facet),
             placeholder=facet.placeholder,

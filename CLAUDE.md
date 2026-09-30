@@ -214,7 +214,7 @@ docs/           — Additional documentation
   [A device's access ends](docs/superpowers/specs/2026-09-28-issue-1275-device-access-end-design.md)
 - **ExchangeRate** — cached FX rates per currency pair per year
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs/historical_playtime/devices/platforms), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern
-- **PlayerGame** — first projection: one row per catalog game a library tracks, written only by `PlayerGames` projector. Its `removed_at` is projector's, stated by `RemovePlayerGame` command, separate from catalog row's. States library's `status` (six `PlayerGameStatus` words) and `mastered`, and since #678 D2 only place either stated or read. Both `UUIDv7Field` defaults opted out (pk is event's `aggregate_id`); `game` is `RESTRICT`, so projection row never collateral; #1017 registers it, so `audit_library_ownership` reports a `PlayerGame` naming another library's Game
+- **PlayerGame** — first projection: one row per catalog game a library tracks, written only by `PlayerGames` projector. Its `removed_at` is projector's, stated by `RemovePlayerGame` command, separate from catalog row's. States library's `status` (six `PlayerGameStatus` words) and `mastered`, and since #678 D2 only place either stated or read; beside them two Visibility flags, `excluded_from_unfinished` and `excluded_from_dropped` (#1334), each read by its own figure alone. Both `UUIDv7Field` defaults opted out (pk is event's `aggregate_id`); `game` is `RESTRICT`, so projection row never collateral; #1017 registers it, so `audit_library_ownership` reports a `PlayerGame` naming another library's Game
 - **Playthrough** — second projection: one row per run at a tracked game, written
   only by `Playthroughs` projector, which shares `CURRENT_STATE` family with
   `PlayerGames`. Game tracked since #679 gets one from moment library tracks it —
@@ -703,7 +703,7 @@ fact from the row's events. #1310 adds the run: the move of one row
 (`ActTitle.many` holds `{count}`). Contract is
 [Set one device across many sessions](docs/superpowers/specs/2026-09-25-issue-1211-bulk-edit-design.md).
 #1270's `playergame.edit` is the Games list's Edit: status, mastered and
-excluded from unfinished lists on selected games, an empty field keeping;
+the two Visibility flags on selected games, an empty field keeping;
 its Undo states each changed fact's earlier value, read by
 `batch_fact_changes` in
 `games/reads/playergame_facts.py`; #1256's Undo reads `status_change`. Contract is

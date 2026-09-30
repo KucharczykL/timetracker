@@ -1,4 +1,4 @@
-"""Status, mastered or a visibility flag, on many games."""
+"""Game facts, set on many games."""
 
 import json
 import uuid

@@ -200,7 +200,7 @@ type BadgeTone = Literal["brand", "neutral", "success", "warning", "danger"]
 DISABLED_CONTROL_CLASS = "disabled:opacity-50 disabled:cursor-not-allowed"
 DISABLED_WITHIN_CLASS = "has-[:disabled]:opacity-50 has-[:disabled]:cursor-not-allowed"
 
-#: A bordered or flex fieldset holds it inside.
+#: Keeps it inside a bordered fieldset.
 FLOATED_LEGEND_CLASS = "float-left w-full"
 
 #: A section panel's border, fill, padding.

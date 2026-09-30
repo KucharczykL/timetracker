@@ -219,7 +219,7 @@ def _games_at_status(library: UserLibrary, *statuses: PlayerGameStatus):
 
 
 def _holding_no_game_excluded_from(library: UserLibrary, fact: str) -> Q:
-    """One game stating `fact` leaves the purchase out."""
+    """Purchases holding no game stating `fact`."""
     return ~Q(games__in=Game.objects.tracked_by(library, **{f"tracked__{fact}": True}))
 
 
