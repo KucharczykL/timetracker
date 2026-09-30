@@ -2699,10 +2699,11 @@ class DataTableWidthPolicyTest(SimpleTestCase):
         tbody = (
             self._tbody(result).split(">")[0].replace("&amp;", "&").replace("&gt;", ">")
         )
-        self.assertIn("dark:[&_tr:not(:last-child)>*]:border-b", tbody)
+        # Both themes: a divider in one alone changes the row height.
+        self.assertIn(" [&_tr:not(:last-child)>*]:border-b", f" {tbody}")
         # Border color does not inherit from the <tr>, so the cells must carry
         # it — without it the divider falls back to each cell's currentColor.
-        self.assertIn("dark:[&_tr:not(:last-child)>*]:border-default-medium", tbody)
+        self.assertIn(" [&_tr:not(:last-child)>*]:border-default-medium", f" {tbody}")
         self.assertNotIn("divide-y", tbody)
 
     def test_a_plain_table_keeps_its_row_divider(self):
