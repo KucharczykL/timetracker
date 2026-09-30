@@ -1,10 +1,11 @@
 """A game's facts before a batch changed them."""
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 from games.events.playergame import (
     PLAYERGAME_CREATED,
+    PLAYERGAME_EXCLUDED_FROM_DROPPED_CHANGED,
     PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
     PLAYERGAME_MASTERED_CHANGED,
     PLAYERGAME_STATUS_CHANGED,
@@ -31,10 +32,17 @@ _STATUS = Fact(
 _MASTERED = Fact(
     PLAYERGAME_CREATED, PLAYERGAME_MASTERED_CHANGED, "mastered", _flag, initial=False
 )
-_EXCLUDED = Fact(
+_UNFINISHED = Fact(
     PLAYERGAME_CREATED,
     PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
     "excluded_from_unfinished",
+    _flag,
+    initial=False,
+)
+_DROPPED = Fact(
+    PLAYERGAME_CREATED,
+    PLAYERGAME_EXCLUDED_FROM_DROPPED_CHANGED,
+    "excluded_from_dropped",
     _flag,
     initial=False,
 )
@@ -57,14 +65,11 @@ class BatchFactChanges:
     status: FactChange[PlayerGameStatus] | None
     mastered: FactChange[bool] | None
     excluded_from_unfinished: FactChange[bool] | None
+    excluded_from_dropped: FactChange[bool] | None
 
     @property
     def changed_any(self) -> bool:
-        return not (
-            self.status is None
-            and self.mastered is None
-            and self.excluded_from_unfinished is None
-        )
+        return any(getattr(self, fact.name) is not None for fact in fields(self))
 
 
 def batch_fact_changes(
@@ -74,6 +79,7 @@ def batch_fact_changes(
         status=status_change(library, player_game_id, batch_id),
         mastered=fact_change(_MASTERED, library, player_game_id, batch_id),
         excluded_from_unfinished=fact_change(
-            _EXCLUDED, library, player_game_id, batch_id
+            _UNFINISHED, library, player_game_id, batch_id
         ),
+        excluded_from_dropped=fact_change(_DROPPED, library, player_game_id, batch_id),
     )

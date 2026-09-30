@@ -48,6 +48,7 @@ from common.components.primitives import (
     SHAPE_CLASSES,
     ButtonShape,
     Checkbox,
+    FormFieldGroup,
     Input,
     Label,
     MediaWidget,
@@ -75,6 +76,7 @@ from games.endpoints import DEVICE_ACCESS_END
 from games.events.idempotency import IdempotencyKey
 from games.models import (
     DEVICE_WAYS,
+    VISIBILITY_FIELDS,
     Device,
     Game,
     GameKind,
@@ -2118,6 +2120,18 @@ class _LibraryBoundConstraintValidationMixin:
         return exclusions
 
 
+#: The Game group's fields, in order.
+_GAME_FIELDS = (
+    "name",
+    "sort_name",
+    "kind",
+    "parent",
+    "original_release_date",
+    "status",
+    "mastered",
+)
+
+
 class GameForm(
     _LibraryBoundConstraintValidationMixin, PrimitiveWidgetsMixin, forms.ModelForm
 ):
@@ -2161,6 +2175,9 @@ class GameForm(
                 self.initial.setdefault(
                     "excluded_from_unfinished", tracked.excluded_from_unfinished
                 )
+                self.initial.setdefault(
+                    "excluded_from_dropped", tracked.excluded_from_dropped
+                )
 
     #: Plain fields: this form writes no column.
     #: The initial is what tracking would create.
@@ -2171,7 +2188,7 @@ class GameForm(
     )
     mastered = forms.BooleanField(required=False)
     excluded_from_unfinished = forms.BooleanField(
-        required=False, label="Excluded from unfinished lists"
+        required=False, label="Unfinished lists"
     )
     #: Read by `state_addon`; empty means main.
     kind = forms.ChoiceField(
@@ -2187,18 +2204,10 @@ class GameForm(
             params={"kind": {"value": GameKind.MAIN.value}},
         ),
     )
+    excluded_from_dropped = forms.BooleanField(required=False, label="Dropped figures")
 
     #: Declared fields otherwise sink below model fields.
-    field_order = (
-        "name",
-        "sort_name",
-        "kind",
-        "parent",
-        "original_release_date",
-        "status",
-        "mastered",
-        "excluded_from_unfinished",
-    )
+    field_order = (*_GAME_FIELDS, *VISIBILITY_FIELDS)
 
     def clean_kind(self) -> GameKind:
         return GameKind(self.cleaned_data["kind"] or GameKind.MAIN)
@@ -2217,6 +2226,19 @@ class GameForm(
         #: a mirror now, written by `games/catalog_compat.py`.
         fields = ("name", "sort_name")
         widgets: ClassVar[dict[str, forms.Widget]] = {"name": autofocus_input_widget}
+
+
+#: Groups name every visible field.
+GAME_FORM_GROUPS = (
+    FormFieldGroup("Game", _GAME_FIELDS, look="hidden"),
+    FormFieldGroup(
+        "Visibility",
+        VISIBILITY_FIELDS,
+        description="Leave this game out of:",
+        id="visibility",
+        look="panel",
+    ),
+)
 
 
 class PlatformForm(

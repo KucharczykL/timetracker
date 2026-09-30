@@ -14,6 +14,7 @@ from games.events.dispatch import (
 )
 from games.events.playergame import (
     PLAYERGAME_CREATED,
+    PLAYERGAME_EXCLUDED_FROM_DROPPED_CHANGED,
     PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
     PLAYERGAME_MASTERED_CHANGED,
     PLAYERGAME_REMOVED,
@@ -164,7 +165,7 @@ class RestorePlayerGame(Command):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class RecordPlayerGameFacts(Command):
-    """State status, mastery, exclusion, or several.
+    """State status, mastery, an exclusion, or several.
 
     build() skips a held fact, under the lock.
     """
@@ -176,12 +177,14 @@ class RecordPlayerGameFacts(Command):
     status: PlayerGameStatus | None = None
     mastered: bool | None = None
     excluded_from_unfinished: bool | None = None
+    excluded_from_dropped: bool | None = None
 
     def __post_init__(self) -> None:
         if (
             self.status is None
             and self.mastered is None
             and self.excluded_from_unfinished is None
+            and self.excluded_from_dropped is None
         ):
             raise ValueError(
                 "RecordPlayerGameFacts states no fact. A command that asks for "
@@ -217,6 +220,16 @@ class RecordPlayerGameFacts(Command):
                 PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.new(
                     aggregate_id=tracked.pk,
                     payload={"excluded_from_unfinished": self.excluded_from_unfinished},
+                )
+            )
+        if (
+            self.excluded_from_dropped is not None
+            and tracked.excluded_from_dropped != self.excluded_from_dropped
+        ):
+            events.append(
+                PLAYERGAME_EXCLUDED_FROM_DROPPED_CHANGED.new(
+                    aggregate_id=tracked.pk,
+                    payload={"excluded_from_dropped": self.excluded_from_dropped},
                 )
             )
         if not events:

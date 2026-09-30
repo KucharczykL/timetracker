@@ -31,6 +31,7 @@ from common.components.custom_elements import (
     FILTER_ACTS_LABEL,
     FILTER_MODE_MODELS,
     Dropdown,
+    DropdownFieldset,
     DropdownPanel,
     FilterMode,
     _QuickFilterBarElement,
@@ -63,6 +64,8 @@ from common.components.search_select import ComboboxDropdown, presets_member
 from common.criteria import DEFAULT_STATED_MODIFIER, AttrName, OperatorFilter
 from common.date_time_presentation import DateTimePresentation
 
+type FacetKey = str  # a dropdown's id stem, e.g. "visibility"
+
 
 class QuickFacet(NamedTuple):
     # The ?filter= key: leaf field or alias.
@@ -71,6 +74,32 @@ class QuickFacet(NamedTuple):
     placeholder: str = ""  # value-input hint (number/string kinds)
     placeholder2: str = ""  # second-input hint (BETWEEN)
     step: str = "1"  # number-input step, e.g. "0.01" for prices
+
+    @property
+    def key(self) -> FacetKey:
+        return self.field
+
+    @property
+    def fields(self) -> tuple[AttrName, ...]:
+        return (self.field,)
+
+
+class QuickFacetGroup(NamedTuple):
+    """One dropdown stating several fields."""
+
+    key: FacetKey
+    label: str
+    members: tuple[QuickFacet, ...]
+
+    @property
+    def fields(self) -> tuple[AttrName, ...]:
+        return tuple(member.field for member in self.members)
+
+
+type AnyQuickFacet = QuickFacet | QuickFacetGroup
+
+#: Kinds whose panels stack in one dialog.
+QUICK_FACET_GROUP_KINDS = frozenset({"number", "string", "bool"})
 
 
 # The leaf kinds a quick facet may have — the kinds the bar's serializer
@@ -87,7 +116,7 @@ OVERFLOW_LABEL_APPLIED = "More filters, some applied"
 
 
 # Facets per mode, in idle-row priority order.
-QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
+QUICK_FACETS: dict[FilterMode, list[AnyQuickFacet]] = {
     "games": [
         QuickFacet("status"),
         QuickFacet("platform"),
@@ -118,7 +147,14 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
             step="0.01",
         ),
         QuickFacet("name", placeholder="e.g. Zelda"),
-        QuickFacet("excluded_from_unfinished", "Excluded from unfinished"),
+        QuickFacetGroup(
+            "visibility",
+            "Visibility",
+            (
+                QuickFacet("excluded_from_unfinished", "Unfinished lists"),
+                QuickFacet("excluded_from_dropped", "Dropped figures"),
+            ),
+        ),
     ],
     "sessions": [
         QuickFacet("game"),
@@ -199,6 +235,16 @@ QUICK_FACETS: dict[FilterMode, list[QuickFacet]] = {
         QuickFacet("game"),
     ],
 }
+
+
+def _facet_label(filter_cls: type, facet: QuickFacet) -> str:
+    """Stated wording, else the FieldMeta-derived label."""
+    return facet.label or _field_meta(filter_cls, facet.field)["label"]
+
+
+def quick_facet_fields(mode: FilterMode) -> frozenset[AttrName]:
+    """Every field the mode's facets state."""
+    return frozenset(field for facet in QUICK_FACETS[mode] for field in facet.fields)
 
 
 def is_quick_editable(
@@ -315,17 +361,14 @@ class QuickFilterBar(BaseComponent):
         # Function-local: keep the component library import-light.
         from games.filters import filter_for_model
 
-        facets = QUICK_FACETS[self.mode]
         filter_cls = filter_for_model(FILTER_MODE_MODELS[self.mode])
         if not is_quick_editable(
-            self.existing,
-            {facet.field for facet in facets},
-            filter_cls=filter_cls,
+            self.existing, quick_facet_fields(self.mode), filter_cls=filter_cls
         ):
             return self._degraded()
-        return self._editable(facets)
+        return self._editable(QUICK_FACETS[self.mode])
 
-    def _editable(self, facets: list[QuickFacet]) -> Node:
+    def _editable(self, facets: list[AnyQuickFacet]) -> Node:
         # Function-local: games.filters imports common.criteria (and the app
         # layer generally); keep the component library import-light, matching
         # filters.py's own convention.
@@ -382,47 +425,73 @@ class QuickFilterBar(BaseComponent):
             id=f"quick-{self.mode}-search",
         )
 
-    def _facet(self, filter_cls: type, facet: QuickFacet) -> Node:
+    def _facet(self, filter_cls: type, facet: AnyQuickFacet) -> Node:
         """A GitHub-style compact facet: a ghost "Label ▾" trigger
         whose combobox dialog hosts the panel-layout widget — the FilterSelect
         panel personality for set facets, the static-calendar DateRangePanel
         for date facets, the stacked Number/String/bool widget embedded as-is
         (their select-above-inputs layout is the natural shape inside a
-        vertical dialog). No ``Label:`` span — the trigger is the label."""
-        # Label defaults to the FieldMeta-derived one, so a filter-layer rename
-        # propagates here; QuickFacet.label overrides only for compact wording.
-        label = facet.label or _field_meta(filter_cls, facet.field)["label"]
-        kind = _field_meta(filter_cls, facet.field)["kind"]
+        vertical dialog). No ``Label:`` span — the trigger is the label.
+
+        A group's dialog holds one labelled fieldset per member."""
+        if isinstance(facet, QuickFacetGroup):
+            label = facet.label
+            content: Node = self._group_content(filter_cls, facet)
+            panel_width = "w-72"
+        else:
+            label = _facet_label(filter_cls, facet)
+            content = self._widget(filter_cls, facet)
+            kind = _field_meta(filter_cls, facet.field)["kind"]
+            # Calendars size themselves; lists keep w-72.
+            panel_width = "w-auto" if kind == "date" else "w-72"
         # Stamped for the bar's spill order.
-        applied = facet.field in self.existing
+        applied = any(field in self.existing for field in facet.fields)
         config = {"data_quick_facet": ""}
         if applied:
             config["data_quick_facet_applied"] = ""
         return ComboboxDropdown(
             label=label,
-            content=field_widget(
-                filter_cls,
-                facet.field,
-                presentation=self.presentation,
-                value=self.existing.get(facet.field),
-                # The quick- name prefix keeps scalar-widget input names (and
-                # the date picker's hidden-input DOM ids) unique and stable.
-                name_prefix=f"quick-{facet.field}",
-                label=label,
-                placeholder=facet.placeholder,
-                placeholder2=facet.placeholder2,
-                step=facet.step,
-                layout="panel",
-            ),
-            id=f"quick-{facet.field}-dropdown",
+            content=content,
+            id=f"quick-{facet.key}-dropdown",
             ghost=True,
-            # The calendar has an intrinsic width; list panels keep w-72.
-            panel_width="w-auto" if kind == "date" else "w-72",
+            panel_width=panel_width,
             # The priority-plus hook: the bar's TS moves overfull facets
             # (whole <drop-down> nodes, widget state intact) into the "⋯"
             # overflow menu as the row narrows.
             config=config,
             applied=applied,
+        )
+
+    def _group_content(self, filter_cls: type, group: QuickFacetGroup) -> Node:
+        for member in group.members:
+            kind = _field_meta(filter_cls, member.field)["kind"]
+            if kind not in QUICK_FACET_GROUP_KINDS:
+                raise ValueError(
+                    f"Quick facet group {group.key!r} holds {member.field!r}, a "
+                    f"{kind} field; a group admits {sorted(QUICK_FACET_GROUP_KINDS)}."
+                )
+        return Div(class_="flex flex-col")[
+            [
+                DropdownFieldset(_facet_label(filter_cls, member))[
+                    self._widget(filter_cls, member)
+                ]
+                for member in group.members
+            ]
+        ]
+
+    def _widget(self, filter_cls: type, facet: QuickFacet) -> Node:
+        return field_widget(
+            filter_cls,
+            facet.field,
+            presentation=self.presentation,
+            value=self.existing.get(facet.field),
+            # Unique, stable input names and date ids.
+            name_prefix=f"quick-{facet.field}",
+            label=_facet_label(filter_cls, facet),
+            placeholder=facet.placeholder,
+            placeholder2=facet.placeholder2,
+            step=facet.step,
+            layout="panel",
         )
 
     def _acts(self, *, apply: bool) -> Element:

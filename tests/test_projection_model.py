@@ -329,6 +329,7 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         "status": "unplayed",
         "mastered": False,
         "excluded_from_unfinished": False,
+        "excluded_from_dropped": False,
         "removed_at": None,
     },
     #: No `kind`: the creation event states it.

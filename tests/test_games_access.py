@@ -7,7 +7,7 @@ from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry
 from tracked_games import create_tracked_game
 
-from common.components.quick_filter import QUICK_FACETS, is_quick_editable
+from common.components.quick_filter import is_quick_editable, quick_facet_fields
 from common.criteria import field_metadata
 from common.filter_execution import execute_filter
 from games.commands.playergame import TrackGame
@@ -159,10 +159,10 @@ def test_the_bars_output_stays_editable(facet):
     if facet == "format":
         criterion = {"value": ["digital"], "modifier": "INCLUDES"}
 
-    assert facet in {quick.field for quick in QUICK_FACETS["games"]}
+    assert facet in quick_facet_fields("games")
     assert is_quick_editable(
         {facet: criterion},
-        {quick.field for quick in QUICK_FACETS["games"]},
+        quick_facet_fields("games"),
         filter_cls=GameFilter,
     )
 

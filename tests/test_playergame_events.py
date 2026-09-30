@@ -7,6 +7,7 @@ import pytest
 
 from games.events.playergame import (
     PLAYERGAME_CREATED,
+    PLAYERGAME_EXCLUDED_FROM_DROPPED_CHANGED,
     PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
     PLAYERGAME_MASTERED_CHANGED,
     PLAYERGAME_REMOVED,
@@ -130,49 +131,56 @@ def test_the_mastered_payload_carries_no_reference():
     )
 
 
-def test_the_exclusion_event_is_in_the_application_vocabulary():
-    registered = DEFAULT_EVENT_TYPES.spec_for(
-        "library.playergame.excluded_from_unfinished_changed"
-    )
+EXCLUSIONS = [
+    pytest.param(PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED, id="unfinished"),
+    pytest.param(PLAYERGAME_EXCLUDED_FROM_DROPPED_CHANGED, id="dropped"),
+]
 
-    assert registered is PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED
+
+def _flag_key(spec) -> str:
+    return spec.event_type.removeprefix("library.playergame.").removesuffix("_changed")
+
+
+@pytest.mark.parametrize("spec", EXCLUSIONS)
+def test_the_exclusion_event_is_in_the_application_vocabulary(spec):
+    registered = DEFAULT_EVENT_TYPES.spec_for(spec.event_type)
+
+    assert registered is spec
     assert registered.aggregate_type == "playergame"
 
 
-def test_the_exclusion_payload_states_the_value_it_sets():
+def test_the_exclusion_events_name_their_figures():
+    assert [_flag_key(spec.values[0]) for spec in EXCLUSIONS] == [
+        "excluded_from_unfinished",
+        "excluded_from_dropped",
+    ]
+
+
+@pytest.mark.parametrize("spec", EXCLUSIONS)
+def test_the_exclusion_payload_states_the_value_it_sets(spec):
     """One type states both directions."""
-    validated = DEFAULT_EVENT_TYPES.validate(
-        PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.event_type,
-        {"excluded_from_unfinished": False},
-    )
+    validated = DEFAULT_EVENT_TYPES.validate(spec.event_type, {_flag_key(spec): False})
 
-    assert validated == {"excluded_from_unfinished": False}
+    assert validated == {_flag_key(spec): False}
 
 
-def test_an_exclusion_payload_of_a_string_is_refused():
+@pytest.mark.parametrize("spec", EXCLUSIONS)
+def test_an_exclusion_payload_of_a_string_is_refused(spec):
     """Strict validation takes no truthy string."""
     with pytest.raises(PayloadInvalid):
-        DEFAULT_EVENT_TYPES.validate(
-            PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.event_type,
-            {"excluded_from_unfinished": "true"},
-        )
+        DEFAULT_EVENT_TYPES.validate(spec.event_type, {_flag_key(spec): "true"})
 
 
-def test_an_exclusion_payload_stating_nothing_is_refused():
+@pytest.mark.parametrize("spec", EXCLUSIONS)
+def test_an_exclusion_payload_stating_nothing_is_refused(spec):
     with pytest.raises(PayloadInvalid):
-        DEFAULT_EVENT_TYPES.validate(
-            PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.event_type, {}
-        )
+        DEFAULT_EVENT_TYPES.validate(spec.event_type, {})
 
 
-def test_the_exclusion_payload_carries_no_reference():
+@pytest.mark.parametrize("spec", EXCLUSIONS)
+def test_the_exclusion_payload_carries_no_reference(spec):
     """The creation event holds the one reference."""
-    assert (
-        DEFAULT_EVENT_TYPES.reference_fields_for(
-            PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.event_type
-        )
-        == {}
-    )
+    assert DEFAULT_EVENT_TYPES.reference_fields_for(spec.event_type) == {}
 
 
 def test_the_remove_event_is_in_the_application_vocabulary():

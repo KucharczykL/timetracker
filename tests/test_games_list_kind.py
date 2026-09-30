@@ -4,7 +4,7 @@ from html import escape
 import pytest
 from django.urls import reverse
 
-from common.components.quick_filter import QUICK_FACETS, is_quick_editable
+from common.components.quick_filter import is_quick_editable, quick_facet_fields
 from common.criteria import FieldComparisonCriterion, Modifier
 from games.bulk_games import game_scope
 from games.filters import FindFilter, GameFilter, filter_url
@@ -159,7 +159,7 @@ def test_the_kind_facet_offers_the_four_kinds(client, owned_user, kinds):
         assert f'data-value="{kind.value}"' in facet
     assert is_quick_editable(
         GameFilter.where(kind=["dlc"]).to_json(),
-        [facet.field for facet in QUICK_FACETS["games"]],
+        quick_facet_fields("games"),
         filter_cls=GameFilter,
     )
 

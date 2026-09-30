@@ -61,6 +61,7 @@ from common.components.core import (
     Node,
 )
 from common.components.custom_elements import (
+    DROPDOWN_GROUP_HEADER_CLASS,
     DROPDOWN_ITEM_SHAPE,
     Dropdown,
     DropdownPanel,
@@ -73,7 +74,6 @@ from common.components.custom_elements import (
 )
 from common.components.primitives import (
     DISABLED_WITHIN_CLASS,
-    MICRO_LABEL_CLASS,
     SHAPE_CLASSES,
     AppliedDot,
     ButtonColor,
@@ -199,12 +199,6 @@ _HINT_CLASS = "ms-2 text-type-micro text-body-subtle"
 #: Keeps a 26px button in a 36px row.
 _ROW_ACTION_PLACEMENT_CLASS = "-my-0.75"
 _NO_RESULTS_CLASS = "px-4 py-2 text-type-body italic text-body hidden"
-# A non-selectable group header in a grouped panel. role="presentation" keeps it
-# out of the combobox's option semantics; carrying no data-search-select-option
-# excludes it from keyboard nav, client-side filtering, and selection. The JS
-# hides a header whose whole run of following option rows is filtered out.
-_GROUP_HEADER_CLASS = f"px-4 pt-2 pb-1 {MICRO_LABEL_CLASS} text-body"
-
 # Approximate rendered height of one option row (px-3 py-2 text-type-body) in rem,
 # used to derive the panel's max-height from items_visible.
 _ROW_HEIGHT_REM = 2.25
@@ -388,10 +382,17 @@ def _option_row(
 
 
 def _group_header(label: str) -> Node:
+    """A non-selectable header over grouped rows.
+
+    role="presentation" keeps it out of the combobox's option semantics;
+    carrying no data-search-select-option excludes it from keyboard nav,
+    client-side filtering, and selection. The JS hides a header whose whole
+    run of following option rows is filtered out.
+    """
     return Div(
         data_search_select_group_header="",
         role="presentation",
-        class_=_GROUP_HEADER_CLASS,
+        class_=DROPDOWN_GROUP_HEADER_CLASS,
     )[label]
 
 

@@ -14,6 +14,7 @@ from games.events.dispatch import dispatch
 from games.events.envelope import RecordedEvent
 from games.events.playergame import (
     PLAYERGAME_CREATED,
+    PLAYERGAME_EXCLUDED_FROM_DROPPED_CHANGED,
     PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
     PLAYERGAME_MASTERED_CHANGED,
     PLAYERGAME_REMOVED,
@@ -69,6 +70,10 @@ def test_a_tracked_game_starts_unmastered():
 def test_a_tracked_game_starts_in_unfinished_lists():
     """The creation event states no exclusion."""
     assert PlayerGame().excluded_from_unfinished is False
+
+
+def test_a_tracked_game_starts_in_dropped_figures():
+    assert PlayerGame().excluded_from_dropped is False
 
 
 def test_a_tracked_game_starts_live():
@@ -477,15 +482,28 @@ def test_a_rebuild_reproduces_the_mastery(owned_user, owned_library, tracked_gam
     assert PlayerGame.objects.get(pk=identity).mastered is True
 
 
-def append_excluded(library, actor, identity, excluded, *, key="exclude"):
+EXCLUSIONS = [
+    pytest.param(
+        (PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED, "excluded_from_unfinished"),
+        id="unfinished",
+    ),
+    pytest.param(
+        (PLAYERGAME_EXCLUDED_FROM_DROPPED_CHANGED, "excluded_from_dropped"),
+        id="dropped",
+    ),
+]
+
+
+def append_excluded(library, actor, identity, excluded, exclusion, *, key="exclude"):
     """Append one exclusion change, as dispatch would."""
+    spec, column = exclusion
     with transaction.atomic():
         stream = lock_stream(library)
         return stream.append(
             [
-                PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED.new(
+                spec.new(
                     aggregate_id=identity,
-                    payload={"excluded_from_unfinished": excluded},
+                    payload={column: excluded},
                 )
             ],
             actor=actor,
@@ -495,57 +513,61 @@ def append_excluded(library, actor, identity, excluded, *, key="exclude"):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_exclusion_event_writes_the_flag(owned_user, owned_library, tracked_game):
+@pytest.mark.parametrize("exclusion", EXCLUSIONS)
+def test_the_exclusion_event_writes_the_flag(
+    owned_user, owned_library, tracked_game, exclusion
+):
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
 
-    append_excluded(owned_library, owned_user, identity, True)
+    append_excluded(owned_library, owned_user, identity, True, exclusion)
 
-    assert PlayerGame.objects.get(pk=identity).excluded_from_unfinished is True
+    assert getattr(PlayerGame.objects.get(pk=identity), exclusion[1]) is True
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("exclusion", EXCLUSIONS)
 def test_the_exclusion_event_states_the_way_back(
-    owned_user, owned_library, tracked_game
+    owned_user, owned_library, tracked_game, exclusion
 ):
     """One type, and the payload decides."""
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
-    append_excluded(owned_library, owned_user, identity, True)
+    append_excluded(owned_library, owned_user, identity, True, exclusion)
 
-    append_excluded(owned_library, owned_user, identity, False, key="undo")
+    append_excluded(owned_library, owned_user, identity, False, exclusion, key="undo")
 
-    assert PlayerGame.objects.get(pk=identity).excluded_from_unfinished is False
+    assert getattr(PlayerGame.objects.get(pk=identity), exclusion[1]) is False
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("exclusion", EXCLUSIONS)
 def test_replaying_the_creation_event_again_keeps_a_later_exclusion(
-    owned_user, owned_library, tracked_game
+    owned_user, owned_library, tracked_game, exclusion
 ):
     """A default is absent from DO UPDATE."""
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
-    append_excluded(owned_library, owned_user, identity, True)
+    append_excluded(owned_library, owned_user, identity, True, exclusion)
     created = RecordedEvent.from_row(
         LibraryEvent.objects.get(event_type="library.playergame.created")
     )
 
     DEFAULT_REGISTRY.apply(created)
 
-    assert PlayerGame.objects.get(pk=identity).excluded_from_unfinished is True
+    assert getattr(PlayerGame.objects.get(pk=identity), exclusion[1]) is True
 
 
 @pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("exclusion", EXCLUSIONS)
 def test_replaying_the_exclusion_event_costs_one_statement(
-    owned_user, owned_library, tracked_game
+    owned_user, owned_library, tracked_game, exclusion
 ):
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
-    append_excluded(owned_library, owned_user, identity, True)
+    append_excluded(owned_library, owned_user, identity, True, exclusion)
     event = RecordedEvent.from_row(
-        LibraryEvent.objects.get(
-            event_type="library.playergame.excluded_from_unfinished_changed"
-        )
+        LibraryEvent.objects.get(event_type=exclusion[0].event_type)
     )
 
     with CaptureQueriesContext(connection) as queries:
@@ -555,23 +577,29 @@ def test_replaying_the_exclusion_event_costs_one_statement(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_replay_reproduces_the_exclusion(owned_user, owned_library, tracked_game):
+@pytest.mark.parametrize("exclusion", EXCLUSIONS)
+def test_a_replay_reproduces_the_exclusion(
+    owned_user, owned_library, tracked_game, exclusion
+):
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
-    append_excluded(owned_library, owned_user, identity, True)
+    append_excluded(owned_library, owned_user, identity, True, exclusion)
     PlayerGame.objects.all().delete()
 
     replay(owned_library)
 
-    assert PlayerGame.objects.get(pk=identity).excluded_from_unfinished is True
+    assert getattr(PlayerGame.objects.get(pk=identity), exclusion[1]) is True
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_rebuild_reproduces_the_exclusion(owned_user, owned_library, tracked_game):
+@pytest.mark.parametrize("exclusion", EXCLUSIONS)
+def test_a_rebuild_reproduces_the_exclusion(
+    owned_user, owned_library, tracked_game, exclusion
+):
     """Replay parity over an amended row."""
     identity = uuid.uuid7()
     append_created(owned_library, owned_user, tracked_game, identity=identity)
-    append_excluded(owned_library, owned_user, identity, True)
+    append_excluded(owned_library, owned_user, identity, True, exclusion)
 
     checked = rebuild_projections(owned_library, mode=RebuildMode.CHECK)
 
@@ -594,7 +622,7 @@ def test_a_rebuild_reproduces_the_exclusion(owned_user, owned_library, tracked_g
     rebuilt = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
 
     assert rebuilt.swapped is True
-    assert PlayerGame.objects.get(pk=identity).excluded_from_unfinished is True
+    assert getattr(PlayerGame.objects.get(pk=identity), exclusion[1]) is True
 
 
 def append_removed(library, actor, identity, *, key="remove"):

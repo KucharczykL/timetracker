@@ -6,6 +6,7 @@ from typing import ClassVar
 from games.events.envelope import RecordedEvent
 from games.events.playergame import (
     PLAYERGAME_CREATED,
+    PLAYERGAME_EXCLUDED_FROM_DROPPED_CHANGED,
     PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED,
     PLAYERGAME_MASTERED_CHANGED,
     PLAYERGAME_REMOVED,
@@ -45,6 +46,14 @@ class PlayerGames(Projector):
             excluded_from_unfinished=event.payload["excluded_from_unfinished"],
         )
 
+    def _excluded_from_dropped_changed(self, event: RecordedEvent) -> None:
+        #: From the payload, so replays agree.
+        self.amend(
+            PlayerGame,
+            event,
+            excluded_from_dropped=event.payload["excluded_from_dropped"],
+        )
+
     def _removed(self, event: RecordedEvent) -> None:
         #: The event's own time, so replays agree.
         self.amend(PlayerGame, event, removed_at=event.recorded_at)
@@ -57,6 +66,7 @@ class PlayerGames(Projector):
         PLAYERGAME_STATUS_CHANGED: _status_changed,
         PLAYERGAME_MASTERED_CHANGED: _mastered_changed,
         PLAYERGAME_EXCLUDED_FROM_UNFINISHED_CHANGED: _excluded_from_unfinished_changed,
+        PLAYERGAME_EXCLUDED_FROM_DROPPED_CHANGED: _excluded_from_dropped_changed,
         PLAYERGAME_REMOVED: _removed,
         PLAYERGAME_RESTORED: _restored,
     }

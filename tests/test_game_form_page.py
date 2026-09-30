@@ -8,6 +8,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
+from common.components.primitives import SECTION_SURFACE_CLASS
 from games.catalog_compat import mirror_legacy_columns
 from games.catalog_form import LAST_RELEASE, MOST_ROWS, TOO_MANY_ROWS
 from games.models import Edition, Game, LibraryEvent, Platform, PlayerGame, Release
@@ -774,53 +775,79 @@ def _posted_with(plain_game, **extra: str) -> dict[str, str]:
     }
 
 
-def _exclusion_box(body: str) -> str:
-    found = re.search(r'<input[^>]*name="excluded_from_unfinished"[^>]*>', body)
+EXCLUSIONS = ["excluded_from_unfinished", "excluded_from_dropped"]
+
+
+def _exclusion_box(body: str, fact: str) -> str:
+    found = re.search(rf'<input[^>]*name="{fact}"[^>]*>', body)
     assert found is not None
     return found[0]
 
 
-def test_the_box_reads_the_tracked_row(logged_in, plain_game):
-    assert "checked" not in _exclusion_box(page(logged_in, plain_game))
-    PlayerGame.objects.filter(game=plain_game).update(excluded_from_unfinished=True)
+def test_the_visibility_fieldset_holds_both_boxes(logged_in, plain_game):
+    body = page(logged_in, plain_game)
+    opening = body[body.rindex("<fieldset", 0, body.index('id="visibility"')) :]
+    assert SECTION_SURFACE_CLASS in opening.split(">", 1)[0]
+    fieldset = body.split('id="visibility"', 1)[1].split("</fieldset>", 1)[0]
 
-    assert "checked" in _exclusion_box(page(logged_in, plain_game))
+    assert "Visibility</legend>" in fieldset
+    assert "Leave this game out of:" in fieldset
+    assert [
+        re.search(r'name="(\w+)"', box)[1]
+        for box in re.findall(r"<input[^>]*>", fieldset)
+    ] == EXCLUSIONS
 
 
-def test_a_ticked_box_states_the_exclusion_once(logged_in, plain_game):
+@pytest.mark.parametrize("fact", EXCLUSIONS)
+def test_the_box_reads_the_tracked_row(logged_in, plain_game, fact):
+    assert "checked" not in _exclusion_box(page(logged_in, plain_game), fact)
+    PlayerGame.objects.filter(game=plain_game).update(**{fact: True})
+
+    assert "checked" in _exclusion_box(page(logged_in, plain_game), fact)
+
+
+@pytest.mark.parametrize("fact", EXCLUSIONS)
+def test_a_ticked_box_states_the_exclusion_once(logged_in, plain_game, fact):
     response = logged_in.post(
         reverse("games:edit_game", args=[plain_game.pk]),
-        _posted_with(plain_game, excluded_from_unfinished="on"),
+        _posted_with(plain_game, **{fact: "on"}),
     )
 
     assert response.status_code == 302
-    assert PlayerGame.objects.get(game=plain_game).excluded_from_unfinished is True
+    row = PlayerGame.objects.get(game=plain_game)
+    assert [getattr(row, each) for each in EXCLUSIONS] == [
+        each == fact for each in EXCLUSIONS
+    ]
     assert (
         LibraryEvent.objects.filter(
-            event_type="library.playergame.excluded_from_unfinished_changed"
-        ).count()
-        == 1
+            event_type__startswith="library.playergame.excluded_from_"
+        )
+        .values_list("event_type", flat=True)
+        .get()
+        == f"library.playergame.{fact}_changed"
     )
 
 
-def test_an_empty_box_includes_the_game_again(logged_in, plain_game):
-    PlayerGame.objects.filter(game=plain_game).update(excluded_from_unfinished=True)
+@pytest.mark.parametrize("fact", EXCLUSIONS)
+def test_an_empty_box_includes_the_game_again(logged_in, plain_game, fact):
+    PlayerGame.objects.filter(game=plain_game).update(**{fact: True})
 
     logged_in.post(
         reverse("games:edit_game", args=[plain_game.pk]), _posted_with(plain_game)
     )
 
-    assert PlayerGame.objects.get(game=plain_game).excluded_from_unfinished is False
+    assert getattr(PlayerGame.objects.get(game=plain_game), fact) is False
 
 
-def test_add_game_states_the_exclusion(logged_in, owned_library):
+@pytest.mark.parametrize("fact", EXCLUSIONS)
+def test_add_game_states_the_exclusion(logged_in, owned_library, fact):
     response = logged_in.post(
         reverse("games:add_game"),
         {
             "name": "Endless Farm",
             "sort_name": "",
             "status": "played",
-            "excluded_from_unfinished": "on",
+            fact: "on",
             "reference_wikidata": "",
             "editions-count": "1",
             "edition-0-name": "",
@@ -832,4 +859,4 @@ def test_add_game_states_the_exclusion(logged_in, owned_library):
 
     assert response.status_code == 302
     game = Game.objects.get(library=owned_library, name="Endless Farm")
-    assert PlayerGame.objects.get(game=game).excluded_from_unfinished is True
+    assert getattr(PlayerGame.objects.get(game=game), fact) is True

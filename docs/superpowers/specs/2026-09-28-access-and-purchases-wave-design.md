@@ -268,6 +268,16 @@ same redirect as any private Game.
 reads its own fact and nothing else; the rule this wave makes is that no
 fact stated for one figure decides another.
 
+Both flags are the Visibility group (M8): `VISIBILITY_FIELDS` in
+`games/models.py` names them for the Game form and the bulk Edit, and one
+`QuickFacetGroup` holds them in the Games quick bar. A later exclusion is
+a whole fact (column, event, command field, readers) and joins both
+groups too. A command that gains a field increments
+`FINGERPRINT_VERSION`, since every field is part of the digest; M8 took
+it to 3. Until P4 runs, a game flagged `excluded_from_unfinished` by hand
+counts in the dropped figures again; P4 states both facts on every game
+with an infinite purchase.
+
 ### Edition
 
 A demo is another version of the game, so it is an Edition of that game,

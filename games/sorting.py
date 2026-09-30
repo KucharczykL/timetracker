@@ -110,6 +110,7 @@ GAME_SORTS: SortMap = {
     "status": SortSpec("tracked_status"),
     "kind": SortSpec("kind_rank", {"kind_rank": KIND_RANK}, then=("sort_name",)),
     "unfinished_lists": SortSpec("tracked_excluded_from_unfinished"),
+    "dropped_figures": SortSpec("tracked_excluded_from_dropped"),
     "wikidata": SortSpec("wikidata"),
     "created": SortSpec("created_at"),
     # `list_games` registers `total_playtime` per library.

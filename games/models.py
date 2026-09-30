@@ -205,6 +205,7 @@ class GameQuerySet(RemovableLibraryQuerySet):
                 tracked_status=F("tracked__status"),
                 tracked_mastered=F("tracked__mastered"),
                 tracked_excluded_from_unfinished=F("tracked__excluded_from_unfinished"),
+                tracked_excluded_from_dropped=F("tracked__excluded_from_dropped"),
             )
         )
 
@@ -281,11 +282,12 @@ class EditionKind(models.TextChoices):
 class Game(ReferencedRow):
     if TYPE_CHECKING:
         #: Annotations, not columns: GameQuerySet.tracked_by() puts the
-        #: library's three projection facts here, and only a queryset from
+        #: library's four projection facts here, and only a queryset from
         #: it carries them.
         tracked_status: str
         tracked_mastered: bool
         tracked_excluded_from_unfinished: bool
+        tracked_excluded_from_dropped: bool
 
     #: Where no sort is stated; blank sort_name leads.
     #: Local non-null columns only: Python sorts on them too.
@@ -1631,6 +1633,16 @@ DONE_STATUSES: tuple[PlayerGameStatus, ...] = (
 )
 
 
+#: A PlayerGame flag leaving it out.
+type VisibilityField = Literal["excluded_from_unfinished", "excluded_from_dropped"]
+
+#: What a game may be left out of.
+VISIBILITY_FIELDS: tuple[VisibilityField, ...] = (
+    "excluded_from_unfinished",
+    "excluded_from_dropped",
+)
+
+
 class PlayerGame(ProjectionModel):
     """One catalog game a library tracks, projected from its events."""
 
@@ -1658,8 +1670,9 @@ class PlayerGame(ProjectionModel):
         default=PlayerGameStatus.UNPLAYED,
     )
     mastered = models.BooleanField(default=False)
-    #: An explicit preference, never inferred from status.
+    #: Explicit preferences, never inferred from status.
     excluded_from_unfinished = models.BooleanField(default=False)
+    excluded_from_dropped = models.BooleanField(default=False)
     #: The remove event's recorded_at; null means live.
     #: The player's act, not the catalog's.
     removed_at = models.DateTimeField(null=True, default=None, editable=False)

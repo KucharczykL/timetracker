@@ -60,8 +60,12 @@ from common.components import (
     parse_filter_dict,
 )
 from common.components.game_addon import GameAddon
-from common.components.primitives import Li, Span, custom_element_builder
-from common.components.sectioned_page import SECTION_SURFACE_CLASS
+from common.components.primitives import (
+    SECTION_SURFACE_CLASS,
+    Li,
+    Span,
+    custom_element_builder,
+)
 from common.date_time_presentation import (
     DateTimePresentation,
     date_time_presentation_for_request,
@@ -102,7 +106,7 @@ from games.filters import (
     parse_game_filter,
 )
 from games.formatting import session_time_range
-from games.forms import GameForm
+from games.forms import GAME_FORM_GROUPS, GameForm
 from games.list_columns import column_choice
 from games.models import (
     Edition,
@@ -287,6 +291,12 @@ def game_list_columns(playtime_label: str) -> list[Column]:
             key="unfinished_lists",
             hidden_by_default=True,
         ),
+        Column(
+            "Dropped figures",
+            "dropped_figures",
+            key="dropped_figures",
+            hidden_by_default=True,
+        ),
     ]
 
 
@@ -342,6 +352,7 @@ def list_games(request: HttpRequest) -> HttpResponse:
                 _wikidata_cell(game.wikidata),
                 presentation.format(game.created_at, "date"),
                 "Excluded" if game.tracked_excluded_from_unfinished else "",
+                "Excluded" if game.tracked_excluded_from_dropped else "",
             ]
             for game in page_games
         ],
@@ -426,6 +437,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
                 status=form.cleaned_data["status"],
                 mastered=form.cleaned_data["mastered"],
                 excluded_from_unfinished=form.cleaned_data["excluded_from_unfinished"],
+                excluded_from_dropped=form.cleaned_data["excluded_from_dropped"],
                 correlation_id=correlation_id,
             )
             if not recorded:
@@ -452,7 +464,7 @@ def add_game(request: HttpRequest) -> HttpResponse:
             form,
             request=request,
             fields=Fragment(
-                FormFields(form),
+                FormFields(form, groups=GAME_FORM_GROUPS),
                 GameAddon("kind", "parent"),
                 editions_area(graph),
                 references_area(references),
@@ -555,6 +567,7 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
                 status=form.cleaned_data["status"],
                 mastered=form.cleaned_data["mastered"],
                 excluded_from_unfinished=form.cleaned_data["excluded_from_unfinished"],
+                excluded_from_dropped=form.cleaned_data["excluded_from_dropped"],
                 correlation_id=new_correlation_id(),
             )
             if answer.refusal is None:
@@ -576,7 +589,7 @@ def edit_game(request: HttpRequest, game_id: UUID) -> HttpResponse:
             form,
             request=request,
             fields=Fragment(
-                FormFields(form),
+                FormFields(form, groups=GAME_FORM_GROUPS),
                 GameAddon("kind", "parent"),
                 editions_area(graph),
                 references_area(references),
@@ -692,6 +705,26 @@ def _meta_row(label: str, value: Node | str, extra: Node | str = "") -> Node:
     if extra:
         children.append(extra)
     return Div(class_="flex gap-2 items-center")[*children]
+
+
+def _visibility_row(game: Game) -> list[Node]:
+    """What the game is left out of."""
+    left_out = [
+        shown
+        for excluded, shown in (
+            (game.tracked_excluded_from_unfinished, "unfinished lists"),
+            (game.tracked_excluded_from_dropped, "dropped figures"),
+        )
+        if excluded
+    ]
+    if not left_out:
+        return []
+    return [
+        _meta_row(
+            "Visibility",
+            Span(class_=META_VALUE_CLASS)[f"Left out of {', '.join(left_out)}"],
+        )
+    ]
 
 
 def _game_action_buttons(game: Game, origin: OriginUrl | None) -> Node:
@@ -1088,13 +1121,9 @@ def _game_header(
                     current=game.tracked_status,
                 )
             ],
-            Fragment(
-                "👑" if game.tracked_mastered else "",
-                Span(class_="text-body")["Excluded from unfinished lists"]
-                if game.tracked_excluded_from_unfinished
-                else "",
-            ),
+            "👑" if game.tracked_mastered else "",
         ),
+        *_visibility_row(game),
         _played_row(game, origin, played),
         *_plain_release_rows(entries, presentation),
     ]

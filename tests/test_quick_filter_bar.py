@@ -7,6 +7,7 @@ import re
 from collections.abc import Mapping
 from html import unescape
 from typing import ClassVar
+from unittest.mock import patch
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
@@ -15,18 +16,24 @@ from django.test import SimpleTestCase, TestCase
 from common.components import (
     QUICK_FACET_KINDS,
     QUICK_FACETS,
+    QuickFacet,
+    QuickFacetGroup,
     Span,
     is_quick_editable,
     parse_filter_dict,
+    quick_facet_fields,
 )
 from common.components import (
     QuickFilterBar as _QuickFilterBar,
 )
 from common.components.custom_elements import (
     FILTER_MODE_MODELS,
+    DropdownFieldset,
     FilterMode,
     list_url_for,
 )
+from common.components.primitives import FLOATED_LEGEND_CLASS
+from common.components.quick_filter import QUICK_FACET_GROUP_KINDS
 from common.criteria import AttrName, field_metadata
 from common.date_time_presentation import (
     DEFAULT_DATE_TIME_FORMAT_PROFILE,
@@ -300,17 +307,22 @@ class QuickFilterBarRenderingTest(TestCase):
             for meta in field_metadata(filter_for_model(FILTER_MODE_MODELS[mode]))
         }
         for facet in QUICK_FACETS[mode]:
-            expected_label = facet.label or derived_labels[facet.field]
+            expected_label = (
+                facet.label
+                if isinstance(facet, QuickFacetGroup)
+                else facet.label or derived_labels[facet.field]
+            )
             # Every facet is a "Label ▾" dropdown trigger opening a combobox
             # dialog — no inline "Label:" span anywhere.
             self.assertNotIn(f"{expected_label}:", html)
             self.assertIn(f">{expected_label}<svg", html)
-            self.assertIn(f'id="quick-{facet.field}-dropdown"', html)
+            self.assertIn(f'id="quick-{facet.key}-dropdown"', html)
             self.assertIn(f'aria-label="{expected_label}"', html)
             # Attribute values are escaped, so the data-path JSON renders with
             # &quot; entities. Present for every facet — the serializer finds
             # dropdown-facet widgets inside the (hidden) dialog panel too.
-            self.assertIn(f'data-path="[&quot;{facet.field}&quot;]"', html)
+            for field in facet.fields:
+                self.assertIn(f'data-path="[&quot;{field}&quot;]"', html)
 
     def test_blank_filter_renders_editable_for_every_mode(self):
         for mode in QUICK_FACETS:
@@ -650,7 +662,7 @@ class FacetOrderTest(SimpleTestCase):
             "purchase_count",
             "purchase_price_total",
             "name",
-            "excluded_from_unfinished",
+            "visibility",
         ],
         "playthroughs": [
             "activity",
@@ -678,7 +690,73 @@ class FacetOrderTest(SimpleTestCase):
         self.assertEqual(set(self.ORDERS), set(QUICK_FACETS))
         for mode, order in self.ORDERS.items():
             with self.subTest(mode=mode):
-                self.assertEqual([facet.field for facet in QUICK_FACETS[mode]], order)
+                self.assertEqual([facet.key for facet in QUICK_FACETS[mode]], order)
+
+
+class VisibilityFacetTest(SimpleTestCase):
+    """One dropdown states both flags."""
+
+    def _dropdown(self, filter_json: str = "") -> str:
+        html = str(QuickFilterBar(mode="games", filter_json=filter_json))
+        start = html.index('id="quick-visibility-dropdown"')
+        return html[
+            html.rindex("<drop-down", 0, start) : html.index("</drop-down>", start)
+        ]
+
+    def test_each_member_is_a_named_fieldset(self):
+        dropdown = self._dropdown()
+
+        for label, field in (
+            ("Unfinished lists", "excluded_from_unfinished"),
+            ("Dropped figures", "excluded_from_dropped"),
+        ):
+            fieldset = dropdown.split(f">{label}</legend>", 1)[1].split(
+                "</fieldset>", 1
+            )[0]
+            self.assertIn(f'data-path="[&quot;{field}&quot;]"', fieldset)
+
+    def test_each_legend_floats_inside_its_fieldset(self):
+        legends = re.findall(r"<legend[^>]*>", self._dropdown())
+
+        self.assertEqual(len(legends), 2)
+        for legend in legends:
+            self.assertIn(FLOATED_LEGEND_CLASS, legend)
+
+    def test_one_stated_member_marks_the_group_applied(self):
+        stated = json.dumps({"excluded_from_dropped": {"value": True}})
+
+        self.assertIn("data-quick-facet-applied", self._dropdown(stated))
+        self.assertNotIn("data-quick-facet-applied", self._dropdown())
+
+    def test_each_member_checks_its_stated_radio(self):
+        stated = json.dumps(
+            {
+                "excluded_from_unfinished": {"value": False},
+                "excluded_from_dropped": {"value": True},
+            }
+        )
+        dropdown = self._dropdown(stated)
+
+        for field, value in (
+            ("excluded_from_unfinished", "false"),
+            ("excluded_from_dropped", "true"),
+        ):
+            radios = re.findall(rf'<input[^>]*name="quick-{field}"[^>]*>', dropdown)
+            checked = [tag for tag in radios if "checked" in tag]
+            self.assertEqual(len(checked), 1, field)
+            self.assertIn(f'value="{value}"', checked[0])
+
+    def test_both_members_stated_stay_editable(self):
+        parsed = {
+            "excluded_from_unfinished": {"value": True},
+            "excluded_from_dropped": {"value": False},
+        }
+
+        self.assertTrue(
+            is_quick_editable(
+                parsed, quick_facet_fields("games"), filter_cls=GameFilter
+            )
+        )
 
 
 class QuickFacetsContractTest(TestCase):
@@ -697,7 +775,7 @@ class QuickFacetsContractTest(TestCase):
         """The bar parses a legacy key as the query does."""
         for mode, model in FILTER_MODE_MODELS.items():
             filter_class = filter_for_model(model)
-            facets = {facet.field for facet in QUICK_FACETS[mode]}
+            facets = quick_facet_fields(mode)
             for old, new in filter_class.renamed_fields.items():
                 if new not in facets:
                     continue
@@ -712,15 +790,53 @@ class QuickFacetsContractTest(TestCase):
                     )
 
     def test_every_facet_is_an_own_model_leaf_field(self):
+        for mode in QUICK_FACETS:
+            metadata = {
+                meta["name"]: meta
+                for meta in field_metadata(filter_for_model(FILTER_MODE_MODELS[mode]))
+            }
+            for field in quick_facet_fields(mode):
+                with self.subTest(mode=mode, facet=field):
+                    self.assertIn(field, metadata)
+                    self.assertIn(metadata[field]["kind"], QUICK_FACET_KINDS)
+
+    def test_every_group_member_is_a_stacking_kind(self):
         for mode, facets in QUICK_FACETS.items():
             metadata = {
                 meta["name"]: meta
                 for meta in field_metadata(filter_for_model(FILTER_MODE_MODELS[mode]))
             }
-            for facet in facets:
-                with self.subTest(mode=mode, facet=facet.field):
-                    self.assertIn(facet.field, metadata)
-                    self.assertIn(metadata[facet.field]["kind"], QUICK_FACET_KINDS)
+            for group in facets:
+                if not isinstance(group, QuickFacetGroup):
+                    continue
+                for field in group.fields:
+                    with self.subTest(mode=mode, group=group.key, field=field):
+                        self.assertIn(metadata[field]["kind"], QUICK_FACET_GROUP_KINDS)
+
+    def test_facet_keys_are_unique_and_groups_hold_several(self):
+        for mode, facets in QUICK_FACETS.items():
+            with self.subTest(mode=mode):
+                keys = [facet.key for facet in facets]
+                self.assertEqual(len(keys), len(set(keys)))
+                fields = [field for facet in facets for field in facet.fields]
+                self.assertEqual(len(fields), len(set(fields)))
+                groups = [
+                    facet for facet in facets if isinstance(facet, QuickFacetGroup)
+                ]
+                for group in groups:
+                    self.assertGreaterEqual(len(group.members), 2, group.key)
+
+    def test_an_unlabelled_dropdown_fieldset_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "needs a label"):
+            DropdownFieldset("")
+
+    def test_a_group_holding_a_set_field_is_refused(self):
+        group = QuickFacetGroup("broken", "Broken", (QuickFacet("status"),))
+        with (
+            patch.dict(QUICK_FACETS, {"games": [group]}),
+            self.assertRaisesRegex(ValueError, "'status', a set field"),
+        ):
+            str(QuickFilterBar(mode="games"))
 
 
 class BuilderUrlForTest(TestCase):

@@ -4,6 +4,7 @@ import html as html_module
 import json
 import logging
 import uuid
+from dataclasses import fields as dataclass_fields
 
 import pytest
 from django.contrib.messages import get_messages
@@ -18,15 +19,18 @@ from games.bulk_game_edit import (
     GAME_REMOVED,
     NOT_EDITED_BY_THIS_BATCH,
     NOTHING_STATED,
+    GameEditJson,
     GameEditStatement,
 )
 from games.bulk_games import GAME_GONE
 from games.bulk_parts import AsksNothing, Control, RowOutcome
+from games.commands.playergame import RecordPlayerGameFacts
 from games.events.dispatch import CommandRejected, RowUnreadable
 from games.events.playergame import (
     PLAYERGAME_STATUS_CHANGED,
 )
 from games.models import (
+    VISIBILITY_FIELDS,
     Game,
     LibraryEvent,
     LibraryIdempotencyRecord,
@@ -36,6 +40,7 @@ from games.models import (
 )
 from games.reads.events import batch_aggregate_ids
 from games.reads.playergame_facts import (
+    BatchFactChanges,
     FactChange,
     batch_fact_changes,
     status_change,
@@ -60,6 +65,7 @@ URL = reverse("games:run_bulk_action", args=[EDIT.name])
 STATUS = f"{CHOICE_FIELD}-status"
 MASTERED = f"{CHOICE_FIELD}-mastered"
 EXCLUDED = f"{CHOICE_FIELD}-excluded_from_unfinished"
+DROPPED = f"{CHOICE_FIELD}-excluded_from_dropped"
 
 
 @pytest.fixture
@@ -196,10 +202,22 @@ def test_the_preview_names_every_fact(owned_user, owned_library, game):
 
     cells = [str(column.cell(row, None)) for column in EDIT.preview]
 
-    assert cells == ["Outer Wilds", "PC", "Played", "No", "Included"]
+    assert cells == ["Outer Wilds", "PC", "Played", "No", "Included", "Included"]
 
 
 # ── The question ─────────────────────────────────────────────────────────────
+
+
+def test_the_control_groups_visibility(owned_library, game):
+    rows = EDIT.resolve(owned_library, [game.pk]).rows
+
+    markup = str(EDIT.choice.offer(owned_library, rows, CHOICE_FIELD).node)
+    visibility = markup.split("Visibility</legend>", 1)[1].split("</fieldset>", 1)[0]
+
+    assert "Leave these games out of:" in visibility
+    assert f'name="{EXCLUDED}"' in visibility
+    assert f'name="{DROPPED}"' in visibility
+    assert f'name="{STATUS}"' not in visibility
 
 
 def test_no_rows_ask_nothing(owned_library):
@@ -210,18 +228,27 @@ def test_the_control_keeps_what_the_rows_hold(
     owned_user, owned_library, game, second_game
 ):
     _stated(owned_user, game, PlayerGameStatus.PLAYED)
+    for each in (game, second_game):
+        record_facts(
+            owned_user,
+            each,
+            excluded_from_dropped=True,
+            correlation_id=new_correlation_id(),
+        )
     rows = EDIT.resolve(owned_library, [game.pk, second_game.pk]).rows
 
     offered = EDIT.choice.offer(owned_library, rows, CHOICE_FIELD)
 
     assert isinstance(offered, Control)
     markup = str(offered.node)
-    for name in (STATUS, MASTERED, EXCLUDED):
+    for name in (STATUS, MASTERED, EXCLUDED, DROPPED):
         assert f'name="{name}"' in markup
     #: Status differs; the flags agree.
     assert "Keep: mixed" in markup
     assert "Keep: Not mastered" in markup
-    assert "Keep: Included" in markup
+    #: One per flag: each reads its own column.
+    assert markup.count("Keep: Included") == 1
+    assert markup.count("Keep: Excluded") == 1
 
 
 def test_settling_refuses_a_form_that_states_nothing(owned_library):
@@ -237,12 +264,20 @@ def test_settling_composes_the_statement(owned_library):
     )
 
     assert GameEditStatement.decode(settled) == GameEditStatement(
-        PlayerGameStatus.COMPLETED, True, None
+        status=PlayerGameStatus.COMPLETED, mastered=True
+    )
+
+
+def test_settling_states_the_dropped_flag_alone(owned_library):
+    settled = EDIT.choice.settle(owned_library, _post(**{DROPPED: "True"}))
+
+    assert GameEditStatement.decode(settled) == GameEditStatement(
+        excluded_from_dropped=True
     )
 
 
 def test_settling_reads_a_carried_statement(owned_library):
-    carried = GameEditStatement(None, None, True).encode()
+    carried = GameEditStatement(excluded_from_dropped=True).encode()
 
     assert EDIT.choice.settle(owned_library, _post(**{CHOICE_FIELD: carried})) == (
         carried
@@ -256,6 +291,7 @@ def test_settling_reads_a_carried_statement(owned_library):
         '{"mastered": "yes"}',
         '{"note": "x"}',
         '{"mastered": null}',
+        '{"excluded_from_dropped": "yes"}',
         '{"status": null}',
         "{}",
         "[]",
@@ -279,13 +315,14 @@ def test_every_selected_game_states_the_facts_under_one_batch(
         client_in,
         game,
         second_game,
-        **{STATUS: "completed", MASTERED: "True", EXCLUDED: "True"},
+        **{STATUS: "completed", MASTERED: "True", EXCLUDED: "True", DROPPED: "True"},
     )
 
     for row in (_tracked(game), _tracked(second_game)):
         assert row.status == PlayerGameStatus.COMPLETED
         assert row.mastered is True
         assert row.excluded_from_unfinished is True
+        assert row.excluded_from_dropped is True
     assert set(batch_aggregate_ids(owned_library, uuid.UUID(token), "playergame")) == {
         _tracked(game).pk,
         _tracked(second_game).pk,
@@ -307,7 +344,12 @@ def test_a_game_that_holds_every_fact_is_unchanged(owned_user, game):
     outcome = EDIT.run(
         owned_user,
         game,
-        choice=GameEditStatement(PlayerGameStatus.COMPLETED, False, False).encode(),
+        choice=GameEditStatement(
+            status=PlayerGameStatus.COMPLETED,
+            mastered=False,
+            excluded_from_unfinished=False,
+            excluded_from_dropped=False,
+        ).encode(),
         idempotency_key=str(uuid.uuid7()),
         correlation_id=uuid.uuid7(),
     )
@@ -336,7 +378,14 @@ def test_the_confirmation_asks_for_the_facts(client_in, game, second_game):
 
     markup = html_module.unescape(confirmation.content.decode())
     assert "Edit 2 games" in markup
-    for heading in ("Game", "Platform", "Status", "Mastered", "Unfinished lists"):
+    for heading in (
+        "Game",
+        "Platform",
+        "Status",
+        "Mastered",
+        "Unfinished lists",
+        "Dropped figures",
+    ):
         assert f">{heading}<" in markup
     assert f'name="{STATUS}"' in markup
 
@@ -392,20 +441,24 @@ def test_an_undo_states_every_fact_before_the_batch(
         client_in,
         game,
         second_game,
-        **{STATUS: "completed", MASTERED: "True", EXCLUDED: "False"},
+        **{STATUS: "completed", MASTERED: "True", EXCLUDED: "False", DROPPED: "True"},
     )
 
     _undo(client_in, token)
 
-    first, second = _tracked(game), _tracked(second_game)
-    assert (first.status, first.mastered, first.excluded_from_unfinished) == (
-        PlayerGameStatus.PLAYED,
-        False,
-        True,
-    )
+    def facts(row):
+        return (
+            row.status,
+            row.mastered,
+            row.excluded_from_unfinished,
+            row.excluded_from_dropped,
+        )
+
+    assert facts(_tracked(game)) == (PlayerGameStatus.PLAYED, False, True, False)
     #: Creation leaves the defaults; excluded never changed.
-    assert (second.status, second.mastered, second.excluded_from_unfinished) == (
+    assert facts(_tracked(second_game)) == (
         PlayerGameStatus.UNPLAYED,
+        False,
         False,
         False,
     )
@@ -421,6 +474,39 @@ def test_an_undo_pressed_twice_is_already_so(client_in, game):
     assert _status(game) == PlayerGameStatus.UNPLAYED
     assert _events() == events
     assert any("already" in sentence for sentence in said(again))
+
+
+def test_an_undo_of_a_dropped_flag_already_back_is_already_so(
+    client_in, owned_user, game
+):
+    token, _ = _run(client_in, game, **{DROPPED: "True"})
+    record_facts(
+        owned_user,
+        game,
+        excluded_from_dropped=False,
+        correlation_id=new_correlation_id(),
+    )
+    events = _events()
+
+    answer = _undo(client_in, token)
+
+    assert _tracked(game).excluded_from_dropped is False
+    assert _events() == events
+    assert any("already" in sentence for sentence in said(answer))
+
+
+def test_the_fact_lists_agree():
+    """Command, statement, wire and Undo name one set."""
+    command_facts = {
+        field.name for field in dataclass_fields(RecordPlayerGameFacts)
+    } - {"game_id"}
+
+    assert command_facts == {
+        field.name for field in dataclass_fields(GameEditStatement)
+    }
+    assert command_facts == set(GameEditJson.__annotations__)
+    assert command_facts == {field.name for field in dataclass_fields(BatchFactChanges)}
+    assert set(VISIBILITY_FIELDS) < command_facts
 
 
 def test_an_undo_states_the_earlier_word_over_a_later_one(
@@ -487,15 +573,12 @@ def test_the_reader_reads_the_batch_it_is_asked(owned_user, owned_library, game)
     )
 
 
-@pytest.mark.parametrize("fact", ["mastered", "excluded_from_unfinished"])
+@pytest.mark.parametrize(
+    "fact", ["mastered", "excluded_from_unfinished", "excluded_from_dropped"]
+)
 def test_a_flag_starts_false(owned_user, owned_library, game, fact):
     batch = new_correlation_id()
-    if fact == "mastered":
-        record_facts(owned_user, game, mastered=True, correlation_id=batch)
-    else:
-        record_facts(
-            owned_user, game, excluded_from_unfinished=True, correlation_id=batch
-        )
+    record_facts(owned_user, game, **{fact: True}, correlation_id=batch)
 
     changes = batch_fact_changes(owned_library, _tracked(game).pk, batch)
 
@@ -561,7 +644,9 @@ def test_a_row_with_one_changed_fact_of_two_counts_moved(owned_user, game):
     outcome = EDIT.run(
         owned_user,
         game,
-        choice=GameEditStatement(PlayerGameStatus.COMPLETED, None, True).encode(),
+        choice=GameEditStatement(
+            status=PlayerGameStatus.COMPLETED, excluded_from_unfinished=True
+        ).encode(),
         idempotency_key=str(uuid.uuid7()),
         correlation_id=uuid.uuid7(),
     )

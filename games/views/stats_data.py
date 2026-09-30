@@ -35,6 +35,7 @@ from games.models import (
     PurchaseConversionState,
     PurchaseQueryset,
     UserLibrary,
+    VisibilityField,
 )
 from games.reads.calendar import calendar_today
 from games.reads.days import YearScope
@@ -218,9 +219,9 @@ def _games_at_status(library: UserLibrary, *statuses: PlayerGameStatus):
     return Game.objects.tracked_by(library, tracked__status__in=statuses)
 
 
-def _games_excluded_from_unfinished(library: UserLibrary):
-    """Tracked games unfinished lists leave out."""
-    return Game.objects.tracked_by(library, tracked__excluded_from_unfinished=True)
+def _holding_no_game_excluded_from(library: UserLibrary, fact: VisibilityField) -> Q:
+    """Purchases holding no game stating `fact`."""
+    return ~Q(games__in=Game.objects.tracked_by(library, **{f"tracked__{fact}": True}))
 
 
 def compute_stats(library: UserLibrary, year: YearScope = None) -> StatsData:
@@ -299,12 +300,10 @@ def _compute_stats_from_scoped_querysets(
 
     # ── Purchase breakdown ───────────────────────────────────────────────────
     only_games_and_dlc = Q(type=Purchase.GAME) | Q(type=Purchase.DLC)
-    #: One excluded game leaves the purchase out.
-    not_excluded_q = ~Q(games__in=_games_excluded_from_unfinished(library))
     unfinished = (
         without_refunded.filter(not_finished_q)
         .filter(infinite=False)
-        .filter(not_excluded_q)
+        .filter(_holding_no_game_excluded_from(library, "excluded_from_unfinished"))
         .filter(only_games_and_dlc)
         #: not_finished_q already excludes retired.
         .filter(~Q(games__in=_games_at_status(library, PlayerGameStatus.ABANDONED)))
@@ -316,7 +315,7 @@ def _compute_stats_from_scoped_querysets(
             | Q(date_refunded__isnull=False)
         )
         .filter(infinite=False)
-        .filter(not_excluded_q)
+        .filter(_holding_no_game_excluded_from(library, "excluded_from_dropped"))
         .filter(only_games_and_dlc)
     )
     unfinished_count = unfinished.count()

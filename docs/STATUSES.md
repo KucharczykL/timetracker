@@ -110,7 +110,7 @@ A purchase is **dropped** when:
 2. It is NOT finished (per the finished definition above)
 3. It matches at least one dropped signal (per the dropped definition above)
 4. It is NOT infinite
-5. None of its games is excluded from unfinished lists
+5. None of its games is excluded from dropped figures
 6. It IS a game or DLC
 
 **Dropped = Terminal state** — games the user has given up on or refunded.
@@ -124,6 +124,7 @@ A purchase is **dropped** when:
 | **Refunded** | Yes | `date_refunded IS NOT NULL` |
 | **Infinite** | Yes | `infinite = True` |
 | **Excluded from unfinished** | Yes | a game states `excluded_from_unfinished` |
+| **Excluded from dropped** | Yes | a game states `excluded_from_dropped` |
 
 ---
 
