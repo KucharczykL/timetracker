@@ -27,7 +27,7 @@ from games.catalog_writes import (
     state_catalog_graph,
 )
 from games.forms import PrimitiveWidgetsMixin, TemporalFormField
-from games.models import Edition, Game, Platform, Release, UserLibrary
+from games.models import Edition, EditionKind, Game, Platform, Release, UserLibrary
 from games.reads.catalog_hierarchy import game_hierarchy
 from timetracker.temporal import TemporalValue
 
@@ -98,6 +98,13 @@ class EditionRowForm(PrimitiveWidgetsMixin, forms.Form):
 
     edition_id = forms.UUIDField(required=False, widget=forms.HiddenInput)
     name = forms.CharField(max_length=255, required=False, label="Edition name")
+    #: An empty post is full, as every Edition was before the field.
+    kind = forms.ChoiceField(
+        choices=EditionKind.choices,
+        required=False,
+        initial=EditionKind.FULL,
+        label="Edition kind",
+    )
     removed = forms.BooleanField(required=False, widget=forms.HiddenInput)
 
     def __init__(self, *args: object, **kwargs: object) -> None:
@@ -109,6 +116,9 @@ class EditionRowForm(PrimitiveWidgetsMixin, forms.Form):
 
     def clean_name(self) -> str:
         return cast(str, self.cleaned_data["name"]).strip()
+
+    def clean_kind(self) -> EditionKind:
+        return EditionKind(self.cleaned_data["kind"] or EditionKind.FULL)
 
 
 class ReleaseRowForm(PrimitiveWidgetsMixin, forms.Form):
@@ -324,7 +334,11 @@ class CatalogGraphForm:
         for index, entry in enumerate(self._stored):
             form = EditionRowForm(
                 prefix=edition_prefix(index),
-                initial={"edition_id": entry.edition.pk, "name": entry.edition.name},
+                initial={
+                    "edition_id": entry.edition.pk,
+                    "name": entry.edition.name,
+                    "kind": entry.edition.kind,
+                },
             )
             form.instance = entry.edition
             rows: list[ReleaseRowForm] = []
@@ -574,6 +588,10 @@ class CatalogGraphForm:
                 key=_key(block.form),
                 edition=block.edition,
                 name=cast(str, block.form.cleaned_data.get("name", "")),
+                kind=cast(
+                    EditionKind,
+                    block.form.cleaned_data.get("kind") or EditionKind.FULL,
+                ),
                 removed=block.removed,
                 is_default=block is marked_block,
                 releases=tuple(

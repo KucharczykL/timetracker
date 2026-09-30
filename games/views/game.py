@@ -19,6 +19,7 @@ from common.components import (
     AddForm,
     ButtonGroup,
     Cell,
+    Chip,
     Column,
     ContentContainer,
     ControlButton,
@@ -100,6 +101,8 @@ from games.formatting import session_time_range
 from games.forms import GameForm
 from games.list_columns import column_choice
 from games.models import (
+    Edition,
+    EditionKind,
     ExternalReference,
     Game,
     PlayerGameStatus,
@@ -835,13 +838,27 @@ def _platform_words(release: Release | None) -> str:
 
 
 def _reads_plainly(entries: Sequence[EditionEntry]) -> bool:
-    """One unnamed Edition, at most one Release."""
+    """One unnamed full Edition, at most one Release."""
     if len(entries) > 1:
         return False
     if not entries:
         return True
     entry = entries[0]
-    return not entry.edition.name and len(entry.releases) <= 1
+    return (
+        not entry.edition.name
+        and entry.edition.kind == EditionKind.FULL
+        and len(entry.releases) <= 1
+    )
+
+
+def _edition_name_cell(edition: Edition) -> Node:
+    """The name, and a chip on a prerelease."""
+    if edition.kind != EditionKind.PRERELEASE:
+        return Fragment(edition.display_name)
+    return Span(class_="inline-flex flex-wrap items-center gap-2")[
+        edition.display_name,
+        Chip(tone="neutral")[EditionKind.PRERELEASE.label],
+    ]
 
 
 def _catalog_controls_visible(game: Game) -> bool:
@@ -951,7 +968,7 @@ def _releases_section(
     ]
     rows = [
         make_row(
-            entry.edition.display_name,
+            _edition_name_cell(entry.edition),
             _platforms_cell(entry, presentation),
             _references_cell(entry, references),
             *((edit,) if controls else ()),

@@ -21,7 +21,7 @@ from common.returns import OriginUrl, action_url
 from common.temporal_presentation import present_temporal_value
 from games.models import EntryAccess, EntryFormat, Game, LibraryEntry, UserLibrary
 from games.reads.entries import copy_end, game_entries
-from games.reads.releases import game_releases, platform_words
+from games.reads.releases import edition_words, game_releases, platform_words
 from games.views.entry_menu import entry_row_menu, submission_input
 
 EMPTY_LIBRARY = "Nothing in your library yet."
@@ -34,8 +34,8 @@ def release_words(entry: LibraryEntry) -> str:
     """Platform, then a named edition."""
     release = entry.release
     parts = [platform_words(release)]
-    if release.edition.name:
-        parts.append(release.edition.name)
+    if words := edition_words(release.edition):
+        parts.append(words)
     return " · ".join(parts)
 
 
