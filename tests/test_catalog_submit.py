@@ -361,16 +361,16 @@ def test_a_collision_with_no_diagnostic_gets_no_sentence():
     assert answered_constraint(IntegrityError("no cause")) is None
 
 
-def test_every_unique_constraint_the_form_can_reach_is_mapped():
+def test_every_constraint_the_form_can_reach_is_mapped():
     """A migration that adds one fails here, not in front of a person."""
-    from django.db.models import UniqueConstraint
+    from django.db.models import CheckConstraint, UniqueConstraint
 
     reachable = [Game, Edition, Release, ExternalReference]
     declared = {
         constraint.name
         for model in reachable
         for constraint in model._meta.constraints
-        if isinstance(constraint, UniqueConstraint)
+        if isinstance(constraint, (UniqueConstraint, CheckConstraint))
     }
     accounted = set(CONSTRAINT_ANSWERS) | set(UNREACHABLE_FROM_THE_GAME_FORM)
 

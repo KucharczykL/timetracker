@@ -57,7 +57,25 @@ _ANSWERED_BY_THE_REFERENCE_SERVICE = (
     "arrives as a `ReferencesRefused` naming the box that stated "
     "it, never as an `IntegrityError`."
 )
+_REFUSED_BY_THE_REFERENCE_FORM = (
+    "`ReferenceSetForm` names one supported provider per box and "
+    "normalises its key, and the service picks the target column "
+    "by entity kind, thus no write reaches this check."
+)
+_REFUSED_BY_STATE_ADDON = (
+    "`state_addon` refuses first and names the field, thus no save reaches this check."
+)
+_A_SELECT_OVER_THE_WORDS = (
+    "The field is a select over the same words, thus no save reaches this check."
+)
 UNREACHABLE_FROM_THE_GAME_FORM: Final[dict[str, str]] = {
+    "external_reference_kind_matches_target": _REFUSED_BY_THE_REFERENCE_FORM,
+    "external_reference_supported_provider": _REFUSED_BY_THE_REFERENCE_FORM,
+    "external_reference_canonical_provider_key": _REFUSED_BY_THE_REFERENCE_FORM,
+    "game_kind_word": _REFUSED_BY_STATE_ADDON,
+    "game_parent_exactly_for_addons": _REFUSED_BY_STATE_ADDON,
+    "game_not_its_own_parent": _REFUSED_BY_STATE_ADDON,
+    "edition_kind_word": _A_SELECT_OVER_THE_WORDS,
     "unique_external_reference_provider_kind_key": _ANSWERED_BY_THE_REFERENCE_SERVICE,
     "unique_live_game_reference_per_provider": _ANSWERED_BY_THE_REFERENCE_SERVICE,
     "unique_live_edition_reference_per_provider": _ANSWERED_BY_THE_REFERENCE_SERVICE,

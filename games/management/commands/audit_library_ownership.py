@@ -176,6 +176,15 @@ class Command(BaseCommand):
             .values_list("pk", "platform__id")
         ):
             violations.append(f"Game.platform: game {game_id}, platform {platform_id}")
+        for game_id, parent_id in (
+            Game.objects.filter(
+                Q(library_id__in=library_ids) | Q(parent__library_id__in=library_ids),
+                parent__library__isnull=False,
+            )
+            .exclude(parent__library_id=F("library_id"))
+            .values_list("pk", "parent__id")
+        ):
+            violations.append(f"Game.parent: game {game_id}, parent {parent_id}")
         for purchase_id, platform_id in (
             Purchase.objects.filter(
                 Q(library_id__in=library_ids) | Q(platform__library_id__in=library_ids),

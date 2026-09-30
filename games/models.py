@@ -258,6 +258,28 @@ def _validate_related_library(
         )
 
 
+class GameKind(models.TextChoices):
+    """What kind of work a Game is, in IGDB's words."""
+
+    MAIN = "main", "Main game"
+    DLC = "dlc", "DLC"
+    EXPANSION = "expansion", "Expansion"
+    STANDALONE_EXPANSION = "standalone_expansion", "Standalone expansion"
+
+
+#: The kinds that belong to a parent Game.
+ADDON_KINDS: Final[frozenset[GameKind]] = frozenset(
+    {GameKind.DLC, GameKind.EXPANSION, GameKind.STANDALONE_EXPANSION}
+)
+
+
+class EditionKind(models.TextChoices):
+    """Whether an Edition is the whole game or a prerelease of it."""
+
+    FULL = "full", "Full"
+    PRERELEASE = "prerelease", "Prerelease"
+
+
 class Game(ReferencedRow):
     if TYPE_CHECKING:
         #: Annotations, not columns: GameQuerySet.tracked_by() puts the
@@ -293,6 +315,22 @@ class Game(ReferencedRow):
                 fields=("library", "name", "year_released"),
                 condition=Q(platform__isnull=True) & Q(removed_at__isnull=True),
                 name="unique_library_platformless_game_name_year",
+            ),
+            models.CheckConstraint(
+                condition=Q(kind__in=GameKind.values),
+                name="game_kind_word",
+            ),
+            #: An add-on names its parent; a main game names none.
+            models.CheckConstraint(
+                condition=(
+                    Q(kind=GameKind.MAIN, parent__isnull=True)
+                    | (~Q(kind=GameKind.MAIN) & Q(parent__isnull=False))
+                ),
+                name="game_parent_exactly_for_addons",
+            ),
+            models.CheckConstraint(
+                condition=~Q(parent=F("id")),
+                name="game_not_its_own_parent",
             ),
         )
 
@@ -406,6 +444,16 @@ class Game(ReferencedRow):
         null=True,
         blank=True,
         default=None,
+    )
+    kind = models.CharField(max_length=20, choices=GameKind, default=GameKind.MAIN)
+    #: No reverse accessor: a shared Game's would reach every library's add-ons.
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.RESTRICT,
+        null=True,
+        blank=True,
+        default=None,
+        related_name="+",
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -574,6 +622,10 @@ class Edition(ReferencedRow):
                 condition=Q(removed_at__isnull=True) & ~Q(name=""),
                 name="unique_live_edition_name_per_game",
             ),
+            models.CheckConstraint(
+                condition=Q(kind__in=EditionKind.values),
+                name="edition_kind_word",
+            ),
         )
         indexes = (
             #: The live Editions of one Game.
@@ -593,6 +645,9 @@ class Edition(ReferencedRow):
     )
     #: The words this Edition presents under.
     name = models.CharField(max_length=255, blank=True, default="")
+    kind = models.CharField(
+        max_length=20, choices=EditionKind, default=EditionKind.FULL
+    )
     is_default = models.BooleanField(default=False, editable=False)
     #: Set instead of destroying the row.
     removed_at = models.DateTimeField(
