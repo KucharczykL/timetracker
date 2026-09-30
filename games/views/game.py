@@ -149,6 +149,7 @@ from games.views.historical_playtime import (
 )
 from games.views.library_cards import (
     EMPTY_LIBRARY,
+    EMPTY_LIBRARY_NOW,
     copy_rows,
     library_add_control,
 )
@@ -704,6 +705,7 @@ def _game_section(
     add_control: Node | None = None,
     surface: bool = False,
     view_all_title: str | None = None,
+    note: str | None = None,
 ) -> Node:
     """``add_control`` replaces the plain Add; ``surface`` sets it on a panel."""
     buttons: list[Node] = [add_control] if add_control is not None else []
@@ -719,7 +721,8 @@ def _game_section(
                 "Add",
             ]
         )
-    if view_all_url and count:
+    #: A note may name View all where no row shows.
+    if view_all_url and (count or note):
         buttons.append(
             ControlButton(
                 href=view_all_url,
@@ -759,6 +762,18 @@ def _game_section(
     )[
         header,
         table if count else empty_message,
+        *(
+            [
+                P(
+                    class_=(
+                        "flex items-center justify-center gap-2 "
+                        "text-type-body text-body-subtle"
+                    )
+                )[Icon("info", [("aria-hidden", "true")]), note]
+            ]
+            if note
+            else []
+        ),
     ]
 
 
@@ -1227,6 +1242,21 @@ def _playthroughs_section(
     return Div(id_="playthroughs-container")[section]
 
 
+def _had_copies(had: int) -> str | None:
+    """Copies no longer had leave the section; one line says so."""
+    if not had:
+        return None
+    if had == 1:
+        return (
+            "There is 1 more copy previously in your library, "
+            "click View all to manage it."
+        )
+    return (
+        f"There are {had} more copies previously in your library, "
+        "click View all to manage them."
+    )
+
+
 def _library_section(
     game: Game,
     library: UserLibrary,
@@ -1234,18 +1264,22 @@ def _library_section(
     origin: OriginUrl,
     csrf_token: str,
 ) -> Node:
-    rows = copy_rows(game, library, presentation, origin, csrf_token)
+    copies = copy_rows(game, library, presentation, origin, csrf_token)
     add = library_add_control(game, library, origin, csrf_token)
+    empty = EMPTY_LIBRARY if add is not None else SHARED_GAME_RELEASE
+    if copies.had and not copies.copies:
+        empty = EMPTY_LIBRARY_NOW
     return Div(id_="library")[
         _game_section(
             "Library",
-            len(rows),
-            SummaryList(*rows),
-            EMPTY_LIBRARY if add is not None else SHARED_GAME_RELEASE,
+            copies.copies,
+            SummaryList(*copies.rows, labelled=True),
+            empty,
             add_control=add,
             surface=True,
             view_all_url=filter_url(LibraryEntryFilter.where(game=[game.id])),
             view_all_title="View all copies of this game",
+            note=_had_copies(copies.had),
         )
     ]
 

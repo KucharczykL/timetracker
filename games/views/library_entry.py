@@ -38,8 +38,9 @@ from games.ownership import owned_or_404
 from games.reads.endpoints import stated
 from games.reads.entries import library_entries, taken_back_end
 from games.reads.releases import game_releases
+from games.views.entry_menu import SUBMISSION_FIELD
 from games.views.general import request_calendar_today
-from games.views.library_cards import SUBMISSION_FIELD, release_words
+from games.views.library_cards import release_words
 from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
 from games.writes.answers import CommandFailed

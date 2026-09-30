@@ -138,7 +138,8 @@ def test_the_row_menu_opens_the_details_page_and_returns_to_the_tab(
     page.wait_for_function("() => !!customElements.get('drop-down')")
 
     page.get_by_role("button", name="Tunic (PS5) actions").click()
-    page.get_by_role("menuitem", name="I no longer have it, with details…").click()
+    page.get_by_role("menuitem", name="I no longer have it").hover()
+    page.get_by_role("menuitem", name="With details…").click()
 
     entry = copies[0]
     page.wait_for_url(f"**{reverse('games:end_library_entry', args=[entry.pk])}*")
@@ -149,3 +150,28 @@ def test_the_row_menu_opens_the_details_page_and_returns_to_the_tab(
     page.wait_for_url(listed)
     entry.refresh_from_db()
     assert entry.access_end_way == "sold"
+
+
+def test_an_ended_copy_is_had_again_in_one_click(
+    authenticated_page: Page, live_server, copies
+):
+    entry = copies[0]
+    page = authenticated_page
+    listed = f"{live_server.url}{reverse('games:list_library')}"
+    page.goto(listed)
+    page.wait_for_function("() => !!customElements.get('drop-down')")
+    menu = page.get_by_role("button", name="Tunic (PS5) actions")
+    menu.click()
+    page.get_by_role("menuitem", name="I no longer have it").hover()
+    with page.expect_navigation():
+        page.get_by_role("menuitem", name="Just mark it gone").click()
+    expect(page.get_by_text("Marked as no longer yours.")).to_be_visible()
+
+    menu.click()
+    page.get_by_role("menuitem", name="I have it again").hover()
+    with page.expect_navigation():
+        page.get_by_role("menuitem", name="Just add it back").click()
+
+    expect(page.get_by_text("Marked as yours again.")).to_be_visible()
+    entry.refresh_from_db()
+    assert entry.access_end_recorded_at is None

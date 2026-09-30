@@ -184,6 +184,21 @@ def test_an_ended_copy_shows_its_way(logged_in, owned_library, graph):
     assert "Sold · 2024" in html
 
 
+def test_an_ended_copy_with_no_stated_way_shows_its_day_alone(
+    logged_in, owned_library, graph
+):
+    end_entry_access(
+        record_entry(owned_library, graph.release),
+        way=EndWay.UNSTATED,
+        ended=TemporalValue.parse("2024"),
+    )
+
+    html = logged_in.get(reverse("games:list_library")).content.decode()
+
+    assert "Not said · 2024" not in html
+    assert ">2024<" in html
+
+
 def test_the_builder_page_renders_for_copies(logged_in):
     response = logged_in.get(reverse("games:filter_builder", args=["libraryentry"]))
 
@@ -256,5 +271,5 @@ def test_game_detail_shows_a_copys_note(logged_in, owned_library, graph):
 
     html = logged_in.get(graph.game.get_absolute_url()).content.decode()
 
-    assert "data-summary-detail" in html
+    assert "<truncated-text" in html
     assert "boxed, with manual" in html

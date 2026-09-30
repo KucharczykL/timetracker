@@ -29,27 +29,63 @@ def _page(client, game, query: str = "") -> str:
     return response.content.decode()
 
 
-def test_a_row_per_live_copy_with_its_acts(client, owned_user, owned_library, graph):
+def test_a_row_per_held_copy_with_its_acts(client, owned_user, owned_library, graph):
     held = record_entry(owned_library, graph.release, access="borrowed", note="shelf")
-    ended = end_entry_access(record_entry(owned_library, graph.release))
     gone = remove_entry(record_entry(owned_library, graph.release))
     client.force_login(owned_user)
 
     html = _page(client, graph.game)
 
-    assert html.count("data-summary-row") == 2
+    assert html.count("data-summary-row") == 1
     assert "Borrowed · Digital" in html
     assert "shelf" in html
     assert f"{reverse('games:end_library_entry', args=[held.pk])}?" in html
-    assert f"{reverse('games:edit_library_entry_end', args=[ended.pk])}?" in html
-    assert f"{reverse('games:resume_library_entry', args=[ended.pk])}?" in html
     assert reverse("games:end_library_entry_now", args=[held.pk]) in html
-    assert reverse("games:resume_library_entry_now", args=[ended.pk]) in html
+    assert f"{reverse('games:edit_library_entry', args=[held.pk])}?" in html
     assert "I no longer have it" in html
-    assert "I have it again" in html
-    assert f"{reverse('games:end_library_entry', args=[ended.pk])}?" not in html
+    assert "Just mark it gone" in html
     assert str(gone.pk) not in html
-    assert "Returned" in html
+
+
+def test_a_copy_no_longer_had_leaves_and_one_line_counts_it(
+    client, owned_user, owned_library, graph
+):
+    held = record_entry(owned_library, graph.release)
+    ended = end_entry_access(record_entry(owned_library, graph.release))
+    client.force_login(owned_user)
+
+    html = _page(client, graph.game)
+
+    assert html.count("data-summary-row") == 1
+    assert str(held.pk) in html
+    assert str(ended.pk) not in html
+    assert "There is 1 more copy previously in your library" in html
+    assert "View all copies of this game" in html
+
+
+def test_only_copies_no_longer_had_say_nothing_right_now(
+    client, owned_user, owned_library, graph
+):
+    for _ in range(2):
+        end_entry_access(record_entry(owned_library, graph.release))
+    client.force_login(owned_user)
+
+    html = _page(client, graph.game)
+
+    assert "data-summary-row" not in html
+    assert "Nothing in your library right now." in html
+    assert "There are 2 more copies previously in your library" in html
+
+
+def test_copies_of_one_version_share_its_name(client, owned_user, owned_library, graph):
+    record_entry(owned_library, graph.release)
+    record_entry(owned_library, graph.release, format="physical")
+    client.force_login(owned_user)
+
+    html = _page(client, graph.game)
+
+    assert html.count("data-summary-group") == 1
+    assert html.count("data-summary-row") == 2
 
 
 def test_an_empty_section_offers_add(client, owned_user, graph):

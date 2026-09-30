@@ -48,6 +48,14 @@ def _details(page: Page, scope, menu_label: str, item: str) -> None:
     page.get_by_role("menuitem", name=item).click()
 
 
+def _row_act(page: Page, row_menu: str, submenu: str, item: str) -> None:
+    """Open the row's ⋮ menu, then one of its flyouts, then press ``item``."""
+    page.wait_for_function("() => !!customElements.get('drop-down')")
+    page.get_by_role("button", name=row_menu).click()
+    page.get_by_role("menuitem", name=submenu).hover()
+    page.get_by_role("menuitem", name=item).click()
+
+
 def test_a_copy_goes_through_every_act_from_game_detail(
     authenticated_page: Page, live_server, e2e_library
 ):
@@ -60,7 +68,7 @@ def test_a_copy_goes_through_every_act_from_game_detail(
     rows = section.locator("[data-summary-row]")
     expect(section.get_by_text("Nothing in your library yet.")).to_be_visible()
 
-    _details(page, section, "More ways to add to library", "…with details")
+    _details(page, section, "More ways to add to library", "Add to library…")
     page.wait_for_function("() => !!customElements.get('search-select')")
     picker = page.locator("search-select[name='release']")
     held = picker.locator('[data-search-select-pills] input[type="hidden"]')
@@ -82,32 +90,12 @@ def test_a_copy_goes_through_every_act_from_game_detail(
 
     expect(page.get_by_text("Added to your library.")).to_be_visible()
     expect(rows).to_have_count(1)
-    expect(rows.first).to_contain_text("Switch")
+    expect(section).to_contain_text("Switch")
     expect(rows.first).to_contain_text("Owned · Physical")
     entry = LibraryEntry.objects.get(library=e2e_library)
     assert entry.release_id == created.pk
 
-    _details(
-        page, rows.first, "More ways to say i no longer have it", "…and add details"
-    )
-    page.select_option("select[name='way']", "sold")
-    _submit(page)
-
-    expect(page.get_by_text("Marked as no longer yours.")).to_be_visible()
-    expect(rows.first).to_contain_text("Sold")
-
-    with page.expect_navigation():
-        rows.first.get_by_role("button", name="I have it again", exact=True).click()
-
-    expect(page.get_by_text("Marked as yours again.")).to_be_visible()
-    expect(rows.first).not_to_contain_text("Sold")
-
-    page.get_by_role("button", name="Undo").click()
-
-    expect(page.get_by_text("Marked as no longer yours.")).to_be_visible()
-    expect(rows.first).to_contain_text("Sold")
-
-    rows.first.get_by_role("link", name="Remove").click()
+    _details(page, section, "Tunic (Switch) actions", "Remove…")
     page.click('button:has-text("Remove")')
 
     expect(page.get_by_text("Copy removed.")).to_be_visible()
@@ -116,6 +104,43 @@ def test_a_copy_goes_through_every_act_from_game_detail(
     page.get_by_role("button", name="Undo").click()
 
     expect(page.get_by_text("Copy restored.")).to_be_visible()
+    expect(rows).to_have_count(1)
+
+    _row_act(page, "Tunic (Switch) actions", "I no longer have it", "With details…")
+    page.select_option("select[name='way']", "sold")
+    _submit(page)
+
+    expect(page.get_by_text("Marked as no longer yours.")).to_be_visible()
+    expect(rows).to_have_count(0)
+    expect(section.get_by_text("Nothing in your library right now.")).to_be_visible()
+    expect(
+        section.get_by_text("There is 1 more copy previously in your library")
+    ).to_be_visible()
+
+
+def test_one_click_gone_then_undo(authenticated_page: Page, live_server, e2e_library):
+    game = _game_on(
+        e2e_library, "Hades", Platform.objects.create(name="PS5", group="Sony")
+    )
+    page = authenticated_page
+    page.goto(f"{live_server.url}{game.get_absolute_url()}")
+    rows = page.locator("#library [data-summary-row]")
+    with page.expect_navigation():
+        page.locator("#library").get_by_role(
+            "button", name="Add to library", exact=True
+        ).click()
+
+    with page.expect_navigation():
+        _row_act(
+            page, "Hades (PS5) actions", "I no longer have it", "Just mark it gone"
+        )
+
+    expect(page.get_by_text("Marked as no longer yours.")).to_be_visible()
+    expect(rows).to_have_count(0)
+    assert LibraryEntry.objects.get(library=e2e_library).access_end_way == "unstated"
+
+    page.get_by_role("button", name="Undo").click()
+
     expect(rows).to_have_count(1)
 
 
