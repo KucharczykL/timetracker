@@ -1239,15 +1239,16 @@ class LibraryEntryFilter(OperatorFilter):
         return q
 
 
+if _unknown := set(ADDON_FIELDS) - {field.name for field in fields(GameFilter)}:
+    raise RuntimeError(f"ADDON_FIELDS names no GameFilter field: {_unknown}")
+
+
 # ── Aggregate wiring ───────────────────────────────────────────────────────
 
 # Assigned after the class definitions (not in GameFilter's body) because the
 # specs reference filter classes defined below GameFilter — a class-body dict
 # would NameError on PlayerSessionFilter/PurchaseFilter/PlaythroughFilter. The generic
 # ``OperatorFilter.to_q`` walks this table; ``from_json`` reads each spec's
-if _unknown := set(ADDON_FIELDS) - {field.name for field in fields(GameFilter)}:
-    raise RuntimeError(f"ADDON_FIELDS names no GameFilter field: {_unknown}")
-
 # ``scope_filter`` to deserialize an aggregate's scope. The drift guard in
 # tests/test_filters.py asserts the table covers exactly the
 # AggregateCriterion-annotated fields.

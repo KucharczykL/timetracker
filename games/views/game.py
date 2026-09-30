@@ -180,9 +180,9 @@ from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import origin_from, return_url
 from games.writes.playergame import new_correlation_id
 
-#: The value half of a meta row.
 logger = logging.getLogger("games")
 
+#: The value half of a meta row.
 META_VALUE_CLASS = "text-heading"
 #: Formatted with `count`.
 ADDONS_STAY = "{count} add-on(s) stay, off the Games list"

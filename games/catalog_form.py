@@ -118,11 +118,8 @@ class EditionRowForm(PrimitiveWidgetsMixin, forms.Form):
         return cast(str, self.cleaned_data["name"]).strip()
 
     def clean_kind(self) -> EditionKind | None:
-        return (
-            EditionKind(self.cleaned_data["kind"])
-            if self.cleaned_data["kind"]
-            else None
-        )
+        kind = self.cleaned_data["kind"]
+        return EditionKind(kind) if kind else None
 
 
 class ReleaseRowForm(PrimitiveWidgetsMixin, forms.Form):
