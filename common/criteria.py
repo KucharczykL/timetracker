@@ -2109,7 +2109,7 @@ def _numeric_to_q(
     modifier: Modifier,
     field_name: str,
 ) -> Q:
-    """Numeric comparison Q against a plain column/annotation (int or float)."""
+    """Numeric comparison Q against a plain column or annotation."""
     value, value2 = _exact(value), _exact(value2)
     if modifier == Modifier.EQUALS:
         return Q(**{field_name: value})

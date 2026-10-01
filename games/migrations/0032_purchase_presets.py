@@ -99,12 +99,20 @@ class Rewritten(NamedTuple):
     unexpressible: list[str]
 
 
+class RewrittenSort(NamedTuple):
+    """A sort renamed, and the tokens dropped."""
+
+    find_filter: Any
+    dropped: list[str]
+
+
 class RewrittenPreset(NamedTuple):
-    """A preset's filter, sort and refusals."""
+    """A preset's filter, sort, refusals and notes."""
 
     object_filter: Any
     find_filter: Any
     unexpressible: list[str]
+    notes: list[str]
 
 
 def _admits_zero(criterion: Any) -> bool:
@@ -115,8 +123,8 @@ def _admits_zero(criterion: Any) -> bool:
     value, value2 = criterion.get("value"), criterion.get("value2")
     if modifier in _PRESENCE or not isinstance(value, int | float):
         return True
-    low, high = (value, value2) if isinstance(value2, int | float) else (value, value)
-    low, high = min(low, high), max(low, high)
+    other = value2 if isinstance(value2, int | float) else value
+    low, high = min(value, other), max(value, other)
     match modifier:
         case "EQUALS":
             return value == 0
@@ -297,13 +305,13 @@ def rewrite_filter_tree(node: Any) -> Rewritten:
     return Rewritten(result, unexpressible)
 
 
-def rewrite_sort(find_filter: Any) -> tuple[Any, list[str]]:
+def rewrite_sort(find_filter: Any) -> RewrittenSort:
     """Sort tokens renamed, signs kept; what dropped."""
     if not isinstance(find_filter, dict):
-        return find_filter, []
+        return RewrittenSort(find_filter, [])
     sort = find_filter.get("sort")
     if not isinstance(sort, str) or not sort:
-        return find_filter, []
+        return RewrittenSort(find_filter, [])
     tokens = []
     dropped = []
     for token in sort.split(","):
@@ -314,17 +322,19 @@ def rewrite_sort(find_filter: Any) -> tuple[Any, list[str]]:
             dropped.append(f"sort {key!r} dropped: no new key")
         else:
             tokens.append(("-" if descending else "") + renamed)
-    return {**find_filter, "sort": ",".join(tokens)}, dropped
+    return RewrittenSort({**find_filter, "sort": ",".join(tokens)}, dropped)
 
 
 def rewrite_preset(mode: str, object_filter: Any, find_filter: Any) -> RewrittenPreset:
     """A preset's filter, sort and refusals."""
     if mode == "purchases":
         walked = rewrite_purchase_node(object_filter)
-        sort, _ = rewrite_sort(find_filter)
-        return RewrittenPreset(walked.node, sort, walked.unexpressible)
+        sort = rewrite_sort(find_filter)
+        return RewrittenPreset(
+            walked.node, sort.find_filter, walked.unexpressible, sort.dropped
+        )
     walked = rewrite_filter_tree(object_filter)
-    return RewrittenPreset(walked.node, find_filter, walked.unexpressible)
+    return RewrittenPreset(walked.node, find_filter, walked.unexpressible, [])
 
 
 def rewrite_forward(apps, schema_editor):
@@ -344,9 +354,8 @@ def rewrite_forward(apps, schema_editor):
             for reason in rewritten.unexpressible:
                 print(f"  preset {preset.pk} {preset.name!r} kept: {reason}")
             continue
-        if preset.mode == "purchases":
-            for note in rewrite_sort(preset.find_filter)[1]:
-                print(f"  preset {preset.pk} {preset.name!r}: {note}")
+        for note in rewritten.notes:
+            print(f"  preset {preset.pk} {preset.name!r}: {note}")
         if (rewritten.object_filter, rewritten.find_filter) == (
             preset.object_filter,
             preset.find_filter,

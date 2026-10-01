@@ -301,20 +301,13 @@ def judge_rows(
     unexplained: list[LegacyKeyText] = []
     for legacy in sorted(moves):
         held = mapping.reasons(legacy)
-        named = {
-            move: [
-                reason
-                for reason in Reason
-                if reason in held and can_move(reason, rows_key, move)
-            ]
+        named = [
+            {reason for reason in held if can_move(reason, rows_key, move)}
             for move in moves[legacy]
-        }
-        if all(named.values()):
-            explained[legacy] = tuple(
-                reason
-                for reason in Reason
-                if any(reason in reasons for reasons in named.values())
-            )
+        ]
+        if all(named):
+            moving = set().union(*named)
+            explained[legacy] = tuple(reason for reason in Reason if reason in moving)
         else:
             unexplained.append(legacy)
     return RowsJudgement(rows_key, explained, tuple(unexplained), recorded_since)
@@ -452,13 +445,7 @@ def judge_purchase_scope(
             attribution = "recomputed from the judged rows" if recomputed else None
         elif key == "total_spent_currency":
             was, current = figures[key], value
-            attribution = (
-                UNCHANGED
-                if was == current
-                else "the published currency"
-                if current == spending_currency(library, None)
-                else None
-            )
+            attribution = _currency_attribution(was, current, library)
         elif key == "total_spent":
             was, current = Decimal(figures[key]), value
             attribution = (
@@ -472,6 +459,16 @@ def judge_purchase_scope(
         if was != current or attribution is None:
             changes.append(FigureChange(key, was, current, attribution))
     return PurchaseScope(tuple(changes), tuple(judgements.values()))
+
+
+def _currency_attribution(
+    was: object, current: object, library: UserLibrary
+) -> str | None:
+    if was == current:
+        return UNCHANGED
+    if current == spending_currency(library, None):
+        return "the published currency"
+    return None
 
 
 def _plain(value: object) -> object:
