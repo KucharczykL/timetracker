@@ -43,7 +43,7 @@ def test_type_game_and_dlc_are_or_members():
             {
                 "OR": [
                     {
-                        "kind": _choice("game"),
+                        "kind": _choice("game", "upgrade"),
                         "game_filter": {"kind": _choice("dlc", modifier="EXCLUDES")},
                     },
                     {"kind": _choice("game"), "game_filter": {"kind": _choice("dlc")}},
@@ -68,28 +68,31 @@ def test_a_labelled_word_reads_its_id():
     }
 
 
+NOT_UPGRADE = _choice("upgrade", modifier="EXCLUDES")
+
+
 @pytest.mark.parametrize(
-    ("word", "access", "format", "kind"),
+    ("word", "access", "entry_format", "kind"),
     [
-        ("ph", ["owned"], "physical", None),
-        ("di", ["owned"], "digital", _choice("upgrade", modifier="EXCLUDES")),
-        ("du", ["owned"], "digital", _choice("upgrade")),
-        ("re", ["rented", "subscription"], "digital", None),
-        ("bo", ["borrowed"], "physical", None),
-        ("tr", ["trial"], "digital", None),
-        ("de", ["demo"], "digital", None),
-        ("pi", ["pirated"], "unknown", None),
+        ("ph", ["owned"], "physical", NOT_UPGRADE),
+        ("di", ["owned"], "digital", NOT_UPGRADE),
+        ("du", ["owned"], None, _choice("upgrade")),
+        ("re", ["rented", "subscription"], "digital", NOT_UPGRADE),
+        ("bo", ["borrowed"], "physical", NOT_UPGRADE),
+        ("tr", ["trial"], "digital", NOT_UPGRADE),
+        ("de", ["demo"], "digital", NOT_UPGRADE),
+        ("pi", ["pirated"], "unknown", NOT_UPGRADE),
     ],
 )
-def test_ownership_reads_the_conversion_table(word, access, format, kind):
+def test_ownership_reads_the_conversion_table(word, access, entry_format, kind):
     (group,) = _purchase({"ownership_type": _choice(word)})["AND"]
     (member,) = group["OR"]
 
-    assert member["entry_filter"] == {
-        "access": _choice(*access),
-        "format": _choice(format),
-    }
-    assert member.get("kind") == kind
+    expected = {"access": _choice(*access)}
+    if entry_format is not None:
+        expected["format"] = _choice(entry_format)
+    assert member["entry_filter"] == expected
+    assert member["kind"] == kind
 
 
 def test_infinite_is_the_game_s_unfinished_flag():
@@ -101,19 +104,51 @@ def test_infinite_is_the_game_s_unfinished_flag():
 
 
 @pytest.mark.parametrize(
-    ("old", "new"),
-    [
-        ("price", "amount"),
-        ("converted_price", "valuation"),
-        ("price_currency", "currency"),
-    ],
+    ("old", "new"), [("price", "amount"), ("converted_price", "valuation")]
 )
 def test_prices_are_renamed(old, new):
     criterion = {"value": 5, "modifier": "GREATER_THAN"}
-    if old == "price_currency":
-        criterion = {"value": "EUR", "modifier": "EQUALS"}
 
     assert _purchase({old: criterion}) == {new: criterion}
+
+
+@pytest.mark.parametrize(
+    "criterion",
+    [
+        {"value": 0},
+        {"value": 1, "modifier": "LESS_THAN"},
+        {"value": 0, "modifier": "GREATER_THAN_OR_EQUAL"},
+        {"value": 0, "value2": 5, "modifier": "BETWEEN"},
+        {"value": 5, "value2": 9, "modifier": "NOT_BETWEEN"},
+        {"value": 5, "modifier": "NOT_EQUALS"},
+        {"modifier": "NOT_NULL"},
+        {"modifier": "IS_NULL"},
+    ],
+)
+@pytest.mark.parametrize("old", ["price", "converted_price"])
+def test_a_price_criterion_matching_0_is_refused(old, criterion):
+    assert _refused({old: criterion}) == [f"{old}: matches 0, now an unknown price"]
+
+
+def test_a_price_currency_is_refused():
+    assert _refused({"price_currency": {"value": "EUR"}}) == [
+        "price_currency: no field states it"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("modifier", "refunded"), [("NOT_NULL", True), ("IS_NULL", False)]
+)
+def test_a_refund_day_s_presence_is_the_act(modifier, refunded):
+    assert _purchase({"date_refunded": {"modifier": modifier}}) == {
+        "is_refunded": {"value": refunded}
+    }
+
+
+def test_a_purchase_day_s_presence_is_refused():
+    assert _refused({"date_purchased": {"modifier": "NOT_NULL"}}) == [
+        "date_purchased: a day may now be unknown"
+    ]
 
 
 @pytest.mark.parametrize(
@@ -223,20 +258,18 @@ def test_an_aggregate_scope():
 
     walked = rewrite.rewrite_filter_tree(games)
 
-    assert walked.node["purchase_count"]["scope"] == {
-        "refunded": {"modifier": "NOT_NULL"}
-    }
+    assert walked.node["purchase_count"]["scope"] == {"is_refunded": {"value": True}}
     assert parse_game_filter(_json(walked.node)) is not None
 
 
 def test_operator_members():
     node = {
-        "OR": [{"price": {"value": 1, "modifier": "LESS_THAN"}}],
+        "OR": [{"price": {"value": 1, "modifier": "GREATER_THAN"}}],
         "NOT": [{"is_refunded": {"value": True}}],
     }
 
     assert _purchase(node) == {
-        "OR": [{"amount": {"value": 1, "modifier": "LESS_THAN"}}],
+        "OR": [{"amount": {"value": 1, "modifier": "GREATER_THAN"}}],
         "NOT": [{"is_refunded": {"value": True}}],
     }
 
@@ -253,13 +286,17 @@ def test_a_purchase_filter_inside_a_purchase_s_game_filter():
 
 
 def test_sort_tokens_keep_their_sign():
-    assert rewrite.rewrite_sort({"sort": "-type,price,-purchased"}) == {
-        "sort": "-kind,amount,-purchased"
-    }
+    assert rewrite.rewrite_sort({"sort": "-type,price,-purchased"}) == (
+        {"sort": "-kind,amount,-purchased"},
+        [],
+    )
 
 
-def test_infinite_leaves_the_sort():
-    assert rewrite.rewrite_sort({"sort": "-infinite,name"}) == {"sort": "name"}
+def test_infinite_leaves_the_sort_and_says_so():
+    assert rewrite.rewrite_sort({"sort": "-infinite,name"}) == (
+        {"sort": "name"},
+        ["sort 'infinite' dropped: no new key"],
+    )
 
 
 # ── The pass ────────────────────────────────────────────────────────────────
@@ -315,3 +352,122 @@ def test_a_second_pass_changes_nothing(owned_library, capsys):
     printed = capsys.readouterr().out
     assert "presets rewritten: 0/1" in printed
     assert "kept" not in printed
+
+
+# ── Across the conversion: the same rows ────────────────────────────────────
+
+
+@pytest.fixture
+def converted(owned_library, stated_graph, monkeypatch):
+    """Legacy rows of each type and ownership, converted."""
+    from datetime import UTC, date, datetime
+
+    from games.backfill import purchase as conversion
+    from games.backfill.purchase import convert_purchases, legacy_rows
+    from games.models import Game, LegacyPurchase, PurchaseConversionState
+
+    monkeypatch.setattr(conversion, "require_replay_parity", lambda libraries: None)
+    PurchaseConversionState.objects.filter(library=owned_library).update(
+        requested_version=1, published_version=1, published_currency="EUR"
+    )
+
+    def game(name: str) -> Game:
+        return stated_graph(Game(name=name, library=owned_library), owned_library).game
+
+    def legacy(target, day, **columns) -> LegacyPurchase:
+        row = LegacyPurchase.objects.create(
+            library=owned_library,
+            date_purchased=day,
+            price=columns.pop("price", 10),
+            price_currency="EUR",
+            converted_price=10,
+            converted_currency="EUR",
+            **columns,
+        )
+        row.games.add(target)
+        return row
+
+    base = game("Base")
+    legacy(base, date(2021, 1, 1), ownership_type=LegacyPurchase.PHYSICAL)
+    legacy(base, date(2021, 2, 1), ownership_type=LegacyPurchase.DIGITALUPGRADE)
+    legacy(
+        base,
+        date(2021, 3, 1),
+        type=LegacyPurchase.DLC,
+        name="More",
+        related_game=base,
+        date_refunded=date(2021, 3, 4),
+    )
+    legacy(
+        base,
+        date(2021, 4, 1),
+        type=LegacyPurchase.SEASONPASS,
+        name="Year 1",
+        related_game=base,
+        #: A pass now takes its base copy's.
+        ownership_type=LegacyPurchase.PHYSICAL,
+    )
+    legacy(game("Rental"), date(2021, 5, 1), ownership_type=LegacyPurchase.RENTED)
+    legacy(game("Digital"), date(2021, 6, 1))
+    convert_purchases(
+        legacy_rows(LegacyPurchase, owned_library.pk),
+        recorded_at=datetime(2026, 10, 1, 12, tzinfo=UTC),
+    )
+    return owned_library
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "legacy_filter",
+    [
+        {"type": _choice("game")},
+        {"type": _choice("dlc")},
+        {"type": _choice("season_pass")},
+        {"ownership_type": _choice("ph")},
+        {"ownership_type": _choice("di")},
+        {"ownership_type": _choice("du")},
+        {"ownership_type": _choice("re")},
+        {"date_purchased": {"value": "2021-03-01", "modifier": "GREATER_THAN"}},
+        {"date_purchased": {"value": "2021-03-01", "modifier": "LESS_THAN"}},
+        {"date_refunded": {"modifier": "NOT_NULL"}},
+        {"date_refunded": {"modifier": "IS_NULL"}},
+        {"price": {"value": 5, "modifier": "GREATER_THAN"}},
+    ],
+)
+def test_a_rewritten_preset_matches_the_same_rows(converted, legacy_filter):
+    from games.models import LegacyPurchase
+    from games.purchase_parity import ConversionMap
+    from games.reads.purchase_figures import purchases_matching
+
+    [(key, criterion)] = legacy_filter.items()
+    lookups = {
+        "type": lambda: {"type__in": criterion["value"]},
+        "ownership_type": lambda: {"ownership_type__in": criterion["value"]},
+        "price": lambda: {"price__gt": criterion["value"]},
+        "date_purchased": lambda: {
+            "date_purchased__gt"
+            if criterion["modifier"] == "GREATER_THAN"
+            else "date_purchased__lt": criterion["value"]
+        },
+        "date_refunded": lambda: {
+            "date_refunded__isnull": criterion["modifier"] == "IS_NULL"
+        },
+    }
+    before = {
+        str(pk)
+        for pk in LegacyPurchase.objects.filter(
+            library=converted, **lookups[key]()
+        ).values_list("pk", flat=True)
+    }
+    rewritten = _purchase(legacy_filter)
+    legacy_of = ConversionMap.read(converted).legacy_of
+
+    after = {
+        legacy_of[str(pk)]
+        for pk in purchases_matching(
+            converted, parse_purchase_filter(_json(rewritten))
+        ).values_list("pk", flat=True)
+    }
+
+    assert before
+    assert after == before

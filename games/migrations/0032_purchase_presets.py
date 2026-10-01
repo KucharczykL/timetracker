@@ -4,9 +4,11 @@ A walk over plain dicts, at any depth: the key
 `purchase_filter` and a purchase aggregate's `scope` name a
 purchase filter on every filter, so the walk needs no mode.
 A preset holding a criterion no new field states stays as
-it is, and its reason is printed.
+it is, and its reason is printed. A legacy price of 0 became
+an unknown price, so a price criterion matching 0 is refused.
 """
 
+from collections.abc import Callable
 from typing import Any, NamedTuple
 
 from django.db import migrations
@@ -18,12 +20,13 @@ _OPERATORS = ("AND", "OR", "NOT")
 #: Renamed whole, criterion kept.
 _RENAMED = {
     "price": "amount",
-    "price_currency": "currency",
     "converted_price": "valuation",
     "date_purchased": "purchased",
     "date_refunded": "refunded",
     "games": "game",
 }
+#: Renamed unless the criterion matches 0.
+_PRICES = {"price", "converted_price"}
 #: Kept as they are.
 _KEPT = {
     "platform",
@@ -49,6 +52,7 @@ _UNEXPRESSIBLE = {
     "num_purchases",
     "needs_price_update",
     "converted_currency",
+    "price_currency",
     "updated_at",
     "platform_filter",
     "field_comparisons",
@@ -56,16 +60,29 @@ _UNEXPRESSIBLE = {
 _DATES = {"date_purchased", "date_refunded"}
 _PRESENCE = {"IS_NULL", "NOT_NULL"}
 
-#: The conversion's table: access, format, kind rule.
-_OWNERSHIP: dict[str, tuple[list[str], str, Node | None]] = {
-    "ph": (["owned"], "physical", None),
-    "di": (["owned"], "digital", {"value": ["upgrade"], "modifier": "EXCLUDES"}),
-    "du": (["owned"], "digital", {"value": ["upgrade"], "modifier": "INCLUDES"}),
-    "re": (["rented", "subscription"], "digital", None),
-    "bo": (["borrowed"], "physical", None),
-    "tr": (["trial"], "digital", None),
-    "de": (["demo"], "digital", None),
-    "pi": (["pirated"], "unknown", None),
+
+class OwnershipWords(NamedTuple):
+    """One ownership word's access, format, kind rule."""
+
+    access: list[str]
+    #: None: an upgrade takes its base copy's.
+    entry_format: str | None
+    kind_rule: Node
+
+
+_NOT_UPGRADE: Node = {"value": ["upgrade"], "modifier": "EXCLUDES"}
+#: The conversion's table; only `du` made upgrades.
+_OWNERSHIP: dict[str, OwnershipWords] = {
+    "ph": OwnershipWords(["owned"], "physical", _NOT_UPGRADE),
+    "di": OwnershipWords(["owned"], "digital", _NOT_UPGRADE),
+    "du": OwnershipWords(
+        ["owned"], None, {"value": ["upgrade"], "modifier": "INCLUDES"}
+    ),
+    "re": OwnershipWords(["rented", "subscription"], "digital", _NOT_UPGRADE),
+    "bo": OwnershipWords(["borrowed"], "physical", _NOT_UPGRADE),
+    "tr": OwnershipWords(["trial"], "digital", _NOT_UPGRADE),
+    "de": OwnershipWords(["demo"], "digital", _NOT_UPGRADE),
+    "pi": OwnershipWords(["pirated"], "unknown", _NOT_UPGRADE),
 }
 _PASSES = {"season_pass", "battle_pass"}
 
@@ -76,9 +93,48 @@ _SORTS: dict[str, str | None] = {"type": "kind", "price": "amount", "infinite": 
 
 
 class Rewritten(NamedTuple):
+    """A node rewritten, or why not."""
+
     node: Any
-    #: Why a node could not be rewritten.
     unexpressible: list[str]
+
+
+class RewrittenPreset(NamedTuple):
+    """A preset's filter, sort and refusals."""
+
+    object_filter: Any
+    find_filter: Any
+    unexpressible: list[str]
+
+
+def _admits_zero(criterion: Any) -> bool:
+    """Whether a legacy price of 0 matched."""
+    if not isinstance(criterion, dict):
+        return True
+    modifier = criterion.get("modifier", "EQUALS")
+    value, value2 = criterion.get("value"), criterion.get("value2")
+    if modifier in _PRESENCE or not isinstance(value, int | float):
+        return True
+    low, high = (value, value2) if isinstance(value2, int | float) else (value, value)
+    low, high = min(low, high), max(low, high)
+    match modifier:
+        case "EQUALS":
+            return value == 0
+        case "NOT_EQUALS":
+            return value != 0
+        case "GREATER_THAN":
+            return value < 0
+        case "LESS_THAN":
+            return value > 0
+        case "GREATER_THAN_OR_EQUAL":
+            return value <= 0
+        case "LESS_THAN_OR_EQUAL":
+            return value >= 0
+        case "BETWEEN":
+            return low <= 0 <= high
+        case "NOT_BETWEEN":
+            return not low <= 0 <= high
+    return True
 
 
 def _words(criterion: Node) -> list[str]:
@@ -103,8 +159,9 @@ def _choice(words: list[str], modifier: str = "INCLUDES") -> Node:
 
 def _type_member(word: str) -> Node | None:
     if word == "game":
+        #: A digital upgrade was a game row.
         return {
-            "kind": _choice(["game"]),
+            "kind": _choice(["game", "upgrade"]),
             "game_filter": {"kind": _choice(["dlc"], "EXCLUDES")},
         }
     if word == "dlc":
@@ -117,16 +174,16 @@ def _type_member(word: str) -> Node | None:
 def _ownership_member(word: str) -> Node | None:
     if word not in _OWNERSHIP:
         return None
-    access, format, kind = _OWNERSHIP[word]
-    member: Node = {
-        "entry_filter": {"access": _choice(access), "format": _choice([format])}
-    }
-    if kind is not None:
-        member["kind"] = kind
-    return member
+    words = _OWNERSHIP[word]
+    entry: Node = {"access": _choice(words.access)}
+    if words.entry_format is not None:
+        entry["format"] = _choice([words.entry_format])
+    return {"entry_filter": entry, "kind": words.kind_rule}
 
 
-def _one_of(key: str, criterion: Any, member_of) -> Rewritten:
+def _one_of(
+    key: str, criterion: Any, member_of: Callable[[str], Node | None]
+) -> Rewritten:
     """An `OR` member per word."""
     if not _includes(criterion):
         return Rewritten(None, [f"{key}: only 'includes' converts"])
@@ -158,6 +215,13 @@ def rewrite_purchase_node(node: Any) -> Rewritten:
             unexpressible += walked.unexpressible
         elif key in _KEPT:
             result[key] = value
+        elif key in _PRICES and _admits_zero(value):
+            unexpressible.append(f"{key}: matches 0, now an unknown price")
+        elif key == "date_refunded" and _presence(value):
+            refunded = value["modifier"] == "NOT_NULL"
+            result["is_refunded"] = {"value": refunded}
+        elif key == "date_purchased" and _presence(value):
+            unexpressible.append("date_purchased: a day may now be unknown")
         elif key in _RENAMED:
             if (
                 key in _DATES
@@ -186,6 +250,10 @@ def rewrite_purchase_node(node: Any) -> Rewritten:
     if grouped:
         result["AND"] = [*result.get("AND", []), *grouped]
     return Rewritten(result, unexpressible)
+
+
+def _presence(criterion: Any) -> bool:
+    return isinstance(criterion, dict) and criterion.get("modifier") in _PRESENCE
 
 
 def _legacy_operand(operand: Any) -> bool:
@@ -229,57 +297,63 @@ def rewrite_filter_tree(node: Any) -> Rewritten:
     return Rewritten(result, unexpressible)
 
 
-def rewrite_sort(find_filter: Any) -> Any:
-    """Sort tokens renamed, signs kept."""
+def rewrite_sort(find_filter: Any) -> tuple[Any, list[str]]:
+    """Sort tokens renamed, signs kept; what dropped."""
     if not isinstance(find_filter, dict):
-        return find_filter
+        return find_filter, []
     sort = find_filter.get("sort")
     if not isinstance(sort, str) or not sort:
-        return find_filter
+        return find_filter, []
     tokens = []
+    dropped = []
     for token in sort.split(","):
         descending = token.startswith("-")
         key = token[1:] if descending else token
         renamed = _SORTS.get(key, key)
-        if renamed is not None:
+        if renamed is None:
+            dropped.append(f"sort {key!r} dropped: no new key")
+        else:
             tokens.append(("-" if descending else "") + renamed)
-    return {**find_filter, "sort": ",".join(tokens)}
+    return {**find_filter, "sort": ",".join(tokens)}, dropped
 
 
-def rewrite_preset(
-    mode: str, object_filter: Any, find_filter: Any
-) -> tuple[Any, Any, list[str]]:
+def rewrite_preset(mode: str, object_filter: Any, find_filter: Any) -> RewrittenPreset:
     """A preset's filter, sort and refusals."""
     if mode == "purchases":
         walked = rewrite_purchase_node(object_filter)
-        return walked.node, rewrite_sort(find_filter), walked.unexpressible
+        sort, _ = rewrite_sort(find_filter)
+        return RewrittenPreset(walked.node, sort, walked.unexpressible)
     walked = rewrite_filter_tree(object_filter)
-    return walked.node, find_filter, walked.unexpressible
+    return RewrittenPreset(walked.node, find_filter, walked.unexpressible)
 
 
 def rewrite_forward(apps, schema_editor):
     """Rewrite every preset; report what stays.
 
-    A plain walk, not `.iterator()`: a preset table holds
-    tens of rows. The count is printed, so a run that
-    touched nothing reads apart from one against the
-    wrong database.
+    The count is printed, so a run that touched nothing
+    reads apart from one against the wrong database.
     """
     preset_model = apps.get_model("games", "FilterPreset")
     presets = list(preset_model.objects.all())
     rewritten_count = 0
     for preset in presets:
-        object_filter, find_filter, unexpressible = rewrite_preset(
+        rewritten = rewrite_preset(
             preset.mode, preset.object_filter, preset.find_filter
         )
-        if unexpressible:
-            for reason in unexpressible:
+        if rewritten.unexpressible:
+            for reason in rewritten.unexpressible:
                 print(f"  preset {preset.pk} {preset.name!r} kept: {reason}")
             continue
-        if (object_filter, find_filter) == (preset.object_filter, preset.find_filter):
+        if preset.mode == "purchases":
+            for note in rewrite_sort(preset.find_filter)[1]:
+                print(f"  preset {preset.pk} {preset.name!r}: {note}")
+        if (rewritten.object_filter, rewritten.find_filter) == (
+            preset.object_filter,
+            preset.find_filter,
+        ):
             continue
-        preset.object_filter = object_filter
-        preset.find_filter = find_filter
+        preset.object_filter = rewritten.object_filter
+        preset.find_filter = rewritten.find_filter
         preset.save(update_fields=["object_filter", "find_filter"])
         rewritten_count += 1
     print(f"  presets rewritten: {rewritten_count}/{len(presets)}")
