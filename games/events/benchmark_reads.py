@@ -16,13 +16,7 @@ from games.filters import (
 )
 from games.models import UserLibrary
 from games.reads.calendar import calendar_today
-from games.reads.copy_figures import (
-    backlog_decrease_copies,
-    copies_matching,
-    dropped_copies,
-    finished_copies,
-    unfinished_copies,
-)
+from games.reads.copy_figures import copy_counts
 from games.reads.play_figures import (
     distinct_days,
     first_play,
@@ -112,15 +106,7 @@ def _stats_purchases(library: UserLibrary) -> object:
 
 
 def _stats_copies(library: UserLibrary) -> object:
-    return tuple(
-        copies_matching(library, statement(None)).count()
-        for statement in (
-            unfinished_copies,
-            dropped_copies,
-            backlog_decrease_copies,
-            finished_copies,
-        )
-    )
+    return copy_counts(library, None)
 
 
 def _game_price_total(library: UserLibrary) -> object:

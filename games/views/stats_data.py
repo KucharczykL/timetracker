@@ -25,16 +25,12 @@ from games.filters import LibraryEntryFilter
 from games.models import LibraryEntry, PurchaseConversionState, UserLibrary
 from games.reads.calendar import calendar_today
 from games.reads.copy_figures import (
-    backlog_decrease_copies,
     bought_and_finished_copies,
     copies_matching,
-    dropped_copies,
+    copy_counts,
     finished_copies,
     finished_released_copies,
-    owned,
-    owned_held,
     paid_for_copy,
-    played_copies,
     unfinished_copies,
 )
 from games.reads.days import YearScope
@@ -256,13 +252,7 @@ def compute_stats(library: UserLibrary, year: YearScope = None) -> StatsData:
     )
 
     # ── Copies ───────────────────────────────────────────────────────────────
-    def count(entry_filter: LibraryEntryFilter) -> int:
-        return copies_matching(library, entry_filter).count()
-
-    unfinished_count = count(unfinished_copies(year))
-    dropped_count = count(dropped_copies(year))
-    owned_held_count = count(owned_held(year))
-    owned_count = count(owned(year))
+    copies = copy_counts(library, year)
 
     def finished(entry_filter: LibraryEntryFilter) -> QuerySet[LibraryEntry]:
         """Copies, by their game, with the day."""
@@ -292,8 +282,8 @@ def compute_stats(library: UserLibrary, year: YearScope = None) -> StatsData:
         "total_sessions": session_count(library, year),
         "unique_days": unique_days,
         "unique_days_percent": unique_days_percent,
-        "total_year_games": count(played_copies(year)),
-        "this_year_finished_this_year_count": finished_released.count(),
+        "total_year_games": copies.played,
+        "this_year_finished_this_year_count": copies.finished_released,
         "games_by_playtime": ranked_games,
         "games_by_playtime_count": ranked_games_count,
         "total_playtime_per_platform": playtime_by_platform(library, year=year),
@@ -312,13 +302,13 @@ def compute_stats(library: UserLibrary, year: YearScope = None) -> StatsData:
         "refunded_percent": int(
             safe_division(spending.refunded, spending.purchases) * 100
         ),
-        "dropped_count": dropped_count,
-        "dropped_percentage": int(safe_division(dropped_count, owned_count) * 100),
-        "purchased_unfinished_count": unfinished_count,
+        "dropped_count": copies.dropped,
+        "dropped_percentage": int(safe_division(copies.dropped, copies.owned) * 100),
+        "purchased_unfinished_count": copies.unfinished,
         "unfinished_purchases_percent": int(
-            safe_division(unfinished_count, owned_held_count) * 100
+            safe_division(copies.unfinished, copies.owned_held) * 100
         ),
-        "backlog_decrease_count": count(backlog_decrease_copies(year)),
+        "backlog_decrease_count": copies.backlog_decrease,
         "longest_session_time": longest.session.effective_duration if longest else None,
         "longest_session_game": longest.game if longest else None,
         "highest_session_count": most_sessions.sessions if most_sessions else 0,

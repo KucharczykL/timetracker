@@ -7,8 +7,16 @@ keeps overlap.
 """
 
 from dataclasses import replace
+from typing import NamedTuple
 
-from django.db.models import DecimalField, OuterRef, QuerySet, Subquery, Sum
+from django.db.models import (
+    Count,
+    DecimalField,
+    OuterRef,
+    QuerySet,
+    Subquery,
+    Sum,
+)
 
 from common.criteria import RelationMatch
 from games.end_ways import EndWay
@@ -180,6 +188,39 @@ def copies_matching(
     return filter_queryset_for_library("libraryentry", library).filter(
         entry_filter.to_q(context)
     )
+
+
+class CopyCounts(NamedTuple):
+    """One scope's copy figures and denominators."""
+
+    unfinished: int
+    owned_held: int
+    dropped: int
+    owned: int
+    backlog_decrease: int
+    finished_released: int
+    played: int
+
+
+def copy_counts(library: UserLibrary, year: YearScope) -> CopyCounts:
+    """Every count, one statement, one context."""
+    context = filter_query_context_for_library(library)
+    statements = {
+        "unfinished": unfinished_copies(year),
+        "owned_held": owned_held(year),
+        "dropped": dropped_copies(year),
+        "owned": owned(year),
+        "backlog_decrease": backlog_decrease_copies(year),
+        "finished_released": finished_released_copies(year),
+        "played": played_copies(year),
+    }
+    counts = filter_queryset_for_library("libraryentry", library).aggregate(
+        **{
+            name: Count("pk", filter=statement.to_q(context))
+            for name, statement in statements.items()
+        }
+    )
+    return CopyCounts(**counts)
 
 
 def paid_for_copy(library: UserLibrary) -> Subquery:
