@@ -143,7 +143,7 @@ def list_library(request: HttpRequest) -> HttpResponse:
                     entry,
                     origin,
                     csrf_token,
-                    purchases=purchases.get(entry.pk, []),
+                    purchases=purchases.get(entry.pk, ()),
                 ),
             )
             for entry, cells in zip(page_entries, kept_cells, strict=True)

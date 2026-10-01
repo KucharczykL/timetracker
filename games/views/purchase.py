@@ -398,7 +398,7 @@ def refund_purchase_now(request: HttpRequest, purchase_id: UUID) -> HttpResponse
     """Refunded today; Undo voids it."""
     user = cast(User, request.user)
     purchase = _held_purchase(request, purchase_id)
-    key = press_key(request, "purchase", "refund")
+    key = press_key(request, "purchase-refund")
     today = TemporalValue.from_day(request_calendar_today(request, user.library))
 
     refunds: list[RefundedPurchase] = []
@@ -411,7 +411,7 @@ def refund_purchase_now(request: HttpRequest, purchase_id: UUID) -> HttpResponse
             correlation_id=new_correlation_id(),
             idempotency_key=key,
         )
-        if refunded.sequence is None:
+        if refunded is None:
             raise CommandFailed(ALREADY_REFUNDED, CONFLICT_STATUS)
         refunds.append(refunded)
         return reverse(

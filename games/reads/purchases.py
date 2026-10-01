@@ -1,7 +1,7 @@
 """The purchases a library holds."""
 
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping, Sequence
 from decimal import Decimal
 from typing import Protocol
 from zoneinfo import ZoneInfo
@@ -22,6 +22,7 @@ from django.db.models import (
 from django.db.models.expressions import Expression
 from django.db.models.functions import Coalesce, ExtractYear, NullIf
 
+from games.events.dispatch import RowUnreadable
 from games.events.libraryentry import LIBRARYENTRY_REMOVED
 from games.events.purchase import PURCHASE_REFUND_EVENTS, PURCHASE_REMOVED
 from games.models import (
@@ -265,7 +266,11 @@ def cascaded_purchase_ids(library: UserLibrary, entry_id: uuid.UUID) -> list[uui
         .first()
     )
     if removal is None:
-        return []
+        #: Only its projector stamps the mark.
+        raise RowUnreadable(
+            f"Entry {entry_id} of library {library.pk} is removed, but its "
+            "stream holds no libraryentry.removed event."
+        )
     latest_removal_key = Subquery(
         LibraryEvent.objects.filter(
             library=library,
@@ -286,11 +291,15 @@ def cascaded_purchase_ids(library: UserLibrary, entry_id: uuid.UUID) -> list[uui
     )
 
 
-def held_purchases(
-    library: UserLibrary, entry_ids: Iterable[uuid.UUID]
-) -> dict[uuid.UUID, list[Purchase]]:
+#: A copy's key.
+type EntryId = uuid.UUID
+#: An absent copy holds none.
+type HeldPurchases = Mapping[EntryId, Sequence[Purchase]]
+
+
+def held_purchases(library: UserLibrary, entry_ids: Iterable[EntryId]) -> HeldPurchases:
     """Each copy's live, unrefunded purchases, valued."""
-    grouped: dict[uuid.UUID, list[Purchase]] = {}
+    grouped: dict[EntryId, list[Purchase]] = {}
     purchases = with_valuation(
         library_purchases(library).filter(
             entry_id__in=list(entry_ids), refund_recorded_at__isnull=True

@@ -20,7 +20,7 @@ from common.components import (
 )
 from common.layout import render_page
 from common.notices import Undo, notify
-from games.entry_forms import SubmissionAct, SubmissionNoun, one_click_key
+from games.entry_forms import SubmissionKind, one_click_key
 from games.events.idempotency import IdempotencyKey
 from games.models import Game, LibraryEntry
 from games.ownership import owned_or_404
@@ -95,15 +95,13 @@ def form_page(
     )
 
 
-def press_key(
-    request: HttpRequest, noun: SubmissionNoun, act: SubmissionAct
-) -> IdempotencyKey:
+def press_key(request: HttpRequest, kind: SubmissionKind) -> IdempotencyKey:
     """The press's key; missing is malformed."""
     try:
         token = uuid.UUID(request.POST.get(SUBMISSION_FIELD, ""))
     except ValueError:
         raise BadRequest("A one-click press carries its submission key.") from None
-    return one_click_key(noun, act, token)
+    return one_click_key(kind, token)
 
 
 def one_click(

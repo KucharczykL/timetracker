@@ -195,10 +195,10 @@ def _copy_end_of(event_types: frozenset[EventType]) -> CopyEnd | None:
 
 
 class RefundedPurchase(NamedTuple):
-    """What a refund answers."""
+    """What a recorded refund answers."""
 
-    #: The refund event's; None where nothing appended.
-    sequence: EventSequence | None
+    #: The refund event's own.
+    sequence: EventSequence
     copy_end: CopyEnd | None
 
 
@@ -209,8 +209,8 @@ def refund_purchase(
     *,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey,
-) -> RefundedPurchase:
-    """State a refund under the caller's key."""
+) -> RefundedPurchase | None:
+    """State a refund; None when unchanged."""
     with answered(SUBJECT):
         result = _dispatch(
             RefundPurchase(purchase_id=purchase.pk, statement=statement),
@@ -218,15 +218,23 @@ def refund_purchase(
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
         )
-    if result.sequences is None:
-        return RefundedPurchase(sequence=None, copy_end=None)
+    if result.outcome is CommandOutcome.UNCHANGED:
+        return None
     #: The copy's end may follow.
     events = list(dispatched_events(result))
     refunded = next(
-        event
-        for event in events
-        if event.event_type == PURCHASE_REFUND_EVENTS.stated.event_type
+        (
+            event
+            for event in events
+            if event.event_type == PURCHASE_REFUND_EVENTS.stated.event_type
+        ),
+        None,
     )
+    if refunded is None:
+        raise RuntimeError(
+            f"Dispatch {result.stream_id} {result.sequences} appended no "
+            f"{PURCHASE_REFUND_EVENTS.stated.event_type}."
+        )
     return RefundedPurchase(
         sequence=refunded.sequence,
         copy_end=_copy_end_of(frozenset(event.event_type for event in events)),

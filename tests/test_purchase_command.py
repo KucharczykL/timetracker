@@ -680,6 +680,14 @@ def test_a_refunded_purchase_goes_and_returns_with_its_copy(owned_library, entry
     assert (entry.access_ended_lower, entry.access_end_way) == ended
 
 
+def test_a_removed_copy_without_its_event_is_a_defect(owned_library, entry):
+    record_purchase(entry)
+    LibraryEntry.objects.filter(pk=entry.pk).update(removed_at=entry.created_at)
+
+    with pytest.raises(RowUnreadable, match=str(entry.pk)):
+        _dispatch(owned_library, RestoreEntry(entry_id=entry.pk))
+
+
 def test_removing_a_purchase_leaves_its_copy(owned_library, entry):
     remove_purchase(record_purchase(entry))
 

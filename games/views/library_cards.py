@@ -1,6 +1,7 @@
 """Game detail's Library section."""
 
 import uuid
+from collections.abc import Sequence
 from typing import NamedTuple
 
 from common.components import (
@@ -72,7 +73,7 @@ def _copy_row(
     csrf_token: str,
     *,
     label: str,
-    purchases: list[Purchase],
+    purchases: Sequence[Purchase],
 ) -> Node:
     return SummaryRow(
         label=label,
@@ -136,7 +137,7 @@ def copy_rows(
                     origin,
                     csrf_token,
                     label="",
-                    purchases=purchases.get(entry.pk, []),
+                    purchases=purchases.get(entry.pk, ()),
                 )
                 for entry in copies
             ],

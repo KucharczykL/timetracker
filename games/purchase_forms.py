@@ -4,7 +4,7 @@ import datetime
 import hashlib
 import uuid
 from enum import StrEnum
-from typing import Any
+from typing import Any, ClassVar
 
 from django import forms
 
@@ -13,9 +13,8 @@ from common.date_time_presentation import DateTimePresentation
 from games.commands.endpoint import ActStatement
 from games.endpoints import PURCHASE_REFUND
 from games.entry_forms import (
-    SubmissionAct,
-    SubmissionNoun,
-    _Submission,
+    Submission,
+    SubmissionKind,
     normalised_note,
 )
 from games.forms import (
@@ -43,6 +42,11 @@ REFUND_CHANGED_SINCE_OPENED = (
 )
 
 
+#: Literal, so Tailwind finds them.
+REFUND_GROUP = "group/refund"
+REFUNDED_ROW = "hidden group-has-[[value=refunded]:checked]/refund:block"
+
+
 class RefundChoice(StrEnum):
     REFUNDED = "refunded"
     NOT_REFUNDED = "not_refunded"
@@ -63,15 +67,13 @@ def edit_groups() -> list[FormFieldGroup]:
             "Refund",
             ("refund", "refunded", "refund_note"),
             look="hidden",
-            class_="group/refund",
+            class_=REFUND_GROUP,
         ),
     ]
 
 
 def edit_presentations() -> dict[str, FormFieldPresentation]:
-    refunded_only = FormFieldPresentation(
-        row_class="hidden group-has-[[value=refunded]:checked]/refund:block"
-    )
+    refunded_only = FormFieldPresentation(row_class=REFUNDED_ROW)
     return price_presentations() | {
         "refunded": refunded_only,
         "refund_note": refunded_only,
@@ -94,11 +96,10 @@ def _purchase_fields(form: forms.Form, presentation: DateTimePresentation) -> No
     )
 
 
-class PurchaseAddForm(PrimitiveWidgetsMixin, _Submission, PriceFields):
+class PurchaseAddForm(PrimitiveWidgetsMixin, Submission, PriceFields):
     """One purchase of a held copy."""
 
-    noun: SubmissionNoun = "purchase"
-    act: SubmissionAct = "add"
+    kind: ClassVar[SubmissionKind] = "purchase-add"
 
     def __init__(
         self,
@@ -108,11 +109,10 @@ class PurchaseAddForm(PrimitiveWidgetsMixin, _Submission, PriceFields):
         today: datetime.date,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, user=library.user, **kwargs)
         _purchase_fields(self, presentation)
         self.initial.setdefault("kind", PurchaseKind.GAME.value)
         self.fields["purchased"].initial = TemporalValue.from_day(today)
-        self._price_fields(library.user)
         self.order_fields(
             ["kind", "name", "price", "amount", "currency", "purchased", "note"]
         )
@@ -120,22 +120,13 @@ class PurchaseAddForm(PrimitiveWidgetsMixin, _Submission, PriceFields):
     def clean_note(self) -> str:
         return normalised_note(self.cleaned_data["note"])
 
-    def clean(self) -> dict[str, Any] | None:
-        cleaned = super().clean()
-        if cleaned is not None:
-            self._clean_price(cleaned)
-        return cleaned
-
     def draft(self, entry_id: uuid.UUID) -> PurchaseDraft:
         cleaned = self.cleaned_data
-        price = self.stated_price()
-        if price is None:
-            raise ValueError("Add purchase offers no 'No purchase'.")
         return PurchaseDraft(
             copy=entry_id,
             kind=cleaned["kind"],
             name=cleaned["name"],
-            price=price,
+            price=self.stated_price(),
             note=cleaned["note"],
             purchased=ActStatement(cleaned["purchased"], ""),
         )
@@ -203,7 +194,7 @@ class PurchaseEditForm(PrimitiveWidgetsMixin, PriceFields):
             "refund_seen": refund_seen(purchase),
         }
         kwargs["initial"] = initial | dict(kwargs.get("initial") or {})
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, user=purchase.library.user, **kwargs)
         self._purchase = purchase
         self._standing = standing
         #: Set by clean; the posted block.
@@ -213,7 +204,6 @@ class PurchaseEditForm(PrimitiveWidgetsMixin, PriceFields):
         self.fields["refunded"] = TemporalFormField(
             presentation=presentation, label="Refunded on"
         )
-        self._price_fields(purchase.library.user)
         self.order_fields(
             [
                 "kind",
@@ -239,7 +229,6 @@ class PurchaseEditForm(PrimitiveWidgetsMixin, PriceFields):
         cleaned = super().clean()
         if cleaned is None:
             return cleaned
-        self._clean_price(cleaned)
         if cleaned.get("refund") is RefundChoice.REFUNDED:
             self._submitted_refund = ActStatement(
                 cleaned.get("refunded"), cleaned.get("refund_note", "")

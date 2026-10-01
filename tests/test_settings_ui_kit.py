@@ -104,7 +104,9 @@ class GroupedFormFieldsTest(SimpleTestCase):
         )
         assert re.search(r'<fieldset class="[^"]*group/limits', html)
         assert re.search(r'<div[^>]*data-field-row="limit"[^>]*class="hidden"', html)
-        assert re.search(r'class="[^"]*sm:hidden"[^>]*data-form-checkbox-row', html)
+        assert re.search(
+            r'class="[^"]*sm:hidden[^"]*"[^>]*data-form-checkbox-row', html
+        )
 
     def test_all_plain_setting_widget_types_use_the_mixin_path(self):
         form = KitForm()

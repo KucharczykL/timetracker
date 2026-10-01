@@ -1895,6 +1895,8 @@ def FieldErrors(errors) -> Node | None:
 #: "hidden": screen readers name it; space parts it.
 #: "panel": a section panel, legend inside.
 type FieldGroupLook = Literal["shown", "hidden", "panel"]
+#: Space-separated utility tokens.
+type ClassNames = str
 
 _LEGEND_CLASSES: dict[FieldGroupLook, str] = {
     "shown": "text-type-section text-heading",
@@ -1924,7 +1926,7 @@ class FormFieldGroup(NamedTuple):
     id: str = ""
     look: FieldGroupLook = "shown"
     #: E.g. a named Tailwind group.
-    class_: str = ""
+    class_: ClassNames = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -1935,7 +1937,7 @@ class FormFieldPresentation:
     after_control: Node | None = None
     decorate_control: Callable[[Node], Node] | None = None
     #: On the row, e.g. a group-state rule.
-    row_class: str = ""
+    row_class: ClassNames = ""
 
 
 def field_label_id(input_id: str) -> str:
@@ -2011,7 +2013,8 @@ def _form_field_row(
             if presentation.after_control:
                 children.append(presentation.after_control)
             return Div(
-                class_=f"{_CHECKBOX_ROW_CLASS} {presentation.row_class}".strip(),
+                [("class", presentation.row_class)] if presentation.row_class else [],
+                class_=_CHECKBOX_ROW_CLASS,
                 data_form_checkbox_row="",
             )[*children]
 

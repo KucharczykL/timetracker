@@ -45,7 +45,12 @@ from games.models import (
     RemovableLibraryQuerySet,
 )
 from games.reads import referrers
-from games.reads.referrers import BlockingReferrer, referrers_of
+from games.reads.referrers import (
+    CASCADING_REFERRERS,
+    BlockingReferrer,
+    CascadingReferrer,
+    referrers_of,
+)
 from games.removal import remove
 from timetracker.temporal import TemporalValue
 
@@ -542,8 +547,12 @@ def test_an_entry_naming_a_foreign_private_release_is_a_defect(
     assert _event_types(entry) == ["library.libraryentry.created"]
 
 
-def test_a_purchase_is_the_one_entry_referrer():
-    assert [referrer.model for referrer in referrers_of(LibraryEntry)] == [Purchase]
+def test_a_purchase_is_the_one_entry_referrer_and_it_cascades():
+    #: A new member needs its remove and restore.
+    assert referrers_of(LibraryEntry) == ()
+    assert [(referrer.model, referrer.target) for referrer in CASCADING_REFERRERS] == [
+        (Purchase, LibraryEntry)
+    ]
 
 
 @pytest.fixture
@@ -574,19 +583,18 @@ def referring_model():
 CLAIMED_SENTENCE = "Purchases name this copy. Remove them first."
 
 
-def _register(
-    monkeypatch, referring_model, *, cascades: bool = False
-) -> BlockingReferrer:
+def _register(monkeypatch, referring_model) -> BlockingReferrer:
     """The registry is patched whole."""
     claim = BlockingReferrer.on(
-        referring_model,
-        "entry",
-        target=LibraryEntry,
-        sentence=CLAIMED_SENTENCE,
-        cascades=cascades,
+        referring_model, "entry", target=LibraryEntry, sentence=CLAIMED_SENTENCE
     )
     monkeypatch.setattr(referrers, "BLOCKING_REFERRERS", (claim,))
     return claim
+
+
+def _cascade(monkeypatch, referring_model) -> None:
+    claim = CascadingReferrer.on(referring_model, "entry", target=LibraryEntry)
+    monkeypatch.setattr(referrers, "CASCADING_REFERRERS", (claim,))
 
 
 def test_a_registered_referrer_keeps_an_entry_in_place(
@@ -643,11 +651,10 @@ def test_a_cascading_referrer_blocks_nothing_in_its_library(
 ):
     entry = record_entry(owned_library, graph.release)
     referring_model.objects.create(entry=entry, library=owned_library)
-    claim = _register(monkeypatch, referring_model, cascades=True)
+    _cascade(monkeypatch, referring_model)
 
     assert referrers.blocking_referrer(entry) is None
     assert referrers.foreign_referrer(entry) is None
-    assert claim.cascades
 
 
 def test_a_cascading_referrer_of_another_library_is_still_a_defect(
@@ -655,7 +662,7 @@ def test_a_cascading_referrer_of_another_library_is_still_a_defect(
 ):
     entry = record_entry(owned_library, graph.release)
     referring_model.objects.create(entry=entry, library=second_library)
-    _register(monkeypatch, referring_model, cascades=True)
+    _cascade(monkeypatch, referring_model)
 
     found = referrers.foreign_referrer(entry)
 

@@ -41,6 +41,7 @@ def test_a_game_refund_answers_its_own_sequence(owned_library, entry):
     purchase = record_purchase(entry)
 
     refunded = _refund(owned_library, purchase, str(uuid.uuid7()))
+    assert refunded is not None
 
     event = LibraryEvent.objects.get(sequence=refunded.sequence, library=owned_library)
     assert event.event_type == PURCHASE_REFUND_EVENTS.stated.event_type
@@ -70,7 +71,7 @@ def test_a_second_press_appends_nothing(owned_library, entry):
 
     again = _refund(owned_library, purchase, str(uuid.uuid7()))
 
-    assert again.sequence is None
+    assert again is None
 
 
 def test_another_day_on_a_refunded_purchase_is_refused(owned_library, entry):

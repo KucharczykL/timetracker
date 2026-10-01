@@ -17,9 +17,18 @@ from games.commands.endpoint import ActStatement
 from games.commands.purchase import UNKNOWN_PRICE, StatedPrice
 from games.entry_forms import EntryAddForm
 from games.models import Game, Purchase, UserPreferences
-from games.price_fields import AMOUNT_REQUIRED, CURRENCY_REQUIRED, NOT_AN_AMOUNT
+from games.price_fields import (
+    AMOUNT_REQUIRED,
+    AMOUNT_ROW,
+    CURRENCY_REQUIRED,
+    CURRENCY_ROW,
+    NOT_AN_AMOUNT,
+    PRICE_GROUP,
+)
 from games.purchase_forms import (
     REFUND_CHANGED_SINCE_OPENED,
+    REFUND_GROUP,
+    REFUNDED_ROW,
     PurchaseAddForm,
     PurchaseEditForm,
     refund_seen,
@@ -341,3 +350,16 @@ def test_an_untouched_stale_block_keeps_a_newer_correction(entry):
 
     assert form.is_valid(), form.errors
     assert form.refund_statement() is KEEP
+
+
+@pytest.mark.parametrize(
+    ("group", "rows"),
+    [
+        (PRICE_GROUP, (AMOUNT_ROW, CURRENCY_ROW)),
+        (REFUND_GROUP, (REFUNDED_ROW,)),
+    ],
+)
+def test_each_row_rule_reads_its_group(group, rows):
+    name = group.removeprefix("group")
+    for row in rows:
+        assert f"]{name}:block" in row

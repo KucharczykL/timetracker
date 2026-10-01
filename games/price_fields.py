@@ -1,10 +1,12 @@
 """A purchase's price, as forms state it."""
 
+from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import Any, ClassVar, cast
 
 from django import forms
+from django.contrib.auth.models import User
 
 from common.components import FormFieldGroup, FormFieldPresentation
 from games.commands.purchase import UNKNOWN_PRICE, StatedPrice
@@ -27,7 +29,7 @@ class PriceChoice(StrEnum):
     NONE = "none"
 
 
-PRICE_LABELS = {
+PRICE_LABELS: Mapping[PriceChoice, str] = {
     PriceChoice.PAID: "Paid",
     PriceChoice.FREE: "Free",
     PriceChoice.UNKNOWN: "Unknown",
@@ -35,6 +37,7 @@ PRICE_LABELS = {
 }
 
 #: Literal, so Tailwind finds them.
+PRICE_GROUP = "group/price"
 AMOUNT_ROW = "hidden group-has-[[value=paid]:checked]/price:block"
 CURRENCY_ROW = (
     "hidden group-has-[[value=paid]:checked]/price:block "
@@ -64,7 +67,9 @@ class PriceFields(forms.Form):
         PriceChoice.UNKNOWN,
     )
 
-    price = forms.ChoiceField(widget=RadioListWidget, label="Price")
+    price = forms.TypedChoiceField(
+        coerce=PriceChoice, widget=RadioListWidget, label="Price"
+    )
     amount = forms.CharField(required=False, label="Amount")
     currency = forms.CharField(
         required=False,
@@ -75,7 +80,8 @@ class PriceFields(forms.Form):
         label="Currency",
     )
 
-    def _price_fields(self, user: object) -> None:
+    def __init__(self, *args, user: User, **kwargs):
+        super().__init__(*args, **kwargs)
         cast(forms.ChoiceField, self.fields["price"]).choices = [
             (choice.value, PRICE_LABELS[choice]) for choice in self.price_choices
         ]
@@ -84,6 +90,12 @@ class PriceFields(forms.Form):
         self.initial.setdefault("price", PriceChoice.PAID.value)
         if not self.initial.get("currency"):
             self.initial["currency"] = default
+
+    def clean(self) -> dict[str, Any] | None:
+        cleaned = super().clean()
+        if cleaned is not None:
+            self._clean_price(cleaned)
+        return cleaned
 
     def _clean_price(self, cleaned: dict[str, Any]) -> None:
         choice = cleaned.get("price")
@@ -107,10 +119,13 @@ class PriceFields(forms.Form):
         elif "currency" not in self.errors:
             self.add_error("currency", CURRENCY_REQUIRED)
 
-    def stated_price(self) -> StatedPrice | None:
-        """None states no purchase."""
+    def states_purchase(self) -> bool:
+        return self.cleaned_data["price"] is not PriceChoice.NONE
+
+    def stated_price(self) -> StatedPrice:
         cleaned = self.cleaned_data
-        match PriceChoice(cleaned["price"]):
+        choice: PriceChoice = cleaned["price"]
+        match choice:
             case PriceChoice.PAID:
                 return StatedPrice(cleaned["amount"], cleaned["currency"])
             case PriceChoice.FREE:
@@ -118,12 +133,12 @@ class PriceFields(forms.Form):
             case PriceChoice.UNKNOWN:
                 return UNKNOWN_PRICE
             case PriceChoice.NONE:
-                return None
+                raise ValueError("No purchase states no price.")
 
 
 def price_group() -> FormFieldGroup:
     return FormFieldGroup(
-        "Price", ("price", "amount", "currency"), look="hidden", class_="group/price"
+        "Price", ("price", "amount", "currency"), look="hidden", class_=PRICE_GROUP
     )
 
 

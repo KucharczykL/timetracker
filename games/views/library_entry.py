@@ -376,7 +376,7 @@ def add_library_entry_now(request: HttpRequest, game_id: UUID) -> HttpResponse:
     user = cast(User, request.user)
     library = user.library
     game = owned_or_404(Game.objects.visible_to(library), library, id=game_id)
-    key = press_key(request, "copy", "add")
+    key = press_key(request, "copy-add")
     release = game_releases(library, game).first()
     if release is None:
         messages.error(
@@ -410,7 +410,7 @@ def end_library_entry_now(request: HttpRequest, entry_id: UUID) -> HttpResponse:
     """Gone for a reason nobody stated, today."""
     user = cast(User, request.user)
     entry = held_entry(request, entry_id)
-    key = press_key(request, "copy", "end")
+    key = press_key(request, "copy-end")
     today = TemporalValue.from_day(request_calendar_today(request, user.library))
 
     def end() -> str:
@@ -436,7 +436,7 @@ def resume_library_entry_now(request: HttpRequest, entry_id: UUID) -> HttpRespon
     """Had again, today."""
     user = cast(User, request.user)
     entry = held_entry(request, entry_id)
-    key = press_key(request, "copy", "resume")
+    key = press_key(request, "copy-resume")
     today = TemporalValue.from_day(request_calendar_today(request, user.library))
 
     def resume() -> str:
