@@ -179,7 +179,11 @@ Every reader keeps reading `LegacyPurchase` until P5 switches it; P4's
 pass writes one `purchase.created` per (legacy row, game), under the
 legacy UUID for the first game in key order and uuid5 over (legacy id,
 game id) for the rest of a bundle; P5 drops `LegacyPurchase`, its
-tables and every legacy reader, with no rename at the cutover. The
+tables and every legacy reader, with no rename at the cutover.
+`RenameModel` keeps every index's `games_purchase_*` name, so the new
+table's own indexes would collide; P1's migration renames the legacy
+indexes to `games_legacypurchase_*`, and P5's drop reads them under
+that name. The
 stack stays one merge, so `main` never holds both.
 
 | Column | Meaning |
@@ -378,7 +382,7 @@ until P1.
 |---|---|---|
 | `RecordPurchase` | `purchase.created` (entry, kind, name, amount, currency, note, `effective_time` the purchased day) | names an existing entry, or carries a new entry's fields and emits `libraryentry.created` first in the same dispatch, tracking an untracked game ahead of it the way `RecordEntry` does; currency required exactly where an amount is stated |
 | `DescribePurchase` | `kind_changed`, `name_changed`, `amount_changed` (amount and currency, one fact), `note_changed`, `entry_changed` | the new entry must be a live entry of the same game |
-| `CorrectPurchaseDay` | `purchase_day_corrected` | the opening endpoint's correction |
+| `CorrectPurchaseDay` | `purchase_corrected` | the opening endpoint's correction; the endpoint's noun is "purchase" (`purchased`, `purchase_recorded_at`, `purchase_note`), as the entry's is "acquisition" |
 | `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund` | `refunded`, `refund_corrected`, `refund_voided` | the primitive; a refund also appends `libraryentry.access_ended` with way `refunded` on the entry where it is Owned, live and unended, in the same dispatch, as the reclassification writes a second aggregate, and a refund whose day certainly precedes the entry's acquired day is refused whole with a sentence naming the move (correct the acquired day first), never appended with the coupling skipped; the void takes that end back only where the entry's marker is still set and its latest end-family event is the refund's own |
 | `RemovePurchase`, `RestorePurchase` | `removed`, `restored` | the removal is the charter's void; the stream keeps the money; restore refuses under a removed entry |
 
