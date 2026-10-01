@@ -383,7 +383,7 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
     "games.Purchase": {
         #: The projector's mark.
         "removed_at": None,
-        #: Null is an unknown amount; blank its currency.
+        #: Null amount unknown; currency blank.
         "amount": None,
         "currency": "",
         "name": "",

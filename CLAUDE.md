@@ -186,7 +186,14 @@ docs/           — Additional documentation
   `edition_words` names an unnamed prerelease. Contract is
   [Game kind and parent](docs/superpowers/specs/2026-09-30-issue-1353-game-kind-and-parent-design.md)
 - **Platform** — `name`, `group`, `icon` (a `PLATFORM_ICONS` slug, `unspecified` by default; `clean()` refuses any other)
-- **Purchase** — ownership type, prices, currency conversion (`converted_price`, `price_per_game` is a `GeneratedField`), M2M to Game. `num_purchases` counts linked games. DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor `game.addon_purchases`)
+- **LegacyPurchase** — the old purchase row, on `games_legacypurchase`
+  until P5 deletes it; `verbose_name` "purchase", so screens still say so.
+  Every purchase screen, filter (`LegacyPurchaseFilter`, model key
+  `legacypurchase`) and statistic reads it. Ownership type, prices,
+  currency conversion (`converted_price`, `price_per_game` is a
+  `GeneratedField`), M2M to Game. `num_purchases` counts linked games.
+  DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor
+  `game.addon_purchases`)
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown). A
   projection since #1274: a device is owned — bought, renamed, sold, lost,
   retired — so the charter moved it inside the boundary. Written only by the
@@ -548,7 +555,7 @@ docs/           — Additional documentation
   Release alone, derives the game, tracks an untracked one in the same
   dispatch through `tracking_events`), `DescribeEntry`,
   `CorrectEntryAcquisition`, `RemoveEntry` (asks `blocking_referrer` and
-  `foreign_referrer`, which hold no entry referrer yet), `RestoreEntry`
+  `foreign_referrer`; a live `Purchase` blocks it), `RestoreEntry`
   (refuses under a removed Release) in `games/commands/libraryentry.py`;
   request-free half `games/writes/libraryentry.py`, whose `record_entry`
   reads the entry id off `dispatched_events` because the creation may
@@ -587,6 +594,24 @@ docs/           — Additional documentation
   and [A copy's access ends and resumes](docs/superpowers/specs/2026-09-29-issue-721-entry-access-end-design.md);
   wave is
   [Access and Purchases](docs/superpowers/specs/2026-09-28-access-and-purchases-wave-design.md)
+- **Purchase** — projection (#725, #726, #828; P1 of the wave stack): one
+  transaction for one copy. `entry` (`LibraryEntry`, `RESTRICT`), `kind`
+  (`PurchaseKind`: game/season_pass/battle_pass/upgrade), `name`, `amount`
+  (`Decimal(12, 2)`, null unknown, 0 free), `currency` (blank exactly where
+  `amount` is null), `note`, and the opening endpoint `PURCHASE_DAY`
+  (`purchased`, `purchase_recorded_at`, `purchase_note`). Written only by
+  `Purchases` from nine `library.purchase.*` events; an amount travels as
+  `AmountText` (`"12.50"`, `amount_text`), never a float. Commands
+  `RecordPurchase` (`entry_id` or `new_entry`, an `EntryStatement` that
+  `entry_creation_events` turns into the copy, tracking an untracked game
+  in the same dispatch), `DescribePurchase` (`StatedPrice`),
+  `CorrectPurchaseDay`, `RemovePurchase`, `RestorePurchase` in
+  `games/commands/purchase.py`; `check_price` refuses a sign, a third
+  place, an amount above `LARGEST_AMOUNT`, and a currency where no amount
+  is. Resolve through `library_purchase_row`. Writes
+  `games/writes/purchase.py`, reads `games/reads/purchases.py` (six marks).
+  No screen reads it until P5. Contract is
+  [The Purchase aggregate](docs/superpowers/specs/2026-10-01-issue-725-purchase-aggregate-design.md)
 
 **One act a row states once is an endpoint** (#1275). `Endpoint` in
 `games/endpoints.py` names its columns and three events (stated,
@@ -605,19 +630,19 @@ four. An
 **opening endpoint** (`OpeningEndpoint`, #719) is the variant the creation
 states: one event, the correction, and a marker that admits no null; its
 columns are a sibling of the stated shape under `EndpointColumnsBase`, so a
-void of one is a type error. An entry's acquisition is its one.
+void of one is a type error. An entry's acquisition and a purchase's day are its two.
 
 **Nothing user removes is destroyed** (#944). Six removable models — Game,
-Edition, Release, Platform, Purchase, FilterPreset —
+Edition, Release, Platform, LegacyPurchase, FilterPreset —
 each carry nullable `removed_at`, listed in `REMOVABLE_MODELS` in
 `games/removal.py`; a projection's mark (session, run, record, device,
-entry) is its projector's. `remove(instance)` stamps it, `restore(instance)` clears it,
+entry, purchase) is its projector's. `remove(instance)` stamps it, `restore(instance)` clears it,
 both use `UPDATE` rather than `save()`, so stamp revalidates nothing and fires no
 `post_save`. What signal would have done, `_AFTER_STAMP` does by hand: removed
 Game recounts its purchases. Playtime is no stored total, so a removed Session
 needs nothing beyond its mark.
 `for_library()`/`visible_to()` call `.alive()`, so removed row leaves every list,
-form, filter and API response at once; plain manager still sees it. Purchase live
+form, filter and API response at once; plain manager still sees it. LegacyPurchase live
 while any of its games is, or while it names none. Edition and Release read
 ancestors' marks as well as own, so removed Game hides both and restoring it
 leaves separately removed child out (#966). Only whole-library purge destroys
@@ -722,7 +747,7 @@ breaks existing bundle into per-game purchases (price split evenly as starting
 point). That why per-game refund/price need no through-model — each refundable
 unit is its own Purchase.
 
-**Unset platform/device is NULL**: `Game.platform`, `Purchase.platform`,
+**Unset platform/device is NULL**: `Game.platform`, `LegacyPurchase.platform`,
 `PlayerSession.device` nullable, stay NULL when unset — no sentinel rows (#290
 removed them). "Unspecified" (platform) and "No device" are render-layer labels
 only. The two catalog FKs use `on_delete=SET_NULL` and the projection's
@@ -915,7 +940,7 @@ structured filtering.
   `avg` answer NULL there, so "is null" on one reads as "no related rows".
   `StringFilter`/`NumberFilter` render exactly this list.
 - `games/filters.py` defines `GameFilter`, `PlayerSessionFilter`,
-  `PurchaseFilter` (all `@dataclass` subclasses of `OperatorFilter`) and
+  `LegacyPurchaseFilter` (all `@dataclass` subclasses of `OperatorFilter`) and
   `FindFilter` (sort/pagination). Filters serialize to/from JSON and travel in
   `?filter=` query parameter; `parse_game_filter()` / `parse_session_filter()`
   / `parse_purchase_filter()` deserialize. Key `from_json` does not know is
@@ -1080,6 +1105,12 @@ built by `ToastStack()` in `common/components/toast.py`) listens and renders;
   take `EntryAccess`/`EntryFormat` and refuse a present null at the schema;
   `POST /{id}/resume` `{resumed, note}` states a resume under an optional
   `Idempotency-Key`
+- `GET /api/purchases/`, `GET /{id}` — live purchases through
+  `readable_purchases`; `POST /` takes `entry_id` or `entry` (an entry
+  body), 201 and the row, `Idempotency-Key`; `PATCH /{id}` states each
+  named key, `amount` with `currency` and `purchased` with `purchase_note`
+  or 422. `amount` is a JSON number or string in and a string out;
+  `check_price` answers a bad one at 409. No removal route
 - `GET /api/presets/` — user's presets for a mode, shaped as combobox options
   (`limit=0` = unbounded)
 - `POST /api/presets/` — upsert on (user, mode, name); 201 create / 200 update

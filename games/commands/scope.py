@@ -167,11 +167,7 @@ def _refuse_a_drifted_entry(context: CommandContext, entry: LibraryEntry) -> Non
 
 
 def library_purchase_row(context: CommandContext, purchase_id: uuid.UUID) -> Purchase:
-    """This library's purchase, removed or not.
-
-    The entry is the purchase's parent; another
-    library's entry is the ownership audit's defect.
-    """
+    """This library's purchase, removed or not."""
     purchase = library_row(
         context,
         Purchase.objects.select_related(

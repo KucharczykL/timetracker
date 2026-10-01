@@ -939,7 +939,7 @@ def row_versions(library) -> list[tuple[str, str]]:
 
 def empty_projections(library) -> None:
     """By library, children first; records before sessions."""
-    #: A purchase event names an entry; the guard refuses.
+    #: Purchase events reference entries; guard refuses.
     with purging_library():
         Purchase.objects.filter(library=library).delete()
         LibraryEntry.objects.filter(library=library).delete()

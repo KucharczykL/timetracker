@@ -83,10 +83,7 @@ def check_kind(kind: str) -> PurchaseKindValue:
 
 
 def check_price(price: StatedPrice) -> StatedPrice:
-    """The stated price, or a refusal.
-
-    Never quantises: a person states cents.
-    """
+    """The stated price, or a refusal."""
     amount, currency = price
     if amount is None:
         if currency:

@@ -125,10 +125,7 @@ def restate_purchase(
     purchased: ActStatement | Keep = KEEP,
     correlation_id: uuid.UUID,
 ) -> bool:
-    """Describe, then correct the day; one correlation.
-
-    Answers whether anything was appended.
-    """
+    """Describe, then correct; answers whether appended."""
     commands: list[Command] = []
     if any(fact is not None for fact in (kind, name, price, note, entry_id)):
         commands.append(
