@@ -483,10 +483,12 @@ nothing. In order:
    The seeded valuation splits by the same rule. Day, refund and words are
    copied.
 2. **Add-ons (35 DLC).** A private Game of kind `dlc`, named from the
-   purchase with `sort_name = name` (a blank one leads every order),
-   parent the base game, with a default Edition and a Release on
-   the base's platform, tracked as a PlayerGame with default facts. No
-   add-on is among the 15 mismatched-platform rows. The 6 passes and the
+   purchase with `sort_name = name` (a blank one leads every order), a
+   second same-named DLC under another base named "<base>: <name>" and
+   reviewed as `renamed_addon` (0 on the dump), parent the base game,
+   with a default Edition and one Release on the row's platform, tracked
+   as a PlayerGame with default facts. No add-on is among the 14
+   mismatched-platform rows. The 6 passes and the
    upgrade stay purchases of their kind on the base entry.
 3. **Releases (14).** Where the purchase states a platform the game's
    Releases lack, a private Release on that platform under the default
@@ -563,11 +565,22 @@ replay parity 0 differing, the identity audit clean. What it found:
 - The pass checks its own key before any catalog write, so a rerun makes
   no Release and no DLC Game, and `created_release` exists only in the
   first run's `source_metadata`: the review surface reads metadata and
-  recomputes nothing. A rerun checks each held key's fingerprint, the
-  inputs per act (creation facts; legacy, game and refund day; legacy
-  and game): a legacy row edited after its conversion is a listed
-  defect, while a refund or removal added later is stated on the next
-  run. Schema and replay drift raise `PurchaseConversionDrift`.
+  recomputes nothing. Every run walks every row, with no early return but an empty
+  legacy table: a held key replays and a new act appends, 4 s and no
+  append on the converted dump. A rerun checks each held key's
+  fingerprint, the inputs per act, and lists as defects a legacy fact
+  changed since its conversion (price, platform, a free row priced), an
+  act the row no longer states (a cleared refund, removal or infinite
+  flag), and a stale fingerprint version; a refund, removal or infinite
+  flag added later is stated on the next run. Schema and replay drift
+  raise `PurchaseConversionDrift`.
+- The reconciliation judges seeded shares against legacy shares over
+  the purchases seeded at a rate, removed ones aside.
+- `refund_ends(kind, access, *, ended)` in `games/commands/purchase.py`
+  is the one refund-ends-the-copy rule; `identity_taken` in
+  `games/catalog_compat.py` the flat-identity check; `seeded` in
+  `games/valuations.py` has no caller beyond the pass and leaves with
+  its migration.
 - A DLC row with `du` ownership is refused. A pass or upgrade without a
   base copy is reviewed as `own_copy_fallback` (1 on the dump), and a
   refunded own copy always ends. Skipped copies and unvalued purchases
