@@ -10,6 +10,7 @@ from django.db import transaction
 
 from games.backfill.purchase import (
     LibraryConversion,
+    PurchaseConversionDrift,
     PurchaseConversionRefused,
     convert_purchases,
     legacy_rows,
@@ -54,7 +55,7 @@ class Command(BaseCommand):
             raise CommandError(
                 "--confirm must exactly match --user; nothing converted."
             )
-        library = self._get_user(username).library
+        library = self._library(username)
         rows = legacy_rows(LegacyPurchase, library.pk)
         if options["snapshot"] is not None:
             snapshot = legacy_statistics(library, rows)
@@ -64,7 +65,8 @@ class Command(BaseCommand):
             )
         try:
             with transaction.atomic():
-                self._convert(library, rows)
+                if not self._convert(library, rows):
+                    return
                 if confirmation is None:
                     raise _Preflight
         except _Preflight:
@@ -76,7 +78,8 @@ class Command(BaseCommand):
             return
         self.stdout.write(self.style.SUCCESS("Converted and committed."))
 
-    def _convert(self, library: UserLibrary, rows: list[LegacyRow]) -> None:
+    def _convert(self, library: UserLibrary, rows: list[LegacyRow]) -> bool:
+        """Whether the pass had anything to state."""
         before = self._backlog(library)
         try:
             conversion = convert_purchases(rows)
@@ -86,11 +89,13 @@ class Command(BaseCommand):
             raise CommandError(
                 f"{len(refused.refusals)} refusal(s); nothing converted."
             ) from refused
-        if not conversion.libraries:
+        except PurchaseConversionDrift as drift:
+            raise CommandError(f"{drift} Nothing converted.") from drift
+        if conversion.nothing_awaited:
             self.stdout.write(
-                f"{len(rows)} legacy row(s); every one converted already."
+                f"{len(rows)} legacy row(s); no live copy awaits conversion."
             )
-            return
+            return False
         [done] = conversion.libraries
         self._report(library, rows, done)
         after = self._backlog(library)
@@ -99,6 +104,7 @@ class Command(BaseCommand):
             f"dropped {before[1]} -> {after[1]}; "
             f"tracked games {before[2]} -> {after[2]}."
         )
+        return True
 
     def _report(
         self, library: UserLibrary, rows: list[LegacyRow], done: LibraryConversion
@@ -106,8 +112,9 @@ class Command(BaseCommand):
         checked = reconcile(rows, done)
         self.stdout.write(
             f"{len(rows)} legacy row(s): {checked.planned_copies} planned "
-            f"copies, {checked.copies} copies and {checked.purchases} purchases "
-            f"stated, {checked.skipped} skipped; {done.appended} events appended."
+            f"copies, {checked.own_copies} copies and {checked.purchases} purchases "
+            f"stated, {checked.skipped} skipped, {checked.unvalued} unvalued; "
+            f"{done.appended} events appended."
         )
         for category, legacy_ids in review_lists(library, done).items():
             self.stdout.write(f"Review {category}: {len(legacy_ids)}")
@@ -120,15 +127,26 @@ class Command(BaseCommand):
                 f"skipped {total.skipped}"
             )
         self.stdout.write(
-            f"Refunded purchases {checked.refunded_purchases} of "
-            f"{checked.refunded_purchases_expected}; copies ended as refunded "
-            f"{checked.refund_ended_copies} of {checked.refund_ended_copies_expected}."
+            f"Refunded purchases {checked.refunded_purchases.actual} of "
+            f"{checked.refunded_purchases.expected}; copies ended as refunded "
+            f"{checked.refund_ended_copies.actual} of "
+            f"{checked.refund_ended_copies.expected}."
         )
+        for skip in done.skipped:
+            self.stdout.write(
+                f"Skipped {skip.legacy_id}, game {skip.game_id}: the library "
+                "removed the game."
+            )
+        for item in done.unvalued:
+            self.stdout.write(
+                f"Unvalued {item.purchase_id} of {item.legacy_id}: {item.reason}"
+            )
         for (access, format), count in checked.copies_by_access.items():
             self.stdout.write(f"Copies {access}/{format}: {count}")
-        for target, (legacy_total, valued) in checked.valuations.items():
+        for target, valuation in checked.valuations.items():
             self.stdout.write(
-                f"Valued in {target}: legacy {legacy_total}, seeded {valued}"
+                f"Valued in {target}: legacy {valuation.legacy}, "
+                f"seeded {valuation.seeded}"
             )
         failures = checked.failures()
         if failures:
@@ -149,6 +167,14 @@ class Command(BaseCommand):
             figures["dropped_count"],
             tracked,
         )
+
+    @classmethod
+    def _library(cls, username: str) -> UserLibrary:
+        user = cls._get_user(username)
+        try:
+            return user.library
+        except UserLibrary.DoesNotExist as error:
+            raise CommandError(f"User {username!r} holds no library.") from error
 
     @staticmethod
     def _get_user(username: str) -> User:

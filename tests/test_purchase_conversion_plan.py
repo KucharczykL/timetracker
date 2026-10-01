@@ -8,12 +8,15 @@ import pytest
 
 from games.backfill.purchase_plan import (
     Category,
+    CopyShape,
     LegacyRow,
+    RowNotConvertible,
     legacy_refusals,
     plan,
     quantized_amount,
     split_cents,
 )
+from games.commands.purchase import UNKNOWN_PRICE, StatedPrice
 
 GAMES = tuple(sorted(uuid.uuid7() for _ in range(3)))
 
@@ -42,10 +45,6 @@ def _row(**facts: object) -> LegacyRow:
     return LegacyRow(**stated)  # type: ignore[arg-type]
 
 
-def _minted():
-    return uuid.uuid7()
-
-
 @pytest.mark.parametrize(
     ("ownership", "platform", "access", "format"),
     [
@@ -61,35 +60,28 @@ def _minted():
     ],
 )
 def test_access_and_format_follow_the_table(ownership, platform, access, format):
-    [copy] = plan(
-        _row(ownership_type=ownership, platform_name=platform), minted=_minted
-    )
+    [copy] = plan(_row(ownership_type=ownership, platform_name=platform))
     assert (copy.access, copy.format) == (access, format)
 
 
 def test_an_owned_free_row_is_free_on_epic_and_unknown_elsewhere():
-    [epic] = plan(_row(price=0.0, platform_name="Epic Games Store"), minted=_minted)
-    [steam] = plan(_row(price=0.0, platform_name="Steam"), minted=_minted)
+    [epic] = plan(_row(price=0.0, platform_name="Epic Games Store"))
+    [steam] = plan(_row(price=0.0, platform_name="Steam"))
 
-    assert (epic.amount, epic.currency, epic.categories) == (
-        Decimal("0.00"),
-        "EUR",
+    assert (epic.price, epic.categories) == (
+        StatedPrice(Decimal("0.00"), "EUR"),
         (Category.EPIC_FREE,),
     )
-    assert (steam.amount, steam.currency, steam.categories) == (
-        None,
-        "",
-        (Category.UNKNOWN_PRICE,),
-    )
-    assert epic.purchase_id is not None and steam.purchase_id is not None
+    assert (steam.price, steam.categories) == (UNKNOWN_PRICE, (Category.UNKNOWN_PRICE,))
+    assert epic.has_purchase and steam.has_purchase
 
 
 def test_a_non_owned_row_has_a_purchase_only_with_an_amount():
-    [free] = plan(_row(ownership_type="bo", price=0.0), minted=_minted)
-    [paid] = plan(_row(ownership_type="re", price=4.0), minted=_minted)
+    [free] = plan(_row(ownership_type="bo", price=0.0))
+    [paid] = plan(_row(ownership_type="re", price=4.0))
 
-    assert free.purchase_id is None
-    assert paid.purchase_id is not None
+    assert not free.has_purchase
+    assert paid.has_purchase
     assert paid.categories == (Category.RENTAL,)
 
 
@@ -100,55 +92,50 @@ def test_a_bundle_splits_the_cents_in_key_order():
         converted_price=250.0,
         converted_currency="CZK",
     )
-    minted = [uuid.uuid7(), uuid.uuid7()]
-
-    copies = plan(row, minted=iter(minted).__next__)
+    copies = plan(row)
 
     assert [copy.game_id for copy in copies] == list(GAMES)
-    assert [copy.amount for copy in copies] == [
+    assert [copy.price.amount for copy in copies] == [
         Decimal("3.34"),
         Decimal("3.33"),
         Decimal("3.33"),
     ]
-    assert [copy.converted_share for copy in copies] == [
-        Decimal("83.34"),
-        Decimal("83.33"),
-        Decimal("83.33"),
+    assert [copy.converted for copy in copies] == [
+        StatedPrice(Decimal("83.34"), "CZK"),
+        StatedPrice(Decimal("83.33"), "CZK"),
+        StatedPrice(Decimal("83.33"), "CZK"),
     ]
-    assert [copy.purchase_id for copy in copies] == [row.id, *minted]
+    assert [copy.legacy_key for copy in copies] == [row.id, None, None]
     assert all(Category.BUNDLE_SPLIT in copy.categories for copy in copies)
 
 
 def test_a_digital_upgrade_is_an_attached_upgrade():
-    [copy] = plan(_row(ownership_type="du"), minted=_minted)
-    assert (copy.kind, copy.is_attached) == ("upgrade", True)
+    [copy] = plan(_row(ownership_type="du"))
+    assert (copy.kind, copy.shape) == ("upgrade", CopyShape.ATTACHED)
 
 
 def test_a_dlc_row_buys_its_own_game_under_no_name():
     [copy] = plan(
         _row(type="dlc", name="Blood Money", related_game_id=GAMES[0]),
-        minted=_minted,
     )
-    assert (copy.kind, copy.name, copy.is_addon_game, copy.is_attached) == (
-        "game",
-        "",
-        True,
-        False,
-    )
+    assert (copy.kind, copy.name, copy.shape) == ("game", "", CopyShape.ADDON_GAME)
     assert Category.ADDON_GAME in copy.categories
 
 
 def test_a_pass_keeps_its_kind_and_name_and_attaches():
     [copy] = plan(
         _row(type="season_pass", name="Year 1", related_game_id=GAMES[0]),
-        minted=_minted,
     )
-    assert (copy.kind, copy.name, copy.is_attached) == ("season_pass", "Year 1", True)
+    assert (copy.kind, copy.name, copy.shape) == (
+        "season_pass",
+        "Year 1",
+        CopyShape.ATTACHED,
+    )
 
 
 def test_an_amount_is_quantized_once_and_the_currency_upper_cased():
-    [copy] = plan(_row(price=2.9925, price_currency="eur"), minted=_minted)
-    assert (copy.amount, copy.currency) == (Decimal("2.99"), "EUR")
+    [copy] = plan(_row(price=2.9925, price_currency="eur"))
+    assert copy.price == StatedPrice(Decimal("2.99"), "EUR")
     assert Category.QUANTIZED in copy.categories
 
 
@@ -166,9 +153,7 @@ def test_split_gives_the_remainder_to_the_first():
 
 
 def test_days_and_demos_carry_over():
-    [copy] = plan(
-        _row(ownership_type="de", date_refunded=date(2021, 5, 4)), minted=_minted
-    )
+    [copy] = plan(_row(ownership_type="de", date_refunded=date(2021, 5, 4)))
     assert copy.purchased.serialize() == "2021-05-03"
     assert copy.refunded is not None and copy.refunded.serialize() == "2021-05-04"
     assert Category.DEMO_EDITION in copy.categories
@@ -184,6 +169,14 @@ def test_days_and_demos_carry_over():
         {"price": float("nan")},
         {"price": float("inf")},
         {"converted_price": float("nan")},
+        {"ownership_type": "xx"},
+        {"type": "xx"},
+        {
+            "type": "dlc",
+            "ownership_type": "du",
+            "name": "Blood Money",
+            "related_game_id": GAMES[0],
+        },
     ],
     ids=[
         "no game",
@@ -193,10 +186,34 @@ def test_days_and_demos_carry_over():
         "NaN price",
         "infinite price",
         "NaN converted",
+        "unknown ownership",
+        "unknown type",
+        "DLC as an upgrade",
     ],
 )
 def test_rows_no_rule_converts_are_refused(facts):
-    assert legacy_refusals(_row(**facts))
+    row = _row(**facts)
+    assert legacy_refusals(row)
+    with pytest.raises(RowNotConvertible):
+        plan(row)
+
+
+@pytest.mark.parametrize(
+    ("access", "kind", "has_purchase", "ends"),
+    [
+        ("owned", "game", True, True),
+        ("owned", "season_pass", True, False),
+        ("owned", "upgrade", True, False),
+        ("rented", "game", True, False),
+        ("borrowed", "game", False, False),
+    ],
+)
+def test_only_an_owned_game_purchase_ends_its_copy_on_refund(
+    access, kind, has_purchase, ends
+):
+    [copy] = plan(_row())
+    copy = copy._replace(access=access, kind=kind, has_purchase=has_purchase)
+    assert copy.refund_ends_it is ends
 
 
 def test_an_upgrade_without_a_base_is_no_refusal():

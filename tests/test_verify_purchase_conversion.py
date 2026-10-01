@@ -7,7 +7,15 @@ from io import StringIO
 import pytest
 from django.core.management import CommandError, call_command
 
-from games.models import Game, LegacyPurchase, LibraryEvent, Platform, Purchase
+from games.backfill.purchase_reconciliation import Reconciliation
+from games.models import (
+    Game,
+    GameKind,
+    LegacyPurchase,
+    LibraryEvent,
+    Platform,
+    Purchase,
+)
 
 pytestmark = [pytest.mark.django_db, pytest.mark.untracked_games]
 
@@ -49,7 +57,8 @@ def test_confirm_commits(owned_user, row):
 
     assert Purchase.objects.filter(pk=row.pk).exists()
     again = run("--user", owned_user.username, "--confirm", owned_user.username)
-    assert "every one converted already" in again
+    assert "no live copy awaits conversion" in again
+    assert "committed" not in again
 
 
 def test_a_mismatched_confirmation_is_refused(owned_user, row):
@@ -78,3 +87,32 @@ def test_a_refusal_names_the_row(owned_user, row):
         )
 
     assert str(row.pk) in out.getvalue()
+
+
+def test_an_unexplained_difference_commits_nothing(owned_user, row, monkeypatch):
+    monkeypatch.setattr(
+        Reconciliation, "failures", lambda self: ["EUR: something moved"]
+    )
+
+    with pytest.raises(CommandError, match="1 unexplained"):
+        run("--user", owned_user.username, "--confirm", owned_user.username)
+
+    assert not Purchase.objects.exists()
+
+
+def test_the_preflight_rolls_back_catalog_rows(owned_user, owned_library, row):
+    base = row.games.get()
+    LegacyPurchase.objects.create(
+        library=owned_library,
+        date_purchased=date(2021, 6, 1),
+        price=5.0,
+        price_currency="EUR",
+        type=LegacyPurchase.DLC,
+        name="Expansion",
+        related_game=base,
+    ).games.add(base)
+
+    printed = run("--user", owned_user.username)
+
+    assert "PREFLIGHT" in printed
+    assert not Game.objects.filter(kind=GameKind.DLC).exists()

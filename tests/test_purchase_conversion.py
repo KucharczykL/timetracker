@@ -1,17 +1,20 @@
 """The purchase conversion pass over legacy rows."""
 
+import dataclasses
 import json
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 import pytest
-from django.db import connection, transaction
+from django.db import IntegrityError, connection, transaction
 from entries import record_entry
-from purchases import _state
+from purchases import _state, record_purchase
 
 from games.backfill import purchase as conversion
 from games.backfill.purchase import (
+    PurchaseConversionDrift,
     PurchaseConversionRefused,
+    RefusalKind,
     convert_purchases,
     legacy_rows,
 )
@@ -22,8 +25,11 @@ from games.backfill.purchase_reconciliation import (
     review_lists,
     snapshot_value,
 )
+from games.commands.playergame import RemovePlayerGame, TrackGame
 from games.commands.purchase import VoidPurchaseRefund
+from games.events.purchase import PURCHASE_CREATED
 from games.models import (
+    Edition,
     EditionKind,
     ExchangeRate,
     Game,
@@ -182,8 +188,10 @@ def test_a_refunded_rental_ends_its_copy_by_hand(owned_library, game_on):
     convert()
 
     [entry] = entries_of(game)
+    purchase = Purchase.objects.get(pk=row.pk)
     assert (entry.access, entry.access_end_way) == ("rented", "refunded")
-    assert not refund_owns_the_end(owned_library, Purchase.objects.get(pk=row.pk))
+    assert purchase.refunded.serialize() == "2021-05-04"
+    assert not refund_owns_the_end(owned_library, purchase)
 
 
 def test_a_borrowed_copy_at_no_price_has_no_purchase(owned_library, game_on):
@@ -239,11 +247,9 @@ def test_a_dlc_row_states_its_own_game_under_the_base(owned_library, game_on, st
     assert entry.release.platform == steam
     purchase = Purchase.objects.get(entry=entry)
     assert (purchase.kind, purchase.name) == ("game", "")
-    for game in (base, dlc):
-        tracked = PlayerGame.objects.get(game=game)
-        assert tracked.excluded_from_unfinished and tracked.excluded_from_dropped
-    convert()
-    assert Game.objects.filter(parent=base).count() == 1
+    own = PlayerGame.objects.get(game=dlc)
+    assert own.excluded_from_unfinished and own.excluded_from_dropped
+    assert not PlayerGame.objects.get(game=base).excluded_from_unfinished
 
 
 def test_a_demo_states_a_prerelease_edition(owned_library, game_on):
@@ -323,14 +329,15 @@ def test_a_pass_without_a_base_copy_and_the_upgrade_get_their_own(
 def test_a_mixed_infinite_game_is_tagged_and_excluded(owned_library, game_on):
     game = game_on("Tunic")
     infinite = legacy(owned_library, game, infinite=True)
-    legacy(owned_library, game, date_purchased=date(2022, 1, 1))
+    finite = legacy(owned_library, game, date_purchased=date(2022, 1, 1))
 
     convert()
 
     tracked = PlayerGame.objects.get(game=game)
     assert tracked.excluded_from_unfinished and tracked.excluded_from_dropped
-    review = LibraryEvent.objects.get(aggregate_id=infinite.pk).source_metadata
-    assert Category.MIXED_INFINITE in review["review"]
+    for row in (infinite, finite):
+        review = LibraryEvent.objects.get(aggregate_id=row.pk).source_metadata
+        assert Category.MIXED_INFINITE in review["review"]
 
 
 def test_a_removed_legacy_row_removes_its_purchase_and_copy(owned_library, game_on):
@@ -353,10 +360,13 @@ def test_a_removed_game_is_skipped(owned_library, game_on):
 
     done = convert()
 
-    assert [(skip.legacy_id, skip.game_id) for skip in done.libraries[0].skipped] == [
+    [library] = done.libraries
+    assert [(skip.legacy_id, skip.game_id) for skip in library.skipped] == [
         (row.pk, game.pk)
     ]
     assert not entries_of(game)
+    lists = review_lists(owned_library, library)
+    assert lists[Category.SKIPPED_REMOVED_GAME] == [str(row.pk)]
 
 
 def test_a_hand_recorded_copy_gets_a_second_copy(owned_library, game_on):
@@ -431,7 +441,7 @@ def test_the_schema_guard_refuses_a_missing_column(owned_library, game_on, monke
         connection.introspection, "get_table_description", without_amount
     )
 
-    with pytest.raises(PurchaseConversionRefused, match="games_purchase.amount"):
+    with pytest.raises(PurchaseConversionDrift, match="games_purchase.amount"):
         convert()
 
 
@@ -477,6 +487,9 @@ def test_valuations_seed_from_the_legacy_conversion(owned_library, game_on):
         Decimal("25.5"),
     )
     assert unrated.pk not in valued
+    assert {(row.version, row.calculated_at) for row in valued.values()} == {
+        (3, INSTANT)
+    }
     assert not stale_purchases(owned_library).filter(pk=foreign.pk).exists()
     assert _requested(owned_library) == requested + 1
 
@@ -533,24 +546,12 @@ def test_a_differing_replay_refuses(owned_library, game_on, monkeypatch):
 
     def drifted(library, **options):
         report = real(library, **options)
-        table = report.tables[0]
-        return report.__class__(
-            **{
-                **{name: getattr(report, name) for name in report.__slots__},
-                "tables": (
-                    table.__class__(
-                        **{
-                            **{name: getattr(table, name) for name in table.__slots__},
-                            "differing": 1,
-                        }
-                    ),
-                ),
-            }
-        )
+        table = dataclasses.replace(report.tables[0], differing=1)
+        return dataclasses.replace(report, tables=(table,))
 
     monkeypatch.setattr(conversion, "rebuild_projections", drifted)
 
-    with pytest.raises(PurchaseConversionRefused, match="does not replay"):
+    with pytest.raises(PurchaseConversionDrift, match="does not replay"):
         convert()
     assert not Purchase.objects.exists()
 
@@ -589,7 +590,10 @@ def test_the_reconciliation_explains_quantization_and_refunds(owned_library, gam
         Decimal("15.99"),
         Decimal("-0.0025"),
     )
-    assert (checked.refunded_purchases, checked.refund_ended_copies) == (3, 3)
+    assert (checked.refunded_purchases, checked.refund_ended_copies) == (
+        (3, 3),
+        (3, 3),
+    )
     assert checked.copies_by_access == {
         ("owned", "digital"): 3,
         ("rented", "digital"): 1,
@@ -646,3 +650,394 @@ def test_the_legacy_statistics_cover_every_purchase_year(owned_library, game_on)
     assert snapshot["library"] == str(owned_library.pk)
     assert set(snapshot["scopes"]) == {"all-time", "2019"}
     json.dumps(snapshot)
+
+
+def _review_of(row) -> list[str]:
+    return LibraryEvent.objects.get(
+        aggregate_id=row.pk, event_type=PURCHASE_CREATED.event_type
+    ).source_metadata["review"]
+
+
+def _events_by_key() -> dict[str, list[str]]:
+    keyed: dict[str, list[str]] = {}
+    for key, event_type in LibraryEvent.objects.order_by("sequence").values_list(
+        "idempotency_key", "event_type"
+    ):
+        keyed.setdefault(key, []).append(event_type)
+    return keyed
+
+
+def test_a_full_rerun_replays_every_key(owned_library, game_on):
+    rental = game_on("Inside")
+    legacy(
+        owned_library,
+        rental,
+        ownership_type=LegacyPurchase.RENTED,
+        price=3.0,
+        date_refunded=date(2021, 5, 4),
+    )
+    gone = game_on("Limbo")
+    remove(legacy(owned_library, gone))
+    bundle = sorted([game_on(name) for name in ("A", "B", "C")], key=lambda g: g.pk)
+    legacy(owned_library, *bundle, price=10.0)
+    base = game_on("Hitman")
+    legacy(owned_library, base)
+    legacy(
+        owned_library,
+        base,
+        type=LegacyPurchase.DLC,
+        name="Blood Money",
+        related_game=base,
+        infinite=True,
+    )
+    convert()
+    before = _events_by_key()
+    copies = {game.pk: entries_of(game) for game in (rental, gone, *bundle, base)}
+    keys = {
+        game.pk: Purchase.objects.get(entry__player_game__game=game).pk
+        for game in bundle
+    }
+    later = legacy(owned_library, game_on("Celeste"))
+
+    convert()
+
+    after = _events_by_key()
+    added = {key: types for key, types in after.items() if key not in before}
+    assert {key for key in added} == {key for key in after if str(later.pk) in key}
+    assert {key: after[key] for key in before} == before
+    assert {
+        game.pk: entries_of(game) for game in (rental, gone, *bundle, base)
+    } == copies
+    assert {
+        game.pk: Purchase.objects.get(entry__player_game__game=game).pk
+        for game in bundle
+    } == keys
+    assert Game.objects.filter(parent=base, kind=GameKind.DLC).count() == 1
+
+
+def test_a_legacy_row_changed_after_its_conversion_is_a_defect(owned_library, game_on):
+    game = game_on("Tunic")
+    row = legacy(owned_library, game)
+    legacy(owned_library, game_on("Hades"))
+    convert()
+    LegacyPurchase.objects.filter(pk=row.pk).update(price=12.0)
+    remove(legacy(owned_library, game_on("Celeste")))
+    legacy(owned_library, game_on("Inside"))
+
+    with pytest.raises(PurchaseConversionRefused) as refused:
+        convert()
+
+    [refusal] = refused.value.refusals
+    assert (refusal.legacy_id, refusal.kind) == (row.pk, RefusalKind.DEFECT)
+    assert "changed after its conversion" in refusal.reason
+
+
+def test_a_refund_stated_after_the_conversion_converts_on_a_rerun(
+    owned_library, game_on
+):
+    game = game_on("Tunic")
+    row = legacy(owned_library, game)
+    convert()
+    LegacyPurchase.objects.filter(pk=row.pk).update(date_refunded=date(2021, 5, 4))
+
+    convert()
+
+    assert Purchase.objects.get(pk=row.pk).refunded.serialize() == "2021-05-04"
+    [entry] = entries_of(game)
+    assert entry.access_end_way == "refunded"
+
+
+def test_a_refunded_or_removed_pass_leaves_the_base_copy(owned_library, game_on):
+    game = game_on("Destiny")
+    base = legacy(owned_library, game)
+    season = legacy(
+        owned_library,
+        game,
+        type=LegacyPurchase.SEASONPASS,
+        name="Year 1",
+        related_game=game,
+        date_refunded=date(2021, 5, 4),
+    )
+    upgrade = legacy(owned_library, game, ownership_type=LegacyPurchase.DIGITALUPGRADE)
+    remove(upgrade)
+    LegacyPurchase.objects.filter(pk=upgrade.pk).update(removed_at=INSTANT)
+
+    convert()
+
+    [entry] = entries_of(game)
+    assert (entry.access_end_recorded_at, entry.removed_at) == (None, None)
+    assert Purchase.objects.get(pk=base.pk).entry == entry
+    assert Purchase.objects.get(pk=season.pk).refund_recorded_at is not None
+    assert Purchase.objects.get(pk=upgrade.pk).removed_at is not None
+
+
+def test_a_refunded_upgrade_on_its_own_copy_ends_it(owned_library, game_on):
+    game = game_on("Cyberpunk")
+    row = legacy(
+        owned_library,
+        game,
+        ownership_type=LegacyPurchase.DIGITALUPGRADE,
+        date_refunded=date(2021, 5, 4),
+    )
+
+    convert()
+
+    [entry] = entries_of(game)
+    assert entry.access_end_way == "refunded"
+    assert Category.OWN_COPY_FALLBACK in _review_of(row)
+
+
+def test_a_pass_never_rides_a_removed_rows_copy(owned_library, game_on):
+    game = game_on("Destiny")
+    remove(legacy(owned_library, game))
+    season = legacy(
+        owned_library,
+        game,
+        type=LegacyPurchase.SEASONPASS,
+        name="Year 1",
+        related_game=game,
+    )
+
+    convert()
+
+    copy = Purchase.objects.get(pk=season.pk).entry
+    assert copy.removed_at is None
+    assert len(entries_of(game)) == 2
+
+
+def test_a_free_pass_beside_an_owned_base_gets_its_own_copy(owned_library, game_on):
+    game = game_on("Destiny")
+    legacy(owned_library, game)
+    legacy(
+        owned_library,
+        game,
+        type=LegacyPurchase.SEASONPASS,
+        name="Trial pass",
+        related_game=game,
+        ownership_type=LegacyPurchase.BORROWED,
+        price=0.0,
+    )
+
+    convert()
+
+    assert sorted(entry.access for entry in entries_of(game)) == [
+        "borrowed",
+        "owned",
+    ]
+
+
+def test_a_pass_prefers_the_base_copy_on_its_platform(owned_library, game_on, steam):
+    game = game_on("Destiny")
+    switch = Platform.objects.create(name="Switch", group="Nintendo")
+    on_switch = legacy(
+        owned_library, game, platform=switch, date_purchased=date(2020, 1, 1)
+    )
+    on_steam = legacy(owned_library, game, platform=steam)
+    season = legacy(
+        owned_library,
+        game,
+        type=LegacyPurchase.SEASONPASS,
+        name="Year 1",
+        related_game=game,
+        platform=steam,
+    )
+
+    convert()
+
+    assert Purchase.objects.get(pk=season.pk).entry_id == (
+        Purchase.objects.get(pk=on_steam.pk).entry_id
+    )
+    assert Purchase.objects.get(pk=on_switch.pk).entry_id != (
+        Purchase.objects.get(pk=season.pk).entry_id
+    )
+
+
+def test_owned_free_rows_pass_the_price_rules(owned_library, game_on):
+    epic = Platform.objects.create(name="Epic Games Store", group="PC")
+    free = legacy(
+        owned_library, game_on("Control", platform=epic), price=0.0, platform=epic
+    )
+    unknown = legacy(owned_library, game_on("Tunic"), price=0.0)
+
+    [done] = convert().libraries
+
+    assert (
+        Purchase.objects.get(pk=free.pk).amount,
+        Purchase.objects.get(pk=free.pk).currency,
+    ) == (Decimal("0.00"), "EUR")
+    assert (
+        Purchase.objects.get(pk=unknown.pk).amount,
+        Purchase.objects.get(pk=unknown.pk).currency,
+    ) == (None, "")
+    lists = review_lists(owned_library, done)
+    assert lists[Category.EPIC_FREE] == [str(free.pk)]
+    assert lists[Category.UNKNOWN_PRICE] == [str(unknown.pk)]
+
+
+def test_a_refusal_in_one_library_rolls_back_the_other(
+    owned_library, game_on, django_user_model
+):
+    other = django_user_model.objects.create_user(username="other").library
+    legacy(owned_library, game_on("Tunic"))
+    legacy(other, game_on("Hades", library=other), price=1e12)
+
+    with pytest.raises(PurchaseConversionRefused):
+        convert()
+
+    assert not Purchase.objects.exists()
+    assert not LibraryEvent.objects.filter(library=owned_library).exists()
+
+
+def test_a_defect_is_listed_beside_a_refusal(owned_library, game_on, monkeypatch):
+    broken = legacy(owned_library, game_on("Tunic"))
+    refused = legacy(owned_library, game_on("Hades"), price=1e12)
+    real = conversion._LibraryPass._create
+
+    def create(self, copy, *args, **kwargs):
+        if copy.row.id == broken.pk:
+            raise IntegrityError("a constraint")
+        return real(self, copy, *args, **kwargs)
+
+    monkeypatch.setattr(conversion._LibraryPass, "_create", create)
+
+    with pytest.raises(PurchaseConversionRefused) as raised:
+        convert()
+
+    kinds = {refusal.legacy_id: refusal for refusal in raised.value.refusals}
+    assert kinds[broken.pk].kind == RefusalKind.DEFECT
+    assert "IntegrityError" in kinds[broken.pk].reason
+    assert kinds[refused.pk].kind == RefusalKind.REFUSED
+    assert not Purchase.objects.exists()
+
+
+def test_demos_share_one_edition_across_platforms(owned_library, game_on, steam):
+    game = game_on("Tunic")
+    switch = Platform.objects.create(name="Switch", group="Nintendo")
+    for platform in (steam, steam, switch):
+        legacy(
+            owned_library,
+            game,
+            ownership_type=LegacyPurchase.DEMO,
+            price=0.0,
+            platform=platform,
+        )
+
+    convert()
+
+    [edition] = Edition.objects.filter(game=game, name="Demo")
+    releases = Release.objects.filter(edition=edition).alive()
+    assert {release.platform for release in releases} == {steam, switch}
+    assert len(entries_of(game)) == 3
+
+
+def test_an_untracked_game_is_skipped(owned_library, game_on):
+    game = game_on("Tunic")
+    row = legacy(owned_library, game)
+    legacy(owned_library, game_on("Hades"))
+    _state(owned_library, TrackGame(game_id=game.pk))
+    _state(owned_library, RemovePlayerGame(game_id=game.pk))
+
+    [done] = convert().libraries
+
+    assert [skip.legacy_id for skip in done.skipped] == [row.pk]
+
+
+def test_a_game_without_a_live_release_is_refused(owned_library, game_on):
+    game = game_on("Tunic")
+    remove(Release.objects.get(edition__game=game))
+    switch = Platform.objects.create(name="Switch", group="Nintendo")
+    row = legacy(owned_library, game, platform=switch)
+
+    with pytest.raises(PurchaseConversionRefused) as refused:
+        convert()
+
+    assert [refusal.legacy_id for refusal in refused.value.refusals] == [row.pk]
+
+
+def test_the_reconciliation_subtracts_a_skipped_copy(owned_library, game_on):
+    games = sorted([game_on(name) for name in ("A", "B", "C")], key=lambda g: g.pk)
+    legacy(owned_library, *games, price=10.0)
+    remove(games[2])
+    rows = legacy_rows(LegacyPurchase)
+
+    [done] = convert_purchases(rows, recorded_at=INSTANT).libraries
+    checked = reconcile(rows, done)
+
+    [eur] = checked.totals
+    assert (eur.converted, eur.skipped) == (Decimal("6.67"), Decimal("3.33"))
+    assert checked.failures() == []
+
+
+def test_a_changed_amount_and_a_missing_end_are_failures(owned_library, game_on):
+    legacy(owned_library, game_on("Tunic"), date_refunded=date(2021, 5, 4))
+    rows = legacy_rows(LegacyPurchase)
+    [done] = convert_purchases(rows, recorded_at=INSTANT).libraries
+    Purchase.objects.update(amount=Decimal("9.00"))
+    LibraryEntry.objects.update(access_end_way="sold")
+
+    failures = reconcile(rows, done).failures()
+
+    assert failures == [
+        "EUR: legacy 10.0 + quantization 0.00 - skipped 0 is not the converted 9.00",
+        "0 copies ended as refunded, expected 1",
+    ]
+
+
+def test_valuations_keep_standing_rows_and_list_the_unvalued(owned_library, game_on):
+    _publish(owned_library)
+    hand = record_purchase(
+        record_entry(
+            owned_library, Release.objects.get(edition__game=game_on("Inside"))
+        ),
+        amount=Decimal("100.00"),
+        currency="CZK",
+    )
+    PurchaseValuation.objects.create(
+        library=owned_library,
+        purchase_id=hand.pk,
+        target_currency="CZK",
+        amount=Decimal("100.00"),
+        source_amount=Decimal("100.00"),
+        source_currency="CZK",
+        rate_year=2021,
+        rate=None,
+        version=3,
+        calculated_at=INSTANT,
+    )
+    ExchangeRate.objects.create(
+        currency_from="EUR", currency_to="CZK", year=2021, rate=Decimal("25.5")
+    )
+    ExchangeRate.objects.create(
+        currency_from="USD", currency_to="CZK", year=2021, rate=Decimal(23)
+    )
+    elsewhere = legacy(
+        owned_library,
+        game_on("Hades"),
+        price=10.0,
+        price_currency="USD",
+        converted_price=9.0,
+        converted_currency="EUR",
+    )
+    bundle = sorted([game_on("A"), game_on("B")], key=lambda g: g.pk)
+    legacy(
+        owned_library,
+        *bundle,
+        price=10.0,
+        converted_price=255.0,
+        converted_currency="CZK",
+    )
+
+    [done] = convert().libraries
+
+    valued = {row.purchase_id: row.amount for row in PurchaseValuation.objects.all()}
+    assert valued[hand.pk] == Decimal("100.00")
+    assert elsewhere.pk not in valued
+    assert [
+        valued[Purchase.objects.get(entry__player_game__game=game).pk]
+        for game in bundle
+    ] == [Decimal("127.50"), Decimal("127.50")]
+    [unvalued] = done.unvalued
+    assert (unvalued.legacy_id, unvalued.reason) == (
+        elsewhere.pk,
+        "the legacy converted currency EUR is not CZK",
+    )

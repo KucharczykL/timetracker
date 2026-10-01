@@ -651,9 +651,11 @@ docs/           — Additional documentation
   `0031` (`elidable=True`): `games/backfill/purchase_plan.py` plans one
   copy per (row, game), `games/backfill/purchase.py` states each through
   the commands' `build` under `conversion:723:<act>:<legacy>:<game>` keys,
-  so a rerun appends nothing; bundles split by cents, DLC rows get their
-  own `dlc` Game, passes ride the base's owned copy, valuations are
-  `seeded` from the legacy converted share. `purchase_creation_events`
+  so a rerun appends nothing and a legacy row changed since is a listed
+  defect; bundles split by cents, DLC rows get their own `dlc` Game (an
+  infinite one excludes that Game, not the base), passes ride the base's
+  owned copy, valuations are `seeded` (own amount in the target currency,
+  else the legacy converted share) beside the standing ones. `purchase_creation_events`
   and `release_on` are the extracted halves. Contract is
   [Convert every legacy purchase](docs/superpowers/specs/2026-10-01-issue-723-purchase-conversion-design.md)
 

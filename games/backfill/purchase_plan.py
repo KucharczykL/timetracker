@@ -2,12 +2,12 @@
 
 import math
 import uuid
-from collections.abc import Callable
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
-from typing import NamedTuple
+from typing import Literal, NamedTuple, get_args
 
+from games.commands.purchase import UNKNOWN_PRICE, StatedPrice
 from games.events.libraryentry import EntryAccessValue, EntryFormatValue
 from games.events.purchase import PurchaseKindValue
 from timetracker.temporal import TemporalValue
@@ -15,12 +15,18 @@ from timetracker.temporal import TemporalValue
 CENT = Decimal("0.01")
 GAMEPASS = "Xbox Gamepass"
 EPIC = "Epic Games Store"
-OWNED_TYPES = frozenset({"ph", "di", "du"})
-ATTACHED_TYPES = frozenset({"season_pass", "battle_pass"})
 
-type LegacyOwnership = str  # "di"
-type LegacyType = str  # "season_pass"
-type MintKey = Callable[[], uuid.UUID]
+type LegacyOwnership = Literal["ph", "di", "du", "re", "bo", "tr", "de", "pi"]
+type LegacyType = Literal["game", "dlc", "season_pass", "battle_pass"]
+type LegacyId = uuid.UUID
+type GameId = uuid.UUID
+type CurrencyCode = str  # "EUR"
+type AccessAndFormat = tuple[EntryAccessValue, EntryFormatValue]
+
+LEGACY_OWNERSHIPS: frozenset[str] = frozenset(get_args(LegacyOwnership.__value__))
+LEGACY_TYPES: frozenset[str] = frozenset(get_args(LegacyType.__value__))
+OWNED: frozenset[str] = frozenset({"ph", "di", "du"})
+PASSES: frozenset[str] = frozenset({"season_pass", "battle_pass"})
 
 
 class Category(StrEnum):
@@ -36,29 +42,41 @@ class Category(StrEnum):
     QUANTIZED = "quantized"
     BUNDLE_SPLIT = "bundle_split"
     HAND_RECORDED_COPY = "hand_recorded_copy"
+    OWN_COPY_FALLBACK = "own_copy_fallback"
     SKIPPED_REMOVED_GAME = "skipped_removed_game"
 
 
-class LegacyRow(NamedTuple):
-    """Named columns only; later columns cannot break."""
+class CopyShape(StrEnum):
+    """Where a planned copy lives."""
 
-    id: uuid.UUID
+    #: Its own copy of the row's game.
+    OWN = "own"
+    #: Its own copy of the DLC's Game.
+    ADDON_GAME = "addon_game"
+    #: The base's copy; else its own.
+    ATTACHED = "attached"
+
+
+class LegacyRow(NamedTuple):
+    """Read by name; a historical model fits."""
+
+    id: LegacyId
     library_id: uuid.UUID
-    #: Key order.
-    game_ids: tuple[uuid.UUID, ...]
+    #: Sorted by game key.
+    game_ids: tuple[GameId, ...]
     platform_id: uuid.UUID | None
     platform_name: str
     date_purchased: date
     date_refunded: date | None
     infinite: bool
     price: float
-    price_currency: str
+    price_currency: CurrencyCode
     converted_price: float | None
-    converted_currency: str
+    converted_currency: CurrencyCode
     ownership_type: LegacyOwnership
     type: LegacyType
     name: str
-    related_game_id: uuid.UUID | None
+    related_game_id: GameId | None
     removed_at: datetime | None
 
 
@@ -66,23 +84,33 @@ class PlannedCopy(NamedTuple):
     """One legacy row's copy of one game."""
 
     row: LegacyRow
-    game_id: uuid.UUID
-    #: None: a copy and no purchase.
-    purchase_id: uuid.UUID | None
+    game_id: GameId
+    has_purchase: bool
     access: EntryAccessValue
     format: EntryFormatValue
     kind: PurchaseKindValue
     name: str
-    amount: Decimal | None
-    currency: str
-    converted_share: Decimal | None
+    price: StatedPrice
+    #: The legacy converted amount, split alike.
+    converted: StatedPrice | None
     purchased: TemporalValue
     refunded: TemporalValue | None
-    #: On the DLC Game, not game_id.
-    is_addon_game: bool
-    #: A pass or upgrade; the base's copy.
-    is_attached: bool
+    shape: CopyShape
     categories: tuple[Category, ...]
+
+    @property
+    def legacy_key(self) -> LegacyId | None:
+        """The legacy key, first game only."""
+        return self.row.id if self.game_id == self.row.game_ids[0] else None
+
+    @property
+    def refund_ends_it(self) -> bool:
+        """RefundPurchase ends this copy itself."""
+        return self.has_purchase and self.access == "owned" and self.kind == "game"
+
+
+class RowNotConvertible(ValueError):
+    """A row no conversion rule states."""
 
 
 def quantized_amount(price: float) -> Decimal:
@@ -91,7 +119,7 @@ def quantized_amount(price: float) -> Decimal:
 
 
 def split_cents(total: Decimal, count: int) -> list[Decimal]:
-    """Equal cents; the remainder to the first."""
+    """Equal cents; first ones get one more."""
     quotient, remainder = divmod(int(total / CENT), count)
     return [
         (quotient + (1 if index < remainder else 0)) * CENT for index in range(count)
@@ -100,7 +128,7 @@ def split_cents(total: Decimal, count: int) -> list[Decimal]:
 
 def access_and_format(
     ownership: LegacyOwnership, platform_name: str
-) -> tuple[EntryAccessValue, EntryFormatValue]:
+) -> AccessAndFormat:
     match ownership:
         case "ph":
             return "owned", "physical"
@@ -118,7 +146,6 @@ def access_and_format(
             return "demo", "digital"
         case "pi":
             return "pirated", "unknown"
-    raise ValueError(f"No access for ownership {ownership!r}.")
 
 
 def legacy_refusals(row: LegacyRow) -> list[str]:
@@ -130,13 +157,15 @@ def legacy_refusals(row: LegacyRow) -> list[str]:
         refusals.append(f"a {row.type} names games other than exactly its base game")
     if row.type == "dlc" and not row.name.strip():
         refusals.append("a DLC states no name for its own game")
+    if row.type == "dlc" and row.ownership_type == "du":
+        refusals.append("a DLC cannot also be a digital upgrade")
     if not math.isfinite(row.price):
         refusals.append(f"its price {row.price!r} is not a number")
     if row.converted_price is not None and not math.isfinite(row.converted_price):
         refusals.append(f"its converted price {row.converted_price!r} is not a number")
-    if row.ownership_type not in {"ph", "di", "du", "re", "bo", "tr", "de", "pi"}:
+    if row.ownership_type not in LEGACY_OWNERSHIPS:
         refusals.append(f"its ownership {row.ownership_type!r} is unknown")
-    if row.type not in {"game", "dlc", *ATTACHED_TYPES}:
+    if row.type not in LEGACY_TYPES:
         refusals.append(f"its type {row.type!r} is unknown")
     return refusals
 
@@ -151,26 +180,38 @@ def _kind(row: LegacyRow) -> PurchaseKindValue:
     return "game"
 
 
-def plan(row: LegacyRow, *, minted: MintKey) -> list[PlannedCopy]:
-    """One copy per game; refusals checked first."""
+def _shape(row: LegacyRow) -> CopyShape:
+    if row.type == "dlc":
+        return CopyShape.ADDON_GAME
+    if row.ownership_type == "du" or row.type in PASSES:
+        return CopyShape.ATTACHED
+    return CopyShape.OWN
+
+
+def _prices(row: LegacyRow, exact: Decimal, owned: bool) -> list[StatedPrice]:
+    count = len(row.game_ids)
+    currency = row.price_currency.strip().upper()
+    if exact == 0 and owned and row.platform_name == EPIC:
+        return [StatedPrice(Decimal("0.00"), currency)] * count
+    if exact == 0:
+        return [UNKNOWN_PRICE] * count
+    return [StatedPrice(amount, currency) for amount in split_cents(exact, count)]
+
+
+def plan(row: LegacyRow) -> list[PlannedCopy]:
+    """One copy per game; refuses unconvertible rows."""
+    refusals = legacy_refusals(row)
+    if refusals:
+        raise RowNotConvertible(f"Legacy purchase {row.id}: {'; '.join(refusals)}.")
     count = len(row.game_ids)
     access, format = access_and_format(row.ownership_type, row.platform_name)
-    owned = row.ownership_type in OWNED_TYPES
+    owned = row.ownership_type in OWNED
     exact = quantized_amount(row.price)
-    currency = row.price_currency.strip().upper()
     shared: list[Category] = []
-    amounts: list[Decimal | None]
-    if exact == 0 and owned and row.platform_name == EPIC:
-        amounts = [Decimal("0.00")] * count
-        shared.append(Category.EPIC_FREE)
-    elif exact == 0 and owned:
-        amounts, currency = [None] * count, ""
-        shared.append(Category.UNKNOWN_PRICE)
-    elif exact == 0:
-        amounts, currency = [None] * count, ""
-    else:
-        amounts = list(split_cents(exact, count))
-    has_purchase = owned or exact != 0
+    if exact == 0 and owned:
+        shared.append(
+            Category.EPIC_FREE if row.platform_name == EPIC else Category.UNKNOWN_PRICE
+        )
     if Decimal(repr(row.price)) != exact:
         shared.append(Category.QUANTIZED)
     if row.ownership_type == "re":
@@ -181,35 +222,35 @@ def plan(row: LegacyRow, *, minted: MintKey) -> list[PlannedCopy]:
         shared.append(Category.ADDON_GAME)
     if count > 1:
         shared.append(Category.BUNDLE_SPLIT)
-    shares: list[Decimal | None] = (
+    converted: list[StatedPrice | None] = (
         [None] * count
         if row.converted_price is None
-        else list(split_cents(quantized_amount(row.converted_price), count))
+        else [
+            StatedPrice(share, row.converted_currency.strip().upper())
+            for share in split_cents(quantized_amount(row.converted_price), count)
+        ]
     )
-    keys = [row.id, *(minted() for _ in range(count - 1))]
     return [
         PlannedCopy(
             row=row,
             game_id=game_id,
-            purchase_id=key if has_purchase else None,
+            has_purchase=owned or exact != 0,
             access=access,
             format=format,
             kind=_kind(row),
             name="" if row.type == "dlc" else row.name.strip(),
-            amount=amount,
-            currency=currency,
-            converted_share=share,
+            price=price,
+            converted=share,
             purchased=TemporalValue.from_day(row.date_purchased),
             refunded=(
                 None
                 if row.date_refunded is None
                 else TemporalValue.from_day(row.date_refunded)
             ),
-            is_addon_game=row.type == "dlc",
-            is_attached=_kind(row) == "upgrade" or row.type in ATTACHED_TYPES,
+            shape=_shape(row),
             categories=tuple(shared),
         )
-        for game_id, key, amount, share in zip(
-            row.game_ids, keys, amounts, shares, strict=True
+        for game_id, price, share in zip(
+            row.game_ids, _prices(row, exact, owned), converted, strict=True
         )
     ]

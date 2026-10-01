@@ -10,8 +10,9 @@ current baseline carries that no model declares.
 ## Passes waiting for a squash
 
 `0031_purchase_conversion` is `elidable=True`. It imports
-`games/backfill/purchase.py` and `purchase_plan.py`, which read the legacy
-rows through the historical model. After P5 the command and
+`games/backfill/purchase.py`, which reads the legacy rows through the
+historical model, and `purchase_plan.py`, which holds no database
+access. After P5 the command and
 `purchase_reconciliation.py` go; the pass and its plan stay until a squash
 elides `0031`, then leave with it.
 
