@@ -3634,7 +3634,7 @@ def aggregate_to_q(
             raise RuntimeError(f"{spec.reducer!r} aggregate requires a source field")
         reduce = Sum if spec.reducer == "sum" else Avg
         if spec.correlated is not None:
-            #: The source is an alias no join reaches.
+            #: An alias no join reaches.
             aggregate_expression = Subquery(
                 matching.filter(**{spec.correlated: OuterRef("pk")})
                 .order_by()

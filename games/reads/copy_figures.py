@@ -61,7 +61,7 @@ def _completion_in_scope(year: YearScope) -> GameFilter:
 
 
 def _finished_game(year: YearScope) -> GameFilter:
-    """A completion in a year; all-time, done too."""
+    """Completed in scope; all-time, done too."""
     if year is not None:
         return _completion_in_scope(year)
     return GameFilter(

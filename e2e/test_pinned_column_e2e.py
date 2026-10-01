@@ -260,8 +260,7 @@ def test_a_control_scrolled_under_the_pin_is_cleared_of_it_on_focus(
     page = no_js_page
     _open(page, live_server, "games:list_games", WIDE)
     assert page.evaluate(OVERFLOW) > 0, "no overflow; nothing can park under the pin"
-    # The earliest control after the pinned name column. Scroll it to the pin's own midpoint so it is planted
-    # behind the pin, not merely nearby.
+    # Plant the next control under the pin.
     page.evaluate(
         f"""() => {{
             const region = document.querySelector('{REGION}');

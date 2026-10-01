@@ -1,4 +1,4 @@
-"""Judge every purchase figure against the legacy snapshot."""
+"""Judge purchase figures against a snapshot."""
 
 import json
 from pathlib import Path

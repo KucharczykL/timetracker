@@ -24,7 +24,7 @@ _RENAMED = {
     "date_refunded": "refunded",
     "games": "game",
 }
-#: Kept as they are; the new words too.
+#: Kept as they are.
 _KEPT = {
     "platform",
     "name",
@@ -71,7 +71,7 @@ _PASSES = {"season_pass", "battle_pass"}
 
 _AGGREGATES = ("purchase_count", "purchase_price_total")
 
-#: Old sort key, new; None leaves the sort.
+#: Old sort key to new; None drops.
 _SORTS: dict[str, str | None] = {"type": "kind", "price": "amount", "infinite": None}
 
 
@@ -140,7 +140,7 @@ def _one_of(key: str, criterion: Any, member_of) -> Rewritten:
 
 
 def rewrite_purchase_node(node: Any) -> Rewritten:
-    """One purchase filter, and every node under it."""
+    """One purchase filter, rewritten whole."""
     if not isinstance(node, dict):
         return Rewritten(node, [])
     result: Node = {}
@@ -196,7 +196,7 @@ def _legacy_operand(operand: Any) -> bool:
 
 
 def rewrite_filter_tree(node: Any) -> Rewritten:
-    """Any filter; each purchase filter in it rewritten."""
+    """Rewrites each purchase filter inside."""
     if isinstance(node, list):
         children = [rewrite_filter_tree(child) for child in node]
         return Rewritten(
@@ -249,7 +249,7 @@ def rewrite_sort(find_filter: Any) -> Any:
 def rewrite_preset(
     mode: str, object_filter: Any, find_filter: Any
 ) -> tuple[Any, Any, list[str]]:
-    """A preset's filter and sort, and what refused."""
+    """A preset's filter, sort and refusals."""
     if mode == "purchases":
         walked = rewrite_purchase_node(object_filter)
         return walked.node, rewrite_sort(find_filter), walked.unexpressible

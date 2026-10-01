@@ -291,7 +291,7 @@ def snapshot_scopes(
     return [None, *sorted(years)]
 
 
-# ── The legacy figures, on any legacy model ────────────────────────────────
+# ── Legacy figures, any legacy model ──────────────────────────────────────
 
 #: A figure's or denominator's row set.
 type RowsKey = str  # e.g. "unfinished"
@@ -341,7 +341,7 @@ def legacy_figures(
     games are reached through the link table alone.
     """
     registry = model._meta.apps
-    #: A key: a historical model refuses a live row.
+    #: Keys; a historical model refuses rows.
     library_id = library.pk
     player_game = registry.get_model("games", "PlayerGame")
     run = registry.get_model("games", "Playthrough")
@@ -543,7 +543,7 @@ LEGACY_KEYS: frozenset[StatsKey] = frozenset(
 )
 
 
-#: Figures the legacy pages had no word for.
+#: Figures the legacy pages lacked.
 NEW_KEYS: frozenset[StatsKey] = frozenset(
     {"total_spent_unpriced", "total_spent_unvalued"}
 )

@@ -194,7 +194,7 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     data: TableData = {
         "caption": "Purchases",
         "columns": kept_columns,
-        #: Holds the picker; the row menu is coming.
+        #: Holds the column picker.
         "menu_slot": True,
         "sort_terms": sort.terms,
         "rows": [

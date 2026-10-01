@@ -48,7 +48,7 @@ class SnapshotRefused(ValueError):
 
 
 class Reason(StrEnum):
-    """Why a legacy key left or joined a figure."""
+    """Why a legacy key moved."""
 
     NO_PURCHASE = "a non-owned row at 0 is a copy and no purchase"
     BUNDLE_SPLIT = "a bundle became one row per game"
@@ -84,7 +84,7 @@ COPY_REASONS: frozenset[Reason] = frozenset(
 
 
 class KeyFacts(NamedTuple):
-    """What the pass wrote for one legacy key."""
+    """What the pass wrote per key."""
 
     purchases: frozenset[RowKey]
     entries: frozenset[RowKey]
@@ -97,7 +97,7 @@ class KeyFacts(NamedTuple):
 
 
 class ConversionMap(NamedTuple):
-    """New rows to legacy keys, and each key's facts."""
+    """New rows to legacy keys, with facts."""
 
     keys: Mapping[RowKey, LegacyKeyText]
     facts: Mapping[LegacyKeyText, KeyFacts]
@@ -251,7 +251,7 @@ def judge_rows(
     after: QuerySet,
     mapping: ConversionMap,
 ) -> RowsJudgement:
-    """Every key in the difference, with its reasons."""
+    """Each moved key, with its reasons."""
     after_keys: defaultdict[LegacyKeyText, int] = defaultdict(int)
     recorded_since = 0
     for row_key in after.values_list("pk", flat=True):
@@ -316,7 +316,7 @@ def _spent(
     after: QuerySet,
     mapping: ConversionMap,
 ) -> str | None:
-    """Both sides' valued keys sum alike, to the cent."""
+    """Valued keys sum alike, to the cent."""
     totals: defaultdict[LegacyKeyText, Decimal] = defaultdict(Decimal)
     for row_key, amount in after.values_list("pk", "valuation_amount"):
         legacy = mapping.keys.get(str(row_key))

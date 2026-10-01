@@ -137,10 +137,11 @@ path**, so verify against `make check` before pushing when possible.
 | Sync uv.lock | `uv sync` (after editing pyproject.toml) |
 | Verify the UUID identity map | `make audit-uuid-identity` (read-only; fails on any violation) |
 | Render every read-only page as one user to files | `make render-pages ARGS="--user NAME --out DIR"` (read-only; run at two commits on one database and `diff -r`; lists whole, CSRF and version footer normalised) |
-| Benchmark commands, replay, reads, and per-event cost | `make bench` (~2 min, seeds three events a game, dispatches 600 historical playtime records and removes the scratch library; `ARGS="--library <id> --gate"` times the six reads and checks replay on a real library, where the 20 ms read budget is judged; **not** in `make check`) |
+| Benchmark commands, replay, reads, and per-event cost | `make bench` (~2 min, seeds three events a game, dispatches 600 historical playtime records and removes the scratch library; `ARGS="--library <id> --gate"` times the ten reads and checks replay on a real library, where the 20 ms read budget is judged; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
 | Convert one library's review population and judge every statistics figure | `make verify-reclassification-parity ARGS="--user NAME --confirm NAME"` (writes; scratch restore only; without `--confirm` it reads and prints; **not** in `make check`) |
-| Convert one library's legacy purchases and reconcile them | `make verify-purchase-conversion ARGS="--user NAME [--snapshot PATH] [--confirm NAME]"` (rolls back without `--confirm`; `--snapshot` writes the legacy statistics for P5; **not** in `make check`) |
+| Convert one library's legacy purchases and reconcile them | `make verify-purchase-conversion ARGS="--user NAME [--snapshot PATH] [--confirm NAME]"` (rolls back without `--confirm`; `--snapshot` writes the format-2 legacy statistics; **not** in `make check`) |
+| Judge every purchase figure against a legacy snapshot | `make verify-purchase-statistics ARGS="--user NAME --snapshot PATH"` (read-only; fails on a moved figure no reason explains; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
 | Load platform fixtures / sample data | `make loadplatforms` / `make loadsample` |
 | Regenerate sample data (anonymized prod) | `make anonymize-sample` (see Testing) |
@@ -189,12 +190,13 @@ docs/           — Additional documentation
 - **Platform** — `name`, `group`, `icon` (a `PLATFORM_ICONS` slug, `unspecified` by default; `clean()` refuses any other)
 - **LegacyPurchase** — the old purchase row, on `games_legacypurchase`
   until P5 deletes it; `verbose_name` "purchase", so screens still say so.
-  Every purchase screen, filter (`LegacyPurchaseFilter`, model key
-  `legacypurchase`) and statistic reads it. Ownership type, prices,
+  Only the legacy write routes and `view_purchase` still use it; no
+  read, filter or statistic does, and the builder refuses
+  `legacypurchase`. Ownership type, prices,
   currency conversion (`converted_price`, `price_per_game` is a
   `GeneratedField`), M2M to Game. `num_purchases` counts linked games.
-  DLC/SeasonPass/BattlePass must have `related_game` (reverse accessor
-  `game.addon_purchases`)
+  DLC/SeasonPass/BattlePass must have `related_game`. Its relations
+  have no reverse accessor (`related_name="+"`, migration 0033)
 - **Device** — `name`, `type` (PC/Console/Handheld/Mobile/SBC/Unknown). A
   projection since #1274: a device is owned — bought, renamed, sold, lost,
   retired — so the charter moved it inside the boundary. Written only by the
@@ -329,7 +331,7 @@ docs/           — Additional documentation
   `PlaythroughFilter` per scope — the same object `stats_links.py` puts in the
   link beside each number, so stat and link compile one predicate. A year reads
   the interval the two generated bound columns state, all-time reads the marker;
-  a LegacyPurchase reports one row, dated `completed_lower` of its earliest run in a
+  a purchase reports one row, dated `completed_lower` of its earliest run in a
   year (its latest all-time, which no table prints today), and a row that
   reports no day sorts last and prints `-`. #1033 gives the projection a
   queryset holding `annotated_for_filtering` alone — no `alive()` and no
@@ -632,7 +634,18 @@ docs/           — Additional documentation
   off the `games_purchase_` prefix. Every command
   but the record resolves through `library_purchase_row`. Writes
   `games/writes/purchase.py`, reads `games/reads/purchases.py` (six marks).
-  No screen reads it until P5. Contract is
+  #735 (P5a) moves every read onto it: the Purchases list,
+  `PurchaseFilter` (model key `purchase`; `price_state`
+  paid/free/unknown, `valuation` through the alias
+  `annotated_for_filtering(library)` registers, unscoped it refuses to
+  compile), the statistics (`games/reads/purchase_figures.py`, and the
+  copy figures in `games/reads/copy_figures.py`, `StatsSource.ENTRIES`),
+  and their links. `GameFilter.purchase_price_total` sums valuations
+  through `AggregateSpec.correlated`. Migration 0032 rewrote saved
+  presets. `make verify-purchase-statistics` judges every figure
+  against a legacy snapshot (`games/purchase_parity.py`)
+  ([reads](docs/superpowers/specs/2026-10-01-issue-735-purchase-reads-design.md)).
+  Contract is
   [The Purchase aggregate](docs/superpowers/specs/2026-10-01-issue-725-purchase-aggregate-design.md).
   #727 states a refund on the stated endpoint `PURCHASE_REFUND`
   (`.refunded`, `.refund_corrected`, `.refund_voided`; migration 0028):
@@ -986,7 +999,7 @@ structured filtering.
   `avg` answer NULL there, so "is null" on one reads as "no related rows".
   `StringFilter`/`NumberFilter` render exactly this list.
 - `games/filters.py` defines `GameFilter`, `PlayerSessionFilter`,
-  `LegacyPurchaseFilter` (all `@dataclass` subclasses of `OperatorFilter`) and
+  `PurchaseFilter` (all `@dataclass` subclasses of `OperatorFilter`) and
   `FindFilter` (sort/pagination). Filters serialize to/from JSON and travel in
   `?filter=` query parameter; `parse_game_filter()` / `parse_session_filter()`
   / `parse_purchase_filter()` deserialize. Key `from_json` does not know is
