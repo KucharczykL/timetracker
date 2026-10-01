@@ -674,7 +674,7 @@ def test_the_legacy_statistics_cover_every_purchase_year(owned_library, game_on)
     assert snapshot["library"] == str(owned_library.pk)
     assert set(snapshot["scopes"]) == {"all-time", "2019"}
     assert snapshot["scopes"]["2019"]["rows"]["purchases"] == [str(rows[0].id)]
-    assert snapshot["scopes"]["2019"]["all_purchased_this_year_count"] == 1
+    assert snapshot["scopes"]["2019"]["figures"]["all_purchased_this_year_count"] == 1
     json.dumps(snapshot)
 
 

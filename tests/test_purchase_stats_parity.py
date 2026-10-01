@@ -302,6 +302,22 @@ def test_the_clean_gate_prints_no_total_spent_line(legacy_library, euro):
     assert "total_spent" not in changed
 
 
+def test_a_float_legacy_total_compares_to_the_cent(legacy_library, euro):
+    library, _ = legacy_library
+    snapshot = _snapshot(library)
+    _convert(library)
+    for scope in snapshot["scopes"].values():
+        scope["figures"]["total_spent"] = float(scope["figures"]["total_spent"]) + 1e-10
+
+    changed = {
+        change.key
+        for scope in _judged(library, snapshot).values()
+        for change in scope.changes
+    }
+
+    assert "total_spent" not in changed
+
+
 def test_format_one_is_refused(owned_user, owned_library, tmp_path):
     path = tmp_path / "old.json"
     path.write_text(

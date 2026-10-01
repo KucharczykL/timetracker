@@ -8,7 +8,7 @@ row set needs a reason that can move that set that way.
 
 from collections import defaultdict
 from collections.abc import Callable, Mapping
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 from typing import Any, NamedTuple
 
@@ -68,6 +68,7 @@ class Reason(StrEnum):
 
 
 RECORDED_SINCE = "recorded since the conversion"
+CENT = Decimal("0.01")
 
 
 class Move(StrEnum):
@@ -447,7 +448,9 @@ def judge_purchase_scope(
             was, current = figures[key], value
             attribution = _currency_attribution(was, current, library)
         elif key == "total_spent":
-            was, current = Decimal(figures[key]), value
+            #: The legacy total was a float sum.
+            was = Decimal(str(figures[key])).quantize(CENT, ROUND_HALF_UP)
+            current = value
             attribution = (
                 _spent(amounts, new_rows["valued"], mapping)
                 if judgements["valued"].clean
