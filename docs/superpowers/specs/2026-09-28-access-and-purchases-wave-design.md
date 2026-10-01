@@ -233,7 +233,9 @@ projections may point at a projection row, and a foreign key would block
 or empty the swap. Columns: `library` (CASCADE, for the purge),
 `purchase_id` a bare UUID, `target_currency`, `amount` Decimal(18,2)
 rounded half up to cents, `rate` Decimal(24,12) null where none was read
-(same currency, or 0), `version`, `calculated_at`. The currency task is
+(same currency, or 0), the three inputs it read (`source_amount`,
+`source_currency`, `rate_year`, the rate's identity being the two
+currencies and the year), `version`, `calculated_at`. The currency task is
 its sole writer: it values the whole live set per version, and
 publication replaces the library's valuations whole in the transaction
 that sets `published_version`, so one target per library is ever read.
@@ -255,8 +257,12 @@ dispatch that states an amount or moves the day (`created`,
 `amount_changed`, `purchase_corrected`, `restored`), after the dispatch
 returns, lossy by design. The task's trigger is `requested > published`
 **or** a live purchase with an amount and no valuation at the published
-version and target: a lost bump costs one day, and a row no write path
-saw (P4's pass, any direct appender) is valued by the same check, so
+target whose three stored inputs equal the purchase's, the year computed
+as `Coalesce(year(purchased_lower), ExtractYear(purchase_recorded_at,
+tzinfo=calendar_day_zone(library)))` in SQL and by the same rule in
+Python, never UTC: a lost bump of any kind costs one day, and a row no
+write path saw (P4's pass, any direct appender) is valued by the same
+check, so
 `needs_price_update` has no successor and `dispatch` gains no hook. The
 float cache and its writer go at the cutover.
 
