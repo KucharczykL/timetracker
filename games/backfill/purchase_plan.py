@@ -7,7 +7,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
 from typing import Literal, NamedTuple, get_args
 
-from games.commands.purchase import UNKNOWN_PRICE, StatedPrice
+from games.commands.purchase import UNKNOWN_PRICE, StatedPrice, refund_ends
 from games.events.libraryentry import EntryAccessValue, EntryFormatValue
 from games.events.purchase import PurchaseKindValue
 from timetracker.temporal import TemporalValue
@@ -21,6 +21,7 @@ type LegacyType = Literal["game", "dlc", "season_pass", "battle_pass"]
 type LegacyId = uuid.UUID
 type LibraryId = uuid.UUID
 type GameId = uuid.UUID
+type PurchaseId = uuid.UUID
 type CurrencyCode = str  # "EUR"
 type AccessAndFormat = tuple[EntryAccessValue, EntryFormatValue]
 
@@ -44,6 +45,7 @@ class Category(StrEnum):
     BUNDLE_SPLIT = "bundle_split"
     HAND_RECORDED_COPY = "hand_recorded_copy"
     OWN_COPY_FALLBACK = "own_copy_fallback"
+    RENAMED_ADDON = "renamed_addon"
     SKIPPED_REMOVED_GAME = "skipped_removed_game"
 
 
@@ -81,33 +83,44 @@ class LegacyRow(NamedTuple):
     removed_at: datetime | None
 
 
+class ConvertedShare(NamedTuple):
+    """A legacy converted amount, split alike."""
+
+    amount: Decimal
+    currency: CurrencyCode
+
+
+class PlannedPurchase(NamedTuple):
+    """The purchase a planned copy carries."""
+
+    kind: PurchaseKindValue
+    name: str
+    price: StatedPrice
+    converted: ConvertedShare | None
+    #: Legacy key on a bundle's first game.
+    key: PurchaseId | None
+
+
 class PlannedCopy(NamedTuple):
     """One legacy row's copy of one game."""
 
     row: LegacyRow
     game_id: GameId
-    has_purchase: bool
     access: EntryAccessValue
     format: EntryFormatValue
-    kind: PurchaseKindValue
-    name: str
-    price: StatedPrice
-    #: The legacy converted amount, split alike.
-    converted: StatedPrice | None
+    #: None: a copy and no purchase.
+    purchase: PlannedPurchase | None
     purchased: TemporalValue
     refunded: TemporalValue | None
     shape: CopyShape
     categories: tuple[Category, ...]
 
     @property
-    def legacy_key(self) -> LegacyId | None:
-        """The legacy key, first game only."""
-        return self.row.id if self.game_id == self.row.game_ids[0] else None
-
-    @property
     def refund_ends_it(self) -> bool:
-        """RefundPurchase ends this copy itself."""
-        return self.has_purchase and self.access == "owned" and self.kind == "game"
+        """RefundPurchase ends this new copy itself."""
+        return self.purchase is not None and refund_ends(
+            self.purchase.kind, self.access, ended=False
+        )
 
 
 class RowNotConvertible(ValueError):
@@ -159,6 +172,8 @@ def legacy_refusals(row: LegacyRow) -> list[str]:
     refusals: list[str] = []
     if not row.game_ids:
         refusals.append("it names no game")
+    if list(row.game_ids) != sorted(row.game_ids):
+        refusals.append("its games are not in key order")
     if row.type != "game" and set(row.game_ids) != {row.related_game_id}:
         refusals.append(f"a {row.type} names games other than exactly its base game")
     if row.type == "dlc" and not row.name.strip():
@@ -228,35 +243,46 @@ def plan(row: LegacyRow) -> list[PlannedCopy]:
         shared.append(Category.ADDON_GAME)
     if count > 1:
         shared.append(Category.BUNDLE_SPLIT)
-    converted: list[StatedPrice | None] = (
+    converted: list[ConvertedShare | None] = (
         [None] * count
         if row.converted_price is None
         else [
-            StatedPrice(share, row.converted_currency.strip().upper())
+            ConvertedShare(share, row.converted_currency.strip().upper())
             for share in split_cents(quantized_amount(row.converted_price), count)
         ]
     )
+    has_purchase = owned or quantized != 0
+    kind = _kind(row)
+    shape = _shape(row)
+    #: Attached exactly when not a game purchase.
+    assert (shape == CopyShape.ATTACHED) == (kind != "game")
     return [
         PlannedCopy(
             row=row,
             game_id=game_id,
-            has_purchase=owned or quantized != 0,
             access=access,
             format=format,
-            kind=_kind(row),
-            name="" if row.type == "dlc" else row.name.strip(),
-            price=price,
-            converted=share,
+            purchase=(
+                PlannedPurchase(
+                    kind=kind,
+                    name="" if row.type == "dlc" else row.name.strip(),
+                    price=price,
+                    converted=share,
+                    key=row.id if index == 0 else None,
+                )
+                if has_purchase
+                else None
+            ),
             purchased=TemporalValue.from_day(row.date_purchased),
             refunded=(
                 None
                 if row.date_refunded is None
                 else TemporalValue.from_day(row.date_refunded)
             ),
-            shape=_shape(row),
+            shape=shape,
             categories=tuple(shared),
         )
-        for game_id, price, share in zip(
-            row.game_ids, _prices(row, quantized, owned), converted, strict=True
+        for index, (game_id, price, share) in enumerate(
+            zip(row.game_ids, _prices(row, quantized, owned), converted, strict=True)
         )
     ]

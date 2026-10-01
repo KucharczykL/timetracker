@@ -12,6 +12,7 @@ from purchases import _state, record_purchase
 
 from games.backfill import purchase as conversion
 from games.backfill.purchase import (
+    PurchaseConversion,
     PurchaseConversionDrift,
     PurchaseConversionRefused,
     RefusalKind,
@@ -88,9 +89,14 @@ def legacy(library, *games, **facts) -> LegacyPurchase:
     return row
 
 
+PURCHASE_CONVERSIONS: list[PurchaseConversion] = []
+
+
 def convert(library=None):
     rows = legacy_rows(LegacyPurchase, None if library is None else library.pk)
-    return convert_purchases(rows, recorded_at=INSTANT)
+    done = convert_purchases(rows, recorded_at=INSTANT)
+    PURCHASE_CONVERSIONS.append(done)
+    return done
 
 
 def in_key_order(*games: Game) -> list[Game]:
@@ -468,7 +474,7 @@ def test_valuations_seed_from_the_legacy_conversion(owned_library, game_on):
         owned_library,
         game_on("Hades"),
         price=10.0,
-        converted_price=255.0,
+        converted_price=250.0,
         converted_currency="CZK",
     )
     unrated = legacy(
@@ -487,7 +493,7 @@ def test_valuations_seed_from_the_legacy_conversion(owned_library, game_on):
     valued = {row.purchase_id: row for row in PurchaseValuation.objects.all()}
     assert (valued[own.pk].amount, valued[own.pk].rate) == (Decimal("100.00"), None)
     assert (valued[foreign.pk].amount, valued[foreign.pk].rate) == (
-        Decimal("255.00"),
+        Decimal("250.00"),
         Decimal("25.5"),
     )
     assert unrated.pk not in valued
@@ -496,6 +502,10 @@ def test_valuations_seed_from_the_legacy_conversion(owned_library, game_on):
     }
     assert not stale_purchases(owned_library).filter(pk=foreign.pk).exists()
     assert _requested(owned_library) == requested + 1
+    [done] = PURCHASE_CONVERSIONS[-1].libraries
+    assert [(item.legacy_id, item.reason) for item in done.unvalued] == [
+        (unrated.pk, "no stored USD->CZK rate for 2021")
+    ]
 
 
 def _requested(library) -> int:
@@ -511,9 +521,12 @@ def test_an_unpublished_library_seeds_nothing_and_requests_a_run(
     )
     requested = _requested(owned_library)
 
-    convert()
+    [done] = convert().libraries
 
     assert not PurchaseValuation.objects.exists()
+    assert {item.reason for item in done.unvalued} == {
+        "the library has published no target currency"
+    }
     assert _requested(owned_library) == requested + 1
 
 
@@ -529,18 +542,31 @@ def test_a_library_without_a_target_requests_nothing(owned_library, game_on):
     assert _requested(owned_library) == requested
 
 
-def test_a_second_run_seeds_and_requests_nothing(owned_library, game_on):
+def test_an_appending_rerun_keeps_standing_valuations(owned_library, game_on):
     _publish(owned_library)
-    legacy(owned_library, game_on("Tunic"), price=100.0, price_currency="CZK")
+    first = legacy(owned_library, game_on("Tunic"), price=100.0, price_currency="CZK")
     convert()
     seeded_at = datetime(2020, 1, 1, tzinfo=UTC)
     PurchaseValuation.objects.update(calculated_at=seeded_at)
+    later = legacy(owned_library, game_on("Hades"), price=50.0, price_currency="CZK")
+    requested = _requested(owned_library)
+
+    convert()
+
+    stamps = dict(PurchaseValuation.objects.values_list("purchase_id", "calculated_at"))
+    assert stamps == {first.pk: seeded_at, later.pk: INSTANT}
+    assert _requested(owned_library) == requested + 1
+
+
+def test_a_rerun_with_nothing_new_seeds_and_requests_nothing(owned_library, game_on):
+    _publish(owned_library)
+    legacy(owned_library, game_on("Tunic"), price=100.0, price_currency="CZK")
+    convert()
     requested = _requested(owned_library)
 
     again = convert()
 
-    assert again.appended == 0
-    assert PurchaseValuation.objects.get().calculated_at == seeded_at
+    assert again.nothing_awaited
     assert _requested(owned_library) == requested
 
 
@@ -722,11 +748,8 @@ def test_a_full_rerun_replays_every_key(owned_library, game_on):
 def test_a_legacy_row_changed_after_its_conversion_is_a_defect(owned_library, game_on):
     game = game_on("Tunic")
     row = legacy(owned_library, game)
-    legacy(owned_library, game_on("Hades"))
     convert()
     LegacyPurchase.objects.filter(pk=row.pk).update(price=12.0)
-    remove(legacy(owned_library, game_on("Celeste")))
-    legacy(owned_library, game_on("Inside"))
 
     with pytest.raises(PurchaseConversionRefused) as refused:
         convert()
@@ -1022,7 +1045,7 @@ def test_valuations_keep_standing_rows_and_list_the_unvalued(owned_library, game
         owned_library,
         *bundle,
         price=10.0,
-        converted_price=255.0,
+        converted_price=240.0,
         converted_currency="CZK",
     )
 
@@ -1034,9 +1057,220 @@ def test_valuations_keep_standing_rows_and_list_the_unvalued(owned_library, game
     assert [
         valued[Purchase.objects.get(entry__player_game__game=game).pk]
         for game in bundle
-    ] == [Decimal("127.50"), Decimal("127.50")]
+    ] == [Decimal("120.00"), Decimal("120.00")]
     [unvalued] = done.unvalued
     assert (unvalued.legacy_id, unvalued.reason) == (
         elsewhere.pk,
         "the legacy converted currency EUR is not CZK",
     )
+
+
+def _defect_after(row, change):
+    LegacyPurchase.objects.filter(pk=row.pk).update(**change)
+    with pytest.raises(PurchaseConversionRefused) as refused:
+        convert()
+    [refusal] = refused.value.refusals
+    assert refusal.kind == RefusalKind.DEFECT
+    return refusal
+
+
+@pytest.mark.parametrize(
+    ("facts", "change", "reason"),
+    [
+        ({}, {"date_refunded": None}, "its refund"),
+        ({"removed_at": INSTANT}, {"removed_at": None}, "its removal"),
+        (
+            {"ownership_type": LegacyPurchase.BORROWED, "price": 0.0},
+            {"price": 4.0},
+            "its price changed",
+        ),
+    ],
+    ids=["refund cleared", "removal cleared", "free row priced"],
+)
+def test_a_withdrawn_act_is_a_defect(owned_library, game_on, facts, change, reason):
+    row = legacy(owned_library, game_on("Tunic"), date_refunded=date(2021, 5, 4))
+    LegacyPurchase.objects.filter(pk=row.pk).update(**facts)
+    if "date_refunded" not in change:
+        LegacyPurchase.objects.filter(pk=row.pk).update(date_refunded=None)
+    convert()
+
+    refusal = _defect_after(row, change)
+
+    assert refusal.legacy_id == row.pk
+    assert reason in refusal.reason
+
+
+def test_a_platform_changed_after_its_conversion_is_a_defect(owned_library, game_on):
+    row = legacy(owned_library, game_on("Tunic"))
+    convert()
+    switch = Platform.objects.create(name="Switch", group="Nintendo")
+
+    refusal = _defect_after(row, {"platform": switch})
+
+    assert "changed after its conversion" in refusal.reason
+
+
+def test_an_infinite_flag_cleared_after_its_conversion_is_a_defect(
+    owned_library, game_on
+):
+    row = legacy(owned_library, game_on("Tunic"), infinite=True)
+    convert()
+
+    refusal = _defect_after(row, {"infinite": False})
+
+    assert "no live infinite row" in refusal.reason
+
+
+def test_a_free_row_removed_after_its_conversion_removes_its_copy(
+    owned_library, game_on
+):
+    game = game_on("Tunic")
+    row = legacy(owned_library, game, ownership_type=LegacyPurchase.BORROWED, price=0.0)
+    convert()
+    LegacyPurchase.objects.filter(pk=row.pk).update(removed_at=INSTANT)
+
+    convert()
+
+    [entry] = entries_of(game)
+    assert entry.removed_at is not None
+
+
+def test_a_priced_row_removed_after_its_conversion_removes_on_a_rerun(
+    owned_library, game_on
+):
+    game = game_on("Tunic")
+    row = legacy(owned_library, game)
+    convert()
+    LegacyPurchase.objects.filter(pk=row.pk).update(removed_at=INSTANT)
+
+    convert()
+
+    assert Purchase.objects.get(pk=row.pk).removed_at is not None
+    [entry] = entries_of(game)
+    assert entry.removed_at is not None
+
+
+def test_an_infinite_flag_set_after_its_conversion_excludes(owned_library, game_on):
+    game = game_on("Tunic")
+    row = legacy(owned_library, game)
+    convert()
+    LegacyPurchase.objects.filter(pk=row.pk).update(infinite=True)
+
+    convert()
+
+    assert PlayerGame.objects.get(game=game).excluded_from_unfinished
+
+
+def test_a_rerun_after_a_skipped_copy_awaits_nothing(owned_library, game_on):
+    game = game_on("Tunic")
+    legacy(owned_library, game)
+    legacy(owned_library, game_on("Hades"))
+    remove(game)
+    convert()
+
+    assert convert().nothing_awaited
+
+
+def test_a_converted_copy_is_not_hand_recorded_on_a_rerun(owned_library, game_on):
+    game = game_on("Tunic")
+    legacy(owned_library, game)
+    convert()
+    second = legacy(owned_library, game, date_purchased=date(2022, 1, 1))
+
+    convert()
+
+    assert Category.HAND_RECORDED_COPY not in _review_of(second)
+
+
+def test_a_pass_riding_a_hand_recorded_copy_is_not_tagged(owned_library, game_on):
+    game = game_on("Destiny")
+    record_entry(owned_library, Release.objects.get(edition__game=game))
+    season = legacy(
+        owned_library,
+        game,
+        type=LegacyPurchase.SEASONPASS,
+        name="Year 1",
+        related_game=game,
+    )
+
+    convert()
+
+    assert len(entries_of(game)) == 1
+    assert Category.HAND_RECORDED_COPY not in _review_of(season)
+
+
+def test_a_dlc_on_another_platform_has_one_release(owned_library, game_on):
+    base = game_on("Hitman")
+    switch = Platform.objects.create(name="Switch", group="Nintendo")
+    row = legacy(
+        owned_library,
+        base,
+        type=LegacyPurchase.DLC,
+        name="Blood Money",
+        related_game=base,
+        platform=switch,
+    )
+
+    convert()
+
+    dlc = Game.objects.get(parent=base)
+    assert [
+        release.platform for release in Release.objects.filter(edition__game=dlc)
+    ] == [switch]
+    assert Category.CREATED_RELEASE not in _review_of(row)
+
+
+def test_same_named_dlcs_under_two_bases_both_convert(owned_library, game_on):
+    first, second = game_on("Hitman"), game_on("Hitman 2")
+    for base in (first, second):
+        legacy(
+            owned_library,
+            base,
+            type=LegacyPurchase.DLC,
+            name="Soundtrack",
+            related_game=base,
+        )
+
+    convert()
+
+    names = sorted(
+        Game.objects.filter(parent__in=[first, second]).values_list("name", flat=True)
+    )
+    assert names == ["Hitman 2: Soundtrack", "Soundtrack"] or names == [
+        "Hitman: Soundtrack",
+        "Soundtrack",
+    ]
+    lists = review_lists(owned_library, PURCHASE_CONVERSIONS[-1].libraries[0])
+    assert len(lists[Category.RENAMED_ADDON]) == 1
+
+
+def test_a_missing_conversion_state_is_a_defect(owned_library, game_on):
+    legacy(owned_library, game_on("Tunic"))
+    PurchaseConversionState.objects.filter(library=owned_library).delete()
+
+    with pytest.raises(PurchaseConversionRefused) as refused:
+        convert()
+
+    [refusal] = refused.value.refusals
+    assert (refusal.legacy_id, refusal.kind) == (None, RefusalKind.DEFECT)
+
+
+def test_a_seeded_valuation_that_drifts_is_a_failure(owned_library, game_on):
+    _publish(owned_library)
+    ExchangeRate.objects.create(
+        currency_from="EUR", currency_to="CZK", year=2021, rate=Decimal("25.5")
+    )
+    legacy(
+        owned_library,
+        game_on("Tunic"),
+        price=10.0,
+        converted_price=250.0,
+        converted_currency="CZK",
+    )
+    rows = legacy_rows(LegacyPurchase)
+    [done] = convert_purchases(rows, recorded_at=INSTANT).libraries
+    PurchaseValuation.objects.update(amount=Decimal("255.00"))
+
+    assert reconcile(rows, done).failures() == [
+        "CZK: seeded 255.00, legacy shares 250.00"
+    ]

@@ -66,10 +66,14 @@ class Tally(NamedTuple):
 
 
 class ValuationTotal(NamedTuple):
-    """Legacy converted sum beside the seeded one."""
+    """Rated shares beside their seeded sum."""
 
     legacy: Decimal
     seeded: Decimal
+
+    @property
+    def differs(self) -> bool:
+        return self.legacy != self.seeded
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -106,6 +110,11 @@ class Reconciliation:
                 f"{self.refund_ended_copies.actual} copies ended as refunded, "
                 f"expected {self.refund_ended_copies.expected}"
             )
+        failures += [
+            f"{target}: seeded {total.seeded}, legacy shares {total.legacy}"
+            for target, total in self.valuations.items()
+            if total.differs
+        ]
         return failures
 
 
@@ -125,15 +134,20 @@ def reconcile(
     quantization: defaultdict[CurrencyCode, Decimal] = defaultdict(Decimal)
     skipped: defaultdict[CurrencyCode, Decimal] = defaultdict(Decimal)
     #: Per row: a bundle's price counts once.
-    priced = {copy.row.id: copy for copy in planned if copy.price.amount is not None}
-    for copy in priced.values():
-        #: A row holds one currency.
-        exact = exact_amount(copy.row.price)
-        legacy[copy.price.currency] += exact
-        quantization[copy.price.currency] += quantized_amount(copy.row.price) - exact
+    priced = {
+        copy.row.id: (copy.row.price, copy.purchase.price.currency)
+        for copy in planned
+        if copy.purchase is not None and copy.purchase.price.amount is not None
+    }
+    #: A row holds one currency.
+    for row_price, currency in priced.values():
+        exact = exact_amount(row_price)
+        legacy[currency] += exact
+        quantization[currency] += quantized_amount(row_price) - exact
     for skip in conversion.skipped:
-        if skip.planned.price.amount is not None:
-            skipped[skip.planned.price.currency] += skip.planned.price.amount
+        purchase = skip.planned.purchase
+        if purchase is not None and purchase.price.amount is not None:
+            skipped[purchase.price.currency] += purchase.price.amount
     converted = dict(
         Purchase.objects.filter(pk__in=purchase_ids, amount__isnull=False)
         .values("currency")
@@ -154,23 +168,23 @@ def reconcile(
     refunded = [copy for copy in copies if copy.planned.refunded is not None]
     entries = LibraryEntry.objects.filter(pk__in=own_copies)
 
+    #: Only shares seeded at a rate compare.
+    rated = set(conversion.rated)
     valued = dict(
-        PurchaseValuation.objects.filter(purchase_id__in=purchase_ids)
+        PurchaseValuation.objects.filter(purchase_id__in=rated)
         .values("target_currency")
         .annotate(total=Sum("amount"))
         .values_list("target_currency", "total")
     )
-    unvalued = {item.purchase_id for item in conversion.unvalued}
     legacy_converted: defaultdict[CurrencyCode, Decimal] = defaultdict(Decimal)
     for stated in copies:
-        share = stated.planned.converted
+        purchase = stated.planned.purchase
         if (
-            stated.purchase_id is not None
-            and stated.purchase_id not in unvalued
-            and share is not None
-            and share.amount is not None
+            stated.purchase_id in rated
+            and purchase is not None
+            and purchase.converted is not None
         ):
-            legacy_converted[share.currency] += share.amount
+            legacy_converted[purchase.converted.currency] += purchase.converted.amount
 
     return Reconciliation(
         planned_copies=len(planned),
@@ -180,14 +194,14 @@ def reconcile(
         unvalued=len(conversion.unvalued),
         totals=totals,
         refunded_purchases=Tally(
-            sum(1 for copy in refunded if copy.purchase_id is not None),
-            Purchase.objects.filter(
+            expected=sum(1 for copy in refunded if copy.purchase_id is not None),
+            actual=Purchase.objects.filter(
                 pk__in=purchase_ids, refund_recorded_at__isnull=False
             ).count(),
         ),
         refund_ended_copies=Tally(
-            sum(1 for copy in refunded if copy.own_copy),
-            entries.filter(access_end_way="refunded").count(),
+            expected=sum(1 for copy in refunded if copy.own_copy),
+            actual=entries.filter(access_end_way="refunded").count(),
         ),
         copies_by_access=dict(
             sorted(
@@ -201,8 +215,8 @@ def reconcile(
         ),
         valuations={
             target: ValuationTotal(
-                legacy_converted.get(target, Decimal(0)),
-                valued.get(target, Decimal(0)),
+                legacy=legacy_converted.get(target, Decimal(0)),
+                seeded=valued.get(target, Decimal(0)),
             )
             for target in sorted(set(valued) | set(legacy_converted))
         },
@@ -244,7 +258,9 @@ def snapshot_value(value: object) -> Any:
             }
         case Mapping():
             return {str(key): snapshot_value(item) for key, item in value.items()}
-        case list() | tuple() | set() | frozenset() | range():
+        case set() | frozenset():
+            return sorted((snapshot_value(item) for item in value), key=str)
+        case list() | tuple() | range():
             return [snapshot_value(item) for item in value]
         case _ if dataclasses.is_dataclass(value) and not isinstance(value, type):
             return {
@@ -257,7 +273,7 @@ def snapshot_value(value: object) -> Any:
 def snapshot_scopes(
     library: UserLibrary, rows: Sequence[LegacyRow]
 ) -> list[int | None]:
-    """All-time, then each played or purchase year."""
+    """All-time, then played, purchase and refund years."""
     years = set(played_years(library))
     for row in rows:
         years.add(row.date_purchased.year)

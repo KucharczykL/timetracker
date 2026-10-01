@@ -7,6 +7,8 @@ from io import StringIO
 import pytest
 from django.core.management import CommandError, call_command
 
+from games.backfill import purchase as conversion
+from games.backfill.purchase import PurchaseConversionDrift
 from games.backfill.purchase_reconciliation import Reconciliation
 from games.models import (
     Game,
@@ -116,3 +118,15 @@ def test_the_preflight_rolls_back_catalog_rows(owned_user, owned_library, row):
 
     assert "PREFLIGHT" in printed
     assert not Game.objects.filter(kind=GameKind.DLC).exists()
+
+
+def test_a_drift_commits_nothing(owned_user, row, monkeypatch):
+    def drifted(libraries):
+        raise PurchaseConversionDrift("Library does not replay.")
+
+    monkeypatch.setattr(conversion, "require_replay_parity", drifted)
+
+    with pytest.raises(CommandError, match="Nothing converted"):
+        run("--user", owned_user.username, "--confirm", owned_user.username)
+
+    assert not Purchase.objects.exists()

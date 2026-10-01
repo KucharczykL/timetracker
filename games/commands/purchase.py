@@ -353,12 +353,15 @@ def _refund_sentences(purchase_id: uuid.UUID) -> EndpointSentences:
     )
 
 
-def refund_ends_the_copy(kind: PurchaseKindValue, entry: LibraryEntry) -> bool:
+def refund_ends(kind: str, access: str, *, ended: bool) -> bool:
     """A game's refund ends an owned, held copy."""
-    return (
-        kind == PurchaseKind.GAME
-        and entry.access == EntryAccess.OWNED
-        and stated(entry, ENTRY_ACCESS_END) is None
+    return kind == PurchaseKind.GAME and access == EntryAccess.OWNED and not ended
+
+
+def refund_ends_the_copy(kind: PurchaseKindValue, entry: LibraryEntry) -> bool:
+    """The refund rule, read off a copy."""
+    return refund_ends(
+        kind, entry.access, ended=stated(entry, ENTRY_ACCESS_END) is not None
     )
 
 

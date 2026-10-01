@@ -20,6 +20,7 @@ from django.utils import timezone
 from games.api_creation import RowRefused
 from games.backfill.purchase_plan import (
     Category,
+    ConvertedShare,
     CopyShape,
     CurrencyCode,
     GameId,
@@ -27,12 +28,13 @@ from games.backfill.purchase_plan import (
     LegacyRow,
     LibraryId,
     PlannedCopy,
+    PurchaseId,
     RowNotConvertible,
     legacy_refusals,
     plan,
 )
 from games.catalog_addons import state_addon
-from games.catalog_compat import write_and_mirror
+from games.catalog_compat import identity_taken, write_and_mirror
 from games.catalog_release import release_on
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.endpoint import ActStatement, WayActStatement
@@ -46,12 +48,11 @@ from games.commands.playergame import RecordPlayerGameFacts
 from games.commands.purchase import (
     RefundPurchase,
     RemovePurchase,
-    StatedPrice,
     purchase_creation_events,
 )
 from games.conversion import request_revaluation
 from games.end_ways import EndWay
-from games.events.append import AppendResult, LockedStream
+from games.events.append import LockedStream
 from games.events.conflicts import CommandConflict
 from games.events.dispatch import (
     CommandContext,
@@ -64,6 +65,7 @@ from games.events.idempotency import (
     IdempotencyKey,
     IdempotencyKeyMismatch,
     ReplayedAppend,
+    UnchangedAppend,
     fingerprint_command_input,
     idempotent_append,
 )
@@ -103,18 +105,19 @@ ORIGIN = "conversion"
 DEMO_EDITION = "Demo"
 
 type ConversionAct = Literal[
-    "created", "entry", "refunded", "ended", "removed", "removed_copy", "excluded"
+    "created", "entry", "refunded", "ended", "removed", "removed_copy"
 ]
 type CommandInput = dict[str, Any]
-type PurchaseId = uuid.UUID
 type EntryId = uuid.UUID
 type Build = Callable[[], Sequence[NewEvent] | Unchanged]
-type RowsByLibrary = dict[LibraryId, list[LegacyRow]]
+type PlannedRows = list[tuple[LegacyRow, list[PlannedCopy]]]
 
 
 class ConversionMetadata(TypedDict):
     """What a converted event names."""
 
+    origin: Literal["conversion"]
+    issue: int
     legacy_purchases: list[str]
     review: list[str]
 
@@ -137,6 +140,8 @@ DEFECTS = (
 
 
 class RefusalKind(StrEnum):
+    """Whether a person or a repair answers."""
+
     REFUSED = "refused"
     DEFECT = "defect"
 
@@ -144,14 +149,18 @@ class RefusalKind(StrEnum):
 class Refusal(NamedTuple):
     """One legacy row the pass cannot state."""
 
-    legacy_id: LegacyId
+    #: None: the library's own state.
+    legacy_id: LegacyId | None
     game_id: GameId | None
     reason: str
     kind: RefusalKind = RefusalKind.REFUSED
 
     def __str__(self) -> str:
+        subject = (
+            "library state" if self.legacy_id is None else f"purchase {self.legacy_id}"
+        )
         game = "" if self.game_id is None else f", game {self.game_id}"
-        return f"purchase {self.legacy_id}{game} {self.kind}: {self.reason}"
+        return f"{subject}{game} {self.kind}: {self.reason}"
 
 
 class PurchaseConversionRefused(Exception):
@@ -195,7 +204,7 @@ class SkippedCopy(NamedTuple):
         return self.planned.game_id
 
 
-class Unvalued(NamedTuple):
+class UnvaluedPurchase(NamedTuple):
     """A purchase the pass did not value."""
 
     purchase_id: PurchaseId
@@ -211,8 +220,9 @@ class LibraryConversion:
     appended: int
     copies: tuple[ConvertedCopy, ...]
     skipped: tuple[SkippedCopy, ...]
-    unvalued: tuple[Unvalued, ...]
-    refusals: tuple[Refusal, ...]
+    unvalued: tuple[UnvaluedPurchase, ...]
+    #: Seeded from a legacy share and rate.
+    rated: tuple[PurchaseId, ...]
 
 
 class PurchaseConversion(NamedTuple):
@@ -226,8 +236,8 @@ class PurchaseConversion(NamedTuple):
 
     @property
     def nothing_awaited(self) -> bool:
-        """Every live copy held its keys."""
-        return not self.libraries
+        """Every key replayed; nothing appended."""
+        return self.appended == 0
 
 
 def _key(act: ConversionAct, legacy_id: LegacyId, game_id: GameId) -> IdempotencyKey:
@@ -290,43 +300,11 @@ def _removed_games(library_id: LibraryId, game_ids: set[GameId]) -> set[GameId]:
     )
 
 
-def _required_keys(copy: PlannedCopy) -> set[IdempotencyKey]:
-    """Keys a converted copy always holds."""
-    row, game = copy.row, copy.game_id
-    keys = {_key("created" if copy.has_purchase else "entry", row.id, game)}
-    if copy.has_purchase and copy.refunded is not None:
-        keys.add(_key("refunded", row.id, game))
-    if copy.has_purchase and row.removed_at is not None:
-        keys.add(_key("removed", row.id, game))
-    return keys
-
-
-def _by_library(rows: Sequence[LegacyRow]) -> RowsByLibrary:
-    by_library: RowsByLibrary = defaultdict(list)
-    for row in rows:
-        by_library[row.library_id].append(row)
+def _by_library(planned: PlannedRows) -> dict[LibraryId, PlannedRows]:
+    by_library: defaultdict[LibraryId, PlannedRows] = defaultdict(list)
+    for row, copies in planned:
+        by_library[row.library_id].append((row, copies))
     return by_library
-
-
-def _unconverted(rows: Sequence[LegacyRow]) -> bool:
-    """Whether a live copy lacks a key."""
-    for library_id, held_rows in _by_library(rows).items():
-        removed = _removed_games(
-            library_id, {game for row in held_rows for game in row.game_ids}
-        )
-        wanted = {
-            key
-            for row in held_rows
-            for copy in plan(row)
-            if copy.game_id not in removed
-            for key in _required_keys(copy)
-        }
-        held = LibraryIdempotencyRecord.objects.filter(
-            library_id=library_id, idempotency_key__in=wanted
-        ).count()
-        if held < len(wanted):
-            return True
-    return False
 
 
 def convert_purchases(
@@ -338,23 +316,36 @@ def convert_purchases(
     ]
     if refusals:
         raise PurchaseConversionRefused(refusals)
-    if not _unconverted(rows):
+    #: A fresh database holds no rows.
+    if not rows:
         return PurchaseConversion(())
     _require_the_schema_this_pass_was_written_for()
     instant = timezone.now() if recorded_at is None else recorded_at
-    by_library = _by_library(rows)
+    by_library = _by_library([(row, plan(row)) for row in rows])
     libraries = UserLibrary.objects.select_related("user").in_bulk(by_library)
     with transaction.atomic():
-        done = tuple(
-            _LibraryPass(libraries[library_id], held, instant).run()
-            for library_id, held in by_library.items()
-        )
-        refused = [refusal for library in done for refusal in library.refusals]
+        passes = [
+            _LibraryPass(libraries[library_id], planned, instant)
+            for library_id, planned in by_library.items()
+        ]
+        done = tuple(library_pass.run() for library_pass in passes)
+        refused = [
+            refusal for library_pass in passes for refusal in library_pass.refusals
+        ]
         if refused:
             raise PurchaseConversionRefused(refused)
-        _analyze()
-        require_replay_parity([library.library for library in done])
+        appended = [library.library for library in done if library.appended]
+        if appended:
+            _analyze()
+            require_replay_parity(appended)
     return PurchaseConversion(done)
+
+
+def _one[T](found: T | None, what: str) -> T:
+    """The row the pass relies on."""
+    if found is None:
+        raise ConversionDefect(f"No {what}.")
+    return found
 
 
 class _Appender:
@@ -373,6 +364,14 @@ class _Appender:
             ).order_by("sequence")
         )
 
+    def held(self, keys: Iterable[IdempotencyKey]) -> set[IdempotencyKey]:
+        """The keys this library already answered."""
+        return set(
+            LibraryIdempotencyRecord.objects.filter(
+                library=self.library, idempotency_key__in=list(keys)
+            ).values_list("idempotency_key", flat=True)
+        )
+
     def replayed(
         self, key: IdempotencyKey, command_input: CommandInput
     ) -> tuple[LibraryEvent, ...] | None:
@@ -382,10 +381,13 @@ class _Appender:
         ).first()
         if record is None:
             return None
-        if (
-            record.fingerprint_version == FINGERPRINT_VERSION
-            and record.request_fingerprint != fingerprint_command_input(command_input)
-        ):
+        if record.fingerprint_version != FINGERPRINT_VERSION:
+            raise ConversionDefect(
+                f"Key {key!r} holds fingerprint version "
+                f"{record.fingerprint_version}, not {FINGERPRINT_VERSION}; its "
+                "legacy facts cannot be compared."
+            )
+        if record.request_fingerprint != fingerprint_command_input(command_input):
             raise IdempotencyKeyMismatch(
                 f"Key {key!r} recorded other legacy facts; the legacy row "
                 "changed after its conversion."
@@ -416,12 +418,15 @@ class _Appender:
             build=built,
             actor=self.library.user,
             correlation_id=self.correlation_id,
-            source_metadata={"origin": ORIGIN, "issue": ISSUE, **metadata},
+            source_metadata=dict(metadata),
             recorded_at=self.recorded_at,
         )
         if isinstance(result, ReplayedAppend):
             return self._events(result.first_sequence, result.last_sequence)
-        if not isinstance(result, AppendResult):
+        if isinstance(result, UnchangedAppend):
+            logger.info(
+                "[purchase conversion]: %s answered unchanged: %s", key, result.reason
+            )
             return ()
         self.appended += len(result.events)
         return result.events
@@ -435,7 +440,7 @@ def _created(events: Iterable[LibraryEvent], event_type: str) -> uuid.UUID | Non
 
 
 def _default_release(game: Game) -> Release:
-    """The default Edition's default Release."""
+    """Default Edition's default Release, else first live."""
     release = (
         Release.objects.filter(edition__game=game)
         .alive()
@@ -452,16 +457,19 @@ class _LibraryPass:
     """One library's rows; attached rows last."""
 
     def __init__(
-        self, library: UserLibrary, rows: Sequence[LegacyRow], recorded_at: datetime
+        self, library: UserLibrary, planned: PlannedRows, recorded_at: datetime
     ) -> None:
         self.library = library
-        self.rows = rows
+        #: Attached copies ride copies stated first.
+        self.planned = sorted(planned, key=lambda pair: _is_attached(pair[1]))
         self.context = CommandContext(library=library, actor=library.user)
         self.appender = _Appender(library, recorded_at)
         self.copies: list[ConvertedCopy] = []
         self.skipped: list[SkippedCopy] = []
-        self.unvalued: list[Unvalued] = []
+        self.unvalued: list[UnvaluedPurchase] = []
+        self.rated: list[PurchaseId] = []
         self.refusals: list[Refusal] = []
+        rows = [row for row, _ in planned]
         self.removed = _removed_games(
             library.pk, {game for row in rows for game in row.game_ids}
         )
@@ -473,6 +481,8 @@ class _LibraryPass:
         self.mixed = infinite & finite
         #: Game key to its live infinite rows.
         self.infinite: defaultdict[GameId, list[LegacyId]] = defaultdict(list)
+        #: Every game a converted copy names.
+        self.excludable: set[GameId] = set()
 
     def _hand_recorded_games(self) -> set[GameId]:
         converted = LibraryEvent.objects.filter(
@@ -487,21 +497,24 @@ class _LibraryPass:
         )
 
     def run(self) -> LibraryConversion:
-        planned = [(row, plan(row)) for row in self.rows]
-        #: Attached copies ride copies stated first.
-        planned.sort(key=lambda planned_row: _is_attached(planned_row[1]))
-        for row, copies in planned:
+        for row, copies in self.planned:
             self._row(row, copies)
         self._exclusions()
         if self.appender.appended and not self.refusals:
-            self._valuations()
+            try:
+                self._valuations()
+            except ConversionDefect as error:
+                logger.exception("[purchase conversion]: valuation defect")
+                self.refusals.append(
+                    Refusal(None, None, str(error), kind=RefusalKind.DEFECT)
+                )
         return LibraryConversion(
             library=self.library,
             appended=self.appender.appended,
             copies=tuple(self.copies),
             skipped=tuple(self.skipped),
             unvalued=tuple(self.unvalued),
-            refusals=tuple(self.refusals),
+            rated=tuple(self.rated),
         )
 
     def _row(self, row: LegacyRow, copies: Sequence[PlannedCopy]) -> None:
@@ -523,6 +536,25 @@ class _LibraryPass:
                 Refusal(row.id, game_id, _defect_reason(error), kind=RefusalKind.DEFECT)
             )
 
+    def _refuse_withdrawn_acts(self, copy: PlannedCopy) -> None:
+        """Acts the legacy row no longer states."""
+        row, game = copy.row, copy.game_id
+        withdrawn: dict[ConversionAct, str] = {
+            "entry" if copy.purchase else "created": "its price changed",
+        }
+        if copy.refunded is None:
+            withdrawn |= {"refunded": "its refund", "ended": "its refund"}
+        if row.removed_at is None:
+            withdrawn |= {"removed": "its removal", "removed_copy": "its removal"}
+        keys = {_key(act, row.id, game): reason for act, reason in withdrawn.items()}
+        held = self.appender.held(keys)
+        if held:
+            reasons = sorted({keys[key] for key in held})
+            raise ConversionDefect(
+                f"Legacy purchase {row.id}, game {game}: {', '.join(reasons)} "
+                "changed after its conversion."
+            )
+
     def _copy(self, copy: PlannedCopy) -> None:
         row = copy.row
         if copy.game_id in self.removed:
@@ -531,16 +563,15 @@ class _LibraryPass:
                 "the library removed; its price %s is not converted",
                 row.id,
                 copy.game_id,
-                copy.price.amount,
+                None if copy.purchase is None else copy.purchase.price.amount,
             )
             self.skipped.append(SkippedCopy(copy))
             return
+        self._refuse_withdrawn_acts(copy)
         categories = list(copy.categories)
         if copy.game_id in self.mixed:
             categories.append(Category.MIXED_INFINITE)
-        if copy.shape != CopyShape.ADDON_GAME and copy.game_id in self.hand_recorded:
-            categories.append(Category.HAND_RECORDED_COPY)
-        act: ConversionAct = "created" if copy.has_purchase else "entry"
+        act: ConversionAct = "created" if copy.purchase else "entry"
         facts = _creation_input(copy)
         key = _key(act, row.id, copy.game_id)
         events = self.appender.replayed(key, facts)
@@ -555,7 +586,12 @@ class _LibraryPass:
                     f"Key {key!r} answered no creation for legacy purchase "
                     f"{row.id}, game {copy.game_id}."
                 )
-            entry_id = Purchase.objects.get(pk=purchase_id).entry_id
+            entry_id = _one(
+                Purchase.objects.filter(pk=purchase_id)
+                .values_list("entry_id", flat=True)
+                .first(),
+                f"purchase {purchase_id} of key {key!r}",
+            )
         converted = ConvertedCopy(
             copy, entry_id, purchase_id, own_copy, tuple(categories)
         )
@@ -564,13 +600,14 @@ class _LibraryPass:
             self._refund(converted, copy.refunded, metadata)
         if row.removed_at is not None:
             self._remove(converted, metadata)
+        #: An infinite DLC excludes its own Game.
+        excluded = (
+            self._game_of(entry_id)
+            if copy.shape == CopyShape.ADDON_GAME
+            else copy.game_id
+        )
+        self.excludable.add(excluded)
         if row.infinite and row.removed_at is None:
-            #: An infinite DLC excludes its own Game.
-            excluded = (
-                self._game_of(entry_id)
-                if copy.shape == CopyShape.ADDON_GAME
-                else copy.game_id
-            )
             self.infinite[excluded].append(row.id)
         self.copies.append(converted)
 
@@ -583,26 +620,29 @@ class _LibraryPass:
     ) -> tuple[LibraryEvent, ...]:
         held = (
             self._base_copy(copy)
-            if copy.shape == CopyShape.ATTACHED and copy.has_purchase
+            if copy.shape == CopyShape.ATTACHED and copy.purchase
             else None
         )
         if copy.shape == CopyShape.ATTACHED and held is None:
             categories.append(Category.OWN_COPY_FALLBACK)
+        if (
+            held is None
+            and copy.shape != CopyShape.ADDON_GAME
+            and copy.game_id in self.hand_recorded
+        ):
+            categories.append(Category.HAND_RECORDED_COPY)
         statement: EntryId | EntryStatement
         if held is not None:
             statement = held
         else:
-            release, made = self._release_for(copy)
-            if made:
-                categories.append(Category.CREATED_RELEASE)
             statement = EntryStatement(
-                release_id=release.pk,
+                release_id=self._release_for(copy, categories).pk,
                 access=copy.access,
                 format=copy.format,
                 acquired=ActStatement(copy.purchased, ""),
             )
         build: Build
-        if not copy.has_purchase:
+        if copy.purchase is None:
             assert isinstance(statement, EntryStatement)
             record = RecordEntry(
                 release_id=statement.release_id,
@@ -616,11 +656,11 @@ class _LibraryPass:
                 purchase_creation_events,
                 self.context,
                 copy=statement,
-                kind=copy.kind,
-                name=copy.name,
-                price=copy.price,
+                kind=copy.purchase.kind,
+                name=copy.purchase.name,
+                price=copy.purchase.price,
                 purchased=ActStatement(copy.purchased, ""),
-                purchase_id=copy.legacy_key or uuid.uuid7(),
+                purchase_id=copy.purchase.key or uuid.uuid7(),
             )
 
         return self.appender.append(
@@ -681,8 +721,11 @@ class _LibraryPass:
             )
 
     def _game_of(self, entry_id: EntryId) -> GameId:
-        return LibraryEntry.objects.values_list("player_game__game_id", flat=True).get(
-            pk=entry_id
+        return _one(
+            LibraryEntry.objects.filter(pk=entry_id)
+            .values_list("player_game__game_id", flat=True)
+            .first(),
+            f"copy {entry_id}",
         )
 
     def _base_copy(self, copy: PlannedCopy) -> EntryId | None:
@@ -707,30 +750,55 @@ class _LibraryPass:
         )
         return candidates.values_list("pk", flat=True).first()
 
-    def _release_for(self, copy: PlannedCopy) -> tuple[Release, bool]:
-        """The copy's Release; whether newly made."""
+    def _release_for(self, copy: PlannedCopy, categories: list[Category]) -> Release:
+        """The copy's Release, tagged where made."""
         row = copy.row
-        game = Game.objects.get(pk=copy.game_id)
-        if copy.shape == CopyShape.ADDON_GAME:
-            game = self._dlc_game(row, base=game)
-        default = _default_release(game)
-        platform = (
-            default.platform
-            if row.platform_id is None
-            else Platform.objects.get(pk=row.platform_id)
+        game = _one(
+            Game.objects.filter(pk=copy.game_id).first(), f"game {copy.game_id}"
         )
+        platform = (
+            None
+            if row.platform_id is None
+            else _one(
+                Platform.objects.filter(pk=row.platform_id).first(),
+                f"platform {row.platform_id}",
+            )
+        )
+        if copy.shape == CopyShape.ADDON_GAME:
+            game = self._dlc_game(
+                row, base=game, platform=platform, categories=categories
+            )
+        default = _default_release(game)
+        platform = default.platform if platform is None else platform
         if row.ownership_type == "de":
-            return self._demo_release(game, platform)
-        if platform is None or platform.pk == default.platform_id:
-            return default, False
-        reached = release_on(self.library, game, platform)
-        return reached.release, reached.created
+            release, made = self._demo_release(game, platform)
+        elif platform is None or platform.pk == default.platform_id:
+            release, made = default, False
+        else:
+            reached = release_on(self.library, game, platform)
+            release, made = reached.release, reached.created
+        if made:
+            categories.append(Category.CREATED_RELEASE)
+        return release
 
-    def _dlc_game(self, row: LegacyRow, *, base: Game) -> Game:
+    def _dlc_game(
+        self,
+        row: LegacyRow,
+        *,
+        base: Game,
+        platform: Platform | None,
+        categories: list[Category],
+    ) -> Game:
+        """The DLC's own Game, row's platform."""
         name = row.name.strip()
+        #: A name another live Game holds.
+        renamed = f"{base.name}: {name}"
         standing = (
             Game.objects.filter(
-                library=self.library, parent=base, name=name, kind=GameKind.DLC
+                library=self.library,
+                parent=base,
+                name__in=[name, renamed],
+                kind=GameKind.DLC,
             )
             .alive()
             .order_by("pk")
@@ -738,13 +806,18 @@ class _LibraryPass:
         )
         if standing is not None:
             return standing
+        if platform is None:
+            platform = _default_release(base).platform
+        if identity_taken(self.library.pk, name, platform, None):
+            name = renamed
+            categories.append(Category.RENAMED_ADDON)
         game = Game(library=self.library, name=name, sort_name=name)
         state_addon(game, kind=GameKind.DLC, parent=base, library=self.library)
         game.save()
-        platform = _default_release(base).platform
         write_and_mirror(
             game,
-            lambda: state_catalog_graph(
+            partial(
+                state_catalog_graph,
                 game=game,
                 library=self.library,
                 editions=[
@@ -795,8 +868,11 @@ class _LibraryPass:
         )
         written = write_and_mirror(
             game,
-            lambda: state_catalog_graph(
-                game=game, library=self.library, editions=[statement]
+            partial(
+                state_catalog_graph,
+                game=game,
+                library=self.library,
+                editions=[statement],
             ),
         )
         made = [
@@ -804,9 +880,21 @@ class _LibraryPass:
             for written_release in written.editions[0].releases
             if written_release.key == "release"
         ]
-        return made[0], True
+        return _one(made[0] if made else None, f"Demo release of {game.pk}"), True
 
     def _exclusions(self) -> None:
+        withdrawn = self.appender.held(
+            _exclusion_key(game) for game in self.excludable - set(self.infinite)
+        )
+        for key in sorted(withdrawn):
+            self.refusals.append(
+                Refusal(
+                    None,
+                    None,
+                    f"{key!r} excluded a game no live infinite row names now",
+                    kind=RefusalKind.DEFECT,
+                )
+            )
         tracked = set(
             PlayerGame.objects.filter(
                 library=self.library,
@@ -866,18 +954,15 @@ class _LibraryPass:
             copy.planned.row.id,
             reason,
         )
-        self.unvalued.append(Unvalued(purchase_id, copy.planned.row.id, reason))
+        self.unvalued.append(UnvaluedPurchase(purchase_id, copy.planned.row.id, reason))
 
     def _valuations(self) -> None:
-        state = (
+        state = _one(
             PurchaseConversionState.objects.select_for_update()
             .filter(library=self.library)
-            .first()
+            .first(),
+            f"conversion state of library {self.library.pk}",
         )
-        if state is None:
-            raise PurchaseConversionDrift(
-                f"Library {self.library.pk} holds no conversion state."
-            )
         converted = {
             copy.purchase_id: copy
             for copy in self.copies
@@ -926,13 +1011,18 @@ class _LibraryPass:
                     .values_list("rate", flat=True)
                     .first()
                 )
-                share = copy.planned.converted
+                share = (
+                    None
+                    if copy.planned.purchase is None
+                    else (copy.planned.purchase.converted)
+                )
                 reason = _unvalued_reason(facts, target, rate, share)
                 if reason is not None:
                     self._unvalued(copy, facts.purchase_id, reason)
                     continue
-                assert share is not None and share.amount is not None
+                assert share is not None
                 amount = share.amount
+                self.rated.append(facts.purchase_id)
             rows.append(
                 seeded(
                     facts,
@@ -955,12 +1045,12 @@ def _unvalued_reason(
     facts: ValuationInput,
     target: CurrencyCode,
     rate: Decimal | None,
-    share: StatedPrice | None,
+    share: ConvertedShare | None,
 ) -> str | None:
     """Why a rated purchase cannot seed."""
     if rate is None:
         return f"no stored {facts.currency}->{target} rate for {facts.rate_year}"
-    if share is None or share.amount is None:
+    if share is None:
         return "the legacy row holds no converted amount"
     if share.currency != target:
         return f"the legacy converted currency {share.currency} is not {target}"
@@ -988,14 +1078,20 @@ def _defect_reason(error: Exception) -> str:
 
 def _creation_input(copy: PlannedCopy) -> CommandInput:
     """Legacy-derived facts; never a minted key."""
+    purchase = copy.purchase
     return {
         **_act_input(copy),
         "access": copy.access,
         "format": copy.format,
-        "kind": copy.kind,
-        "name": copy.name,
-        "amount": None if copy.price.amount is None else str(copy.price.amount),
-        "currency": copy.price.currency,
+        "platform": None if copy.row.platform_id is None else str(copy.row.platform_id),
+        "kind": None if purchase is None else purchase.kind,
+        "name": "" if purchase is None else purchase.name,
+        "amount": (
+            None
+            if purchase is None or purchase.price.amount is None
+            else str(purchase.price.amount)
+        ),
+        "currency": "" if purchase is None else purchase.price.currency,
         "purchased": copy.purchased.serialize(),
     }
 
@@ -1008,6 +1104,8 @@ def _metadata(
     legacy_ids: Sequence[LegacyId], categories: Sequence[Category]
 ) -> ConversionMetadata:
     return {
+        "origin": "conversion",
+        "issue": ISSUE,
         "legacy_purchases": [str(legacy_id) for legacy_id in legacy_ids],
         "review": [str(category) for category in categories],
     }
@@ -1041,6 +1139,7 @@ def _require_the_schema_this_pass_was_written_for() -> None:
         PurchaseConversionState,
         PurchaseValuation,
         ExchangeRate,
+        UserLibrary,
     )
     missing: list[str] = []
     with connection.cursor() as cursor:
