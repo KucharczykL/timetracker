@@ -95,7 +95,7 @@ def release_on_platform(
 
 
 def release_on(library: UserLibrary, game: Game, platform: Platform) -> PlatformRelease:
-    """A private game's live Release there, stated if absent."""
+    """That platform's live Release, stated if absent."""
     if game.library_id is None:
         raise RowRefused(SHARED_GAME_RELEASE)
 

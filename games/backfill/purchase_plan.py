@@ -63,7 +63,7 @@ class LegacyRow(NamedTuple):
 
 
 class PlannedCopy(NamedTuple):
-    """One (legacy row, game): a copy, maybe a purchase."""
+    """One legacy row's copy of one game."""
 
     row: LegacyRow
     game_id: uuid.UUID
@@ -78,15 +78,15 @@ class PlannedCopy(NamedTuple):
     converted_share: Decimal | None
     purchased: TemporalValue
     refunded: TemporalValue | None
-    #: The copy is the DLC Game's, not game_id's.
+    #: On the DLC Game, not game_id.
     is_addon_game: bool
-    #: A pass or upgrade, on the base's copy.
+    #: A pass or upgrade; the base's copy.
     is_attached: bool
     categories: tuple[Category, ...]
 
 
 def quantized_amount(price: float) -> Decimal:
-    """The float's shortest spelling, half up to cents."""
+    """Shortest float spelling, half up to cents."""
     return Decimal(repr(price)).quantize(CENT, rounding=ROUND_HALF_UP)
 
 

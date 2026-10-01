@@ -111,7 +111,7 @@ class Refusal(NamedTuple):
 
 
 class PurchaseConversionRefused(Exception):
-    """Rows no rule converts, or a differing replay."""
+    """Unconvertible rows, or a differing replay."""
 
     def __init__(self, refusals: Iterable[Refusal | str]) -> None:
         self.refusals = tuple(refusals)
@@ -123,7 +123,7 @@ class PurchaseConversionRefused(Exception):
 
 
 class ConvertedCopy(NamedTuple):
-    """A planned copy, as the pass stated it."""
+    """A planned copy, as stated."""
 
     planned: PlannedCopy
     entry_id: uuid.UUID
@@ -178,7 +178,7 @@ def _exclusion_key(game_id: uuid.UUID) -> IdempotencyKey:
 def legacy_rows(
     model: type[models.Model], library_id: uuid.UUID | None = None
 ) -> list[LegacyRow]:
-    """Every legacy row; the model may be historical."""
+    """Legacy rows; the model may be historical."""
     rows = model._base_manager.all()
     if library_id is not None:
         rows = rows.filter(library_id=library_id)
@@ -411,7 +411,7 @@ class _LibraryPass:
         infinite = {game for row in rows if row.infinite for game in row.game_ids}
         finite = {game for row in rows if not row.infinite for game in row.game_ids}
         self.mixed = infinite & finite
-        #: Game key to the infinite rows naming it.
+        #: Game key to its infinite rows.
         self.infinite: defaultdict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
 
     def _hand_recorded_games(self) -> set[uuid.UUID]:
@@ -615,7 +615,7 @@ class _LibraryPass:
         return candidates.values_list("pk", flat=True).first()
 
     def _release_for(self, copy: PlannedCopy) -> tuple[Release, bool]:
-        """The copy's Release; whether the pass made it."""
+        """The copy's Release; whether newly made."""
         row = copy.row
         game = Game.objects.get(pk=copy.game_id)
         if copy.is_addon_game:

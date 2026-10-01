@@ -140,6 +140,7 @@ path**, so verify against `make check` before pushing when possible.
 | Benchmark commands, replay, reads, and per-event cost | `make bench` (~2 min, seeds three events a game, dispatches 600 historical playtime records and removes the scratch library; `ARGS="--library <id> --gate"` times the six reads and checks replay on a real library, where the 20 ms read budget is judged; **not** in `make check`) |
 | Replay every library and fail on a differing row | `make verify-replay-parity` (read-only; **not** in `make check`) |
 | Convert one library's review population and judge every statistics figure | `make verify-reclassification-parity ARGS="--user NAME --confirm NAME"` (writes; scratch restore only; without `--confirm` it reads and prints; **not** in `make check`) |
+| Convert one library's legacy purchases and reconcile them | `make verify-purchase-conversion ARGS="--user NAME [--snapshot PATH] [--confirm NAME]"` (rolls back without `--confirm`; `--snapshot` writes the legacy statistics for P5; **not** in `make check`) |
 | Destroy one user's library and every row in it | `make purge-library ARGS="--user NAME --confirm NAME"` (names the user twice on purpose) |
 | Load platform fixtures / sample data | `make loadplatforms` / `make loadsample` |
 | Regenerate sample data (anonymized prod) | `make anonymize-sample` (see Testing) |
@@ -646,6 +647,15 @@ docs/           — Additional documentation
   beside its void. `restate_purchase` takes `refund` (`KEEP` keeps, `None`
   voids) and answers `RestatedPurchase` with its `CopyEnd`. Contract is
   [A purchase is refunded](docs/superpowers/specs/2026-10-01-issue-727-purchase-refund-design.md)
+  #723 (P4) converts every `LegacyPurchase` once, out of migration
+  `0031` (`elidable=True`): `games/backfill/purchase_plan.py` plans one
+  copy per (row, game), `games/backfill/purchase.py` states each through
+  the commands' `build` under `conversion:723:<act>:<legacy>:<game>` keys,
+  so a rerun appends nothing; bundles split by cents, DLC rows get their
+  own `dlc` Game, passes ride the base's owned copy, valuations are
+  `seeded` from the legacy converted share. `purchase_creation_events`
+  and `release_on` are the extracted halves. Contract is
+  [Convert every legacy purchase](docs/superpowers/specs/2026-10-01-issue-723-purchase-conversion-design.md)
 
 **One act a row states once is an endpoint** (#1275). `Endpoint` in
 `games/endpoints.py` names its columns and three events (stated,

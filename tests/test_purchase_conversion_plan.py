@@ -1,4 +1,4 @@
-"""The conversion plan: one legacy row to its copies."""
+"""One legacy row to its copies."""
 
 import uuid
 from datetime import date

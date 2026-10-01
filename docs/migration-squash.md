@@ -7,6 +7,14 @@ deployment over by hand. This is what that cost, and what to do differently.
 Read [Database contract](database.md#schema-and-migrations) for what the
 current baseline carries that no model declares.
 
+## Passes waiting for a squash
+
+`0031_purchase_conversion` is `elidable=True`. It imports
+`games/backfill/purchase.py` and `purchase_plan.py`, which read the legacy
+rows through the historical model. After P5 the command and
+`purchase_reconciliation.py` go; the pass and its plan stay until a squash
+elides `0031`, then leave with it.
+
 ## The second squash, 2026-09-16
 
 Done the way the next section asks: `make squash-migrations ARGS="games
