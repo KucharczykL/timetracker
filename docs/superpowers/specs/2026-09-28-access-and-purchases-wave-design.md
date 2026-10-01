@@ -354,9 +354,11 @@ standing end, and an opening correction certainly after a standing end
 are refused, each sentence naming the move; a refund before the
 purchased day is the same rule on Purchase. A write that restates several
 facts (`restate_entry`, and `restate_purchase` after it) refuses a
-reversed order against the day the row keeps before any dispatch, so a
-refused PATCH appends nothing; a void always dispatches, and the command
-decides under the lock.
+reversed final order against the day the row keeps before any dispatch,
+so a refused PATCH appends nothing; a void always dispatches first, a
+first statement after the description, a correction first unless its
+day is certainly before the held opening day, and the command decides
+under the lock. `Keep`/`KEEP` live in `games/writes/endpoint.py`.
 
 ### LibraryEntry
 
@@ -387,7 +389,7 @@ until P1.
 | `RecordPurchase` | `purchase.created` (entry, kind, name, amount, currency, note, `effective_time` the purchased day) | names an existing entry, or carries a new entry's fields and emits `libraryentry.created` first in the same dispatch, tracking an untracked game ahead of it the way `RecordEntry` does; currency required exactly where an amount is stated |
 | `DescribePurchase` | `kind_changed`, `name_changed`, `amount_changed` (amount and currency, one fact), `note_changed`, `entry_changed` | the new entry must be a live entry of the same game; `entry_id` is refused while a refund stands, so the coupled end always lies on `purchase.entry` |
 | `CorrectPurchaseDay` | `purchase_corrected` | the opening endpoint's correction; the endpoint's noun is "purchase" (`purchased`, `purchase_recorded_at`, `purchase_note`), as the entry's is "acquisition" |
-| `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund` | `refunded`, `refund_corrected`, `refund_voided` | the primitive; a refund of a purchase of kind `game` also appends `libraryentry.access_ended` with way `refunded` on the entry where it is Owned, live and unended, in the same dispatch (a pass or an upgrade names the base game's entry, so its refund leaves the copy held), as the reclassification writes a second aggregate, and a refund whose day certainly precedes the entry's acquired day is refused whole with a sentence naming the move (correct the acquired day first), never appended with the coupling skipped, only where that coupled end is due, since on a non-owned or ended copy no end is stated and nothing is ordered; a refund before the purchase day is always refused, and a purchase-day correction certainly after a standing refund too; `CorrectPurchaseRefund` appends `access_end_corrected` on the copy under the same rule as the void; "the refund's own" means the copy's latest end-family event was appended by the same dispatch as a refund-family event of this purchase, matched on `LibraryEvent.idempotency_key`, which one dispatch stamps on every event it appends, an invariant every writer of the column keeps: P2 makes the anonymizer rewrite one key per dispatch rather than per event, and P4's pass and #740 state one key per dispatch too; the void takes that end back only where the entry's marker is still set and its latest end-family event is the refund's own |
+| `RefundPurchase`, `CorrectPurchaseRefund`, `VoidPurchaseRefund` | `refunded`, `refund_corrected`, `refund_voided` | the primitive; a refund of a purchase of kind `game` also appends `libraryentry.access_ended` with way `refunded` on the entry where it is Owned, live and unended, in the same dispatch (a pass or an upgrade names the base game's entry, so its refund leaves the copy held), as the reclassification writes a second aggregate, and a refund whose day certainly precedes the entry's acquired day is refused whole with a sentence naming the move (correct the acquired day first), never appended with the coupling skipped, only where that coupled end is due, since on a non-owned or ended copy no end is stated and nothing is ordered; a refund before the purchase day is always refused, and a purchase-day correction certainly after a standing refund too; `CorrectPurchaseRefund` appends `access_end_corrected` on the copy under the same rule as the void; "the refund's own" is `coupled_end(library, purchase)` in `games/reads/purchases.py`: the copy's latest end-family event is a stated or corrected end, and an event of this purchase under the same `LibraryEvent.idempotency_key` is `refunded` or `refund_corrected`; P5's one-click Refund Undo reads it; which one dispatch stamps on every event it appends, an invariant every writer of the column keeps: P2 makes the anonymizer rewrite one key per dispatch rather than per event, and P4's pass and #740 state one key per dispatch too; the void takes that end back only where the entry's marker is still set and its latest end-family event is the refund's own |
 | `RemovePurchase`, `RestorePurchase` | `removed`, `restored` | the removal is the charter's void; the stream keeps the money; restore refuses under a removed entry |
 
 ### PlayerGame and catalog
@@ -763,6 +765,9 @@ inside a member says so in its body and closes with it.
 - **Removing a refunded purchase.** The removal voids the money and
   leaves the copy's end alone, as it leaves the entry the purchase
   created; the copy's state is the person's to restate.
+- **Two refunded purchases of one copy.** The copy's end is the first
+  refund's; the second finds the copy ended and couples nothing, so
+  voiding the first takes the end back while the second refund stands.
 
 ## Cross-wave handoffs
 
