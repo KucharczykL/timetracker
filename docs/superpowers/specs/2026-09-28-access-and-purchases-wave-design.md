@@ -240,9 +240,10 @@ its sole writer: it values the whole live set per version, and
 publication replaces the library's valuations whole in the transaction
 that sets `published_version`, so one target per library is ever read.
 No row exists for an unknown amount; a free purchase values at 0. The
-rate's year is `purchased_lower`'s; an unknown purchased day takes the
-year of `purchase_recorded_at`, since the price is known, and the rate
-row the valuation names says which year was read. `ExchangeRate.rate`
+rate's year is `purchased_lower`'s, then `purchased_upper`'s (an open
+start has no lower), then the year of `purchase_recorded_at` in the
+calendar zone, since the price is known, and the rate row the valuation
+names says which year was read. `ExchangeRate.rate`
 becomes Decimal(24,12), migrated through `repr(float)`, the fetch parsing
 with `parse_float=Decimal`; the legacy converter keeps its whole-unit
 output until P5. `PurchaseOut` answers `valuation`, null or `{amount,
@@ -252,23 +253,27 @@ The per-library run state that #630 built (`PurchaseConversionState`:
 requested and published version, status, retry) stays under its name and
 points at valuations. Its trigger moves: `Purchase.save()` bumps the
 requested version today, and a projector never calls `save()`, so the
-write path in `games/writes/purchase.py` bumps `requested` after any
+write path in `games/writes/purchase.py` calls `request_revaluation(library)`,
+which locks the state row and reuses its own `requested_currency`, after any
 dispatch that states an amount or moves the day (`created`,
 `amount_changed`, `purchase_corrected`, `restored`), after the dispatch
 returns, lossy by design. The task's trigger is `requested > published`
 **or** a live purchase with an amount and no valuation at the published
-target whose three stored inputs equal the purchase's, the year computed
-as `Coalesce(year(purchased_lower), ExtractYear(purchase_recorded_at,
-tzinfo=calendar_day_zone(library)))` in SQL and by the same rule in
-Python, never UTC: a lost bump of any kind costs one day, and a row no
+target whose three stored inputs equal the purchase's and whose `rate`
+equals the stored `ExchangeRate` (so a corrected rate, #493, invalidates),
+the year computed in SQL alone as `Coalesce(year(purchased_lower),
+year(purchased_upper), ExtractYear(purchase_recorded_at,
+tzinfo=calendar_day_zone(library)))`, never UTC: a lost bump of any kind costs one day, and a row no
 write path saw (P4's pass, any direct appender) is valued by the same
 check, so
 `needs_price_update` has no successor and `dispatch` gains no hook. The
 float cache and its writer go at the cutover.
 
-The legacy converter rounds `converted_price` to a whole unit. The seeded
-valuations carry that rounding; the first refresh after the cutover moves
-every total to the decimal rate, and the reconciliation prints both.
+The legacy converter rounds `converted_price` to a whole unit. P4 seeds
+valuations from `converted_price` through P3's writer, carrying that
+rounding with inputs that read current, then requests one run, so the
+first refresh after the cutover moves every total to the decimal rate,
+and the reconciliation prints both.
 
 ### Game
 
