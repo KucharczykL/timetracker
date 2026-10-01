@@ -11,7 +11,7 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 from graphs import default_graph
-from purchases import record_purchase, remove_purchase
+from purchases import record_purchase, remove_purchase, void_refund
 from session_rows import session_row
 from tracked_games import create_tracked_game
 
@@ -34,9 +34,13 @@ from games.models import (
     PurchaseValuation,
 )
 from games.purchase_parity import (
+    RULES,
     ConversionMap,
+    GateRefused,
+    Move,
     PurchaseScope,
     Reason,
+    can_move,
     judge_purchase_scope,
     read_snapshot,
 )
@@ -126,19 +130,19 @@ def test_the_year_rows_follow_the_old_rules(legacy_library):
 
     rows = legacy_figures(LegacyPurchase, library, YEAR).rows
 
-    assert rows["purchases"] == {
+    assert rows.purchases == {
         key[name]
         for name in ("done", "playing", "dropped", "refunded", "endless", "pass")
     }
-    assert rows["refunded"] == {key["refunded"]}
-    assert rows["unfinished"] == {key["playing"]}
-    assert rows["dropped"] == {key["dropped"], key["refunded"]}
-    assert rows["finished"] == {key["finished"]}
-    assert rows["finished_released"] == {key["finished"]}
-    assert rows["backlog_decrease"] == {key["finished"]}
-    assert rows["bought_and_finished"] == set()
-    assert rows["played"] == {key["playing"], key["pass"]}
-    assert rows["valued"] == {key["done"], key["playing"]}
+    assert rows.refunded == {key["refunded"]}
+    assert rows.unfinished == {key["playing"]}
+    assert rows.dropped == {key["dropped"], key["refunded"]}
+    assert rows.finished == {key["finished"]}
+    assert rows.finished_released == {key["finished"]}
+    assert rows.backlog_decrease == {key["finished"]}
+    assert rows.bought_and_finished == set()
+    assert rows.played == {key["playing"], key["pass"]}
+    assert rows.valued == {key["done"], key["playing"]}
 
 
 def test_the_year_values_follow_the_old_rules(legacy_library):
@@ -173,9 +177,9 @@ def test_all_time_finishes_by_a_done_status_too(legacy_library):
 
     rows = legacy_figures(LegacyPurchase, library, None).rows
 
-    assert rows["finished"] == {key["done"], key["finished"]}
-    assert rows["backlog_decrease"] == rows["finished"]
-    assert len(rows["purchases"]) == 7
+    assert rows.finished == {key["done"], key["finished"]}
+    assert rows.backlog_decrease == rows.finished
+    assert len(rows.purchases) == 7
 
 
 def test_a_removed_game_hides_its_purchase(legacy_library):
@@ -186,7 +190,7 @@ def test_a_removed_game_hides_its_purchase(legacy_library):
 
     assert (
         key["dropped"]
-        not in legacy_figures(LegacyPurchase, library, None).rows["purchases"]
+        not in legacy_figures(LegacyPurchase, library, None).rows.purchases
     )
 
 
@@ -284,6 +288,20 @@ def test_a_clean_conversion_passes_the_gate(legacy_library, owned_user, euro, tm
     assert "Every figure is attributed." in _gate(owned_user, path)
 
 
+def test_the_clean_gate_prints_no_total_spent_line(legacy_library, euro):
+    library, _ = legacy_library
+    snapshot = _snapshot(library)
+    _convert(library)
+
+    changed = {
+        change.key
+        for scope in _judged(library, snapshot).values()
+        for change in scope.changes
+    }
+
+    assert "total_spent" not in changed
+
+
 def test_format_one_is_refused(owned_user, owned_library, tmp_path):
     path = tmp_path / "old.json"
     path.write_text(
@@ -303,6 +321,141 @@ def test_an_unexplained_row_fails_the_gate(legacy_library, owned_user, euro, tmp
 
     with pytest.raises(CommandError, match="unattributed"):
         _gate(owned_user, path)
+
+
+def test_another_library_s_snapshot_is_refused(legacy_library, django_user_model):
+    library, _ = legacy_library
+    other = django_user_model.objects.create_user(username="other", password="p")
+
+    with pytest.raises(GateRefused, match="Snapshot of library"):
+        read_snapshot(_snapshot(library), other.library)
+
+
+def test_a_snapshot_without_scopes_is_refused(owned_library):
+    with pytest.raises(GateRefused, match="no scope"):
+        read_snapshot(
+            {"format": 2, "library": str(owned_library.pk), "scopes": {}},
+            owned_library,
+        )
+
+
+def test_a_lost_refund_on_a_bundle_fails(
+    owned_user, owned_library, euro, game_on, tmp_path
+):
+    row = _legacy(
+        owned_library,
+        game_on("One"),
+        date(YEAR, 3, 1),
+        price=10,
+        date_refunded=date(YEAR, 3, 5),
+    )
+    row.games.add(game_on("Two"))
+    path = tmp_path / "legacy.json"
+    path.write_text(json.dumps(_snapshot(owned_library)))
+    _convert(owned_library)
+    for purchase in Purchase.objects.filter(library=owned_library):
+        void_refund(purchase)
+
+    judged = _judged(owned_library, json.loads(path.read_text()))
+    [refunded] = [
+        judgement
+        for judgement in judged[str(YEAR)].judgements
+        if judgement.rows_key == "refunded"
+    ]
+
+    assert refunded.unexplained == (str(row.pk),)
+    with pytest.raises(CommandError, match="unexplained row set"):
+        _gate(owned_user, path)
+
+
+def test_an_unexplained_row_set_fails_the_command(
+    legacy_library, owned_user, euro, tmp_path
+):
+    library, _ = legacy_library
+    snapshot = _snapshot(library)
+    _convert(library)
+    stray = "01a00000-0000-7000-8000-000000000000"
+    snapshot["scopes"][ALL_TIME]["rows"]["bought_and_finished"] = [stray]
+    path = tmp_path / "legacy.json"
+    path.write_text(json.dumps(snapshot))
+
+    [judgement] = [
+        judgement
+        for judgement in _judged(library, snapshot)[ALL_TIME].judgements
+        if judgement.rows_key == "bought_and_finished"
+    ]
+
+    assert judgement.unexplained == (stray,)
+    with pytest.raises(CommandError, match="unexplained row set"):
+        _gate(owned_user, path)
+
+
+def test_a_ratio_over_an_unexplained_denominator_fails(legacy_library, euro):
+    library, key = legacy_library
+    snapshot = _snapshot(library)
+    _convert(library)
+    for scope in snapshot["scopes"].values():
+        scope["rows"]["dropped_base"] = [
+            legacy for legacy in scope["rows"]["dropped_base"] if legacy != key["done"]
+        ]
+
+    failed = {change.key for change in _unattributed(_judged(library, snapshot))}
+
+    assert "dropped_percentage" in failed
+    assert "dropped_count" not in failed
+
+
+def test_a_currency_moved_to_the_published_one(legacy_library, euro):
+    library, _ = legacy_library
+    snapshot = _snapshot(library)
+    _convert(library)
+    for scope in snapshot["scopes"].values():
+        scope["figures"]["total_spent_currency"] = "CZK"
+
+    changes = {
+        change.key: change.attribution
+        for scope in _judged(library, snapshot).values()
+        for change in scope.changes
+    }
+
+    assert changes["total_spent_currency"] == "the published currency"
+
+
+def test_a_reason_moves_only_its_own_sets():
+    assert can_move(Reason.NOT_OWNED, "unfinished", Move.LEFT)
+    assert not can_move(Reason.NOT_OWNED, "purchases", Move.LEFT)
+    assert not can_move(Reason.NOT_OWNED, "finished", Move.LEFT)
+    assert can_move(Reason.UNKNOWN_PRICE, "valued", Move.LEFT)
+    assert not can_move(Reason.UNKNOWN_PRICE, "purchases", Move.LEFT)
+    assert not can_move(Reason.BUNDLE_SPLIT, "refunded", Move.LEFT)
+    assert can_move(Reason.BUNDLE_SPLIT, "refunded", Move.REPEATED)
+    assert not can_move(Reason.NO_PURCHASE, "purchases", Move.JOINED)
+    assert set(RULES) == set(Reason)
+
+
+def test_a_held_reason_that_cannot_move_the_set_explains_nothing(
+    owned_library, euro, game_on
+):
+    row = _legacy(
+        owned_library,
+        game_on("Rented"),
+        date(YEAR, 3, 1),
+        ownership_type=LegacyPurchase.RENTED,
+        price=5,
+    )
+    snapshot = _snapshot(owned_library)
+    _convert(owned_library)
+    remove_purchase(Purchase.objects.get(library=owned_library))
+    mapping = ConversionMap.read(owned_library)
+
+    assert Reason.NOT_OWNED in mapping.reasons(str(row.pk))
+    judged = _judged(owned_library, snapshot)
+    [purchases] = [
+        judgement
+        for judgement in judged[str(YEAR)].judgements
+        if judgement.rows_key == "purchases"
+    ]
+    assert purchases.unexplained == (str(row.pk),)
 
 
 def test_a_cent_off_the_total_fails(legacy_library, euro):

@@ -37,11 +37,14 @@ from games.models import (
     Device,
     Game,
     Platform,
-    PurchaseConversionState,
 )
 from games.reads.endpoints import stated, way_of
 from games.reads.playtime import total_playtime
-from games.reads.purchase_figures import purchase_figures, unrefunded_in_scope
+from games.reads.purchase_figures import (
+    purchase_figures,
+    spending_currency,
+    valued_in_scope,
+)
 from games.views import stats_links
 from games.views.session_reclassification import (
     TEMPORARY_NOTE,
@@ -83,7 +86,6 @@ def library(request: HttpRequest) -> HttpResponse:
     spending = purchase_figures(library, None)
     devices = Device.objects.for_library(library)
     platforms = Platform.objects.for_library(library)
-    conversion = PurchaseConversionState.objects.get(library=library)
     game_count = games.count()
     purchase_count = spending.purchases
     device_count = devices.count()
@@ -91,7 +93,7 @@ def library(request: HttpRequest) -> HttpResponse:
     refunded_purchase_count = spending.refunded
     default_device_source = "library"
     default_device_normal_source = "library"
-    currency = spending.currency or conversion.published_currency
+    currency = spending_currency(library, spending)
     total_spent_value = f"{currency} {spending.total_spent:,.2f}"
     #: Both count add-ons.
     every_game = filter_url(GameFilter().of_every_kind())
@@ -183,7 +185,7 @@ def library(request: HttpRequest) -> HttpResponse:
             StatisticCard(
                 "Total spent",
                 total_spent_value,
-                href=filter_url(unrefunded_in_scope(None)),
+                href=filter_url(valued_in_scope(None)),
             ),
             StatisticCard(
                 "Refunded purchases",

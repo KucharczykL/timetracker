@@ -12,6 +12,7 @@ from games.commands.purchase import (
     RemovePurchase,
     RestorePurchase,
     StatedPrice,
+    VoidPurchaseRefund,
 )
 from games.events.dispatch import Command, CommandResult, append_command
 from games.events.purchase import PURCHASE_CREATED, PurchaseKindValue
@@ -97,5 +98,11 @@ def refund_purchase(
         purchase.library,
         RefundPurchase(purchase_id=purchase.pk, statement=ActStatement(refunded, note)),
     )
+    purchase.refresh_from_db()
+    return purchase
+
+
+def void_refund(purchase: Purchase) -> Purchase:
+    _state(purchase.library, VoidPurchaseRefund(purchase_id=purchase.pk))
     purchase.refresh_from_db()
     return purchase

@@ -13,6 +13,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from dataclasses import fields as dc_fields
 from datetime import date
+from decimal import Decimal
 from enum import Enum
 from functools import cached_property
 from typing import (
@@ -528,38 +529,7 @@ class FloatCriterion(_ScalarCriterion):
     _coerce: ClassVar[Coercer | None] = staticmethod(_coerce_float)
 
     def to_q(self, field_name: str) -> Q:
-        m = self.modifier
-        if m == Modifier.EQUALS:
-            return Q(**{field_name: self.value})
-        if m == Modifier.NOT_EQUALS:
-            return ~Q(**{field_name: self.value})
-        if m == Modifier.GREATER_THAN:
-            return Q(**{f"{field_name}__gt": self.value})
-        if m == Modifier.LESS_THAN:
-            return Q(**{f"{field_name}__lt": self.value})
-        if m == Modifier.GREATER_THAN_OR_EQUAL:
-            return Q(**{f"{field_name}__gte": self.value})
-        if m == Modifier.LESS_THAN_OR_EQUAL:
-            return Q(**{f"{field_name}__lte": self.value})
-        if m == Modifier.BETWEEN:
-            if self.value is None or self.value2 is None:
-                raise FilterError("BETWEEN requires two bounds (value and value2)")
-            return Q(
-                **{
-                    f"{field_name}__gte": min(self.value, self.value2),
-                    f"{field_name}__lte": max(self.value, self.value2),
-                }
-            )
-        if m == Modifier.NOT_BETWEEN:
-            if self.value is None or self.value2 is None:
-                raise FilterError("NOT_BETWEEN requires two bounds (value and value2)")
-            lo, hi = min(self.value, self.value2), max(self.value, self.value2)
-            return Q(**{f"{field_name}__lt": lo}) | Q(**{f"{field_name}__gt": hi})
-        if m == Modifier.IS_NULL:
-            return Q(**{f"{field_name}__isnull": True})
-        if m == Modifier.NOT_NULL:
-            return Q(**{f"{field_name}__isnull": False})
-        raise FilterError(f"Unsupported modifier {m} for float field")
+        return _numeric_to_q(self.value, self.value2, self.modifier, field_name)
 
 
 #: One lookup class per ordered modifier, over any expression.
@@ -2105,10 +2075,20 @@ def filter_to_json(f: OperatorFilter) -> str:
 Number = int | float
 
 
+def _exact[Value: Number | Decimal | None](value: Value) -> Value | Decimal:
+    """A float as typed, so decimals compare exactly."""
+    # A float reaches a numeric column unrounded.
+    return Decimal(repr(value)) if isinstance(value, float) else value
+
+
 def _numeric_to_q(
-    value: Number, value2: Number | None, modifier: Modifier, field_name: str
+    value: Number | Decimal,
+    value2: Number | Decimal | None,
+    modifier: Modifier,
+    field_name: str,
 ) -> Q:
     """Numeric comparison Q against a plain column/annotation (int or float)."""
+    value, value2 = _exact(value), _exact(value2)
     if modifier == Modifier.EQUALS:
         return Q(**{field_name: value})
     if modifier == Modifier.NOT_EQUALS:
@@ -3634,7 +3614,7 @@ def aggregate_to_q(
             raise RuntimeError(f"{spec.reducer!r} aggregate requires a source field")
         reduce = Sum if spec.reducer == "sum" else Avg
         if spec.correlated is not None:
-            #: An alias no join reaches.
+            # A join cannot reach an alias.
             aggregate_expression = Subquery(
                 matching.filter(**{spec.correlated: OuterRef("pk")})
                 .order_by()

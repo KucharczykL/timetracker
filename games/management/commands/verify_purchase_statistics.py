@@ -10,7 +10,7 @@ from games.backfill.purchase_reconciliation import ALL_TIME
 from games.models import UserLibrary
 from games.purchase_parity import (
     ConversionMap,
-    SnapshotRefused,
+    GateRefused,
     judge_purchase_scope,
     read_snapshot,
 )
@@ -22,7 +22,7 @@ class Command(BaseCommand):
     help = (
         "Read a format-2 snapshot written before the conversion, compute "
         "every statistics scope now, and attribute each figure that moved. "
-        "Read-only. Fails on any figure no reason explains."
+        "Read-only. Fails on any figure or row no reason explains."
     )
 
     def add_arguments(self, parser):
@@ -35,9 +35,9 @@ class Command(BaseCommand):
         library = self._library(options["user"])
         try:
             scopes = read_snapshot(json.loads(options["snapshot"].read_text()), library)
-        except SnapshotRefused as refused:
+            mapping = ConversionMap.read(library)
+        except GateRefused as refused:
             raise CommandError(str(refused)) from refused
-        mapping = ConversionMap.read(library)
         failed = 0
         for label, snapshot in scopes.items():
             year = None if label == ALL_TIME else int(label)
@@ -63,8 +63,11 @@ class Command(BaseCommand):
                 else:
                     self.stdout.write(line)
             failed += len(unattributed(judged.changes))
+            failed += sum(not judgement.clean for judgement in judged.judgements)
         if failed:
-            raise CommandError(f"{failed} unattributed figure(s).")
+            raise CommandError(
+                f"{failed} unattributed figure(s) or unexplained row set(s)."
+            )
         self.stdout.write(self.style.SUCCESS("Every figure is attributed."))
 
     @staticmethod

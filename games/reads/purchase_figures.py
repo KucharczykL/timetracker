@@ -8,14 +8,19 @@ A purchased day is in a year by containment.
 from decimal import Decimal
 from typing import NamedTuple
 
-from django.db.models import Count, Max, Q, QuerySet, Sum
+from django.db.models import Count, Max, QuerySet, Sum
 
 from games.filters import (
     PurchaseFilter,
     filter_query_context_for_library,
     filter_queryset_for_library,
 )
-from games.models import PriceState, Purchase, UserLibrary
+from games.models import (
+    PriceState,
+    Purchase,
+    PurchaseConversionState,
+    UserLibrary,
+)
 from games.reads.days import YearScope
 from games.valuations import CurrencyCode
 
@@ -89,22 +94,17 @@ class PurchaseFigures(NamedTuple):
 
 
 def purchase_figures(library: UserLibrary, year: YearScope) -> PurchaseFigures:
-    """Every figure, one statement."""
+    """Every figure, one statement, from the link filters."""
+    context = filter_query_context_for_library(library)
     rows = purchases_matching(library, purchases_in_scope(year))
-    unrefunded = Q(refund_recorded_at__isnull=True)
-    valued = unrefunded & Q(valuation_amount__isnull=False)
+    unrefunded = unrefunded_in_scope(year).to_q(context)
     totals = rows.aggregate(
         count=Count("pk"),
-        refunded=Count("pk", filter=~unrefunded),
+        refunded=Count("pk", filter=refunded_in_scope(year).to_q(context)),
         total_spent=Sum("valuation_amount", filter=unrefunded),
-        valued=Count("pk", filter=valued),
-        unpriced=Count("pk", filter=unrefunded & Q(amount__isnull=True)),
-        unvalued=Count(
-            "pk",
-            filter=unrefunded
-            & Q(amount__isnull=False)
-            & Q(valuation_amount__isnull=True),
-        ),
+        valued=Count("pk", filter=valued_in_scope(year).to_q(context)),
+        unpriced=Count("pk", filter=unpriced_in_scope(year).to_q(context)),
+        unvalued=Count("pk", filter=unvalued_in_scope(year).to_q(context)),
         #: One statement, so total and currency agree.
         currency=Max("valuation_currency"),
     )
@@ -117,3 +117,13 @@ def purchase_figures(library: UserLibrary, year: YearScope) -> PurchaseFigures:
         unvalued=totals["unvalued"],
         currency=totals["currency"],
     )
+
+
+def spending_currency(
+    library: UserLibrary, figures: PurchaseFigures | None
+) -> CurrencyCode:
+    """The figures' currency, else the library's."""
+    if figures is not None and figures.currency:
+        return figures.currency
+    state = PurchaseConversionState.objects.get(library=library)
+    return state.published_currency or state.requested_currency

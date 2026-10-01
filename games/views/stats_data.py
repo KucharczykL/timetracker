@@ -22,7 +22,7 @@ from django.db.models import F, QuerySet
 from common.time import available_stats_year_range
 from common.utils import safe_division
 from games.filters import LibraryEntryFilter
-from games.models import LibraryEntry, PurchaseConversionState, UserLibrary
+from games.models import LibraryEntry, UserLibrary
 from games.reads.calendar import calendar_today
 from games.reads.copy_figures import (
     bought_and_finished_copies,
@@ -58,6 +58,7 @@ from games.reads.purchase_figures import (
     purchases_in_scope,
     purchases_matching,
     refunded_in_scope,
+    spending_currency,
 )
 from games.reads.session_figures import (
     highest_average_game,
@@ -244,12 +245,7 @@ def compute_stats(library: UserLibrary, year: YearScope = None) -> StatsData:
 
     # ── Purchases ────────────────────────────────────────────────────────────
     spending = purchase_figures(library, year)
-    currency = (
-        spending.currency
-        or PurchaseConversionState.objects.only("published_currency")
-        .get(library=library)
-        .published_currency
-    )
+    currency = spending_currency(library, spending)
 
     # ── Copies ───────────────────────────────────────────────────────────────
     copies = copy_counts(library, year)

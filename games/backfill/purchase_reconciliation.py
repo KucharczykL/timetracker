@@ -6,7 +6,7 @@ from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any, NamedTuple, cast
+from typing import Any, NamedTuple, TypedDict, cast
 
 from django.db.models import (
     Exists,
@@ -37,7 +37,7 @@ from games.models import (
     UserLibrary,
 )
 from games.reads.playtime import played_years
-from games.views.stats_data import compute_stats
+from games.views.stats_data import StatsKey, compute_stats
 
 SNAPSHOT_FORMAT = 2
 ALL_TIME = "all-time"
@@ -293,38 +293,44 @@ def snapshot_scopes(
 
 # ── Legacy figures, any legacy model ──────────────────────────────────────
 
-#: A figure's or denominator's row set.
-type RowsKey = str  # e.g. "unfinished"
-type StatsKey = str  # a StatsData key
+type RowsKey = str  # a RowSets field, e.g. "unfinished"
 
-#: Every row set a snapshot carries.
-ROWS_KEYS: tuple[RowsKey, ...] = (
-    "purchases",
-    "refunded",
-    "unrefunded",
-    "valued",
-    "unfinished",
-    "unfinished_base",
-    "dropped",
-    "dropped_base",
-    "backlog_decrease",
-    "finished",
-    "finished_released",
-    "bought_and_finished",
-    "played",
-)
 
+class RowSets[Rows](NamedTuple):
+    """Every row set behind a figure or ratio."""
+
+    purchases: Rows
+    refunded: Rows
+    unrefunded: Rows
+    valued: Rows
+    unfinished: Rows
+    unfinished_base: Rows
+    dropped: Rows
+    dropped_base: Rows
+    backlog_decrease: Rows
+    finished: Rows
+    finished_released: Rows
+    bought_and_finished: Rows
+    played: Rows
+
+
+ROWS_KEYS: tuple[RowsKey, ...] = RowSets._fields
+
+#: Literal: the model may be historical.
 DONE: tuple[str, ...] = ("completed", "retired")
 ABANDONED = "abandoned"
+
+
+type LegacyRows = frozenset[LegacyKeyText]
 
 
 class LegacyFigures(NamedTuple):
     """The figures, their rows, the valued shares."""
 
-    values: dict[StatsKey, object]
-    rows: dict[RowsKey, frozenset[LegacyKeyText]]
+    values: Mapping[StatsKey, object]
+    rows: RowSets[LegacyRows]
     #: A valued row's converted price, quantized.
-    amounts: dict[LegacyKeyText, Decimal]
+    amounts: Mapping[LegacyKeyText, Decimal]
 
 
 def _percent(part: int, whole: int) -> int:
@@ -341,7 +347,7 @@ def legacy_figures(
     games are reached through the link table alone.
     """
     registry = model._meta.apps
-    #: Keys; a historical model refuses rows.
+    #: Key only: historical models refuse instances.
     library_id = library.pk
     player_game = registry.get_model("games", "PlayerGame")
     run = registry.get_model("games", "Playthrough")
@@ -463,21 +469,21 @@ def legacy_figures(
     def keys(rows: QuerySet) -> frozenset[LegacyKeyText]:
         return frozenset(str(key) for key in rows.values_list("pk", flat=True))
 
-    rows = {
-        "purchases": keys(purchases),
-        "refunded": keys(refunded),
-        "unrefunded": keys(unrefunded),
-        "valued": keys(valued),
-        "unfinished": keys(unfinished),
-        "unfinished_base": keys(unrefunded),
-        "dropped": keys(dropped),
-        "dropped_base": keys(purchases),
-        "backlog_decrease": keys(backlog_decrease),
-        "finished": keys(finished),
-        "finished_released": keys(finished_released),
-        "bought_and_finished": keys(bought_and_finished),
-        "played": keys(played),
-    }
+    rows = RowSets(
+        purchases=keys(purchases),
+        refunded=keys(refunded),
+        unrefunded=keys(unrefunded),
+        valued=keys(valued),
+        unfinished=keys(unfinished),
+        unfinished_base=keys(unrefunded),
+        dropped=keys(dropped),
+        dropped_base=keys(purchases),
+        backlog_decrease=keys(backlog_decrease),
+        finished=keys(finished),
+        finished_released=keys(finished_released),
+        bought_and_finished=keys(bought_and_finished),
+        played=keys(played),
+    )
     amounts = {
         str(key): quantized_amount(price)
         for key, price in valued.values_list("pk", "converted_price")
@@ -491,7 +497,7 @@ def legacy_figures(
         spending["currency"]
         or conversion_state._base_manager.get(library_id=library_id).published_currency
     )
-    counts = {key: len(found) for key, found in rows.items()}
+    counts = {key: len(found) for key, found in rows._asdict().items()}
     values: dict[StatsKey, object] = {
         "all_purchased_this_year_count": counts["purchases"],
         "all_purchased_refunded_this_year_count": counts["refunded"],
@@ -516,7 +522,7 @@ def legacy_figures(
     return LegacyFigures(values, rows, amounts)
 
 
-#: Keys legacy_figures states; the rest from compute_stats.
+#: Keys the legacy rows answer.
 LEGACY_KEYS: frozenset[StatsKey] = frozenset(
     {
         "all_purchased_this_year_count",
@@ -549,21 +555,28 @@ NEW_KEYS: frozenset[StatsKey] = frozenset(
 )
 
 
+class SnapshotScope(TypedDict):
+    """One scope of a format-2 snapshot."""
+
+    figures: dict[StatsKey, Any]
+    rows: dict[RowsKey, list[LegacyKeyText]]
+    amounts: dict[LegacyKeyText, str]
+
+
 def legacy_scope(
     model: type[Model], library: UserLibrary, year: int | None
-) -> dict[str, Any]:
-    """One snapshot scope: values, rows, shares."""
-    figures = legacy_figures(model, library, year)
+) -> SnapshotScope:
+    """One snapshot scope: figures, rows, shares."""
+    legacy = legacy_figures(model, library, year)
     stats = {
         key: value
         for key, value in compute_stats(library, year).items()
         if key not in LEGACY_KEYS | NEW_KEYS
     }
     return {
-        **snapshot_value(stats),
-        **snapshot_value(figures.values),
-        "rows": {key: sorted(found) for key, found in figures.rows.items()},
-        "amounts": {key: str(amount) for key, amount in figures.amounts.items()},
+        "figures": {**snapshot_value(stats), **snapshot_value(legacy.values)},
+        "rows": {key: sorted(found) for key, found in legacy.rows._asdict().items()},
+        "amounts": {key: str(amount) for key, amount in legacy.amounts.items()},
     }
 
 

@@ -462,3 +462,74 @@ def test_entry_purchase_filter_and_edition_kind(owned_library, tunic, hades):
     assert not entries.filter(
         LibraryEntryFilter.where(edition_kind=["prerelease"]).to_q(context)
     ).exists()
+
+
+def test_a_valuation_matches_to_the_cent(entry, owned_library):
+    cents = record_purchase(entry, amount=Decimal("19.99"), purchased=MARCH_2021)
+    _value(owned_library)
+
+    assert _matching(owned_library, PurchaseFilter.where(valuation=19.99)) == {cents}
+    assert _matching(owned_library, PurchaseFilter.where(valuation__gt=19.99)) == set()
+    assert _matching(owned_library, PurchaseFilter.where(valuation__lt=19.99)) == set()
+
+
+def test_price_total_matches_to_the_cent(owned_library, tunic):
+    record_purchase(
+        record_entry(owned_library, tunic.release),
+        amount=Decimal("59.99"),
+        purchased=MARCH_2021,
+    )
+    _value(owned_library)
+
+    assert _games(owned_library, GameFilter.where(purchase_price_total=59.99)) == {
+        tunic.game
+    }
+
+
+def test_price_total_sums_every_copy_and_skips_a_removed_one(owned_library, tunic):
+    record_purchase(
+        record_entry(owned_library, tunic.release),
+        amount=Decimal(20),
+        purchased=MARCH_2021,
+    )
+    second = record_entry(owned_library, tunic.release)
+    record_purchase(second, amount=Decimal(15), purchased=MARCH_2021)
+    remove_purchase(record_purchase(second, amount=Decimal(99), purchased=MARCH_2021))
+    _value(owned_library)
+
+    assert _games(owned_library, GameFilter.where(purchase_price_total=35)) == {
+        tunic.game
+    }
+
+
+def test_price_total_is_null_where_no_purchase_is_valued(owned_library, tunic, hades):
+    record_purchase(
+        record_entry(owned_library, tunic.release), amount=None, purchased=MARCH_2021
+    )
+
+    assert _games(owned_library, GameFilter.where(purchase_price_total__lt=10)) == set()
+    assert _games(
+        owned_library, GameFilter.where(purchase_price_total__isnull=True)
+    ) == {tunic.game}
+
+
+def test_price_total_sums_one_library_at_a_shared_game(
+    owned_library, tunic, django_user_model
+):
+    Game.objects.filter(pk=tunic.game.pk).update(library=None)
+    second = django_user_model.objects.create_user("second").library
+    record_purchase(
+        record_entry(owned_library, tunic.release),
+        amount=Decimal(20),
+        purchased=MARCH_2021,
+    )
+    record_purchase(
+        record_entry(second, tunic.release), amount=Decimal(7), purchased=MARCH_2021
+    )
+    _value(owned_library)
+    _value(second)
+
+    assert _games(owned_library, GameFilter.where(purchase_price_total=20)) == {
+        tunic.game
+    }
+    assert _games(second, GameFilter.where(purchase_price_total=7)) == {tunic.game}
