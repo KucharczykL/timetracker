@@ -16,7 +16,16 @@ from django.shortcuts import redirect
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from common.components import AddForm, FormFieldGroup, FormFields
+from common.components import (
+    AddForm,
+    FormFieldGroup,
+    FormFields,
+    Fragment,
+    Li,
+    Node,
+    P,
+    Ul,
+)
 from common.date_time_presentation import date_time_presentation_for_request
 from common.layout import render_page
 from common.notices import Undo, notify
@@ -54,10 +63,12 @@ from games.reads.entries import (
     library_entries,
     taken_back_end,
 )
+from games.reads.purchases import unremoved_purchases
 from games.reads.releases import game_releases
 from games.views.entry_menu import SUBMISSION_FIELD
 from games.views.general import request_calendar_today
 from games.views.library_cards import release_words
+from games.views.purchase_menu import purchase_summary
 from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
@@ -336,6 +347,7 @@ def remove_library_entry(request: HttpRequest, entry_id: UUID) -> HttpResponse:
         entry,
         title="Remove copy",
         message=f"Remove this {release_words(entry)} copy of {game.name}?",
+        details=_purchases_taken(request, entry),
         fallback="games:view_game",
         fallback_args=[game.pk, game.url_slug],
         action=partial(
@@ -346,6 +358,20 @@ def remove_library_entry(request: HttpRequest, entry_id: UUID) -> HttpResponse:
         ),
         removed="Copy removed.",
         undo="games:restore_library_entry",
+    )
+
+
+def _purchases_taken(request: HttpRequest, entry: LibraryEntry) -> Node | None:
+    """Each purchase the removal takes."""
+    purchases = list(unremoved_purchases(entry.library, entry.pk))
+    if not purchases:
+        return None
+    presentation = date_time_presentation_for_request(request)
+    return Fragment(
+        P()["Its purchases are removed with it:"],
+        Ul(class_="list-disc list-inside")[
+            *(Li()[purchase_summary(purchase, presentation)] for purchase in purchases)
+        ],
     )
 
 

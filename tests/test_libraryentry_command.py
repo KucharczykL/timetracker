@@ -574,10 +574,16 @@ def referring_model():
 CLAIMED_SENTENCE = "Purchases name this copy. Remove them first."
 
 
-def _register(monkeypatch, referring_model) -> BlockingReferrer:
+def _register(
+    monkeypatch, referring_model, *, cascades: bool = False
+) -> BlockingReferrer:
     """The registry is patched whole."""
     claim = BlockingReferrer.on(
-        referring_model, "entry", target=LibraryEntry, sentence=CLAIMED_SENTENCE
+        referring_model,
+        "entry",
+        target=LibraryEntry,
+        sentence=CLAIMED_SENTENCE,
+        cascades=cascades,
     )
     monkeypatch.setattr(referrers, "BLOCKING_REFERRERS", (claim,))
     return claim
@@ -630,6 +636,31 @@ def test_a_foreign_referrer_is_refused_as_a_defect(
     assert f"{referring_model.__name__}.entry" in argument
     entry.refresh_from_db()
     assert entry.removed_at is None
+
+
+def test_a_cascading_referrer_blocks_nothing_in_its_library(
+    owned_library, graph, monkeypatch, referring_model
+):
+    entry = record_entry(owned_library, graph.release)
+    referring_model.objects.create(entry=entry, library=owned_library)
+    claim = _register(monkeypatch, referring_model, cascades=True)
+
+    assert referrers.blocking_referrer(entry) is None
+    assert referrers.foreign_referrer(entry) is None
+    assert claim.cascades
+
+
+def test_a_cascading_referrer_of_another_library_is_still_a_defect(
+    owned_library, second_library, graph, monkeypatch, referring_model
+):
+    entry = record_entry(owned_library, graph.release)
+    referring_model.objects.create(entry=entry, library=second_library)
+    _register(monkeypatch, referring_model, cascades=True)
+
+    found = referrers.foreign_referrer(entry)
+
+    assert found is not None
+    assert found.library_ids == (second_library.pk,)
 
 
 def test_a_removal_is_recorded_at_the_events_instant(owned_library, graph):

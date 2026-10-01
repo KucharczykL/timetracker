@@ -29,8 +29,9 @@ from games.events.purchase import (
 from games.events.vocabulary import DEFAULT_EVENT_TYPES
 from games.models import Game, Purchase, PurchaseConversionState
 from games.reads.purchases import stale_purchases
-from games.writes import purchase as purchase_writes
+from games.writes import revaluation
 from games.writes.answers import CommandFailed
+from games.writes.libraryentry import remove_entry, restore_entry
 from games.writes.playergame import remove_from_library, restore_to_library
 from games.writes.purchase import (
     PurchaseDraft,
@@ -150,7 +151,7 @@ def test_a_lost_request_still_answers_the_write(
     def lose(library):
         raise DatabaseError("connection lost")
 
-    monkeypatch.setattr(purchase_writes, "request_revaluation", lose)
+    monkeypatch.setattr(revaluation, "request_revaluation", lose)
 
     with capture_games_logger() as caplog:
         recorded = record_purchase(
@@ -217,6 +218,17 @@ def test_a_restore_requests_and_a_removal_does_not(owned_library, purchase):
     assert _requested(owned_library)[0] == version
 
     restore_purchase(owned_library.user, purchase, correlation_id=uuid.uuid7())
+    assert _requested(owned_library)[0] == version + 1
+
+
+def test_a_copy_restore_requests_for_its_purchases(owned_library, entry, purchase):
+    version, _ = _requested(owned_library)
+
+    remove_entry(owned_library.user, entry, correlation_id=uuid.uuid7())
+    assert _requested(owned_library)[0] == version
+
+    entry.refresh_from_db()
+    restore_entry(owned_library.user, entry, correlation_id=uuid.uuid7())
     assert _requested(owned_library)[0] == version + 1
 
 

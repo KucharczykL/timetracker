@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Sequence
 
 from django.contrib.auth.models import User
-from django.db.models import QuerySet
+from django.db.models import OuterRef, QuerySet
 
 from games.bulk_narrowing import narrowed
 from games.bulk_parts import FilterJson, PreviewColumn, Resolution
@@ -15,15 +15,20 @@ from games.models import (
     EntryAccess,
     EntryFormat,
     LibraryEntry,
+    Purchase,
     UserLibrary,
     game_display_order_through,
 )
 from games.reads.entries import library_entries
+from games.reads.game_departures import counted
 from games.reads.releases import platform_words
 from games.writes.answers import answered
 from games.writes.libraryentry import SUBJECT
 
 ENTRY_GONE = "One of the copies is no longer available, so it was left as it is."
+
+#: The annotation `entry_resolution` adds.
+PURCHASES_TAKEN = "purchases_taken"
 
 
 def entry_scope(
@@ -42,6 +47,15 @@ def entry_resolution(
         library_entries(library)
         .filter(pk__in=wanted)
         .select_related("player_game__game", "release__platform")
+        .annotate(
+            **{
+                PURCHASES_TAKEN: counted(
+                    Purchase.objects.filter(
+                        library=library, entry=OuterRef("pk"), removed_at__isnull=True
+                    )
+                )
+            }
+        )
         .order_by(*game_display_order_through("player_game__game"), "id")
     )
     return Resolution(rows, tuple(lost(wanted, {row.pk for row in rows}, ENTRY_GONE)))
@@ -68,4 +82,12 @@ ENTRY_PREVIEW: tuple[PreviewColumn[LibraryEntry], ...] = (
     PreviewColumn("Platform", lambda row, _: platform_words(row.release)),
     PreviewColumn("Access", lambda row, _: EntryAccess(row.access).label),
     PreviewColumn("Format", lambda row, _: EntryFormat(row.format).label),
+)
+
+#: The removal takes its purchases along.
+ENTRY_REMOVAL_PREVIEW: tuple[PreviewColumn[LibraryEntry], ...] = (
+    *ENTRY_PREVIEW,
+    PreviewColumn(
+        "Purchases", lambda row, _: str(getattr(row, PURCHASES_TAKEN)), align="right"
+    ),
 )

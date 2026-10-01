@@ -756,6 +756,18 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     )
     #: Left removed, so the mark is compared.
     run(RemovePurchase(purchase_id=removed_purchase), "remove-purchase-again")
+    #: A copy's removal takes its purchases.
+    run(RemoveEntry(entry_id=refundable_copy), "remove-copy-with-purchase")
+    run(RestoreEntry(entry_id=refundable_copy), "restore-copy-with-purchase")
+    cascaded_copy = _created_id(
+        run(
+            RecordEntry(release_id=fifth_release.pk, access="owned", format="digital"),
+            "record-copy-to-cascade",
+        )
+    )
+    run(RecordPurchase(kind="game", copy=cascaded_copy), "record-purchase-to-cascade")
+    #: Left removed with its purchase.
+    run(RemoveEntry(entry_id=cascaded_copy), "remove-copy-and-purchase")
 
     run(RemovePlayerGame(game_id=second.pk), "remove-second-game")
     run(RestorePlayerGame(game_id=second.pk), "restore-second-game")

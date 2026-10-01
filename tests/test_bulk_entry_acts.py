@@ -8,6 +8,7 @@ from bulk_posts import act_url, posted, press, selection
 from django.http import Http404, QueryDict
 from django.urls import reverse
 from entries import record_entry, remove_entry
+from purchases import record_purchase, remove_purchase
 
 from common.components.unset_field import unset_input_name
 from common.criteria import FilterError
@@ -23,7 +24,14 @@ from games.bulk_entry_edit import (
 from games.bulk_parts import Control, EventRows, RowOutcome
 from games.bulk_removal import REMOVE_ENTRY
 from games.events.dispatch import CommandRejected
-from games.models import EntryAccess, EntryFormat, Game, LibraryEntry, Platform
+from games.models import (
+    EntryAccess,
+    EntryFormat,
+    Game,
+    LibraryEntry,
+    Platform,
+    Purchase,
+)
 from games.reads.entry_facts import entry_fact_changes
 from games.reads.fact_change import FactChange
 from games.views.bulk import CHOICE_FIELD, STATEMENT_FIELD, TOKEN_FIELD
@@ -259,6 +267,33 @@ def test_remove_takes_two_copies_and_undo_puts_them_back(logged_in, first, secon
     _undo(logged_in, fields[TOKEN_FIELD])
 
     assert LibraryEntry.objects.filter(removed_at__isnull=True).count() == 2
+
+
+def test_remove_takes_purchases_and_undo_brings_back_only_those(logged_in, first):
+    taken = record_purchase(first)
+    alone = remove_purchase(record_purchase(first, name="Soundtrack"))
+
+    fields = posted(
+        logged_in.post(act_url(REMOVE_ENTRY), {STATEMENT_FIELD: selection(first)})
+    )
+    logged_in.post(act_url(REMOVE_ENTRY), fields)
+    assert not Purchase.objects.filter(removed_at__isnull=True).exists()
+    _undo(logged_in, fields[TOKEN_FIELD])
+
+    taken.refresh_from_db()
+    alone.refresh_from_db()
+    assert taken.removed_at is None
+    assert alone.removed_at is not None
+
+
+def test_the_removal_preview_counts_unremoved_purchases(owned_library, first):
+    record_purchase(first)
+    remove_purchase(record_purchase(first, name="Soundtrack"))
+
+    (row,) = REMOVE_ENTRY.resolve(owned_library, [first.pk]).rows
+
+    assert [column.heading for column in REMOVE_ENTRY.preview][-1] == "Purchases"
+    assert REMOVE_ENTRY.preview[-1].cell(row, None) == "1"
 
 
 def test_a_copy_removed_since_the_confirmation_is_left_alone(logged_in, first):

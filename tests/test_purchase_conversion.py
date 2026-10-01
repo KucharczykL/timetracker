@@ -355,6 +355,12 @@ def test_a_removed_legacy_row_removes_its_purchase_and_copy(owned_library, game_
     assert Purchase.objects.get(pk=row.pk).removed_at is not None
     [entry] = entries_of(game)
     assert entry.removed_at is not None
+    #: The purchase went first; the copy's dispatch appends one.
+    assert list(
+        LibraryEvent.objects.filter(
+            idempotency_key__startswith="conversion:723:removed_copy:"
+        ).values_list("event_type", flat=True)
+    ) == ["library.libraryentry.removed"]
 
 
 def test_a_removed_game_is_skipped(owned_library, game_on):

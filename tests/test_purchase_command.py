@@ -6,10 +6,15 @@ from typing import Any, cast
 
 import pytest
 from entries import record_entry, remove_entry, second_release
-from purchases import record_purchase, remove_purchase, restore_purchase
+from purchases import (
+    record_purchase,
+    refund_purchase,
+    remove_purchase,
+    restore_purchase,
+)
 
 from games.commands.endpoint import ActStatement
-from games.commands.libraryentry import EntryStatement, RemoveEntry
+from games.commands.libraryentry import EntryStatement, RemoveEntry, RestoreEntry
 from games.commands.playergame import RemovePlayerGame, RestorePlayerGame
 from games.commands.playersession import UNSTORABLE_NOTE
 from games.commands.purchase import (
@@ -45,7 +50,6 @@ from games.events.dispatch import (
     dispatch,
 )
 from games.models import Game, LibraryEntry, LibraryEvent, Purchase
-from games.reads.referrers import PURCHASE_RECORDED
 from games.removal import remove
 from timetracker.temporal import TemporalValue
 
@@ -608,16 +612,78 @@ def test_a_removed_game_holds_its_purchases_still(owned_library, entry):
     assert again.outcome is CommandOutcome.APPENDED
 
 
-def test_a_live_purchase_keeps_its_copy(owned_library, entry):
+def _removed(row) -> bool:
+    row.refresh_from_db()
+    return row.removed_at is not None
+
+
+def test_a_copy_s_removal_takes_its_purchases(owned_library, entry):
     purchase = record_purchase(entry)
 
-    refused = _refused(owned_library, RemoveEntry(entry_id=entry.pk))
+    result = _dispatch(owned_library, RemoveEntry(entry_id=entry.pk))
+
+    assert _batch_types(result) == [
+        "library.purchase.removed",
+        "library.libraryentry.removed",
+    ]
+    assert _removed(purchase) and _removed(entry)
+
+
+def test_a_copy_s_restore_brings_back_only_what_it_took(owned_library, entry):
+    taken = record_purchase(entry)
+    alone = remove_purchase(record_purchase(entry, name="Soundtrack"))
+    _dispatch(owned_library, RemoveEntry(entry_id=entry.pk))
+
+    result = _dispatch(owned_library, RestoreEntry(entry_id=entry.pk))
+
+    assert _batch_types(result) == [
+        "library.libraryentry.restored",
+        "library.purchase.restored",
+    ]
+    assert not _removed(taken)
+    assert _removed(alone)
+
+
+def test_a_second_round_trip_reads_the_latest_removal(owned_library, entry):
+    purchase = record_purchase(entry)
+    for _ in range(2):
+        _dispatch(owned_library, RemoveEntry(entry_id=entry.pk))
+        assert _removed(purchase)
+        _dispatch(owned_library, RestoreEntry(entry_id=entry.pk))
+        assert not _removed(purchase)
+
+
+def test_a_purchase_removed_after_a_round_trip_stays_removed(owned_library, entry):
+    purchase = record_purchase(entry)
+    _dispatch(owned_library, RemoveEntry(entry_id=entry.pk))
+    _dispatch(owned_library, RestoreEntry(entry_id=entry.pk))
     remove_purchase(purchase)
     _dispatch(owned_library, RemoveEntry(entry_id=entry.pk))
 
-    assert refused.sentence == PURCHASE_RECORDED
+    _dispatch(owned_library, RestoreEntry(entry_id=entry.pk))
+
+    assert _removed(purchase)
+
+
+def test_a_refunded_purchase_goes_and_returns_with_its_copy(owned_library, entry):
+    purchase = refund_purchase(record_purchase(entry), JUNE)
     entry.refresh_from_db()
-    assert entry.removed_at is not None
+    ended = (entry.access_ended_lower, entry.access_end_way)
+
+    _dispatch(owned_library, RemoveEntry(entry_id=entry.pk))
+    assert _removed(purchase)
+    _dispatch(owned_library, RestoreEntry(entry_id=entry.pk))
+
+    assert not _removed(purchase)
+    assert purchase.refund_recorded_at is not None
+    entry.refresh_from_db()
+    assert (entry.access_ended_lower, entry.access_end_way) == ended
+
+
+def test_removing_a_purchase_leaves_its_copy(owned_library, entry):
+    remove_purchase(record_purchase(entry))
+
+    assert not _removed(entry)
 
 
 @pytest.mark.parametrize("mark", ("copy", "game"))
@@ -626,7 +692,7 @@ def test_alive_reads_the_copy_and_the_game(owned_library, entry, mark):
     assert list(Purchase.objects.alive()) == [purchase]
 
     if mark == "copy":
-        #: A live purchase blocks RemoveEntry.
+        #: The copy's mark alone.
         LibraryEntry.objects.filter(pk=entry.pk).update(removed_at=purchase.created_at)
     else:
         _dispatch(owned_library, RemovePlayerGame(game_id=entry.player_game.game_id))

@@ -42,10 +42,12 @@ from games.events.libraryentry import (
     libraryentry_removed,
     libraryentry_restored,
 )
+from games.events.purchase import purchase_removed, purchase_restored
 from games.events.references import Reference, entry_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import ENTRY_WAYS, LibraryEntry, PlayerGame, Release
 from games.reads.endpoints import stated
+from games.reads.purchases import cascaded_purchase_ids, unremoved_purchase_ids
 from games.reads.referrers import blocking_referrer, foreign_referrer
 from timetracker.temporal import TemporalValue
 
@@ -448,7 +450,13 @@ class RemoveEntry(Command):
                 sentence=blocker.sentence,
             )
         _refuse_a_foreign_referrer(entry)
-        return [libraryentry_removed(entry.pk)]
+        return [
+            *(
+                purchase_removed(purchase_id)
+                for purchase_id in unremoved_purchase_ids(context.library, entry.pk)
+            ),
+            libraryentry_removed(entry.pk),
+        ]
 
 
 @dataclass(frozen=True, slots=True)
@@ -464,7 +472,14 @@ class RestoreEntry(Command):
             return Unchanged(f"Entry {entry.pk} is already in this library.")
         _refuse_under_a_removed_game(entry)
         _refuse_a_removed_release(entry.release)
-        return [libraryentry_restored(entry.pk)]
+        #: Built directly: RestorePurchase refuses under a removed copy.
+        return [
+            libraryentry_restored(entry.pk),
+            *(
+                purchase_restored(purchase_id)
+                for purchase_id in cascaded_purchase_ids(context.library, entry.pk)
+            ),
+        ]
 
 
 @dataclass(frozen=True, slots=True)

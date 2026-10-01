@@ -6,6 +6,7 @@ import re
 import pytest
 from django.urls import reverse
 from entries import end_entry_access, record_entry, remove_entry
+from purchases import record_purchase, refund_purchase, remove_purchase
 
 from games.catalog_release import SHARED_GAME_RELEASE
 from games.end_ways import EndWay
@@ -314,6 +315,29 @@ def test_remove_confirms_then_removes(logged_in, entry, graph):
     assert response.status_code == 302
     entry.refresh_from_db()
     assert entry.removed_at is not None
+
+
+def test_remove_names_each_purchase_it_takes(logged_in, entry):
+    record_purchase(entry, purchased=TemporalValue.parse("2021-06-03"))
+    refund_purchase(record_purchase(entry, kind="upgrade", name="Deluxe"), None)
+    remove_purchase(record_purchase(entry, name="Gone already"))
+
+    page = logged_in.get(
+        reverse("games:remove_library_entry", args=[entry.pk])
+    ).content.decode()
+
+    assert "Its purchases are removed with it:" in page
+    assert "Bought · " in page and "19.99 EUR" in page
+    assert "Upgrade: Deluxe · " in page and " · refunded" in page
+    assert "Gone already" not in page
+
+
+def test_remove_of_a_copy_without_purchases_names_none(logged_in, entry):
+    page = logged_in.get(
+        reverse("games:remove_library_entry", args=[entry.pk])
+    ).content.decode()
+
+    assert "Its purchases" not in page
 
 
 def test_restore_puts_a_removed_copy_back(logged_in, entry):

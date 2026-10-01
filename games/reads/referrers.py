@@ -48,6 +48,8 @@ class BlockingReferrer(NamedTuple):
     target: type[ProjectionModel]
     #: What a person is shown.
     sentence: str
+    #: Removal takes these rows along.
+    cascades: bool = False
 
     @classmethod
     def on(
@@ -57,6 +59,7 @@ class BlockingReferrer(NamedTuple):
         *,
         target: type[ProjectionModel],
         sentence: str,
+        cascades: bool = False,
     ) -> BlockingReferrer:
         """The one construction path; refuses a member the query cannot run.
 
@@ -77,15 +80,13 @@ class BlockingReferrer(NamedTuple):
                 f"{model.__name__} states no alive(), so a removed row of it "
                 f"would keep a {target.__name__.lower()} in place forever."
             )
-        return cls(model, field_name, target, sentence)
+        return cls(model, field_name, target, sentence, cascades)
 
 
 HISTORICAL_PLAYTIME_RECORDED = (
     "Historical playtime is recorded on this playthrough. Restate it onto "
     "another playthrough, or remove it, before removing this one."
 )
-
-PURCHASE_RECORDED = "A purchase names this copy. Remove the purchase first."
 
 #: Every sentence names a remedy that exists.
 BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
@@ -108,7 +109,8 @@ BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
         Purchase,
         "entry",
         target=LibraryEntry,
-        sentence=PURCHASE_RECORDED,
+        sentence="A purchase names this copy.",
+        cascades=True,
     ),
 )
 
@@ -158,8 +160,11 @@ def blocking_referrer(row: ProjectionModel) -> BlockingReferrer | None:
     Scoped on the library, as `_other_live_ordinary_runs` is: a
     person cannot act on advice about rows their library does not
     hold, so a foreign row is `foreign_referrer`'s to refuse.
+    A cascading member is the removal's to take.
     """
     for referrer in referrers_of(type(row)):
+        if referrer.cascades:
+            continue
         if _live_rows_naming(referrer, row).filter(library=row.library).exists():
             return referrer
     return None

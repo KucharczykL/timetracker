@@ -45,6 +45,7 @@ from games.writes.endpoint import (
     Void,
     endpoint_move,
 )
+from games.writes.revaluation import appended_types, revalue_after
 
 SUBJECT: SubjectNoun = "copy"
 
@@ -324,10 +325,13 @@ def restore_entry(
 ) -> CommandResult:
     """Put a removed copy back."""
     with answered(SUBJECT):
-        return _dispatch(
+        result = _dispatch(
             RestoreEntry(entry_id=entry.pk),
             actor=actor,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
             source_metadata=source_metadata,
         )
+    #: Its purchases may come back too.
+    revalue_after(actor, appended_types(result))
+    return result

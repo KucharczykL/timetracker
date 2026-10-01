@@ -15,7 +15,7 @@ from django.db.models import Exists, Model, OuterRef, QuerySet
 from common.temporal_presentation import TemporalText
 from games.bulk_actions import BulkAction
 from games.bulk_entries import (
-    ENTRY_PREVIEW,
+    ENTRY_REMOVAL_PREVIEW,
     entry_resolution,
     entry_scope,
     removed_entry,
@@ -695,5 +695,5 @@ REMOVE_ENTRY = BulkAction(
     resolve=entry_resolution,
     run=remove_one_entry,
     inverse=restore_one_entry,
-    preview=ENTRY_PREVIEW,
+    preview=ENTRY_REMOVAL_PREVIEW,
 )

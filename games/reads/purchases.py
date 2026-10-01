@@ -1,5 +1,6 @@
 """The purchases a library holds."""
 
+import uuid
 from decimal import Decimal
 from typing import Protocol
 from zoneinfo import ZoneInfo
@@ -20,7 +21,8 @@ from django.db.models import (
 from django.db.models.expressions import Expression
 from django.db.models.functions import Coalesce, ExtractYear, NullIf
 
-from games.events.purchase import PURCHASE_REFUND_EVENTS
+from games.events.libraryentry import LIBRARYENTRY_REMOVED
+from games.events.purchase import PURCHASE_REFUND_EVENTS, PURCHASE_REMOVED
 from games.models import (
     ExchangeRate,
     LibraryEvent,
@@ -215,3 +217,58 @@ def refund_owns_the_end(library: UserLibrary, purchase: Purchase) -> bool:
         event_type__in=_REFUND_STATEMENTS,
         idempotency_key=end.idempotency_key,
     ).exists()
+
+
+#: Purchased day, unknown last, then recorded.
+PURCHASE_ORDER = (F("purchased_lower").asc(nulls_last=True), "created_at", "id")
+
+
+def unremoved_purchases(library: UserLibrary, entry_id: uuid.UUID) -> PurchaseQuerySet:
+    """The copy's unremoved purchases, refunded included."""
+    return Purchase.objects.filter(
+        library=require_library(library), entry_id=entry_id, removed_at__isnull=True
+    ).order_by(*PURCHASE_ORDER)
+
+
+def unremoved_purchase_ids(
+    library: UserLibrary, entry_id: uuid.UUID
+) -> list[uuid.UUID]:
+    return list(unremoved_purchases(library, entry_id).values_list("pk", flat=True))
+
+
+def cascaded_purchase_ids(library: UserLibrary, entry_id: uuid.UUID) -> list[uuid.UUID]:
+    """Purchases the copy's latest removal took.
+
+    One dispatch stamps one key on every event,
+    so a purchase removed alone keeps another.
+    """
+    library = require_library(library)
+    removal = (
+        LibraryEvent.objects.filter(
+            library=library,
+            aggregate_id=entry_id,
+            event_type=LIBRARYENTRY_REMOVED.event_type,
+        )
+        .order_by("-sequence")
+        .first()
+    )
+    if removal is None:
+        return []
+    latest_removal_key = Subquery(
+        LibraryEvent.objects.filter(
+            library=library,
+            aggregate_id=OuterRef("pk"),
+            event_type=PURCHASE_REMOVED.event_type,
+        )
+        .order_by("-sequence")
+        .values("idempotency_key")[:1]
+    )
+    return list(
+        Purchase.objects.filter(
+            library=library, entry_id=entry_id, removed_at__isnull=False
+        )
+        .annotate(removal_key=latest_removal_key)
+        .filter(removal_key=removal.idempotency_key)
+        .order_by("pk")
+        .values_list("pk", flat=True)
+    )
