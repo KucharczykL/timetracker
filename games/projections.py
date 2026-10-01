@@ -19,6 +19,7 @@ from games.models import (
     PlayerSession,
     Playthrough,
     ProjectionModel,
+    Purchase,
     Release,
     UserLibrary,
 )
@@ -166,6 +167,7 @@ AUDITED_PROJECTION_REFERENCES: tuple[ProjectionReference, ...] = (
     ProjectionReference.on(PlayerSession, "device"),
     ProjectionReference.on(PlayerSession, "playthrough"),
     ProjectionReference.on(Playthrough, "player_game"),
+    ProjectionReference.on(Purchase, "entry"),
 )
 
 

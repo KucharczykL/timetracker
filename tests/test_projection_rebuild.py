@@ -69,6 +69,7 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
     ProjectionModel,
+    Purchase,
     UserLibrary,
 )
 
@@ -145,7 +146,7 @@ def test_discovery_passes_over_a_manufactured_twin():
 
 
 def test_the_application_declares_its_projections():
-    """Eight projection tables so far."""
+    """Nine projection tables so far."""
     assert projection_models() == (
         Device,
         HistoricalPlaytime,
@@ -155,6 +156,7 @@ def test_the_application_declares_its_projections():
         PlayerGame,
         PlayerSession,
         Playthrough,
+        Purchase,
     )
 
 

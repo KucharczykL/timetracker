@@ -3,6 +3,7 @@ import logging
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from typing import Annotated, Any, Final, NoReturn, assert_never, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -50,6 +51,7 @@ from games.commands.playersession import (
     TimedTiming,
     TimingStatement,
 )
+from games.commands.purchase import StatedPrice
 from games.end_ways import EndWay
 from games.events.dispatch import (
     IDEMPOTENCY_KEY_MAX_LENGTH,
@@ -85,6 +87,7 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
     PurchaseConversionState,
+    PurchaseKind,
     UserLibrary,
 )
 from games.ownership import owned_or_404
@@ -95,6 +98,7 @@ from games.reads.player_sessions import readable_sessions
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_numbering import display_name, with_display_number
 from games.reads.playthrough_runs import library_runs
+from games.reads.purchases import readable_purchases
 from games.reads.releases import game_releases, matching_releases, release_label
 from games.removal import remove
 from games.sorting import (
@@ -133,6 +137,7 @@ from games.writes.playthrough import (
     remove_run,
     restate_run,
 )
+from games.writes.purchase import PurchaseDraft, record_purchase, restate_purchase
 from timetracker.config import SettingSource
 from timetracker.settings_commands import (
     SettingLockedError,
@@ -1495,6 +1500,189 @@ def resume_entry(
 
 
 api.add_router("/entries", entry_router)
+
+purchase_router = Router()
+
+AMOUNT_TOGETHER = "State the amount and its currency together."
+PURCHASE_DAY_TOGETHER = "State the purchase day and its note together."
+ONE_COPY_KEY = "State entry_id or entry, exactly one."
+
+
+class PurchaseIn(Schema):
+    """One purchase, stated whole."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: A held copy, or a new one.
+    entry_id: UUIDv7 | None = None
+    entry: EntryIn | None = None
+    kind: PurchaseKind
+    name: str = ""
+    #: No constraint: the command states the rule.
+    amount: Decimal | None = None
+    currency: str = ""
+    note: str = ""
+    purchased: StatedTemporal = None
+    purchase_note: str = ""
+
+    @model_validator(mode="after")
+    def one_copy(self) -> PurchaseIn:
+        if (self.entry_id is None) == (self.entry is None):
+            raise ValueError(ONE_COPY_KEY)
+        return self
+
+    def stated_copy(self) -> uuid.UUID | EntryDraft:
+        if self.entry is None:
+            return cast(uuid.UUID, self.entry_id)
+        return EntryDraft(
+            release_id=self.entry.release_id,
+            access=self.entry.access.value,
+            format=self.entry.format.value,
+            note=self.entry.note,
+            acquired=ActStatement(self.entry.acquired, self.entry.acquisition_note),
+        )
+
+
+class PurchaseUpdate(Schema):
+    """Named keys state; omitted keys state nothing."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: PurchaseKind | None = None
+    name: str | None = None
+    amount: Decimal | None = None
+    currency: str | None = None
+    note: str | None = None
+    entry_id: UUIDv7 | None = None
+    purchased: StatedTemporal = None
+    purchase_note: str | None = None
+
+    @model_validator(mode="after")
+    def a_named_key_states(self) -> PurchaseUpdate:
+        """Null states nothing here, so it is refused."""
+        stated = self.model_fields_set
+        if ("amount" in stated) != ("currency" in stated):
+            raise ValueError(AMOUNT_TOGETHER)
+        if ("purchased" in stated) != ("purchase_note" in stated):
+            raise ValueError(PURCHASE_DAY_TOGETHER)
+        for key in ("kind", "name", "currency", "note", "entry_id", "purchase_note"):
+            if key in stated and getattr(self, key) is None:
+                raise ValueError(f"{key} states a value, or is left out.")
+        return self
+
+
+class PurchaseOut(Schema):
+    """The projection row, with its game."""
+
+    id: UUIDv7
+    entry_id: UUIDv7
+    game: str = Field(..., alias="entry.player_game.game.name")
+    game_id: UUIDv7 = Field(..., alias="entry.player_game.game_id")
+    kind: str
+    name: str
+    amount: Decimal | None = None
+    currency: str
+    note: str
+    purchased: StatedTemporal
+    purchased_lower: date | None = None
+    purchased_upper: date | None = None
+    purchase_recorded_at: datetime
+    purchase_note: str
+    created_at: datetime
+
+
+@purchase_router.get("/", response=list[PurchaseOut])
+def list_purchases(
+    request,
+    limit: int = Query(100, ge=0),
+    offset: int = Query(0, ge=0),
+):
+    """Live purchases, oldest first; `limit=0` unbounded."""
+    library = cast(User, request.user).library
+    purchases = readable_purchases(library).order_by("created_at", "id")[offset:]
+    return purchases if limit == 0 else purchases[:limit]
+
+
+@purchase_router.get("/{purchase_id}", response=PurchaseOut)
+def get_purchase(request, purchase_id: UUIDv7):
+    library = cast(User, request.user).library
+    return owned_or_404(readable_purchases(library), library, id=purchase_id)
+
+
+@purchase_router.post("/", response={201: PurchaseOut})
+def create_purchase(
+    request,
+    payload: PurchaseIn,
+    idempotency_key: str | None = Header(None, alias="Idempotency-Key"),
+):
+    actor = cast(User, request.user)
+    library = actor.library
+    stated_key = _stated_idempotency_key(idempotency_key)
+    #: The copy resolves inside `build`, behind the key.
+    try:
+        recorded = record_purchase(
+            actor,
+            PurchaseDraft(
+                copy=payload.stated_copy(),
+                kind=payload.kind.value,
+                name=payload.name,
+                price=StatedPrice(payload.amount, payload.currency),
+                note=payload.note,
+                purchased=ActStatement(payload.purchased, payload.purchase_note),
+            ),
+            correlation_id=new_correlation_id(),
+            idempotency_key=stated_key,
+        )
+    except CommandFailed as failure:
+        _answered_or_http(failure)
+    #: Read before the message: a mark can lose the row.
+    row = owned_or_404(readable_purchases(library), library, pk=recorded.purchase_id)
+    messages.success(
+        request,
+        "Purchase recorded and game added to your library."
+        if recorded.tracked_the_game
+        else "Purchase recorded.",
+    )
+    return Status(201, row)
+
+
+@purchase_router.patch("/{purchase_id}", response={200: PurchaseOut})
+def partial_update_purchase(request, purchase_id: UUIDv7, payload: PurchaseUpdate):
+    actor = cast(User, request.user)
+    library = actor.library
+    purchase = owned_or_404(readable_purchases(library), library, id=purchase_id)
+    stated = payload.model_fields_set
+    try:
+        changed = restate_purchase(
+            actor,
+            purchase,
+            kind=None if payload.kind is None else payload.kind.value,
+            name=payload.name,
+            #: The validator states both or neither.
+            price=(
+                StatedPrice(payload.amount, payload.currency or "")
+                if "amount" in stated
+                else None
+            ),
+            note=payload.note,
+            entry_id=payload.entry_id,
+            purchased=(
+                ActStatement(payload.purchased, payload.purchase_note or "")
+                if "purchased" in stated
+                else KEEP
+            ),
+            correlation_id=new_correlation_id(),
+        )
+    except CommandFailed as failure:
+        _answered_or_http(failure)
+    #: Read before the message: a mark can lose the row.
+    updated = owned_or_404(readable_purchases(library), library, pk=purchase.pk)
+    if changed:
+        messages.success(request, "Purchase updated.")
+    return updated
+
+
+api.add_router("/purchases", purchase_router)
 
 filter_router = Router()
 

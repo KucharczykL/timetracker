@@ -335,6 +335,7 @@ def test_a_rebuild_swaps_both_tables_with_an_empty_diff(owned_user, owned_librar
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
+        ("games_purchase", 0, 0, 0),
     ]
     assert (PlayerGame.objects.count(), Playthrough.objects.count()) == (1, 1)
 
@@ -706,6 +707,7 @@ def test_a_rebuild_of_a_described_run_swaps_with_an_empty_diff(
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
+        ("games_purchase", 0, 0, 0),
     ]
 
 
@@ -790,4 +792,5 @@ def test_a_rebuild_of_a_removed_run_swaps_with_an_empty_diff(owned_user, owned_l
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
+        ("games_purchase", 0, 0, 0),
     ]

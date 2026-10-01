@@ -4,7 +4,7 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import partial
-from typing import ClassVar, cast, get_args
+from typing import ClassVar, NamedTuple, cast, get_args
 
 from games.commands.endpoint import (
     ActStatement,
@@ -41,6 +41,7 @@ from games.events.libraryentry import (
     libraryentry_removed,
     libraryentry_restored,
 )
+from games.events.references import Reference, entry_reference
 from games.events.vocabulary import NewEvent, Unchanged
 from games.models import ENTRY_WAYS, LibraryEntry, PlayerGame, Release
 from games.reads.endpoints import stated
@@ -258,6 +259,69 @@ def _refuse_a_foreign_referrer(entry: LibraryEntry) -> None:
     )
 
 
+class EntryStatement(NamedTuple):
+    """One copy to record; a tuple fingerprints."""
+
+    release_id: uuid.UUID
+    access: str
+    format: str
+    note: str = ""
+    acquired: ActStatement = UNDATED_ACQUISITION
+
+    def normalized(self) -> EntryStatement:
+        """One spelling, so restatements fingerprint alike."""
+        return self._replace(note=self.note.strip(), acquired=normalized(self.acquired))
+
+
+class CreatedEntry(NamedTuple):
+    """The events stating a copy, and its names."""
+
+    events: list[NewEvent]
+    entry_id: uuid.UUID
+    reference: Reference
+
+
+def entry_creation_events(
+    context: CommandContext, statement: EntryStatement
+) -> CreatedEntry:
+    """A copy's creation, after tracking an untracked game."""
+    access = check_access(statement.access)
+    format = check_format(statement.format)
+    release = _visible_release(context, statement.release_id)
+    _refuse_a_removed_release(release)
+    game = release.edition.game
+    tracked = PlayerGame.objects.filter(library=context.library, game=game).first()
+    events: list[NewEvent] = []
+    if tracked is None:
+        events = tracking_events(game)
+        tracked_id = events[0].aggregate_id
+    elif tracked.removed_at is not None:
+        raise CommandRejected(
+            f"This library removed {game.name}, so no copy of it is recorded "
+            "until it is restored.",
+            sentence=RECORD_UNDER_REMOVED_GAME,
+        )
+    else:
+        tracked_id = tracked.pk
+    created = libraryentry_created(
+        tracked_id,
+        release,
+        access=access,
+        format=format,
+        note=statement.note,
+        acquired=statement.acquired.when,
+        acquisition_note=statement.acquired.note,
+    )
+    events.append(created)
+    return CreatedEntry(
+        events,
+        created.aggregate_id,
+        entry_reference(
+            created.aggregate_id, game_name=game.name, access=access, format=format
+        ),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class RecordEntry(Command):
     """State a copy, tracking an untracked game."""
@@ -275,36 +339,10 @@ class RecordEntry(Command):
         object.__setattr__(self, "acquired", normalized(self.acquired))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        access = check_access(self.access)
-        format = check_format(self.format)
-        release = _visible_release(context, self.release_id)
-        _refuse_a_removed_release(release)
-        game = release.edition.game
-        tracked = PlayerGame.objects.filter(library=context.library, game=game).first()
-        events: list[NewEvent] = []
-        if tracked is None:
-            events = tracking_events(game)
-            tracked_id = events[0].aggregate_id
-        elif tracked.removed_at is not None:
-            raise CommandRejected(
-                f"This library removed {game.name}, so no copy of it is recorded "
-                "until it is restored.",
-                sentence=RECORD_UNDER_REMOVED_GAME,
-            )
-        else:
-            tracked_id = tracked.pk
-        events.append(
-            libraryentry_created(
-                tracked_id,
-                release,
-                access=access,
-                format=format,
-                note=self.note,
-                acquired=self.acquired.when,
-                acquisition_note=self.acquired.note,
-            )
+        statement = EntryStatement(
+            self.release_id, self.access, self.format, self.note, self.acquired
         )
-        return events
+        return entry_creation_events(context, statement).events
 
 
 @dataclass(frozen=True, slots=True)

@@ -70,6 +70,7 @@ from games.models import (
     PlayerGame,
     PlayerSession,
     Playthrough,
+    Purchase,
 )
 from games.reads.calendar import calendar_day_zone
 
@@ -517,11 +518,13 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
     record_shadow = f"{record_live}{SHADOW_SUFFIX}"
     join_live = HistoricalPlaytimeRun._meta.db_table
     join_shadow = f"{join_live}{SHADOW_SUFFIX}"
-    #: Nor a device, nor an entry.
+    #: Nor a device, an entry or a purchase.
     device_live = Device._meta.db_table
     device_shadow = f"{device_live}{SHADOW_SUFFIX}"
     entry_live = LibraryEntry._meta.db_table
     entry_shadow = f"{entry_live}{SHADOW_SUFFIX}"
+    purchase_live = Purchase._meta.db_table
+    purchase_shadow = f"{purchase_live}{SHADOW_SUFFIX}"
     assert replay.statements_per_table[shadow] == 10
     assert replay.statements_per_table[run_shadow] == 10
     #: Every shadow, and every swap beside it.
@@ -542,6 +545,8 @@ def test_the_replay_counts_the_shadow_table_as_its_projection(owned_library):
         + replay.statements_per_table[device_live]
         + replay.statements_per_table.get(entry_shadow, 0)
         + replay.statements_per_table[entry_live]
+        + replay.statements_per_table.get(purchase_shadow, 0)
+        + replay.statements_per_table[purchase_live]
     )
 
 
@@ -999,6 +1004,7 @@ def test_a_seeded_library_rebuilds_both_tables_with_no_row_differing(owned_libra
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
+        ("games_purchase", 0, 0, 0),
     ]
 
 

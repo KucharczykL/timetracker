@@ -246,6 +246,7 @@ def test_a_rebuild_reproduces_the_tracked_rows(owned_user, owned_library, tracke
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
+        ("games_purchase", 0, 0, 0),
     ]
 
     rebuilt = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
@@ -356,6 +357,7 @@ def test_a_rebuild_reproduces_the_status(owned_user, owned_library, tracked_game
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
+        ("games_purchase", 0, 0, 0),
     ]
 
     rebuilt = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
@@ -474,6 +476,7 @@ def test_a_rebuild_reproduces_the_mastery(owned_user, owned_library, tracked_gam
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
+        ("games_purchase", 0, 0, 0),
     ]
 
     rebuilt = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
@@ -617,6 +620,7 @@ def test_a_rebuild_reproduces_the_exclusion(
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
+        ("games_purchase", 0, 0, 0),
     ]
 
     rebuilt = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)
@@ -761,6 +765,7 @@ def test_a_rebuild_reproduces_the_removal(owned_user, owned_library, tracked_gam
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
+        ("games_purchase", 0, 0, 0),
     ]
 
     rebuilt = rebuild_projections(owned_library, mode=RebuildMode.REBUILD)

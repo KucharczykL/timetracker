@@ -17,9 +17,11 @@ from django.db.models import QuerySet
 
 from games.models import (
     HistoricalPlaytimeRun,
+    LibraryEntry,
     PlayerSession,
     Playthrough,
     ProjectionModel,
+    Purchase,
 )
 from games.projections import FieldName
 
@@ -99,6 +101,12 @@ BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
         "playthrough",
         target=Playthrough,
         sentence=HISTORICAL_PLAYTIME_RECORDED,
+    ),
+    BlockingReferrer.on(
+        Purchase,
+        "entry",
+        target=LibraryEntry,
+        sentence="A purchase names this copy. Remove the purchase first.",
     ),
 )
 

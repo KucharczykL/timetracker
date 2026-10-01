@@ -542,3 +542,34 @@ def test_entry_crud_is_library_scoped(two_libraries, stated_graph):
     assert foreign.note == ""
     assert own.player_game.library == library_a
     assert foreign.player_game.library == library_b
+
+
+@pytest.mark.django_db(transaction=True)
+def test_purchase_crud_is_library_scoped(two_libraries, stated_graph):
+    from entries import record_entry
+    from purchases import record_purchase
+
+    world = two_libraries
+    library_a, library_b = world["library_a"], world["library_b"]
+    shared = stated_graph(Game(name="Shared Buy", library=library_a), library_a)
+    Game.objects.filter(pk=shared.game.pk).update(library=None)
+    own = record_purchase(record_entry(library_a, shared.release))
+    foreign_entry = record_entry(library_b, shared.release)
+    foreign = record_purchase(foreign_entry)
+    client = world["client_a"]
+
+    listed = client.get("/api/purchases/?limit=0").json()
+    assert [row["id"] for row in listed] == [str(own.id)]
+    assert client.get(f"/api/purchases/{foreign.id}").status_code == 404
+    assert (
+        _patch(client, f"/api/purchases/{foreign.id}", {"note": "theirs"}).status_code
+        == 404
+    )
+    created = client.post(
+        "/api/purchases/",
+        {"entry_id": str(foreign_entry.id), "kind": "game"},
+        content_type="application/json",
+    )
+    assert created.status_code == 404
+    foreign.refresh_from_db()
+    assert foreign.note == ""

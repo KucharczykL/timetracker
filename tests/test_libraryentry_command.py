@@ -41,6 +41,7 @@ from games.models import (
     PlayerGame,
     Playthrough,
     ProjectionModel,
+    Purchase,
     Release,
     RemovableLibraryQuerySet,
 )
@@ -566,8 +567,8 @@ def test_an_entry_naming_a_foreign_private_release_is_a_defect(
     assert _event_types(entry) == ["library.libraryentry.created"]
 
 
-def test_no_referrer_names_an_entry_yet():
-    assert referrers_of(LibraryEntry) == ()
+def test_a_purchase_is_the_one_entry_referrer():
+    assert [referrer.model for referrer in referrers_of(LibraryEntry)] == [Purchase]
 
 
 @pytest.fixture

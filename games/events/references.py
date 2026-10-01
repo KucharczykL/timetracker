@@ -1,6 +1,7 @@
 """What an event records about a row."""
 
 import types
+import uuid
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -186,13 +187,24 @@ def _capture_device(device: Device) -> Reference:
     )
 
 
-def _capture_entry(entry: LibraryEntry) -> Reference:
-    """Game name label; access and format detail."""
+def entry_reference(
+    entry_id: uuid.UUID, *, game_name: str, access: str, format: str
+) -> Reference:
+    """An entry's reference, row or not."""
     return Reference(
         kind="libraryentry",
-        id=str(entry.pk),
-        label=entry.player_game.game.name,
-        detail=f"{entry.access}, {entry.format}",
+        id=str(entry_id),
+        label=game_name,
+        detail=f"{access}, {format}",
+    )
+
+
+def _capture_entry(entry: LibraryEntry) -> Reference:
+    return entry_reference(
+        entry.pk,
+        game_name=entry.player_game.game.name,
+        access=entry.access,
+        format=entry.format,
     )
 
 

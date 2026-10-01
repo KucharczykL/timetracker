@@ -1,6 +1,7 @@
 """Endpoint commands keep their recorded fingerprints."""
 
 import uuid
+from decimal import Decimal
 
 import pytest
 
@@ -11,6 +12,7 @@ from games.commands.libraryentry import (
     CorrectEntryAcquisition,
     DescribeEntry,
     EndEntryAccess,
+    EntryStatement,
     RecordEntry,
     RemoveEntry,
     RestoreEntry,
@@ -27,6 +29,14 @@ from games.commands.playthrough import (
     VoidPlaythroughCompletion,
     VoidPlaythroughStart,
 )
+from games.commands.purchase import (
+    CorrectPurchaseDay,
+    DescribePurchase,
+    RecordPurchase,
+    RemovePurchase,
+    RestorePurchase,
+    StatedPrice,
+)
 from games.end_ways import EndWay
 from games.events.dispatch import Command, canonical_command_input
 from games.events.idempotency import fingerprint_command_input
@@ -36,6 +46,7 @@ RUN = uuid.UUID("01890000-0000-7000-8000-000000000001")
 GAME = uuid.UUID("01890000-0000-7000-8000-000000000002")
 RELEASE = uuid.UUID("01890000-0000-7000-8000-000000000003")
 ENTRY = uuid.UUID("01890000-0000-7000-8000-000000000004")
+PURCHASE = uuid.UUID("01890000-0000-7000-8000-000000000005")
 MAY = TemporalValue.parse("2021-05")
 
 COMMANDS: dict[str, Command] = {
@@ -78,6 +89,28 @@ COMMANDS: dict[str, Command] = {
     "resume_entry_access": ResumeEntryAccess(
         entry_id=ENTRY, statement=ActStatement(MAY, "back")
     ),
+    "record_purchase": RecordPurchase(
+        kind="game",
+        entry_id=ENTRY,
+        name="Deluxe",
+        price=StatedPrice(Decimal("12.50"), "EUR"),
+        note="gift",
+        purchased=ActStatement(MAY, "sale"),
+    ),
+    "record_purchase_new_copy": RecordPurchase(
+        kind="season_pass",
+        new_entry=EntryStatement(
+            RELEASE, "owned", "digital", "", ActStatement(None, "")
+        ),
+    ),
+    "describe_purchase": DescribePurchase(
+        purchase_id=PURCHASE, price=StatedPrice(None, ""), entry_id=ENTRY
+    ),
+    "correct_purchase_day": CorrectPurchaseDay(
+        purchase_id=PURCHASE, statement=ActStatement(MAY, "")
+    ),
+    "remove_purchase": RemovePurchase(purchase_id=PURCHASE),
+    "restore_purchase": RestorePurchase(purchase_id=PURCHASE),
 }
 
 RECORDED: dict[str, str] = {
@@ -114,6 +147,24 @@ RECORDED: dict[str, str] = {
         "31b02261fdd35cb1d88a85afb111029cf12964fb940dcfff270776cc1fb02c66"
     ),
     "void_start": "b83184f38a8c6e7cc9ca5d0fa308f3ad48b2176e1815b388f168fe809e9c2a23",
+    "correct_purchase_day": (
+        "0d5e1310fbaf8b68476247edb8b1d759e2c64756089406a0ad7508a39cd75806"
+    ),
+    "describe_purchase": (
+        "fc2f864cc6484388be193a51ac79aa98fa3b8c901640ff102b25f47556ac3896"
+    ),
+    "record_purchase": (
+        "6c18310b299e7d8b02fbb41daa3d8098fbadba27064e0dc48d1cfd1a71017882"
+    ),
+    "record_purchase_new_copy": (
+        "b818df5fc1bdecf5d7d79fbc528d3412a3ad67b8db4b0ff30767355b16fc1c2b"
+    ),
+    "remove_purchase": (
+        "6eb59eaeca25392179507029ed9d32bb3acc5ad20d689a06ca08c2af61179a45"
+    ),
+    "restore_purchase": (
+        "2e588e71418455ed1f6e11c04e3e1629638aa20e85049a5e78918a6729021b81"
+    ),
 }
 
 
@@ -121,3 +172,13 @@ RECORDED: dict[str, str] = {
 def test_fingerprint_is_the_recorded_one(name: str) -> None:
     command = COMMANDS[name]
     assert fingerprint_command_input(canonical_command_input(command)) == RECORDED[name]
+
+
+def test_a_price_fingerprints_alike_in_every_spelling() -> None:
+    def digest(price: StatedPrice) -> str:
+        command = DescribePurchase(purchase_id=PURCHASE, price=price)
+        return fingerprint_command_input(canonical_command_input(command))
+
+    assert digest(StatedPrice(Decimal("12.5"), " eur ")) == digest(
+        StatedPrice(Decimal("12.50"), "EUR")
+    )

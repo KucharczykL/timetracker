@@ -74,7 +74,7 @@ def test_on_refuses_a_field_naming_another_model_than_the_target():
 
 
 def test_referrers_of_reads_the_patched_tuple(monkeypatch):
-    assert referrers_of(Playthrough) == BLOCKING_REFERRERS
+    assert referrers_of(Playthrough) == BLOCKING_REFERRERS[:2]
     assert referrers_of(PlayerGame) == ()
     monkeypatch.setattr(referrers, "BLOCKING_REFERRERS", (SESSION_REFERRER,))
     assert referrers_of(Playthrough) == (SESSION_REFERRER,)

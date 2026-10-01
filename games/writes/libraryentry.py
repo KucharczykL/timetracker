@@ -14,6 +14,7 @@ from games.commands.libraryentry import (
     CorrectEntryAcquisition,
     DescribeEntry,
     EndEntryAccess,
+    EntryStatement,
     RecordEntry,
     RemoveEntry,
     RestoreEntry,
@@ -49,6 +50,9 @@ class EntryDraft(NamedTuple):
     format: str
     note: str
     acquired: ActStatement
+
+    def statement(self) -> EntryStatement:
+        return EntryStatement(*self)
 
 
 class RecordedEntry(NamedTuple):

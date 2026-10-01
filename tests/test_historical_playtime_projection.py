@@ -450,5 +450,6 @@ def test_a_rebuild_swaps_both_tables_with_an_empty_diff(
         ("games_playergame", 0, 0, 0),
         ("games_playersession", 0, 0, 0),
         ("games_playthrough", 0, 0, 0),
+        ("games_purchase", 0, 0, 0),
     ]
     assert HistoricalPlaytimeRun.objects.count() == 1

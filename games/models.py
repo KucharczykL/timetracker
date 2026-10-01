@@ -2392,6 +2392,102 @@ class LibraryEntry(ProjectionModel, ReferencedRow):
         return f"{self.access}, {self.format}"
 
 
+class PurchaseKind(models.TextChoices):
+    """What one purchase paid for."""
+
+    GAME = "game", "Game"
+    SEASON_PASS = "season_pass", "Season pass"
+    BATTLE_PASS = "battle_pass", "Battle pass"
+    UPGRADE = "upgrade", "Upgrade"
+
+
+PURCHASE_DAY_COLUMNS = OpeningEndpointColumns(
+    name="purchase",
+    model_label="games.Purchase",
+    when="purchased",
+    lower="purchased_lower",
+    upper="purchased_upper",
+    marker="purchase_recorded_at",
+    note="purchase_note",
+)
+
+
+class PurchaseQuerySet(RemovableMixin, models.QuerySet["Purchase"]):
+    """Purchase, entry and tracked-game marks."""
+
+    ancestor_marks = ("entry", "entry__player_game")
+
+
+class Purchase(ProjectionModel):
+    """One transaction for one copy; Purchases writes."""
+
+    objects = PurchaseQuerySet.as_manager()
+
+    #: The game is two parents away.
+    comparison_through = (("entry__player_game__game", "Game"),)
+
+    #: The creation event's aggregate id.
+    id = UUIDv7Field(
+        primary_key=True,
+        editable=False,
+        default=models.NOT_PROVIDED,
+        db_default=models.NOT_PROVIDED,
+    )
+    entry = models.ForeignKey(
+        LibraryEntry, on_delete=models.RESTRICT, related_name="purchases"
+    )
+    kind = models.CharField(max_length=16, choices=PurchaseKind)
+    name = models.CharField(max_length=255, blank=True, default="")
+    #: Null unknown; zero free.
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, default=None
+    )
+    #: Blank exactly where amount is null.
+    currency = models.CharField(max_length=3, blank=True, default="")
+    note = models.TextField(blank=True, default="")
+    #: The day bought; null unknown.
+    purchased = endpoint_when()
+    purchased_lower = endpoint_bound("purchased", "lower")
+    purchased_upper = endpoint_bound("purchased", "upper")
+    #: The creation's instant; every row holds one.
+    purchase_recorded_at = opening_marker()
+    purchase_note = endpoint_note()
+    #: The creation event's recorded_at.
+    created_at = models.DateTimeField(editable=False)
+    #: The remove event's recorded_at; null live.
+    removed_at = models.DateTimeField(null=True, default=None, editable=False)
+
+    class Meta:
+        verbose_name = "purchase"
+        verbose_name_plural = "purchases"
+        constraints = (
+            library_identity_constraint(),
+            models.CheckConstraint(
+                condition=Q(kind__in=[word.value for word in PurchaseKind]),
+                name="games_purchase_kind_known",
+            ),
+            models.CheckConstraint(
+                condition=Q(amount__isnull=True) | Q(amount__gte=0),
+                name="games_purchase_amount_not_negative",
+            ),
+            models.CheckConstraint(
+                condition=Q(amount__isnull=True, currency="")
+                | Q(amount__isnull=False, currency__regex=r"^[A-Z]{3}$"),
+                name="games_purchase_currency_where_amount",
+            ),
+        )
+        indexes = (
+            models.Index(
+                fields=("library", "entry"),
+                condition=Q(removed_at__isnull=True),
+                name="live_purchase_per_entry_idx",
+            ),
+        )
+
+    def __str__(self) -> str:
+        return self.name or self.kind
+
+
 class UserLibraryPreferences(models.Model):
     library = models.OneToOneField(
         UserLibrary,

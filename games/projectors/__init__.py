@@ -8,4 +8,5 @@ from games.projectors import (  # noqa: F401
     playergame,
     playersession,
     playthrough,
+    purchase,
 )
