@@ -798,14 +798,18 @@ that holds the map complete stays.
 
 **Money** reads purchases through valuations. Total spent and spent per
 game sum the library's live, unrefunded purchases whose purchased day lies
-in scope by containment, in the library's display currency. "N with no
-known price" prints beside any total an unknown amount left out. Purchased
+in scope by containment, in the library's display currency. Two figures
+sit beside any total: `total_spent_unpriced`, the purchases with no
+amount ("N with no known price"), and `total_spent_unvalued`, the ones
+with an amount and no valuation yet, shown only when not 0. Purchased
 count, refunded count and refunded percent read purchases on the two
 endpoints.
 
-**Backlog** reads copies with Owned access, live and held now (no end
-standing, the `copy_end()` rule), joined to the game: a sold copy is no
-backlog item.
+**Backlog** reads copies, never legacy rows: a copy is a live
+`LibraryEntry` on a `full` Edition, Owned, held now (no end standing,
+the `copy_end()` rule), joined to the game; a sold copy is no backlog
+item, a pass or upgrade has no copy of its own, and a DLC copy counts
+through its own Game.
 Owned-unfinished: the game is at no done status, has no completion in
 scope, is not Abandoned, and `excluded_from_unfinished` is false. Dropped:
 Abandoned, or the entry's access ended with way `refunded`, and
@@ -824,10 +828,17 @@ each.
 
 **Parity gate.** In P4 every figure still reads `LegacyPurchase`, which
 the pass leaves in place, so P4 writes the legacy `StatsData` for every
-year and all-time to a snapshot file, and P5's `make
-verify-purchase-conversion --confirm` judges every key of its new
-readers against it by a rule stated per key in `games/stats_parity.py`,
-which gains a second comparison shape beside the session-row one. The population changes the pass makes are the only
+year and all-time to a format-2 snapshot (`verify-purchase-conversion
+--snapshot`), and P5a's `make verify-purchase-statistics` judges every
+key of the new readers against it, explaining every moved legacy key
+with one of eleven reasons in `games/purchase_parity.py`;
+`legacy_figures(model, ...)` takes the historical model, so P5c keeps
+the gate after the class is gone. Rehearsed on the 2026-10-01 dump:
+every figure attributed, all-time total spent equal to the legacy sum to
+the cent, all ten bench reads under 20 ms, 930 of 1749 rendered pages
+differing and each attributed (the 898 game pages by the legacy
+Purchases section alone). The legacy page counted a bundle once per
+abandoned game through the M2M; the snapshot counts each row once. The population changes the pass makes are the only
 admitted differences, each attributed by name and count:
 
 - purchase counts: minus the 81 non-owned rows and plus the 31 rows the
@@ -841,6 +852,8 @@ admitted differences, each attributed by name and count:
 
 An unattributed difference fails the run. `make bench` gains an
 entries-and-purchases workload; every read stays inside the 20 ms budget.
+P5a's migration sets `related_name="+"` on `LegacyPurchase`'s relations,
+so the builder pickers lose the legacy paths ahead of P5c's drop.
 
 ## Delivery order
 
