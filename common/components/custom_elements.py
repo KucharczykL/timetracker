@@ -1153,13 +1153,14 @@ def DropdownSubmenuItem(
     label: Child, *, items: list[Node], id: str, icon: str = ""
 ) -> Node:
     """An item opening ``items`` beside the menu."""
+    #: Flex always: the arrow trails the words.
     trigger = Button(
         type="button",
         role="menuitem",
         tabindex="-1",
-        class_=f"{_item_class(icon)} w-full",
+        class_=f"{DROPDOWN_ITEM_WITH_ICON_CLASS} w-full",
     )[
-        *_item_children(label, icon),
+        *(_item_children(label, icon) if icon else [Span()[label]]),
         Icon(
             "arrowright",
             [("aria-hidden", "true"), ("class", "ms-auto shrink-0 text-body-subtle")],
