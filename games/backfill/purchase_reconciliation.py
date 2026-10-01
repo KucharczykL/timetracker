@@ -8,7 +8,16 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, NamedTuple, cast
 
-from django.db.models import Model, QuerySet, Sum
+from django.db.models import (
+    Exists,
+    ManyToManyField,
+    Max,
+    Model,
+    OuterRef,
+    Q,
+    QuerySet,
+    Sum,
+)
 from django.utils import timezone
 
 from games.backfill.purchase import ORIGIN, LibraryConversion
@@ -30,7 +39,7 @@ from games.models import (
 from games.reads.playtime import played_years
 from games.views.stats_data import compute_stats
 
-SNAPSHOT_FORMAT = 1
+SNAPSHOT_FORMAT = 2
 ALL_TIME = "all-time"
 
 type LegacyKeyText = str  # a legacy purchase's key
@@ -282,17 +291,293 @@ def snapshot_scopes(
     return [None, *sorted(years)]
 
 
-def legacy_statistics(
-    library: UserLibrary, rows: Sequence[LegacyRow]
+# ── The legacy figures, on any legacy model ────────────────────────────────
+
+#: A figure's or denominator's row set.
+type RowsKey = str  # e.g. "unfinished"
+type StatsKey = str  # a StatsData key
+
+#: Every row set a snapshot carries.
+ROWS_KEYS: tuple[RowsKey, ...] = (
+    "purchases",
+    "refunded",
+    "unrefunded",
+    "valued",
+    "unfinished",
+    "unfinished_base",
+    "dropped",
+    "dropped_base",
+    "backlog_decrease",
+    "finished",
+    "finished_released",
+    "bought_and_finished",
+    "played",
+)
+
+DONE: tuple[str, ...] = ("completed", "retired")
+ABANDONED = "abandoned"
+
+
+class LegacyFigures(NamedTuple):
+    """The figures, their rows, the valued shares."""
+
+    values: dict[StatsKey, object]
+    rows: dict[RowsKey, frozenset[LegacyKeyText]]
+    #: A valued row's converted price, quantized.
+    amounts: dict[LegacyKeyText, Decimal]
+
+
+def _percent(part: int, whole: int) -> int:
+    return int(part / whole * 100) if whole else 0
+
+
+def legacy_figures(
+    model: type[Model], library: UserLibrary, year: int | None
+) -> LegacyFigures:
+    """The legacy purchase figures of one scope.
+
+    The model may be historical: every other model comes
+    from its registry, the alive rule is stated here, and
+    games are reached through the link table alone.
+    """
+    registry = model._meta.apps
+    #: A key: a historical model refuses a live row.
+    library_id = library.pk
+    player_game = registry.get_model("games", "PlayerGame")
+    run = registry.get_model("games", "Playthrough")
+    session = registry.get_model("games", "PlayerSession")
+    record = registry.get_model("games", "HistoricalPlaytime")
+    conversion_state = registry.get_model("games", "PurchaseConversionState")
+    games = model._meta.get_field("games")
+    assert isinstance(games, ManyToManyField)
+    through = games.remote_field.through
+    assert through is not None
+    own, other = games.m2m_field_name(), games.m2m_reverse_field_name()
+    links = through._base_manager
+
+    def holding(game_ids: QuerySet) -> Q:
+        """A row naming one of these games."""
+        return Q(pk__in=links.filter(**{f"{other}_id__in": game_ids}).values(own))
+
+    def tracked(**facts: object) -> QuerySet:
+        return player_game._base_manager.filter(
+            library_id=library_id,
+            removed_at__isnull=True,
+            game__removed_at__isnull=True,
+            **facts,
+        ).values("game_id")
+
+    linked = links.filter(**{own: OuterRef("pk")})
+    alive = model._base_manager.filter(
+        library_id=library_id, removed_at__isnull=True
+    ).filter(
+        ~Exists(linked)
+        | Exists(linked.filter(**{f"{other}__removed_at__isnull": True}))
+    )
+
+    runs = run._base_manager.filter(
+        library_id=library_id,
+        player_game__library_id=library_id,
+        removed_at__isnull=True,
+        player_game__removed_at__isnull=True,
+        player_game__game__removed_at__isnull=True,
+        kind="ordinary",
+    )
+    if year is None:
+        runs = runs.filter(completion_recorded_at__isnull=False)
+    else:
+        first, last = date(year, 1, 1), date(year, 12, 31)
+        runs = runs.filter(
+            Q(completed__isnull=False)
+            & (Q(completed_lower__isnull=True) | Q(completed_lower__lte=last))
+            & (Q(completed_upper__isnull=True) | Q(completed_upper__gte=first))
+        )
+    completed = holding(runs.values("player_game__game_id"))
+    done = holding(tracked(status__in=DONE))
+    abandoned = holding(tracked(status=ABANDONED))
+    not_finished = ~done & ~completed
+    games_and_dlc = Q(type__in=("game", "dlc"))
+
+    if year is None:
+        purchases = alive
+    else:
+        purchases = alive.filter(date_purchased__year=year)
+    unrefunded = purchases.filter(date_refunded__isnull=True)
+    refunded = purchases.filter(date_refunded__isnull=False)
+    valued = unrefunded.filter(converted_price__isnull=False)
+    unfinished = (
+        unrefunded.filter(not_finished)
+        .filter(infinite=False)
+        .exclude(holding(tracked(excluded_from_unfinished=True)))
+        .filter(games_and_dlc)
+        .exclude(abandoned)
+    )
+    dropped = (
+        purchases.filter(not_finished)
+        .filter(abandoned | Q(date_refunded__isnull=False))
+        .filter(infinite=False)
+        .exclude(holding(tracked(excluded_from_dropped=True)))
+        .filter(games_and_dlc)
+    )
+    sessions = session._base_manager.filter(
+        library_id=library_id,
+        playthrough__library_id=library_id,
+        playthrough__player_game__library_id=library_id,
+        removed_at__isnull=True,
+        playthrough__removed_at__isnull=True,
+        playthrough__player_game__removed_at__isnull=True,
+        playthrough__player_game__game__removed_at__isnull=True,
+    )
+    records = record._base_manager.filter(
+        library_id=library_id,
+        player_game__library_id=library_id,
+        removed_at__isnull=True,
+        player_game__removed_at__isnull=True,
+        player_game__game__removed_at__isnull=True,
+    )
+    released = Q()
+    if year is None:
+        finished = alive.filter(done | completed)
+        finished_released = finished
+        backlog_decrease = finished
+        bought_and_finished = alive.none()
+    else:
+        sessions = sessions.filter(effective_day__year=year)
+        records = records.filter(
+            when_lower__gte=date(year, 1, 1), when_upper__lte=date(year, 12, 31)
+        )
+        released = Q(
+            pk__in=links.filter(**{f"{other}__year_released": year}).values(own)
+        )
+        finished = alive.filter(completed)
+        finished_released = finished.filter(released)
+        backlog_decrease = (
+            alive.filter(date_purchased__year__lt=year).filter(done).filter(completed)
+        )
+        bought_and_finished = unrefunded.filter(completed)
+    played = alive.filter(
+        holding(sessions.values("playthrough__player_game__game_id"))
+        | holding(records.values("player_game__game_id"))
+    ).filter(released)
+
+    def keys(rows: QuerySet) -> frozenset[LegacyKeyText]:
+        return frozenset(str(key) for key in rows.values_list("pk", flat=True))
+
+    rows = {
+        "purchases": keys(purchases),
+        "refunded": keys(refunded),
+        "unrefunded": keys(unrefunded),
+        "valued": keys(valued),
+        "unfinished": keys(unfinished),
+        "unfinished_base": keys(unrefunded),
+        "dropped": keys(dropped),
+        "dropped_base": keys(purchases),
+        "backlog_decrease": keys(backlog_decrease),
+        "finished": keys(finished),
+        "finished_released": keys(finished_released),
+        "bought_and_finished": keys(bought_and_finished),
+        "played": keys(played),
+    }
+    amounts = {
+        str(key): quantized_amount(price)
+        for key, price in valued.values_list("pk", "converted_price")
+    }
+    spending = unrefunded.aggregate(
+        total=Sum("converted_price"),
+        currency=Max("converted_currency", filter=Q(converted_price__isnull=False)),
+    )
+    total_spent = spending["total"] or 0
+    currency = (
+        spending["currency"]
+        or conversion_state._base_manager.get(library_id=library_id).published_currency
+    )
+    counts = {key: len(found) for key, found in rows.items()}
+    values: dict[StatsKey, object] = {
+        "all_purchased_this_year_count": counts["purchases"],
+        "all_purchased_refunded_this_year_count": counts["refunded"],
+        "refunded_percent": _percent(counts["refunded"], counts["purchases"]),
+        "total_spent": total_spent,
+        "total_spent_currency": currency,
+        "spent_per_game": int(total_spent / counts["unrefunded"])
+        if counts["unrefunded"]
+        else 0,
+        "dropped_count": counts["dropped"],
+        "dropped_percentage": _percent(counts["dropped"], counts["purchases"]),
+        "purchased_unfinished_count": counts["unfinished"],
+        "unfinished_purchases_percent": _percent(
+            counts["unfinished"], counts["unrefunded"]
+        ),
+        "backlog_decrease_count": counts["backlog_decrease"],
+        "this_year_finished_this_year_count": counts["finished_released"],
+        "total_year_games": counts["played"],
+    }
+    if year is not None:
+        values["all_finished_this_year_count"] = counts["finished"]
+    return LegacyFigures(values, rows, amounts)
+
+
+#: Keys legacy_figures states; the rest from compute_stats.
+LEGACY_KEYS: frozenset[StatsKey] = frozenset(
+    {
+        "all_purchased_this_year_count",
+        "all_purchased_refunded_this_year_count",
+        "refunded_percent",
+        "total_spent",
+        "total_spent_currency",
+        "spent_per_game",
+        "dropped_count",
+        "dropped_percentage",
+        "purchased_unfinished_count",
+        "unfinished_purchases_percent",
+        "backlog_decrease_count",
+        "this_year_finished_this_year_count",
+        "total_year_games",
+        "all_finished_this_year_count",
+        "all_purchased_refunded_this_year",
+        "all_finished_this_year",
+        "this_year_finished_this_year",
+        "purchased_this_year_finished_this_year",
+        "purchased_unfinished",
+        "all_purchased_this_year",
+    }
+)
+
+
+#: Figures the legacy pages had no word for.
+NEW_KEYS: frozenset[StatsKey] = frozenset(
+    {"total_spent_unpriced", "total_spent_unvalued"}
+)
+
+
+def legacy_scope(
+    model: type[Model], library: UserLibrary, year: int | None
 ) -> dict[str, Any]:
-    """Every StatsData scope, before the cutover."""
+    """One snapshot scope: values, rows, shares."""
+    figures = legacy_figures(model, library, year)
+    stats = {
+        key: value
+        for key, value in compute_stats(library, year).items()
+        if key not in LEGACY_KEYS | NEW_KEYS
+    }
+    return {
+        **snapshot_value(stats),
+        **snapshot_value(figures.values),
+        "rows": {key: sorted(found) for key, found in figures.rows.items()},
+        "amounts": {key: str(amount) for key, amount in figures.amounts.items()},
+    }
+
+
+def legacy_statistics(
+    model: type[Model], library: UserLibrary, rows: Sequence[LegacyRow]
+) -> dict[str, Any]:
+    """Every scope, before the cutover."""
     return {
         "format": SNAPSHOT_FORMAT,
         "library": str(library.pk),
         "taken_at": timezone.now().isoformat(),
         "scopes": {
-            ALL_TIME if scope is None else str(scope): snapshot_value(
-                compute_stats(library, scope)
+            ALL_TIME if scope is None else str(scope): legacy_scope(
+                model, library, scope
             )
             for scope in snapshot_scopes(library, rows)
         },

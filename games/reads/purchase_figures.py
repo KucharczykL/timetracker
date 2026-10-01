@@ -39,6 +39,13 @@ def unrefunded_in_scope(year: YearScope) -> PurchaseFilter:
     return PurchaseFilter.where(is_refunded=False, **_bounds(year))
 
 
+def valued_in_scope(year: YearScope) -> PurchaseFilter:
+    """Unrefunded, with a current valuation."""
+    return PurchaseFilter.where(
+        is_refunded=False, valuation__notnull=True, **_bounds(year)
+    )
+
+
 def unpriced_in_scope(year: YearScope) -> PurchaseFilter:
     """Unrefunded, at a price nobody knows."""
     return PurchaseFilter.where(

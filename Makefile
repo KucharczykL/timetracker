@@ -400,6 +400,10 @@ verify-reclassification-parity: ensure-postgres
 verify-purchase-conversion: ensure-postgres
 	uv run --frozen python manage.py verify_purchase_conversion $(ARGS)
 
+# Usage: make verify-purchase-statistics ARGS="--user NAME --snapshot PATH"
+verify-purchase-statistics: ensure-postgres
+	uv run --frozen python manage.py verify_purchase_statistics $(ARGS)
+
 # Usage: make bench ARGS="--seed 10000 --gate"
 bench: ensure-postgres
 	uv run --frozen python manage.py benchmark_events $(ARGS)

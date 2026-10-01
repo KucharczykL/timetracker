@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, cast
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
@@ -18,6 +18,7 @@ from games.backfill.purchase import (
 )
 from games.backfill.purchase_plan import LegacyRow
 from games.backfill.purchase_reconciliation import (
+    legacy_figures,
     legacy_statistics,
     reconcile,
     review_lists,
@@ -67,7 +68,7 @@ class Command(BaseCommand):
         library = self._library(username)
         rows = legacy_rows(LegacyPurchase, library.pk)
         if options["snapshot"] is not None:
-            snapshot = legacy_statistics(library, rows)
+            snapshot = legacy_statistics(LegacyPurchase, library, rows)
             options["snapshot"].write_text(json.dumps(snapshot, indent=2) + "\n")
             self.stdout.write(
                 f"Snapshot of {len(snapshot['scopes'])} scope(s) written."
@@ -89,7 +90,12 @@ class Command(BaseCommand):
 
     def _convert(self, library: UserLibrary, rows: list[LegacyRow]) -> bool:
         """Whether the pass had anything to state."""
-        before = self._backlog(library)
+        legacy = legacy_figures(LegacyPurchase, library, None).values
+        before = Backlog(
+            unfinished=cast(int, legacy["purchased_unfinished_count"]),
+            dropped=cast(int, legacy["dropped_count"]),
+            tracked=self._tracked(library),
+        )
         try:
             conversion = convert_purchases(rows)
         except PurchaseConversionRefused as refused:
@@ -107,7 +113,12 @@ class Command(BaseCommand):
             return False
         [done] = conversion.libraries
         self._report(library, rows, done)
-        after = self._backlog(library)
+        figures = compute_stats(library, None)
+        after = Backlog(
+            unfinished=figures["purchased_unfinished_count"],
+            dropped=figures["dropped_count"],
+            tracked=self._tracked(library),
+        )
         self.stdout.write(
             f"Backlog: unfinished {before.unfinished} -> {after.unfinished}, "
             f"dropped {before.dropped} -> {after.dropped}; "
@@ -166,15 +177,10 @@ class Command(BaseCommand):
             )
 
     @staticmethod
-    def _backlog(library: UserLibrary) -> Backlog:
-        figures = compute_stats(library, None)
-        return Backlog(
-            unfinished=figures["purchased_unfinished_count"],
-            dropped=figures["dropped_count"],
-            tracked=PlayerGame.objects.filter(
-                library=library, removed_at__isnull=True
-            ).count(),
-        )
+    def _tracked(library: UserLibrary) -> int:
+        return PlayerGame.objects.filter(
+            library=library, removed_at__isnull=True
+        ).count()
 
     @classmethod
     def _library(cls, username: str) -> UserLibrary:
