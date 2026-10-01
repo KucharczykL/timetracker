@@ -271,7 +271,12 @@ never UTC: a lost bump of any kind costs one day, and a row no
 write path saw (P4's pass, any direct appender) is valued by the same
 check: the recovery requests every library at rest whose
 `stale_purchases` is not empty, and `load_sample_data` requests after
-its replay; so
+its replay. A purchase whose (currency, rate year) has no rate (a
+typo'd code, a future-year pre-order) is skipped and logged at WARNING,
+the rest of the library publishes, and the skipped one stays in
+`stale_purchases` for the daily recovery to ask again; the legacy
+cache keeps its old rule and still fails its run on a missing rate.
+#1418 reports the skipped purchases beside #493's repair surface. So
 `needs_price_update` has no successor and `dispatch` gains no hook. The
 float cache and its writer go at the cutover.
 
@@ -917,6 +922,7 @@ runs on it.
 - #1355, bulk end of access over entries
 - #1361, a toggle that hides prerelease play (after #1354)
 - #1375, a library's own Release under a shared Edition
+- #1418, report the purchases no rate can value (epic #602, beside #493)
 - #1382, set the platform across many copies on the Library tab
 - #1383, the Game detail redesign, after P5 and #1353
 - #1384, the `<form-dialog>` element, and #1385, the epic that opens
