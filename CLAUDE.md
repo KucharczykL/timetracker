@@ -227,7 +227,10 @@ docs/           — Additional documentation
   up once, beside its inputs (`source_amount`, `source_currency`,
   `rate_year`, `rate`, null where none is needed). The currency task alone
   writes it, through `publish_valuations` (`games/valuations.py`), whole
-  per library. `stale_purchases`/`with_valuation` in
+  per library. CHECKs hold the rate rule and currency codes;
+  `valuation_library_violations` joins the ownership audit.
+  `VALUATION_EVENTS` (`games/events/purchase.py`) names the events a
+  write requests a run after; a test classifies every purchase event. `stale_purchases`/`with_valuation` in
   `games/reads/purchases.py` read the current one. Contract is
   [Purchase valuations](docs/superpowers/specs/2026-10-01-issue-728-purchase-valuation-design.md)
 - **FilterPreset** — saved filter config; `mode` (games/sessions/purchases/playthroughs/historical_playtime/devices/platforms), `find_filter`, `object_filter`, `ui_options` (all JSON). Follows Stash's SavedFilter pattern

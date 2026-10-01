@@ -2560,6 +2560,7 @@ class PurchaseValuation(models.Model):
 
     id = UUIDv7Field(primary_key=True, editable=False)
     library = models.ForeignKey(UserLibrary, on_delete=models.CASCADE, related_name="+")
+    #: A key: projection rows take no foreign key.
     purchase_id = models.UUIDField()
     target_currency = models.CharField(max_length=3)
     amount = models.DecimalField(max_digits=26, decimal_places=2)
@@ -2581,6 +2582,24 @@ class PurchaseValuation(models.Model):
             models.CheckConstraint(
                 condition=Q(amount__gte=0) & Q(source_amount__gte=0),
                 name="games_purchasevaluation_amounts_not_negative",
+            ),
+            models.CheckConstraint(
+                condition=Q(
+                    rate__isnull=True,
+                    amount=F("source_amount"),
+                )
+                & (Q(source_currency=F("target_currency")) | Q(source_amount=0))
+                | Q(rate__isnull=False, rate__gt=0)
+                & ~Q(source_currency=F("target_currency"))
+                & ~Q(source_amount=0),
+                name="games_purchasevaluation_rate_where_needed",
+            ),
+            models.CheckConstraint(
+                condition=Q(
+                    source_currency__regex=f"^{CURRENCY_CODE}$",
+                    target_currency__regex=f"^{CURRENCY_CODE}$",
+                ),
+                name="games_purchasevaluation_currency_codes",
             ),
         )
 

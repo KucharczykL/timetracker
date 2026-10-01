@@ -15,6 +15,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db.models import F
 from django.utils import timezone
 from session_rows import timed_row, tracked_run
 
@@ -895,3 +896,28 @@ def test_the_committed_sample_fixture_names_no_model_the_app_dropped():
     assert not {"games.playevent", "games.gamestatuschange", "games.session"} & {
         record["model"] for record in records
     }
+
+
+@pytest.mark.django_db(transaction=True)
+def test_sample_load_requests_a_run_after_the_replay(owner, monkeypatch):
+    from games.management.commands import load_sample_data
+
+    projected_at_request: list[bool] = []
+    real = load_sample_data._request_conversion_for_locked_state
+
+    def record(state, currency):
+        projected_at_request.append(
+            PlayerSession.objects.filter(library=owner.library).exists()
+        )
+        return real(state, currency)
+
+    monkeypatch.setattr(
+        load_sample_data, "_request_conversion_for_locked_state", record
+    )
+    PurchaseConversionState.objects.filter(library=owner.library).update(
+        requested_version=F("published_version") + 1
+    )
+
+    call_command("load_sample_data", "--user", owner.username, verbosity=0)
+
+    assert projected_at_request == [True]

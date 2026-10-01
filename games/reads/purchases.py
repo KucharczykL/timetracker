@@ -1,5 +1,7 @@
 """The purchases a library holds."""
 
+from decimal import Decimal
+from typing import Protocol
 from zoneinfo import ZoneInfo
 
 from django.db.models import Exists, F, Func, OuterRef, Q, QuerySet, Subquery
@@ -18,7 +20,7 @@ from games.models import (
 from games.reads.calendar import calendar_day_zone
 from games.reads.entries import END_STATEMENTS, latest_end_act
 from games.reads.unscoped import require_library
-from games.valuations import ValuationInput
+from games.valuations import CurrencyCode, ValuationInput
 
 _REFUND_STATEMENTS = (
     PURCHASE_REFUND_EVENTS.stated.event_type,
@@ -62,7 +64,7 @@ def valued_purchases(library: UserLibrary) -> PurchaseQuerySet:
 
 
 def valuation_inputs(library: UserLibrary) -> list[ValuationInput]:
-    """What the task values, by key."""
+    """What the task values, in key order; compared whole."""
     zone = calendar_day_zone(library)
     rows = (
         library_purchases(library)
@@ -70,7 +72,12 @@ def valuation_inputs(library: UserLibrary) -> list[ValuationInput]:
         .order_by("pk")
         .values_list("pk", "amount", "currency", valuation_year(zone))
     )
-    return [ValuationInput(*row) for row in rows]
+    return [
+        ValuationInput(
+            purchase_id=purchase_id, amount=amount, currency=currency, rate_year=year
+        )
+        for purchase_id, amount, currency, year in rows
+    ]
 
 
 def _published_target(library: UserLibrary) -> Subquery:
@@ -110,16 +117,25 @@ def stale_purchases(library: UserLibrary) -> PurchaseQuerySet:
     return valued_purchases(library).filter(~Exists(current_valuation(library)))
 
 
+class ValuedPurchase(Protocol):
+    """A row ``with_valuation`` annotated."""
+
+    #: Null without a current valuation.
+    valuation_amount: Decimal | None
+    #: The published target, read in the same statement.
+    valuation_currency: CurrencyCode | None
+
+
 def with_valuation(
     purchases: PurchaseQuerySet, library: UserLibrary
 ) -> PurchaseQuerySet:
-    """Annotate ``valuation_amount`` and ``valuation_currency``; null when stale."""
+    """Annotate rows into ``ValuedPurchase``."""
     current = current_valuation(library)
     return purchases.annotate(
         rate_year=valuation_year(calendar_day_zone(library))
     ).annotate(
         valuation_amount=Subquery(current.values("amount")[:1]),
-        valuation_currency=Subquery(current.values("target_currency")[:1]),
+        valuation_currency=_published_target(library),
     )
 
 

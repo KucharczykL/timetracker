@@ -7,14 +7,14 @@ the [Access and Purchases wave](2026-09-28-access-and-purchases-wave-design.md).
 ## Exchange rates
 
 `ExchangeRate.rate` is `Decimal(24, 12)`. Migration 0029 copies each float
-through `repr()`, which keeps the shortest exact spelling. The migration
-runs in both directions.
+through `repr()`, the shortest spelling that round-trips, rounded to twelve
+places. The migration runs in both directions.
 
 `exchange_rate(source, target, year)` in `games/exchange_rates.py` answers
 the stored rate. Without one, it fetches the rate, parses the JSON with
 `parse_float=Decimal`, quantizes to twelve places and stores it. It
-answers `None` when the API has no rate. The legacy converter multiplies
-by `float(rate)`.
+answers `None` when the fetch fails or the API has no positive rate. The
+legacy converter multiplies by `float(rate)`.
 
 ## PurchaseValuation
 
@@ -29,6 +29,8 @@ writer. It holds one row per purchase and target currency:
 - `version`, `calculated_at`.
 
 A purchase with an unknown amount has no row. A free purchase values at 0.
+CHECKs hold the rate rule and the currency codes. The ownership audit
+reports a valuation that names another library's purchase.
 
 `rate_year` is the year of `purchased_lower`, else of `purchased_upper`,
 else of `purchase_recorded_at` in the calendar zone. `valuation_year`
@@ -62,14 +64,17 @@ target. Two signals call it:
    `price_changed`, `purchase_corrected` or `restored`. A crash between
    the two transactions loses the request.
 2. The daily recovery, for a library at rest with stale purchases. This
-   signal also covers a removed catalog parent and any appender outside
+   signal also covers a restored catalog parent and any appender outside
    the write path.
+
+A failed request after a committed write is logged, not answered. The
+recovery isolates each library and logs each one it requests.
 
 ## Reads and API
 
 `with_valuation` annotates the current amount and currency. It reads the
 target in the same statement. `PurchaseOut.valuation` is null or
-`{amount, currency}`.
+`{amount, currency}`. The value is null without a current valuation.
 
 ## Handoffs
 

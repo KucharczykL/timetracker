@@ -8,7 +8,7 @@ from django.apps import apps as global_apps
 from django.apps.registry import Apps
 from django.core.exceptions import FieldDoesNotExist
 from django.db import models
-from django.db.models import F, Q
+from django.db.models import Exists, F, OuterRef, Q
 
 from games.models import (
     Edition,
@@ -20,6 +20,7 @@ from games.models import (
     Playthrough,
     ProjectionModel,
     Purchase,
+    PurchaseValuation,
     Release,
     UserLibrary,
 )
@@ -247,4 +248,23 @@ def entry_game_violations(library_ids: Sequence[uuid.UUID]) -> list[ViolationSen
         f"LibraryEntry.release: {row_id} names a Release of Game "
         f"{release_game}, and its PlayerGame tracks Game {tracked_game}"
         for row_id, release_game, tracked_game in rows
+    ]
+
+
+def valuation_library_violations(
+    library_ids: Sequence[uuid.UUID],
+) -> list[ViolationSentence]:
+    """Valuations naming another library's purchase."""
+    foreign = Purchase.objects.filter(pk=OuterRef("purchase_id")).exclude(
+        library_id=OuterRef("library_id")
+    )
+    rows = (
+        PurchaseValuation.objects.filter(library_id__in=library_ids)
+        .filter(Exists(foreign))
+        .values_list("pk", "library_id", "purchase_id")
+    )
+    return [
+        f"PurchaseValuation.purchase_id: {row_id} of library {library_id} "
+        f"names another library's Purchase {purchase_id}"
+        for row_id, library_id, purchase_id in rows
     ]

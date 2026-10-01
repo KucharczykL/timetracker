@@ -5,6 +5,7 @@ from decimal import Decimal
 from unittest.mock import Mock
 
 import pytest
+from django.db import DatabaseError
 from entries import record_entry
 from purchases import record_purchase as record_purchase_event
 from purchases import remove_purchase as remove_purchase_event
@@ -12,8 +13,20 @@ from purchases import remove_purchase as remove_purchase_event
 from games import conversion, tasks
 from games.commands.endpoint import ActStatement
 from games.commands.purchase import StatedPrice
+from games.events.purchase import (
+    PURCHASE_ENTRY_CHANGED,
+    PURCHASE_KIND_CHANGED,
+    PURCHASE_NAME_CHANGED,
+    PURCHASE_NOTE_CHANGED,
+    PURCHASE_REFUND_EVENTS,
+    PURCHASE_REMOVED,
+    VALUATION_EVENTS,
+)
+from games.events.vocabulary import DEFAULT_EVENT_TYPES
 from games.models import Game, PurchaseConversionState
+from games.writes import purchase as purchase_writes
 from games.writes.answers import CommandFailed
+from games.writes.playergame import remove_from_library, restore_to_library
 from games.writes.purchase import (
     PurchaseDraft,
     record_purchase,
@@ -34,8 +47,12 @@ def queued(monkeypatch):
 
 
 @pytest.fixture
-def entry(owned_library, stated_graph):
-    graph = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+def graph(owned_library, stated_graph):
+    return stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+
+
+@pytest.fixture
+def entry(owned_library, graph):
     return record_entry(owned_library, graph.release)
 
 
@@ -93,8 +110,13 @@ def test_a_restatement_that_moves_the_value_requests(
 
 @pytest.mark.parametrize(
     "statement",
-    [{"name": "Deluxe"}, {"note": "gift"}, {"kind": "upgrade"}],
-    ids=["name", "note", "kind"],
+    [
+        {"name": "Deluxe"},
+        {"note": "gift"},
+        {"kind": "upgrade"},
+        {"refund": ActStatement(TemporalValue.parse("2030-01-01"), "")},
+    ],
+    ids=["name", "note", "kind", "refund"],
 )
 def test_a_description_requests_nothing(owned_library, purchase, statement):
     version, _ = _requested(owned_library)
@@ -104,6 +126,34 @@ def test_a_description_requests_nothing(owned_library, purchase, statement):
     )
 
     assert _requested(owned_library)[0] == version
+
+
+def test_a_move_to_another_copy_requests_nothing(owned_library, graph, purchase):
+    sibling = record_entry(owned_library, graph.release)
+    version, _ = _requested(owned_library)
+
+    restate_purchase(
+        owned_library.user, purchase, entry_id=sibling.pk, correlation_id=uuid.uuid7()
+    )
+
+    assert _requested(owned_library)[0] == version
+
+
+def test_a_lost_request_still_answers_the_write(
+    owned_library, entry, monkeypatch, capture_games_logger
+):
+    def lose(library):
+        raise DatabaseError("connection lost")
+
+    monkeypatch.setattr(purchase_writes, "request_revaluation", lose)
+
+    with capture_games_logger() as caplog:
+        recorded = record_purchase(
+            owned_library.user, _draft(entry.pk), correlation_id=uuid.uuid7()
+        )
+
+    assert recorded.purchase_id
+    assert "Revaluation request lost" in caplog.text
 
 
 def test_an_unchanged_or_refused_restatement_requests_nothing(owned_library, purchase):
@@ -148,12 +198,55 @@ def _at_rest(library) -> int:
     return state.requested_version
 
 
-def test_the_recovery_requests_a_stale_library_at_rest(owned_library, purchase):
+def test_the_recovery_requests_a_stale_library_at_rest(owned_library, purchase, queued):
+    PurchaseConversionState.objects.filter(library=owned_library).update(
+        requested_currency="USD"
+    )
     version = _at_rest(owned_library)
 
     tasks.recover_library_price_conversions()
 
+    assert _requested(owned_library) == (version + 1, "USD")
+    queued.assert_called_once_with(
+        "games.tasks.convert_library_prices", str(owned_library.pk), version + 1
+    )
+
+
+def test_the_recovery_requests_a_restored_game(owned_library, graph, purchase):
+    remove_from_library(owned_library.user, graph.game, correlation_id=uuid.uuid7())
+    version = _at_rest(owned_library)
+    tasks.recover_library_price_conversions()
+    assert _requested(owned_library)[0] == version
+
+    restore_to_library(owned_library.user, graph.game, correlation_id=uuid.uuid7())
+    tasks.recover_library_price_conversions()
+
     assert _requested(owned_library)[0] == version + 1
+
+
+def test_one_failing_library_leaves_the_others(
+    owned_library, purchase, django_user_model, stated_graph, monkeypatch
+):
+    other = django_user_model.objects.create_user(username="other").library
+    record_purchase_event(
+        record_entry(
+            other, stated_graph(Game(name="Hades", library=other), other).release
+        )
+    )
+    _at_rest(owned_library)
+    version = _at_rest(other)
+    real = tasks.request_revaluation
+
+    def fail_for_the_owner(library):
+        if library.pk == owned_library.pk:
+            raise DatabaseError("lock timeout")
+        return real(library)
+
+    monkeypatch.setattr(tasks, "request_revaluation", fail_for_the_owner)
+
+    tasks.recover_library_price_conversions()
+
+    assert _requested(other)[0] == version + 1
 
 
 def test_the_recovery_leaves_a_current_library(owned_library, entry, queued):
@@ -192,3 +285,21 @@ def test_the_recovery_skips_a_removed_purchase(owned_library, purchase):
     tasks.recover_library_price_conversions()
 
     assert _requested(owned_library)[0] == version
+
+
+#: Purchase events that move no valuation input.
+NOT_VALUATION_EVENTS = {
+    PURCHASE_KIND_CHANGED.event_type,
+    PURCHASE_NAME_CHANGED.event_type,
+    PURCHASE_NOTE_CHANGED.event_type,
+    PURCHASE_ENTRY_CHANGED.event_type,
+    PURCHASE_REMOVED.event_type,
+    *PURCHASE_REFUND_EVENTS.family,
+}
+
+
+def test_every_purchase_event_is_classified():
+    purchase_events = DEFAULT_EVENT_TYPES.event_types_for("purchase")
+
+    assert VALUATION_EVENTS.isdisjoint(NOT_VALUATION_EVENTS)
+    assert VALUATION_EVENTS | NOT_VALUATION_EVENTS == purchase_events

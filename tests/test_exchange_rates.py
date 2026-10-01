@@ -79,3 +79,31 @@ def test_a_failed_request_is_none(monkeypatch):
     )
 
     assert exchange_rates.exchange_rate("USD", "CZK", 2023) is None
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "text",
+    ["[]", '{"eur": {}}', '{"usd": {"czk": 0.0000000000001}}', '{"usd": {"czk": 0}}'],
+    ids=["not an object", "no source table", "rounds to zero", "zero"],
+)
+def test_an_unusable_answer_is_none_and_stores_nothing(monkeypatch, text):
+    monkeypatch.setattr(
+        exchange_rates.requests, "get", Mock(return_value=_answer(text))
+    )
+
+    assert exchange_rates.exchange_rate("USD", "CZK", 2025) is None
+    assert not ExchangeRate.objects.exists()
+
+
+@pytest.mark.django_db
+def test_a_rate_stored_during_the_fetch_wins(monkeypatch):
+    def store_then_answer(*args, **kwargs):
+        ExchangeRate.objects.create(
+            currency_from="USD", currency_to="CZK", year=2025, rate=Decimal(22)
+        )
+        return _answer('{"usd": {"czk": 23}}')
+
+    monkeypatch.setattr(exchange_rates.requests, "get", store_then_answer)
+
+    assert exchange_rates.exchange_rate("USD", "CZK", 2025) == Decimal(22)

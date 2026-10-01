@@ -104,7 +104,7 @@ from games.reads.player_sessions import readable_sessions
 from games.reads.playthrough_endpoints import days_to_finish
 from games.reads.playthrough_numbering import display_name, with_display_number
 from games.reads.playthrough_runs import library_runs
-from games.reads.purchases import readable_purchases
+from games.reads.purchases import ValuedPurchase, readable_purchases
 from games.reads.releases import game_releases, matching_releases, release_label
 from games.removal import remove
 from games.sorting import (
@@ -1638,7 +1638,7 @@ class ValuationOut(Schema):
 
 
 class PurchaseOut(Schema):
-    """The projection row, with its game."""
+    """The projection row, its game and valuation."""
 
     id: UUIDv7
     entry_id: UUIDv7
@@ -1660,17 +1660,16 @@ class PurchaseOut(Schema):
     refund_recorded_at: datetime | None = None
     refund_note: str
     created_at: datetime
-    #: Null until a current one is published.
+    #: Null without a current valuation.
     valuation: ValuationOut | None = None
 
     @staticmethod
-    def resolve_valuation(purchase: Purchase) -> ValuationOut | None:
-        #: ``with_valuation`` annotates both.
-        amount = purchase.valuation_amount  # type: ignore[attr-defined]
-        if amount is None:
+    def resolve_valuation(purchase: ValuedPurchase) -> ValuationOut | None:
+        if purchase.valuation_amount is None or purchase.valuation_currency is None:
             return None
-        currency = purchase.valuation_currency  # type: ignore[attr-defined]
-        return ValuationOut(amount=amount, currency=currency)
+        return ValuationOut(
+            amount=purchase.valuation_amount, currency=purchase.valuation_currency
+        )
 
 
 @purchase_router.get("/", response=list[PurchaseOut])

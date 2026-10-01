@@ -1,10 +1,12 @@
 """Purchase writes; refusals become answers."""
 
+import logging
 import uuid
 from enum import StrEnum
 from typing import NamedTuple
 
 from django.contrib.auth.models import User
+from django.db import DatabaseError
 
 from games.commands.endpoint import ActStatement
 from games.commands.libraryentry import EntryStatement
@@ -23,30 +25,20 @@ from games.events.idempotency import IdempotencyKey
 from games.events.libraryentry import ENTRY_ACCESS_END_EVENTS, LIBRARYENTRY_CREATED
 from games.events.playergame import PLAYERGAME_CREATED
 from games.events.purchase import (
-    PURCHASE_CORRECTED,
     PURCHASE_CREATED,
-    PURCHASE_PRICE_CHANGED,
     PURCHASE_REFUND_EVENTS,
-    PURCHASE_RESTORED,
+    VALUATION_EVENTS,
     PurchaseKindValue,
 )
 from games.events.vocabulary import EventType
-from games.models import Purchase
+from games.models import Purchase, PurchaseConversionState
 from games.reads.events import dispatched_events
 from games.writes.answers import SubjectNoun, answered
 from games.writes.endpoint import KEEP, Keep
 
 SUBJECT: SubjectNoun = "purchase"
 
-#: Events that move a purchase's valuation.
-VALUATION_EVENTS: frozenset[EventType] = frozenset(
-    {
-        PURCHASE_CREATED.event_type,
-        PURCHASE_PRICE_CHANGED.event_type,
-        PURCHASE_CORRECTED.event_type,
-        PURCHASE_RESTORED.event_type,
-    }
-)
+logger = logging.getLogger("games")
 
 
 class PurchaseDraft(NamedTuple):
@@ -100,9 +92,22 @@ def _appended_types(result: CommandResult) -> frozenset[EventType]:
 
 
 def _revalue_after(actor: User, event_types: frozenset[EventType]) -> None:
-    """Request a run; recovery catches a loss."""
-    if not VALUATION_EVENTS.isdisjoint(event_types):
+    """Request a run; recovery catches a loss.
+
+    The write already committed, so a failed
+    request is logged, never answered.
+    """
+    if VALUATION_EVENTS.isdisjoint(event_types):
+        return
+    try:
         request_revaluation(actor.library)
+    except DatabaseError, PurchaseConversionState.DoesNotExist:
+        logger.exception(
+            "Revaluation request lost for library %s after %s; "
+            "the daily recovery requests it.",
+            actor.library.pk,
+            sorted(event_types),
+        )
 
 
 def record_purchase(
@@ -134,7 +139,8 @@ def record_purchase(
             f"Dispatch {result.stream_id} {result.sequences} appended no "
             f"{PURCHASE_CREATED.event_type}."
         )
-    _revalue_after(actor, _appended_types(result))
+    if result.outcome is CommandOutcome.APPENDED:
+        _revalue_after(actor, frozenset(event_by_type))
     return RecordedPurchase(
         purchase_id=created.aggregate_id,
         entry_id=uuid.UUID(created.payload["entry"]["id"]),

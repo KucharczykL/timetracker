@@ -14,7 +14,13 @@ from games.commands.purchase import (
 )
 from games.events.dispatch import Command, CommandResult, append_command
 from games.events.purchase import PURCHASE_CREATED, PurchaseKindValue
-from games.models import LibraryEntry, LibraryEvent, Purchase, UserLibrary
+from games.models import (
+    LibraryEntry,
+    LibraryEvent,
+    Purchase,
+    PurchaseConversionState,
+    UserLibrary,
+)
 from timetracker.temporal import TemporalValue
 
 
@@ -71,3 +77,13 @@ def restore_purchase(purchase: Purchase) -> Purchase:
     _state(purchase.library, RestorePurchase(purchase_id=purchase.pk))
     purchase.refresh_from_db()
     return purchase
+
+
+def request_run(library: UserLibrary, currency: str = "CZK") -> int:
+    """Request a conversion version without enqueueing it."""
+    state = PurchaseConversionState.objects.get(library=library)
+    state.requested_version += 1
+    state.requested_currency = currency
+    state.status = PurchaseConversionState.Status.PENDING
+    state.save()
+    return state.requested_version

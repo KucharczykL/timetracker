@@ -18,7 +18,11 @@ from games.models import (
     UserLibraryPreferences,
     UserPreferences,
 )
-from games.projections import cross_library_violations, entry_game_violations
+from games.projections import (
+    cross_library_violations,
+    entry_game_violations,
+    valuation_library_violations,
+)
 
 
 class Command(BaseCommand):
@@ -239,4 +243,5 @@ class Command(BaseCommand):
             )
         violations.extend(cross_library_violations(library_ids))
         violations.extend(entry_game_violations(library_ids))
+        violations.extend(valuation_library_violations(library_ids))
         return violations

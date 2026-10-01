@@ -2,12 +2,12 @@ from decimal import Decimal
 
 from django.db import migrations, models
 
-#: Twelve places, as the model states.
+#: Twelve places; never import the live model.
 PLACES = Decimal("1e-12")
 
 
 def decimal_rate(rate: float) -> Decimal:
-    """The float's shortest spelling, at twelve places."""
+    """The float's shortest spelling, rounded to twelve places."""
     return Decimal(repr(rate)).quantize(PLACES)
 
 

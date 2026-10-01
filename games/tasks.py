@@ -4,7 +4,7 @@ from datetime import timedelta
 from decimal import Decimal
 from uuid import UUID
 
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.db.models import F, Q
 from django.utils.timezone import now
 from django_q.models import Schedule
@@ -19,6 +19,8 @@ from games.models import (
 )
 from games.reads.purchases import stale_purchases, valuation_inputs
 from games.valuations import (
+    CurrencyCode,
+    RateKey,
     ValuationInput,
     needs_rate,
     publish_valuations,
@@ -36,23 +38,36 @@ class MissingExchangeRate(RuntimeError):
     pass
 
 
-def _required_rate(source: str, target: str, year: int) -> Decimal:
-    rate = exchange_rate(source, target, year)
+def _required_rate(key: RateKey, target: CurrencyCode, needed_by: str) -> Decimal:
+    rate = exchange_rate(key.currency, target, key.year)
     if rate is None:
-        raise MissingExchangeRate(f"Exchange rate unavailable: {source} to {target}")
+        raise MissingExchangeRate(
+            f"Exchange rate unavailable: {key.currency} to {target} for "
+            f"{key.year}, needed by {needed_by}"
+        )
     return rate
 
 
-type RateKey = tuple[str, int]  # source currency, year
-
-
-def _rates_for(snapshot: list[ValuationInput], target: str) -> dict[RateKey, Decimal]:
+def _rates_for(
+    snapshot: list[ValuationInput], target: CurrencyCode
+) -> dict[RateKey, Decimal]:
+    """One rate per key a purchase needs."""
     rates: dict[RateKey, Decimal] = {}
     for facts in snapshot:
-        key = (facts.currency, facts.rate_year)
-        if needs_rate(facts, target) and key not in rates:
-            rates[key] = _required_rate(facts.currency, target, facts.rate_year)
+        if needs_rate(facts, target) and facts.rate_key not in rates:
+            rates[facts.rate_key] = _required_rate(
+                facts.rate_key, target, f"purchase {facts.purchase_id}"
+            )
     return rates
+
+
+def _not_published(library_id: str, version: int, reason: str) -> None:
+    logger.info(
+        "[convert_library_prices]: library %s version %s not published: %s",
+        library_id,
+        version,
+        reason,
+    )
 
 
 def _concise_error(error: Exception) -> str:
@@ -99,7 +114,7 @@ def _mark_failed(
 
 
 def convert_library_prices(library_id: str, requested_version: int) -> None:
-    """Convert one immutable snapshot and publish it atomically if still current."""
+    """Value both snapshots; publish both if still current."""
     library_pk = UUID(library_id)
     with transaction.atomic():
         state = (
@@ -132,8 +147,8 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
         for purchase in purchases
     ]
 
-    library = UserLibrary.objects.get(pk=library_pk)
     try:
+        library = UserLibrary.objects.get(pk=library_pk)
         valuation_snapshot = valuation_inputs(library)
         rates = _rates_for(valuation_snapshot, target_currency)
         for purchase in purchases:
@@ -142,7 +157,9 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
                 converted_price = purchase.price
             else:
                 rate = _required_rate(
-                    source_currency, target_currency, purchase.date_purchased.year
+                    RateKey(source_currency, purchase.date_purchased.year),
+                    target_currency,
+                    f"legacy purchase {purchase.pk}",
                 )
                 converted_price = round(purchase.price * float(rate), 0)
             purchase.converted_price = converted_price
@@ -158,16 +175,18 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
                 or state.requested_currency.upper() != target_currency
                 or state.published_version >= requested_version
             ):
+                _not_published(library_id, requested_version, "superseded")
                 return
             current_snapshot = list(
                 LegacyPurchase.objects.filter(library_id=library_pk)
                 .order_by("pk")
                 .values_list("pk", "price", "price_currency", "date_purchased")
             )
-            if (
-                current_snapshot != snapshot
-                or valuation_inputs(library) != valuation_snapshot
-            ):
+            if current_snapshot != snapshot:
+                _not_published(library_id, requested_version, "legacy rows changed")
+                return
+            if valuation_inputs(library) != valuation_snapshot:
+                _not_published(library_id, requested_version, "purchases changed")
                 return
             LegacyPurchase.objects.bulk_update(
                 purchases,
@@ -180,7 +199,10 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
                     value(
                         facts,
                         target_currency,
-                        rates.get((facts.currency, facts.rate_year)),
+                        rates[facts.rate_key]
+                        if needs_rate(facts, target_currency)
+                        else None,
+                        library=library,
                         version=requested_version,
                         calculated_at=calculated_at,
                     )
@@ -229,17 +251,34 @@ def recover_library_price_conversions() -> None:
         | Q(status=PurchaseConversionState.Status.FAILED, retry_at__lte=now())
     )
     for state in stale:
-        async_task(
-            "games.tasks.convert_library_prices",
-            str(state.library_id),
-            state.requested_version,
-        )
+        try:
+            async_task(
+                "games.tasks.convert_library_prices",
+                str(state.library_id),
+                state.requested_version,
+            )
+        except DatabaseError:
+            logger.exception(
+                "[recover]: enqueue failed for library %s", state.library_id
+            )
     at_rest = PurchaseConversionState.objects.filter(
         requested_version=F("published_version")
     ).select_related("library")
     for state in at_rest:
-        if stale_purchases(state.library).exists():
-            request_revaluation(state.library)
+        try:
+            stale_count = stale_purchases(state.library).count()
+            if stale_count:
+                logger.info(
+                    "[recover]: library %s has %s stale purchase(s); requesting",
+                    state.library_id,
+                    stale_count,
+                )
+                request_revaluation(state.library)
+        except DatabaseError:
+            logger.exception(
+                "[recover]: revaluation request failed for library %s",
+                state.library_id,
+            )
 
 
 def convert_prices() -> None:

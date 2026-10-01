@@ -8,7 +8,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 from entries import record_entry
-from purchases import record_purchase, remove_purchase
+from purchases import record_purchase, remove_purchase, request_run
 
 from games import conversion, tasks
 from games.commands.playersession import UNSTORABLE_NOTE
@@ -18,7 +18,7 @@ from games.commands.purchase import (
     TOO_LARGE_AMOUNT,
     TOO_PRECISE_AMOUNT,
 )
-from games.models import Game, LibraryEvent, Purchase, PurchaseConversionState
+from games.models import ExchangeRate, Game, LibraryEvent, Purchase
 from timetracker.temporal import TemporalValue
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
@@ -415,12 +415,8 @@ def test_a_refund_onto_another_librarys_copy_is_404(auth_client, entry, their_en
 # The valuation
 
 
-def _convert(library) -> None:
-    state = PurchaseConversionState.objects.get(library=library)
-    PurchaseConversionState.objects.filter(library=library).update(
-        requested_version=state.requested_version + 1, requested_currency="EUR"
-    )
-    tasks.convert_library_prices(str(library.pk), state.requested_version + 1)
+def _convert(library, currency: str = "EUR") -> None:
+    tasks.convert_library_prices(str(library.pk), request_run(library, currency))
 
 
 def test_the_valuation_is_null_until_published(auth_client, library, entry):
@@ -449,3 +445,34 @@ def test_a_patched_amount_answers_no_valuation(
     assert [
         listed["valuation"] for listed in auth_client.get("/api/purchases/").json()
     ] == [None]
+
+
+def test_the_valuation_answers_the_converted_amount(auth_client, library, entry):
+    ExchangeRate.objects.update_or_create(
+        currency_from="EUR",
+        currency_to="CZK",
+        year=2021,
+        defaults={"rate": Decimal("25.1")},
+    )
+    purchase = record_purchase(
+        entry,
+        amount=Decimal("10.00"),
+        currency="EUR",
+        purchased=TemporalValue.parse("2021-03-01"),
+    )
+
+    _convert(library, "CZK")
+
+    assert auth_client.get(f"/api/purchases/{purchase.pk}").json()["valuation"] == {
+        "amount": "251.00",
+        "currency": "CZK",
+    }
+
+
+def test_post_answers_no_valuation_yet(auth_client, entry, monkeypatch):
+    monkeypatch.setattr(conversion, "async_task", Mock())
+
+    response = _post(auth_client, _body(entry))
+
+    assert response.status_code == 201, response.content
+    assert response.json()["valuation"] is None

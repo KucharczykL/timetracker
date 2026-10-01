@@ -8,9 +8,20 @@ from uuid import UUID
 
 from games.models import PurchaseValuation, UserLibrary
 
+type CurrencyCode = str  # "EUR"
+type RateYear = int  # 2024
+type ConversionVersion = int  # PurchaseConversionState.requested_version
+
 CENT = Decimal("0.01")
 #: Exact for every storable amount and rate.
 PRODUCT_PRECISION = 60
+
+
+class RateKey(NamedTuple):
+    """A rate's source and year; the run fixes the target."""
+
+    currency: CurrencyCode
+    year: RateYear
 
 
 class ValuationInput(NamedTuple):
@@ -18,35 +29,44 @@ class ValuationInput(NamedTuple):
 
     purchase_id: UUID
     amount: Decimal
-    currency: str
-    rate_year: int
+    currency: CurrencyCode
+    rate_year: RateYear
+
+    @property
+    def rate_key(self) -> RateKey:
+        return RateKey(self.currency, self.rate_year)
 
 
-def needs_rate(facts: ValuationInput, target: str) -> bool:
+def needs_rate(facts: ValuationInput, target: CurrencyCode) -> bool:
     """A purchase in another currency, not free."""
     return facts.currency != target and facts.amount != 0
 
 
 def value(
     facts: ValuationInput,
-    target: str,
+    target: CurrencyCode,
     rate: Decimal | None,
     *,
-    version: int,
+    library: UserLibrary,
+    version: ConversionVersion,
     calculated_at: datetime,
 ) -> PurchaseValuation:
     """One unsaved valuation, rounded half up once."""
-    if needs_rate(facts, target) != (rate is not None):
+    rate_needed = needs_rate(facts, target)
+    if rate_needed != (rate is not None):
         raise ValueError(
             f"Purchase {facts.purchase_id} in {facts.currency} to {target} "
-            f"takes {'a' if needs_rate(facts, target) else 'no'} rate."
+            f"takes {'a' if rate_needed else 'no'} rate, given {rate}."
         )
     if rate is None:
         amount = facts.amount
+    elif rate <= 0:
+        raise ValueError(f"Purchase {facts.purchase_id} given rate {rate}.")
     else:
         with localcontext(prec=PRODUCT_PRECISION):
             amount = facts.amount * rate
     return PurchaseValuation(
+        library=library,
         purchase_id=facts.purchase_id,
         target_currency=target,
         amount=amount.quantize(CENT, rounding=ROUND_HALF_UP),
@@ -66,8 +86,9 @@ def publish_valuations(
 
     The caller holds the transaction and the conversion state's lock.
     """
-    PurchaseValuation.objects.filter(library=library).delete()
     rows = list(valuations)
-    for row in rows:
-        row.library = library
+    foreign = [row.purchase_id for row in rows if row.library_id != library.pk]
+    if foreign:
+        raise ValueError(f"Valuations of another library than {library.pk}: {foreign}")
+    PurchaseValuation.objects.filter(library=library).delete()
     PurchaseValuation.objects.bulk_create(rows)
