@@ -543,6 +543,35 @@ nothing. In order:
    new backlog counts.
 7. The legacy columns go, in the same stack.
 
+The pass is implemented
+([contract](2026-10-01-issue-723-purchase-conversion-design.md)) and
+rehearsed on the 2026-10-01 dump: 808 rows became 839 planned copies,
+833 own copies and 758 purchases, 0 skipped, 0 refusals, 2177 events;
+totals reconcile per currency (EUR −0.0050 from the two third-decimal
+rows); 221 of 221 refunds ended their copy; 48 Releases created (14
+platform, 34 demo); backlog all-time unfinished 282 → 274 and dropped
+268 → 267; tracked games 863 → 898; CZK valuations seeded equal to the
+legacy converted sum; `make migrate` after `--confirm` appended nothing,
+replay parity 0 differing, the identity audit clean. Its seams:
+
+- A removal is two keys, `removed` then `removed_copy`: `RemoveEntry`
+  reads the projection, which shows the live purchase until the first
+  append projects, so one build cannot hold both.
+- The pass checks its own key before any catalog write, so a rerun makes
+  no Release and no DLC Game, and `created_release` exists only in the
+  first run's `source_metadata`: the review surface reads metadata and
+  recomputes nothing.
+- A skipped copy never gets a key; an exclusion skips an untracked game.
+- A library with a requested target and nothing published seeds no
+  valuation and still requests one run; `publish_valuations` replaces
+  whole, so the pass republishes the library's standing valuations
+  beside the seeded ones.
+- The snapshot encoder refuses an unknown type (`StatsData` holds a
+  `range`) rather than guessing; the 2026-10-01 snapshot, 22 scopes, is
+  `.dumps/legacy-stats-2026-10-01.json` for P5.
+- The autouse tracked-game hook writes a `PlayerGame` without events, so
+  a test that runs the pass's replay check needs `untracked_games`.
+
 | Today | Access | Format |
 |---|---|---|
 | Physical | Owned | Physical |
