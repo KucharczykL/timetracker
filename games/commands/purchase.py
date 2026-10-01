@@ -523,32 +523,56 @@ class RecordPurchase(Command):
             object.__setattr__(self, "copy", self.copy.normalized())
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
-        kind = check_kind(self.kind)
-        name = check_name(self.name)
-        price = check_price(self.price)
-        check_note(self.note)
-        check_note(self.purchased.note)
-        match self.copy:
-            case EntryStatement() as statement:
-                events, reference = entry_creation_events(context, statement)
-            case uuid.UUID() as entry_id:
-                events = ()
-                reference = capture_reference(_held_copy(context, entry_id))
-            case unknown:
-                raise TypeError(f"{unknown!r} names no copy.")
-        return [
-            *events,
-            purchase_created(
-                reference,
-                kind=kind,
-                name=name,
-                amount=price.amount,
-                currency=price.currency,
-                note=self.note,
-                purchased=self.purchased.when,
-                purchase_note=self.purchased.note,
-            ),
-        ]
+        return purchase_creation_events(
+            context,
+            copy=self.copy,
+            kind=self.kind,
+            name=self.name,
+            price=self.price,
+            note=self.note,
+            purchased=self.purchased,
+        )
+
+
+def purchase_creation_events(
+    context: CommandContext,
+    *,
+    copy: uuid.UUID | EntryStatement,
+    kind: PurchaseKindValue,
+    name: str = "",
+    price: StatedPrice = UNKNOWN_PRICE,
+    note: str = "",
+    purchased: ActStatement = UNDATED_PURCHASE,
+    purchase_id: uuid.UUID | None = None,
+) -> list[NewEvent]:
+    """A purchase's creation, every check included."""
+    checked_kind = check_kind(kind)
+    checked_name = check_name(name)
+    checked_price = check_price(price)
+    check_note(note)
+    check_note(purchased.note)
+    match copy:
+        case EntryStatement() as statement:
+            events, reference = entry_creation_events(context, statement)
+        case uuid.UUID() as entry_id:
+            events = ()
+            reference = capture_reference(_held_copy(context, entry_id))
+        case unknown:
+            raise TypeError(f"{unknown!r} names no copy.")
+    return [
+        *events,
+        purchase_created(
+            reference,
+            kind=checked_kind,
+            name=checked_name,
+            amount=checked_price.amount,
+            currency=checked_price.currency,
+            note=note,
+            purchased=purchased.when,
+            purchase_note=purchased.note,
+            purchase_id=purchase_id,
+        ),
+    ]
 
 
 @dataclass(frozen=True, slots=True)

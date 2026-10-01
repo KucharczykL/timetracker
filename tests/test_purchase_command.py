@@ -33,8 +33,10 @@ from games.commands.purchase import (
     RestorePurchase,
     StatedPrice,
     check_price,
+    purchase_creation_events,
 )
 from games.events.dispatch import (
+    CommandContext,
     CommandOutcome,
     CommandRejected,
     CommandResult,
@@ -630,3 +632,30 @@ def test_alive_reads_the_copy_and_the_game(owned_library, entry, mark):
         _dispatch(owned_library, RemovePlayerGame(game_id=entry.player_game.game_id))
 
     assert not Purchase.objects.alive().exists()
+
+
+def test_creation_events_take_a_given_key_or_mint_one(owned_library, entry):
+    context = CommandContext(library=owned_library, actor=owned_library.user)
+    key = uuid.uuid7()
+    given = purchase_creation_events(
+        context, copy=entry.pk, kind="game", purchase_id=key
+    )
+    minted = purchase_creation_events(context, copy=entry.pk, kind="game")
+    assert given[-1].aggregate_id == key
+    assert minted[-1].aggregate_id not in {key, None}
+
+
+def test_creation_events_refuse_what_the_command_refuses(owned_library, entry):
+    context = CommandContext(library=owned_library, actor=owned_library.user)
+    with pytest.raises(CommandRejected) as refusal:
+        purchase_creation_events(
+            context,
+            copy=entry.pk,
+            kind="game",
+            price=StatedPrice(Decimal("1.234"), "EUR"),
+        )
+    assert refusal.value.sentence == TOO_PRECISE_AMOUNT
+    remove_entry(entry)
+    with pytest.raises(CommandRejected) as refusal:
+        purchase_creation_events(context, copy=entry.pk, kind="game")
+    assert refusal.value.sentence == ENTRY_REMOVED
