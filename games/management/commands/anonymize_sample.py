@@ -527,6 +527,12 @@ class Command(BaseCommand):
 
         last_dated_day: dict[UUID, date] = {}
         sessions_recorded = 0
+        #: One key per dispatch; a refund reads it.
+        dispatch_keys: dict[tuple[UUID, str], str] = {}
+        for event in sorted(events, key=lambda event: event.sequence):
+            dispatch_keys.setdefault(
+                (event.stream_id, event.idempotency_key), f"sample:{event.sequence}"
+            )
         for event in events:
             library_keyed = event.aggregate_id == library_id
             if library_keyed:
@@ -577,7 +583,9 @@ class Command(BaseCommand):
             event.payload = payload
             #: Source evidence holds real instants.
             event.source_metadata = {}
-            event.idempotency_key = f"sample:{event.sequence}"
+            event.idempotency_key = dispatch_keys[
+                (event.stream_id, event.idempotency_key)
+            ]
             event.actor = None
             if event.event_type == "library.playersession.created":
                 sessions_recorded += 1

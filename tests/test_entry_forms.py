@@ -23,7 +23,7 @@ from games.entry_forms import (
     end_seen,
 )
 from games.models import Game, Platform
-from games.writes.libraryentry import KEEP
+from games.writes.endpoint import KEEP
 from timetracker.temporal import TemporalValue, temporal_input_name
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]

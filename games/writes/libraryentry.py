@@ -1,8 +1,7 @@
 """Entry writes; refusals become answers."""
 
 import uuid
-from enum import Enum
-from typing import Final, NamedTuple, assert_never
+from typing import NamedTuple, assert_never
 
 from django.contrib.auth.models import User
 
@@ -37,7 +36,15 @@ from games.models import EntryAccess, EntryFormat, LibraryEntry
 from games.reads.endpoints import stated
 from games.reads.events import dispatched_events
 from games.writes.answers import SubjectNoun, answered
-from games.writes.endpoint import Act, Correct, Nothing, Void, endpoint_move
+from games.writes.endpoint import (
+    KEEP,
+    Act,
+    Correct,
+    Keep,
+    Nothing,
+    Void,
+    endpoint_move,
+)
 
 SUBJECT: SubjectNoun = "copy"
 
@@ -101,15 +108,6 @@ def record_entry(
         entry_id=id_by_type[LIBRARYENTRY_CREATED.event_type],
         tracked_the_game=PLAYERGAME_CREATED.event_type in id_by_type,
     )
-
-
-class Keep(Enum):
-    """No statement; None is a void."""
-
-    KEEP = "keep"
-
-
-KEEP: Final = Keep.KEEP
 
 
 def restate_entry(

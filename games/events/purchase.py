@@ -6,7 +6,11 @@ from typing import Annotated, Literal, TypedDict, cast
 
 from pydantic import AfterValidator, StringConstraints, with_config
 
-from games.events.endpoint import EndpointPayload, opening_endpoint_events
+from games.events.endpoint import (
+    EndpointPayload,
+    endpoint_events,
+    opening_endpoint_events,
+)
 from games.events.playersession import NoteText, stated_note_text
 from games.events.references import STRICT_SCHEMA, Reference
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, EventSpec, EventType, NewEvent
@@ -87,6 +91,11 @@ class PurchaseMarkPayload(TypedDict):
     """Removed and restored state nothing more."""
 
 
+@with_config(STRICT_SCHEMA)
+class PurchaseRefundVoidedPayload(TypedDict):
+    """The library takes back the record of a refund."""
+
+
 def _spec[PayloadT](
     event_type: EventType, payload: type[PayloadT]
 ) -> EventSpec[PayloadT]:
@@ -120,6 +129,18 @@ PURCHASE_DAY_EVENTS = opening_endpoint_events(
     payload=EndpointPayload,
 )
 PURCHASE_CORRECTED = PURCHASE_DAY_EVENTS.corrected
+
+PURCHASE_REFUND_EVENTS = endpoint_events(
+    "purchase",
+    stated="library.purchase.refunded",
+    corrected="library.purchase.refund_corrected",
+    voided="library.purchase.refund_voided",
+    payload=EndpointPayload,
+    voided_payload=PurchaseRefundVoidedPayload,
+)
+PURCHASE_REFUNDED = PURCHASE_REFUND_EVENTS.stated
+PURCHASE_REFUND_CORRECTED = PURCHASE_REFUND_EVENTS.corrected
+PURCHASE_REFUND_VOIDED = PURCHASE_REFUND_EVENTS.voided
 
 
 def amount_text(amount: Decimal) -> str:

@@ -30,11 +30,14 @@ from games.commands.playthrough import (
     VoidPlaythroughStart,
 )
 from games.commands.purchase import (
+    CorrectPurchaseRefund,
     DescribePurchase,
     RecordPurchase,
+    RefundPurchase,
     RemovePurchase,
     RestorePurchase,
     StatedPrice,
+    VoidPurchaseRefund,
 )
 from games.end_ways import EndWay
 from games.events.dispatch import Command, canonical_command_input
@@ -111,6 +114,13 @@ COMMANDS: dict[str, Command] = {
     ),
     "remove_purchase": RemovePurchase(purchase_id=PURCHASE),
     "restore_purchase": RestorePurchase(purchase_id=PURCHASE),
+    "refund_purchase": RefundPurchase(
+        purchase_id=PURCHASE, statement=ActStatement(MAY, "store")
+    ),
+    "correct_purchase_refund": CorrectPurchaseRefund(
+        purchase_id=PURCHASE, statement=ActStatement(None, "")
+    ),
+    "void_purchase_refund": VoidPurchaseRefund(purchase_id=PURCHASE),
 }
 
 RECORDED: dict[str, str] = {
@@ -161,6 +171,15 @@ RECORDED: dict[str, str] = {
     ),
     "restore_purchase": (
         "2e588e71418455ed1f6e11c04e3e1629638aa20e85049a5e78918a6729021b81"
+    ),
+    "refund_purchase": (
+        "740990859d1a40131f80ddb70465846ccc7441337b27c6da1af86b6f4833ea48"
+    ),
+    "correct_purchase_refund": (
+        "0ac6063081e8ba28bc9356be0fd33c847bb2c8b0eedda3fb510abafc535f0e01"
+    ),
+    "void_purchase_refund": (
+        "bcf8735d0164b1f736dc71770189e5693f6a7731ecac5c9c87d51a2c53c57a14"
     ),
 }
 

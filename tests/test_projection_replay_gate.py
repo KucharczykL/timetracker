@@ -74,11 +74,14 @@ from games.commands.playthrough import (
     VoidPlaythroughStart,
 )
 from games.commands.purchase import (
+    CorrectPurchaseRefund,
     DescribePurchase,
     RecordPurchase,
+    RefundPurchase,
     RemovePurchase,
     RestorePurchase,
     StatedPrice,
+    VoidPurchaseRefund,
 )
 from games.commands.session_reclassification import (
     ReclassifySessionAsHistoricalPlaytime,
@@ -703,6 +706,46 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         ),
         "correct-purchase-day",
     )
+    #: A game on a new owned copy: refunds couple.
+    refundable_copy = _created_id(
+        run(
+            RecordEntry(release_id=fifth_release.pk, access="owned", format="physical"),
+            "record-entry-to-refund",
+        )
+    )
+    refunded_purchase = _created_id(
+        run(
+            RecordPurchase(
+                kind="game",
+                copy=refundable_copy,
+                purchased=ActStatement(TemporalValue.parse("2022-01"), ""),
+            ),
+            "record-purchase-to-refund",
+        )
+    )
+    run(
+        RefundPurchase(
+            purchase_id=refunded_purchase,
+            statement=ActStatement(TemporalValue.parse("2022-02"), "store"),
+        ),
+        "refund-purchase",
+    )
+    run(
+        CorrectPurchaseRefund(
+            purchase_id=refunded_purchase,
+            statement=ActStatement(TemporalValue.parse("2022-03"), "store"),
+        ),
+        "correct-purchase-refund",
+    )
+    run(VoidPurchaseRefund(purchase_id=refunded_purchase), "void-purchase-refund")
+    #: Left refunded, so the columns are compared.
+    run(
+        RefundPurchase(
+            purchase_id=refunded_purchase,
+            statement=ActStatement(TemporalValue.parse("2022-04"), "again"),
+        ),
+        "refund-purchase-again",
+    )
     run(RemovePurchase(purchase_id=kept_purchase), "remove-purchase")
     run(RestorePurchase(purchase_id=kept_purchase), "restore-purchase")
     removed_purchase = _created_id(
@@ -756,7 +799,7 @@ def test_the_stream_carries_every_registered_event_type(owned_user, owned_librar
 
 
 def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_library):
-    """A real stream, short of fifty-nine types."""
+    """A real stream, short of sixty-two types."""
     game = Game.objects.create(library=owned_library, name="Celeste")
     dispatch(
         TrackGame(game_id=game.pk),
@@ -772,7 +815,7 @@ def test_the_guard_names_a_type_a_partial_stream_missed(owned_user, owned_librar
         "library.playergame.created",
         "library.playthrough.created",
     }
-    assert len(missing) == 59
+    assert len(missing) == 62
 
 
 def build_neighbour(user, library) -> None:

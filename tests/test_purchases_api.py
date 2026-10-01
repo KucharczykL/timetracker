@@ -12,6 +12,7 @@ from purchases import record_purchase, remove_purchase
 from games.commands.playersession import UNSTORABLE_NOTE
 from games.commands.purchase import (
     ENTRY_OF_ANOTHER_GAME,
+    REFUND_BEFORE_PURCHASE,
     TOO_LARGE_AMOUNT,
     TOO_PRECISE_AMOUNT,
 )
@@ -308,3 +309,49 @@ def test_text_no_record_can_store_is_409(auth_client, entry):
 
     assert response.status_code == 409
     assert UNSTORABLE_NOTE in response.content.decode()
+
+
+def test_patch_states_corrects_and_voids_a_refund(auth_client, entry):
+    purchase = record_purchase(entry, purchased=TemporalValue.parse("2021-05"))
+
+    stated = _patch(
+        auth_client, purchase.pk, {"refund": {"refunded": "2021-06-03", "note": "x"}}
+    )
+    assert stated.status_code == 200, stated.content
+    row = stated.json()
+    assert (row["refunded"], row["refund_note"]) == ("2021-06-03", "x")
+    assert row["refunded_lower"] == row["refunded_upper"] == "2021-06-03"
+    assert row["refund_recorded_at"] is not None
+    entry.refresh_from_db()
+    assert entry.access_end_way == "refunded"
+
+    corrected = _patch(auth_client, purchase.pk, {"refund": {"refunded": "2021-07"}})
+    assert corrected.json()["refunded"] == "2021-07"
+
+    untouched = _patch(auth_client, purchase.pk, {"name": "Deluxe"})
+    assert untouched.json()["refunded"] == "2021-07"
+
+    voided = _patch(auth_client, purchase.pk, {"refund": None})
+    assert (voided.json()["refunded"], voided.json()["refund_recorded_at"]) == (
+        None,
+        None,
+    )
+    entry.refresh_from_db()
+    assert entry.access_end_recorded_at is None
+
+
+def test_a_refund_before_the_purchase_is_409(auth_client, entry):
+    purchase = record_purchase(entry, purchased=TemporalValue.parse("2021-05"))
+
+    response = _patch(auth_client, purchase.pk, {"refund": {"refunded": "2021-04"}})
+
+    assert response.status_code == 409
+    assert REFUND_BEFORE_PURCHASE in response.content.decode()
+
+
+def test_a_refund_body_refuses_an_unknown_key(auth_client, entry):
+    purchase = record_purchase(entry)
+
+    response = _patch(auth_client, purchase.pk, {"refund": {"way": "refunded"}})
+
+    assert response.status_code == 422

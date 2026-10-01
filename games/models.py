@@ -2414,6 +2414,16 @@ PURCHASE_DAY_COLUMNS = OpeningEndpointColumns(
     note="purchase_note",
 )
 
+PURCHASE_REFUND_COLUMNS = EndpointColumns(
+    name="refund",
+    model_label="games.Purchase",
+    when="refunded",
+    lower="refunded_lower",
+    upper="refunded_upper",
+    marker="refund_recorded_at",
+    note="refund_note",
+)
+
 
 class PurchaseQuerySet(RemovableMixin, models.QuerySet["Purchase"]):
     """Purchase, entry and tracked-game marks."""
@@ -2458,6 +2468,13 @@ class Purchase(ProjectionModel):
     #: The creation's instant; every row holds one.
     purchase_recorded_at = opening_marker()
     purchase_note = endpoint_note()
+    #: The day refunded; null unknown or unstated.
+    refunded = endpoint_when()
+    refunded_lower = endpoint_bound("refunded", "lower")
+    refunded_upper = endpoint_bound("refunded", "upper")
+    #: Null is a purchase never refunded.
+    refund_recorded_at = endpoint_marker()
+    refund_note = endpoint_note()
     #: The creation event's recorded_at.
     created_at = models.DateTimeField(editable=False)
     #: The remove event's recorded_at; null live.

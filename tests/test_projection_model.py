@@ -391,6 +391,10 @@ PINNED_DEFAULTS: dict[str, dict[str, object]] = {
         #: The opening endpoint: the day may be unknown.
         "purchased": None,
         "purchase_note": "",
+        #: Null is a purchase never refunded.
+        "refunded": None,
+        "refund_recorded_at": None,
+        "refund_note": "",
     },
 }
 

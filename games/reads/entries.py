@@ -53,7 +53,7 @@ def game_entries(library: UserLibrary, game: Game) -> LibraryEntryQuerySet:
 #: A position in a library's event stream.
 type EventSequence = int
 
-_END_STATEMENTS = (
+END_STATEMENTS = (
     ENTRY_ACCESS_END_EVENTS.stated.event_type,
     ENTRY_ACCESS_END_EVENTS.corrected.event_type,
 )
@@ -71,7 +71,7 @@ def latest_end_act(library: UserLibrary, entry_id: uuid.UUID) -> LibraryEvent | 
         _newest_events(library, entry_id)
         .filter(
             event_type__in=(
-                *_END_STATEMENTS,
+                *END_STATEMENTS,
                 ENTRY_ACCESS_END_EVENTS.voided.event_type,
                 ENTRY_ACCESS_END_EVENTS.resumed.event_type,
             )
@@ -86,7 +86,7 @@ def taken_back_end(
     """The end standing before that resume."""
     standing = (
         _newest_events(library, entry_id)
-        .filter(event_type__in=_END_STATEMENTS, sequence__lt=resumed_at)
+        .filter(event_type__in=END_STATEMENTS, sequence__lt=resumed_at)
         .first()
     )
     if standing is None:

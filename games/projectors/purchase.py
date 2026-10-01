@@ -14,11 +14,14 @@ from games.events.purchase import (
     PURCHASE_NAME_CHANGED,
     PURCHASE_NOTE_CHANGED,
     PURCHASE_PRICE_CHANGED,
+    PURCHASE_REFUND_CORRECTED,
+    PURCHASE_REFUND_VOIDED,
+    PURCHASE_REFUNDED,
     PURCHASE_REMOVED,
     PURCHASE_RESTORED,
     PricePayload,
 )
-from games.models import PURCHASE_DAY_COLUMNS, Purchase
+from games.models import PURCHASE_DAY_COLUMNS, PURCHASE_REFUND_COLUMNS, Purchase
 
 
 def _price_columns(price: PricePayload | None) -> dict[str, object]:
@@ -68,6 +71,15 @@ class Purchases(Projector):
     def _purchase_corrected(self, event: RecordedEvent) -> None:
         self.project_corrected(PURCHASE_DAY_COLUMNS, event)
 
+    def _refunded(self, event: RecordedEvent) -> None:
+        self.project_stated(PURCHASE_REFUND_COLUMNS, event)
+
+    def _refund_corrected(self, event: RecordedEvent) -> None:
+        self.project_corrected(PURCHASE_REFUND_COLUMNS, event)
+
+    def _refund_voided(self, event: RecordedEvent) -> None:
+        self.project_voided(PURCHASE_REFUND_COLUMNS, event)
+
     def _removed(self, event: RecordedEvent) -> None:
         self.amend(Purchase, event, removed_at=event.recorded_at)
 
@@ -82,6 +94,9 @@ class Purchases(Projector):
         PURCHASE_PRICE_CHANGED: _price_changed,
         PURCHASE_ENTRY_CHANGED: _entry_changed,
         PURCHASE_CORRECTED: _purchase_corrected,
+        PURCHASE_REFUNDED: _refunded,
+        PURCHASE_REFUND_CORRECTED: _refund_corrected,
+        PURCHASE_REFUND_VOIDED: _refund_voided,
         PURCHASE_REMOVED: _removed,
         PURCHASE_RESTORED: _restored,
     }

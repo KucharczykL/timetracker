@@ -445,6 +445,28 @@ class AnonymizeSampleTest(TransactionTestCase):
             _parsed_moment(ended["fields"]["recorded_at"]),
         )
 
+    def test_events_of_one_dispatch_share_one_key(self):
+        _build_dataset()
+
+        with TemporaryDirectory() as tempdir:
+            output = Path(tempdir) / "out.yaml.gz"
+            call_command(
+                "anonymize_sample", user="sample-source", seed=5, output=output
+            )
+            by_model = _by_model(_load_output(output))
+
+        keys_by_type: dict[str, set[str]] = {}
+        for event in by_model["games.libraryevent"]:
+            fields = event["fields"]
+            keys_by_type.setdefault(fields["event_type"], set()).add(
+                fields["idempotency_key"]
+            )
+        #: TrackGame appends both creations per dispatch.
+        tracked = keys_by_type["library.playergame.created"]
+        self.assertEqual(tracked, keys_by_type["library.playthrough.created"])
+        self.assertGreater(len(tracked), 1)
+        self.assertTrue(all(key.startswith("sample:") for key in tracked))
+
     def test_output_is_deterministic_for_a_fixed_seed(self):
         _build_dataset()
         with TemporaryDirectory() as tempdir:

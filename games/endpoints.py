@@ -25,12 +25,13 @@ from games.events.playthrough import (
     PLAYTHROUGH_COMPLETION_EVENTS,
     PLAYTHROUGH_START_EVENTS,
 )
-from games.events.purchase import PURCHASE_DAY_EVENTS
+from games.events.purchase import PURCHASE_DAY_EVENTS, PURCHASE_REFUND_EVENTS
 from games.models import (
     DEVICE_ACCESS_END_COLUMNS,
     ENTRY_ACCESS_END_COLUMNS,
     ENTRY_ACQUISITION_COLUMNS,
     PURCHASE_DAY_COLUMNS,
+    PURCHASE_REFUND_COLUMNS,
 )
 
 
@@ -120,6 +121,8 @@ ENTRY_ACCESS_END = ResumableEndpoint.resuming(
 
 PURCHASE_DAY = OpeningEndpoint.over(PURCHASE_DAY_COLUMNS, PURCHASE_DAY_EVENTS)
 
+PURCHASE_REFUND = Endpoint.over(PURCHASE_REFUND_COLUMNS, PURCHASE_REFUND_EVENTS)
+
 ENDPOINTS: tuple[Endpoint | OpeningEndpoint, ...] = (
     PLAYTHROUGH_START,
     PLAYTHROUGH_COMPLETION,
@@ -127,4 +130,5 @@ ENDPOINTS: tuple[Endpoint | OpeningEndpoint, ...] = (
     ENTRY_ACQUISITION,
     ENTRY_ACCESS_END,
     PURCHASE_DAY,
+    PURCHASE_REFUND,
 )

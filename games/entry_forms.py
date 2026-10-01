@@ -35,7 +35,7 @@ from games.models import (
 )
 from games.reads.endpoints import stated
 from games.reads.releases import game_releases, release_label
-from games.writes.libraryentry import KEEP, Keep
+from games.writes.endpoint import KEEP, Keep
 from timetracker.temporal import TemporalValue
 
 RELEASE_SEARCH_URL = "/api/releases/search"

@@ -131,6 +131,9 @@ class CommandName(CommandVocabulary):
     PURCHASE_DESCRIBE = "library.purchase.describe"
     PURCHASE_REMOVE = "library.purchase.remove"
     PURCHASE_RESTORE = "library.purchase.restore"
+    PURCHASE_REFUND = "library.purchase.refund"
+    PURCHASE_CORRECT_REFUND = "library.purchase.correct_refund"
+    PURCHASE_VOID_REFUND = "library.purchase.void_refund"
 
 
 @dataclass(frozen=True, slots=True)

@@ -120,9 +120,8 @@ from games.sorting import (
 from games.toast_middleware import RELOAD_HEADER
 from games.writes.answers import DEFECT_STATUS, CommandFailed, answered
 from games.writes.device import create_device as create_device_row
+from games.writes.endpoint import KEEP, Keep
 from games.writes.libraryentry import (
-    KEEP,
-    Keep,
     record_entry,
     restate_entry,
     resume_entry_access,
@@ -1569,6 +1568,18 @@ class PurchaseIn(Schema):
         raise TypeError("one_copy admits exactly one copy.")
 
 
+class PurchaseRefundIn(Schema):
+    """One refund, stated whole; its day may be unknown."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    refunded: StatedTemporal = None
+    note: str = ""
+
+    def statement(self) -> ActStatement:
+        return ActStatement(self.refunded, self.note)
+
+
 class PurchaseUpdate(Schema):
     """Named keys state; omitted keys state nothing."""
 
@@ -1582,10 +1593,12 @@ class PurchaseUpdate(Schema):
     entry_id: UUIDv7 | None = None
     purchased: StatedTemporal = None
     purchase_note: str | None = None
+    #: Object states, null voids; the route reads absence.
+    refund: PurchaseRefundIn | None = None
 
     @model_validator(mode="after")
     def a_named_key_states(self) -> PurchaseUpdate:
-        """Null refused except amount and purchased."""
+        """Null refused but amount, purchased, refund."""
         stated = self.model_fields_set
         if ("amount" in stated) != ("currency" in stated):
             raise ValueError(AMOUNT_TOGETHER)
@@ -1607,6 +1620,14 @@ class PurchaseUpdate(Schema):
             return None
         return ActStatement(self.purchased, cast(str, self.purchase_note))
 
+    def refund_statement(self) -> ActStatement | None | Keep:
+        """The refund stated, a void, or nothing."""
+        if "refund" not in self.model_fields_set:
+            return KEEP
+        if self.refund is None:
+            return None
+        return self.refund.statement()
+
 
 class PurchaseOut(Schema):
     """The projection row, with its game."""
@@ -1625,6 +1646,11 @@ class PurchaseOut(Schema):
     purchased_upper: date | None = None
     purchase_recorded_at: datetime
     purchase_note: str
+    refunded: StatedTemporal
+    refunded_lower: date | None = None
+    refunded_upper: date | None = None
+    refund_recorded_at: datetime | None = None
+    refund_note: str
     created_at: datetime
 
 
@@ -1698,6 +1724,7 @@ def partial_update_purchase(request, purchase_id: UUIDv7, payload: PurchaseUpdat
             note=payload.note,
             entry_id=payload.entry_id,
             purchased=payload.stated_day(),
+            refund=payload.refund_statement(),
             correlation_id=new_correlation_id(),
         )
     except CommandFailed as failure:

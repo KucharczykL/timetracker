@@ -1,8 +1,19 @@
 """Which act a restatement of one endpoint is."""
 
 from dataclasses import dataclass
+from enum import Enum
+from typing import Final
 
 from games.reads.endpoints import StatedEndpoint
+
+
+class Keep(Enum):
+    """No statement; None is a void."""
+
+    KEEP = "keep"
+
+
+KEEP: Final = Keep.KEEP
 
 
 @dataclass(frozen=True, slots=True)
