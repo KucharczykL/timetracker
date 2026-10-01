@@ -40,8 +40,9 @@ These reads use the order, among others:
 - Every game picker: the field queryset and the selected options. A multi-game
   picker shows its selected games in display order. It does not keep the
   order in which a person picked them.
-- `PurchaseForm.games`. `ModelMultipleChoiceField.clean` keeps the order of
-  its queryset, so the separate purchases are created in display order.
+- The legacy `PurchaseForm.games`, until P5b retired the form:
+  `ModelMultipleChoiceField.clean` kept the order of its queryset, so the
+  separate purchases were created in display order.
 - A purchase: its page list, its tooltip, `first_game`, split and refund.
 - The bulk resolutions of games, copies and runs.
 - The `name` sort of sessions, runs, records and copies, and the `sort_name`

@@ -418,13 +418,13 @@ restates in two dispatches (`restate_entry`, `Keep`/`KEEP` in
 | `CorrectEntryAcquisition` | `acquisition_corrected` | the opening endpoint's correction |
 | `EndEntryAccess`, `CorrectEntryAccessEnd`, `VoidEntryAccessEnd` | `access_ended`, `access_end_corrected`, `access_end_voided` | the primitive's three, with a `before_event` that refuses a removed entry; every way by hand, `refunded` included, since a person may state a refund no purchase records |
 | `ResumeEntryAccess` | `access_resumed` (note, `effective_time` the day) | refused with a sentence where no end stands, never `Unchanged`; the fourth act of `ResumableEndpoint` over `ResumableEndpointEvents`, its own type beside the three-act `Endpoint`, in the end's family, projected as a void is, through `resume_endpoint`; a resume of a non-resumable endpoint and a void of an opening one fail in mypy |
-| `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal takes the copy's live purchases with it, appending `purchase.removed` for each in the same dispatch before `libraryentry.removed`, the confirmation naming them, since a purchase is the money paid for this copy and has no life the copy does not; restore brings back the purchases whose latest `purchase.removed` carries the key of the copy's latest `libraryentry.removed` (`cascaded_purchase_ids`), so Undo restores both and a purchase removed on its own stays removed, with no new event type; restore refuses under a removed PlayerGame or Release. `Purchase.entry` is registered with `BlockingReferrer.on(..., cascades=True)`, which `blocking_referrer` skips and `foreign_referrer` still reads (P5b; M1 had it refuse, which left a refunded copy with no reachable remedy); `RestoreEntry` builds the `purchase.restored` events itself, since `RestorePurchase` refuses under a removed copy |
+| `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal takes the copy's live purchases with it, appending `purchase.removed` for each in the same dispatch before `libraryentry.removed`, the confirmation naming them, since a purchase is the money paid for this copy and has no life the copy does not; restore brings back the purchases whose latest `purchase.removed` carries the key of the copy's latest `libraryentry.removed` (`cascaded_purchase_ids`), so Undo restores both and a purchase removed on its own stays removed, with no new event type; restore refuses under a removed PlayerGame or Release. `Purchase.entry` is a `CascadingReferrer` in `CASCADING_REFERRERS`, a registry of its own beside `BLOCKING_REFERRERS`: `referrers_of(LibraryEntry)` is empty, so `blocking_referrer` never reads purchases, `foreign_referrer` reads both registries, and `RemoveEntry` and `RestoreEntry` cascade by hand (P5b; M1 had it refuse, which left a refunded copy with no reachable remedy); `RestoreEntry` builds the `purchase.restored` events itself, since `RestorePurchase` refuses under a removed copy |
 
 The referrer registry is `games/reads/referrers.py`: `BlockingReferrer.on`
 takes `target`, and `referrers_of(target)` reads the tuple at each call;
-`Purchase.entry` registers there for the foreign-row audit, and since
-P5b `RemoveEntry` cascades over the copy's purchases rather than
-refusing on them.
+`Purchase.entry` sits in `CASCADING_REFERRERS` instead, which only
+`foreign_referrer` reads, and since P5b `RemoveEntry` cascades over the
+copy's purchases rather than refusing on them.
 
 ### Purchase
 
@@ -717,10 +717,12 @@ correction made since the page opened is refused; the device form
 lacks one (#1387). **Edit purchase**: kind, name, amount with Free,
 currency, purchased, refund (day, note; "Not refunded" voids), note. The
 row Refund act is one click in that pattern, the calendar's day and a
-sequence-keyed Undo, corrected on the edit page; the Undo keys on the
+sequence-keyed Undo, corrected on the edit page; the Undo is its own
+command, `UndoPurchaseRefund(purchase_id, refunded_at)`, keyed on the
 `purchase.refunded` event's own sequence, not the dispatch's last, since
-the copy's end is appended after it (`refund_purchase` answers it,
-`latest_refund_act` checks it). One-click and Undo routes are
+the copy's end is appended after it; it refuses under the lock once a
+later refund act overtakes it, and an Undo whose row states no refund is
+a defect (`RowUnreadable`). `VoidPurchaseRefund` is unchanged. One-click and Undo routes are
 `ORIGIN_AWARE`, as the copy's are. The new refund sets no status: the
 legacy one set Abandoned, and Dropped now reads the refund end instead.
 
