@@ -1,7 +1,7 @@
 """Every act on one copy."""
 
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from functools import partial
 from typing import Any, cast
 from uuid import UUID
@@ -19,6 +19,7 @@ from django.views.decorators.http import require_POST
 from common.components import (
     AddForm,
     FormFieldGroup,
+    FormFieldPresentation,
     FormFields,
     Fragment,
     Li,
@@ -57,6 +58,7 @@ from games.models import (
     UserLibrary,
 )
 from games.ownership import owned_or_404
+from games.price_fields import price_presentations
 from games.reads.endpoints import stated
 from games.reads.entries import (
     EventSequence,
@@ -82,6 +84,7 @@ from games.writes.libraryentry import (
     resume_entry_access,
 )
 from games.writes.playergame import new_correlation_id
+from games.writes.purchase import record_purchase
 from timetracker.temporal import TemporalValue
 
 
@@ -136,6 +139,7 @@ def _form_page(
     done: str,
     game: Callable[[], Game | None],
     groups: Sequence[FormFieldGroup] | None = None,
+    presentations: Mapping[str, FormFieldPresentation] | None = None,
     submit_label: str = "Save",
 ) -> HttpResponse:
     """Render; a valid POST writes and returns."""
@@ -155,12 +159,33 @@ def _form_page(
             form,
             request=request,
             submit_class="",
-            fields=FormFields(form, groups=groups),
+            fields=FormFields(form, groups=groups, presentations=presentations),
             submit_label=submit_label,
             cancel_url=_cancel_url(request, game),
         ),
         title=title,
         status=status,
+    )
+
+
+def _record_copy(user: User, form: EntryAddForm) -> object:
+    """The copy, through its purchase where stated.
+
+    One key for both, so a repeat makes one copy.
+    """
+    purchase = form.purchase_draft()
+    if purchase is None:
+        return record_entry(
+            user,
+            form.draft(),
+            correlation_id=new_correlation_id(),
+            idempotency_key=form.submission_key(),
+        )
+    return record_purchase(
+        user,
+        purchase,
+        correlation_id=new_correlation_id(),
+        idempotency_key=form.submission_key(),
     )
 
 
@@ -178,15 +203,11 @@ def _add(request: HttpRequest, game: Game | None) -> HttpResponse:
         request,
         form,
         title="Add to library" if game is None else f"Add to library - {game.name}",
-        write=lambda: record_entry(
-            user,
-            form.draft(),
-            correlation_id=new_correlation_id(),
-            idempotency_key=form.submission_key(),
-        ),
+        write=lambda: _record_copy(user, form),
         done="Added to your library.",
         game=lambda: game or getattr(form, "cleaned_data", {}).get("game"),
         groups=copy_groups(form),
+        presentations=price_presentations(),
         submit_label="Add to library",
     )
 

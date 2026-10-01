@@ -33,9 +33,11 @@ from games.models import (
     Release,
     UserLibrary,
 )
+from games.price_fields import PriceChoice, PriceFields, price_group
 from games.reads.endpoints import stated
 from games.reads.releases import game_releases, release_label
 from games.writes.endpoint import KEEP, Keep
+from games.writes.purchase import PurchaseDraft
 from timetracker.temporal import TemporalValue
 
 RELEASE_SEARCH_URL = "/api/releases/search"
@@ -53,6 +55,7 @@ WAY_CHOICES = [(way.value, END_WAY_LABELS[way]) for way in ENTRY_WAYS]
 _COPY_GROUPS = (
     FormFieldGroup("What", ("game", "release", "format"), look="hidden"),
     FormFieldGroup("How you have it", ("access", "acquired"), look="hidden"),
+    price_group(),
     FormFieldGroup("Note", ("note",), look="hidden"),
 )
 
@@ -187,10 +190,11 @@ class _Submission(forms.Form):
         )
 
 
-class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
-    """One copy; the Game fixed or picked."""
+class EntryAddForm(PrimitiveWidgetsMixin, _Submission, PriceFields):
+    """One copy, and how it was bought."""
 
     act: SubmissionAct = "add"
+    price_choices = (PriceChoice.PAID, PriceChoice.FREE, PriceChoice.NONE)
 
     access = forms.ChoiceField(
         choices=EntryAccess.choices, initial=EntryAccess.OWNED, label="Got it as"
@@ -240,7 +244,20 @@ class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
         self.fields["acquired"] = TemporalFormField(
             presentation=presentation, label="Got it on", initial=_day(today)
         )
-        self.order_fields(["game", "release", "format", "access", "acquired", "note"])
+        self._price_fields(library.user)
+        self.order_fields(
+            [
+                "game",
+                "release",
+                "format",
+                "access",
+                "acquired",
+                "price",
+                "amount",
+                "currency",
+                "note",
+            ]
+        )
 
     def clean_note(self) -> str:
         return normalised_note(self.cleaned_data["note"])
@@ -249,6 +266,7 @@ class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
         cleaned = super().clean()
         if cleaned is None:
             return cleaned
+        self._clean_price(cleaned)
         release = cast(Release | None, cleaned.get("release"))
         game = self.game or cleaned.get("game")
         if (
@@ -268,6 +286,20 @@ class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
             format=cleaned["format"],
             note=cleaned["note"],
             acquired=ActStatement(cleaned["acquired"], ""),
+        )
+
+    def purchase_draft(self) -> PurchaseDraft | None:
+        """The game's purchase, on the acquired day."""
+        price = self.stated_price()
+        if price is None:
+            return None
+        return PurchaseDraft(
+            copy=self.draft(),
+            kind="game",
+            name="",
+            price=price,
+            note="",
+            purchased=ActStatement(self.cleaned_data["acquired"], ""),
         )
 
 

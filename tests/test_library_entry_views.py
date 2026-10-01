@@ -2,6 +2,7 @@
 
 import datetime
 import re
+from decimal import Decimal
 
 import pytest
 from django.urls import reverse
@@ -18,6 +19,7 @@ from games.models import (
     LibraryEvent,
     Platform,
     PlayerGame,
+    Purchase,
     Release,
 )
 from games.removal import remove
@@ -77,6 +79,7 @@ def _add_post(graph, **changes) -> dict[str, str]:
         "format": "digital",
         "note": "",
         "submission": SUBMISSION,
+        "price": "none",
         **_day("acquired", datetime.date(2026, 9, 1)),
     } | changes
 
@@ -382,12 +385,49 @@ def test_the_add_page_tracks_an_untracked_shared_game(logged_in, owned_library):
         "access": "owned",
         "format": "physical",
         "submission": SUBMISSION,
+        "price": "none",
     }
 
     response = logged_in.post(reverse("games:add_to_library"), posted)
 
     assert response.status_code == 302
     assert PlayerGame.objects.filter(library=owned_library, game=shared).exists()
+
+
+@pytest.mark.parametrize(
+    ("price", "amount"),
+    [({"price": "paid", "amount": "30"}, Decimal(30)), ({"price": "free"}, Decimal(0))],
+    ids=["paid", "free"],
+)
+def test_add_records_the_games_purchase_with_the_copy(logged_in, graph, price, amount):
+    posted = _add_post(graph, currency="EUR", **price)
+
+    for _ in range(2):
+        response = logged_in.post(_add_url(graph.game), posted)
+
+    assert response.status_code == 302
+    entry = LibraryEntry.objects.get(release=graph.release)
+    purchase = Purchase.objects.get(entry=entry)
+    assert (purchase.kind, purchase.amount, purchase.currency) == (
+        "game",
+        amount,
+        "EUR",
+    )
+    assert purchase.purchased == entry.acquired
+
+
+def test_no_purchase_records_the_copy_alone(logged_in, graph):
+    logged_in.post(_add_url(graph.game), _add_post(graph))
+
+    assert LibraryEntry.objects.filter(release=graph.release).count() == 1
+    assert not Purchase.objects.exists()
+
+
+def test_the_add_page_starts_on_paid(logged_in, graph):
+    html = logged_in.get(_add_url(graph.game)).content.decode()
+
+    assert re.search(r'value="paid"[^>]*checked|checked[^>]*value="paid"', html)
+    assert "group/price" in html
 
 
 def test_the_library_page_offers_add_to_library(logged_in):
