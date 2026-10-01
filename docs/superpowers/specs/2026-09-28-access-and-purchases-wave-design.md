@@ -552,7 +552,7 @@ rows); 221 of 221 refunds ended their copy; 48 Releases created (14
 platform, 34 demo); backlog all-time unfinished 282 → 274 and dropped
 268 → 267; tracked games 863 → 898; CZK valuations seeded equal to the
 legacy converted sum; `make migrate` after `--confirm` appended nothing,
-replay parity 0 differing, the identity audit clean. Its seams:
+replay parity 0 differing, the identity audit clean. What it found:
 
 - A removal is two keys, `removed` then `removed_copy`: `RemoveEntry`
   reads the projection, which shows the live purchase until the first
