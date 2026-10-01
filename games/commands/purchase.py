@@ -5,35 +5,42 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from functools import partial
 from typing import ClassVar, NamedTuple, cast, get_args
+
+from django.db import models
 
 from games.commands.endpoint import (
     ActStatement,
     correct_opening_endpoint,
     normalized,
 )
-from games.commands.libraryentry import EntryStatement, entry_creation_events
+from games.commands.libraryentry import (
+    EntryStatement,
+    entry_creation_events,
+    refuse_a_removed_release,
+)
 from games.commands.scope import library_entry_row, library_purchase_row
 from games.endpoints import PURCHASE_DAY
 from games.events.dispatch import Command, CommandContext, CommandName, CommandRejected
 from games.events.purchase import (
+    NAME_LENGTH,
     PurchaseKindValue,
-    purchase_amount_changed,
     purchase_created,
     purchase_entry_changed,
     purchase_kind_changed,
     purchase_name_changed,
     purchase_note_changed,
+    purchase_price_changed,
     purchase_removed,
     purchase_restored,
 )
 from games.events.references import capture_reference
 from games.events.vocabulary import NewEvent, Unchanged
-from games.models import LibraryEntry, Purchase
+from games.models import CURRENCY_CODE, LibraryEntry, Purchase
 
 UNKNOWN_KIND = "Choose one of the listed purchase kinds."
-ONE_COPY = "Name the copy this purchase paid for, or describe a new one."
+LONG_NAME = f"Keep the name within {NAME_LENGTH} characters."
+NOT_AN_AMOUNT = "State the amount paid as a number."
 SIGNED_AMOUNT = "State the amount paid without a sign."
 TOO_PRECISE_AMOUNT = "State the amount in whole cents."
 TOO_LARGE_AMOUNT = "That amount is too large to record."
@@ -49,12 +56,17 @@ PLAYER_GAME_REMOVED = (
 ENTRY_OF_ANOTHER_GAME = (
     "That copy belongs to another game. Choose a copy of this purchase's game."
 )
+SAME_DAY = "This correction states the day the purchase states."
 
 KIND_WORDS: frozenset[str] = frozenset(get_args(PurchaseKindValue.__value__))
-#: The largest amount `Purchase.amount` holds.
-LARGEST_AMOUNT = Decimal("9999999999.99")
-CENT = Decimal("0.01")
-_CURRENCY = re.compile(r"[A-Z]{3}")
+_AMOUNT = cast(models.DecimalField, Purchase._meta.get_field("amount"))
+#: One cent, at the column's scale.
+CENT = Decimal(1).scaleb(-_AMOUNT.decimal_places)
+#: The largest amount the column holds.
+LARGEST_AMOUNT = (
+    Decimal(10).scaleb(_AMOUNT.max_digits - _AMOUNT.decimal_places - 1) - CENT
+)
+_CURRENCY = re.compile(CURRENCY_CODE)
 
 
 class StatedPrice(NamedTuple):
@@ -82,6 +94,16 @@ def check_kind(kind: str) -> PurchaseKindValue:
     return cast(PurchaseKindValue, kind)
 
 
+def check_name(name: str) -> str:
+    """The name, or a refusal."""
+    if len(name) > NAME_LENGTH:
+        raise CommandRejected(
+            f"A name of {len(name)} characters exceeds {NAME_LENGTH}.",
+            sentence=LONG_NAME,
+        )
+    return name
+
+
 def check_price(price: StatedPrice) -> StatedPrice:
     """The stated price, or a refusal."""
     amount, currency = price
@@ -92,17 +114,19 @@ def check_price(price: StatedPrice) -> StatedPrice:
                 sentence=CURRENCY_WITHOUT_AMOUNT,
             )
         return price
-    #: The fingerprint refuses a NaN first.
+    if not amount.is_finite():
+        raise CommandRejected(f"Amount {amount} is no number.", sentence=NOT_AN_AMOUNT)
     if amount.is_signed():
         raise CommandRejected(f"Amount {amount} is signed.", sentence=SIGNED_AMOUNT)
+    #: Before quantize, which overflows past 28 digits.
+    if amount > LARGEST_AMOUNT:
+        raise CommandRejected(
+            f"Amount {amount} exceeds {LARGEST_AMOUNT}.", sentence=TOO_LARGE_AMOUNT
+        )
     if amount != amount.quantize(CENT):
         raise CommandRejected(
             f"Amount {amount} holds more than two places.",
             sentence=TOO_PRECISE_AMOUNT,
-        )
-    if amount > LARGEST_AMOUNT:
-        raise CommandRejected(
-            f"Amount {amount} exceeds {LARGEST_AMOUNT}.", sentence=TOO_LARGE_AMOUNT
         )
     if not _CURRENCY.fullmatch(currency):
         raise CommandRejected(
@@ -112,7 +136,7 @@ def check_price(price: StatedPrice) -> StatedPrice:
     return price
 
 
-def _refuse_a_dead_entry(entry: LibraryEntry) -> None:
+def _refuse_under_a_removed_copy(entry: LibraryEntry) -> None:
     #: Under dispatch's lock; the marks cannot move.
     if entry.removed_at is not None:
         raise CommandRejected(
@@ -127,22 +151,44 @@ def _refuse_a_dead_entry(entry: LibraryEntry) -> None:
         )
 
 
-def _refuse_a_live_act(purchase: Purchase) -> None:
-    """Refuse a removed purchase, copy or game."""
+def _refuse_a_hidden_copy(entry: LibraryEntry) -> None:
+    """Refuse a copy no read shows."""
+    _refuse_under_a_removed_copy(entry)
+    refuse_a_removed_release(entry.release)
+
+
+def _refuse_a_removed_purchase(purchase: Purchase) -> None:
     if purchase.removed_at is not None:
         raise CommandRejected(
             f"This library removed purchase {purchase.pk}, so it states no "
             "further facts about it.",
             sentence=PURCHASE_REMOVED,
         )
-    _refuse_a_dead_entry(purchase.entry)
 
 
-def _named_entry(context: CommandContext, entry_id: uuid.UUID) -> LibraryEntry:
-    """A live entry under a live game."""
+def _refuse_a_live_act(purchase: Purchase) -> None:
+    """Refuse a removed purchase, or hidden copy."""
+    _refuse_a_removed_purchase(purchase)
+    _refuse_a_hidden_copy(purchase.entry)
+
+
+def _held_copy(context: CommandContext, entry_id: uuid.UUID) -> LibraryEntry:
+    """A copy every read shows."""
     entry = library_entry_row(context, entry_id)
-    _refuse_a_dead_entry(entry)
+    _refuse_a_hidden_copy(entry)
     return entry
+
+
+def _day_correction(
+    purchase: Purchase, statement: ActStatement
+) -> Sequence[NewEvent] | Unchanged:
+    return correct_opening_endpoint(
+        purchase,
+        PURCHASE_DAY,
+        statement,
+        same_correction=SAME_DAY,
+        before_event=lambda: _refuse_a_live_act(purchase),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,9 +196,9 @@ class RecordPurchase(Command):
     """State a purchase of a copy, new or held."""
 
     command_name: ClassVar[CommandName] = CommandName.PURCHASE_RECORD
-    kind: str
-    entry_id: uuid.UUID | None = None
-    new_entry: EntryStatement | None = None
+    #: A held copy's key, or a new copy.
+    copy: uuid.UUID | EntryStatement
+    kind: PurchaseKindValue
     name: str = ""
     price: StatedPrice = UNKNOWN_PRICE
     note: str = ""
@@ -164,50 +210,49 @@ class RecordPurchase(Command):
         object.__setattr__(self, "note", self.note.strip())
         object.__setattr__(self, "price", self.price.normalized())
         object.__setattr__(self, "purchased", normalized(self.purchased))
-        if self.new_entry is not None:
-            object.__setattr__(self, "new_entry", self.new_entry.normalized())
+        if isinstance(self.copy, EntryStatement):
+            object.__setattr__(self, "copy", self.copy.normalized())
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         kind = check_kind(self.kind)
+        name = check_name(self.name)
         price = check_price(self.price)
-        match self.entry_id, self.new_entry:
-            case uuid.UUID() as entry_id, None:
-                events: list[NewEvent] = []
-                reference = capture_reference(_named_entry(context, entry_id))
-            case None, EntryStatement() as statement:
+        match self.copy:
+            case EntryStatement() as statement:
                 created = entry_creation_events(context, statement)
                 events, reference = created.events, created.reference
-            case _:
-                raise CommandRejected(
-                    "A purchase names entry_id or new_entry, exactly one.",
-                    sentence=ONE_COPY,
-                )
-        events.append(
+            case uuid.UUID() as entry_id:
+                events = ()
+                reference = capture_reference(_held_copy(context, entry_id))
+            case unknown:
+                raise TypeError(f"{unknown!r} names no copy.")
+        return [
+            *events,
             purchase_created(
                 reference,
                 kind=kind,
-                name=self.name,
+                name=name,
                 amount=price.amount,
                 currency=price.currency,
                 note=self.note,
                 purchased=self.purchased.when,
                 purchase_note=self.purchased.note,
-            )
-        )
-        return events
+            ),
+        ]
 
 
 @dataclass(frozen=True, slots=True)
 class DescribePurchase(Command):
-    """State kind, name, price, note, copy, or several."""
+    """State kind, name, price, note, copy, day."""
 
     command_name: ClassVar[CommandName] = CommandName.PURCHASE_DESCRIBE
     purchase_id: uuid.UUID
-    kind: str | None = None
+    kind: PurchaseKindValue | None = None
     name: str | None = None
     price: StatedPrice | None = None
     note: str | None = None
     entry_id: uuid.UUID | None = None
+    purchased: ActStatement | None = None
 
     def __post_init__(self) -> None:
         if self.name is not None:
@@ -216,26 +261,31 @@ class DescribePurchase(Command):
             object.__setattr__(self, "note", self.note.strip())
         if self.price is not None:
             object.__setattr__(self, "price", self.price.normalized())
+        if self.purchased is not None:
+            object.__setattr__(self, "purchased", normalized(self.purchased))
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         kind = None if self.kind is None else check_kind(self.kind)
+        name = None if self.name is None else check_name(self.name)
         price = None if self.price is None else check_price(self.price)
         purchase = library_purchase_row(context, self.purchase_id)
         events: list[NewEvent] = []
         if kind is not None and kind != purchase.kind:
             events.append(purchase_kind_changed(purchase.pk, kind))
-        if self.name is not None and self.name != purchase.name:
-            events.append(purchase_name_changed(purchase.pk, self.name))
+        if name is not None and name != purchase.name:
+            events.append(purchase_name_changed(purchase.pk, name))
         if price is not None and price != (purchase.amount, purchase.currency):
             events.append(
-                purchase_amount_changed(
+                purchase_price_changed(
                     purchase.pk, amount=price.amount, currency=price.currency
                 )
             )
         if self.note is not None and self.note != purchase.note:
             events.append(purchase_note_changed(purchase.pk, self.note))
         if self.entry_id is not None and self.entry_id != purchase.entry_id:
-            entry = _named_entry(context, self.entry_id)
+            #: The purchase's own sentence names the remedy.
+            _refuse_a_live_act(purchase)
+            entry = _held_copy(context, self.entry_id)
             if entry.player_game_id != purchase.entry.player_game_id:
                 raise CommandRejected(
                     f"Entry {entry.pk} records player game {entry.player_game_id}, "
@@ -244,6 +294,10 @@ class DescribePurchase(Command):
                     sentence=ENTRY_OF_ANOTHER_GAME,
                 )
             events.append(purchase_entry_changed(purchase.pk, capture_reference(entry)))
+        if self.purchased is not None:
+            correction = _day_correction(purchase, self.purchased)
+            if not isinstance(correction, Unchanged):
+                events.extend(correction)
         if not events:
             return Unchanged("This purchase already states that.")
         _refuse_a_live_act(purchase)
@@ -251,7 +305,7 @@ class DescribePurchase(Command):
 
 
 @dataclass(frozen=True, slots=True)
-class CorrectPurchaseDay(Command):
+class CorrectPurchase(Command):
     """Restate the day of the purchase."""
 
     command_name: ClassVar[CommandName] = CommandName.PURCHASE_CORRECT_PURCHASE
@@ -263,13 +317,7 @@ class CorrectPurchaseDay(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         purchase = library_purchase_row(context, self.purchase_id)
-        return correct_opening_endpoint(
-            purchase,
-            PURCHASE_DAY,
-            self.statement,
-            same_correction="This correction states the day the purchase states.",
-            before_event=partial(_refuse_a_live_act, purchase),
-        )
+        return _day_correction(purchase, self.statement)
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,7 +331,7 @@ class RemovePurchase(Command):
         purchase = library_purchase_row(context, self.purchase_id)
         if purchase.removed_at is not None:
             return Unchanged(f"This library already removed purchase {purchase.pk}.")
-        _refuse_a_dead_entry(purchase.entry)
+        _refuse_under_a_removed_copy(purchase.entry)
         return [purchase_removed(purchase.pk)]
 
 
@@ -298,5 +346,6 @@ class RestorePurchase(Command):
         purchase = library_purchase_row(context, self.purchase_id)
         if purchase.removed_at is None:
             return Unchanged(f"Purchase {purchase.pk} is already in this library.")
-        _refuse_a_dead_entry(purchase.entry)
+        #: Restored under a removed release, nothing shows.
+        _refuse_a_hidden_copy(purchase.entry)
         return [purchase_restored(purchase.pk)]

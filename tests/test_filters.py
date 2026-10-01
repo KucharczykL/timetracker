@@ -699,7 +699,7 @@ class TestChoiceCriterionAgainstDB:
 
 
 class TestPurchaseGamesIncludesAllAgainstDB:
-    """INCLUDES_ALL on the many-to-many ``Purchase.games`` should match only
+    """INCLUDES_ALL on the many-to-many ``LegacyPurchase.games`` should match only
     purchases linked to *all* of the given games — Stash's ``includes all``."""
 
     def _seed(self):
@@ -826,7 +826,7 @@ class TestPurchaseGamesIncludesAllAgainstDB:
 
 
 class TestPurchaseGamesIncludesOnlyAgainstDB:
-    """INCLUDES_ONLY on the many-to-many ``Purchase.games`` should match only
+    """INCLUDES_ONLY on the many-to-many ``LegacyPurchase.games`` should match only
     purchases linked to *exactly* the given games — Stash's ``only`` mode,
     which INCLUDES_ALL does not provide (it includes supersets)."""
 

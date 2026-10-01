@@ -2,32 +2,35 @@
 
 import uuid
 from decimal import Decimal
+from typing import Any, cast
 
 import pytest
 from entries import record_entry, remove_entry
 from purchases import record_purchase, remove_purchase, restore_purchase
 
 from games.commands.endpoint import ActStatement
-from games.commands.libraryentry import EntryStatement, RemoveEntry
-from games.commands.playergame import RemovePlayerGame
+from games.commands.libraryentry import RELEASE_REMOVED, EntryStatement, RemoveEntry
+from games.commands.playergame import RemovePlayerGame, RestorePlayerGame
 from games.commands.purchase import (
     AMOUNT_WITHOUT_CURRENCY,
     CURRENCY_WITHOUT_AMOUNT,
     ENTRY_OF_ANOTHER_GAME,
     ENTRY_REMOVED,
-    ONE_COPY,
+    LONG_NAME,
+    NOT_AN_AMOUNT,
     PLAYER_GAME_REMOVED,
     PURCHASE_REMOVED,
     SIGNED_AMOUNT,
     TOO_LARGE_AMOUNT,
     TOO_PRECISE_AMOUNT,
     UNKNOWN_KIND,
-    CorrectPurchaseDay,
+    CorrectPurchase,
     DescribePurchase,
     RecordPurchase,
     RemovePurchase,
     RestorePurchase,
     StatedPrice,
+    check_price,
 )
 from games.events.dispatch import (
     CommandOutcome,
@@ -38,6 +41,8 @@ from games.events.dispatch import (
     dispatch,
 )
 from games.models import Game, LibraryEntry, LibraryEvent, Purchase
+from games.reads.referrers import PURCHASE_RECORDED
+from games.removal import remove
 from timetracker.temporal import TemporalValue
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
@@ -97,7 +102,7 @@ def _batch_types(result: CommandResult) -> list[str]:
 
 
 def _record(entry, **facts) -> RecordPurchase:
-    return RecordPurchase(kind="game", entry_id=entry.pk, **facts)
+    return RecordPurchase(copy=entry.pk, kind="game", **facts)
 
 
 # --- recording ------------------------------------------------------------
@@ -118,8 +123,7 @@ def test_recording_on_a_held_copy_writes_one_event(owned_library, entry):
     assert _batch_types(result) == ["library.purchase.created"]
     purchase = Purchase.objects.get(library=owned_library)
     created = LibraryEvent.objects.get(aggregate_id=purchase.pk)
-    assert created.payload["amount"] == "12.50"
-    assert created.payload["currency"] == "EUR"
+    assert created.payload["price"] == {"amount": "12.50", "currency": "EUR"}
     assert created.payload["entry"]["id"] == str(entry.pk)
     assert (purchase.entry, purchase.kind, purchase.name, purchase.note) == (
         entry,
@@ -147,7 +151,9 @@ def test_a_new_copy_on_a_tracked_game_is_recorded_in_the_same_dispatch(
         owned_library,
         RecordPurchase(
             kind="game",
-            new_entry=EntryStatement(graph.release.pk, "owned", "physical"),
+            copy=EntryStatement(
+                release_id=graph.release.pk, access="owned", format="physical"
+            ),
         ),
     )
 
@@ -164,7 +170,10 @@ def test_a_new_copy_on_an_untracked_game_tracks_it(owned_library, graph):
     result = _dispatch(
         owned_library,
         RecordPurchase(
-            kind="game", new_entry=EntryStatement(graph.release.pk, "owned", "digital")
+            kind="game",
+            copy=EntryStatement(
+                release_id=graph.release.pk, access="owned", format="digital"
+            ),
         ),
     )
 
@@ -176,18 +185,6 @@ def test_a_new_copy_on_an_untracked_game_tracks_it(owned_library, graph):
     ]
     purchase = Purchase.objects.get(library=owned_library)
     assert purchase.entry.player_game.game == graph.game
-
-
-@pytest.mark.parametrize("both", (True, False))
-def test_one_copy_is_named(owned_library, graph, entry, both):
-    statement = EntryStatement(graph.release.pk, "owned", "digital")
-    command = RecordPurchase(
-        kind="game",
-        entry_id=entry.pk if both else None,
-        new_entry=statement if both else None,
-    )
-
-    assert _refused(owned_library, command).sentence == ONE_COPY
 
 
 def test_a_removed_copy_is_refused(owned_library, entry):
@@ -208,7 +205,7 @@ def test_another_librarys_copy_is_absent(second_library, entry):
 
 
 def test_an_unknown_kind_is_refused(owned_library, entry):
-    command = RecordPurchase(kind="loot_box", entry_id=entry.pk)
+    command = RecordPurchase(copy=entry.pk, kind=cast(Any, "loot_box"))
 
     assert _refused(owned_library, command).sentence == UNKNOWN_KIND
 
@@ -220,6 +217,11 @@ def test_an_unknown_kind_is_refused(owned_library, entry):
         (StatedPrice(Decimal("-0.00"), "EUR"), SIGNED_AMOUNT),
         (StatedPrice(Decimal("12.345"), "EUR"), TOO_PRECISE_AMOUNT),
         (StatedPrice(Decimal("10000000000.00"), "EUR"), TOO_LARGE_AMOUNT),
+        (StatedPrice(Decimal("1E+30"), "EUR"), TOO_LARGE_AMOUNT),
+        (
+            StatedPrice(Decimal("123456789012345678901234567890.00"), "EUR"),
+            TOO_LARGE_AMOUNT,
+        ),
         (StatedPrice(Decimal("12.00"), ""), AMOUNT_WITHOUT_CURRENCY),
         (StatedPrice(Decimal("12.00"), "EURO"), AMOUNT_WITHOUT_CURRENCY),
         (StatedPrice(None, "EUR"), CURRENCY_WITHOUT_AMOUNT),
@@ -228,6 +230,31 @@ def test_an_unknown_kind_is_refused(owned_library, entry):
 def test_a_price_rule_is_refused(owned_library, entry, price, sentence):
     assert _refused(owned_library, _record(entry, price=price)).sentence == sentence
     assert not Purchase.objects.exists()
+
+
+def test_an_infinite_amount_is_no_number():
+    with pytest.raises(CommandRejected) as refused:
+        check_price(StatedPrice(Decimal("Infinity"), "EUR"))
+
+    assert refused.value.sentence == NOT_AN_AMOUNT
+
+
+def test_a_long_name_is_refused_on_record_and_describe(owned_library, entry):
+    long_name = "x" * 256
+    purchase = record_purchase(entry)
+
+    recorded = _refused(owned_library, _record(entry, name=long_name))
+    described = _refused(
+        owned_library, DescribePurchase(purchase_id=purchase.pk, name=long_name)
+    )
+
+    assert recorded.sentence == described.sentence == LONG_NAME
+
+
+def test_a_copy_under_a_removed_release_is_refused(owned_library, graph, entry):
+    remove(graph.release)
+
+    assert _refused(owned_library, _record(entry)).sentence == RELEASE_REMOVED
 
 
 def test_trailing_zeros_and_the_largest_amount_are_admitted(owned_library, entry):
@@ -272,7 +299,7 @@ def test_each_differing_fact_is_one_event(owned_library, entry):
     assert _event_types(purchase)[1:] == [
         "library.purchase.kind_changed",
         "library.purchase.name_changed",
-        "library.purchase.amount_changed",
+        "library.purchase.price_changed",
         "library.purchase.note_changed",
     ]
     purchase.refresh_from_db()
@@ -308,6 +335,49 @@ def test_a_copy_of_the_same_game_moves_the_purchase(owned_library, graph, entry)
     purchase.refresh_from_db()
     assert purchase.entry == other
     assert _event_types(purchase)[-1] == "library.purchase.entry_changed"
+
+
+def test_a_move_onto_a_removed_copy_is_refused(owned_library, graph, entry):
+    purchase = record_purchase(entry)
+    other = remove_entry(record_entry(owned_library, graph.release))
+
+    refused = _refused(
+        owned_library, DescribePurchase(purchase_id=purchase.pk, entry_id=other.pk)
+    )
+
+    assert refused.sentence == ENTRY_REMOVED
+    purchase.refresh_from_db()
+    assert purchase.entry == entry
+
+
+def test_a_removed_purchase_names_itself_before_the_copy(
+    owned_library, stated_graph, entry
+):
+    purchase = remove_purchase(record_purchase(entry))
+    elsewhere = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+    other = record_entry(owned_library, elsewhere.release)
+
+    refused = _refused(
+        owned_library, DescribePurchase(purchase_id=purchase.pk, entry_id=other.pk)
+    )
+
+    assert refused.sentence == PURCHASE_REMOVED
+
+
+def test_a_description_and_a_day_are_one_dispatch(owned_library, entry):
+    purchase = record_purchase(entry)
+
+    result = _dispatch(
+        owned_library,
+        DescribePurchase(
+            purchase_id=purchase.pk, name="Deluxe", purchased=ActStatement(JUNE, "")
+        ),
+    )
+
+    assert _batch_types(result) == [
+        "library.purchase.name_changed",
+        "library.purchase.purchase_corrected",
+    ]
 
 
 def test_a_copy_of_another_game_is_refused(owned_library, stated_graph, entry):
@@ -357,6 +427,17 @@ def test_another_librarys_purchase_is_absent(second_library, entry):
         _dispatch(second_library, DescribePurchase(purchase_id=purchase.pk, name="x"))
 
 
+def test_a_purchase_whose_copy_drifted_is_unreadable(
+    owned_library, second_library, stated_graph, entry
+):
+    purchase = record_purchase(entry)
+    theirs = stated_graph(Game(name="Hades", library=second_library), second_library)
+    LibraryEntry.objects.filter(pk=entry.pk).update(release=theirs.release)
+
+    with pytest.raises(RowUnreadable):
+        _dispatch(owned_library, DescribePurchase(purchase_id=purchase.pk, name="x"))
+
+
 def test_a_purchase_naming_another_librarys_copy_is_unreadable(
     owned_library, second_library, stated_graph, entry
 ):
@@ -377,11 +458,11 @@ def test_a_correction_moves_the_day(owned_library, entry):
 
     _dispatch(
         owned_library,
-        CorrectPurchaseDay(purchase_id=purchase.pk, statement=ActStatement(JUNE, "n")),
+        CorrectPurchase(purchase_id=purchase.pk, statement=ActStatement(JUNE, "n")),
     )
     same = _dispatch(
         owned_library,
-        CorrectPurchaseDay(purchase_id=purchase.pk, statement=ActStatement(JUNE, "n")),
+        CorrectPurchase(purchase_id=purchase.pk, statement=ActStatement(JUNE, "n")),
     )
 
     purchase.refresh_from_db()
@@ -395,7 +476,7 @@ def test_a_correction_of_a_removed_purchase_is_refused(owned_library, entry):
 
     refused = _refused(
         owned_library,
-        CorrectPurchaseDay(purchase_id=purchase.pk, statement=ActStatement(JUNE, "")),
+        CorrectPurchase(purchase_id=purchase.pk, statement=ActStatement(JUNE, "")),
     )
 
     assert refused.sentence == PURCHASE_REMOVED
@@ -417,11 +498,37 @@ def test_removal_and_restore_answer_unchanged_on_a_repeat(owned_library, entry):
 
 def test_a_restore_under_a_removed_copy_is_refused(owned_library, entry):
     purchase = remove_purchase(record_purchase(entry))
-    LibraryEntry.objects.filter(pk=entry.pk).update(removed_at=purchase.removed_at)
+    remove_entry(entry)
 
     refused = _refused(owned_library, RestorePurchase(purchase_id=purchase.pk))
 
     assert refused.sentence == ENTRY_REMOVED
+
+
+def test_a_restore_under_a_removed_release_is_refused(owned_library, graph, entry):
+    purchase = remove_purchase(record_purchase(entry))
+    remove(graph.release)
+
+    refused = _refused(owned_library, RestorePurchase(purchase_id=purchase.pk))
+
+    assert refused.sentence == RELEASE_REMOVED
+
+
+def test_a_removed_game_holds_its_purchases_still(owned_library, entry):
+    purchase = record_purchase(entry)
+    game_id = entry.player_game.game_id
+    _dispatch(owned_library, RemovePlayerGame(game_id=game_id))
+
+    removal = _refused(owned_library, RemovePurchase(purchase_id=purchase.pk))
+    correction = _refused(
+        owned_library,
+        CorrectPurchase(purchase_id=purchase.pk, statement=ActStatement(JUNE, "")),
+    )
+    _dispatch(owned_library, RestorePlayerGame(game_id=game_id))
+    again = _dispatch(owned_library, RemovePurchase(purchase_id=purchase.pk))
+
+    assert removal.sentence == correction.sentence == PLAYER_GAME_REMOVED
+    assert again.outcome is CommandOutcome.APPENDED
 
 
 def test_a_live_purchase_keeps_its_copy(owned_library, entry):
@@ -431,14 +538,20 @@ def test_a_live_purchase_keeps_its_copy(owned_library, entry):
     remove_purchase(purchase)
     _dispatch(owned_library, RemoveEntry(entry_id=entry.pk))
 
-    assert refused.sentence == "A purchase names this copy. Remove the purchase first."
+    assert refused.sentence == PURCHASE_RECORDED
     entry.refresh_from_db()
     assert entry.removed_at is not None
 
 
-def test_alive_reads_the_copy_and_the_game(owned_library, entry):
+@pytest.mark.parametrize("mark", ("copy", "game"))
+def test_alive_reads_the_copy_and_the_game(owned_library, entry, mark):
     purchase = record_purchase(entry)
     assert list(Purchase.objects.alive()) == [purchase]
 
-    LibraryEntry.objects.filter(pk=entry.pk).update(removed_at=purchase.created_at)
+    if mark == "copy":
+        #: A live purchase blocks RemoveEntry.
+        LibraryEntry.objects.filter(pk=entry.pk).update(removed_at=purchase.created_at)
+    else:
+        _dispatch(owned_library, RemovePlayerGame(game_id=entry.player_game.game_id))
+
     assert not Purchase.objects.alive().exists()

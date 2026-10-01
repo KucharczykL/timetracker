@@ -42,19 +42,6 @@ from games.writes.endpoint import Act, Correct, Nothing, Void, endpoint_move
 SUBJECT: SubjectNoun = "copy"
 
 
-class EntryDraft(NamedTuple):
-    """What a creation states."""
-
-    release_id: uuid.UUID
-    access: str
-    format: str
-    note: str
-    acquired: ActStatement
-
-    def statement(self) -> EntryStatement:
-        return EntryStatement(*self)
-
-
 class RecordedEntry(NamedTuple):
     """What a creation answers."""
 
@@ -86,7 +73,7 @@ def _dispatch(
 
 def record_entry(
     actor: User,
-    draft: EntryDraft,
+    draft: EntryStatement,
     *,
     correlation_id: uuid.UUID,
     idempotency_key: IdempotencyKey | None = None,

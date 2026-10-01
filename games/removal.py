@@ -103,7 +103,7 @@ def _stamp(instance: Model, value: datetime | None) -> None:
         #: The row says which act to undo.
         previous_mark = rows.values_list("removed_at", flat=True).first()
         #: An update, not a save.
-        #: Game, Platform, Session and Purchase
+        #: Game, Platform, Release and LegacyPurchase
         #: each override save() to call clean(),
         #: and a stamp must not revalidate
         #: a row a user is taking out.

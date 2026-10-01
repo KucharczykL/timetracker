@@ -312,9 +312,9 @@ class GameFilter(OperatorFilter):
     #: A person reads "copy", never "entry".
     labels: ClassVar[dict[str, str]] = {"entry_count": "Copies"}
 
-    # Two overrides below (PurchaseFilter, DeviceFilter) spell this return type
-    # ``builtins.type[...]``: those filters declare a field named ``type`` that
-    # shadows the builtin in annotation scope, so a bare ``type[Purchase]`` fails
+    # Two overrides below (LegacyPurchaseFilter, DeviceFilter) spell this return
+    # type ``builtins.type[...]``: those filters declare a field named ``type``
+    # that shadows the builtin in annotation scope, so a bare ``type[LegacyPurchase]`` fails
     # mypy ("Variable ... .type is not valid as a type"). The unshadowed filters
     # use the plain builtin.
     @classmethod
@@ -585,7 +585,7 @@ class PlayerSessionFilter(OperatorFilter):
 
 @dataclass
 class LegacyPurchaseFilter(OperatorFilter):
-    """Filter for the Purchase model."""
+    """Filter for the LegacyPurchase model."""
 
     AND: list[LegacyPurchaseFilter] = field(default_factory=list)
     OR: list[LegacyPurchaseFilter] = field(default_factory=list)

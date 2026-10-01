@@ -7,8 +7,9 @@ from tracked_games import create_tracked_game
 
 from games.catalog_writes import EditionState, ReleaseState, state_catalog_graph
 from games.commands.endpoint import ActStatement
+from games.commands.libraryentry import EntryStatement
 from games.models import Game, LibraryEntry, Platform, Release, UserLibrary
-from games.writes.libraryentry import EntryDraft, record_entry
+from games.writes.libraryentry import record_entry
 from games.writes.playergame import new_correlation_id
 
 
@@ -48,7 +49,7 @@ def copies(e2e_user, e2e_library) -> list[LibraryEntry]:
         release = _release(e2e_library, name, ps5)
         answer = record_entry(
             e2e_user,
-            EntryDraft(
+            EntryStatement(
                 release_id=release.pk,
                 access=access,
                 format="digital",

@@ -44,6 +44,7 @@ from common.filter_execution import execute_filter, regex_timeout_api
 from games.api_creation import RowRefused, created_by_form, refusal_sentence
 from games.catalog_release import release_on_platform
 from games.commands.endpoint import ActStatement, WayActStatement
+from games.commands.libraryentry import EntryStatement
 from games.commands.playersession import (
     CorrectedTiming,
     DurationOnlyTiming,
@@ -60,6 +61,7 @@ from games.events.dispatch import (
 )
 from games.events.idempotency import IdempotencyKey
 from games.events.libraryentry import EntryWayValue
+from games.events.purchase import PurchaseKindValue
 from games.filters import (
     MODE_PARSERS,
     GameFilter,
@@ -87,7 +89,6 @@ from games.models import (
     Playthrough,
     PlaythroughKind,
     PurchaseConversionState,
-    PurchaseKind,
     UserLibrary,
 )
 from games.ownership import owned_or_404
@@ -116,7 +117,6 @@ from games.writes.answers import CommandFailed, answered
 from games.writes.device import create_device as create_device_row
 from games.writes.libraryentry import (
     KEEP,
-    EntryDraft,
     Keep,
     record_entry,
     restate_entry,
@@ -1407,7 +1407,7 @@ def create_entry(
     try:
         recorded = record_entry(
             actor,
-            EntryDraft(
+            EntryStatement(
                 release_id=payload.release_id,
                 access=payload.access.value,
                 format=payload.format.value,
@@ -1516,7 +1516,7 @@ class PurchaseIn(Schema):
     #: A held copy, or a new one.
     entry_id: UUIDv7 | None = None
     entry: EntryIn | None = None
-    kind: PurchaseKind
+    kind: PurchaseKindValue
     name: str = ""
     #: No constraint: the command states the rule.
     amount: Decimal | None = None
@@ -1531,16 +1531,19 @@ class PurchaseIn(Schema):
             raise ValueError(ONE_COPY_KEY)
         return self
 
-    def stated_copy(self) -> uuid.UUID | EntryDraft:
-        if self.entry is None:
-            return cast(uuid.UUID, self.entry_id)
-        return EntryDraft(
-            release_id=self.entry.release_id,
-            access=self.entry.access.value,
-            format=self.entry.format.value,
-            note=self.entry.note,
-            acquired=ActStatement(self.entry.acquired, self.entry.acquisition_note),
-        )
+    def stated_copy(self) -> uuid.UUID | EntryStatement:
+        match self.entry_id, self.entry:
+            case uuid.UUID() as entry_id, None:
+                return entry_id
+            case None, EntryIn() as entry:
+                return EntryStatement(
+                    release_id=entry.release_id,
+                    access=entry.access.value,
+                    format=entry.format.value,
+                    note=entry.note,
+                    acquired=ActStatement(entry.acquired, entry.acquisition_note),
+                )
+        raise TypeError("one_copy admits exactly one copy.")
 
 
 class PurchaseUpdate(Schema):
@@ -1548,7 +1551,7 @@ class PurchaseUpdate(Schema):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: PurchaseKind | None = None
+    kind: PurchaseKindValue | None = None
     name: str | None = None
     amount: Decimal | None = None
     currency: str | None = None
@@ -1559,7 +1562,7 @@ class PurchaseUpdate(Schema):
 
     @model_validator(mode="after")
     def a_named_key_states(self) -> PurchaseUpdate:
-        """Null states nothing here, so it is refused."""
+        """Null refused except amount and purchased."""
         stated = self.model_fields_set
         if ("amount" in stated) != ("currency" in stated):
             raise ValueError(AMOUNT_TOGETHER)
@@ -1570,6 +1573,17 @@ class PurchaseUpdate(Schema):
                 raise ValueError(f"{key} states a value, or is left out.")
         return self
 
+    def stated_price(self) -> StatedPrice | None:
+        if "amount" not in self.model_fields_set:
+            return None
+        #: The validator states both or neither.
+        return StatedPrice(self.amount, cast(str, self.currency))
+
+    def stated_day(self) -> ActStatement | None:
+        if "purchased" not in self.model_fields_set:
+            return None
+        return ActStatement(self.purchased, cast(str, self.purchase_note))
+
 
 class PurchaseOut(Schema):
     """The projection row, with its game."""
@@ -1578,7 +1592,7 @@ class PurchaseOut(Schema):
     entry_id: UUIDv7
     game: str = Field(..., alias="entry.player_game.game.name")
     game_id: UUIDv7 = Field(..., alias="entry.player_game.game_id")
-    kind: str
+    kind: PurchaseKindValue
     name: str
     amount: Decimal | None = None
     currency: str
@@ -1597,7 +1611,7 @@ def list_purchases(
     limit: int = Query(100, ge=0),
     offset: int = Query(0, ge=0),
 ):
-    """Live purchases, oldest first; `limit=0` unbounded."""
+    """Live purchases, first recorded first; `limit=0` unbounded."""
     library = cast(User, request.user).library
     purchases = readable_purchases(library).order_by("created_at", "id")[offset:]
     return purchases if limit == 0 else purchases[:limit]
@@ -1618,13 +1632,13 @@ def create_purchase(
     actor = cast(User, request.user)
     library = actor.library
     stated_key = _stated_idempotency_key(idempotency_key)
-    #: The copy resolves inside `build`, behind the key.
+    #: The copy resolves behind the key.
     try:
         recorded = record_purchase(
             actor,
             PurchaseDraft(
                 copy=payload.stated_copy(),
-                kind=payload.kind.value,
+                kind=payload.kind,
                 name=payload.name,
                 price=StatedPrice(payload.amount, payload.currency),
                 note=payload.note,
@@ -1635,7 +1649,7 @@ def create_purchase(
         )
     except CommandFailed as failure:
         _answered_or_http(failure)
-    #: Read before the message: a mark can lose the row.
+    #: Read first; a mark can hide it.
     row = owned_or_404(readable_purchases(library), library, pk=recorded.purchase_id)
     messages.success(
         request,
@@ -1651,31 +1665,21 @@ def partial_update_purchase(request, purchase_id: UUIDv7, payload: PurchaseUpdat
     actor = cast(User, request.user)
     library = actor.library
     purchase = owned_or_404(readable_purchases(library), library, id=purchase_id)
-    stated = payload.model_fields_set
     try:
         changed = restate_purchase(
             actor,
             purchase,
-            kind=None if payload.kind is None else payload.kind.value,
+            kind=payload.kind,
             name=payload.name,
-            #: The validator states both or neither.
-            price=(
-                StatedPrice(payload.amount, payload.currency or "")
-                if "amount" in stated
-                else None
-            ),
+            price=payload.stated_price(),
             note=payload.note,
             entry_id=payload.entry_id,
-            purchased=(
-                ActStatement(payload.purchased, payload.purchase_note or "")
-                if "purchased" in stated
-                else KEEP
-            ),
+            purchased=payload.stated_day(),
             correlation_id=new_correlation_id(),
         )
     except CommandFailed as failure:
         _answered_or_http(failure)
-    #: Read before the message: a mark can lose the row.
+    #: Read first; a mark can hide it.
     updated = owned_or_404(readable_purchases(library), library, pk=purchase.pk)
     if changed:
         messages.success(request, "Purchase updated.")

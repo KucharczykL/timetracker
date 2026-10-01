@@ -7,21 +7,25 @@ from typing import ClassVar
 from games.events.envelope import RecordedEvent
 from games.events.projection import HandlerMap, Projector, ProjectorFamily
 from games.events.purchase import (
-    PURCHASE_AMOUNT_CHANGED,
     PURCHASE_CORRECTED,
     PURCHASE_CREATED,
     PURCHASE_ENTRY_CHANGED,
     PURCHASE_KIND_CHANGED,
     PURCHASE_NAME_CHANGED,
     PURCHASE_NOTE_CHANGED,
+    PURCHASE_PRICE_CHANGED,
     PURCHASE_REMOVED,
     PURCHASE_RESTORED,
+    PricePayload,
 )
 from games.models import PURCHASE_DAY_COLUMNS, Purchase
 
 
-def _amount(text: str | None) -> Decimal | None:
-    return None if text is None else Decimal(text)
+def _price_columns(price: PricePayload | None) -> dict[str, object]:
+    """Amount and currency; unknown is null, blank."""
+    if price is None:
+        return {"amount": None, "currency": ""}
+    return {"amount": Decimal(price["amount"]), "currency": price["currency"]}
 
 
 class Purchases(Projector):
@@ -38,9 +42,8 @@ class Purchases(Projector):
             entry_id=uuid.UUID(payload["entry"]["id"]),
             kind=payload["kind"],
             name=payload["name"],
-            amount=_amount(payload["amount"]),
-            currency=payload["currency"],
             note=payload["note"],
+            **_price_columns(payload["price"]),
             created_at=event.recorded_at,
             **self.opening_columns(
                 PURCHASE_DAY_COLUMNS, event, note=payload["purchase_note"]
@@ -56,13 +59,8 @@ class Purchases(Projector):
     def _note_changed(self, event: RecordedEvent) -> None:
         self.amend(Purchase, event, note=event.payload["note"])
 
-    def _amount_changed(self, event: RecordedEvent) -> None:
-        self.amend(
-            Purchase,
-            event,
-            amount=_amount(event.payload["amount"]),
-            currency=event.payload["currency"],
-        )
+    def _price_changed(self, event: RecordedEvent) -> None:
+        self.amend(Purchase, event, **_price_columns(event.payload["price"]))
 
     def _entry_changed(self, event: RecordedEvent) -> None:
         self.amend(Purchase, event, entry_id=uuid.UUID(event.payload["entry"]["id"]))
@@ -81,7 +79,7 @@ class Purchases(Projector):
         PURCHASE_KIND_CHANGED: _kind_changed,
         PURCHASE_NAME_CHANGED: _name_changed,
         PURCHASE_NOTE_CHANGED: _note_changed,
-        PURCHASE_AMOUNT_CHANGED: _amount_changed,
+        PURCHASE_PRICE_CHANGED: _price_changed,
         PURCHASE_ENTRY_CHANGED: _entry_changed,
         PURCHASE_CORRECTED: _purchase_corrected,
         PURCHASE_REMOVED: _removed,

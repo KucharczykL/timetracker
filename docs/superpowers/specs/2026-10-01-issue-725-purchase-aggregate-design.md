@@ -36,36 +36,41 @@ CHECK constraints hold the kind, the sign and the currency rule.
 ## Events
 
 Nine events: `created`, `kind_changed`, `name_changed`, `note_changed`,
-`amount_changed`, `entry_changed`, `purchase_corrected`, `removed`,
-`restored`. An amount is text with two places and no sign (`"12.50"`),
-or null. A float never enters a payload. `amount_changed` carries the
-amount and the currency together. `entry` is a reference of kind
+`price_changed`, `entry_changed`, `purchase_corrected`, `removed`,
+`restored`. A price is one object: an amount as text with two places and
+no sign (`"12.50"`), and a currency. An unknown price is null. A float
+never enters a payload. A name is no longer than its column. `entry` is a reference of kind
 `libraryentry`.
 
 ## Commands
 
-All commands resolve through `library_purchase_row`. A key that the
-library does not hold is `RowNotHeld`. A purchase that names the entry of
+Every command but `RecordPurchase` resolves through
+`library_purchase_row`. A key that the library does not hold is `RowNotHeld`. A purchase that names the entry of
 another library is `RowUnreadable`.
 
-- `RecordPurchase` names `entry_id` or `new_entry`, never both. A new
-  entry is created in the same dispatch, after the tracking events if
+- `RecordPurchase` names one `copy`: a held entry's key, or an
+  `EntryStatement`. A new entry is created in the same dispatch, after the tracking events if
   the game is not tracked.
-- `DescribePurchase` writes one event for each changed fact. A new entry
-  must belong to the same game.
-- `CorrectPurchaseDay` corrects the opening endpoint.
+- `DescribePurchase` writes one event for each changed fact, the day
+  included. A new entry must belong to the same game.
+- `CorrectPurchase` corrects the opening endpoint.
 - `RemovePurchase` and `RestorePurchase` move the mark.
 
-`check_price` refuses a signed amount, a third decimal place and an
-amount above `LARGEST_AMOUNT`. It requires a currency exactly where an
-amount is stated. A command does not round an amount. A live purchase
-prevents the removal of its entry.
+`check_price` refuses a non-number, a signed amount, an amount above
+`LARGEST_AMOUNT` and a third decimal place. It requires a currency
+exactly where an amount is stated. `LARGEST_AMOUNT` comes from the
+column. A command does not round an amount.
+
+A command refuses a copy that a removed Release hides, because no read
+shows a purchase on it. A live purchase prevents the removal of its
+entry.
 
 ## API
 
 `/api/purchases/` has `GET /`, `GET /{id}`, `POST /` and `PATCH /{id}`.
 A body refuses an unknown key. `PATCH` states `amount` with `currency`,
-and `purchased` with `purchase_note`; else it answers 422. A price that
+and `purchased` with `purchase_note`; else it answers 422. A `PATCH` is
+one dispatch of `DescribePurchase`. A price that
 `check_price` refuses answers 409.
 
 ## Limits

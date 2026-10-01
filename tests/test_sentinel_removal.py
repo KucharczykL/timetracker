@@ -63,7 +63,7 @@ def test_platform_delete_sets_null_and_keeps_purchases(owned_library):
 
     platform.delete()
 
-    # The old CASCADE on Purchase.platform would have destroyed the purchase
+    # The old CASCADE on LegacyPurchase.platform would have destroyed the purchase
     # (and its price history) here.
     assert LegacyPurchase.objects.count() == 1
     game.refresh_from_db()

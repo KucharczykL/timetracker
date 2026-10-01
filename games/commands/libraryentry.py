@@ -190,7 +190,7 @@ def _visible_release(context: CommandContext, release_id: uuid.UUID) -> Release:
     )
 
 
-def _refuse_a_removed_release(release: Release) -> None:
+def refuse_a_removed_release(release: Release) -> None:
     """Refuse a Release a mark hides."""
     if not Release.objects.alive().filter(pk=release.pk).exists():
         raise CommandRejected(
@@ -274,27 +274,26 @@ class EntryStatement(NamedTuple):
 
 
 class CreatedEntry(NamedTuple):
-    """The events stating a copy, and its names."""
+    """A copy's events and its reference."""
 
-    events: list[NewEvent]
-    entry_id: uuid.UUID
+    events: tuple[NewEvent, ...]
     reference: Reference
 
 
 def entry_creation_events(
     context: CommandContext, statement: EntryStatement
 ) -> CreatedEntry:
-    """A copy's creation, after tracking an untracked game."""
+    """A copy's creation; tracks an untracked game."""
     access = check_access(statement.access)
     format = check_format(statement.format)
     release = _visible_release(context, statement.release_id)
-    _refuse_a_removed_release(release)
+    refuse_a_removed_release(release)
     game = release.edition.game
     tracked = PlayerGame.objects.filter(library=context.library, game=game).first()
-    events: list[NewEvent] = []
+    tracking: list[NewEvent] = []
     if tracked is None:
-        events = tracking_events(game)
-        tracked_id = events[0].aggregate_id
+        tracking = tracking_events(game)
+        tracked_id = tracking[0].aggregate_id
     elif tracked.removed_at is not None:
         raise CommandRejected(
             f"This library removed {game.name}, so no copy of it is recorded "
@@ -312,10 +311,8 @@ def entry_creation_events(
         acquired=statement.acquired.when,
         acquisition_note=statement.acquired.note,
     )
-    events.append(created)
     return CreatedEntry(
-        events,
-        created.aggregate_id,
+        (*tracking, created),
         entry_reference(
             created.aggregate_id, game_name=game.name, access=access, format=format
         ),
@@ -340,7 +337,11 @@ class RecordEntry(Command):
 
     def build(self, context: CommandContext) -> Sequence[NewEvent] | Unchanged:
         statement = EntryStatement(
-            self.release_id, self.access, self.format, self.note, self.acquired
+            release_id=self.release_id,
+            access=self.access,
+            format=self.format,
+            note=self.note,
+            acquired=self.acquired,
         )
         return entry_creation_events(context, statement).events
 
@@ -377,7 +378,7 @@ class DescribeEntry(Command):
         if self.note is not None and self.note != entry.note:
             events.append(libraryentry_note_changed(entry.pk, self.note))
         if release is not None and release.pk != entry.release_id:
-            _refuse_a_removed_release(release)
+            refuse_a_removed_release(release)
             if release.edition.game_id != entry.player_game.game_id:
                 raise CommandRejected(
                     f"Release {release.pk} belongs to game "
@@ -452,7 +453,7 @@ class RestoreEntry(Command):
         if entry.removed_at is None:
             return Unchanged(f"Entry {entry.pk} is already in this library.")
         _refuse_under_a_removed_game(entry)
-        _refuse_a_removed_release(entry.release)
+        refuse_a_removed_release(entry.release)
         return [libraryentry_restored(entry.pk)]
 
 

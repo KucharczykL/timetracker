@@ -99,9 +99,9 @@ def test_uuid_is_absent_from_purchase_form_fields():
 
 
 def test_no_model_schema_generates_fields_from_purchase():
-    """The "no API leak" argument rests on no `ModelSchema` covering `Purchase`
+    """The "no API leak" argument rests on no `ModelSchema` covering `LegacyPurchase`
     - every purchase-shaped response is a hand-enumerated `Schema`. Pin that
-    premise so adding a `ModelSchema` over `Purchase` fails here instead of
+    premise so adding a `ModelSchema` over `LegacyPurchase` fails here instead of
     silently publishing the new column.
     """
 

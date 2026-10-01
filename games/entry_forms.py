@@ -12,6 +12,7 @@ from common.components import FormFieldGroup, PostCreate, SearchSelectOption
 from common.components.search_select import ParamSources
 from common.date_time_presentation import DateTimePresentation
 from games.commands.endpoint import ActStatement, WayActStatement
+from games.commands.libraryentry import EntryStatement
 from games.end_ways import END_WAY_LABELS, EndWay
 from games.endpoints import ENTRY_ACCESS_END
 from games.events.idempotency import IdempotencyKey, key_answered
@@ -34,7 +35,7 @@ from games.models import (
 )
 from games.reads.endpoints import stated
 from games.reads.releases import game_releases, release_label
-from games.writes.libraryentry import KEEP, EntryDraft, Keep
+from games.writes.libraryentry import KEEP, Keep
 from timetracker.temporal import TemporalValue
 
 RELEASE_SEARCH_URL = "/api/releases/search"
@@ -252,10 +253,10 @@ class EntryAddForm(PrimitiveWidgetsMixin, _Submission, forms.Form):
             self.add_error("release", RELEASE_OF_ANOTHER_GAME)
         return cleaned
 
-    def draft(self) -> EntryDraft:
+    def draft(self) -> EntryStatement:
         """What the creation states."""
         cleaned = self.cleaned_data
-        return EntryDraft(
+        return EntryStatement(
             release_id=cleaned["release"].pk,
             access=cleaned["access"],
             format=cleaned["format"],

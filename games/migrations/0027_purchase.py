@@ -36,7 +36,7 @@ class Migration(migrations.Migration):
                             ("battle_pass", "Battle pass"),
                             ("upgrade", "Upgrade"),
                         ],
-                        max_length=16,
+                        max_length=11,
                     ),
                 ),
                 ("name", models.CharField(blank=True, default="", max_length=255)),

@@ -761,7 +761,7 @@ class Command(BaseCommand):
         Many-to-many relations are walked too, via their through model's own
         foreign key. Whether a relation needs remapping is decided by what it
         targets, never by its kind: an auto-created through references the
-        target's primary key, so `Purchase.games` is inert while the identity is
+        target's primary key, so `LegacyPurchase.games` is inert while the identity is
         a secondary column and live once it is the primary key.
 
         Unmanaged referrers are skipped. A rebuild's shadow twin

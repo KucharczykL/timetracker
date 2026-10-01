@@ -38,12 +38,14 @@ from games.models import (
     Edition,
     Game,
     LegacyPurchase,
+    LibraryEntry,
     LibraryEvent,
     LibraryEventReference,
     Platform,
     PlayerGame,
     PlayerSession,
     Playthrough,
+    Purchase,
     ReferencedRow,
     Release,
     UserLibraryPreferences,
@@ -679,3 +681,25 @@ def test_an_exempt_row_is_still_a_referenced_row():
     giving it a kind later needs no change to the model.
     """
     assert NO_KIND_BY_DESIGN <= _referenced_rows()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_purging_a_library_takes_its_purchases_and_copies(
+    owned_user, owned_library, stated_graph
+):
+    """Two RESTRICT edges on the purge path."""
+    from entries import record_entry
+    from purchases import record_purchase
+
+    graph = stated_graph(Game(name="Tunic", library=owned_library), owned_library)
+    record_purchase(record_entry(owned_library, graph.release))
+
+    call_command(
+        "purge_user_library",
+        user=owned_user.username,
+        confirm=owned_user.username,
+        stdout=StringIO(),
+    )
+
+    assert not Purchase.objects.exists()
+    assert not LibraryEntry.objects.exists()

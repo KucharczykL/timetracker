@@ -30,7 +30,7 @@ from games.commands.playthrough import (
     VoidPlaythroughStart,
 )
 from games.commands.purchase import (
-    CorrectPurchaseDay,
+    CorrectPurchase,
     DescribePurchase,
     RecordPurchase,
     RemovePurchase,
@@ -91,7 +91,7 @@ COMMANDS: dict[str, Command] = {
     ),
     "record_purchase": RecordPurchase(
         kind="game",
-        entry_id=ENTRY,
+        copy=ENTRY,
         name="Deluxe",
         price=StatedPrice(Decimal("12.50"), "EUR"),
         note="gift",
@@ -99,14 +99,18 @@ COMMANDS: dict[str, Command] = {
     ),
     "record_purchase_new_copy": RecordPurchase(
         kind="season_pass",
-        new_entry=EntryStatement(
-            RELEASE, "owned", "digital", "", ActStatement(None, "")
+        copy=EntryStatement(
+            release_id=RELEASE,
+            access="owned",
+            format="digital",
+            note="",
+            acquired=ActStatement(None, ""),
         ),
     ),
     "describe_purchase": DescribePurchase(
         purchase_id=PURCHASE, price=StatedPrice(None, ""), entry_id=ENTRY
     ),
-    "correct_purchase_day": CorrectPurchaseDay(
+    "correct_purchase": CorrectPurchase(
         purchase_id=PURCHASE, statement=ActStatement(MAY, "")
     ),
     "remove_purchase": RemovePurchase(purchase_id=PURCHASE),
@@ -147,17 +151,17 @@ RECORDED: dict[str, str] = {
         "31b02261fdd35cb1d88a85afb111029cf12964fb940dcfff270776cc1fb02c66"
     ),
     "void_start": "b83184f38a8c6e7cc9ca5d0fa308f3ad48b2176e1815b388f168fe809e9c2a23",
-    "correct_purchase_day": (
+    "correct_purchase": (
         "0d5e1310fbaf8b68476247edb8b1d759e2c64756089406a0ad7508a39cd75806"
     ),
     "describe_purchase": (
-        "fc2f864cc6484388be193a51ac79aa98fa3b8c901640ff102b25f47556ac3896"
+        "408a6cbd44e31b9de62845fbfe9c99281b65a6779d05a4b2cda7305674b81d20"
     ),
     "record_purchase": (
-        "6c18310b299e7d8b02fbb41daa3d8098fbadba27064e0dc48d1cfd1a71017882"
+        "910548f3eadfece06170bf42e6826c97e067ce71effc901b935704862325a2f2"
     ),
     "record_purchase_new_copy": (
-        "b818df5fc1bdecf5d7d79fbc528d3412a3ad67b8db4b0ff30767355b16fc1c2b"
+        "c8a8ce8fb148d5582384d0c3465d576ee6e4da2a5e534ed360f26b025dee0c93"
     ),
     "remove_purchase": (
         "6eb59eaeca25392179507029ed9d32bb3acc5ad20d689a06ca08c2af61179a45"

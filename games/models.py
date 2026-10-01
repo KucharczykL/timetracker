@@ -1134,7 +1134,7 @@ class LegacyPurchase(models.Model):
     date_refunded = models.DateField(blank=True, null=True, verbose_name="Refunded")
     infinite = models.BooleanField(default=False)
     price = models.FloatField(default=0)
-    # Entry forms preselect a resolved default, but every persisted Purchase
+    # Entry forms preselect a resolved default, but every persisted row
     # carries its original currency explicitly.
     price_currency = models.CharField(max_length=3, blank=True, default="")
     converted_price = models.FloatField(null=True)
@@ -2392,6 +2392,10 @@ class LibraryEntry(ProjectionModel, ReferencedRow):
         return f"{self.access}, {self.format}"
 
 
+#: An ISO 4217 code, e.g. "EUR".
+CURRENCY_CODE = "[A-Z]{3}"
+
+
 class PurchaseKind(models.TextChoices):
     """What one purchase paid for."""
 
@@ -2436,7 +2440,10 @@ class Purchase(ProjectionModel):
     entry = models.ForeignKey(
         LibraryEntry, on_delete=models.RESTRICT, related_name="purchases"
     )
-    kind = models.CharField(max_length=16, choices=PurchaseKind)
+    kind = models.CharField(
+        max_length=max(len(word) for word in PurchaseKind.values),
+        choices=PurchaseKind,
+    )
     name = models.CharField(max_length=255, blank=True, default="")
     #: Null unknown; zero free.
     amount = models.DecimalField(
@@ -2472,7 +2479,7 @@ class Purchase(ProjectionModel):
             ),
             models.CheckConstraint(
                 condition=Q(amount__isnull=True, currency="")
-                | Q(amount__isnull=False, currency__regex=r"^[A-Z]{3}$"),
+                | Q(amount__isnull=False, currency__regex=f"^{CURRENCY_CODE}$"),
                 name="games_purchase_currency_where_amount",
             ),
         )

@@ -11,10 +11,11 @@ from entries import record_entry
 from purchases import record_purchase, remove_purchase
 
 from games.commands.endpoint import ActStatement
+from games.commands.libraryentry import EntryStatement
 from games.commands.purchase import TOO_PRECISE_AMOUNT, StatedPrice
 from games.events.purchase import (
-    PURCHASE_AMOUNT_CHANGED,
     PURCHASE_CREATED,
+    PURCHASE_PRICE_CHANGED,
     PurchaseKindValue,
     amount_text,
 )
@@ -31,7 +32,6 @@ from games.models import (
 from games.reads.purchases import library_purchases, readable_purchases
 from games.removal import remove
 from games.writes.answers import CommandFailed
-from games.writes.libraryentry import EntryDraft
 from games.writes.purchase import PurchaseDraft, restate_purchase
 from games.writes.purchase import record_purchase as record_purchase_write
 from timetracker.temporal import TemporalValue
@@ -50,8 +50,7 @@ def _created_payload(**changes) -> dict:
         ),
         "kind": "game",
         "name": "",
-        "amount": "12.50",
-        "currency": "EUR",
+        "price": {"amount": "12.50", "currency": "EUR"},
         "note": "",
         "purchase_note": "",
     } | changes
@@ -60,11 +59,15 @@ def _created_payload(**changes) -> dict:
 @pytest.mark.parametrize(
     "changes",
     (
-        {"amount": "12.5"},
-        {"amount": "-1.00"},
-        {"amount": "1E+2"},
-        {"amount": 12.5},
-        {"currency": "eur"},
+        {"price": {"amount": "12.5", "currency": "EUR"}},
+        {"price": {"amount": "-1.00", "currency": "EUR"}},
+        {"price": {"amount": "1E+2", "currency": "EUR"}},
+        {"price": {"amount": "12345678901.00", "currency": "EUR"}},
+        {"price": {"amount": 12.5, "currency": "EUR"}},
+        {"price": {"amount": "12.50", "currency": "eur"}},
+        {"price": {"amount": "12.50", "currency": ""}},
+        {"price": {"amount": "12.50"}},
+        {"name": "x" * 256},
         {"kind": "loot_box"},
         {"colour": "black"},
     ),
@@ -76,18 +79,18 @@ def test_the_created_payload_refuses_another_spelling(changes):
         )
 
 
-def test_an_unknown_amount_travels_as_null_beside_a_blank_currency():
-    payload = {"amount": None, "currency": ""}
+def test_an_unknown_price_travels_as_null():
+    payload = {"price": None}
 
     assert (
-        DEFAULT_EVENT_TYPES.validate(PURCHASE_AMOUNT_CHANGED.event_type, payload)
+        DEFAULT_EVENT_TYPES.validate(PURCHASE_PRICE_CHANGED.event_type, payload)
         == payload
     )
 
 
 @pytest.mark.parametrize(
     ("amount", "text"),
-    ((Decimal("1E+2"), "100.00"), (Decimal("12.5"), "12.50"), (None, None)),
+    ((Decimal("1E+2"), "100.00"), (Decimal("12.5"), "12.50")),
 )
 def test_amount_text_writes_two_places(amount, text):
     assert amount_text(amount) == text
@@ -180,7 +183,9 @@ def _draft(copy, **changes) -> PurchaseDraft:
 
 def test_record_answers_what_the_dispatch_created(owned_library, stated_graph):
     graph = stated_graph(Game(name="Hades", library=owned_library), owned_library)
-    copy = EntryDraft(graph.release.pk, "owned", "digital", "", ActStatement(None, ""))
+    copy = EntryStatement(
+        graph.release.pk, "owned", "digital", "", ActStatement(None, "")
+    )
 
     recorded = record_purchase_write(
         owned_library.user, _draft(copy), correlation_id=uuid.uuid7()
@@ -189,6 +194,22 @@ def test_record_answers_what_the_dispatch_created(owned_library, stated_graph):
     purchase = Purchase.objects.get(pk=recorded.purchase_id)
     assert purchase.entry_id == recorded.entry_id
     assert (recorded.created_the_entry, recorded.tracked_the_game) == (True, True)
+
+
+def test_record_of_a_new_copy_on_a_tracked_game_tracks_nothing(owned_library, entry):
+    copy = EntryStatement(
+        release_id=entry.release_id,
+        access="owned",
+        format="physical",
+        note="",
+        acquired=ActStatement(None, ""),
+    )
+
+    recorded = record_purchase_write(
+        owned_library.user, _draft(copy), correlation_id=uuid.uuid7()
+    )
+
+    assert (recorded.created_the_entry, recorded.tracked_the_game) == (True, False)
 
 
 def test_record_on_a_held_copy_creates_nothing_else(owned_library, entry):

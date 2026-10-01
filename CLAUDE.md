@@ -313,7 +313,7 @@ docs/           — Additional documentation
   `PlaythroughFilter` per scope — the same object `stats_links.py` puts in the
   link beside each number, so stat and link compile one predicate. A year reads
   the interval the two generated bound columns state, all-time reads the marker;
-  a Purchase reports one row, dated `completed_lower` of its earliest run in a
+  a LegacyPurchase reports one row, dated `completed_lower` of its earliest run in a
   year (its latest all-time, which no table prints today), and a row that
   reports no day sorts last and prints `-`. #1033 gives the projection a
   queryset holding `annotated_for_filtering` alone — no `alive()` and no
@@ -480,7 +480,7 @@ docs/           — Additional documentation
   #704's gates, member 4 of the wave stack, lift the deployment constraint:
   `tests/test_projection_replay_gate.py` replays one command stream through
   every event type of the four families (a Corrected row included), empties
-  and rebuilds five tables, repeats every command under its key; the
+  and rebuilds every table, repeats every command under its key; the
   two-dated-claimers conversion case reconciles clean. Stats page's session
   figures -- count, longest, most sessions, highest average -- are readers in
   `games/reads/session_figures.py`, grouped on the session table, ties broken
@@ -600,15 +600,18 @@ docs/           — Additional documentation
   (`Decimal(12, 2)`, null unknown, 0 free), `currency` (blank exactly where
   `amount` is null), `note`, and the opening endpoint `PURCHASE_DAY`
   (`purchased`, `purchase_recorded_at`, `purchase_note`). Written only by
-  `Purchases` from nine `library.purchase.*` events; an amount travels as
-  `AmountText` (`"12.50"`, `amount_text`), never a float. Commands
-  `RecordPurchase` (`entry_id` or `new_entry`, an `EntryStatement` that
-  `entry_creation_events` turns into the copy, tracking an untracked game
-  in the same dispatch), `DescribePurchase` (`StatedPrice`),
-  `CorrectPurchaseDay`, `RemovePurchase`, `RestorePurchase` in
-  `games/commands/purchase.py`; `check_price` refuses a sign, a third
-  place, an amount above `LARGEST_AMOUNT`, and a currency where no amount
-  is. Resolve through `library_purchase_row`. Writes
+  `Purchases` from nine `library.purchase.*` events; a price travels as one
+  `PricePayload` (`{"amount": "12.50", "currency": "EUR"}`) or null,
+  never a float. Commands `RecordPurchase` (`copy`: a held entry's key, or
+  an `EntryStatement` that `entry_creation_events` turns into the copy,
+  tracking an untracked game in the same dispatch), `DescribePurchase`
+  (`StatedPrice`, and `purchased`, so a PATCH is one dispatch),
+  `CorrectPurchase`, `RemovePurchase`, `RestorePurchase` in
+  `games/commands/purchase.py`; `check_price` refuses a non-number, a
+  sign, an amount above `LARGEST_AMOUNT` (derived from the column), a third
+  place, and a currency where no amount is; `check_name` the column's
+  length. A copy a removed Release hides is refused as well. Every command
+  but the record resolves through `library_purchase_row`. Writes
   `games/writes/purchase.py`, reads `games/reads/purchases.py` (six marks).
   No screen reads it until P5. Contract is
   [The Purchase aggregate](docs/superpowers/specs/2026-10-01-issue-725-purchase-aggregate-design.md)
@@ -739,13 +742,13 @@ carried statement's decode, the settled-choice guard, the form refusal,
 the Undo's restate and overwrite log) is `games/bulk_edit.py`, which
 imports no act, and `FactChange` is `games/reads/fact_change.py`.
 
-**Multi-game Purchase is *unsplittable* bundle** — one price, whole-purchase
+**Multi-game LegacyPurchase is *unsplittable* bundle** (until P5) — one price, whole-purchase
 refund (e.g. Humble Bundle). Independently-refundable multi-item orders (e.g.
 Steam cart) modeled as **separate single-game purchases**: add-purchase form's
 "separate price per game" mode (≥2 games) creates them, and row's **Split** action
 breaks existing bundle into per-game purchases (price split evenly as starting
 point). That why per-game refund/price need no through-model — each refundable
-unit is its own Purchase.
+unit is its own LegacyPurchase.
 
 **Unset platform/device is NULL**: `Game.platform`, `LegacyPurchase.platform`,
 `PlayerSession.device` nullable, stay NULL when unset — no sentinel rows (#290
@@ -1030,9 +1033,9 @@ Filter presets have no classic views — they live on Ninja API; the UI is
 (#297, #1267).
 
 **Signals** (`games/signals.py`):
-- `pre_save` on Purchase: snapshots old price/currency for change detection
-- `post_save` on Purchase: sets `needs_price_update` if price/currency changed
-- `m2m_changed` on Purchase.games: updates `num_purchases` from live games
+- `pre_save` on LegacyPurchase: snapshots old price/currency for change detection
+- `post_save` on LegacyPurchase: sets `needs_price_update` if price/currency changed
+- `m2m_changed` on LegacyPurchase.games: updates `num_purchases` from live games
   (`games.removal` recounts after stamp, which fires no signal)
 
 **Background tasks**: django-q2 cluster (1 worker, 60s timeout, 120s retry, ORM
@@ -1395,7 +1398,7 @@ collects `e2e/` too, so it needs browser as well. Key files: `test_widgets_e2e.p
   free); write them as one `confirm_and_remove()` call. Anything else that changes
   state is POST-only.
 - **Signals handle side-effects** — do not manually recalculate
-  `Purchase.num_purchases`.
+  `LegacyPurchase.num_purchases`.
 - **A list's columns are the person's** — a list column states a `key` and,
   where a person may not turn it off, `hideable=False`; `hidden_by_default`
   starts one off. `ListColumnChoice` holds the choice and

@@ -7,10 +7,15 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.test import Client
 from entries import record_entry
-from purchases import record_purchase
+from purchases import record_purchase, remove_purchase
 
-from games.commands.purchase import TOO_PRECISE_AMOUNT
+from games.commands.purchase import (
+    ENTRY_OF_ANOTHER_GAME,
+    TOO_LARGE_AMOUNT,
+    TOO_PRECISE_AMOUNT,
+)
 from games.models import Game, Purchase
+from timetracker.temporal import TemporalValue
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
 
@@ -156,15 +161,16 @@ def test_another_librarys_purchase_is_404(auth_client, django_user_model, stated
     assert auth_client.get("/api/purchases/").json() == []
 
 
-def test_patch_states_each_named_key(auth_client, entry):
+def test_patch_refuses_a_half_stated_day(auth_client, entry):
     purchase = record_purchase(entry)
 
-    response = _patch(
-        auth_client,
-        purchase.pk,
-        {"name": "Deluxe", "amount": None, "currency": "", "purchased": "2022"},
-    )
+    response = _patch(auth_client, purchase.pk, {"purchased": "2022"})
+
     assert response.status_code == 422
+
+
+def test_patch_states_each_named_key(auth_client, entry):
+    purchase = record_purchase(entry)
 
     response = _patch(
         auth_client,
@@ -182,6 +188,102 @@ def test_patch_states_each_named_key(auth_client, entry):
     row = response.json()
     assert (row["name"], row["amount"], row["currency"]) == ("Deluxe", None, "")
     assert row["purchased"] == "2022"
+
+
+def test_patch_states_an_unknown_day(auth_client, entry):
+    purchase = record_purchase(entry, purchased=TemporalValue.parse("2021"))
+
+    response = _patch(
+        auth_client, purchase.pk, {"purchased": None, "purchase_note": "no receipt"}
+    )
+
+    assert response.status_code == 200, response.content
+    assert (response.json()["purchased"], response.json()["purchase_note"]) == (
+        None,
+        "no receipt",
+    )
+
+
+def test_patch_moves_to_a_sibling_copy(auth_client, library, graph, entry):
+    purchase = record_purchase(entry)
+    sibling = record_entry(library, graph.release, format="physical")
+
+    response = _patch(auth_client, purchase.pk, {"entry_id": str(sibling.pk)})
+
+    assert response.status_code == 200, response.content
+    assert response.json()["entry_id"] == str(sibling.pk)
+
+
+def test_patch_onto_another_games_copy_is_409(
+    auth_client, library, stated_graph, entry
+):
+    purchase = record_purchase(entry)
+    elsewhere = stated_graph(Game(name="Hades", library=library), library)
+    other = record_entry(library, elsewhere.release)
+
+    response = _patch(auth_client, purchase.pk, {"entry_id": str(other.pk)})
+
+    assert response.status_code == 409
+    assert ENTRY_OF_ANOTHER_GAME in response.content.decode()
+
+
+def test_patch_onto_another_librarys_copy_is_404(
+    auth_client, django_user_model, stated_graph, entry
+):
+    purchase = record_purchase(entry)
+    other = django_user_model.objects.create_user(username="other").library
+    theirs = record_entry(
+        other, stated_graph(Game(name="Hades", library=other), other).release
+    )
+
+    assert (
+        _patch(auth_client, purchase.pk, {"entry_id": str(theirs.pk)}).status_code
+        == 404
+    )
+
+
+def test_patch_on_a_removed_purchase_is_404(auth_client, entry):
+    purchase = remove_purchase(record_purchase(entry))
+
+    assert _patch(auth_client, purchase.pk, {"name": "x"}).status_code == 404
+
+
+def test_a_huge_amount_is_409(auth_client, entry):
+    response = _post(auth_client, _body(entry, amount="1e30"))
+
+    assert response.status_code == 409
+    assert TOO_LARGE_AMOUNT in response.content.decode()
+
+
+def test_the_list_pages_in_recorded_order(auth_client, entry):
+    purchases = [record_purchase(entry) for _ in range(3)]
+    ids = [str(purchase.pk) for purchase in purchases]
+
+    def listed(query: str) -> list[str]:
+        return [row["id"] for row in auth_client.get(f"/api/purchases/{query}").json()]
+
+    assert listed("?limit=2") == ids[:2]
+    assert listed("?offset=2") == ids[2:]
+    assert listed("?limit=0") == ids
+
+
+def test_the_message_names_a_tracked_game(auth_client, library, graph, stated_graph):
+    held = _post(auth_client, _body(record_entry(library, graph.release)))
+    elsewhere = stated_graph(Game(name="Hades", library=library), library)
+    tracking = _post(
+        auth_client,
+        {
+            "entry": {
+                "release_id": str(elsewhere.release.pk),
+                "access": "owned",
+                "format": "digital",
+            },
+            "kind": "game",
+        },
+    )
+
+    assert "game added" not in held.headers.get("X-Events", "")
+    assert "game added to your library" in tracking.headers.get("X-Events", "")
 
 
 @pytest.mark.parametrize(

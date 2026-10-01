@@ -752,9 +752,9 @@ def test_scoped_audit_reports_incoming_cross_library_links(owner, outsider):
     report = output.getvalue()
     for relation in (
         "Game.platform",
-        "Purchase.platform",
-        "Purchase.related_game",
-        "Purchase.games",
+        "LegacyPurchase.platform",
+        "LegacyPurchase.related_game",
+        "LegacyPurchase.games",
         "PlayerSession.device",
         "UserLibraryPreferences.default_device",
         "Playthrough.player_game",

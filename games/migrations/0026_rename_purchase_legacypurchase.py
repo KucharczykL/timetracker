@@ -20,6 +20,16 @@ BEGIN
             '{new}' || substr(index_name, length('{old}') + 1)
         );
     END LOOP;
+    IF EXISTS (
+        SELECT 1
+        FROM pg_index
+        JOIN pg_class index_class ON index_class.oid = pg_index.indexrelid
+        JOIN pg_class table_class ON table_class.oid = pg_index.indrelid
+        WHERE table_class.relname IN ('{table}', '{table}_games')
+          AND index_class.relname LIKE '{old}\\_%'
+    ) THEN
+        RAISE EXCEPTION 'An index of {table} kept the prefix {old}.';
+    END IF;
 END
 $$;
 """

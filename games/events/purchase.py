@@ -2,22 +2,46 @@
 
 import uuid
 from decimal import Decimal
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Literal, TypedDict, cast
 
-from pydantic import StringConstraints, with_config
+from pydantic import AfterValidator, StringConstraints, with_config
 
 from games.events.endpoint import EndpointPayload, opening_endpoint_events
-from games.events.playersession import NoteText
+from games.events.playersession import NoteText, stated_note_text
 from games.events.references import STRICT_SCHEMA, Reference
 from games.events.vocabulary import DEFAULT_EVENT_TYPES, EventSpec, EventType, NewEvent
+from games.models import CURRENCY_CODE, Purchase
 from timetracker.temporal import TemporalValue
 
 #: Recorded spelling: the words `Purchase.kind` stores.
 type PurchaseKindValue = Literal["game", "season_pass", "battle_pass", "upgrade"]
+_AMOUNT = Purchase._meta.get_field("amount")
 #: Two places, no sign, e.g. "12.50".
-type AmountText = Annotated[str, StringConstraints(pattern=r"^\d{1,10}\.\d{2}$")]
-#: Three upper-case letters, or blank.
-type CurrencyText = Annotated[str, StringConstraints(pattern=r"^([A-Z]{3})?$")]
+type AmountText = Annotated[
+    str,
+    StringConstraints(
+        pattern=(
+            rf"^\d{{1,{_AMOUNT.max_digits - _AMOUNT.decimal_places}}}"
+            rf"\.\d{{{_AMOUNT.decimal_places}}}$"
+        )
+    ),
+]
+type CurrencyText = Annotated[str, StringConstraints(pattern=f"^{CURRENCY_CODE}$")]
+#: The column's length bounds a name.
+NAME_LENGTH = cast(int, Purchase._meta.get_field("name").max_length)
+type NameText = Annotated[
+    str,
+    AfterValidator(stated_note_text),
+    StringConstraints(max_length=NAME_LENGTH),
+]
+
+
+@with_config(STRICT_SCHEMA)
+class PricePayload(TypedDict):
+    """A known amount and its currency."""
+
+    amount: AmountText
+    currency: CurrencyText
 
 
 @with_config(STRICT_SCHEMA)
@@ -26,9 +50,9 @@ class PurchaseCreatedPayload(TypedDict):
 
     entry: Reference
     kind: PurchaseKindValue
-    name: NoteText
-    amount: AmountText | None
-    currency: CurrencyText
+    name: NameText
+    #: Null is an unknown price.
+    price: PricePayload | None
     note: NoteText
     purchase_note: NoteText
 
@@ -40,7 +64,7 @@ class PurchaseKindChangedPayload(TypedDict):
 
 @with_config(STRICT_SCHEMA)
 class PurchaseNameChangedPayload(TypedDict):
-    name: NoteText
+    name: NameText
 
 
 @with_config(STRICT_SCHEMA)
@@ -49,11 +73,8 @@ class PurchaseNoteChangedPayload(TypedDict):
 
 
 @with_config(STRICT_SCHEMA)
-class PurchaseAmountChangedPayload(TypedDict):
-    """Amount and currency are one fact."""
-
-    amount: AmountText | None
-    currency: CurrencyText
+class PurchasePriceChangedPayload(TypedDict):
+    price: PricePayload | None
 
 
 @with_config(STRICT_SCHEMA)
@@ -84,8 +105,8 @@ PURCHASE_NAME_CHANGED = _spec(
 PURCHASE_NOTE_CHANGED = _spec(
     "library.purchase.note_changed", PurchaseNoteChangedPayload
 )
-PURCHASE_AMOUNT_CHANGED = _spec(
-    "library.purchase.amount_changed", PurchaseAmountChangedPayload
+PURCHASE_PRICE_CHANGED = _spec(
+    "library.purchase.price_changed", PurchasePriceChangedPayload
 )
 PURCHASE_ENTRY_CHANGED = _spec(
     "library.purchase.entry_changed", PurchaseEntryChangedPayload
@@ -101,9 +122,16 @@ PURCHASE_DAY_EVENTS = opening_endpoint_events(
 PURCHASE_CORRECTED = PURCHASE_DAY_EVENTS.corrected
 
 
-def amount_text(amount: Decimal | None) -> str | None:
+def amount_text(amount: Decimal) -> str:
     """Canonical text; `str()` may spell 1E+2."""
-    return None if amount is None else f"{amount:.2f}"
+    return f"{amount:.{_AMOUNT.decimal_places}f}"
+
+
+def price_payload(amount: Decimal | None, currency: str) -> PricePayload | None:
+    """The payload's price; None unknown."""
+    if amount is None:
+        return None
+    return {"amount": amount_text(amount), "currency": currency}
 
 
 def purchase_created(
@@ -126,8 +154,7 @@ def purchase_created(
             "entry": entry,
             "kind": kind,
             "name": name,
-            "amount": amount_text(amount),
-            "currency": currency,
+            "price": price_payload(amount, currency),
             "note": note,
             "purchase_note": purchase_note,
         },
@@ -146,12 +173,11 @@ def purchase_note_changed(purchase_id: uuid.UUID, note: str) -> NewEvent:
     return PURCHASE_NOTE_CHANGED.new(aggregate_id=purchase_id, payload={"note": note})
 
 
-def purchase_amount_changed(
+def purchase_price_changed(
     purchase_id: uuid.UUID, *, amount: Decimal | None, currency: str
 ) -> NewEvent:
-    return PURCHASE_AMOUNT_CHANGED.new(
-        aggregate_id=purchase_id,
-        payload={"amount": amount_text(amount), "currency": currency},
+    return PURCHASE_PRICE_CHANGED.new(
+        aggregate_id=purchase_id, payload={"price": price_payload(amount, currency)}
     )
 
 

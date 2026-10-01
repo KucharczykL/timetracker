@@ -85,6 +85,8 @@ HISTORICAL_PLAYTIME_RECORDED = (
     "another playthrough, or remove it, before removing this one."
 )
 
+PURCHASE_RECORDED = "A purchase names this copy. Remove the purchase first."
+
 #: Every sentence names a remedy that exists.
 BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
     BlockingReferrer.on(
@@ -106,7 +108,7 @@ BLOCKING_REFERRERS: tuple[BlockingReferrer, ...] = (
         Purchase,
         "entry",
         target=LibraryEntry,
-        sentence="A purchase names this copy. Remove the purchase first.",
+        sentence=PURCHASE_RECORDED,
     ),
 )
 

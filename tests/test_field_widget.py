@@ -91,7 +91,7 @@ class TestFieldWidgetKindDispatch:
         assert 'name="filter-created_at-max"' in html
 
     def test_games_set_surfaces_all_and_only(self):
-        # games is many-to-many on Purchase → field_widget derives is_m2m and
+        # games is many-to-many on LegacyPurchase → field_widget derives is_m2m and
         # surfaces the (All)/(Only) modifiers, the one set field that needs them.
         html = str(field_widget(LegacyPurchaseFilter, "games"))
         assert 'data-kind="set"' in html

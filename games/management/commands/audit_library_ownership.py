@@ -194,7 +194,7 @@ class Command(BaseCommand):
             .values_list("pk", "platform__id")
         ):
             violations.append(
-                f"Purchase.platform: purchase {purchase_id}, platform {platform_id}"
+                f"LegacyPurchase.platform: purchase {purchase_id}, platform {platform_id}"
             )
         for purchase_id, game_id in (
             LegacyPurchase.objects.filter(
@@ -206,7 +206,7 @@ class Command(BaseCommand):
             .values_list("pk", "related_game__id")
         ):
             violations.append(
-                f"Purchase.related_game: purchase {purchase_id}, game {game_id}"
+                f"LegacyPurchase.related_game: purchase {purchase_id}, game {game_id}"
             )
         through = LegacyPurchase.games.through
         for purchase_id, game_id in (
@@ -217,7 +217,9 @@ class Command(BaseCommand):
             .exclude(game__library_id=F("legacypurchase__library_id"))
             .values_list("legacypurchase_id", "game_id")
         ):
-            violations.append(f"Purchase.games: purchase {purchase_id}, game {game_id}")
+            violations.append(
+                f"LegacyPurchase.games: purchase {purchase_id}, game {game_id}"
+            )
         #: A key, not a relation.
         foreign_device = Device.objects.filter(
             pk=OuterRef("default_device_id")

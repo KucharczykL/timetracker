@@ -23,6 +23,7 @@ from common.notices import Undo, notify
 from common.returns import action_url
 from games.catalog_release import SHARED_GAME_RELEASE
 from games.commands.endpoint import ActStatement, WayActStatement
+from games.commands.libraryentry import EntryStatement
 from games.end_ways import EndWay
 from games.endpoints import ENTRY_ACCESS_END
 from games.entry_forms import (
@@ -63,7 +64,6 @@ from games.views.removal import confirm_and_remove, restore_and_return
 from games.views.returns import return_url
 from games.writes.answers import CONFLICT_STATUS, CommandFailed
 from games.writes.libraryentry import (
-    EntryDraft,
     end_entry_access,
     record_entry,
     remove_entry,
@@ -446,7 +446,7 @@ def add_library_entry_now(request: HttpRequest, game_id: UUID) -> HttpResponse:
     def add() -> str:
         entry_id = record_entry(
             user,
-            EntryDraft(
+            EntryStatement(
                 release_id=release.pk,
                 access=EntryAccess.OWNED,
                 format=EntryFormat.DIGITAL,

@@ -74,7 +74,7 @@ from games.commands.playthrough import (
     VoidPlaythroughStart,
 )
 from games.commands.purchase import (
-    CorrectPurchaseDay,
+    CorrectPurchase,
     DescribePurchase,
     RecordPurchase,
     RemovePurchase,
@@ -667,7 +667,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         run(
             RecordPurchase(
                 kind="game",
-                entry_id=kept_entry,
+                copy=kept_entry,
                 name="Deluxe",
                 price=StatedPrice(Decimal("12.50"), "EUR"),
                 purchased=ActStatement(TemporalValue.parse("2021-05"), "sale"),
@@ -681,7 +681,9 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     run(
         RecordPurchase(
             kind="season_pass",
-            new_entry=EntryStatement(fifth_release.pk, "owned", "digital"),
+            copy=EntryStatement(
+                release_id=fifth_release.pk, access="owned", format="digital"
+            ),
         ),
         "record-purchase-new-copy",
     )
@@ -697,7 +699,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
         "describe-purchase",
     )
     run(
-        CorrectPurchaseDay(
+        CorrectPurchase(
             purchase_id=kept_purchase, statement=ActStatement(None, "no receipt")
         ),
         "correct-purchase-day",
@@ -706,7 +708,7 @@ def build_stream(user, library) -> list[DispatchedCommand]:
     run(RestorePurchase(purchase_id=kept_purchase), "restore-purchase")
     removed_purchase = _created_id(
         run(
-            RecordPurchase(kind="game", entry_id=second_copy),
+            RecordPurchase(kind="game", copy=second_copy),
             "record-purchase-to-remove",
         )
     )
@@ -834,11 +836,11 @@ def build_neighbour(user, library) -> None:
         idempotency_key="neighbour-entry",
     )
     assert result.outcome is CommandOutcome.APPENDED, "neighbour-entry"
-    #: One purchase; the seventh table holds a neighbour.
+    #: A neighbour in the seventh table.
     result = dispatch(
         RecordPurchase(
             kind="game",
-            entry_id=LibraryEntry.objects.get(library=library).pk,
+            copy=LibraryEntry.objects.get(library=library).pk,
         ),
         actor=user,
         library=library,
@@ -939,7 +941,7 @@ def row_versions(library) -> list[tuple[str, str]]:
 
 def empty_projections(library) -> None:
     """By library, children first; records before sessions."""
-    #: Purchase events reference entries; guard refuses.
+    #: Purchase events name entries; retention refuses.
     with purging_library():
         Purchase.objects.filter(library=library).delete()
         LibraryEntry.objects.filter(library=library).delete()

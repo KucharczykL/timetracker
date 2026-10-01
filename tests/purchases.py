@@ -13,7 +13,7 @@ from games.commands.purchase import (
     StatedPrice,
 )
 from games.events.dispatch import Command, CommandResult, append_command
-from games.events.purchase import PURCHASE_CREATED
+from games.events.purchase import PURCHASE_CREATED, PurchaseKindValue
 from games.models import LibraryEntry, LibraryEvent, Purchase, UserLibrary
 from timetracker.temporal import TemporalValue
 
@@ -32,7 +32,7 @@ def _state(library: UserLibrary, command: Command) -> CommandResult:
 def record_purchase(
     entry: LibraryEntry,
     *,
-    kind: str = "game",
+    kind: PurchaseKindValue = "game",
     name: str = "",
     amount: Decimal | None = Decimal("19.99"),
     currency: str = "EUR",
@@ -45,7 +45,7 @@ def record_purchase(
         entry.library,
         RecordPurchase(
             kind=kind,
-            entry_id=entry.pk,
+            copy=entry.pk,
             name=name,
             price=StatedPrice(amount, currency if amount is not None else ""),
             note=note,
