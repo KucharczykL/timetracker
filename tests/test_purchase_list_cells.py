@@ -74,3 +74,63 @@ def test_a_foreign_valuation_stands_beside(entry, owned_library):
 
     assert "10.00 USD" in cell
     assert "(5.00 EUR)" in cell
+
+
+# ── The list ────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture
+def logged_client(client, owned_user):
+    client.force_login(owned_user)
+    return client
+
+
+def _headers(body: str) -> list[str]:
+    import re
+
+    [head] = re.findall(r"<thead.*?</thead>", body, re.DOTALL)
+    head = re.sub(r"<form .*?</form>", "", head, flags=re.DOTALL)
+    return [
+        re.sub(r"<[^>]+>", "", cell).strip()
+        for cell in re.findall(r"<th.*?</th>", head, re.DOTALL)
+    ]
+
+
+def test_the_list_has_no_actions_column(logged_client, entry):
+    from django.urls import reverse
+
+    record_purchase(entry)
+
+    headers = _headers(
+        logged_client.get(reverse("games:list_purchases")).content.decode()
+    )
+
+    assert "Actions" not in headers
+    #: A sorted header carries its rank.
+    assert [header.rstrip("0123456789") for header in headers[:4]] == [
+        "Name",
+        "Kind",
+        "Amount",
+        "Purchased",
+    ]
+
+
+def test_a_stored_choice_naming_a_gone_column_reads_as_the_default(
+    logged_client, owned_user, entry
+):
+    from django.urls import reverse
+
+    from games.models import ListColumnChoice
+
+    record_purchase(entry)
+    ListColumnChoice.objects.create(
+        user=owned_user, mode="purchases", shown={"price": True, "infinite": True}
+    )
+
+    response = logged_client.get(reverse("games:list_purchases"))
+
+    assert response.status_code == 200
+    headers = _headers(response.content.decode())
+    assert "Price" not in headers
+    assert "Infinite" not in headers
+    assert "Amount" in headers

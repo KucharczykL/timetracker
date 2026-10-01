@@ -6,8 +6,6 @@
   refund confirmation pages against pytest-django's ``live_server``.
 """
 
-from datetime import date
-
 import pytest
 from django.http import HttpResponse
 from django.test import override_settings
@@ -15,7 +13,7 @@ from django.urls import path, reverse
 from playwright.sync_api import Page, expect
 
 from common.components import SearchSelect, SelectionFields
-from games.models import Game, LegacyPurchase, Platform
+from games.models import Game, Platform
 
 
 def selection_fields_view(request):
@@ -232,84 +230,6 @@ def test_a_keystroke_leaves_the_platform_to_autofill(
     page.keyboard.type("P")
     _pick_game(page, "Alpha Game")
     expect(platform_search).to_have_value("PC")
-
-
-def test_split_purchase_action(authenticated_page: Page, live_server, e2e_library):
-    page = authenticated_page
-    platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="steam", group="PC"
-    )
-    game_a = Game.objects.create(
-        library=e2e_library, name="Alpha Game", platform=platform
-    )
-    game_b = Game.objects.create(
-        library=e2e_library, name="Beta Game", platform=platform
-    )
-    bundle = LegacyPurchase.objects.create(
-        library=e2e_library,
-        price=30.0,
-        price_currency="USD",
-        date_purchased=date(2025, 1, 1),
-        platform=platform,
-        ownership_type=LegacyPurchase.DIGITAL,
-        type=LegacyPurchase.GAME,
-    )
-    bundle.games.set([game_a, game_b])
-
-    page.goto(f"{live_server.url}{reverse('games:list_purchases')}")
-    # Before: one bundle row.
-    expect(page.locator('[id^="purchase-row-"]')).to_have_count(1)
-
-    page.locator('[title="Split into per-game purchases"]').click()
-    # Confirms on its own page.
-    page.wait_for_url(
-        f"{live_server.url}{reverse('games:split_purchase', args=[bundle.id])}**"
-    )
-    page.locator('button[type="submit"]', has_text="Split").click()
-
-    page.wait_for_url(f"{live_server.url}{reverse('games:list_purchases')}**")
-    # The UI must observe the completed operation: the bundle row is gone and
-    # replaced by two per-game rows.
-    expect(page.locator(f"#purchase-row-{bundle.id}")).to_have_count(0)
-    expect(page.locator('[id^="purchase-row-"]')).to_have_count(2)
-
-
-def test_refund_confirms_on_a_page_and_returns_to_the_list(
-    authenticated_page: Page, live_server, e2e_library
-):
-    """Refund confirms on a page, returns to list."""
-    page = authenticated_page
-    platform = Platform.objects.create(
-        library=e2e_library, name="PC", icon="steam", group="PC"
-    )
-    game = Game.objects.create(
-        library=e2e_library, name="Alpha Game", platform=platform
-    )
-    purchase = LegacyPurchase.objects.create(
-        library=e2e_library,
-        price=30.0,
-        price_currency="USD",
-        date_purchased=date(2025, 1, 1),
-        platform=platform,
-        ownership_type=LegacyPurchase.DIGITAL,
-        type=LegacyPurchase.GAME,
-    )
-    purchase.games.set([game])
-    list_url = f"{live_server.url}{reverse('games:list_purchases')}?page=1"
-
-    page.goto(list_url)
-    page.locator('[title="Mark as refunded"]').click()
-    page.wait_for_url(
-        f"{live_server.url}{reverse('games:refund_purchase', args=[purchase.id])}**"
-    )
-    page.locator('button[type="submit"]', has_text="Refund").click()
-
-    page.wait_for_url(list_url)
-    # The refunded row offers no second refund.
-    expect(page.locator(f"#purchase-row-{purchase.id}")).to_be_visible()
-    expect(page.locator('[title="Mark as refunded"]')).to_have_count(0)
-    purchase.refresh_from_db()
-    assert purchase.date_refunded is not None
 
 
 @pytest.fixture

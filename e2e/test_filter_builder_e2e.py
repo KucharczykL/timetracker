@@ -29,14 +29,16 @@ from datetime import UTC, date, datetime
 import pytest
 from devices import create_device
 from django.urls import reverse
+from entries import record_entry
+from graphs import default_graph
 from playwright.sync_api import Locator, Page, expect
+from purchases import record_purchase
 from session_rows import session_row
 
 from e2e.tracked_games import create_tracked_game
 from games.models import (
     FilterPreset,
     Game,
-    LegacyPurchase,
     Platform,
     PlayerGameStatus,
     Playthrough,
@@ -541,20 +543,11 @@ def test_nested_relation_prefill_renders_full_tree(
         completion_recorded_at=datetime(2026, 3, 1, 12, 0, tzinfo=UTC),
         completed=TemporalValue.from_day(date(2026, 3, 1)),
     )
-    matching_purchase = LegacyPurchase.objects.create(
-        library=e2e_library,
-        date_purchased=datetime(2026, 1, 5, 12, 0, tzinfo=UTC),
-        price_currency="USD",
-        type=LegacyPurchase.GAME,
-    )
-    matching_purchase.games.set([done_game])
-    non_matching_purchase = LegacyPurchase.objects.create(
-        library=e2e_library,
-        date_purchased=datetime(2026, 2, 5, 12, 0, tzinfo=UTC),
-        price_currency="USD",
-        type=LegacyPurchase.GAME,
-    )
-    non_matching_purchase.games.set([other_game])
+    for bought, day in ((done_game, "2026-01-05"), (other_game, "2026-02-05")):
+        record_purchase(
+            record_entry(e2e_library, default_graph(bought, e2e_library).release),
+            purchased=TemporalValue.parse(day),
+        )
 
     filter_json = {
         "game_filter": {
@@ -568,7 +561,7 @@ def test_nested_relation_prefill_renders_full_tree(
         }
     }
     page.goto(
-        f"{live_server.url}{reverse('games:filter_builder', args=['legacypurchase'])}"
+        f"{live_server.url}{reverse('games:filter_builder', args=['purchase'])}"
         f"?filter={_encode_filter(filter_json)}"
     )
 

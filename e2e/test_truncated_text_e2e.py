@@ -1,7 +1,5 @@
 """Real-layout coverage for width-based name clipping and reveal behavior."""
 
-from datetime import date
-
 import pytest
 from column_choice import show_every_column
 from django.urls import reverse
@@ -10,7 +8,7 @@ from playwright.sync_api import Locator, Page, Route, expect
 from session_rows import session_row
 
 from e2e.helpers import settle_layout
-from games.models import Game, LegacyPurchase, Platform
+from games.models import Game, Platform
 
 LONG_NAME = (
     "A Deliberately Extraordinary Game Name That Is Much Wider Than Any Practical "
@@ -345,47 +343,6 @@ def test_touch_resize_closes_open_panel_when_text_starts_fitting(
     expect(host).not_to_have_attribute("data-overflowing", "")
     expect(button).to_be_hidden()
     expect(panel).to_be_hidden()
-
-
-def test_multi_game_purchase_has_one_always_available_informational_tooltip(
-    touch_page: Page, live_server, e2e_library
-):
-    page = touch_page
-    platform = Platform.objects.create(
-        name="PC", icon="steam", group="PC", library=e2e_library
-    )
-    first = Game.objects.create(
-        name="Bundle Game One", platform=platform, library=e2e_library
-    )
-    second = Game.objects.create(
-        name="Bundle Game Two", platform=platform, library=e2e_library
-    )
-    bundle = LegacyPurchase.objects.create(
-        name=LONG_NAME,
-        date_purchased=date(2026, 1, 1),
-        platform=platform,
-        library=e2e_library,
-        price_currency="USD",
-    )
-    bundle.games.set([first, second])
-
-    page.goto(f"{live_server.url}{reverse('games:list_purchases')}")
-    host = _host(page, LONG_NAME)
-    expect(host).to_have_attribute("reveal", "always")
-    expect(host.locator("[data-pop-over-panel]")).to_have_count(1)
-    expect(host.locator("pop-over")).to_have_count(0)
-    button = host.locator("[data-truncated-reveal]")
-    expect(button).to_have_attribute("data-truncated-reveal", "info")
-    expect(button).to_be_visible()
-    button.tap()
-    panel = host.locator("[data-pop-over-panel]")
-    expect(panel).to_be_visible()
-    expect(panel).to_contain_text("Bundle Game One")
-    expect(panel).to_contain_text("Bundle Game Two")
-    panel_id = panel.get_attribute("id")
-    assert panel_id
-    expect(host.locator("a")).to_have_attribute("aria-describedby", panel_id)
-    expect(button).to_have_attribute("aria-describedby", panel_id)
 
 
 def test_informative_reveal_is_visible_and_clear_of_the_name_on_desktop(
