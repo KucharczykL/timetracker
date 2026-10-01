@@ -176,9 +176,13 @@ would drop them. So P1 renames the incumbent: the legacy class becomes
 through table following, the sample fixture relabelled mechanically),
 and the new `Purchase` is born on `games_purchase` in its final shape.
 Every reader keeps reading `LegacyPurchase` until P5 switches it; P4's
-pass writes one `purchase.created` per (legacy row, game), under the
-legacy UUID for the first game in key order and uuid5 over (legacy id,
-game id) for the rest of a bundle; P5 drops `LegacyPurchase`, its
+pass writes one `purchase.created` per (legacy row, game): the first
+game in key order keeps the legacy UUIDv7, and the rest of a bundle
+mint a UUIDv7 at the pass, since `canonical_uuid_text` refuses any
+other version and `make audit-uuid-identity` holds UUID order to
+`(created_at, pk)` order; the whole pass states one `recorded_at`, so
+`created_at` ties and the key breaks them, and idempotency comes from
+the keys (legacy id, game id), never from the aggregate id; P5 drops `LegacyPurchase`, its
 tables and every legacy reader, with no rename at the cutover.
 `RenameModel` keeps every index's `games_purchase_*` name, so the new
 table's own indexes would collide; P1's migration renames the legacy
@@ -709,7 +713,7 @@ backlog reads M7's edition word.
 | P1 | #725, #726, #828 | the incumbent renamed `LegacyPurchase`; the Purchase aggregate born on `games_purchase`: projection, creation with an entry, description, day correction, removal, API; no reader switched |
 | P2 | #727 | refund endpoints and the coupled entry end |
 | P3 | #728, #729 | `PurchaseValuation`, decimal rates, the run state re-pointed, the valuation request on the write path |
-| P4 | #723, #730, #731, #732, #733 | the conversion pass over `LegacyPurchase` rows, ids kept, `verify-purchase-conversion`, the reconciliation |
+| P4 | #723, #730, #731, #732, #733 | the conversion pass over `LegacyPurchase` rows, the legacy id kept on a bundle's first game and a UUIDv7 minted for the rest, `verify-purchase-conversion`, the reconciliation |
 | P5 | #724, #736, #734, #735, #1266 | every read and write switched: the Add to library form, the Purchases list selectable, filters, presets, statistics and links, #1157's readers, the review surface; `LegacyPurchase`, its tables, every legacy route and reader and the float writer dropped |
 
 Each member passes the full gate on its own against a fresh database.
