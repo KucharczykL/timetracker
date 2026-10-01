@@ -219,8 +219,7 @@ class RecordPurchase(Command):
         price = check_price(self.price)
         match self.copy:
             case EntryStatement() as statement:
-                created = entry_creation_events(context, statement)
-                events, reference = created.events, created.reference
+                events, reference = entry_creation_events(context, statement)
             case uuid.UUID() as entry_id:
                 events = ()
                 reference = capture_reference(_held_copy(context, entry_id))

@@ -183,9 +183,7 @@ def _draft(copy, **changes) -> PurchaseDraft:
 
 def test_record_answers_what_the_dispatch_created(owned_library, stated_graph):
     graph = stated_graph(Game(name="Hades", library=owned_library), owned_library)
-    copy = EntryStatement(
-        graph.release.pk, "owned", "digital", "", ActStatement(None, "")
-    )
+    copy = EntryStatement(release_id=graph.release.pk, access="owned", format="digital")
 
     recorded = record_purchase_write(
         owned_library.user, _draft(copy), correlation_id=uuid.uuid7()
@@ -198,11 +196,7 @@ def test_record_answers_what_the_dispatch_created(owned_library, stated_graph):
 
 def test_record_of_a_new_copy_on_a_tracked_game_tracks_nothing(owned_library, entry):
     copy = EntryStatement(
-        release_id=entry.release_id,
-        access="owned",
-        format="physical",
-        note="",
-        acquired=ActStatement(None, ""),
+        release_id=entry.release_id, access="owned", format="physical"
     )
 
     recorded = record_purchase_write(

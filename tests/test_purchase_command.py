@@ -66,6 +66,18 @@ def entry(owned_library, graph):
     return record_entry(owned_library, graph.release)
 
 
+@pytest.fixture
+def other_game_entry(owned_library, stated_graph):
+    """A copy of another game, same library."""
+    elsewhere = stated_graph(Game(name="Hades", library=owned_library), owned_library)
+    return record_entry(owned_library, elsewhere.release)
+
+
+@pytest.fixture
+def their_graph(second_library, stated_graph):
+    return stated_graph(Game(name="Hades", library=second_library), second_library)
+
+
 def _dispatch(library, command, key: str | None = None) -> CommandResult:
     return dispatch(
         command,
@@ -351,14 +363,13 @@ def test_a_move_onto_a_removed_copy_is_refused(owned_library, graph, entry):
 
 
 def test_a_removed_purchase_names_itself_before_the_copy(
-    owned_library, stated_graph, entry
+    owned_library, entry, other_game_entry
 ):
     purchase = remove_purchase(record_purchase(entry))
-    elsewhere = stated_graph(Game(name="Hades", library=owned_library), owned_library)
-    other = record_entry(owned_library, elsewhere.release)
 
     refused = _refused(
-        owned_library, DescribePurchase(purchase_id=purchase.pk, entry_id=other.pk)
+        owned_library,
+        DescribePurchase(purchase_id=purchase.pk, entry_id=other_game_entry.pk),
     )
 
     assert refused.sentence == PURCHASE_REMOVED
@@ -380,24 +391,22 @@ def test_a_description_and_a_day_are_one_dispatch(owned_library, entry):
     ]
 
 
-def test_a_copy_of_another_game_is_refused(owned_library, stated_graph, entry):
+def test_a_copy_of_another_game_is_refused(owned_library, entry, other_game_entry):
     purchase = record_purchase(entry)
-    elsewhere = stated_graph(Game(name="Hades", library=owned_library), owned_library)
-    other = record_entry(owned_library, elsewhere.release)
 
     refused = _refused(
-        owned_library, DescribePurchase(purchase_id=purchase.pk, entry_id=other.pk)
+        owned_library,
+        DescribePurchase(purchase_id=purchase.pk, entry_id=other_game_entry.pk),
     )
 
     assert refused.sentence == ENTRY_OF_ANOTHER_GAME
 
 
 def test_another_librarys_copy_is_absent_on_a_move(
-    owned_library, second_library, stated_graph, entry
+    owned_library, second_library, their_graph, entry
 ):
     purchase = record_purchase(entry)
-    theirs = stated_graph(Game(name="Hades", library=second_library), second_library)
-    their_entry = record_entry(second_library, theirs.release)
+    their_entry = record_entry(second_library, their_graph.release)
 
     with pytest.raises(RowNotHeld):
         _dispatch(
@@ -427,23 +436,19 @@ def test_another_librarys_purchase_is_absent(second_library, entry):
         _dispatch(second_library, DescribePurchase(purchase_id=purchase.pk, name="x"))
 
 
-def test_a_purchase_whose_copy_drifted_is_unreadable(
-    owned_library, second_library, stated_graph, entry
-):
+def test_a_purchase_whose_copy_drifted_is_unreadable(owned_library, their_graph, entry):
     purchase = record_purchase(entry)
-    theirs = stated_graph(Game(name="Hades", library=second_library), second_library)
-    LibraryEntry.objects.filter(pk=entry.pk).update(release=theirs.release)
+    LibraryEntry.objects.filter(pk=entry.pk).update(release=their_graph.release)
 
     with pytest.raises(RowUnreadable):
         _dispatch(owned_library, DescribePurchase(purchase_id=purchase.pk, name="x"))
 
 
 def test_a_purchase_naming_another_librarys_copy_is_unreadable(
-    owned_library, second_library, stated_graph, entry
+    owned_library, second_library, their_graph, entry
 ):
     purchase = record_purchase(entry)
-    theirs = stated_graph(Game(name="Hades", library=second_library), second_library)
-    their_entry = record_entry(second_library, theirs.release)
+    their_entry = record_entry(second_library, their_graph.release)
     Purchase.objects.filter(pk=purchase.pk).update(entry=their_entry)
 
     with pytest.raises(RowUnreadable):

@@ -47,6 +47,14 @@ def entry(library, graph):
     return record_entry(library, graph.release)
 
 
+@pytest.fixture
+def their_entry(django_user_model, stated_graph):
+    """A copy another library holds."""
+    other = django_user_model.objects.create_user(username="other").library
+    theirs = stated_graph(Game(name="Hades", library=other), other)
+    return record_entry(other, theirs.release)
+
+
 def _post(client: Client, body: dict, **headers):
     return client.post(
         "/api/purchases/", json.dumps(body), content_type="application/json", **headers
@@ -122,13 +130,7 @@ def test_post_answers_the_price_rule_at_409(auth_client, entry):
     assert TOO_PRECISE_AMOUNT in response.content.decode()
 
 
-def test_post_naming_another_librarys_copy_is_404(
-    auth_client, django_user_model, stated_graph
-):
-    other = django_user_model.objects.create_user(username="other").library
-    theirs = stated_graph(Game(name="Hades", library=other), other)
-    their_entry = record_entry(other, theirs.release)
-
+def test_post_naming_another_librarys_copy_is_404(auth_client, their_entry):
     assert _post(auth_client, _body(their_entry)).status_code == 404
 
 
@@ -151,22 +153,12 @@ def test_get_lists_and_reads_one(auth_client, entry):
     assert one.json()["amount"] == "19.99"
 
 
-def test_another_librarys_purchase_is_404(auth_client, django_user_model, stated_graph):
-    other = django_user_model.objects.create_user(username="other").library
-    theirs = stated_graph(Game(name="Hades", library=other), other)
-    purchase = record_purchase(record_entry(other, theirs.release))
+def test_another_librarys_purchase_is_404(auth_client, their_entry):
+    purchase = record_purchase(their_entry)
 
     assert auth_client.get(f"/api/purchases/{purchase.pk}").status_code == 404
     assert _patch(auth_client, purchase.pk, {"name": "x"}).status_code == 404
     assert auth_client.get("/api/purchases/").json() == []
-
-
-def test_patch_refuses_a_half_stated_day(auth_client, entry):
-    purchase = record_purchase(entry)
-
-    response = _patch(auth_client, purchase.pk, {"purchased": "2022"})
-
-    assert response.status_code == 422
 
 
 def test_patch_states_each_named_key(auth_client, entry):
@@ -227,19 +219,12 @@ def test_patch_onto_another_games_copy_is_409(
     assert ENTRY_OF_ANOTHER_GAME in response.content.decode()
 
 
-def test_patch_onto_another_librarys_copy_is_404(
-    auth_client, django_user_model, stated_graph, entry
-):
+def test_patch_onto_another_librarys_copy_is_404(auth_client, entry, their_entry):
     purchase = record_purchase(entry)
-    other = django_user_model.objects.create_user(username="other").library
-    theirs = record_entry(
-        other, stated_graph(Game(name="Hades", library=other), other).release
-    )
 
-    assert (
-        _patch(auth_client, purchase.pk, {"entry_id": str(theirs.pk)}).status_code
-        == 404
-    )
+    response = _patch(auth_client, purchase.pk, {"entry_id": str(their_entry.pk)})
+
+    assert response.status_code == 404
 
 
 def test_patch_on_a_removed_purchase_is_404(auth_client, entry):
@@ -288,7 +273,13 @@ def test_the_message_names_a_tracked_game(auth_client, library, graph, stated_gr
 
 @pytest.mark.parametrize(
     "body",
-    ({"amount": "1.00"}, {"currency": "EUR"}, {"purchase_note": "x"}, {"name": None}),
+    (
+        {"amount": "1.00"},
+        {"currency": "EUR"},
+        {"purchased": "2022"},
+        {"purchase_note": "x"},
+        {"name": None},
+    ),
 )
 def test_patch_refuses_a_half_or_null_statement(auth_client, entry, body):
     purchase = record_purchase(entry)

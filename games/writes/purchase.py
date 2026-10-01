@@ -83,22 +83,18 @@ def record_purchase(
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
         )
-    events = list(dispatched_events(result))
-    created = next(
-        (event for event in events if event.event_type == PURCHASE_CREATED.event_type),
-        None,
-    )
+    event_by_type = {event.event_type: event for event in dispatched_events(result)}
+    created = event_by_type.get(PURCHASE_CREATED.event_type)
     if created is None:
         raise RuntimeError(
             f"Dispatch {result.stream_id} {result.sequences} appended no "
             f"{PURCHASE_CREATED.event_type}."
         )
-    types = {event.event_type for event in events}
     return RecordedPurchase(
         purchase_id=created.aggregate_id,
         entry_id=uuid.UUID(created.payload["entry"]["id"]),
-        created_the_entry=LIBRARYENTRY_CREATED.event_type in types,
-        tracked_the_game=PLAYERGAME_CREATED.event_type in types,
+        created_the_entry=LIBRARYENTRY_CREATED.event_type in event_by_type,
+        tracked_the_game=PLAYERGAME_CREATED.event_type in event_by_type,
     )
 
 
