@@ -3,7 +3,6 @@
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from typing import cast
-from uuid import UUID
 
 from django import forms
 from django.contrib import messages
@@ -38,7 +37,7 @@ def game_page(request: HttpRequest, game: Game) -> str:
     )
 
 
-def held_entry(request: HttpRequest, entry_id: UUID) -> LibraryEntry:
+def held_entry(request: HttpRequest, entry_id: uuid.UUID) -> LibraryEntry:
     library = cast(User, request.user).library
     return owned_or_404(
         library_entries(library).select_related(

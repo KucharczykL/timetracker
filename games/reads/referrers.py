@@ -205,8 +205,10 @@ def foreign_referrer(row: ProjectionModel) -> ForeignReferrer | None:
     where no read finds it and no restore reaches it.
     """
     target = type(row)
-    members: list[Referrer] = [*referrers_of(target)]
-    members.extend(member for member in CASCADING_REFERRERS if member.target is target)
+    members: tuple[Referrer, ...] = (
+        *referrers_of(target),
+        *(member for member in CASCADING_REFERRERS if member.target is target),
+    )
     for referrer in members:
         library_ids = tuple(
             _live_rows_naming(referrer, row)

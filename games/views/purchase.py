@@ -114,13 +114,16 @@ PURCHASE_COLUMNS: list[Column] = [
     Column("Created", "created", key="created", hidden_by_default=True),
 ]
 
+#: What every purchase page reads.
+_PURCHASE_PATHS = ("entry__player_game__game", "entry__release__platform")
+
 
 def purchase_list_rows(library: UserLibrary) -> PurchaseQuerySet:
     """The list's rows, carrying the Finished facts."""
     return (
         library_purchases(library)
         .annotated_for_filtering(library)
-        .select_related("entry__player_game__game", "entry__release__platform")
+        .select_related(*_PURCHASE_PATHS)
         .annotate(
             has_completion=completion_exists(library, None, PURCHASE_RUNS),
             completed_value=reported_completion(library, PURCHASE_RUNS),
@@ -273,9 +276,6 @@ def _any_purchase(request: HttpRequest, purchase_id: UUID) -> Purchase:
         library,
         id=purchase_id,
     )
-
-
-_PURCHASE_PATHS = ("entry__player_game__game", "entry__release__platform")
 
 
 def _title(act: str, entry: LibraryEntry) -> str:

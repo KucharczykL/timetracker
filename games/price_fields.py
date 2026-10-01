@@ -105,14 +105,20 @@ class PriceFields(forms.Form):
         if choice == PriceChoice.FREE:
             ignore_fields(self, "amount")
         else:
-            text = (cleaned.get("amount") or "").strip()
-            if not text:
-                self.add_error("amount", AMOUNT_REQUIRED)
-            else:
-                try:
-                    cleaned["amount"] = Decimal(text)
-                except InvalidOperation:
-                    self.add_error("amount", NOT_AN_AMOUNT)
+            self._clean_amount(cleaned)
+        self._clean_currency(cleaned)
+
+    def _clean_amount(self, cleaned: dict[str, Any]) -> None:
+        text = (cleaned.get("amount") or "").strip()
+        if not text:
+            self.add_error("amount", AMOUNT_REQUIRED)
+            return
+        try:
+            cleaned["amount"] = Decimal(text)
+        except InvalidOperation:
+            self.add_error("amount", NOT_AN_AMOUNT)
+
+    def _clean_currency(self, cleaned: dict[str, Any]) -> None:
         currency = (cleaned.get("currency") or "").strip().upper()
         if currency:
             cleaned["currency"] = currency
