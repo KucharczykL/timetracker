@@ -9,7 +9,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
 from functools import partial
-from typing import Any, Literal, NamedTuple, TypedDict
+from typing import Any, Final, Literal, NamedTuple, TypedDict
 
 from django.core.exceptions import ValidationError
 from django.db import DataError, IntegrityError, connection, models, transaction
@@ -101,7 +101,7 @@ from timetracker.temporal import TemporalValue
 logger = logging.getLogger("games")
 
 ISSUE = 723
-ORIGIN = "conversion"
+ORIGIN: Final = "conversion"
 DEMO_EDITION = "Demo"
 
 type ConversionAct = Literal[
@@ -540,7 +540,7 @@ class _LibraryPass:
         """Acts the legacy row no longer states."""
         row, game = copy.row, copy.game_id
         withdrawn: dict[ConversionAct, str] = {
-            "entry" if copy.purchase else "created": "its price changed",
+            "entry" if copy.purchase is not None else "created": "its price changed",
         }
         if copy.refunded is None:
             withdrawn |= {"refunded": "its refund", "ended": "its refund"}
@@ -571,7 +571,7 @@ class _LibraryPass:
         categories = list(copy.categories)
         if copy.game_id in self.mixed:
             categories.append(Category.MIXED_INFINITE)
-        act: ConversionAct = "created" if copy.purchase else "entry"
+        act: ConversionAct = "created" if copy.purchase is not None else "entry"
         facts = _creation_input(copy)
         key = _key(act, row.id, copy.game_id)
         events = self.appender.replayed(key, facts)
@@ -620,7 +620,7 @@ class _LibraryPass:
     ) -> tuple[LibraryEvent, ...]:
         held = (
             self._base_copy(copy)
-            if copy.shape == CopyShape.ATTACHED and copy.purchase
+            if copy.shape == CopyShape.ATTACHED and copy.purchase is not None
             else None
         )
         if copy.shape == CopyShape.ATTACHED and held is None:
@@ -875,26 +875,29 @@ class _LibraryPass:
                 editions=[statement],
             ),
         )
-        made = [
-            written_release.release
-            for written_release in written.editions[0].releases
-            if written_release.key == "release"
-        ]
-        return _one(made[0] if made else None, f"Demo release of {game.pk}"), True
+        made = next(
+            (
+                written_release.release
+                for written_release in written.editions[0].releases
+                if written_release.key == "release"
+            ),
+            None,
+        )
+        return _one(made, f"Demo release of {game.pk}"), True
 
     def _exclusions(self) -> None:
         withdrawn = self.appender.held(
             _exclusion_key(game) for game in self.excludable - set(self.infinite)
         )
-        for key in sorted(withdrawn):
-            self.refusals.append(
-                Refusal(
-                    None,
-                    None,
-                    f"{key!r} excluded a game no live infinite row names now",
-                    kind=RefusalKind.DEFECT,
-                )
+        self.refusals += [
+            Refusal(
+                None,
+                None,
+                f"{key!r} excluded a game no live infinite row names now",
+                kind=RefusalKind.DEFECT,
             )
+            for key in sorted(withdrawn)
+        ]
         tracked = set(
             PlayerGame.objects.filter(
                 library=self.library,
@@ -1011,11 +1014,8 @@ class _LibraryPass:
                     .values_list("rate", flat=True)
                     .first()
                 )
-                share = (
-                    None
-                    if copy.planned.purchase is None
-                    else (copy.planned.purchase.converted)
-                )
+                purchase = copy.planned.purchase
+                share = None if purchase is None else purchase.converted
                 reason = _unvalued_reason(facts, target, rate, share)
                 if reason is not None:
                     self._unvalued(copy, facts.purchase_id, reason)
@@ -1104,7 +1104,7 @@ def _metadata(
     legacy_ids: Sequence[LegacyId], categories: Sequence[Category]
 ) -> ConversionMetadata:
     return {
-        "origin": "conversion",
+        "origin": ORIGIN,
         "issue": ISSUE,
         "legacy_purchases": [str(legacy_id) for legacy_id in legacy_ids],
         "review": [str(category) for category in categories],

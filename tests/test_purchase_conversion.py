@@ -89,14 +89,9 @@ def legacy(library, *games, **facts) -> LegacyPurchase:
     return row
 
 
-PURCHASE_CONVERSIONS: list[PurchaseConversion] = []
-
-
-def convert(library=None):
+def convert(library=None) -> PurchaseConversion:
     rows = legacy_rows(LegacyPurchase, None if library is None else library.pk)
-    done = convert_purchases(rows, recorded_at=INSTANT)
-    PURCHASE_CONVERSIONS.append(done)
-    return done
+    return convert_purchases(rows, recorded_at=INSTANT)
 
 
 def in_key_order(*games: Game) -> list[Game]:
@@ -488,7 +483,7 @@ def test_valuations_seed_from_the_legacy_conversion(owned_library, game_on):
 
     requested = _requested(owned_library)
 
-    convert()
+    [done] = convert().libraries
 
     valued = {row.purchase_id: row for row in PurchaseValuation.objects.all()}
     assert (valued[own.pk].amount, valued[own.pk].rate) == (Decimal("100.00"), None)
@@ -502,7 +497,6 @@ def test_valuations_seed_from_the_legacy_conversion(owned_library, game_on):
     }
     assert not stale_purchases(owned_library).filter(pk=foreign.pk).exists()
     assert _requested(owned_library) == requested + 1
-    [done] = PURCHASE_CONVERSIONS[-1].libraries
     assert [(item.legacy_id, item.reason) for item in done.unvalued] == [
         (unrated.pk, "no stored USD->CZK rate for 2021")
     ]
@@ -1077,7 +1071,7 @@ def _defect_after(row, change):
 @pytest.mark.parametrize(
     ("facts", "change", "reason"),
     [
-        ({}, {"date_refunded": None}, "its refund"),
+        ({"date_refunded": date(2021, 5, 4)}, {"date_refunded": None}, "its refund"),
         ({"removed_at": INSTANT}, {"removed_at": None}, "its removal"),
         (
             {"ownership_type": LegacyPurchase.BORROWED, "price": 0.0},
@@ -1088,10 +1082,8 @@ def _defect_after(row, change):
     ids=["refund cleared", "removal cleared", "free row priced"],
 )
 def test_a_withdrawn_act_is_a_defect(owned_library, game_on, facts, change, reason):
-    row = legacy(owned_library, game_on("Tunic"), date_refunded=date(2021, 5, 4))
+    row = legacy(owned_library, game_on("Tunic"))
     LegacyPurchase.objects.filter(pk=row.pk).update(**facts)
-    if "date_refunded" not in change:
-        LegacyPurchase.objects.filter(pk=row.pk).update(date_refunded=None)
     convert()
 
     refusal = _defect_after(row, change)
@@ -1231,16 +1223,16 @@ def test_same_named_dlcs_under_two_bases_both_convert(owned_library, game_on):
             related_game=base,
         )
 
-    convert()
+    [done] = convert().libraries
 
     names = sorted(
         Game.objects.filter(parent__in=[first, second]).values_list("name", flat=True)
     )
-    assert names == ["Hitman 2: Soundtrack", "Soundtrack"] or names == [
-        "Hitman: Soundtrack",
-        "Soundtrack",
-    ]
-    lists = review_lists(owned_library, PURCHASE_CONVERSIONS[-1].libraries[0])
+    assert names in (
+        ["Hitman 2: Soundtrack", "Soundtrack"],
+        ["Hitman: Soundtrack", "Soundtrack"],
+    )
+    lists = review_lists(owned_library, done)
     assert len(lists[Category.RENAMED_ADDON]) == 1
 
 
