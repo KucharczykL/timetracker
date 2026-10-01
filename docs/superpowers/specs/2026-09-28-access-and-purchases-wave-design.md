@@ -418,13 +418,13 @@ restates in two dispatches (`restate_entry`, `Keep`/`KEEP` in
 | `CorrectEntryAcquisition` | `acquisition_corrected` | the opening endpoint's correction |
 | `EndEntryAccess`, `CorrectEntryAccessEnd`, `VoidEntryAccessEnd` | `access_ended`, `access_end_corrected`, `access_end_voided` | the primitive's three, with a `before_event` that refuses a removed entry; every way by hand, `refunded` included, since a person may state a refund no purchase records |
 | `ResumeEntryAccess` | `access_resumed` (note, `effective_time` the day) | refused with a sentence where no end stands, never `Unchanged`; the fourth act of `ResumableEndpoint` over `ResumableEndpointEvents`, its own type beside the three-act `Endpoint`, in the end's family, projected as a void is, through `resume_endpoint`; a resume of a non-resumable endpoint and a void of an opening one fail in mypy |
-| `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal refuses while a live Purchase names the entry, with a sentence naming the move; restore refuses under a removed PlayerGame or Release |
+| `RemoveEntry`, `RestoreEntry` | `removed`, `restored` | removal takes the copy's live purchases with it, appending `purchase.removed` for each in the same dispatch before `libraryentry.removed`, the confirmation naming them, since a purchase is the money paid for this copy and has no life the copy does not; restore brings back the purchases whose removal shares the entry removal's idempotency key, so Undo restores both and a purchase removed on its own stays removed; restore refuses under a removed PlayerGame or Release. `Purchase.entry` stays registered for `foreign_referrer` and blocks nothing (P5b; M1 had it refuse, which left a refunded copy with no reachable remedy) |
 
 The referrer registry is `games/reads/referrers.py`: `BlockingReferrer.on`
-takes `target`, and `referrers_of(target)` reads the tuple at each call,
-so `Purchase.entry` registers beside the two run referrers with the same
-`alive()` rule; `RemoveEntry` asks it already and finds no entry referrer
-until P1.
+takes `target`, and `referrers_of(target)` reads the tuple at each call;
+`Purchase.entry` registers there for the foreign-row audit, and since
+P5b `RemoveEntry` cascades over the copy's purchases rather than
+refusing on them.
 
 ### Purchase
 
