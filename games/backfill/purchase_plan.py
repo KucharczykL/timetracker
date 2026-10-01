@@ -19,6 +19,7 @@ EPIC = "Epic Games Store"
 type LegacyOwnership = Literal["ph", "di", "du", "re", "bo", "tr", "de", "pi"]
 type LegacyType = Literal["game", "dlc", "season_pass", "battle_pass"]
 type LegacyId = uuid.UUID
+type LibraryId = uuid.UUID
 type GameId = uuid.UUID
 type CurrencyCode = str  # "EUR"
 type AccessAndFormat = tuple[EntryAccessValue, EntryFormatValue]
@@ -61,7 +62,7 @@ class LegacyRow(NamedTuple):
     """Read by name; a historical model fits."""
 
     id: LegacyId
-    library_id: uuid.UUID
+    library_id: LibraryId
     #: Sorted by game key.
     game_ids: tuple[GameId, ...]
     platform_id: uuid.UUID | None
@@ -113,9 +114,14 @@ class RowNotConvertible(ValueError):
     """A row no conversion rule states."""
 
 
+def exact_amount(price: float) -> Decimal:
+    """The float's shortest spelling."""
+    return Decimal(repr(price))
+
+
 def quantized_amount(price: float) -> Decimal:
     """Shortest float spelling, half up to cents."""
-    return Decimal(repr(price)).quantize(CENT, rounding=ROUND_HALF_UP)
+    return exact_amount(price).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
 def split_cents(total: Decimal, count: int) -> list[Decimal]:
@@ -188,14 +194,14 @@ def _shape(row: LegacyRow) -> CopyShape:
     return CopyShape.OWN
 
 
-def _prices(row: LegacyRow, exact: Decimal, owned: bool) -> list[StatedPrice]:
+def _prices(row: LegacyRow, quantized: Decimal, owned: bool) -> list[StatedPrice]:
     count = len(row.game_ids)
     currency = row.price_currency.strip().upper()
-    if exact == 0 and owned and row.platform_name == EPIC:
+    if quantized == 0 and owned and row.platform_name == EPIC:
         return [StatedPrice(Decimal("0.00"), currency)] * count
-    if exact == 0:
+    if quantized == 0:
         return [UNKNOWN_PRICE] * count
-    return [StatedPrice(amount, currency) for amount in split_cents(exact, count)]
+    return [StatedPrice(amount, currency) for amount in split_cents(quantized, count)]
 
 
 def plan(row: LegacyRow) -> list[PlannedCopy]:
@@ -206,13 +212,13 @@ def plan(row: LegacyRow) -> list[PlannedCopy]:
     count = len(row.game_ids)
     access, format = access_and_format(row.ownership_type, row.platform_name)
     owned = row.ownership_type in OWNED
-    exact = quantized_amount(row.price)
+    quantized = quantized_amount(row.price)
     shared: list[Category] = []
-    if exact == 0 and owned:
+    if quantized == 0 and owned:
         shared.append(
             Category.EPIC_FREE if row.platform_name == EPIC else Category.UNKNOWN_PRICE
         )
-    if Decimal(repr(row.price)) != exact:
+    if exact_amount(row.price) != quantized:
         shared.append(Category.QUANTIZED)
     if row.ownership_type == "re":
         shared.append(Category.RENTAL)
@@ -234,7 +240,7 @@ def plan(row: LegacyRow) -> list[PlannedCopy]:
         PlannedCopy(
             row=row,
             game_id=game_id,
-            has_purchase=owned or exact != 0,
+            has_purchase=owned or quantized != 0,
             access=access,
             format=format,
             kind=_kind(row),
@@ -251,6 +257,6 @@ def plan(row: LegacyRow) -> list[PlannedCopy]:
             categories=tuple(shared),
         )
         for game_id, price, share in zip(
-            row.game_ids, _prices(row, exact, owned), converted, strict=True
+            row.game_ids, _prices(row, quantized, owned), converted, strict=True
         )
     ]

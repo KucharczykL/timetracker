@@ -17,6 +17,7 @@ from games.backfill.purchase_plan import (
     Category,
     CurrencyCode,
     LegacyRow,
+    exact_amount,
     quantized_amount,
 )
 from games.models import (
@@ -108,16 +109,12 @@ class Reconciliation:
         return failures
 
 
-def _exact(price: float) -> Decimal:
-    return Decimal(repr(price))
-
-
 def reconcile(
     rows: Sequence[LegacyRow], conversion: LibraryConversion
 ) -> Reconciliation:
     """Read the projections against the legacy rows."""
     copies = conversion.copies
-    purchase_ids = [copy.purchase_id for copy in copies if copy.purchase_id]
+    purchase_ids = [copy.purchase_id for copy in copies if copy.purchase_id is not None]
     own_copies = [copy.entry_id for copy in copies if copy.own_copy]
     planned = [
         *(copy.planned for copy in copies),
@@ -131,7 +128,7 @@ def reconcile(
     priced = {copy.row.id: copy for copy in planned if copy.price.amount is not None}
     for copy in priced.values():
         #: A row holds one currency.
-        exact = _exact(copy.row.price)
+        exact = exact_amount(copy.row.price)
         legacy[copy.price.currency] += exact
         quantization[copy.price.currency] += quantized_amount(copy.row.price) - exact
     for skip in conversion.skipped:
@@ -230,9 +227,7 @@ def snapshot_value(value: object) -> Any:
     match value:
         case None | bool() | int() | float() | str():
             return value
-        case Decimal():
-            return str(value)
-        case uuid.UUID():
+        case Decimal() | uuid.UUID():
             return str(value)
         case datetime() | date():
             return value.isoformat()

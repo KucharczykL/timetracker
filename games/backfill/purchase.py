@@ -6,6 +6,7 @@ from collections import defaultdict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from functools import partial
 from typing import Any, Literal, NamedTuple, TypedDict
@@ -13,15 +14,18 @@ from typing import Any, Literal, NamedTuple, TypedDict
 from django.core.exceptions import ValidationError
 from django.db import DataError, IntegrityError, connection, models, transaction
 from django.db.models import Case, Value, When
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from games.api_creation import RowRefused
 from games.backfill.purchase_plan import (
     Category,
     CopyShape,
+    CurrencyCode,
     GameId,
     LegacyId,
     LegacyRow,
+    LibraryId,
     PlannedCopy,
     RowNotConvertible,
     legacy_refusals,
@@ -42,6 +46,7 @@ from games.commands.playergame import RecordPlayerGameFacts
 from games.commands.purchase import (
     RefundPurchase,
     RemovePurchase,
+    StatedPrice,
     purchase_creation_events,
 )
 from games.conversion import request_revaluation
@@ -88,7 +93,8 @@ from games.models import (
 from games.projections import projection_models
 from games.reads.entries import library_entries
 from games.reads.purchases import valuation_inputs
-from games.valuations import needs_rate, publish_valuations, seeded
+from games.valuations import ValuationInput, needs_rate, publish_valuations, seeded
+from timetracker.temporal import TemporalValue
 
 logger = logging.getLogger("games")
 
@@ -103,6 +109,7 @@ type CommandInput = dict[str, Any]
 type PurchaseId = uuid.UUID
 type EntryId = uuid.UUID
 type Build = Callable[[], Sequence[NewEvent] | Unchanged]
+type RowsByLibrary = dict[LibraryId, list[LegacyRow]]
 
 
 class ConversionMetadata(TypedDict):
@@ -232,7 +239,7 @@ def _exclusion_key(game_id: GameId) -> IdempotencyKey:
 
 
 def legacy_rows(
-    model: type[models.Model], library_id: uuid.UUID | None = None
+    model: type[models.Model], library_id: LibraryId | None = None
 ) -> list[LegacyRow]:
     """Legacy rows; the model may be historical."""
     rows = model._base_manager.all()
@@ -248,11 +255,10 @@ def legacy_rows(
         **{f"{own}__in": rows.values("pk")}
     ).values_list(f"{own}_id", f"{other}_id"):
         linked[purchase_id].append(game_id)
-    columns = rows.order_by("date_purchased", "pk").values_list(
-        "pk",
+    columns = rows.order_by("date_purchased", "pk").values(
+        "id",
         "library_id",
         "platform_id",
-        "platform__name",
         "date_purchased",
         "date_refunded",
         "infinite",
@@ -265,49 +271,15 @@ def legacy_rows(
         "name",
         "related_game_id",
         "removed_at",
+        platform_name=Coalesce("platform__name", Value("")),
     )
     return [
-        LegacyRow(
-            id=pk,
-            library_id=library,
-            game_ids=tuple(sorted(linked[pk])),
-            platform_id=platform_id,
-            platform_name=platform_name or "",
-            date_purchased=purchased,
-            date_refunded=refunded,
-            infinite=infinite,
-            price=price,
-            price_currency=currency,
-            converted_price=converted,
-            converted_currency=converted_currency,
-            ownership_type=ownership,
-            type=kind,
-            name=name,
-            related_game_id=related,
-            removed_at=removed_at,
-        )
-        for (
-            pk,
-            library,
-            platform_id,
-            platform_name,
-            purchased,
-            refunded,
-            infinite,
-            price,
-            currency,
-            converted,
-            converted_currency,
-            ownership,
-            kind,
-            name,
-            related,
-            removed_at,
-        ) in columns
+        LegacyRow(**values, game_ids=tuple(sorted(linked[values["id"]])))
+        for values in columns
     ]
 
 
-def _removed_games(library_id: uuid.UUID, game_ids: set[GameId]) -> set[GameId]:
+def _removed_games(library_id: LibraryId, game_ids: set[GameId]) -> set[GameId]:
     """Games the catalog or the library removed."""
     marked = Game.objects.filter(pk__in=game_ids, removed_at__isnull=False)
     untracked = PlayerGame.objects.filter(
@@ -329,12 +301,16 @@ def _required_keys(copy: PlannedCopy) -> set[IdempotencyKey]:
     return keys
 
 
-def _unconverted(rows: Sequence[LegacyRow]) -> bool:
-    """Whether a live copy lacks a key."""
-    by_library: defaultdict[uuid.UUID, list[LegacyRow]] = defaultdict(list)
+def _by_library(rows: Sequence[LegacyRow]) -> RowsByLibrary:
+    by_library: RowsByLibrary = defaultdict(list)
     for row in rows:
         by_library[row.library_id].append(row)
-    for library_id, held_rows in by_library.items():
+    return by_library
+
+
+def _unconverted(rows: Sequence[LegacyRow]) -> bool:
+    """Whether a live copy lacks a key."""
+    for library_id, held_rows in _by_library(rows).items():
         removed = _removed_games(
             library_id, {game for row in held_rows for game in row.game_ids}
         )
@@ -366,9 +342,7 @@ def convert_purchases(
         return PurchaseConversion(())
     _require_the_schema_this_pass_was_written_for()
     instant = timezone.now() if recorded_at is None else recorded_at
-    by_library: defaultdict[uuid.UUID, list[LegacyRow]] = defaultdict(list)
-    for row in rows:
-        by_library[row.library_id].append(row)
+    by_library = _by_library(rows)
     libraries = UserLibrary.objects.select_related("user").in_bulk(by_library)
     with transaction.atomic():
         done = tuple(
@@ -514,9 +488,9 @@ class _LibraryPass:
 
     def run(self) -> LibraryConversion:
         planned = [(row, plan(row)) for row in self.rows]
-        attached = [pair for pair in planned if pair[1][0].shape == CopyShape.ATTACHED]
-        first = [pair for pair in planned if pair not in attached]
-        for row, copies in [*first, *attached]:
+        #: Attached copies ride copies stated first.
+        planned.sort(key=lambda planned_row: _is_attached(planned_row[1]))
+        for row, copies in planned:
             self._row(row, copies)
         self._exclusions()
         if self.appender.appended and not self.refusals:
@@ -587,7 +561,7 @@ class _LibraryPass:
         )
         metadata = _metadata([row.id], categories)
         if copy.refunded is not None:
-            self._refund(converted, metadata)
+            self._refund(converted, copy.refunded, metadata)
         if row.removed_at is not None:
             self._remove(converted, metadata)
         if row.infinite and row.removed_at is None:
@@ -636,49 +610,52 @@ class _LibraryPass:
                 format=statement.format,
                 acquired=statement.acquired,
             )
-            build = lambda: record.build(self.context)
+            build = partial(record.build, self.context)
         else:
-            purchase_id = copy.legacy_key or uuid.uuid7()
-
-            def build() -> Sequence[NewEvent]:
-                return purchase_creation_events(
-                    self.context,
-                    copy=statement,
-                    kind=copy.kind,
-                    name=copy.name,
-                    price=copy.price,
-                    purchased=ActStatement(copy.purchased, ""),
-                    purchase_id=purchase_id,
-                )
+            build = partial(
+                purchase_creation_events,
+                self.context,
+                copy=statement,
+                kind=copy.kind,
+                name=copy.name,
+                price=copy.price,
+                purchased=ActStatement(copy.purchased, ""),
+                purchase_id=copy.legacy_key or uuid.uuid7(),
+            )
 
         return self.appender.append(
             key, facts, build, _metadata([copy.row.id], categories)
         )
 
-    def _refund(self, copy: ConvertedCopy, metadata: ConversionMetadata) -> None:
+    def _refund(
+        self,
+        copy: ConvertedCopy,
+        refunded: TemporalValue,
+        metadata: ConversionMetadata,
+    ) -> None:
         planned = copy.planned
         row = planned.row
-        facts = _act_input(planned, refunded=planned.refunded)
+        facts: CommandInput = {**_act_input(planned), "refunded": refunded.serialize()}
         if copy.purchase_id is not None:
             refund = RefundPurchase(
                 purchase_id=copy.purchase_id,
-                statement=ActStatement(planned.refunded, ""),
+                statement=ActStatement(refunded, ""),
             )
             self.appender.append(
                 _key("refunded", row.id, planned.game_id),
                 facts,
-                lambda: refund.build(self.context),
+                partial(refund.build, self.context),
                 metadata,
             )
         if copy.own_copy and not planned.refund_ends_it:
             end = EndEntryAccess(
                 entry_id=copy.entry_id,
-                statement=WayActStatement(planned.refunded, EndWay.REFUNDED),
+                statement=WayActStatement(refunded, EndWay.REFUNDED),
             )
             self.appender.append(
                 _key("ended", row.id, planned.game_id),
                 facts,
-                lambda: end.build(self.context),
+                partial(end.build, self.context),
                 metadata,
             )
 
@@ -691,7 +668,7 @@ class _LibraryPass:
             self.appender.append(
                 _key("removed", row.id, planned.game_id),
                 facts,
-                lambda: removal.build(self.context),
+                partial(removal.build, self.context),
                 metadata,
             )
         if copy.own_copy:
@@ -699,7 +676,7 @@ class _LibraryPass:
             self.appender.append(
                 _key("removed_copy", row.id, planned.game_id),
                 facts,
-                lambda: copy_removal.build(self.context),
+                partial(copy_removal.build, self.context),
                 metadata,
             )
 
@@ -906,70 +883,88 @@ class _LibraryPass:
             for copy in self.copies
             if copy.purchase_id is not None
         }
-        target = state.published_currency
         inputs = [
             facts
             for facts in valuation_inputs(self.library)
             if facts.purchase_id in converted
         ]
-        if not (state.published_version and target):
+        if state.published_version and state.published_currency:
+            self._seed(state, converted, inputs)
+        else:
             for facts in inputs:
                 self._unvalued(
                     converted[facts.purchase_id],
                     facts.purchase_id,
                     "the library has published no target currency",
                 )
-        else:
-            standing = list(PurchaseValuation.objects.filter(library=self.library))
-            valued = {row.purchase_id for row in standing}
-            rows = list(standing)
-            for facts in inputs:
-                if facts.purchase_id in valued:
-                    continue
-                copy = converted[facts.purchase_id]
-                rate = None
-                amount = facts.amount
-                if needs_rate(facts, target):
-                    rate = (
-                        ExchangeRate.objects.filter(
-                            currency_from=facts.currency,
-                            currency_to=target,
-                            year=facts.rate_year,
-                        )
-                        .values_list("rate", flat=True)
-                        .first()
-                    )
-                    share = copy.planned.converted
-                    reason = (
-                        f"no stored {facts.currency}->{target} rate for "
-                        f"{facts.rate_year}"
-                        if rate is None
-                        else "the legacy row holds no converted amount"
-                        if share is None or share.amount is None
-                        else f"the legacy converted currency {share.currency} "
-                        f"is not {target}"
-                        if share.currency != target
-                        else None
-                    )
-                    if reason is not None:
-                        self._unvalued(copy, facts.purchase_id, reason)
-                        continue
-                    assert share is not None and share.amount is not None
-                    amount = share.amount
-                rows.append(
-                    seeded(
-                        facts,
-                        target,
-                        rate,
-                        amount,
-                        library=self.library,
-                        version=state.published_version,
-                        calculated_at=self.appender.recorded_at,
-                    )
-                )
-            publish_valuations(self.library, rows)
         if state.requested_currency.strip():
             request_revaluation(self.library)
+
+    def _seed(
+        self,
+        state: PurchaseConversionState,
+        converted: dict[PurchaseId, ConvertedCopy],
+        inputs: Sequence[ValuationInput],
+    ) -> None:
+        """Value converted purchases at the legacy amounts."""
+        target = state.published_currency
+        rows = list(PurchaseValuation.objects.filter(library=self.library))
+        valued = {row.purchase_id for row in rows}
+        for facts in inputs:
+            if facts.purchase_id in valued:
+                continue
+            copy = converted[facts.purchase_id]
+            rate: Decimal | None = None
+            amount = facts.amount
+            if needs_rate(facts, target):
+                rate = (
+                    ExchangeRate.objects.filter(
+                        currency_from=facts.currency,
+                        currency_to=target,
+                        year=facts.rate_year,
+                    )
+                    .values_list("rate", flat=True)
+                    .first()
+                )
+                share = copy.planned.converted
+                reason = _unvalued_reason(facts, target, rate, share)
+                if reason is not None:
+                    self._unvalued(copy, facts.purchase_id, reason)
+                    continue
+                assert share is not None and share.amount is not None
+                amount = share.amount
+            rows.append(
+                seeded(
+                    facts,
+                    target,
+                    rate,
+                    amount,
+                    library=self.library,
+                    version=state.published_version,
+                    calculated_at=self.appender.recorded_at,
+                )
+            )
+        publish_valuations(self.library, rows)
+
+
+def _is_attached(copies: Sequence[PlannedCopy]) -> bool:
+    return copies[0].shape == CopyShape.ATTACHED
+
+
+def _unvalued_reason(
+    facts: ValuationInput,
+    target: CurrencyCode,
+    rate: Decimal | None,
+    share: StatedPrice | None,
+) -> str | None:
+    """Why a rated purchase cannot seed."""
+    if rate is None:
+        return f"no stored {facts.currency}->{target} rate for {facts.rate_year}"
+    if share is None or share.amount is None:
+        return "the legacy row holds no converted amount"
+    if share.currency != target:
+        return f"the legacy converted currency {share.currency} is not {target}"
+    return None
 
 
 def _reason(error: Exception) -> str:
@@ -1005,12 +1000,8 @@ def _creation_input(copy: PlannedCopy) -> CommandInput:
     }
 
 
-def _act_input(copy: PlannedCopy, **facts: Any) -> CommandInput:
-    stated = {
-        name: value.serialize() if hasattr(value, "serialize") else value
-        for name, value in facts.items()
-    }
-    return {"legacy": str(copy.row.id), "game": str(copy.game_id), **stated}
+def _act_input(copy: PlannedCopy) -> CommandInput:
+    return {"legacy": str(copy.row.id), "game": str(copy.game_id)}
 
 
 def _metadata(

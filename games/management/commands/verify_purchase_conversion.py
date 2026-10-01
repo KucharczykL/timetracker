@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import NamedTuple
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import User
@@ -27,6 +28,14 @@ from games.views.stats_data import compute_stats
 
 class _Preflight(Exception):
     """Rolls the preflight back."""
+
+
+class Backlog(NamedTuple):
+    """Figures the exclusions move."""
+
+    unfinished: int
+    dropped: int
+    tracked: int
 
 
 class Command(BaseCommand):
@@ -100,9 +109,9 @@ class Command(BaseCommand):
         self._report(library, rows, done)
         after = self._backlog(library)
         self.stdout.write(
-            f"Backlog: unfinished {before[0]} -> {after[0]}, "
-            f"dropped {before[1]} -> {after[1]}; "
-            f"tracked games {before[2]} -> {after[2]}."
+            f"Backlog: unfinished {before.unfinished} -> {after.unfinished}, "
+            f"dropped {before.dropped} -> {after.dropped}; "
+            f"tracked games {before.tracked} -> {after.tracked}."
         )
         return True
 
@@ -157,15 +166,14 @@ class Command(BaseCommand):
             )
 
     @staticmethod
-    def _backlog(library: UserLibrary) -> tuple[int, int, int]:
+    def _backlog(library: UserLibrary) -> Backlog:
         figures = compute_stats(library, None)
-        tracked = PlayerGame.objects.filter(
-            library=library, removed_at__isnull=True
-        ).count()
-        return (
-            figures["purchased_unfinished_count"],
-            figures["dropped_count"],
-            tracked,
+        return Backlog(
+            unfinished=figures["purchased_unfinished_count"],
+            dropped=figures["dropped_count"],
+            tracked=PlayerGame.objects.filter(
+                library=library, removed_at__isnull=True
+            ).count(),
         )
 
     @classmethod

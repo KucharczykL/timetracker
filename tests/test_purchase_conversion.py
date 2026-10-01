@@ -93,6 +93,10 @@ def convert(library=None):
     return convert_purchases(rows, recorded_at=INSTANT)
 
 
+def in_key_order(*games: Game) -> list[Game]:
+    return sorted(games, key=lambda game: game.pk)
+
+
 def entries_of(game) -> list[LibraryEntry]:
     return list(LibraryEntry.objects.filter(player_game__game=game).order_by("pk"))
 
@@ -100,7 +104,7 @@ def entries_of(game) -> list[LibraryEntry]:
 def test_the_reader_names_games_in_key_order_and_the_platform(
     owned_library, game_on, steam
 ):
-    first, second = sorted([game_on("Tunic"), game_on("Hades")], key=lambda g: g.pk)
+    first, second = in_key_order(game_on("Tunic"), game_on("Hades"))
     row = legacy(owned_library, second, first, platform=steam)
 
     [read] = legacy_rows(LegacyPurchase)
@@ -206,7 +210,7 @@ def test_a_borrowed_copy_at_no_price_has_no_purchase(owned_library, game_on):
 
 
 def test_a_bundle_splits_into_one_purchase_per_game(owned_library, game_on):
-    games = sorted([game_on(name) for name in ("A", "B", "C")], key=lambda g: g.pk)
+    games = in_key_order(*(game_on(name) for name in ("A", "B", "C")))
     row = legacy(owned_library, *games, price=10.0)
 
     convert()
@@ -678,7 +682,7 @@ def test_a_full_rerun_replays_every_key(owned_library, game_on):
     )
     gone = game_on("Limbo")
     remove(legacy(owned_library, gone))
-    bundle = sorted([game_on(name) for name in ("A", "B", "C")], key=lambda g: g.pk)
+    bundle = in_key_order(*(game_on(name) for name in ("A", "B", "C")))
     legacy(owned_library, *bundle, price=10.0)
     base = game_on("Hitman")
     legacy(owned_library, base)
@@ -703,7 +707,7 @@ def test_a_full_rerun_replays_every_key(owned_library, game_on):
 
     after = _events_by_key()
     added = {key: types for key, types in after.items() if key not in before}
-    assert {key for key in added} == {key for key in after if str(later.pk) in key}
+    assert set(added) == {key for key in after if str(later.pk) in key}
     assert {key: after[key] for key in before} == before
     assert {
         game.pk: entries_of(game) for game in (rental, gone, *bundle, base)
@@ -861,14 +865,9 @@ def test_owned_free_rows_pass_the_price_rules(owned_library, game_on):
 
     [done] = convert().libraries
 
-    assert (
-        Purchase.objects.get(pk=free.pk).amount,
-        Purchase.objects.get(pk=free.pk).currency,
-    ) == (Decimal("0.00"), "EUR")
-    assert (
-        Purchase.objects.get(pk=unknown.pk).amount,
-        Purchase.objects.get(pk=unknown.pk).currency,
-    ) == (None, "")
+    prices = Purchase.objects.values_list("amount", "currency")
+    assert prices.get(pk=free.pk) == (Decimal("0.00"), "EUR")
+    assert prices.get(pk=unknown.pk) == (None, "")
     lists = review_lists(owned_library, done)
     assert lists[Category.EPIC_FREE] == [str(free.pk)]
     assert lists[Category.UNKNOWN_PRICE] == [str(unknown.pk)]
@@ -955,7 +954,7 @@ def test_a_game_without_a_live_release_is_refused(owned_library, game_on):
 
 
 def test_the_reconciliation_subtracts_a_skipped_copy(owned_library, game_on):
-    games = sorted([game_on(name) for name in ("A", "B", "C")], key=lambda g: g.pk)
+    games = in_key_order(*(game_on(name) for name in ("A", "B", "C")))
     legacy(owned_library, *games, price=10.0)
     remove(games[2])
     rows = legacy_rows(LegacyPurchase)
@@ -1018,7 +1017,7 @@ def test_valuations_keep_standing_rows_and_list_the_unvalued(owned_library, game
         converted_price=9.0,
         converted_currency="EUR",
     )
-    bundle = sorted([game_on("A"), game_on("B")], key=lambda g: g.pk)
+    bundle = in_key_order(game_on("A"), game_on("B"))
     legacy(
         owned_library,
         *bundle,
