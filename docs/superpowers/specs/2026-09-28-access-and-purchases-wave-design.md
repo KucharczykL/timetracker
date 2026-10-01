@@ -72,7 +72,7 @@ Read on the 2026-09-28 dump. One library, 808 live purchases.
 | Bundles (2 to 8 games), 38 games in all | 7 |
 | Add-ons: DLC / season pass / battle pass, every one naming the base game as its only game | 35 / 4 / 2 |
 | Named purchases: add-ons / games | 41 / 10 |
-| Single-game purchases whose platform is not the game's | 15 |
+| Single-game purchases whose platform is not the game's / with no platform | 14 / 8 |
 | Games with two or more purchases | 39 |
 | `infinite` rows / games / games with an infinite purchase beside a normal one | 33 / 30 / 6 |
 | Prices with more than two decimals | 2 |
@@ -193,7 +193,7 @@ stack stays one merge, so `main` never holds both.
 | Column | Meaning |
 |---|---|
 | `id`, `library` | as today |
-| `entry` | the LibraryEntry, `RESTRICT`, required, registered; a pass or an upgrade names the base game's entry |
+| `entry` | the LibraryEntry, `RESTRICT`, required, registered; a pass or an upgrade names a base game's copy: a live, held, Owned one, the one on the pass's platform first, then earliest acquired, then key |
 | `kind` | `game`, `season_pass`, `battle_pass`, `upgrade` |
 | `name` | the product name; blank for a game |
 | `amount` | `DecimalField(12, 2)`; null is a price nobody knows; 0 is free |
@@ -485,8 +485,10 @@ nothing. In order:
    the base's platform, tracked as a PlayerGame with default facts. No
    add-on is among the 15 mismatched-platform rows. The 6 passes and the
    upgrade stay purchases of their kind on the base entry.
-3. **Releases (15).** Where the purchase's platform is not the game's, a
-   private Release on that platform under the default Edition.
+3. **Releases (14).** Where the purchase states a platform the game's
+   Releases lack, a private Release on that platform under the default
+   Edition; a purchase stating no platform (8) puts its copy on the
+   game's default Release.
    **Demo editions (34).** For each Demo purchase, a private Edition of
    kind `prerelease` named "Demo" under its game, with one Release on the
    purchase's platform; the entry of step 4 names that Release. A game
@@ -506,9 +508,20 @@ nothing. In order:
    `purchase.refunded` and then, directly after it with nothing between,
    the copy's `libraryentry.access_ended` (way `refunded`), in one append
    under one idempotency key, the copy unended until then, so the refund owns the end and a later void or
-   correction reaches it. The pass writes events directly, as #700 did,
-   since a migration's transaction cannot host a dispatch; the shape is
-   what `RefundPurchase` would write. Valuations are seeded from
+   correction reaches it. The pass builds every event through the
+   commands' own `build(CommandContext(...))` (`RecordEntry`,
+   `RefundPurchase`, `EndEntryAccess`, `RecordPlayerGameFacts`,
+   `RemovePurchase`, `RemoveEntry`; the creations through
+   `entry_creation_events` and `purchase_created`) and appends through
+   `idempotent_append`, one key per (legacy row, game, act), one
+   `recorded_at`, one correlation id per library, so every command rule
+   applies and the adjacency is `RefundPurchase`'s own; a dispatch cannot
+   run in a migration's transaction, a build can. A refusal aborts the
+   migration naming the legacy row, which the preflight has shown first.
+   The migration imports live models and command code and is elided once
+   the deployment records it, as #700 and #1274 were. A pass or an upgrade
+   with no base copy records its own, Owned, by the table. A removed
+   legacy row is converted, then removed. Valuations are seeded from
    `converted_price` at the current published version; sums per currency
    are compared before and after.
 6. **Infinite (30 games).** Both exclusions stated through
@@ -534,12 +547,18 @@ to look at, is in the review surface.
 
 ### Preflight and rehearsal
 
-`make verify-purchase-conversion` is read-only: it prints every review
-list and both backlog counts. With `--confirm NAME` on a restored dump it
-runs the pass and prints the reconciliation: counts per category, totals
-per currency, refunded count, entries by access and format, quantization
-deltas, and every statistics difference with its attribution (see
-[Statistics](#statistics)). `make verify-dump` and
+`make verify-purchase-conversion ARGS="--user NAME"` runs the pass
+inside a transaction it rolls back: it prints every review list, both
+backlog counts and every refusal with its legacy row, so a refusal never
+first appears as an aborted deploy. With `--confirm NAME` on a restored
+dump it commits and prints the row-level reconciliation: counts per
+category, totals per currency before and after, refunded count, entries
+by access and format, quantization deltas, valuation sums seeded against
+legacy. Both modes write the legacy `StatsData` for every year and
+all-time to a JSON snapshot (`--snapshot PATH`), which P5's gate judges
+its readers against (see [Statistics](#statistics)); the reconciliation
+reads legacy rows beside the projections, so it prints any time before
+P5 drops them. `make verify-dump` and
 `make verify-baseline ARGS="--migrate"` run on the day's dump before the
 deploy. The pre-deploy dump is the rollback.
 
@@ -550,10 +569,12 @@ with its count. Unknown price (54) and Epic free (19) link to the
 Purchases list with its price-state facet and platform set. Rentals (30)
 link to the Library tab at Access: Rented. Repurchased games (39) link to
 the Games list at entry count two or more. Created Releases (15) and mixed
-games (6), which no filter expresses, render as rows: the pass tags their
-`libraryentry.created` and `playergame` events with the category in
-`source_metadata`, the section reads those events by the pass's
-correlation id through `batch_aggregate_ids`, and each row links to its
+games (6), which no filter expresses, render as rows: every pass append carries `source_metadata =
+{"origin": "conversion", "issue": 723, "legacy_purchase": id, "review":
+[categories]}` (`unknown_price`, `epic_free`, `rental`,
+`created_release`, `demo_edition`, `mixed_infinite`, `addon_game`,
+`quantized`, `bundle_split`), the section reads the events by origin,
+since correlation ids differ per library, and each row links to its
 edit page. A Release writes no event, so the row is the entry that names
 it. Demo editions (34, of which 30 games hold sessions) link to the
 Games list at entry access Demo; the pass names no session's Release,
@@ -729,10 +750,12 @@ stay #1157.
 its figure over `EntryFilter` or `PurchaseFilter`; the parity test covers
 each.
 
-**Parity gate.** `make verify-purchase-conversion --confirm` judges every
-`StatsData` key, for every year and all-time, by a rule stated per key in
-`games/stats_parity.py`, which gains a second comparison shape beside the
-session-row one. The population changes the pass makes are the only
+**Parity gate.** In P4 every figure still reads `LegacyPurchase`, which
+the pass leaves in place, so P4 writes the legacy `StatsData` for every
+year and all-time to a snapshot file, and P5's `make
+verify-purchase-conversion --confirm` judges every key of its new
+readers against it by a rule stated per key in `games/stats_parity.py`,
+which gains a second comparison shape beside the session-row one. The population changes the pass makes are the only
 admitted differences, each attributed by name and count:
 
 - purchase counts: minus the 81 non-owned rows and plus the 31 rows the
@@ -857,9 +880,13 @@ inside a member says so in its body and closes with it.
 ## Deployment
 
 One image carries the stack. The container's startup `migrate` runs the
-pass; the pre-deploy dump is the rollback. Before the deploy, on that
-day's dump: `make verify-purchase-conversion ARGS="--confirm NAME"`,
-`make verify-replay-parity`, `make verify-dump`, `make verify-baseline
+pass; the pre-deploy dump is the rollback. The pass's migration is
+`RunPython` alone, so the rehearsal on that day's dump is: restore it;
+`make migrate ARGS="games <the migration before the pass>"`; `make
+verify-purchase-conversion ARGS="--user NAME"` (rolled back); `ARGS="--confirm
+NAME"` (committed, reconciliation printed); `make migrate`, which appends
+nothing, proving idempotency on real data; then `make
+verify-replay-parity`, `make verify-dump`, `make verify-baseline
 ARGS="--migrate"`. After it: the review surface, the first valuation
 refresh and its printed totals, then the fixture PR. The valuation
 task's daily schedule row must exist in production, since the recovery
