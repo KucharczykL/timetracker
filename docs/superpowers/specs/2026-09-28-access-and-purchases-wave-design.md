@@ -952,6 +952,10 @@ inside a member says so in its body and closes with it.
 - **#889** later moves the per-platform figures onto the Release the entry
   names.
 - **#1157** draws its card from this wave's readers.
+- **#1432** moves the two spend side figures onto the Library page and
+  later grows into the audit screen every data gap reports to, P5b's
+  conversion review and #1418's unvaluable purchases included; it
+  follows P5b and blocks nothing in the stack.
 - **#1383** redesigns Game detail after P5 and #1353, so every section
   the wave adds is on the page it redraws; the wave's sections take the
   library kit's shapes meanwhile (`SummaryGroup`, `SummaryList`, `Chip`,
@@ -1038,6 +1042,9 @@ runs on it.
 - #1361, a toggle that hides prerelease play (after #1354)
 - #1375, a library's own Release under a shared Edition
 - #1418, report the purchases no rate can value (epic #602, beside #493)
+- #1432, the Library page as the one place for purchase data gaps, later
+  a library-wide audit screen that absorbs P5b's review surface and
+  #1418's report; after P5b, outside the stack, mockup first
 - #1382, set the platform across many copies on the Library tab
 - #1383, the Game detail redesign, after P5 and #1353
 - #1384, the `<form-dialog>` element, and #1385, the epic that opens
