@@ -109,6 +109,7 @@ test. `tests/test_anonymize_sample.py` holds one key for each dispatch.
   end even when the second purchase is refunded too, because the second
   refund appended nothing on the copy.
 - A refund that appended nothing still blocks a move to another copy.
-- P4 converts a refunded Owned copy unended and lets `RefundPurchase`
-  state the end. An end that P4 stated first is not the refund's.
+- P4 writes the shape `RefundPurchase` writes: `purchase.refunded` and
+  the copy's `access_ended` in one append under one key, the copy
+  unended until then. An end that P4 stated first is not the refund's.
 - P5 adds the row menu's one-click Refund and its sequence-keyed Undo.
