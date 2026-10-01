@@ -153,31 +153,37 @@ class _SeenEnd(forms.Form):
             self.add_error(None, CHANGED_SINCE_OPENED)
 
 
-type SubmissionAct = Literal["add", "end", "resume"]
+type SubmissionNoun = Literal["copy", "purchase"]
+type SubmissionAct = Literal["add", "end", "resume", "refund"]
 
 
-def page_key(act: SubmissionAct, token: uuid.UUID) -> IdempotencyKey:
-    return f"copy-{act}-{token}"
+def page_key(
+    noun: SubmissionNoun, act: SubmissionAct, token: uuid.UUID
+) -> IdempotencyKey:
+    return f"{noun}-{act}-{token}"
 
 
-def one_click_key(act: SubmissionAct, token: uuid.UUID) -> IdempotencyKey:
-    return f"copy-{act}-now-{token}"
+def one_click_key(
+    noun: SubmissionNoun, act: SubmissionAct, token: uuid.UUID
+) -> IdempotencyKey:
+    return f"{noun}-{act}-now-{token}"
 
 
 class _Submission(forms.Form):
     #: One key per page; a resubmit replays.
     submission = forms.UUIDField(widget=forms.HiddenInput, initial=uuid.uuid7)
 
+    noun: SubmissionNoun = "copy"
     act: SubmissionAct
 
     def submission_key(self) -> IdempotencyKey:
-        return page_key(self.act, self.cleaned_data["submission"])
+        return page_key(self.noun, self.act, self.cleaned_data["submission"])
 
     def _replays(self, library: UserLibrary) -> bool:
         """This press already ran; dispatch replays."""
         submission = self.cleaned_data.get("submission")
         return submission is not None and key_answered(
-            library, page_key(self.act, submission)
+            library, page_key(self.noun, self.act, submission)
         )
 
 

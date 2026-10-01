@@ -42,6 +42,7 @@ from games.entry_forms import (
     EntryEndForm,
     EntryResumeForm,
     SubmissionAct,
+    SubmissionNoun,
     copy_groups,
     one_click_key,
 )
@@ -400,13 +401,15 @@ UNDO_OVERTAKEN = "This copy changed since; nothing was undone."
 NO_RELEASE = "This game has no version yet; add one on the Add page."
 
 
-def _one_click_key(request: HttpRequest, act: SubmissionAct) -> IdempotencyKey:
+def _one_click_key(
+    request: HttpRequest, act: SubmissionAct, noun: SubmissionNoun = "copy"
+) -> IdempotencyKey:
     """The press's key; missing is malformed."""
     try:
         token = uuid.UUID(request.POST.get(SUBMISSION_FIELD, ""))
     except ValueError:
         raise BadRequest("A one-click press carries its submission key.") from None
-    return one_click_key(act, token)
+    return one_click_key(noun, act, token)
 
 
 def _one_click(

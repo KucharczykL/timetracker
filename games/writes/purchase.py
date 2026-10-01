@@ -12,6 +12,7 @@ from games.commands.purchase import (
     TAKE_REFUND_BACK,
     DescribePurchase,
     RecordPurchase,
+    RefundPurchase,
     RefundStatement,
     RemovePurchase,
     RestorePurchase,
@@ -28,6 +29,7 @@ from games.events.purchase import (
 )
 from games.events.vocabulary import EventType
 from games.models import Purchase
+from games.reads.entries import EventSequence
 from games.reads.events import dispatched_events
 from games.writes.answers import SubjectNoun, answered
 from games.writes.endpoint import KEEP, Keep
@@ -189,6 +191,45 @@ def _copy_end_of(event_types: frozenset[EventType]) -> CopyEnd | None:
         if event_type in event_types:
             return copy_end
     return CopyEnd.LEFT
+
+
+class RefundedPurchase(NamedTuple):
+    """What a refund answers."""
+
+    #: The refund event's; None where nothing appended.
+    sequence: EventSequence | None
+    copy_end: CopyEnd | None
+
+
+def refund_purchase(
+    actor: User,
+    purchase: Purchase,
+    statement: ActStatement,
+    *,
+    correlation_id: uuid.UUID,
+    idempotency_key: IdempotencyKey,
+) -> RefundedPurchase:
+    """State a refund under the caller's key."""
+    with answered(SUBJECT):
+        result = _dispatch(
+            RefundPurchase(purchase_id=purchase.pk, statement=statement),
+            actor=actor,
+            correlation_id=correlation_id,
+            idempotency_key=idempotency_key,
+        )
+    if result.sequences is None:
+        return RefundedPurchase(sequence=None, copy_end=None)
+    #: A game refund appends the copy's end after.
+    events = list(dispatched_events(result))
+    refunded = next(
+        event
+        for event in events
+        if event.event_type == PURCHASE_REFUND_EVENTS.stated.event_type
+    )
+    return RefundedPurchase(
+        sequence=refunded.sequence,
+        copy_end=_copy_end_of(frozenset(event.event_type for event in events)),
+    )
 
 
 def _refund_statement(refund: ActStatement | None | Keep) -> RefundStatement | None:

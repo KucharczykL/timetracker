@@ -198,6 +198,21 @@ def readable_purchases(library: UserLibrary) -> PurchaseQuerySet:
     )
 
 
+def latest_refund_act(
+    library: UserLibrary, purchase_id: uuid.UUID
+) -> LibraryEvent | None:
+    """The purchase's latest refund-family event."""
+    return (
+        LibraryEvent.objects.filter(
+            library=require_library(library),
+            aggregate_id=purchase_id,
+            event_type__in=PURCHASE_REFUND_EVENTS.family,
+        )
+        .order_by("-sequence")
+        .first()
+    )
+
+
 def refund_owns_the_end(library: UserLibrary, purchase: Purchase) -> bool:
     """Whether this refund wrote the copy's end.
 
