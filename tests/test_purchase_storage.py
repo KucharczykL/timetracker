@@ -248,7 +248,7 @@ def test_restate_describes_then_corrects_under_one_correlation(owned_library, en
     correlation_id = uuid.uuid7()
     day = TemporalValue.parse("2021-05")
 
-    changed = restate_purchase(
+    restated = restate_purchase(
         owned_library.user,
         purchase,
         name="Deluxe",
@@ -256,7 +256,7 @@ def test_restate_describes_then_corrects_under_one_correlation(owned_library, en
         correlation_id=correlation_id,
     )
 
-    assert changed
+    assert restated.appended
     assert list(
         LibraryEvent.objects.filter(correlation_id=correlation_id)
         .order_by("sequence")
@@ -264,4 +264,4 @@ def test_restate_describes_then_corrects_under_one_correlation(owned_library, en
     ) == ["library.purchase.name_changed", "library.purchase.purchase_corrected"]
     assert not restate_purchase(
         owned_library.user, purchase, name="Deluxe", correlation_id=uuid.uuid7()
-    )
+    ).appended

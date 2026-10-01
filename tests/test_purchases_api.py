@@ -16,7 +16,7 @@ from games.commands.purchase import (
     TOO_LARGE_AMOUNT,
     TOO_PRECISE_AMOUNT,
 )
-from games.models import Game, Purchase
+from games.models import Game, LibraryEvent, Purchase
 from timetracker.temporal import TemporalValue
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
@@ -360,18 +360,23 @@ def test_a_refund_body_refuses_an_unknown_key(auth_client, entry):
 def test_a_void_with_no_refund_answers_the_row(auth_client, entry):
     purchase = record_purchase(entry)
 
+    before = LibraryEvent.objects.count()
+
     response = _patch(auth_client, purchase.pk, {"refund": None})
 
     assert response.status_code == 200
     assert response.json()["refund_recorded_at"] is None
+    assert LibraryEvent.objects.count() == before
 
 
 def test_a_repeated_refund_answers_the_row(auth_client, entry):
     purchase = record_purchase(entry)
     body = {"refund": {"refunded": "2021-06", "note": ""}}
     _patch(auth_client, purchase.pk, body)
+    before = LibraryEvent.objects.count()
 
     assert _patch(auth_client, purchase.pk, body).status_code == 200
+    assert LibraryEvent.objects.count() == before
 
 
 def test_a_refund_on_an_unknown_day_ends_the_copy(auth_client, entry):

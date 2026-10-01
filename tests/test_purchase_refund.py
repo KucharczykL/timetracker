@@ -4,6 +4,7 @@ import uuid
 from decimal import Decimal
 
 import pytest
+from django.db import transaction
 from entries import end_entry_access, record_entry, second_release
 from purchases import record_purchase, remove_purchase
 
@@ -13,6 +14,7 @@ from games.commands.libraryentry import (
     CorrectEntryAcquisition,
     DescribeEntry,
     ResumeEntryAccess,
+    VoidEntryAccessEnd,
 )
 from games.commands.playergame import RemovePlayerGame
 from games.commands.playersession import UNSTORABLE_NOTE
@@ -26,7 +28,6 @@ from games.commands.purchase import (
     REFUND_BEFORE_PURCHASE,
     REFUNDED_BEFORE_BOUGHT,
     RELEASE_REMOVED,
-    TAKE_REFUND_BACK,
     TOO_PRECISE_AMOUNT,
     CorrectPurchaseRefund,
     DescribePurchase,
@@ -35,6 +36,7 @@ from games.commands.purchase import (
     VoidPurchaseRefund,
 )
 from games.end_ways import EndWay
+from games.events.append import lock_stream
 from games.events.dispatch import (
     CommandOutcome,
     CommandRejected,
@@ -42,11 +44,14 @@ from games.events.dispatch import (
     RowNotHeld,
     dispatch,
 )
+from games.events.libraryentry import ENTRY_ACCESS_END_EVENTS
+from games.events.purchase import PURCHASE_REFUND_EVENTS
+from games.events.vocabulary import NewEvent
 from games.models import Game, LibraryEvent
 from games.reads.purchases import refund_owns_the_end
 from games.removal import remove
 from games.writes.answers import CommandFailed
-from games.writes.purchase import restate_purchase
+from games.writes.purchase import CopyEnd, RestatedPurchase, restate_purchase
 from timetracker.temporal import TemporalValue
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
@@ -421,7 +426,7 @@ def test_removing_a_refunded_purchase_leaves_the_end(owned_library, entry, purch
 # --- one PATCH -------------------------------------------------------------
 
 
-def _restate(purchase, **facts) -> bool:
+def _restate(purchase, **facts) -> RestatedPurchase:
     return restate_purchase(
         purchase.library.user,
         _fresh(purchase),
@@ -486,7 +491,7 @@ def test_a_void_lets_the_purchase_move(owned_library, graph, entry, purchase):
     )
     _dispatch(owned_library, _refund(purchase))
 
-    _restate(purchase, entry_id=elsewhere.pk, refund=TAKE_REFUND_BACK)
+    _restate(purchase, entry_id=elsewhere.pk, refund=None)
 
     assert _fresh(purchase).entry_id == elsewhere.pk
     assert _fresh(entry).access_end_recorded_at is None
@@ -537,7 +542,7 @@ def test_a_refused_move_keeps_the_refund(owned_library, stated_graph, entry, pur
     before = _library_event_count(purchase)
 
     with pytest.raises(CommandFailed) as refused:
-        _restate(purchase, entry_id=other_game_copy.pk, refund=TAKE_REFUND_BACK)
+        _restate(purchase, entry_id=other_game_copy.pk, refund=None)
 
     assert refused.value.message == ENTRY_OF_ANOTHER_GAME
     assert _library_event_count(purchase) == before
@@ -667,3 +672,117 @@ def test_a_void_under_a_removed_game_is_refused(owned_library, entry, purchase):
     _dispatch(owned_library, RemovePlayerGame(game_id=entry.player_game.game_id))
 
     assert _refused(owned_library, _void(purchase)).sentence == PLAYER_GAME_REMOVED
+
+
+# --- what the copy's end answers ------------------------------------------
+
+
+def test_the_write_answers_what_the_copy_end_did(owned_library, entry, purchase):
+    assert _restate(purchase, refund=ActStatement(JUNE)).copy_end is CopyEnd.ENDED
+    assert _restate(purchase, refund=ActStatement(JULY)).copy_end is CopyEnd.MOVED
+    assert _restate(purchase, refund=None).copy_end is CopyEnd.TAKEN_BACK
+    assert _restate(purchase, name="Deluxe").copy_end is None
+
+
+def test_the_write_answers_a_copy_end_left_alone(owned_library, entry, purchase):
+    end_entry_access(entry, way=EndWay.SOLD, ended=JULY)
+
+    restated = _restate(purchase, refund=ActStatement(JUNE))
+
+    assert restated == RestatedPurchase(appended=True, copy_end=CopyEnd.LEFT)
+
+
+# --- the key a refund reads -----------------------------------------------
+
+
+def _append(library, events, key: str) -> None:
+    with transaction.atomic():
+        lock_stream(library).append(
+            events, actor=None, correlation_id=uuid.uuid7(), idempotency_key=key
+        )
+
+
+def _hand_end(entry) -> NewEvent:
+    return ENTRY_ACCESS_END_EVENTS.stated.new(
+        aggregate_id=entry.pk,
+        effective_time=JULY,
+        payload={"way": EndWay.SOLD.value, "note": ""},
+    )
+
+
+def test_a_reused_key_lends_no_hand_end_to_the_refund(owned_library, graph):
+    borrowed = record_entry(owned_library, graph.release, access="borrowed")
+    purchase = record_purchase(borrowed)
+    result = _dispatch(owned_library, _refund(purchase))
+    (refunded,) = LibraryEvent.objects.filter(
+        aggregate_id=purchase.pk, event_type="library.purchase.refunded"
+    )
+    _dispatch(owned_library, DescribePurchase(purchase.pk, name="Deluxe"))
+
+    _append(owned_library, [_hand_end(borrowed)], refunded.idempotency_key)
+
+    assert result.outcome is CommandOutcome.APPENDED
+    assert not refund_owns_the_end(owned_library, _fresh(purchase))
+
+
+def test_one_append_of_a_refund_and_its_end_owns_it(owned_library, entry, purchase):
+    _append(
+        owned_library,
+        [
+            PURCHASE_REFUND_EVENTS.stated.new(
+                aggregate_id=purchase.pk, effective_time=JUNE, payload={"note": ""}
+            ),
+            _copy_end_event(entry),
+        ],
+        "converted-refund",
+    )
+
+    assert refund_owns_the_end(owned_library, _fresh(purchase))
+
+
+def _copy_end_event(entry) -> NewEvent:
+    return ENTRY_ACCESS_END_EVENTS.stated.new(
+        aggregate_id=entry.pk,
+        effective_time=JUNE,
+        payload={"way": EndWay.REFUNDED.value, "note": ""},
+    )
+
+
+# --- the rest of the refusals ---------------------------------------------
+
+
+def test_a_void_after_a_hand_void_leaves_the_copy(owned_library, entry, purchase):
+    _dispatch(owned_library, _refund(purchase))
+    _dispatch(owned_library, VoidEntryAccessEnd(entry_id=entry.pk))
+
+    result = _dispatch(owned_library, _void(purchase))
+
+    assert _batch(result) == [("library.purchase.refund_voided", purchase.pk)]
+
+
+def test_a_correction_without_a_refund_is_refused(owned_library, purchase):
+    refused = _refused(owned_library, _correct(purchase))
+
+    assert refused.sentence == (
+        "This purchase has no refund to correct. Record the refund first."
+    )
+
+
+@pytest.mark.parametrize("command", (_refund, _correct))
+def test_a_refund_under_a_removed_game_is_refused(
+    owned_library, entry, purchase, command
+):
+    if command is _correct:
+        _dispatch(owned_library, _refund(purchase))
+    _dispatch(owned_library, RemovePlayerGame(game_id=entry.player_game.game_id))
+
+    assert _refused(owned_library, command(purchase)).sentence == PLAYER_GAME_REMOVED
+
+
+def test_a_restated_refund_names_the_purchase_day(owned_library, purchase):
+    _dispatch(owned_library, _refund(purchase))
+
+    with pytest.raises(CommandFailed) as refused:
+        _restate(purchase, purchased=ActStatement(JULY), refund=ActStatement(JUNE))
+
+    assert refused.value.message == PURCHASE_AFTER_REFUND

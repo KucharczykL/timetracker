@@ -35,15 +35,18 @@ def readable_purchases(library: UserLibrary) -> PurchaseQuerySet:
 def refund_owns_the_end(library: UserLibrary, purchase: Purchase) -> bool:
     """Whether this refund wrote the copy's end.
 
-    Its dispatch appended a refund statement or correction of
-    this purchase; it holds while every dispatch stamps one
-    idempotency key, which a direct appender must keep.
+    The end directly follows a refund statement or correction of
+    this purchase, under the same idempotency key. Adjacency
+    keeps a writer that reuses one key across appends from
+    lending a hand end to the refund.
     """
     end = latest_end_act(library, purchase.entry_id)
     if end is None or end.event_type not in END_STATEMENTS:
         return False
     return LibraryEvent.objects.filter(
         library=require_library(library),
+        stream_id=end.stream_id,
+        sequence=end.sequence - 1,
         aggregate_id=purchase.pk,
         event_type__in=_REFUND_STATEMENTS,
         idempotency_key=end.idempotency_key,

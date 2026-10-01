@@ -624,10 +624,12 @@ docs/           — Additional documentation
   `DescribePurchase`'s `refund` (`ActStatement` or `TAKE_REFUND_BACK`),
   chosen by presence under the lock. A `game` refund ends its Owned,
   unended copy, way `refunded`, in the same dispatch; a correction of the
-  day and a void move that end only while `refund_owns_the_end` says so,
-  matched on the dispatch's one `idempotency_key`, so every appender, the
-  anonymizer included, keeps one key per dispatch. A refunded purchase
-  does not move. Contract is
+  day and a void move that end only while `refund_owns_the_end` says so:
+  the end directly follows a refund act of this purchase under one
+  `idempotency_key`, so an appender writes the two together and the
+  anonymizer keeps one key per dispatch. A refunded purchase moves only
+  beside its void. `restate_purchase` takes `refund` (`KEEP` keeps, `None`
+  voids) and answers `RestatedPurchase` with its `CopyEnd`. Contract is
   [A purchase is refunded](docs/superpowers/specs/2026-10-01-issue-727-purchase-refund-design.md)
 
 **One act a row states once is an endpoint** (#1275). `Endpoint` in

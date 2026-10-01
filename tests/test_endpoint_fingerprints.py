@@ -110,7 +110,6 @@ COMMANDS: dict[str, Command] = {
             acquired=ActStatement(None, ""),
         ),
     ),
-    #: Moved when DescribePurchase gained refund.
     "describe_purchase": DescribePurchase(
         purchase_id=PURCHASE, price=StatedPrice(None, ""), entry_id=ENTRY
     ),
@@ -178,7 +177,7 @@ RECORDED: dict[str, str] = {
         "2e588e71418455ed1f6e11c04e3e1629638aa20e85049a5e78918a6729021b81"
     ),
     "describe_purchase_refund_taken_back": (
-        "d5833adea211d5e8bc2246b640275ecb566dcb992bcca968f68b2e7c0a5239df"
+        "5b6fa7cfd60ad05b4226446a285355af7e028c5f6bbafed66ed0744adad3c74c"
     ),
     "refund_purchase": (
         "740990859d1a40131f80ddb70465846ccc7441337b27c6da1af86b6f4833ea48"
@@ -206,3 +205,11 @@ def test_a_price_fingerprints_alike_in_every_spelling() -> None:
     assert digest(StatedPrice(Decimal("12.5"), " eur ")) == digest(
         StatedPrice(Decimal("12.50"), "EUR")
     )
+
+
+def test_a_take_back_fingerprints_apart_from_an_undated_refund() -> None:
+    def digest(refund) -> str:
+        command = DescribePurchase(purchase_id=PURCHASE, refund=refund)
+        return fingerprint_command_input(canonical_command_input(command))
+
+    assert digest(TAKE_REFUND_BACK) != digest(ActStatement(None, ""))

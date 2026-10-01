@@ -84,5 +84,6 @@ A price that
 
 ## Limits
 
-- P2 adds refunds. A refunded purchase does not move to another entry.
+- P2 adds refunds. A refunded purchase moves to another entry only
+  beside the void of its refund.
 - P3 adds valuation. P4 converts the legacy rows.

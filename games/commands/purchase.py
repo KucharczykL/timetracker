@@ -5,7 +5,8 @@ import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import ClassVar, NamedTuple, cast, get_args
+from enum import StrEnum
+from typing import ClassVar, Final, NamedTuple, cast, get_args
 
 from django.db import models
 
@@ -227,12 +228,14 @@ def _held_copy(context: CommandContext, entry_id: uuid.UUID) -> LibraryEntry:
     return entry
 
 
-class RefundTakenBack(NamedTuple):
+class RefundTakenBack(StrEnum):
     """A refund statement that voids it."""
 
+    #: A string, so the fingerprint can encode it.
+    TAKEN_BACK = "taken_back"
 
-TAKE_REFUND_BACK = RefundTakenBack()
-#: An empty tuple fingerprints apart from ActStatement.
+
+TAKE_REFUND_BACK: Final = RefundTakenBack.TAKEN_BACK
 type RefundStatement = ActStatement | RefundTakenBack
 
 
@@ -251,7 +254,10 @@ def _standing_refund(
         case RefundTakenBack():
             return None
         case ActStatement():
-            return StandingRefund(refund.when, is_new=True)
+            held = stated(purchase, PURCHASE_REFUND)
+            return StandingRefund(
+                refund.when, is_new=held is None or held.when != refund.when
+            )
     if stated(purchase, PURCHASE_REFUND) is None:
         return None
     return StandingRefund(purchase.refunded, is_new=False)
@@ -264,7 +270,7 @@ def _refuse_a_reversed_refund(
     purchase_day_is_new: bool,
     refund: StandingRefund | None,
 ) -> None:
-    """Refuse a refund before the purchase day."""
+    """Refuse a purchase refunded before bought."""
     if refund is None or not (purchase_day_is_new or refund.is_new):
         return
     if not certainly_reversed(earlier=purchased, later=refund.when):
@@ -360,7 +366,11 @@ def _copy_end(
     copy_id: uuid.UUID,
     when: TemporalValue | None,
 ) -> NewEvent:
-    """The copy's end: way refunded, refund's day."""
+    """The copy's end: way refunded, refund's day.
+
+    It stands in for EndEntryAccess, CorrectEntryAccessEnd and
+    VoidEntryAccessEnd; a rule added there belongs here too.
+    """
     return spec.new(
         aggregate_id=copy_id,
         effective_time=when,
@@ -577,6 +587,11 @@ class DescribePurchase(Command):
         if isinstance(self.refund, ActStatement):
             check_note(self.refund.note)
         purchase = library_purchase_row(context, self.purchase_id)
+        #: The facts once this statement lands.
+        final_kind = cast(PurchaseKindValue, purchase.kind) if kind is None else kind
+        final_purchased = (
+            purchase.purchased if self.purchased is None else self.purchased.when
+        )
         events: list[NewEvent] = []
         if kind is not None and kind != purchase.kind:
             events.append(purchase_kind_changed(purchase.pk, kind))
@@ -624,19 +639,13 @@ class DescribePurchase(Command):
         if events:
             _refuse_a_live_act(purchase)
         if self.refund is not None:
-            stated_kind = (
-                cast(PurchaseKindValue, purchase.kind) if kind is None else kind
-            )
-            purchased = (
-                purchase.purchased if self.purchased is None else self.purchased.when
-            )
             refund = _restated_refund(
                 context,
                 purchase,
                 self.refund,
-                kind=stated_kind,
+                kind=final_kind,
                 copy=copy,
-                purchased=purchased,
+                purchased=final_purchased,
             )
             if not isinstance(refund, Unchanged):
                 events.extend(refund)

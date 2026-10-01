@@ -52,7 +52,7 @@ from games.commands.playersession import (
     TimedTiming,
     TimingStatement,
 )
-from games.commands.purchase import TAKE_REFUND_BACK, RefundStatement, StatedPrice
+from games.commands.purchase import StatedPrice
 from games.end_ways import EndWay
 from games.events.dispatch import (
     IDEMPOTENCY_KEY_MAX_LENGTH,
@@ -1599,7 +1599,7 @@ class PurchaseUpdate(Schema):
 
     @model_validator(mode="after")
     def a_named_key_states(self) -> PurchaseUpdate:
-        """Null refused but amount, purchased, refund."""
+        """Null refused except amount, purchased, refund."""
         stated = self.model_fields_set
         if ("amount" in stated) != ("currency" in stated):
             raise ValueError(AMOUNT_TOGETHER)
@@ -1621,12 +1621,12 @@ class PurchaseUpdate(Schema):
             return None
         return ActStatement(self.purchased, cast(str, self.purchase_note))
 
-    def refund_statement(self) -> RefundStatement | None:
-        """The refund stated, taken back, or nothing."""
+    def refund_statement(self) -> ActStatement | None | Keep:
+        """The refund stated, a void, or nothing."""
         if "refund" not in self.model_fields_set:
-            return None
+            return KEEP
         if self.refund is None:
-            return TAKE_REFUND_BACK
+            return None
         return self.refund.statement()
 
 
@@ -1716,7 +1716,7 @@ def partial_update_purchase(request, purchase_id: UUIDv7, payload: PurchaseUpdat
     library = actor.library
     purchase = owned_or_404(readable_purchases(library), library, id=purchase_id)
     try:
-        changed = restate_purchase(
+        restated = restate_purchase(
             actor,
             purchase,
             kind=payload.kind,
@@ -1731,7 +1731,7 @@ def partial_update_purchase(request, purchase_id: UUIDv7, payload: PurchaseUpdat
     except CommandFailed as failure:
         _answered_or_http(failure)
     updated = _written_purchase(library, purchase.pk)
-    if changed:
+    if restated.appended:
         messages.success(request, "Purchase updated.")
     return updated
 

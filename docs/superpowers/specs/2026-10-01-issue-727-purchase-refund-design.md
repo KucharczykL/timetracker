@@ -26,31 +26,34 @@ refund's day. It does this only for kind `game`, on an Owned copy that
 states no end. A pass or an upgrade leaves the copy held.
 
 The refund **owns** the copy's end while the latest end-family event of
-the copy is a statement or a correction, and its dispatch also appended
-a refund statement or correction of this purchase. `refund_owns_the_end` in
-`games/reads/purchases.py` matches the two on `idempotency_key`. Each
-dispatch has one key. `make anonymize-sample` keeps one key for each
-dispatch.
+the copy is a statement or a correction, and the event directly before
+it is a refund statement or correction of this purchase under the same
+`idempotency_key`. `refund_owns_the_end` in `games/reads/purchases.py`
+reads this. An append that writes a refund and its end writes the end
+next. A writer that reuses one key across appends cannot make a hand end
+the refund's. `make anonymize-sample` keeps one key for each dispatch.
 
 - A correction that changes the day also corrects an owned end.
 - A void also voids an owned end.
 - After an end, a correction or a resume by hand, the copy keeps what
   the person stated.
 
-Day order:
-
 Each rule reads the final days, kind and copy of the statement:
 
 - A refund before the purchase day is refused.
 - A refund before the acquired day is refused where an end is appended.
 - A purchase day after a standing refund is refused.
-- A refunded purchase does not move to another copy.
+- A refunded purchase does not move to another copy, unless the same
+  statement takes the refund back.
 
 `RemovePurchase` leaves the copy's end.
 
 ## Writes and API
 
-`restate_purchase` is one dispatch of `DescribePurchase`.
+`restate_purchase` is one dispatch of `DescribePurchase`. Its `refund`
+takes `KEEP` to state nothing and `None` to void, as `restate_entry`
+does. It answers `RestatedPurchase`: whether it appended, and the
+`CopyEnd` (ended, moved, taken back, or left) of a refund act.
 `PATCH /api/purchases/{id}` takes `refund`: `{refunded, note}` or null.
 `refunded` is required; null is an unknown day.
 `PurchaseOut` answers the five refund columns.
@@ -59,6 +62,6 @@ Each rule reads the final days, kind and copy of the statement:
 
 - Two purchases of one copy: a void of the first refund takes back the
   end, even when the second purchase is refunded too.
-- P4 writes the refund and the copy's end in one append under one key.
+- P4 writes the refund and then the copy's end, next in one append.
   An end that P4 states first is not the refund's.
 - P5 adds the one-click Refund and its Undo.

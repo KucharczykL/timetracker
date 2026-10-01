@@ -2472,7 +2472,7 @@ class Purchase(ProjectionModel):
     refunded = endpoint_when()
     refunded_lower = endpoint_bound("refunded", "lower")
     refunded_upper = endpoint_bound("refunded", "upper")
-    #: Null is a purchase never refunded.
+    #: Null is a purchase not refunded.
     refund_recorded_at = endpoint_marker()
     refund_note = endpoint_note()
     #: The creation event's recorded_at.

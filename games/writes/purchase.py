@@ -1,6 +1,7 @@
 """Purchase writes; refusals become answers."""
 
 import uuid
+from enum import StrEnum
 from typing import NamedTuple
 
 from django.contrib.auth.models import User
@@ -8,6 +9,7 @@ from django.contrib.auth.models import User
 from games.commands.endpoint import ActStatement
 from games.commands.libraryentry import EntryStatement
 from games.commands.purchase import (
+    TAKE_REFUND_BACK,
     DescribePurchase,
     RecordPurchase,
     RefundStatement,
@@ -17,12 +19,18 @@ from games.commands.purchase import (
 )
 from games.events.dispatch import Command, CommandOutcome, CommandResult, dispatch
 from games.events.idempotency import IdempotencyKey
-from games.events.libraryentry import LIBRARYENTRY_CREATED
+from games.events.libraryentry import ENTRY_ACCESS_END_EVENTS, LIBRARYENTRY_CREATED
 from games.events.playergame import PLAYERGAME_CREATED
-from games.events.purchase import PURCHASE_CREATED, PurchaseKindValue
+from games.events.purchase import (
+    PURCHASE_CREATED,
+    PURCHASE_REFUND_EVENTS,
+    PurchaseKindValue,
+)
+from games.events.vocabulary import EventType
 from games.models import Purchase
 from games.reads.events import dispatched_events
 from games.writes.answers import SubjectNoun, answered
+from games.writes.endpoint import KEEP, Keep
 
 SUBJECT: SubjectNoun = "purchase"
 
@@ -109,6 +117,38 @@ def record_purchase(
     )
 
 
+class CopyEnd(StrEnum):
+    """What a refund act did to the copy's end."""
+
+    ENDED = "ended"
+    MOVED = "moved"
+    TAKEN_BACK = "taken_back"
+    #: Not the refund's, or not due.
+    LEFT = "left"
+
+
+_COPY_END_BY_TYPE: dict[EventType, CopyEnd] = {
+    ENTRY_ACCESS_END_EVENTS.stated.event_type: CopyEnd.ENDED,
+    ENTRY_ACCESS_END_EVENTS.corrected.event_type: CopyEnd.MOVED,
+    ENTRY_ACCESS_END_EVENTS.voided.event_type: CopyEnd.TAKEN_BACK,
+}
+_REFUND_ACTS = frozenset(
+    (
+        PURCHASE_REFUND_EVENTS.stated.event_type,
+        PURCHASE_REFUND_EVENTS.corrected.event_type,
+        PURCHASE_REFUND_EVENTS.voided.event_type,
+    )
+)
+
+
+class RestatedPurchase(NamedTuple):
+    """What a restatement answers."""
+
+    appended: bool
+    #: None where no refund act was appended.
+    copy_end: CopyEnd | None
+
+
 def restate_purchase(
     actor: User,
     purchase: Purchase,
@@ -119,10 +159,10 @@ def restate_purchase(
     note: str | None = None,
     entry_id: uuid.UUID | None = None,
     purchased: ActStatement | None = None,
-    refund: RefundStatement | None = None,
+    refund: ActStatement | None | Keep = KEEP,
     correlation_id: uuid.UUID,
-) -> bool:
-    """One dispatch; answers whether anything appended."""
+) -> RestatedPurchase:
+    """One dispatch; KEEP keeps, None voids."""
     with answered(SUBJECT):
         result = _dispatch(
             DescribePurchase(
@@ -133,12 +173,30 @@ def restate_purchase(
                 note=note,
                 entry_id=entry_id,
                 purchased=purchased,
-                refund=refund,
+                refund=_refund_statement(refund),
             ),
             actor=actor,
             correlation_id=correlation_id,
         )
-    return result.outcome is CommandOutcome.APPENDED
+    if result.outcome is not CommandOutcome.APPENDED:
+        return RestatedPurchase(appended=False, copy_end=None)
+    types = {event.event_type for event in dispatched_events(result)}
+    if not types & _REFUND_ACTS:
+        return RestatedPurchase(appended=True, copy_end=None)
+    copy_ends = [_COPY_END_BY_TYPE[name] for name in types & _COPY_END_BY_TYPE.keys()]
+    return RestatedPurchase(
+        appended=True, copy_end=copy_ends[0] if copy_ends else CopyEnd.LEFT
+    )
+
+
+def _refund_statement(refund: ActStatement | None | Keep) -> RefundStatement | None:
+    """The command's spelling of the write's."""
+    match refund:
+        case Keep():
+            return None
+        case None:
+            return TAKE_REFUND_BACK
+    return refund
 
 
 def remove_purchase(
