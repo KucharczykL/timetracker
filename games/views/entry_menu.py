@@ -1,30 +1,23 @@
 """What one Library row offers."""
 
-import uuid
+from collections.abc import Sequence
 
 from common.components import (
     DropdownDivider,
     DropdownLinkItem,
     DropdownPostItem,
     DropdownSubmenuItem,
-    Input,
     RowActionMenu,
 )
 from common.components.core import Node
 from common.components.primitives import ButtonSize
 from common.returns import OriginUrl, action_url
 from games.endpoints import ENTRY_ACCESS_END
-from games.models import LibraryEntry
+from games.models import LibraryEntry, Purchase
 from games.reads.endpoints import stated
 from games.reads.releases import platform_words
-
-#: The one-click form's hidden key field.
-SUBMISSION_FIELD = "submission"
-
-
-def submission_input() -> Node:
-    """A fresh key: a double press records once."""
-    return Input(type="hidden", name=SUBMISSION_FIELD, value=str(uuid.uuid7()))
+from games.views.purchase_menu import price_words, purchase_items, purchase_label
+from games.views.submission import submission_input
 
 
 def entry_row_menu(
@@ -32,9 +25,10 @@ def entry_row_menu(
     origin: OriginUrl | None,
     csrf_token: str,
     *,
+    purchases: Sequence[Purchase],
     size: ButtonSize = "control",
 ) -> Node:
-    """A copy's acts: one click, then pages."""
+    """A copy's acts, then its purchases'."""
     game = entry.player_game.game
     ended = stated(entry, ENTRY_ACCESS_END) is not None
 
@@ -99,6 +93,16 @@ def entry_row_menu(
             *have,
             DropdownDivider(),
             DropdownLinkItem(page("games:edit_library_entry"), "Edit…", icon="edit"),
+            DropdownDivider(),
+            DropdownLinkItem(page("games:add_purchase"), "Add purchase…", icon="plus"),
+            *(
+                DropdownSubmenuItem(
+                    f"{purchase_label(purchase)} · {price_words(purchase)}",
+                    id=f"entry-menu-{entry.pk}-purchase-{purchase.pk}",
+                    items=purchase_items(purchase, origin, csrf_token),
+                )
+                for purchase in purchases
+            ),
             DropdownDivider(),
             DropdownLinkItem(
                 page("games:remove_library_entry"),

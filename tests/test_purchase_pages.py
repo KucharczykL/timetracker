@@ -325,3 +325,27 @@ def test_a_removed_purchase_has_no_edit_page(logged_in, purchase):
         logged_in.get(reverse("games:edit_purchase", args=[purchase.pk])).status_code
         == 404
     )
+
+
+# --- Menus --------------------------------------------------------------------
+
+
+def test_the_purchases_list_rows_carry_their_menu(logged_in, purchase, entry):
+    refunded = refund_purchase(
+        record_purchase(entry, kind="upgrade", name="Deluxe"), JUNE
+    )
+
+    html = logged_in.get(reverse("games:list_purchases")).content.decode()
+
+    assert f'id="purchase-menu-{purchase.pk}"' in html
+    assert f"{reverse('games:edit_purchase', args=[purchase.pk])}?" in html
+    assert reverse("games:refund_purchase_now", args=[purchase.pk]) in html
+    assert f'id="purchase-menu-{refunded.pk}"' in html
+    assert reverse("games:refund_purchase_now", args=[refunded.pk]) not in html
+
+
+def test_the_library_tab_names_each_copys_purchase(logged_in, purchase, entry):
+    html = logged_in.get(reverse("games:list_library")).content.decode()
+
+    assert f'id="entry-menu-{entry.pk}-purchase-{purchase.pk}"' in html
+    assert f"{reverse('games:add_purchase', args=[entry.pk])}?" in html

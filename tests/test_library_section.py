@@ -1,6 +1,8 @@
 """Game detail's Library section."""
 
+import re
 import uuid
+from decimal import Decimal
 
 import pytest
 from django.db import connection
@@ -8,9 +10,24 @@ from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from entries import end_entry_access, record_entry, remove_entry
+from purchases import (
+    record_purchase,
+    refund_purchase,
+    remove_purchase,
+    request_run,
+)
 
+from games import tasks
 from games.catalog_release import SHARED_GAME_RELEASE
-from games.models import Edition, Game, Platform, PlayerGame, PlayerGameStatus
+from games.models import (
+    Edition,
+    ExchangeRate,
+    Game,
+    Platform,
+    PlayerGame,
+    PlayerGameStatus,
+)
+from timetracker.temporal import TemporalValue
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -169,3 +186,102 @@ def test_an_own_game_without_a_release_offers_the_page_alone(
 
     assert reverse("games:add_library_entry", args=[game.pk]) in html
     assert reverse("games:add_library_entry_now", args=[game.pk]) not in html
+
+
+# --- a copy's purchases --------------------------------------------------------
+
+
+def test_a_copy_lists_its_live_unrefunded_purchases(
+    client, owned_user, owned_library, graph
+):
+    entry = record_entry(owned_library, graph.release)
+    record_purchase(
+        entry, amount=Decimal(0), purchased=TemporalValue.parse("2021-05-01")
+    )
+    record_purchase(entry, kind="season_pass", name="Year one", amount=None)
+    #: A game refund would end the copy.
+    refunded = refund_purchase(
+        record_purchase(entry, kind="upgrade", name="Gone back"), None
+    )
+    remove_purchase(record_purchase(entry, name="Removed one"))
+    client.force_login(owned_user)
+
+    html = _page(client, graph.game)
+
+    assert "data-summary-detail" in html
+    assert re.search(r"Bought</span>.*?Free", html, re.DOTALL)
+    assert "Season pass: Year one" in html
+    assert "Unknown" in html
+    assert "Gone back" not in html
+    assert "Removed one" not in html
+    assert str(refunded.pk) not in html
+
+
+def test_a_copy_without_purchases_has_no_lines(
+    client, owned_user, owned_library, graph
+):
+    record_entry(owned_library, graph.release)
+    client.force_login(owned_user)
+
+    assert "data-summary-detail" not in _page(client, graph.game)
+
+
+def test_a_foreign_currency_line_shows_its_valuation(
+    client, owned_user, owned_library, graph
+):
+    ExchangeRate.objects.update_or_create(
+        currency_from="USD",
+        currency_to="EUR",
+        year=2021,
+        defaults={"rate": Decimal("0.5")},
+    )
+    entry = record_entry(owned_library, graph.release)
+    record_purchase(
+        entry,
+        amount=Decimal(10),
+        currency="USD",
+        purchased=TemporalValue.parse("2021-03-01"),
+    )
+    tasks.convert_library_prices(
+        str(owned_library.pk), request_run(owned_library, "EUR")
+    )
+    client.force_login(owned_user)
+
+    html = _page(client, graph.game)
+
+    assert "10.00 USD" in html
+    assert "(5.00 EUR)" in html
+
+
+def test_the_copy_menu_offers_add_purchase_and_each_purchases_acts(
+    client, owned_user, owned_library, graph
+):
+    entry = record_entry(owned_library, graph.release)
+    purchase = record_purchase(entry, amount=Decimal("19.99"))
+    client.force_login(owned_user)
+
+    html = _page(client, graph.game)
+
+    assert f"{reverse('games:add_purchase', args=[entry.pk])}?" in html
+    assert f'id="entry-menu-{entry.pk}-purchase-{purchase.pk}"' in html
+    assert "Bought · 19.99 EUR" in html
+    assert f"{reverse('games:edit_purchase', args=[purchase.pk])}?" in html
+    assert reverse("games:refund_purchase_now", args=[purchase.pk]) in html
+    assert f"{reverse('games:remove_purchase', args=[purchase.pk])}?" in html
+    assert "Edit purchase…" in html and "Remove purchase…" in html
+
+
+def test_the_query_count_holds_over_more_purchases(
+    client, owned_user, owned_library, graph
+):
+    entry = record_entry(owned_library, graph.release)
+    record_purchase(entry)
+    client.force_login(owned_user)
+    _page(client, graph.game)
+    one = _count_queries(client, graph.game)
+
+    for _ in range(3):
+        record_purchase(record_entry(owned_library, graph.release))
+    four = _count_queries(client, graph.game)
+
+    assert four == one

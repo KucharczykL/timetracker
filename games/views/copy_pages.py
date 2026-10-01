@@ -25,8 +25,8 @@ from games.events.idempotency import IdempotencyKey
 from games.models import Game, LibraryEntry
 from games.ownership import owned_or_404
 from games.reads.entries import library_entries
-from games.views.entry_menu import SUBMISSION_FIELD
 from games.views.returns import return_url
+from games.views.submission import SUBMISSION_FIELD
 from games.writes.answers import CommandFailed
 
 

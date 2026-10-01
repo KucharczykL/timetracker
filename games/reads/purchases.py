@@ -1,6 +1,7 @@
 """The purchases a library holds."""
 
 import uuid
+from collections.abc import Iterable
 from decimal import Decimal
 from typing import Protocol
 from zoneinfo import ZoneInfo
@@ -287,3 +288,19 @@ def cascaded_purchase_ids(library: UserLibrary, entry_id: uuid.UUID) -> list[uui
         .order_by("pk")
         .values_list("pk", flat=True)
     )
+
+
+def held_purchases(
+    library: UserLibrary, entry_ids: Iterable[uuid.UUID]
+) -> dict[uuid.UUID, list[Purchase]]:
+    """Each copy's live, unrefunded purchases, valued."""
+    grouped: dict[uuid.UUID, list[Purchase]] = {}
+    purchases = with_valuation(
+        library_purchases(library).filter(
+            entry_id__in=list(entry_ids), refund_recorded_at__isnull=True
+        ),
+        library,
+    ).order_by(*PURCHASE_ORDER)
+    for purchase in purchases:
+        grouped.setdefault(purchase.entry_id, []).append(purchase)
+    return grouped

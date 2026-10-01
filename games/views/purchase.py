@@ -10,6 +10,7 @@ from django.http import (
     HttpRequest,
     HttpResponse,
 )
+from django.middleware.csrf import get_token
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
@@ -84,7 +85,7 @@ from games.views.filtering import (
 )
 from games.views.general import request_calendar_today
 from games.views.library_cards import release_words
-from games.views.purchase_menu import purchase_summary
+from games.views.purchase_menu import purchase_row_menu, purchase_summary
 from games.views.removal import (
     confirm_and_remove,
     restore_and_return,
@@ -189,6 +190,8 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     #: One read serves cells and rows.
     page_purchases: list[Purchase] = list(page)
 
+    origin = request.get_full_path()
+    csrf_token = get_token(request)
     hidden, picker = column_choice(request, "purchases", PURCHASE_COLUMNS)
     kept_columns, kept_cells = drop_columns(
         PURCHASE_COLUMNS,
@@ -198,11 +201,15 @@ def list_purchases(request: HttpRequest) -> HttpResponse:
     data: TableData = {
         "caption": "Purchases",
         "columns": kept_columns,
-        #: Holds the column picker.
+        #: Every row carries its menu.
         "menu_slot": True,
         "sort_terms": sort.terms,
         "rows": [
-            make_row(*cells, id=f"purchase-row-{purchase.id}")
+            make_row(
+                *cells,
+                id=f"purchase-row-{purchase.id}",
+                menu=purchase_row_menu(purchase, origin, csrf_token),
+            )
             for purchase, cells in zip(page_purchases, kept_cells, strict=True)
         ],
         "column_picker": picker,

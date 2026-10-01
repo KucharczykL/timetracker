@@ -47,6 +47,7 @@ from games.list_columns import column_choice
 from games.models import EntryAccess, EntryFormat, LibraryEntry
 from games.reads.endpoints import stated, way_of
 from games.reads.entries import library_entries
+from games.reads.purchases import held_purchases
 from games.reads.releases import platform_words
 from games.sorting import ENTRY_DEFAULT_SORT, ENTRY_SORTS, apply_sort, parse_find_filter
 from games.views.entry_menu import entry_row_menu
@@ -107,6 +108,7 @@ def list_library(request: HttpRequest) -> HttpResponse:
     page_entries: list[LibraryEntry] = list(page)
 
     csrf_token = get_token(request)
+    purchases = held_purchases(library, (entry.pk for entry in page_entries))
     hidden, picker = column_choice(request, "entries", ENTRY_COLUMNS)
     kept_columns, kept_cells = drop_columns(
         ENTRY_COLUMNS,
@@ -137,7 +139,12 @@ def list_library(request: HttpRequest) -> HttpResponse:
             make_row(
                 *cells,
                 key=str(entry.pk),
-                menu=entry_row_menu(entry, origin, csrf_token),
+                menu=entry_row_menu(
+                    entry,
+                    origin,
+                    csrf_token,
+                    purchases=purchases.get(entry.pk, []),
+                ),
             )
             for entry, cells in zip(page_entries, kept_cells, strict=True)
         ],
