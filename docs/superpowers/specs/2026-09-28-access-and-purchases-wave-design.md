@@ -98,12 +98,14 @@ conversion must state one.
 
 ## Aggregates and storage
 
-#1275 is on `main`. M1 (PR #1362), M2 (PR #1366) and M3 (stack #1379:
-PRs #1377, #1378, #1380) are on `main` too, migrations `0020` to `0023`;
-the next is `0024`. The contracts are
+#1275 is on `main`. M1 (PR #1362), M2 (PR #1366), M3 (stack #1379:
+PRs #1377, #1378, #1380), M7 (PR #1390) and M8 (PR #1397) are on `main`
+too, migrations `0020` to `0025`; the next is `0026`. The contracts are
 [The LibraryEntry aggregate](2026-09-29-issue-719-libraryentry-aggregate-design.md),
-[A copy's access ends and resumes](2026-09-29-issue-721-entry-access-end-design.md)
-and M3's own.
+[A copy's access ends and resumes](2026-09-29-issue-721-entry-access-end-design.md),
+M3's own,
+[Game kind and parent](2026-09-30-issue-1353-game-kind-and-parent-design.md)
+and [Excluded from dropped](2026-09-30-issue-1334-excluded-from-dropped-design.md).
 
 ### The opening endpoint
 
@@ -164,9 +166,21 @@ its game's, and the swap's refusal sentence can name either.
 
 ### Purchase
 
-`Purchase` becomes an aggregate, stream `library.purchase`, on the same
-table and the same UUIDs; the projection is swapped in place, never
-re-minted.
+`Purchase` becomes an aggregate, stream `library.purchase`, keeping the
+same UUIDs. The legacy row cannot become the projection in place: a
+`ProjectionModel` fails `games.E001`/`E002`/`E005`/`E009` on the legacy
+columns, its mark is `remove()`'s rather than a projector's, the M2M
+through table points into it, and its rows hold no events, so a rebuild
+would drop them. So P1 renames the incumbent: the legacy class becomes
+`LegacyPurchase` on `games_legacypurchase` (`AlterModelTable`, the
+through table following, the sample fixture relabelled mechanically),
+and the new `Purchase` is born on `games_purchase` in its final shape.
+Every reader keeps reading `LegacyPurchase` until P5 switches it; P4's
+pass writes one `purchase.created` per (legacy row, game), under the
+legacy UUID for the first game in key order and uuid5 over (legacy id,
+game id) for the rest of a bundle; P5 drops `LegacyPurchase`, its
+tables and every legacy reader, with no rename at the cutover. The
+stack stays one merge, so `main` never holds both.
 
 | Column | Meaning |
 |---|---|
@@ -246,8 +260,14 @@ pairs with a sentence, the column's `CHECK` behind it, and refuses
 `main` to an add-on while any add-on names the game, removed ones
 included, since a restore runs no lineage rule and a live-only count
 would let one stand an add-on under an add-on. The rules live request-free in
-`games/catalog_addons.py` (`state_addon`, raising `AddonRefused`), which `save_game_columns` and the conversion
-pass call alike. An add-on is no top-level row of the Games list unless
+`games/catalog_addons.py`: `state_addon(game, *, kind, parent, library)`
+raises `AddonRefused` on one field, runs inside the caller's transaction
+and locks the Game and its parent ordered by key; `save_game_columns`
+and the conversion pass call it alike. Removing a main game keeps its
+add-ons, and the confirmation counts the tracked ones that stay.
+`EditionState.kind` is optional, and no kind keeps the stored one, so a
+Release added on a new platform never restates a prerelease Edition as
+full; `edition_words` names an unnamed prerelease "Prerelease". An add-on is no top-level row of the Games list unless
 a `kind` or `parent` leaf appears anywhere in the filter tree, in which
 case the base is every kind: the Kind facet is the
 switch, Clear returns to main games, and statistics and the backlog read
@@ -262,11 +282,16 @@ same redirect as any private Game.
 
 ### PlayerGame
 
-`excluded_from_dropped`, stated by `RecordPlayerGameFacts` through
+`excluded_from_dropped`, stated by `RecordPlayerGameFacts` (its fourth
+field, `FINGERPRINT_VERSION` 3) through
 `playergame.excluded_from_dropped_changed`, the sibling of
 `excluded_from_unfinished_changed`. Each figure that leaves a game out
 reads its own fact and nothing else; the rule this wave makes is that no
-fact stated for one figure decides another.
+fact stated for one figure decides another. Nothing was backfilled: P4
+states both flags on every game with an infinite purchase. The two
+flags are one "Visibility" group, `VISIBILITY_FIELDS` in
+`games/models.py`, a `QuickFacetGroup` in the quick bar and a
+`FormFieldGroup(look="panel")` on the Game form and bulk Edit.
 
 Both flags are the Visibility group (M8): `VISIBILITY_FIELDS` in
 `games/models.py` names them for the Game form and the bulk Edit, and one
@@ -558,9 +583,11 @@ the copies had now grouped by version (`SummaryGroup` over dense
 `SummaryRow`s), every per-copy act inline and never one press without
 Undo, ended copies out of the section with one muted line pointing at
 View all, and from P5 each copy's purchases under its row; an Add-ons
-section on a main game listing the add-ons the library tracks, in the
-same kit's shapes with no Add button of its own, empty rendering
-nothing; a parent link on an add-on.
+section on a main game listing the add-ons the library tracks grouped by
+kind, before the Library section and half width beside it from `lg` up,
+in the same kit's shapes with no Add button of its own, empty rendering
+nothing; an "Add-on of" row on an add-on, linked where the library
+tracks the parent.
 
 ### Filters and presets
 
@@ -673,13 +700,13 @@ backlog reads M7's edition word.
 | M1 (merged, PR #1362, 2026-09-29) | #719, #720, #722 | the opening endpoint whole, its one correction (`CorrectEntryAcquisition`) included, since the replay gate refuses a registered event type no command emits; the LibraryEntry aggregate: schema without the end columns, creation, description, removal and restore as commands with no route, multiple entries, reference kind, `_is_library_scoped` path, the generalised referrer registry, replay gate, the four API routes with `limit`/`offset` |
 | M2 (merged, PR #1366, 2026-09-29) | #721 | the end columns and their `CHECK`s in a migration of its own, as `0019` added the device's; access end and resume on the primitive |
 | M3 (merged, stack #1379: PRs #1377, #1378, #1380, 2026-09-30) | #1352 | the Library screens: Add to library, Game detail's Library section with its inline acts, the end and resume pages with one-click Undo; the Library tab, `LibraryEntryFilter`, presets, bulk Edit and Remove; the Games tab's Access column and facets |
-| M7 | #1353 | `Game.kind` and `Game.parent`, `Edition.kind`: columns, form, Game detail add-ons, Games facet |
-| M8 | #1334 | `excluded_from_dropped` and its bulk Edit field |
-| P1 | #725, #726, #828 | the Purchase aggregate: projection, creation with an entry, description, day correction, removal, API |
+| M7 (merged, PR #1390, 2026-09-30) | #1353 | `Game.kind` and `Game.parent`, `Edition.kind`: columns, form, `<game-addon>`, `state_addon`, Game detail's Add-ons section and "Add-on of" row, the Games list's main-only base, Kind facet and column, the every-kind clause on links |
+| M8 (merged, PR #1397, 2026-09-30) | #1334 | `excluded_from_dropped` and its bulk Edit field, the Visibility group |
+| P1 | #725, #726, #828 | the incumbent renamed `LegacyPurchase`; the Purchase aggregate born on `games_purchase`: projection, creation with an entry, description, day correction, removal, API; no reader switched |
 | P2 | #727 | refund endpoints and the coupled entry end |
 | P3 | #728, #729 | `PurchaseValuation`, decimal rates, the run state re-pointed, the valuation request on the write path |
-| P4 | #723, #730, #731, #732, #733 | the conversion pass, `verify-purchase-conversion`, the reconciliation |
-| P5 | #724, #736, #734, #735, #1266 | every read and write switched: the Add to library form, the Purchases list selectable, filters, presets, statistics and links, #1157's readers, the review surface, the legacy columns and the float writer dropped |
+| P4 | #723, #730, #731, #732, #733 | the conversion pass over `LegacyPurchase` rows, ids kept, `verify-purchase-conversion`, the reconciliation |
+| P5 | #724, #736, #734, #735, #1266 | every read and write switched: the Add to library form, the Purchases list selectable, filters, presets, statistics and links, #1157's readers, the review surface; `LegacyPurchase`, its tables, every legacy route and reader and the float writer dropped |
 
 Each member passes the full gate on its own against a fresh database.
 Each gets its own specification and plan before code. An issue delivered
