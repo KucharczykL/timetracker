@@ -538,8 +538,11 @@ nothing. In order:
    `converted_price` at the current published version; sums per currency
    are compared before and after.
 6. **Infinite (30 games).** Both exclusions stated through
-   `RecordPlayerGameFacts` on the legacy row's game and, for an infinite
-   DLC row, on its new DLC Game too, or the 7 would enter the backlog; the 6 mixed games are printed with the old and
+   `RecordPlayerGameFacts` on the legacy row's game; an infinite DLC row
+   excludes its new DLC Game alone and never the base, since the legacy
+   figures left out the DLC purchase alone and excluding the base would
+   pull its own finite purchase out of both counts; a removed legacy row
+   excludes nothing; the 6 mixed games are printed with the old and
    new backlog counts.
 7. The legacy columns go, in the same stack.
 
@@ -549,8 +552,8 @@ rehearsed on the 2026-10-01 dump: 808 rows became 839 planned copies,
 833 own copies and 758 purchases, 0 skipped, 0 refusals, 2177 events;
 totals reconcile per currency (EUR −0.0050 from the two third-decimal
 rows); 221 of 221 refunds ended their copy; 48 Releases created (14
-platform, 34 demo); backlog all-time unfinished 282 → 274 and dropped
-268 → 267; tracked games 863 → 898; CZK valuations seeded equal to the
+platform, 34 demo); backlog all-time unfinished 282 → 282 and dropped
+268 → 267, `mixed_infinite` 3; tracked games 863 → 898; CZK valuations seeded equal to the
 legacy converted sum; `make migrate` after `--confirm` appended nothing,
 replay parity 0 differing, the identity audit clean. What it found:
 
@@ -560,7 +563,15 @@ replay parity 0 differing, the identity audit clean. What it found:
 - The pass checks its own key before any catalog write, so a rerun makes
   no Release and no DLC Game, and `created_release` exists only in the
   first run's `source_metadata`: the review surface reads metadata and
-  recomputes nothing.
+  recomputes nothing. A rerun checks each held key's fingerprint, the
+  inputs per act (creation facts; legacy, game and refund day; legacy
+  and game): a legacy row edited after its conversion is a listed
+  defect, while a refund or removal added later is stated on the next
+  run. Schema and replay drift raise `PurchaseConversionDrift`.
+- A DLC row with `du` ownership is refused. A pass or upgrade without a
+  base copy is reviewed as `own_copy_fallback` (1 on the dump), and a
+  refunded own copy always ends. Skipped copies and unvalued purchases
+  are logged and listed.
 - A skipped copy never gets a key; an exclusion skips an untracked game.
 - A library with a requested target and nothing published seeds no
   valuation and still requests one run; `publish_valuations` replaces
