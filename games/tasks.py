@@ -1,62 +1,31 @@
 import contextlib
 import logging
 from datetime import timedelta
+from decimal import Decimal
 from uuid import UUID
 
-import requests
 from django.db import transaction
 from django.db.models import F, Q
 from django.utils.timezone import now
 from django_q.models import Schedule
 from django_q.tasks import async_task, schedule
 
+from games.conversion import request_revaluation
+from games.exchange_rates import exchange_rate
 from games.models import (
-    ExchangeRate,
     LegacyPurchase,
     PurchaseConversionState,
     UserLibrary,
 )
+from games.reads.purchases import stale_purchases, valuation_inputs
+from games.valuations import (
+    ValuationInput,
+    needs_rate,
+    publish_valuations,
+    value,
+)
 
 logger = logging.getLogger("games")
-
-
-def _get_exchange_rate(currency_from, currency_to, year):
-    logger.debug(
-        f"[convert_prices]: Looking for exchange rate in database: {currency_from}->{currency_to}"
-    )
-    rate = ExchangeRate.objects.filter(
-        currency_from=currency_from, currency_to=currency_to, year=year
-    ).first()
-    if not rate:
-        logger.debug(
-            f"[convert_prices]: Getting exchange rate from {currency_from} to {currency_to} for {year}..."
-        )
-        try:
-            response = requests.get(
-                f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{year}-01-01/v1/currencies/{currency_from.lower()}.json"
-            )
-            response.raise_for_status()
-            data = response.json()
-            currency_from_data = data.get(currency_from.lower())
-            rate = currency_from_data.get(currency_to.lower())
-            if rate:
-                logger.info(f"[convert_prices]: Got {rate}, saving...")
-                exchange_rate = ExchangeRate.objects.create(
-                    currency_from=currency_from,
-                    currency_to=currency_to,
-                    year=year,
-                    rate=rate,
-                )
-                rate = exchange_rate.rate
-            else:
-                logger.info("[convert_prices]: Could not get an exchange rate.")
-        except requests.RequestException as e:
-            logger.info(
-                f"[convert_prices]: Failed to fetch exchange rate for {currency_from}->{currency_to} in {year}: {e}"
-            )
-    elif rate:
-        rate = rate.rate
-    return rate
 
 
 RETRY_DELAY = timedelta(minutes=15)
@@ -65,6 +34,25 @@ MAX_ERROR_LENGTH = 240
 
 class MissingExchangeRate(RuntimeError):
     pass
+
+
+def _required_rate(source: str, target: str, year: int) -> Decimal:
+    rate = exchange_rate(source, target, year)
+    if rate is None:
+        raise MissingExchangeRate(f"Exchange rate unavailable: {source} to {target}")
+    return rate
+
+
+type RateKey = tuple[str, int]  # source currency, year
+
+
+def _rates_for(snapshot: list[ValuationInput], target: str) -> dict[RateKey, Decimal]:
+    rates: dict[RateKey, Decimal] = {}
+    for facts in snapshot:
+        key = (facts.currency, facts.rate_year)
+        if needs_rate(facts, target) and key not in rates:
+            rates[key] = _required_rate(facts.currency, target, facts.rate_year)
+    return rates
 
 
 def _concise_error(error: Exception) -> str:
@@ -144,20 +132,19 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
         for purchase in purchases
     ]
 
+    library = UserLibrary.objects.get(pk=library_pk)
     try:
+        valuation_snapshot = valuation_inputs(library)
+        rates = _rates_for(valuation_snapshot, target_currency)
         for purchase in purchases:
             source_currency = purchase.price_currency.upper()
             if source_currency == target_currency or purchase.price == 0:
                 converted_price = purchase.price
             else:
-                rate = _get_exchange_rate(
+                rate = _required_rate(
                     source_currency, target_currency, purchase.date_purchased.year
                 )
-                if rate is None:
-                    raise MissingExchangeRate(
-                        f"Exchange rate unavailable: {source_currency} to {target_currency}"
-                    )
-                converted_price = round(purchase.price * rate, 0)
+                converted_price = round(purchase.price * float(rate), 0)
             purchase.converted_price = converted_price
             purchase.converted_currency = target_currency
             purchase.needs_price_update = False
@@ -177,11 +164,28 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
                 .order_by("pk")
                 .values_list("pk", "price", "price_currency", "date_purchased")
             )
-            if current_snapshot != snapshot:
+            if (
+                current_snapshot != snapshot
+                or valuation_inputs(library) != valuation_snapshot
+            ):
                 return
             LegacyPurchase.objects.bulk_update(
                 purchases,
                 ["converted_price", "converted_currency", "needs_price_update"],
+            )
+            calculated_at = now()
+            publish_valuations(
+                library,
+                (
+                    value(
+                        facts,
+                        target_currency,
+                        rates.get((facts.currency, facts.rate_year)),
+                        version=requested_version,
+                        calculated_at=calculated_at,
+                    )
+                    for facts in valuation_snapshot
+                ),
             )
             state.published_version = requested_version
             state.published_currency = target_currency
@@ -212,7 +216,7 @@ def convert_library_prices(library_id: str, requested_version: int) -> None:
 
 
 def recover_library_price_conversions() -> None:
-    """Daily recovery for due failed conversions not superseded by a newer publish."""
+    """Daily recovery: due failed runs, then stale valuations at rest."""
     stale = PurchaseConversionState.objects.filter(
         requested_version__gt=F("published_version")
     ).filter(
@@ -230,6 +234,12 @@ def recover_library_price_conversions() -> None:
             str(state.library_id),
             state.requested_version,
         )
+    at_rest = PurchaseConversionState.objects.filter(
+        requested_version=F("published_version")
+    ).select_related("library")
+    for state in at_rest:
+        if stale_purchases(state.library).exists():
+            request_revaluation(state.library)
 
 
 def convert_prices() -> None:

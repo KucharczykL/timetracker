@@ -2,6 +2,7 @@
 
 import json
 from decimal import Decimal
+from unittest.mock import Mock
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -9,6 +10,7 @@ from django.test import Client
 from entries import record_entry
 from purchases import record_purchase, remove_purchase
 
+from games import conversion, tasks
 from games.commands.playersession import UNSTORABLE_NOTE
 from games.commands.purchase import (
     ENTRY_OF_ANOTHER_GAME,
@@ -16,7 +18,7 @@ from games.commands.purchase import (
     TOO_LARGE_AMOUNT,
     TOO_PRECISE_AMOUNT,
 )
-from games.models import Game, LibraryEvent, Purchase
+from games.models import Game, LibraryEvent, Purchase, PurchaseConversionState
 from timetracker.temporal import TemporalValue
 
 pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.untracked_games]
@@ -408,3 +410,42 @@ def test_a_refund_onto_another_librarys_copy_is_404(auth_client, entry, their_en
     assert response.status_code == 404
     purchase.refresh_from_db()
     assert purchase.refund_recorded_at is None
+
+
+# The valuation
+
+
+def _convert(library) -> None:
+    state = PurchaseConversionState.objects.get(library=library)
+    PurchaseConversionState.objects.filter(library=library).update(
+        requested_version=state.requested_version + 1, requested_currency="EUR"
+    )
+    tasks.convert_library_prices(str(library.pk), state.requested_version + 1)
+
+
+def test_the_valuation_is_null_until_published(auth_client, library, entry):
+    purchase = record_purchase(entry, amount=Decimal("19.99"), currency="EUR")
+
+    assert auth_client.get(f"/api/purchases/{purchase.pk}").json()["valuation"] is None
+
+    _convert(library)
+
+    assert auth_client.get(f"/api/purchases/{purchase.pk}").json()["valuation"] == {
+        "amount": "19.99",
+        "currency": "EUR",
+    }
+
+
+def test_a_patched_amount_answers_no_valuation(
+    auth_client, library, entry, monkeypatch
+):
+    monkeypatch.setattr(conversion, "async_task", Mock())
+    purchase = record_purchase(entry, amount=Decimal("19.99"), currency="EUR")
+    _convert(library)
+
+    row = _patch(auth_client, purchase.pk, {"amount": "5", "currency": "EUR"}).json()
+
+    assert row["valuation"] is None
+    assert [
+        listed["valuation"] for listed in auth_client.get("/api/purchases/").json()
+    ] == [None]

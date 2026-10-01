@@ -37,6 +37,7 @@ from games.models import (
     Platform,
     PurchaseConversionState,
 )
+from games.reads.purchases import stale_purchases
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "sample.yaml.gz"
 TARGET_LIBRARY_MARKER = "__target_library__"
@@ -140,18 +141,6 @@ class Command(BaseCommand):
                     f"Sample fixture could not be loaded: {error}"
                 ) from error
 
-            purchases = LegacyPurchase.objects.for_library(user.library)
-            cache_mismatch = purchases.filter(
-                Q(converted_price__isnull=True)
-                | Q(needs_price_update=True)
-                | ~Q(converted_currency__iexact=state.requested_currency)
-            ).exists()
-            if cache_mismatch or state.requested_version != state.published_version:
-                _request_conversion_for_locked_state(
-                    state,
-                    state.requested_currency,
-                )
-
             #: Replay the fixture's events into projections.
             try:
                 report = rebuild_projections(user.library, mode=RebuildMode.REBUILD)
@@ -168,6 +157,21 @@ class Command(BaseCommand):
                 raise CommandError(
                     "Sample fixture could not be projected: "
                     f"{report.attempts[-1].conflict}"
+                )
+            purchases = LegacyPurchase.objects.for_library(user.library)
+            cache_mismatch = purchases.filter(
+                Q(converted_price__isnull=True)
+                | Q(needs_price_update=True)
+                | ~Q(converted_currency__iexact=state.requested_currency)
+            ).exists()
+            if (
+                cache_mismatch
+                or state.requested_version != state.published_version
+                or stale_purchases(user.library).exists()
+            ):
+                _request_conversion_for_locked_state(
+                    state,
+                    state.requested_currency,
                 )
             #: The fixture carries no Wikidata reference rows.
             try:

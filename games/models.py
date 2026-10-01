@@ -5,7 +5,6 @@ from operator import attrgetter
 from typing import TYPE_CHECKING, Any, ClassVar, Final, Literal
 from uuid import UUID
 
-import requests
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
@@ -1287,55 +1286,21 @@ class LegacyPurchase(models.Model):
         verbose_name_plural = "purchases"
 
 
+#: Twelve places hold every rate the API answers.
+RATE_PLACES: Final = 12
+
+
 class ExchangeRate(models.Model):
     currency_from = models.CharField(max_length=255)
     currency_to = models.CharField(max_length=255)
     year = models.PositiveIntegerField()
-    rate = models.FloatField()
+    rate = models.DecimalField(max_digits=24, decimal_places=RATE_PLACES)
 
     class Meta:
         unique_together = ("currency_from", "currency_to", "year")
 
     def __str__(self):
         return f"{self.currency_from}/{self.currency_to} - {self.rate} ({self.year})"
-
-
-def get_or_create_rate(currency_from: str, currency_to: str, year: int) -> float | None:
-    # Currently unused. If ever wired up, its currency_to must come from
-    # settings_resolver.resolve_str("DEFAULT_DISPLAY_CURRENCY"), not a boot-frozen value.
-    exchange_rate = None
-    result = ExchangeRate.objects.filter(
-        currency_from=currency_from, currency_to=currency_to, year=year
-    )
-    if result:
-        exchange_rate = result[0].rate
-    else:
-        try:
-            # this API endpoint only accepts lowercase currency string
-            response = requests.get(
-                f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{year}-01-01/v1/currencies/{currency_from.lower()}.json"
-            )
-            response.raise_for_status()
-            data = response.json()
-            currency_from_data = data.get(currency_from.lower())
-            rate = currency_from_data.get(currency_to.lower())
-
-            if rate:
-                logger.info(f"[convert_prices]: Got {rate}, saving...")
-                created_rate = ExchangeRate.objects.create(
-                    currency_from=currency_from,
-                    currency_to=currency_to,
-                    year=year,
-                    rate=floatformat(rate, 2),
-                )
-                exchange_rate = created_rate.rate
-            else:
-                logger.info("[convert_prices]: Could not get an exchange rate.")
-        except requests.RequestException as e:
-            logger.info(
-                f"[convert_prices]: Failed to fetch exchange rate for {currency_from}->{currency_to} in {year}: {e}"
-            )
-    return exchange_rate
 
 
 class FilterPreset(models.Model):
@@ -2588,6 +2553,36 @@ class PurchaseConversionState(models.Model):
     status = models.CharField(max_length=10, choices=Status, default=Status.COMPLETE)
     retry_at = models.DateTimeField(null=True, blank=True, default=None)
     last_error = models.TextField(blank=True, default="")
+
+
+class PurchaseValuation(models.Model):
+    """A purchase's amount in the reporting currency."""
+
+    id = UUIDv7Field(primary_key=True, editable=False)
+    library = models.ForeignKey(UserLibrary, on_delete=models.CASCADE, related_name="+")
+    purchase_id = models.UUIDField()
+    target_currency = models.CharField(max_length=3)
+    amount = models.DecimalField(max_digits=26, decimal_places=2)
+    source_amount = models.DecimalField(max_digits=12, decimal_places=2)
+    source_currency = models.CharField(max_length=3)
+    rate_year = models.PositiveSmallIntegerField()
+    rate = models.DecimalField(
+        max_digits=24, decimal_places=RATE_PLACES, null=True, default=None
+    )
+    version = models.PositiveBigIntegerField()
+    calculated_at = models.DateTimeField()
+
+    class Meta:
+        constraints = (
+            models.UniqueConstraint(
+                fields=("purchase_id", "target_currency"),
+                name="games_purchasevaluation_one_per_target",
+            ),
+            models.CheckConstraint(
+                condition=Q(amount__gte=0) & Q(source_amount__gte=0),
+                name="games_purchasevaluation_amounts_not_negative",
+            ),
+        )
 
 
 class UserPreferences(models.Model):

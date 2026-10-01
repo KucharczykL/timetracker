@@ -17,13 +17,17 @@ from games.commands.purchase import (
     RestorePurchase,
     StatedPrice,
 )
+from games.conversion import request_revaluation
 from games.events.dispatch import Command, CommandOutcome, CommandResult, dispatch
 from games.events.idempotency import IdempotencyKey
 from games.events.libraryentry import ENTRY_ACCESS_END_EVENTS, LIBRARYENTRY_CREATED
 from games.events.playergame import PLAYERGAME_CREATED
 from games.events.purchase import (
+    PURCHASE_CORRECTED,
     PURCHASE_CREATED,
+    PURCHASE_PRICE_CHANGED,
     PURCHASE_REFUND_EVENTS,
+    PURCHASE_RESTORED,
     PurchaseKindValue,
 )
 from games.events.vocabulary import EventType
@@ -33,6 +37,16 @@ from games.writes.answers import SubjectNoun, answered
 from games.writes.endpoint import KEEP, Keep
 
 SUBJECT: SubjectNoun = "purchase"
+
+#: Events that move a purchase's valuation.
+VALUATION_EVENTS: frozenset[EventType] = frozenset(
+    {
+        PURCHASE_CREATED.event_type,
+        PURCHASE_PRICE_CHANGED.event_type,
+        PURCHASE_CORRECTED.event_type,
+        PURCHASE_RESTORED.event_type,
+    }
+)
 
 
 class PurchaseDraft(NamedTuple):
@@ -79,6 +93,21 @@ def _dispatch(
     )
 
 
+def _appended_types(result: CommandResult) -> frozenset[EventType]:
+    if result.outcome is not CommandOutcome.APPENDED:
+        return frozenset()
+    return frozenset(event.event_type for event in dispatched_events(result))
+
+
+def _revalue_after(actor: User, event_types: frozenset[EventType]) -> None:
+    """Request a run; a crash before it loses it.
+
+    The daily recovery finds what a lost request leaves stale.
+    """
+    if not VALUATION_EVENTS.isdisjoint(event_types):
+        request_revaluation(actor.library)
+
+
 def record_purchase(
     actor: User,
     draft: PurchaseDraft,
@@ -108,6 +137,7 @@ def record_purchase(
             f"Dispatch {result.stream_id} {result.sequences} appended no "
             f"{PURCHASE_CREATED.event_type}."
         )
+    _revalue_after(actor, _appended_types(result))
     return RecordedPurchase(
         purchase_id=created.aggregate_id,
         entry_id=uuid.UUID(created.payload["entry"]["id"]),
@@ -173,12 +203,13 @@ def restate_purchase(
         )
     if result.outcome is not CommandOutcome.APPENDED:
         return RestatedPurchase(appended=False, copy_end=None)
-    return RestatedPurchase(appended=True, copy_end=_copy_end_of(result))
+    event_types = _appended_types(result)
+    _revalue_after(actor, event_types)
+    return RestatedPurchase(appended=True, copy_end=_copy_end_of(event_types))
 
 
-def _copy_end_of(result: CommandResult) -> CopyEnd | None:
+def _copy_end_of(event_types: frozenset[EventType]) -> CopyEnd | None:
     """What the dispatch's refund act did; None without one."""
-    event_types = {event.event_type for event in dispatched_events(result)}
     if event_types.isdisjoint(PURCHASE_REFUND_EVENTS.family):
         return None
     for event_type, copy_end in _COPY_END_BY_TYPE.items():
@@ -222,9 +253,11 @@ def restore_purchase(
 ) -> CommandResult:
     """Put a removed purchase back."""
     with answered(SUBJECT):
-        return _dispatch(
+        result = _dispatch(
             RestorePurchase(purchase_id=purchase.pk),
             actor=actor,
             correlation_id=correlation_id,
             idempotency_key=idempotency_key,
         )
+    _revalue_after(actor, _appended_types(result))
+    return result

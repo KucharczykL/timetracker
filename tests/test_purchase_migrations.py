@@ -1,5 +1,7 @@
 """The legacy rename, forward and back."""
 
+from decimal import Decimal
+
 import pytest
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
@@ -47,4 +49,32 @@ def test_the_rename_moves_every_name_and_reverses():
         assert "live_purchase_per_entry_idx" in _names("games_purchase")
         assert all(len(name) <= 63 for name in renamed)
     finally:
+        _migrate(latest)
+
+
+def _rate() -> object:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT rate FROM games_exchangerate WHERE year = 1999")
+        ((rate,),) = cursor.fetchall()
+        return rate
+
+
+def test_the_rate_copy_runs_both_ways():
+    (latest,) = MigrationExecutor(connection).loader.graph.leaf_nodes("games")
+    try:
+        _migrate(("games", "0028_purchase_refund"))
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "INSERT INTO games_exchangerate (currency_from, currency_to, year, rate)"
+                " VALUES ('USD', 'CZK', 1999, 23.123456789012345)"
+            )
+
+        _migrate(("games", "0029_exchangerate_decimal_rate"))
+        assert _rate() == Decimal("23.123456789012")
+
+        _migrate(("games", "0028_purchase_refund"))
+        assert _rate() == 23.123456789012
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM games_exchangerate WHERE year = 1999")
         _migrate(latest)

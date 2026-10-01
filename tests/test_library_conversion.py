@@ -148,7 +148,7 @@ def test_same_currency_and_zero_price_publish_without_exchange_rate(owner, monke
         status=PurchaseConversionState.Status.PENDING,
     )
     rate = Mock(side_effect=AssertionError("trivial conversion fetched a rate"))
-    monkeypatch.setattr(tasks, "_get_exchange_rate", rate)
+    monkeypatch.setattr(tasks, "exchange_rate", rate)
 
     tasks.convert_library_prices(str(owner.library.pk), 1)
 
@@ -188,7 +188,7 @@ def test_old_job_cannot_publish_after_newer_request(owner, monkeypatch):
         status=PurchaseConversionState.Status.PENDING,
     )
     rate = Mock(return_value=2)
-    monkeypatch.setattr(tasks, "_get_exchange_rate", rate)
+    monkeypatch.setattr(tasks, "exchange_rate", rate)
 
     tasks.convert_library_prices(str(owner.library.pk), 1)
 
@@ -223,7 +223,7 @@ def test_purchase_edit_invalidates_candidate_before_publication(owner, monkeypat
         purchase.save(update_fields=["price", "updated_at"])
         return 2
 
-    monkeypatch.setattr(tasks, "_get_exchange_rate", edit_while_fetching)
+    monkeypatch.setattr(tasks, "exchange_rate", edit_while_fetching)
 
     tasks.convert_library_prices(str(owner.library.pk), 1)
 
@@ -249,7 +249,7 @@ def test_publication_rolls_back_every_row_when_bulk_update_fails(owner, monkeypa
         published_version=0,
         status=PurchaseConversionState.Status.PENDING,
     )
-    monkeypatch.setattr(tasks, "_get_exchange_rate", lambda *_args: 2)
+    monkeypatch.setattr(tasks, "exchange_rate", lambda *_args: 2)
 
     def partial_then_fail(objects, fields):
         LegacyPurchase.objects.filter(pk=objects[0].pk).update(
@@ -286,7 +286,7 @@ def test_missing_rate_keeps_old_values_and_schedules_one_retry(owner, monkeypatc
         published_version=0,
         status=PurchaseConversionState.Status.PENDING,
     )
-    monkeypatch.setattr(tasks, "_get_exchange_rate", lambda *_args: None)
+    monkeypatch.setattr(tasks, "exchange_rate", lambda *_args: None)
     scheduled = Mock()
     monkeypatch.setattr(tasks, "schedule", scheduled)
     before = timezone.now()
@@ -554,7 +554,7 @@ def test_duplicate_job_exits_when_requested_version_is_already_published(
         status=PurchaseConversionState.Status.COMPLETE,
     )
     rate = Mock(side_effect=AssertionError("published job fetched a rate"))
-    monkeypatch.setattr(tasks, "_get_exchange_rate", rate)
+    monkeypatch.setattr(tasks, "exchange_rate", rate)
 
     tasks.convert_library_prices(str(owner.library.pk), 2)
 
@@ -622,7 +622,7 @@ def test_losing_same_version_worker_cannot_republish_after_winner(owner, monkeyp
         )
         return 3
 
-    monkeypatch.setattr(tasks, "_get_exchange_rate", publish_winner_while_loser_fetches)
+    monkeypatch.setattr(tasks, "exchange_rate", publish_winner_while_loser_fetches)
 
     tasks.convert_library_prices(str(owner.library.pk), 2)
 
@@ -793,7 +793,7 @@ def test_purchase_edit_and_publication_lock_state_before_purchase(owner, monkeyp
         status=PurchaseConversionState.Status.PENDING,
     )
     monkeypatch.setattr(conversion, "async_task", Mock())
-    monkeypatch.setattr(tasks, "_get_exchange_rate", lambda *_args: 2)
+    monkeypatch.setattr(tasks, "exchange_rate", lambda *_args: 2)
 
     worker_at_publication = Event()
     editor_at_state_lock = Event()

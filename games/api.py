@@ -1630,6 +1630,13 @@ class PurchaseUpdate(Schema):
         return self.refund.statement()
 
 
+class ValuationOut(Schema):
+    """An amount in the reporting currency."""
+
+    amount: Decimal
+    currency: str
+
+
 class PurchaseOut(Schema):
     """The projection row, with its game."""
 
@@ -1653,6 +1660,17 @@ class PurchaseOut(Schema):
     refund_recorded_at: datetime | None = None
     refund_note: str
     created_at: datetime
+    #: Null until a current one is published.
+    valuation: ValuationOut | None = None
+
+    @staticmethod
+    def resolve_valuation(purchase: Purchase) -> ValuationOut | None:
+        #: ``with_valuation`` annotates both.
+        amount = purchase.valuation_amount  # type: ignore[attr-defined]
+        if amount is None:
+            return None
+        currency = purchase.valuation_currency  # type: ignore[attr-defined]
+        return ValuationOut(amount=amount, currency=currency)
 
 
 @purchase_router.get("/", response=list[PurchaseOut])
